@@ -13,6 +13,13 @@ SDK in `global.json` (10.0.401). The scripts accept an explicit, read-only
 `-DotnetPath` and set `DOTNET_ROOT`, process PATH, telemetry opt-out and certificate
 generation only in the calling process. Supply your own `-CliHome`; never use a
 shared SDK directory as a CLI home. No SDK/driver/runtime installer is run.
+Each bounded native child receives a validated filesystem working directory.
+Build/maintenance wrappers explicitly use their repository root; other calls
+use PowerShell's current filesystem location, not the process-wide OS cwd.
+Starting PowerShell elsewhere and then using `Set-Location`/`Push-Location`
+therefore preserves project, SDK and NuGet configuration resolution. No command
+changes `[Environment]::CurrentDirectory`. Native commands from non-filesystem
+locations (such as `Env:`) fail with an actionable directory requirement.
 
 ```powershell
 $sdk = (Get-Command dotnet).Source # Or an explicit verified SDK dotnet.exe.
@@ -164,6 +171,11 @@ verified explicitly; expected negative tests never modify `LASTEXITCODE`.
 with GitHub's exact pwsh exit wrapper, then compiles the installer only after
 that step succeeds. A deliberately missing executable must still fail the
 same child wrapper; no unconditional success exit masks a broken assertion.
+The suite also starts a maintenance child outside a disposable source copy,
+uses `Set-Location` into that copy, and regenerates both real lock graphs.
+It checks the resulting locks, pinned SDK/global.json and repository NuGet
+configuration, rejects non-filesystem directories, and asserts caller/process
+working directories are unchanged.
 
 ## Inno Setup provenance and terms
 

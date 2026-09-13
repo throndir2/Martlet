@@ -11,12 +11,12 @@ Assert-MSBuildPath $root
 Assert-MSBuildPath $WorkDirectory
 Push-Location $root
 try {
-    $sdk = Initialize-PackagingSdk $DotnetPath $CliHome
+    $sdk = Initialize-PackagingSdk $DotnetPath $CliHome -WorkingDirectory $root
     New-OutputDirectory $WorkDirectory
     foreach ($application in @('Desktop', 'Doctor')) {
         Invoke-Dotnet $sdk (@('restore', "src\Martlet.$application\Martlet.$application.csproj",
             '--force-evaluate', '-p:RestoreLockedMode=false', '-r', (Get-PackagingPins).rid,
-            '--artifacts-path', $WorkDirectory, '--verbosity', 'minimal') + @(Get-PackagingProperties))
+            '--artifacts-path', $WorkDirectory, '--verbosity', 'minimal') + @(Get-PackagingProperties)) -WorkingDirectory $root
     }
     Write-Output 'RID locks regenerated intentionally. Review and commit every affected packaging\windows\locks file; publish still enforces locked restore.'
 }

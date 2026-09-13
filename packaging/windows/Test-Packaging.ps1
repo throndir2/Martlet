@@ -124,6 +124,19 @@ Assert-Fails 'missing SDK' { Initialize-PackagingSdk (Join-Path $WorkDirectory '
 Assert-Fails 'wrong SDK version' { Initialize-PackagingSdk (Get-Command pwsh).Source $CliHome } '*Wrong SDK*'
 $null = Initialize-PackagingSdk $DotnetPath $CliHome
 Assert-Fails 'real publish failure propagates' { Invoke-Dotnet $sdk @('publish', (Join-Path $WorkDirectory 'missing.csproj')) } '*failed (exit 1)*' 'MSB1009'
+Assert-Fails 'nonfilesystem working directory' {
+    Invoke-BoundedProcess $sdk @('--version') -WorkingDirectory 'Env:\'
+} '*require a filesystem working directory*'
+Assert-Fails 'file instead of working directory' {
+    Invoke-BoundedProcess $sdk @('--version') -WorkingDirectory $PSCommandPath
+} '*require a filesystem working directory*'
+Push-Location 'Env:\'
+try {
+    Assert-Fails 'nonfilesystem PowerShell location' {
+        Invoke-Dotnet $sdk @('--version')
+    } '*require a filesystem working directory*'
+}
+finally { Pop-Location }
 foreach ($name in @('comma,name', 'semicolon;name', 'percent%2Cname', 'percent%3Bname', 'percent%25name', 'equal=name', 'mixed,;%2C=name')) {
     $unsupported = Join-Path $WorkDirectory $name
     Assert-Fails "unsupported output path $name" {
@@ -163,14 +176,16 @@ foreach ($file in Get-ChildItem -LiteralPath (Join-Path $repo 'src') -Recurse -F
 }
 $packaging = Join-Path $source 'packaging\windows'
 [IO.Directory]::CreateDirectory($packaging) | Out-Null
-Copy-Item -LiteralPath "$PSScriptRoot\Packaging.targets" -Destination $packaging
+foreach ($file in @('Packaging.targets', 'Packaging.Common.ps1', 'Update-PublishLocks.ps1', 'toolchain.json')) {
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $packaging
+}
 Copy-Item -LiteralPath "$PSScriptRoot\locks" -Destination $packaging -Recurse
 $properties = @("-p:CustomBeforeMicrosoftCommonTargets=$packaging\Packaging.targets", '-p:PublishProfile=WindowsInternal')
 $project = Join-Path $source 'src\Martlet.Desktop\Martlet.Desktop.csproj'
 $graph = Join-Path $WorkDirectory 'negative.restore-graph.json'
 $build = Join-Path $WorkDirectory 'negative-build'
 Invoke-Dotnet $sdk (@('msbuild', $project, '-t:GenerateRestoreGraphFile', "-p:RestoreGraphOutputPath=$graph",
-    '-p:RuntimeIdentifier=win-x64', '-p:UseArtifactsOutput=true', "-p:ArtifactsPath=$build", '-verbosity:quiet') + $properties)
+    '-p:RuntimeIdentifier=win-x64', '-p:UseArtifactsOutput=true', "-p:ArtifactsPath=$build", '-verbosity:quiet') + $properties) -WorkingDirectory $source
 $lock = Join-Path $packaging 'locks\Martlet.Core.packages.lock.json'
 $lockBytes = [IO.File]::ReadAllBytes($lock)
 try {
@@ -178,10 +193,26 @@ try {
     Assert-Fails 'missing RID lock preflight' { Assert-RestoreGraphLocks $graph (Join-Path $packaging 'locks') } '*Missing committed RID lock*'
     [IO.File]::WriteAllText($lock, '{"version":2,"dependencies":{"net10.0":{}}}')
     Assert-Fails 'stale RID lock restore' {
-        Invoke-Dotnet $sdk (@('restore', $project, '--locked-mode', '-r', 'win-x64', '--artifacts-path', $build, '--verbosity', 'quiet') + $properties)
+        Invoke-Dotnet $sdk (@('restore', $project, '--locked-mode', '-r', 'win-x64', '--artifacts-path', $build, '--verbosity', 'quiet') + $properties) -WorkingDirectory $source
     } '*failed (exit 1)*' 'NU1004'
 }
 finally { [IO.File]::WriteAllBytes($lock, $lockBytes) }
+
+$maintenance = Join-Path $WorkDirectory 'location-maintenance'
+$osLocation = [Environment]::CurrentDirectory
+$psLocation = (Get-Location).Path
+$result = Invoke-BoundedProcess (Get-Command pwsh).Source @('-NoProfile', '-NonInteractive',
+    '-File', "$PSScriptRoot\Test-MaintenanceLocation.ps1", '-SourceDirectory', $source,
+    '-WorkDirectory', $maintenance, '-DotnetPath', $sdk, '-CliHome', $CliHome) 600 -WorkingDirectory $WorkDirectory
+if ($result.Stdout) { $result.Stdout.TrimEnd() | Out-Host }
+if ($result.ExitCode -ne 0) { throw "Maintenance from a different OS working directory failed: $($result.Stderr)" }
+if ([Environment]::CurrentDirectory -cne $osLocation -or (Get-Location).Path -cne $psLocation) {
+    throw 'Bounded child changed the caller working directory.'
+}
+foreach ($file in Get-ChildItem -LiteralPath "$PSScriptRoot\locks" -File) {
+    Assert-Sha256 (Join-Path $packaging "locks\$($file.Name)") (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
+}
+$script:cases++
 
 if ($ComparePayloadRoot) {
     $null = Test-PayloadManifest $ComparePayloadRoot

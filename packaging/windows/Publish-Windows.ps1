@@ -12,7 +12,7 @@ Assert-MSBuildPath $root
 Assert-MSBuildPath $OutputDirectory
 Push-Location $root
 try {
-    $sdk = Initialize-PackagingSdk $DotnetPath $CliHome
+    $sdk = Initialize-PackagingSdk $DotnetPath $CliHome -WorkingDirectory $root
     New-OutputDirectory $OutputDirectory
     $sourceCommit = (& git rev-parse HEAD).Trim()
     if ($LASTEXITCODE -ne 0) { throw 'Cannot determine source commit.' }
@@ -28,12 +28,12 @@ try {
         $graph = Join-Path $OutputDirectory "$application.restore-graph.json"
         Invoke-Dotnet $sdk (@('msbuild', $project, '-t:GenerateRestoreGraphFile',
             "-p:RestoreGraphOutputPath=$graph", "-p:RuntimeIdentifier=$RuntimeIdentifier",
-            '-p:UseArtifactsOutput=true', "-p:ArtifactsPath=$build", '-verbosity:quiet') + $properties)
+            '-p:UseArtifactsOutput=true', "-p:ArtifactsPath=$build", '-verbosity:quiet') + $properties) -WorkingDirectory $root
         Assert-RestoreGraphLocks $graph
         Invoke-Dotnet $sdk (@('restore', $project, '--locked-mode', '-r', $RuntimeIdentifier,
-            '--artifacts-path', $build, '--verbosity', 'minimal') + $properties)
+            '--artifacts-path', $build, '--verbosity', 'minimal') + $properties) -WorkingDirectory $root
         Invoke-Dotnet $sdk (@('publish', $project, '--no-restore', '-c', 'Release', '-r', $RuntimeIdentifier,
-            '--artifacts-path', $build, '-o', (Join-Path $staging $application), '--verbosity', 'minimal') + $properties)
+            '--artifacts-path', $build, '-o', (Join-Path $staging $application), '--verbosity', 'minimal') + $properties) -WorkingDirectory $root
     }
     [IO.Directory]::CreateDirectory((Join-Path $staging 'help')) | Out-Null
     [IO.Directory]::CreateDirectory((Join-Path $staging 'notices')) | Out-Null

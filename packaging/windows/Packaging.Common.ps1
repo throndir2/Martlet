@@ -216,9 +216,19 @@ function Test-PayloadManifest([string]$Root) {
     return $manifest
 }
 
-function Invoke-BoundedProcess([string]$Executable, [string[]]$Arguments, [int]$TimeoutSeconds = 30) {
+function Invoke-BoundedProcess(
+    [string]$Executable,
+    [string[]]$Arguments,
+    [int]$TimeoutSeconds = 30,
+    [string]$WorkingDirectory = (Get-Location).Path
+) {
+    $location = Resolve-Path -LiteralPath $WorkingDirectory -ErrorAction Stop
+    if ($location.Provider.Name -ne 'FileSystem' -or -not (Get-Item -LiteralPath $location.Path).PSIsContainer) {
+        throw 'Native processes require a filesystem working directory. Use Set-Location to a directory or supply -WorkingDirectory with an existing filesystem directory.'
+    }
     $start = [Diagnostics.ProcessStartInfo]::new($Executable)
     $start.UseShellExecute = $false
+    $start.WorkingDirectory = $location.ProviderPath
     $start.RedirectStandardOutput = $true
     $start.RedirectStandardError = $true
     foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
@@ -240,7 +250,7 @@ function Invoke-BoundedProcess([string]$Executable, [string[]]$Arguments, [int]$
     }
 }
 
-function Initialize-PackagingSdk([string]$DotnetPath, [string]$CliHome) {
+function Initialize-PackagingSdk([string]$DotnetPath, [string]$CliHome, [string]$WorkingDirectory = (Get-Location).Path) {
     Assert-PackagingHost
     $sdk = (Get-Command $DotnetPath -CommandType Application -ErrorAction Stop).Source
     $env:DOTNET_ROOT = Split-Path $sdk
@@ -249,16 +259,16 @@ function Initialize-PackagingSdk([string]$DotnetPath, [string]$CliHome) {
     $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
     $env:DOTNET_GENERATE_ASPNET_CERTIFICATE = 'false'
     $env:DOTNET_NOLOGO = '1'
-    $result = Invoke-BoundedProcess $sdk @('--version')
+    $result = Invoke-BoundedProcess $sdk @('--version') -WorkingDirectory $WorkingDirectory
     if ($result.ExitCode -ne 0 -or $result.Stdout.Trim() -cne (Get-PackagingPins).sdkVersion) {
         throw "Wrong SDK. Use the exact SDK $((Get-PackagingPins).sdkVersion) from global.json; detected '$($result.Stdout.Trim())'."
     }
     return $sdk
 }
 
-function Invoke-Dotnet([string]$Sdk, [string[]]$Arguments) {
+function Invoke-Dotnet([string]$Sdk, [string[]]$Arguments, [string]$WorkingDirectory = (Get-Location).Path) {
     # Keep a verified expected failure from leaking into GitHub's pwsh LASTEXITCODE wrapper.
-    $result = Invoke-BoundedProcess $Sdk $Arguments 600
+    $result = Invoke-BoundedProcess $Sdk $Arguments 600 -WorkingDirectory $WorkingDirectory
     if ($result.Stdout) { $result.Stdout.TrimEnd() | Out-Host }
     if ($result.Stderr) { $result.Stderr.TrimEnd() | Out-Host }
     if ($result.ExitCode -ne 0) {
