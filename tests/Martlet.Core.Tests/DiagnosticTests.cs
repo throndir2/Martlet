@@ -27,7 +27,8 @@ public sealed class DiagnosticTests
         Assert.Equal(2, report.ExitCode);
         Assert.Equal(SettingsLoadState.FirstRun, report.SettingsState);
         Assert.False(Directory.Exists(path));
-        Assert.All(report.Probes.Where(p => p.Stage != Stage.Settings), p => Assert.Equal(EvidenceProvenance.NotRun, p.Provenance));
+        Assert.All(report.Probes.Where(p => p.Id is not ("settings.load" or "application.version" or "runtime.version")),
+            p => Assert.Equal(EvidenceProvenance.NotRun, p.Provenance));
         Assert.DoesNotContain(typeof(FoundationStatusService).Assembly.GetReferencedAssemblies(), a =>
             a.Name is "PresentationFramework" or "NAudio" or "System.Net.Http");
         Assert.DoesNotContain(typeof(SettingsStore).Assembly.GetReferencedAssemblies(), a =>
@@ -80,5 +81,9 @@ public sealed class DiagnosticTests
         Assert.Throws<ContractException>(() => (Passed with { ObservedAt = null }).Validate());
         Assert.Throws<ContractException>(() => DoctorExitCodes.Evaluate(Report([Passed with { ObservedAt = null }])));
         Assert.Throws<ContractException>(() => (Report([Passed]) with { SettingsState = SettingsLoadState.Loaded }).Validate());
+        Assert.Throws<ContractException>(() => (Passed with { AgeMilliseconds = 60_000, MaximumAgeMilliseconds = 60_000 }).Validate());
+        Assert.Throws<ContractException>(() => (Passed with { Execution = ProbeExecution.NotRun }).Validate());
+        Assert.Throws<ContractException>(() => (Passed with { Execution = ProbeExecution.Faulted }).Validate());
+        Assert.Throws<ContractException>(() => (Passed with { OperationStillRunning = true }).Validate());
     }
 }
