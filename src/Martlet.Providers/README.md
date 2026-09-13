@@ -1,9 +1,17 @@
-# V03a: named OpenAI bounded-file transcription
+# Named OpenAI provider adapters: V03a and V03b
+
+Provider library only: bounded-file transcription (V03a) and bounded text
+Responses streaming (V03b). Neither adapter is wired into the application.
+There is no automatic network activity, credential lookup, retry, model
+selection, cloud fallback or live qualification. V03c TTS and V04 orchestration
+remain separate work.
+
+## V03a: bounded-file transcription
 
 This is a production HTTP adapter library, **not a working voice application**.
-It implements only `POST https://api.openai.com/v1/audio/transcriptions` with a
+The transcription adapter implements only `POST https://api.openai.com/v1/audio/transcriptions` with a
 completed, bounded mono PCM16 WAV and one final JSON response. There is no
-microphone, VAD, resampler, codec download, model download, LLM, TTS, onboarding,
+microphone, VAD, resampler, codec download, model download, TTS, onboarding,
 Credential Manager implementation, Doctor probe, discovery request, or automatic
 network activity. It references Core only, using BCL HTTP/JSON and no new package.
 
@@ -240,3 +248,228 @@ Before any live smoke, the owner must separately approve the exact model/account
 audio disclosure, cost tolerance/limits and credentials through the future
 authorized path. Ordinary CI must never request those credentials or perform
 inference to turn this fixture gate green.
+
+## V03b: bounded text Responses streaming
+
+`OpenAiTextGenerationAdapter` implements **streaming only**:
+`POST https://api.openai.com/v1/responses`. It does not implement Chat
+Completions, Realtime, a universal "/v1 compatible" transport, non-streaming
+generation, a provider conversation store or an agent/tool executor.
+
+### Dated upstream contract
+
+Primary sources accessed **2026-09-12 (America/Los_Angeles)**; source inspection,
+not service observations:
+
+| Source | Consequence |
+| --- | --- |
+| [Create Response](https://developers.openai.com/api/reference/resources/responses/methods/create), [streaming events](https://developers.openai.com/api/reference/resources/responses/streaming-events), [streaming guide](https://developers.openai.com/api/docs/guides/streaming-responses) | Typed lifecycle, output/item/part, delta/done, refusal, incomplete and error events; done snapshots are not additional deltas. |
+| [GPT-4.1 Mini](https://developers.openai.com/api/docs/models/gpt-4.1-mini) | Documents non-reasoning text output, Responses streaming and snapshot `gpt-4.1-mini-2025-04-14`. The adapter accepts **only that exact dated ID**, not its floating alias or another model family. Documented context/output capacity is larger than this adapter's local subset. |
+| [Official Python request types](https://github.com/openai/openai-python/blob/e12b81d3bbf644ec7045e152d69bc4b68d69cd48/src/openai/types/responses/response_create_params.py), [text-only easy messages](https://github.com/openai/openai-python/blob/e12b81d3bbf644ec7045e152d69bc4b68d69cd48/src/openai/types/responses/easy_input_message_param.py), [event union](https://github.com/openai/openai-python/blob/e12b81d3bbf644ec7045e152d69bc4b68d69cd48/src/openai/types/responses/response_stream_event.py) | Immutable schema reference `e12b81d3bbf644ec7045e152d69bc4b68d69cd48`. No SDK, generated source, tokenizer, model or asset is installed/copied. |
+| [Official Node Responses types](https://github.com/openai/openai-node/blob/e69eb4e4a88e1322e82385d4c119cef30c298dff/src/resources/responses/responses.ts), [SSE transport](https://github.com/openai/openai-node/blob/e69eb4e4a88e1322e82385d4c119cef30c298dff/src/core/streaming.ts) | Independent type cross-check at `e69eb4e4a88e1322e82385d4c119cef30c298dff`. An exact `[DONE]` can end SDK transport, but is not a successful Responses lifecycle event. |
+| [Data controls](https://developers.openai.com/api/docs/guides/your-data), [background](https://developers.openai.com/api/docs/guides/background), [prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching) | `store:false` and `background:false` are explicit. No training by default does not mean no retention: abuse monitoring, caching and account-specific controls are separate. No ZDR/MAM approval, retention exemption, disabled caching or deletion guarantee is claimed. |
+
+Requests explicitly contain `stream:true`, `store:false`, `background:false`,
+`tools:[]`, `tool_choice:"none"`, `parallel_tool_calls:false`,
+`text.format.type:"text"`, `truncation:"disabled"` and `max_output_tokens`.
+Optional caller personality is `instructions`; history is a bounded list of
+`user`/`assistant` messages with string content, followed by current user text.
+There are no arbitrary request dictionaries, remote prompt references,
+`conversation`, `previous_response_id`, images, audio, reasoning configuration,
+code execution, tools, model discovery or implicit history.
+
+### Public API and authorization
+
+| Surface | Contract |
+| --- | --- |
+| `TextModelSelection(ModelAlias, UpstreamModelId)` | Core alias is separate from the explicit upstream identifier. Catalog validation is passive and `NotRun`, not account access or readiness. |
+| `BoundedTextInput(userText, personality?, history?)` | Owns immutable strings and a bounded copy of immutable history messages. Validates nonempty current input, UTF-16, controls, UTF-8 size and history count before any provider activity. |
+| `TextGenerationLimits` | Immutable value object covering local input admission, requested output tokens, context, raw SSE/event/text bounds and deadlines. Every field must equal the authorization's limits. |
+| `TextDisclosureAuthorization` | Single-use text-disclosure **and potential-charge** permission. Exact approved origin, LLM role, upstream model, alias, all three correlation IDs, original epoch, limits and expiry are bound. An STT authorization is not accepted. |
+| `Create(credentialSource, timeProvider?)` | Safe reusable production HttpClient with owned nonredirecting, normal-TLS handler. No public arbitrary handler/client/endpoint override. Injected credentials must match origin/LLM/model exactly. |
+| `Stream(context, model, input, limits, authorization, token)` | Captures the original monotonic/UTC request window now; returns a lazy `TextGenerationStream`. No secret is resolved or body serialized until enumeration after scope validation and atomic consent consumption. |
+| `TextGenerationStream.GetAsyncEnumerator(token)` | **One enumeration only.** First event is local `Started`; subsequent pulls perform one HTTP attempt. Caller and enumerator cancellation are combined. Concurrent `MoveNextAsync`/disposal on the same enumerator is unsupported; one serialized consumer owns it. |
+| `TextGenerationStream.Capabilities` | Core-compatible local attempt envelope (`Fixture` for injected fixtures, `Live` for the production boundary), LLM text deltas, request-abort capability. This is not a successful inference probe. |
+| `TextGenerationStream.Result` | Null until terminal or enumerator disposal. Contains original context, outcome, nullable usage/cost, sanitized failure and separate refusal content. It does **not** collect/replay full user-visible text. |
+| `TextGenerationResult.ToTurnResult()` | Existing Core outcomes; incomplete/output-limit/deadline map to `Failed`, refusal to `Refused`, Stop to `Canceled`. No shared Core schema changes. |
+
+Only a calling path that actually obtained permission constructs authorization.
+The library cannot authenticate human consent or defend against malicious code
+in its process. Credentials/settings are not consent. Failed/aborted requests
+consume their permission; there is no automatic renewal, retry or fallback.
+Consent is for one attempted disclosure under limits, **not a monetary ceiling**.
+
+Authorization and original request windows are checked synchronously after
+credential lookup, before JSON construction, before HTTP send, at actual body
+serialization and after every response await/before event acceptance. Absolute
+consent expiry and original monotonic windows both apply, including delayed
+timer callbacks and wall-clock rollback. Cancellation aborts outstanding HTTP
+and disposes an acquired stream; late data is not accepted. Injected credential
+sources must honor cancellation and translate expected store failures to
+`CredentialUnavailableException`.
+
+```csharp
+using var adapter = OpenAiTextGenerationAdapter.Create(credentialSource);
+var input = new BoundedTextInput(userText, approvedPersonality, approvedHistory);
+var stream = adapter.Stream(context, selectedModel, input, displayedLimits,
+    authorizationFromApprovedCallingPath, stopToken);
+// Build the Core TextStreamRequest with original IDs/epoch and stream.Capabilities.
+await foreach (var providerEvent in stream)
+{
+    // The owner checks current epoch, feeds its real ProviderSequenceValidator,
+    // and drains the validator's independent user-text channel with backpressure.
+    ConsumeOriginalEpochEvent(providerEvent);
+}
+var result = stream.Result; // metadata; no repeated full answer
+```
+
+Use `await foreach` (including early `break`) or dispose a manually acquired
+enumerator. Abandoning a pull enumerator without disposal is a caller ownership
+bug, not a supported cleanup mechanism. Early disposal marks the local result
+`Canceled` without inventing a delivered terminal event. Normal terminals release
+HTTP/request resources before being yielded. Adapter disposal cancels its active
+requests; await/dispose their enumerators before discarding them. Independent
+streams can intentionally share one adapter, provided the credential source is
+concurrency-safe. Aggregate request/session concurrency remains V04's budget.
+
+### Incremental protocol and outcome semantics
+
+The supported **adapter subset**, not a universal provider guarantee, is one
+assistant `message` at output index 0 with one `output_text` **or** `refusal`
+part at content index 0. Item IDs, response ID/model, indexes, part type,
+message role/status and terminal snapshots must agree. Missing/null message
+phase or `final_answer` is allowed; commentary/unknown phases are rejected.
+Reasoning items/parts/events, nonempty annotations, tools, images/audio and
+unknown semantic event types fail closed. Such output never enters user text.
+
+Accepted lifecycle: `response.created`, optional `response.in_progress`,
+`response.output_item.added`, `response.content_part.added`, repeated matching
+`response.output_text.delta` or `response.refusal.delta`, matching text/refusal
+`.done`, `response.content_part.done`, `response.output_item.done`, and
+`response.completed`. Intermediate done boundaries and a matching final snapshot
+are required for success. Incomplete/failed/error may terminate earlier.
+
+Upstream `sequence_number` must be present, nonnegative, bounded and strictly
+increasing. **No upstream zero-start or gap-free guarantee is assumed.** A
+duplicate or reordered event fails the attempt before replaying any content;
+no reconnect/replay recovery is implemented. Independently generated Core
+sequences are contiguous from `Started` at 0, then only emitted text deltas,
+then one terminal. Done/final full text must equal accumulated deltas; it is
+checked, never delivered twice. Missing deltas therefore cannot silently be
+filled from a final snapshot. Partial text already displayed remains partial
+if later validation fails; V04 must not relabel it completed.
+
+| Upstream condition | Public/Core result |
+| --- | --- |
+| Valid nonempty text and matching `response.completed` | `Completed`; terminal has **no Text**, since deltas already supplied it. |
+| Matching refusal part and completed response | `Refused`; buffered refusal is exposed only on the refusal terminal/result, never as a user-text delta. |
+| `response.incomplete` / `max_output_tokens` | `OutputTokenLimit`, Core `Failed`; not a completed answer. |
+| `response.incomplete` / `content_filter` | `Incomplete`, Core `Failed` with `ContentFiltered`; distinct from explicit refusal content. |
+| `max_messages`, `steered`, missing/null or unknown incomplete reason | `Incomplete`, Core `Failed`. No WebSocket successor or hidden continuation. |
+| `response.failed` or flat `error` | `Failed`; only recognized machine codes affect authored sanitized detail. |
+| EOF/disconnect/truncation or exact `[DONE]` before valid terminal | `Failed`; never fabricate `Completed`. |
+| Empty/whitespace completion, malformed/inconsistent/unsupported output | `Failed`, even after HTTP 200. |
+| Caller/enumerator/adapter Stop | `Canceled`; preserve original IDs/epoch and suppress late content. |
+
+SSE framing handles arbitrary UTF-8/network splits, LF/CRLF, optional initial
+BOM, comments, optional event names and multiline `data:` joined by LF.
+Named SSE event and JSON `type` must agree. SSE `id`, `retry` and extension
+fields are bounded/ignored and cannot trigger reconnects. Strict Core JSON
+validation covers ignored optional fields, malformed UTF, duplicates and depth.
+Obfuscation/logprob metadata is not output text. No Chat Completions
+`include_usage` assumption is made.
+
+For ordinary chunked SSE, a valid semantic terminal closes the local stream
+without waiting for physical EOF or `[DONE]`; later bytes are not interpreted.
+When `Content-Length` is declared, its exact bounded length is checked before
+publishing the terminal; only comments/empty frames and one optional exact
+`[DONE]` may follow. This detects contradictory declared-length fixtures.
+Truncated records, non-JSON sentinel suffixes, raw CR-only framing, unknown
+`keepalive` JSON, missing required final snapshots, multiple messages/parts,
+mixed text/refusal and alternative SDK recovery paths are **not supported**.
+Their rejection is not evidence that the wider upstream API cannot emit them.
+
+### Bounds, usage, content safety and error handling
+
+| Resource | Default / hard ceiling |
+| --- | --- |
+| Input | 16,384 UTF-8 content bytes; 16 history messages, one current message, optional personality |
+| Local input token admission | Content UTF-8 byte count plus 256 reserved units per message/personality; reservation <= `MaxInputTokens` (default/hard 24,576) |
+| Output | `max_output_tokens` default 256 / hard 4,096; no retry to finish an incomplete answer |
+| Local context budget | Input token reservation limit + output limit <= `MaxContextTokens` (default/hard 32,768); `truncation:disabled` |
+| One raw SSE record | Default 128 KiB / hard 256 KiB, including comments/field framing; strict JSON depth 16 |
+| Whole stream | Default 2 MiB / hard 4 MiB, plus at most one overflow-detection byte |
+| Data events | Default 1,024 / hard 4,094 (leaves room for normalized Started/terminal under Core's 4,096 ceiling) |
+| Accumulated text OR refusal | Default/hard 16,384 UTF-16 characters; caller may lower |
+| Producer queue | None. One current record, two bounded record/line buffers, 4 KiB read-ahead, bounded snapshot text. No producer tasks or unbounded lists. |
+| Time | First text/refusal delta 15 s, inter-event idle 10 s, total 60 s by default; each configurable up to 120 s, also bounded by original request deadline/consent expiry |
+| HTTP optional error body | At most `MaxEventBytes`; known status retained if malformed, oversized or unreadable |
+| Retry-After | Advisory only, bounded to 0-300 s; never authorizes a repeat request |
+
+Input token reservation is **local conservative admission accounting**, not an
+exact tokenizer result, provider-reported usage, cost estimate or a new REST
+input-token-limit parameter. UTF-8 byte accounting and per-message reserve
+bound the selected text-only input; no universal tokenizer compatibility is
+claimed. Actual prompt framing/caching and billing remain provider-controlled.
+Only supplied terminal usage counts are reported, subject to bounds and
+consistent totals; missing/null usage stays unknown, never zero. Cache-write
+details are bounded when present; nonzero reasoning usage is unsupported for
+this non-reasoning subset. Estimated cost is **always null**.
+
+First-delta and idle clocks begin at stream creation, so the earlier applicable
+deadline also bounds credential/header waits. Comments do not reset progress.
+Validated structural events reset idle but cannot postpone first delta;
+consumer pauses still consume idle/overall/consent budgets. Once a content
+delta arrives, idle and total deadlines continue. Slow consumers apply pull
+backpressure instead of accumulating text/tasks.
+
+The adapter does not speak or execute returned text. `text.format:"text"` is
+not a guarantee that content contains no Markdown, URLs or instruction-like
+text. Only designated assistant output is exposed; safe presentation and
+sentence/markup filtering before **any** TTS belong to V04. Refusal has an
+independent content channel. Never log inputs, Core content envelopes,
+HttpRequestMessage or raw provider bodies. Public input/result/credential
+`ToString()` and ordinary JSON metadata exclude content/secrets; explicit
+Core text/refusal events are deliberately content-bearing.
+
+LLM failures use existing Core codes at `Stage.Generation`. STT failure
+messages/mapping remain unchanged. Known HTTP 401/403/429 survives an unreadable
+optional body; cancellation and synchronous/timer deadlines take precedence.
+All failure messages are authored locally, without echoed prompts/keys/vendor
+messages or arbitrary request IDs. Aborting local HTTP is **request_abort**,
+not proof of compute cancellation, deletion or avoided charges.
+
+Shared V03a extraction is internal only: fixed OpenAI origin/handler policy,
+single-send content, bounded optional-body read, Retry-After and original-window
+guards. Existing credential ownership and error-code classification are reused;
+there is no universal provider framework or relaxed STT contract.
+
+### Offline evidence and remaining gates
+
+The same direct-project locked restore/build/test commands above cover both
+adapters under the existing read-only SHA-pinned provider CI. No package,
+central pin, solution, runner, Core/settings or application-wiring change is
+required. Tests author HTTP handlers, byte streams and Responses JSON rather
+than storing downloaded provider content. They exercise the production
+serializer, consent/credential boundary, transport, SSE reader, normalizer and
+real Core sequence validator, including partial/error/refusal and original
+correlation. All 191 STT regressions remain unchanged.
+
+Local SDK 10.0.401 evidence: **323 provider cases passed** (191 existing STT,
+132 new text cases), **43 Core contract cases passed**, and **66 Core sequence/
+malformed-input cases passed**. All associated Release builds had zero warnings
+and errors. The targeted selectors were `FullyQualifiedName~ContractTests` in
+`tests\Martlet.Core.Tests` and
+`FullyQualifiedName~ProviderSequenceValidatorTests|FullyQualifiedName~SequenceMalformedInputTests`
+in `tests\Martlet.Fixtures.Tests`; each used locked restore, `build --no-restore`
+and `test --no-build`. Outputs stayed under this session's unique C: artifact
+directory, with process-local SDK/CLI environment only. These are authored
+offline production-path tests, not measurements of the service.
+
+**NOT RUN:** authorized live inference, actual account/model availability,
+latency/accuracy/refusal frequency, prices/billing/retention settings, consumer
+Windows behavior, TTS, end-to-end voice orchestration and G2. Fixtures do not
+qualify any of these. V03c can reuse the narrow internal transport/credential
+primitives; it needs its own speech/text-disclosure authorization, voice/format
+contract and evidence. V04 owns current-epoch filtering, session budgets,
+bounded validated text delivery, TTS staging and Stop. Neither is wired here.
