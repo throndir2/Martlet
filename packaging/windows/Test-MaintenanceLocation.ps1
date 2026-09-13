@@ -27,10 +27,17 @@ if ($info.ExitCode -ne 0 -or -not $info.Stdout.Contains((Join-Path $SourceDirect
 foreach ($application in @('Desktop', 'Doctor')) {
     $assets = Get-Content -LiteralPath (Join-Path $WorkDirectory "obj\Martlet.$application\project.assets.json") -Raw | ConvertFrom-Json
     $expectedProject = Join-Path $SourceDirectory "src\Martlet.$application\Martlet.$application.csproj"
-    if ($assets.project.restore.projectPath -ine $expectedProject -or
-        $assets.project.restore.configFilePaths -inotcontains (Join-Path $SourceDirectory 'NuGet.config') -or
-        @(Compare-Object @($config.configuration.packageSources.add.value) @($assets.project.restore.sources.PSObject.Properties.Name)).Count -ne 0) {
-        throw "Maintenance used the wrong project or NuGet configuration for $application."
+    if ($assets.project.restore.projectPath -ine $expectedProject) {
+        throw "Maintenance project mismatch for ${application}: expected '$expectedProject', got '$($assets.project.restore.projectPath)'."
+    }
+    if ($assets.project.restore.configFilePaths -inotcontains (Join-Path $SourceDirectory 'NuGet.config')) {
+        throw "Maintenance config mismatch for ${application}: copied NuGet.config missing from $($assets.project.restore.configFilePaths.Count) resolved configuration files."
+    }
+    $expectedSources = @($config.configuration.packageSources.add.value)
+    $actualSources = @($assets.project.restore.sources.PSObject.Properties.Name)
+    if (@(Compare-Object $expectedSources $actualSources).Count -ne 0) {
+        $hosts = @($actualSources | ForEach-Object { ([uri]$_).Host })
+        throw "Maintenance sources mismatch for ${application}: expected $($expectedSources.Count), got $($actualSources.Count); hosts: $($hosts -join ', ')."
     }
 }
 if ([Environment]::CurrentDirectory -cne $osLocation -or (Get-Location).ProviderPath -ine $SourceDirectory) {
