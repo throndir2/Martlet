@@ -71,11 +71,33 @@ if (@($unavailable.probes | Where-Object { $_.provenance -ne 'not_run' }).Count 
     throw 'Unavailable checks claimed evidence.'
 }
 foreach ($command in @(
-    @('self-test'), @('run', 'PRIVATE-CANARY'), @('run', 'settings.load', 'settings.load'), @('run')
+    @('self-test', '--scenario', 'PRIVATE-CANARY'), @('run', 'PRIVATE-CANARY'), @('run', 'settings.load', 'settings.load'), @('run'),
+    @('status', '--play-tone'), @('self-test', '--play-tone', '--play-tone')
 )) {
     $invalid = Invoke-Doctor $command 3
     if ($null -eq $invalid.invocation_error -or $invalid.probes.Count -ne 0) {
         throw 'Invalid invocation did not return its bounded error envelope.'
+    }
+    foreach ($case in @(
+        @{ Name = 'complete'; Exit = 0; Code = 'fixture.completed'; Text = 'A synthetic fixture response.' },
+        @{ Name = 'streaming'; Exit = 0; Code = 'fixture.completed'; Text = 'Synthetic text.' },
+        @{ Name = 'refused'; Exit = 2; Code = 'fixture.refused'; Text = '' },
+        @{ Name = 'refused-after-partial'; Exit = 2; Code = 'fixture.refused'; Text = 'Partial fixture.' },
+        @{ Name = 'no-speech'; Exit = 2; Code = 'fixture.no_speech'; Text = '' },
+        @{ Name = 'not-addressed'; Exit = 2; Code = 'fixture.not_addressed'; Text = '' },
+        @{ Name = 'canceled'; Exit = 2; Code = 'fixture.stopped'; Text = '' },
+        @{ Name = 'truncated'; Exit = 1; Code = 'fixture.failed'; Text = 'Partial fixture.' },
+        @{ Name = 'slow'; Exit = 1; Code = 'fixture.deadline'; Text = '' },
+        @{ Name = 'failed'; Exit = 1; Code = 'fixture.failed'; Text = '' }
+    )) {
+        $fixture = Invoke-Doctor @('self-test', '--scenario', $case.Name) $case.Exit
+        if ($fixture.fixture.label -cne 'FIXTURE - NOT AI' -or $fixture.probes.Count -ne 1 -or
+            $fixture.probes[0].diagnostic_code -cne $case.Code -or $fixture.fixture.text -cne $case.Text -or
+            $fixture.fixture.tone_requested -ne $false -or $null -ne $fixture.fixture.playback -or
+            $fixture.fixture.provenance -cne 'fixture' -or $null -ne $fixture.settings_state -or
+            $null -eq $fixture.fixture.trace.final.result -or $fixture.fixture.stage -cne 'finished') {
+            throw 'Fixture executable did not expose the actual bounded offline session outcome.'
+        }
     }
 }
 if (Test-Path -LiteralPath $data) {
@@ -100,6 +122,11 @@ try {
         if ([Convert]::ToHexString([System.IO.File]::ReadAllBytes($settingsFile)) -cne [Convert]::ToHexString($bytes)) {
             throw 'Doctor changed original settings bytes.'
         }
+        $demo = Invoke-Doctor @('self-test') 0
+        if ($null -ne $demo.settings_state -or $demo.fixture.tone_requested -or
+            [Convert]::ToHexString([System.IO.File]::ReadAllBytes($settingsFile)) -cne [Convert]::ToHexString($bytes)) {
+            throw 'Explicit fixture must work without inspecting or replacing invalid settings.'
+        }
     }
     [System.IO.File]::Delete($settingsFile)
     [System.IO.Directory]::CreateDirectory($settingsFile) | Out-Null
@@ -115,5 +142,5 @@ finally {
     if ([System.IO.File]::Exists($settingsFile)) { [System.IO.File]::Delete($settingsFile) }
     [System.IO.Directory]::Delete($data)
 }
-Write-Output 'PASS: bounded Doctor subprocesses; production registry/selection/catalog; exact exits/remedies; original settings preserved.'
+Write-Output 'PASS: bounded Doctor subprocesses; registry and ten real fixture sessions; exact exits/remedies; audio OFF; original settings preserved.'
 exit 0

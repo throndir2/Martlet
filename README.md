@@ -1,10 +1,13 @@
 # Martlet
 
-**Status: early application foundation, not a working AI companion.** Martlet
-now has an offline Windows WPF status shell, validated per-user settings,
-shared bounded contracts and a diagnostic CLI entry point. There is no AI
-conversation, microphone capture, playback, fixture demo, provider integration,
-inference service, signed installer or supported end-user deployment yet.
+**Status: internal offline fixture product, not a working AI companion.**
+Martlet has an accessible Windows desktop demo and Doctor self-test, using the
+production text validator, bounded session state, diagnostics and optional PCM
+sink. All demo text is authored synthetic content, **FIXTURE - NOT AI**.
+No microphone, provider, network, credentials or GPU is used. Audio is OFF by
+default; the separate confirmed 200 ms tone is not speech or proof of audibility.
+Real conversations, capture, provider setup, signed installation and supported
+end-user deployment are not available.
 
 The intended first experience is a Windows installer, microphone and speaker
 setup, an explicitly selected AI provider, and a working voice conversation
@@ -25,8 +28,10 @@ voice and installation take priority over avatars.
 | [Research and provenance](docs/RESEARCH.md) | Dated primary sources, verified constraints, and unresolved integration questions |
 | [Implemented foundation and decisions](docs/FOUNDATION.md) | Accepted/deferred decisions, exact APIs/bounds, current behavior and next ownership |
 
-The broader plan documents remain future specifications except where the
-foundation document explicitly identifies implemented subsets. The repository
+The broader plan documents remain future specifications except for the current
+implementation/acceptance ledger in [DELIVERY](docs/DELIVERY.md) and the
+[fixture experience](docs/DIAGNOSTICS.md#offline-fixture-experience-f03c).
+The repository
 does not have a project license; selecting one is an owner decision before
 distributing software. No code license grant is implied.
 
@@ -54,14 +59,27 @@ Launch with an explicit disposable data location while developing:
 ```powershell
 $data = Join-Path $env:TEMP ("Martlet.Dev." + [guid]::NewGuid().ToString('N'))
 dotnet run --project src\Martlet.Desktop --no-build -c Release -- --data-directory $data
-dotnet run --project src\Martlet.Doctor --no-build -c Release -- status --json --data-directory $data
+dotnet run --project src\Martlet.Doctor -f net10.0-windows --no-build -c Release -- status --json --data-directory $data
+dotnet run --project src\Martlet.Doctor -f net10.0-windows --no-build -c Release -- self-test --scenario streaming --json --data-directory $data
 ```
 
 Doctor `status` currently exits **2 (incomplete)** on first run or a valid
 unconfigured profile, not success. Exit 3 means invalid invocation/settings;
 exit 1 is reserved for reported probe failures; exit 0 means requested required
 checks passed or help/version completed. `--help` lists implemented commands.
-No `self-test`, `--profile` selector or live probes exist yet.
+`self-test` reports only its explicit fixture: 0 completed, 1 scripted/device
+failure, 2 refused/silent/canceled/incomplete, 3 invalid invocation. A fixture
+pass does not change real-mode readiness. `--profile` and live probes are unavailable.
+
+In the desktop choose a scenario and **Try fixture (audio OFF)**. No profile
+is needed, and malformed settings are left intact. Stop clears pending text and
+PCM; a new action uses fresh turn/request IDs and epochs. `refused`,
+`refused-after-partial`, `no-speech`, `not-addressed`, `canceled`, `truncated`,
+`slow`, and `failed` explain common outcomes without contacting a provider.
+Script time is synthetic; `slow` is an accelerated deadline demonstration.
+Only the separate confirmation button (or Windows Doctor's explicit
+`self-test --play-tone`) permits the fixed-at-start default output for that
+one action. Check the output, volume and audience before permitting a tone.
 
 Without `--data-directory`, both programs read
 `%LocalAppData%\Martlet\settings.json`. Launch never creates a profile or starts
@@ -69,11 +87,15 @@ capture/networking. The desktop's explicit **Create unconfigured local profile**
 action saves settings only. Malformed, newer or inaccessible files are reported
 with a remedy and are not reset to defaults or overwritten.
 
-Core/Diagnostics/Doctor and both test projects target `net10.0` without WPF.
+Core/Fixtures/Sessions/Diagnostics and test projects target `net10.0` without WPF.
+Doctor has portable `net10.0` (text only) and `net10.0-windows` targets; Audio
+has a portable sink and a Windows WASAPI adapter. Both Doctor targets support
+the same offline text command. No device is needed for text or diagnostics.
 For a UI-independent test build, run
 `dotnet test tests\Martlet.Core.Tests -c Release` or
 `dotnet test tests\Martlet.Doctor.Tests -c Release`.
-The full solution additionally builds the Windows-only WPF project.
+The full solution additionally builds the Windows-only WPF project and runs
+the existing fixture, audio and integration suites.
 
 These SDK commands are **not the intended end-user installation experience**.
 F02 will provide an internal self-contained per-user installer path; a supported

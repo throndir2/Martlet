@@ -17,6 +17,8 @@ public static class ReportFormatter
             text.AppendLine($"Run started: {started:O}; report completed: {report.CompletedAt:O}");
         if (report.InvocationError is { } error)
             text.AppendLine($"{error.Code}: {error.Summary} Next action: {error.ActionId}");
+        if (report.Fixture is { } fixture)
+            text.Append(FixtureDiagnostics.Describe(fixture));
         foreach (var probe in report.Probes)
         {
             text.AppendLine($"{probe.Id}: {probe.Outcome} [{probe.Provenance}; {probe.Freshness}; {probe.Execution}] - {probe.Summary}");

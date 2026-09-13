@@ -1,8 +1,11 @@
 # F03b bounded PCM playback
 
 This is an opt-in playback library, not a voice app or a passed audio hardware
-gate. Desktop, Doctor, settings, fixtures, capture, VAD, microphones, loopback,
-provider APIs and avatars are not wired to it. F03c owns that integration.
+gate. F03c now connects Desktop/Windows Doctor fixture sessions to this same
+sink through a separate per-action synthetic-tone permission boundary.
+See [the fixture experience](DIAGNOSTICS.md#offline-fixture-experience-f03c).
+Settings, capture, VAD, microphones, loopback, provider APIs and avatars remain
+unwired.
 Remote D02 protocols remain partial. Loading either assembly, constructing
 `PcmPlaybackSink` / `WasapiDeviceFactory`, or disposing an unused sink does
 not enumerate, activate or play an endpoint.
@@ -167,7 +170,8 @@ or logged with raw messages.
 
 The Windows-only `SpeakerSmoke.RunAsync()` defaults to
 `PlaybackRequested=false`, no result, and **no device access**. It is not wired
-to launch, Doctor, Desktop or ordinary tests. With separate physical-audio
+to launch or diagnostics. Its `SyntheticTone` generator is shared with the
+explicit fixture action, rather than duplicated. With separate physical-audio
 permission, a developer may call:
 
 ```csharp

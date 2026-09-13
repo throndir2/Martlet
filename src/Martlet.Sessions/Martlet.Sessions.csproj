@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\Martlet.Audio\Martlet.Audio.csproj" />
+    <ProjectReference Include="..\Martlet.Fixtures\Martlet.Fixtures.csproj" />
+  </ItemGroup>
+</Project>

@@ -6,6 +6,14 @@ provider scripts and a deterministic runner through the production
 network access, credential/profile access, file writes, audio/device work, or
 WPF/Doctor integration. It has no external package dependencies.
 
+**Integration update:** Desktop/Doctor now consume this library through
+`Martlet.Sessions.FixtureSession`; see [the installed offline experience](../../docs/DIAGNOSTICS.md#offline-fixture-experience-f03c).
+The shared serialized-owner `FixtureCursor` was extracted from `FixtureRunner`;
+both use the exact same event/queue/timing/trace path. `Advance()` returns the
+actual validated text chunks for presentation, `Snapshot`/`RefusalText` remain
+separate, `Stop()` invalidates queues, and `Finish()` retains the bounded trace.
+No device/UI/network dependency was added to this library.
+
 `FixtureCatalog.Create(name)` supplies 30 named scripts;
 `FixtureRunner.Run(scenario, cancellationToken)` returns a bounded in-memory
 `FixtureTrace`. This is a library API, not a new Doctor command or app mode:
@@ -173,7 +181,9 @@ dotnet build tests\Martlet.Fixtures.Tests --no-restore -c Release
 dotnet test tests\Martlet.Fixtures.Tests --no-build -c Release
 ```
 
-The dedicated read-only, commit-pinned `fixtures.yml` runs those commands.
+These projects are now also registered in `Martlet.slnx`; the normal integrated
+solution lane runs their full suite alongside Core, Audio and Doctor/session
+tests. The dedicated read-only, commit-pinned `fixtures.yml` retains these commands.
 The existing foundation solution lane still covers the shared enum addition.
 NuGet build/restore can use network; **fixture execution does not**.
 

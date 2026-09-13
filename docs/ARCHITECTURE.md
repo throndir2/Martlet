@@ -2,6 +2,8 @@
 
 **Broader proposed design.** The implemented D02/F01 subset and remaining
 conformance work are recorded in [Foundation boundaries](FOUNDATION.md);
+the subsequent internal fixture/session/sink/status implementation is recorded
+in [Delivery](DELIVERY.md) and [Diagnostics](DIAGNOSTICS.md#offline-fixture-experience-f03c).
 the components and remote protocols below are not all implemented.
 Read [the development plan](../DEVELOPMENT_PLAN.md)
 for scope and approvals, [installation/support](INSTALLATION_SUPPORT.md) for

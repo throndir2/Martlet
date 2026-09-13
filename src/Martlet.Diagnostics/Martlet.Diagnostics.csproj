@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <ProjectReference Include="..\Martlet.Core\Martlet.Core.csproj" />
+    <ProjectReference Include="..\Martlet.Sessions\Martlet.Sessions.csproj" />
   </ItemGroup>
 </Project>

@@ -7,10 +7,24 @@
         Loaded="Window_Loaded" Closing="Window_Closing">
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="24">
-            <TextBlock Text="Martlet diagnostics" FontSize="26" FontWeight="SemiBold" />
+            <TextBlock Text="Martlet - offline fixture and diagnostics" FontSize="26" FontWeight="SemiBold" />
             <TextBlock Text="Not connected / not configured" FontSize="18" Margin="0,8,0,12" />
             <TextBlock TextWrapping="Wrap" Margin="0,0,0,16"
-                       Text="This offline shell provides local settings and status only. AI conversation, fixture playback, microphone access, onboarding and provider credentials are not implemented. Fixtures will be clearly labeled, not presented as real AI." />
+                       Text="Try the offline fixture without creating a profile. All demo text is scripted, NOT live transcription or AI. Capture, providers, credentials, network and GPU work remain unavailable. Audio is OFF unless you confirm the separate tone action. No consent is saved." />
+            <Label Target="{Binding ElementName=ScenarioChoice}" Content="_Offline scenario (FIXTURE - NOT AI)" />
+            <ComboBox x:Name="ScenarioChoice" SelectedIndex="0" MinHeight="30"
+                      AutomationProperties.AutomationId="FixtureScenario" AutomationProperties.Name="Offline fixture scenario" />
+            <WrapPanel>
+                <Button x:Name="DemoButton" Content="_Try fixture (audio OFF)" Click="Demo_Click" Padding="12,8" Margin="0,4,12,4"
+                        AutomationProperties.AutomationId="StartFixture" AutomationProperties.Name="Try offline fixture, audio off" />
+                <Button x:Name="ToneButton" Content="Completed fixture + confirm 200 ms _tone" Click="Tone_Click" Padding="12,8" Margin="0,4,12,4"
+                        AutomationProperties.AutomationId="FixtureTone" AutomationProperties.Name="Confirm completed fixture and synthetic tone, not speech" />
+                <Button x:Name="FixtureStopButton" Content="Stop _fixture" Click="FixtureStop_Click" IsEnabled="False" Padding="12,8" Margin="0,4,12,4"
+                        AutomationProperties.AutomationId="StopFixture" AutomationProperties.Name="Stop fixture and tone" />
+            </WrapPanel>
+            <Label Target="{Binding ElementName=FixtureText}" Content="Fixture _text, trace and status (separate from real-mode status)" />
+            <TextBox x:Name="FixtureText" IsReadOnly="True" TextWrapping="Wrap" Height="210" VerticalScrollBarVisibility="Auto"
+                     AutomationProperties.AutomationId="FixtureStatus" AutomationProperties.Name="Scripted fixture text and trace, not AI" />
             <TextBlock x:Name="ActivityText" TextWrapping="Wrap" Margin="0,0,0,8"
                        AutomationProperties.Name="Diagnostic activity" AutomationProperties.LiveSetting="Polite" />
             <Label Target="{Binding ElementName=PipelineText}" Content="_Pipeline status" />
@@ -42,7 +56,7 @@
                         AutomationProperties.Name="Exit Martlet" Click="Exit_Click" />
             </WrapPanel>
             <TextBlock TextWrapping="Wrap" Margin="0,12,0,0"
-                       Text="Creating a profile saves settings only. It does not grant consent or enable capture, networking, startup at login, recording, memory or an avatar. Closing this window exits Martlet; there is no background tray process." />
+                       Text="Creating a profile saves unconfigured settings only. It grants no consent. Tone output binds the Windows default once at explicit start, never follows a changed default or falls back to room speakers. Tone accounting is not proof of audibility. Closing exits Martlet; there is no background tray process." />
         </StackPanel>
     </ScrollViewer>
 </Window>

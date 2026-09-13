@@ -1,5 +1,6 @@
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
+using Martlet.Sessions;
 
 namespace Martlet.Diagnostics;
 
@@ -109,6 +110,7 @@ public sealed record DoctorReport : IContract
     public DateTimeOffset? CompletedAt { get; init; }
     public int ExitCode => DoctorExitCodes.Evaluate(this);
     public bool Ready => ExitCode == 0;
+    public FixtureSessionSnapshot? Fixture { get; init; }
 
     public void Validate()
     {
@@ -136,6 +138,7 @@ public sealed record DoctorReport : IContract
             ContractRules.Require(ids.Add(probe.Id), "Probe IDs must be unique.");
         }
         InvocationError?.Validate();
+        Fixture?.Validate();
     }
 }
 

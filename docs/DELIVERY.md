@@ -1,21 +1,43 @@
 # Delivery, acceptance, and release plan
 
-**Backlog and future gates.** Only the foundation subset recorded below is
-implemented; acceptance/release gates are not implicitly passed.
+**Implementation ledger plus future gates.** The internal fixture subset below
+is implemented; this is not a supported AI companion or passed release gate.
 Read [scope and decisions](../DEVELOPMENT_PLAN.md), [contracts](ARCHITECTURE.md),
 [installation/support](INSTALLATION_SUPPORT.md), and [research](RESEARCH.md).
-The initial repository has no runners, CI, implementation, or tests to inherit.
-Select a small coherent toolchain in M0; do not invent successful evidence.
+The original empty baseline is historical. Current implementation and evidence
+must not be confused with the broader planned milestones below.
 
-### Current foundation subset
+### Current internal implementation
 
 | Item | Actual status |
 | --- | --- |
 | D01 | Dispositions recorded in [FOUNDATION.md](FOUNDATION.md). .NET/WPF/core direction and pins chosen; license, distribution/signing, provider spending and optional model/SDK rights remain deferred gates. |
-| D02 | Versioned settings/profile and provider/capability/turn/probe/error models, bounded in-process PCM frames, production validators and valid/invalid golden cases exist. Temporal state/stream conformance, remote schemas/SSE/binary wire framing and request contracts remain; **AC-01 is partial, not frozen or fully passed**. |
+| D02 | Versioned settings/profile/provider contracts, bounded PCM, production JSON and temporal text validators, explicit refusal, epochs/cancel/EOF/deadlines and golden traces exist. Role request bodies, remote schemas/SSE/binary wire framing remain; **AC-01 is partial, not frozen or fully passed**. |
 | F01 | Offline accessible text/status shell, explicit unconfigured-profile save, atomic validated settings and truthful shared-status CLI implemented. Local developer-host build/tests/CLI and bounded desktop-launch scope are documented; no clean consumer-OS claim. |
-| Early CI | Minimal pinned read-only build/unit-test/CLI workflow only. F05 still owns expanded fixture/packaging/artifact lanes. |
-| F02/F03/F04 and G1 onward | Not implemented/passed by the foundation. No installer, fixture conversation, PCM device sink, probe registry, real AI/audio/GPU, Ubuntu or signing evidence. |
+| F03a/F03b/F04 | Merged deterministic 30-script fixture engine, bounded real PCM sink/WASAPI adapter and local diagnostic registry/CLI/WPF shell. Headless evidence is not actual listening or install qualification. |
+| F03c | Shared `FixtureSession` now joins production cursor/validator, ordered synthetic text, optional actual sink, shared status and accessible Desktop/Doctor commands. Ten novice scenarios, per-action tone permission, Stop/fresh IDs/epochs, no default device/network/write effects. |
+| F05 integration | Normal solution includes fixture projects/tests and session tests; both portable and Windows Doctor executable smokes run in the existing pinned lane. Packaging-specific integration awaits the separately owned F02 merge. |
+| F02 / G1 onward | Packaging integration is pending here. Clean-VM lifecycle, physical audio, real AI/GPU, Ubuntu, signing, rights and release qualification remain **NOT RUN / NOT PASSED**. |
+
+### Requirements and acceptance status (F03c / coupled F05)
+
+| Requirement / acceptance | Implemented internal result | Remaining gate |
+| --- | --- | --- |
+| R02 / AC-03 offline try | Desktop **Try fixture (audio OFF)** and real Doctor `self-test`; no profile, credentials, network, model or device required. Scripted text and silence/refusal/error stages are visible. | Clean consumer Windows, no-dev-tool installation is AC-02/G1, not established by developer-host launch. |
+| R04/R10 / AC-01 | Same `FixtureCursor` drives old runner and new sessions through actual validator/queue. No duplicate parser/sink or unmerged provider registration. | Remote request/stream contracts and real provider qualification remain D02/V03. |
+| R10 / AC-03/AC-08 | Fresh request/turn IDs and epochs; Stop clears pending output; partial/refusal separated; bounded text/trace/PCM; actual sink drain distinct from text terminal. Existing 120 text schedules plus focused real sink/session fault schedules. | Zero stale **audible** segments and p95 physical Stop <=250 ms require actual audio. No audibility inference from submitted samples. |
+| R05/R14 / permission and diagnosis | Per-action default-No desktop confirmation or Windows CLI `--play-tone`; no consent persistence; no read-only probe effects. Fixture and live status kept separate and age honestly. | Capture/device onboarding and persistent destination consent belong to V01/V02. |
+| R08/R14 / AC-04/AC-10 | Exact report/exits/remedies; no startup writes; corrupt/newer/inaccessible originals preserved. Explicit fixture works without replacing profiles. | Logs/bundles/retention and complete troubleshooting matrix remain V06. |
+| R17 / F05 | Locked solution/build/tests plus real portable/Windows CLI and bounded interactive WPF smoke, using isolated data paths and audio OFF. No runner/pin/gate workaround. | Package payload/compiler and clean-VM/lifecycle/signature gates recorded separately; never equated with G1. |
+
+Local evidence uses official SDK 10.0.401 and `CI=true`: locked restore, Release
+build and full affected solution tests with one session-local `C:` output via
+`--artifacts-path` (the existing `D:` pooled-drive native-testhost issue).
+Repository source remains on `D:`. The normal hosted CI commands/pins are
+unchanged; no framework, runner or protection was weakened. Executable smokes
+select these actual outputs using `-ExecutablePath`, not stale repository
+binaries. See [DIAGNOSTICS](DIAGNOSTICS.md#offline-fixture-experience-f03c) for
+commands, public seam, metadata/content scope, bounds and deterministic cases.
 
 ## 1. Execution rules
 

@@ -137,7 +137,7 @@ public sealed class ProbeExecutor
             try
             {
                 if (observation is null || string.IsNullOrEmpty(observation.FindingId) ||
-                    observation.FindingId == "fixture.passed" && observation.Provenance != EvidenceProvenance.Fixture ||
+                    observation.FindingId.StartsWith("fixture.", StringComparison.Ordinal) && observation.Provenance != EvidenceProvenance.Fixture ||
                     observation.Settings is not null && definition.Id != "settings.load" ||
                     observation.Settings is null && observation.FindingId.StartsWith("settings.", StringComparison.Ordinal))
                     return (Timed("probe.invalid_evidence", ProbeExecution.Faulted), null);

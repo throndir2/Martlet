@@ -2,6 +2,10 @@
 
 **D01 / D02-first-slice / narrow F01, 2026-09-12.** This document records the
 implemented foundation, not completion of the broader development plan.
+This is the historical first slice; current merged fixture/audio/diagnostic
+integration is described in [DELIVERY](DELIVERY.md) and
+[DIAGNOSTICS](DIAGNOSTICS.md#offline-fixture-experience-f03c). Statements below
+about then-unimplemented projects or commands describe that earlier scope.
 Schema ownership stays with the core owner; coordinate shared edits through
 the implementation coordinator.
 

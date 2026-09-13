@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using Martlet.Core.Settings;
+using Martlet.Sessions;
 
 namespace Martlet.Diagnostics;
 
@@ -22,6 +23,17 @@ public sealed class DiagnosticStatusModel : INotifyPropertyChanged
     public bool IsRunning { get; private set; }
     public bool CanRefresh => !closed && !IsRunning && Executor.ActiveOperationCount == 0;
     public bool CanCreateProfile => CanRefresh && Report.SettingsState == SettingsLoadState.FirstRun;
+    public DoctorReport? FixtureReport { get; private set; }
+    public string FixtureText => FixtureReport is null
+        ? "FIXTURE - NOT AI. Choose an offline scenario. Audio is OFF; no demo has run."
+        : ReportFormatter.Human(FixtureReport);
+    public void ObserveFixture(FixtureSessionSnapshot snapshot)
+    {
+        if (closed)
+            return;
+        FixtureReport = FixtureDiagnostics.Report(snapshot, Executor.Clock);
+        Changed();
+    }
     public string Text => ReportFormatter.Human(Report);
     public string Activity => IsRunning ? "Running local diagnostics. Stop is available."
         : Executor.ActiveOperationCount != 0 ? "A check is still active after cancellation. Close Martlet if it does not finish; refresh is blocked."
@@ -78,6 +90,8 @@ public sealed class DiagnosticStatusModel : INotifyPropertyChanged
         if (closed || IsRunning)
             return;
         Report = Executor.RefreshAge(Report);
+        if (FixtureReport is not null)
+            FixtureReport = Executor.RefreshAge(FixtureReport);
         Changed();
     }
 
