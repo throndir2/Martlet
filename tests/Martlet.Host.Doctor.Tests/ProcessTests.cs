@@ -80,12 +80,12 @@ public sealed class ProcessTests
     {
         using var cancel = new CancellationTokenSource();
         using var release = new ManualResetEventSlim();
-        using var entered = new ManualResetEventSlim();
-        using var registration = cancel.Token.Register(() => { entered.Set(); release.Wait(); });
-        var cancellation = cancel.CancelAsync();
-        Assert.True(entered.Wait(TimeSpan.FromSeconds(3)));
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var registration = cancel.Token.Register(() => { entered.TrySetResult(); release.Wait(); });
+        var cancellation = Task.Factory.StartNew(cancel.Cancel, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         try
         {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
             var info = Fixture("echo");
             info.FileName = Path.Combine(Path.GetTempPath(), "martlet-nonexistent-executable");
             var result = await BoundedCommandRunner.RunOwnedAsync(info, TimeSpan.FromSeconds(5), cancel.Token);
@@ -103,12 +103,12 @@ public sealed class ProcessTests
             using var cancel = new CancellationTokenSource();
             var pending = BoundedCommandRunner.RunOwnedAsync(Fixture("delayed-echo"), TimeSpan.FromSeconds(5), cancel.Token);
             using var release = new ManualResetEventSlim();
-            using var entered = new ManualResetEventSlim();
-            using var registration = cancel.Token.Register(() => { entered.Set(); release.Wait(); });
-            var cancellation = cancel.CancelAsync();
-            Assert.True(entered.Wait(TimeSpan.FromSeconds(3)));
+            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var registration = cancel.Token.Register(() => { entered.TrySetResult(); release.Wait(); });
+            var cancellation = Task.Factory.StartNew(cancel.Cancel, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
             try
             {
+                await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
                 var result = await pending;
                 Assert.Equal(ReadStatus.Canceled, result.Status);
                 Assert.Empty(result.Output);

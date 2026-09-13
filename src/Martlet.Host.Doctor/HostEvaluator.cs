@@ -26,7 +26,8 @@ public static class HostEvaluator
             {
                 var read = File(file);
                 if (read.Status == ReadStatus.Success) continue;
-                Add(id, Parsers.Code(read.Status), observed: read.StartedAt, duration: read.DurationMilliseconds);
+                Add(id, read.Status == ReadStatus.Missing ? FindingCode.HOST_INCOMPLETE : Parsers.Code(read.Status),
+                    observed: read.StartedAt, duration: read.DurationMilliseconds);
                 return false;
             }
             return true;
@@ -101,7 +102,8 @@ public static class HostEvaluator
                     var matches = packages.Value?.Versions.Where(p => names.Contains(p.Key)).ToArray();
                     var version = matches is { Length: 1 } ? matches[0].Value : null;
                     var state = matches is null ? PackagePresence.Unknown : matches.Length > 0 ? PackagePresence.Installed : PackagePresence.NotInstalled;
-                    var code = packages.Code != FindingCode.HOST_OBSERVED ? packages.Code
+                    var code = packages.Code == FindingCode.HOST_MISSING ? FindingCode.HOST_INCOMPLETE
+                        : packages.Code != FindingCode.HOST_OBSERVED ? packages.Code
                         : presence == BinaryPresence.Unknown || matches is { Length: > 1 } ? FindingCode.HOST_INCOMPLETE
                         : state == PackagePresence.NotInstalled && presence == BinaryPresence.Present ? FindingCode.HOST_INCOMPLETE
                         : state == PackagePresence.NotInstalled || presence == BinaryPresence.Missing ? FindingCode.HOST_MISSING

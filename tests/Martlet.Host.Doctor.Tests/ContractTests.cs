@@ -119,4 +119,35 @@ public sealed class ContractTests
         s = s with { Files = s.Files.SetItem(LocalFile.OsRelease, s.Files[LocalFile.OsRelease] with { Text = new('a', 16385) }) };
         Assert.Throws<InvalidDataException>(() => HostEvaluator.Evaluate(s, DoctorScope.Inventory, 7443, FixtureCatalog.Timestamp.AddSeconds(10)));
     }
+
+    [Theory]
+    [InlineData(ReadStatus.Missing, FindingCode.HOST_INCOMPLETE)]
+    [InlineData(ReadStatus.PermissionDenied, FindingCode.HOST_PERMISSION_DENIED)]
+    [InlineData(ReadStatus.Timeout, FindingCode.HOST_TIMEOUT)]
+    [InlineData(ReadStatus.OutputLimit, FindingCode.HOST_OUTPUT_LIMIT)]
+    [InlineData(ReadStatus.Canceled, FindingCode.HOST_CANCELED)]
+    public void Unavailable_proc_data_is_not_misdiagnosed_as_a_missing_prerequisite(ReadStatus status, FindingCode expected)
+    {
+        var s = FixtureCatalog.Create("inventory");
+        s = s with { Files = s.Files.SetItem(LocalFile.Tcp6, new(status, "", FixtureCatalog.Timestamp, 1)) };
+        var report = HostEvaluator.Evaluate(s, DoctorScope.Inventory, 7443, FixtureCatalog.Timestamp.AddSeconds(10));
+        Assert.Equal(expected, report.Probes.Single(p => p.Id == ProbeId.GatewayPort).Code);
+        Assert.Equal(2, report.ExitCode);
+    }
+
+    [Fact]
+    public void Missing_package_query_cannot_prove_engine_plugin_or_toolkit_missing()
+    {
+        var s = FixtureCatalog.Create("prerequisites");
+        s = s with { Commands = s.Commands.SetItem(CommandKind.PackageVersions, new(ReadStatus.Missing, "", null, FixtureCatalog.Timestamp, 1)) };
+        var report = HostEvaluator.Evaluate(s, DoctorScope.Prerequisites, 7443, FixtureCatalog.Timestamp.AddSeconds(10));
+        foreach (var id in new[] { ProbeId.DockerEngine, ProbeId.Compose, ProbeId.ContainerToolkit })
+        {
+            var probe = report.Probes.Single(p => p.Id == id);
+            Assert.Equal(FindingCode.HOST_INCOMPLETE, probe.Code);
+            Assert.Equal(PackagePresence.Unknown, probe.Evidence!.Tool!.Package);
+            Assert.Equal(BinaryPresence.Present, probe.Evidence.Tool.StandardFile);
+        }
+        Assert.Equal(2, report.ExitCode);
+    }
 }

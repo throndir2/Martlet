@@ -18,7 +18,8 @@ $project = Join-Path $root 'src/Martlet.Host.Doctor/Martlet.Host.Doctor.csproj'
 $native = Join-Path $ArtifactsPath 'native'
 $staging = Join-Path $ArtifactsPath 'publish'
 
-& dotnet restore $project -r linux-x64 -p:HostNativeAot=true --locked-mode --artifacts-path $native
+# restore --runtime replaces RuntimeIdentifiers globally; preserve the explicit cross-host lock graph.
+& dotnet restore $project -p:RuntimeIdentifier=linux-x64 -p:HostNativeAot=true --locked-mode --artifacts-path $native
 if ($LASTEXITCODE -ne 0) { throw 'Locked native restore failed.' }
 & dotnet publish $project --no-restore -c Release -r linux-x64 --self-contained true -p:HostNativeAot=true --artifacts-path $native -o $staging
 if ($LASTEXITCODE -ne 0) { throw 'Native publish failed. No package is accepted.' }
@@ -38,6 +39,13 @@ $commit = & git -C $root rev-parse HEAD
 if ($LASTEXITCODE -ne 0 -or $commit -notmatch '^[0-9a-f]{40}$') { throw 'Cannot record source commit.' }
 $compiler = (& clang --version | Select-Object -First 1)
 if ($LASTEXITCODE -ne 0) { throw 'The preinstalled native compiler is unavailable.' }
+$tools = [ordered]@{ clang = $compiler; powershell = $PSVersionTable.PSVersion.ToString() }
+foreach ($tool in @('ld', 'objcopy', 'tar', 'gzip', 'strace')) {
+    $version = (& $tool --version | Select-Object -First 1)
+    if ($LASTEXITCODE -ne 0) { throw "Required preinstalled build/evidence tool unavailable: $tool." }
+    $tools[$tool] = $version
+}
+$lock = Get-Content -LiteralPath (Join-Path $root 'src/Martlet.Host.Doctor/native-packages.lock.json') -Raw | ConvertFrom-Json
 $manifest = [ordered]@{
     schemaVersion = 1
     status = 'InternalUnsignedNotARelease'
@@ -45,7 +53,9 @@ $manifest = [ordered]@{
     sdk = '10.0.401'
     sourceCommit = $commit
     sourceDateEpoch = $epoch
-    nativeCompiler = $compiler
+    tools = $tools
+    ilCompiler = $lock.dependencies.'net10.0'.'Microsoft.DotNet.ILCompiler'.resolved
+    ilLink = $lock.dependencies.'net10.0'.'Microsoft.NET.ILLink.Tasks'.resolved
     nativeAot = $true
     eventPipe = $false
     application = 'martlet-host'

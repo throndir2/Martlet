@@ -78,12 +78,12 @@ public sealed class CommandTests
     {
         using var cancel = new CancellationTokenSource();
         using var release = new ManualResetEventSlim();
-        using var entered = new ManualResetEventSlim();
-        using var registration = cancel.Token.Register(() => { entered.Set(); release.Wait(); });
-        var cancelTask = cancel.CancelAsync();
-        Assert.True(entered.Wait(TimeSpan.FromSeconds(3)));
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var registration = cancel.Token.Register(() => { entered.TrySetResult(); release.Wait(); });
+        var cancelTask = Task.Factory.StartNew(cancel.Cancel, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         try
         {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
             var output = new StringWriter();
             var exit = await new DoctorCommand().RunAsync(["doctor", "--fixture", "inventory", "--scope", "inventory", "--json"],
                 output, new StringWriter(), cancel.Token);

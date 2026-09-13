@@ -150,6 +150,10 @@ distro suffixes; **they are not exact package build locks**. Unrecognized GPU
 name shapes are reported malformed rather than dumping possibly identifying
 text or pretending every future GPU is qualified.
 
+An unavailable proc table (including disabled IPv6) means incomplete evidence,
+not a demand to enable IPv6. If `dpkg-query` itself is absent, package state/
+version is unknown; it does not prove Engine, Compose, or toolkit absent.
+
 One child at a time, at most two per run; 5 seconds each, 32 KiB stdout / 8 KiB
 stderr independently while reading. Limit/timeout/cancel discards partial
 output and stops only the owned spawned tree, awaiting actual termination.
@@ -233,7 +237,8 @@ win-x64 explicitly so Windows lock generation and Linux builds agree; only
 linux-x64 is published. No model, container image, or inference SDK is acquired.
 
 `publish.ps1` accepts a new output directory only, confirms ELF magic, records
-SDK/source/compiler provenance, emits per-file `SHA256SUMS`, and builds a
+SDK/source/ILCompiler/ILLink and clang/linker/objcopy/tar/gzip/strace/PowerShell
+versions, emits per-file `SHA256SUMS`, and builds a
 normalized timestamp/owner/sort-order tar.gz plus checksum. CI repeats the
 publish/archive and compares bytes **on that same SDK/native toolchain**;
 cross-toolchain bit-for-bit reproducibility is not claimed. Signing, release
