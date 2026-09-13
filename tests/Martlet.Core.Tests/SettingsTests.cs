@@ -68,6 +68,34 @@ public sealed class SettingsTests : IDisposable
         Assert.Equal(before, await File.ReadAllBytesAsync(Store.FilePath));
     }
 
+    [Theory]
+    [InlineData("{\"\\uD800\":0}")]
+    [InlineData("{\"\\uDC00\":0}")]
+    [InlineData("{\"PRIVATE-CANARY\\uD800\":0}")]
+    [InlineData("{\"nested\":{\"\\uD800\":0}}")]
+    [InlineData("{\"unknown\":\"\\uD800\"}")]
+    public async Task MalformedUnicodeIsInvalidAndPreserved(string json) =>
+        await AssertMalformedEncodingIsPreserved(Encoding.UTF8.GetBytes(json));
+
+    [Fact]
+    public async Task MalformedUtf8PropertyNameIsInvalidAndPreserved() =>
+        await AssertMalformedEncodingIsPreserved([(byte)'{', (byte)'"', 0xED, 0xA0, 0x80, (byte)'"', (byte)':', (byte)'0', (byte)'}']);
+
+    private async Task AssertMalformedEncodingIsPreserved(byte[] bytes)
+    {
+        Directory.CreateDirectory(directory);
+        await File.WriteAllBytesAsync(Store.FilePath, bytes);
+        var loaded = await Store.LoadAsync();
+        Assert.Equal(SettingsLoadState.Invalid, loaded.State);
+        Assert.Equal(ErrorCode.SettingsMalformed, loaded.Error!.Code);
+        Assert.DoesNotContain("PRIVATE-CANARY", loaded.Error.Summary);
+        Assert.Null(loaded.Settings);
+        var saved = await Store.SaveAsync(AppSettings.CreateUnconfigured(), null);
+        Assert.False(saved.Saved);
+        Assert.Equal(ErrorCode.SettingsMalformed, saved.Error!.Code);
+        Assert.Equal(bytes, await File.ReadAllBytesAsync(Store.FilePath));
+    }
+
     [Fact]
     public async Task OversizedFileAndInvalidSavePreserveOriginal()
     {

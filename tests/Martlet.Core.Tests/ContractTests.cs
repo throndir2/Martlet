@@ -72,6 +72,98 @@ public sealed class ContractTests
         Assert.Throws<ContractException>(() => ContractJson.Write(Event, maximumBytes: 10));
     }
 
+    [Theory]
+    [InlineData("text")]
+    [InlineData("future_optional")]
+    public void MalformedLazyStringValuesAreRejected(string property)
+    {
+        var json = Encoding.UTF8.GetString(ContractJson.Write(Event with { Text = null }));
+        json = json.Insert(json.LastIndexOf('}'), $", \"{property}\": \"\\uD800\"");
+        Assert.Throws<ContractException>(() => ContractJson.Read<ProviderEvent>(Encoding.UTF8.GetBytes(json)));
+    }
+
+    [Theory]
+    [InlineData("text")]
+    [InlineData("future_optional")]
+    public void MalformedUtf8StringValuesAreRejected(string property)
+    {
+        var json = Encoding.UTF8.GetString(ContractJson.Write(Event with { Text = null }));
+        var prefix = Encoding.UTF8.GetBytes(json[..json.LastIndexOf('}')] + $", \"{property}\": \"");
+        byte[] bytes = [.. prefix, 0xED, 0xA0, 0x80, (byte)'"', (byte)'}'];
+        Assert.Throws<ContractException>(() => ContractJson.Read<ProviderEvent>(bytes));
+    }
+
+    [Fact]
+    public void JsonInspectionDoesNotSwallowUnrelatedValidationFailures() =>
+        Assert.Throws<InvalidOperationException>(() => ContractJson.Read<BrokenContract>(Encoding.UTF8.GetBytes("{}")));
+
+    public sealed class BrokenContract : IContract
+    {
+        public void Validate() => throw new InvalidOperationException("A validation implementation failed.");
+    }
+
+    [Fact]
+    public void ValidSurrogatePairsAndEscapedTokensRemainValid()
+    {
+        var json = Encoding.UTF8.GetString(ContractJson.Write(Event with { Text = null }));
+        json = json.Insert(json.LastIndexOf('}'), ", \"text\": \"\\uD83D\\uDE00\", \"future_\\uD83D\\uDE00\": [\"\\uD83D\\uDE00\"]")
+            .Replace("\"provenance\": \"fixture\"", "\"provenance\": \"fi\\u0078ture\"", StringComparison.Ordinal);
+        var parsed = ContractJson.Read<ProviderEvent>(Encoding.UTF8.GetBytes(json));
+        Assert.Equal("\U0001F600", parsed.Text);
+        Assert.Equal(EvidenceProvenance.Fixture, parsed.Provenance);
+    }
+
+    [Theory]
+    [InlineData("not_run, fixture")]
+    [InlineData("fixture, live")]
+    [InlineData("fixture, fixture")]
+    [InlineData("Fixture")]
+    [InlineData(" fixture ")]
+    [InlineData("3")]
+    public void ProviderProvenanceRequiresAnExactSingleToken(string token)
+    {
+        var json = Encoding.UTF8.GetString(Golden("event-completed.json"))
+            .Replace("\"provenance\": \"fixture\"", $"\"provenance\": \"{token}\"", StringComparison.Ordinal);
+        Assert.Throws<ContractException>(() => ContractJson.Read<ProviderEvent>(Encoding.UTF8.GetBytes(json)));
+    }
+
+    [Theory]
+    [InlineData("fixture, api")]
+    [InlineData("fixture, not_configured")]
+    [InlineData("api, api")]
+    [InlineData("Fixture")]
+    [InlineData(" fixture ")]
+    [InlineData("3")]
+    public void ProfileKindRequiresAnExactSingleToken(string token)
+    {
+        var json = Encoding.UTF8.GetString(Golden("settings-v1.json"))
+            .Replace("\"kind\": \"not_configured\"", $"\"kind\": \"{token}\"", StringComparison.Ordinal);
+        Assert.Throws<ContractException>(() => SettingsJson.Read(Encoding.UTF8.GetBytes(json)));
+    }
+
+    [Fact]
+    public void NumericEnumTokensAreRejectedForProfilesAndProviderEvents()
+    {
+        var settings = Encoding.UTF8.GetString(Golden("settings-v1.json"))
+            .Replace("\"kind\": \"not_configured\"", "\"kind\": 3", StringComparison.Ordinal);
+        var provider = Encoding.UTF8.GetString(Golden("event-completed.json"))
+            .Replace("\"provenance\": \"fixture\"", "\"provenance\": 3", StringComparison.Ordinal);
+        Assert.Throws<ContractException>(() => SettingsJson.Read(Encoding.UTF8.GetBytes(settings)));
+        Assert.Throws<ContractException>(() => ContractJson.Read<ProviderEvent>(Encoding.UTF8.GetBytes(provider)));
+    }
+
+    [Theory]
+    [InlineData(ProfileKind.NotConfigured)]
+    [InlineData(ProfileKind.Fixture)]
+    [InlineData(ProfileKind.Api)]
+    [InlineData(ProfileKind.ExistingEndpoints)]
+    public void EveryDeclaredProfileKindRoundTrips(ProfileKind kind)
+    {
+        var settings = AppSettings.CreateUnconfigured();
+        settings = settings with { Profile = settings.Profile with { Kind = kind } };
+        Assert.Equal(kind, SettingsJson.Read(ContractJson.Write(settings)).Profile.Kind);
+    }
+
     [Fact]
     public void EventVariantsEnforceBoundsAndPrivacySeparation()
     {

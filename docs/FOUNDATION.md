@@ -76,8 +76,13 @@ container is needed; construction takes an explicit `SettingsStore`.
 The C# models plus production validators and `contracts\golden` are the
 executable first-slice schemas; they are **not** a frozen remote gateway wire
 protocol. JSON is UTF-8, snake_case property names and named snake_case enums.
-Required fields/nullability are enforced. Integer/unknown enum values, duplicate
-properties, comments, trailing commas/content and depth over 16 are rejected.
+Required fields/nullability are enforced. Enum input must be one exact,
+case-sensitive declared snake_case token; composite names, whitespace/case
+aliases, numeric strings and integer/unknown values are rejected. JSON escapes
+that decode to the exact token remain valid. Malformed UTF-8 or unpaired
+surrogates in property names and string values (including ignored optional
+fields), duplicate properties, comments, trailing commas/content and depth
+over 16 are rejected with sanitized errors.
 Output is indented; callers must not rely on whitespace/property ordering.
 
 Provider/capability/report version major must equal 1; minor 0-9999 accepts

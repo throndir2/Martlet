@@ -17,7 +17,7 @@ public static class ContractJson
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
             RespectNullableAnnotations = true
         };
-        options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower, allowIntegerValues: false));
+        options.Converters.Add(new ExactEnumConverterFactory());
         options.MakeReadOnly(populateMissingResolver: true);
         return options;
     }
@@ -29,7 +29,7 @@ public static class ContractJson
         try
         {
             using var document = JsonDocument.Parse(json, new JsonDocumentOptions { MaxDepth = 16 });
-            RejectDuplicates(document.RootElement);
+            InspectJson(document.RootElement);
             var value = document.Deserialize<T>(Options);
             ContractRules.Require(value is not null, "A contract object is required.");
             value!.Validate();
@@ -37,8 +37,7 @@ public static class ContractJson
         }
         catch (JsonException)
         {
-            // Do not echo malformed source values (which may contain private data).
-            throw new ContractException(ErrorCode.InvalidContract, "JSON is malformed, missing required fields or contains unsupported values.");
+            throw MalformedJson();
         }
     }
 
@@ -52,21 +51,46 @@ public static class ContractJson
         return bytes;
     }
 
-    private static void RejectDuplicates(JsonElement element)
+    private static void InspectJson(JsonElement element)
     {
         if (element.ValueKind == JsonValueKind.Object)
         {
             var names = new HashSet<string>(StringComparer.Ordinal);
             foreach (var property in element.EnumerateObject())
             {
-                ContractRules.Require(names.Add(property.Name), "Duplicate JSON properties are not supported.");
-                RejectDuplicates(property.Value);
+                string name;
+                try
+                {
+                    name = property.Name;
+                }
+                catch (InvalidOperationException)
+                {
+                    // JsonDocument defers UTF-8/escaped-surrogate decoding until Name is read.
+                    throw MalformedJson();
+                }
+                ContractRules.Require(names.Add(name), "Duplicate JSON properties are not supported.");
+                InspectJson(property.Value);
             }
         }
         else if (element.ValueKind == JsonValueKind.Array)
         {
             foreach (var item in element.EnumerateArray())
-                RejectDuplicates(item);
+                InspectJson(item);
+        }
+        else if (element.ValueKind == JsonValueKind.String)
+        {
+            try
+            {
+                // Inspect ignored optional strings too, before any typed converter is invoked.
+                _ = element.GetString();
+            }
+            catch (InvalidOperationException)
+            {
+                throw MalformedJson();
+            }
         }
     }
+
+    private static ContractException MalformedJson() =>
+        new(ErrorCode.InvalidContract, "JSON is malformed, missing required fields or contains unsupported values.");
 }

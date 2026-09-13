@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using Martlet.Core.Settings;
 using Martlet.Diagnostics;
@@ -83,6 +84,36 @@ public sealed class DoctorCommandTests : IDisposable
         Assert.Equal(expectedCode, error.GetProperty("code").GetString());
         Assert.DoesNotContain("PRIVATE-CANARY", output.ToString());
         Assert.Equal(contents, await File.ReadAllTextAsync(file));
+    }
+
+    [Theory]
+    [InlineData("{\"\\uD800\":0}")]
+    [InlineData("{\"\\uDC00\":0}")]
+    [InlineData("{\"PRIVATE-CANARY\\uD800\":0}")]
+    [InlineData("{\"nested\":{\"\\uD800\":0}}")]
+    [InlineData("{\"unknown\":\"\\uD800\"}")]
+    public async Task MalformedUnicodeReturnsSanitizedExitThreeJson(string json) =>
+        await AssertMalformedEncodingReturnsJson(Encoding.UTF8.GetBytes(json));
+
+    [Fact]
+    public async Task MalformedUtf8PropertyNameReturnsSanitizedExitThreeJson() =>
+        await AssertMalformedEncodingReturnsJson([(byte)'{', (byte)'"', 0xED, 0xA0, 0x80, (byte)'"', (byte)':', (byte)'0', (byte)'}']);
+
+    private async Task AssertMalformedEncodingReturnsJson(byte[] bytes)
+    {
+        Directory.CreateDirectory(path);
+        var file = Path.Combine(path, "settings.json");
+        await File.WriteAllBytesAsync(file, bytes);
+        using var output = new StringWriter();
+        Assert.Equal(3, await DoctorCommand.RunAsync(["--json", "--data-directory", path], output));
+        using var document = JsonDocument.Parse(output.ToString());
+        var report = document.RootElement;
+        Assert.Equal(3, report.GetProperty("exit_code").GetInt32());
+        Assert.Equal("invalid", report.GetProperty("settings_state").GetString());
+        Assert.Equal("settings_malformed", report.GetProperty("probes")[0].GetProperty("error").GetProperty("code").GetString());
+        Assert.DoesNotContain("\\uD800", output.ToString(), StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("PRIVATE-CANARY", output.ToString());
+        Assert.Equal(bytes, await File.ReadAllBytesAsync(file));
     }
 
     [Theory]
