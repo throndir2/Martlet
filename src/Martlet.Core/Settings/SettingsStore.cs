@@ -8,7 +8,7 @@ public sealed record SettingsLoadResult(SettingsLoadState State, AppSettings? Se
 public sealed record SettingsSaveResult(bool Saved, string? Revision, MartletError? Error,
     bool MigratedFromVersion1 = false, string? SnapshotFileName = null);
 
-public sealed class SettingsStore
+public sealed partial class SettingsStore
 {
     public string DataDirectory { get; }
     public string FilePath => Path.Combine(DataDirectory, "settings.json");
@@ -98,28 +98,8 @@ public sealed class SettingsStore
             }
             var migrated = existing.Settings?.SchemaVersion == 1 && settings.SchemaVersion == 2;
             var snapshot = migrated ? $"settings.v1.{Guid.NewGuid():N}.bak" : null;
-            var temporary = Path.Combine(DataDirectory, $"settings.{Guid.NewGuid():N}.tmp");
-            try
-            {
-                await using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None,
-                    4096, FileOptions.Asynchronous | FileOptions.WriteThrough))
-                {
-                    await stream.WriteAsync(bytes, cancellationToken);
-                    await stream.FlushAsync(cancellationToken);
-                    stream.Flush(flushToDisk: true);
-                }
-
-                cancellationToken.ThrowIfCancellationRequested();
-                if (existing.State == SettingsLoadState.FirstRun)
-                    File.Move(temporary, FilePath, overwrite: false);
-                else
-                    File.Replace(temporary, FilePath, snapshot is null ? null : Path.Combine(DataDirectory, snapshot));
-            }
-            finally
-            {
-                if (File.Exists(temporary))
-                    File.Delete(temporary);
-            }
+            await WriteAtomicAsync(bytes, FilePath, existing.State != SettingsLoadState.FirstRun,
+                snapshot is null ? null : Path.Combine(DataDirectory, snapshot), cancellationToken);
             return new(true, Convert.ToHexString(SHA256.HashData(bytes)), null, migrated, snapshot);
         }
         catch (ContractException ex)

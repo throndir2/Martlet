@@ -14,7 +14,20 @@ namespace Martlet.Desktop;
 public partial class SetupWindow : Window
 {
     internal Action<Window>? Troubleshooting { get; init; }
+    internal Action<Window>? ConfigurationRecovery { get; init; }
     private void Troubleshooting_Click(object sender, RoutedEventArgs e) => Troubleshooting?.Invoke(this);
+    private void Recovery_Click(object sender, RoutedEventArgs e)
+    {
+        ConfigurationRecovery?.Invoke(this);
+        if (ConfigurationRecovery is null) return;
+        needsReload = true;
+        draft = null;
+        revision = null;
+        KeyInput.Clear();
+        ResultText.Text = "Recovery closed. Reload the saved checkpoint before editing; no unsaved setup draft can authorize a restore or subsequent key action.";
+        RenderStatus();
+        RenderOperationState();
+    }
     private readonly ISetupService service;
     private readonly SetupOperationRunner operations;
     private readonly Func<string, bool>? confirm;

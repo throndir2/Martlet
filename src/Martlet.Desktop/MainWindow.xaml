@@ -52,6 +52,8 @@
             <WrapPanel>
                 <Button x:Name="SetupButton" Content="Set_up / resume" Click="Setup_Click" Padding="12,8" Margin="0,4,12,4"
                         AutomationProperties.AutomationId="OpenSetup" AutomationProperties.Name="Open resumable setup, no network or credential lookup" />
+                <Button Content="Configuration backup / restore (local only)" Click="Recovery_Click" Padding="12,8" Margin="0,4,12,4"
+                        AutomationProperties.AutomationId="OpenConfigurationRecovery" AutomationProperties.Name="Open passive local configuration backup and restore"/>
                 <Button x:Name="AudioSetupButton" Content="_Audio setup (local only)" Click="AudioSetup_Click" Padding="12,8" Margin="0,4,12,4"
                         AutomationProperties.AutomationId="OpenAudioSetup" AutomationProperties.Name="Open local audio setup without enumerating or testing devices" />
                 <Button x:Name="RefreshButton" Content="_Refresh local status" Padding="12,8" Margin="0,4,12,4"

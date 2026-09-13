@@ -1,4 +1,4 @@
-# Internal Windows packaging (F02 skeleton, V04b app graph)
+# Internal Windows packaging (F02 skeleton, V04b/V06b/V07a app)
 
 **INTERNAL DEVELOPMENT ONLY - UNSIGNED. Not a supported installer or a completed
 F02/AC-02/G1 gate.** This packages V04b real explicit typed / push-to-talk app
@@ -6,7 +6,9 @@ integration alongside the offline WPF fixture/status experience and Doctor
 self-test, including the bounded optional synthetic-tone sink. Opening the app
 or conversation window does not authorize requests, credential lookup or device
 access. Saved configuration is not live API/account/model readiness.
-Transactional upgrades, rollback and signed distribution remain unimplemented.
+Desktop V07a adds explicit same-profile configuration backup/previewed restore,
+not a diagnostic ZIP or installer updater. Transactional binary upgrades,
+rollback and signed distribution remain unimplemented.
 No project code/asset license is granted.
 The existing foundation/planning documents retain their broader future gates.
 
@@ -79,6 +81,7 @@ payload\
   Desktop\Martlet.Desktop.exe, *.dll, *.deps.json, *.runtimeconfig.json, ...
   Doctor\Martlet.Doctor.exe, *.dll, *.deps.json, *.runtimeconfig.json, ...
   help\INTERNAL.txt
+  help\TROUBLESHOOTING.md
   notices\DEPENDENCIES.txt, upstream licenses/notices
   manifest.json
   SHA256SUMS.txt
@@ -96,12 +99,16 @@ application's `.deps.json` (including each project's runtime asset):
 - Both: `Martlet.Core`, `Martlet.Audio`, `Martlet.Fixtures`, `Martlet.Sessions`,
   `Martlet.Diagnostics`.
 - Desktop only: `Martlet.Desktop`, `Martlet.Credentials.Windows`,
-  `Martlet.Conversation`, `Martlet.Providers`, `Martlet.Participation`.
+  `Martlet.Conversation`, `Martlet.Providers`, `Martlet.Participation`,
+  `Martlet.Support`.
 - Doctor only: `Martlet.Doctor`. Doctor's graph and offline semantics are
   unchanged; no conversation, provider, participation or vault assembly is
   included there.
 
-No `Martlet.Support` dependency or support-bundle prerequisite is introduced.
+V06b already introduced `Martlet.Support` for explicit local troubleshooting;
+V07a recovery stays inside existing Core/Desktop, with no new assembly or
+dependency. Support bundles remain deliberately lossy and cannot restore
+configuration. Installed help explains the separate recovery workflow.
 Conversation, Providers and Participation are authored BCL-only integration
 code; they add no production NuGet package, provider SDK, native binary or
 redistributed model. Existing audio/runtime pins and complete upstream notices
@@ -135,7 +142,7 @@ not unrecorded user files. No data purge option is provided.
 
 Same-version reinstall replaces the same owned files and shortcuts; close both
 apps first. This is an idempotent **skeleton**, not an application-aware repair
-engine. No schema migration, backup, version activation, stale-file pruning,
+engine. No installer-driven schema migration, backup, version activation, stale-file pruning,
 downgrade, interrupted-upgrade recovery or transaction rollback is claimed.
 Those are V07 gates and must not be inferred from successful compilation.
 

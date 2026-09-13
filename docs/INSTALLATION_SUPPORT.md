@@ -245,6 +245,16 @@ network egress denied after downloads. Unknown optional downloads block readines
 
 ## 3. Start, stop, update, repair, and removal
 
+**Implemented internal V07a:** Desktop offers explicit LOCAL configuration
+snapshots and exact previewed restore into an existing valid same-profile
+v1/v2 store. It recovers inert preferences, not credentials/permissions/readiness.
+It refuses missing/corrupt/future/foreign destinations and preserves exact
+pre-replacement originals. This is neither the diagnostic bundle nor the broader
+database/voice/host/binary lifecycle below. See the
+[recovery walkthrough](TROUBLESHOOTING.md#local-configuration-backup--restore-v07a).
+V07b binary staging/activation/N-1/N rollback/uninstall qualification remains
+unimplemented and NOT RUN; V07a never launches an older executable.
+
 | Lifecycle operation | Required behavior |
 | --- | --- |
 | Windows start/login | Manual start by default; opt-in login startup, separate explicit listening policy; interrupted onboarding resumes without recording |

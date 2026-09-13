@@ -254,6 +254,13 @@ try {
     # Do not accept permission or invoke a live Send/PTT. This is a no-key/no-network/no-device native smoke.
     Invoke-Control 'CloseLive'
     $null = Wait-Status '*First run:*'
+    Invoke-Control 'OpenConfigurationRecovery'
+    $null = Wait-Setup '*No backup read or written*' 'RecoveryResult'
+    if ((Find-Control 'RecoveryRestore').Current.IsEnabled -or (Test-Path -LiteralPath $data)) {
+        throw 'Passive recovery must not read/write snapshots or enable restore without a preview.'
+    }
+    Invoke-Control 'RecoveryClose'
+    $null = Wait-Status '*First run:*'
     Invoke-Control 'OpenSetup'
     $null = Wait-Setup '*Checkpoint: Choice*'
     if (Test-Path -LiteralPath $data) { throw 'Opening setup wrote files before an explicit save.' }
@@ -262,6 +269,11 @@ try {
     if (Test-Path -LiteralPath $data) { throw 'Troubleshooting inside first-run setup wrote files.' }
     Invoke-Control 'SupportClose'
     $null = Wait-Setup '*Checkpoint: Choice*'
+    Invoke-Control 'SetupRecovery'
+    $null = Wait-Setup '*No backup read or written*' 'RecoveryResult'
+    if (Test-Path -LiteralPath $data) { throw 'Passive recovery inside setup wrote files.' }
+    Invoke-Control 'RecoveryClose'
+    $null = Wait-Setup '*Recovery closed*Reload*' 'SetupResult'
     Invoke-Control 'SetupClose'
     $null = Wait-Status '*First run:*'
     Invoke-Control 'CreateProfile'

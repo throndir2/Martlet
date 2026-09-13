@@ -22,6 +22,7 @@ must not be confused with the broader planned milestones below.
 | V02b / V05 / V04a | Reviewed local audio choices/tests, deterministic participation policy and reusable typed text-to-voice runtime are merged foundations; their internal fixture evidence does not qualify a real account or device. |
 | V04b | [Explicit Desktop API conversation](CONVERSATION.md) joins saved route/vault bindings, local audio policies, typed or <=25 s PTT, named STT, pre-dispatch policy and streaming LLM/optional TTS/PCM sink. One app-shared effect owner, fresh bounded per-action envelope, exact reservations/role permissions, original cancellation/expiry and ownership quarantine. Text-only sends no TTS and opens no output. Root graph now includes existing Providers/Conversation/Participation and their suites; dedicated lanes remain. |
 | V06b | [Desktop Troubleshooting](TROUBLESHOOTING.md) integrates the merged Support engine: passive shared status, explicit OFF-by-default local journal, bounded typed live/fixture metadata, exact five-file preview, default-No destination-bound create-only ZIP and retained cleanup ownership. Support projects join the solution/Desktop/package graph. Doctor help is read-only; no CLI export, upload or support contact channel. Internal functionality, not G2/support-service qualification. |
+| V07a | [Local configuration recovery](TROUBLESHOOTING.md#local-configuration-backup--restore-v07a): bounded versioned integrity envelope of exact validated settings; explicit Desktop create-only backup and immutable default-No restore preview; existing valid same-profile v1/v2 only; inert preferences, unbound imported keys, current owned cleanup retained; fresh byte-exact pre-restore original and shared writer/effect ownership. No new dependencies or settings authority. Not portable import, corrupt-store repair, binary rollback or clean-VM qualification. |
 | F02 / G1 onward | F02 merged at `8a762cd930741208daa61e9df9b8d860cf4768de` and was normally integrated, not copied. Self-contained payload/unsigned installer build paths exist. Clean-VM lifecycle, physical audio, real AI/GPU, Ubuntu, signing, rights and release qualification remain **NOT RUN / NOT PASSED**. |
 
 ### Requirements and acceptance status (F03c / coupled F05)
@@ -76,6 +77,21 @@ settings/fixture/live-UI metadata, exact preview/archive bytes, destination and
 source changes during confirmation, noncooperative IO/cancellation, faults,
 retained cleanup and preserved unrelated targets. Packaging qualification for
 this slice is tracked separately from this application/test checkpoint.
+
+V07a's initial developer-host checkpoint used the same pinned SDK/CI settings
+and one isolated C: artifact tree: the full integrated solution passed 1,913
+cases; directly repeated Core/Desktop suites passed 176/171. Expanded Core
+recovery boundary coverage subsequently passed 185 cases. Repeated runs are
+not extra distinct cases. Native Desktop (including passive recovery from
+main/setup), portable Doctor and Windows Doctor smokes passed with real
+vault/network/audio OFF and only isolated test data. Coverage exercises exact
+snapshot bytes, current/foreign/future/malformed/tampered/ambiguous/bounded input,
+consent/source/revision changes, actual Setup + controlled Windows native
+credentials, staged/flush/replace/cleanup faults, exact retained originals and
+real WPF timeout/close/reopen/callback ownership, including paused blocked live
+vault work. This is internal filesystem/fixture evidence, not physical disk
+failure, power-loss, clean-VM N-1/N, real vault/account/device or novice evidence.
+V07b activation/rollback/uninstall and signing/rights/G2 remain separate gates.
 
 Historical F03c/F05 developer-host package evidence: that self-contained payload contained
 620 inventoried files; actual native Doctor and interactive WPF fixture smokes
@@ -225,7 +241,7 @@ slices may be explicitly disabled, not silently described as shipped.
 | V03a | STT adapter and shared provider catalog structure | Contract fixtures; authorized small transcription smoke recorded separately |
 | V03b | Text LLM adapter and streaming error normalization | V03a shared infrastructure only; final/partial/refusal/error fixtures |
 | V03c | TTS adapter and selected voice/format validation | V03a shared infrastructure only; PCM/stream/error fixtures; no auto fallback |
-| V07a | Settings/data snapshot and schema migration transaction | Prior V07 dependencies; upgrade interruption leaves recoverable original |
+| V07a | Implemented internal settings/configuration snapshot and previewed restore transaction; see [scope and limits](SETUP.md#local-configuration-recovery-transaction-v07a) | Existing valid same-profile v1/v2 only; controlled transaction interruption retains original; physical crash/power-loss and actual upgrade qualification remain NOT RUN |
 | V07b | Version staging, activation, rollback and uninstall preservation | V07a; compatible restore and N-1/N failure cases |
 | V07c | Signed build/manifest, provenance, SBOM and notices | Build foundation may proceed in parallel; protected signing access required before release, never mocked as valid |
 | V07d | Clean Windows and novice walkthrough/support release record | V07b/V07c; AC-02/AC-06/AC-11 real-environment exit |
