@@ -16,6 +16,7 @@ public sealed class FixtureSession : IAsyncDisposable
     private readonly PcmPlaybackSink? sink;
     private readonly TimeProvider time;
     private readonly TimeSpan pacing;
+    private readonly Func<Task>? beforePlaybackStop;
     private readonly Guid sessionId = Guid.NewGuid();
     private long epoch = -2;
     private CancellationTokenSource? cancellation;
@@ -33,6 +34,10 @@ public sealed class FixtureSession : IAsyncDisposable
         time = timeProvider ?? TimeProvider.System;
         this.pacing = pacing;
     }
+
+    // Deterministic scheduling seam for lifetime races; no callback runs under the session monitor.
+    internal FixtureSession(PcmPlaybackSink sink, Func<Task> beforePlaybackStop) : this(sink) =>
+        this.beforePlaybackStop = beforePlaybackStop;
 
     public bool IsRunning { get { lock (gate) return task is { IsCompleted: false }; } }
     public FixtureSessionSnapshot? Snapshot
@@ -202,16 +207,20 @@ public sealed class FixtureSession : IAsyncDisposable
     public async Task StopAsync()
     {
         Task<FixtureSessionSnapshot>? active;
+        PlaybackRun? capturedPlayback;
         lock (gate)
         {
             active = task;
             if (active is not { IsCompleted: false })
                 return;
+            capturedPlayback = playback;
             StopCore();
             cancellation!.Cancel();
         }
-        if (sink is not null)
-            await sink.StopAsync().ConfigureAwait(false);
+        if (beforePlaybackStop is not null)
+            await beforePlaybackStop().ConfigureAwait(false);
+        if (capturedPlayback is not null)
+            await capturedPlayback.StopAsync().ConfigureAwait(false);
         await active.ConfigureAwait(false);
     }
 

@@ -207,6 +207,82 @@ public sealed class FixtureSessionTests
     }
 
     [Fact]
+    public async Task DelayedOldStopCannotCancelNewPlaybackAfterItsCapturedSessionCompletes()
+    {
+        var firstDevice = new ControlledDevice { BlockWrite = true };
+        var nextDevice = new ControlledDevice { BlockWrite = true };
+        var stopEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseStop = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sink = new PcmPlaybackSink(new DeviceSequence(firstDevice, nextDevice));
+        await using var session = new FixtureSession(sink, async () =>
+        {
+            stopEntered.TrySetResult();
+            await releaseStop.Task;
+        });
+        var first = session.RunAsync("complete", new(OutputPolicy.DefaultAtStart));
+        await firstDevice.EnteredWrite.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var oldStop = session.StopAsync();
+        await stopEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        try
+        {
+            var canceled = await first.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.True(canceled.Playback!.DeviceReleased);
+            var next = session.RunAsync("streaming", new(OutputPolicy.DefaultAtStart));
+            await nextDevice.EnteredWrite.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var nextIds = session.Snapshot!.Sequence.Ids;
+            releaseStop.TrySetResult();
+            await oldStop.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(nextIds, session.Snapshot!.Sequence.Ids);
+            Assert.NotEqual(PlaybackState.Canceled, session.Snapshot.Playback!.State);
+            Assert.False(next.IsCompleted);
+            nextDevice.Release.Set();
+            Assert.Equal(PlaybackState.Completed, (await next.WaitAsync(TimeSpan.FromSeconds(5))).Playback!.State);
+        }
+        finally
+        {
+            releaseStop.TrySetResult();
+            nextDevice.Release.Set();
+        }
+    }
+
+    [Fact]
+    public async Task OverlappingStopAndDisposeRejectStartWhileRetainingCapturedCleanup()
+    {
+        var device = new ControlledDevice { BlockWrite = true, IgnoreCancellation = true };
+        var releaseStops = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var allEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var entered = 0;
+        var session = new FixtureSession(new PcmPlaybackSink(device), () =>
+        {
+            if (Interlocked.Increment(ref entered) == 3)
+                allEntered.TrySetResult();
+            return releaseStops.Task;
+        });
+        var first = session.RunAsync("complete", new(OutputPolicy.DefaultAtStart));
+        await device.EnteredWrite.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var stopOne = session.StopAsync();
+        var stopTwo = session.StopAsync();
+        var disposal = session.DisposeAsync().AsTask();
+        try
+        {
+            await allEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            device.Release.Set();
+            await first.WaitAsync(TimeSpan.FromSeconds(5));
+            await Assert.ThrowsAsync<ObjectDisposedException>(() => session.RunAsync("complete"));
+        }
+        finally
+        {
+            device.Release.Set();
+            releaseStops.TrySetResult();
+        }
+        await Task.WhenAll(stopOne, stopTwo, disposal).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(1, device.Opens);
+        Assert.True(session.Snapshot!.Playback!.DeviceReleased);
+        Assert.Equal(0, session.Snapshot.Playback.QueuedFrames);
+        await session.DisposeAsync();
+    }
+
+    [Fact]
     public async Task CallerCancellationDuringNativeWriteClearsTextAndNeverAcceptsLateOutput()
     {
         var device = new ControlledDevice { BlockWrite = true };
@@ -335,5 +411,12 @@ public sealed class FixtureSessionTests
         while (!condition() && DateTime.UtcNow < deadline)
             await Task.Delay(1);
         Assert.True(condition(), "The controlled device did not reach the requested boundary.");
+    }
+
+    private sealed class DeviceSequence(params ControlledDevice[] devices) : IPlaybackDeviceFactory
+    {
+        private int next;
+        public IPlaybackDevice Open(OutputSelection output, Core.Audio.PcmFormat format, CancellationToken token) =>
+            devices[Interlocked.Increment(ref next) - 1].Open(output, format, token);
     }
 }

@@ -239,6 +239,10 @@ run. Explicit new runs use fresh turn/request IDs in the session and increasing
 epochs. A new run never consumes old callbacks or PCM, never retries a remote
 request, and never automatically replays partial output. Failed native cleanup
 quarantines the same sink; text-only retries remain usable.
+Stop captures the exact playback run under the session gate before awaiting
+cleanup. A delayed old Stop cannot select a newer run from the shared sink.
+Coordinated production-session/backend regressions cover that interleaving and
+overlapping Stop/dispose/start without holding a monitor across an await.
 
 The shared `FixtureCursor` extracted from `FixtureRunner` advances existing
 catalog scripts through `ProviderSequenceValidator.AcceptJson`, `Poll`, actual
