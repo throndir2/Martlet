@@ -1,7 +1,9 @@
 # Installation and support design
 
-**Future product specification, not an installation guide for working software.**
-No installers, host utilities, or commands described here exist yet. Do not run
+**Future product specification, not an end-user installation guide.**
+The [foundation](FOUNDATION.md) implements a narrow local status CLI and WPF
+shell; the installers, host utilities and full diagnostic commands described
+below do not exist yet. Do not run
 privileged setup or download models as part of implementing this documentation.
 See [delivery](DELIVERY.md) for gates and [architecture](ARCHITECTURE.md) for
 contracts and privacy. All version/hardware combinations below are targets

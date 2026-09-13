@@ -1,6 +1,9 @@
 # Architecture and provider contracts
 
-**Proposed design; not implemented.** Read [the development plan](../DEVELOPMENT_PLAN.md)
+**Broader proposed design.** The implemented D02/F01 subset and remaining
+conformance work are recorded in [Foundation boundaries](FOUNDATION.md);
+the components and remote protocols below are not all implemented.
+Read [the development plan](../DEVELOPMENT_PLAN.md)
 for scope and approvals, [installation/support](INSTALLATION_SUPPORT.md) for
 lifecycle, and [delivery](DELIVERY.md) for task ownership. Source IDs refer to
 [the research ledger](RESEARCH.md). D02 must turn these contracts into schemas

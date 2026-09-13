@@ -1,0 +1,14 @@
+{
+  "version": { "major": 1, "minor": 0 },
+  "ids": {
+    "session_id": "10000000-0000-0000-0000-000000000001",
+    "turn_id": "20000000-0000-0000-0000-000000000001",
+    "request_id": "30000000-0000-0000-0000-000000000001"
+  },
+  "provider_id": "fixture",
+  "epoch": 0,
+  "sequence": 0,
+  "provenance": "fixture",
+  "kind": "refused",
+  "text": "Authored refusal scenario. Not a live provider."
+}
