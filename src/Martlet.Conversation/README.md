@@ -85,9 +85,15 @@ means the caller reserved these maxima in its own budget. Unknown/unavailable
 reservation or permission is represented by null and stops before secret
 lookup. Wrong-scope and expired reservations also stop locally. The provider
 authorization expiry must be no later than both the reservation expiry and
-the action deadline. Thus the **existing provider guard**, not a copied
-token/expiry implementation, enforces budget/consent expiry after slow
-credential lookup and at serialization/send.
+the action deadline. The runtime retains the action's original UTC/timestamp
+pair across the authorization callback and restricts that same monotonic
+window to both expiry bounds. It never grants a new lifetime merely because
+the callback returned after a wall-clock rollback. Dispatch receives only the
+remaining permission/reservation/stage/turn budget as its deadline; the
+already-scoped authorization, IDs and limits are not rewritten. The existing
+provider guard then enforces that deadline during credential lookup,
+serialization, send and output. Runtime-observed permission expiry is
+`AuthorizationExpired`, distinct from a general turn/stage deadline.
 
 Both adapters still validate their exact origin/model/role/limits/IDs,
 one-use consumption, disclosure and potential-charge flags. TTS additionally
@@ -232,6 +238,15 @@ Its native scratch, prebuffer, capacity, underrun and cleanup rules remain
 unchanged. See [Audio](../../docs/AUDIO.md) and
 [provider contracts](../Martlet.Providers/README.md).
 
+Voice `Start` additionally rejects incompatible prebuffer configurations
+passively, before authorization, credential lookup, transport or devices:
+both the queued-frame limit and sample capacity must fit the selected
+adapter's prebuffer rounded up to full 20 ms (480-sample) frames. For example,
+150 ms prebuffer requires at least eight queued frames and 160 ms sample
+capacity. One queued frame works with prebuffer at most 20 ms, not the
+default 150 ms. Limits are never silently raised or prebuffer lowered.
+Text-only turns do not require this unused voice compatibility condition.
+
 TTS clean body completion means **HTTP body completed**, not semantic
 generation completeness, device drain or audibility. Conversation completion
 with voice additionally requires every segment's sink completion and cleanup.
@@ -248,6 +263,15 @@ clears unfinished/staged speech, invalidates the captured playback run and
 requests provider cancellation through `CancelAsync`. It never invokes
 sink-wide Stop on a potentially newer generation. Visible canceled/partial
 state is immediate; `Completion` separately observes bounded cleanup.
+The original caller token is retained and checked directly at admission,
+before/after every provider pull, after authorization and by supervision;
+another caller callback cannot conceal its cancellation flag until that
+callback returns. The caller still owns its unrelated external callbacks.
+The original caller token is also passed unchanged to `Stream`, and the
+runtime Stop token is passed unchanged to its enumerator. The approved
+provider-boundary refinement checks these original sources (and shutdown)
+inside the adapter, rather than depending on linked-token callback delivery
+during credentials, serialization, send and read acceptance.
 
 The worker is the sole owner of `MoveNextAsync`/enumerator disposal. Stop
 never disposes an enumerator concurrently with an outstanding pull. It requests
@@ -285,10 +309,14 @@ compute cancellation, deletion or avoided charges.
 authorization guards, Core validator, production runtime/segmenter and sink
 through in-process counting HTTP handlers and worker-owned device fixtures.
 Shared authored test helpers are linked from the unchanged provider/audio
-test sources rather than copying implementations. The sole Providers edit
-is the approved test-only friend `Martlet.Conversation.Tests`; the shipping
-Conversation assembly receives no provider internals or arbitrary handler/
-endpoint access.
+test sources rather than copying implementations. Approved shared changes
+are the test-only friend `Martlet.Conversation.Tests`, direct original-token
+guards in the LLM/TTS adapters and internal request window, focused provider
+cancellation regressions and provider-local documentation. The existing STT
+adapter benefits from its original caller token reaching that shared window;
+its source is unchanged. No authorization binding, parser, endpoint, TLS or
+redirect policy is changed. The shipping Conversation assembly receives no
+provider internals or arbitrary handler/endpoint access.
 
 Cases include streaming before LLM completion, refusal, incomplete/malformed/
 duplicate events, full-text preservation, formatting/fence/token boundaries,
@@ -298,6 +326,17 @@ read-ahead bounds, slow sinks, final short frames, mapped stale/duplicate PCM,
 endpoint loss, quarantine, every cancellation stage, noncooperative callbacks
 and credentials, explicit retry, old Stop racing a new turn, abandoned output
 subscribers and metadata canaries. Only fixture provenance is exercised.
+
+Independent review of the first head identified callback-order cancellation,
+pre-authorizer short-permission lifetime and playback-prebuffer compatibility
+defects. Before fixes, 12 of 17 new conversation review cases failed (five
+valid prebuffer configurations passed), two deeper credential-to-send
+cancellation cases failed, and 15 direct provider cancellation cases failed
+across STT/LLM/TTS and caller/enumerator sources. The original failing tests
+are retained. Additional controls cover unexpired permission remainders,
+supervised cancellation while authorization remains blocked and text-only
+operation with unused incompatible voice settings. Pre-fix TRX evidence is
+kept in the implementing session's C: artifacts, not as generated repo files.
 
 Direct-project workflow (no solution/packaging registration):
 

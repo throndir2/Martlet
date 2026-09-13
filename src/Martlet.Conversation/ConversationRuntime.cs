@@ -80,6 +80,7 @@ public sealed class ConversationRuntime : IAsyncDisposable
                 "Voice output needs an explicitly composed playback device factory.");
             ContractRules.Require(speech.Limits.MaxInputBytes >= 4,
                 "Speech segmentation requires room for one Unicode scalar.");
+            ValidateSpeechPrebuffer();
         }
         cancellationToken.ThrowIfCancellationRequested();
         lock (Sync)
@@ -143,6 +144,18 @@ public sealed class ConversationRuntime : IAsyncDisposable
         if (Sink is not null) await Sink.DisposeAsync().ConfigureAwait(false);
     }
 
+    private void ValidateSpeechPrebuffer()
+    {
+        // The selected raw-PCM adapter emits full 20 ms frames (with a possible shorter final frame).
+        var rate = OpenAiSpeechSynthesisCatalog.PcmFormat.SampleRate;
+        var frameSamples = rate / 50;
+        var prebufferSamples = (long)Math.Ceiling(rate * PlaybackOptions.Prebuffer.TotalSeconds);
+        var frames = (prebufferSamples + frameSamples - 1) / frameSamples;
+        var capacitySamples = (long)(rate * PlaybackOptions.Capacity.TotalSeconds);
+        ContractRules.Require(frames <= PlaybackOptions.MaximumQueuedFrames && frames * frameSamples <= capacitySamples,
+            "The playback queue and sample capacity must fit the prebuffer rounded up to full 20 ms speech frames.");
+    }
+
 }
 
 internal sealed class ConversationException(ConversationFailure failure) : Exception("The conversation operation could not continue.")
@@ -150,10 +163,33 @@ internal sealed class ConversationException(ConversationFailure failure) : Excep
     internal ConversationFailure Failure { get; } = failure;
 }
 
-internal sealed class MonotonicWindow(TimeProvider clock, TimeSpan duration)
+internal sealed class MonotonicWindow
 {
-    private readonly long start = clock.GetTimestamp();
-    private readonly DateTimeOffset absolute = clock.GetUtcNow() + duration;
+    private readonly TimeProvider clock;
+    private readonly long start;
+    private readonly DateTimeOffset startUtc, absolute;
+    private readonly TimeSpan duration;
+    internal ConversationFailure ExpiryFailure { get; }
+
+    internal MonotonicWindow(TimeProvider clock, TimeSpan duration)
+        : this(clock, clock.GetTimestamp(), clock.GetUtcNow(), duration, ConversationFailure.DeadlineExceeded) { }
+
+    private MonotonicWindow(TimeProvider clock, long start, DateTimeOffset startUtc, TimeSpan duration, ConversationFailure failure)
+    {
+        this.clock = clock;
+        this.start = start;
+        this.startUtc = startUtc;
+        this.duration = duration;
+        absolute = startUtc + duration;
+        ExpiryFailure = failure;
+    }
+
+    internal MonotonicWindow Restrict(DateTimeOffset expiry, ConversationFailure failure)
+    {
+        var permitted = expiry - startUtc;
+        return permitted < duration ? new(clock, start, startUtc, permitted, failure) : this;
+    }
+
     internal TimeSpan Remaining => duration - clock.GetElapsedTime(start);
     internal bool Expired => Remaining <= TimeSpan.Zero || clock.GetUtcNow() >= absolute;
     internal DateTimeOffset Deadline

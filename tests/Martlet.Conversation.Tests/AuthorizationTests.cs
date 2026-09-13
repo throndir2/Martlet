@@ -100,7 +100,7 @@ public sealed class AuthorizationTests
             return ValueTask.FromResult<BoundProviderCredential?>(new(binding, ProviderFixtures.Secret));
         };
         var result = await Harness.Finish(h.Start());
-        Assert.Equal(ProviderFailureCode.ConsentExpired, result.ProviderFailure);
+        Assert.Equal(ConversationFailure.AuthorizationExpired, result.Failure);
         Assert.Equal(role == ProviderRole.Llm ? 0 : 1, h.Llm.Calls);
         Assert.Equal(0, h.Tts.Calls);
         Assert.Equal(0, h.Device.Opens);

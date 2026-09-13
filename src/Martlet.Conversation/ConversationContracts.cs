@@ -6,7 +6,7 @@ using Martlet.Providers;
 namespace Martlet.Conversation;
 
 public enum ConversationState { Idle, Authorizing, Generating, Synthesizing, Playing, Completed, Refused, Canceled, Failed, Partial }
-public enum ConversationFailure { None, AuthorizationUnavailable, BudgetUnavailable, LimitExceeded, DeadlineExceeded, InvalidStream, ProviderFailed, PlaybackFailed, DependencyFailed }
+public enum ConversationFailure { None, AuthorizationUnavailable, BudgetUnavailable, LimitExceeded, DeadlineExceeded, InvalidStream, ProviderFailed, PlaybackFailed, DependencyFailed, AuthorizationExpired, BudgetExpired }
 public enum ConversationEventKind { State, Text, SegmentQueued, SegmentStarted, SpeechSuppressed, Playback, Released }
 
 public sealed record ConversationLimits

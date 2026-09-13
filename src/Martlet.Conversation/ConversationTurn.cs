@@ -29,6 +29,7 @@ public sealed class ConversationTurn
     private readonly Guid? retryOf;
     private readonly bool earlierSpeech;
     private Task callbacks = Task.CompletedTask;
+    private CancellationToken originalCaller;
     private CancellationTokenRegistration callerRegistration;
     private MonotonicWindow? textWindow, speechWindow;
     private SpeechSegmenter? segmentation;
@@ -77,6 +78,7 @@ public sealed class ConversationTurn
 
     internal void Begin(CancellationToken callerToken)
     {
+        originalCaller = callerToken;
         Emit(ConversationEventKind.State);
         callerRegistration = callerToken.UnsafeRegister(_ => CancelByUser(), null);
         // Callers/authorization implementations cannot synchronously block Start or the UI thread.
@@ -118,6 +120,7 @@ public sealed class ConversationTurn
 
     internal void CheckActive()
     {
+        if (originalCaller.IsCancellationRequested) CancelByUser();
         if (invalidated || Owner.CurrentEpoch != Epoch || stop.IsCancellationRequested)
             throw new OperationCanceledException(stop.Token);
         if (whole.Expired) throw new ConversationException(ConversationFailure.DeadlineExceeded);
@@ -128,7 +131,7 @@ public sealed class ConversationTurn
         lock (Sync)
         {
             CheckActive();
-            if (window.Expired) throw new ConversationException(ConversationFailure.DeadlineExceeded);
+            if (window.Expired) throw new ConversationException(window.ExpiryFailure);
         }
     }
 
@@ -155,6 +158,11 @@ public sealed class ConversationTurn
     {
         lock (Sync)
         {
+            if (originalCaller.IsCancellationRequested)
+            {
+                CancelByUser();
+                return;
+            }
             if (invalidated || workFinished) return;
             failure = reason;
             providerFailure = provider;
@@ -178,10 +186,12 @@ public sealed class ConversationTurn
             Check(window);
             if (permission?.Authorization is not { } consent)
                 throw new ConversationException(ConversationFailure.AuthorizationUnavailable);
-            ValidateReservation(permission.Reservation, budget, consent.ExpiresAt, context.Deadline);
+            window = ValidateReservation(permission.Reservation, budget, consent.ExpiresAt, context.Deadline, window);
+            lock (Sync) textWindow = window;
+            Check(window);
             // Clamp to remaining ORIGINAL stage/turn budgets after a potentially slow authorization callback.
             context = context with { Deadline = Deadline(window) };
-            var stream = Owner.Text.Stream(context, request.Model, request.Input, request.TextLimits, consent, stop.Token);
+            var stream = Owner.Text.Stream(context, request.Model, request.Input, request.TextLimits, consent, originalCaller);
             using var validator = new ProviderSequenceValidator(new()
             {
                 Ids = TextIds, Epoch = Epoch, Capabilities = stream.Capabilities
@@ -201,9 +211,14 @@ public sealed class ConversationTurn
                 textProvenance = stream.Capabilities.Provenance;
                 SetState(ConversationState.Generating);
             }
-            await foreach (var item in stream.WithCancellation(stop.Token).ConfigureAwait(false))
+            await using var enumeration = stream.GetAsyncEnumerator(stop.Token);
+            while (true)
             {
                 Check(window);
+                bool moved = await enumeration.MoveNextAsync().ConfigureAwait(false);
+                Check(window);
+                if (!moved) break;
+                var item = enumeration.Current;
                 var update = validator.Accept(item);
                 if (update.Snapshot.Result?.Outcome == TurnOutcome.Failed)
                 {
@@ -326,9 +341,11 @@ public sealed class ConversationTurn
         Check(window);
         if (permission?.Authorization is not { } consent)
             throw new ConversationException(ConversationFailure.AuthorizationUnavailable);
-        ValidateReservation(permission.Reservation, budget, consent.ExpiresAt, context.Deadline);
+        window = ValidateReservation(permission.Reservation, budget, consent.ExpiresAt, context.Deadline, window);
+        lock (Sync) speechWindow = window;
+        Check(window);
         context = context with { Deadline = Deadline(window) };
-        var stream = Owner.Speech!.Stream(context, voice.Selection, input, voice.Limits, consent, stop.Token);
+        var stream = Owner.Speech!.Stream(context, voice.Selection, input, voice.Limits, consent, originalCaller);
         PlaybackRun? run = null;
         lock (Sync)
         {
@@ -338,9 +355,14 @@ public sealed class ConversationTurn
         }
         try
         {
-            await foreach (var frame in stream.WithCancellation(stop.Token).ConfigureAwait(false))
+            await using var enumeration = stream.GetAsyncEnumerator(stop.Token);
+            while (true)
             {
                 Check(window);
+                bool moved = await enumeration.MoveNextAsync().ConfigureAwait(false);
+                Check(window);
+                if (!moved) break;
+                var frame = enumeration.Current;
                 if (run is null)
                 {
                     lock (Sync)
@@ -421,13 +443,16 @@ public sealed class ConversationTurn
         }
     }
 
-    private void ValidateReservation(BudgetReservation? reservation, OperationBudget expected,
-        DateTimeOffset authorizationExpiry, DateTimeOffset actionDeadline)
+    private MonotonicWindow ValidateReservation(BudgetReservation? reservation, OperationBudget expected,
+        DateTimeOffset authorizationExpiry, DateTimeOffset actionDeadline, MonotonicWindow original)
     {
-        if (reservation is null || reservation.Reserved != expected || reservation.ExpiresAt <= Clock.GetUtcNow() ||
+        if (reservation is null || reservation.Reserved != expected ||
             authorizationExpiry > reservation.ExpiresAt || authorizationExpiry > actionDeadline)
             throw new ConversationException(ConversationFailure.BudgetUnavailable);
-        // Provider authorization expiry remains the sole secret/send guard, including slow credentials.
+        // Expiry is measured from the action's original UTC/timestamp pair, never from the callback's return.
+        // Clamp the dispatch deadline without changing the provider's already-scoped one-use authorization.
+        return original.Restrict(authorizationExpiry, ConversationFailure.AuthorizationExpired)
+            .Restrict(reservation.ExpiresAt, ConversationFailure.BudgetExpired);
     }
 
     private async Task ReleaseAsync(Task worker)
@@ -436,6 +461,7 @@ public sealed class ConversationTurn
         Task pendingCallbacks;
         lock (Sync)
         {
+            if (originalCaller.IsCancellationRequested) CancelByUser();
             workFinished = true;
             pendingCallbacks = callbacks;
         }
@@ -466,14 +492,16 @@ public sealed class ConversationTurn
         {
             lock (Sync)
             {
+                if (originalCaller.IsCancellationRequested) CancelByUser();
                 if (playback?.Snapshot is { } progress && progress != observedPlayback)
                 {
                     observedPlayback = progress;
-                    if (progress.State == PlaybackState.Playing) SetState(ConversationState.Playing);
+                    if (!invalidated && progress.State == PlaybackState.Playing) SetState(ConversationState.Playing);
                     Emit(ConversationEventKind.Playback);
                 }
-                if (whole.Expired || textWindow?.Expired == true || speechWindow?.Expired == true)
-                    Fail(ConversationFailure.DeadlineExceeded);
+                if (whole.Expired) Fail(ConversationFailure.DeadlineExceeded);
+                else if (textWindow?.Expired == true) Fail(textWindow.ExpiryFailure);
+                else if (speechWindow?.Expired == true) Fail(speechWindow.ExpiryFailure);
             }
             if (stopSignal.Task.IsCompleted) break;
             await Task.WhenAny(release.Task, stopSignal.Task,

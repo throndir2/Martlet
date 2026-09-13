@@ -130,7 +130,7 @@ public sealed class SpeechSynthesisStream : IAsyncEnumerable<PcmFrame>
     {
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(callerToken, enumerationToken, shutdown);
         using var operation = new SpeechSynthesisOperation(client, credentials, clock, context, selection, input,
-            limits, authorization, startedAt, startedUtc, stop.Token);
+            limits, authorization, startedAt, startedUtc, stop.Token, callerToken, enumerationToken, shutdown);
         long samples = 0;
         long sequence = 0;
         try
@@ -169,7 +169,8 @@ internal sealed record SpeechStreamStep(ReadOnlyMemory<byte> Audio = default,
 internal sealed class SpeechSynthesisOperation(
     HttpClient client, IProviderCredentialSource credentials, TimeProvider clock,
     ProviderRequestContext context, SpeechSynthesisSelection selection, BoundedSpeechInput input, SpeechSynthesisLimits limits,
-    SpeechDisclosureAuthorization? authorization, long startedAt, DateTimeOffset startedUtc, CancellationToken stop) : IDisposable
+    SpeechDisclosureAuthorization? authorization, long startedAt, DateTimeOffset startedUtc, CancellationToken stop,
+    CancellationToken caller, CancellationToken enumerator, CancellationToken shutdown) : IDisposable
 {
     private ProviderRequestWindow? window;
     private CancellationTokenSource? progress;
@@ -183,6 +184,8 @@ internal sealed class SpeechSynthesisOperation(
     private bool disposed;
     private CancellationTokenRegistration abortBody;
     private CancellationToken Token => linked?.Token ?? stop;
+    private bool IsStopped => stop.IsCancellationRequested || caller.IsCancellationRequested ||
+        enumerator.IsCancellationRequested || shutdown.IsCancellationRequested;
     public int? HttpStatusCode { get; private set; }
 
     public async Task<SpeechStreamStep> NextAsync()
@@ -207,7 +210,7 @@ internal sealed class SpeechSynthesisOperation(
         }
         catch (Exception error) when (error is OperationCanceledException or RequestCutoffException or
             SpeechProtocolException or CredentialUnavailableException or HttpRequestException or IOException ||
-            (error is ObjectDisposedException && Token.IsCancellationRequested))
+            (error is ObjectDisposedException && (IsStopped || Token.IsCancellationRequested)))
         {
             return FailureStep(error);
         }
@@ -222,12 +225,12 @@ internal sealed class SpeechSynthesisOperation(
 
     private SpeechStreamStep FailureStep(Exception error)
     {
-        if (stop.IsCancellationRequested)
+        if (IsStopped)
             return new(Outcome: SpeechSynthesisOutcome.Canceled);
         // Noncooperative awaits may throw transport errors after synchronous cutoffs.
         try { EnsureActive(); }
         catch (RequestCutoffException cutoff) { return Fail(cutoff.Code); }
-        catch (OperationCanceledException) { return Fail(DeadlineCode()); }
+        catch (OperationCanceledException) { return IsStopped ? new(Outcome: SpeechSynthesisOutcome.Canceled) : Fail(DeadlineCode()); }
         return Fail(error switch
         {
             RequestCutoffException cutoff => cutoff.Code,
@@ -329,6 +332,10 @@ internal sealed class SpeechSynthesisOperation(
 
     private void EnsureActive()
     {
+        // Check original source flags even when their linked cancellation callbacks have not run.
+        caller.ThrowIfCancellationRequested();
+        enumerator.ThrowIfCancellationRequested();
+        shutdown.ThrowIfCancellationRequested();
         stop.ThrowIfCancellationRequested();
         window?.EnsureActive();
         if (clock.GetElapsedTime(startedAt) >= limits.MaxRequestTime ||
