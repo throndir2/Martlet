@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$Configuration = 'Release'
+    [string]$Configuration = 'Release',
+    [string]$ExecutablePath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -8,8 +9,16 @@ if (-not $IsWindows) { throw 'The desktop smoke requires Windows and an interact
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 $root = Split-Path $PSScriptRoot -Parent
-$assembly = Join-Path $root "src\Martlet.Desktop\bin\$Configuration\net10.0-windows\Martlet.Desktop.dll"
-if (-not (Test-Path -LiteralPath $assembly)) { throw 'Build Martlet.slnx first.' }
+$candidate = if ($ExecutablePath) { $ExecutablePath } else {
+    Join-Path $root "src\Martlet.Desktop\bin\$Configuration\net10.0-windows\Martlet.Desktop.dll"
+}
+if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { throw 'Build Desktop first or provide an existing executable path.' }
+$resolved = Resolve-Path -LiteralPath $candidate
+if ($resolved.Provider.Name -ne 'FileSystem') { throw 'Executable path must be a filesystem file.' }
+$binary = $resolved.ProviderPath
+$extension = [System.IO.Path]::GetExtension($binary).ToLowerInvariant()
+if ($extension -notin @('.dll', '.exe')) { throw 'Executable path must select a .dll or .exe.' }
+$program = if ($extension -eq '.dll') { (Get-Command dotnet).Source } else { $binary }
 $data = Join-Path ([System.IO.Path]::GetTempPath()) ("Martlet.Desktop.Smoke." + [guid]::NewGuid().ToString('N'))
 $settings = Join-Path $data 'settings.json'
 $process = $null
@@ -43,14 +52,19 @@ function Wait-Status([string]$Pattern, [string]$DifferentFrom = '') {
     }
     throw 'Accessible diagnostic status was not available within 20 seconds.'
 }
-function Start-Desktop {
-    $script:process = Start-Process (Get-Command dotnet).Source -ArgumentList "`"$assembly`" --data-directory `"$data`"" -PassThru
+function Start-Desktop([string]$Directory = $data) {
+    $start = [System.Diagnostics.ProcessStartInfo]::new($program)
+    $start.UseShellExecute = $false
+    if ($extension -eq '.dll') { $start.ArgumentList.Add($binary) }
+    $start.ArgumentList.Add('--data-directory')
+    $start.ArgumentList.Add($Directory)
+    $script:process = [System.Diagnostics.Process]::Start($start)
 }
 function Close-Desktop {
     if (-not $script:process.CloseMainWindow() -or -not $script:process.WaitForExit(10000)) {
         throw 'Closing the diagnostic window did not exit Martlet within 10 seconds.'
     }
-    if ($script:process.ExitCode -ne 0) { throw 'Desktop exited with an error.' }
+    if ($script:process.ExitCode -ne 0) { throw "Desktop exited with code $($script:process.ExitCode)." }
     $script:process.Dispose()
     $script:process = $null
 }
@@ -113,7 +127,13 @@ try {
     }
     Close-Desktop
     [System.IO.Directory]::Delete($settings)
-    Write-Output 'PASS: accessible pipeline/keyboard focus; refresh/create; corrupt/newer/inaccessible remedies; bounded close; no startup writes.'
+    Start-Desktop 'relative'
+    $value = Wait-Status '*Cannot open the data directory*'
+    if ((Find-Control 'CreateProfile').Current.IsEnabled -or (Find-Control 'RefreshDiagnostics').Current.IsEnabled) {
+        throw 'Invalid launch arguments must leave a read-only, actionable startup error.'
+    }
+    Close-Desktop
+    Write-Output 'PASS: accessible pipeline/keyboard focus; refresh/create; corrupt/newer/inaccessible/startup remedies; bounded idle/startup-error close; no startup writes.'
 }
 finally {
     if ($null -ne $process) {

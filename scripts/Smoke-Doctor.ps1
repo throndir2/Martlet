@@ -1,19 +1,30 @@
 [CmdletBinding()]
 param(
-    [string]$Configuration = 'Release'
+    [string]$Configuration = 'Release',
+    [string]$ExecutablePath
 )
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
-$assembly = Join-Path $root "src\Martlet.Doctor\bin\$Configuration\net10.0\Martlet.Doctor.dll"
+$candidate = if ($ExecutablePath) { $ExecutablePath } else {
+    Join-Path $root "src\Martlet.Doctor\bin\$Configuration\net10.0\Martlet.Doctor.dll"
+}
+if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { throw 'Build Doctor first or provide an existing executable path.' }
+$resolved = Resolve-Path -LiteralPath $candidate
+if ($resolved.Provider.Name -ne 'FileSystem') { throw 'Executable path must be a filesystem file.' }
+$binary = $resolved.ProviderPath
+$extension = [System.IO.Path]::GetExtension($binary).ToLowerInvariant()
+if ($extension -notin @('.dll', '.exe')) { throw 'Executable path must select a .dll or .exe.' }
+$program = if ($extension -eq '.dll') { (Get-Command dotnet).Source } else { $binary }
+[string[]]$prefix = if ($extension -eq '.dll') { @($binary) } else { @() }
 $data = Join-Path ([System.IO.Path]::GetTempPath()) ("Martlet.Doctor.Smoke." + [guid]::NewGuid().ToString('N'))
 
 function Invoke-Doctor([string[]]$Command, [int]$ExpectedExit) {
-    $start = [System.Diagnostics.ProcessStartInfo]::new((Get-Command dotnet).Source)
+    $start = [System.Diagnostics.ProcessStartInfo]::new($program)
     $start.UseShellExecute = $false
     $start.RedirectStandardOutput = $true
     $start.RedirectStandardError = $true
-    foreach ($argument in @($assembly) + $Command + @('--json', '--data-directory', $data)) {
+    foreach ($argument in $prefix + $Command + @('--json', '--data-directory', $data)) {
         $start.ArgumentList.Add($argument)
     }
     $process = [System.Diagnostics.Process]::Start($start)

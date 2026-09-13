@@ -173,7 +173,9 @@ The explicit first-run create-unconfigured-profile button remains the sole
 settings write. It is disabled while diagnosing/saving and for loaded/invalid/
 newer/inaccessible settings. Save uses the original atomic SettingsStore API.
 Close cancels work, stops the age timer, waits at most 250 ms for callback
-cleanup, then WPF's main-window shutdown exits the process. An uncooperative
+cleanup, queues the final close on a subsequent dispatcher turn (including
+startup-error and synchronous-cleanup paths), then WPF's main-window shutdown
+exits the process. An uncooperative
 in-process callback cannot keep a tray/worker alive; none is launched.
 Library consumers must not equate a bounded report with adapter termination.
 Future independently hosted workers need their own termination boundary.
@@ -188,9 +190,23 @@ invalid evidence, blocking cancellation handlers, non-cooperative outstanding
 work, eventual completion, late-result discard, duplicate refresh and shutdown.
 Configuration smoke preserves malformed Unicode, invalid UTF-8, newer settings
 and inaccessible-path behavior and original bytes. Desktop smoke also invokes
-real refresh/profile creation and verifies accessible pipeline keyboard focus.
+real refresh/profile creation, verifies accessible pipeline keyboard focus,
+and asserts startup-error display plus clean exit for an invalid relative data
+directory. Idle/no-active-work windows also close without reentering WPF's
+original closing event.
 Slow Stop/cancellation races are deterministic model tests, not injected fake
 audio/network UI activity.
+
+Both smoke scripts optionally accept `-ExecutablePath` selecting an existing
+`.exe` (launched directly) or `.dll` (launched with dotnet). The path is resolved
+and validated, and cleanup targets only that launched PID. Without this option,
+the existing Configuration-derived repository output is used, preserving CI.
+For an intentionally relocated build, pass its actual binary explicitly:
+
+```powershell
+.\scripts\Smoke-Doctor.ps1 -ExecutablePath (Join-Path $artifacts 'bin\Martlet.Doctor\release\Martlet.Doctor.exe')
+.\scripts\Smoke-Desktop.ps1 -ExecutablePath (Join-Path $artifacts 'bin\Martlet.Desktop\release\Martlet.Desktop.exe')
+```
 
 **Not run / not qualified:** clean consumer OS, denied-egress sandbox, actual
 screen-reader/novice usability trial, mic/speaker/audibility, real provider or GPU,

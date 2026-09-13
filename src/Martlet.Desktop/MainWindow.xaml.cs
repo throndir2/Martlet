@@ -106,8 +106,12 @@ public partial class MainWindow : Window
             await model.CloseAsync();
         // WPF OnMainWindowClose exits the process, including any non-cooperative in-process callback.
         // No worker process or device operation is launched by this build.
-        mayClose = true;
-        Close();
+        // Even absent or synchronous cleanup must leave WPF's original Closing event before closing again.
+        await Dispatcher.InvokeAsync(() =>
+        {
+            mayClose = true;
+            Close();
+        });
     }
 
     private void Exit_Click(object sender, RoutedEventArgs e) => Close();
