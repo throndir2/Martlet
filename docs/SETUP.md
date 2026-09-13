@@ -229,6 +229,19 @@ holds the shared slot because its frozen public terminal cannot prove a late
 release. Close Martlet if an owned driver never returns. A terminal report or
 responsive window is not a measured physical Stop guarantee.
 
+If an output Open returns only after its five-second authorization expired,
+the owned wrapper rejects it before Start/write and disposes the returned
+device. Only the wrapper's **own expiry rejection plus proven completed
+cleanup** allows the UI service to report `DeadlineExceeded`, release the
+shared slot and accept a fresh explicit action. The existing sink remains
+conservative about an unreturned/unknown Open; its lifecycle is not relaxed.
+The service also drains the sink's bounded event stream through completion,
+which follows actual device-token cancellation callbacks, before releasing
+ownership. A blocked callback can therefore outlive successful device Dispose
+without making the slot reusable. Failed disposal, pending native work and
+arbitrary native `AudioPlaybackFailed`/`DeadlineExceeded` errors are not
+successful-cleanup evidence and remain quarantined.
+
 Optional v2 `audio` contains versioned `AudioSettings`, two bounded
 `AudioChoice` values and optional `AudioCheckpoint` values. Existing v1/v2 files
 without audio still load unchanged. v1 explicit save retains the reviewed exact

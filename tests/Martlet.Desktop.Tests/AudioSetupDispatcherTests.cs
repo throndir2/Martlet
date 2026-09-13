@@ -356,6 +356,134 @@ public sealed class AudioSetupDispatcherTests
     }
 
     [Fact]
+    public async Task ExpiredReturnedOutputWithSuccessfulCleanupReleasesWorkerForFreshAction()
+    {
+        using var fixture = new Fixture();
+        fixture.Output.BeforeReturn = () => fixture.Clock.Advance(TimeSpan.FromSeconds(6), fireTimers: false);
+        // No observing window, Stop, or caller cancellation: only the owned post-open guard expires.
+        var run = fixture.Audio.Start(AudioSetupAction.Output, AudioChoice.Default(false), true)!;
+        await Wait(() => fixture.Output.Disposals == 1);
+        Assert.Equal(0, fixture.Output.Starts);
+        Assert.Empty(fixture.Output.Bytes);
+        await run.Worker.Completion.WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.False(fixture.Runner.IsRunning);
+        Assert.True(run.Status.Released);
+        Assert.False(run.Status.Succeeded);
+        Assert.Null(run.Status.Checkpoint);
+        fixture.Output.BeforeReturn = null;
+        var fresh = fixture.Audio.Start(AudioSetupAction.Output, AudioChoice.Default(false), true);
+        Assert.NotNull(fresh);
+        await fresh.Worker.Completion.WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.True(fresh.Status.Succeeded);
+        Assert.Equal(2, fixture.Output.Opens);
+    }
+
+    [Fact]
+    public async Task ExpiredReturnedOutputPreservesPreciseAuthorizationFailure()
+    {
+        using var fixture = new Fixture();
+        fixture.Output.BeforeReturn = () => fixture.Clock.Advance(TimeSpan.FromSeconds(6), fireTimers: false);
+        var run = fixture.Audio.Start(AudioSetupAction.Output, AudioChoice.Default(false), true)!;
+        await Wait(() => run.Status.Finished);
+        Assert.Equal(1, fixture.Output.Disposals);
+        Assert.Equal(0, fixture.Output.Starts);
+        Assert.Empty(fixture.Output.Bytes);
+        Assert.Equal(ErrorCode.DeadlineExceeded, run.Status.Error);
+    }
+
+    [Fact]
+    public async Task ExpiredReturnedOutputFailedCleanupRemainsQuarantined()
+    {
+        using var fixture = new Fixture();
+        fixture.Output.BeforeReturn = () => fixture.Clock.Advance(TimeSpan.FromSeconds(6), fireTimers: false);
+        fixture.Output.FailDispose = true;
+        var run = fixture.Audio.Start(AudioSetupAction.Output, AudioChoice.Default(false), true)!;
+        await Wait(() => run.Status.Finished);
+        Assert.False(run.Status.Released);
+        Assert.Equal(ErrorCode.AudioPlaybackFailed, run.Status.Error);
+        Assert.Equal(0, fixture.Output.Starts);
+        Assert.Empty(fixture.Output.Bytes);
+        Assert.False(run.Worker.Completion.IsCompleted);
+        Assert.Null(fixture.Audio.Start(AudioSetupAction.Output, AudioChoice.Default(false), true));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExpiredReturnedOutputWaitsForNoncooperativeCallbackBeforeRelease(bool callbackOutlivesDispose)
+    {
+        using var fixture = new Fixture();
+        fixture.Output.Block = "OutputCallback";
+        fixture.Output.CallbackOutlivesDispose = callbackOutlivesDispose;
+        var run = fixture.Audio.Start(AudioSetupAction.Output, AudioChoice.Default(false), true)!;
+        try
+        {
+            await Wait(() => run.Status.Stage.StartsWith("Opening selected output", StringComparison.Ordinal));
+            fixture.Clock.Advance(TimeSpan.FromSeconds(6));
+            await fixture.Entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            await Wait(() =>
+            {
+                fixture.Clock.Advance(TimeSpan.FromMilliseconds(100));
+                return run.Status.Stage.Contains("waiting for actual native release", StringComparison.Ordinal);
+            });
+            Assert.True(fixture.Runner.IsRunning);
+            Assert.False(run.Worker.Completion.IsCompleted);
+            Assert.Equal(callbackOutlivesDispose ? 1 : 0, fixture.Output.Disposals);
+            Assert.Equal(0, fixture.Output.Starts);
+            Assert.Empty(fixture.Output.Bytes);
+            Assert.Null(fixture.Audio.Start(AudioSetupAction.Microphone, AudioChoice.Default(true), true));
+            fixture.Release.Set();
+            await run.Worker.Completion.WaitAsync(TimeSpan.FromSeconds(3));
+            Assert.True(run.Status.Released);
+            Assert.Equal(ErrorCode.DeadlineExceeded, run.Status.Error);
+            Assert.Equal(1, fixture.Output.Disposals);
+        }
+        finally { fixture.Release.Set(); }
+    }
+
+    [Fact]
+    public async Task ExpiredReturnedOutputWaitsForActualDisposalBeforeRelease()
+    {
+        using var fixture = new Fixture();
+        fixture.Output.Block = "OutputDispose";
+        fixture.Output.BeforeReturn = () => fixture.Clock.Advance(TimeSpan.FromSeconds(6), fireTimers: false);
+        var run = fixture.Audio.Start(AudioSetupAction.Output, AudioChoice.Default(false), true)!;
+        try
+        {
+            await fixture.Entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            Assert.True(fixture.Runner.IsRunning);
+            Assert.False(run.Worker.Completion.IsCompleted);
+            Assert.Equal(0, fixture.Output.Disposals);
+            Assert.Equal(0, fixture.Output.Starts);
+            Assert.Empty(fixture.Output.Bytes);
+            Assert.Null(fixture.Audio.Start(AudioSetupAction.Output, AudioChoice.Default(false), true));
+            fixture.Release.Set();
+            await run.Worker.Completion.WaitAsync(TimeSpan.FromSeconds(3));
+            Assert.True(run.Status.Released);
+            Assert.Equal(ErrorCode.DeadlineExceeded, run.Status.Error);
+        }
+        finally { fixture.Release.Set(); }
+    }
+
+    [Theory]
+    [InlineData(ErrorCode.DeadlineExceeded)]
+    [InlineData(ErrorCode.AudioPlaybackFailed)]
+    public async Task NativeOutputFailureCannotClaimOwnedExpiryCleanup(ErrorCode nativeFailure)
+    {
+        using var fixture = new Fixture();
+        fixture.Output.Failure = nativeFailure;
+        var run = fixture.Audio.Start(AudioSetupAction.Output, AudioChoice.Default(false), true)!;
+        await Wait(() => run.Status.Finished);
+        Assert.False(run.Status.Released);
+        Assert.Equal(ErrorCode.AudioPlaybackFailed, run.Status.Error);
+        Assert.Equal(0, fixture.Output.Disposals);
+        Assert.Equal(0, fixture.Output.Starts);
+        Assert.Empty(fixture.Output.Bytes);
+        Assert.False(run.Worker.Completion.IsCompleted);
+        Assert.Null(fixture.Audio.Start(AudioSetupAction.Output, AudioChoice.Default(false), true));
+    }
+
+    [Fact]
     public Task StaleAudioSavePreservesConcurrentSettingsAndRequiresReload() => OnDispatcher(async () =>
     {
         using var fixture = new Fixture();
@@ -573,7 +701,9 @@ public sealed class AudioSetupDispatcherTests
         public string? Block;
         public ErrorCode? Failure;
         public bool FailDispose;
-        public int Opens, Starts;
+        public bool CallbackOutlivesDispose;
+        public Action? BeforeReturn;
+        public int Opens, Starts, Disposals;
         private CancellationTokenRegistration callback;
         public OutputSelection? Selected;
         public ConcurrentQueue<byte> Bytes { get; } = new();
@@ -585,6 +715,7 @@ public sealed class AudioSetupDispatcherTests
                 callback = token.Register(() => { entered.TrySetResult(); release.Wait(); });
             Interlocked.Increment(ref Opens);
             if (Block == "OutputOpen") { entered.TrySetResult(); release.Wait(); }
+            BeforeReturn?.Invoke();
             if (Block == "OutputCallback") { entered.Task.GetAwaiter().GetResult(); }
             if (Failure is { } code) throw new ContractException(code, "PRIVATE native details");
             return this;
@@ -600,8 +731,10 @@ public sealed class AudioSetupDispatcherTests
         public void Dispose()
         {
             if (Block == "OutputDispose") { entered.TrySetResult(); release.Wait(); }
-            callback.Dispose();
+            if (CallbackOutlivesDispose) callback.Unregister();
+            else callback.Dispose();
             if (FailDispose) throw new InvalidOperationException("PRIVATE native disposal failure");
+            Interlocked.Increment(ref Disposals);
         }
     }
 

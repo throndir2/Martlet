@@ -190,25 +190,41 @@ public sealed class AudioSetupService
             }
             var terminal = await run.Completion.ConfigureAwait(false);
             view.Publish(new(AudioSetupAction.Output, "Tone ended; waiting for actual native release", Error: terminal.Error?.Code));
-            var error = await run.DeviceRelease.ConfigureAwait(false);
-            var released = run.Snapshot.DeviceReleased && !factory.ReleaseFailed;
+            var error = await AwaitOutputReleaseAsync(run).ConfigureAwait(false);
+            var released = OutputReleased(run, factory);
+            var failure = factory.ExpiredOpenReleased ? ErrorCode.DeadlineExceeded : error?.Code ?? terminal.Error?.Code;
             var succeeded = terminal.State == PlaybackState.Completed && terminal.DeviceDrainObserved &&
-                terminal.DeviceConsumedSamples == SyntheticTone.SampleCount && released && error is null && !original.IsCancellationRequested;
-            view.Publish(new(AudioSetupAction.Output, succeeded ? "200 ms tone drained; audibility UNCONFIRMED" : terminal.State.ToString(),
-                true, succeeded, released, Samples: terminal.DeviceConsumedSamples, Error: error?.Code ?? terminal.Error?.Code,
+                terminal.DeviceConsumedSamples == SyntheticTone.SampleCount && released && failure is null && !original.IsCancellationRequested;
+            view.Publish(new(AudioSetupAction.Output, factory.ExpiredOpenReleased
+                    ? "Output authorization expired; returned native device cleanup completed"
+                    : succeeded ? "200 ms tone drained; audibility UNCONFIRMED" : terminal.State.ToString(),
+                true, succeeded, released, Samples: terminal.DeviceConsumedSamples, Error: failure,
                 Checkpoint: succeeded ? new() { ConfigurationRevision = choice.ConfigurationRevision, TestedAt = clock.GetUtcNow(), Outcome = LocalAudioOutcome.ToneDrained } : null));
         }
         finally
         {
             await run.StopAsync().ConfigureAwait(false);
-            await run.DeviceRelease.ConfigureAwait(false);
-            if (!run.Snapshot.DeviceReleased || factory.ReleaseFailed)
+            await AwaitOutputReleaseAsync(run).ConfigureAwait(false);
+            if (!OutputReleased(run, factory))
             {
                 view.Publish(view.Status with { Released = false, Error = ErrorCode.AudioPlaybackFailed });
                 await quarantine.Task.ConfigureAwait(false);
                 GC.KeepAlive(factory);
             }
         }
+    }
+
+    private static bool OutputReleased(PlaybackRun run, AuthorizedOutputFactory factory) =>
+        !factory.ReleaseFailed && (run.Snapshot.DeviceReleased || factory.ExpiredOpenReleased);
+
+    private static async Task<MartletError?> AwaitOutputReleaseAsync(PlaybackRun run)
+    {
+        var error = await run.DeviceRelease.ConfigureAwait(false);
+        // Native worker exit alone does not include device-token cancellation callbacks.
+        // The existing sink closes its bounded event stream only after those callbacks finish.
+        // Do not cancel this cleanup observation when the UI stops observing the test.
+        await foreach (var _ in run.Events.ReadAllAsync().ConfigureAwait(false)) { }
+        return error;
     }
 
     private void CheckPermission(CancellationToken original, DateTimeOffset authorizedAt, long timestamp, TimeSpan lifetime)
@@ -221,7 +237,19 @@ public sealed class AudioSetupService
     private sealed class AuthorizedOutputFactory(IPlaybackDeviceFactory devices, Action guard, CancellationToken original) : IPlaybackDeviceFactory
     {
         private IPlaybackDevice? retained;
+        private bool authorizationExpired;
         public bool ReleaseFailed { get; private set; }
+        public bool ExpiredOpenReleased { get; private set; }
+
+        private void CheckAuthorization()
+        {
+            try { guard(); }
+            catch (ContractException error) when (error.Code == ErrorCode.DeadlineExceeded)
+            {
+                authorizationExpired = true;
+                throw;
+            }
+        }
 
         public IPlaybackDevice Open(OutputSelection selection, PcmFormat format, CancellationToken token)
         {
@@ -229,9 +257,9 @@ public sealed class AudioSetupService
             IPlaybackDevice? device = null;
             try
             {
-                guard();
+                CheckAuthorization();
                 device = devices.Open(selection, format, linked.Token);
-                guard();
+                CheckAuthorization();
                 retained = device;
                 return new AuthorizedOutput(device, guard, linked, () => retained = null);
             }
@@ -240,6 +268,9 @@ public sealed class AudioSetupService
                 try { device?.Dispose(); }
                 catch { retained = device; ReleaseFailed = true; throw; }
                 finally { linked.Dispose(); }
+                // Only our own guard's rejection plus completed cleanup is evidence that an
+                // unreturned Open released. Arbitrary native AudioPlaybackFailed is not proof.
+                ExpiredOpenReleased = authorizationExpired;
                 throw;
             }
         }
