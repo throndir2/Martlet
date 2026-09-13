@@ -252,6 +252,17 @@ try {
     }
     if (Test-Path -LiteralPath $data) { throw 'Opening live conversation unexpectedly wrote settings.' }
     # Do not accept permission or invoke a live Send/PTT. This is a no-key/no-network/no-device native smoke.
+    Invoke-Control 'LiveOpenSetup'
+    $null = Wait-Setup '*Checkpoint: Choice*'
+    Invoke-Control 'SetupRecovery'
+    $null = Wait-Setup '*No backup read or written*' 'RecoveryResult'
+    if ((Find-Control 'RecoveryRestore').Current.IsEnabled -or (Test-Path -LiteralPath $data)) {
+        throw 'Conversation -> Setup -> Recovery must remain passive and require an exact preview.'
+    }
+    Invoke-Control 'RecoveryClose'
+    $null = Wait-Setup '*Recovery closed*Reload*' 'SetupResult'
+    Invoke-Control 'SetupClose'
+    $null = Wait-Setup '*Choices loaded*' 'LiveStatus'
     Invoke-Control 'CloseLive'
     $null = Wait-Status '*First run:*'
     Invoke-Control 'OpenConfigurationRecovery'

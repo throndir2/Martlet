@@ -244,7 +244,7 @@ public partial class MainWindow : Window
     {
         if (conversation is null || closing || saving || runningFixture || model?.IsRunning == true) return;
         new LiveConversationWindow(setupService!, setupOperations, conversation, audioSessionEvents, audioSetup)
-            { Owner = this, Troubleshooting = OpenTroubleshooting, Support = support }.ShowDialog();
+            { Owner = this, Troubleshooting = OpenTroubleshooting, Support = support, ConfigurationRecovery = OpenRecovery }.ShowDialog();
         await RefreshAsync();
     }
 

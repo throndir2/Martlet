@@ -21,7 +21,8 @@
             <TextBlock Text="NOT the offline fixture. No request, credential lookup or device access occurs on opening. Configured routes are not verified account/model readiness." TextWrapping="Wrap" Margin="0,8" />
             <WrapPanel>
                 <Button x:Name="ReloadButton" Content="_Reload saved choices" Click="Reload_Click" Padding="10,6" Margin="0,4,8,4" AutomationProperties.AutomationId="ReloadLive" />
-                <Button x:Name="SetupButton" Content="Set_up / credentials" Click="Setup_Click" Padding="10,6" Margin="0,4,8,4" />
+                <Button x:Name="SetupButton" Content="Set_up / credentials" Click="Setup_Click" Padding="10,6" Margin="0,4,8,4"
+                        AutomationProperties.AutomationId="LiveOpenSetup" />
                 <Button x:Name="AudioButton" Content="_Audio setup (local only)" Click="Audio_Click" Padding="10,6" Margin="0,4,8,4" />
                 <Button Content="_Close conversation" Click="Close_Click" Padding="10,6" Margin="0,4,8,4" AutomationProperties.AutomationId="CloseLive" />
             </WrapPanel>

@@ -93,6 +93,19 @@ vault work. This is internal filesystem/fixture evidence, not physical disk
 failure, power-loss, clean-VM N-1/N, real vault/account/device or novice evidence.
 V07b activation/rollback/uninstall and signing/rights/G2 remain separate gates.
 
+The exact committed `d471e6ab12eb763caa4b26d1758360ee0df50b77` checkpoint
+subsequently passed 1,922 integrated cases, both native Doctor targets and
+Desktop smokes, two 626-file self-contained publishes, 144 production package
+assertions and protected-sentinel native smoke. Its unsigned installer was
+73,758,737 bytes; manifest source was that exact hash with `sourceDirty=false`.
+These are historical artifacts, not receipts for later changes. Independent
+review then identified missing recovery callback forwarding through
+Conversation -> Setup. Two shown-WPF navigation cases reproduced the missing
+dialog before the focused callback/active-modal-owner correction. That path now
+shares the same app recovery owner and busy slot; corrected-head validation and
+package receipts are recorded separately in the PR evidence, not inferred from
+the earlier artifacts.
+
 Historical F03c/F05 developer-host package evidence: that self-contained payload contained
 620 inventoried files; actual native Doctor and interactive WPF fixture smokes
 passed with audio OFF and runtime discovery pointed away from the SDK.

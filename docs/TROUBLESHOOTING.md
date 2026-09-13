@@ -5,7 +5,10 @@
 **Configuration backups are NOT support bundles.** The support ZIP described
 below contains a deliberately lossy, redacted projection and cannot restore
 settings. Use **Configuration backup / restore (local only)** from the main
-window, or **Local configuration backup / restore** in Setup / resume.
+window, or **Local configuration backup / restore** in Setup / resume
+(including Setup opened from real conversation). Each path uses the same
+app-lifetime recovery owner and shared effect slot; nested recovery is owned
+by the active Setup dialog, not a disabled parent window.
 Opening this screen is passive: no backup read/scan/create, vault, diagnostics,
 device, network or upload action. Saved settings and device identifiers can be
 personal. Configuration envelopes are LOCAL and **NOT encrypted or sanitized**.

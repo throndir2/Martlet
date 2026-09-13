@@ -18,8 +18,12 @@ public partial class SetupWindow : Window
     private void Troubleshooting_Click(object sender, RoutedEventArgs e) => Troubleshooting?.Invoke(this);
     private void Recovery_Click(object sender, RoutedEventArgs e)
     {
-        ConfigurationRecovery?.Invoke(this);
-        if (ConfigurationRecovery is null) return;
+        if (ConfigurationRecovery is not { } openRecovery)
+        {
+            ResultText.Text = "Configuration recovery is unavailable in this setup window. Close it and open Configuration backup / restore from the main window.";
+            return;
+        }
+        openRecovery(this);
         needsReload = true;
         draft = null;
         revision = null;
