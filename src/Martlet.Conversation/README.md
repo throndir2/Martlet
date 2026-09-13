@@ -339,7 +339,7 @@ supervised cancellation while authorization remains blocked and text-only
 operation with unused incompatible voice settings. Pre-fix TRX evidence is
 kept in the implementing session's C: artifacts, not as generated repo files.
 
-Direct-project workflow (no solution/packaging registration):
+Direct-project local reproduction:
 
 ```powershell
 dotnet restore tests\Martlet.Conversation.Tests --locked-mode --artifacts-path C:\your-session\conversation-artifacts
@@ -350,9 +350,10 @@ dotnet test tests\Martlet.Conversation.Tests --no-build -c Release --artifacts-p
 Local evidence uses the supplied read-only SDK 10.0.401, process-local
 CLI home/SDK path and CI=true, with this session's unique C: artifacts to
 avoid the independently established pooled-drive VSTest native startup issue.
-Central test pins/SDK/runner/cache and existing locks are unchanged. The
-dedicated read-only workflow uses the existing exact pinned checkout and
-setup-dotnet actions and these direct-project commands.
+Central test pins/SDK/runner/cache and existing locks are unchanged. These
+direct-project commands remain local validation under the
+[repository policy](../../README.md#local-only-validation-policy); the former
+dedicated hosted workflow is removed, not replaced.
 
 **Not run / not claimed:** live provider HTTP, keys or vault writes, real
 account/model/voice eligibility, actual billing/retention, physical audio or
