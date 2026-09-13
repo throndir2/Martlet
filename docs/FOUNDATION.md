@@ -9,6 +9,12 @@ about then-unimplemented projects or commands describe that earlier scope.
 Schema ownership stays with the core owner; coordinate shared edits through
 the implementation coordinator.
 
+**V02a update:** [Resumable setup](SETUP.md) now adds strict settings v2 with
+explicit atomic v1 migration/snapshot, role-scoped destination choices, and
+explicit Windows Credential Manager actions. Original v1 reads and profile
+references are preserved. The historical "no migration/credential setup"
+statements below describe F01, not the current setup implementation.
+
 ## Decision disposition
 
 | Decision | Disposition for this foundation |

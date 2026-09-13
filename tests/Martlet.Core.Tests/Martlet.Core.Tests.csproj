@@ -8,6 +8,7 @@
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
     <ProjectReference Include="..\..\src\Martlet.Diagnostics\Martlet.Diagnostics.csproj" />
+    <ProjectReference Include="..\..\src\Martlet.Credentials.Windows\Martlet.Credentials.Windows.csproj" />
     <Using Include="Xunit" />
     <None Include="..\..\contracts\golden\**\*.json" Link="golden\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

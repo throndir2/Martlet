@@ -4,10 +4,12 @@
 Martlet has an accessible Windows desktop demo and Doctor self-test, using the
 production text validator, bounded session state, diagnostics and optional PCM
 sink. All demo text is authored synthetic content, **FIXTURE - NOT AI**.
-No microphone, provider, network, credentials or GPU is used. Audio is OFF by
+The fixture uses no microphone, provider, network, credentials or GPU. Audio is OFF by
 default; the separate confirmed 200 ms tone is not speech or proof of audibility.
-Real conversations, capture, provider setup, signed installation and supported
-end-user deployment are not available.
+Resumable configuration and explicit Windows credential actions are available
+through **Setup / resume**; see [SETUP](docs/SETUP.md). Saved API routes are not
+working connections. Real conversations, capture, signed installation and
+supported end-user deployment are not available.
 
 The intended first experience is a Windows installer, microphone and speaker
 setup, an explicitly selected AI provider, and a working voice conversation
@@ -27,6 +29,7 @@ voice and installation take priority over avatars.
 | [Delivery and release plan](docs/DELIVERY.md) | PR-sized backlog, dependencies, acceptance criteria, release gates, and traceability |
 | [Research and provenance](docs/RESEARCH.md) | Dated primary sources, verified constraints, and unresolved integration questions |
 | [Implemented foundation and decisions](docs/FOUNDATION.md) | Accepted/deferred decisions, exact APIs/bounds, current behavior and next ownership |
+| [Resumable setup and credentials](docs/SETUP.md) | Configuration-only V02a, role consent, strict migration, scoped Windows vault actions and remaining live gates |
 
 The broader plan documents remain future specifications except for the current
 implementation/acceptance ledger in [DELIVERY](docs/DELIVERY.md) and the

@@ -111,6 +111,7 @@ public sealed record DoctorReport : IContract
     public int ExitCode => DoctorExitCodes.Evaluate(this);
     public bool Ready => ExitCode == 0;
     public FixtureSessionSnapshot? Fixture { get; init; }
+    public SetupStatus? Setup { get; init; }
 
     public void Validate()
     {
@@ -139,6 +140,9 @@ public sealed record DoctorReport : IContract
         }
         InvocationError?.Validate();
         Fixture?.Validate();
+        Setup?.Validate();
+        ContractRules.Require(Setup is null || SettingsState == SettingsLoadState.Loaded,
+            "Setup metadata requires loaded settings.");
     }
 }
 

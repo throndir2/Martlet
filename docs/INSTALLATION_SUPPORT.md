@@ -12,6 +12,11 @@ See [delivery](DELIVERY.md) for gates and [architecture](ARCHITECTURE.md) for
 contracts and privacy. All version/hardware combinations below are targets
 until recorded qualification evidence exists.
 
+The configuration-only [V02a setup slice](SETUP.md) implements resumable
+Choice/Destinations/Credentials/Review checkpoints and explicit Windows vault
+actions. It does not complete storyboard audio qualification, capabilities,
+first response or novice readiness, and does not authorize live API use.
+
 ## 1. One Windows golden path
 
 Target Windows 11 25H2 x64 Home/Pro on a currently serviced patch. Test a clean

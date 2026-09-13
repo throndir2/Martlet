@@ -6,6 +6,13 @@ changing Core contracts, settings serialization, original file bytes or the
 provider/PCM schema. The existing foundation document describes the earlier
 three-result status; this document describes the F04 replacement.
 
+V02a adds optional typed setup metadata to the existing `settings.load` report:
+checkpoint, per-role route/consent/key-reference booleans and pending cleanup
+count. Human output and Desktop share that summary; JSON contains no route
+IDs, origins or credential IDs. The twelve-probe registry and exit semantics
+are unchanged. Saved setup is not live readiness and never resolves secrets.
+See [SETUP](SETUP.md) for configuration, migration and explicit vault actions.
+
 ## Implemented commands and scope
 
 ```powershell

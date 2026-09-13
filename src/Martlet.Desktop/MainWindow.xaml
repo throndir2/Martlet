@@ -10,7 +10,7 @@
             <TextBlock Text="Martlet - offline fixture and diagnostics" FontSize="26" FontWeight="SemiBold" />
             <TextBlock Text="Not connected / not configured" FontSize="18" Margin="0,8,0,12" />
             <TextBlock TextWrapping="Wrap" Margin="0,0,0,16"
-                       Text="Try the offline fixture without creating a profile. All demo text is scripted, NOT live transcription or AI. Capture, providers, credentials, network and GPU work remain unavailable. Audio is OFF unless you confirm the separate tone action. No consent is saved." />
+                       Text="Try the offline fixture without creating a profile. All demo text is scripted, NOT live transcription or AI. Capture, provider execution and GPU work remain unavailable. Setup can save configuration and explicitly manage Windows credentials; it makes no provider call. Audio is OFF unless you confirm the separate tone action. Tone permission is not saved." />
             <Label Target="{Binding ElementName=ScenarioChoice}" Content="_Offline scenario (FIXTURE - NOT AI)" />
             <ComboBox x:Name="ScenarioChoice" SelectedIndex="0" MinHeight="30"
                       AutomationProperties.AutomationId="FixtureScenario" AutomationProperties.Name="Offline fixture scenario" />
@@ -43,6 +43,8 @@
                        AutomationProperties.Name="Settings action result"
                        AutomationProperties.LiveSetting="Polite" />
             <WrapPanel>
+                <Button x:Name="SetupButton" Content="Set_up / resume" Click="Setup_Click" Padding="12,8" Margin="0,4,12,4"
+                        AutomationProperties.AutomationId="OpenSetup" AutomationProperties.Name="Open resumable setup, no network or credential lookup" />
                 <Button x:Name="RefreshButton" Content="_Refresh local status" Padding="12,8" Margin="0,4,12,4"
                         AutomationProperties.AutomationId="RefreshDiagnostics"
                         AutomationProperties.Name="Refresh local status" Click="Refresh_Click" />

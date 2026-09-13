@@ -6,6 +6,7 @@ using Martlet.Diagnostics;
 using Martlet.Audio;
 using Martlet.Audio.Windows;
 using Martlet.Sessions;
+using Martlet.Credentials.Windows;
 
 namespace Martlet.Desktop;
 
@@ -47,7 +48,7 @@ public partial class MainWindow : Window
         else
         {
             PipelineText.Text = "Mic / VAD / STT / Policy / LLM / TTS / Playback: unavailable; not run. Correct the launch data directory first.";
-            DemoButton.IsEnabled = ToneButton.IsEnabled = ScenarioChoice.IsEnabled = false;
+            DemoButton.IsEnabled = ToneButton.IsEnabled = ScenarioChoice.IsEnabled = SetupButton.IsEnabled = false;
         }
     }
 
@@ -74,6 +75,7 @@ public partial class MainWindow : Window
         PipelineText.Text = string.Join(Environment.NewLine, model.Pipeline.Select(node => node.Description));
         ActivityText.Text = runningFixture ? "Offline fixture active. Stop fixture is available. No real provider or microphone is active." : model.Activity;
         CreateButton.IsEnabled = !saving && !runningFixture && model.CanCreateProfile;
+        SetupButton.IsEnabled = !saving && !runningFixture && !model.IsRunning;
         RefreshButton.IsEnabled = !saving && !runningFixture && model.CanRefresh;
         StopButton.IsEnabled = !saving && model.IsRunning;
         DemoButton.IsEnabled = ToneButton.IsEnabled = !saving && !runningFixture && !model.IsRunning;
@@ -152,6 +154,13 @@ public partial class MainWindow : Window
         finally { saving = false; }
         if (!closing)
             await RefreshAsync();
+    }
+
+    private async void Setup_Click(object sender, RoutedEventArgs e)
+    {
+        if (store is null || closing || saving || runningFixture || model?.IsRunning == true) return;
+        new SetupWindow(new SetupService(store, new WindowsCredentialStore())) { Owner = this }.ShowDialog();
+        await RefreshAsync();
     }
 
     private void Stop_Click(object sender, RoutedEventArgs e) => model?.Stop();

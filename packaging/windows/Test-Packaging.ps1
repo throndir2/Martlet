@@ -50,7 +50,7 @@ $script:cases++
 
 foreach ($relative in @('Doctor\Martlet.Doctor.exe', 'Desktop\coreclr.dll', 'Desktop\PresentationFramework.dll',
         'Doctor\System.Text.Json.dll', 'notices\WPF-THIRD-PARTY-NOTICES.txt',
-        'Desktop\Martlet.Sessions.dll', 'Doctor\Martlet.Fixtures.dll', 'Doctor\Martlet.Audio.dll',
+        'Desktop\Martlet.Sessions.dll', 'Doctor\Martlet.Fixtures.dll', 'Doctor\Martlet.Audio.dll', 'Desktop\Martlet.Credentials.Windows.dll',
         'Desktop\NAudio.Wasapi.dll', 'Doctor\NAudio.Core.dll', 'Desktop\System.Numerics.Tensors.dll',
         'notices\NAudio-LICENSE.txt', 'notices\NAudio-THIRD-PARTY-NOTICES.txt',
         'notices\System.Numerics.Tensors-LICENSE.txt', 'notices\System.Numerics.Tensors-THIRD-PARTY-NOTICES.txt')) {
