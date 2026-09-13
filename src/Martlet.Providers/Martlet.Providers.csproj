@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\Martlet.Core\Martlet.Core.csproj" />
+    <InternalsVisibleTo Include="Martlet.Providers.Tests" />
+  </ItemGroup>
+</Project>
