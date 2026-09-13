@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <!-- RID restores must not rewrite the platform-neutral foundation locks. -->
+    <!-- Imported for both normal and cross-targeting outer builds; never rewrite normal locks. -->
     <NuGetLockFilePath>$(MSBuildThisFileDirectory)locks\$(MSBuildProjectName).packages.lock.json</NuGetLockFilePath>
   </PropertyGroup>
 </Project>

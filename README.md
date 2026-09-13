@@ -98,6 +98,10 @@ The full solution additionally builds the Windows-only WPF project and runs
 the existing fixture, audio and integration suites.
 
 These SDK commands are **not the intended end-user installation experience**.
-F02 will provide an internal self-contained per-user installer path; a supported
-release must ultimately need no Git, developer SDK or separately installed .NET.
+The [internal packaging scripts](packaging/windows/README.md) now build complete
+self-contained Desktop/Doctor payloads and an unsigned per-user Inno installer.
+They include the fixture experience, actual runtime/audio dependencies and
+notices, but do not install anything as part of validation. Internal artifacts
+are not a supported download or an instruction to bypass Windows protection.
+A supported release must ultimately need no Git, SDK or separately installed .NET.
 Clean Windows, real audio/provider, Ubuntu/GPU and signing gates remain unpassed.

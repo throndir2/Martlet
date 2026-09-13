@@ -40,6 +40,22 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
+## Internal packaging integration
+
+The internal payload now retains the NAudio MIT notice and
+`packaging\windows\NAudio-THIRD-PARTY-NOTICES.txt`, covering the shipped untrimmed
+Core/Wasapi attributions: Ray Molenkamp, Vannatech, Cockos WDL, Stephan Bernsee/
+Michael Knight, Steve Underwood/CMU, EarLevel and EQ cookbook work.
+System.Numerics.Tensors 9.0.0's full license and third-party notices are
+extracted unmodified from the exact package, separately from .NET 10 notices.
+The actual raw archives and published DLL bytes are verified by the existing
+packaging pipeline, with independent raw SHA-512 pins in `toolchain.json`.
+Normal NuGet content hashes and all existing root version pins remain intact.
+
+The shared `SyntheticTone` generator produces the same owned 200 ms test PCM
+for SpeakerSmoke and explicit fixture playback; no person's recording, voice,
+model or licensed sound asset was introduced.
+
 ## Distribution handoff
 
 The Windows system audio engine performs conversion; no external resampler DLL,

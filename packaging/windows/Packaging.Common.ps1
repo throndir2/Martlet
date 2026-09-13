@@ -99,7 +99,8 @@ function Assert-PublishLayout([string]$Root) {
         $directory = Join-Path $Root $entry
         $name = "Martlet.$entry"
         foreach ($file in @("$name.exe", "$name.dll", "$name.deps.json", "$name.runtimeconfig.json",
-                'Martlet.Core.dll', 'Martlet.Diagnostics.dll', 'coreclr.dll', 'hostfxr.dll',
+                'Martlet.Core.dll', 'Martlet.Diagnostics.dll', 'Martlet.Fixtures.dll', 'Martlet.Sessions.dll',
+                'Martlet.Audio.dll', 'coreclr.dll', 'hostfxr.dll',
                 'hostpolicy.dll', 'System.Private.CoreLib.dll', 'LICENSE.txt', 'THIRD-PARTY-NOTICES.txt')) {
             $null = Get-RequiredFile (Join-Path $directory $file)
         }
@@ -126,6 +127,12 @@ function Assert-PublishLayout([string]$Root) {
             throw "Wrong RID in $entry dependency manifest; expected $($pins.rid)."
         }
         $target = $deps.targets.PSObject.Properties[$deps.runtimeTarget.name].Value
+        foreach ($package in $pins.managedPackages) {
+            if ($null -eq $target.PSObject.Properties["$($package.id)/$($package.version)"]) {
+                throw "Missing or incorrect managed package $($package.id) $($package.version) in $entry."
+            }
+            $null = Get-RequiredFile (Join-Path $directory ([IO.Path]::GetFileName($package.runtimeAsset)))
+        }
         foreach ($library in $target.PSObject.Properties) {
             foreach ($kind in @('runtime', 'native', 'resources')) {
                 if ($library.Value.PSObject.Properties.Name -notcontains $kind) { continue }
@@ -156,9 +163,18 @@ function Assert-PublishLayout([string]$Root) {
         $null = Get-RequiredFile (Join-Path $Root "Desktop\$file")
     }
     foreach ($file in @('help\INTERNAL.txt', 'notices\DEPENDENCIES.txt',
+            'notices\NAudio-THIRD-PARTY-NOTICES.txt',
             'notices\Microsoft.WindowsDesktop.App\LICENSE.txt', 'notices\WPF-THIRD-PARTY-NOTICES.txt',
             'notices\WinForms-THIRD-PARTY-NOTICES.txt', 'notices\Inno-Setup-LICENSE.txt')) {
         $null = Get-RequiredFile (Join-Path $Root $file)
+    }
+    foreach ($notice in $pins.notices) {
+        $null = Get-RequiredFile (Join-Path $Root "notices\$($notice.file)")
+    }
+    foreach ($package in $pins.managedPackages) {
+        foreach ($notice in $package.notices) {
+            $null = Get-RequiredFile (Join-Path $Root "notices\$($notice.file)")
+        }
     }
     return $versions[0]
 }
@@ -281,6 +297,7 @@ function Invoke-Dotnet([string]$Sdk, [string[]]$Arguments, [string]$WorkingDirec
 function Get-PackagingProperties {
     @(
         "-p:CustomBeforeMicrosoftCommonTargets=$(Join-Path $PSScriptRoot 'Packaging.targets')"
+        "-p:CustomBeforeMicrosoftCommonCrossTargetingTargets=$(Join-Path $PSScriptRoot 'Packaging.targets')"
         '-p:PublishProfile=WindowsInternal'
         '-p:DebugType=None'
         '-p:DebugSymbols=false'
@@ -292,7 +309,8 @@ function Assert-RestoreGraphLocks([string]$GraphPath, [string]$LocksDirectory = 
     $graph = Get-Content -LiteralPath $GraphPath -Raw | ConvertFrom-Json
     foreach ($project in $graph.projects.PSObject.Properties.Value) {
         $expected = Join-Path $LocksDirectory "$($project.restore.projectName).packages.lock.json"
-        if ($project.restore.restoreLockProperties.nuGetLockFilePath -ine $expected) {
+        if ($project.restore.restoreLockProperties.PSObject.Properties.Name -notcontains 'nuGetLockFilePath' -or
+            $project.restore.restoreLockProperties.nuGetLockFilePath -ine $expected) {
             throw "Packaging lock import was not applied to $($project.restore.projectName)."
         }
         if (-not (Test-Path -LiteralPath $expected -PathType Leaf)) {
@@ -301,19 +319,24 @@ function Assert-RestoreGraphLocks([string]$GraphPath, [string]$LocksDirectory = 
     }
 }
 
+function Get-VerifiedPackageArchive($Assets, [string]$Id, [string]$Version, [string]$Sha512) {
+    $lowerId = $Id.ToLowerInvariant()
+    foreach ($base in $Assets.packageFolders.PSObject.Properties.Name) {
+        $candidate = Join-Path $base "$lowerId\$Version\$lowerId.$Version.nupkg"
+        if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+        if ((Get-FileHash -LiteralPath $candidate -Algorithm SHA512).Hash -ine $Sha512) {
+            throw "Package integrity failure: $Id. Do not package this cache."
+        }
+        return $candidate
+    }
+    throw "Required package archive missing: $Id. Restore with the pinned SDK."
+}
+
 function Copy-RuntimeNotices([string]$Root, [string]$AssetsPath) {
     $pins = Get-PackagingPins
     $assets = Get-Content -LiteralPath $AssetsPath -Raw | ConvertFrom-Json
     foreach ($package in $pins.runtimePackages) {
-        $archivePath = $null
-        foreach ($base in $assets.packageFolders.PSObject.Properties.Name) {
-            $candidate = Join-Path $base "$($package.id)\$($pins.runtimeVersion)\$($package.id).$($pins.runtimeVersion).nupkg"
-            if (Test-Path -LiteralPath $candidate -PathType Leaf) { $archivePath = $candidate; break }
-        }
-        if ($null -eq $archivePath) { throw "Required runtime archive missing: $($package.id). Restore with the pinned SDK." }
-        if ((Get-FileHash -LiteralPath $archivePath -Algorithm SHA512).Hash -ine $package.sha512) {
-            throw "Runtime package integrity failure: $($package.id). Do not package this cache."
-        }
+        $archivePath = Get-VerifiedPackageArchive $assets $package.id $pins.runtimeVersion $package.sha512
         $archive = [IO.Compression.ZipFile]::OpenRead($archivePath)
         try {
             $destinations = if ($package.id -like 'microsoft.netcore.*') { @('Desktop', 'Doctor') }
@@ -347,6 +370,26 @@ function Copy-RuntimeNotices([string]$Root, [string]$AssetsPath) {
                     finally { $stream.Dispose() }
                     Assert-Sha256 $published $hash
                 }
+            }
+        }
+        finally { $archive.Dispose() }
+    }
+    foreach ($package in $pins.managedPackages) {
+        $archivePath = Get-VerifiedPackageArchive $assets $package.id $package.version $package.sha512
+        $archive = [IO.Compression.ZipFile]::OpenRead($archivePath)
+        try {
+            $entry = $archive.GetEntry($package.runtimeAsset)
+            if ($null -eq $entry) { throw "Pinned managed asset missing: $($package.runtimeAsset)." }
+            $stream = $entry.Open()
+            try { $hash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($stream)) }
+            finally { $stream.Dispose() }
+            foreach ($application in @('Desktop', 'Doctor')) {
+                Assert-Sha256 (Join-Path $Root "$application\$([IO.Path]::GetFileName($package.runtimeAsset))") $hash
+            }
+            foreach ($notice in $package.notices) {
+                $entry = $archive.GetEntry($notice.source)
+                if ($null -eq $entry) { throw "Pinned package notice missing: $($package.id) $($notice.source)." }
+                [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, (Join-Path $Root "notices\$($notice.file)"))
             }
         }
         finally { $archive.Dispose() }

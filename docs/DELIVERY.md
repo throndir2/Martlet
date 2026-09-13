@@ -16,8 +16,8 @@ must not be confused with the broader planned milestones below.
 | F01 | Offline accessible text/status shell, explicit unconfigured-profile save, atomic validated settings and truthful shared-status CLI implemented. Local developer-host build/tests/CLI and bounded desktop-launch scope are documented; no clean consumer-OS claim. |
 | F03a/F03b/F04 | Merged deterministic 30-script fixture engine, bounded real PCM sink/WASAPI adapter and local diagnostic registry/CLI/WPF shell. Headless evidence is not actual listening or install qualification. |
 | F03c | Shared `FixtureSession` now joins production cursor/validator, ordered synthetic text, optional actual sink, shared status and accessible Desktop/Doctor commands. Ten novice scenarios, per-action tone permission, Stop/fresh IDs/epochs, no default device/network/write effects. |
-| F05 integration | Normal solution includes fixture projects/tests and session tests; both portable and Windows Doctor executable smokes run in the existing pinned lane. Packaging-specific integration awaits the separately owned F02 merge. |
-| F02 / G1 onward | Packaging integration is pending here. Clean-VM lifecycle, physical audio, real AI/GPU, Ubuntu, signing, rights and release qualification remain **NOT RUN / NOT PASSED**. |
+| F05 integration | Normal solution includes fixture projects/tests and session tests; portable/Windows Doctor executable smokes run in the existing pinned lane. Packaging includes actual fixture/audio references, separate normal/RID locks, notices and audio-OFF native fixture smokes. |
+| F02 / G1 onward | F02 merged at `8a762cd930741208daa61e9df9b8d860cf4768de` and was normally integrated, not copied. Self-contained payload/unsigned installer build paths exist. Clean-VM lifecycle, physical audio, real AI/GPU, Ubuntu, signing, rights and release qualification remain **NOT RUN / NOT PASSED**. |
 
 ### Requirements and acceptance status (F03c / coupled F05)
 
@@ -29,6 +29,7 @@ must not be confused with the broader planned milestones below.
 | R05/R14 / permission and diagnosis | Per-action default-No desktop confirmation or Windows CLI `--play-tone`; no consent persistence; no read-only probe effects. Fixture and live status kept separate and age honestly. | Capture/device onboarding and persistent destination consent belong to V01/V02. |
 | R08/R14 / AC-04/AC-10 | Exact report/exits/remedies; no startup writes; corrupt/newer/inaccessible originals preserved. Explicit fixture works without replacing profiles. | Logs/bundles/retention and complete troubleshooting matrix remain V06. |
 | R17 / F05 | Locked solution/build/tests plus real portable/Windows CLI and bounded interactive WPF smoke, using isolated data paths and audio OFF. No runner/pin/gate workaround. | Package payload/compiler and clean-VM/lifecycle/signature gates recorded separately; never equated with G1. |
+| R08/R17 / F02-F05 packaging | Both native Windows targets include actual Core/Fixtures/Sessions/Diagnostics/Audio and pinned runtime/NAudio/Tensors assets/notices. Multi-target RID lock routing cannot rewrite normal locks; package/installer omission and integrity assertions remain enforced. | Compiling an unsigned installer does not install it or pass AC-02, AC-11 or G1. |
 
 Local evidence uses official SDK 10.0.401 and `CI=true`: locked restore, Release
 build and full affected solution tests with one session-local `C:` output via
@@ -38,6 +39,24 @@ unchanged; no framework, runner or protection was weakened. Executable smokes
 select these actual outputs using `-ExecutablePath`, not stale repository
 binaries. See [DIAGNOSTICS](DIAGNOSTICS.md#offline-fixture-experience-f03c) for
 commands, public seam, metadata/content scope, bounds and deterministic cases.
+
+The merged STT adapter is an unrelated library and dedicated offline lane; it
+is not registered, referenced, configured or called by this fixture slice.
+Next boundaries remain V01 capture/device/VAD qualification, V02 resumable
+onboarding/credential/destination consent, and V03 role-specific adapters with
+separately authorized live evidence. An offline fixture pass does not complete
+any of those live integration or qualification tasks.
+
+Developer-host package evidence: the integrated self-contained payload contains
+620 inventoried files; actual native Doctor and interactive WPF fixture smokes
+passed with audio OFF and runtime discovery pointed away from the SDK.
+Production packaging assertions passed, including omitted new assemblies/
+notices, wrong managed-package versions/archive hashes, all-project RID lock
+regeneration, exact outer/inner effective restore sources and unchanged normal
+locks. The verified Inno Setup 7.1.0 compiler produced an internal unsigned
+installer below the proposed 200 MiB compressed target. The installer was
+**not executed**. This is build/fixture evidence, not a passed clean-VM install,
+uninstall, signature, physical-audio, novice or G1 gate.
 
 ## 1. Execution rules
 

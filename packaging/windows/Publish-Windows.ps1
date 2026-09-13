@@ -33,12 +33,14 @@ try {
         Invoke-Dotnet $sdk (@('restore', $project, '--locked-mode', '-r', $RuntimeIdentifier,
             '--artifacts-path', $build, '--verbosity', 'minimal') + $properties) -WorkingDirectory $root
         Invoke-Dotnet $sdk (@('publish', $project, '--no-restore', '-c', 'Release', '-r', $RuntimeIdentifier,
+            '--framework', 'net10.0-windows',
             '--artifacts-path', $build, '-o', (Join-Path $staging $application), '--verbosity', 'minimal') + $properties) -WorkingDirectory $root
     }
     [IO.Directory]::CreateDirectory((Join-Path $staging 'help')) | Out-Null
     [IO.Directory]::CreateDirectory((Join-Path $staging 'notices')) | Out-Null
     Copy-Item -LiteralPath "$PSScriptRoot\INTERNAL.txt" -Destination (Join-Path $staging 'help\INTERNAL.txt')
     Copy-Item -LiteralPath "$PSScriptRoot\DEPENDENCIES.txt" -Destination (Join-Path $staging 'notices\DEPENDENCIES.txt')
+    Copy-Item -LiteralPath "$PSScriptRoot\NAudio-THIRD-PARTY-NOTICES.txt" -Destination (Join-Path $staging 'notices\NAudio-THIRD-PARTY-NOTICES.txt')
     Copy-RuntimeNotices $staging (Join-Path $build 'obj\Martlet.Desktop\project.assets.json')
     Write-PayloadManifest $staging $sourceCommit $sourceDirty
     $manifest = Test-PayloadManifest $staging

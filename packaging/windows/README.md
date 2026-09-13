@@ -1,8 +1,9 @@
 # Internal Windows packaging (F02 skeleton)
 
 **INTERNAL DEVELOPMENT ONLY - UNSIGNED. Not a supported installer or a completed
-F02/AC-02/G1 gate.** This packages the current offline WPF status shell and Doctor.
-It does not implement AI, audio, onboarding, providers, transactional upgrades,
+F02/AC-02/G1 gate.** This packages the offline WPF fixture/status experience and
+Doctor self-test, including the bounded optional synthetic-tone sink.
+It does not implement AI, capture, onboarding, configured providers, transactional upgrades,
 rollback or signed distribution. No project code/asset license is granted.
 The existing foundation/planning documents retain their broader future gates.
 
@@ -61,7 +62,7 @@ escape-looking names such as `%2C` or `%3B`. Spaces and Unicode are supported.
 
 `Smoke-Package.ps1` always launches the actual native Doctor apphost. The
 `-InteractiveDesktop` switch additionally launches the native WPF apphost, reads
-the accessible first-run status and closes the window with bounded deadlines.
+first-run status and exercises the accessible fixture controls/Stop/retry/close.
 It is deliberately opt-in on interactive developer desktops; hosted CI runs
 Doctor only, not a simulated interactive or clean-OS claim. Both programs receive
 a unique temporary Unicode data path. The smoke checks read-only launch and
@@ -127,9 +128,13 @@ using the owning runtime pack from each application's actual dependency graph.
 WindowsDesktop can legitimately replace Core facade assemblies such as
 `WindowsBase.dll`; files are never accepted merely because two names match.
 
-The opt-in absolute `CustomBeforeMicrosoftCommonTargets` import sets **only**
+The opt-in absolute `CustomBeforeMicrosoftCommonTargets` and
+`CustomBeforeMicrosoftCommonCrossTargetingTargets` imports set **only**
 `NuGetLockFilePath` to `packaging\windows\locks\<project>.packages.lock.json` for
-every project in both graphs. RID restore needs a different target graph from
+every project in both graphs, including multi-target Audio/Doctor outer builds.
+Both applications publish explicitly with `--framework net10.0-windows`;
+portable Doctor remains an SDK text-only target, never a fake audio backend.
+RID restore needs a different target graph from
 the platform-neutral foundation, so there are two intentional lock sets.
 Normal foundation commands/imports/locks are unchanged. Before ordinary locked
 restore, the wrapper generates the real restore graph and requires every RID
@@ -181,6 +186,35 @@ working directories are unchanged. Effective sources include SDK-declared
 that SDK behavior with an empty test-only folder; it never modifies the SDK or
 the caller's environment. Source matching remains exact, with no wildcard
 allowance for arbitrary local/network feeds.
+
+## Fixture integration and dependency evidence
+
+The seven RID locks cover Core, Audio, Fixtures, Sessions, Diagnostics, Desktop
+and Doctor. Normal locks remain separate; maintenance regression checks hash
+every normal source lock before/after regeneration of **all** copied RID locks.
+The multi-target outer-build import is necessary: without it, NuGet can write
+RID targets into normal Audio/Doctor locks. Both import modes are preflighted;
+missing or stale locks remain errors, not automatically repaired by publishing.
+
+`toolchain.json` additionally pins the raw official archives for the already
+selected NAudio.Wasapi/Core 3.1.0 and System.Numerics.Tensors 9.0.0. Publishing
+compares each app's actual DLL bytes with its pinned package asset and checks
+the version in the actual dependency graph. No root package/SDK/source upgrade
+is involved. Raw signed-archive SHA-512 is intentionally distinct from NuGet's
+normal lock `contentHash`. The NAudio root MIT notice, bundled Core/Wasapi
+third-party attributions, and complete Tensors 9.0.0 license/notices accompany
+the runtime's own notices. No project license grant or distribution approval
+is implied. Missing new assemblies/notices, wrong dependency versions and
+corrupt archives have production-path negative coverage.
+
+`Smoke-Package.ps1` reuses the canonical executable smokes in bounded child
+PowerShell processes with runtime-discovery variables still pointed away from
+the SDK. Both the native Doctor's ten self-test choices and, when explicitly
+interactive, WPF's real fixture controls run with **audio OFF**. Permissioned
+tone controls are never invoked by automation. Fixture success does not turn
+the ordinary status report green; profiles and corrupted originals are not
+silently replaced. The installed `help\INTERNAL.txt` describes exact commands,
+exits, synthetic text/refusal and the separate 200 ms tone permission.
 
 ## Inno Setup provenance and terms
 
