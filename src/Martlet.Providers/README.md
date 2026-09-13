@@ -1,10 +1,11 @@
-# Named OpenAI provider adapters: V03a and V03b
+# Named OpenAI provider adapters: V03a, V03b and V03c
 
 Provider library only: bounded-file transcription (V03a) and bounded text
-Responses streaming (V03b). Neither adapter is wired into the application.
+Responses streaming (V03b), and bounded PCM speech transport (V03c). These
+adapters are not wired into the application.
 There is no automatic network activity, credential lookup, retry, model
-selection, cloud fallback or live qualification. V03c TTS and V04 orchestration
-remain separate work.
+selection, cloud fallback or live qualification. V04 orchestration remains
+separate work.
 
 ## V03a: bounded-file transcription
 
@@ -469,7 +470,220 @@ offline production-path tests, not measurements of the service.
 **NOT RUN:** authorized live inference, actual account/model availability,
 latency/accuracy/refusal frequency, prices/billing/retention settings, consumer
 Windows behavior, TTS, end-to-end voice orchestration and G2. Fixtures do not
-qualify any of these. V03c can reuse the narrow internal transport/credential
-primitives; it needs its own speech/text-disclosure authorization, voice/format
-contract and evidence. V04 owns current-epoch filtering, session budgets,
-bounded validated text delivery, TTS staging and Stop. Neither is wired here.
+qualify any of these. V03c below reuses the narrow internal transport/credential
+primitives with separate speech authorization and evidence. V04 owns
+current-epoch filtering, session budgets, bounded validated text delivery,
+TTS staging and Stop. Neither is wired into the application here.
+
+## V03c: bounded raw-PCM speech transport
+
+`OpenAiSpeechSynthesisAdapter` implements exactly one text segment per
+`POST https://api.openai.com/v1/audio/speech`. It returns Core `PcmFrame`s,
+**not playback**. It has no player, microphone, LLM sentence segmenter, voice
+cloning, reference audio, training, downloads, model discovery, arbitrary
+endpoint, UI, OS-store implementation, retry or fallback.
+
+### Primary sources and explicit subset
+
+Read-only primary sources accessed **2026-09-12 (America/Los_Angeles)**:
+
+| Source | Observed contract and chosen subset |
+| --- | --- |
+| [Create speech REST reference](https://developers.openai.com/api/reference/resources/audio/subresources/speech/methods/create) | Required `model`, `voice`, `input`; input at most 4,096 characters. `response_format:"pcm"` and `stream_format:"audio"` select raw audio rather than SSE. Optional `instructions` and `speed` exist but are **not exposed/sent** by this adapter. |
+| [Text-to-speech guide](https://developers.openai.com/api/docs/guides/text-to-speech) | Documents chunked audio transport, headerless 24 kHz signed 16-bit little-endian PCM, and built-in voices `alloy`/`coral`. The Java raw-PCM example specifies 24,000 Hz, 16 bits, one channel, signed, little-endian. The guide requires clear AI-generated-voice disclosure. Its differing voice counts are not copied as a guarantee. |
+| [GPT-4o Mini TTS model](https://developers.openai.com/api/docs/models/gpt-4o-mini-tts) | Documents snapshot `gpt-4o-mini-tts-2025-12-15`, text input, audio output, speech endpoint and 2,000 input-token maximum. No account access or billing entitlement was observed. |
+| [Official Python request types](https://github.com/openai/openai-python/blob/e12b81d3bbf644ec7045e152d69bc4b68d69cd48/src/openai/types/audio/speech_create_params.py), [speech resource](https://github.com/openai/openai-python/blob/e12b81d3bbf644ec7045e152d69bc4b68d69cd48/src/openai/resources/audio/speech.py), [audio helper](https://github.com/openai/openai-python/blob/e12b81d3bbf644ec7045e152d69bc4b68d69cd48/src/openai/helpers/local_audio_player.py) | Immutable schema cross-check at `e12b81d3bbf644ec7045e152d69bc4b68d69cd48`; resource requests `Accept: application/octet-stream`, helper agrees on 24 kHz mono int16. SDK/player source is only read, never installed, copied or executed. This adapter does not inherit SDK retries or whole-audio buffering. |
+| [Data controls](https://developers.openai.com/api/docs/guides/your-data), [API pricing](https://developers.openai.com/api/docs/pricing), [error codes](https://developers.openai.com/api/docs/guides/error-codes) | Endpoint/account-specific retention, mutable billing and known status codes require separate owner review. No-training-by-default is not no-retention. Costs and billed tokens remain unknown for this raw-body subset. |
+
+Only **`gpt-4o-mini-tts-2025-12-15`**, explicit built-in **`alloy` or `coral`**,
+and **`SpeechOutputFormat.Pcm24KhzMono16Le`** are allowed. No model/voice default
+or automatic selection is provided. The snapshot is pinned; upstream built-in
+voice implementation is not independently version-pinned. Other documented
+models, voices, custom-voice IDs/objects, formats and SSE are **unsupported by
+this adapter**, not necessarily by OpenAI. The allowed tuple is **live
+unverified**, not ready/accessible merely because it is cataloged.
+
+The actual JSON has exactly five properties: `model`, `voice`, `input`,
+`response_format:"pcm"`, `stream_format:"audio"`. In particular it has **no
+Responses `store:false`, `stream:true`, conversation/history, tools, extra
+headers/body dictionaries, speed or instructions**. Omitted speed uses the
+upstream documented default 1.0; this is not a configurable local setting.
+Adding style or speed later requires extending the consent scope and tests.
+
+### Public API and one-attempt authorization
+
+| Surface | Contract |
+| --- | --- |
+| `SpeechSynthesisSelection(ModelAlias, UpstreamModelId, Voice, OutputFormat)` | Explicit immutable selection. Alias is an internal Core identifier, never substituted for the upstream ID. `Describe(selection)` validates passively with `NotRun`/unknown transport/cancellation. |
+| `BoundedSpeechInput(text)` | One explicitly supplied immutable string, nonempty valid Unicode, bounded to 1,536 UTF-8 bytes and UTF-16 units. No implicit chat/memory lookup. An opaque private identity distinguishes even separately constructed identical strings. |
+| `SpeechSynthesisLimits` | Immutable byte/sample-duration/error-body/first-audio/idle/total limits; every value must equal the authorization. `MaxSamples` is the lesser byte-derived and duration-derived **per-channel sample** budget. |
+| `SpeechDisclosureAuthorization(binding, selection, input, ids, epoch, limits, expiresAt, allowTextDisclosure, allowPotentialCharges, aiGeneratedVoiceDisclosureConfirmed)` | Single-use permission for exact approved origin, **TTS** role, model/alias/voice/format, the **same input instance**, all three IDs, original epoch, limits and expiry. All three disclosure/charge flags must be true. Not interchangeable with STT or LLM authorization. |
+| `OpenAiSpeechSynthesisAdapter.Create(source, timeProvider?)` | Passive safe factory. Owns a reusable HttpClient using existing fixed-origin, nonredirecting, normal-TLS transport. No public handler/client/endpoint override. |
+| `adapter.Stream(context, selection, input, limits, authorization, token)` | Captures original UTC/monotonic windows immediately; returns a lazy, single-enumeration `SpeechSynthesisStream`. No credentials/JSON/network until the first pull passes authorization. |
+| `SpeechSynthesisStream : IAsyncEnumerable<PcmFrame>` | Pulls at most one 20 ms frame at a time; final frame may be shorter. No worker/producer queue or accumulated audio. Concurrent `MoveNextAsync`/disposal on the same enumerator is unsupported; use one serialized consumer. |
+| `stream.Format`, `stream.Capabilities`, `stream.StartedEvent` | Core format and optional Started control event at sequence 0. Attempt provenance is `Fixture` or production boundary `Live`, not successful inference/readiness evidence. Transport is supported at the adapter boundary; **incremental synthesis remains Unknown**, cancellation is only `RequestAbort`. |
+| `stream.Result` | Null until enumeration ends/disposal; then original context, outcome, known HTTP status, delivered per-channel samples, `IsPartial`, sanitized failure and unknown cost/usage. Does not collect audio. |
+| `result.FinalSampleCount`, `result.ProviderTerminal` | Only completion provides final samples and `HttpBodyCompleted`. Neither means heard, played, GPU stopped or semantic text-to-audio completeness. |
+| `result.ToTerminalEvent()` | Optional Core Completed/Canceled/Failed control at sequence 1. Completion alone carries `FinalSampleCount`; failures use existing Core codes at `Stage.Synthesis`. PCM sequence numbers are a separate channel starting at 0. |
+
+The future approved calling path must obtain text-disclosure and potential-charge
+permission and give end users clear disclosure that speech is AI-generated.
+`AiGeneratedVoiceDisclosureConfirmed` is a caller assertion for that contract,
+**not an existing UI or library-authenticated human**. The library cannot
+authenticate the caller's authority or defend against malicious same-process
+code. Saved settings, credentials, a catalog entry and successful HTTP are not
+consent. No agent/live authorization is manufactured by this implementation.
+
+Authorization is atomically consumed before secret resolution, JSON construction
+or send. It stays consumed on failure, cancellation and partial output. Input
+identity prevents substituting another segment under the same permission;
+immutable strings/records prevent caller mutation through shared collections.
+This is a one-attempt permission seam, **not a monetary ceiling**. Raw audio
+returns no usage accounting in this subset; billed input/output tokens and
+`EstimatedCost` are null, including failures. Null must never mean free/zero.
+
+The existing `ProviderRequestWindow`, `SingleSendContent`, bound credential
+source, handler, bounded optional-error reader and status/Retry-After
+classification are reused unchanged. The only shared-code delta is additive
+provider-local failure details and synthesis-specific messages in
+`ProviderFailure`; STT/LLM paths and Core contracts are unchanged.
+
+Synchronous original-window checks run after async credential lookup, before
+JSON construction/send, at actual content serialization, around each network
+read and before each output/terminal acceptance. Absolute consent expiry and
+original monotonic duration both apply, even with late timer delivery, delayed
+enumeration or wall-clock rollback. Cancellation takes precedence. An actual
+request/consent timer abort is a deadline failure; a synchronous consent cutoff
+is `ConsentExpired`. Late PCM/EOF is never accepted as a successful terminal.
+
+Credentials must match origin/TTS/model and are disposed when initialization
+ends, including mismatches/late returns. The secret is attached only to the
+individual request Authorization header, never to JSON, URI or default headers.
+Disposal drops managed references, **not guaranteed erasure** of strings or HTTP
+copies. The host must keep process-wide HTTP instrumentation from logging
+requests. Ordinary input/selection/authorization/result serialization and
+`ToString()` exclude content, raw vendor errors and credential-bearing
+configuration. **Core PcmFrame is an explicit content boundary, not log
+metadata**; do not serialize/log frames or HTTP objects.
+
+### Raw framing, bounds and partial results
+
+HTTP 200 must declare exactly one parseable, parameterless
+`application/octet-stream` or `audio/pcm` media type (case insensitive), with
+**no Content-Encoding**. This is an explicit local acceptance policy, not a
+claim that a live endpoint's headers were observed. Missing/malformed media,
+JSON/problem JSON, WAV, compressed audio, SSE, L16 (different byte order),
+unknown parameters or encodings fail before PCM. No codec/decompression or
+sample-rate guessing is performed. Chunked transfer framing is handled by
+HttpClient, not confused with Content-Encoding.
+
+Raw PCM has no self-identifying header. A bounded first-frame check additionally
+rejects recognizable RIFF/RIFX/RF64, Ogg, FLAC, ID3, MPEG/AAC sync, gzip/ZIP and
+JSON/markup-like prefixes even if mislabeled binary HTTP 200. JSON detection
+allows UTF-8 BOM and leading whitespace within the first 64 bytes. These are
+**conservative ambiguous-prefix rejections**, not a universal codec/JSON
+detector: PCM sharing a reserved signature can be rejected, and unrecognized
+or heavily padded non-PCM cannot always be distinguished from raw samples.
+Actual selected-route qualification remains required before playback.
+
+Arbitrary byte fragments, including single-byte reads, are combined in one
+960-byte frame buffer. Yielded frames are always sample-aligned, mono PCM16LE
+at 24 kHz, maximum 480 samples/20 ms (below Core's 100 ms ceiling). Each frame
+owns its copy. Sequences and per-channel sample offsets start at 0 and remain
+contiguous; all IDs/epochs remain the original request's. No resampling,
+time-stretching, phonemes or visemes are inferred.
+
+| Resource | Default / hard ceiling |
+| --- | --- |
+| Supplied text | 1,536 UTF-8 bytes; caller can lower. Below upstream 4,096-character bound; deliberately short segments for the 2,000-token model. No exact tokenizer/billed-token estimate or automatic splitting is claimed. |
+| Audio output | 4,320,000 bytes and 90 seconds = 2,160,000 mono samples; both independently lowerable. Duration uses integer ticks/samples, not rounded seconds or bytes-as-samples. |
+| Adapter PCM staging | One 960-byte buffer plus current owned frame, no producer queue/readahead past the current frame. At most one extra byte for whole-body/declared-length overflow detection. HTTP/OS transport buffers are separate and not a synthesis-memory guarantee. |
+| Optional HTTP error body | Default 16 KiB / hard 64 KiB; reused strict Core-backed JSON classifier. Unknown/malformed/oversized/unreadable bodies cannot erase known HTTP status. |
+| First audio | Default 20 seconds from **Stream creation**, including credentials/headers and enough bytes for a frame or final short frame. Arbitrary tiny fragments do not reset progress. |
+| Idle | Default 10 seconds **after the first frame**, reset only by accepted frames. Consumer pauses consume this budget; timers dispose acquired bodies without any background reader. |
+| Total request | Default/hard 90 seconds, also bounded by original request deadline and authorization expiry. First/idle are each configurable only up to 90 seconds. |
+| Retry-After | Known error advice clamped to 0-300 seconds; no automatic retry. |
+
+Raw `stream_format:"audio"` has **no custom JSON terminal**. Successful
+completion requires clean HTTP-body EOF, nonempty aligned samples and matching
+Content-Length when supplied. A short final aligned frame is delivered once,
+then the consumer must continue pulling through end to obtain the result.
+Odd-byte EOF, declared-length mismatch, `HttpIOException`/`HttpRequestException`
+response-ended failures, oversize or deadlines fail explicitly.
+
+**Known limit:** absent Content-Length, a clean but prematurely shortened,
+sample-aligned body is indistinguishable from a legitimately shorter
+synthesis. It is reported as `HttpBodyCompleted` with the actual final sample
+count, not universal truncation detection or proof that every input word was
+synthesized. Only bytes exposed inside the HTTP body are inspected; transport
+framing beyond it belongs to HttpClient. Streaming transport does not prove
+incremental provider synthesis.
+
+Once frames have been delivered, later failure/cancel/deadline yields
+`IsPartial=true`, retains `DeliveredSampleCount`, and has **no successful final
+sample count/provider terminal**. The failed/canceled result does not retract
+already delivered PCM or say it was audible. Known 401/403/429 preserve status,
+remedy and bounded Retry-After even if their optional body is unreadable;
+Stop/deadlines take precedence over status. All failures are nonretryable at
+Core's boundary. No replay, resume, reconnect, model switch or second paid
+request is attempted after partial audio.
+
+Use `await foreach`/early `break` or explicitly dispose the enumerator.
+Disposal (including before first pull) produces local `Canceled`, not a forged
+delivered terminal. Ordinary completion releases request/response/stream/timers
+before returning end-of-stream. Adapter disposal cancels active operations;
+cancel/await/dispose outstanding consumers before discarding the adapter.
+Abandoning an enumerator without disposal is an ownership bug. Canceling HTTP
+means local discard/request abort, **not provider compute cancellation,
+deletion, no charge or permission for an automatic repeat**.
+
+### V04 boundary and evidence
+
+```csharp
+using var adapter = OpenAiSpeechSynthesisAdapter.Create(credentialSource);
+var input = new BoundedSpeechInput(alreadySelectedSpeechSegment);
+// Obtain actual human disclosure/charge permission for THIS input and selection.
+// authorizationFromApprovedCallingPath must refer to this same input instance.
+var stream = adapter.Stream(context, selectedModelVoiceFormat, input,
+    displayedLimits, authorizationFromApprovedCallingPath, stopToken);
+await foreach (var frame in stream)
+{
+    // V04 checks current IDs/epoch, preserves order, and awaits its bounded sink.
+    await ConsumeCurrentEpochFrameAsync(frame, stopToken);
+}
+var result = stream.Result!; // Provider completion/partial state, never playback.
+// Only Completed may declare the sink's final expected sample count.
+// On failure/Stop discard queued audio per V04 policy; never auto-replay it.
+```
+
+V04 owns validated LLM sentence/markup segmentation, one consented segment per
+request, aggregate concurrency/session/cost budgets, cross-request playback
+ordering, current-epoch rejection, Stop, actual PCM sink integration and
+separate playback completion. The Core text-sequence validator intentionally
+does not accept TTS; do not feed it PCM or infer audio completion from LLM
+events. V03c uses the actual Core PcmFrame boundary directly and adds **no
+Audio project dependency, shared schema changes or UI wiring**.
+
+Offline tests reuse the existing recording HTTP handler, controlled byte
+streams and fake clock through the production serializer, HTTP/error path,
+framer and Core PCM constructor. They cover exact URI/header/five-field JSON,
+every authorization bound, concurrent one-use consumption, stale windows,
+credential cleanup, single-byte/sample/frame splits, final short frames,
+zero/odd/declared/oversized audio, 90-second hard-bound completion,
+media/signatures, unreadable errors, original IDs, partial states,
+backpressure, late EOF, timers, disposal, reusable clients and no retry.
+
+Local supplied read-only SDK **10.0.401**, `CI=true`, direct-project locked
+restore, Release `build --no-restore` and `test --no-build`: **574 cases passed,
+zero skipped** (all **323 existing STT/LLM regressions unchanged**, **251 new
+speech cases**). Release build: zero warnings/errors. Outputs/evidence are kept
+under the session's own C: artifacts, with process-local SDK/CLI environment.
+The existing SHA-pinned provider CI discovers these tests unchanged; no new
+packages, lock files, pins, solution edits or CI jobs.
+
+**NOT RUN:** live audio quality/intelligibility, model/voice/account access,
+actual billing/retention, service latency/first-audio timing, actual TLS/endpoint
+behavior, real credential storage, UI disclosure, speaker/microphone/device
+tests and end-to-end voice orchestration. **G2 has not passed.** No inference
+requests, live keys, voice assets, physical audio or free-service promise were
+used to produce this fixture evidence.
