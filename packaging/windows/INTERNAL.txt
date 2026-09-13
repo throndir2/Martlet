@@ -1,0 +1,43 @@
+MARTLET - INTERNAL DEVELOPMENT ONLY - UNSIGNED
+
+This is an offline status shell and bundled Doctor, not an AI voice companion,
+fixture demo or supported novice release. There is no microphone capture,
+playback, provider/key/model setup, login startup or network inference on launch.
+Do not publish this installer or tell users to bypass SmartScreen/antivirus.
+No project code or asset license is granted. Distribution/signing remains gated.
+
+Start menu: Martlet (Internal) opens the status shell.
+Martlet Doctor (Internal) opens a command window and prints the same status.
+In that window, run Martlet.Doctor.exe --help for the implemented CLI options.
+Doctor status can return 2 (incomplete/not ready), which is expected here.
+No self-test, AI conversation or support-bundle promise is implied by this build.
+
+Installed program files:
+  %LocalAppData%\Programs\Martlet Internal\Desktop\Martlet.Desktop.exe
+  %LocalAppData%\Programs\Martlet Internal\Doctor\Martlet.Doctor.exe
+
+Default settings (SEPARATE from program files):
+  %LocalAppData%\Martlet\settings.json
+Launch reads settings but does not create them. The explicit Create unconfigured
+local profile action writes settings; it does not connect a provider.
+Malformed/newer settings are reported, not reset.
+
+Repair/reinstall for this internal skeleton:
+Close both apps and rerun the SAME installer to replace its owned program files.
+No data migration, transactional upgrade, downgrade or rollback is implemented.
+Do not install an older version over newer data as a recovery strategy.
+
+Uninstall through Windows Settings > Apps > Installed apps > Martlet (Internal).
+Only installed files and shortcuts are removed. Settings at the separate path
+above survive. There is no purge option and no recursive user-data deletion.
+The installer does not write, migrate, back up or repair those settings.
+
+If launch fails, retain the exact version, installer SHA-256 and error message.
+Do not reset data, elevate, install a runtime, or disable Windows protection to
+hide a failure. This self-contained build is expected to carry its own runtime.
+Manifest/checksums and upstream notices are included alongside the applications.
+Checksums detect corruption; they are not a publisher signature or trust grant.
+
+Windows 11 25H2 x64 is the target, not a qualified support claim. Clean-machine
+install/uninstall/repair, interrupted upgrade, disk-full, novice usability and
+signed-download tests still require an isolated Windows VM and release approval.
