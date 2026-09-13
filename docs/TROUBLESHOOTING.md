@@ -16,6 +16,13 @@ revocation still applies when switching windows; troubleshooting does not grant
 permission or relax conversation safeguards. Audio setup remains the place for
 specific local microphone/output tests and remedies.
 
+Opening Troubleshooting inside an active modal setup/audio/conversation workflow
+transfers its presentation into that workflow. The previous disabled window's
+timer/content bindings retire; the same support controller, recording state and
+outstanding IO remain owned. It does not start or restart recording, and no
+preview confirmation transfers. Closing Troubleshooting or its owner retires
+the presentation and requests Stop even when WPF skips the child's Closing event.
+
 ## Record only when needed
 
 **Record troubleshooting metadata** is OFF at every launch. There is no saved

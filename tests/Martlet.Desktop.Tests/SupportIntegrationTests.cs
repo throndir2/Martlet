@@ -1,8 +1,11 @@
 using System.IO.Compression;
 using System.Security.Cryptography;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Interop;
 using System.Windows.Threading;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
@@ -16,6 +19,140 @@ namespace Martlet.Desktop.Tests;
 public sealed class SupportIntegrationTests
 {
     private const string Canary = "PRIVATE-AUTHORED-TRANSCRIPT-KEY-CANARY";
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public Task ShownOwnerCloseRetiresOwnedSupportEvenWithoutChildClosing(bool blocked) => OnDispatcher(async () =>
+    {
+        using var scope = new Scope();
+        using var release = new ManualResetEventSlim();
+        var fs = new FaultFiles();
+        var controller = await Ready(scope, new Backend(fs));
+        var owner = new Window { ShowActivated = false, ShowInTaskbar = false };
+        owner.Show();
+        var window = new TroubleshootingWindow(controller) { Owner = owner, ShowActivated = false, ShowInTaskbar = false };
+        window.Show();
+        TroubleshootingWindow? reopened = null;
+        try
+        {
+            Click(window, "FreezeButton");
+            await Until(() => Field<TabControl>(window, "PreviewTabs").Items.Count == 5);
+            await Done(controller.StartRecording());
+            if (blocked)
+            {
+                fs.WriteRelease = release;
+                controller.Record([Event()]);
+                await fs.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            var closingRaised = false;
+            window.Closing += (_, _) => closingRaised = true;
+            owner.Close();
+            Assert.False(window.IsVisible);
+            Assert.False(closingRaised); // Actual WPF owned-window closure bypasses Closing.
+            Assert.False(controller.Recording);
+            Assert.False(window.IsObserving);
+            Assert.Empty(Field<TabControl>(window, "PreviewTabs").Items);
+            Assert.Null(controller.Preview);
+            if (blocked)
+            {
+                reopened = new(controller);
+                Assert.True(controller.IsBusy);
+                Assert.False(Field<Button>(reopened, "RecordButton").IsEnabled);
+            }
+            release.Set();
+            await Until(() => !controller.HasResources);
+        }
+        finally
+        {
+            release.Set();
+            reopened?.Close(); window.Close(); owner.Close();
+            controller.CancelAndClose();
+            await Until(() => !controller.HasResources);
+        }
+    });
+
+    [Theory]
+    [InlineData("SetupButton", "SetupTroubleshooting", false)]
+    [InlineData("AudioSetupButton", "AudioTroubleshooting", false)]
+    [InlineData("ConversationButton", "LiveTroubleshooting", false)]
+    [InlineData("SetupButton", "SetupTroubleshooting", true)]
+    [InlineData("AudioSetupButton", "AudioTroubleshooting", true)]
+    [InlineData("ConversationButton", "LiveTroubleshooting", true)]
+    public Task MainSupportCanBePresentedInsideEachShownModalWorkflow(string workflowButton, string supportButton, bool blocked) => OnDispatcher(async () =>
+    {
+        using var scope = new Scope();
+        using var release = new ManualResetEventSlim();
+        var fs = new FaultFiles();
+        var controller = new SupportController(scope.Data, new Backend(fs));
+        var main = new MainWindow(new SettingsStore(scope.Data), null, controller) { ShowActivated = false, ShowInTaskbar = false };
+        main.Show();
+        TroubleshootingWindow? original = null;
+        Window? modal = null;
+        var observed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            await Until(() => Field<Button>(main, workflowButton).IsEnabled);
+            ButtonById(main, "OpenTroubleshooting").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            original = main.OwnedWindows.OfType<TroubleshootingWindow>().Single();
+            Click(original, "RecordButton");
+            await Until(() => Field<TextBox>(original, "WorkText").Text.Contains("Recording: ON", StringComparison.Ordinal) &&
+                !controller.IsBusy && Field<Button>(main, workflowButton).IsEnabled);
+            if (blocked)
+            {
+                fs.WriteRelease = release;
+                controller.Record([Event()]);
+                await fs.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            _ = Dispatcher.CurrentDispatcher.BeginInvoke(async () =>
+            {
+                try
+                {
+                    modal = main.OwnedWindows.Cast<Window>().Single(w => w is SetupWindow or AudioSetupWindow or LiveConversationWindow);
+                    Assert.True(modal.IsVisible);
+                    ButtonById(modal, supportButton).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    var current = modal.OwnedWindows.OfType<TroubleshootingWindow>().SingleOrDefault() ??
+                        main.OwnedWindows.OfType<TroubleshootingWindow>().Single();
+                    Assert.True(current.IsEnabled);
+                    Assert.True(IsWindowEnabled(new WindowInteropHelper(current).Handle));
+                    Assert.NotSame(original, current);
+                    Assert.False(original.IsObserving);
+                    Assert.True(controller.Recording);
+                    Assert.True(Field<Button>(current, "StopButton").IsEnabled);
+                    if (blocked)
+                    {
+                        Assert.True(controller.IsBusy);
+                        Assert.False(Field<Button>(current, "FreezeButton").IsEnabled);
+                    }
+                    Click(current, "StopButton");
+                    Assert.False(controller.Recording);
+                    if (blocked) Assert.True(controller.IsBusy);
+                    release.Set();
+                    await Until(() => Field<TextBox>(current, "WorkText").Text.Contains("Recording: OFF", StringComparison.Ordinal) &&
+                        Field<Button>(current, "FreezeButton").IsEnabled);
+                    Click(current, "FreezeButton");
+                    await Until(() => Field<TabControl>(current, "PreviewTabs").Items.Count == 5);
+                    Assert.True(modal.IsVisible);
+                    current.Close();
+                    observed.TrySetResult();
+                }
+                catch (Exception error) { observed.TrySetException(error); }
+                finally { modal?.Close(); }
+            });
+            Click(main, workflowButton); // Enters the real WPF modal dispatcher frame.
+            await observed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        finally
+        {
+            release.Set();
+            modal?.Close(); original?.Close();
+            foreach (var child in main.OwnedWindows.Cast<Window>().ToArray()) child.Close();
+            controller.CancelAndClose();
+            await Until(() => !controller.HasResources);
+            main.Close();
+            await Until(() => !main.IsVisible);
+        }
+    });
 
     [Fact]
     public Task PassiveReportOnlyUiRequiresExactDefaultNoConfirmation() => OnDispatcher(async () =>
@@ -433,6 +570,23 @@ public sealed class SupportIntegrationTests
         }
     }
     private static T Field<T>(Window window, string name) where T : FrameworkElement => Assert.IsType<T>(window.FindName(name));
+    private static Button ButtonById(DependencyObject root, string id)
+    {
+        if (root is Button button && AutomationProperties.GetAutomationId(button) == id) return button;
+        foreach (var child in LogicalTreeHelper.GetChildren(root).OfType<DependencyObject>())
+        {
+            var found = Find(child);
+            if (found is not null) return found;
+        }
+        throw new InvalidOperationException("Required authored button missing: " + id);
+        Button? Find(DependencyObject current)
+        {
+            if (current is Button candidate && AutomationProperties.GetAutomationId(candidate) == id) return candidate;
+            foreach (var child in LogicalTreeHelper.GetChildren(current).OfType<DependencyObject>())
+                if (Find(child) is { } found) return found;
+            return null;
+        }
+    }
     private static void Click(Window window, string name) => Field<Button>(window, name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
     private static async Task Until(Func<bool> condition)
     {
@@ -441,6 +595,9 @@ public sealed class SupportIntegrationTests
         Assert.True(condition());
     }
     private static async Task Heartbeat() => await Dispatcher.CurrentDispatcher.InvokeAsync(() => { }, DispatcherPriority.Background);
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowEnabled(nint window);
     private static async Task OnDispatcher(Func<Task> action)
     {
         var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

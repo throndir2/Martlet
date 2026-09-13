@@ -35,11 +35,13 @@ public partial class MainWindow : Window
     private SetupOperation? fixtureOperation;
     private readonly TaskCompletionSource fixtureQuarantine = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    public MainWindow(SettingsStore? store, string? startupError)
+    public MainWindow(SettingsStore? store, string? startupError) : this(store, startupError, new(store?.DataDirectory)) { }
+
+    internal MainWindow(SettingsStore? store, string? startupError, SupportController support)
     {
         InitializeComponent();
         this.store = store;
-        support = new(store?.DataDirectory);
+        this.support = support;
         audioSetup = new(setupOperations, new WindowsAudioDeviceCatalog(), new WasapiCaptureDeviceFactory(), new WasapiDeviceFactory());
         audioSessionEvents.LockedChanged += audioSetup.SetSessionLocked;
         var vault = new WindowsCredentialStore();
@@ -247,11 +249,15 @@ public partial class MainWindow : Window
     private void Troubleshooting_Click(object sender, RoutedEventArgs e) => OpenTroubleshooting(this);
     private void OpenTroubleshooting(Window owner)
     {
-        if (troubleshooting is not null) { troubleshooting.Activate(); return; }
-        troubleshooting = new(support, RefreshAsync) { Owner = owner };
-        troubleshooting.Closed += (_, _) => troubleshooting = null;
-        // Nonmodal: explicit local recording can observe actions in the existing setup/live surfaces.
-        troubleshooting.Show();
+        if (troubleshooting is { } existing && existing.Owner == owner) { existing.Activate(); return; }
+        var previous = troubleshooting;
+        var next = new TroubleshootingWindow(support, RefreshAsync) { Owner = owner };
+        next.Closed += (_, _) => { if (ReferenceEquals(troubleshooting, next)) troubleshooting = null; };
+        // A pre-existing HWND is disabled by ShowDialog. Create a presentation in the active
+        // modal context, not a replacement resource owner or a globally re-enabled window.
+        next.Show();
+        troubleshooting = next;
+        previous?.CloseForPresentationTransfer();
     }
 
     private void Stop_Click(object sender, RoutedEventArgs e) => model?.Stop();

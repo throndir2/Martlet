@@ -65,7 +65,7 @@ transfer/STT expiry, policy ownership quarantine and stale Stop. Actual native
 Desktop/portable Doctor/Windows Doctor executable smokes remain no-key/network/
 audio OFF. Their observed results are not a passed live account/device gate.
 
-V06b developer-host evidence uses the same pinned SDK and one isolated C:
+V06b's initial `b5dc308` developer-host evidence uses the same pinned SDK and one isolated C:
 artifact tree: 1,855 integrated solution tests (including both Audio targets),
 plus repeated direct Support 47, Providers 635, Conversation 129 and
 Participation 121. These repeated runs are not additional distinct cases.
@@ -77,7 +77,7 @@ source changes during confirmation, noncooperative IO/cancellation, faults,
 retained cleanup and preserved unrelated targets. Packaging qualification for
 this slice is tracked separately from this application/test checkpoint.
 
-Developer-host package evidence: the integrated self-contained payload contains
+Historical F03c/F05 developer-host package evidence: that self-contained payload contained
 620 inventoried files; actual native Doctor and interactive WPF fixture smokes
 passed with audio OFF and runtime discovery pointed away from the SDK.
 Production packaging assertions passed, including omitted new assemblies/

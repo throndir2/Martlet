@@ -19,8 +19,9 @@ public partial class TroubleshootingWindow : Window
     private readonly TimeSpan observationTimeout;
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private SupportPreview? displayed;
-    private bool initialized, closed, awaiting, confirming;
+    private bool initialized, closed, awaiting, confirming, transferring;
     private long selection, frozenSelection = -1, destinationRevision;
+    internal bool IsObserving => timer.IsEnabled;
 
     internal TroubleshootingWindow(SupportController support, Func<Task>? refresh = null,
         Func<string, bool>? confirm = null, TimeProvider? clock = null, TimeSpan? observationTimeout = null)
@@ -208,12 +209,26 @@ public partial class TroubleshootingWindow : Window
         displayed = null;
         frozenSelection = -1;
     }
-    private void Window_Closing(object? sender, CancelEventArgs e)
+    internal void CloseForPresentationTransfer()
     {
+        transferring = true;
+        Close();
+    }
+
+    private void RetirePresentation()
+    {
+        if (closed) return;
         closed = true;
         timer.Stop();
         ClearPresentation();
-        support.CancelAndClose();
+        if (!transferring) support.CancelAndClose();
+    }
+    private void Window_Closing(object? sender, CancelEventArgs e) => RetirePresentation();
+    protected override void OnClosed(EventArgs e)
+    {
+        // WPF owner closure bypasses a child's Closing event.
+        RetirePresentation();
+        base.OnClosed(e);
     }
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
 }
