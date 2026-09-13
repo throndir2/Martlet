@@ -112,7 +112,7 @@ public sealed class TextGenerationStream : IAsyncEnumerable<ProviderEvent>
     {
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(callerToken, enumerationToken, shutdown);
         using var operation = new TextGenerationOperation(client, credentials, clock, context, model, input,
-            limits, authorization, startedAt, startedUtc, stop.Token);
+            limits, authorization, startedAt, startedUtc, stop.Token, callerToken, enumerationToken, shutdown);
         long sequence = 0;
         try
         {
@@ -161,7 +161,8 @@ internal sealed record TextStreamStep(string? Text = null, TextGenerationOutcome
 internal sealed class TextGenerationOperation(
     HttpClient client, IProviderCredentialSource credentials, TimeProvider clock,
     ProviderRequestContext context, TextModelSelection model, BoundedTextInput input, TextGenerationLimits limits,
-    TextDisclosureAuthorization? authorization, long startedAt, DateTimeOffset startedUtc, CancellationToken stop) : IDisposable
+    TextDisclosureAuthorization? authorization, long startedAt, DateTimeOffset startedUtc, CancellationToken stop,
+    CancellationToken caller, CancellationToken enumerator, CancellationToken shutdown) : IDisposable
 {
     private ProviderRequestWindow? window;
     private CancellationTokenSource? progress;
@@ -177,6 +178,8 @@ internal sealed class TextGenerationOperation(
     private bool disposed;
     private CancellationTokenRegistration abortBody;
     private CancellationToken Token => linked?.Token ?? stop;
+    private bool IsStopped => stop.IsCancellationRequested || caller.IsCancellationRequested ||
+        enumerator.IsCancellationRequested || shutdown.IsCancellationRequested;
 
     public async Task<TextStreamStep> NextAsync()
     {
@@ -211,14 +214,14 @@ internal sealed class TextGenerationOperation(
         }
         catch (Exception error) when (error is OperationCanceledException or RequestCutoffException or
             ResponseProtocolException or CredentialUnavailableException or HttpRequestException or IOException or ContractException ||
-            (error is ObjectDisposedException && stop.IsCancellationRequested))
+            (error is ObjectDisposedException && IsStopped))
         {
             // Re-evaluate synchronous windows even when a noncooperating await threw something else.
-            if (stop.IsCancellationRequested)
+            if (IsStopped)
                 return new(Outcome: TextGenerationOutcome.Canceled);
             try { EnsureActive(); }
             catch (RequestCutoffException cutoff) { return Fail(cutoff.Code); }
-            catch (OperationCanceledException) { return Fail(DeadlineCode()); }
+            catch (OperationCanceledException) { return IsStopped ? new(Outcome: TextGenerationOutcome.Canceled) : Fail(DeadlineCode()); }
             return Fail(error switch
             {
                 RequestCutoffException cutoff => cutoff.Code,
@@ -348,6 +351,10 @@ internal sealed class TextGenerationOperation(
 
     private void EnsureActive()
     {
+        // A later blocking callback can delay propagation to linked tokens, not these source flags.
+        caller.ThrowIfCancellationRequested();
+        enumerator.ThrowIfCancellationRequested();
+        shutdown.ThrowIfCancellationRequested();
         stop.ThrowIfCancellationRequested();
         window?.EnsureActive();
         if (clock.GetElapsedTime(startedAt) >= limits.MaxRequestTime ||

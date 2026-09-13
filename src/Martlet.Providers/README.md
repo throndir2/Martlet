@@ -687,3 +687,33 @@ behavior, real credential storage, UI disclosure, speaker/microphone/device
 tests and end-to-end voice orchestration. **G2 has not passed.** No inference
 requests, live keys, voice assets, physical audio or free-service promise were
 used to produce this fixture evidence.
+
+## V04a original-token cancellation refinement
+
+The conversation runtime review reproduced a linked-token propagation gap:
+a newer blocking callback on the original source can run first while
+`CancelAsync` has already set that source's cancellation flag. Merely checking
+the linked descendant can then miss cancellation at credential return,
+serialization or response acceptance.
+
+The LLM/TTS operations now retain and directly check their original Stream
+caller token, original enumerator token and adapter shutdown source at the
+existing synchronous guards and canceled-result precedence. The internal
+`ProviderRequestWindow` also retains/checks its incoming source token; the
+unchanged STT operation supplies its original caller token there. Linked
+tokens still provide asynchronous transport abort; these direct checks do
+not require callback delivery before rejecting late work.
+
+No public API, one-use authorization/model/input/voice binding, request
+serializer, parser, endpoint, TLS/redirect policy or retry behavior changed.
+Credential ownership remains inside the adapters; no runtime credential
+wrapper was added. This is still local request cancellation, not a guarantee
+of upstream compute cancellation, deletion, avoided charges or forced release
+of a noncooperative callback.
+
+Before the fix, all 15 added direct provider regressions failed: STT caller
+and LLM/TTS caller/enumerator cancellation at credential return, actual body
+serialization and response-body acceptance while a newer callback remains
+blocked. The authored tests use the existing in-process handlers and deferred
+fixture timers, not real HTTP/credentials. The original 574 provider cases
+remain unchanged.

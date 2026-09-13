@@ -62,6 +62,7 @@ internal sealed class ProviderRequestWindow : IDisposable
     private readonly TimeSpan requestWindow;
     private readonly TimeSpan consentWindow;
     private readonly DateTimeOffset expiresAt;
+    private readonly CancellationToken sourceToken;
     private readonly CancellationTokenSource deadline;
     private readonly CancellationTokenSource linked;
     public CancellationToken Token => linked.Token;
@@ -73,6 +74,7 @@ internal sealed class ProviderRequestWindow : IDisposable
         this.clock = clock;
         this.startedAt = startedAt;
         this.expiresAt = expiresAt;
+        sourceToken = token;
         var remaining = requestDeadline - startedUtc;
         requestWindow = remaining < maximum ? remaining : maximum;
         consentWindow = expiresAt - startedUtc;
@@ -86,6 +88,7 @@ internal sealed class ProviderRequestWindow : IDisposable
 
     public void EnsureActive()
     {
+        sourceToken.ThrowIfCancellationRequested();
         Token.ThrowIfCancellationRequested();
         var elapsed = clock.GetElapsedTime(startedAt);
         if (elapsed >= requestWindow)
