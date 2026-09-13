@@ -29,16 +29,7 @@ public sealed class OpenAiTranscriptionAdapter : IDisposable
         return new(CreateProductionHandler(), credentials, timeProvider ?? TimeProvider.System, EvidenceProvenance.Live);
     }
 
-    internal static SocketsHttpHandler CreateProductionHandler() => new()
-    {
-        AllowAutoRedirect = false,
-        UseCookies = false,
-        AutomaticDecompression = DecompressionMethods.None,
-        Credentials = null,
-        DefaultProxyCredentials = null,
-        MaxResponseHeadersLength = 16,
-        PooledConnectionLifetime = TimeSpan.FromMinutes(5)
-    };
+    internal static SocketsHttpHandler CreateProductionHandler() => OpenAiTransport.CreateProductionHandler();
 
     // Not a public production override: fixtures cannot waive production redirect/TLS policy.
     internal static OpenAiTranscriptionAdapter CreateForFixture(HttpMessageHandler handler,
@@ -80,22 +71,14 @@ public sealed class OpenAiTranscriptionAdapter : IDisposable
         if (timeout <= TimeSpan.Zero)
             return Failed(context, requestWindow <= consentWindow
                 ? ProviderFailureCode.DeadlineExceeded : ProviderFailureCode.ConsentExpired);
-        using var deadline = new CancellationTokenSource(timeout, clock);
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
-        var token = linked.Token;
-
-        void EnsureActive()
-        {
-            token.ThrowIfCancellationRequested();
-            var elapsed = clock.GetElapsedTime(startedAt);
-            if (elapsed >= requestWindow)
-                throw new RequestCutoffException(ProviderFailureCode.DeadlineExceeded);
-            if (clock.GetUtcNow() >= authorization.ExpiresAt || elapsed >= consentWindow)
-                throw new RequestCutoffException(ProviderFailureCode.ConsentExpired);
-        }
+        ProviderRequestWindow? window = null;
+        void EnsureActive() => window!.EnsureActive();
 
         try
         {
+            window = new ProviderRequestWindow(clock, startedAt, startedUtc,
+                context.Deadline, limits.MaxRequestTime, authorization.ExpiresAt, cancellationToken);
+            var token = window.Token;
             EnsureActive();
             using var credential = await credentials.ResolveAsync(binding, token).ConfigureAwait(false);
             EnsureActive();
@@ -132,7 +115,7 @@ public sealed class OpenAiTranscriptionAdapter : IDisposable
             ProviderFailureCode? readFailure;
             try
             {
-                (bytes, readFailure) = await ReadBoundedAsync(response.Content, limits.MaxResponseBytes, token).ConfigureAwait(false);
+                (bytes, readFailure) = await OpenAiTransport.ReadBoundedAsync(response.Content, limits.MaxResponseBytes, token).ConfigureAwait(false);
             }
             catch (HttpRequestException error)
             {
@@ -147,7 +130,7 @@ public sealed class OpenAiTranscriptionAdapter : IDisposable
             EnsureActive();
             // An unreadable optional error body must not replace the known HTTP failure or advice.
             if (!success)
-                return Failed(context, OpenAiResponseParser.Classify(response.StatusCode, bytes), RetryAdvice(response));
+                return Failed(context, OpenAiResponseParser.Classify(response.StatusCode, bytes), OpenAiTransport.RetryAdvice(response, clock));
             if (readFailure is { } bodyFailure)
                 return Failed(context, bodyFailure);
             if (response.Content.Headers.ContentType?.MediaType != "application/json" ||
@@ -168,7 +151,7 @@ public sealed class OpenAiTranscriptionAdapter : IDisposable
         {
             return Canceled(context);
         }
-        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+        catch (OperationCanceledException) when (window?.DeadlineCanceled == true)
         {
             return Failed(context, ProviderFailureCode.DeadlineExceeded);
         }
@@ -196,6 +179,10 @@ public sealed class OpenAiTranscriptionAdapter : IDisposable
         {
             return Failed(context, ProviderFailureCode.Network);
         }
+        finally
+        {
+            window?.Dispose();
+        }
     }
 
     private ProviderFailureCode? ValidateAuthorization(AudioUploadAuthorization? authorization,
@@ -216,36 +203,6 @@ public sealed class OpenAiTranscriptionAdapter : IDisposable
         return null;
     }
 
-    private static async Task<(ReadOnlyMemory<byte> Bytes, ProviderFailureCode? Failure)> ReadBoundedAsync(
-        HttpContent content, int maximum, CancellationToken cancellationToken)
-    {
-        long? expected = content.Headers.ContentLength;
-        if (expected > maximum)
-            return (ReadOnlyMemory<byte>.Empty, ProviderFailureCode.ResponseTooLarge);
-        using var stream = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        byte[] buffer = new byte[maximum + 1];
-        int length = 0;
-        while (length < buffer.Length)
-        {
-            int read = await stream.ReadAsync(buffer.AsMemory(length), cancellationToken).ConfigureAwait(false);
-            if (read == 0)
-                break;
-            length += read;
-        }
-        if (length > maximum)
-            return (ReadOnlyMemory<byte>.Empty, ProviderFailureCode.ResponseTooLarge);
-        if (expected is not null && expected != length)
-            return (ReadOnlyMemory<byte>.Empty, ProviderFailureCode.ResponseTruncated);
-        return (buffer.AsMemory(0, length), null);
-    }
-
-    private TimeSpan? RetryAdvice(HttpResponseMessage response)
-    {
-        var header = response.Headers.RetryAfter;
-        var delay = header?.Delta ?? (header?.Date - clock.GetUtcNow());
-        return delay is null ? null : TimeSpan.FromSeconds(Math.Clamp(delay.Value.TotalSeconds, 0, 300));
-    }
-
     private TranscriptionResult Failed(ProviderRequestContext context, ProviderFailureCode code, TimeSpan? retryAfter = null) =>
         new(context, provenance, code == ProviderFailureCode.DeadlineExceeded
             ? TranscriptionOutcome.DeadlineExceeded : TranscriptionOutcome.Failed, failure: new(code, retryAfter));
@@ -253,52 +210,11 @@ public sealed class OpenAiTranscriptionAdapter : IDisposable
     private TranscriptionResult Canceled(ProviderRequestContext context) => new(context, provenance, TranscriptionOutcome.Canceled);
     private static TimeSpan Min(TimeSpan first, TimeSpan second) => first < second ? first : second;
 
-    private sealed class RequestCutoffException(ProviderFailureCode code) : Exception("The request authorization window ended.")
-    {
-        public ProviderFailureCode Code { get; } = code;
-    }
-
     public void Dispose()
     {
         if (disposed)
             return;
         disposed = true;
         client.Dispose();
-    }
-
-    // Prevent handler-level resubmission from serializing an upload a second time.
-    private sealed class SingleSendContent : HttpContent
-    {
-        private readonly HttpContent inner;
-        private readonly Action ensureActive;
-        private int sent;
-        public SingleSendContent(HttpContent inner, Action ensureActive)
-        {
-            this.inner = inner;
-            this.ensureActive = ensureActive;
-            foreach (var header in inner.Headers)
-                Headers.TryAddWithoutValidation(header.Key, header.Value);
-        }
-        protected override bool TryComputeLength(out long length)
-        {
-            length = inner.Headers.ContentLength ?? 0;
-            return inner.Headers.ContentLength is not null;
-        }
-        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) =>
-            SerializeToStreamAsync(stream, context, CancellationToken.None);
-        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context, CancellationToken cancellationToken)
-        {
-            // Timer callbacks can be late; do not begin writing an upload after its cutoff.
-            ensureActive();
-            if (Interlocked.Exchange(ref sent, 1) != 0)
-                throw new HttpRequestException("A transcription upload cannot be replayed.");
-            return inner.CopyToAsync(stream, context, cancellationToken);
-        }
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing)
-                inner.Dispose();
-            base.Dispose(disposing);
-        }
     }
 }
