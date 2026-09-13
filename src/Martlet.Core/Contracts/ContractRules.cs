@@ -56,13 +56,14 @@ public sealed record ContractVersion : IContract
 }
 
 public enum EvidenceProvenance { Unknown, NotRun, Fixture, Live }
-public enum Stage { Application, Settings, Transcription, TurnPolicy, Generation, Synthesis, Playback, Provider }
+public enum Stage { Application, Settings, Transcription, TurnPolicy, Generation, Synthesis, Playback, Provider, Capture }
 public enum ErrorCode
 {
     InvalidContract, UnsupportedVersion, PayloadTooLarge,
     SettingsMalformed, SettingsInaccessible, SettingsConflict,
     NotConfigured, NotImplemented, ProviderCapability, ProviderFailed, StreamTruncated,
-    AudioDeviceUnavailable, AudioDeviceLost, AudioFormatUnsupported, AudioPlaybackFailed, DeadlineExceeded
+    AudioDeviceUnavailable, AudioDeviceLost, AudioFormatUnsupported, AudioPlaybackFailed, DeadlineExceeded,
+    AudioCaptureFailed, AudioAccessDenied, AudioDeviceBusy, AudioDeviceChanged
 }
 
 public sealed record MartletError : IContract
