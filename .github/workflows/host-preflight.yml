@@ -1,0 +1,76 @@
+name: Read-only Ubuntu host preflight
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  host-contracts:
+    name: Host contracts (${{ matrix.os }}, no hardware probes)
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2025, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 12
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      CI: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_GENERATE_ASPNET_CERTIFICATE: "false"
+      DOTNET_NOLOGO: "1"
+      DOTNET_CLI_HOME: ${{ runner.temp }}/host-cli-home
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6 (Node 24)
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5 (Node 24)
+        with:
+          global-json-file: global.json
+      - name: Restore host-only locked dependencies
+        run: dotnet restore tests/Martlet.Host.Doctor.Tests --locked-mode --artifacts-path "${{ runner.temp }}/host-artifacts"
+      - name: Build host-only production logic and tests
+        run: dotnet build tests/Martlet.Host.Doctor.Tests --no-restore -c Release --artifacts-path "${{ runner.temp }}/host-artifacts"
+      - name: Contract, parser, real synthetic-process and CLI cases (not physical host queries)
+        run: dotnet test tests/Martlet.Host.Doctor.Tests --no-build -c Release --artifacts-path "${{ runner.temp }}/host-artifacts" --results-directory "${{ runner.temp }}/host-artifacts/results"
+      - name: Lock files were not rewritten
+        run: git diff --exit-code
+
+  ubuntu-package:
+    name: Ubuntu 24.04 native read-only package (not GPU qualification)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      CI: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_GENERATE_ASPNET_CERTIFICATE: "false"
+      DOTNET_NOLOGO: "1"
+      DOTNET_CLI_HOME: ${{ runner.temp }}/host-cli-home
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6 (Node 24)
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5 (Node 24)
+        with:
+          global-json-file: global.json
+      - name: Publish actual self-contained ELF (preinstalled compiler only)
+        run: ./deploy/ubuntu/preflight/publish.ps1 -ArtifactsPath "${{ runner.temp }}/host-native" -Destination "${{ runner.temp }}/host-package"
+      - name: Execute native help, fixtures and safe local inventory under syscall effect gate
+        run: ./deploy/ubuntu/preflight/verify-linux.ps1 -Package "${{ runner.temp }}/host-package" -ArtifactsPath "${{ runner.temp }}/host-verification"
+      - name: Repeat publish and assert deterministic native payload and archive on this toolchain
+        run: |
+          ./deploy/ubuntu/preflight/publish.ps1 -ArtifactsPath "${{ runner.temp }}/host-native-repeat" -Destination "${{ runner.temp }}/host-package-repeat"
+          $first = (Get-FileHash "${{ runner.temp }}/host-native/martlet-host-0.1.0-linux-x64.tar.gz").Hash
+          $second = (Get-FileHash "${{ runner.temp }}/host-native-repeat/martlet-host-0.1.0-linux-x64.tar.gz").Hash
+          if ($first -ne $second) { throw 'Repeated native package bytes differ on the same pinned SDK/toolchain.' }
+          git diff --exit-code
+      # Intentionally no artifact upload, release, signing, secrets, apt install, Docker or GPU execution.

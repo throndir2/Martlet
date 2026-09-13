@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>martlet-host</AssemblyName>
+    <RootNamespace>Martlet.Host.Doctor</RootNamespace>
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <EnableUnsafeBinaryFormatterSerialization>false</EnableUnsafeBinaryFormatterSerialization>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(HostNativeAot)' == 'true'">
+    <RuntimeIdentifiers>linux-x64;win-x64</RuntimeIdentifiers>
+    <PublishAot>true</PublishAot>
+    <SelfContained>true</SelfContained>
+    <EventSourceSupport>false</EventSourceSupport>
+    <StackTraceSupport>false</StackTraceSupport>
+    <NuGetLockFilePath>$(MSBuildThisFileDirectory)native-packages.lock.json</NuGetLockFilePath>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\deploy\ubuntu\preflight\candidate-requirements.json" Link="candidate-requirements.json" />
+    <InternalsVisibleTo Include="Martlet.Host.Doctor.Tests" />
+  </ItemGroup>
+</Project>
