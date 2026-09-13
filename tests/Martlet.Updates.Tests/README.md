@@ -1,4 +1,4 @@
-# Local V07b-a fixtures and gates
+# Local V07b-a/b fixtures and gates
 
 `SignedPackageFixture.cs` creates private, uniquely named temporary directories,
 real ZIP files, exact internal unsigned manifests/checksums, and external
@@ -33,6 +33,25 @@ engine while that fixture settings file is held with `FileShare.None`. The
 uppercase token survives approval, staging and receipt reopening exactly; a
 later real store save or a caller changing only token case rejects stale
 approval. Opaque settings tokens are not interpreted as candidate hashes.
+
+`SelectionFixture`, `SelectionTests` and `SelectionInterruptionTests` use the
+same actual signed-package stager and actual Core settings/snapshot APIs in
+private temporary C: directories. Their 95 cases cover explicit unqualified
+initialization; frozen selection/rollback approval and replay; verified current/
+previous selection and compatible snapshot retention; pending V07a restore;
+wrong origin/profile/store/revision/case; package/receipt/snapshot/trust/lineage
+tamper; real filesystem symbolic links; bounded history and external paths;
+cooperating locks and noncooperating write denial; disk-full/access fault
+injection; every transaction create/write/flush/pending/final replacement boundary;
+interrupted recovery and recovery twice; initialization leftovers; blocked
+cancellation callbacks before/after finalization; and retained unknown children.
+The 138 original staging regressions remain in the same suite.
+
+The direct Core graph additionally runs existing `ConfigurationRecoveryTests`
+and the new `ConfigurationSnapshotInspectionTests` (52 cases together), including
+actual snapshot creation, bounded pure inspection, immutable scalar metadata,
+malformed/future/tampered envelopes and uppercase revision preservation.
+Inspection is not a new settings parser or a restore authorization boundary.
 
 Certificate expiry/chain tests are not applicable to this explicitly pinned
 raw-public-key protocol; certificates and trust-store policy are not used.

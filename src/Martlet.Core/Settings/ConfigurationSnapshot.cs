@@ -78,6 +78,17 @@ public static class ConfigurationSnapshot
         "Device identifiers and configuration may be personal. Excludes secret values/OS vault, environment, conversations, audio, " +
         "models, arbitrary files, crash dumps and optional support journal/logs. No upload or cloud storage.";
 
+    // Envelope consistency only: callers still own freshness, source lifetime and authorization.
+    public static ConfigurationSnapshotInspection Inspect(ReadOnlyMemory<byte> bytes)
+    {
+        if (bytes.Length is 0 or > MaximumBytes) throw new RecoveryException(RecoveryFailure.InvalidBackup);
+        var owned = bytes.ToArray();
+        var snapshot = Read(owned);
+        return new(snapshot.Manifest.SnapshotId, snapshot.Manifest.ProfileId,
+            snapshot.Manifest.SettingsSchemaVersion, snapshot.Manifest.SourceRevision,
+            Hash(owned), snapshot.Sha256);
+    }
+
     internal static string Hash(ReadOnlySpan<byte> bytes) => Convert.ToHexString(SHA256.HashData(bytes));
     internal static byte[] Create(byte[] settingsBytes)
     {
@@ -127,6 +138,23 @@ public static class ConfigurationSnapshot
         public required int MinimumReaderFormat { get; init; }
         public required string Application { get; init; }
         public required int SettingsSchemaVersion { get; init; }
+    }
+}
+
+public sealed class ConfigurationSnapshotInspection
+{
+    public Guid SnapshotId { get; }
+    public Guid ProfileId { get; }
+    public int SettingsSchemaVersion { get; }
+    public string SourceRevision { get; }
+    public string FileDigest { get; }
+    public string ManifestDigest { get; }
+
+    internal ConfigurationSnapshotInspection(Guid snapshotId, Guid profileId, int schema,
+        string sourceRevision, string fileDigest, string manifestDigest)
+    {
+        SnapshotId = snapshotId; ProfileId = profileId; SettingsSchemaVersion = schema;
+        SourceRevision = sourceRevision; FileDigest = fileDigest; ManifestDigest = manifestDigest;
     }
 }
 

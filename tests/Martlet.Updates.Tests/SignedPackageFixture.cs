@@ -15,7 +15,8 @@ public sealed class SigningKeys : IDisposable
 internal sealed class SignedPackageFixture : IDisposable
 {
     internal string Root { get; } = Directory.CreateTempSubdirectory("Martlet.Updates.Tests-").FullName;
-    internal string StagingRoot => Path.Combine(Root, "staging");
+    private readonly bool selectionLayout;
+    internal string StagingRoot => selectionLayout ? Path.Combine(Root, "control", "stages") : Path.Combine(Root, "staging");
     internal string Destination => Path.Combine(StagingRoot, "selected-version");
     internal string Archive => Path.Combine(Root, "candidate.zip");
     internal string Envelope => Path.Combine(Root, "candidate.json");
@@ -28,8 +29,9 @@ internal sealed class SignedPackageFixture : IDisposable
     private readonly List<FileStream> privateSentinels = [];
     internal UpdateTrustPolicy Trust => new([Keys.Approved.ExportSubjectPublicKeyInfo()]);
 
-    internal SignedPackageFixture(SigningKeys keys)
+    internal SignedPackageFixture(SigningKeys keys, bool selectionLayout = false)
     {
+        this.selectionLayout = selectionLayout;
         Keys = keys;
         Directory.CreateDirectory(StagingRoot);
         Directory.CreateDirectory(InstalledRoot);

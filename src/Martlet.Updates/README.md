@@ -1,10 +1,16 @@
-# V07b-a: local candidate verification and staging
+# V07b-a/b: local candidate verification, staging and selection
 
 **A staging library, not an updater, installer, signed release or supported
 upgrade.** No network, execution, activation, settings restore, credential access,
 model access, process termination, shortcuts, registry, services, old-version
 deletion or release publication. Existing unsigned packaging remains unchanged.
 The library is not registered in the application or shared solution.
+
+The separate [private candidate-selection transaction](SELECTION.md) now joins
+real staged-package verification to V07a snapshot inspection and durable local
+selection/rollback planning. It **never changes an executable launcher pointer**:
+every committed selection remains `AwaitingReadiness`, or additionally
+`AwaitingConfigurationRestore`. The staging API described below remains unchanged.
 
 ## Caller boundary
 
@@ -268,10 +274,11 @@ the existing public `ConfigurationRecoveryReceipt` record is not evidence of
 verification. This stage neither creates nor accepts a snapshot receipt, and
 its `NextSteps` requirement cannot be cleared by caller JSON.
 
-Still separate: snapshot-verification integration, activation approval and
-exclusive app ownership, migration/readiness checks, N-1/N rollback with a
-matching compatible snapshot, uninstall/data preservation, revocation/freshness
-policy, Desktop UI/offload/retirement, and actual environment qualification.
+The selection engine supplies snapshot-verification integration and separate
+selection approval, not activation approval. Still separate: exclusive app
+ownership, migration/readiness checks, executed N-1/N rollback, uninstall/data
+preservation, publisher revocation/freshness policy, Desktop UI/offload/retirement,
+and actual environment qualification.
 **Actual publisher authorization, release signing, protected signing access,
 clean-Windows install/upgrade, rollback and release qualification: NOT RUN.**
 No signing credentials, certificates or user security settings were changed.
