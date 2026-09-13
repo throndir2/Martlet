@@ -2,6 +2,11 @@
 
 **Proposed plan, researched 2026-09-12 (America/Los_Angeles). Documentation only.**
 
+**Implementation status update:** the subsequent D01/D02-first-slice/narrow-F01
+work is recorded in [Foundation decisions and boundaries](docs/FOUNDATION.md).
+This plan's broader milestones remain proposals; that foundation does not
+establish a working conversation, installer or passed release gate.
+
 ## 1. Executive recommendation
 
 Build a companion that is easy to install, easy to understand when it is silent,

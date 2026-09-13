@@ -1,10 +1,21 @@
 # Delivery, acceptance, and release plan
 
-**Proposed backlog and gates. Nothing below is implemented or passed.**
+**Backlog and future gates.** Only the foundation subset recorded below is
+implemented; acceptance/release gates are not implicitly passed.
 Read [scope and decisions](../DEVELOPMENT_PLAN.md), [contracts](ARCHITECTURE.md),
 [installation/support](INSTALLATION_SUPPORT.md), and [research](RESEARCH.md).
 The initial repository has no runners, CI, implementation, or tests to inherit.
 Select a small coherent toolchain in M0; do not invent successful evidence.
+
+### Current foundation subset
+
+| Item | Actual status |
+| --- | --- |
+| D01 | Dispositions recorded in [FOUNDATION.md](FOUNDATION.md). .NET/WPF/core direction and pins chosen; license, distribution/signing, provider spending and optional model/SDK rights remain deferred gates. |
+| D02 | Versioned settings/profile and provider/capability/turn/probe/error models, bounded in-process PCM frames, production validators and valid/invalid golden cases exist. Temporal state/stream conformance, remote schemas/SSE/binary wire framing and request contracts remain; **AC-01 is partial, not frozen or fully passed**. |
+| F01 | Offline accessible text/status shell, explicit unconfigured-profile save, atomic validated settings and truthful shared-status CLI implemented. Local developer-host build/tests/CLI and bounded desktop-launch scope are documented; no clean consumer-OS claim. |
+| Early CI | Minimal pinned read-only build/unit-test/CLI workflow only. F05 still owns expanded fixture/packaging/artifact lanes. |
+| F02/F03/F04 and G1 onward | Not implemented/passed by the foundation. No installer, fixture conversation, PCM device sink, probe registry, real AI/audio/GPU, Ubuntu or signing evidence. |
 
 ## 1. Execution rules
 

@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "profile": {
+    "schema_version": 1,
+    "id": "10000000-0000-0000-0000-000000000001",
+    "kind": "not_configured",
+    "credentials": []
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "version": { "major": 1, "minor": 0 },
+  "provider_id": "fixture",
+  "adapter_version": "0.1.0",
+  "model_id": "authored-fixture",
+  "role": "tts",
+  "provenance": "fixture",
+  "stt_partials": "unsupported",
+  "llm_text_deltas": "unsupported",
+  "tts_audio_transport": "supported",
+  "tts_incremental_synthesis": "unsupported",
+  "cancellation": "discard_only",
+  "max_input_bytes": 16384
+}
