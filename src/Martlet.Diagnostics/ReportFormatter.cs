@@ -35,7 +35,7 @@ public static class ReportFormatter
                 text.AppendLine($"  Next action ({action}): {probe.Remedy ?? "No guide was included in this report."}");
         }
         text.AppendLine("Only listed requested checks are covered. Unselected audio, GPU, cloud and host paths were not tested.");
-        text.AppendLine("No AI conversation is available in this diagnostic build. Fixtures are not real AI.");
+        text.AppendLine("No AI conversation was run by this diagnostic report. Use the separate explicitly authorized Desktop conversation surface; fixtures are not real AI.");
         return text.ToString();
     }
 

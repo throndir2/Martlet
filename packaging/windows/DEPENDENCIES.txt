@@ -17,8 +17,15 @@ upstream notices from the matching v10.0.12 source tags, checksum pinned.
 The complete runtime notice lists are retained, not reduced to just this summary.
 
 Both native entry points include Martlet.Core, Fixtures, Sessions, Diagnostics
-and the Windows Audio target. The unrelated provider library is not referenced
-or bundled. NAudio.Wasapi 3.1.0, NAudio.Core 3.1.0 and System.Numerics.Tensors 9.0.0
+and the Windows Audio target. Desktop additionally includes Martlet.Conversation,
+Martlet.Providers and Martlet.Participation for V04b explicit typed / push-to-talk
+app integration. These authored BCL-only libraries add no NuGet package, native
+binary, model, voice recording or provider SDK. OpenAI is a configured remote
+API destination, not a redistributed library; no API call occurs on launch.
+Doctor retains its offline graph: none of these three assemblies is bundled in
+Doctor. Neither application depends on or bundles Martlet.Support.
+
+NAudio.Wasapi 3.1.0, NAudio.Core 3.1.0 and System.Numerics.Tensors 9.0.0
 are the existing centrally pinned audio dependencies, not newly upgraded pins.
 Their raw NuGet archives and published managed DLL bytes are checked against
 toolchain.json. Raw signed-archive SHA-512 differs from NuGet's lock contentHash;

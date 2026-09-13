@@ -20,6 +20,14 @@ human audibility confirmation. These are historical local observations, not
 physical qualification, capabilities, first response or novice readiness, and
 do not authorize live API use. The rest of this storyboard remains a target.
 
+[V04b's explicit API conversation guide](CONVERSATION.md) now provides the
+implemented typed/text-only, optional voice and PTT flow, exact supported
+models/bounds, actionable same-engine remedies and a separately authorized
+manual first-conversation checklist. It joins the existing setup and local
+audio choices without changing installer permissions or introducing background
+listening. This functional integration is not a witnessed account/device/novice
+trial, clean Windows installation or signing/release qualification.
+
 ## 1. One Windows golden path
 
 Target Windows 11 25H2 x64 Home/Pro on a currently serviced patch. Test a clean

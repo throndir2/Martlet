@@ -4,5 +4,6 @@
     <ProjectReference Include="..\Martlet.Providers\Martlet.Providers.csproj" />
     <ProjectReference Include="..\Martlet.Audio\Martlet.Audio.csproj" />
     <InternalsVisibleTo Include="Martlet.Conversation.Tests" />
+    <InternalsVisibleTo Include="Martlet.Desktop.Tests" />
   </ItemGroup>
 </Project>

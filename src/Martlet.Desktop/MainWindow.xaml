@@ -7,10 +7,12 @@
         Loaded="Window_Loaded" Closing="Window_Closing">
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="24">
-            <TextBlock Text="Martlet - offline fixture and diagnostics" FontSize="26" FontWeight="SemiBold" />
+            <TextBlock Text="Martlet - conversations, offline fixture and diagnostics" FontSize="26" FontWeight="SemiBold" TextWrapping="Wrap" />
             <TextBlock Text="Not connected / not configured" FontSize="18" Margin="0,8,0,12" />
             <TextBlock TextWrapping="Wrap" Margin="0,0,0,16"
-                       Text="Try the offline fixture without creating a profile. All demo text is scripted, NOT live transcription or AI. Provider execution and GPU work remain unavailable. Setup saves configuration and explicitly manages Windows credentials. Audio setup offers separately permitted LOCAL microphone and synthetic-tone tests; no provider call. Audio is OFF until you authorize a test; permission is never saved." />
+                       Text="Try the offline fixture without creating a profile. All demo text is scripted, NOT live transcription or AI. Real API conversation is a separate explicit typed / push-to-talk surface using your supported saved routes. Setup saves configuration and explicitly manages Windows credentials. Audio setup offers separately permitted LOCAL microphone and synthetic-tone tests; no provider call. No network or audio action is authorized on launch." />
+            <Button x:Name="ConversationButton" Content="Open _real API conversation (explicit permission required)" Click="Conversation_Click" Padding="12,8" Margin="0,4,12,12"
+                    AutomationProperties.AutomationId="OpenLiveConversation" AutomationProperties.Name="Open real API conversation without network, credentials or device effects" />
             <Label Target="{Binding ElementName=ScenarioChoice}" Content="_Offline scenario (FIXTURE - NOT AI)" />
             <ComboBox x:Name="ScenarioChoice" SelectedIndex="0" MinHeight="30"
                       AutomationProperties.AutomationId="FixtureScenario" AutomationProperties.Name="Offline fixture scenario" />

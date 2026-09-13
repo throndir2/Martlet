@@ -1,5 +1,13 @@
 # F04 diagnostic experience
 
+V04b adds a separate [real conversation timeline](CONVERSATION.md) in Desktop,
+fed by actual capture/STT/policy/runtime/playback state and sanitized credential/
+configuration failures. It does not turn ordinary Doctor probes into live
+requests. `status`, `run` and `self-test` retain their existing no-network,
+no-key and fixture semantics; catalog/configuration state is never a live pass.
+The executable smoke now also requires unconfigured live Send/PTT disabled
+and all live permission/output choices OFF.
+
 This records the **AC-04 local registry and F03c fixture integration**, not M1
 release qualification or G1 completion. It extends the foundation's entry points without
 changing Core contracts, settings serialization, original file bytes or the

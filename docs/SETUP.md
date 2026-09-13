@@ -1,6 +1,11 @@
 # Resumable setup, Windows credentials and local audio (V02a/V02b)
 
-**Configuration only, not a working voice connection.** Open **Setup / resume**
+**Setup is configuration, not live readiness or future spending permission.**
+The separate [V04b real API conversation](CONVERSATION.md) now consumes these
+saved choices for explicitly authorized typed/PTT actions. Unsupported model/
+voice IDs are rejected there without discovery or fallback; its guide lists
+the exact supported IDs and account/device gates still NOT RUN.
+Open **Setup / resume**
 in the existing Desktop. Fixture is the safe first-run choice; it needs no
 account, key, terminal, device, network or saved profile. Existing offline
 fixture, refusal, Stop and status actions are unchanged. Opening setup and
@@ -151,11 +156,11 @@ retain the original twelve probes and exit-code semantics, and never turn
 saved metadata into provider readiness.
 
 V02b adds the explicit local audio actions below, not physical qualification or
-novice evidence. V01b learned VAD/endpointer remains separate. V04b must bridge
+novice evidence. V01b learned VAD/endpointer remains separate. V04b now bridges
 `ICredentialStore` to the provider credential source only after explicit fresh
 bounded per-turn authorization, matching role/model/origin, request IDs and
-limits. This PR references no provider library and registers no STT/LLM/TTS
-adapter. V03 live capability/access evidence and budgets require separate
+limits in its separate app-owned controller. The original V02a slice did not
+register adapters. V03 live capability/access evidence and budgets require separate
 authorization; saved setup alone cannot issue a request.
 
 Ordinary regression tests exercise the production settings/transaction service

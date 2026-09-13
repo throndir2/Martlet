@@ -228,6 +228,21 @@ try {
     # Deliberately do not invoke Find, microphone, tone, or any effectful audio action.
     Invoke-Control 'AudioClose'
     $null = Wait-Status '*First run:*'
+    Invoke-Control 'OpenLiveConversation'
+    $live = Wait-Setup '*REAL API mode; NOT RUN*No effects authorized*Choices loaded*' 'LiveStatus'
+    foreach ($id in @('LiveSend', 'LivePtt', 'LiveRelease')) {
+        $control = Find-Control $id
+        if ($null -eq $control -or $control.Current.IsEnabled) { throw 'Unconfigured live actions must be explicitly gated.' }
+    }
+    foreach ($id in @('LiveVoice', 'LiveAcceptAction', 'LiveAcceptCapture', 'LiveAcceptUpload')) {
+        $control = Find-Control $id
+        if ($null -eq $control -or $control.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne
+            [Windows.Automation.ToggleState]::Off) { throw 'Live output and permission must start OFF.' }
+    }
+    if (Test-Path -LiteralPath $data) { throw 'Opening live conversation unexpectedly wrote settings.' }
+    # Do not accept permission or invoke a live Send/PTT. This is a no-key/no-network/no-device native smoke.
+    Invoke-Control 'CloseLive'
+    $null = Wait-Status '*First run:*'
     Invoke-Control 'OpenSetup'
     $null = Wait-Setup '*Checkpoint: Choice*'
     if (Test-Path -LiteralPath $data) { throw 'Opening setup wrote files before an explicit save.' }

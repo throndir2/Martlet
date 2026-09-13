@@ -92,15 +92,30 @@ function Get-PayloadFiles([string]$Root) {
     }
 }
 
+function Get-PublishProjectNames([ValidateSet('Desktop', 'Doctor')][string]$Entry) {
+    @("Martlet.$Entry", 'Martlet.Core', 'Martlet.Diagnostics', 'Martlet.Fixtures', 'Martlet.Sessions', 'Martlet.Audio')
+    if ($Entry -eq 'Desktop') {
+        @('Martlet.Credentials.Windows', 'Martlet.Conversation', 'Martlet.Providers', 'Martlet.Participation')
+    }
+}
+
 function Assert-PublishLayout([string]$Root) {
     $pins = Get-PackagingPins
     $versions = @()
     foreach ($entry in @('Desktop', 'Doctor')) {
         $directory = Join-Path $Root $entry
         $name = "Martlet.$entry"
-        foreach ($file in @("$name.exe", "$name.dll", "$name.deps.json", "$name.runtimeconfig.json",
-                'Martlet.Core.dll', 'Martlet.Diagnostics.dll', 'Martlet.Fixtures.dll', 'Martlet.Sessions.dll',
-                'Martlet.Audio.dll', 'coreclr.dll', 'hostfxr.dll',
+        $projects = @(Get-PublishProjectNames $entry)
+        foreach ($project in $projects) {
+            $null = Get-RequiredFile (Join-Path $directory "$project.dll")
+        }
+        $publishedProjects = @(Get-ChildItem -LiteralPath $directory -File -Filter 'Martlet.*.dll' |
+            Select-Object -ExpandProperty BaseName)
+        if (@(Compare-Object $projects $publishedProjects -CaseSensitive).Count -ne 0) {
+            throw "Unexpected Martlet assembly in $entry. Package only its reviewed project graph."
+        }
+        foreach ($file in @("$name.exe", "$name.deps.json", "$name.runtimeconfig.json",
+                'coreclr.dll', 'hostfxr.dll',
                 'hostpolicy.dll', 'System.Private.CoreLib.dll', 'LICENSE.txt', 'THIRD-PARTY-NOTICES.txt')) {
             $null = Get-RequiredFile (Join-Path $directory $file)
         }
@@ -127,6 +142,20 @@ function Assert-PublishLayout([string]$Root) {
             throw "Wrong RID in $entry dependency manifest; expected $($pins.rid)."
         }
         $target = $deps.targets.PSObject.Properties[$deps.runtimeTarget.name].Value
+        $projectLibraries = @($deps.libraries.PSObject.Properties | Where-Object { $_.Value.type -ceq 'project' })
+        $dependencyProjects = @($projectLibraries | ForEach-Object { ($_.Name -split '/')[0] })
+        if (@(Compare-Object $projects $dependencyProjects -CaseSensitive).Count -ne 0) {
+            throw "Missing or unexpected project dependency in $entry. Package only its reviewed project graph."
+        }
+        foreach ($library in $projectLibraries) {
+            $project = ($library.Name -split '/')[0]
+            $projectTarget = $target.PSObject.Properties[$library.Name]
+            if ($null -eq $projectTarget -or
+                $projectTarget.Value.PSObject.Properties.Name -notcontains 'runtime' -or
+                $null -eq $projectTarget.Value.runtime.PSObject.Properties["$project.dll"]) {
+                throw "Missing project runtime asset $project.dll in $entry dependency manifest."
+            }
+        }
         foreach ($package in $pins.managedPackages) {
             if ($null -eq $target.PSObject.Properties["$($package.id)/$($package.version)"]) {
                 throw "Missing or incorrect managed package $($package.id) $($package.version) in $entry."
@@ -159,8 +188,7 @@ function Assert-PublishLayout([string]$Root) {
         }
     }
     if ($versions[0] -cne $versions[1]) { throw 'Desktop and Doctor versions do not agree.' }
-    foreach ($file in @('PresentationFramework.dll', 'PresentationCore.dll', 'wpfgfx_cor3.dll', 'D3DCompiler_47_cor3.dll',
-            'Martlet.Credentials.Windows.dll')) {
+    foreach ($file in @('PresentationFramework.dll', 'PresentationCore.dll', 'wpfgfx_cor3.dll', 'D3DCompiler_47_cor3.dll')) {
         $null = Get-RequiredFile (Join-Path $Root "Desktop\$file")
     }
     foreach ($file in @('help\INTERNAL.txt', 'notices\DEPENDENCIES.txt',

@@ -6,11 +6,12 @@ playback implementation, credentials, network requests, model, persistence,
 logging, timers, callbacks or background queue. This is not a bot framework,
 LLM relevance prompt, acoustic wake-word detector, VAD, diarization or AEC.
 
-**Not app-wired.** V04b must register the projects and connect caller-owned
-controls, consented capture/STT, runtime authorization, cancellation and the
-vault. Desktop, shared solution/settings and `ConversationRuntime` are
-unchanged. Live-provider/device tests, real group-audio qualification, V04b
-integration and G2 are **NOT RUN**.
+**App-wired by V04b for explicit typed/PTT only.** Its
+[Desktop composition](../../docs/CONVERSATION.md) registers this project and
+connects caller-owned controls, consented capture/STT, runtime authorization,
+cancellation and vault retrieval. This policy engine is unchanged; automatic
+name/group listening is not enabled. Live-provider/device tests, real
+group-audio qualification and G2 remain **NOT RUN**.
 
 ## Privacy and trust boundary
 

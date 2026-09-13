@@ -2,18 +2,24 @@
   <Folder Name="/src/">
     <Project Path="src/Martlet.Audio/Martlet.Audio.csproj" />
     <Project Path="src/Martlet.Core/Martlet.Core.csproj" />
+    <Project Path="src/Martlet.Conversation/Martlet.Conversation.csproj" />
     <Project Path="src/Martlet.Credentials.Windows/Martlet.Credentials.Windows.csproj" />
     <Project Path="src/Martlet.Desktop/Martlet.Desktop.csproj" />
     <Project Path="src/Martlet.Diagnostics/Martlet.Diagnostics.csproj" />
     <Project Path="src/Martlet.Doctor/Martlet.Doctor.csproj" />
     <Project Path="src/Martlet.Fixtures/Martlet.Fixtures.csproj" />
     <Project Path="src/Martlet.Sessions/Martlet.Sessions.csproj" />
+    <Project Path="src/Martlet.Providers/Martlet.Providers.csproj" />
+    <Project Path="src/Martlet.Participation/Martlet.Participation.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Martlet.Audio.Tests/Martlet.Audio.Tests.csproj" />
     <Project Path="tests/Martlet.Core.Tests/Martlet.Core.Tests.csproj" />
+    <Project Path="tests/Martlet.Conversation.Tests/Martlet.Conversation.Tests.csproj" />
     <Project Path="tests/Martlet.Desktop.Tests/Martlet.Desktop.Tests.csproj" />
     <Project Path="tests/Martlet.Doctor.Tests/Martlet.Doctor.Tests.csproj" />
     <Project Path="tests/Martlet.Fixtures.Tests/Martlet.Fixtures.Tests.csproj" />
+    <Project Path="tests/Martlet.Providers.Tests/Martlet.Providers.Tests.csproj" />
+    <Project Path="tests/Martlet.Participation.Tests/Martlet.Participation.Tests.csproj" />
   </Folder>
 </Solution>

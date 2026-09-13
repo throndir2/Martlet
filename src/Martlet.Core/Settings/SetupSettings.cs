@@ -180,8 +180,8 @@ public sealed record SetupSettings : IContract
             return "Setup not started. Open Setup / resume; fixture needs no account or key.";
         var lines = new List<string>
         {
-            $"Saved choice: {settings.Profile.Kind}. Checkpoint: {setup.Checkpoint}. Configuration only; voice setup NOT complete.",
-            "Capture, screen and memory OFF. Provider execution unavailable.",
+            $"Saved choice: {settings.Profile.Kind}. Checkpoint: {setup.Checkpoint}. Configuration only; live account and device readiness are not established by this summary.",
+            "Saved choices do not authorize recording or provider requests. This summary does not start capture, screen or memory.",
             AudioSetupStatus.From(settings.Audio).Describe(),
             OpenAiSetup.Disclosure
         };
@@ -190,7 +190,7 @@ public sealed record SetupSettings : IContract
             var route = setup.Routes.SingleOrDefault(r => r.Role == role);
             lines.Add(route is null ? $"{role}: not configured. Select a named route and upstream ID in Setup." :
                 $"{role}: route selected; {(route.Consent is null ? "consent missing or invalidated by a change; review again" : "destination choice recorded, NOT per-turn authorization")}; " +
-                $"{(route.CredentialId is null ? "credential not configured" : "credential reference saved, OS presence and API validity unknown")}. Not connected.");
+                $"{(route.CredentialId is null ? "credential not configured" : "credential reference saved, OS presence and API validity unknown")}. Connection not checked by this summary.");
         }
         if (setup.PendingRemovals.Count != 0)
             lines.Add("Credential cleanup pending. Open setup and explicitly retry removal of the listed detached references.");

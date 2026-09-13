@@ -63,6 +63,7 @@ internal sealed class ProviderRequestWindow : IDisposable
     private readonly TimeSpan consentWindow;
     private readonly DateTimeOffset expiresAt;
     private readonly CancellationToken sourceToken;
+    private readonly CancellationToken operationToken;
     private readonly CancellationTokenSource deadline;
     private readonly CancellationTokenSource linked;
     public CancellationToken Token => linked.Token;
@@ -70,11 +71,19 @@ internal sealed class ProviderRequestWindow : IDisposable
 
     public ProviderRequestWindow(TimeProvider clock, long startedAt, DateTimeOffset startedUtc,
         DateTimeOffset requestDeadline, TimeSpan maximum, DateTimeOffset expiresAt, CancellationToken token)
+        : this(clock, startedAt, startedUtc, requestDeadline, maximum, expiresAt, token, CancellationToken.None)
+    {
+    }
+
+    internal ProviderRequestWindow(TimeProvider clock, long startedAt, DateTimeOffset startedUtc,
+        DateTimeOffset requestDeadline, TimeSpan maximum, DateTimeOffset expiresAt, CancellationToken token,
+        CancellationToken operationToken)
     {
         this.clock = clock;
         this.startedAt = startedAt;
         this.expiresAt = expiresAt;
         sourceToken = token;
+        this.operationToken = operationToken;
         var remaining = requestDeadline - startedUtc;
         requestWindow = remaining < maximum ? remaining : maximum;
         consentWindow = expiresAt - startedUtc;
@@ -83,12 +92,13 @@ internal sealed class ProviderRequestWindow : IDisposable
             throw new RequestCutoffException(requestWindow <= consentWindow
                 ? ProviderFailureCode.DeadlineExceeded : ProviderFailureCode.ConsentExpired);
         deadline = new CancellationTokenSource(timeout, clock);
-        linked = CancellationTokenSource.CreateLinkedTokenSource(token, deadline.Token);
+        linked = CancellationTokenSource.CreateLinkedTokenSource(token, operationToken, deadline.Token);
     }
 
     public void EnsureActive()
     {
         sourceToken.ThrowIfCancellationRequested();
+        operationToken.ThrowIfCancellationRequested();
         Token.ThrowIfCancellationRequested();
         var elapsed = clock.GetElapsedTime(startedAt);
         if (elapsed >= requestWindow)

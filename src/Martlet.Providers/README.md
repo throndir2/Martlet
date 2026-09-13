@@ -1,11 +1,14 @@
 # Named OpenAI provider adapters: V03a, V03b and V03c
 
-Provider library only: bounded-file transcription (V03a) and bounded text
-Responses streaming (V03b), and bounded PCM speech transport (V03c). These
-adapters are not wired into the application.
-There is no automatic network activity, credential lookup, retry, model
-selection, cloud fallback or live qualification. V04 orchestration remains
-separate work.
+Provider library: bounded-file transcription (V03a), bounded text Responses
+streaming (V03b), and bounded PCM speech transport (V03c).
+See [V04b conversation integration](../../docs/CONVERSATION.md) for explicit
+Desktop typed-text and push-to-talk wiring. There is still no automatic I/O,
+credential lookup, retry, model selection, cloud fallback or live account
+qualification.
+
+The slice descriptions and evidence below retain their historical implementation
+and validation scope; they are not application-wide readiness claims.
 
 ## V03a: bounded-file transcription
 
@@ -62,6 +65,7 @@ compute cancellation. No model-list/HTTP-200 readiness inference exists.
 | `IProviderCredentialSource.ResolveAsync(binding, token)` | Injected OS-store integration seam. Return a freshly owned `BoundProviderCredential` for that exact origin/role/model, or null. Translate expected store failures into `CredentialUnavailableException`; honor cancellation. Unexpected programming exceptions are not silently swallowed. |
 | `OpenAiTranscriptionAdapter.Create(source, timeProvider?)` | Passive, safe production factory. Owns one reusable HttpClient and its handler until adapter disposal. No arbitrary HttpClient, handler or endpoint is accepted by the public API. |
 | `TranscribeAsync(context, upstreamModelId, audio, limits, authorization, token)` | Check validated context, cancellation/deadline, model and authorization before resolving a secret or constructing/serializing the upload; check returned credential binding before attaching it. One send, no retries/fallback. |
+| `TranscribeAsync(context, upstreamModelId, audio, limits, authorization, cancellationToken, operationCancellationToken)` | Both tokens are required on this overload. Pass the original caller and operation-lifetime tokens, not just their linked descendant. Either source cancels the attempt; both are checked directly at admission, credential return, pre-send/serialization and result acceptance, even while a newer source callback blocks propagation. They are also linked with the original request/authorization deadline for cooperative abort. Cancellation takes precedence over expected credential/transport failures or deadline expiration and returns `Canceled`, with no accepted transcript. The existing optional single-token overload forwards `CancellationToken.None` as the operation token. |
 | `TranscriptionResult` | Explicit outcome, text/languages content, original context, provenance, nullable confidence, known/unknown usage, optional sanitized failure. Text/languages are omitted from ordinary JSON serialization; `ToString()` contains outcome only. |
 | `ToTerminalEvent()` | Core terminal event, original IDs/epoch, provider `openai`, sequence 1. Caller supplies matching `Started` at sequence 0 before the attempt. Completed/no-speech/canceled/failed mapping goes through the unchanged Core validator. The event is an explicit **content envelope**, not log metadata. |
 

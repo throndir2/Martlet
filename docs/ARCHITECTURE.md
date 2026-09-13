@@ -5,6 +5,10 @@ conformance work are recorded in [Foundation boundaries](FOUNDATION.md);
 the subsequent internal fixture/session/sink/status implementation is recorded
 in [Delivery](DELIVERY.md) and [Diagnostics](DIAGNOSTICS.md#offline-fixture-experience-f03c).
 the components and remote protocols below are not all implemented.
+The subsequent [V04b app integration](CONVERSATION.md) composes setup/vault,
+explicit typed/PTT capture, named STT, participation policy and the existing
+streaming conversation runtime under one app-shared operation owner. It does
+not implement learned VAD, automatic listening or the proposed remote topology.
 Read [the development plan](../DEVELOPMENT_PLAN.md)
 for scope and approvals, [installation/support](INSTALLATION_SUPPORT.md) for
 lifecycle, and [delivery](DELIVERY.md) for task ownership. Source IDs refer to

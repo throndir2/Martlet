@@ -1,10 +1,14 @@
 # V01a explicit microphone capture
 
-This is a **library foundation**, not full V01, a live conversation feature,
+This is a **library foundation**, not by itself full V01, a live conversation feature,
 validated VAD, microphone qualification, or a passed G2 gate.
 The subsequent [V02b local audio setup](SETUP.md#explicit-local-audio-setup-v02b)
 now calls this library from explicit Desktop tests; it leaves this reviewed
 capture lifecycle unchanged and does not wire a provider or live conversation.
+The later [V04b app composition](CONVERSATION.md) now uses the same capture
+engine for explicit bounded PTT -> named STT -> policy -> runtime, without VAD
+or background listening. This document's V01a evidence is library/historical,
+not account or physical-device qualification.
 Existing [playback](AUDIO.md) remains the single playback implementation.
 The portable and Windows targets of `Martlet.Audio` are reused, with the
 existing locked **NAudio.Wasapi 3.1.0** dependency and no new package.

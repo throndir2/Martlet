@@ -1,10 +1,13 @@
-# Internal Windows packaging (F02 skeleton)
+# Internal Windows packaging (F02 skeleton, V04b app graph)
 
 **INTERNAL DEVELOPMENT ONLY - UNSIGNED. Not a supported installer or a completed
-F02/AC-02/G1 gate.** This packages the offline WPF fixture/status experience and
-Doctor self-test, including the bounded optional synthetic-tone sink.
-It does not implement AI, capture, onboarding, configured providers, transactional upgrades,
-rollback or signed distribution. No project code/asset license is granted.
+F02/AC-02/G1 gate.** This packages V04b real explicit typed / push-to-talk app
+integration alongside the offline WPF fixture/status experience and Doctor
+self-test, including the bounded optional synthetic-tone sink. Opening the app
+or conversation window does not authorize requests, credential lookup or device
+access. Saved configuration is not live API/account/model readiness.
+Transactional upgrades, rollback and signed distribution remain unimplemented.
+No project code/asset license is granted.
 The existing foundation/planning documents retain their broader future gates.
 
 ## Developer commands
@@ -25,19 +28,19 @@ locations (such as `Env:`) fail with an actionable directory requirement.
 ```powershell
 $sdk = (Get-Command dotnet).Source # Or an explicit verified SDK dotnet.exe.
 $run = Join-Path $PWD ("artifacts\windows-" + [guid]::NewGuid().ToString('N'))
-$home = Join-Path $run 'cli-home'
+$cliHome = Join-Path $run 'cli-home'
 $first = Join-Path $run ("publish one " + [char]0x00E9)
 $second = Join-Path $run ("publish two " + [char]0x00E9)
 $builder = Join-Path $run 'inno'
 
-.\packaging\windows\Publish-Windows.ps1 -DotnetPath $sdk -CliHome $home -OutputDirectory $first
-.\packaging\windows\Publish-Windows.ps1 -DotnetPath $sdk -CliHome $home -OutputDirectory $second
+.\packaging\windows\Publish-Windows.ps1 -DotnetPath $sdk -CliHome $cliHome -OutputDirectory $first
+.\packaging\windows\Publish-Windows.ps1 -DotnetPath $sdk -CliHome $cliHome -OutputDirectory $second
 .\packaging\windows\Get-InnoSetup.ps1 -Destination $builder
-.\packaging\windows\Test-Packaging.ps1 -DotnetPath $sdk -CliHome $home -PayloadRoot "$first\payload" -ComparePayloadRoot "$second\payload" -BuilderDirectory $builder -WorkDirectory "$run\tests"
+.\packaging\windows\Test-Packaging.ps1 -DotnetPath $sdk -CliHome $cliHome -PayloadRoot "$first\payload" -ComparePayloadRoot "$second\payload" -BuilderDirectory $builder -WorkDirectory "$run\tests"
 .\packaging\windows\Smoke-Package.ps1 -PayloadRoot "$first\payload" -InteractiveDesktop
 .\packaging\windows\Build-Installer.ps1 -PayloadRoot "$first\payload" -BuilderDirectory $builder -OutputDirectory "$run\package"
 # Also exercise the actual GitHub pwsh exit wrapper (includes assertions, Doctor and compiler).
-.\packaging\windows\Test-WorkflowExit.ps1 -DotnetPath $sdk -CliHome $home -PayloadRoot "$first\payload" -ComparePayloadRoot "$second\payload" -BuilderDirectory $builder -WorkDirectory "$run\workflow-tests"
+.\packaging\windows\Test-WorkflowExit.ps1 -DotnetPath $sdk -CliHome $cliHome -PayloadRoot "$first\payload" -ComparePayloadRoot "$second\payload" -BuilderDirectory $builder -WorkDirectory "$run\workflow-tests"
 ```
 
 These are build commands, **not novice installation instructions**. Initial
@@ -86,6 +89,24 @@ Desktop and Doctor publish files and no dependence on their relative DLL search
 paths. This duplicates some runtime bytes deliberately: the installed layout is
 simple and avoids conflicting WPF/Core runtime facades. No trimming, single-file
 extraction or ReadyToRun compilation is used. The SDK is not shipped.
+
+The exact authored assembly inventories are checked both on disk and in each
+application's `.deps.json` (including each project's runtime asset):
+
+- Both: `Martlet.Core`, `Martlet.Audio`, `Martlet.Fixtures`, `Martlet.Sessions`,
+  `Martlet.Diagnostics`.
+- Desktop only: `Martlet.Desktop`, `Martlet.Credentials.Windows`,
+  `Martlet.Conversation`, `Martlet.Providers`, `Martlet.Participation`.
+- Doctor only: `Martlet.Doctor`. Doctor's graph and offline semantics are
+  unchanged; no conversation, provider, participation or vault assembly is
+  included there.
+
+No `Martlet.Support` dependency or support-bundle prerequisite is introduced.
+Conversation, Providers and Participation are authored BCL-only integration
+code; they add no production NuGet package, provider SDK, native binary or
+redistributed model. Existing audio/runtime pins and complete upstream notices
+remain unchanged. Missing project DLLs or dependency/runtime entries and
+unexpected Martlet assemblies fail packaging even before checksum validation.
 
 The internal installer uses stable AppId
 `{CDFDFAB4-DAF1-4A6D-8823-A55E0A12CD86}` and fixed
@@ -145,7 +166,7 @@ After a deliberate production dependency or runtime change, the owning engineer
 must coordinate central pins, refresh/review the normal locks and use:
 
 ```powershell
-.\packaging\windows\Update-PublishLocks.ps1 -DotnetPath $sdk -CliHome $home -WorkDirectory "$run\lock-maintenance"
+.\packaging\windows\Update-PublishLocks.ps1 -DotnetPath $sdk -CliHome $cliHome -WorkDirectory "$run\lock-maintenance"
 ```
 
 Review/commit all affected RID locks and any new notices/native inventory, then
@@ -187,10 +208,13 @@ that SDK behavior with an empty test-only folder; it never modifies the SDK or
 the caller's environment. Source matching remains exact, with no wildcard
 allowance for arbitrary local/network feeds.
 
-## Fixture integration and dependency evidence
+## V04b integration, fixtures and dependency evidence
 
-The seven RID locks cover Core, Audio, Fixtures, Sessions, Diagnostics, Desktop
-and Doctor. Normal locks remain separate; maintenance regression checks hash
+The eleven RID locks cover Core, Audio, Fixtures, Sessions, Diagnostics,
+Credentials.Windows, Conversation, Providers, Participation, Desktop and Doctor.
+The three V04b library locks and Desktop's added project edges are generated
+by the existing maintenance helper, not hand-authored placeholder locks.
+Normal locks remain separate; maintenance regression checks hash
 every normal source lock before/after regeneration of **all** copied RID locks.
 The multi-target outer-build import is necessary: without it, NuGet can write
 RID targets into normal Audio/Doctor locks. Both import modes are preflighted;
@@ -207,6 +231,20 @@ the runtime's own notices. No project license grant or distribution approval
 is implied. Missing new assemblies/notices, wrong dependency versions and
 corrupt archives have production-path negative coverage.
 
+The real app path is explicitly separate from **FIXTURE - NOT AI**. Setup saves
+configuration only. In **Real API conversation**, reload saved choices and
+review the supported route IDs and one-action data/cost/output envelope.
+**Send typed text** requires fresh action consent, not a saved-profile permission;
+generated-voice output starts OFF. PTT additionally requires separate local
+microphone and STT-upload permission; release sends the bounded recording
+(accessible Invoke uses **Finish recording and send**). Audio may reach STT and
+incur charges even when participation policy later suppresses an answer.
+**Stop / revoke this action**, pause/mute, focus loss, session lock and close
+revoke pending work. Cleanup may still own the slot; no overlapping action,
+automatic paid retry or old-audio replay is promised. Retry needs new consent.
+Typed fallback and retained response text remain available when the corresponding
+microphone/STT or output path fails; refusal is not ordinary generated speech.
+
 `Smoke-Package.ps1` reuses the canonical executable smokes in bounded child
 PowerShell processes with runtime-discovery variables still pointed away from
 the SDK. Both the native Doctor's ten self-test choices and, when explicitly
@@ -214,7 +252,9 @@ interactive, WPF's real fixture controls run with **audio OFF**. Permissioned
 tone controls are never invoked by automation. Fixture success does not turn
 the ordinary status report green; profiles and corrupted originals are not
 silently replaced. The installed `help\INTERNAL.txt` describes exact commands,
-exits, synthetic text/refusal and the separate 200 ms tone permission.
+exits, synthetic text/refusal, the separate 200 ms tone permission and the bounded
+real-conversation controls. Smoke and packaging validation must never authorize
+live requests, vault effects, microphone capture or generated-voice playback.
 
 ## Inno Setup provenance and terms
 
@@ -248,9 +288,11 @@ over Martlet code.
 
 ## Evidence boundary and required VM follow-up
 
-On the existing Windows developer host: actual locked self-contained publishing,
-native CLI/WPF launch, integrity/negative coverage, repeat-publish equality and
-real Inno compilation are exercised. The dedicated pinned/read-only CI lane
+Required for each changed app graph on the existing Windows developer host:
+two actual locked self-contained publishes, native CLI/WPF smoke,
+integrity/negative coverage, repeat-publish equality and real Inno compilation.
+Lock refresh or read-only compiler receipt verification alone does **not**
+complete those payload gates. The dedicated pinned/read-only CI lane
 performs two publishes, assertions, native Doctor smoke and compilation only.
 It neither installs Martlet nor uploads releases/artifacts.
 
@@ -258,7 +300,11 @@ It neither installs Martlet nor uploads releases/artifacts.
 install/uninstall/reinstall/repair; Start menu/registered uninstall operation;
 long consumer account paths; disk-full/cancel/locked-file scenarios;
 interrupted upgrades or rollback; SmartScreen/reputation/signing; novice or
-screen-reader qualification; denied-egress, audio/provider or AI tests.
+screen-reader qualification; denied-egress or live provider/audio qualification.
+For V04b, **real API/account or vault effects, physical microphone/speaker
+trials, clean-Windows installation, live first trial, signing and release are
+NOT RUN**. Deterministic offline fixtures and fake-port tests are not those
+external trials; implemented app controls are not evidence that they passed.
 No isolated consumer VM was supplied. Never use this shared developer host as
 a disposable install test or install into its real app/data locations.
 

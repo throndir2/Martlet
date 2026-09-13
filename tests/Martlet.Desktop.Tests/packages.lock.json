@@ -107,6 +107,14 @@
           "NAudio.Wasapi": "[3.1.0, )"
         }
       },
+      "martlet.conversation": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Audio": "[0.1.0, )",
+          "Martlet.Core": "[0.1.0, )",
+          "Martlet.Providers": "[0.1.0, )"
+        }
+      },
       "martlet.core": {
         "type": "Project"
       },
@@ -120,8 +128,10 @@
         "type": "Project",
         "dependencies": {
           "Martlet.Audio": "[0.1.0, )",
+          "Martlet.Conversation": "[0.1.0, )",
           "Martlet.Credentials.Windows": "[0.1.0, )",
-          "Martlet.Diagnostics": "[0.1.0, )"
+          "Martlet.Diagnostics": "[0.1.0, )",
+          "Martlet.Participation": "[0.1.0, )"
         }
       },
       "martlet.diagnostics": {
@@ -132,6 +142,15 @@
         }
       },
       "martlet.fixtures": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Core": "[0.1.0, )"
+        }
+      },
+      "martlet.participation": {
+        "type": "Project"
+      },
+      "martlet.providers": {
         "type": "Project",
         "dependencies": {
           "Martlet.Core": "[0.1.0, )"
