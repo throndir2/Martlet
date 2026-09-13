@@ -61,7 +61,8 @@ public enum ErrorCode
 {
     InvalidContract, UnsupportedVersion, PayloadTooLarge,
     SettingsMalformed, SettingsInaccessible, SettingsConflict,
-    NotConfigured, NotImplemented, ProviderCapability, ProviderFailed, StreamTruncated
+    NotConfigured, NotImplemented, ProviderCapability, ProviderFailed, StreamTruncated,
+    AudioDeviceUnavailable, AudioDeviceLost, AudioFormatUnsupported, AudioPlaybackFailed, DeadlineExceeded
 }
 
 public sealed record MartletError : IContract
