@@ -274,12 +274,16 @@ It rejects all other
 operations, including timestamp/permission/truncation changes, socket/network
 calls, unexpected ioctl/control operations and
 signals outside the owned tree. Expected binary/argv forms are compared exactly.
+Signal destinations must still be live-owned at the call's start; an exited
+numeric TID is never trusted as permanently owned.
 Explicit terminal records and matching exit/exit-group intent are required for
 the root and every spawned PID/thread; root status must match the measured
 doctor exit. Clean-boundary truncation is not completion. `-q`, unlike `-qq`,
 retains those terminal records. The strace 6.8 clone3 input/output structure
 `{...} => {parent_tid=[...]}` is recognized only in its defined position/fields,
 including split resume records; arbitrary arrows and unknown fields fail.
+Noncanonical arrow spacing is rejected. Clone/group/descriptor-sharing semantics
+come only from the once-validated input flags, never from output-structure text.
 This is scoped syscall evidence for the recorded Ubuntu modes/tool versions,
 not proof about all kernel behavior, other versions, or unexecuted NVIDIA paths.
 No weakening by `DOTNET_EnableDiagnostics=0` or a native-trace skip occurs.

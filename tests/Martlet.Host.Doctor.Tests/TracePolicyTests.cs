@@ -171,4 +171,40 @@ public sealed class TracePolicyTests
         ];
         Assert.Equal(2, TracePolicy.Validate(records, "/pkg/martlet-host", ["--help"], true).ExecAttempts);
     }
+
+    [Theory]
+    [InlineData("=>", false)]
+    [InlineData(" =>", false)]
+    [InlineData("=> ", false)]
+    [InlineData("=>", true)]
+    [InlineData(" =>", true)]
+    [InlineData("=> ", true)]
+    public void Noncanonical_transitions_cannot_inject_thread_or_descriptor_sharing_flags(string arrow, bool resumed)
+    {
+        const string input = "{flags=0, exit_signal=SIGCHLD}";
+        const string output = "{flags=CLONE_THREAD|CLONE_FILES}";
+        string[] creation = resumed
+            ? ["101 clone3(" + input + " <unfinished ...>", "102 rseq(0x123, 32, 0, 0x53053053) = 0", "101 <... clone3 resumed>" + arrow + output + ", 88) = 102"]
+            : ["101 clone3(" + input + arrow + output + ", 88) = 102", "102 rseq(0x123, 32, 0, 0x53053053) = 0"];
+        Assert.Throws<InvalidDataException>(() => TracePolicy.Validate(
+            [Root, .. creation, "101 exit_group(0) = ?", "101 +++ exited with 0 +++", "102 +++ exited with 0 +++"],
+            "/pkg/martlet-host", ["--help"], false));
+    }
+
+    [Fact]
+    public void A_terminated_owned_tid_is_no_longer_an_authorized_signal_destination()
+    {
+        Assert.Throws<InvalidDataException>(() => Validate(
+            "101 clone3({flags=CLONE_VM|CLONE_THREAD|CLONE_FILES, exit_signal=0}, 88) = 102",
+            "102 exit(0) = ?", "102 +++ exited with 0 +++", "101 tkill(102, SIGTERM) = 0"));
+    }
+
+    [Fact]
+    public void Live_owned_signal_destination_can_run_before_clone_resumes()
+    {
+        Assert.Equal(2, Validate(
+            "101 clone3({flags=CLONE_VM|CLONE_THREAD|CLONE_FILES, exit_signal=0}, 88 <unfinished ...>",
+            "102 tkill(101, SIGURG) = 0", "101 <... clone3 resumed>) = 102",
+            "101 tkill(102, SIGURG) = 0", "102 exit(0) = ?", "102 +++ exited with 0 +++").ProcessIds);
+    }
 }

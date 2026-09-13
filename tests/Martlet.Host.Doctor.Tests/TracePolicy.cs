@@ -9,7 +9,7 @@ namespace Martlet.Host.Doctor.Tests;
 internal static class TracePolicy
 {
     internal sealed record Summary(int Calls, int ProcessIds, int ExecAttempts);
-    internal sealed record Call(int Pid, string Name, string[] Args, string Result, int Started, int Completed);
+    internal sealed record Call(int Pid, string Name, string[] Args, string Result, int Started, int Completed, ImmutableArray<string> InputFlags);
     private static readonly Regex Prefix = Rx(@"^(?<pid>[1-9][0-9]*)\s+(?<body>.+)$");
     private static readonly Regex Complete = Rx(@"^(?<name>[a-z][a-z0-9_]*)\((?<args>.*)\)\s+=\s+(?<result>.+)$");
     private static Regex Rx(string pattern) => new(pattern, RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
@@ -79,19 +79,26 @@ internal static class TracePolicy
             if (call.Groups["name"].Value.Length > 64) Fail("syscall-name");
             var result = call.Groups["result"].Value;
             if (!Rx(@"^(?:-?[0-9]+|0x[0-9a-f]+)(?:<[^<>]*>)?(?: .*)?$|^\?(?: ERESTART[A-Z]+ .*)?$").IsMatch(result))
-                Fail("result-syntax");
+                Fail("result-syntax-" + call.Groups["name"].Value + "-" +
+                    (Rx(@"\bE[A-Z_]{1,32}\b").Match(result) is { Success: true } code ? code.Value : "scalar"));
             var syscall = call.Groups["name"].Value;
-            try { calls.Add(new(pid, syscall, Split(call.Groups["args"].Value, syscall == "clone3"), result, started, lineCount)); }
+            try
+            {
+                var args = Split(call.Groups["args"].Value, syscall == "clone3");
+                calls.Add(new(pid, syscall, args, result, started, lineCount, CloneInputFlags(syscall, args)));
+            }
             catch (InvalidDataException ex) { throw new InvalidDataException(ex.Message + ":" + syscall); }
         }
         if (pending.Count != 0 || calls.Count == 0) Fail("incomplete-trace");
         if (calls[0].Name != "execve") Fail("missing-root-exec");
         var root = calls[0].Pid;
         var parents = new Dictionary<int, int>();
+        var born = new Dictionary<int, int> { [root] = calls[0].Started };
         foreach (var call in calls.Where(c => c.Name is "clone" or "clone3" or "fork" or "vfork"))
         {
             if (!PositiveResult(call.Result, out var child)) continue;
             if (child == root || child == call.Pid || !parents.TryAdd(child, call.Pid) || parents.Count > 128) Fail("process-tree");
+            born.Add(child, call.Started);
         }
         bool Owned(int pid)
         {
@@ -102,6 +109,8 @@ internal static class TracePolicy
             }
             return true;
         }
+        bool LiveOwned(int pid, int at) => Owned(pid) && born.TryGetValue(pid, out var creation) && creation <= at &&
+            !events.Any(e => e.Pid == pid && e.Line <= at && e.Text.StartsWith("+++ ", StringComparison.Ordinal));
         foreach (var call in calls) if (!Owned(call.Pid)) Fail("unowned-pid");
         var descriptors = new TraceDescriptors(root);
         var execs = 0; var processSpawns = 0;
@@ -148,29 +157,8 @@ internal static class TracePolicy
                         !a[3].Contains("MAP_ANONYMOUS", StringComparison.Ordinal)) Fail("shared-file-map");
                     break;
                 case "clone": case "clone3": case "fork": case "vfork":
-                    if (call.Name == "clone3")
-                    {
-                        if (a.Length != 2) Fail("clone3-arity");
-                        if (a[0].Contains(" => ", StringComparison.Ordinal))
-                        {
-                            var output = a[0].Split(" => ", StringSplitOptions.None)[1];
-                            if (!output.StartsWith('{') || !output.EndsWith('}')) Fail("clone3-transition");
-                            var fields = Split(output[1..^1]);
-                            if (fields.Length is < 1 or > 2 || fields.Select(f => f.Split('=')[0]).Distinct().Count() != fields.Length ||
-                                fields.Any(f => !Rx(@"^(?:parent_tid|pidfd)=(?:\[[0-9]+(?:<pid:[0-9]+>)?\]|NULL|0x[0-9a-f]+)$").IsMatch(f)))
-                                Fail("clone3-transition-fields");
-                        }
-                    }
-                    if (call.Name is "clone" or "clone3")
-                    {
-                        var match = Rx(@"\bflags=(?<flags>[A-Z0-9_|]+)(?:,|\}|$)").Match(string.Join(',', a));
-                        var allowed = new[] { "0", "SIGCHLD", "CLONE_VM", "CLONE_VFORK", "CLONE_THREAD", "CLONE_SIGHAND", "CLONE_FILES",
-                            "CLONE_FS", "CLONE_SYSVSEM", "CLONE_SETTLS", "CLONE_PARENT_SETTID", "CLONE_CHILD_CLEARTID", "CLONE_CHILD_SETTID",
-                            "CLONE_PIDFD", "CLONE_CLEAR_SIGHAND" };
-                        if (!match.Success || match.Groups["flags"].Value.Split('|').Any(flag => !allowed.Contains(flag))) Fail("clone-flags");
-                    }
-                    else if (a.Length != 0) Fail("fork-arity");
-                    var thread = string.Join(',', a).Contains("CLONE_THREAD", StringComparison.Ordinal);
+                    if (call.Name is "fork" or "vfork" && a.Length != 0) Fail("fork-arity");
+                    var thread = call.InputFlags.Contains("CLONE_THREAD");
                     if (!thread && PositiveResult(call.Result, out _) && (!packages || ++processSpawns > 1)) Fail("unexpected-process-spawn");
                     break;
                 case "fcntl":
@@ -208,7 +196,7 @@ internal static class TracePolicy
                 case "kill": case "tkill": case "tgkill":
                     var targets = a.Take(call.Name == "tgkill" ? 2 : 1);
                     if (a.Length != (call.Name == "tgkill" ? 3 : 2) ||
-                        targets.Any(target => !int.TryParse(target, NumberStyles.None, CultureInfo.InvariantCulture, out var id) || !Owned(id)))
+                        targets.Any(target => !int.TryParse(target, NumberStyles.None, CultureInfo.InvariantCulture, out var id) || !LiveOwned(id, call.Started)))
                         Fail("unowned-signal");
                     break;
                 default:
@@ -252,6 +240,36 @@ internal static class TracePolicy
     private static bool PositiveResult(string result, out int value) =>
         int.TryParse(result.Split(' ', '<')[0], NumberStyles.None, CultureInfo.InvariantCulture, out value) && value > 0;
 
+    private static ImmutableArray<string> CloneInputFlags(string name, string[] args)
+    {
+        if (name is not ("clone" or "clone3")) return [];
+        if (name == "clone3" && args.Length != 2 || name == "clone" && args.Length is < 2 or > 5) Fail("clone-arity");
+        var input = name == "clone3" ? args[0] : args[1];
+        if (name == "clone3")
+        {
+            var parts = input.Split(" => ", StringSplitOptions.None);
+            if (parts.Length > 2) Fail("clone3-transition");
+            input = parts[0];
+            if (parts.Length == 2)
+            {
+                var output = parts[1];
+                if (!output.StartsWith('{') || !output.EndsWith('}')) Fail("clone3-transition");
+                var fields = Split(output[1..^1]);
+                if (fields.Length is < 1 or > 2 || fields.Select(f => f.Split('=')[0]).Distinct().Count() != fields.Length ||
+                    fields.Any(f => !Rx(@"^(?:parent_tid|pidfd)=(?:\[[0-9]+(?:<pid:[0-9]+>)?\]|NULL|0x[0-9a-f]+)$").IsMatch(f)))
+                    Fail("clone3-transition-fields");
+            }
+        }
+        var match = Rx(name == "clone3" ? @"^\{flags=(?<flags>[A-Z0-9_|]+)(?:,|\})" : @"^flags=(?<flags>[A-Z0-9_|]+)$").Match(input);
+        var allowed = new[] { "0", "SIGCHLD", "CLONE_VM", "CLONE_VFORK", "CLONE_THREAD", "CLONE_SIGHAND", "CLONE_FILES",
+            "CLONE_FS", "CLONE_SYSVSEM", "CLONE_SETTLS", "CLONE_PARENT_SETTID", "CLONE_CHILD_CLEARTID", "CLONE_CHILD_SETTID",
+            "CLONE_PIDFD", "CLONE_CLEAR_SIGHAND" };
+        if (!match.Success) Fail("clone-flags");
+        var flags = match.Groups["flags"].Value.Split('|').ToImmutableArray();
+        if (flags.Any(f => !allowed.Contains(f)) || flags.Distinct().Count() != flags.Length) Fail("clone-flags");
+        return flags;
+    }
+
     private static string CString(string value)
     {
         if (!value.StartsWith('"') || !value.EndsWith('"')) Fail("string-syntax");
@@ -283,6 +301,7 @@ internal static class TracePolicy
             else if (c == '=' && i + 1 < input.Length && input[i + 1] == '>')
             {
                 if (!cloneTransition || transition || stack.Count != 0 || result.Count != 0 ||
+                    i == 0 || i + 2 >= input.Length || input[i - 1] != ' ' || input[i + 2] != ' ' ||
                     !input[..i].TrimEnd().EndsWith('}') || !input[(i + 2)..].TrimStart().StartsWith('{'))
                     Fail("unexpected-transition");
                 transition = true;

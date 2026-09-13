@@ -3,6 +3,7 @@ using Martlet.Host.Doctor;
 
 namespace Martlet.Host.Doctor.Tests;
 
+[Collection("Owned process fixtures")]
 public sealed class ProcessTests
 {
     internal static ProcessStartInfo Fixture(string mode)

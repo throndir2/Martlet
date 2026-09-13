@@ -38,9 +38,8 @@ internal sealed class TraceDescriptors
         if (call.Name is "clone" or "clone3" or "fork" or "vfork")
         {
             if (!ResultFd(call.Result, out var child) || child == 0) return;
-            var flags = string.Join(',', a);
-            var group = flags.Contains("CLONE_THREAD", StringComparison.Ordinal) ? process.Group : child;
-            var files = flags.Contains("CLONE_FILES", StringComparison.Ordinal) ? process.Files : new(process.Files);
+            var group = call.InputFlags.Contains("CLONE_THREAD") ? process.Group : child;
+            var files = call.InputFlags.Contains("CLONE_FILES") ? process.Files : new(process.Files);
             if (!processes.TryAdd(child, new(group, files))) throw Error("duplicate-process");
             return;
         }
