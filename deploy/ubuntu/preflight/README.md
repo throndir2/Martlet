@@ -8,6 +8,9 @@ the discovery part of AC-12; it does not pass G3 or enable a self-host preset.
 The initial diagnostic target is **Ubuntu 24.04 LTS x86_64**. Ubuntu 22.04/26.04
 and other Linux distributions are **unqualified**, not automatically binary
 incompatible. WSL/container observations do not qualify a physical Ubuntu host.
+Integer OS versions such as Debian 13 / Fedora 44 remain sanitized, observed
+version strings with `HOST_UNQUALIFIED_PLATFORM` / `ReviewTarget`, not malformed
+tool versions. NVIDIA/package numeric version validation is separate.
 Windows/non-x64 live execution returns unsupported (3); help and authored
 fixtures work in developer builds on Windows without Linux or a GPU. A Linux
 ELF cannot itself start on Windows/ARM; use the matching developer build there.
@@ -223,7 +226,9 @@ PowerShell and strace:
 
 ```powershell
 ./deploy/ubuntu/preflight/publish.ps1 -ArtifactsPath $nativeArtifacts -Destination $newPackageDirectory
-./deploy/ubuntu/preflight/verify-linux.ps1 -Package $newPackageDirectory -ArtifactsPath $newVerificationDirectory
+$traceVerifier = Join-Path $artifacts 'bin/Martlet.Host.Doctor.Tests/release/Martlet.Host.Doctor.Tests.dll'
+./deploy/ubuntu/preflight/verify-wrapper.ps1 -Package $newPackageDirectory -ArtifactsPath $newNegativeDirectory -TraceVerifier $traceVerifier
+./deploy/ubuntu/preflight/verify-linux.ps1 -Package $newPackageDirectory -ArtifactsPath $newVerificationDirectory -TraceVerifier $traceVerifier
 ```
 
 Native AOT is package-only (`HostNativeAot=true`) with EventPipe disabled. A
@@ -247,9 +252,27 @@ publication, public artifact upload and installation are absent.
 The dedicated `host-preflight.yml` runs Windows and Ubuntu **synthetic**
 contracts, then executes the actual ELF on ephemeral GitHub Ubuntu 24.04:
 help, authored fixtures, and read-only local prerequisites **with NVIDIA
-query disabled**. A syscall trace rejects writable opens/mutations, network/
-socket syscalls, unexpected executables and writes beyond output/private
-coordination pipes; no weakening by `DOTNET_EnableDiagnostics=0`.
+query disabled**. `strace -f -qq -yy -s 2048 -e trace=all` traces only the spawned
+native process tree, including descriptor-only calls. Read-buffer, directory,
+entropy, uname and symlink-result payloads are rendered raw (not dumped as text).
+The build-only `TracePolicy` in the existing test project parses bounded records
+and reconstructs PID-specific unfinished/resumed calls. It fails closed on
+unknown/unparseable calls/events, unmatched resumes, unowned PIDs or extra execs.
+An explicit permitted-operation policy admits local reads, constrained
+read-only opens, private memory/thread/signal/descriptor bookkeeping and
+stdout/stderr or traced coordination-pipe/eventfd writes. It rejects all other
+operations, including timestamp/permission/truncation changes, writable shared
+file mappings, socket/network calls, unexpected ioctl/control operations and
+signals outside the owned tree. Expected binary/argv forms are compared exactly.
+This is scoped syscall evidence for the recorded Ubuntu modes/tool versions,
+not proof about all kernel behavior, other versions, or unexecuted NVIDIA paths.
+No weakening by `DOTNET_EnableDiagnostics=0` or a native-trace skip occurs.
+The native fixtures assert measured exits 0/1/2/3 against their JSON schema,
+provenance, scope and expected findings. A separate wrapper-level negative
+launches the verifier as a process against a missing ELF and a checksum-corrupt
+owned package copy; both must exit nonzero for their expected assertion.
+Only after all positive assertions does the verifier return 0, rather than
+propagating a deliberately accepted doctor's nonzero exit to CI.
 Only its sanitized product report goes to logs; raw syscall traces stay in
 runner temp, not uploaded. This is CPU-runner package/inventory evidence,
 not owner hardware or GPU/daemon/container/firewall/setup qualification.

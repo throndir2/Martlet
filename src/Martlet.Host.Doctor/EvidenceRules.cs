@@ -14,7 +14,7 @@ internal static class EvidenceRules
         {
             ProbeId.Platform => e.Platform is { } p && Enum.IsDefined(p.Distribution) && Enum.IsDefined(p.KernelFlavor) &&
                 Architecture(p.OsArchitecture) && Architecture(p.ProcessArchitecture) && Parsers.SafeVersion(p.DotnetRuntime) &&
-                (p.Version is null || Parsers.SafeVersion(p.Version)) &&
+                (p.Version is null || Parsers.SafeOsVersion(p.Version)) &&
                 (p.KernelRelease is null || Regex.IsMatch(p.KernelRelease, @"^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,4}(-[0-9]{1,5})?$", RegexOptions.NonBacktracking)),
             ProbeId.Context => e.Context is { } c && Enum.IsDefined(c.Context) && !c.PhysicalHostConfirmed,
             ProbeId.Cpu => e.Cpu is { LogicalProcessors: > 0 and <= 4096 },

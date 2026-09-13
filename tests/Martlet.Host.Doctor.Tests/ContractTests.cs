@@ -150,4 +150,36 @@ public sealed class ContractTests
         }
         Assert.Equal(2, report.ExitCode);
     }
+
+    [Theory]
+    [InlineData("debian", "13")]
+    [InlineData("fedora", "44")]
+    public void Integer_distro_versions_retain_evidence_and_the_unqualified_target_remedy(string id, string version)
+    {
+        var s = FixtureCatalog.Create("inventory");
+        s = s with { Files = s.Files.SetItem(LocalFile.OsRelease, s.Files[LocalFile.OsRelease] with { Text = $"ID={id}\nVERSION_ID={version}\n" }) };
+        var report = HostEvaluator.Evaluate(s, DoctorScope.Inventory, 7443, FixtureCatalog.Timestamp.AddSeconds(10));
+        var platform = report.Probes.Single(p => p.Id == ProbeId.Platform);
+        Assert.Equal(FindingCode.HOST_UNQUALIFIED_PLATFORM, platform.Code);
+        Assert.Equal(version, platform.Evidence!.Platform!.Version);
+        Assert.Equal(ActionId.ReviewTarget, platform.Remedy.Action);
+        Assert.Equal(2, report.ExitCode);
+        Assert.Contains($"\"version\": \"{version}\"", HostJson.Serialize(report));
+        Assert.Contains("ReviewTarget", ReportFormatter.Human(report));
+    }
+
+    [Theory]
+    [InlineData(LocalFile.Inet6, ProbeId.Network)]
+    [InlineData(LocalFile.Tcp6, ProbeId.GatewayPort)]
+    [InlineData(LocalFile.Udp6, ProbeId.GatewayPort)]
+    public void Absent_IPv6_address_tcp_and_udp_tables_remain_unknown_not_zero_or_missing(LocalFile file, ProbeId id)
+    {
+        var s = FixtureCatalog.Create("inventory");
+        s = s with { Files = s.Files.SetItem(file, new(ReadStatus.Missing, "", FixtureCatalog.Timestamp, 1)) };
+        var report = HostEvaluator.Evaluate(s, DoctorScope.Inventory, 7443, FixtureCatalog.Timestamp.AddSeconds(10));
+        var probe = report.Probes.Single(p => p.Id == id);
+        Assert.Equal(FindingCode.HOST_INCOMPLETE, probe.Code);
+        Assert.Null(probe.Evidence);
+        Assert.Equal(2, report.ExitCode);
+    }
 }

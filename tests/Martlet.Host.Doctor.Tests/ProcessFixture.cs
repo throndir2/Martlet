@@ -5,6 +5,19 @@ internal static class ProcessFixture
 {
     public static async Task<int> Main(string[] args)
     {
+        if (args is ["--verify-trace", var trace, var binary, var packages, .. var arguments] && packages is "packages" or "no-packages")
+        {
+            try
+            {
+                if (new FileInfo(trace).Length > 8 * 1024 * 1024) throw new InvalidDataException("TRACE_POLICY:trace-size");
+                var summary = TracePolicy.Validate(File.ReadLines(trace), binary, arguments, packages == "packages");
+                Console.WriteLine($"TRACE_POLICY: accepted {summary.Calls} calls, {summary.ProcessIds} owned PIDs, {summary.ExecAttempts} exact exec attempts.");
+                return 0;
+            }
+            catch (InvalidDataException ex) { Console.Error.WriteLine(ex.Message); return 1; }
+            catch (IOException) { Console.Error.WriteLine("TRACE_POLICY:trace-io"); return 1; }
+            catch (UnauthorizedAccessException) { Console.Error.WriteLine("TRACE_POLICY:trace-access"); return 1; }
+        }
         if (args is not ["--process-fixture", var mode]) return 3;
         switch (mode)
         {

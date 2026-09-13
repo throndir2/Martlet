@@ -11,12 +11,14 @@ internal sealed record Parsed<T>(FindingCode Code, T? Value) where T : class;
 internal static class Parsers
 {
     private static readonly Regex NumericVersion = Pattern(@"^[0-9]{1,4}(\.[0-9]{1,4}){1,3}$");
+    private static readonly Regex OsVersion = Pattern(@"^[0-9]{1,4}(\.[0-9]{1,4}){0,3}$");
     private static readonly Regex Kernel = Pattern(@"^([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,4})(-[0-9]{1,5})?([-.][A-Za-z0-9]+)*$");
     private static readonly Regex PackageVersion = Pattern(@"^(?:[0-9]{1,3}:)?([0-9]{1,4}\.[0-9]{1,4}(?:\.[0-9]{1,4})?)(?:[+~.-][A-Za-z0-9.+~:-]{1,96})?$");
     private static readonly Regex GpuModel = Pattern(@"^(?:NVIDIA )?(?:(?:GeForce )?(?:RTX|GTX) [0-9]{3,4}(?: Ti| SUPER| Laptop GPU)?|(?:Tesla |Quadro )?[A-Z][0-9]{2,4}(?:-SXM[0-9])?(?:-[0-9]{1,3}GB)?(?: PCIe| SXM| SXM[0-9]| PCIE| NVL)?|(?:Quadro )?RTX (?:A[0-9]{3,4}|[0-9]{3,4})(?:,? Ada Generation)?|TITAN (?:V|RTX|X))$");
     private static Regex Pattern(string text) => new(text, RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
 
     internal static bool SafeVersion(string? version) => version is not null && NumericVersion.IsMatch(version);
+    internal static bool SafeOsVersion(string? version) => version is not null && OsVersion.IsMatch(version);
     internal static bool SafeGpu(GpuData gpu) => gpu is not null && gpu.Model.Length <= 96 &&
         GpuModel.IsMatch(gpu.Model) && SafeVersion(gpu.DriverVersion) && gpu.MemoryMiB is > 0 and <= 1048576;
 
@@ -41,7 +43,7 @@ internal static class Parsers
         if (!selected.TryGetValue("ID", out var id) || !Pattern(@"^[a-z][a-z0-9-]{0,31}$").IsMatch(id))
             return Bad<PlatformData>();
         selected.TryGetValue("VERSION_ID", out var version);
-        if (version is not null && !SafeVersion(version)) return Bad<PlatformData>();
+        if (version is not null && !SafeOsVersion(version)) return Bad<PlatformData>();
         kernel = kernel.Trim();
         var match = Kernel.Match(kernel);
         if (!match.Success) return Bad<PlatformData>();

@@ -67,14 +67,32 @@ jobs:
         with:
           global-json-file: global.json
       - name: Publish actual self-contained ELF (preinstalled compiler only)
+        id: publish
         run: ./deploy/ubuntu/preflight/publish.ps1 -ArtifactsPath "${{ runner.temp }}/host-native" -Destination "${{ runner.temp }}/host-package"
+      - name: Build isolated trace-verification test tool with locked current dependencies
+        run: |
+          dotnet restore tests/Martlet.Host.Doctor.Tests --locked-mode --artifacts-path "${{ runner.temp }}/host-trace-tools"
+          if ($LASTEXITCODE -ne 0) { throw 'Trace verifier locked restore failed.' }
+          dotnet build tests/Martlet.Host.Doctor.Tests --no-restore -c Release --artifacts-path "${{ runner.temp }}/host-trace-tools"
+          if ($LASTEXITCODE -ne 0) { throw 'Trace verifier build failed.' }
+      - name: Wrapper rejects missing ELF and corrupt owned fixture instead of returning success
+        run: ./deploy/ubuntu/preflight/verify-wrapper.ps1 -Package "${{ runner.temp }}/host-package" -ArtifactsPath "${{ runner.temp }}/host-wrapper-negatives" -TraceVerifier "${{ runner.temp }}/host-trace-tools/bin/Martlet.Host.Doctor.Tests/release/Martlet.Host.Doctor.Tests.dll"
       - name: Execute native help, fixtures and safe local inventory under syscall effect gate
-        run: ./deploy/ubuntu/preflight/verify-linux.ps1 -Package "${{ runner.temp }}/host-package" -ArtifactsPath "${{ runner.temp }}/host-verification"
+        run: ./deploy/ubuntu/preflight/verify-linux.ps1 -Package "${{ runner.temp }}/host-package" -ArtifactsPath "${{ runner.temp }}/host-verification" -TraceVerifier "${{ runner.temp }}/host-trace-tools/bin/Martlet.Host.Doctor.Tests/release/Martlet.Host.Doctor.Tests.dll"
       - name: Repeat publish and assert deterministic native payload and archive on this toolchain
+        if: ${{ !cancelled() && steps.publish.outcome == 'success' }}
         run: |
           ./deploy/ubuntu/preflight/publish.ps1 -ArtifactsPath "${{ runner.temp }}/host-native-repeat" -Destination "${{ runner.temp }}/host-package-repeat"
           $first = (Get-FileHash "${{ runner.temp }}/host-native/martlet-host-0.1.0-linux-x64.tar.gz").Hash
           $second = (Get-FileHash "${{ runner.temp }}/host-native-repeat/martlet-host-0.1.0-linux-x64.tar.gz").Hash
-          if ($first -ne $second) { throw 'Repeated native package bytes differ on the same pinned SDK/toolchain.' }
+          if ($first -ne $second) {
+            Compare-Object (Get-Content "${{ runner.temp }}/host-package/SHA256SUMS") (Get-Content "${{ runner.temp }}/host-package-repeat/SHA256SUMS") | Format-List
+            Get-FileHash "${{ runner.temp }}/host-native/native/bin/Martlet.Host.Doctor/release_linux-x64/martlet-host.dll", "${{ runner.temp }}/host-native-repeat/native/bin/Martlet.Host.Doctor/release_linux-x64/martlet-host.dll" | Format-List
+            readelf --notes --hex-dump=.gnu_debuglink "${{ runner.temp }}/host-package/martlet-host"
+            if ($LASTEXITCODE -ne 0) { throw 'First ELF metadata inspection failed.' }
+            readelf --notes --hex-dump=.gnu_debuglink "${{ runner.temp }}/host-package-repeat/martlet-host"
+            if ($LASTEXITCODE -ne 0) { throw 'Second ELF metadata inspection failed.' }
+            throw 'Repeated native package bytes differ on the same pinned SDK/toolchain.'
+          }
           git diff --exit-code
       # Intentionally no artifact upload, release, signing, secrets, apt install, Docker or GPU execution.
