@@ -12,6 +12,8 @@ internal sealed class ControlledDevice : IPlaybackDeviceFactory, IPlaybackDevice
     private PcmFormat? format;
     public bool AutoConsume { get; set; } = true;
     public bool BlockOpen { get; init; }
+    public bool BlockOpenCancellation { get; init; }
+    public bool BlockDispose { get; init; }
     public bool BlockWrite { get; set; }
     public int BlockAfterSamples { get; init; } = int.MaxValue;
     public bool IgnoreCancellation { get; init; }
@@ -24,6 +26,8 @@ internal sealed class ControlledDevice : IPlaybackDeviceFactory, IPlaybackDevice
     public int? InvalidPadding { get; init; }
     public bool ReturnInvalidWriteCount { get; init; }
     public TaskCompletionSource EnteredOpen { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource EnteredCancellation { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource EnteredDispose { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public TaskCompletionSource EnteredWrite { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public TaskCompletionSource EnteredBlockedWrite { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public ManualResetEventSlim Release { get; } = new();
@@ -46,6 +50,18 @@ internal sealed class ControlledDevice : IPlaybackDeviceFactory, IPlaybackDevice
         Interlocked.Increment(ref opens);
         Selection = selection;
         format = input;
+        if (BlockOpenCancellation && !Release.IsSet)
+        {
+            using var registration = cancellationToken.Register(() =>
+            {
+                EnteredCancellation.TrySetResult();
+                Release.Wait();
+            });
+            EnteredOpen.TrySetResult();
+            // Open cannot finish releasing its registration while the cancellation callback is held.
+            EnteredCancellation.Task.GetAwaiter().GetResult();
+            cancellationToken.ThrowIfCancellationRequested();
+        }
         EnteredOpen.TrySetResult();
         if (BlockOpen)
             Release.Wait(IgnoreCancellation ? CancellationToken.None : cancellationToken);
@@ -111,6 +127,8 @@ internal sealed class ControlledDevice : IPlaybackDeviceFactory, IPlaybackDevice
     {
         Assert.Equal(workerThread, Environment.CurrentManagedThreadId);
         Interlocked.Increment(ref disposals);
+        EnteredDispose.TrySetResult();
+        if (BlockDispose) Release.Wait();
         if (FailDispose) throw new InvalidOperationException("PRIVATE disposal detail");
     }
 }
