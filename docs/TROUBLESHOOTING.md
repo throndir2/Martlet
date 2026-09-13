@@ -1,5 +1,76 @@
 # Desktop troubleshooting and local support (V06b)
 
+## Local configuration backup / restore (V07a)
+
+**Configuration backups are NOT support bundles.** The support ZIP described
+below contains a deliberately lossy, redacted projection and cannot restore
+settings. Use **Configuration backup / restore (local only)** from the main
+window, or **Local configuration backup / restore** in Setup / resume
+(including Setup opened from real conversation). Each path uses the same
+app-lifetime recovery owner and shared effect slot; nested recovery is owned
+by the active Setup dialog, not a disabled parent window.
+Opening this screen is passive: no backup read/scan/create, vault, diagnostics,
+device, network or upload action. Saved settings and device identifiers can be
+personal. Configuration envelopes are LOCAL and **NOT encrypted or sanitized**.
+
+1. Review scope. Only actual validated settings/profile, route/model/voice and
+   device preferences, opaque credential references and cleanup metadata are
+   captured. No secret values, vault, environment, conversation/audio, arbitrary
+   files, crash dumps, models or optional support journal/logs are included.
+   There is no persistent voice/model/memory database in this product yet.
+2. Choose a new explicit local `.martlet-config` output in an existing parent
+   directory. **Create local configuration snapshot** asks for confirmation.
+   Output is create-only; an existing file is never overwritten. No cloud
+   storage or account sync is provided.
+3. For restore, browse a selected file, then explicitly **Read exact restore
+   preview**. Browsing is not importing or approval. Bounded parsing checks the
+   application's versioned envelope, exact settings schema/known fields and
+   integrity digests. Review compatibility, source digest, destination/profile,
+   current revision, changed roles/devices and the **entire exact candidate JSON**.
+4. **Review and confirm this exact restore** defaults to **No**. Approval applies
+   once to this source digest, destination profile/store and current revision.
+   A source/selection/revision change invalidates it; read a fresh preview.
+   Restore uses only the frozen candidate bytes, never unseen replacement input.
+5. Reopen/reload Setup to review destinations, enter keys explicitly and retest
+   devices. Preferences are recovered, but every imported destination
+   acknowledgment, live key binding and audio checkpoint is invalidated. Capture
+   and logging remain OFF. Current owned keys are detached into tracked cleanup
+   metadata, **not deleted**. Current legacy references/pending removals survive;
+   obsolete imported IDs do not authorize key use or deletion.
+
+**V07a supports only an existing valid same-profile v1/v2 destination.** A missing,
+foreign-profile, corrupt or future-version destination is refused; this is not
+portable profile import or corrupt-store repair. Preserve originals and use
+compatible manual recovery, not a reset or an older executable. If current
+active keys plus pending removals exceed sixteen, explicitly clean up selected
+detached keys in Setup before previewing again. No automatic vault deletion.
+
+Every replacement first preserves exact current raw bytes in a new
+`settings.recovery.<uuid>.bak` beside settings. Prior recovery and historical
+v1 migration snapshots are never overwritten/pruned. These internal raw files
+are recovery evidence, not directly importable `.martlet-config` envelopes.
+On access denied/disk-space/locked-writer errors, preserve all originals, check
+the location/free space and other Martlet processes, then retry. Do not elevate,
+disable protection or delete evidence to force success.
+
+Stop/Pause/close live actions and **stop/close Troubleshooting**, including its
+cleanup, before recovery. The same app effect slot excludes setup/vault/live/
+audio work. Slow IO may outlast the five-second observation deadline. Stop or
+Close requests cancellation but never claims rollback, releases a live writer
+early or automatically resumes it. Reopen to inspect its actual result/receipt.
+Use **Retry owned staging cleanup** if indicated; only that exact temporary
+file is targeted. Main Exit waits for this owner. After a process crash, preserve
+any temporary/raw snapshot evidence for explicit manual inspection; startup
+does not scan or resume recovery. Atomic rename/replace and flushed files are
+tested with controlled faults, not qualified against physical power loss.
+
+No binary switching, installer upgrade/uninstall, account sync or automatic
+update is implemented by V07a. Clean-VM N-1/N rollback, OS-vault roundtrip,
+physical devices, novice trials, signing, rights and G2 remain NOT RUN / NOT
+PASSED. No old executable is launched against a new schema.
+
+## Local support workflow
+
 **Internal functionality, not a support service or a passed release gate.**
 Open **Troubleshooting** from the main window, Setup / resume, Audio setup or
 real conversation. It is available before a profile exists and when settings

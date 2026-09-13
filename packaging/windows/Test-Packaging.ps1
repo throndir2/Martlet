@@ -48,7 +48,9 @@ foreach ($required in @('FIXTURE - NOT AI', 'self-test --scenario streaming --js
         'V04b', 'Send typed text', 'Stop / revoke this action', 'LOCAL microphone capture',
         'separately permit uploading', 'NOT RUN', 'V06b', 'Record troubleshooting metadata',
         'OFF at every launch', 'support-v1', 'Preview every frozen file',
-        'No support contact or upload channel is configured', 'CLI export is not implemented')) {
+        'No support contact or upload channel is configured', 'CLI export is not implemented',
+        'V07a', 'Configuration snapshots are NOT support bundles', 'same-profile v1/v2',
+        'Read exact restore preview', 'settings.recovery.', 'Capture/logging stay OFF.')) {
     if (-not $help.Contains($required)) { throw "Installed help is missing: $required" }
 }
 $script:cases++

@@ -1,5 +1,11 @@
 # Resumable setup, Windows credentials and local audio (V02a/V02b)
 
+**Local configuration backup / restore (V07a)** is available from the main
+window and Setup / resume. It is same-profile recovery only, not portable
+profile import, corrupt-store repair or binary rollback. See the
+[installed recovery walkthrough](TROUBLESHOOTING.md#local-configuration-backup--restore-v07a)
+and the transaction contract below.
+
 [Troubleshooting](TROUBLESHOOTING.md) is available from Setup and Audio setup
 even before configuration succeeds. Opening it is passive; local metadata
 recording is OFF until explicitly started. Preview/export never reads keys,
@@ -154,6 +160,80 @@ or copy active profiles between running apps. Filesystem power-loss behavior,
 hostile same-user manipulation and OS-vault roundtrips are not qualified here.
 
 ## Integration and evidence boundaries
+
+### Local configuration recovery transaction (V07a)
+
+The explicit `.martlet-config` output is a bounded 128 KiB format-1 JSON
+envelope, not a ZIP/support bundle. Its deterministic manifest records
+`Martlet.Configuration`, producer assembly version, minimum reader format,
+settings schema, source profile UUID, snapshot UUID, UTC creation time and
+source SHA-256. `settings_bytes` is base64 of the **exact** <=64 KiB validated
+v1/v2 settings file (base64 is not encryption). Envelope SHA-256 covers the
+canonical serialized manifest, including the payload; source SHA-256 covers
+the original bytes. A fixed manifest serializes deterministically, but new
+snapshots intentionally have new identifiers/times. Integrity detects damage,
+not hostile modification or publisher authenticity. Unknown/duplicate fields,
+invalid encoding, oversized data and unsupported application/schema versions
+are refused, including inside the decoded settings payload.
+
+Creation holds the existing settings writer lock, validates current settings
+and rechecks the revision before a create-only staged/flush/rename to the
+chosen local destination. It does not copy an unlocked live file, read a vault,
+walk directories or include the opt-in support journal. Route/device IDs and
+configuration are personal; these LOCAL backups are neither encrypted nor
+sanitized diagnostic exports. There is currently no persisted voice/model/
+memory database to back up. Secrets, transient text/audio, environment,
+arbitrary files and diagnostic logs are excluded.
+
+Restore requires an **existing valid same-profile** v1/v2 destination. Missing,
+malformed, inaccessible or newer destination files are never overwritten as a
+repair shortcut. Foreign profile IDs are not remapped. Preview generates a
+private immutable candidate byte array and displays its entire JSON, SHA-256,
+source digest, destination path/profile, expected revision and exact changes.
+Confirmation is default-No and one-use, bound to that plan. Replaced/modified
+source bytes or stale destination settings invalidate it. Commit pins the
+source with a read-only sharing handle and verifies its frozen digest; reread
+bytes are compared only, never substituted for the reviewed candidate.
+
+Imported route/model/voice and audio choices remain useful **inert preferences**:
+fresh configuration revisions, cleared destination `Consent`/`CredentialId`
+and audio `Checkpoint`, and setup returns to Destinations. CURRENT legacy
+references and pending removals are preserved; current active owned keys become
+pending removals. Imported legacy/active/pending IDs never become live authority.
+If detaching current keys would exceed sixteen pending removals, preview refuses
+with an explicit Setup cleanup remedy; it never drops a reference or deletes a
+key to make space. Subsequent native removal still requires Setup's exact
+current revision, writer lock and separate consent. No capture, logging,
+provider call, key read/write/delete or device qualification is restored.
+
+Commit uses the same writer lock and atomic-write helper as ordinary saves.
+It first creates and flushes a **new create-only**
+`settings.recovery.<uuid>.bak` containing exact current raw bytes, then stages,
+flushes and atomically replaces `settings.json`, checking the source/current
+revision again just before replacement. Every pre-restore snapshot is retained,
+even after a failed replacement; historical `settings.v1.*.bak` files are never
+overwritten or pruned. These raw originals remain evidence for compatible
+manual recovery/V07b, not importable envelopes. No settings schema downgrade or
+old executable activation is offered.
+
+Failed/canceled staging removes only its uniquely owned temporary file. Cleanup
+failure retains that exact path and blocks new recovery actions until explicit
+retry; the app-lifetime owner survives presentation close/reopen and holds the
+shared effect slot through real IO and cancellation callbacks. Five seconds
+ends UI observation, not IO ownership. Main Exit waits for recovery ownership/
+cleanup, rather than killing a still-running transaction. A crash can leave
+owned `.tmp`/`.bak` evidence; launch does not scan, delete or resume it. Preserve
+it for manual inspection with the app closed. No multi-step native credential
+transaction is introduced, so no second settings journal/authority is needed.
+
+The tested filesystem scope is cooperating writers, bounded reads, flushed
+temporary files, create-only same-directory rename and `File.Replace` on the
+developer test filesystem. A failure before replacement leaves original bytes;
+after successful replacement the original is retained in the prior snapshot.
+There is **no filesystem/power-loss durability guarantee**, directory-fsync
+claim, cross-process hostile-editor protection or clean-VM qualification.
+Physical disk-full/power-cut/N-1/N/OS-vault/real-user trials remain NOT RUN;
+controlled IO faults and fake-native/WPF evidence are not substitutes.
 
 `SetupStatus.From` emits only typed checkpoint/role booleans and a pending
 count. Desktop/Doctor reports exclude route IDs, origins and credential IDs,
