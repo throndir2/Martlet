@@ -1,0 +1,354 @@
+# Delivery, acceptance, and release plan
+
+**Proposed backlog and gates. Nothing below is implemented or passed.**
+Read [scope and decisions](../DEVELOPMENT_PLAN.md), [contracts](ARCHITECTURE.md),
+[installation/support](INSTALLATION_SUPPORT.md), and [research](RESEARCH.md).
+The initial repository has no runners, CI, implementation, or tests to inherit.
+Select a small coherent toolchain in M0; do not invent successful evidence.
+
+## 1. Execution rules
+
+Each row below is an owned work item; small items can be one PR, while the
+larger items have mandatory PR slices listed below. Retain the parent ID and
+acceptance criteria across slices. If another item grows beyond a focused
+change, split it before assigning implementation. Do not combine installer,
+network security, model selection, and avatar work in one change.
+
+Before implementation, approve the architecture/contract decisions affected by
+the task, inspect current repository instructions, and coordinate ownership of
+shared files. A PR needs production-path tests where feasible, a reproducible
+acceptance description, documentation/remedies for new behavior, independent
+review, and fixes/revalidation before merge. No disabled checks or fixture
+substitution for missing hardware evidence.
+
+The product owner's distribution/cloud choices and restricted-model/SDK rights
+remain real decisions. Signing credentials, a spending budget, deployment,
+host services/drivers, hardware changes, and heavyweight model downloads need
+separate authorization. Routine implementation does not grant these permissions.
+Code can merge behind unavailable/experimental features without falsely claiming
+their deployment has qualified.
+
+## 2. Ordered PR-sized backlog
+
+Risk is implementation uncertainty: L low, M medium, H high. Dependencies are
+task IDs; a milestone exit also requires its release gate. Different tasks may
+run concurrently only within the boundaries in section 3.
+
+### M0: Decisions, provenance, and contracts
+
+| ID | Deliverable / owner | Depends on | Acceptance | Risk |
+| --- | --- | --- | --- | --- |
+| D01 | Record AD-01 through AD-09 disposition, project license/distribution direction, no-cloud-fallback policy, first OS/provider targets, candidate license inventory / product + technical owner | Plan reviewed | Record accepted .NET/WPF/UI-independent core direction; other decisions approved, deferred, or rejected with tradeoffs; no invented project license or unapproved SDK/weights; uncertain AIRI identity retained | M |
+| D02 | Versioned provider/event/error/settings/probe schemas, turn state machine, binary audio framing and golden payloads / core | D01 architecture subset | Examples cover complete/streaming/refused/canceled/failed/no-speech, bounds, capability mismatch, unknown optional fields; UI and adapter owners agree; AC-01 specification frozen | H |
+
+**Exit G0:** architecture and distribution decisions needed by M1 are explicit;
+schema ownership is assigned. Deferred commercial/host/avatar decisions may
+remain gates for their own features rather than block fixture work.
+
+### M1: Installer and diagnostic foundation
+
+| ID | Deliverable / owner | Depends on | Acceptance | Risk |
+| --- | --- | --- | --- | --- |
+| F01 | Minimal solution, WPF accessible shell, shared core/settings and CLI entry point / client | D01, D02 | Standard-user launch, settings round-trip with version, text status without mic/provider, no capture/network on launch | M |
+| F02 | Self-contained Windows publish and per-user installer skeleton / packaging | F01 | AC-02 on clean Windows: install/launch/repair/uninstall with no dev tools/runtime download; stable app identity and preserved settings; internal unsigned artifact labeled non-release | M |
+| F03 | Deterministic fixture provider + contract harness, owned/licensed audio fixtures and minimal reusable PCM playback sink / core + audio | D02, F01 | Actual core/playback paths run without keys/internet/GPU; simulated failures/delays/duplicates identifiable; AC-01/AC-03 fixture cases. V01 extends this sink rather than creating a second audio stack | M |
+| F04 | Shared read-only probe registry, CLI JSON/exit codes, UI pipeline status and first error remedies / diagnostics | F01, F03 | AC-04: same probe results/codes in UI/CLI; stale/unknown/skipped never green; explicit fixture provenance; first mic/output probes fit registry | M |
+| F05 | Minimal CI lanes and artifact manifests for solution, contracts, fixtures, packaging / release | F02, F03, F04 | Build/test/package jobs use pinned dependencies, no credentials in ordinary PRs, no network inference/model downloads; failed fixture or package task fails the lane | M |
+
+**Exit G1:** a clean Windows machine runs the fixture demo and diagnosis without
+AI hardware, credentials, or development tools. No claim of real AI yet.
+F02/F04 are required early; neither may be postponed until after voice features.
+
+### M2: API-backed voice MVP
+
+| ID | Deliverable / owner | Depends on | Acceptance | Risk |
+| --- | --- | --- | --- | --- |
+| V01 | WASAPI capture/playback, NAudio adapter, CPU VAD integration and device policy / audio | D02, F01, F03, F04 | AC-05 with actual USB/headset/default-change cases; correct formats and bounded VAD segmentation; no unwanted room-speaker switch; PTT and Stop work | H |
+| V02 | Resumable onboarding, profile/model/voice choices, destination consent, Credential Manager, typed fallback / client | F02, F04, V01 | AC-06 checkpoint/credential cases using fixture adapters: interrupt/relaunch each step; key not in config/log/export; local audio tests; destination change invalidates consent. Full real novice trial belongs to V07 | H |
+| V03 | One real API provider preset for STT, text LLM, TTS, versioned catalog and capability/error adapters / provider | D02, F03 | AC-07 contract fixtures and authorized live smoke; no surprise charges, model access assumed from listing, free-tier promise, or automatic cloud/model fallback | H |
+| V04 | End-to-end streaming orchestration, text segmentation, epochs/cancel, bounded queues and partial states / core | V01, V02, V03, F03 | AC-03/AC-08: real consented mic-to-voice; stop suppresses late audio; network/slow-consumer/duplicate events never replay stale speech or leak memory | H |
+| V05 | Separate talk-decision policy, names/aliases/personality config, explicit-address and conservative group behavior / core | D02, F03, V04 | AC-09: unaddressed/cooldown/self-audio/silence cases suppressed with reason; PTT works; non-speaking participants and unknown confidence handled honestly | H |
+| V06 | Redacted structured logs, status remedies, local support bundle preview/consent and retention / diagnostics | F04, V02, V04, V05 | AC-04/AC-10: new failures have stable codes, golden remedies and canary leak tests; no transcript/audio/screen/secret collection by default | H |
+| V07 | Application-aware upgrade/rollback/uninstall, signed candidate pipeline, onboarding/usability/support docs / release | F05, V02, V04, V05, V06 | AC-02/AC-06/AC-11 on clean target OS; publisher signature/provenance verified; novice trials meet gate; no real-GPU claim | H |
+
+**Exit G2:** supported API MVP only after the approved provider live lane,
+actual Windows install/audio/lifecycle evidence, independent review, signing,
+license notices, support readiness, and explicit cost/data copy all pass.
+If signing/budget access is unavailable, keep an internal pre-release status.
+
+### M3: Ubuntu self-host beta
+
+| ID | Deliverable / owner | Depends on | Acceptance | Risk |
+| --- | --- | --- | --- | --- |
+| H01 | Packaged read-only host inventory/preflight and precise prerequisite remedies / host | D02, F04 | AC-12 discovery: unsupported/missing/permission-denied are distinct; dry-run changes nothing; Ubuntu CPU fixtures exercise remedies, not GPU qualification | M |
+| H02 | Locked role/image/model manifest, LLM backend spike, dependency/license/disk inventory / runtime + release | D01, H01, V03 contract patterns | Concrete downloadable bytes/digests/revisions; no floating `main`/`latest`; exact candidate GPU matrix has known/unknown fields; no preset enabled before rights and fit validation | H |
+| H03 | Gateway TLS/pairing/scoped authentication, rotation/revocation, capability negotiation and firewall guidance / gateway | D02, H01 | AC-13 against synthetic workers on two processes/hosts; reject unpaired clients, bad pins, expiry, replay, wrong roles, unsafe redirects; no Docker/admin API | H |
+| H04 | Isolated pinned Python F5 worker and gateway TTS adapter with reference/audio consent / runtime | H02, H03, V04 | Chunked synthesis/transport correctly declared; auxiliary downloads explicit; contract cancellation/bounds pass; real GPU TTFA/VRAM awaited in H06, not claimed by CPU mocks | H |
+| H05 | Reviewed idempotent bootstrap, role Compose profiles, boot readiness, persistent volumes, repair/upgrade/backup/rollback/uninstall / host | H01, H02, H03, H04 | AC-12 lifecycle on target Ubuntu with declared fixture/real workers: interruption/resume, precise privileges, no root worker/default socket, failed warmup stays failed, data-preserving removal/restore; GPU cells await H06 | H |
+| H07 | Optional local CPU whisper.cpp STT package, private-route audit, qualified speech barge-in option / audio | V01, V04, H02 | AC-05/AC-08: consented model provisioning, denied-egress local STT works on declared CPU; full-duplex only on proven topology, manual barge-in remains default fallback | H |
+| H06 | Witnessed single/two-GPU-host acceptance, combined LLM/F5 fit, host-2 fault isolation, optional admin guide / hardware + release | H04, H05, H07, V06 | AC-12/AC-13/AC-14 on exact owner inventory: reboot, concurrent load, unplug host 2, OOM recovery, local-only data path; optional power/remote desktop tests separately consented | H |
+
+H07 precedes H06 deliberately: a private self-host profile needs a proven local
+STT route, not an undisclosed cloud transcription dependency. H06 qualifies the
+two-host transport using fixture context on host 2; **real VLM/OCR/detector/memory
+qualification is still P04**, with explicit labels in the support matrix.
+The local-STT part of H07 is required for this private route; optional speech
+barge-in can remain disabled and does not block G3.
+
+**Exit G3:** publish a tested host manifest and reproducible host setup/support
+guide only after real NVIDIA evidence. Remote witness reports must identify
+operator, build, machines, steps, logs/timings, consent, and outcomes. Optional
+power policy/Sunshine are not blockers if disabled; enabling them requires their
+own hardware-specific evidence. Unvalidated deployments remain experimental.
+
+### M4: Useful perception and memory
+
+| ID | Deliverable / owner | Depends on | Acceptance | Risk |
+| --- | --- | --- | --- | --- |
+| P01 | Explicit selected-window screenshot capture, preview, pause/lock handling and budgets / client | V02, V06, H03 | AC-15: zero capture before consent; source closed/locked/denied stops; no desktop-wide fallback or game injection; exact destination visible | H |
+| P02 | Host-2 VLM/OCR adapters, optional separately licensed detector, freshness/resource scheduler / perception | P01, H02, H03, H06 | AC-15/AC-14: labeled task evaluation, bounded latest-frame queue, stale data excluded, host-2 loss does not block voice; choose detector only if needed | H |
+| P03 | Opt-in memory service, user-save/inspect/edit/delete/export, lexical retrieval then evaluated embedding/reranker option / memory | D02, H03, V06 | AC-16: provenance/consent and deletion propagate through index/cache/in-flight work; no store-wide cloud upload; backup/restore semantics documented | H |
+| P04 | Real host-2 model and combined gaming-load qualification, privacy and restore exercises / release | P02, P03 | AC-14/AC-15/AC-16 with real enabled roles/models; offline/host-loss fallback truthful; no advertised unlimited simultaneous models | H |
+
+**Exit G4:** each enabled feature improves a defined task on a labeled evaluation
+set and stays within measured resource/privacy limits. Defer unnecessary YOLO,
+vector database, and reranking complexity. App-scoped remote-participant audio
+or diarization, if prioritized, needs an additional V01/V05-style acceptance
+task and consent review; it is not implied by P01 screenshot capture.
+
+### M5: Optional avatar
+
+| ID | Deliverable / owner | Depends on | Acceptance | Risk |
+| --- | --- | --- | --- | --- |
+| A01 | Exact SDK/renderer decision, Expandable Application classification, asset import rules / product + avatar | D01, G2 | Recorded distribution permission/terms and user asset rights workflow; no assumption MIT project code licenses Cubism Core or assets | H |
+| A02 | Isolated renderer, safe import, actual-playback lip sync, blinking/breathing/gaze motions / avatar | A01, V04 | AC-17: voice unchanged without renderer; late/canceled audio not animated; malformed/oversized/path-traversal assets rejected | H |
+| A03 | Avatar performance/device/crash/uninstall and licensing release checklist / release | A02, G4 | AC-17/AC-14: bounded idle/FPS, renderer crash/restart and removal cannot erase or stop voice; notices and distribution terms complete | M |
+
+**Exit G5:** avatar remains optional, with measured cost and rights-cleared
+distribution. A01 research may run earlier after voice MVP; no avatar
+implementation takes priority over unpassed voice/self-host gates.
+
+### Mandatory slices for larger work items
+
+Slice dependencies define the earliest isolated development work; integrating
+the parent still requires all parent dependencies. A parent is complete only
+when all required slices and its acceptance cases are complete; optional
+slices may be explicitly disabled, not silently described as shipped.
+
+| PR slice | Focused change | Slice dependency / merge acceptance |
+| --- | --- | --- |
+| F03a | Fixture transport/adapters and failure scenarios | D02/F01; schema and deterministic state tests, no device requirement |
+| F03b | Minimal production PCM sink and sample playback | D02/F01; correct format/stop/bounds and actual speaker test; no capture/VAD yet |
+| F03c | Wire fixture session through sink and status hooks | F03a/F03b; AC-03 trace distinguishes fixture generation from real playback |
+| V03a | STT adapter and shared provider catalog structure | Contract fixtures; authorized small transcription smoke recorded separately |
+| V03b | Text LLM adapter and streaming error normalization | V03a shared infrastructure only; final/partial/refusal/error fixtures |
+| V03c | TTS adapter and selected voice/format validation | V03a shared infrastructure only; PCM/stream/error fixtures; no auto fallback |
+| V07a | Settings/data snapshot and schema migration transaction | Prior V07 dependencies; upgrade interruption leaves recoverable original |
+| V07b | Version staging, activation, rollback and uninstall preservation | V07a; compatible restore and N-1/N failure cases |
+| V07c | Signed build/manifest, provenance, SBOM and notices | Build foundation may proceed in parallel; protected signing access required before release, never mocked as valid |
+| V07d | Clean Windows and novice walkthrough/support release record | V07b/V07c; AC-02/AC-06/AC-11 real-environment exit |
+| H05a | Reviewed prerequisite plan and idempotent setup journal | H01/H02; dry-run mutates nothing, resume reconciles approved steps |
+| H05b | Artifact download consent/progress/resume/integrity | H05a; interrupted/corrupt/changed-ETag/disk-full fixtures; no heavy download without authorization |
+| H05c | Role Compose generation and boot/readiness supervision | H05b/H03/H04; real Ubuntu fixture-role reboot/stop evidence, no GPU claim |
+| H05d | Consistent backup and restore | H05c; separate-profile restore preserves data/schema and requires safe re-pairing |
+| H05e | Host upgrade staging and compatible rollback | H05d; failed warmup/migration restores documented prior state |
+| H05f | Targeted repair/reconfigure and data-preserving removal | H05c/H05d; no unrelated host package/volume deletion |
+| P03a | Consented fact store, inspect/edit/delete/export API | H03/V06; AC-16 storage/privacy/deletion cases |
+| P03b | Lexical retrieval with provenance and expiry | P03a; held-out useful-retrieval evaluation and in-flight delete invalidation |
+| P03c | Optional embedding/reranking adapter and index lifecycle | P03b; only after measured benefit/rights review, derived-data rebuild/delete cases |
+
+## 3. Parallelization boundaries and first implementation batch
+
+Start from the reviewed plan. The shortest useful batch is:
+
+1. **D01-D02:** one owner resolves stack/settings/protocol decisions and freezes
+   schemas with reviewers. Record unresolved rights/hardware items explicitly.
+2. **F01:** create only the native shell/core/CLI and configuration skeleton.
+3. On F01's agreed interfaces, **F02** owns `packaging\windows`, **F03a** owns
+   `tests\fixtures` and fixture adapters, **F03b** owns the minimal
+   `src\Martlet.Audio` playback sink, and **F04** owns diagnostic UI/probes.
+   F04 can implement its registry in parallel, but its acceptance waits for F03.
+4. **F05:** connect only the existing solution/fixture/packaging commands to CI
+   after those commands work. Run a clean Windows install/fixture walkthrough.
+5. Then parallelize **V01** audio and **V03** provider adapters against D02;
+   V02 onboarding integrates validated audio/provider contracts, and V04 joins
+   the paths. Policy, retention, and diagnostics are not deferred to release.
+
+Do not ask separate sessions to implement full companions, select different UI
+frameworks, or share a worktree. Assign one owner per changed schema/settings/
+solution/CI file; interface changes require coordination and contract review.
+Feature branches depend on merged prerequisites or explicitly stacked PRs.
+Hardware tests, signing, and external paid calls are scheduled gates, not tasks
+silently delegated to agents without access.
+
+Independent later scopes: H01 read-only preflight and H03 gateway can start from
+stable D02/F04; H04 owns only its Python worker; H05 owns host lifecycle, not
+provider internals. P03 memory can progress against fixture retrieval independently
+of P02 model work. A01 licensing research can proceed without touching audio.
+Never let simultaneous sessions edit one model lock or migration schema.
+
+## 4. Acceptance cases
+
+IDs below are stable requirement-level scenarios, not currently existing tests.
+Each implementation PR adds the narrowest executable test it can and records
+what remains a real-device/manual gate.
+
+| Case | Observable pass condition |
+| --- | --- |
+| AC-01: Contract conformance | Provider and gateway accept valid golden payloads, reject invalid/bounded/version-mismatch cases, normalize errors, and distinguish unimplemented/unknown from ready; SSE/audio framing and terminal conditions covered |
+| AC-02: Windows lifecycle | On clean standard-user target OS, install and launch without toolchain/runtime fetch; upgrade N-1 -> N, interrupt/retry, rollback with compatible snapshot, repair and uninstall preserve selected data; no unintended startup/firewall/admin changes |
+| AC-03: Deterministic fixtures | No internet/key/GPU; actual orchestration/playback handles complete/refused/empty/canceled/slow/truncated/duplicate/out-of-order streams with expected codes, bounded memory and no fake real-AI badges |
+| AC-04: Diagnosis | GUI and CLI agree on probe IDs, outcomes and remedies; every troubleshooting-matrix row has fixture coverage; unknown/stale/warming/skipped is not green; live vs fixture last-success is separate |
+| AC-05: Audio devices | Actual USB/wired headset and Bluetooth tests cover 44.1/48 kHz capture, mono conversion, silence/noise, disabled permission, fixed/default change, removal during speech, sleep/resume, safe reconnect and typed fallback |
+| AC-06: Onboarding | Five first-time testers on documented target setup: at least four complete a real first conversation without developer intervention inside the proposed active-time target; each interruption resumes without recording or exposing credentials |
+| AC-07: Real providers | Authorized account/selected models pass small real STT/LLM/TTS requests; wrong origin/key/model/voice/quota/capability conditions remain actionable; record date/model/adapter and charges, no free-quota assumption |
+| AC-08: Streaming/interruption | At least 100 deterministic stop/replace/disconnect permutations yield zero stale/duplicate audible segments; real audio Stop meets latency target; exact network failure shows partial state; unsupported compute cancellation labeled honestly |
+| AC-09: Participation | Labeled direct-address, PTT, unaddressed, quoted name, cooldown, busy, silence, self-audio, and unknown-confidence corpus produces expected reason codes; opt-out suppresses all unsolicited turns |
+| AC-10: Privacy/support | Canary keys, transcripts, raw audio/screens and paths never enter default logs/bundles; consent preview accurately enumerates files; retention limits expire data; pause/lock/exit stops capture; memory disabled means no persistent conversation store |
+| AC-11: Release trust | Signed binaries/installer/update manifest, hash/provenance/SBOM/notices, scanned dependencies and reviewed high-risk findings; verify clean download and older version rollback; bad signature never executes |
+| AC-12: Ubuntu lifecycle | Real supported OS: discovery/dry-run, approved provisioning, interrupted download/setup resume, pinned runtime/model warmup, reboot without login, graceful stop, failed-worker repair, upgrade/rollback/backup restore and data-preserving uninstall |
+| AC-13: LAN isolation | One/two-host paths reject unauthorized/wrong-scope/expired/revoked clients, wrong pins, replay and unsafe redirects; port/binding/firewall checked from unauthorized LAN source; DNS/IP changes do not change trusted identity |
+| AC-14: Hardware/load | Witnessed selected GPU/driver/image/model tuples fit and execute under combined roles; bounded OOM/slow/reboot recovery, host-2 loss, game frame time, sustained streaming, and optional admin policies measured on actual hardware |
+| AC-15: Perception | No capture/upload without selected-source/destination consent; lock/close/pause works; output has age/provenance; stale/failed perception excluded; useful labeled-task accuracy and resource budgets recorded |
+| AC-16: Memory | Explicit saved facts retrieved with provenance; inspect/delete/export works; cascaded delete invalidates embeddings/cache/in-flight results; restore compatible snapshot; no surprise cloud upload or backup-erasure claim |
+| AC-17: Avatar | Approved SDK/assets, safe bounded import, lip sync follows played samples, predictable idle/motion budget; disabled/missing/crashed/uninstalled renderer leaves voice and provider setup intact |
+
+For quality evaluation, use consented/licensed fixtures and a held-out scenario
+set. Measure STT errors on companion names and gaming terms, suppression false
+positives/negatives, and human-perceived audio clarity. Do not optimize exclusively
+to one developer's microphone or use personal conversations as public fixtures.
+
+## 5. Proposed quantitative targets, not results
+
+Targets are acceptance hypotheses to calibrate at M1/M2/H06. Report distribution
+and failures, not only best-case averages. Freeze scenario/hardware/provider
+conditions in the evidence record before comparing results.
+
+| Metric | Proposed target | Conditions and evidence |
+| --- | --- | --- |
+| Installer size | At most 200 MiB compressed, excluding optional STT/avatar/models | Self-contained Windows x64 API package; measure exact artifact. Revise explicitly if native/runtime dependencies exceed it |
+| Installation | At most 3 minutes from installer launch to usable shell | Warm local disk, already downloaded installer, supported Windows, standard user, ordinary SSD; exclude OS/account provisioning |
+| First real conversation | At most 10 minutes active onboarding time for 4/5 novices | Working internet/mic/headset and authorized key already available; exclude account billing setup/download time but report it separately |
+| API response onset | End of user speech -> first audible sample: median at most 5 s, p95 at most 10 s | 20+ short English turns, bounded reply, warm provider, recorded model/account region, stable link with measured RTT at most 100 ms |
+| Qualified self-host onset | Median at most 4 s, p95 at most 8 s | Same conversation set, warmed selected LLM/F5/local-STT profile, wired LAN RTT at most 5 ms; GPU/model/precision/context/concurrency disclosed |
+| Stop responsiveness | p95 at most 250 ms to silence | Stop activation to last rendered sample, real output device; compute abort is a separate measurement |
+| Stability | Zero canceled-turn/duplicate audio; no unbounded queue growth | 100 deterministic fault cases plus 30-minute real conversation/load session |
+| Desktop CPU/RAM | Idle under 3% total CPU and 350 MiB private bytes; API conversation under 15% total CPU and 600 MiB | Defined 4-core/8-thread-or-better reference PC, avatar/perception/CPU STT off; record actual CPU, sample interval and percentile |
+| Desktop GPU | No required GPU inference workload | Confirm provider/audio path does not allocate CUDA models; UI compositing is not "zero GPU use" |
+| Gaming impact | Under 5% p95 frame-time regression against repeated baseline | Same game scene/settings, warmed system, voice-only first; perception/avatar evaluated separately with limits rather than assumed free |
+| Host readiness after boot | At most 5 minutes for selected cached profile | No model downloads, driver ready, disclosed SSD/GPU/model footprint; startup timeout and degraded states visible |
+| Diagnosis | Identify failed pipeline stage and next action within 60 s for common injected faults | GUI/CLI, bounded probes, no billable inference without consent |
+
+No GPU requirement can be derived solely from parameter count or weight file
+size; combined allocations, context/KV cache, vocoder, framework and temporary
+buffers matter. No API latency is guaranteed by upstream documentation.
+Failure to hit targets triggers scope/model/UX reconsideration, not changed
+measurement conditions hidden from the user.
+
+## 6. Validation lanes and clean-machine matrix
+
+| Lane | Environment / execution | What it proves and does not prove |
+| --- | --- | --- |
+| CI-unit | Selected .NET runner, pure policy/settings/bounds/redaction tests | Deterministic logic; not audio devices or cloud/GPU inference |
+| CI-contract | Fake HTTP/SSE/WebSocket servers, golden vendor/native payloads | Schema normalization, truncation/duplicate/timeout/cancel semantics; not provider availability |
+| CI-fixture integration | Real core and diagnostic CLI with synthetic providers/audio | End-to-end state/probe/privacy plumbing with no paid requests; not model quality |
+| CI-packaging smoke | Windows build/install artifacts where runner permits; Ubuntu CPU image/config checks | Build/package layout and declared dependencies; hosted runners are not clean consumer PCs |
+| Scheduled opt-in API | Authorized low-budget credentials in protected environment, never untrusted fork PRs | Actual selected STT/LLM/TTS tuple/date only; tracks quota/cost and drift |
+| Real Windows gate | Clean Windows 11 25H2 x64 Home/Pro VM plus physical audio PC; standard/admin accounts | Install, permissions, signatures, device churn, no-dev-tool prerequisites, usability |
+| Real Ubuntu gate | Clean 24.04 x86_64, then qualified NVIDIA hardware | System services, driver/runtime/model fit, reboot/start/stop; CPU containers alone cannot pass GPU cells |
+| Witnessed two-host gate | Actual Windows + both Ubuntu PCs, known LAN, selected role manifests | Authentication/firewalls, combined roles, failures, streaming, performance; host-2 fixture gate cannot certify real perception |
+
+Select a conventional .NET test runner such as xUnit in D01 and use it
+consistently. Add Python worker tests only when a worker exists, using that
+worker's chosen tooling. No expensive model pulls in ordinary CI. Once commands
+exist, run narrow related tests first and expand only as needed.
+
+Required cross-cutting scenarios for relevant lanes:
+
+| Dimension | Cases / owning acceptance |
+| --- | --- |
+| Install/state | Clean install; long/non-ASCII user paths; disk full; standard-user permissions; corrupted installer; two versions; cancel mid-install; AC-02/AC-11 |
+| Lifecycle/data | N-1 upgrade, migration interruption, failed readiness rollback, old-schema reader refusal, retained settings/models/voices/memory, revoke/re-pair after restore; AC-02/AC-12/AC-16 |
+| Network | Offline first launch, intermittent internet/LAN, high latency/loss, DNS failure, blocked port, TLS clock/pin failure, endpoint disappearance, interrupted model download; AC-03/AC-07/AC-12/AC-13 |
+| Audio | No devices, privacy denial, Windows mixer mute, USB/Bluetooth removal/default change, sleep/lock/resume, room-speaker feedback, long silence and game noise; AC-05/AC-08/AC-09 |
+| Provider | Invalid/revoked key, expired pairing, rate/billing quota, absent model/voice, wrong OpenAI subset, refused/empty response, partial stream/cancel; AC-01/AC-07/AC-08/AC-13 |
+| GPU/load | Unsupported architecture/driver, host-visible but container-invisible GPU, VRAM exhaustion with LLM/F5, warmup stuck, slow consumer, concurrent game/perception/remote desktop if enabled; AC-12/AC-14 |
+| Privacy | No capture before consent, pause/lock, destination change, content in error bodies, trace/bundle redaction, memory delete while query active; AC-10/AC-15/AC-16 |
+
+## 7. Release, provenance, and support gates
+
+Every release candidate has a record of commit, artifacts/signatures/digests,
+dependency lock/SBOM and notices, model/voice provenance (if included), protocol
+and schema compatibility, expected downloads, test environment, cases and
+results, known limitations, and rollback instructions. Store private hardware
+identifiers/recordings outside public artifacts; publish sanitized evidence.
+
+Signing keys never enter source, ordinary logs, or untrusted PR jobs. Choose a
+publisher/signing mechanism with owner approval and budget before G2; do not
+buy a certificate or publish a release merely to satisfy a checklist. CI may
+produce unsigned internal artifacts, but it must not label them official.
+Validate update signatures, trusted origin, rollback policy, and provenance;
+a matching unsigned checksum alone does not establish publisher identity.
+
+Stable and beta are explicit channels with a supported current/previous
+compatible version policy. Document schema incompatibility, security patch
+urgency, model license changes, and any required re-pairing. Do not silently
+update providers/models via floating tags; compatibility re-probes precede
+activation. Never use rollback to bypass required security policy unnoticed.
+
+Release blockers: unresolved critical/high-risk findings, leaking default logs,
+missing essential permission/cost disclosure, unauthenticated LAN routes,
+unbounded capture/queues, stale/duplicate audible turns, lost user data on
+upgrade/removal, invalid signature, absent rights for included assets/models,
+or missing evidence for an advertised deployment. Performance misses must be
+disclosed and resolved or the supported scope narrowed explicitly.
+
+Support readiness requires installation/upgrade/rollback/uninstall docs,
+troubleshooting entries for shipped error codes, a private support contact,
+bundle consent instructions, known-issues list, and named release/triage
+owners. Proposed triage target during beta: acknowledge installation blockers
+within two working days when maintainers are available; do not advertise a
+24/7 SLA. Categorize defects by data loss/security, cannot install/start,
+core voice failure, optional subsystem, and enhancement. Collect environment,
+version, stage/code and reproducible steps first, not a full raw recording.
+
+## 8. Requirements-to-delivery traceability
+
+| Requirement | Owning tasks / milestone | Acceptance / gate |
+| --- | --- | --- |
+| R01: Honest baseline, planned status, license and provenance | D01 / M0 | G0; README and research accurately distinguish proposal from implementation |
+| R02: No-hardware novice Windows first experience | F01-F05, V01-V04 / M1-M2 | AC-02/AC-03/AC-06/AC-07, G1-G2 |
+| R03: Cloud/self-host choice with no silent paid/cloud fallback | V02-V03, H03, H07 / M2-M3 | AC-07/AC-10/AC-13, G2-G3 |
+| R04: Maintainable native UI, adapters and isolated services | D02, F01, H02-H04 / M0-M3 | AC-01, G0/G3 |
+| R05: Permissions, secure credentials, resume and device changes | V01-V02, H03 / M2-M3 | AC-05/AC-06/AC-10/AC-13 |
+| R06: Supported Ubuntu discovery, pins, downloads and consent | H01-H02, H05 / M3 | AC-12, G3 |
+| R07: Boot, readiness, graceful stop and targeted repair | H05-H06, F04, V06 / M1-M3 | AC-04/AC-12/AC-14 |
+| R08: Upgrade/rollback/backups/uninstall preserve data | F02, V07, H05, P03 / M1-M4 | AC-02/AC-11/AC-12/AC-16 |
+| R09: Authenticated LAN, version/capability negotiation, host-2 loss | H03, H06, P02 / M3-M4 | AC-01/AC-13/AC-14 |
+| R10: VAD/STT/LLM/TTS streaming/cancel/backpressure/audio formats | D02, V01, V03-V04, H04, H07 / M0-M3 | AC-01/AC-03/AC-05/AC-08 |
+| R11: Participant behavior, name/personality, observable silence | V05 / M2 | AC-09 |
+| R12: Opt-in perception and gaming resource budgets | P01-P02, P04 / M4 | AC-14/AC-15, G4 |
+| R13: Inspectable/deletable/exportable memory and provenance | P03-P04 / M4 | AC-10/AC-16, G4 |
+| R14: Unified status/doctor, fixtures, redaction and support | F03-F04, V06-V07 / M1-M2 | AC-03/AC-04/AC-10, G1-G2 |
+| R15: F5 licensing/streaming truth, separate upstream asset terms | D01, H02, H04, A01 / M0-M5 | AC-01/AC-11/AC-17; research S15-S18/S26-S28 |
+| R16: Hardware-dependent tuning/remote desktop remain optional | H06 / M3 | AC-14 only when enabled; no wiring/circuit-safety claim |
+| R17: Measured real-OS/GPU gates, CI, signing and support readiness | F05, V07, H06, P04, A03 / M1-M5 | G1-G5, all relevant AC cases; never fixture-only hardware support |
+| R18: Optional later avatar and no-avatar parity | A01-A03 / M5 | AC-17, G5 |
+
+## 9. Handoff and evidence still required
+
+The next implementation coordinator should assign D01-D02 and the short batch
+above, preserve the no-GPU development lane, and maintain a gate ledger with
+not-run/blocked/failed/passed states. Evidence records are created by future
+work, not supplied by this plan.
+
+Outstanding inputs: owner distribution/code-license preference; first API
+preset/model/budget selection; actual GPU/OS/RAM/disk/LAN inventory
+and a witnessed test arrangement; F5 intended-use/voice rights; publisher and
+signing access/budget; exact "Project Airy" URL if reuse is desired; Live2D
+classification before avatar release. Recommended choices and material
+tradeoffs are in the main plan. The coordinator has accepted the Windows-only
+.NET/WPF direction and UI-independent core; do not block foundation work on
+re-approving it or on optional F5/Live2D distribution gates. No input requires
+installing services, spending, or changing the owner's machines merely to
+start D02/F01/F03.
