@@ -173,9 +173,14 @@ that step succeeds. A deliberately missing executable must still fail the
 same child wrapper; no unconditional success exit masks a broken assertion.
 The suite also starts a maintenance child outside a disposable source copy,
 uses `Set-Location` into that copy, and regenerates both real lock graphs.
-It checks the resulting locks, pinned SDK/global.json and repository NuGet
-configuration, rejects non-filesystem directories, and asserts caller/process
-working directories are unchanged.
+It checks the resulting locks, pinned SDK/global.json and effective repository
+NuGet sources, rejects non-filesystem directories, and asserts caller/process
+working directories are unchanged. Effective sources include SDK-declared
+`RestoreAdditionalProjectSources` (for example, an installed workload's local
+`library-packs` source), not just the XML source list. A second child exercises
+that SDK behavior with an empty test-only folder; it never modifies the SDK or
+the caller's environment. Source matching remains exact, with no wildcard
+allowance for arbitrary local/network feeds.
 
 ## Inno Setup provenance and terms
 

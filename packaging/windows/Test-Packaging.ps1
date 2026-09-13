@@ -198,21 +198,24 @@ try {
 }
 finally { [IO.File]::WriteAllBytes($lock, $lockBytes) }
 
-$maintenance = Join-Path $WorkDirectory 'location-maintenance'
 $osLocation = [Environment]::CurrentDirectory
 $psLocation = (Get-Location).Path
-$result = Invoke-BoundedProcess (Get-Command pwsh).Source @('-NoProfile', '-NonInteractive',
-    '-File', "$PSScriptRoot\Test-MaintenanceLocation.ps1", '-SourceDirectory', $source,
-    '-WorkDirectory', $maintenance, '-DotnetPath', $sdk, '-CliHome', $CliHome) 600 -WorkingDirectory $WorkDirectory
-if ($result.Stdout) { $result.Stdout.TrimEnd() | Out-Host }
-if ($result.ExitCode -ne 0) { throw "Maintenance from a different OS working directory failed: $($result.Stderr)" }
-if ([Environment]::CurrentDirectory -cne $osLocation -or (Get-Location).Path -cne $psLocation) {
-    throw 'Bounded child changed the caller working directory.'
+foreach ($implicitSource in @($false, $true)) {
+    $maintenance = Join-Path $WorkDirectory "location-maintenance-$implicitSource"
+    $arguments = @('-NoProfile', '-NonInteractive', '-File', "$PSScriptRoot\Test-MaintenanceLocation.ps1",
+        '-SourceDirectory', $source, '-WorkDirectory', $maintenance, '-DotnetPath', $sdk, '-CliHome', $CliHome)
+    if ($implicitSource) { $arguments += '-ExerciseImplicitSource' }
+    $result = Invoke-BoundedProcess (Get-Command pwsh).Source $arguments 600 -WorkingDirectory $WorkDirectory
+    if ($result.Stdout) { $result.Stdout.TrimEnd() | Out-Host }
+    if ($result.ExitCode -ne 0) { throw "Maintenance from a different OS working directory failed: $($result.Stderr)" }
+    if ([Environment]::CurrentDirectory -cne $osLocation -or (Get-Location).Path -cne $psLocation) {
+        throw 'Bounded child changed the caller working directory.'
+    }
+    foreach ($file in Get-ChildItem -LiteralPath "$PSScriptRoot\locks" -File) {
+        Assert-Sha256 (Join-Path $packaging "locks\$($file.Name)") (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
+    }
+    $script:cases++
 }
-foreach ($file in Get-ChildItem -LiteralPath "$PSScriptRoot\locks" -File) {
-    Assert-Sha256 (Join-Path $packaging "locks\$($file.Name)") (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
-}
-$script:cases++
 
 if ($ComparePayloadRoot) {
     $null = Test-PayloadManifest $ComparePayloadRoot
