@@ -1,0 +1,60 @@
+name: Windows packaging (internal)
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    env:
+      CI: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_GENERATE_ASPNET_CERTIFICATE: "false"
+      DOTNET_NOLOGO: "1"
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6 (Node 24)
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5 (Node 24)
+        with:
+          global-json-file: global.json
+      - name: Keep normal foundation locks intact
+        shell: pwsh
+        run: |
+          dotnet restore Martlet.slnx --locked-mode
+          if ($LASTEXITCODE -ne 0) { throw 'Foundation locked restore failed.' }
+          git diff --exit-code -- src tests
+          if ($LASTEXITCODE -ne 0) { throw 'Foundation locks unexpectedly changed.' }
+      - name: Publish twice into independent Unicode paths
+        shell: pwsh
+        run: |
+          $cliHome = Join-Path $env:RUNNER_TEMP 'martlet-dotnet-home'
+          $first = Join-Path $env:RUNNER_TEMP ("Martlet first " + [char]0x00E9)
+          $second = Join-Path $env:RUNNER_TEMP ("Martlet second " + [char]0x00E9)
+          .\packaging\windows\Publish-Windows.ps1 -CliHome $cliHome -OutputDirectory $first
+          .\packaging\windows\Publish-Windows.ps1 -CliHome $cliHome -OutputDirectory $second
+          "MARTLET_PAYLOAD=$first\payload" >> $env:GITHUB_ENV
+          "MARTLET_COMPARE_PAYLOAD=$second\payload" >> $env:GITHUB_ENV
+      - name: Acquire exact portable compiler
+        shell: pwsh
+        run: |
+          $builder = Join-Path $env:RUNNER_TEMP 'martlet-inno-7.1.0'
+          .\packaging\windows\Get-InnoSetup.ps1 -Destination $builder
+          "MARTLET_BUILDER=$builder" >> $env:GITHUB_ENV
+      - name: Production-path packaging assertions
+        shell: pwsh
+        run: |
+          .\packaging\windows\Test-Packaging.ps1 -PayloadRoot $env:MARTLET_PAYLOAD -ComparePayloadRoot $env:MARTLET_COMPARE_PAYLOAD -BuilderDirectory $env:MARTLET_BUILDER -CliHome (Join-Path $env:RUNNER_TEMP 'martlet-dotnet-home') -WorkDirectory (Join-Path $env:RUNNER_TEMP 'martlet-package-tests')
+          .\packaging\windows\Smoke-Package.ps1 -PayloadRoot $env:MARTLET_PAYLOAD
+      - name: Compile internal installer without installing or publishing
+        shell: pwsh
+        run: |
+          .\packaging\windows\Build-Installer.ps1 -PayloadRoot $env:MARTLET_PAYLOAD -BuilderDirectory $env:MARTLET_BUILDER -OutputDirectory (Join-Path $env:RUNNER_TEMP 'martlet-installer')
+          git diff --exit-code
+          if ($LASTEXITCODE -ne 0) { throw 'Packaging modified committed sources or lock files.' }
