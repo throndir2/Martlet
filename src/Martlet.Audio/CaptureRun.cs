@@ -20,6 +20,7 @@ public sealed class CaptureRun
     private readonly TaskCompletionSource<CaptureDeviceRelease> nativeRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<CaptureDeviceRelease> release = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Channel<CaptureEvent> events;
+    private readonly CancellationToken callerToken;
     private readonly CancellationTokenRegistration callerCancellation;
     private readonly ITimer timer;
     private readonly byte[] normalized = new byte[3264];
@@ -40,6 +41,7 @@ public sealed class CaptureRun
         this.request = request;
         this.options = options;
         this.time = time;
+        this.callerToken = callerToken;
         startedAt = time.GetTimestamp();
         deadline = TimeSpan.FromTicks(Math.Min(request.MaximumDuration.Ticks, (request.ExpiresAt - time.GetUtcNow()).Ticks));
         capacity = (int)Math.Min(options.MaximumPcmBytes, request.MaximumDuration.Ticks * 16000 / TimeSpan.TicksPerSecond * 2);
@@ -84,6 +86,12 @@ public sealed class CaptureRun
             var offset = checked((long)frameIndex * 640);
             if (offset + 640 > byteCount) return false;
             pcm.AsSpan((int)offset, 640).CopyTo(destination);
+            if (AuthorizationRevoked(out var reason, out var failure))
+            {
+                destination.Clear();
+                End(reason, false, failure);
+                return false;
+            }
             return true;
         }
     }
@@ -110,6 +118,8 @@ public sealed class CaptureRun
         lock (gate)
         {
             if (!terminal) throw new InvalidOperationException("Await capture completion before taking the utterance.");
+            if (AuthorizationRevoked(out var reason, out var failure))
+                End(reason, false, failure);
             var result = utterance;
             utterance = null;
             return result;
@@ -129,16 +139,36 @@ public sealed class CaptureRun
     {
         lock (gate)
         {
-            if (!stop.Task.IsCompleted && time.GetElapsedTime(startedAt) >= deadline)
+            if (AuthorizationRevoked(out var reason, out var failure))
+                End(reason, false, failure);
+            else if (!stop.Task.IsCompleted && time.GetElapsedTime(startedAt) >= deadline)
                 End(CaptureEndReason.DurationLimit, true);
             if (stop.Task.IsCompleted) throw new OperationCanceledException(cancellation.Token);
         }
+    }
+
+    private bool AuthorizationRevoked(out CaptureEndReason reason, out MartletError? failure)
+    {
+        // Callback dispatch may be delayed by a newer blocking registration. The original token
+        // and absolute expiry remain authoritative, independently of monotonic duration/timers.
+        var expired = time.GetUtcNow() >= request.ExpiresAt;
+        var callerCanceled = callerToken.IsCancellationRequested;
+        reason = callerCanceled ? CaptureEndReason.CallerCanceled
+            : expired ? CaptureEndReason.AuthorizationExpired : default;
+        failure = reason == CaptureEndReason.AuthorizationExpired ? CaptureErrors.Create(ErrorCode.DeadlineExceeded) : null;
+        return callerCanceled || expired;
     }
 
     private void End(CaptureEndReason reason, bool keepAudio, MartletError? failure = null)
     {
         lock (gate)
         {
+            if (keepAudio && AuthorizationRevoked(out var revokedReason, out var revokedFailure))
+            {
+                reason = revokedReason;
+                keepAudio = false;
+                failure = revokedFailure;
+            }
             if (terminal)
             {
                 if (!keepAudio) DiscardUnclaimedUtterance();
@@ -195,6 +225,11 @@ public sealed class CaptureRun
             var bytes = (int)Math.Min(source.Length, remaining);
             var before = converter.SourceSamples;
             var converted = converter.Convert(source[..bytes], normalized);
+            if (AuthorizationRevoked(out var reason, out var failure))
+            {
+                End(reason, false, failure);
+                throw new OperationCanceledException(cancellation.Token);
+            }
             sourceSamples = converter.SourceSamples;
             Store(normalized.AsSpan(0, converted));
             CryptographicOperations.ZeroMemory(normalized);
@@ -290,6 +325,8 @@ public sealed class CaptureRun
         catch (TimeoutException) { }
         lock (gate)
         {
+            if (preserve && AuthorizationRevoked(out var reason, out var failure))
+                End(reason, false, failure);
             if (deviceResult is null || deviceResult.Error is not null || !deviceResult.Released)
             {
                 preserve = false;

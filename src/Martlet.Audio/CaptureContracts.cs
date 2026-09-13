@@ -56,7 +56,7 @@ public sealed record CaptureOptions
 }
 
 public enum CaptureState { Starting, Capturing, Stopping, Completed, NoFrames, Canceled, Failed }
-public enum CaptureEndReason { Released, DurationLimit, ByteLimit, Stopped, Muted, Paused, Locked, Disposed, CallerCanceled, DeviceFailure }
+public enum CaptureEndReason { Released, DurationLimit, ByteLimit, Stopped, Muted, Paused, Locked, Disposed, CallerCanceled, DeviceFailure, AuthorizationExpired }
 public enum CaptureEventKind { Starting, Bound, Meter, StopRequested, Terminal }
 public enum CaptureArmingDecision { Allowed, OwnOutputSuppressed, PlaybackStopRequired }
 
@@ -109,7 +109,7 @@ public static class CaptureErrors
             ErrorCode.AudioFormatUnsupported => "The input format is unsupported. Select a supported PCM16 or float32 input.",
             ErrorCode.StreamTruncated => "Input samples were lost or incomplete. The utterance was discarded.",
             ErrorCode.PayloadTooLarge => "The input packet exceeded its bounded capacity. The utterance was discarded.",
-            ErrorCode.DeadlineExceeded => "Microphone authorization expired before the device operation.",
+            ErrorCode.DeadlineExceeded => "Microphone authorization expired. Discard the utterance and request a new capture.",
             ErrorCode.AudioCaptureFailed => "Capture or resource cleanup failed. Await device release before retrying.",
             _ => throw new ArgumentOutOfRangeException(nameof(code))
         },

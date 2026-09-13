@@ -24,13 +24,21 @@ increasing epoch, intended input, maximum duration and authorization expiry.
 Mismatch, missing authorization, mute/pause/lock, expired requests and reused
 epochs are rejected before scheduling native work.
 
+Authorization checks read the **original caller token** rather than trusting
+cancellation callback delivery (a newer LIFO callback can block it). They also
+recheck **absolute UTC expiry**, independently of the original monotonic budget.
+A UTC rollback cannot extend that budget. Revocation is checked before native
+open/start, admission, frame copies, successful seal/completion and transfer
+of unclaimed PCM. No wait on another caller-token callback is needed to reject
+revoked data.
+
 The following is an integration sketch, **not an automatically executed smoke**:
 
 ```csharp
 await using var microphone = new MicrophoneCapture(
     sessionId, new Martlet.Audio.Windows.WasapiCaptureDeviceFactory());
 var request = new CaptureRequest(ids, epoch, selectedInput,
-    TimeSpan.FromSeconds(30), DateTimeOffset.UtcNow.AddSeconds(30));
+    TimeSpan.FromSeconds(25), DateTimeOffset.UtcNow.AddSeconds(30));
 // Only in response to the user's separately consented press:
 var run = microphone.Press(request, new CaptureAuthorization(request, true));
 await run.Ready;
@@ -54,13 +62,13 @@ constructing another factory is not a recovery strategy.
 | `run.Ready` | Source format after native Start returns, or null when no binding completed. Not proof of microphone privacy permission, received samples, or useful speech. |
 | `run.ReleaseAsync()` | Seal exactly once, stop this capture and await bounded terminal reporting. Repeated release returns the same completion task/count. |
 | `run.Completion`, `run.Snapshot` | Metadata-only state, end reason, source/canonical sample counts, retained canonical bytes, dropped event count and sanitized error. No audio payload/endpoint identity/native message. |
-| `run.TakeUtterance()` | After completion, transfer the single completed `CapturedUtterance` to the caller, once. No audio for no-frames/canceled/failed attempts. |
+| `run.TakeUtterance()` | After completion, transfer the single completed `CapturedUtterance` to the caller, once. No audio for no-frames/canceled/failed attempts or when original-token cancellation/absolute expiry is observed at transfer. |
 | `CapturedUtterance.CopyPcmTo(destination)` | Copy private owned PCM; no mutable array or array-backed memory is exposed. Caller owns and must clear its copy. |
 | `CapturedUtterance.GetFrame(index)` | Copy a Core `PcmFrame`, 320 samples/20 ms at mono 16 kHz, with original IDs/epoch and canonical sequence/sample offset. Final frame may be shorter. |
 | `CapturedUtterance.Dispose()` | Zero its private storage and reject subsequent reads. PCM is immutable until explicit disposal. |
 | `run.TryCopyMonoFrame(index, destination)` | Optional synchronous pull of one fully available 640-byte canonical frame, only while active. Caller supplies the buffer; no separate audio queue or callback. On unavailability it clears the destination. Deadline expiry can cancel the read. |
 | `StopAsync`, `SetMutedAsync`, `SetPausedAsync`, `SetSessionLockedAsync`, `DisposeAsync` | Immediately invalidate admission, discard unclaimed audio and zero local owned working buffers. All return bounded asynchronous reporting; unmute/unpause/unlock never restart. Future UI/OS integration must deliver these signals. |
-| `run.DeviceRelease` | Actual native-worker **and cancellation-handler** completion, with `Released` and a safe error. May remain pending for an uncooperative driver. Do not equate a terminal report with released resources. |
+| `run.DeviceRelease` | Actual native-worker **and run-owned device-token cancellation-handler** completion, with `Released` and a safe error. Unrelated caller-token callbacks are not awaited. May remain pending for an uncooperative driver. Do not equate a terminal report with released resources. |
 
 An unclaimed completed utterance remains a single bounded in-memory payload.
 Stop, mute, pause, lock, disposal or a subsequent press discard it. There is
@@ -70,6 +78,12 @@ the current Snapshot updates this count after take/discard, while the terminal
 outcome and sample accounting stay frozen. Ownership transferred to a caller,
 including frame copies, cannot be remotely revoked; the coordinator must
 discard those on epoch change/cancellation and dispose them promptly.
+
+Cancellation or expiry observed **after** a valid terminal completion but
+**before** `TakeUtterance` clears the unclaimed payload and returns null.
+Historical Completion/event metadata is not rewritten; Snapshot then reports
+zero retained PCM, with no new post-terminal callback/event. Completion alone
+does not guarantee that the utterance will still be authorized at transfer.
 
 ## Format normalization and sample time
 
@@ -128,7 +142,7 @@ capture failure, and unimplemented speech/no-speech detection.
 | --- | --- |
 | Utterance | At most 30 seconds and 2 MiB canonical PCM. At 16 kHz PCM16, the duration normally limits this to **960,000 bytes / 480,000 samples**. Options and requests may lower limits, not raise them. |
 | Byte/duration limits | Seal at the exact allowed canonical count and report `ByteLimit`/`DurationLimit`; do not silently continue recording. Minimum request duration is 20 ms; byte cap can be as low as one aligned PCM16 sample. |
-| Authorization deadline | Earlier of request duration from press and expiry. Includes opening time. A monotonic elapsed check runs before native work, on each admission/pull and at release; an independent timer aborts blocked native work. Timer delivery is not the sole limit. |
+| Authorization deadline | Earlier of request duration from press and the initial expiry budget. Includes opening time. Monotonic elapsed checks prevent backward-UTC extension; absolute UTC expiry is independently rechecked at authorization boundaries. An independent timer aborts blocked native work. Timer/cancellation callback delivery is not the sole authority. |
 | Audio memory | One pre-sized canonical buffer, one source remainder, 128 mono history samples, fixed coefficient tables and a 3,264-byte canonical scratch. Worker and Windows adapter each have one source-format scratch of at most 100 ms (up to 307,200 bytes each in the supported subset). No unbounded native-to-managed audio channel. |
 | Admission | Packet bounds are checked before conversion/copy/queueing; output is capped before copying into owned storage. Oversized or discontinuous packets fail, not drop-oldest audio. |
 | Capture events | 128 metadata-only entries, drop oldest, monotonic sequence/elapsed time and cumulative `DroppedEvents`. Meters occur only after source samples arrive; no animation/synthetic listening state. |
@@ -142,6 +156,13 @@ from another thread. Native driver/OS buffers are not claimed to be immediately
 zeroed by managed cancellation. No capture events are emitted after the terminal
 event; actual late cleanup is observed through `DeviceRelease`, not resurrection
 of an earlier result.
+
+An absolute authorization expiry is a hard `DeadlineExceeded` failure with
+`CaptureEndReason.AuthorizationExpired`, not a successful duration-limit seal.
+It wins if UTC expiry and the duration limit coincide. Callers wanting a normal
+duration-limit utterance should choose a shorter capture duration within the
+authorization window (as in the sketch), leaving time for cleanup/transfer.
+Limits have not been increased: authorization still expires within 30 seconds.
 
 No temporary audio, audio files, transcript, provider request, endpoint logging,
 recording retention setting, telemetry upload or diagnostic bundle is produced.
@@ -187,6 +208,10 @@ or failure, not a reconnection loop.
 Selected property changes are conservatively treated as format/device churn,
 even if the changed property later turns out not to affect PCM. Review selection
 and press again; a false-safe continuing stream is worse than a visible stop.
+The native adapter consumes sticky selected-device failures again after
+Stop/Reset, so release before the next Read cannot turn a recorded default/
+property/state/loss event into a completed utterance. Stop/Reset and disposal
+are still attempted before reporting the failure.
 Neither policy changes default devices, permissions, privacy, endpoint volume/
 mute, drivers, services, another capture instance or playback.
 
@@ -265,11 +290,21 @@ dotnet test Martlet.slnx --no-build -c Release --artifacts-path C:\OwnedSession\
 ```
 
 Local implementation evidence (SDK 10.0.401, CI mode, isolated session-owned
-`C:` outputs): 81 portable and 93 Windows new capture/device tests, all 102
-existing playback tests, and the full solution's 666 tests passed. The
+`C:` outputs): 96 portable and 112 Windows new capture/device tests, all 102
+existing playback tests, and the full solution's 700 tests passed. The
 separately restored/built existing provider HTTP lane passed 191 offline tests.
 Both portable and Windows Doctor smoke paths passed with physical audio OFF.
 No package/SDK pin, workflow, runner or global build setting was changed.
+
+Independent-review regressions were added before production fixes: 11 portable
+and 15 Windows failures reproduced delayed caller-token callback authorization,
+independent UTC expiry, and sticky device notifications bypassed by release.
+The UTC rollback controls already passed. The final review suite has 15 portable
+and 19 Windows cases, including live frame-copy revocation and coincident expiry.
+Native-stop cases execute the actual Windows wrapper's Stop/Dispose and managed
+notification handlers with COM handles unset and controlled PCM; they are not
+physical capture or native-driver qualification. Existing Playback files were
+not changed by these fixes.
 
 All physical gates below are **not run / not passed**. They require separately
 authorized human/device qualification, not an autonomous agent enabling hardware.

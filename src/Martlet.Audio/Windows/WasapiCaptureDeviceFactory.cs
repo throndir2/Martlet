@@ -184,9 +184,18 @@ public sealed class WasapiCaptureDeviceFactory : ICaptureDeviceFactory
             CheckThread();
             try
             {
-                if (started) client!.Stop();
-                if (initialized) client!.Reset();
-                started = false;
+                try
+                {
+                    if (started) client!.Stop();
+                }
+                finally
+                {
+                    if (initialized) client!.Reset();
+                    started = false;
+                }
+                // Release can seal before the next Read consumes a sticky notification.
+                // Check after Stop/Reset so a recorded device failure cannot skip native cleanup.
+                notifications?.CheckSelected();
             }
             catch (Exception ex) { throw Normalize(ex); }
         }

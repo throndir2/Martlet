@@ -7,10 +7,11 @@ internal sealed class CaptureClock : TimeProvider
 {
     private readonly object gate = new();
     private readonly List<ClockTimer> timers = new();
-    private long ticks;
+    private long ticks, utcOffsetTicks;
     public override long TimestampFrequency => TimeSpan.TicksPerSecond;
     public override long GetTimestamp() { lock (gate) return ticks; }
-    public override DateTimeOffset GetUtcNow() => DateTimeOffset.UnixEpoch.AddTicks(GetTimestamp());
+    public override DateTimeOffset GetUtcNow() { lock (gate) return DateTimeOffset.UnixEpoch.AddTicks(ticks + utcOffsetTicks); }
+    public void ShiftUtc(TimeSpan amount) { lock (gate) utcOffsetTicks += amount.Ticks; }
     public int TimerCount { get { lock (gate) return timers.Count; } }
 
     public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
@@ -60,10 +61,12 @@ internal sealed class ControlledCapture : ICaptureDeviceFactory, ICaptureDevice
     internal ConcurrentQueue<(string Operation, int Thread, ApartmentState Apartment)> Calls { get; } = new();
     internal ManualResetEventSlim OpenEntered { get; } = new();
     internal ManualResetEventSlim ReadEntered { get; } = new();
+    internal ManualResetEventSlim ReadBlocked { get; } = new();
     internal ManualResetEventSlim DisposeEntered { get; } = new();
     internal ManualResetEventSlim? OpenBlock { get; set; }
     internal ManualResetEventSlim? ReadBlock { get; set; }
     internal ManualResetEventSlim? DisposeBlock { get; set; }
+    internal Action? BeforeOpenAuthorization { get; set; }
     internal Exception? OpenFailure { get; set; }
     internal Exception? ReadFailure { get; set; }
     internal Exception? StopFailure { get; set; }
@@ -78,6 +81,7 @@ internal sealed class ControlledCapture : ICaptureDeviceFactory, ICaptureDevice
     public ICaptureDevice Open(CaptureDeviceAccess access, CancellationToken cancellationToken)
     {
         Record("open");
+        BeforeOpenAuthorization?.Invoke();
         access.CheckAuthorization();
         Interlocked.Increment(ref Opens);
         Selection = access.Input;
@@ -97,7 +101,11 @@ internal sealed class ControlledCapture : ICaptureDeviceFactory, ICaptureDevice
         Record("read");
         Interlocked.Increment(ref Reads);
         ReadEntered.Set();
-        ReadBlock?.Wait();
+        if (ReadBlock is { } block)
+        {
+            ReadBlocked.Set();
+            block.Wait();
+        }
         if (ReadFailure is not null) throw ReadFailure;
         if (Oversized) return new(destination.Length + 1);
         if (!Packets.TryDequeue(out var bytes)) return new(0);

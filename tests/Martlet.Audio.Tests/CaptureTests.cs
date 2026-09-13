@@ -229,7 +229,7 @@ public sealed class CaptureTests
         using var barrier = new ManualResetEventSlim();
         var device = new ControlledCapture { ReadBlock = blockRead ? barrier : null };
         await using var capture = new MicrophoneCapture(Session, device, timeProvider: clock);
-        var run = Press(capture, Request(clock, seconds: 1));
+        var run = Press(capture, Request(clock, seconds: 1) with { ExpiresAt = clock.GetUtcNow().AddSeconds(30) });
         await run.Ready.WaitAsync(WaitLimit);
         await Until(() => device.ReadEntered.IsSet);
         clock.Advance(TimeSpan.FromSeconds(2), deliverTimers: false);
