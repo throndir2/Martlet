@@ -11,6 +11,20 @@ public sealed class DoctorCommandTests : IDisposable
     private readonly string path = Path.Combine(Path.GetTempPath(), "Martlet.Doctor.Tests", Guid.NewGuid().ToString("N"));
 
     [Fact]
+    public async Task HelpSharesActualSupportDefaultsWithoutAddingAnExportCommand()
+    {
+        using var output = new StringWriter();
+        Assert.Equal(0, await DoctorCommand.RunAsync(["--help"], output));
+        Assert.Contains(SupportHelp.Text, output.ToString());
+        Assert.Contains("CLI export is not implemented", output.ToString());
+        Assert.Contains("OFF at each launch", output.ToString());
+        Assert.False(Directory.Exists(path));
+        using var rejected = new StringWriter();
+        Assert.Equal(3, await DoctorCommand.RunAsync(["export", "--json", "--data-directory", path], rejected));
+        Assert.False(Directory.Exists(path));
+    }
+
+    [Fact]
     public async Task JsonCommandUsesStableEnvelopeAndDoesNotInventReadiness()
     {
         using var output = new StringWriter();

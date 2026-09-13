@@ -1,4 +1,5 @@
 using System.IO;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -8,10 +9,11 @@ using Martlet.Core.Contracts;
 using Martlet.Core.Tests;
 using Martlet.Credentials.Windows;
 using Martlet.Desktop;
+using Xunit.Abstractions;
 
 namespace Martlet.Desktop.Tests;
 
-public sealed class SetupDispatcherTests
+public sealed class SetupDispatcherTests(ITestOutputHelper output)
 {
     private const string Canary = "SYNTHETIC-SECRET-CANARY";
 
@@ -33,8 +35,23 @@ public sealed class SetupDispatcherTests
             fixture.Native.Block = action;
             Control<TabControl>(window, "Steps").SelectedIndex = 2;
             if (action == "Write") Control<PasswordBox>(window, "KeyInput").Password = Canary;
+            var entryStarted = Stopwatch.GetTimestamp();
             Click(window, ActionId(action));
-            await fixture.Native.Entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            string EntryState() => $"action={action}; elapsed_ms={Stopwatch.GetElapsedTime(entryStarted).TotalMilliseconds:F0}; " +
+                $"runner_active={runner.IsRunning}; editor_enabled={Control<StackPanel>(window, "EditorPanel").IsEnabled}; " +
+                $"action_enabled={Button(window, ActionId(action)).IsEnabled}; " +
+                $"removal_selected={Control<ComboBox>(window, "RemovalChoice").SelectedItem is PendingCredentialRemoval}; " +
+                $"loads={fixture.Service.LoadCalls}; removes={fixture.Service.RemoveCalls}; " +
+                $"remove_task={fixture.Service.RemovalTaskStatus}; native_calls={fixture.Native.BlockedCalls}; entered={fixture.Native.Entered.Task.Status}";
+            output.WriteLine("Before native entry wait: " + EntryState());
+            try { await fixture.Native.Entered.Task.WaitAsync(TimeSpan.FromSeconds(3)); }
+            catch (TimeoutException error)
+            {
+                var state = EntryState();
+                output.WriteLine("Native entry timeout: " + state);
+                throw new TimeoutException("Native entry wait failed: " + state, error);
+            }
+            output.WriteLine("Native entry observed: " + EntryState());
             Assert.NotEqual(uiThread, fixture.Native.ThreadId);
             await Heartbeat();
             Assert.True(runner.IsRunning);
@@ -354,7 +371,11 @@ public sealed class SetupDispatcherTests
     {
         public SecretLease? OfferedSecret { get; private set; }
         public bool BlockLoad { get; set; }
-        public int LoadCalls { get; private set; }
+        private int loadCalls, removeCalls;
+        private Task<SetupSaveResult>? removalTask;
+        public int LoadCalls => Volatile.Read(ref loadCalls);
+        public int RemoveCalls => Volatile.Read(ref removeCalls);
+        public TaskStatus? RemovalTaskStatus => Volatile.Read(ref removalTask)?.Status;
         public int LoadThread { get; private set; }
         public TaskCompletionSource LoadEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public ManualResetEventSlim LoadRelease { get; } = new();
@@ -365,7 +386,7 @@ public sealed class SetupDispatcherTests
 
         public Task<SettingsLoadResult> LoadAsync(CancellationToken token = default)
         {
-            LoadCalls++;
+            Interlocked.Increment(ref loadCalls);
             LoadThread = Environment.CurrentManagedThreadId;
             if (BlockLoad)
             {
@@ -391,7 +412,13 @@ public sealed class SetupDispatcherTests
             return inner.SaveAsync(settings, revision, token);
         }
         public Task<SetupSaveResult> DetachCredentialAsync(AppSettings settings, string? revision, SetupRole role, CancellationToken token = default) => inner.DetachCredentialAsync(settings, revision, role, token);
-        public Task<SetupSaveResult> RemoveDetachedAsync(AppSettings settings, string? revision, PendingCredentialRemoval removal, CancellationToken token = default) => inner.RemoveDetachedAsync(settings, revision, removal, token);
+        public Task<SetupSaveResult> RemoveDetachedAsync(AppSettings settings, string? revision, PendingCredentialRemoval removal, CancellationToken token = default)
+        {
+            Interlocked.Increment(ref removeCalls);
+            var task = inner.RemoveDetachedAsync(settings, revision, removal, token);
+            Volatile.Write(ref removalTask, task);
+            return task;
+        }
         public CredentialError CheckCredential(AppSettings settings, SetupRole role) => inner.CheckCredential(settings, role);
     }
 
@@ -401,7 +428,8 @@ public sealed class SetupDispatcherTests
         public string? Block { get; set; }
         public bool FaultRead { get; set; }
         public int ThreadId { get; private set; }
-        public int BlockedCalls { get; private set; }
+        private int blockedCalls;
+        public int BlockedCalls => Volatile.Read(ref blockedCalls);
         public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public ManualResetEventSlim Release { get; } = new();
         public Dictionary<string, char[]> Keys { get; } = [];
@@ -413,7 +441,7 @@ public sealed class SetupDispatcherTests
             Events.Add(action);
             if (Block != action) return;
             ThreadId = Environment.CurrentManagedThreadId;
-            BlockedCalls++;
+            Interlocked.Increment(ref blockedCalls);
             Entered.TrySetResult();
             if (!Release.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("Native test boundary was not released.");
         }

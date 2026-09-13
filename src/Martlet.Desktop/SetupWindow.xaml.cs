@@ -13,6 +13,8 @@ namespace Martlet.Desktop;
 
 public partial class SetupWindow : Window
 {
+    internal Action<Window>? Troubleshooting { get; init; }
+    private void Troubleshooting_Click(object sender, RoutedEventArgs e) => Troubleshooting?.Invoke(this);
     private readonly ISetupService service;
     private readonly SetupOperationRunner operations;
     private readonly Func<string, bool>? confirm;

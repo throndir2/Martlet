@@ -68,6 +68,12 @@
           "Martlet.Fixtures": "[0.1.0, )"
         }
       },
+      "martlet.support": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Diagnostics": "[0.1.0, )"
+        }
+      },
       "NAudio.Wasapi": {
         "type": "CentralTransitive",
         "requested": "[3.1.0, )",

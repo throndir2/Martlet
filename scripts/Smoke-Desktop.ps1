@@ -170,6 +170,17 @@ try {
     $first = Wait-Status '*First run:*'
     if ($first -notlike '*not ready*') { throw 'First-run diagnostics must remain incomplete.' }
     if (Test-Path -LiteralPath $data) { throw 'Read-only launch unexpectedly created a data directory.' }
+    Invoke-Control 'OpenTroubleshooting'
+    $support = Wait-Setup '*Recording: OFF*worker: idle*' 'SupportStatus'
+    if ((Find-Control 'SupportExport').Current.IsEnabled -or
+        (Find-Control 'SupportIncludeLogs').GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne
+        [Windows.Automation.ToggleState]::Off) { throw 'Support export must be unavailable without preview, and journal selection must default OFF.' }
+    $supportHelp = Read-Value (Find-Control 'SupportHelp')
+    if ($supportHelp -notlike '*No support contact or upload channel is configured*' -or
+        $supportHelp -notlike '*CLI export is not implemented*') { throw 'Support limitations are not visible.' }
+    if (Test-Path -LiteralPath $data) { throw 'Passive troubleshooting unexpectedly created app data or started a journal.' }
+    Invoke-Control 'SupportClose'
+    $null = Wait-Status '*First run:*'
     $pipeline = Find-Control 'PipelineStatus'
     if ($null -eq $pipeline -or -not $pipeline.Current.IsKeyboardFocusable) { throw 'Pipeline must support keyboard and accessibility access.' }
     $pipelineText = Read-Value $pipeline
@@ -246,6 +257,11 @@ try {
     Invoke-Control 'OpenSetup'
     $null = Wait-Setup '*Checkpoint: Choice*'
     if (Test-Path -LiteralPath $data) { throw 'Opening setup wrote files before an explicit save.' }
+    Invoke-Control 'SetupTroubleshooting'
+    $null = Wait-Setup '*Recording: OFF*worker: idle*' 'SupportStatus'
+    if (Test-Path -LiteralPath $data) { throw 'Troubleshooting inside first-run setup wrote files.' }
+    Invoke-Control 'SupportClose'
+    $null = Wait-Setup '*Checkpoint: Choice*'
     Invoke-Control 'SetupClose'
     $null = Wait-Status '*First run:*'
     Invoke-Control 'CreateProfile'
@@ -341,7 +357,7 @@ try {
         throw 'Invalid launch arguments must leave a read-only, actionable startup error.'
     }
     Close-Desktop
-    Write-Output 'PASS: actual offline fixtures/refusal/Stop, audio OFF; accessible no-key setup/migration/save/resume/Back/model consent invalidation; profile/remedies/preservation; bounded close. No OS credential actions or network.'
+    Write-Output 'PASS: passive Troubleshooting from main/setup, recording and export OFF; actual offline fixtures/refusal/Stop, audio OFF; accessible no-key setup/migration/save/resume/Back/model consent invalidation; profile/remedies/preservation; bounded close. No OS credential actions or network.'
 }
 finally {
     if ($null -ne $process) {

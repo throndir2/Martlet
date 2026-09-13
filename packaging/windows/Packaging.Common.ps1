@@ -95,7 +95,7 @@ function Get-PayloadFiles([string]$Root) {
 function Get-PublishProjectNames([ValidateSet('Desktop', 'Doctor')][string]$Entry) {
     @("Martlet.$Entry", 'Martlet.Core', 'Martlet.Diagnostics', 'Martlet.Fixtures', 'Martlet.Sessions', 'Martlet.Audio')
     if ($Entry -eq 'Desktop') {
-        @('Martlet.Credentials.Windows', 'Martlet.Conversation', 'Martlet.Providers', 'Martlet.Participation')
+        @('Martlet.Credentials.Windows', 'Martlet.Conversation', 'Martlet.Providers', 'Martlet.Participation', 'Martlet.Support')
     }
 }
 
@@ -191,7 +191,7 @@ function Assert-PublishLayout([string]$Root) {
     foreach ($file in @('PresentationFramework.dll', 'PresentationCore.dll', 'wpfgfx_cor3.dll', 'D3DCompiler_47_cor3.dll')) {
         $null = Get-RequiredFile (Join-Path $Root "Desktop\$file")
     }
-    foreach ($file in @('help\INTERNAL.txt', 'notices\DEPENDENCIES.txt',
+    foreach ($file in @('help\INTERNAL.txt', 'help\TROUBLESHOOTING.md', 'notices\DEPENDENCIES.txt',
             'notices\NAudio-THIRD-PARTY-NOTICES.txt',
             'notices\Microsoft.WindowsDesktop.App\LICENSE.txt', 'notices\WPF-THIRD-PARTY-NOTICES.txt',
             'notices\WinForms-THIRD-PARTY-NOTICES.txt', 'notices\Inno-Setup-LICENSE.txt')) {

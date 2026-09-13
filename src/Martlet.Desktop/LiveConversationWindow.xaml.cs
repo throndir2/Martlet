@@ -11,6 +11,10 @@ namespace Martlet.Desktop;
 
 public partial class LiveConversationWindow : Window
 {
+    internal Action<Window>? Troubleshooting { get; init; }
+    internal SupportController? Support { get; init; }
+    private readonly LiveSupportProjection supportProjection = new();
+    private void Troubleshooting_Click(object sender, RoutedEventArgs e) => Troubleshooting?.Invoke(this);
     private readonly ISetupService settings;
     private readonly SetupOperationRunner operations;
     private readonly LiveConversationController controller;
@@ -257,7 +261,7 @@ public partial class LiveConversationWindow : Window
         if (operations.IsRunning) return;
         Cancel("conversation.configuration_changed");
         ready = false;
-        new SetupWindow(settings, operations) { Owner = this }.ShowDialog();
+        new SetupWindow(settings, operations) { Owner = this, Troubleshooting = Troubleshooting }.ShowDialog();
         await LoadAsync();
     }
     private async void Audio_Click(object sender, RoutedEventArgs e)
@@ -265,7 +269,7 @@ public partial class LiveConversationWindow : Window
         if (operations.IsRunning || audio is null) return;
         Cancel("conversation.configuration_changed");
         ready = false;
-        new AudioSetupWindow(settings, operations, audio, sessionEvents: sessionEvents) { Owner = this }.ShowDialog();
+        new AudioSetupWindow(settings, operations, audio, sessionEvents: sessionEvents) { Owner = this, Troubleshooting = Troubleshooting }.ShowDialog();
         await LoadAsync();
     }
 
@@ -282,6 +286,11 @@ public partial class LiveConversationWindow : Window
             TranscriptText.Text = $"{(stt.Provenance == EvidenceProvenance.Live ? "REAL STT" : "FIXTURE STT - NOT inference")}: {stt.Outcome}; confidence UNKNOWN\n{operation.Transcript}";
         var capture = operation.Capture?.Snapshot;
         var status = operation.Status;
+        if (Support is { } support)
+            supportProjection.Observe(support, new(operation.Id, snapshot?.TurnId, status,
+                snapshot is null ? operation.Transcription?.Provenance ?? EvidenceProvenance.Live :
+                    snapshot.TextProvenance ?? EvidenceProvenance.NotRun,
+                snapshot?.CommittedSegments ?? 0, snapshot?.QueuedSegments ?? 0));
         StatusText.Text = $"{status.Code}; app worker released: {operation.OwnershipReleased}; quarantine: {status.Quarantined}.\n" +
             $"Mic: {capture?.State.ToString() ?? "not used"}; samples: {capture?.CanonicalSamples ?? 0}; retained PCM: {capture?.RetainedPcmBytes ?? 0}. VAD/wake/unsolicited: OFF.\n" +
             $"STT: {operation.Transcription?.Outcome.ToString() ?? "not completed / not used"}; Policy: {status.Policy?.ToString() ?? "see timeline"}; LLM/TTS: {snapshot?.State.ToString() ?? "not dispatched"}.\n" +

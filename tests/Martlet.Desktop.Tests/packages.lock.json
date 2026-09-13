@@ -131,7 +131,8 @@
           "Martlet.Conversation": "[0.1.0, )",
           "Martlet.Credentials.Windows": "[0.1.0, )",
           "Martlet.Diagnostics": "[0.1.0, )",
-          "Martlet.Participation": "[0.1.0, )"
+          "Martlet.Participation": "[0.1.0, )",
+          "Martlet.Support": "[0.1.0, )"
         }
       },
       "martlet.diagnostics": {
@@ -161,6 +162,12 @@
         "dependencies": {
           "Martlet.Audio": "[0.1.0, )",
           "Martlet.Fixtures": "[0.1.0, )"
+        }
+      },
+      "martlet.support": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Diagnostics": "[0.1.0, )"
         }
       },
       "NAudio.Wasapi": {

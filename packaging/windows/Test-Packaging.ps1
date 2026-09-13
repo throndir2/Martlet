@@ -9,6 +9,7 @@ param(
     [Parameter(Mandatory)][string]$CliHome
 )
 . "$PSScriptRoot\Installer.Common.ps1"
+. "$PSScriptRoot\ProtectedData.Common.ps1"
 Assert-PackagingHost
 Assert-MSBuildPath (Split-Path (Split-Path $PSScriptRoot))
 Assert-MSBuildPath $WorkDirectory
@@ -45,20 +46,45 @@ $help = [IO.File]::ReadAllText((Join-Path $copy 'help\INTERNAL.txt'))
 foreach ($required in @('FIXTURE - NOT AI', 'self-test --scenario streaming --json',
         'Stop fixture', 'NOT spoken AI', 'Permission is not saved.',
         'V04b', 'Send typed text', 'Stop / revoke this action', 'LOCAL microphone capture',
-        'separately permit uploading', 'NOT RUN', 'No Martlet.Support dependency')) {
+        'separately permit uploading', 'NOT RUN', 'V06b', 'Record troubleshooting metadata',
+        'OFF at every launch', 'support-v1', 'Preview every frozen file',
+        'No support contact or upload channel is configured', 'CLI export is not implemented')) {
     if (-not $help.Contains($required)) { throw "Installed help is missing: $required" }
 }
 $script:cases++
 
+$troubleshootingSource = Join-Path (Split-Path (Split-Path $PSScriptRoot)) 'docs\TROUBLESHOOTING.md'
+Assert-Sha256 (Join-Path $copy 'help\TROUBLESHOOTING.md') (Get-FileHash -LiteralPath $troubleshootingSource -Algorithm SHA256).Hash
+$script:cases++
+
+$sentinel = Join-Path $WorkDirectory 'protected-sentinel'
+[IO.Directory]::CreateDirectory($sentinel) | Out-Null
+[IO.File]::WriteAllText((Join-Path $sentinel 'settings.json'), '{"authored":"sentinel"}')
+[IO.File]::WriteAllText((Join-Path $sentinel 'unrelated.keep'), 'unrelated protected bytes')
+$resolvedSentinel = Resolve-ProtectedDataDirectory $sentinel @($PayloadRoot, $copy)
+$protectedBefore = Get-ProtectedDataSnapshot $resolvedSentinel
+Assert-ProtectedDataUnchanged $resolvedSentinel $protectedBefore
+$script:cases++
+Assert-Fails 'relative protected scope' { Resolve-ProtectedDataDirectory 'relative' @($copy) } '*explicit absolute local*'
+Assert-Fails 'protected file instead of directory' {
+    Resolve-ProtectedDataDirectory (Join-Path $sentinel 'settings.json') @($copy)
+} '*existing directories*'
+Assert-Fails 'overlapping protected scope' { Resolve-ProtectedDataDirectory $copy @($copy) } '*overlaps*'
+[IO.File]::AppendAllText((Join-Path $sentinel 'unrelated.keep'), ' deliberate change')
+Assert-Fails 'protected scope modification' {
+    Assert-ProtectedDataUnchanged $resolvedSentinel $protectedBefore
+} '*selected protected scope changed*'
+
 $requiredFiles = @('Doctor\Martlet.Doctor.exe', 'Desktop\coreclr.dll', 'Desktop\PresentationFramework.dll',
         'Doctor\System.Text.Json.dll', 'notices\WPF-THIRD-PARTY-NOTICES.txt',
+        'Desktop\Martlet.Support.dll', 'help\INTERNAL.txt', 'help\TROUBLESHOOTING.md', 'notices\DEPENDENCIES.txt',
         'Desktop\NAudio.Wasapi.dll', 'Doctor\NAudio.Core.dll', 'Desktop\System.Numerics.Tensors.dll',
         'notices\NAudio-LICENSE.txt', 'notices\NAudio-THIRD-PARTY-NOTICES.txt',
         'notices\System.Numerics.Tensors-LICENSE.txt', 'notices\System.Numerics.Tensors-THIRD-PARTY-NOTICES.txt')
 foreach ($entry in @('Desktop', 'Doctor')) {
     $requiredFiles += @(Get-PublishProjectNames $entry | ForEach-Object { "$entry\$_.dll" })
 }
-foreach ($relative in $requiredFiles) {
+foreach ($relative in $requiredFiles | Select-Object -Unique) {
     $path = Join-Path $copy $relative
     $bytes = [IO.File]::ReadAllBytes($path)
     try {
@@ -89,7 +115,7 @@ finally { [IO.File]::WriteAllBytes($depsPath, $originalDeps) }
 
 $desktopDepsPath = Join-Path $copy 'Desktop\Martlet.Desktop.deps.json'
 $desktopDeps = [IO.File]::ReadAllBytes($desktopDepsPath)
-foreach ($project in @('Martlet.Conversation', 'Martlet.Providers', 'Martlet.Participation')) {
+foreach ($project in @('Martlet.Conversation', 'Martlet.Providers', 'Martlet.Participation', 'Martlet.Support')) {
     try {
         $changedDeps = [Text.Encoding]::UTF8.GetString($desktopDeps) | ConvertFrom-Json
         $library = @($changedDeps.libraries.PSObject.Properties.Name | Where-Object { $_ -clike "$project/*" })
@@ -256,7 +282,7 @@ $graph = Join-Path $WorkDirectory 'negative.restore-graph.json'
 $build = Join-Path $WorkDirectory 'negative-build'
 Invoke-Dotnet $sdk (@('msbuild', $project, '-t:GenerateRestoreGraphFile', "-p:RestoreGraphOutputPath=$graph",
     '-p:RuntimeIdentifier=win-x64', '-p:UseArtifactsOutput=true', "-p:ArtifactsPath=$build", '-verbosity:quiet') + $properties) -WorkingDirectory $source
-foreach ($projectName in @('Martlet.Conversation', 'Martlet.Providers', 'Martlet.Participation')) {
+foreach ($projectName in @('Martlet.Conversation', 'Martlet.Providers', 'Martlet.Participation', 'Martlet.Support')) {
     $projectLock = Join-Path $packaging "locks\$projectName.packages.lock.json"
     $projectLockBytes = [IO.File]::ReadAllBytes($projectLock)
     try {
