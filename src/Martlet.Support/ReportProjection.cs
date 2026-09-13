@@ -34,8 +34,7 @@ internal static class ReportProjection
         Guard.Require(probe.Outcome == finding.Outcome ||
             probe.DiagnosticCode!.StartsWith("fixture.", StringComparison.Ordinal) &&
             probe.Outcome == ProbeOutcome.Failed && probe.Error is not null);
-        // Never copy Summary, Remedy, Error.Summary, Effects or arbitrary identifiers from the source.
-        Guard.Require(probe.Error is null || DiagnosticCatalog.Remedies.Any(r => r.Id == probe.Error.ActionId));
+        // Shared validation covers Error.ActionId, but it and Error.Summary are omitted, not catalog-rendered.
         Guard.Require(!probe.DiagnosticCode!.StartsWith("fixture.", StringComparison.Ordinal) ||
             probe.Provenance == EvidenceProvenance.Fixture);
     }

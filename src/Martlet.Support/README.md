@@ -88,6 +88,13 @@ The known probe IDs are the existing local registry IDs plus `fixture.session`:
 requires a deliberate allowlist update; new diagnostic findings/remedies still
 belong to the shared Diagnostics catalog, not a second support catalog.
 
+An underlying probe `Error.ActionId` (for example Core's
+`provider.stream.inspect`) is validated by the shared error contract but is
+never exported or used as fallback guidance. It need not be a Diagnostics
+catalog remedy. Exported probe actions and invocation actions still require
+exact authored catalog entries. Actual shared fixture deadline/sequence failures
+therefore remain exportable without exposing underlying action/error text.
+
 Sensitive identities are preferably not accepted at all. Raw journal trace and
 turn UUIDs remain useful for local correlation. Export replaces all accepted
 journal/trace/turn UUIDs, including report error traces, with a coherent fresh
