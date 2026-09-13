@@ -257,7 +257,7 @@ publication, public artifact upload and installation are absent.
 The dedicated `host-preflight.yml` runs Windows and Ubuntu **synthetic**
 contracts, then executes the actual ELF on ephemeral GitHub Ubuntu 24.04:
 help, authored fixtures, and read-only local prerequisites **with NVIDIA
-query disabled**. `strace -f -qq -yy -s 2048 -e trace=all` traces only the spawned
+query disabled**. `strace -f -q -yy -s 2048 -e trace=all` traces only the spawned
 native process tree, including descriptor-only calls. Read-buffer, directory,
 entropy, uname and symlink-result payloads are rendered raw (not dumped as text).
 The build-only `TracePolicy` in the existing test project parses bounded records
@@ -265,10 +265,21 @@ and reconstructs PID-specific unfinished/resumed calls. It fails closed on
 unknown/unparseable calls/events, unmatched resumes, unowned PIDs or extra execs.
 An explicit permitted-operation policy admits local reads, constrained
 read-only opens, private memory/thread/signal/descriptor bookkeeping and
-stdout/stderr or traced coordination-pipe/eventfd writes. It rejects all other
-operations, including timestamp/permission/truncation changes, writable shared
-file mappings, socket/network calls, unexpected ioctl/control operations and
+original output destinations or traced coordination-pipe/eventfd writes.
+Descriptor origins follow open/close/dup/fcntl, clone copies/shared tables and
+close-on-exec. An unknown inherited descriptor cannot become an authorized
+destination merely by being duplicated onto fd 1/2. Shared **file** mappings
+are rejected even when initially read-only, preventing later write promotion.
+It rejects all other
+operations, including timestamp/permission/truncation changes, socket/network
+calls, unexpected ioctl/control operations and
 signals outside the owned tree. Expected binary/argv forms are compared exactly.
+Explicit terminal records and matching exit/exit-group intent are required for
+the root and every spawned PID/thread; root status must match the measured
+doctor exit. Clean-boundary truncation is not completion. `-q`, unlike `-qq`,
+retains those terminal records. The strace 6.8 clone3 input/output structure
+`{...} => {parent_tid=[...]}` is recognized only in its defined position/fields,
+including split resume records; arbitrary arrows and unknown fields fail.
 This is scoped syscall evidence for the recorded Ubuntu modes/tool versions,
 not proof about all kernel behavior, other versions, or unexecuted NVIDIA paths.
 No weakening by `DOTNET_EnableDiagnostics=0` or a native-trace skip occurs.
@@ -296,5 +307,6 @@ Official boundaries: [Ubuntu NVIDIA drivers](https://documentation.ubuntu.com/se
 [CUDA compatibility](https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html),
 [NVIDIA SMI](https://docs.nvidia.com/deploy/nvidia-smi/index.html),
 [.NET diagnostics configuration](https://learn.microsoft.com/en-us/dotnet/core/runtime-config/debugging-profiling),
-[Native AOT diagnostics](https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/diagnostics).
+[Native AOT diagnostics](https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/diagnostics),
+[strace 6.8 clone3 formatting](https://github.com/strace/strace/blob/v6.8/src/clone.c).
 These are review references, not approval to run their installation commands.

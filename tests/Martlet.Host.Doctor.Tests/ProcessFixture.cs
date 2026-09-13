@@ -5,12 +5,13 @@ internal static class ProcessFixture
 {
     public static async Task<int> Main(string[] args)
     {
-        if (args is ["--verify-trace", var trace, var binary, var packages, .. var arguments] && packages is "packages" or "no-packages")
+        if (args is ["--verify-trace", var trace, var binary, var packages, var expectedExitText, .. var arguments] &&
+            packages is "packages" or "no-packages" && int.TryParse(expectedExitText, out var expectedExit))
         {
             try
             {
                 if (new FileInfo(trace).Length > 8 * 1024 * 1024) throw new InvalidDataException("TRACE_POLICY:trace-size");
-                var summary = TracePolicy.Validate(File.ReadLines(trace), binary, arguments, packages == "packages");
+                var summary = TracePolicy.Validate(File.ReadLines(trace), binary, arguments, packages == "packages", expectedExit);
                 Console.WriteLine($"TRACE_POLICY: accepted {summary.Calls} calls, {summary.ProcessIds} owned PIDs, {summary.ExecAttempts} exact exec attempts.");
                 return 0;
             }

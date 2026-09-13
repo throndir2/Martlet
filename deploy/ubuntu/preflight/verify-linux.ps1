@@ -31,11 +31,11 @@ function Invoke-ReadOnlyCase([string]$Name, [string[]]$Arguments, [int[]]$ExitCo
     $report = Join-Path $ArtifactsPath "$Name.stdout"
     $errorFile = Join-Path $ArtifactsPath "$Name.stderr"
     # Do not set DOTNET_EnableDiagnostics=0 here: the packaged artifact itself must be non-writing.
-    & strace -f -qq -yy -s 2048 -e 'trace=all' -e 'raw=read,pread64,readv,preadv,preadv2,getdents,getdents64,getrandom,uname,readlink,readlinkat,getcwd' -o $trace -- $binary @Arguments > $report 2> $errorFile
+    & strace -f -q -yy -s 2048 -e 'trace=all' -e 'raw=read,pread64,readv,preadv,preadv2,getdents,getdents64,getrandom,uname,readlink,readlinkat,getcwd' -o $trace -- $binary @Arguments > $report 2> $errorFile
     $code = $LASTEXITCODE
     if ($code -notin $ExitCodes) { throw "$Name unexpected exit $code; inspect the private runner temp artifacts." }
     $policyScope = if ($AllowPackages) { 'packages' } else { 'no-packages' }
-    $policyOutput = & dotnet $TraceVerifier --verify-trace $trace $binary $policyScope @Arguments
+    $policyOutput = & dotnet $TraceVerifier --verify-trace $trace $binary $policyScope $code @Arguments
     if ($LASTEXITCODE -ne 0) { throw "$Name failed the fail-closed trace operation policy." }
     if ((Get-Item -LiteralPath $report).Length -gt 131072) { throw 'Report output exceeds the 128 KiB contract budget.' }
     if ((Get-Item -LiteralPath $errorFile).Length -ne 0) { throw "$Name emitted stderr; no successful gate is accepted." }

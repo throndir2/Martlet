@@ -9,7 +9,7 @@ namespace Martlet.Host.Doctor.Tests;
 internal static class TracePolicy
 {
     internal sealed record Summary(int Calls, int ProcessIds, int ExecAttempts);
-    private sealed record Call(int Pid, string Name, string[] Args, string Result);
+    internal sealed record Call(int Pid, string Name, string[] Args, string Result, int Started, int Completed);
     private static readonly Regex Prefix = Rx(@"^(?<pid>[1-9][0-9]*)\s+(?<body>.+)$");
     private static readonly Regex Complete = Rx(@"^(?<name>[a-z][a-z0-9_]*)\((?<args>.*)\)\s+=\s+(?<result>.+)$");
     private static Regex Rx(string pattern) => new(pattern, RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
@@ -38,11 +38,12 @@ internal static class TracePolicy
         ["exit"] = 1, ["exit_group"] = 1
     };
 
-    public static Summary Validate(IEnumerable<string> lines, string binary, IReadOnlyList<string> arguments, bool packages)
+    public static Summary Validate(IEnumerable<string> lines, string binary, IReadOnlyList<string> arguments, bool packages, int expectedExit = 0)
     {
+        if (expectedExit is < 0 or > 255) Fail("expected-exit");
         var calls = new List<Call>();
-        var pending = new Dictionary<int, (string Name, string Text)>();
-        var events = new List<(int Pid, string Text)>();
+        var pending = new Dictionary<int, (string Name, string Text, int Started)>();
+        var events = new List<(int Pid, string Text, int Line)>();
         var lineCount = 0;
         foreach (var line in lines)
         {
@@ -52,9 +53,10 @@ internal static class TracePolicy
             if (!prefix.Success || !int.TryParse(prefix.Groups["pid"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out pid))
                 Fail("record-prefix");
             var body = prefix.Groups["body"].Value;
+            var started = lineCount;
             if (body.StartsWith("--- ", StringComparison.Ordinal) || body.StartsWith("+++ ", StringComparison.Ordinal))
             {
-                events.Add((pid, body));
+                events.Add((pid, body, lineCount));
                 continue;
             }
             var resumed = Rx(@"^<\.\.\. (?<name>[a-z][a-z0-9_]*) resumed>(?<suffix>.*)$").Match(body);
@@ -62,13 +64,14 @@ internal static class TracePolicy
             {
                 if (!pending.Remove(pid, out var saved) || saved.Name != resumed.Groups["name"].Value) Fail("unmatched-resume");
                 body = saved.Text + resumed.Groups["suffix"].Value;
+                started = saved.Started;
             }
             else if (pending.ContainsKey(pid)) Fail("missing-resume");
             if (body.EndsWith(" <unfinished ...>", StringComparison.Ordinal))
             {
                 body = body[..^17];
                 var name = Rx(@"^(?<name>[a-z][a-z0-9_]*)\(").Match(body);
-                if (!name.Success || !pending.TryAdd(pid, (name.Groups["name"].Value, body))) Fail("invalid-unfinished");
+                if (!name.Success || !pending.TryAdd(pid, (name.Groups["name"].Value, body, started))) Fail("invalid-unfinished");
                 continue;
             }
             var call = Complete.Match(body);
@@ -78,7 +81,7 @@ internal static class TracePolicy
             if (!Rx(@"^(?:-?[0-9]+|0x[0-9a-f]+)(?:<[^<>]*>)?(?: .*)?$|^\?(?: ERESTART[A-Z]+ .*)?$").IsMatch(result))
                 Fail("result-syntax");
             var syscall = call.Groups["name"].Value;
-            try { calls.Add(new(pid, syscall, Split(call.Groups["args"].Value), result)); }
+            try { calls.Add(new(pid, syscall, Split(call.Groups["args"].Value, syscall == "clone3"), result, started, lineCount)); }
             catch (InvalidDataException ex) { throw new InvalidDataException(ex.Message + ":" + syscall); }
         }
         if (pending.Count != 0 || calls.Count == 0) Fail("incomplete-trace");
@@ -100,12 +103,9 @@ internal static class TracePolicy
             return true;
         }
         foreach (var call in calls) if (!Owned(call.Pid)) Fail("unowned-pid");
-        var pipes = calls.Where(c => c.Name is "pipe" or "pipe2" && c.Result == "0")
-            .SelectMany(c => Regex.Matches(string.Join(',', c.Args), @"pipe:\[([0-9]+)\]").Select(m => m.Groups[1].Value)).ToHashSet();
-        var eventFds = calls.Where(c => c.Name is "eventfd" or "eventfd2" && PositiveResult(c.Result, out _))
-            .Select(c => c.Result.Split('<')[0]).ToHashSet();
+        var descriptors = new TraceDescriptors(root);
         var execs = 0; var processSpawns = 0;
-        foreach (var call in calls)
+        foreach (var call in calls.OrderBy(c => c.Started))
         {
             var a = call.Args;
             switch (call.Name)
@@ -142,20 +142,25 @@ internal static class TracePolicy
                     break;
                 case "write": case "writev":
                     if (a.Length != 3) Fail("write-syntax");
-                    var fd = Rx(@"^(?<fd>[0-9]+)(?:<(?<kind>.+)>)?$").Match(a[0]);
-                    if (!fd.Success) Fail("write-descriptor");
-                    var kind = fd.Groups["kind"].Value;
-                    var pipe = Rx(@"^pipe:\[(?<inode>[0-9]+)\]$").Match(kind);
-                    if (fd.Groups["fd"].Value is not ("1" or "2") &&
-                        !(pipe.Success && pipes.Contains(pipe.Groups["inode"].Value)) &&
-                        !(kind == "anon_inode:[eventfd]" && eventFds.Contains(fd.Groups["fd"].Value))) Fail("non-output-write");
                     break;
                 case "mmap": case "mmap2":
                     if (a.Length != 6 || a[3].Contains("MAP_SHARED", StringComparison.Ordinal) &&
-                        a[2].Contains("PROT_WRITE", StringComparison.Ordinal) && !a[3].Contains("MAP_ANONYMOUS", StringComparison.Ordinal))
-                        Fail("writable-shared-map");
+                        !a[3].Contains("MAP_ANONYMOUS", StringComparison.Ordinal)) Fail("shared-file-map");
                     break;
                 case "clone": case "clone3": case "fork": case "vfork":
+                    if (call.Name == "clone3")
+                    {
+                        if (a.Length != 2) Fail("clone3-arity");
+                        if (a[0].Contains(" => ", StringComparison.Ordinal))
+                        {
+                            var output = a[0].Split(" => ", StringSplitOptions.None)[1];
+                            if (!output.StartsWith('{') || !output.EndsWith('}')) Fail("clone3-transition");
+                            var fields = Split(output[1..^1]);
+                            if (fields.Length is < 1 or > 2 || fields.Select(f => f.Split('=')[0]).Distinct().Count() != fields.Length ||
+                                fields.Any(f => !Rx(@"^(?:parent_tid|pidfd)=(?:\[[0-9]+(?:<pid:[0-9]+>)?\]|NULL|0x[0-9a-f]+)$").IsMatch(f)))
+                                Fail("clone3-transition-fields");
+                        }
+                    }
                     if (call.Name is "clone" or "clone3")
                     {
                         var match = Rx(@"\bflags=(?<flags>[A-Z0-9_|]+)(?:,|\}|$)").Match(string.Join(',', a));
@@ -212,15 +217,35 @@ internal static class TracePolicy
                     if (a.Length != arity) Fail("call-arity-" + call.Name);
                     break;
             }
+            descriptors.Apply(call);
         }
+        var terminated = new Dictionary<int, (int Code, int Line)>();
         foreach (var item in events)
         {
             if (!Owned(item.Pid)) Fail("unowned-event");
-            if (Rx(@"^\+\+\+ exited with [0-9]{1,3} \+\+\+$").IsMatch(item.Text)) continue;
+            var terminal = Rx(@"^\+\+\+ exited with (?<code>[0-9]{1,3}) \+\+\+$").Match(item.Text);
+            if (terminal.Success)
+            {
+                var exit = int.Parse(terminal.Groups["code"].Value, CultureInfo.InvariantCulture);
+                if (exit > 255 || !terminated.TryAdd(item.Pid, (exit, item.Line))) Fail("duplicate-or-invalid-exit");
+                continue;
+            }
             var signal = Rx(@"^--- (?:SIGCHLD|SIGRT_[0-9]+|SIGURG) \{.*si_pid=(?<sender>[1-9][0-9]*).*\} ---$").Match(item.Text);
             if (!signal.Success || !int.TryParse(signal.Groups["sender"].Value, out var sender) || !Owned(sender)) Fail("unexpected-event");
         }
         if (execs != (packages ? 2 : 1)) Fail("missing-exec");
+        foreach (var exit in calls.Where(c => c.Name is "exit" or "exit_group"))
+            if (calls.Any(c => c.Pid == exit.Pid && c.Started > exit.Completed)) Fail("call-after-exit");
+        foreach (var pid in parents.Keys.Prepend(root))
+        {
+            if (!terminated.TryGetValue(pid, out var terminal) ||
+                calls.Any(c => c.Pid == pid && c.Completed >= terminal.Line)) Fail("missing-or-early-termination");
+            var intent = calls.Any(c => c.Started < terminal.Line &&
+                (c.Name == "exit" && c.Pid == pid || c.Name == "exit_group" && descriptors.Group(c.Pid) == descriptors.Group(pid)) &&
+                c.Args.Length == 1 && int.TryParse(c.Args[0], NumberStyles.None, CultureInfo.InvariantCulture, out var code) && code == terminal.Code);
+            if (!intent) Fail("missing-exit-intent");
+        }
+        if (terminated[root].Code != expectedExit) Fail("root-exit-mismatch");
         return new(calls.Count, parents.Count + 1, execs);
     }
 
@@ -238,12 +263,13 @@ internal static class TracePolicy
         if (!value.StartsWith('[') || !value.EndsWith(']')) Fail("argv-syntax");
         return Split(value[1..^1]).Select(CString).ToArray();
     }
-    private static string[] Split(string input)
+    private static string[] Split(string input, bool cloneTransition = false)
     {
         if (input.Length == 0) return [];
         var result = new List<string>();
         var stack = new Stack<char>();
         var quote = false; var start = 0;
+        var transition = false;
         for (var i = 0; i < input.Length; i++)
         {
             var c = input[i];
@@ -254,6 +280,14 @@ internal static class TracePolicy
                 continue;
             }
             if (c == '"') quote = true;
+            else if (c == '=' && i + 1 < input.Length && input[i + 1] == '>')
+            {
+                if (!cloneTransition || transition || stack.Count != 0 || result.Count != 0 ||
+                    !input[..i].TrimEnd().EndsWith('}') || !input[(i + 2)..].TrimStart().StartsWith('{'))
+                    Fail("unexpected-transition");
+                transition = true;
+                i++;
+            }
             else if (c is '(' or '[' or '{' or '<') stack.Push(c);
             else if (c is ')' or ']' or '}' or '>')
             {
