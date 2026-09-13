@@ -65,7 +65,7 @@ function Invoke-ReadOnlyCase([string]$Name, [string[]]$Arguments, [int[]]$ExitCo
     if ($execCount -ne $(if ($AllowPackages) { 2 } else { 1 })) { throw "$Name unexpected process execution count $execCount." }
     if ((Get-Item -LiteralPath $report).Length -gt 131072) { throw 'Report output exceeds the 128 KiB contract budget.' }
     if ((Get-Item -LiteralPath $errorFile).Length -ne 0) { throw "$Name emitted stderr; no successful gate is accepted." }
-    Write-Output "$Name : exit $code, bounded output, no file mutations or network/socket syscalls, exec count $execCount."
+    Write-Host "$Name : exit $code, bounded output, no file mutations or network/socket syscalls, exec count $execCount."
     return $report
 }
 
@@ -73,9 +73,9 @@ $help = Invoke-ReadOnlyCase 'help' @('--help') @(0) $false
 $fixture = Invoke-ReadOnlyCase 'fixture-inventory' @('doctor', '--fixture', 'inventory', '--scope', 'inventory', '--json') @(0) $false
 $missing = Invoke-ReadOnlyCase 'fixture-missing' @('doctor', '--fixture', 'missing-tools', '--json') @(1) $false
 $local = Invoke-ReadOnlyCase 'hosted-ubuntu-local' @('doctor', '--json', '--no-gpu-query') @(1, 2) $true
-$fixtureDocument = Get-Content -LiteralPath $fixture[-1] -Raw | ConvertFrom-Json
+$fixtureDocument = Get-Content -LiteralPath $fixture -Raw | ConvertFrom-Json
 if ($fixtureDocument.provenance -ne 'AuthoredFixture' -or $fixtureDocument.deploymentQualified) { throw 'Fixture provenance contract failed.' }
-$document = Get-Content -LiteralPath $local[-1] -Raw | ConvertFrom-Json
+$document = Get-Content -LiteralPath $local -Raw | ConvertFrom-Json
 if ($document.schemaVersion -ne 1 -or $document.provenance -ne 'LiveLocal' -or $document.deploymentQualified) {
     throw 'Live report contract failed.'
 }
@@ -100,4 +100,6 @@ $after = (Get-ChildItem -LiteralPath $Package -File | Sort-Object Name | ForEach
 if ($before -ne $after) { throw 'Package files changed during read-only execution.' }
 Write-Output 'ACTUAL EPHEMERAL GITHUB UBUNTU 24.04 CPU RUNNER - NOT OWNER HARDWARE, NOT GPU/DAEMON/MODEL/FIREWALL/SETUP QUALIFICATION.'
 # Only the already-sanitized product report goes to the build log. Raw syscall traces remain in runner temp and are not uploaded.
-Get-Content -LiteralPath $local[-1] -Raw
+Get-Content -LiteralPath $local -Raw
+# Doctor exits 1/2 are expected above; do not leak that last native exit into the successful harness.
+exit 0

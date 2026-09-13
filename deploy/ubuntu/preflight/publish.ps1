@@ -78,4 +78,5 @@ if ($LASTEXITCODE -ne 0) { throw 'Internal archive compression failed.' }
 $archive += '.gz'
 $archiveHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
 [IO.File]::WriteAllText("$archive.sha256", "$archiveHash  $([IO.Path]::GetFileName($archive))`n", [Text.UTF8Encoding]::new($false))
+Write-Output ($manifest | ConvertTo-Json -Depth 5)
 Write-Output "Built internal Linux ELF package. SHA256 $archiveHash. No signing, publication, installation, or deployment qualification."
