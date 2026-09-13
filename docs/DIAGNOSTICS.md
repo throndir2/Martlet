@@ -13,6 +13,17 @@ IDs, origins or credential IDs. The twelve-probe registry and exit semantics
 are unchanged. Saved setup is not live readiness and never resolves secrets.
 See [SETUP](SETUP.md) for configuration, migration and explicit vault actions.
 
+V02b's **Audio setup (local only)** is a separate explicit action surface.
+It displays real local capture/tone stages and historical checkpoints through
+`AudioSetupDiagnostics`, never as a provider or fixture pass. `settings.load`
+may include optional sanitized `setup.audio` metadata: selected/default
+booleans and historical UTC times/outcomes, no device identities/labels or
+configuration revisions. Saved observations are stale for current readiness.
+Ordinary status/list/run still do not enumerate or open devices or play a tone;
+the audio guides point to separately permissioned Desktop actions instead.
+The audio-OFF executable smoke opens this window only to view never-tested
+status. See [local audio semantics and unrun gates](SETUP.md#explicit-local-audio-setup-v02b).
+
 ## Implemented commands and scope
 
 ```powershell

@@ -15,6 +15,8 @@ public partial class MainWindow : Window
     private readonly SettingsStore? store;
     private readonly SetupOperationRunner setupOperations = new();
     private readonly ISetupService? setupService;
+    private readonly AudioSetupService audioSetup;
+    private readonly WindowsAudioSessionEvents audioSessionEvents = new();
     private readonly string? startupError;
     private readonly DiagnosticStatusModel? model;
     private readonly DispatcherTimer ageTimer = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -27,11 +29,15 @@ public partial class MainWindow : Window
     private bool saving;
     private bool closing;
     private bool mayClose;
+    private SetupOperation? fixtureOperation;
+    private readonly TaskCompletionSource fixtureQuarantine = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public MainWindow(SettingsStore? store, string? startupError)
     {
         InitializeComponent();
         this.store = store;
+        audioSetup = new(setupOperations, new WindowsAudioDeviceCatalog(), new WasapiCaptureDeviceFactory(), new WasapiDeviceFactory());
+        audioSessionEvents.LockedChanged += audioSetup.SetSessionLocked;
         setupService = store is null ? null : new SetupService(store, new WindowsCredentialStore());
         this.startupError = startupError;
         ScenarioChoice.ItemsSource = FixtureSession.Scenarios;
@@ -41,6 +47,7 @@ public partial class MainWindow : Window
         fixtureTimer.Start();
         DataPathText.Text = "Local settings only. Reports never include the data directory, credentials or settings contents.";
         StatusText.Text = "Foundation: loading local status. No audio or network services are active.";
+        AudioStatusText.Text = AudioSetupDiagnostics.Describe(null);
         if (store is not null)
         {
             model = new(new FoundationStatusService(store).Executor);
@@ -51,7 +58,7 @@ public partial class MainWindow : Window
         else
         {
             PipelineText.Text = "Mic / VAD / STT / Policy / LLM / TTS / Playback: unavailable; not run. Correct the launch data directory first.";
-            DemoButton.IsEnabled = ToneButton.IsEnabled = ScenarioChoice.IsEnabled = SetupButton.IsEnabled = false;
+            DemoButton.IsEnabled = ToneButton.IsEnabled = ScenarioChoice.IsEnabled = SetupButton.IsEnabled = AudioSetupButton.IsEnabled = false;
         }
     }
 
@@ -76,12 +83,15 @@ public partial class MainWindow : Window
             return;
         StatusText.Text = model.Text;
         PipelineText.Text = string.Join(Environment.NewLine, model.Pipeline.Select(node => node.Description));
-        ActivityText.Text = runningFixture ? "Offline fixture active. Stop fixture is available. No real provider or microphone is active." : model.Activity;
+        ActivityText.Text = runningFixture ? "Offline fixture active. Stop fixture is available. No real provider or microphone is active."
+            : setupOperations.IsRunning ? "An app-shared setup/local audio worker owns resources. See Audio setup for current local stages; no provider is active."
+            : model.Activity;
         CreateButton.IsEnabled = !saving && !runningFixture && model.CanCreateProfile;
         SetupButton.IsEnabled = !saving && !runningFixture && !model.IsRunning;
+        AudioSetupButton.IsEnabled = SetupButton.IsEnabled;
         RefreshButton.IsEnabled = !saving && !runningFixture && model.CanRefresh;
         StopButton.IsEnabled = !saving && model.IsRunning;
-        DemoButton.IsEnabled = ToneButton.IsEnabled = !saving && !runningFixture && !model.IsRunning;
+        DemoButton.IsEnabled = ToneButton.IsEnabled = !saving && !runningFixture && !model.IsRunning && !setupOperations.IsRunning;
         ScenarioChoice.IsEnabled = !runningFixture;
         FixtureStopButton.IsEnabled = runningFixture;
         FixtureText.Text = model.FixtureText;
@@ -111,13 +121,33 @@ public partial class MainWindow : Window
 
     private async Task RunFixtureAsync(string scenario, bool tone)
     {
-        if (closing || saving || runningFixture || model?.IsRunning == true)
+        if (closing || saving || runningFixture || model?.IsRunning == true || setupOperations.IsRunning)
             return;
+        var reported = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var session = fixture;
+        var quarantine = fixtureQuarantine.Task;
+        fixtureOperation = setupOperations.TryStart(async token =>
+        {
+            try
+            {
+                var result = await session.RunAsync(scenario, tone ? new(OutputPolicy.DefaultAtStart) : null, token).ConfigureAwait(false);
+                reported.TrySetResult();
+                // Fixture's public report cannot establish a late release after a frozen failed terminal.
+                // Keep the shared slot quarantined instead of allowing a second native audio owner.
+                if (result.Playback is { DeviceReleased: false })
+                    await quarantine.ConfigureAwait(false);
+                return new SetupWorkResult(SetupWorkOutcome.Completed);
+            }
+            finally { reported.TrySetResult(); }
+        });
+        if (fixtureOperation is null) return;
         runningFixture = true;
         Render();
         try
         {
-            await fixture.RunAsync(scenario, tone ? new(OutputPolicy.DefaultAtStart) : null, lifetime.Token);
+            await Task.WhenAny(reported.Task, fixtureOperation.Completion);
+            if (fixture.Snapshot?.Playback is not { DeviceReleased: false })
+                await fixtureOperation.Completion;
             ObserveFixture();
         }
         finally
@@ -128,9 +158,10 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void FixtureStop_Click(object sender, RoutedEventArgs e)
+    private void FixtureStop_Click(object sender, RoutedEventArgs e)
     {
-        await fixture.StopAsync();
+        var owned = fixtureOperation;
+        owned?.RequestCancellation();
         ObserveFixture();
     }
 
@@ -166,6 +197,14 @@ public partial class MainWindow : Window
         await RefreshAsync();
     }
 
+    private async void AudioSetup_Click(object sender, RoutedEventArgs e)
+    {
+        if (store is null || closing || saving || runningFixture || model?.IsRunning == true) return;
+        new AudioSetupWindow(setupService!, setupOperations, audioSetup,
+            observe: text => { if (!closing) AudioStatusText.Text = text; }, sessionEvents: audioSessionEvents) { Owner = this }.ShowDialog();
+        await RefreshAsync();
+    }
+
     private void Stop_Click(object sender, RoutedEventArgs e) => model?.Stop();
 
     private async void Window_Closing(object? sender, CancelEventArgs e)
@@ -178,11 +217,14 @@ public partial class MainWindow : Window
         closing = true;
         ageTimer.Stop();
         fixtureTimer.Stop();
+        audioSessionEvents.LockedChanged -= audioSetup.SetSessionLocked;
+        audioSessionEvents.Dispose();
         lifetime.Cancel();
+        fixtureOperation?.RequestCancellation();
         IsEnabled = false;
         if (model is not null)
             await model.CloseAsync();
-        await fixture.DisposeAsync();
+        await Task.Run(async () => await fixture.DisposeAsync());
         // WPF OnMainWindowClose exits the process, including any non-cooperative in-process callback.
         // Even absent or synchronous cleanup must leave WPF's original Closing event before closing again.
         await Dispatcher.InvokeAsync(() =>

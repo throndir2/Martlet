@@ -118,7 +118,7 @@ function Wait-Fixture([string]$Pattern) {
     throw 'Accessible fixture status was not available within 20 seconds.'
 }
 
-function Wait-Setup([string]$Pattern) {
+function Wait-Setup([string]$Pattern, [string]$StatusId = 'SetupStatus') {
     $deadline = [DateTime]::UtcNow.AddSeconds(20)
     while ([DateTime]::UtcNow -lt $deadline) {
         if ($script:process.HasExited) { throw 'Desktop exited during setup.' }
@@ -126,7 +126,7 @@ function Wait-Setup([string]$Pattern) {
         if ($script:process.MainWindowHandle -ne 0) {
             # WPF exposes the owned modal setup below its owner in the UI Automation tree.
             $script:window = [Windows.Automation.AutomationElement]::FromHandle($script:process.MainWindowHandle)
-            $status = Find-Control 'SetupStatus'
+            $status = Find-Control $StatusId
             if ($null -ne $status -and (Read-Value $status) -like $Pattern) {
                 if (-not $status.Current.IsKeyboardFocusable) { throw 'Setup status is not keyboard accessible.' }
                 $status.SetFocus()
@@ -219,6 +219,15 @@ try {
     Invoke-Control 'RefreshDiagnostics'
     $refreshed = Wait-Status '*First run:*' $first
     if ($refreshed -notlike '*settings.first_run*') { throw 'Refresh did not use the shared diagnostic catalog.' }
+    Invoke-Control 'OpenAudioSetup'
+    $audio = Wait-Setup '*never tested*UNVERIFIED*' 'AudioStatus'
+    if ($audio -notlike '*No provider*' -or (Find-Control 'AudioHeard').Current.IsEnabled) {
+        throw 'Unrun audio setup must remain local, unverified and not confirmable.'
+    }
+    if (Test-Path -LiteralPath $data) { throw 'Opening audio setup wrote settings before explicit save.' }
+    # Deliberately do not invoke Find, microphone, tone, or any effectful audio action.
+    Invoke-Control 'AudioClose'
+    $null = Wait-Status '*First run:*'
     Invoke-Control 'OpenSetup'
     $null = Wait-Setup '*Checkpoint: Choice*'
     if (Test-Path -LiteralPath $data) { throw 'Opening setup wrote files before an explicit save.' }

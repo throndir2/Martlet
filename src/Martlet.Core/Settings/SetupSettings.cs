@@ -181,7 +181,8 @@ public sealed record SetupSettings : IContract
         var lines = new List<string>
         {
             $"Saved choice: {settings.Profile.Kind}. Checkpoint: {setup.Checkpoint}. Configuration only; voice setup NOT complete.",
-            "Capture, screen and memory OFF. Audio qualification NOT RUN. Provider execution unavailable.",
+            "Capture, screen and memory OFF. Provider execution unavailable.",
+            AudioSetupStatus.From(settings.Audio).Describe(),
             OpenAiSetup.Disclosure
         };
         foreach (var role in Enum.GetValues<SetupRole>())

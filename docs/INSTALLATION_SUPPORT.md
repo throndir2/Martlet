@@ -14,8 +14,11 @@ until recorded qualification evidence exists.
 
 The configuration-only [V02a setup slice](SETUP.md) implements resumable
 Choice/Destinations/Credentials/Review checkpoints and explicit Windows vault
-actions. It does not complete storyboard audio qualification, capabilities,
-first response or novice readiness, and does not authorize live API use.
+actions. V02b additionally implements explicit local input/output selection,
+bounded actual-amplitude capture tests, synthetic-tone output tests and scoped
+human audibility confirmation. These are historical local observations, not
+physical qualification, capabilities, first response or novice readiness, and
+do not authorize live API use. The rest of this storyboard remains a target.
 
 ## 1. One Windows golden path
 
