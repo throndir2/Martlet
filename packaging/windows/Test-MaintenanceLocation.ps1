@@ -18,11 +18,18 @@ if ($ExerciseImplicitSource) {
     New-OutputDirectory $env:_WorkloadLibraryPacksFolder
 }
 
-# Delete only copied locks so the real maintenance command must regenerate both graphs.
-foreach ($project in @('Core', 'Diagnostics', 'Desktop', 'Doctor')) {
-    [IO.File]::Delete((Join-Path $SourceDirectory "packaging\windows\locks\Martlet.$project.packages.lock.json"))
+$normalLocks = @{}
+foreach ($file in Get-ChildItem -LiteralPath (Join-Path $SourceDirectory 'src') -Recurse -Filter packages.lock.json) {
+    $normalLocks[$file.FullName] = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
+}
+# Delete only copied RID locks so maintenance must regenerate every transitive project, including outer builds.
+foreach ($file in Get-ChildItem -LiteralPath (Join-Path $SourceDirectory 'packaging\windows\locks') -File) {
+    [IO.File]::Delete($file.FullName)
 }
 & "$SourceDirectory\packaging\windows\Update-PublishLocks.ps1" -DotnetPath $DotnetPath -CliHome $CliHome -WorkDirectory $WorkDirectory
+foreach ($path in $normalLocks.Keys) {
+    Assert-Sha256 $path $normalLocks[$path]
+}
 $sdk = Initialize-PackagingSdk $DotnetPath $CliHome
 $info = Invoke-BoundedProcess $sdk @('--info')
 if ($info.ExitCode -ne 0 -or -not $info.Stdout.Contains((Join-Path $SourceDirectory 'global.json'))) {
@@ -39,13 +46,23 @@ foreach ($application in @('Desktop', 'Doctor')) {
         throw "Maintenance config mismatch for ${application}: copied NuGet.config missing from $($assets.project.restore.configFilePaths.Count) resolved configuration files."
     }
     $evaluation = Invoke-BoundedProcess $sdk (@('msbuild', $expectedProject,
-        '-getProperty:NETCoreSdkVersion,RestoreAdditionalProjectSources', '-p:RuntimeIdentifier=win-x64') + @(Get-PackagingProperties))
+        '-getProperty:NETCoreSdkVersion,RestoreAdditionalProjectSources,TargetFrameworks', '-p:RuntimeIdentifier=win-x64') + @(Get-PackagingProperties))
     if ($evaluation.ExitCode -ne 0) { throw "Cannot evaluate effective restore sources: $($evaluation.Stderr)" }
     $properties = ($evaluation.Stdout | ConvertFrom-Json).Properties
-    if ($properties.NETCoreSdkVersion -cne (Get-PackagingPins).sdkVersion) { throw 'Maintenance evaluated the wrong SDK.' }
+    $evaluations = @($properties)
+    foreach ($framework in $properties.TargetFrameworks.Split(';', [StringSplitOptions]::RemoveEmptyEntries)) {
+        $inner = Invoke-BoundedProcess $sdk (@('msbuild', $expectedProject, "-p:TargetFramework=$framework",
+            '-getProperty:NETCoreSdkVersion,RestoreAdditionalProjectSources', '-p:RuntimeIdentifier=win-x64') + @(Get-PackagingProperties))
+        if ($inner.ExitCode -ne 0) { throw "Cannot evaluate inner-build restore sources: $($inner.Stderr)" }
+        $evaluations += ($inner.Stdout | ConvertFrom-Json).Properties
+    }
+    foreach ($evaluated in $evaluations) {
+        if ($evaluated.NETCoreSdkVersion -cne (Get-PackagingPins).sdkVersion) { throw 'Maintenance evaluated the wrong SDK.' }
+    }
     # SDKs with installed workloads can add library-packs independently of NuGet.config.
+    # Multi-target restore includes inner-build sources that the outer build does not evaluate.
     $expectedSources = @($config.configuration.packageSources.add.value) +
-        @($properties.RestoreAdditionalProjectSources.Split(';', [StringSplitOptions]::RemoveEmptyEntries))
+        @($evaluations | ForEach-Object { $_.RestoreAdditionalProjectSources.Split(';', [StringSplitOptions]::RemoveEmptyEntries) })
     $expectedSources = @($expectedSources | Sort-Object -Unique)
     $actualSources = @($assets.project.restore.sources.PSObject.Properties.Name)
     if (@(Compare-Object $expectedSources $actualSources).Count -ne 0) {

@@ -3,6 +3,9 @@ using System.ComponentModel;
 using System.Windows.Threading;
 using Martlet.Core.Settings;
 using Martlet.Diagnostics;
+using Martlet.Audio;
+using Martlet.Audio.Windows;
+using Martlet.Sessions;
 
 namespace Martlet.Desktop;
 
@@ -13,6 +16,11 @@ public partial class MainWindow : Window
     private readonly DiagnosticStatusModel? model;
     private readonly DispatcherTimer ageTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly CancellationTokenSource lifetime = new();
+    private readonly FixtureSession fixture = new(new PcmPlaybackSink(new WasapiDeviceFactory()),
+        pacing: TimeSpan.FromMilliseconds(200));
+    private readonly DispatcherTimer fixtureTimer = new() { Interval = TimeSpan.FromMilliseconds(100) };
+    private FixtureSessionSnapshot? lastFixture;
+    private bool runningFixture;
     private bool saving;
     private bool closing;
     private bool mayClose;
@@ -22,6 +30,11 @@ public partial class MainWindow : Window
         InitializeComponent();
         this.store = store;
         this.startupError = startupError;
+        ScenarioChoice.ItemsSource = FixtureSession.Scenarios;
+        ScenarioChoice.SelectedIndex = 0;
+        FixtureText.Text = "FIXTURE - NOT AI. Choose a scenario; no fixture or audio has run.";
+        fixtureTimer.Tick += (_, _) => ObserveFixture();
+        fixtureTimer.Start();
         DataPathText.Text = "Local settings only. Reports never include the data directory, credentials or settings contents.";
         StatusText.Text = "Foundation: loading local status. No audio or network services are active.";
         if (store is not null)
@@ -34,6 +47,7 @@ public partial class MainWindow : Window
         else
         {
             PipelineText.Text = "Mic / VAD / STT / Policy / LLM / TTS / Playback: unavailable; not run. Correct the launch data directory first.";
+            DemoButton.IsEnabled = ToneButton.IsEnabled = ScenarioChoice.IsEnabled = false;
         }
     }
 
@@ -58,10 +72,61 @@ public partial class MainWindow : Window
             return;
         StatusText.Text = model.Text;
         PipelineText.Text = string.Join(Environment.NewLine, model.Pipeline.Select(node => node.Description));
-        ActivityText.Text = model.Activity;
-        CreateButton.IsEnabled = !saving && model.CanCreateProfile;
-        RefreshButton.IsEnabled = !saving && model.CanRefresh;
+        ActivityText.Text = runningFixture ? "Offline fixture active. Stop fixture is available. No real provider or microphone is active." : model.Activity;
+        CreateButton.IsEnabled = !saving && !runningFixture && model.CanCreateProfile;
+        RefreshButton.IsEnabled = !saving && !runningFixture && model.CanRefresh;
         StopButton.IsEnabled = !saving && model.IsRunning;
+        DemoButton.IsEnabled = ToneButton.IsEnabled = !saving && !runningFixture && !model.IsRunning;
+        ScenarioChoice.IsEnabled = !runningFixture;
+        FixtureStopButton.IsEnabled = runningFixture;
+        FixtureText.Text = model.FixtureText;
+    }
+
+    private void ObserveFixture()
+    {
+        if (closing || fixture.Snapshot is not { } current || current == lastFixture)
+            return;
+        lastFixture = current;
+        if (model is not null)
+            model.ObserveFixture(current);
+        else
+            FixtureText.Text = ReportFormatter.Human(FixtureDiagnostics.Report(current));
+    }
+
+    private async void Demo_Click(object sender, RoutedEventArgs e) =>
+        await RunFixtureAsync((string)ScenarioChoice.SelectedItem, tone: false);
+
+    private async void Tone_Click(object sender, RoutedEventArgs e)
+    {
+        if (MessageBox.Show(this,
+            "Play a 200 ms synthetic tone, NOT speech, after a completed offline fixture? Check the current Windows output, volume and audience first. The default is fixed at start, with no fallback. This permission applies only to this action and is not saved.",
+            "Explicit output permission", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes)
+            await RunFixtureAsync("complete", tone: true);
+    }
+
+    private async Task RunFixtureAsync(string scenario, bool tone)
+    {
+        if (closing || saving || runningFixture || model?.IsRunning == true)
+            return;
+        runningFixture = true;
+        Render();
+        try
+        {
+            await fixture.RunAsync(scenario, tone ? new(OutputPolicy.DefaultAtStart) : null, lifetime.Token);
+            ObserveFixture();
+        }
+        finally
+        {
+            runningFixture = false;
+            if (!closing)
+                Render();
+        }
+    }
+
+    private async void FixtureStop_Click(object sender, RoutedEventArgs e)
+    {
+        await fixture.StopAsync();
+        ObserveFixture();
     }
 
     private async void Create_Click(object sender, RoutedEventArgs e)
@@ -100,12 +165,13 @@ public partial class MainWindow : Window
             return;
         closing = true;
         ageTimer.Stop();
+        fixtureTimer.Stop();
         lifetime.Cancel();
         IsEnabled = false;
         if (model is not null)
             await model.CloseAsync();
+        await fixture.DisposeAsync();
         // WPF OnMainWindowClose exits the process, including any non-cooperative in-process callback.
-        // No worker process or device operation is launched by this build.
         // Even absent or synchronous cleanup must leave WPF's original Closing event before closing again.
         await Dispatcher.InvokeAsync(() =>
         {

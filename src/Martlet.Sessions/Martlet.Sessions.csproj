@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <InternalsVisibleTo Include="Martlet.Doctor.Tests" />
+    <ProjectReference Include="..\Martlet.Audio\Martlet.Audio.csproj" />
+    <ProjectReference Include="..\Martlet.Fixtures\Martlet.Fixtures.csproj" />
+  </ItemGroup>
+</Project>

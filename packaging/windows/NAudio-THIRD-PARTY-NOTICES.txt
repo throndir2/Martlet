@@ -1,0 +1,143 @@
+NAudio 3.1.0 third-party notices and attributions
+=====================================
+
+These notices describe code included in the untrimmed NAudio.Core 3.1.0 and
+NAudio.Wasapi 3.1.0 dependencies, even where Martlet does not call that code.
+They do not grant a license over Martlet or any user-provided content.
+The separate NAudio-LICENSE.txt retains the upstream Mark Heath MIT license.
+
+Pinned upstream source:
+https://github.com/naudio/NAudio/tree/0aaef29d04bec9567bdf2f669036fabecc33a2e2
+
+Source headers below are retained as notices, not represented as Martlet work.
+The C# implementations and NAudio modifications remain upstream work.
+
+1. CoreAudio interop
+-------------------
+Source: src/NAudio.Wasapi/CoreAudioApi/AudioEndpointVolumeCallback.cs and
+related CoreAudio endpoint-volume/meter, device-state, property, and interop
+files carrying the same header.
+
+Copyright (C) 2007 Ray Molenkamp
+
+This source code is provided 'as-is', without any express or implied
+warranty. In no event will the authors be held liable for any damages
+arising from the use of this source code or the software it produces.
+
+Permission is granted to anyone to use this source code for any purpose,
+including commercial applications, and to alter it and redistribute it
+freely, subject to the following restrictions:
+
+1. The origin of this source code must not be misrepresented; you must not
+   claim that you wrote the original source code. If you use this source code
+   in a product, an acknowledgment in the product documentation would be
+   appreciated but is not required.
+2. Altered source versions must be plainly marked as such, and must not be
+   misrepresented as being the original source code.
+3. This notice may not be removed or altered from any source distribution.
+
+(Modified for NAudio by Mark Heath)
+
+2. CoreAudio session interfaces
+------------------------------
+Source: src/NAudio.Wasapi/CoreAudioApi/Interfaces/IAudioSessionControl.cs,
+IAudioSessionEvents.cs, IAudioSessionManager.cs, and ISimpleAudioVolume.cs.
+
+SoundScribe (TM) and related software.
+
+Copyright (C) 2007-2011 Vannatech
+http://www.vannatech.com
+All rights reserved.
+
+This source code is subject to the MIT License.
+http://www.opensource.org/licenses/mit-license.php
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+milligan22963 - ported to nAudio
+
+3. WDL resampler
+----------------
+Source: src/NAudio.Core/Dsp/WdlResampler.cs.
+
+This class based on the Resampler that is part of Cockos WDL
+originally written in C++ and ported to C# for NAudio by Mark Heath.
+Used in NAudio with permission from Justin Frankel.
+
+Original WDL License:
+Copyright (C) 2005 and later Cockos Incorporated
+
+Portions copyright other contributors, see each source file for more information.
+
+This software is provided 'as-is', without any express or implied
+warranty. In no event will the authors be held liable for any damages
+arising from the use of this software.
+
+Permission is granted to anyone to use this software for any purpose,
+including commercial applications, and to alter it and redistribute it
+freely, subject to the following restrictions:
+
+1. The origin of this software must not be misrepresented; you must not
+   claim that you wrote the original software. If you use this software
+   in a product, an acknowledgment in the product documentation would be
+   appreciated but is not required.
+2. Altered source versions must be plainly marked as such, and must not be
+   misrepresented as being the original software.
+3. This notice may not be removed or altered from any source distribution.
+
+4. SMB pitch shifter
+--------------------
+Source: src/NAudio.Core/Dsp/SmbPitchShifter.cs.
+
+COPYRIGHT 1999-2006 Stephan M. Bernsee <smb [AT] dspdimension [DOT] com>
+
+The Wide Open License (WOL)
+
+Permission to use, copy, modify, distribute and sell this software and its
+documentation for any purpose is hereby granted without fee, provided that
+the above copyright notice and this license appear in all source copies.
+THIS SOFTWARE IS PROVIDED "AS IS" WITHOUT EXPRESS OR IMPLIED WARRANTY OF
+ANY KIND. See http://www.dspguru.com/wol.htm for more information.
+
+This code was converted to C# by Michael Knight
+madmik3 at gmail dot com.
+http://sites.google.com/site/mikescoderama/
+
+5. G.722 codec
+--------------
+Source: src/NAudio.Core/Codecs/G722Codec.cs.
+
+SpanDSP - a series of DSP components for telephony
+g722_decode.c - The ITU G.722 codec, decode part.
+
+Written by Steve Underwood <steveu@coppice.org>
+
+Copyright (C) 2005 Steve Underwood
+Ported to C# by Mark Heath 2011
+
+Despite my general liking of the GPL, I place my own contributions
+to this code in the public domain for the benefit of all mankind -
+even the slimy ones who might try to proprietize my work and use it
+to my detriment.
+
+Based in part on a single channel G.722 codec which is:
+Copyright (c) CMU 1993
+Computer Science, Speech Group
+Chengxiang Lu and Alex Hauptmann
+
+6. Additional algorithm attributions
+------------------------------------
+Source: src/NAudio.Core/Dsp/EnvelopeGenerator.cs.
+C# ADSR based on work by Nigel Redmon, EarLevel Engineering: earlevel.com
+http://www.earlevel.com/main/2013/06/03/envelope-generators-adsr-code/
+
+Source: src/NAudio.Core/Dsp/BiQuadFilter.cs.
+Based on Cookbook formulae for audio EQ biquad filter coefficients
+http://www.musicdsp.org/files/Audio-EQ-Cookbook.txt
+by Robert Bristow-Johnson <rbj@audioimagination.com>.

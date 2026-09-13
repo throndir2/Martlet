@@ -16,6 +16,25 @@ notices\WPF-THIRD-PARTY-NOTICES.txt and WinForms-THIRD-PARTY-NOTICES.txt:
 upstream notices from the matching v10.0.12 source tags, checksum pinned.
 The complete runtime notice lists are retained, not reduced to just this summary.
 
+Both native entry points include Martlet.Core, Fixtures, Sessions, Diagnostics
+and the Windows Audio target. The unrelated provider library is not referenced
+or bundled. NAudio.Wasapi 3.1.0, NAudio.Core 3.1.0 and System.Numerics.Tensors 9.0.0
+are the existing centrally pinned audio dependencies, not newly upgraded pins.
+Their raw NuGet archives and published managed DLL bytes are checked against
+toolchain.json. Raw signed-archive SHA-512 differs from NuGet's lock contentHash;
+both are preserved for their respective purposes.
+
+notices\NAudio-LICENSE.txt: Mark Heath MIT notice, pinned upstream source commit.
+notices\NAudio-THIRD-PARTY-NOTICES.txt: bundled Core/Wasapi source attributions
+including Ray Molenkamp, Vannatech, Cockos WDL, Bernsee/Michael Knight,
+Steve Underwood/CMU, EarLevel and audio EQ cookbook work. Unused APIs do not
+justify dropping notices from an untrimmed dependency.
+notices\System.Numerics.Tensors-LICENSE.txt and
+System.Numerics.Tensors-THIRD-PARTY-NOTICES.txt: complete, unmodified entries from
+the exact 9.0.0 package, retained separately from the .NET 10 runtime notices.
+The 200 ms tone is generated locally from authored arithmetic; no real person's
+voice, recording, model, or external audio asset is included.
+
 Installer: built with Inno Setup 7.1.0 x64, copyright Jordan Russell / Martijn
 Laan. https://jrsoftware.org/ . The compiler is NOT installed with Martlet.
 Inno's built-in copyright/about notices are unchanged; its license is packaged
@@ -26,7 +45,6 @@ production. No license purchase or signing credential is part of this build.
 
 The SDK and exact runtime packages/notices are pinned in packaging\windows\
 toolchain.json. Runtime security updates require a new reviewed Martlet package.
-Only framework/project dependencies are currently linked into these two apps.
 New production packages/native dependencies require reviewed notices and pin
 updates; test-only xUnit/TestPlatform and unreferenced projects are not bundled.
 This inventory is not a release SBOM, vulnerability clearance or public release

@@ -41,8 +41,19 @@ if ([Convert]::ToHexString([IO.File]::ReadAllBytes($manifestPath)) -cne [Convert
 }
 $script:cases++
 
+$help = [IO.File]::ReadAllText((Join-Path $copy 'help\INTERNAL.txt'))
+foreach ($required in @('FIXTURE - NOT AI', 'self-test --scenario streaming --json',
+        'Stop fixture', 'NOT spoken AI', 'Permission is not saved.')) {
+    if (-not $help.Contains($required)) { throw "Installed fixture help is missing: $required" }
+}
+$script:cases++
+
 foreach ($relative in @('Doctor\Martlet.Doctor.exe', 'Desktop\coreclr.dll', 'Desktop\PresentationFramework.dll',
-        'Doctor\System.Text.Json.dll', 'notices\WPF-THIRD-PARTY-NOTICES.txt')) {
+        'Doctor\System.Text.Json.dll', 'notices\WPF-THIRD-PARTY-NOTICES.txt',
+        'Desktop\Martlet.Sessions.dll', 'Doctor\Martlet.Fixtures.dll', 'Doctor\Martlet.Audio.dll',
+        'Desktop\NAudio.Wasapi.dll', 'Doctor\NAudio.Core.dll', 'Desktop\System.Numerics.Tensors.dll',
+        'notices\NAudio-LICENSE.txt', 'notices\NAudio-THIRD-PARTY-NOTICES.txt',
+        'notices\System.Numerics.Tensors-LICENSE.txt', 'notices\System.Numerics.Tensors-THIRD-PARTY-NOTICES.txt')) {
     $path = Join-Path $copy $relative
     $bytes = [IO.File]::ReadAllBytes($path)
     try {
@@ -61,6 +72,25 @@ try {
     Assert-Fails 'corrupt dependency' { Test-PayloadManifest $copy } '*integrity mismatch*'
 }
 finally { [IO.File]::WriteAllBytes($corrupt, $original) }
+
+$depsPath = Join-Path $copy 'Doctor\Martlet.Doctor.deps.json'
+$originalDeps = [IO.File]::ReadAllBytes($depsPath)
+try {
+    $changedDeps = [Text.Encoding]::UTF8.GetString($originalDeps).Replace('NAudio.Wasapi/3.1.0', 'NAudio.Wasapi/3.1.1')
+    [IO.File]::WriteAllText($depsPath, $changedDeps)
+    Assert-Fails 'wrong managed dependency version' { Test-PayloadManifest $copy } '*Missing or incorrect managed package*'
+}
+finally { [IO.File]::WriteAllBytes($depsPath, $originalDeps) }
+
+$fakeCache = Join-Path $WorkDirectory 'invalid-package-cache'
+$packagePath = Join-Path $fakeCache 'naudio.wasapi\3.1.0\naudio.wasapi.3.1.0.nupkg'
+[IO.Directory]::CreateDirectory((Split-Path $packagePath)) | Out-Null
+[IO.File]::WriteAllText($packagePath, 'Invalid archive fixture; not an actual package.')
+$fakeAssets = [pscustomobject]@{ packageFolders = [pscustomobject]@{ $fakeCache = [pscustomobject]@{} } }
+$audioPin = (Get-PackagingPins).managedPackages | Where-Object id -eq 'NAudio.Wasapi'
+Assert-Fails 'corrupt managed package archive' {
+    Get-VerifiedPackageArchive $fakeAssets $audioPin.id $audioPin.version $audioPin.sha512
+} '*Package integrity failure*'
 
 foreach ($relative in @('Doctor\settings.json', 'Desktop\data\private.txt', 'unrelated.txt')) {
     $path = Join-Path $copy $relative
@@ -180,7 +210,8 @@ foreach ($file in @('Packaging.targets', 'Packaging.Common.ps1', 'Update-Publish
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $packaging
 }
 Copy-Item -LiteralPath "$PSScriptRoot\locks" -Destination $packaging -Recurse
-$properties = @("-p:CustomBeforeMicrosoftCommonTargets=$packaging\Packaging.targets", '-p:PublishProfile=WindowsInternal')
+$properties = @("-p:CustomBeforeMicrosoftCommonTargets=$packaging\Packaging.targets",
+    "-p:CustomBeforeMicrosoftCommonCrossTargetingTargets=$packaging\Packaging.targets", '-p:PublishProfile=WindowsInternal')
 $project = Join-Path $source 'src\Martlet.Desktop\Martlet.Desktop.csproj'
 $graph = Join-Path $WorkDirectory 'negative.restore-graph.json'
 $build = Join-Path $WorkDirectory 'negative-build'

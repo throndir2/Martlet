@@ -2,8 +2,11 @@
 
 **Future product specification, not an end-user installation guide.**
 The [foundation](FOUNDATION.md) implements a narrow local status CLI and WPF
-shell; the installers, host utilities and full diagnostic commands described
-below do not exist yet. Do not run
+shell. The current [internal packaging recipe](../packaging/windows/README.md)
+and [offline fixture experience](DIAGNOSTICS.md#offline-fixture-experience-f03c)
+now provide a self-contained payload/unsigned installer build and real Desktop/
+Doctor demo commands. The broader host utilities, live setup and qualified
+installation journey below remain future work. Do not run
 privileged setup or download models as part of implementing this documentation.
 See [delivery](DELIVERY.md) for gates and [architecture](ARCHITECTURE.md) for
 contracts and privacy. All version/hardware combinations below are targets
@@ -81,7 +84,8 @@ are unavailable, require explicit limits/confirmation rather than imply zero.
 Honor provider-side budgets if available, without assuming they are hard caps.
 
 The fixture demo uses authored/appropriately licensed synthetic events and
-prerecorded audio. It can exercise the real playback/state/error path but
+locally generated tone PCM (not prerecorded speech). It exercises the real
+validator/session/status path, plus the same sink after explicit tone permission, but
 does not prove STT accuracy, model quality, cloud access, CUDA, or hardware
 latency. A local mic test is real capture, not proof of AI transcription.
 

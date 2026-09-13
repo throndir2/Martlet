@@ -15,7 +15,38 @@
       "license": "LICENSE"
     }
   ],
+  "managedPackages": [
+    {
+      "id": "NAudio.Wasapi",
+      "version": "3.1.0",
+      "sha512": "0ce52fa38591d5c59ff5859026d10c4e1492840516c7f8272bdab123d206c01249164414249c8c78ba6000d077b76ca4dfd0d04804d82d0d979c5c0466ab621d",
+      "runtimeAsset": "lib/net9.0/NAudio.Wasapi.dll",
+      "notices": []
+    },
+    {
+      "id": "NAudio.Core",
+      "version": "3.1.0",
+      "sha512": "b4d9ac15d2ce51a7cf2c97a0f5d4e94ec36dce3038765aed69154b7d277ebd2d9ffcf3f9b42c530b2822a4c9c10f99389f2ca852cdadcb28797821a09290f2ff",
+      "runtimeAsset": "lib/net9.0/NAudio.Core.dll",
+      "notices": []
+    },
+    {
+      "id": "System.Numerics.Tensors",
+      "version": "9.0.0",
+      "sha512": "adace58eeed48082d0fd56fb0685b5451ff120404373c627ab4b1193be0aa4b0476b2dd031925f80af25cb8204ce52656c562508ec6974f6bb0cd05461a62d23",
+      "runtimeAsset": "lib/net9.0/System.Numerics.Tensors.dll",
+      "notices": [
+        { "source": "LICENSE.TXT", "file": "System.Numerics.Tensors-LICENSE.txt" },
+        { "source": "THIRD-PARTY-NOTICES.TXT", "file": "System.Numerics.Tensors-THIRD-PARTY-NOTICES.txt" }
+      ]
+    }
+  ],
   "notices": [
+    {
+      "file": "NAudio-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/naudio/NAudio/0aaef29d04bec9567bdf2f669036fabecc33a2e2/LICENSE",
+      "sha256": "e518e168af44d37da3de236e719c986169e47b46b90e37c1355056175744e037"
+    },
     {
       "file": "WPF-THIRD-PARTY-NOTICES.txt",
       "url": "https://raw.githubusercontent.com/dotnet/wpf/v10.0.12/THIRD-PARTY-NOTICES.TXT",

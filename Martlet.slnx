@@ -5,10 +5,13 @@
     <Project Path="src/Martlet.Desktop/Martlet.Desktop.csproj" />
     <Project Path="src/Martlet.Diagnostics/Martlet.Diagnostics.csproj" />
     <Project Path="src/Martlet.Doctor/Martlet.Doctor.csproj" />
+    <Project Path="src/Martlet.Fixtures/Martlet.Fixtures.csproj" />
+    <Project Path="src/Martlet.Sessions/Martlet.Sessions.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Martlet.Audio.Tests/Martlet.Audio.Tests.csproj" />
     <Project Path="tests/Martlet.Core.Tests/Martlet.Core.Tests.csproj" />
     <Project Path="tests/Martlet.Doctor.Tests/Martlet.Doctor.Tests.csproj" />
+    <Project Path="tests/Martlet.Fixtures.Tests/Martlet.Fixtures.Tests.csproj" />
   </Folder>
 </Solution>

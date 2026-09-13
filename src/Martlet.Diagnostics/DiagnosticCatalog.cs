@@ -28,7 +28,10 @@ public static class DiagnosticCatalog
         new("audio.input_guide", "Microphone testing is unavailable here. When supported, review Windows microphone privacy access and select the intended input. No permission was changed or device opened."),
         new("audio.output_guide", "Playback testing is unavailable here. Check the intended output and Windows app volume manually. No tone was played; only a deliberate listening test can establish audibility."),
         new("pipeline.unavailable", "This pipeline stage is not wired into diagnostics. A future explicit fixture run must remain labeled fixture, never real AI or real-device evidence."),
-        new("host.setup", "Host and GPU diagnostics are unavailable. Do not change firewall, drivers or services on the strength of this status.")
+        new("host.setup", "Host and GPU diagnostics are unavailable. Do not change firewall, drivers or services on the strength of this status."),
+        new("fixture.explain", "Choose another offline scenario or Stop. Content is scripted, not AI; no-speech and not-addressed are reasoned silence, not device errors. Real provider setup remains unavailable."),
+        new("fixture.retry", "Review the scenario and trace code, then explicitly start a new fixture. Failed/partial text is not a completed answer; nothing is retried or read aloud automatically."),
+        new("fixture.audio", "Text remains usable. Check the intended Windows output and app volume; explicitly approve another tone only after previous device release. No fallback or replay occurs. Audibility requires a listening witness.")
     ]);
 
     public static IReadOnlyList<DiagnosticFinding> Findings { get; } = Array.AsReadOnly<DiagnosticFinding>(
@@ -55,7 +58,18 @@ public static class DiagnosticCatalog
         new("probe.fault", ProbeOutcome.Failed, "The diagnostic callback faulted. Its exception details were not included in this report.", "diagnostics.report", ErrorCode.InvalidContract),
         new("probe.invalid_evidence", ProbeOutcome.Failed, "The diagnostic callback returned invalid evidence. It was rejected, not treated as a pass.", "diagnostics.report", ErrorCode.InvalidContract),
         new("probe.unknown", ProbeOutcome.Unknown, "The diagnostic check could not establish an observation.", "diagnostics.refresh"),
-        new("fixture.passed", ProbeOutcome.Passed, "The explicitly injected fixture check passed. This is not live provider, device or pipeline evidence.", "pipeline.unavailable")
+        new("fixture.passed", ProbeOutcome.Passed, "The explicitly injected fixture check passed. This is not live provider, device or pipeline evidence.", "pipeline.unavailable"),
+        new("fixture.running", ProbeOutcome.Running, "FIXTURE - NOT AI: scripted text is running; no completed evidence yet.", "fixture.explain"),
+        new("fixture.playback", ProbeOutcome.Running, "Fixture text ended. The explicitly permitted synthetic tone is still running; this is not speech or audibility evidence.", "fixture.audio"),
+        new("fixture.completed", ProbeOutcome.Passed, "The requested offline fixture completed. Any requested tone has separate backend accounting; no real provider or installation readiness is established.", "fixture.explain"),
+        new("fixture.refused", ProbeOutcome.Warning, "The scripted provider refused. Refusal is separate from ordinary answer text and is never sent to playback.", "fixture.explain"),
+        new("fixture.no_speech", ProbeOutcome.Warning, "Synthetic no-speech: the scripted turn is silent by design. No microphone was tested and this is not a device error.", "fixture.explain"),
+        new("fixture.not_addressed", ProbeOutcome.Warning, "Synthetic not-addressed: policy intentionally stayed silent. This is not an error or a live talk-decision test.", "fixture.explain"),
+        new("fixture.stopped", ProbeOutcome.Warning, "The fixture was canceled or stopped. Pending text/audio was invalidated; no automatic retry or playback follows.", "fixture.retry"),
+        new("fixture.failed", ProbeOutcome.Failed, "The scripted fixture failed or ended partially. Inspect the normalized issue and trace; this does not indicate a real provider failure.", "fixture.retry", ErrorCode.ProviderFailed),
+        new("fixture.deadline", ProbeOutcome.Failed, "The simulated provider deadline expired. Script time is synthetic, not measured network latency.", "fixture.retry", ErrorCode.ProviderFailed),
+        new("fixture.audio_incomplete", ProbeOutcome.Warning, "Fixture text completed but the requested tone did not complete. This is not successful playback or audibility evidence.", "fixture.audio"),
+        new("fixture.audio_failed", ProbeOutcome.Failed, "The permitted tone could not finish safely. Text remains available; no output fallback or automatic replay was attempted.", "fixture.audio", ErrorCode.AudioPlaybackFailed)
     ]);
 
     public static DiagnosticFinding Finding(string id) =>

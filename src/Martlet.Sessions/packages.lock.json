@@ -16,13 +16,6 @@
         "dependencies": {
           "Martlet.Core": "[0.1.0, )"
         }
-      },
-      "martlet.sessions": {
-        "type": "Project",
-        "dependencies": {
-          "Martlet.Audio": "[0.1.0, )",
-          "Martlet.Fixtures": "[0.1.0, )"
-        }
       }
     }
   }

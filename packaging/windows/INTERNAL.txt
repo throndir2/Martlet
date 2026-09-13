@@ -1,16 +1,36 @@
 MARTLET - INTERNAL DEVELOPMENT ONLY - UNSIGNED
 
-This is an offline status shell and bundled Doctor, not an AI voice companion,
-fixture demo or supported novice release. There is no microphone capture,
-playback, provider/key/model setup, login startup or network inference on launch.
+This is an offline fixture demo and bundled Doctor, not an AI voice companion
+or supported novice release. All fixture text is scripted: FIXTURE - NOT AI.
+There is no microphone capture, playback, provider/key/model setup, login startup
+or network inference on launch. Demo defaults require no profile or sound device.
 Do not publish this installer or tell users to bypass SmartScreen/antivirus.
 No project code or asset license is granted. Distribution/signing remains gated.
 
-Start menu: Martlet (Internal) opens the status shell.
+Start menu: Martlet (Internal) opens the offline fixture and status shell.
 Martlet Doctor (Internal) opens a command window and prints the same status.
 In that window, run Martlet.Doctor.exe --help for the implemented CLI options.
 Doctor status can return 2 (incomplete/not ready), which is expected here.
-No self-test, AI conversation or support-bundle promise is implied by this build.
+Try fixture (audio OFF) runs the selected scripted scenario. Stop fixture clears
+pending text/audio, and a new action uses fresh turn/request IDs and epochs.
+Refusal and partial output remain distinct from a completed answer.
+
+Doctor examples (no audio, network, settings writes or AI):
+  Martlet.Doctor.exe self-test --scenario streaming --json
+  Martlet.Doctor.exe self-test --scenario refused --json
+  Martlet.Doctor.exe self-test --scenario truncated --json
+Other choices: complete, refused-after-partial, no-speech, not-addressed,
+canceled, slow, failed. Slow uses accelerated synthetic script time.
+Self-test exits: 0 requested fixture completed; 1 failure; 2 refused/silent/
+canceled/incomplete; 3 invalid invocation. A pass is NOT real-mode readiness.
+
+The separate completed-fixture + tone button asks permission each time, default
+No. Windows Doctor self-test --play-tone is the explicit per-action equivalent.
+Check the current output, audience and volume first. This is a faded 200 ms
+synthetic tone, NOT spoken AI. Default output binds once at start, with no
+automatic following, fallback or replay. Device failure leaves text usable.
+Submitted/device-consumed samples do not prove audibility. Permission is not saved.
+No AI conversation or support-bundle promise is implied by this build.
 
 Installed program files:
   %LocalAppData%\Programs\Martlet Internal\Desktop\Martlet.Desktop.exe

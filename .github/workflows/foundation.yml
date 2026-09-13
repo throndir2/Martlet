@@ -33,3 +33,6 @@ jobs:
       - name: Actual CLI entry point
         shell: pwsh
         run: .\scripts\Smoke-Doctor.ps1
+      - name: Windows Doctor offline fixtures (audio off)
+        shell: pwsh
+        run: .\scripts\Smoke-Doctor.ps1 -ExecutablePath .\src\Martlet.Doctor\bin\Release\net10.0-windows\Martlet.Doctor.exe

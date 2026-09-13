@@ -6,5 +6,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Martlet.Diagnostics\Martlet.Diagnostics.csproj" />
+    <ProjectReference Include="..\Martlet.Audio\Martlet.Audio.csproj" />
   </ItemGroup>
 </Project>

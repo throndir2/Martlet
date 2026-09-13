@@ -21,6 +21,12 @@ function Get-RealSettingsSnapshot {
 $before = Get-RealSettingsSnapshot
 $environmentBefore = @{}
 $process = $null
+function Invoke-ExecutableSmoke([string]$Script, [string]$Executable) {
+    $result = Invoke-BoundedProcess (Get-Command pwsh).Source @('-NoProfile', '-NonInteractive',
+        '-File', $Script, '-ExecutablePath', $Executable) 180
+    if ($result.ExitCode -ne 0) { throw "Packaged executable regression smoke failed: $($result.Stderr)" }
+    if ($result.Stdout) { $result.Stdout.TrimEnd() | Out-Host }
+}
 try {
     # These child processes cannot use a developer SDK/runtime through environment discovery.
     foreach ($key in @('DOTNET_ROOT', 'DOTNET_ROOT_X64', 'DOTNET_MULTILEVEL_LOOKUP')) {
@@ -40,6 +46,8 @@ try {
         throw 'Published Doctor did not preserve first-run/incomplete semantics.'
     }
     if (Test-Path -LiteralPath $data) { throw 'Doctor wrote data during read-only first-run launch.' }
+    $scripts = Join-Path (Split-Path (Split-Path $PSScriptRoot)) 'scripts'
+    Invoke-ExecutableSmoke "$scripts\Smoke-Doctor.ps1" $doctor
 
     if ($InteractiveDesktop) {
         Add-Type -AssemblyName UIAutomationClient
@@ -70,6 +78,7 @@ try {
             throw 'Published Desktop did not close cleanly within 10 seconds.'
         }
         if (Test-Path -LiteralPath $data) { throw 'Desktop wrote data during read-only first-run launch.' }
+        Invoke-ExecutableSmoke "$scripts\Smoke-Desktop.ps1" (Join-Path $PayloadRoot 'Desktop\Martlet.Desktop.exe')
     }
 
     [IO.Directory]::CreateDirectory($data) | Out-Null
@@ -103,4 +112,4 @@ finally {
     }
     if ((Get-RealSettingsSnapshot) -cne $before) { throw 'Real user settings changed during smoke. Stop and investigate; no automatic restore attempted.' }
 }
-Write-Output "PASS: published Doctor version/help/JSON/data preservation; Desktop interactive smoke=$InteractiveDesktop; isolated Unicode data path; no real settings writes."
+Write-Output "PASS: published Doctor offline fixtures/version/help/JSON/data preservation; Desktop fixture smoke=$InteractiveDesktop; audio OFF; isolated data paths; no real settings writes."
