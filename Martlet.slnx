@@ -9,6 +9,7 @@
     <Project Path="src/Martlet.Doctor/Martlet.Doctor.csproj" />
     <Project Path="src/Martlet.Fixtures/Martlet.Fixtures.csproj" />
     <Project Path="src/Martlet.Sessions/Martlet.Sessions.csproj" />
+    <Project Path="src/Martlet.Support/Martlet.Support.csproj" />
     <Project Path="src/Martlet.Providers/Martlet.Providers.csproj" />
     <Project Path="src/Martlet.Participation/Martlet.Participation.csproj" />
   </Folder>
@@ -21,5 +22,6 @@
     <Project Path="tests/Martlet.Fixtures.Tests/Martlet.Fixtures.Tests.csproj" />
     <Project Path="tests/Martlet.Providers.Tests/Martlet.Providers.Tests.csproj" />
     <Project Path="tests/Martlet.Participation.Tests/Martlet.Participation.Tests.csproj" />
+    <Project Path="tests/Martlet.Support.Tests/Martlet.Support.Tests.csproj" />
   </Folder>
 </Solution>

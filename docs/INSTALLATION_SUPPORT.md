@@ -1,5 +1,11 @@
 # Installation and support design
 
+The implemented [V06b Desktop troubleshooting path](TROUBLESHOOTING.md) now
+provides passive shared status/remedies, explicit local metadata recording and
+frozen preview/default-No consent/local ZIP export. There is no configured
+support contact/upload channel and no CLI export. The broader specification
+below remains a target, not a claim that those services are available.
+
 **Future product specification, not an end-user installation guide.**
 The [foundation](FOUNDATION.md) implements a narrow local status CLI and WPF
 shell. The current [internal packaging recipe](../packaging/windows/README.md)

@@ -45,6 +45,7 @@
                         AutomationProperties.AutomationId="AudioStop" />
                 <Button x:Name="PauseButton" Content="_Pause local test (discard)" Click="Stop_Click" Margin="0,4,12,4" Padding="10,6"
                         AutomationProperties.AutomationId="AudioPause" />
+                <Button Content="Troubleshooting (local only)" Click="Troubleshooting_Click" Margin="0,4,12,4" Padding="10,6" AutomationProperties.AutomationId="AudioTroubleshooting" />
                 <Button Content="_Close audio setup" Click="Close_Click" Margin="0,4,12,4" Padding="10,6"
                         AutomationProperties.AutomationId="AudioClose" />
             </WrapPanel>

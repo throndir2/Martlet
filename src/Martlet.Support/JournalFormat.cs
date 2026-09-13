@@ -117,6 +117,13 @@ public sealed class JournalSelection
 {
     public LogRange Range { get; }
     public IReadOnlyList<JournalRecord> Records { get; }
+    public static JournalSelection Empty(LogRange range)
+    {
+        Guard.Require(range is not null);
+        range!.Validate();
+        return new(range, []);
+    }
+
     internal JournalSelection(LogRange range, JournalRecord[] records)
     {
         Range = range;

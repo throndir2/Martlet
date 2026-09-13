@@ -9,6 +9,8 @@ namespace Martlet.Desktop;
 
 public partial class AudioSetupWindow : Window
 {
+    internal Action<Window>? Troubleshooting { get; init; }
+    private void Troubleshooting_Click(object sender, RoutedEventArgs e) => Troubleshooting?.Invoke(this);
     private readonly ISetupService settings;
     private readonly SetupOperationRunner operations;
     private readonly AudioSetupService audio;

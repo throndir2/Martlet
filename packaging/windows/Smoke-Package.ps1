@@ -2,14 +2,20 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$PayloadRoot,
+    [string]$ProtectedDataDirectory,
     [switch]$InteractiveDesktop
 )
 . "$PSScriptRoot\Packaging.Common.ps1"
+. "$PSScriptRoot\ProtectedData.Common.ps1"
 Assert-PackagingHost
 $manifest = Test-PayloadManifest $PayloadRoot
 $data = Join-Path ([IO.Path]::GetTempPath()) ("Martlet Packaging $([char]0x00E9) " + [guid]::NewGuid().ToString('N'))
-$realData = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Martlet'
+$protectedOverride = $PSBoundParameters.ContainsKey('ProtectedDataDirectory')
+$realData = if ($protectedOverride) {
+    Resolve-ProtectedDataDirectory $ProtectedDataDirectory @($PayloadRoot, (Split-Path $PayloadRoot), $data)
+} else { Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Martlet' }
 function Get-RealSettingsSnapshot {
+    if ($protectedOverride) { return Get-ProtectedDataSnapshot $realData }
     if (-not (Test-Path -LiteralPath $realData)) { return 'absent' }
     $snapshot = @(Get-ChildItem -LiteralPath $realData -Force | Sort-Object Name | ForEach-Object {
         "$($_.Name)|$($_.LastWriteTimeUtc.Ticks)|$($_.Attributes)"
@@ -110,6 +116,8 @@ finally {
         # Nonrecursive cleanup deliberately fails if the application unexpectedly wrote other files.
         [IO.Directory]::Delete($data)
     }
-    if ((Get-RealSettingsSnapshot) -cne $before) { throw 'Real user settings changed during smoke. Stop and investigate; no automatic restore attempted.' }
+    if ($protectedOverride) { Assert-ProtectedDataUnchanged $realData $before }
+    elseif ((Get-RealSettingsSnapshot) -cne $before) { throw 'Real user settings changed during smoke. Stop and investigate; no automatic restore attempted.' }
 }
-Write-Output "PASS: published Doctor offline fixtures/version/help/JSON/data preservation; Desktop fixture smoke=$InteractiveDesktop; audio OFF; isolated data paths; no real settings writes."
+$preservation = if ($protectedOverride) { 'selected protected scope unchanged; ordinary profile not inspected' } else { 'real user settings unchanged' }
+Write-Output "PASS: published Doctor offline fixtures/version/help/JSON/data preservation; Desktop fixture smoke=$InteractiveDesktop; audio OFF; isolated data paths; $preservation."

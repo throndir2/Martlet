@@ -1,8 +1,10 @@
 # Local support engine (V06a)
 
-Portable `net10.0` library, not a shipped support UI, uploader, collector, repair
-tool, or completed V06 release gate. Nothing is registered in the solution,
-Desktop, Doctor commands, Settings, packaging, or startup. The sole project
+Portable `net10.0` engine, not an uploader, collector, repair tool or completed
+V06 release gate. [V06b Desktop integration](../../docs/TROUBLESHOOTING.md)
+now registers it in the solution, Desktop and packaging, with explicit local
+recording and frozen preview/export; nothing starts collection on launch.
+Doctor help is read-only and CLI export is not implemented. The sole engine project
 reference is the existing Diagnostics project (and its existing transitive
 Core/Sessions/Fixtures/Audio references). No new runtime package, database,
 network client, credential-store adapter, device adapter, or source callback
@@ -11,7 +13,7 @@ is added. Refer to the shared [installation/support design](../../docs/INSTALLAT
 
 ## Integration API
 
-The later UI/Doctor slice owns when to start a journal, which absolute local
+The Desktop integration owns when to start a journal, which absolute local
 directory belongs to the selected profile, what range to select, and the
 visible preview/destination/explicit confirmation. A saved setup choice or
 permission to run a probe is **not** support-export consent.
@@ -35,6 +37,11 @@ ExportConsent consent = snapshot.Approve(snapshot.Id, snapshot.Digest, selectedZ
 ExportReceipt receipt = snapshot.Export(consent, selectedZipPath);
 ```
 
+For the deliberate report-only choice, `JournalSelection.Empty(range)` validates
+the same null/UTC/order/count/byte bounds and returns an immutable empty selection
+without IO. It never substitutes for a failed journal read. The general
+selection constructor remains internal.
+
 `FromProbe` deliberately refuses unsupported probes/catalog IDs or a stale pass;
 it does not turn arbitrary diagnostic text into safe log data. Historical
 stale reports can still be included by `Freeze`: the projection preserves
@@ -55,7 +62,7 @@ executing shared Diagnostics assembly and process runtime version; SDK,
 commit and inventory are unavailable, not guessed from a pin. Neither source
 claims publisher-signature, install, hardware, or provider qualification.
 
-All IO APIs are synchronous. Future WPF consumers **must run them off the
+All IO APIs are synchronous. WPF consumers **must run them off the
 dispatcher** and retain the journal/snapshot and outstanding task until the
 actual call completes. A slow filesystem call can block past a deadline.
 Cancellation is checked directly on the original token, along with monotonic
@@ -267,7 +274,7 @@ existing targets, schema rejection, provenance and disposal. Counting probe
 callbacks demonstrate no new probe/device/provider execution during export.
 
 The new projects use existing central pins and their own committed locks.
-Run directly until a subsequent integration slice registers them:
+The projects are registered in the solution; the focused engine suite also runs directly:
 
 ```powershell
 $env:CI = 'true'

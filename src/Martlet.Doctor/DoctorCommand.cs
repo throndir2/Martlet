@@ -19,7 +19,7 @@ public static class DoctorCommand
     {
         if (args is ["--help"] or ["-h"])
         {
-            await output.WriteLineAsync(Usage);
+            await output.WriteLineAsync(Usage + "\n\n" + SupportHelp.Text);
             return 0;
         }
         if (args is ["--version"])

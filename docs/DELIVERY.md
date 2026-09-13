@@ -21,6 +21,7 @@ must not be confused with the broader planned milestones below.
 | V02a | Configuration-only [Setup / resume](SETUP.md): fixture or named OpenAI routes, exact per-role destination selection, strict v2 settings with explicit v1 snapshot migration, and real scoped Windows Credential Manager code. No provider registration/calls, fake completed voice setup or persisted per-turn spending permission. Native wrapper is fake-boundary tested, not OS-vault roundtrip qualified. V01b/V02b/V03/V04 live/audio integration remains. |
 | V02b / V05 / V04a | Reviewed local audio choices/tests, deterministic participation policy and reusable typed text-to-voice runtime are merged foundations; their internal fixture evidence does not qualify a real account or device. |
 | V04b | [Explicit Desktop API conversation](CONVERSATION.md) joins saved route/vault bindings, local audio policies, typed or <=25 s PTT, named STT, pre-dispatch policy and streaming LLM/optional TTS/PCM sink. One app-shared effect owner, fresh bounded per-action envelope, exact reservations/role permissions, original cancellation/expiry and ownership quarantine. Text-only sends no TTS and opens no output. Root graph now includes existing Providers/Conversation/Participation and their suites; dedicated lanes remain. |
+| V06b | [Desktop Troubleshooting](TROUBLESHOOTING.md) integrates the merged Support engine: passive shared status, explicit OFF-by-default local journal, bounded typed live/fixture metadata, exact five-file preview, default-No destination-bound create-only ZIP and retained cleanup ownership. Support projects join the solution/Desktop/package graph. Doctor help is read-only; no CLI export, upload or support contact channel. Internal functionality, not G2/support-service qualification. |
 | F02 / G1 onward | F02 merged at `8a762cd930741208daa61e9df9b8d860cf4768de` and was normally integrated, not copied. Self-contained payload/unsigned installer build paths exist. Clean-VM lifecycle, physical audio, real AI/GPU, Ubuntu, signing, rights and release qualification remain **NOT RUN / NOT PASSED**. |
 
 ### Requirements and acceptance status (F03c / coupled F05)
@@ -31,7 +32,7 @@ must not be confused with the broader planned milestones below.
 | R04/R10 / AC-01 | Same `FixtureCursor` drives old runner and new sessions through actual validator/queue. No duplicate parser/sink or unmerged provider registration. | Remote request/stream contracts and real provider qualification remain D02/V03. |
 | R10 / AC-03/AC-08 | Fresh request/turn IDs and epochs; Stop clears pending output; partial/refusal separated; bounded text/trace/PCM; actual sink drain distinct from text terminal. Existing 120 text schedules plus focused real sink/session fault schedules. | Zero stale **audible** segments and p95 physical Stop <=250 ms require actual audio. No audibility inference from submitted samples. |
 | R05/R14 / permission and diagnosis | Per-action default-No desktop confirmation or Windows CLI `--play-tone`; no consent persistence; no read-only probe effects. Fixture and live status kept separate and age honestly. | Capture/device onboarding and persistent destination consent belong to V01/V02. |
-| R08/R14 / AC-04/AC-10 | Exact report/exits/remedies; no startup writes; corrupt/newer/inaccessible originals preserved. Explicit fixture works without replacing profiles. | Logs/bundles/retention and complete troubleshooting matrix remain V06. |
+| R08/R14 / AC-04/AC-10 | Exact report/exits/remedies; no startup writes; corrupt/newer/inaccessible originals preserved. V06b adds explicit local metadata journal and frozen preview/consented export with engine retention and cleanup. | Full real-environment troubleshooting matrix, support-service readiness and release gates remain unqualified. |
 | R17 / F05 | Locked solution/build/tests plus real portable/Windows CLI and bounded interactive WPF smoke, using isolated data paths and audio OFF. No runner/pin/gate workaround. | Package payload/compiler and clean-VM/lifecycle/signature gates recorded separately; never equated with G1. |
 | R08/R17 / F02-F05 packaging | Both native Windows targets include actual Core/Fixtures/Sessions/Diagnostics/Audio and pinned runtime/NAudio/Tensors assets/notices. Multi-target RID lock routing cannot rewrite normal locks; package/installer omission and integrity assertions remain enforced. | Compiling an unsigned installer does not install it or pass AC-02, AC-11 or G1. |
 
@@ -50,8 +51,10 @@ surface; its in-process HTTP/native fixtures are not paid/live evidence.
 Learned VAD, automatic acoustic/name/group listening, actual provider account/
 model quality/cost/performance, OS-vault roundtrip, physical audio and full
 first-conversation user trial remain **NOT RUN**. Ordinary diagnosis remains
-side-effect-free. V06 Support integration is separate and no unmerged Support
-project is referenced.
+side-effect-free. V06b references the already merged Support engine without
+changing provider/capture/runtime/credential behavior. Its only engine API
+addition is a pure validated empty journal selection for report-only preview;
+the existing internal IO test seam also grants the Desktop test assembly access.
 
 V04b's production-path offline evidence includes real WPF typed text-only,
 typed voice and keyboard PTT -> canonical WAV/STT -> policy -> runtime/TTS/sink;
@@ -61,6 +64,18 @@ slow native work, original-token cancellation, UTC rollback, original capture/
 transfer/STT expiry, policy ownership quarantine and stale Stop. Actual native
 Desktop/portable Doctor/Windows Doctor executable smokes remain no-key/network/
 audio OFF. Their observed results are not a passed live account/device gate.
+
+V06b developer-host evidence uses the same pinned SDK and one isolated C:
+artifact tree: 1,855 integrated solution tests (including both Audio targets),
+plus repeated direct Support 47, Providers 635, Conversation 129 and
+Participation 121. These repeated runs are not additional distinct cases.
+Native Desktop smoke opens passive support from main/setup and keeps recording/
+export/audio/network/keys OFF; portable and Windows Doctor subprocess smokes
+retain shared JSON/exit semantics. Support coverage includes actual malformed
+settings/fixture/live-UI metadata, exact preview/archive bytes, destination and
+source changes during confirmation, noncooperative IO/cancellation, faults,
+retained cleanup and preserved unrelated targets. Packaging qualification for
+this slice is tracked separately from this application/test checkpoint.
 
 Developer-host package evidence: the integrated self-contained payload contains
 620 inventoried files; actual native Doctor and interactive WPF fixture smokes

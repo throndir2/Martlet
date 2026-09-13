@@ -2,5 +2,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Martlet.Diagnostics\Martlet.Diagnostics.csproj" />
     <InternalsVisibleTo Include="Martlet.Support.Tests" />
+    <InternalsVisibleTo Include="Martlet.Desktop.Tests" />
   </ItemGroup>
 </Project>

@@ -81,6 +81,7 @@
                         AutomationProperties.AutomationId="SetupCancel"/>
                 <Button x:Name="ReloadButton" Content="_Reload saved checkpoint (discard unsaved edits)..." Click="Reload_Click" Padding="8"
                         AutomationProperties.AutomationId="SetupReload"/>
+                <Button Content="Troubleshooting (local only)" Click="Troubleshooting_Click" Padding="8" Margin="8,0" AutomationProperties.AutomationId="SetupTroubleshooting"/>
                 <Button Content="_Close setup (stop observing)" Click="Close_Click" Padding="8" Margin="8,0" AutomationProperties.AutomationId="SetupClose"/>
             </WrapPanel>
         </StackPanel>

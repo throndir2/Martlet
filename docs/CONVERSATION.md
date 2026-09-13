@@ -207,5 +207,8 @@ from this checklist.
 Actual API account/model quality/cost/performance, real OS-vault roundtrip,
 physical audio, full first-conversation novice trial, clean Windows installer
 lifecycle, signing, rights and release gates remain **NOT RUN / NOT PASSED**.
-No Support library integration, screen/memory capture, model download, host
-service/driver change, deployment or release is included.
+V06b adds [local Troubleshooting](TROUBLESHOOTING.md) using the existing Support
+engine. Optional typed stage metadata uses a separate bounded worker, not the
+conversation effect slot; no input, response or audio enters its journal.
+Screen/memory capture, model download, host service/driver change, deployment
+or release is not included.

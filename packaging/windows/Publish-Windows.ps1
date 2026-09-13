@@ -39,6 +39,7 @@ try {
     [IO.Directory]::CreateDirectory((Join-Path $staging 'help')) | Out-Null
     [IO.Directory]::CreateDirectory((Join-Path $staging 'notices')) | Out-Null
     Copy-Item -LiteralPath "$PSScriptRoot\INTERNAL.txt" -Destination (Join-Path $staging 'help\INTERNAL.txt')
+    Copy-Item -LiteralPath (Join-Path $root 'docs\TROUBLESHOOTING.md') -Destination (Join-Path $staging 'help\TROUBLESHOOTING.md')
     Copy-Item -LiteralPath "$PSScriptRoot\DEPENDENCIES.txt" -Destination (Join-Path $staging 'notices\DEPENDENCIES.txt')
     Copy-Item -LiteralPath "$PSScriptRoot\NAudio-THIRD-PARTY-NOTICES.txt" -Destination (Join-Path $staging 'notices\NAudio-THIRD-PARTY-NOTICES.txt')
     Copy-RuntimeNotices $staging (Join-Path $build 'obj\Martlet.Desktop\project.assets.json')

@@ -31,7 +31,9 @@ public static class DiagnosticCatalog
         new("host.setup", "Host and GPU diagnostics are unavailable. Do not change firewall, drivers or services on the strength of this status."),
         new("fixture.explain", "Choose another offline scenario or Stop. Content is scripted, not AI; no-speech and not-addressed are reasoned silence, not device errors. Real API conversation is a separate Desktop action requiring configured routes and fresh data/cost permission."),
         new("fixture.retry", "Review the scenario and trace code, then explicitly start a new fixture. Failed/partial text is not a completed answer; nothing is retried or read aloud automatically."),
-        new("fixture.audio", "Text remains usable. Check the intended Windows output and app volume; explicitly approve another tone only after previous device release. No fallback or replay occurs. Audibility requires a listening witness.")
+        new("fixture.audio", "Text remains usable. Check the intended Windows output and app volume; explicitly approve another tone only after previous device release. No fallback or replay occurs. Audibility requires a listening witness."),
+        new("conversation.review", "Review the real conversation stage and supported saved routes. Use typed/text-only fallback if audio failed. Stop and wait for actual cleanup before a NEW explicitly permitted action; no automatic retry. Completion is not account readiness or proof of heard speech."),
+        new("conversation.wait", "The observed conversation action is unfinished or stopped. Wait for actual resource release; a timeout does not prove IO stopped. No replacement worker, replay or renewed permission is implied.")
     ]);
 
     public static IReadOnlyList<DiagnosticFinding> Findings { get; } = Array.AsReadOnly<DiagnosticFinding>(
@@ -69,7 +71,15 @@ public static class DiagnosticCatalog
         new("fixture.failed", ProbeOutcome.Failed, "The scripted fixture failed or ended partially. Inspect the normalized issue and trace; this does not indicate a real provider failure.", "fixture.retry", ErrorCode.ProviderFailed),
         new("fixture.deadline", ProbeOutcome.Failed, "The simulated provider deadline expired. Script time is synthetic, not measured network latency.", "fixture.retry", ErrorCode.ProviderFailed),
         new("fixture.audio_incomplete", ProbeOutcome.Warning, "Fixture text completed but the requested tone did not complete. This is not successful playback or audibility evidence.", "fixture.audio"),
-        new("fixture.audio_failed", ProbeOutcome.Failed, "The permitted tone could not finish safely. Text remains available; no output fallback or automatic replay was attempted.", "fixture.audio", ErrorCode.AudioPlaybackFailed)
+        new("fixture.audio_failed", ProbeOutcome.Failed, "The permitted tone could not finish safely. Text remains available; no output fallback or automatic replay was attempted.", "fixture.audio", ErrorCode.AudioPlaybackFailed),
+        new("conversation.running", ProbeOutcome.Running, "An explicitly started conversation stage was observed running. No completed turn or readiness is claimed.", "conversation.wait"),
+        new("conversation.completed", ProbeOutcome.Passed, "The observed conversation turn completed. This is not account, installation or audible-speech qualification.", "conversation.review"),
+        new("conversation.failed", ProbeOutcome.Failed, "The observed conversation action failed. No input, response or raw provider error is included.", "conversation.review", ErrorCode.ProviderFailed),
+        new("conversation.partial", ProbeOutcome.Warning, "The observed turn ended partially. Earlier output may remain; no replay or completed-answer claim.", "conversation.review"),
+        new("conversation.refused", ProbeOutcome.Warning, "The observed provider refused. Refusal content is omitted and is not ordinary speech.", "conversation.review"),
+        new("conversation.suppressed", ProbeOutcome.Warning, "The observed policy suppressed the action or STT reported no speech. No conversation content is included.", "conversation.review"),
+        new("conversation.canceled", ProbeOutcome.Warning, "The observed conversation was canceled or its permission ended. Actual cleanup may still be pending.", "conversation.wait"),
+        new("conversation.quarantined", ProbeOutcome.Warning, "The observed conversation cleanup is unproven. Its existing owner remains quarantined.", "conversation.wait")
     ]);
 
     public static DiagnosticFinding Finding(string id) =>

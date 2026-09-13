@@ -1,7 +1,8 @@
 MARTLET - INTERNAL DEVELOPMENT ONLY - UNSIGNED
 
 This internal build includes V04b real explicit typed / push-to-talk (PTT) app
-integration, the offline fixture demo and bundled Doctor. It is NOT a supported
+integration, V06b local troubleshooting, the offline fixture demo and bundled
+Doctor. It is NOT a supported
 novice release or a verified live first trial. All fixture text is scripted:
 FIXTURE - NOT AI.
 There is no microphone capture, playback, provider/key/model lookup, login startup
@@ -57,9 +58,43 @@ Real API conversation (separate from the fixture):
   Retry requires a NEW explicit Send/PTT and fresh consent. No history is sent
   and no earlier audio queue is replayed. Microphone/STT failure allows typed
   fallback. Output failure retains response text; refusal remains separate.
-No Martlet.Support dependency or support-bundle gate is required by this path.
+Troubleshooting is a separate optional action, never a conversation gate.
 This package does not itself prove live API/account/key/model validity,
 physical microphone/speaker behavior or consumer first-trial success.
+
+Troubleshooting (available from the main window, Setup / resume, Audio setup
+and real conversation, including before a profile exists or with invalid settings):
+  Opening Troubleshooting starts no journal, settings write, key lookup, audio
+  capture/playback, provider request or upload. Refresh uses shared local checks.
+  Record troubleshooting metadata is OFF at every launch. Explicitly enable it
+  only when needed; this records bounded metadata, NOT speech or telemetry.
+  The selected settings data directory's support-v1 child is the only journal
+  scope. It must be a trusted, user-owned local path without network/reparse
+  components. Invalid locations fail visibly and are never silently replaced.
+  Stop / cancel support work or closing Troubleshooting stops collection.
+  Outstanding IO and cleanup must actually finish; retry owned cleanup when
+  indicated rather than starting another writer or deleting evidence.
+  Engine defaults: 50 MiB, 32 segments, 8 KiB per record, seven-day retention.
+  Retention removes whole segments on explicit Start/Append, not an idle timer;
+  size/slot pressure can remove newer evidence. Selection is bounded to 2,048
+  records / 2 MiB; frozen uncompressed preview is bounded to 4 MiB.
+  Select a shared report and optionally an inclusive journal receipt-UTC range.
+  Report-only preview does not create/read a journal. Freeze exact preview.
+  Preview every frozen file, its size, source and SHA-256: build.json,
+  settings.json, doctor.json, events.json and manifest.json. Review provenance
+  and omissions; shared reports/fixtures are not proof of real-mode readiness.
+  Choose a separate local ZIP destination with an existing parent. Default-No
+  confirmation binds those exact frozen bytes and destination. No existing file
+  is overwritten; selection/destination changes require another confirmation.
+  Exported locally means a local archive only, not delivery to a maintainer.
+  No support contact or upload channel is configured. CLI export is not implemented.
+  Do not post an unreviewed bundle publicly. No audio, conversation text, keys,
+  screenshots or raw settings are collected; times, counts, versions and
+  pseudonymous correlations remain potentially identifying. Exported archives
+  are outside journal retention. No universal anonymity/secure erasure promise.
+Doctor --help displays the same authored troubleshooting defaults and privacy
+bounds through Diagnostics only; Doctor does not bundle Martlet.Support.
+See TROUBLESHOOTING.md in this help directory for the full local workflow.
 
 Doctor examples (no audio, network, settings writes or AI):
   Martlet.Doctor.exe self-test --scenario streaming --json
@@ -107,7 +142,7 @@ hide a failure. This self-contained build is expected to carry its own runtime.
 Manifest/checksums and upstream notices are included alongside the applications.
 Checksums detect corruption; they are not a publisher signature or trust grant.
 
-NOT RUN for this V04b integration: real API/account or vault effects, physical
+NOT RUN for this V04b/V06b integration: real API/account or vault effects, physical
 microphone/speaker trials, clean-Windows installation, a live first trial,
 signing or release. Deterministic offline fixtures remain available unchanged;
 their success must not be presented as any of those external gates.

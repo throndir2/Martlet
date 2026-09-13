@@ -315,3 +315,18 @@ uninstall. Verify profile bytes survive and no unwanted startup/firewall/
 privileged changes occur. Then add failure/long-path/version scenarios and
 signed-release gates under V07. Until those pass, this remains an internal
 skeleton regardless of green compilation.
+# Explicit protected-data smoke scope (V06b)
+
+`Smoke-Package.ps1` and `Test-WorkflowExit.ps1` accept an optional
+`-ProtectedDataDirectory ABSOLUTE_LOCAL_DIRECTORY`. Use a separate test-owned
+sentinel directory containing known settings bytes and unrelated ordinary files
+when ordinary user-profile inspection is not authorized. The override validates
+local non-root/no-reparse/disjoint paths before launching children and snapshots
+only that scope (at most 32 files / 1 MiB each), never the ordinary profile.
+The same final byte/metadata assertion fails on deliberate modification without
+restoring it. Existing callers omitting the override retain the original
+ordinary-profile preservation check. Receipts with the override mean **selected
+protected scope unchanged; ordinary profile not inspected**, not proof that
+the ordinary profile was inspected or preserved. All application launches still
+use separate explicit unique disposable data directories. Do not put the
+sentinel inside payload/build/CLI-home/output or app-data scopes.

@@ -1,5 +1,10 @@
 # Resumable setup, Windows credentials and local audio (V02a/V02b)
 
+[Troubleshooting](TROUBLESHOOTING.md) is available from Setup and Audio setup
+even before configuration succeeds. Opening it is passive; local metadata
+recording is OFF until explicitly started. Preview/export never reads keys,
+audio or raw settings and does not replace malformed settings.
+
 **Setup is configuration, not live readiness or future spending permission.**
 The separate [V04b real API conversation](CONVERSATION.md) now consumes these
 saved choices for explicitly authorized typed/PTT actions. Unsupported model/

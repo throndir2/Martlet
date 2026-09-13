@@ -23,7 +23,13 @@ app integration. These authored BCL-only libraries add no NuGet package, native
 binary, model, voice recording or provider SDK. OpenAI is a configured remote
 API destination, not a redistributed library; no API call occurs on launch.
 Doctor retains its offline graph: none of these three assemblies is bundled in
-Doctor. Neither application depends on or bundles Martlet.Support.
+Doctor. Desktop additionally includes Martlet.Support for V06b local
+troubleshooting metadata recording, immutable preview and explicitly approved
+local ZIP export. This authored BCL-only library adds no NuGet package, native
+binary, provider SDK or network/upload channel. Its Diagnostics dependency
+reuses the existing Core/Sessions/Fixtures/Audio graph; no duplicate collector
+or redactor is redistributed. Doctor shares authored Diagnostics help only
+and does not depend on or bundle Martlet.Support.
 
 NAudio.Wasapi 3.1.0, NAudio.Core 3.1.0 and System.Numerics.Tensors 9.0.0
 are the existing centrally pinned audio dependencies, not newly upgraded pins.

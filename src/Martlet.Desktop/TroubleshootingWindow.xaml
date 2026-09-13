@@ -1,0 +1,60 @@
+<Window x:Class="Martlet.Desktop.TroubleshootingWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Martlet - Troubleshooting (local only)" Width="1000" Height="850" MinWidth="620" MinHeight="500"
+        WindowStartupLocation="CenterOwner" Closing="Window_Closing"
+        AutomationProperties.AutomationId="TroubleshootingWindow">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="20">
+            <TextBlock Text="Troubleshooting - local metadata, not speech recording" FontSize="22" FontWeight="SemiBold" TextWrapping="Wrap" />
+            <TextBox x:Name="HelpText" IsReadOnly="True" TextWrapping="Wrap" Height="145" VerticalScrollBarVisibility="Auto"
+                     AutomationProperties.AutomationId="SupportHelp" AutomationProperties.Name="Collection defaults privacy scope retention and support limitations" />
+            <TextBox x:Name="LocationText" IsReadOnly="True" TextWrapping="Wrap" Margin="0,8" AutomationProperties.Name="Explicit local journal location, not yet checked" />
+            <WrapPanel>
+                <Button x:Name="RecordButton" Content="_Record troubleshooting metadata" Click="Record_Click" Padding="8" Margin="0,4,8,4" AutomationProperties.AutomationId="SupportRecord" />
+                <Button x:Name="StopButton" Content="_Stop / cancel support work" Click="Stop_Click" Padding="8" Margin="0,4,8,4" AutomationProperties.AutomationId="SupportStop" />
+                <Button x:Name="CleanupButton" Content="Retry owned _cleanup" Click="Cleanup_Click" Padding="8" Margin="0,4,8,4" AutomationProperties.AutomationId="SupportCleanup" />
+                <Button x:Name="RefreshButton" Content="_Refresh shared local status" Click="Refresh_Click" Padding="8" Margin="0,4,8,4" AutomationProperties.AutomationId="SupportRefresh" />
+            </WrapPanel>
+            <TextBox x:Name="WorkText" IsReadOnly="True" TextWrapping="Wrap" Height="100" VerticalScrollBarVisibility="Auto"
+                     AutomationProperties.AutomationId="SupportStatus" AutomationProperties.Name="Support ownership errors omissions and dropped count" />
+            <Label Content="Actual shared _status / remedies (not a new readiness evaluation)" Target="{Binding ElementName=StatusText}" />
+            <TextBox x:Name="StatusText" IsReadOnly="True" TextWrapping="Wrap" Height="170" VerticalScrollBarVisibility="Auto"
+                     AutomationProperties.AutomationId="SupportReport" AutomationProperties.Name="Shared report with provenance freshness and actions" />
+            <WrapPanel>
+                <Label Content="Report _source" Target="{Binding ElementName=SourceChoice}" />
+                <ComboBox x:Name="SourceChoice" Width="230" SelectedIndex="0" SelectionChanged="Selection_Changed" AutomationProperties.AutomationId="SupportSource">
+                    <ComboBoxItem Content="Shared local Doctor report" />
+                    <ComboBoxItem Content="Last fixture report (NOT inference)" />
+                </ComboBox>
+                <CheckBox x:Name="LogsChoice" Content="Include selected _journal records (OFF)" Checked="Selection_Changed" Unchecked="Selection_Changed"
+                          Margin="12,4" AutomationProperties.AutomationId="SupportIncludeLogs" />
+            </WrapPanel>
+            <WrapPanel>
+                <Label Content="Receipt UTC _from" Target="{Binding ElementName=FromText}" />
+                <TextBox x:Name="FromText" Width="245" TextChanged="Selection_Changed" AutomationProperties.AutomationId="SupportFrom" />
+                <Label Content="Receipt UTC _through" Target="{Binding ElementName=ThroughText}" />
+                <TextBox x:Name="ThroughText" Width="245" TextChanged="Selection_Changed" AutomationProperties.AutomationId="SupportThrough" />
+            </WrapPanel>
+            <TextBlock Text="Inclusive UTC receipt range; maximum 2,048 records / 2 MiB. No silent truncation or fallback on read failure. Source changes do not change frozen bytes." TextWrapping="Wrap" />
+            <WrapPanel>
+                <Button x:Name="FreezeButton" Content="_Freeze exact preview" Click="Freeze_Click" Padding="8" Margin="0,4,8,4" AutomationProperties.AutomationId="SupportFreeze" />
+                <Button x:Name="ClearButton" Content="Clear pre_view" Click="Clear_Click" Padding="8" Margin="0,4,8,4" AutomationProperties.AutomationId="SupportClear" />
+            </WrapPanel>
+            <TextBox x:Name="InventoryText" IsReadOnly="True" TextWrapping="Wrap" Height="180" VerticalScrollBarVisibility="Auto"
+                     AutomationProperties.AutomationId="SupportInventory" AutomationProperties.Name="Every exported filename byte size source hash snapshot identifier and range" />
+            <Label Content="Exact safe file _contents (each tab is exported)" Target="{Binding ElementName=PreviewTabs}" />
+            <TabControl x:Name="PreviewTabs" Height="260" AutomationProperties.AutomationId="SupportPreviewFiles" />
+            <TextBox x:Name="OmissionsText" IsReadOnly="True" TextWrapping="Wrap" Height="90" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="Export omissions and pseudonymization limitations" />
+            <Label Content="Separate absolute local ZIP _destination" Target="{Binding ElementName=DestinationText}" />
+            <TextBox x:Name="DestinationText" TextChanged="Destination_Changed" AutomationProperties.AutomationId="SupportDestination" />
+            <WrapPanel>
+                <Button x:Name="ChooseButton" Content="Choose _destination..." Click="Choose_Click" Padding="8" Margin="0,4,8,4" AutomationProperties.AutomationId="SupportChooseDestination" />
+                <Button x:Name="ExportButton" Content="Review and confirm local _export..." Click="Export_Click" Padding="8" Margin="0,4,8,4" AutomationProperties.AutomationId="SupportExport" />
+                <Button Content="Close troubleshooting (stop collection)" Click="Close_Click" Padding="8" Margin="0,4,8,4" AutomationProperties.AutomationId="SupportClose" />
+            </WrapPanel>
+            <TextBox x:Name="ResultText" IsReadOnly="True" TextWrapping="Wrap" Height="95" VerticalScrollBarVisibility="Auto"
+                     AutomationProperties.AutomationId="SupportResult" AutomationProperties.Name="Local export outcome, not an upload receipt" />
+        </StackPanel>
+    </ScrollViewer>
+</Window>

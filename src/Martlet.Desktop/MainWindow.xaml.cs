@@ -13,6 +13,8 @@ namespace Martlet.Desktop;
 public partial class MainWindow : Window
 {
     private readonly SettingsStore? store;
+    private readonly SupportController support;
+    private TroubleshootingWindow? troubleshooting;
     private readonly SetupOperationRunner setupOperations = new();
     private readonly ISetupService? setupService;
     private readonly AudioSetupService audioSetup;
@@ -37,6 +39,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         this.store = store;
+        support = new(store?.DataDirectory);
         audioSetup = new(setupOperations, new WindowsAudioDeviceCatalog(), new WasapiCaptureDeviceFactory(), new WasapiDeviceFactory());
         audioSessionEvents.LockedChanged += audioSetup.SetSessionLocked;
         var vault = new WindowsCredentialStore();
@@ -81,7 +84,10 @@ public partial class MainWindow : Window
             return;
         }
         if (!saving && !closing)
+        {
             await model.RefreshAsync();
+            support.ObserveReport(model.Report, record: true);
+        }
     }
 
     private void Render()
@@ -89,6 +95,8 @@ public partial class MainWindow : Window
         if (closing || model is null)
             return;
         StatusText.Text = model.Text;
+        support.ObserveReport(model.Report);
+        if (model.FixtureReport is { } observedFixture) support.ObserveReport(observedFixture, fixture: true);
         PipelineText.Text = string.Join(Environment.NewLine, model.Pipeline.Select(node => node.Description));
         ActivityText.Text = runningFixture ? "Offline fixture active. Stop fixture is available. No real provider or microphone is active."
             : setupOperations.IsRunning ? "An app-shared setup/audio/conversation worker owns resources. Check its action window; new effects wait for actual cleanup."
@@ -157,6 +165,7 @@ public partial class MainWindow : Window
             if (fixture.Snapshot?.Playback is not { DeviceReleased: false })
                 await fixtureOperation.Completion;
             ObserveFixture();
+            if (model?.FixtureReport is { } report) support.ObserveReport(report, fixture: true, record: true);
         }
         finally
         {
@@ -214,7 +223,7 @@ public partial class MainWindow : Window
     private async void Setup_Click(object sender, RoutedEventArgs e)
     {
         if (store is null || closing || saving || runningFixture || model?.IsRunning == true) return;
-        new SetupWindow(setupService!, setupOperations) { Owner = this }.ShowDialog();
+        new SetupWindow(setupService!, setupOperations) { Owner = this, Troubleshooting = OpenTroubleshooting }.ShowDialog();
         await RefreshAsync();
     }
 
@@ -222,15 +231,27 @@ public partial class MainWindow : Window
     {
         if (store is null || closing || saving || runningFixture || model?.IsRunning == true) return;
         new AudioSetupWindow(setupService!, setupOperations, audioSetup,
-            observe: text => { if (!closing) AudioStatusText.Text = text; }, sessionEvents: audioSessionEvents) { Owner = this }.ShowDialog();
+            observe: text => { if (!closing) AudioStatusText.Text = text; }, sessionEvents: audioSessionEvents)
+            { Owner = this, Troubleshooting = OpenTroubleshooting }.ShowDialog();
         await RefreshAsync();
     }
 
     private async void Conversation_Click(object sender, RoutedEventArgs e)
     {
         if (conversation is null || closing || saving || runningFixture || model?.IsRunning == true) return;
-        new LiveConversationWindow(setupService!, setupOperations, conversation, audioSessionEvents, audioSetup) { Owner = this }.ShowDialog();
+        new LiveConversationWindow(setupService!, setupOperations, conversation, audioSessionEvents, audioSetup)
+            { Owner = this, Troubleshooting = OpenTroubleshooting, Support = support }.ShowDialog();
         await RefreshAsync();
+    }
+
+    private void Troubleshooting_Click(object sender, RoutedEventArgs e) => OpenTroubleshooting(this);
+    private void OpenTroubleshooting(Window owner)
+    {
+        if (troubleshooting is not null) { troubleshooting.Activate(); return; }
+        troubleshooting = new(support, RefreshAsync) { Owner = owner };
+        troubleshooting.Closed += (_, _) => troubleshooting = null;
+        // Nonmodal: explicit local recording can observe actions in the existing setup/live surfaces.
+        troubleshooting.Show();
     }
 
     private void Stop_Click(object sender, RoutedEventArgs e) => model?.Stop();
@@ -242,6 +263,12 @@ public partial class MainWindow : Window
         e.Cancel = true;
         if (closing)
             return;
+        if (support.HasResources)
+        {
+            support.CancelAndClose();
+            ActionText.Text = "Exit is waiting for owned support IO/cancellation/cleanup. Keep Martlet open; use Troubleshooting to retry cleanup, then Exit again. No rollback or completed cleanup is assumed.";
+            return;
+        }
         closing = true;
         ageTimer.Stop();
         fixtureTimer.Stop();

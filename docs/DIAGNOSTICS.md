@@ -1,5 +1,12 @@
 # F04 diagnostic experience
 
+V06b connects the existing Support engine to the real Desktop
+[Troubleshooting surface](TROUBLESHOOTING.md): passive access at each setup
+stage, explicit OFF-by-default local metadata recording, exact five-file frozen
+preview and default-No destination-bound local export. Doctor help shares its
+authored scope/bounds; ordinary status/JSON/exit semantics remain unchanged.
+No CLI export or support upload/contact channel is implemented.
+
 V04b adds a separate [real conversation timeline](CONVERSATION.md) in Desktop,
 fed by actual capture/STT/policy/runtime/playback state and sanitized credential/
 configuration failures. It does not turn ordinary Doctor probes into live
