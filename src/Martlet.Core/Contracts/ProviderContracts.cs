@@ -56,7 +56,7 @@ public sealed record ProviderEvent : IContract
     }
 }
 
-public enum TurnOutcome { Completed, Suppressed, Canceled, Failed }
+public enum TurnOutcome { Completed, Suppressed, Canceled, Failed, Refused }
 public enum SuppressionReason { NoSpeech, NotAddressed, PolicyDisabled, Cooldown, Busy, SelfAudio, ConsentMissing }
 
 public sealed record TurnResult : IContract
