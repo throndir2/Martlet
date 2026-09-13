@@ -135,8 +135,14 @@ The request deadline is converted once to a relative timer; `TimeProvider` makes
 timeouts deterministic in fixtures and timers monotonic in production. The
 linked token covers credential retrieval, multipart upload, header wait and
 bounded body read. The source must honor it. Caller cancellation takes precedence
-over deadline expiration. Check tokens again after awaited boundaries, so a
-handler returning success after cancellation does not publish it.
+over deadline expiration. Synchronous guards also check monotonic elapsed time
+against the original request window and authorization window, and check the
+absolute authorization expiry. They run after credential retrieval, before
+send, at serializer entry and after response awaits. Delayed timer callbacks
+cannot authorize a late upload, and a wall-clock rollback cannot extend the
+original permission window. A pre-upload synchronous authorization cutoff is
+`ConsentExpired`; a request-window cutoff is `DeadlineExceeded`. Timer-triggered
+in-flight aborts remain deadline failures. A late success is not published.
 
 The adapter issues exactly one `SendAsync`; a single-send content wrapper refuses
 upload reserialization. HTTP/1.1 exact is used, not a streaming/upgraded inference
@@ -175,8 +181,12 @@ existing Core errors at `Stage.Transcription`:
 
 Malformed/oversized optional error bodies do not erase known HTTP error status;
 exact recognized `error.code` values refine quota/model/format only. Unknown
-messages are not parsed heuristically. Core `Retryable` is always false: advice
-or a transient failure does not authorize a repeat charge.
+messages are not parsed heuristically. Response-scope read transport failures
+also preserve non-success HTTP status/remedy and bounded Retry-After advice;
+successful HTTP 200 response-ended failures remain `ResponseTruncated`.
+Cancellation and synchronous/timer deadlines take precedence over that status.
+Core `Retryable` is always false: advice or a transient failure does not authorize
+a repeat charge.
 
 An internal friend-assembly handler seam exercises the **same** adapter,
 multipart serializer, authorization owner and Core-backed response parser. It
@@ -213,6 +223,15 @@ errors, retry advice and no retries/fallback; and feed real normalized events
 into Core's production sequence validator. Fixture audio is generated synthetic
 PCM, not recorded speech; responses are authored, not copied provider assets.
 No third-party code/assets are copied and no project license is granted.
+
+Independent review identified two boundary defects in the first PR head:
+deferred timer delivery could permit upload after credential lookup, and a
+throwing error-body stream could overwrite a known HTTP failure. Production-path
+regressions were run **before** fixes: 10 failed, 1 passed (the HTTP 200 truncation
+control). The fixes and expanded 23-case regression group pass with all 168
+existing cases, **191 total**, including callback deferral, UTC forward/rollback,
+serializer-entry expiry, 401/403/429 versus 200 throwing streams, and stop
+precedence. This remains offline fixture evidence, not a live authorization.
 
 **Still NOT RUN:** real model/account eligibility, transcription accuracy and
 latency, retention/account controls, actual billing, TLS/network behavior on a

@@ -79,6 +79,7 @@ internal sealed class RecordingHandler : HttpMessageHandler
     public Uri? Uri { get; private set; }
     public string? Authorization { get; private set; }
     public string? ContentType { get; private set; }
+    public Action? BeforeSerialization { get; set; }
     public Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> Respond { get; set; } =
         (_, _) => Task.FromResult(ProviderFixtures.Json());
 
@@ -93,8 +94,15 @@ internal sealed class RecordingHandler : HttpMessageHandler
         Assert.Equal(HttpVersionPolicy.RequestVersionExact, request.VersionPolicy);
         Assert.Equal("application/json", Assert.Single(request.Headers.Accept).MediaType);
         using var stream = new MemoryStream();
-        await request.Content.CopyToAsync(stream, cancellationToken);
-        Body = stream.ToArray();
+        BeforeSerialization?.Invoke();
+        try
+        {
+            await request.Content.CopyToAsync(stream, cancellationToken);
+        }
+        finally
+        {
+            Body = stream.ToArray();
+        }
         return await Respond(request, cancellationToken);
     }
     protected override void Dispose(bool disposing)
@@ -107,8 +115,10 @@ internal sealed class RecordingHandler : HttpMessageHandler
 internal sealed class FixtureClock : TimeProvider
 {
     private long ticks;
+    private TimeSpan utcOffset;
     private readonly List<FixtureTimer> timers = [];
-    public override DateTimeOffset GetUtcNow() => ProviderFixtures.Now.AddTicks(ticks);
+    public bool DeferTimerCallbacks { get; set; }
+    public override DateTimeOffset GetUtcNow() => ProviderFixtures.Now.AddTicks(ticks) + utcOffset;
     public override long GetTimestamp() => ticks;
     public override long TimestampFrequency => TimeSpan.TicksPerSecond;
     public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
@@ -121,9 +131,12 @@ internal sealed class FixtureClock : TimeProvider
     public void Advance(TimeSpan duration)
     {
         ticks += duration.Ticks;
+        if (DeferTimerCallbacks)
+            return;
         foreach (var timer in timers.ToArray())
             timer.Fire();
     }
+    public void ShiftUtc(TimeSpan adjustment) => utcOffset += adjustment;
     private sealed class FixtureTimer(FixtureClock clock, TimerCallback callback, object? state) : ITimer
     {
         private long? due;

@@ -57,7 +57,9 @@ public sealed class OpenAiTranscriptionAdapter : IDisposable
         limits.Validate();
         if (cancellationToken.IsCancellationRequested)
             return Canceled(context);
-        var remaining = context.Deadline - clock.GetUtcNow();
+        long startedAt = clock.GetTimestamp();
+        var startedUtc = clock.GetUtcNow();
+        var remaining = context.Deadline - startedUtc;
         if (remaining <= TimeSpan.Zero)
             return Failed(context, ProviderFailureCode.DeadlineExceeded);
         if (!OpenAiTranscriptionCatalog.SupportsModel(upstreamModelId))
@@ -72,16 +74,31 @@ public sealed class OpenAiTranscriptionAdapter : IDisposable
 
         // Bound the entire operation, including credential retrieval, upload and response body.
         // A shorter authorization expiry also aborts this local request.
-        var timeout = Min(remaining, limits.MaxRequestTime, authorization.ExpiresAt - clock.GetUtcNow());
+        var requestWindow = remaining < limits.MaxRequestTime ? remaining : limits.MaxRequestTime;
+        var consentWindow = authorization.ExpiresAt - startedUtc;
+        var timeout = Min(requestWindow, consentWindow) - clock.GetElapsedTime(startedAt);
         if (timeout <= TimeSpan.Zero)
-            return Failed(context, ProviderFailureCode.ConsentExpired);
+            return Failed(context, requestWindow <= consentWindow
+                ? ProviderFailureCode.DeadlineExceeded : ProviderFailureCode.ConsentExpired);
         using var deadline = new CancellationTokenSource(timeout, clock);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
         var token = linked.Token;
+
+        void EnsureActive()
+        {
+            token.ThrowIfCancellationRequested();
+            var elapsed = clock.GetElapsedTime(startedAt);
+            if (elapsed >= requestWindow)
+                throw new RequestCutoffException(ProviderFailureCode.DeadlineExceeded);
+            if (clock.GetUtcNow() >= authorization.ExpiresAt || elapsed >= consentWindow)
+                throw new RequestCutoffException(ProviderFailureCode.ConsentExpired);
+        }
+
         try
         {
+            EnsureActive();
             using var credential = await credentials.ResolveAsync(binding, token).ConfigureAwait(false);
-            token.ThrowIfCancellationRequested();
+            EnsureActive();
             if (credential is null)
                 return Failed(context, ProviderFailureCode.CredentialUnavailable);
             if (credential.Binding != binding || !OpenAiTranscriptionCatalog.IsApprovedOrigin(credential.Binding.Origin))
@@ -102,17 +119,33 @@ public sealed class OpenAiTranscriptionAdapter : IDisposable
             multipart.Add(new StringContent(upstreamModelId), "model");
             multipart.Add(new StringContent("json"), "response_format");
             multipart.Add(new StringContent("false"), "stream");
-            request.Content = new SingleSendContent(multipart);
-            token.ThrowIfCancellationRequested();
+            request.Content = new SingleSendContent(multipart, EnsureActive);
+            EnsureActive();
 
             using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
-            token.ThrowIfCancellationRequested();
+            EnsureActive();
             if ((int)response.StatusCode is >= 300 and <= 399)
                 return Failed(context, ProviderFailureCode.RedirectRejected);
 
             bool success = response.StatusCode == HttpStatusCode.OK;
-            var (bytes, readFailure) = await ReadBoundedAsync(response.Content, limits.MaxResponseBytes, token).ConfigureAwait(false);
-            token.ThrowIfCancellationRequested();
+            ReadOnlyMemory<byte> bytes = ReadOnlyMemory<byte>.Empty;
+            ProviderFailureCode? readFailure;
+            try
+            {
+                (bytes, readFailure) = await ReadBoundedAsync(response.Content, limits.MaxResponseBytes, token).ConfigureAwait(false);
+            }
+            catch (HttpRequestException error)
+            {
+                readFailure = error.HttpRequestError == HttpRequestError.ResponseEnded
+                    ? ProviderFailureCode.ResponseTruncated : ProviderFailureCode.Network;
+            }
+            catch (IOException error)
+            {
+                readFailure = error is HttpIOException { HttpRequestError: HttpRequestError.ResponseEnded }
+                    ? ProviderFailureCode.ResponseTruncated : ProviderFailureCode.Network;
+            }
+            EnsureActive();
+            // An unreadable optional error body must not replace the known HTTP failure or advice.
             if (!success)
                 return Failed(context, OpenAiResponseParser.Classify(response.StatusCode, bytes), RetryAdvice(response));
             if (readFailure is { } bodyFailure)
@@ -123,7 +156,7 @@ public sealed class OpenAiTranscriptionAdapter : IDisposable
             try
             {
                 var result = OpenAiResponseParser.Parse(bytes, context, provenance, limits);
-                token.ThrowIfCancellationRequested();
+                EnsureActive();
                 return result;
             }
             catch (ContractException)
@@ -138,6 +171,10 @@ public sealed class OpenAiTranscriptionAdapter : IDisposable
         catch (OperationCanceledException) when (deadline.IsCancellationRequested)
         {
             return Failed(context, ProviderFailureCode.DeadlineExceeded);
+        }
+        catch (RequestCutoffException error)
+        {
+            return Failed(context, error.Code);
         }
         catch (CredentialUnavailableException)
         {
@@ -214,7 +251,12 @@ public sealed class OpenAiTranscriptionAdapter : IDisposable
             ? TranscriptionOutcome.DeadlineExceeded : TranscriptionOutcome.Failed, failure: new(code, retryAfter));
 
     private TranscriptionResult Canceled(ProviderRequestContext context) => new(context, provenance, TranscriptionOutcome.Canceled);
-    private static TimeSpan Min(TimeSpan first, TimeSpan second, TimeSpan third) => new(Math.Min(first.Ticks, Math.Min(second.Ticks, third.Ticks)));
+    private static TimeSpan Min(TimeSpan first, TimeSpan second) => first < second ? first : second;
+
+    private sealed class RequestCutoffException(ProviderFailureCode code) : Exception("The request authorization window ended.")
+    {
+        public ProviderFailureCode Code { get; } = code;
+    }
 
     public void Dispose()
     {
@@ -228,10 +270,12 @@ public sealed class OpenAiTranscriptionAdapter : IDisposable
     private sealed class SingleSendContent : HttpContent
     {
         private readonly HttpContent inner;
+        private readonly Action ensureActive;
         private int sent;
-        public SingleSendContent(HttpContent inner)
+        public SingleSendContent(HttpContent inner, Action ensureActive)
         {
             this.inner = inner;
+            this.ensureActive = ensureActive;
             foreach (var header in inner.Headers)
                 Headers.TryAddWithoutValidation(header.Key, header.Value);
         }
@@ -244,6 +288,8 @@ public sealed class OpenAiTranscriptionAdapter : IDisposable
             SerializeToStreamAsync(stream, context, CancellationToken.None);
         protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context, CancellationToken cancellationToken)
         {
+            // Timer callbacks can be late; do not begin writing an upload after its cutoff.
+            ensureActive();
             if (Interlocked.Exchange(ref sent, 1) != 0)
                 throw new HttpRequestException("A transcription upload cannot be replayed.");
             return inner.CopyToAsync(stream, context, cancellationToken);
