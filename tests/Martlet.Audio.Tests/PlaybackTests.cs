@@ -27,6 +27,11 @@ public sealed class PlaybackTests
         while (!condition()) await Task.Delay(1, timeout.Token);
     }
     private static Task<PlaybackSnapshot> End(PlaybackRun run) => run.Completion.WaitAsync(WaitLimit);
+    private static void AssertTerminal(PlaybackState expected, PlaybackSnapshot result, PlaybackRun run,
+        ControlledDevice device) =>
+        Assert.True(result.State == expected,
+            $"Expected {expected}; terminal={result}; release={run.DeviceRelease.Status}; current={run.Snapshot}; " +
+            $"opens={device.Opens}, starts={device.Starts}, stops={device.Stops}, disposals={device.Disposals}");
 
     [Fact]
     public async Task ConstructionAndDisposalDoNotOpenDevices()
@@ -274,16 +279,103 @@ public sealed class PlaybackTests
     [Fact]
     public async Task DisposeCancelsBlockedOpenWithoutStartingAndIsIdempotent()
     {
+        var time = new ManualTime();
         var device = new ControlledDevice { BlockOpen = true };
-        var sink = new PcmPlaybackSink(device);
-        var run = sink.Start(Request());
-        await device.EnteredOpen.Task.WaitAsync(WaitLimit);
-        await sink.DisposeAsync();
-        await sink.DisposeAsync();
-        Assert.Null(await run.Ready);
-        Assert.Equal(PlaybackState.Canceled, (await End(run)).State);
+        // This checks cooperative cancellation, not whether host scheduling fits the shutdown deadline.
+        var sink = new PcmPlaybackSink(device, timeProvider: time);
+        var run = sink.Start(Request(time: time));
+        try
+        {
+            await device.EnteredOpen.Task.WaitAsync(WaitLimit);
+            await sink.DisposeAsync().AsTask().WaitAsync(WaitLimit);
+            await sink.DisposeAsync().AsTask().WaitAsync(WaitLimit);
+            Assert.Null(await run.Ready);
+            var result = await End(run);
+            AssertTerminal(PlaybackState.Canceled, result, run, device);
+            Assert.Null(result.Error);
+            Assert.True(result.DeviceReleased);
+            Assert.Null(await run.DeviceRelease.WaitAsync(WaitLimit));
+            Assert.Equal(1, device.Opens);
+            Assert.Equal(0, device.Starts);
+            Assert.Equal(0, device.Stops);
+            Assert.Equal(0, device.Disposals);
+            Assert.Throws<ObjectDisposedException>(() => sink.Start(Request(epoch: 1, time: time)));
+        }
+        finally
+        {
+            device.Release.Set();
+            await sink.DisposeAsync().AsTask().WaitAsync(WaitLimit);
+        }
+    }
+
+    [Theory]
+    [InlineData("open", false)]
+    [InlineData("open", true)]
+    [InlineData("dispose", false)]
+    [InlineData("dispose", true)]
+    [InlineData("cancellation-handler", false)]
+    [InlineData("cancellation-handler", true)]
+    public async Task BlockedShutdownHonorsTwoSecondDeadlineAndQuarantinesUntilRelease(string blocked, bool expire)
+    {
+        var time = new ManualTime();
+        var device = new ControlledDevice
+        {
+            BlockOpen = blocked == "open",
+            IgnoreCancellation = blocked == "open",
+            BlockDispose = blocked == "dispose",
+            BlockOpenCancellation = blocked == "cancellation-handler"
+        };
+        await using var sink = new PcmPlaybackSink(device, timeProvider: time);
+        var run = sink.Start(Request(time: time));
+        PlaybackSnapshot result;
+        try
+        {
+            await device.EnteredOpen.Task.WaitAsync(WaitLimit);
+            if (blocked == "dispose") Assert.NotNull(await run.Ready.WaitAsync(WaitLimit));
+            _ = run.StopAsync();
+            if (blocked == "dispose") await device.EnteredDispose.Task.WaitAsync(WaitLimit);
+            if (blocked == "cancellation-handler") await device.EnteredCancellation.Task.WaitAsync(WaitLimit);
+            await Until(() => time.TimerCount == 2);
+            time.Advance(TimeSpan.FromMilliseconds(1999));
+            Assert.False(run.Completion.IsCompleted);
+            Assert.False(run.DeviceRelease.IsCompleted);
+            Assert.False(run.Snapshot.DeviceReleased);
+            Assert.Throws<InvalidOperationException>(() => sink.Start(Request(epoch: 1, time: time)));
+
+            if (expire)
+            {
+                time.Advance(TimeSpan.FromMilliseconds(1));
+                result = await End(run);
+                AssertTerminal(PlaybackState.Failed, result, run, device);
+                Assert.Equal(ErrorCode.AudioPlaybackFailed, result.Error!.Code);
+                Assert.False(result.DeviceReleased);
+                Assert.False(run.DeviceRelease.IsCompleted);
+                if (blocked != "dispose") Assert.Null(await run.Ready.WaitAsync(WaitLimit));
+                Assert.Throws<InvalidOperationException>(() => sink.Start(Request(epoch: 1, time: time)));
+            }
+        }
+        finally { device.Release.Set(); }
+
+        result = await End(run);
+        AssertTerminal(expire ? PlaybackState.Failed : PlaybackState.Canceled, result, run, device);
+        if (!expire) Assert.Null(result.Error);
+        Assert.Null(await run.DeviceRelease.WaitAsync(WaitLimit));
+        Assert.True(run.Snapshot.DeviceReleased);
+        Assert.Equal(!expire, result.DeviceReleased);
         Assert.Equal(0, device.Starts);
-        Assert.Throws<ObjectDisposedException>(() => sink.Start(Request(epoch: 1)));
+        Assert.Equal(blocked == "dispose" ? 1 : 0, device.Stops);
+        Assert.Equal(blocked == "dispose" ? 1 : 0, device.Disposals);
+        if (blocked != "dispose") Assert.Null(await run.Ready);
+        var events = new List<PlaybackEvent>();
+        using var readTimeout = new CancellationTokenSource(WaitLimit);
+        await foreach (var item in run.Events.ReadAllAsync(readTimeout.Token))
+            events.Add(item);
+        Assert.Contains(events, item => item.Kind == PlaybackEventKind.DeviceReleased && item.Snapshot.DeviceReleased);
+        var terminal = Assert.Single(events, item => item.Kind == PlaybackEventKind.Terminal);
+        Assert.Equal(result, terminal.Snapshot);
+        var next = sink.Start(Request(epoch: 1, time: time));
+        next.CompleteInput(0);
+        Assert.Equal(PlaybackState.Completed, (await End(next)).State);
     }
 
     [Fact]
