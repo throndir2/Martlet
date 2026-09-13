@@ -2,7 +2,7 @@ MARTLET - INTERNAL DEVELOPMENT ONLY - UNSIGNED
 
 This is an offline fixture demo and bundled Doctor, not an AI voice companion
 or supported novice release. All fixture text is scripted: FIXTURE - NOT AI.
-There is no microphone capture, playback, provider/key/model setup, login startup
+There is no microphone capture, playback, provider/key/model lookup, login startup
 or network inference on launch. Demo defaults require no profile or sound device.
 Do not publish this installer or tell users to bypass SmartScreen/antivirus.
 No project code or asset license is granted. Distribution/signing remains gated.
@@ -14,6 +14,22 @@ Doctor status can return 2 (incomplete/not ready), which is expected here.
 Try fixture (audio OFF) runs the selected scripted scenario. Stop fixture clears
 pending text/audio, and a new action uses fresh turn/request IDs and epochs.
 Refusal and partial output remain distinct from a completed answer.
+
+Setup / resume saves configuration only: fixture (safe default), or named
+OpenAI routes with explicit upstream model/voice IDs and role-specific
+destination/data/cost choices. There is no provider call or real voice setup.
+Use Back, Save checkpoint, Save and exit setup, and Reload to resume safely.
+Microphone audio would go to cloud STT, text to LLM, response text to TTS.
+Screen/memory stay OFF; key validity, price and quota are unknown. The UI links
+official pricing and retention information. Saved choices never grant capture
+on launch or perpetual paid-request permission.
+
+Keys are masked and stored only by an explicit confirmed Windows Credential
+Manager action for the selected profile, role and api.openai.com origin.
+Ordinary status never reads a key. Replacement invalidates consent and detaches
+the old key; deletion is separately confirmed for an exact pending reference.
+Interrupted transactions retain pending cleanup metadata: reload and review.
+The OS vault does not protect against malware already running as your user.
 
 Doctor examples (no audio, network, settings writes or AI):
   Martlet.Doctor.exe self-test --scenario streaming --json
@@ -40,11 +56,14 @@ Default settings (SEPARATE from program files):
   %LocalAppData%\Martlet\settings.json
 Launch reads settings but does not create them. The explicit Create unconfigured
 local profile action writes settings; it does not connect a provider.
+Setup Save explicitly upgrades v1 settings to v2 with an atomic original-file
+snapshot named settings.v1.<opaque-id>.bak in the same data directory.
 Malformed/newer settings are reported, not reset.
 
 Repair/reinstall for this internal skeleton:
 Close both apps and rerun the SAME installer to replace its owned program files.
-No data migration, transactional upgrade, downgrade or rollback is implemented.
+Installer-driven migration, transactional upgrade, downgrade or rollback is not
+implemented. The narrow explicit Setup v1 snapshot is not lifecycle qualification.
 Do not install an older version over newer data as a recovery strategy.
 
 Uninstall through Windows Settings > Apps > Installed apps > Martlet (Internal).

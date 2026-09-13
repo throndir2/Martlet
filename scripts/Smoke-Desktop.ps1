@@ -8,6 +8,19 @@ $ErrorActionPreference = 'Stop'
 if (-not $IsWindows) { throw 'The desktop smoke requires Windows and an interactive desktop session.' }
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
+if (-not ('MartletDesktopSmokeKeys' -as [type])) {
+    Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class MartletDesktopSmokeKeys {
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
+    [DllImport("user32.dll", EntryPoint = "PostMessageW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool PostMessage(IntPtr window, uint message, UIntPtr key, IntPtr flags);
+}
+'@
+}
 $root = Split-Path $PSScriptRoot -Parent
 $candidate = if ($ExecutablePath) { $ExecutablePath } else {
     Join-Path $root "src\Martlet.Desktop\bin\$Configuration\net10.0-windows\Martlet.Desktop.dll"
@@ -23,6 +36,7 @@ $data = Join-Path ([System.IO.Path]::GetTempPath()) ("Martlet.Desktop.Smoke." + 
 $settings = Join-Path $data 'settings.json'
 $process = $null
 $window = $null
+$setupSnapshots = @()
 
 function Find-Control([string]$Id) {
     $condition = [System.Windows.Automation.PropertyCondition]::new(
@@ -104,6 +118,53 @@ function Wait-Fixture([string]$Pattern) {
     throw 'Accessible fixture status was not available within 20 seconds.'
 }
 
+function Wait-Setup([string]$Pattern) {
+    $deadline = [DateTime]::UtcNow.AddSeconds(20)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        if ($script:process.HasExited) { throw 'Desktop exited during setup.' }
+        $script:process.Refresh()
+        if ($script:process.MainWindowHandle -ne 0) {
+            # WPF exposes the owned modal setup below its owner in the UI Automation tree.
+            $script:window = [Windows.Automation.AutomationElement]::FromHandle($script:process.MainWindowHandle)
+            $status = Find-Control 'SetupStatus'
+            if ($null -ne $status -and (Read-Value $status) -like $Pattern) {
+                if (-not $status.Current.IsKeyboardFocusable) { throw 'Setup status is not keyboard accessible.' }
+                $status.SetFocus()
+                if (-not $status.Current.HasKeyboardFocus) { throw 'Setup status did not accept keyboard focus.' }
+                return Read-Value $status
+            }
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    throw "Accessible setup checkpoint was not available within 20 seconds: $Pattern"
+}
+
+function Stop-ActiveFixture {
+    $script:process.Refresh()
+    $handle = $script:process.MainWindowHandle
+    if ($script:process.HasExited -or $handle -eq 0 -or $script:window.Current.ProcessId -ne $script:process.Id) {
+        throw 'The owned fixture window is no longer available.'
+    }
+    $stop = Find-Control 'StopFixture'
+    if ($null -eq $stop -or $stop.Current.Name -ne 'Stop fixture and tone') {
+        throw 'Required accessible fixture Stop action is unavailable.'
+    }
+    $active = Read-Value (Find-Control 'FixtureStatus')
+    if ($active -notlike '*Scenario: slow*Stage: Script*' -or $active -notlike '*fixture.running*' -or -not $stop.Current.IsEnabled) {
+        throw 'The selected fixture is not currently active and cancelable; no Stop input was sent.'
+    }
+    [uint32]$owner = 0
+    if ([MartletDesktopSmokeKeys]::GetWindowThreadProcessId($handle, [ref]$owner) -eq 0 -or $owner -ne $script:process.Id) {
+        throw 'The fixture HWND no longer belongs to the launched process; no input was sent.'
+    }
+    # UIA Invoke can spend two seconds in its RPC before reaching this two-second scenario.
+    # Post the existing Alt+F access key only to this verified HWND, never global SendInput.
+    # WPF's ordinary access-key/enablement path executes Stop; the canceled result is required below.
+    if (-not [MartletDesktopSmokeKeys]::PostMessage($handle, 0x0106, [UIntPtr]0x66, [IntPtr]0x20000001)) {
+        throw 'The targeted fixture Stop access-key message could not be queued.'
+    }
+}
+
 try {
     Start-Desktop
     $first = Wait-Status '*First run:*'
@@ -134,14 +195,22 @@ try {
     Select-Fixture 'slow'
     Invoke-Control 'StartFixture'
     $running = Wait-Fixture '*Scenario: slow*Stage: Script*'
-    Invoke-Control 'StopFixture'
-    $stopped = Wait-Fixture '*fixture.stopped*'
-    if ($stopped -notlike '*queued text: 0*') { throw 'Stop did not invalidate the fixture queue.' }
+    Stop-ActiveFixture
+    $stopped = Wait-Fixture '*Scenario: slow*Stage: Finished*fixture.stopped*'
+    if ($stopped -notlike '*Scenario: slow*Stage: Finished*' -or $stopped -notlike '*outcome: Canceled*' -or
+        $stopped -notlike '*queued text: 0*' -or $stopped -notmatch '(?m)^Synthetic text: \r?$') {
+        throw 'Stop did not finish with an explicit canceled outcome and empty text/queue.'
+    }
     Select-Fixture 'streaming'
     Invoke-Control 'StartFixture'
     $streaming = Wait-Fixture '*fixture.completed*'
     if ($streaming -notlike '*Synthetic text: Synthetic text.*' -or $streaming -like '*Partial fixture.*') {
         throw 'New fixture did not replace retired output in order.'
+    }
+    $oldIds = [regex]::Match($stopped, '(?m)^Session:.*').Value
+    $newIds = [regex]::Match($streaming, '(?m)^Session:.*').Value
+    if (-not $oldIds -or -not $newIds -or $oldIds -ceq $newIds) {
+        throw 'New fixture did not use fresh IDs after Stop; retired output cannot be accepted.'
     }
     $stop = Find-Control 'StopDiagnostics'
     if ($null -eq $stop -or $stop.Current.IsEnabled -or $stop.Current.Name -ne 'Stop diagnostics') {
@@ -150,11 +219,64 @@ try {
     Invoke-Control 'RefreshDiagnostics'
     $refreshed = Wait-Status '*First run:*' $first
     if ($refreshed -notlike '*settings.first_run*') { throw 'Refresh did not use the shared diagnostic catalog.' }
+    Invoke-Control 'OpenSetup'
+    $null = Wait-Setup '*Checkpoint: Choice*'
+    if (Test-Path -LiteralPath $data) { throw 'Opening setup wrote files before an explicit save.' }
+    Invoke-Control 'SetupClose'
+    $null = Wait-Status '*First run:*'
     Invoke-Control 'CreateProfile'
     $saved = Wait-Status '*Profile: NotConfigured;*'
     if ($saved -notlike '*settings.valid*' -or -not [System.IO.File]::Exists($settings)) { throw 'Explicit profile creation failed.' }
     if ((Find-Control 'CreateProfile').Current.IsEnabled) { throw 'Create must be disabled for an existing profile.' }
+    $legacyBytes = [IO.File]::ReadAllBytes($settings)
+    $legacyId = ([Text.Encoding]::UTF8.GetString($legacyBytes) | ConvertFrom-Json).profile.id
+    Invoke-Control 'OpenSetup'
+    $null = Wait-Setup '*Checkpoint: Choice*'
+    Invoke-Control 'SetupSaveExit'
+    $null = Wait-Status '*Profile: Fixture;*Setup checkpoint: Choice*'
+    $setupSnapshots = @(Get-ChildItem -LiteralPath $data -Filter 'settings.v1.*.bak' -File | Select-Object -ExpandProperty FullName)
+    if ($setupSnapshots.Count -ne 1 -or
+        [Convert]::ToHexString([IO.File]::ReadAllBytes($setupSnapshots[0])) -cne [Convert]::ToHexString($legacyBytes)) {
+        throw 'Explicit setup migration did not preserve the original version 1 bytes.'
+    }
+    Invoke-Control 'OpenSetup'
+    $null = Wait-Setup '*Checkpoint: Choice*'
+    (Find-Control 'SetupApi').GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern).Select()
+    Invoke-Control 'SetupNext'
+    $null = Wait-Setup '*Checkpoint: Destinations*'
+    (Find-Control 'SetupModel').GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).SetValue('gpt-4o-mini-transcribe')
+    (Find-Control 'SetupConsent').GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Toggle()
+    Invoke-Control 'SetupApplyRoute'
+    $null = Wait-Setup '*Stt: route selected; destination choice recorded*credential not configured*'
+    Invoke-Control 'SetupNext'
+    $null = Wait-Setup '*Checkpoint: Credentials*'
+    $key = Find-Control 'SetupKey'
+    if ($null -eq $key -or -not $key.Current.IsPassword) { throw 'API key entry must be masked.' }
+    Invoke-Control 'SetupNext'
+    $null = Wait-Setup '*Checkpoint: Review*'
+    Invoke-Control 'SetupBack'
+    $null = Wait-Setup '*Checkpoint: Credentials*'
+    Invoke-Control 'SetupSaveExit'
+    $null = Wait-Status '*Profile: Api;*Setup checkpoint: Credentials*key not configured*'
     Close-Desktop
+    Start-Desktop
+    $null = Wait-Status '*Setup checkpoint: Credentials*'
+    Invoke-Control 'OpenSetup'
+    $null = Wait-Setup '*Checkpoint: Credentials*'
+    Invoke-Control 'SetupBack'
+    $null = Wait-Setup '*Checkpoint: Destinations*'
+    (Find-Control 'SetupModel').GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).SetValue('whisper-1')
+    Invoke-Control 'SetupApplyRoute'
+    $null = Wait-Setup '*Stt: route selected; consent missing or invalidated*'
+    Invoke-Control 'SetupSaveExit'
+    $null = Wait-Status '*Setup checkpoint: Destinations*consent missing or invalidated*'
+    Close-Desktop
+    $configured = Get-Content -LiteralPath $settings -Raw | ConvertFrom-Json
+    if ($configured.schema_version -ne 2 -or $configured.profile.id -ne $legacyId -or
+        $configured.setup.routes[0].model_id -cne 'whisper-1' -or $null -ne $configured.setup.routes[0].consent -or
+        $null -ne $configured.setup.routes[0].credential_id -or $configured.setup.pending_removals.Count -ne 0) {
+        throw 'Actual no-key setup did not preserve identity, model edit and consent invalidation.'
+    }
 
     foreach ($case in @(
         @{ Content = '{PRIVATE-CANARY'; Code = 'settings.malformed' },
@@ -195,7 +317,7 @@ try {
         throw 'Invalid launch arguments must leave a read-only, actionable startup error.'
     }
     Close-Desktop
-    Write-Output 'PASS: actual offline fixtures, partial/refusal, Stop/new session, audio OFF; accessible pipeline; profile/remedies/preservation; bounded active/idle/startup-error close.'
+    Write-Output 'PASS: actual offline fixtures/refusal/Stop, audio OFF; accessible no-key setup/migration/save/resume/Back/model consent invalidation; profile/remedies/preservation; bounded close. No OS credential actions or network.'
 }
 finally {
     if ($null -ne $process) {
@@ -206,5 +328,6 @@ finally {
     if ([System.IO.Directory]::Exists($settings)) { [System.IO.Directory]::Delete($settings) }
     $lockFile = Join-Path $data 'settings.json.lock'
     if ([System.IO.File]::Exists($lockFile)) { [System.IO.File]::Delete($lockFile) }
+    foreach ($snapshot in $setupSnapshots) { [IO.File]::Delete($snapshot) }
     if ([System.IO.Directory]::Exists($data)) { [System.IO.Directory]::Delete($data) }
 }

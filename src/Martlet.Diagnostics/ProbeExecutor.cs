@@ -80,7 +80,8 @@ public sealed class ProbeExecutor
                 CompletedAt = Later(start),
                 SettingsState = loaded?.State,
                 ProfileId = loaded?.Settings?.Profile.Id,
-                ProfileKind = loaded?.Settings?.Profile.Kind
+                ProfileKind = loaded?.Settings?.Profile.Kind,
+                Setup = SetupStatus.From(loaded?.Settings)
             };
             report.Validate();
             return RefreshAge(report);

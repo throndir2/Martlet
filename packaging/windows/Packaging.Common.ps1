@@ -159,7 +159,8 @@ function Assert-PublishLayout([string]$Root) {
         }
     }
     if ($versions[0] -cne $versions[1]) { throw 'Desktop and Doctor versions do not agree.' }
-    foreach ($file in @('PresentationFramework.dll', 'PresentationCore.dll', 'wpfgfx_cor3.dll', 'D3DCompiler_47_cor3.dll')) {
+    foreach ($file in @('PresentationFramework.dll', 'PresentationCore.dll', 'wpfgfx_cor3.dll', 'D3DCompiler_47_cor3.dll',
+            'Martlet.Credentials.Windows.dll')) {
         $null = Get-RequiredFile (Join-Path $Root "Desktop\$file")
     }
     foreach ($file in @('help\INTERNAL.txt', 'notices\DEPENDENCIES.txt',

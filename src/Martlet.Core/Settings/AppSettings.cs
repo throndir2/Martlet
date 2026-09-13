@@ -8,22 +8,34 @@ public enum ProfileKind { NotConfigured, Fixture, Api, ExistingEndpoints }
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record AppSettings : IContract
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
     public const int MaxFileBytes = 65_536;
     public required int SchemaVersion { get; init; }
     public required ProfileSettings Profile { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public SetupSettings? Setup { get; init; }
 
     public static AppSettings CreateUnconfigured() => new()
     {
-        SchemaVersion = CurrentSchemaVersion,
+        SchemaVersion = 1,
         Profile = new ProfileSettings { SchemaVersion = 1, Id = Guid.NewGuid(), Kind = ProfileKind.NotConfigured, Credentials = [] }
     };
 
     public void Validate()
     {
-        ContractRules.Require(SchemaVersion == CurrentSchemaVersion, "Use a compatible app or restore a compatible settings backup; this file was not changed.", ErrorCode.UnsupportedVersion);
+        ContractRules.Require(SchemaVersion is 1 or CurrentSchemaVersion, "Use a compatible app or restore a compatible settings backup; this file was not changed.", ErrorCode.UnsupportedVersion);
         ContractRules.Require(Profile is not null, "A profile is required.");
         Profile!.Validate();
+        ContractRules.Require(SchemaVersion == 1 ? Setup is null : Setup is not null,
+            "Version 1 cannot contain setup; version 2 requires a setup checkpoint.");
+        Setup?.Validate();
+        if (Setup is not null)
+        {
+            var legacy = Profile.Credentials.Select(item => item.CredentialId).ToHashSet();
+            ContractRules.Require(Setup.Routes.All(route => route.CredentialId is not { } id || !legacy.Contains(id)) &&
+                Setup.PendingRemovals.All(item => !legacy.Contains(item.CredentialId)),
+                "Legacy credential references are preserved, never reused or deleted by setup.");
+        }
     }
 }
 

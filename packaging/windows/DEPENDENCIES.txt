@@ -24,6 +24,11 @@ Their raw NuGet archives and published managed DLL bytes are checked against
 toolchain.json. Raw signed-archive SHA-512 differs from NuGet's lock contentHash;
 both are preserved for their respective purposes.
 
+Desktop also includes Martlet.Credentials.Windows, authored BCL/PInvoke code
+for explicitly scoped Windows Credential Manager actions. No additional NuGet
+package or native binary is redistributed; advapi32 remains a Windows OS API.
+Doctor does not reference this vault assembly or resolve credentials.
+
 notices\NAudio-LICENSE.txt: Mark Heath MIT notice, pinned upstream source commit.
 notices\NAudio-THIRD-PARTY-NOTICES.txt: bundled Core/Wasapi source attributions
 including Ray Molenkamp, Vannatech, Cockos WDL, Bernsee/Michael Knight,
