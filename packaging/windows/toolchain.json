@@ -1,0 +1,44 @@
+{
+  "sdkVersion": "10.0.401",
+  "runtimeVersion": "10.0.12",
+  "nativeRuntimeFileVersion": "10.0.1226.42308",
+  "rid": "win-x64",
+  "runtimePackages": [
+    {
+      "id": "microsoft.netcore.app.runtime.win-x64",
+      "sha512": "39afcb222032eabebe2c7fa51a37c491c6b0f456796ad7888431971b8eef4f689caee5454260398ce0ffafe491c565891b35e73afc67585a3e4c4bde995710ee",
+      "license": "LICENSE.TXT"
+    },
+    {
+      "id": "microsoft.windowsdesktop.app.runtime.win-x64",
+      "sha512": "05e188fca4c105c6b8a5dbaed677dfeb556f640c25cd5c2a366a3e795a93dba96db0026c42c17ffc308f26cb30f9f5e9011abe150ee954a89079de6282ff0a61",
+      "license": "LICENSE"
+    }
+  ],
+  "notices": [
+    {
+      "file": "WPF-THIRD-PARTY-NOTICES.txt",
+      "url": "https://raw.githubusercontent.com/dotnet/wpf/v10.0.12/THIRD-PARTY-NOTICES.TXT",
+      "sha256": "d23dba2fee20c6b59d8f7088ee9ed372459c952a319b7ca90f3eec370cc76eb9"
+    },
+    {
+      "file": "WinForms-THIRD-PARTY-NOTICES.txt",
+      "url": "https://raw.githubusercontent.com/dotnet/winforms/v10.0.12/THIRD-PARTY-NOTICES.TXT",
+      "sha256": "5a412b38efae0b162dc0893b319023f4cd14a8985a0f9f9ae01ac052b37a36eb"
+    },
+    {
+      "file": "Inno-Setup-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/jrsoftware/issrc/is-7_1_0/license.txt",
+      "sha256": "2e5346868c2a18434489824e11d65c3031620f792fefc415d05f19cd441abf5c"
+    }
+  ],
+  "inno": {
+    "version": "7.1.0",
+    "url": "https://github.com/jrsoftware/issrc/releases/download/is-7_1_0/innosetup-7.1.0-x64.exe",
+    "sha256": "0362a383ed217d4c4239b5933866dd96d3eb2102737da92f80f6057a4b40df2f",
+    "publisher": "CN=Pyrsys B.V., O=Pyrsys B.V., S=Noord-Holland, C=NL",
+    "receiptSha256": "13caaa79efb2062e3b4c5a9689c5702f3b82c78ff55e6d9360dab86364e2caa4",
+    "licenseUrl": "https://github.com/jrsoftware/issrc/blob/is-7_1_0/license.txt",
+    "termsUrl": "https://jrsoftware.org/isorder.php"
+  }
+}

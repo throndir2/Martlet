@@ -1,0 +1,33 @@
+Martlet internal Windows dependency inventory
+
+Martlet user code/assets: no project license grant. Internal development only.
+
+Bundled runtime: .NET 10.0.12 win-x64; SDK 10.0.401 is a build tool, not shipped.
+Desktop and Doctor each retain their own complete ordinary self-contained files.
+CoreCLR/hostfxr/hostpolicy and WindowsDesktop native binaries (including WPF
+graphics, Direct3D compiler and vcruntime*_cor3) come from the pinned Microsoft
+runtime NuGet packages, not from the developer's Windows installation.
+Windows OS APIs/drivers remain OS prerequisites, not redistributed libraries.
+
+Desktop\LICENSE.txt and THIRD-PARTY-NOTICES.txt: unmodified Microsoft.NETCore.App.
+Doctor\LICENSE.txt and THIRD-PARTY-NOTICES.txt: the same runtime notices.
+notices\Microsoft.WindowsDesktop.App\LICENSE.txt: runtime package's license.
+notices\WPF-THIRD-PARTY-NOTICES.txt and WinForms-THIRD-PARTY-NOTICES.txt:
+upstream notices from the matching v10.0.12 source tags, checksum pinned.
+The complete runtime notice lists are retained, not reduced to just this summary.
+
+Installer: built with Inno Setup 7.1.0 x64, copyright Jordan Russell / Martijn
+Laan. https://jrsoftware.org/ . The compiler is NOT installed with Martlet.
+Inno's built-in copyright/about notices are unchanged; its license is packaged
+in notices\Inno-Setup-LICENSE.txt in both payload and installer.
+See https://github.com/jrsoftware/issrc/blob/is-7_1_0/license.txt and
+https://jrsoftware.org/isorder.php . Commercial terms require owner review before
+production. No license purchase or signing credential is part of this build.
+
+The SDK and exact runtime packages/notices are pinned in packaging\windows\
+toolchain.json. Runtime security updates require a new reviewed Martlet package.
+Only framework/project dependencies are currently linked into these two apps.
+New production packages/native dependencies require reviewed notices and pin
+updates; test-only xUnit/TestPlatform and unreferenced projects are not bundled.
+This inventory is not a release SBOM, vulnerability clearance or public release
+approval. Native Windows dependency/lifecycle qualification remains a VM gate.
