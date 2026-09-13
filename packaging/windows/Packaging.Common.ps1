@@ -36,6 +36,12 @@ function New-OutputDirectory([string]$Path) {
     [IO.Directory]::CreateDirectory($Path) | Out-Null
 }
 
+function Assert-MSBuildPath([string]$Path) {
+    if ($Path -match '[,;%=]') {
+        throw 'Unsupported MSBuild path character: comma, semicolon, percent and equals are not supported. Choose a repository/output path without these characters; no output was created.'
+    }
+}
+
 function Assert-X64Pe([string]$Path) {
     $null = Get-RequiredFile $Path
     $stream = [IO.File]::OpenRead($Path)
@@ -251,9 +257,14 @@ function Initialize-PackagingSdk([string]$DotnetPath, [string]$CliHome) {
 }
 
 function Invoke-Dotnet([string]$Sdk, [string[]]$Arguments) {
-    & $Sdk @Arguments | Out-Host
-    if ($LASTEXITCODE -ne 0) {
-        throw "dotnet $($Arguments[0]) failed (exit $LASTEXITCODE). No completed payload was produced; inspect the build/restore errors above."
+    # Keep a verified expected failure from leaking into GitHub's pwsh LASTEXITCODE wrapper.
+    $result = Invoke-BoundedProcess $Sdk $Arguments 600
+    if ($result.Stdout) { $result.Stdout.TrimEnd() | Out-Host }
+    if ($result.Stderr) { $result.Stderr.TrimEnd() | Out-Host }
+    if ($result.ExitCode -ne 0) {
+        $failure = [InvalidOperationException]::new("dotnet $($Arguments[0]) failed (exit $($result.ExitCode)). No completed payload was produced; inspect the build/restore errors above.")
+        $failure.Data['NativeOutput'] = $result.Stdout + $result.Stderr
+        throw $failure
     }
 }
 

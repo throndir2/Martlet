@@ -7,6 +7,8 @@ param(
 )
 . "$PSScriptRoot\Packaging.Common.ps1"
 $root = Split-Path (Split-Path $PSScriptRoot)
+Assert-MSBuildPath $root
+Assert-MSBuildPath $WorkDirectory
 Push-Location $root
 try {
     $sdk = Initialize-PackagingSdk $DotnetPath $CliHome

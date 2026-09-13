@@ -10,15 +10,20 @@ param(
 )
 . "$PSScriptRoot\Installer.Common.ps1"
 Assert-PackagingHost
+Assert-MSBuildPath (Split-Path (Split-Path $PSScriptRoot))
+Assert-MSBuildPath $WorkDirectory
 New-OutputDirectory $WorkDirectory
 $sdk = Initialize-PackagingSdk $DotnetPath $CliHome
 $manifest = Test-PayloadManifest $PayloadRoot
 $script:cases = 0
-function Assert-Fails([string]$Name, [scriptblock]$Action, [string]$MessagePattern) {
+function Assert-Fails([string]$Name, [scriptblock]$Action, [string]$MessagePattern, [string]$NativeErrorCode) {
     $failed = $false
     try { & $Action | Out-Null }
     catch {
         if ($_.Exception.Message -notlike $MessagePattern) { throw "Wrong failure for ${Name}: $($_.Exception.Message)" }
+        if ($NativeErrorCode -and [string]$_.Exception.Data['NativeOutput'] -notlike "*error ${NativeErrorCode}:*") {
+            throw "Expected native diagnostic $NativeErrorCode was not reported for $Name."
+        }
         $failed = $true
     }
     if (-not $failed) { throw "Expected failure did not occur: $Name" }
@@ -118,7 +123,30 @@ Assert-Fails 'wrong requested RID' { & "$PSScriptRoot\Publish-Windows.ps1" -Runt
 Assert-Fails 'missing SDK' { Initialize-PackagingSdk (Join-Path $WorkDirectory 'missing-dotnet.exe') $WorkDirectory } '*not recognized*'
 Assert-Fails 'wrong SDK version' { Initialize-PackagingSdk (Get-Command pwsh).Source $CliHome } '*Wrong SDK*'
 $null = Initialize-PackagingSdk $DotnetPath $CliHome
-Assert-Fails 'real publish failure propagates' { Invoke-Dotnet $sdk @('publish', (Join-Path $WorkDirectory 'missing.csproj')) } '*failed (exit 1)*'
+Assert-Fails 'real publish failure propagates' { Invoke-Dotnet $sdk @('publish', (Join-Path $WorkDirectory 'missing.csproj')) } '*failed (exit 1)*' 'MSB1009'
+foreach ($name in @('comma,name', 'semicolon;name', 'percent%2Cname', 'percent%3Bname', 'percent%25name', 'equal=name', 'mixed,;%2C=name')) {
+    $unsupported = Join-Path $WorkDirectory $name
+    Assert-Fails "unsupported output path $name" {
+        & "$PSScriptRoot\Publish-Windows.ps1" -DotnetPath $sdk -CliHome $CliHome -OutputDirectory $unsupported
+    } '*Unsupported MSBuild path character*'
+    if (Test-Path -LiteralPath $unsupported) { throw 'Rejected publish path was created before preflight failed.' }
+    Assert-Fails "unsupported lock-maintenance path $name" {
+        & "$PSScriptRoot\Update-PublishLocks.ps1" -DotnetPath $sdk -CliHome $CliHome -WorkDirectory $unsupported
+    } '*Unsupported MSBuild path character*'
+    if (Test-Path -LiteralPath $unsupported) { throw 'Rejected maintenance path was created before preflight failed.' }
+}
+foreach ($name in @('source,comma', 'source;semicolon', 'source%2Cescape', 'source=equals')) {
+    $scripts = Join-Path $WorkDirectory "$name\packaging\windows"
+    [IO.Directory]::CreateDirectory($scripts) | Out-Null
+    foreach ($file in @('Publish-Windows.ps1', 'Packaging.Common.ps1')) {
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $scripts
+    }
+    $output = Join-Path $WorkDirectory 'rejected-source-output'
+    Assert-Fails "unsupported repository path $name" {
+        & "$scripts\Publish-Windows.ps1" -DotnetPath $sdk -CliHome $CliHome -OutputDirectory $output
+    } '*Unsupported MSBuild path character*'
+    if (Test-Path -LiteralPath $output) { throw 'Rejected repository path created publish output.' }
+}
 
 # Use copied project inputs, never mutate the real repository's lock files for negative tests.
 $repo = Split-Path (Split-Path $PSScriptRoot)
@@ -151,7 +179,7 @@ try {
     [IO.File]::WriteAllText($lock, '{"version":2,"dependencies":{"net10.0":{}}}')
     Assert-Fails 'stale RID lock restore' {
         Invoke-Dotnet $sdk (@('restore', $project, '--locked-mode', '-r', 'win-x64', '--artifacts-path', $build, '--verbosity', 'quiet') + $properties)
-    } '*failed (exit 1)*'
+    } '*failed (exit 1)*' 'NU1004'
 }
 finally { [IO.File]::WriteAllBytes($lock, $lockBytes) }
 

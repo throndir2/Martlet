@@ -47,14 +47,9 @@ jobs:
           $builder = Join-Path $env:RUNNER_TEMP 'martlet-inno-7.1.0'
           .\packaging\windows\Get-InnoSetup.ps1 -Destination $builder
           "MARTLET_BUILDER=$builder" >> $env:GITHUB_ENV
-      - name: Production-path packaging assertions
+      - name: Production assertions and actual pwsh wrapper regression
         shell: pwsh
         run: |
-          .\packaging\windows\Test-Packaging.ps1 -PayloadRoot $env:MARTLET_PAYLOAD -ComparePayloadRoot $env:MARTLET_COMPARE_PAYLOAD -BuilderDirectory $env:MARTLET_BUILDER -CliHome (Join-Path $env:RUNNER_TEMP 'martlet-dotnet-home') -WorkDirectory (Join-Path $env:RUNNER_TEMP 'martlet-package-tests')
-          .\packaging\windows\Smoke-Package.ps1 -PayloadRoot $env:MARTLET_PAYLOAD
-      - name: Compile internal installer without installing or publishing
-        shell: pwsh
-        run: |
-          .\packaging\windows\Build-Installer.ps1 -PayloadRoot $env:MARTLET_PAYLOAD -BuilderDirectory $env:MARTLET_BUILDER -OutputDirectory (Join-Path $env:RUNNER_TEMP 'martlet-installer')
+          .\packaging\windows\Test-WorkflowExit.ps1 -PayloadRoot $env:MARTLET_PAYLOAD -ComparePayloadRoot $env:MARTLET_COMPARE_PAYLOAD -BuilderDirectory $env:MARTLET_BUILDER -CliHome (Join-Path $env:RUNNER_TEMP 'martlet-dotnet-home') -WorkDirectory (Join-Path $env:RUNNER_TEMP 'martlet-workflow-tests')
           git diff --exit-code
           if ($LASTEXITCODE -ne 0) { throw 'Packaging modified committed sources or lock files.' }

@@ -28,6 +28,8 @@ $builder = Join-Path $run 'inno'
 .\packaging\windows\Test-Packaging.ps1 -DotnetPath $sdk -CliHome $home -PayloadRoot "$first\payload" -ComparePayloadRoot "$second\payload" -BuilderDirectory $builder -WorkDirectory "$run\tests"
 .\packaging\windows\Smoke-Package.ps1 -PayloadRoot "$first\payload" -InteractiveDesktop
 .\packaging\windows\Build-Installer.ps1 -PayloadRoot "$first\payload" -BuilderDirectory $builder -OutputDirectory "$run\package"
+# Also exercise the actual GitHub pwsh exit wrapper (includes assertions, Doctor and compiler).
+.\packaging\windows\Test-WorkflowExit.ps1 -DotnetPath $sdk -CliHome $home -PayloadRoot "$first\payload" -ComparePayloadRoot "$second\payload" -BuilderDirectory $builder -WorkDirectory "$run\workflow-tests"
 ```
 
 These are build commands, **not novice installation instructions**. Initial
@@ -42,6 +44,13 @@ rejected rather than recursively cleaned/reused. Use the already ignored
 outputs. A failed publish leaves diagnostic `build`/`staging` files but **no
 completed `payload`**. Compilation similarly promotes `staging` to `installer`
 only after successful compilation and checks. Do not distribute staging files.
+
+Repository paths and publish/lock-maintenance/test output paths containing a
+comma (`,`), semicolon (`;`), percent (`%`) or equals sign (`=`) are **not
+supported**. These are delimiters/escape syntax in MSBuild property values or
+the compiler's nested PathMap grammar. The wrappers reject them before creating
+output, rather than silently interpreting a different path. This includes
+escape-looking names such as `%2C` or `%3B`. Spaces and Unicode are supported.
 
 `Smoke-Package.ps1` always launches the actual native Doctor apphost. The
 `-InteractiveDesktop` switch additionally launches the native WPF apphost, reads
@@ -148,6 +157,13 @@ notice files, changed bytes/checksums/RID/PE architecture, data inclusion,
 explicit installer entries, pinned authoring invariants, output overwrite,
 missing SDK/compiler, actual publish failure, missing/stale RID locks, Unicode/
 spaced source and output paths, and repeat-publish manifest equality.
+Reserved punctuation/percent-escape-looking output paths must fail preflight
+without creating output. Native command status is captured per process and
+verified explicitly; expected negative tests never modify `LASTEXITCODE`.
+`Test-WorkflowExit.ps1` runs the real assertions and Doctor in a child process
+with GitHub's exact pwsh exit wrapper, then compiles the installer only after
+that step succeeds. A deliberately missing executable must still fail the
+same child wrapper; no unconditional success exit masks a broken assertion.
 
 ## Inno Setup provenance and terms
 
