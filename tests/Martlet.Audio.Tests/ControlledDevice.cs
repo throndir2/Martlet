@@ -50,7 +50,6 @@ internal sealed class ControlledDevice : IPlaybackDeviceFactory, IPlaybackDevice
         Interlocked.Increment(ref opens);
         Selection = selection;
         format = input;
-        EnteredOpen.TrySetResult();
         if (BlockOpenCancellation && !Release.IsSet)
         {
             using var registration = cancellationToken.Register(() =>
@@ -58,10 +57,12 @@ internal sealed class ControlledDevice : IPlaybackDeviceFactory, IPlaybackDevice
                 EnteredCancellation.TrySetResult();
                 Release.Wait();
             });
+            EnteredOpen.TrySetResult();
             // Open cannot finish releasing its registration while the cancellation callback is held.
             EnteredCancellation.Task.GetAwaiter().GetResult();
             cancellationToken.ThrowIfCancellationRequested();
         }
+        EnteredOpen.TrySetResult();
         if (BlockOpen)
             Release.Wait(IgnoreCancellation ? CancellationToken.None : cancellationToken);
         if (OpenError is { } code)
