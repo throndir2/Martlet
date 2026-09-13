@@ -106,6 +106,19 @@ shares the same app recovery owner and busy slot; corrected-head validation and
 package receipts are recorded separately in the PR evidence, not inferred from
 the earlier artifacts.
 
+The corrected `2f70dca9dadcee83fa96a895cb08d331ebdb5819` full run exposed one
+existing support-test synchronization failure (1,923 passed, one failed).
+The UI's completed observation preceded a deliberately dropped busy journal
+append; waiting for a subsequently idle writer cannot recover that dropped
+event. Controlled real-UI/HTTP/append evidence reproduced the distinction.
+The approved test-only correction samples a held Generating state while
+recording is OFF, awaits explicit journal start, then releases the response.
+The exact completed-event/archive/privacy assertions remain. A negative case
+holds actual append work through real UI completion, verifies visible bounded
+drops and independent live progress, and refuses to invent a completed record
+when freezing later. Production logging remains optional, lossy and queue-free;
+no retry, longer deadline or delivery guarantee was introduced.
+
 Historical F03c/F05 developer-host package evidence: that self-contained payload contained
 620 inventoried files; actual native Doctor and interactive WPF fixture smokes
 passed with audio OFF and runtime discovery pointed away from the SDK.
