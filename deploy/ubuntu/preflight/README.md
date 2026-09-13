@@ -276,6 +276,10 @@ calls, unexpected ioctl/control operations and
 signals outside the owned tree. Expected binary/argv forms are compared exactly.
 Signal destinations must still be live-owned at the call's start; an exited
 numeric TID is never trusted as permanently owned.
+Ownership starts at successful clone completion or an earlier positively
+attributed child record, never retroactively at clone entry. Child descriptor
+tables are admitted only then; ambiguous copied-table changes during an
+unobserved creation interval fail closed.
 Explicit terminal records and matching exit/exit-group intent are required for
 the root and every spawned PID/thread; root status must match the measured
 doctor exit. Clean-boundary truncation is not completion. `-q`, unlike `-qq`,

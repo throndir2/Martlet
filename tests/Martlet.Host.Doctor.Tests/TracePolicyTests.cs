@@ -207,4 +207,62 @@ public sealed class TracePolicyTests
             "102 tkill(101, SIGURG) = 0", "101 <... clone3 resumed>) = 102",
             "101 tkill(102, SIGURG) = 0", "102 exit(0) = ?", "102 +++ exited with 0 +++").ProcessIds);
     }
+
+    [Fact]
+    public void Documented_nested_character_device_annotation_is_readable_not_writable()
+    {
+        Assert.Equal(1, Validate(
+            "101 openat(AT_FDCWD, \"/dev/null\", O_RDONLY|O_CLOEXEC) = 3</dev/null<char 1:3>>",
+            "101 close(3</dev/null<char 1:3>>) = 0").ProcessIds);
+        Assert.Throws<InvalidDataException>(() => Validate(
+            "101 openat(AT_FDCWD, \"/dev/null\", O_RDONLY|O_CLOEXEC) = 3</dev/null<char 1:3>>",
+            "101 write(3</dev/null<char 1:3>>, \"x\", 1) = 1"));
+        Assert.Throws<InvalidDataException>(() => Validate(
+            "101 openat(AT_FDCWD, \"/dev/null\", O_RDONLY) = 3</dev/null<unknown 1:3>>"));
+    }
+
+    [Fact]
+    public void Later_clone_success_cannot_authorize_signaling_an_unobserved_future_tid()
+    {
+        Assert.Throws<InvalidDataException>(() => TracePolicy.Validate(
+        [
+            Root, "101 clone3({flags=CLONE_VM|CLONE_THREAD|CLONE_FILES, exit_signal=0}, 88) = 103",
+            "103 rseq(0x1000, 32, 0, 0x53053053) = 0",
+            "101 clone3({flags=CLONE_VM|CLONE_THREAD|CLONE_FILES, exit_signal=0}, 88 <unfinished ...>",
+            "103 tkill(102, SIGTERM) = 0",
+            "101 <... clone3 resumed>) = 102",
+            "101 exit_group(0) = ?", "101 +++ exited with 0 +++", "102 +++ exited with 0 +++", "103 +++ exited with 0 +++"
+        ], "/pkg/martlet-host", ["--help"], false));
+    }
+
+    [Fact]
+    public void Positively_observed_child_can_be_signaled_before_parent_clone_returns()
+    {
+        var summary = TracePolicy.Validate(
+        [
+            Root, "101 clone3({flags=CLONE_VM|CLONE_THREAD|CLONE_FILES, exit_signal=0}, 88) = 103",
+            "103 rseq(0x1000, 32, 0, 0x53053053) = 0",
+            "101 clone3({flags=CLONE_VM|CLONE_THREAD|CLONE_FILES, exit_signal=0}, 88 <unfinished ...>",
+            "102 rseq(0x2000, 32, 0, 0x53053053) = 0", "103 tkill(102, SIGURG) = 0",
+            "101 <... clone3 resumed>) = 102",
+            "101 exit_group(0) = ?", "101 +++ exited with 0 +++", "102 +++ exited with 0 +++", "103 +++ exited with 0 +++"
+        ], "/pkg/martlet-host", ["--help"], false);
+        Assert.Equal(3, summary.ProcessIds);
+    }
+
+    [Fact]
+    public void Copied_descriptor_inheritance_is_rejected_if_unobserved_creation_overlaps_parent_rebinding()
+    {
+        var error = Assert.Throws<InvalidDataException>(() => TracePolicy.Validate(
+        [
+            Root, "101 pipe2([3<pipe:[777]>, 4<pipe:[777]>], O_CLOEXEC) = 0",
+            "101 clone3({flags=CLONE_VM|CLONE_THREAD|CLONE_FILES, exit_signal=0}, 88) = 103",
+            "101 clone3({flags=CLONE_VM|CLONE_VFORK, exit_signal=SIGCHLD}, 88 <unfinished ...>",
+            "103 close(4<pipe:[777]>) = 0", "102 rseq(0x2000, 32, 0, 0x53053053) = 0",
+            "101 <... clone3 resumed>) = 102",
+            "102 exit_group(0) = ?", "102 +++ exited with 0 +++",
+            "101 exit_group(0) = ?", "101 +++ exited with 0 +++", "103 +++ exited with 0 +++"
+        ], "/pkg/martlet-host", ["--help"], true));
+        Assert.Contains("ambiguous-fork-descriptors", error.Message);
+    }
 }

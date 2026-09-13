@@ -78,7 +78,7 @@ internal static class TracePolicy
             if (!call.Success) Fail("call-syntax");
             if (call.Groups["name"].Value.Length > 64) Fail("syscall-name");
             var result = call.Groups["result"].Value;
-            if (!Rx(@"^(?:-?[0-9]+|0x[0-9a-f]+)(?:<[^<>]*>)?(?: .*)?$|^\?(?: ERESTART[A-Z]+ .*)?$").IsMatch(result))
+            if (!Rx(@"^(?:-?[0-9]+|0x[0-9a-f]+)(?:<[^<>]*(?:<(?:char|block) [0-9]+:[0-9]+(?: @/dev/pts/[0-9]+)?>)?>)?(?: .*)?$|^\?(?: ERESTART[A-Z]+ .*)?$").IsMatch(result))
                 Fail("result-syntax-" + call.Groups["name"].Value + "-" +
                     (Rx(@"\bE[A-Z_]{1,32}\b").Match(result) is { Success: true } code ? code.Value : "scalar"));
             var syscall = call.Groups["name"].Value;
@@ -98,7 +98,9 @@ internal static class TracePolicy
         {
             if (!PositiveResult(call.Result, out var child)) continue;
             if (child == root || child == call.Pid || !parents.TryAdd(child, call.Pid) || parents.Count > 128) Fail("process-tree");
-            born.Add(child, call.Started);
+            var firstRecord = calls.Where(c => c.Pid == child).Select(c => c.Started).DefaultIfEmpty(call.Completed).Min();
+            if (firstRecord < call.Started) Fail("child-before-creation");
+            born.Add(child, Math.Min(call.Completed, firstRecord));
         }
         bool Owned(int pid)
         {
@@ -113,9 +115,19 @@ internal static class TracePolicy
             !events.Any(e => e.Pid == pid && e.Line <= at && e.Text.StartsWith("+++ ", StringComparison.Ordinal));
         foreach (var call in calls) if (!Owned(call.Pid)) Fail("unowned-pid");
         var descriptors = new TraceDescriptors(root);
+        var awaitingAdmission = new HashSet<int>();
+        void AdmitThrough(int line)
+        {
+            foreach (var pid in awaitingAdmission.Where(p => born[p] <= line).OrderBy(p => born[p]).ToArray())
+            {
+                descriptors.Admit(pid);
+                awaitingAdmission.Remove(pid);
+            }
+        }
         var execs = 0; var processSpawns = 0;
         foreach (var call in calls.OrderBy(c => c.Started))
         {
+            AdmitThrough(call.Started);
             var a = call.Args;
             switch (call.Name)
             {
@@ -205,8 +217,19 @@ internal static class TracePolicy
                     if (a.Length != arity) Fail("call-arity-" + call.Name);
                     break;
             }
-            descriptors.Apply(call);
+            if (call.Name is "clone" or "clone3" or "fork" or "vfork")
+            {
+                if (PositiveResult(call.Result, out var child))
+                {
+                    descriptors.BeginCreation(call, child);
+                    awaitingAdmission.Add(child);
+                    AdmitThrough(call.Started);
+                }
+            }
+            else descriptors.Apply(call);
         }
+        AdmitThrough(lineCount);
+        if (awaitingAdmission.Count != 0) Fail("unobserved-creation");
         var terminated = new Dictionary<int, (int Code, int Line)>();
         foreach (var item in events)
         {

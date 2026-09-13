@@ -17,7 +17,11 @@ internal sealed class TraceDescriptors
         public int Group { get; } = group;
         public Dictionary<int, Descriptor> Files { get; set; } = files;
     }
+    private sealed record Creation(int Parent, int Group, bool Shared, Dictionary<int, Descriptor> Table, int Version,
+        Dictionary<int, Descriptor> Snapshot);
     private readonly Dictionary<int, Process> processes;
+    private readonly Dictionary<int, Creation> pending = [];
+    private readonly Dictionary<Dictionary<int, Descriptor>, int> revisions = [];
 
     public TraceDescriptors(int root) => processes = new()
     {
@@ -31,18 +35,28 @@ internal sealed class TraceDescriptors
 
     public int Group(int pid) => processes.TryGetValue(pid, out var process) ? process.Group : throw Error("unowned-process");
 
+    public void BeginCreation(TracePolicy.Call call, int child)
+    {
+        if (!processes.TryGetValue(call.Pid, out var parent)) throw Error("unowned-parent");
+        var group = call.InputFlags.Contains("CLONE_THREAD") ? parent.Group : child;
+        if (!pending.TryAdd(child, new(call.Pid, group, call.InputFlags.Contains("CLONE_FILES"), parent.Files,
+            Version(parent.Files), new(parent.Files)))) throw Error("duplicate-creation");
+    }
+
+    public void Admit(int child)
+    {
+        if (!pending.Remove(child, out var creation)) throw Error("unobserved-creation");
+        var parent = processes[creation.Parent];
+        if (!creation.Shared && (parent.Files != creation.Table || Version(parent.Files) != creation.Version))
+            throw Error("ambiguous-fork-descriptors");
+        var files = creation.Shared ? parent.Files : creation.Snapshot;
+        if (!processes.TryAdd(child, new(creation.Group, files))) throw Error("duplicate-process");
+    }
+
     public void Apply(TracePolicy.Call call)
     {
         if (!processes.TryGetValue(call.Pid, out var process)) throw Error("descriptor-process-order");
         var a = call.Args;
-        if (call.Name is "clone" or "clone3" or "fork" or "vfork")
-        {
-            if (!ResultFd(call.Result, out var child) || child == 0) return;
-            var group = call.InputFlags.Contains("CLONE_THREAD") ? process.Group : child;
-            var files = call.InputFlags.Contains("CLONE_FILES") ? process.Files : new(process.Files);
-            if (!processes.TryAdd(child, new(group, files))) throw Error("duplicate-process");
-            return;
-        }
         if (call.Name == "execve" && call.Result == "0")
         {
             if (process.Group != call.Pid) throw Error("thread-exec");
@@ -58,7 +72,11 @@ internal sealed class TraceDescriptors
                 break;
             case "close":
                 Get(process, a[0]);
-                if (call.Result == "0") process.Files.Remove(Number(a[0]));
+                if (call.Result == "0")
+                {
+                    process.Files.Remove(Number(a[0]));
+                    Changed(process.Files);
+                }
                 break;
             case "dup": case "dup2": case "dup3":
                 var source = Get(process, a[0]);
@@ -77,6 +95,7 @@ internal sealed class TraceDescriptors
                 {
                     if (a.Length != 3 || a[2] is not ("0" or "FD_CLOEXEC")) throw Error("descriptor-flags");
                     process.Files[Number(a[0])] = descriptor with { CloseOnExec = a[2] == "FD_CLOEXEC" };
+                    Changed(process.Files);
                 }
                 break;
             case "pipe": case "pipe2":
@@ -132,11 +151,14 @@ internal sealed class TraceDescriptors
         }
         return descriptor;
     }
-    private static void Set(Process process, int fd, Descriptor value)
+    private void Set(Process process, int fd, Descriptor value)
     {
         if (process.Files.Count >= 4096 && !process.Files.ContainsKey(fd)) throw Error("descriptor-limit");
         process.Files[fd] = value;
+        Changed(process.Files);
     }
+    private int Version(Dictionary<int, Descriptor> table) => revisions.GetValueOrDefault(table);
+    private void Changed(Dictionary<int, Descriptor> table) => revisions[table] = Version(table) + 1;
     private static string? Label(string value)
     {
         var begin = value.IndexOf('<');
