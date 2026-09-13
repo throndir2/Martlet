@@ -14,6 +14,12 @@ The existing foundation/planning documents retain their broader future gates.
 
 ## Developer commands
 
+All validation below runs locally under the
+[repository policy](../../README.md#local-only-validation-policy). Keep every
+package assertion, repeat-publish comparison and smoke gate. The retained
+`Test-WorkflowExit.ps1` exercises the former GitHub pwsh wrapper semantics as a
+local regression; it neither invokes Actions nor requires a workflow definition.
+
 Run from the repository root on Windows x64 with PowerShell 7 and the exact
 SDK in `global.json` (10.0.401). The scripts accept an explicit, read-only
 `-DotnetPath` and set `DOTNET_ROOT`, process PATH, telemetry opt-out and certificate
@@ -68,9 +74,9 @@ escape-looking names such as `%2C` or `%3B`. Spaces and Unicode are supported.
 `Smoke-Package.ps1` always launches the actual native Doctor apphost. The
 `-InteractiveDesktop` switch additionally launches the native WPF apphost, reads
 first-run status and exercises the accessible fixture controls/Stop/retry/close.
-It is deliberately opt-in on interactive developer desktops; hosted CI runs
-Doctor only, not a simulated interactive or clean-OS claim. Both programs receive
-a unique temporary Unicode data path. The smoke checks read-only launch and
+It is deliberately opt-in on interactive developer desktops; without the switch,
+the local smoke runs Doctor only, not a simulated interactive or clean-OS claim.
+Both programs receive a unique temporary Unicode data path. The smoke checks read-only launch and
 existing/malformed settings preservation, snapshots real settings without
 displaying their contents, and fails on unexpected writes.
 
@@ -177,9 +183,10 @@ must coordinate central pins, refresh/review the normal locks and use:
 ```
 
 Review/commit all affected RID locks and any new notices/native inventory, then
-rerun ordinary locked publishing and the foundation lane. Only this explicit
-maintenance command uses `--force-evaluate`; ordinary publish/CI never regenerates
-locks. Framework runtime archives are also pinned separately because NuGet
+rerun ordinary locked publishing and the local foundation checks. Only this
+explicit maintenance command uses `--force-evaluate`; ordinary
+publish/validation never regenerates locks. Framework runtime archives are also
+pinned separately because NuGet
 framework downloads are not represented as ordinary package lock dependencies.
 
 Payload manifests contain a sorted complete relative file inventory, lengths,
@@ -299,9 +306,11 @@ Required for each changed app graph on the existing Windows developer host:
 two actual locked self-contained publishes, native CLI/WPF smoke,
 integrity/negative coverage, repeat-publish equality and real Inno compilation.
 Lock refresh or read-only compiler receipt verification alone does **not**
-complete those payload gates. The dedicated pinned/read-only CI lane
-performs two publishes, assertions, native Doctor smoke and compilation only.
-It neither installs Martlet nor uploads releases/artifacts.
+complete those payload gates. The former dedicated hosted lane is removed;
+run the commands above locally, including the retained wrapper regression.
+These developer commands neither install Martlet nor upload releases/artifacts.
+The minimal remote build/release exception does not authorize moving these
+validation gates into an Action or creating a replacement workflow.
 
 **Not run:** clean standard-user Windows with no SDK/preinstalled .NET; actual
 install/uninstall/reinstall/repair; Start menu/registered uninstall operation;

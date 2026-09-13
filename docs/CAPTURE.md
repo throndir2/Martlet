@@ -287,8 +287,9 @@ No test or smoke opens a physical microphone, enumerates a physical endpoint,
 plays audio, or changes devices/privacy. Compiling WPF/WASAPI and passing fake-
 device tests is not hardware evidence. No native audio smoke helper is installed.
 
-Use the existing locked CI workflow and SDK; e.g. with `CI=true` and an isolated
-artifact directory consistently supplied to all commands:
+Use the pinned SDK and existing locked local validation commands under the
+[repository policy](../README.md#local-only-validation-policy); e.g. with
+`CI=true` and an isolated artifact directory consistently supplied to all commands:
 
 ```powershell
 dotnet restore Martlet.slnx --locked-mode --artifacts-path C:\OwnedSession\ci-artifacts

@@ -8,6 +8,15 @@ Read [scope and decisions](../DEVELOPMENT_PLAN.md), [contracts](ARCHITECTURE.md)
 The original empty baseline is historical. Current implementation and evidence
 must not be confused with the broader planned milestones below.
 
+**Current validation policy, 2026-09-13:** follow the
+[local-only repository policy](../README.md#local-only-validation-policy).
+Earlier hosted-CI plans are superseded, not evidence of local success. All
+test, smoke, package-integrity and qualification gates below run locally in
+suitable authorized environments, with independent review and normal merge
+requirements. Missing native/OS/model/hardware evidence remains NOT RUN or
+blocked for that qualification; independent local development can continue.
+No replacement Action or release is requested by this plan.
+
 ### Current internal implementation
 
 | Item | Actual status |
@@ -17,10 +26,10 @@ must not be confused with the broader planned milestones below.
 | F01 | Offline accessible text/status shell, explicit unconfigured-profile save, atomic validated settings and truthful shared-status CLI implemented. Local developer-host build/tests/CLI and bounded desktop-launch scope are documented; no clean consumer-OS claim. |
 | F03a/F03b/F04 | Merged deterministic 30-script fixture engine, bounded real PCM sink/WASAPI adapter and local diagnostic registry/CLI/WPF shell. Headless evidence is not actual listening or install qualification. |
 | F03c | Shared `FixtureSession` now joins production cursor/validator, ordered synthetic text, optional actual sink, shared status and accessible Desktop/Doctor commands. Ten novice scenarios, per-action tone permission, Stop/fresh IDs/epochs, no default device/network/write effects. |
-| F05 integration | Normal solution includes fixture projects/tests and session tests; portable/Windows Doctor executable smokes run in the existing pinned lane. Packaging includes actual fixture/audio references, separate normal/RID locks, notices and audio-OFF native fixture smokes. |
+| F05 integration | Normal solution includes fixture projects/tests and session tests; portable/Windows Doctor executable smokes remain required local checks with the pinned SDK. Packaging includes actual fixture/audio references, separate normal/RID locks, notices and audio-OFF native fixture smokes. |
 | V02a | Configuration-only [Setup / resume](SETUP.md): fixture or named OpenAI routes, exact per-role destination selection, strict v2 settings with explicit v1 snapshot migration, and real scoped Windows Credential Manager code. No provider registration/calls, fake completed voice setup or persisted per-turn spending permission. Native wrapper is fake-boundary tested, not OS-vault roundtrip qualified. V01b/V02b/V03/V04 live/audio integration remains. |
 | V02b / V05 / V04a | Reviewed local audio choices/tests, deterministic participation policy and reusable typed text-to-voice runtime are merged foundations; their internal fixture evidence does not qualify a real account or device. |
-| V04b | [Explicit Desktop API conversation](CONVERSATION.md) joins saved route/vault bindings, local audio policies, typed or <=25 s PTT, named STT, pre-dispatch policy and streaming LLM/optional TTS/PCM sink. One app-shared effect owner, fresh bounded per-action envelope, exact reservations/role permissions, original cancellation/expiry and ownership quarantine. Text-only sends no TTS and opens no output. Root graph now includes existing Providers/Conversation/Participation and their suites; dedicated lanes remain. |
+| V04b | [Explicit Desktop API conversation](CONVERSATION.md) joins saved route/vault bindings, local audio policies, typed or <=25 s PTT, named STT, pre-dispatch policy and streaming LLM/optional TTS/PCM sink. One app-shared effect owner, fresh bounded per-action envelope, exact reservations/role permissions, original cancellation/expiry and ownership quarantine. Text-only sends no TTS and opens no output. Root graph now includes existing Providers/Conversation/Participation and their suites; dedicated local project commands remain. |
 | V06b | [Desktop Troubleshooting](TROUBLESHOOTING.md) integrates the merged Support engine: passive shared status, explicit OFF-by-default local journal, bounded typed live/fixture metadata, exact five-file preview, default-No destination-bound create-only ZIP and retained cleanup ownership. Support projects join the solution/Desktop/package graph. Doctor help is read-only; no CLI export, upload or support contact channel. Internal functionality, not G2/support-service qualification. |
 | V07a | [Local configuration recovery](TROUBLESHOOTING.md#local-configuration-backup--restore-v07a): bounded versioned integrity envelope of exact validated settings; explicit Desktop create-only backup and immutable default-No restore preview; existing valid same-profile v1/v2 only; inert preferences, unbound imported keys, current owned cleanup retained; fresh byte-exact pre-restore original and shared writer/effect ownership. No new dependencies or settings authority. Not portable import, corrupt-store repair, binary rollback or clean-VM qualification. |
 | F02 / G1 onward | F02 merged at `8a762cd930741208daa61e9df9b8d860cf4768de` and was normally integrated, not copied. Self-contained payload/unsigned installer build paths exist. Clean-VM lifecycle, physical audio, real AI/GPU, Ubuntu, signing, rights and release qualification remain **NOT RUN / NOT PASSED**. |
@@ -40,8 +49,10 @@ must not be confused with the broader planned milestones below.
 Local evidence uses official SDK 10.0.401 and `CI=true`: locked restore, Release
 build and full affected solution tests with one session-local `C:` output via
 `--artifacts-path` (the existing `D:` pooled-drive native-testhost issue).
-Repository source remains on `D:`. The normal hosted CI commands/pins are
-unchanged; no framework, runner or protection was weakened. Executable smokes
+Repository source remains on `D:`. At the original F03c/F05 checkpoint, the
+hosted CI commands/pins were unchanged; no framework, runner or protection was
+weakened. The current policy removes hosted validation definitions, not the
+underlying local commands or assertions. Executable smokes
 select these actual outputs using `-ExecutablePath`, not stale repository
 binaries. See [DIAGNOSTICS](DIAGNOSTICS.md#offline-fixture-experience-f03c) for
 commands, public seam, metadata/content scope, bounds and deterministic cases.
@@ -142,8 +153,12 @@ Before implementation, approve the architecture/contract decisions affected by
 the task, inspect current repository instructions, and coordinate ownership of
 shared files. A PR needs production-path tests where feasible, a reproducible
 acceptance description, documentation/remedies for new behavior, independent
-review, and fixes/revalidation before merge. No disabled checks or fixture
-substitution for missing hardware evidence.
+review, and fixes/local revalidation before merge. Run targeted checks first
+and the full affected suites before acceptance; retain actual local package
+and smoke gates when the app graph changes. No weakened assertions, bypassed
+required checks or fixture substitution for missing hardware evidence. If a
+pre-existing required hosted check cannot be produced under the policy, report
+the exact requirement rather than change protections or fabricate a pass.
 
 The product owner's distribution/cloud choices and restricted-model/SDK rights
 remain real decisions. Signing credentials, a spending budget, deployment,
@@ -177,7 +192,7 @@ remain gates for their own features rather than block fixture work.
 | F02 | Self-contained Windows publish and per-user installer skeleton / packaging | F01 | AC-02 on clean Windows: install/launch/repair/uninstall with no dev tools/runtime download; stable app identity and preserved settings; internal unsigned artifact labeled non-release | M |
 | F03 | Deterministic fixture provider + contract harness, owned/licensed audio fixtures and minimal reusable PCM playback sink / core + audio | D02, F01 | Actual core/playback paths run without keys/internet/GPU; simulated failures/delays/duplicates identifiable; AC-01/AC-03 fixture cases. V01 extends this sink rather than creating a second audio stack | M |
 | F04 | Shared read-only probe registry, CLI JSON/exit codes, UI pipeline status and first error remedies / diagnostics | F01, F03 | AC-04: same probe results/codes in UI/CLI; stale/unknown/skipped never green; explicit fixture provenance; first mic/output probes fit registry | M |
-| F05 | Minimal CI lanes and artifact manifests for solution, contracts, fixtures, packaging / release | F02, F03, F04 | Build/test/package jobs use pinned dependencies, no credentials in ordinary PRs, no network inference/model downloads; failed fixture or package task fails the lane | M |
+| F05 | Local validation commands and artifact manifests for solution, contracts, fixtures, packaging / release | F02, F03, F04 | Local build/test/package checks use pinned dependencies, no credentials or network inference/model downloads in ordinary validation; failed fixture or package tasks fail local acceptance; independent review before merge | M |
 
 **Exit G1:** a clean Windows machine runs the fixture demo and diagnosis without
 AI hardware, credentials, or development tools. No claim of real AI yet.
@@ -292,15 +307,16 @@ Start from the reviewed plan. The shortest useful batch is:
    `tests\fixtures` and fixture adapters, **F03b** owns the minimal
    `src\Martlet.Audio` playback sink, and **F04** owns diagnostic UI/probes.
    F04 can implement its registry in parallel, but its acceptance waits for F03.
-4. **F05:** connect only the existing solution/fixture/packaging commands to CI
-   after those commands work. Run a clean Windows install/fixture walkthrough.
+4. **F05:** retain the existing solution/fixture/packaging commands as local
+   gates with recorded evidence and independent review. Run a clean Windows
+   install/fixture walkthrough in a separately authorized local environment.
 5. Then parallelize **V01** audio and **V03** provider adapters against D02;
    V02 onboarding integrates validated audio/provider contracts, and V04 joins
    the paths. Policy, retention, and diagnostics are not deferred to release.
 
 Do not ask separate sessions to implement full companions, select different UI
 frameworks, or share a worktree. Assign one owner per changed schema/settings/
-solution/CI file; interface changes require coordination and contract review.
+solution/validation file; interface changes require coordination and contract review.
 Feature branches depend on merged prerequisites or explicitly stacked PRs.
 Hardware tests, signing, and external paid calls are scheduled gates, not tasks
 silently delegated to agents without access.
@@ -369,23 +385,27 @@ buffers matter. No API latency is guaranteed by upstream documentation.
 Failure to hit targets triggers scope/model/UX reconsideration, not changed
 measurement conditions hidden from the user.
 
-## 6. Validation lanes and clean-machine matrix
+## 6. Local validation lanes and clean-machine matrix
 
 | Lane | Environment / execution | What it proves and does not prove |
 | --- | --- | --- |
-| CI-unit | Selected .NET runner, pure policy/settings/bounds/redaction tests | Deterministic logic; not audio devices or cloud/GPU inference |
-| CI-contract | Fake HTTP/SSE/WebSocket servers, golden vendor/native payloads | Schema normalization, truncation/duplicate/timeout/cancel semantics; not provider availability |
-| CI-fixture integration | Real core and diagnostic CLI with synthetic providers/audio | End-to-end state/probe/privacy plumbing with no paid requests; not model quality |
-| CI-packaging smoke | Windows build/install artifacts where runner permits; Ubuntu CPU image/config checks | Build/package layout and declared dependencies; hosted runners are not clean consumer PCs |
-| Scheduled opt-in API | Authorized low-budget credentials in protected environment, never untrusted fork PRs | Actual selected STT/LLM/TTS tuple/date only; tracks quota/cost and drift |
+| Local unit | Existing pinned .NET/xUnit runner, pure policy/settings/bounds/redaction tests | Deterministic logic; not audio devices or cloud/GPU inference |
+| Local contract | Fake HTTP/SSE/WebSocket servers, golden vendor/native payloads | Schema normalization, truncation/duplicate/timeout/cancel semantics; not provider availability |
+| Local fixture integration | Real core and diagnostic CLI with synthetic providers/audio | End-to-end state/probe/privacy plumbing with no paid requests; not model quality |
+| Local packaging smoke | Windows build/install artifacts on authorized local hosts; Ubuntu CPU image/config checks on an actual suitable local Linux environment | Build/package layout and declared dependencies; developer hosts are not clean consumer PCs and Windows inspection is not Linux execution |
+| Manual opt-in API | Separately authorized low-budget account/data/credentials, driven locally; never ordinary validation or untrusted code | Actual selected STT/LLM/TTS tuple/date only; tracks quota/cost and drift |
 | Real Windows gate | Clean Windows 11 25H2 x64 Home/Pro VM plus physical audio PC; standard/admin accounts | Install, permissions, signatures, device churn, no-dev-tool prerequisites, usability |
 | Real Ubuntu gate | Clean 24.04 x86_64, then qualified NVIDIA hardware | System services, driver/runtime/model fit, reboot/start/stop; CPU containers alone cannot pass GPU cells |
 | Witnessed two-host gate | Actual Windows + both Ubuntu PCs, known LAN, selected role manifests | Authentication/firewalls, combined roles, failures, streaming, performance; host-2 fixture gate cannot certify real perception |
 
-Select a conventional .NET test runner such as xUnit in D01 and use it
-consistently. Add Python worker tests only when a worker exists, using that
-worker's chosen tooling. No expensive model pulls in ordinary CI. Once commands
-exist, run narrow related tests first and expand only as needed.
+Use the existing pinned .NET/xUnit runner consistently. Add Python worker tests
+only when a worker exists, using that worker's chosen tooling. No expensive
+model pulls in ordinary local validation. Run narrow related tests first, then
+the full affected suites and applicable local build/package/smoke gates. Keep
+environment, exact revision, results and known limitations with the evidence.
+Unavailable environments remain explicit qualification blockers. Do not use
+remote validation runners to fill the gap. Installing VM/WSL/Docker/driver
+infrastructure requires separate host authorization; this plan grants none.
 
 Required cross-cutting scenarios for relevant lanes:
 
@@ -409,10 +429,14 @@ identifiers/recordings outside public artifacts; publish sanitized evidence.
 
 Signing keys never enter source, ordinary logs, or untrusted PR jobs. Choose a
 publisher/signing mechanism with owner approval and budget before G2; do not
-buy a certificate or publish a release merely to satisfy a checklist. CI may
-produce unsigned internal artifacts, but it must not label them official.
-Validate update signatures, trusted origin, rollback policy, and provenance;
-a matching unsigned checksum alone does not establish publisher identity.
+buy a certificate or publish a release merely to satisfy a checklist. Local
+builds may produce unsigned internal artifacts, but must not label them official.
+Only an explicitly requested minimal remote build/package/release is permitted;
+it contains no tests, smoke, qualification or reproducibility checks, and uploads
+or release publication require separate authorization. Do not create one merely
+to satisfy this plan. Validate update signatures, trusted origin, rollback policy,
+and provenance locally; a matching unsigned checksum alone does not establish
+publisher identity.
 
 Stable and beta are explicit channels with a supported current/previous
 compatible version policy. Document schema incompatibility, security patch
@@ -456,7 +480,7 @@ version, stage/code and reproducible steps first, not a full raw recording.
 | R14: Unified status/doctor, fixtures, redaction and support | F03-F04, V06-V07 / M1-M2 | AC-03/AC-04/AC-10, G1-G2 |
 | R15: F5 licensing/streaming truth, separate upstream asset terms | D01, H02, H04, A01 / M0-M5 | AC-01/AC-11/AC-17; research S15-S18/S26-S28 |
 | R16: Hardware-dependent tuning/remote desktop remain optional | H06 / M3 | AC-14 only when enabled; no wiring/circuit-safety claim |
-| R17: Measured real-OS/GPU gates, CI, signing and support readiness | F05, V07, H06, P04, A03 / M1-M5 | G1-G5, all relevant AC cases; never fixture-only hardware support |
+| R17: Measured real-OS/GPU gates, local validation, signing and support readiness | F05, V07, H06, P04, A03 / M1-M5 | G1-G5, all relevant AC cases; never fixture-only hardware support |
 | R18: Optional later avatar and no-avatar parity | A01-A03 / M5 | AC-17, G5 |
 
 ## 9. Handoff and evidence still required

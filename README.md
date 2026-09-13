@@ -51,6 +51,45 @@ The repository
 does not have a project license; selecting one is an owner decision before
 distributing software. No code license grant is implied.
 
+## Local-only validation policy
+
+**Current owner policy, 2026-09-13: local gates, never remote validation.**
+This supersedes earlier plans for hosted CI. Do not create, enable, dispatch or
+retry remote test/validation pipelines, including GitHub Actions with
+self-hosted runners. Do not restore Actions billing, increase spending limits
+or use another hosted service to obtain validation evidence.
+
+Retain pinned dependencies, locked restores, production-backed tests, package
+assertions, smoke/trace scripts and independent review. Run targeted local
+checks first, then the full affected suites and local build/package/smoke gates
+required by the change; fix findings, rerun affected checks and meet normal
+repository merge requirements before merging. Documentation-only changes need
+only applicable existing local documentation checks and diff review, not an
+application rebuild. `CI=true` remains a local MSBuild setting for locked restore
+and deterministic build metadata; it does not require a remote runner.
+
+The only permitted remote workflow exception is an **explicitly requested,
+minimal build/package/release**: restore necessary build dependencies and
+compile/package the requested deliverable. Upload or release publication needs
+separate authorization. No tests, lint, smoke, qualification, reproducibility
+checks, matrices or disguised validation belong in that workflow.
+Do not add ordinary PR/push/scheduled automation by default. This exception is
+not a request to create a workflow or publish a release; no replacement
+workflow is provided.
+
+Before any push or PR creation/update, inspect the applicable workflow events,
+refs and resulting tree, including older branches that could restore deleted
+workflows. Establish a publication path that starts no remote validation.
+Report impossible required checks instead of bypassing/changing protections,
+inventing successful statuses or relying on skip markers. A publication hold
+does not prevent independent local implementation and review.
+
+Historical failed or blocked hosted results remain historical, not local passes.
+Real Windows/Linux, native-device, model/GPU and clean-machine qualifications
+still require actual execution in a suitable, separately authorized local
+environment. Missing access remains **NOT RUN / blocked**, not permission to
+substitute fixtures or install a VM, WSL, Docker, drivers or services.
+
 ## Developer quick start
 
 For **development**, use Windows with .NET SDK **10.0.401** (the exact .NET 10
@@ -113,7 +152,8 @@ For a UI-independent test build, run
 The full solution additionally builds the Windows-only WPF project and runs
 the existing fixture, audio and integration suites, including Providers,
 Conversation, Participation and Desktop's production-path in-process HTTP tests.
-Dedicated direct-project provider/runtime/policy CI remains enabled.
+Dedicated direct-project provider/runtime/policy commands remain available for
+targeted local validation; no hosted validation workflows are retained here.
 
 These SDK commands are **not the intended end-user installation experience**.
 The [internal packaging scripts](packaging/windows/README.md) now build complete
