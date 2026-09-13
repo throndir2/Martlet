@@ -1,13 +1,16 @@
 MARTLET - INTERNAL DEVELOPMENT ONLY - UNSIGNED
 
-This is an offline fixture demo and bundled Doctor, not an AI voice companion
-or supported novice release. All fixture text is scripted: FIXTURE - NOT AI.
+This internal build includes V04b real explicit typed / push-to-talk (PTT) app
+integration, the offline fixture demo and bundled Doctor. It is NOT a supported
+novice release or a verified live first trial. All fixture text is scripted:
+FIXTURE - NOT AI.
 There is no microphone capture, playback, provider/key/model lookup, login startup
 or network inference on launch. Demo defaults require no profile or sound device.
 Do not publish this installer or tell users to bypass SmartScreen/antivirus.
 No project code or asset license is granted. Distribution/signing remains gated.
 
-Start menu: Martlet (Internal) opens the offline fixture and status shell.
+Start menu: Martlet (Internal) opens the fixture/status shell. Real API
+conversation is a separate explicit action; opening it does not start a request.
 Martlet Doctor (Internal) opens a command window and prints the same status.
 In that window, run Martlet.Doctor.exe --help for the implemented CLI options.
 Doctor status can return 2 (incomplete/not ready), which is expected here.
@@ -17,9 +20,11 @@ Refusal and partial output remain distinct from a completed answer.
 
 Setup / resume saves configuration only: fixture (safe default), or named
 OpenAI routes with explicit upstream model/voice IDs and role-specific
-destination/data/cost choices. There is no provider call or real voice setup.
+destination/data/cost choices. Saving setup makes no provider call and does not
+establish account, model or device readiness.
 Use Back, Save checkpoint, Save and exit setup, and Reload to resume safely.
-Microphone audio would go to cloud STT, text to LLM, response text to TTS.
+In an authorized real action, microphone audio goes to cloud STT, text to LLM,
+and response text to TTS only when generated-voice output is selected.
 Screen/memory stay OFF; key validity, price and quota are unknown. The UI links
 official pricing and retention information. Saved choices never grant capture
 on launch or perpetual paid-request permission.
@@ -30,6 +35,31 @@ Ordinary status never reads a key. Replacement invalidates consent and detaches
 the old key; deletion is separately confirmed for an exact pending reference.
 Interrupted transactions retain pending cleanup metadata: reload and review.
 The OS vault does not protect against malware already running as your user.
+
+Real API conversation (separate from the fixture):
+  Save a supported named OpenAI configuration in Setup / resume; return and
+  Reload saved choices. Unsupported/missing routes remain unavailable. There
+  is no model discovery, automatic fallback, key validation or free-request
+  promise. Review the displayed supported IDs, destinations and one-action
+  data/cost/output envelope. A saved profile is NOT action permission.
+  Typed: enter text, authorize the next action, then Send typed text.
+  Typed text does not capture microphone audio; generated voice starts OFF.
+  PTT: separately authorize the action, bounded LOCAL microphone capture and
+  "separately permit uploading" audio to the named STT destination. Include
+  other people's speech only with their permission. STT may incur charges even
+  if participation policy suppresses an answer afterward. Hold PTT with mouse
+  or Space and release to send; accessible Invoke starts bounded recording,
+  then Finish recording and send submits it. No always-on listening.
+  Stop / revoke this action discards pending work. Pause, mute, focus loss,
+  session lock or closing revoke live work. Cleanup may still own the app slot;
+  wait for release rather than starting overlapping work. Provider-side charges
+  or speech already heard cannot be undone.
+  Retry requires a NEW explicit Send/PTT and fresh consent. No history is sent
+  and no earlier audio queue is replayed. Microphone/STT failure allows typed
+  fallback. Output failure retains response text; refusal remains separate.
+No Martlet.Support dependency or support-bundle gate is required by this path.
+This package does not itself prove live API/account/key/model validity,
+physical microphone/speaker behavior or consumer first-trial success.
 
 Doctor examples (no audio, network, settings writes or AI):
   Martlet.Doctor.exe self-test --scenario streaming --json
@@ -46,7 +76,7 @@ Check the current output, audience and volume first. This is a faded 200 ms
 synthetic tone, NOT spoken AI. Default output binds once at start, with no
 automatic following, fallback or replay. Device failure leaves text usable.
 Submitted/device-consumed samples do not prove audibility. Permission is not saved.
-No AI conversation or support-bundle promise is implied by this build.
+Fixture success does not verify real AI conversation or support-bundle behavior.
 
 Installed program files:
   %LocalAppData%\Programs\Martlet Internal\Desktop\Martlet.Desktop.exe
@@ -77,6 +107,10 @@ hide a failure. This self-contained build is expected to carry its own runtime.
 Manifest/checksums and upstream notices are included alongside the applications.
 Checksums detect corruption; they are not a publisher signature or trust grant.
 
+NOT RUN for this V04b integration: real API/account or vault effects, physical
+microphone/speaker trials, clean-Windows installation, a live first trial,
+signing or release. Deterministic offline fixtures remain available unchanged;
+their success must not be presented as any of those external gates.
 Windows 11 25H2 x64 is the target, not a qualified support claim. Clean-machine
 install/uninstall/repair, interrupted upgrade, disk-full, novice usability and
 signed-download tests still require an isolated Windows VM and release approval.

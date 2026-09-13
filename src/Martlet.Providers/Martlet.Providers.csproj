@@ -3,5 +3,6 @@
     <ProjectReference Include="..\Martlet.Core\Martlet.Core.csproj" />
     <InternalsVisibleTo Include="Martlet.Providers.Tests" />
     <InternalsVisibleTo Include="Martlet.Conversation.Tests" />
+    <InternalsVisibleTo Include="Martlet.Desktop.Tests" />
   </ItemGroup>
 </Project>

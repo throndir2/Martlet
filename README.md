@@ -1,18 +1,27 @@
 # Martlet
 
-**Status: internal offline fixture product, not a working AI companion.**
-Martlet has an accessible Windows desktop demo and Doctor self-test, using the
+**Status: internal explicit API conversation integration; not a qualified release.**
+Desktop now has a separate [real API conversation](docs/CONVERSATION.md) surface:
+explicit typed input or bounded push-to-talk through configured OpenAI STT,
+participation policy, streaming LLM and optional generated voice/playback.
+Each new action requires a bounded data/cost/output authorization; no credentials,
+network or audio are accessed on launch. Text-only never requests TTS or opens output.
+Actual account/device/first-conversation qualification remains **NOT RUN**.
+
+Martlet also retains an accessible Windows desktop demo and Doctor self-test, using the
 production text validator, bounded session state, diagnostics and optional PCM
 sink. All demo text is authored synthetic content, **FIXTURE - NOT AI**.
 The fixture uses no microphone, provider, network, credentials or GPU. Audio is OFF by
 default; the separate confirmed 200 ms tone is not speech or proof of audibility.
 Resumable configuration and explicit Windows credential actions are available
 through **Setup / resume**; see [SETUP](docs/SETUP.md). Saved API routes are not
-working connections. **Audio setup (local only)** offers explicit microphone/
+verified connections or spending permission. **Audio setup (local only)** offers explicit microphone/
 output selection and separately confirmed bounded local capture/tone tests.
 Opening it does not enumerate or open devices. Historical local checkpoints
-are not device readiness or permission to listen later. Real conversations,
-learned VAD, signed installation and supported end-user deployment are not available.
+are not device readiness or permission to listen later. Learned VAD, acoustic
+wake words, automatic name/group listening, signed installation and supported
+end-user deployment are not available. A PC microphone does not automatically
+capture remote participants.
 
 The intended first experience is a Windows installer, microphone and speaker
 setup, an explicitly selected AI provider, and a working voice conversation
@@ -33,6 +42,7 @@ voice and installation take priority over avatars.
 | [Research and provenance](docs/RESEARCH.md) | Dated primary sources, verified constraints, and unresolved integration questions |
 | [Implemented foundation and decisions](docs/FOUNDATION.md) | Accepted/deferred decisions, exact APIs/bounds, current behavior and next ownership |
 | [Resumable setup and local audio](docs/SETUP.md) | V02a configuration/vault actions and V02b explicit local device tests, historical checkpoints, strict migration and remaining live gates |
+| [Explicit API conversation](docs/CONVERSATION.md) | V04b typed/PTT path, exact supported models and bounds, fresh authorization, Stop/cleanup, troubleshooting and separately authorized live-trial checklist |
 
 The broader plan documents remain future specifications except for the current
 implementation/acceptance ledger in [DELIVERY](docs/DELIVERY.md) and the
@@ -101,7 +111,9 @@ For a UI-independent test build, run
 `dotnet test tests\Martlet.Core.Tests -c Release` or
 `dotnet test tests\Martlet.Doctor.Tests -c Release`.
 The full solution additionally builds the Windows-only WPF project and runs
-the existing fixture, audio and integration suites.
+the existing fixture, audio and integration suites, including Providers,
+Conversation, Participation and Desktop's production-path in-process HTTP tests.
+Dedicated direct-project provider/runtime/policy CI remains enabled.
 
 These SDK commands are **not the intended end-user installation experience**.
 The [internal packaging scripts](packaging/windows/README.md) now build complete

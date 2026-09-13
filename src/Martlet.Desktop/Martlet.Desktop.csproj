@@ -5,6 +5,9 @@
     <UseWPF>true</UseWPF>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Martlet.Desktop.Tests" />
+    <ProjectReference Include="..\Martlet.Conversation\Martlet.Conversation.csproj" />
+    <ProjectReference Include="..\Martlet.Participation\Martlet.Participation.csproj" />
     <ProjectReference Include="..\Martlet.Credentials.Windows\Martlet.Credentials.Windows.csproj" />
     <ProjectReference Include="..\Martlet.Diagnostics\Martlet.Diagnostics.csproj" />
     <ProjectReference Include="..\Martlet.Audio\Martlet.Audio.csproj" />

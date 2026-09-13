@@ -43,17 +43,22 @@ $script:cases++
 
 $help = [IO.File]::ReadAllText((Join-Path $copy 'help\INTERNAL.txt'))
 foreach ($required in @('FIXTURE - NOT AI', 'self-test --scenario streaming --json',
-        'Stop fixture', 'NOT spoken AI', 'Permission is not saved.')) {
-    if (-not $help.Contains($required)) { throw "Installed fixture help is missing: $required" }
+        'Stop fixture', 'NOT spoken AI', 'Permission is not saved.',
+        'V04b', 'Send typed text', 'Stop / revoke this action', 'LOCAL microphone capture',
+        'separately permit uploading', 'NOT RUN', 'No Martlet.Support dependency')) {
+    if (-not $help.Contains($required)) { throw "Installed help is missing: $required" }
 }
 $script:cases++
 
-foreach ($relative in @('Doctor\Martlet.Doctor.exe', 'Desktop\coreclr.dll', 'Desktop\PresentationFramework.dll',
+$requiredFiles = @('Doctor\Martlet.Doctor.exe', 'Desktop\coreclr.dll', 'Desktop\PresentationFramework.dll',
         'Doctor\System.Text.Json.dll', 'notices\WPF-THIRD-PARTY-NOTICES.txt',
-        'Desktop\Martlet.Sessions.dll', 'Doctor\Martlet.Fixtures.dll', 'Doctor\Martlet.Audio.dll', 'Desktop\Martlet.Credentials.Windows.dll',
         'Desktop\NAudio.Wasapi.dll', 'Doctor\NAudio.Core.dll', 'Desktop\System.Numerics.Tensors.dll',
         'notices\NAudio-LICENSE.txt', 'notices\NAudio-THIRD-PARTY-NOTICES.txt',
-        'notices\System.Numerics.Tensors-LICENSE.txt', 'notices\System.Numerics.Tensors-THIRD-PARTY-NOTICES.txt')) {
+        'notices\System.Numerics.Tensors-LICENSE.txt', 'notices\System.Numerics.Tensors-THIRD-PARTY-NOTICES.txt')
+foreach ($entry in @('Desktop', 'Doctor')) {
+    $requiredFiles += @(Get-PublishProjectNames $entry | ForEach-Object { "$entry\$_.dll" })
+}
+foreach ($relative in $requiredFiles) {
     $path = Join-Path $copy $relative
     $bytes = [IO.File]::ReadAllBytes($path)
     try {
@@ -81,6 +86,40 @@ try {
     Assert-Fails 'wrong managed dependency version' { Test-PayloadManifest $copy } '*Missing or incorrect managed package*'
 }
 finally { [IO.File]::WriteAllBytes($depsPath, $originalDeps) }
+
+$desktopDepsPath = Join-Path $copy 'Desktop\Martlet.Desktop.deps.json'
+$desktopDeps = [IO.File]::ReadAllBytes($desktopDepsPath)
+foreach ($project in @('Martlet.Conversation', 'Martlet.Providers', 'Martlet.Participation')) {
+    try {
+        $changedDeps = [Text.Encoding]::UTF8.GetString($desktopDeps) | ConvertFrom-Json
+        $library = @($changedDeps.libraries.PSObject.Properties.Name | Where-Object { $_ -clike "$project/*" })
+        if ($library.Count -ne 1) { throw "Expected one $project dependency in Desktop." }
+        $target = $changedDeps.targets.PSObject.Properties[$changedDeps.runtimeTarget.name].Value
+        $changedDeps.libraries.PSObject.Properties.Remove($library[0])
+        $target.PSObject.Properties.Remove($library[0])
+        [IO.File]::WriteAllText($desktopDepsPath, ($changedDeps | ConvertTo-Json -Depth 100))
+        Assert-Fails "omitted $project dependency metadata" { Test-PayloadManifest $copy } '*Missing or unexpected project dependency*'
+        Assert-Fails "installer rejects omitted $project dependency metadata" {
+            Write-InstallerFileList $copy (Join-Path $WorkDirectory 'omitted-dependency.iss')
+        } '*Missing or unexpected project dependency*'
+
+        $changedDeps = [Text.Encoding]::UTF8.GetString($desktopDeps) | ConvertFrom-Json
+        $target = $changedDeps.targets.PSObject.Properties[$changedDeps.runtimeTarget.name].Value
+        $target.PSObject.Properties[$library[0]].Value.runtime.PSObject.Properties.Remove("$project.dll")
+        [IO.File]::WriteAllText($desktopDepsPath, ($changedDeps | ConvertTo-Json -Depth 100))
+        Assert-Fails "omitted $project runtime metadata" { Test-PayloadManifest $copy } '*Missing project runtime asset*'
+    }
+    finally { [IO.File]::WriteAllBytes($desktopDepsPath, $desktopDeps) }
+    $unexpected = Join-Path $copy "Doctor\$project.dll"
+    try {
+        Copy-Item -LiteralPath (Join-Path $copy "Desktop\$project.dll") -Destination $unexpected
+        Assert-Fails "Doctor excludes $project" { Test-PayloadManifest $copy } '*Unexpected Martlet assembly in Doctor*'
+        Assert-Fails "installer excludes $project from Doctor" {
+            Write-InstallerFileList $copy (Join-Path $WorkDirectory 'unexpected-project.iss')
+        } '*Unexpected Martlet assembly in Doctor*'
+    }
+    finally { [IO.File]::Delete($unexpected) }
+}
 
 $fakeCache = Join-Path $WorkDirectory 'invalid-package-cache'
 $packagePath = Join-Path $fakeCache 'naudio.wasapi\3.1.0\naudio.wasapi.3.1.0.nupkg'
@@ -217,6 +256,17 @@ $graph = Join-Path $WorkDirectory 'negative.restore-graph.json'
 $build = Join-Path $WorkDirectory 'negative-build'
 Invoke-Dotnet $sdk (@('msbuild', $project, '-t:GenerateRestoreGraphFile', "-p:RestoreGraphOutputPath=$graph",
     '-p:RuntimeIdentifier=win-x64', '-p:UseArtifactsOutput=true', "-p:ArtifactsPath=$build", '-verbosity:quiet') + $properties) -WorkingDirectory $source
+foreach ($projectName in @('Martlet.Conversation', 'Martlet.Providers', 'Martlet.Participation')) {
+    $projectLock = Join-Path $packaging "locks\$projectName.packages.lock.json"
+    $projectLockBytes = [IO.File]::ReadAllBytes($projectLock)
+    try {
+        [IO.File]::Delete($projectLock)
+        Assert-Fails "missing $projectName RID lock preflight" {
+            Assert-RestoreGraphLocks $graph (Join-Path $packaging 'locks')
+        } "*Missing committed RID lock: *$projectName.packages.lock.json*"
+    }
+    finally { [IO.File]::WriteAllBytes($projectLock, $projectLockBytes) }
+}
 $lock = Join-Path $packaging 'locks\Martlet.Core.packages.lock.json'
 $lockBytes = [IO.File]::ReadAllBytes($lock)
 try {

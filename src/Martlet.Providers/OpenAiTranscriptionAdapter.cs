@@ -36,9 +36,15 @@ public sealed class OpenAiTranscriptionAdapter : IDisposable
         IProviderCredentialSource credentials, TimeProvider? clock = null) =>
         new(handler, credentials, clock ?? TimeProvider.System, EvidenceProvenance.Fixture);
 
+    public Task<TranscriptionResult> TranscribeAsync(ProviderRequestContext context,
+        string upstreamModelId, BoundedWaveAudio audio, TranscriptionLimits limits,
+        AudioUploadAuthorization? authorization, CancellationToken cancellationToken = default) =>
+        TranscribeAsync(context, upstreamModelId, audio, limits, authorization, cancellationToken, CancellationToken.None);
+
     public async Task<TranscriptionResult> TranscribeAsync(ProviderRequestContext context,
         string upstreamModelId, BoundedWaveAudio audio, TranscriptionLimits limits,
-        AudioUploadAuthorization? authorization, CancellationToken cancellationToken = default)
+        AudioUploadAuthorization? authorization, CancellationToken cancellationToken,
+        CancellationToken operationCancellationToken)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
         ArgumentNullException.ThrowIfNull(context);
@@ -46,7 +52,7 @@ public sealed class OpenAiTranscriptionAdapter : IDisposable
         ArgumentNullException.ThrowIfNull(limits);
         context.Validate();
         limits.Validate();
-        if (cancellationToken.IsCancellationRequested)
+        if (cancellationToken.IsCancellationRequested || operationCancellationToken.IsCancellationRequested)
             return Canceled(context);
         long startedAt = clock.GetTimestamp();
         var startedUtc = clock.GetUtcNow();
@@ -77,7 +83,7 @@ public sealed class OpenAiTranscriptionAdapter : IDisposable
         try
         {
             window = new ProviderRequestWindow(clock, startedAt, startedUtc,
-                context.Deadline, limits.MaxRequestTime, authorization.ExpiresAt, cancellationToken);
+                context.Deadline, limits.MaxRequestTime, authorization.ExpiresAt, cancellationToken, operationCancellationToken);
             var token = window.Token;
             EnsureActive();
             using var credential = await credentials.ResolveAsync(binding, token).ConfigureAwait(false);
@@ -144,10 +150,14 @@ public sealed class OpenAiTranscriptionAdapter : IDisposable
             }
             catch (ContractException)
             {
-                return Failed(context, ProviderFailureCode.ResponseSchema);
+                return cancellationToken.IsCancellationRequested || operationCancellationToken.IsCancellationRequested
+                    ? Canceled(context) : Failed(context, ProviderFailureCode.ResponseSchema);
             }
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (Exception error) when (
+            (cancellationToken.IsCancellationRequested || operationCancellationToken.IsCancellationRequested) &&
+            error is OperationCanceledException or RequestCutoffException or CredentialUnavailableException or
+                HttpRequestException or IOException)
         {
             return Canceled(context);
         }

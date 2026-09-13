@@ -6,8 +6,9 @@ sink through a separate per-action synthetic-tone permission boundary.
 See [the fixture experience](DIAGNOSTICS.md#offline-fixture-experience-f03c).
 [V02b Audio setup](SETUP.md#explicit-local-audio-setup-v02b) additionally uses
 this same sink/tone for explicit selected-output local tests and human listening
-confirmation. The reviewed playback lifecycle is unchanged. VAD, loopback,
-provider APIs and avatars remain unwired in the Desktop.
+confirmation. The reviewed playback lifecycle is unchanged. The later
+[V04b explicit API conversation](CONVERSATION.md) now routes authorized
+TTS segments through this sink. Learned VAD, loopback and avatars remain unwired.
 Remote D02 protocols remain partial. Loading either assembly, constructing
 `PcmPlaybackSink` / `WasapiDeviceFactory`, or disposing an unused sink does
 not enumerate, activate or play an endpoint.

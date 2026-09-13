@@ -4,9 +4,12 @@
 
 **Implementation status update:** the subsequent D01/D02-first-slice/narrow-F01
 work is recorded in [Foundation decisions and boundaries](docs/FOUNDATION.md).
-The current internal offline fixture product and still-unpassed acceptance
+The current internal explicit typed/PTT API integration, preserved offline fixture and still-unpassed acceptance
 gates are tracked in [Delivery](docs/DELIVERY.md); this original plan is not
-a claim of live AI or qualified installation.
+a claim of live account/device qualification or qualified installation.
+The implemented V04b path and remaining manual gates are in
+[Explicit API conversation](docs/CONVERSATION.md); learned VAD and automatic
+name/group listening remain off.
 This plan's broader milestones remain proposals; that foundation does not
 establish a working conversation, installer or passed release gate.
 

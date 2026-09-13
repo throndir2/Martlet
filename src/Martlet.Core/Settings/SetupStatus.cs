@@ -42,12 +42,12 @@ public sealed record SetupStatus : IContract
     public string Describe()
     {
         Validate();
-        return $"Setup checkpoint: {Checkpoint}; configuration only, voice setup NOT complete.{Environment.NewLine}" +
+        return $"Setup checkpoint: {Checkpoint}; configuration only, live account and device readiness not established by this summary.{Environment.NewLine}" +
             string.Join(Environment.NewLine, Roles.Select(role =>
                 $"{role.Role}: {(role.RouteSelected ? "route selected" : "not configured")}; " +
                 $"{(role.DestinationSelected ? "destination selected, not per-turn permission" : "consent missing or invalidated; review in Setup")}; " +
-                $"{(role.CredentialReferenced ? "key referenced, presence/API validity unknown" : "key not configured")}; not connected.")) +
-            $"{Environment.NewLine}Capture/screen/memory OFF. {Audio?.Describe() ?? "Audio qualification NOT RUN."} Price and quota unknown. " +
+                $"{(role.CredentialReferenced ? "key referenced, presence/API validity unknown" : "key not configured")}; connection not checked by this summary.")) +
+            $"{Environment.NewLine}Saved choices do not authorize recording or provider requests; this summary does not start capture/screen/memory. {Audio?.Describe() ?? "Audio qualification NOT RUN."} Price and quota unknown. " +
             $"Detached key removals pending: {PendingRemovals}. Open Setup / resume; no secret lookup or network request was made.";
     }
 }

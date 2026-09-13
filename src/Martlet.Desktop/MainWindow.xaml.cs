@@ -16,6 +16,7 @@ public partial class MainWindow : Window
     private readonly SetupOperationRunner setupOperations = new();
     private readonly ISetupService? setupService;
     private readonly AudioSetupService audioSetup;
+    private readonly LiveConversationController? conversation;
     private readonly WindowsAudioSessionEvents audioSessionEvents = new();
     private readonly string? startupError;
     private readonly DiagnosticStatusModel? model;
@@ -38,7 +39,13 @@ public partial class MainWindow : Window
         this.store = store;
         audioSetup = new(setupOperations, new WindowsAudioDeviceCatalog(), new WasapiCaptureDeviceFactory(), new WasapiDeviceFactory());
         audioSessionEvents.LockedChanged += audioSetup.SetSessionLocked;
-        setupService = store is null ? null : new SetupService(store, new WindowsCredentialStore());
+        var vault = new WindowsCredentialStore();
+        setupService = store is null ? null : new SetupService(store, vault);
+        if (setupService is not null)
+        {
+            conversation = new(setupOperations, setupService, vault, new WasapiCaptureDeviceFactory(), new WasapiDeviceFactory());
+            audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
+        }
         this.startupError = startupError;
         ScenarioChoice.ItemsSource = FixtureSession.Scenarios;
         ScenarioChoice.SelectedIndex = 0;
@@ -58,7 +65,7 @@ public partial class MainWindow : Window
         else
         {
             PipelineText.Text = "Mic / VAD / STT / Policy / LLM / TTS / Playback: unavailable; not run. Correct the launch data directory first.";
-            DemoButton.IsEnabled = ToneButton.IsEnabled = ScenarioChoice.IsEnabled = SetupButton.IsEnabled = AudioSetupButton.IsEnabled = false;
+            DemoButton.IsEnabled = ToneButton.IsEnabled = ScenarioChoice.IsEnabled = SetupButton.IsEnabled = AudioSetupButton.IsEnabled = ConversationButton.IsEnabled = false;
         }
     }
 
@@ -84,11 +91,12 @@ public partial class MainWindow : Window
         StatusText.Text = model.Text;
         PipelineText.Text = string.Join(Environment.NewLine, model.Pipeline.Select(node => node.Description));
         ActivityText.Text = runningFixture ? "Offline fixture active. Stop fixture is available. No real provider or microphone is active."
-            : setupOperations.IsRunning ? "An app-shared setup/local audio worker owns resources. See Audio setup for current local stages; no provider is active."
+            : setupOperations.IsRunning ? "An app-shared setup/audio/conversation worker owns resources. Check its action window; new effects wait for actual cleanup."
             : model.Activity;
-        CreateButton.IsEnabled = !saving && !runningFixture && model.CanCreateProfile;
+        CreateButton.IsEnabled = !saving && !runningFixture && !setupOperations.IsRunning && model.CanCreateProfile;
         SetupButton.IsEnabled = !saving && !runningFixture && !model.IsRunning;
         AudioSetupButton.IsEnabled = SetupButton.IsEnabled;
+        ConversationButton.IsEnabled = SetupButton.IsEnabled;
         RefreshButton.IsEnabled = !saving && !runningFixture && model.CanRefresh;
         StopButton.IsEnabled = !saving && model.IsRunning;
         DemoButton.IsEnabled = ToneButton.IsEnabled = !saving && !runningFixture && !model.IsRunning && !setupOperations.IsRunning;
@@ -172,15 +180,28 @@ public partial class MainWindow : Window
             ActionText.Text = startupError;
             return;
         }
-        if (saving || closing || !model.CanCreateProfile)
+        if (saving || closing || setupOperations.IsRunning || !model.CanCreateProfile)
             return;
         saving = true;
         Render();
         try
         {
-            var result = await Task.Run(() => store.SaveAsync(AppSettings.CreateUnconfigured(), expectedRevision: null, lifetime.Token));
+            var backend = store;
+            var initial = AppSettings.CreateUnconfigured();
+            var worker = setupOperations.TryStart(async token => new(SetupWorkOutcome.Completed,
+                Saved: new(await backend.SaveAsync(initial, expectedRevision: null, token).ConfigureAwait(false), initial)));
+            if (worker is null) return;
+            if (await Task.WhenAny(worker.Completion, Task.Delay(TimeSpan.FromSeconds(5), lifetime.Token)) != worker.Completion)
+            {
+                worker.RequestCancellation();
+                if (!closing) ActionText.Text = "Save observation ended. Actual work may still own the app slot; refresh after release. No rollback is claimed.";
+                return;
+            }
+            var completed = await worker.Completion;
+            var result = completed.Saved?.Save;
             if (!closing)
-                ActionText.Text = result.Saved
+                ActionText.Text = result is null ? "Profile save failed or was canceled. Refresh local status."
+                    : result.Saved
                     ? "Unconfigured profile saved. Nothing was connected or enabled."
                     : $"{result.Error!.Summary} Next action ({result.Error.ActionId}): {DiagnosticCatalog.Remedy(result.Error.ActionId).Guidance}";
         }
@@ -205,6 +226,13 @@ public partial class MainWindow : Window
         await RefreshAsync();
     }
 
+    private async void Conversation_Click(object sender, RoutedEventArgs e)
+    {
+        if (conversation is null || closing || saving || runningFixture || model?.IsRunning == true) return;
+        new LiveConversationWindow(setupService!, setupOperations, conversation, audioSessionEvents, audioSetup) { Owner = this }.ShowDialog();
+        await RefreshAsync();
+    }
+
     private void Stop_Click(object sender, RoutedEventArgs e) => model?.Stop();
 
     private async void Window_Closing(object? sender, CancelEventArgs e)
@@ -218,13 +246,16 @@ public partial class MainWindow : Window
         ageTimer.Stop();
         fixtureTimer.Stop();
         audioSessionEvents.LockedChanged -= audioSetup.SetSessionLocked;
+        if (conversation is not null) audioSessionEvents.LockedChanged -= conversation.SetSessionLocked;
         audioSessionEvents.Dispose();
         lifetime.Cancel();
         fixtureOperation?.RequestCancellation();
+        setupOperations.RequestCancellation();
         IsEnabled = false;
         if (model is not null)
             await model.CloseAsync();
         await Task.Run(async () => await fixture.DisposeAsync());
+        if (conversation is not null) await Task.Run(async () => await conversation.DisposeAsync());
         // WPF OnMainWindowClose exits the process, including any non-cooperative in-process callback.
         // Even absent or synchronous cleanup must leave WPF's original Closing event before closing again.
         await Dispatcher.InvokeAsync(() =>

@@ -11,6 +11,14 @@
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
     <ProjectReference Include="..\..\src\Martlet.Desktop\Martlet.Desktop.csproj" />
     <Using Include="Xunit" />
+    <Using Include="System.IO" />
+    <Using Include="System.Net.Http" />
     <Compile Include="..\Martlet.Core.Tests\ManualClock.cs" Link="ManualClock.cs" />
+    <Compile Include="..\Martlet.Providers.Tests\ProviderFixtures.cs" Link="Fixtures\ProviderFixtures.cs" />
+    <Compile Include="..\Martlet.Providers.Tests\TextGenerationFixtures.cs" Link="Fixtures\TextGenerationFixtures.cs" />
+    <Compile Include="..\Martlet.Providers.Tests\SpeechSynthesisFixtures.cs" Link="Fixtures\SpeechSynthesisFixtures.cs" />
+    <Compile Include="..\Martlet.Audio.Tests\ControlledDevice.cs" Link="Fixtures\ControlledDevice.cs" />
+    <Compile Include="..\Martlet.Audio.Tests\CaptureTestDevices.cs" Link="Fixtures\CaptureTestDevices.cs" />
+    <Compile Include="..\Martlet.Conversation.Tests\ConversationFixtures.cs" Link="Fixtures\ConversationFixtures.cs" />
   </ItemGroup>
 </Project>

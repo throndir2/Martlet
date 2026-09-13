@@ -1,6 +1,7 @@
 # Delivery, acceptance, and release plan
 
-**Implementation ledger plus future gates.** The internal fixture subset below
+**Implementation ledger plus future gates.** The internal fixture and explicit
+API integration below
 is implemented; this is not a supported AI companion or passed release gate.
 Read [scope and decisions](../DEVELOPMENT_PLAN.md), [contracts](ARCHITECTURE.md),
 [installation/support](INSTALLATION_SUPPORT.md), and [research](RESEARCH.md).
@@ -18,6 +19,8 @@ must not be confused with the broader planned milestones below.
 | F03c | Shared `FixtureSession` now joins production cursor/validator, ordered synthetic text, optional actual sink, shared status and accessible Desktop/Doctor commands. Ten novice scenarios, per-action tone permission, Stop/fresh IDs/epochs, no default device/network/write effects. |
 | F05 integration | Normal solution includes fixture projects/tests and session tests; portable/Windows Doctor executable smokes run in the existing pinned lane. Packaging includes actual fixture/audio references, separate normal/RID locks, notices and audio-OFF native fixture smokes. |
 | V02a | Configuration-only [Setup / resume](SETUP.md): fixture or named OpenAI routes, exact per-role destination selection, strict v2 settings with explicit v1 snapshot migration, and real scoped Windows Credential Manager code. No provider registration/calls, fake completed voice setup or persisted per-turn spending permission. Native wrapper is fake-boundary tested, not OS-vault roundtrip qualified. V01b/V02b/V03/V04 live/audio integration remains. |
+| V02b / V05 / V04a | Reviewed local audio choices/tests, deterministic participation policy and reusable typed text-to-voice runtime are merged foundations; their internal fixture evidence does not qualify a real account or device. |
+| V04b | [Explicit Desktop API conversation](CONVERSATION.md) joins saved route/vault bindings, local audio policies, typed or <=25 s PTT, named STT, pre-dispatch policy and streaming LLM/optional TTS/PCM sink. One app-shared effect owner, fresh bounded per-action envelope, exact reservations/role permissions, original cancellation/expiry and ownership quarantine. Text-only sends no TTS and opens no output. Root graph now includes existing Providers/Conversation/Participation and their suites; dedicated lanes remain. |
 | F02 / G1 onward | F02 merged at `8a762cd930741208daa61e9df9b8d860cf4768de` and was normally integrated, not copied. Self-contained payload/unsigned installer build paths exist. Clean-VM lifecycle, physical audio, real AI/GPU, Ubuntu, signing, rights and release qualification remain **NOT RUN / NOT PASSED**. |
 
 ### Requirements and acceptance status (F03c / coupled F05)
@@ -41,12 +44,23 @@ select these actual outputs using `-ExecutablePath`, not stale repository
 binaries. See [DIAGNOSTICS](DIAGNOSTICS.md#offline-fixture-experience-f03c) for
 commands, public seam, metadata/content scope, bounds and deterministic cases.
 
-The merged STT adapter is an unrelated library and dedicated offline lane; it
-is not registered, referenced, configured or called by this fixture slice.
-Next boundaries remain V01 capture/device/VAD qualification, V02 resumable
-onboarding/credential/destination consent, and V03 role-specific adapters with
-separately authorized live evidence. An offline fixture pass does not complete
-any of those live integration or qualification tasks.
+The original F03c fixture slice did not use providers. V04b registers the already
+reviewed provider/runtime/policy libraries in a separate explicit real-mode
+surface; its in-process HTTP/native fixtures are not paid/live evidence.
+Learned VAD, automatic acoustic/name/group listening, actual provider account/
+model quality/cost/performance, OS-vault roundtrip, physical audio and full
+first-conversation user trial remain **NOT RUN**. Ordinary diagnosis remains
+side-effect-free. V06 Support integration is separate and no unmerged Support
+project is referenced.
+
+V04b's production-path offline evidence includes real WPF typed text-only,
+typed voice and keyboard PTT -> canonical WAV/STT -> policy -> runtime/TTS/sink;
+fake-native Windows credential roles/revisions/lease disposal; missing consent,
+unsupported selection, no-speech, refusal/markup, partial TTS, output loss,
+slow native work, original-token cancellation, UTC rollback, original capture/
+transfer/STT expiry, policy ownership quarantine and stale Stop. Actual native
+Desktop/portable Doctor/Windows Doctor executable smokes remain no-key/network/
+audio OFF. Their observed results are not a passed live account/device gate.
 
 Developer-host package evidence: the integrated self-contained payload contains
 620 inventoried files; actual native Doctor and interactive WPF fixture smokes
