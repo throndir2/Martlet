@@ -12,6 +12,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/Martlet.Audio.Tests/Martlet.Audio.Tests.csproj" />
     <Project Path="tests/Martlet.Core.Tests/Martlet.Core.Tests.csproj" />
+    <Project Path="tests/Martlet.Desktop.Tests/Martlet.Desktop.Tests.csproj" />
     <Project Path="tests/Martlet.Doctor.Tests/Martlet.Doctor.Tests.csproj" />
     <Project Path="tests/Martlet.Fixtures.Tests/Martlet.Fixtures.Tests.csproj" />
   </Folder>

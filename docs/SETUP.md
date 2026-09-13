@@ -42,6 +42,25 @@ consent, key references and audio qualification are explained instead of
 displaying a pretend completed voice setup. Reopening resumes the saved step.
 Switching to fixture preserves stored API routes/keys but does not use them.
 
+### Slow or interrupted setup actions
+
+All settings open/read/flush/replace and native vault work runs off the WPF
+dispatcher through one app-shared `SetupOperationRunner`. The UI snapshots
+configuration, revision, role and masked input before dispatch; the worker owns
+the resulting `SecretLease`, not the lifetime of the observing window.
+
+The UI stops waiting after five seconds and requests cooperative cancellation.
+**Cancel setup action** and **Close setup (stop observing)** remain available.
+Neither timeout nor Close claims the native operation ended or rolled back:
+already-started work may finish, and pending recovery metadata must be reviewed.
+No overlapping setup action, including one from a reopened setup window, can
+start until the actual worker and cancellation callbacks release. Only then is
+the secret cleared and the worker slot reusable. Reload is required after
+interruption; late results cannot update a closed or retired observation.
+Closing setup discards unsaved UI edits, not an already-started transaction.
+If the app process exits before work returns, its durable pending-reference
+checkpoint remains the restart recovery boundary.
+
 ## Consent and schema
 
 `AppSettings` accepts the original strict v1 schema and the new strict v2
@@ -94,7 +113,9 @@ profile, origin or role cannot resolve the same policy-bound target.
 Missing, access denied, unsupported platform, invalid input and unavailable
 session/native failure are distinct typed results with authored remedies.
 
-The production Desktop calls `SetupService` for all these actions:
+The production Desktop calls `ISetupService` / `SetupService` through the shared
+worker for all these actions. `SetupOperation.Completion` describes actual
+worker release; ending a UI observation does not complete that task.
 
 1. **Store / replace** asks for scope confirmation and validates configuration
    and input before writing. Under the settings writer lock it saves a durable
@@ -140,7 +161,18 @@ authorization; saved setup alone cannot issue a request.
 Ordinary regression tests exercise the production settings/transaction service
 and actual Windows wrapper with an injected native boundary, never the real OS
 vault. Actual WPF automation exercises no-key setup, migration, save/exit,
-resume/Back and consent invalidation. Native PInvoke is compiled, **not OS
+resume/Back and consent invalidation. Separate Windows tests exercise actual
+`SetupWindow` events on a WPF dispatcher with blocking fake native Read/Write/
+Delete and initial-load/save boundaries: heartbeat, duplicate rejection,
+Cancel/Close, timeout, late-result suppression, retained locks/leases/recovery
+markers and sanitized failures. No real vault is used by these tests.
+The executable smoke sends the existing Stop access key only to its verified
+owned HWND, after observing an active/cancelable fixture. This avoids an
+observed two-second UIA Invoke RPC delay on the existing two-second deadline
+scenario, without changing fixture timing or accepting ordinary completion.
+It requires a finished canceled outcome, empty text/queue and fresh subsequent
+IDs/output; no global keyboard input or direct handler invocation is used.
+Native PInvoke is compiled, **not OS
 roundtrip qualified**. Real Credential Manager write/read/delete, real
 microphone/speaker, live API, clean VM lifecycle, signing, release and novice
 gates remain **NOT RUN**. Do not run a real-key or OS-vault integration test in

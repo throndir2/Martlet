@@ -13,6 +13,8 @@ namespace Martlet.Desktop;
 public partial class MainWindow : Window
 {
     private readonly SettingsStore? store;
+    private readonly SetupOperationRunner setupOperations = new();
+    private readonly ISetupService? setupService;
     private readonly string? startupError;
     private readonly DiagnosticStatusModel? model;
     private readonly DispatcherTimer ageTimer = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -30,6 +32,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         this.store = store;
+        setupService = store is null ? null : new SetupService(store, new WindowsCredentialStore());
         this.startupError = startupError;
         ScenarioChoice.ItemsSource = FixtureSession.Scenarios;
         ScenarioChoice.SelectedIndex = 0;
@@ -159,7 +162,7 @@ public partial class MainWindow : Window
     private async void Setup_Click(object sender, RoutedEventArgs e)
     {
         if (store is null || closing || saving || runningFixture || model?.IsRunning == true) return;
-        new SetupWindow(new SetupService(store, new WindowsCredentialStore())) { Owner = this }.ShowDialog();
+        new SetupWindow(setupService!, setupOperations) { Owner = this }.ShowDialog();
         await RefreshAsync();
     }
 

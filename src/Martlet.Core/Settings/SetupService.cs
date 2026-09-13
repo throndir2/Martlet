@@ -13,8 +13,18 @@ public sealed record SetupSaveResult(SettingsSaveResult Save, AppSettings Settin
         (CredentialError != CredentialError.None ? " " + CredentialMessages.Describe(CredentialError) : "");
 }
 
-// This is the production UI orchestration path; neither construction nor load reads secrets.
-public sealed class SetupService(SettingsStore settingsStore, ICredentialStore credentials)
+public interface ISetupService
+{
+    Task<SettingsLoadResult> LoadAsync(CancellationToken token = default);
+    Task<SetupSaveResult> SaveAsync(AppSettings settings, string? revision, CancellationToken token = default);
+    Task<SetupSaveResult> ReplaceCredentialAsync(AppSettings settings, string? revision, SetupRole role, SecretLease secret, CancellationToken token = default);
+    Task<SetupSaveResult> DetachCredentialAsync(AppSettings settings, string? revision, SetupRole role, CancellationToken token = default);
+    Task<SetupSaveResult> RemoveDetachedAsync(AppSettings settings, string? revision, PendingCredentialRemoval removal, CancellationToken token = default);
+    CredentialError CheckCredential(AppSettings settings, SetupRole role);
+}
+
+// Call from a worker: native vault calls and filesystem open/flush/replace can block.
+public sealed class SetupService(SettingsStore settingsStore, ICredentialStore credentials) : ISetupService
 {
     public Task<SettingsLoadResult> LoadAsync(CancellationToken token = default) => settingsStore.LoadAsync(token);
 

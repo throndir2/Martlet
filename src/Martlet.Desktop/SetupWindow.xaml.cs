@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Navigation;
+using System.Windows.Threading;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 
@@ -12,7 +13,16 @@ namespace Martlet.Desktop;
 
 public partial class SetupWindow : Window
 {
-    private readonly SetupService service;
+    private readonly ISetupService service;
+    private readonly SetupOperationRunner operations;
+    private readonly Func<string, bool>? confirm;
+    private readonly TimeProvider clock;
+    private readonly TimeSpan observationTimeout;
+    private readonly DispatcherTimer operationTimer = new() { Interval = TimeSpan.FromMilliseconds(100) };
+    private CancellationTokenSource? observationStop;
+    private long generation;
+    private bool closed;
+    private bool needsReload = true;
     private AppSettings? draft;
     private string? revision;
     private bool rendering;
@@ -20,29 +30,41 @@ public partial class SetupWindow : Window
     private bool routeDirty;
     private SetupRole Role => RoleChoice.SelectedItem is SetupRole role ? role : SetupRole.Stt;
 
-    public SetupWindow(SetupService service)
+    public SetupWindow(ISetupService service, SetupOperationRunner operations,
+        Func<string, bool>? confirm = null, TimeProvider? clock = null, TimeSpan? observationTimeout = null)
     {
         this.service = service;
+        this.operations = operations;
+        this.confirm = confirm;
+        this.clock = clock ?? TimeProvider.System;
+        this.observationTimeout = observationTimeout ?? TimeSpan.FromSeconds(5);
+        if (this.observationTimeout <= TimeSpan.Zero || this.observationTimeout > TimeSpan.FromSeconds(30))
+            throw new ArgumentOutOfRangeException(nameof(observationTimeout));
         InitializeComponent();
         rendering = true;
         RoleChoice.ItemsSource = Enum.GetValues<SetupRole>();
         RoleChoice.SelectedIndex = 0;
         DisclosureText.Text = OpenAiSetup.Disclosure;
         rendering = false;
+        operationTimer.Tick += (_, _) => RenderOperationState();
+        operationTimer.Start();
+        RenderOperationState();
     }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e) => await LoadAsync();
 
     private async Task LoadAsync()
     {
+        if (!MayStart()) return;
         KeyInput.Clear();
-        busy = true;
-        EditorPanel.IsEnabled = ReloadButton.IsEnabled = false;
-        try
+        var backend = service;
+        var operation = operations.TryStart(LoadWork(backend));
+        await ObserveAsync(operation, result =>
         {
-            var loaded = await service.LoadAsync();
+            var loaded = result.Loaded!;
             revision = loaded.Revision;
             draft = loaded.Error is null ? SetupSettings.Begin(loaded.Settings) : null;
+            needsReload = loaded.Error is not null;
             ResultText.Text = loaded.Error?.Summary ?? (loaded.Settings?.SchemaVersion == 1
                 ? "Version 1 loaded unchanged. Explicit Save migrates it and atomically snapshots the original; profile ID and legacy references are preserved."
                 : "Checkpoint loaded. No secret lookup, device or network action was performed.");
@@ -56,12 +78,72 @@ public partial class SetupWindow : Window
                 RenderRole();
             }
             RenderStatus();
+        });
+    }
+
+    private bool MayStart()
+    {
+        if (closed) return false;
+        if (!busy && !operations.IsRunning) return true;
+        ResultText.Text = "An earlier setup action still owns its worker. No overlapping action was started. Cancel or close observation; reload only after it releases.";
+        return false;
+    }
+
+    private void RenderOperationState()
+    {
+        if (closed) return;
+        var active = operations.IsRunning;
+        EditorPanel.IsEnabled = !busy && !active && !needsReload && draft is not null;
+        ReloadButton.IsEnabled = !busy && !active;
+        CancelButton.IsEnabled = active;
+        OperationActivity.Text = active
+            ? "Setup worker still active. Native or filesystem work may not stop immediately. Cancel and Close remain available; timeout is NOT rollback or completion. Other setup actions stay blocked."
+            : needsReload
+                ? "No setup worker active. Reload the saved checkpoint and review pending key recovery before editing."
+                : "No setup worker active. Saved configuration is not voice readiness or permission for paid requests.";
+    }
+
+    private async Task<bool> ObserveAsync(SetupOperation? operation, Action<SetupWorkResult> apply)
+    {
+        if (operation is null) { MayStart(); return false; }
+        var current = ++generation;
+        using var stop = new CancellationTokenSource();
+        observationStop = stop;
+        busy = true;
+        RenderOperationState();
+        var timeout = Task.Delay(observationTimeout, clock, stop.Token);
+        try
+        {
+            var finished = await Task.WhenAny(operation.Completion, timeout);
+            if (closed || current != generation) return false;
+            if (stop.IsCancellationRequested || finished != operation.Completion)
+            {
+                operation.RequestCancellation();
+                needsReload = true;
+                ResultText.Text = stop.IsCancellationRequested
+                    ? "Cancellation requested; observation stopped. Native work may still be active, not rolled back. Close is available. After the worker releases, reload and review saved settings and pending key removals."
+                    : "Setup observation timed out; cancellation requested. Native work may still be active, not rolled back. Close is available. After the worker releases, reload and review saved settings and pending key removals.";
+                return false;
+            }
+            var result = await operation.Completion;
+            if (closed || current != generation) return false;
+            if (result.Outcome != SetupWorkOutcome.Completed)
+            {
+                needsReload = true;
+                ResultText.Text = result.Outcome == SetupWorkOutcome.Canceled
+                    ? "Setup action canceled. Reload and review saved settings and pending key removals; cancellation is not proof of rollback."
+                    : "Setup action failed. Reload and review the role configuration and pending key removals; do not assume rollback. Raw exception details and secrets are not shown.";
+                return false;
+            }
+            apply(result);
+            return true;
         }
         finally
         {
+            stop.Cancel();
+            if (ReferenceEquals(observationStop, stop)) observationStop = null;
             busy = false;
-            EditorPanel.IsEnabled = draft is not null;
-            ReloadButton.IsEnabled = true;
+            if (!closed) RenderOperationState();
         }
     }
 
@@ -149,90 +231,151 @@ public partial class SetupWindow : Window
         return draft;
     }
 
-    private async Task<bool> PerformAsync(Func<Task<SetupSaveResult>> action)
+    private async Task<bool> PerformAsync(Func<CancellationToken, Task<SetupSaveResult>> action, SecretLease? secret = null)
     {
-        if (busy) return false;
-        busy = true;
-        EditorPanel.IsEnabled = ReloadButton.IsEnabled = false;
-        try
+        var operation = operations.TryStart(SaveWork(action), secret);
+        var saved = false;
+        await ObserveAsync(operation, completed =>
         {
-            var result = await action();
+            var result = completed.Saved!;
             ResultText.Text = result.Summary;
+            needsReload = !result.Save.Saved;
             if (result.Save.Saved)
             {
+                saved = true;
                 draft = result.Settings;
                 revision = result.Save.Revision;
                 RenderRole();
             }
             RenderStatus();
-            return result.Save.Saved;
-        }
-        catch (ContractException ex) { ResultText.Text = ex.Message; return false; }
-        finally { busy = false; EditorPanel.IsEnabled = draft is not null; ReloadButton.IsEnabled = true; }
+        });
+        return saved;
     }
 
-    private async void Save_Click(object sender, RoutedEventArgs e) =>
-        await PerformAsync(() => service.SaveAsync(Checkpoint(), revision));
+    // Factories keep worker closures separate from the callbacks that capture this window.
+    private static Func<CancellationToken, Task<SetupWorkResult>> LoadWork(ISetupService backend) =>
+        async token => new(SetupWorkOutcome.Completed, Loaded: await backend.LoadAsync(token).ConfigureAwait(false));
 
-    private async void SaveExit_Click(object sender, RoutedEventArgs e)
+    private static Func<CancellationToken, Task<SetupWorkResult>> SaveWork(Func<CancellationToken, Task<SetupSaveResult>> action) =>
+        async token => new(SetupWorkOutcome.Completed, Saved: await action(token).ConfigureAwait(false));
+
+    private static Func<CancellationToken, Task<SetupWorkResult>> ReadWork(ISetupService backend, AppSettings snapshot, SetupRole role) =>
+        token =>
+        {
+            token.ThrowIfCancellationRequested();
+            return Task.FromResult(new SetupWorkResult(SetupWorkOutcome.Completed, Credential: backend.CheckCredential(snapshot, role)));
+        };
+
+    private async void Save_Click(object sender, RoutedEventArgs e) => await SaveAsync(exit: false);
+
+    private async void SaveExit_Click(object sender, RoutedEventArgs e) => await SaveAsync(exit: true);
+
+    private async Task SaveAsync(bool exit)
     {
-        if (await PerformAsync(() => service.SaveAsync(Checkpoint(), revision))) Close();
+        if (!MayStart()) return;
+        try
+        {
+            var snapshot = Checkpoint();
+            var expectedRevision = revision;
+            var backend = service;
+            if (await PerformAsync(token => backend.SaveAsync(snapshot, expectedRevision, token)) && exit && !closed) Close();
+        }
+        catch (ContractException ex) { if (!closed) ResultText.Text = ex.Message; }
     }
 
-    private bool Confirm(string text) => MessageBox.Show(this, text, "Explicit scoped action",
+    private bool Confirm(string text) => confirm?.Invoke(text) ?? MessageBox.Show(this, text, "Explicit scoped action",
         MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes;
 
     private async void StoreKey_Click(object sender, RoutedEventArgs e)
     {
-        if (!Confirm($"Store a new key for this profile's {Role} route at {OpenAiSetup.Origin} and save this checkpoint? This invalidates that role's consent. Any previous key is detached, not deleted; remove it explicitly below. No provider access will be tested.")) return;
-        await PerformAsync(async () =>
+        if (!MayStart() || !Confirm($"Store a new key for this profile's {Role} route at {OpenAiSetup.Origin} and save this checkpoint? This invalidates that role's consent. Any previous key is detached, not deleted; remove it explicitly below. No provider access will be tested.")) return;
+        try
         {
-            var settings = Checkpoint();
-            using var secure = KeyInput.SecurePassword;
-            var chars = new char[secure.Length];
-            var pointer = Marshal.SecureStringToGlobalAllocUnicode(secure);
-            try
-            {
-                Marshal.Copy(pointer, chars, 0, chars.Length);
-                using var secret = new SecretLease(chars);
-                return await service.ReplaceCredentialAsync(settings, revision, Role, secret);
-            }
-            finally
-            {
-                KeyInput.Clear();
-                CryptographicOperations.ZeroMemory(MemoryMarshal.AsBytes(chars.AsSpan()));
-                Marshal.ZeroFreeGlobalAllocUnicode(pointer);
-            }
-        });
+            var snapshot = Checkpoint();
+            var expectedRevision = revision;
+            var role = Role;
+            var backend = service;
+            var secret = TakeKey();
+            // The runner, not this UI observation, owns the lease until native work actually ends.
+            await PerformAsync(token => backend.ReplaceCredentialAsync(snapshot, expectedRevision, role, secret, token), secret);
+        }
+        catch (ContractException ex) { if (!closed) ResultText.Text = ex.Message; }
     }
 
-    private void ReadKey_Click(object sender, RoutedEventArgs e)
+    private SecretLease TakeKey()
     {
-        if (!Confirm($"Read only this profile's selected {Role} key from Windows to check local presence? It will be immediately discarded, never revealed or sent to a provider.")) return;
-        try { ResultText.Text = CredentialMessages.Describe(service.CheckCredential(Checkpoint(), Role)); }
-        catch (ContractException ex) { ResultText.Text = ex.Message; }
+        using var secure = KeyInput.SecurePassword;
+        var chars = new char[secure.Length];
+        var pointer = Marshal.SecureStringToGlobalAllocUnicode(secure);
+        try
+        {
+            Marshal.Copy(pointer, chars, 0, chars.Length);
+            return new SecretLease(chars);
+        }
+        finally
+        {
+            KeyInput.Clear();
+            CryptographicOperations.ZeroMemory(MemoryMarshal.AsBytes(chars.AsSpan()));
+            Marshal.ZeroFreeGlobalAllocUnicode(pointer);
+        }
+    }
+
+    private async void ReadKey_Click(object sender, RoutedEventArgs e)
+    {
+        if (!MayStart() || !Confirm($"Read only this profile's selected {Role} key from Windows to check local presence? It will be immediately discarded, never revealed or sent to a provider.")) return;
+        try
+        {
+            var snapshot = Checkpoint();
+            var role = Role;
+            var backend = service;
+            var operation = operations.TryStart(ReadWork(backend, snapshot, role));
+            await ObserveAsync(operation, result => ResultText.Text = CredentialMessages.Describe(result.Credential!.Value));
+        }
+        catch (ContractException ex) { if (!closed) ResultText.Text = ex.Message; }
     }
 
     private async void DetachKey_Click(object sender, RoutedEventArgs e)
     {
-        if (Confirm($"Detach only this profile's {Role} credential and save? Consent is invalidated. The OS key remains listed for explicit removal; other roles and credentials are unchanged."))
-            await PerformAsync(() => service.DetachCredentialAsync(Checkpoint(), revision, Role));
+        if (!MayStart() || !Confirm($"Detach only this profile's {Role} credential and save? Consent is invalidated. The OS key remains listed for explicit removal; other roles and credentials are unchanged.")) return;
+        try
+        {
+            var snapshot = Checkpoint();
+            var expectedRevision = revision;
+            var role = Role;
+            var backend = service;
+            await PerformAsync(token => backend.DetachCredentialAsync(snapshot, expectedRevision, role, token));
+        }
+        catch (ContractException ex) { if (!closed) ResultText.Text = ex.Message; }
     }
 
     private async void RemoveKey_Click(object sender, RoutedEventArgs e)
     {
+        if (!MayStart()) return;
         if (RemovalChoice.SelectedItem is not PendingCredentialRemoval removal)
         {
             ResultText.Text = "No detached credential is selected. Detach a role first; unrelated Windows credentials cannot be listed or removed.";
             return;
         }
-        if (Confirm($"Permanently remove detached {removal.Role} reference {removal.CredentialId} for this profile only? An old settings snapshot cannot restore this key."))
-            await PerformAsync(() => service.RemoveDetachedAsync(Checkpoint(), revision, removal));
+        if (!Confirm($"Permanently remove detached {removal.Role} reference {removal.CredentialId} for this profile only? An old settings snapshot cannot restore this key.")) return;
+        try
+        {
+            var snapshot = Checkpoint();
+            var expectedRevision = revision;
+            var backend = service;
+            await PerformAsync(token => backend.RemoveDetachedAsync(snapshot, expectedRevision, removal, token));
+        }
+        catch (ContractException ex) { if (!closed) ResultText.Text = ex.Message; }
     }
 
     private async void Reload_Click(object sender, RoutedEventArgs e)
     {
-        if (!busy && Confirm("Discard unsaved configuration edits and reload the saved checkpoint? No credential is read or deleted.")) await LoadAsync();
+        if (MayStart() && Confirm("Discard unsaved configuration edits and reload the saved checkpoint? No credential is read or deleted.")) await LoadAsync();
+    }
+
+    private void Cancel_Click(object sender, RoutedEventArgs e)
+    {
+        operations.RequestCancellation();
+        observationStop?.Cancel();
     }
 
     private void Back_Click(object sender, RoutedEventArgs e) => Steps.SelectedIndex = Math.Max(0, Steps.SelectedIndex - 1);
@@ -241,7 +384,11 @@ public partial class SetupWindow : Window
 
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
-        if (busy) { e.Cancel = true; return; }
+        closed = true;
+        generation++;
+        operationTimer.Stop();
+        operations.RequestCancellation();
+        observationStop?.Cancel();
         KeyInput.Clear();
     }
 

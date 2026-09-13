@@ -74,9 +74,14 @@
                      AutomationProperties.AutomationId="SetupStatus"/>
             <TextBox x:Name="ResultText" IsReadOnly="True" TextWrapping="Wrap" MinHeight="55" Margin="0,8"
                      AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="SetupResult"/>
+            <TextBlock x:Name="OperationActivity" TextWrapping="Wrap" Margin="0,8"
+                       AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="SetupActivity"/>
             <WrapPanel>
-                <Button x:Name="ReloadButton" Content="_Reload saved checkpoint (discard unsaved edits)..." Click="Reload_Click" Padding="8"/>
-                <Button Content="Close setup _without saving" Click="Close_Click" Padding="8" Margin="8,0" AutomationProperties.AutomationId="SetupClose"/>
+                <Button x:Name="CancelButton" Content="_Cancel setup action" Click="Cancel_Click" Padding="8"
+                        AutomationProperties.AutomationId="SetupCancel"/>
+                <Button x:Name="ReloadButton" Content="_Reload saved checkpoint (discard unsaved edits)..." Click="Reload_Click" Padding="8"
+                        AutomationProperties.AutomationId="SetupReload"/>
+                <Button Content="_Close setup (stop observing)" Click="Close_Click" Padding="8" Margin="8,0" AutomationProperties.AutomationId="SetupClose"/>
             </WrapPanel>
         </StackPanel>
     </ScrollViewer>

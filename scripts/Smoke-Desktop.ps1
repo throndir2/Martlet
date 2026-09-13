@@ -8,6 +8,19 @@ $ErrorActionPreference = 'Stop'
 if (-not $IsWindows) { throw 'The desktop smoke requires Windows and an interactive desktop session.' }
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
+if (-not ('MartletDesktopSmokeKeys' -as [type])) {
+    Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class MartletDesktopSmokeKeys {
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
+    [DllImport("user32.dll", EntryPoint = "PostMessageW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool PostMessage(IntPtr window, uint message, UIntPtr key, IntPtr flags);
+}
+'@
+}
 $root = Split-Path $PSScriptRoot -Parent
 $candidate = if ($ExecutablePath) { $ExecutablePath } else {
     Join-Path $root "src\Martlet.Desktop\bin\$Configuration\net10.0-windows\Martlet.Desktop.dll"
@@ -126,6 +139,32 @@ function Wait-Setup([string]$Pattern) {
     throw "Accessible setup checkpoint was not available within 20 seconds: $Pattern"
 }
 
+function Stop-ActiveFixture {
+    $script:process.Refresh()
+    $handle = $script:process.MainWindowHandle
+    if ($script:process.HasExited -or $handle -eq 0 -or $script:window.Current.ProcessId -ne $script:process.Id) {
+        throw 'The owned fixture window is no longer available.'
+    }
+    $stop = Find-Control 'StopFixture'
+    if ($null -eq $stop -or $stop.Current.Name -ne 'Stop fixture and tone') {
+        throw 'Required accessible fixture Stop action is unavailable.'
+    }
+    $active = Read-Value (Find-Control 'FixtureStatus')
+    if ($active -notlike '*Scenario: slow*Stage: Script*' -or $active -notlike '*fixture.running*' -or -not $stop.Current.IsEnabled) {
+        throw 'The selected fixture is not currently active and cancelable; no Stop input was sent.'
+    }
+    [uint32]$owner = 0
+    if ([MartletDesktopSmokeKeys]::GetWindowThreadProcessId($handle, [ref]$owner) -eq 0 -or $owner -ne $script:process.Id) {
+        throw 'The fixture HWND no longer belongs to the launched process; no input was sent.'
+    }
+    # UIA Invoke can spend two seconds in its RPC before reaching this two-second scenario.
+    # Post the existing Alt+F access key only to this verified HWND, never global SendInput.
+    # WPF's ordinary access-key/enablement path executes Stop; the canceled result is required below.
+    if (-not [MartletDesktopSmokeKeys]::PostMessage($handle, 0x0106, [UIntPtr]0x66, [IntPtr]0x20000001)) {
+        throw 'The targeted fixture Stop access-key message could not be queued.'
+    }
+}
+
 try {
     Start-Desktop
     $first = Wait-Status '*First run:*'
@@ -156,14 +195,22 @@ try {
     Select-Fixture 'slow'
     Invoke-Control 'StartFixture'
     $running = Wait-Fixture '*Scenario: slow*Stage: Script*'
-    Invoke-Control 'StopFixture'
-    $stopped = Wait-Fixture '*fixture.stopped*'
-    if ($stopped -notlike '*queued text: 0*') { throw 'Stop did not invalidate the fixture queue.' }
+    Stop-ActiveFixture
+    $stopped = Wait-Fixture '*Scenario: slow*Stage: Finished*fixture.stopped*'
+    if ($stopped -notlike '*Scenario: slow*Stage: Finished*' -or $stopped -notlike '*outcome: Canceled*' -or
+        $stopped -notlike '*queued text: 0*' -or $stopped -notmatch '(?m)^Synthetic text: \r?$') {
+        throw 'Stop did not finish with an explicit canceled outcome and empty text/queue.'
+    }
     Select-Fixture 'streaming'
     Invoke-Control 'StartFixture'
     $streaming = Wait-Fixture '*fixture.completed*'
     if ($streaming -notlike '*Synthetic text: Synthetic text.*' -or $streaming -like '*Partial fixture.*') {
         throw 'New fixture did not replace retired output in order.'
+    }
+    $oldIds = [regex]::Match($stopped, '(?m)^Session:.*').Value
+    $newIds = [regex]::Match($streaming, '(?m)^Session:.*').Value
+    if (-not $oldIds -or -not $newIds -or $oldIds -ceq $newIds) {
+        throw 'New fixture did not use fresh IDs after Stop; retired output cannot be accepted.'
     }
     $stop = Find-Control 'StopDiagnostics'
     if ($null -eq $stop -or $stop.Current.IsEnabled -or $stop.Current.Name -ne 'Stop diagnostics') {
