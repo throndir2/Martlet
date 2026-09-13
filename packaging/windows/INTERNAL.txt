@@ -96,6 +96,26 @@ Doctor --help displays the same authored troubleshooting defaults and privacy
 bounds through Diagnostics only; Doctor does not bundle Martlet.Support.
 See TROUBLESHOOTING.md in this help directory for the full local workflow.
 
+V07a local configuration backup / restore:
+  Open from the main window or Setup / resume. Opening is passive.
+  Configuration snapshots are NOT support bundles, encrypted files or uploads.
+  Choose an explicit new local .martlet-config output (create-only), review
+  scope, and confirm. Includes validated configuration and personal device IDs;
+  excludes secret values, vault, conversation/audio, models and optional logs.
+  Restore supports ONLY an existing valid same-profile v1/v2 destination.
+  Read exact restore preview, inspect all candidate JSON/changes and source/
+  destination revision digests, then confirm (default No). A changed source,
+  selection or revision requires a fresh preview.
+  Useful route/model/voice/device preferences return INERT: no saved consent,
+  live key binding or audio checkpoint is imported. Current owned keys become
+  tracked pending cleanup, never automatic deletion. Capture/logging stay OFF.
+  A fresh settings.recovery.<uuid>.bak retains exact pre-replacement bytes.
+  Stop live work and close/clean up Troubleshooting before recovery. Slow IO/
+  cancellation retains ownership past UI timeout/close; reopen to inspect the
+  actual result, and retry owned staging cleanup if indicated.
+  No portable profile import, corrupt-store repair or executable rollback.
+  See TROUBLESHOOTING.md for full scope, errors and preserved evidence.
+
 Doctor examples (no audio, network, settings writes or AI):
   Martlet.Doctor.exe self-test --scenario streaming --json
   Martlet.Doctor.exe self-test --scenario refused --json
@@ -128,7 +148,7 @@ Malformed/newer settings are reported, not reset.
 Repair/reinstall for this internal skeleton:
 Close both apps and rerun the SAME installer to replace its owned program files.
 Installer-driven migration, transactional upgrade, downgrade or rollback is not
-implemented. The narrow explicit Setup v1 snapshot is not lifecycle qualification.
+implemented. Setup v1 snapshots and V07a configuration recovery are not lifecycle qualification.
 Do not install an older version over newer data as a recovery strategy.
 
 Uninstall through Windows Settings > Apps > Installed apps > Martlet (Internal).
@@ -142,7 +162,7 @@ hide a failure. This self-contained build is expected to carry its own runtime.
 Manifest/checksums and upstream notices are included alongside the applications.
 Checksums detect corruption; they are not a publisher signature or trust grant.
 
-NOT RUN for this V04b/V06b integration: real API/account or vault effects, physical
+NOT RUN for this V04b/V06b/V07a integration: real API/account or vault effects, physical
 microphone/speaker trials, clean-Windows installation, a live first trial,
 signing or release. Deterministic offline fixtures remain available unchanged;
 their success must not be presented as any of those external gates.

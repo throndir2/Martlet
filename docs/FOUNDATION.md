@@ -9,6 +9,13 @@ about then-unimplemented projects or commands describe that earlier scope.
 Schema ownership stays with the core owner; coordinate shared edits through
 the implementation coordinator.
 
+**Current policy, 2026-09-13:** the
+[local-only validation policy](../README.md#local-only-validation-policy)
+supersedes this first slice's hosted-CI configuration and F05 handoff. Preserve
+local locked restore/build/test/smoke commands, assertions and independent
+review. Historical workflow descriptions below do not request hosted execution
+or reclassify past runs as local passes.
+
 **V02a update:** [Resumable setup](SETUP.md) now adds strict settings v2 with
 explicit atomic v1 migration/snapshot, role-scoped destination choices, and
 explicit Windows Credential Manager actions. Original v1 reads and profile
@@ -34,8 +41,9 @@ no license is granted over user code/assets. The uncertain Project Airy/AIRI
 identity remains unresolved; no upstream implementation/assets are copied.
 
 Build dependencies are centrally pinned and every project commits its NuGet
-`packages.lock.json`, including transitive hashes. CI uses `--locked-mode`,
-read-only permissions and commit-pinned actions. Intentional updates modify
+`packages.lock.json`, including transitive hashes. At this checkpoint, CI was
+configured with `--locked-mode`, read-only permissions and commit-pinned actions.
+Current local validation retains locked mode. Intentional updates modify
 `Directory.Packages.props`, restore normally to update locks, review the diff,
 then restore in locked mode and rerun affected tests.
 
@@ -188,7 +196,8 @@ actual CLI JSON/exit paths and `scripts\Smoke-Desktop.ps1` UI Automation first-r
 launch/close with an isolated temporary data path. The smoke reads the actual
 accessible status control, enforces a timeout and confirms launch writes no data.
 It neither opens devices nor changes firewall/permissions to emulate denied
-egress. Hosted CI runs the build/tests/CLI, not an interactive desktop smoke.
+egress. At this checkpoint, hosted CI was configured for build/tests/CLI, not an
+interactive desktop smoke. Those commands now belong only to local validation.
 
 **Not evidenced:** clean consumer Windows without .NET, installer lifecycle,
 screen-reader/keyboard usability with actual users, real audio/audibility,
@@ -203,5 +212,7 @@ qualification. No G1/G2/release gate is passed from these unit tests.
 | F04 diagnostics | Own `src\Martlet.Diagnostics`, Doctor, Desktop status integration and relevant tests; extend result semantics with a registry/remedies/deadlines/freshness calculation. This slice does not already implement F04. |
 | Coordinator/shared owner | `Martlet.slnx`, `Directory.*.props`, `global.json`, `NuGet.config`, `.github\workflows`, `src\Martlet.Core`, `contracts\golden`, shared docs and lock updates. Serialize overlapping changes through the parent. |
 
-F05 still owns expanded fixture/packaging/artifact lanes. This PR adds only the
-early build/unit-test/CLI gate after those commands exist and work locally.
+The original F05 handoff proposed expanded hosted fixture/packaging/artifact
+lanes after this early build/unit-test/CLI gate. The current policy supersedes
+that plan: F05 retains local fixture/packaging/artifact checks and independent
+review, with no replacement remote validation.

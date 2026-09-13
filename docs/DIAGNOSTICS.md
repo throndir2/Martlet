@@ -234,7 +234,8 @@ audio/network UI activity.
 Both smoke scripts optionally accept `-ExecutablePath` selecting an existing
 `.exe` (launched directly) or `.dll` (launched with dotnet). The path is resolved
 and validated, and cleanup targets only that launched PID. Without this option,
-the existing Configuration-derived repository output is used, preserving CI.
+the existing Configuration-derived repository output is used, preserving the
+default local smoke commands.
 For an intentionally relocated build, pass its actual binary explicitly:
 
 ```powershell

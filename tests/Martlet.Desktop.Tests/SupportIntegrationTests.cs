@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -504,9 +505,9 @@ public sealed class SupportIntegrationTests
         using var scope = new Scope();
         await using var fixture = await LiveFixture.Create();
         fixture.Answer("PRIVATE-GENERATED-CANARY.");
+        using var response = new HeldResponse(fixture);
         var controller = new SupportController(scope.Data);
         controller.ObserveReport(await new FoundationStatusService(fixture.Store).GetReportAsync());
-        await Done(controller.StartRecording());
         var window = new LiveConversationWindow(fixture.Settings, fixture.Runner, fixture.Controller, fixture.Events, clock: fixture.Clock)
             { Support = controller, ShowActivated = false, ShowInTaskbar = false };
         window.Show();
@@ -517,6 +518,13 @@ public sealed class SupportIntegrationTests
             Field<TextBox>(window, "InputText").Text = Canary;
             Field<CheckBox>(window, "AcceptAction").IsChecked = true;
             Click(window, "SendButton");
+            await response.WaitForGenerating(fixture, window);
+            // Earlier states were actually sampled with recording OFF. The held response keeps
+            // that state stable until the journal owner finishes starting; no earlier append exists.
+            Assert.False(controller.Recording);
+            Assert.False(controller.IsBusy);
+            await Done(controller.StartRecording());
+            response.Release.TrySetResult();
             await fixture.Finish();
             await Until(() => controller.LiveStatus.Contains("conversation.completed", StringComparison.Ordinal));
             await Until(() => !controller.IsBusy);
@@ -537,6 +545,113 @@ public sealed class SupportIntegrationTests
         }
         finally { window.Close(); controller.CancelAndClose(); await Until(() => !controller.HasResources); }
     });
+
+    [Fact]
+    public Task BusyTerminalObservationIsCountedDroppedAndNeverInventedInArchive() => OnDispatcher(async () =>
+    {
+        using var scope = new Scope();
+        await using var fixture = await LiveFixture.Create();
+        fixture.Answer("PRIVATE-GENERATED-CANARY.");
+        using var response = new HeldResponse(fixture);
+        using var backend = new HeldAppend();
+        var controller = new SupportController(scope.Data, backend);
+        controller.ObserveReport(await new FoundationStatusService(fixture.Store).GetReportAsync());
+        await Done(controller.StartRecording());
+        var window = new LiveConversationWindow(fixture.Settings, fixture.Runner, fixture.Controller, fixture.Events, clock: fixture.Clock)
+            { Support = controller, ShowActivated = false, ShowInTaskbar = false };
+        window.Show();
+        try
+        {
+            await Until(() => Field<TextBlock>(window, "ResultText").Text.Contains("Choices loaded", StringComparison.Ordinal));
+            fixture.NoEffects();
+            Field<TextBox>(window, "InputText").Text = Canary;
+            Field<CheckBox>(window, "AcceptAction").IsChecked = true;
+            Click(window, "SendButton");
+            await response.WaitForGenerating(fixture, window);
+            await backend.Entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            Assert.True(controller.IsBusy);
+            Assert.Empty(backend.Completed);
+            var earlierDrops = controller.Dropped;
+            response.Release.TrySetResult();
+            await fixture.Finish();
+            await Until(() => controller.LiveStatus.Contains("conversation.completed", StringComparison.Ordinal));
+            Assert.False(fixture.Runner.IsRunning); // Optional journal IO cannot block the live action.
+            Assert.True(controller.IsBusy);
+            Assert.True(controller.Dropped > earlierDrops);
+            Assert.Contains($"Dropped (busy/transition bound): {controller.Dropped}", controller.Status);
+            Assert.Single(backend.Offered);
+            Assert.Empty(backend.Completed);
+            Assert.DoesNotContain("conversation.completed", backend.Offered);
+            backend.Release.Set();
+            await Until(() => !controller.IsBusy);
+            Assert.Single(backend.Completed);
+            Assert.Null((await Done(controller.Freeze(false, true, Range()))).Failure);
+            var content = string.Join("\n", controller.Preview!.Contents);
+            Assert.Contains("conversation.running", content);
+            Assert.DoesNotContain("conversation.completed", content);
+            foreach (var privateValue in new[] { Canary, "PRIVATE-GENERATED", LiveFixture.Secret, "private-input-id", "private-output-id", "api.openai.com" })
+                Assert.DoesNotContain(privateValue, content);
+            Assert.Equal(1, fixture.Llm.Calls);
+            Assert.Equal(0, fixture.Stt.Calls);
+            Assert.Equal(0, fixture.Tts.Calls);
+            Assert.Equal(0, fixture.Output.Opens);
+            Assert.Equal(0, fixture.Capture.Opens);
+        }
+        finally
+        {
+            backend.Release.Set(); response.Release.TrySetResult(); window.Close();
+            controller.CancelAndClose();
+            await Until(() => !controller.HasResources);
+        }
+    });
+
+    private sealed class HeldResponse : IDisposable
+    {
+        private TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal HeldResponse(LiveFixture fixture)
+        {
+            var respond = fixture.Llm.Respond;
+            fixture.Llm.Respond = async (request, token) =>
+            {
+                Entered.TrySetResult();
+                await Release.Task.WaitAsync(token);
+                return await respond(request, token);
+            };
+        }
+        internal async Task WaitForGenerating(LiveFixture fixture, Window window)
+        {
+            await Entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            await Until(() =>
+            {
+                // Advance the existing controlled runtime observer clock, as LiveFixture.Finish does.
+                fixture.Clock.Advance(TimeSpan.FromMilliseconds(5));
+                return Field<TextBox>(window, "StatusText").Text.Contains("runtime.Generating", StringComparison.Ordinal);
+            });
+        }
+        public void Dispose() => Release.TrySetResult();
+    }
+
+    private sealed class HeldAppend : SupportBackend, IDisposable
+    {
+        internal ManualResetEventSlim Release { get; } = new();
+        internal TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal ConcurrentQueue<string> Offered { get; } = new();
+        internal ConcurrentQueue<string> Completed { get; } = new();
+        private int count;
+        internal override void Append(DiagnosticJournal journal, DiagnosticEvent value, CancellationToken token)
+        {
+            Offered.Enqueue(value.Code);
+            if (Interlocked.Increment(ref count) == 1)
+            {
+                Entered.TrySetResult();
+                if (!Release.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("The controlled journal append was not released.");
+            }
+            base.Append(journal, value, token);
+            Completed.Enqueue(value.Code);
+        }
+        public void Dispose() => Release.Dispose();
+    }
 
     private static async Task<SupportController> Ready(Scope scope, SupportBackend? backend = null)
     {

@@ -17,6 +17,7 @@ public partial class MainWindow : Window
     private TroubleshootingWindow? troubleshooting;
     private readonly SetupOperationRunner setupOperations = new();
     private readonly ISetupService? setupService;
+    private readonly ConfigurationRecoveryController? recovery;
     private readonly AudioSetupService audioSetup;
     private readonly LiveConversationController? conversation;
     private readonly WindowsAudioSessionEvents audioSessionEvents = new();
@@ -46,6 +47,7 @@ public partial class MainWindow : Window
         audioSessionEvents.LockedChanged += audioSetup.SetSessionLocked;
         var vault = new WindowsCredentialStore();
         setupService = store is null ? null : new SetupService(store, vault);
+        recovery = store is null ? null : new(store, setupOperations, () => !support.HasResources);
         if (setupService is not null)
         {
             conversation = new(setupOperations, setupService, vault, new WasapiCaptureDeviceFactory(), new WasapiDeviceFactory());
@@ -225,7 +227,7 @@ public partial class MainWindow : Window
     private async void Setup_Click(object sender, RoutedEventArgs e)
     {
         if (store is null || closing || saving || runningFixture || model?.IsRunning == true) return;
-        new SetupWindow(setupService!, setupOperations) { Owner = this, Troubleshooting = OpenTroubleshooting }.ShowDialog();
+        new SetupWindow(setupService!, setupOperations) { Owner = this, Troubleshooting = OpenTroubleshooting, ConfigurationRecovery = OpenRecovery }.ShowDialog();
         await RefreshAsync();
     }
 
@@ -242,11 +244,21 @@ public partial class MainWindow : Window
     {
         if (conversation is null || closing || saving || runningFixture || model?.IsRunning == true) return;
         new LiveConversationWindow(setupService!, setupOperations, conversation, audioSessionEvents, audioSetup)
-            { Owner = this, Troubleshooting = OpenTroubleshooting, Support = support }.ShowDialog();
+            { Owner = this, Troubleshooting = OpenTroubleshooting, Support = support, ConfigurationRecovery = OpenRecovery }.ShowDialog();
         await RefreshAsync();
     }
 
     private void Troubleshooting_Click(object sender, RoutedEventArgs e) => OpenTroubleshooting(this);
+    private async void Recovery_Click(object sender, RoutedEventArgs e)
+    {
+        OpenRecovery(this);
+        await RefreshAsync();
+    }
+    private void OpenRecovery(Window owner)
+    {
+        if (recovery is null || closing || saving) return;
+        new ConfigurationRecoveryWindow(recovery) { Owner = owner }.ShowDialog();
+    }
     private void OpenTroubleshooting(Window owner)
     {
         if (troubleshooting is { } existing && existing.Owner == owner) { existing.Activate(); return; }
@@ -269,6 +281,12 @@ public partial class MainWindow : Window
         e.Cancel = true;
         if (closing)
             return;
+        if (recovery?.HasResources == true)
+        {
+            recovery.StopObserving();
+            ActionText.Text = "Exit is waiting for configuration recovery IO/callbacks or owned staging cleanup. Keep Martlet open; inspect Backup / restore after release, retry cleanup if needed, then Exit again.";
+            return;
+        }
         if (support.HasResources)
         {
             support.CancelAndClose();

@@ -167,8 +167,10 @@ On the pooled-drive developer host, use one unique session-owned **C:** artifact
 directory consistently for restore/build/test, `CI=true`, process-only SDK PATH/
 DOTNET_ROOT, own CLI home, telemetry off and ASP.NET certificate generation
 disabled. Do not build in the primary checkout or change test/SDK pins.
-Dedicated provider/runtime/policy project workflows remain enabled even though
-their projects are now also in the root solution.
+Dedicated provider/runtime/policy project commands remain available for focused
+local runs even though their projects are now also in the root solution.
+Hosted validation is removed under the
+[local-only repository policy](../README.md#local-only-validation-policy).
 
 `LiveConversationTests` drives actual WPF controls and the app controller,
 Windows credential wrapper with injected fake native access, selected capture,

@@ -288,10 +288,10 @@ sandbox or proof against hostile code in the same process.
 | Gap/cooldown/rate and clocks | `TimeAndBudgetTests`: exact one-tick boundaries, configured/default rates, two-per-sliding-minute, UTC rollback/forward, broken monotonic source, bounded eviction |
 | Immutable config, errors and privacy | `ValidationAndPrivacyTests`: defensive copy, unsupported/invalid bounds, malformed Unicode, enum/NaN/infinity/null cases, cross-session handles, exhaustion, safe JSON/ToString canaries and BCL-only dependencies |
 
-The dedicated read-only `.github/workflows/participation.yml` reuses the
-repository's exact SHA-pinned checkout/setup actions and SDK pin. It restores
-the test project in locked mode, builds Release and tests directly with a
-runner-temp artifacts path; no shared solution edits or live lane.
+The former dedicated hosted participation workflow is removed under the
+[local-only repository policy](../../README.md#local-only-validation-policy).
+Retain the SDK pin and direct-project locked restore, Release build and tests
+below; no remote replacement or live calls are needed.
 
 For the isolated Windows development run, use SDK 10.0.401 with `CI=true`,
 telemetry opted out, certificate generation disabled and session-owned

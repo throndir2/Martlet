@@ -211,10 +211,11 @@ separately authorized live smoke could provide real inference evidence.
 ## Reproduction and remaining gate
 
 Use SDK 10.0.401, existing centrally pinned test packages, committed generated
-lock files and the dedicated pinned, read-only `providers.yml` workflow.
-Shared solution registration belongs to the integration owner; until registered,
-build/test this project directly. Ordinary restore can access NuGet; test
-execution uses only in-process authored fixtures and does not access a network,
+lock files and the direct-project local commands below, following the
+[repository policy](../../README.md#local-only-validation-policy). The former
+hosted provider workflow is removed, not replaced. The integration owner now
+also includes this project in the root solution. Ordinary restore can access
+NuGet; test execution uses only in-process authored fixtures and does not access a network,
 OS credential store, mic, playback, AI/model service or GPU.
 
 ```powershell
@@ -251,8 +252,8 @@ latency, retention/account controls, actual billing, TLS/network behavior on a
 real endpoint, consumer Windows capture/playback, voice orchestration and G2.
 Before any live smoke, the owner must separately approve the exact model/account,
 audio disclosure, cost tolerance/limits and credentials through the future
-authorized path. Ordinary CI must never request those credentials or perform
-inference to turn this fixture gate green.
+authorized path. Ordinary local validation must never request those credentials
+or perform inference to turn this fixture gate green.
 
 ## V03b: bounded text Responses streaming
 
@@ -452,9 +453,8 @@ there is no universal provider framework or relaxed STT contract.
 ### Offline evidence and remaining gates
 
 The same direct-project locked restore/build/test commands above cover both
-adapters under the existing read-only SHA-pinned provider CI. No package,
-central pin, solution, runner, Core/settings or application-wiring change is
-required. Tests author HTTP handlers, byte streams and Responses JSON rather
+adapters locally. No package, central pin, solution, runner, Core/settings or
+application-wiring change is required. Tests author HTTP handlers, byte streams and Responses JSON rather
 than storing downloaded provider content. They exercise the production
 serializer, consent/credential boundary, transport, SSE reader, normalizer and
 real Core sequence validator, including partial/error/refusal and original
@@ -682,8 +682,10 @@ restore, Release `build --no-restore` and `test --no-build`: **574 cases passed,
 zero skipped** (all **323 existing STT/LLM regressions unchanged**, **251 new
 speech cases**). Release build: zero warnings/errors. Outputs/evidence are kept
 under the session's own C: artifacts, with process-local SDK/CLI environment.
-The existing SHA-pinned provider CI discovers these tests unchanged; no new
-packages, lock files, pins, solution edits or CI jobs.
+At that checkpoint, the existing SHA-pinned provider CI was configured to
+discover these tests unchanged; no new packages, lock files, pins, solution
+edits or CI jobs were introduced. Current reproduction uses the same local
+direct-project commands, not that former hosted workflow.
 
 **NOT RUN:** live audio quality/intelligibility, model/voice/account access,
 actual billing/retention, service latency/first-audio timing, actual TLS/endpoint

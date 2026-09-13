@@ -13,6 +13,15 @@ name/group listening remain off.
 This plan's broader milestones remain proposals; that foundation does not
 establish a working conversation, installer or passed release gate.
 
+**Validation policy update, 2026-09-13:** the owner's
+[local-only validation policy](README.md#local-only-validation-policy)
+supersedes all earlier hosted-CI plans. Keep strong local tests/builds,
+production-path evidence, independent review and normal merge requirements.
+Do not create replacement remote validation; the explicitly requested minimal
+build/package/release exception is not authorization to create or publish one.
+Unavailable real-OS/hardware qualification remains NOT RUN, not a reason to
+stop independent local development or to substitute hosted validation.
+
 ## 1. Executive recommendation
 
 Build a companion that is easy to install, easy to understand when it is silent,
