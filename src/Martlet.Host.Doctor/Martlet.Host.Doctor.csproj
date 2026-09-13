@@ -13,6 +13,7 @@
     <SelfContained>true</SelfContained>
     <EventSourceSupport>false</EventSourceSupport>
     <StackTraceSupport>false</StackTraceSupport>
+    <PathMap Condition="'$(ArtifactsPath)' != '' and '$(PathMap)' == ''">$(ArtifactsPath)=/_/host-artifacts</PathMap>
     <NuGetLockFilePath>$(MSBuildThisFileDirectory)native-packages.lock.json</NuGetLockFilePath>
   </PropertyGroup>
   <ItemGroup>

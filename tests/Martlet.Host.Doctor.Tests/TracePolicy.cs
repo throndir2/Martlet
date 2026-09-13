@@ -77,7 +77,9 @@ internal static class TracePolicy
             var result = call.Groups["result"].Value;
             if (!Rx(@"^(?:-?[0-9]+|0x[0-9a-f]+)(?:<[^<>]*>)?(?: .*)?$|^\?(?: ERESTART[A-Z]+ .*)?$").IsMatch(result))
                 Fail("result-syntax");
-            calls.Add(new(pid, call.Groups["name"].Value, Split(call.Groups["args"].Value), result));
+            var syscall = call.Groups["name"].Value;
+            try { calls.Add(new(pid, syscall, Split(call.Groups["args"].Value), result)); }
+            catch (InvalidDataException ex) { throw new InvalidDataException(ex.Message + ":" + syscall); }
         }
         if (pending.Count != 0 || calls.Count == 0) Fail("incomplete-trace");
         if (calls[0].Name != "execve") Fail("missing-root-exec");
@@ -255,8 +257,10 @@ internal static class TracePolicy
             else if (c is '(' or '[' or '{' or '<') stack.Push(c);
             else if (c is ')' or ']' or '}' or '>')
             {
-                if (stack.Count == 0 || (stack.Pop(), c) is not (('(', ')') or ('[', ']') or ('{', '}') or ('<', '>')))
-                    Fail("argument-nesting");
+                if (stack.Count == 0) Fail("argument-nesting-empty-" + c);
+                var opening = stack.Pop();
+                if ((opening, c) is not (('(', ')') or ('[', ']') or ('{', '}') or ('<', '>')))
+                    Fail("argument-nesting-" + opening + c);
             }
             else if (c == ',' && stack.Count == 0) { result.Add(input[start..i].Trim()); start = i + 1; }
         }

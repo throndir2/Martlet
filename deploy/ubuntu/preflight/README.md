@@ -240,6 +240,11 @@ Build-only ILCompiler/ILLink packs are SDK-selected and locked in
 `native-packages.lock.json`. The native restore graph declares linux-x64 and
 win-x64 explicitly so Windows lock generation and Linux builds agree; only
 linux-x64 is published. No model, container image, or inference SDK is acquired.
+Package-only compilation maps its independently chosen artifact root to
+`/_/host-artifacts` in generated document/debug metadata. Otherwise generated
+source paths change the managed DLL/PDB inputs and downstream ELF build IDs/
+debug-link CRCs across build directories. The full ELF and archive remain in
+the byte-equality gate; no differing payload is excluded or post-hoc stripped.
 
 `publish.ps1` accepts a new output directory only, confirms ELF magic, records
 SDK/source/ILCompiler/ILLink and clang/linker/objcopy/tar/gzip/strace/PowerShell
