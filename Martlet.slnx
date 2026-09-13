@@ -1,11 +1,13 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Martlet.Audio/Martlet.Audio.csproj" />
     <Project Path="src/Martlet.Core/Martlet.Core.csproj" />
     <Project Path="src/Martlet.Desktop/Martlet.Desktop.csproj" />
     <Project Path="src/Martlet.Diagnostics/Martlet.Diagnostics.csproj" />
     <Project Path="src/Martlet.Doctor/Martlet.Doctor.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Martlet.Audio.Tests/Martlet.Audio.Tests.csproj" />
     <Project Path="tests/Martlet.Core.Tests/Martlet.Core.Tests.csproj" />
     <Project Path="tests/Martlet.Doctor.Tests/Martlet.Doctor.Tests.csproj" />
   </Folder>
