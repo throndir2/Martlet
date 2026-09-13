@@ -11,7 +11,7 @@ public sealed class CaptureRun
     private readonly CaptureOptions options;
     private readonly TimeProvider time;
     private readonly long startedAt;
-    private readonly TimeSpan deadline;
+    private readonly TimeSpan authorizationLifetime;
     private readonly int capacity;
     private readonly CancellationTokenSource cancellation = new();
     private readonly TaskCompletionSource stop = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -43,7 +43,8 @@ public sealed class CaptureRun
         this.time = time;
         this.callerToken = callerToken;
         startedAt = time.GetTimestamp();
-        deadline = TimeSpan.FromTicks(Math.Min(request.MaximumDuration.Ticks, (request.ExpiresAt - time.GetUtcNow()).Ticks));
+        authorizationLifetime = request.ExpiresAt - time.GetUtcNow();
+        var stopAfter = TimeSpan.FromTicks(Math.Min(request.MaximumDuration.Ticks, authorizationLifetime.Ticks));
         capacity = (int)Math.Min(options.MaximumPcmBytes, request.MaximumDuration.Ticks * 16000 / TimeSpan.TicksPerSecond * 2);
         events = Channel.CreateBounded<CaptureEvent>(new BoundedChannelOptions(128)
         {
@@ -52,7 +53,7 @@ public sealed class CaptureRun
         Emit(CaptureEventKind.Starting);
         callerCancellation = callerToken.UnsafeRegister(_ => End(CaptureEndReason.CallerCanceled, false), null);
         timer = time.CreateTimer(_ => End(CaptureEndReason.DurationLimit, true), null,
-            deadline > TimeSpan.Zero ? deadline : TimeSpan.Zero, Timeout.InfiniteTimeSpan);
+            stopAfter > TimeSpan.Zero ? stopAfter : TimeSpan.Zero, Timeout.InfiniteTimeSpan);
         _ = Task.Factory.StartNew(() => Drive(devices), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         _ = SuperviseAsync();
     }
@@ -99,7 +100,7 @@ public sealed class CaptureRun
     public Task<CaptureSnapshot> ReleaseAsync()
     {
         lock (gate)
-            End(time.GetElapsedTime(startedAt) >= deadline ? CaptureEndReason.DurationLimit : CaptureEndReason.Released, true);
+            End(time.GetElapsedTime(startedAt) >= request.MaximumDuration ? CaptureEndReason.DurationLimit : CaptureEndReason.Released, true);
         return Completion;
     }
 
@@ -141,7 +142,7 @@ public sealed class CaptureRun
         {
             if (AuthorizationRevoked(out var reason, out var failure))
                 End(reason, false, failure);
-            else if (!stop.Task.IsCompleted && time.GetElapsedTime(startedAt) >= deadline)
+            else if (!stop.Task.IsCompleted && time.GetElapsedTime(startedAt) >= request.MaximumDuration)
                 End(CaptureEndReason.DurationLimit, true);
             if (stop.Task.IsCompleted) throw new OperationCanceledException(cancellation.Token);
         }
@@ -150,8 +151,9 @@ public sealed class CaptureRun
     private bool AuthorizationRevoked(out CaptureEndReason reason, out MartletError? failure)
     {
         // Callback dispatch may be delayed by a newer blocking registration. The original token
-        // and absolute expiry remain authoritative, independently of monotonic duration/timers.
-        var expired = time.GetUtcNow() >= request.ExpiresAt;
+        // and both consent clocks remain authoritative, separately from the capture-duration cap.
+        var expired = time.GetUtcNow() >= request.ExpiresAt
+            || time.GetElapsedTime(startedAt) >= authorizationLifetime;
         var callerCanceled = callerToken.IsCancellationRequested;
         reason = callerCanceled ? CaptureEndReason.CallerCanceled
             : expired ? CaptureEndReason.AuthorizationExpired : default;

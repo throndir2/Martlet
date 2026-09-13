@@ -275,6 +275,123 @@ public sealed class CaptureReviewTests
         Assert.Null(run.TakeUtterance());
     }
 
+    [Theory]
+    [InlineData("admission")]
+    [InlineData("release")]
+    [InlineData("cleanup")]
+    [InlineData("take")]
+    [InlineData("timer")]
+    public async Task OriginalConsentLifetimeExpiresDespiteUtcRollbackWithRetainedPcm(string boundary)
+    {
+        var clock = new CaptureClock();
+        using var read = new ManualResetEventSlim();
+        using var cleanup = new ManualResetEventSlim(boundary != "cleanup");
+        var device = new ControlledCapture { DisposeBlock = cleanup };
+        await using var capture = new MicrophoneCapture(Session, device, timeProvider: clock);
+        var request = Request(clock) with { ExpiresAt = clock.GetUtcNow().AddSeconds(1) };
+        var run = capture.Press(request, new(request, true));
+        await run.Ready.WaitAsync(WaitLimit);
+        device.Packets.Enqueue(Pcm(Enumerable.Repeat((short)1234, 320).ToArray()));
+        await CaptureTests.Until(() => run.Snapshot.CanonicalSamples == 320);
+        var privatePcm = (byte[])typeof(CaptureRun).GetField("pcm", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(run)!;
+        Assert.Contains(privatePcm, value => value != 0);
+        CaptureSnapshot? history = null;
+        Task<CaptureSnapshot>? ending = null;
+        try
+        {
+            if (boundary == "take")
+            {
+                history = await run.ReleaseAsync().WaitAsync(WaitLimit);
+                Assert.Equal(CaptureState.Completed, history.State);
+                Assert.Equal(640, history.RetainedPcmBytes);
+                await foreach (var _ in run.Events.ReadAllAsync()) { }
+            }
+            else if (boundary == "cleanup")
+            {
+                ending = run.ReleaseAsync();
+                await CaptureTests.Until(() => device.DisposeEntered.IsSet);
+            }
+            else
+            {
+                device.ReadBlock = read;
+                await CaptureTests.Until(() => device.ReadBlocked.IsSet);
+            }
+            clock.ShiftUtc(TimeSpan.FromDays(-1));
+            clock.Advance(TimeSpan.FromSeconds(1.5), deliverTimers: boundary == "timer");
+            Assert.True(clock.GetUtcNow() < request.ExpiresAt);
+            if (boundary == "admission")
+            {
+                device.Packets.Enqueue(Pcm(4321));
+                read.Set();
+                await run.Completion.WaitAsync(WaitLimit);
+            }
+            if (boundary == "release") ending = run.ReleaseAsync();
+            read.Set();
+            cleanup.Set();
+            var result = history ?? await (ending ?? run.Completion).WaitAsync(WaitLimit);
+            using var utterance = run.TakeUtterance();
+            Assert.Null(utterance);
+            Assert.Equal(320, result.CanonicalSamples);
+            Assert.Equal(0, run.Snapshot.RetainedPcmBytes);
+            Assert.All(privatePcm, value => Assert.Equal(0, value));
+            if (history is null)
+            {
+                Assert.Equal(CaptureState.Failed, result.State);
+                Assert.Equal(CaptureEndReason.AuthorizationExpired, result.EndReason);
+                Assert.Equal(ErrorCode.DeadlineExceeded, result.Error!.Code);
+            }
+            else
+            {
+                Assert.Same(history, await run.Completion);
+                Assert.Equal(history with { RetainedPcmBytes = 0 }, run.Snapshot);
+                Assert.False(run.Events.TryRead(out _));
+            }
+            Assert.True((await run.DeviceRelease.WaitAsync(WaitLimit)).Released);
+        }
+        finally
+        {
+            read.Set();
+            cleanup.Set();
+            await run.CancelAsync().WaitAsync(WaitLimit);
+        }
+    }
+
+    [Fact]
+    public async Task ShorterCaptureDurationStillCompletesNonemptyPcmWithinOriginalConsentLifetime()
+    {
+        var clock = new CaptureClock();
+        using var read = new ManualResetEventSlim();
+        var device = new ControlledCapture();
+        await using var capture = new MicrophoneCapture(Session, device, timeProvider: clock);
+        var request = Request(clock) with { MaximumDuration = TimeSpan.FromSeconds(1) };
+        var run = capture.Press(request, new(request, true));
+        await run.Ready.WaitAsync(WaitLimit);
+        var pcm = Pcm(Enumerable.Repeat((short)1234, 320).ToArray());
+        device.Packets.Enqueue(pcm);
+        await CaptureTests.Until(() => run.Snapshot.CanonicalSamples == 320);
+        try
+        {
+            device.ReadBlock = read;
+            await CaptureTests.Until(() => device.ReadBlocked.IsSet);
+            clock.ShiftUtc(TimeSpan.FromDays(-1));
+            clock.Advance(TimeSpan.FromSeconds(1.5), deliverTimers: false);
+            read.Set();
+            var result = await run.Completion.WaitAsync(WaitLimit);
+            Assert.Equal(CaptureState.Completed, result.State);
+            Assert.Equal(CaptureEndReason.DurationLimit, result.EndReason);
+            using var utterance = run.TakeUtterance();
+            Assert.NotNull(utterance);
+            var copy = new byte[utterance.ByteCount];
+            utterance.CopyPcmTo(copy);
+            Assert.Equal(pcm, copy);
+        }
+        finally
+        {
+            read.Set();
+            await run.CancelAsync().WaitAsync(WaitLimit);
+        }
+    }
+
     [Fact]
     public async Task AbsoluteExpiryWinsWhenDurationAndAuthorizationExpireTogether()
     {

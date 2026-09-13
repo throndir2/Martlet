@@ -26,8 +26,10 @@ epochs are rejected before scheduling native work.
 
 Authorization checks read the **original caller token** rather than trusting
 cancellation callback delivery (a newer LIFO callback can block it). They also
-recheck **absolute UTC expiry**, independently of the original monotonic budget.
-A UTC rollback cannot extend that budget. Revocation is checked before native
+recheck **absolute UTC expiry** and the **original monotonic authorization
+lifetime** (`ExpiresAt - initialUtcNow`), stored separately from maximum capture
+duration. Neither acquisition nor delayed transfer can outlive that original
+consent budget after a UTC rollback. Revocation is checked before native
 open/start, admission, frame copies, successful seal/completion and transfer
 of unclaimed PCM. No wait on another caller-token callback is needed to reject
 revoked data.
@@ -142,7 +144,7 @@ capture failure, and unimplemented speech/no-speech detection.
 | --- | --- |
 | Utterance | At most 30 seconds and 2 MiB canonical PCM. At 16 kHz PCM16, the duration normally limits this to **960,000 bytes / 480,000 samples**. Options and requests may lower limits, not raise them. |
 | Byte/duration limits | Seal at the exact allowed canonical count and report `ByteLimit`/`DurationLimit`; do not silently continue recording. Minimum request duration is 20 ms; byte cap can be as low as one aligned PCM16 sample. |
-| Authorization deadline | Earlier of request duration from press and the initial expiry budget. Includes opening time. Monotonic elapsed checks prevent backward-UTC extension; absolute UTC expiry is independently rechecked at authorization boundaries. An independent timer aborts blocked native work. Timer/cancellation callback delivery is not the sole authority. |
+| Authorization deadline | Capture duration and the original monotonic consent lifetime are separate limits, both including opening time. The abort timer uses the earlier one. The shared authorization check rejects either absolute UTC expiry or elapsed time reaching the original consent lifetime, including after seal and before transfer. Timer/cancellation callback delivery is not the sole authority. |
 | Audio memory | One pre-sized canonical buffer, one source remainder, 128 mono history samples, fixed coefficient tables and a 3,264-byte canonical scratch. Worker and Windows adapter each have one source-format scratch of at most 100 ms (up to 307,200 bytes each in the supported subset). No unbounded native-to-managed audio channel. |
 | Admission | Packet bounds are checked before conversion/copy/queueing; output is capped before copying into owned storage. Oversized or discontinuous packets fail, not drop-oldest audio. |
 | Capture events | 128 metadata-only entries, drop oldest, monotonic sequence/elapsed time and cumulative `DroppedEvents`. Meters occur only after source samples arrive; no animation/synthetic listening state. |
@@ -157,9 +159,9 @@ zeroed by managed cancellation. No capture events are emitted after the terminal
 event; actual late cleanup is observed through `DeviceRelease`, not resurrection
 of an earlier result.
 
-An absolute authorization expiry is a hard `DeadlineExceeded` failure with
+Expiry of either authorization clock is a hard `DeadlineExceeded` failure with
 `CaptureEndReason.AuthorizationExpired`, not a successful duration-limit seal.
-It wins if UTC expiry and the duration limit coincide. Callers wanting a normal
+It wins if consent expiry and the duration limit coincide. Callers wanting a normal
 duration-limit utterance should choose a shorter capture duration within the
 authorization window (as in the sketch), leaving time for cleanup/transfer.
 Limits have not been increased: authorization still expires within 30 seconds.
@@ -290,8 +292,8 @@ dotnet test Martlet.slnx --no-build -c Release --artifacts-path C:\OwnedSession\
 ```
 
 Local implementation evidence (SDK 10.0.401, CI mode, isolated session-owned
-`C:` outputs): 96 portable and 112 Windows new capture/device tests, all 102
-existing playback tests, and the full solution's 700 tests passed. The
+`C:` outputs): 102 portable and 118 Windows new capture/device tests, all 102
+existing playback tests, and the full solution's 712 tests passed. The
 separately restored/built existing provider HTTP lane passed 191 offline tests.
 Both portable and Windows Doctor smoke paths passed with physical audio OFF.
 No package/SDK pin, workflow, runner or global build setting was changed.
@@ -299,8 +301,15 @@ No package/SDK pin, workflow, runner or global build setting was changed.
 Independent-review regressions were added before production fixes: 11 portable
 and 15 Windows failures reproduced delayed caller-token callback authorization,
 independent UTC expiry, and sticky device notifications bypassed by release.
-The UTC rollback controls already passed. The final review suite has 15 portable
-and 19 Windows cases, including live frame-copy revocation and coincident expiry.
+The initial empty-PCM UTC rollback controls already passed. A second regression
+pass reproduced five further failures per TFM with admitted PCM, a 30-second
+capture maximum, one-second consent and UTC rollback: admission, release, native
+cleanup, timer expiry and a direct delayed take all bypassed the original
+consent lifetime. Separating that lifetime now rejects and zeroes those payloads
+without rewriting earlier valid Completion history; nonempty shorter-duration
+captures still complete when their longer original consent remains valid.
+The final review suite has 21 portable and 25 Windows cases, including live
+frame-copy revocation and coincident expiry.
 Native-stop cases execute the actual Windows wrapper's Stop/Dispose and managed
 notification handlers with COM handles unset and controlled PCM; they are not
 physical capture or native-driver qualification. Existing Playback files were
