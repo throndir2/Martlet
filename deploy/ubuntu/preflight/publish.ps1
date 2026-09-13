@@ -6,8 +6,8 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-if (-not $IsLinux) { throw 'Native AOT publishing requires the hosted Ubuntu build lane. Windows tests are not Linux execution evidence.' }
-if ($env:CI -ne 'true') { throw 'Run with CI=true for the same locked build policy as CI.' }
+if (-not $IsLinux) { throw 'Native AOT publishing requires Ubuntu build tooling. Windows tests are not Linux execution evidence.' }
+if ($env:CI -ne 'true') { throw 'Set CI=true locally to enable the locked/deterministic MSBuild policy; no remote runner is required.' }
 if ((& dotnet --version) -ne '10.0.401') { throw 'Use the repository-pinned .NET SDK 10.0.401.' }
 foreach ($path in @($ArtifactsPath, $Destination)) {
     if (-not [IO.Path]::IsPathFullyQualified($path)) { throw 'Build artifact and destination paths must be absolute.' }

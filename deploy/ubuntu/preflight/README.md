@@ -209,11 +209,20 @@ disabled administrative extensions, never prerequisites here.
 
 ## Internal reproducible build and evidence
 
+**Remote automation policy:** tests and validation run locally only. H01 has no
+GitHub Actions workflow. The previous hosted preflight workflow was removed at
+the owner's request to preserve the free-plan minutes budget. A quota reset is
+not permission to resume it. Any separately authorized remote build/release
+must be minimal and build/package only, without tests, smoke probes, validation
+or repeated builds.
+
 Use pinned SDK **10.0.401**, the repository NuGet source/current test pins,
 `CI=true`, an isolated CLI home, certificate generation off, telemetry opt-out
 and an absolute owned temporary artifact directory. Build the new test project
 directly, not the shared Windows solution. Initial manifest changes generate
-only the new projects' lock files; ordinary runs use locked restore:
+only the new projects' lock files; ordinary runs use locked restore. `CI=true`
+is a local MSBuild setting for locked/deterministic builds, not a request to
+use a hosted runner:
 
 ```powershell
 dotnet restore tests/Martlet.Host.Doctor.Tests --locked-mode --artifacts-path $artifacts
@@ -221,8 +230,8 @@ dotnet build tests/Martlet.Host.Doctor.Tests --no-restore -c Release --artifacts
 dotnet test tests/Martlet.Host.Doctor.Tests --no-build -c Release --artifacts-path $artifacts
 ```
 
-On the Ubuntu 24.04 build runner, with **preinstalled** clang/linker, gzip/tar,
-PowerShell and strace:
+On an explicitly authorized **local Ubuntu 24.04 development machine**, with
+**preinstalled** clang/linker, gzip/tar, PowerShell and strace:
 
 ```powershell
 ./deploy/ubuntu/preflight/publish.ps1 -ArtifactsPath $nativeArtifacts -Destination $newPackageDirectory
@@ -233,7 +242,7 @@ $traceVerifier = Join-Path $artifacts 'bin/Martlet.Host.Doctor.Tests/release/Mar
 
 Native AOT is package-only (`HostNativeAot=true`) with EventPipe disabled. A
 normal CoreCLR apphost enables diagnostic IPC before Main and cannot turn it
-off via runtimeconfig, so merely setting a test environment variable would
+off via runtimeconfig, so merely setting a local test environment variable would
 hide a shipped read-only violation. The native package removes that component
 rather than requiring novices to launch a script/set environment variables.
 Build-only ILCompiler/ILLink packs are SDK-selected and locked in
@@ -249,15 +258,17 @@ the byte-equality gate; no differing payload is excluded or post-hoc stripped.
 `publish.ps1` accepts a new output directory only, confirms ELF magic, records
 SDK/source/ILCompiler/ILLink and clang/linker/objcopy/tar/gzip/strace/PowerShell
 versions, emits per-file `SHA256SUMS`, and builds a
-normalized timestamp/owner/sort-order tar.gz plus checksum. CI repeats the
-publish/archive and compares bytes **on that same SDK/native toolchain**;
-cross-toolchain bit-for-bit reproducibility is not claimed. Signing, release
+normalized timestamp/owner/sort-order tar.gz plus checksum. Reproducibility
+validation belongs on a local development machine: publish into two fresh
+artifact/output directories and compare the complete archive bytes on that
+same SDK/native toolchain. Cross-toolchain bit-for-bit reproducibility is not
+claimed. Signing, release
 publication, public artifact upload and installation are absent.
 
-The dedicated `host-preflight.yml` runs Windows and Ubuntu **synthetic**
-contracts, then executes the actual ELF on ephemeral GitHub Ubuntu 24.04:
+The retained **local-only** verification scripts execute the actual ELF for
 help, authored fixtures, and read-only local prerequisites **with NVIDIA
-query disabled**. `strace -f -q -yy -s 2048 -e trace=all` traces only the spawned
+query disabled**. They must not be invoked from GitHub Actions or another
+remote pipeline. `strace -f -q -yy -s 2048 -e trace=all` traces only the spawned
 native process tree, including descriptor-only calls. Read-buffer, directory,
 entropy, uname and symlink-result payloads are rendered raw (not dumped as text).
 The build-only `TracePolicy` in the existing test project parses bounded records
@@ -288,7 +299,8 @@ retains those terminal records. The strace 6.8 clone3 input/output structure
 including split resume records; arbitrary arrows and unknown fields fail.
 Noncanonical arrow spacing is rejected. Clone/group/descriptor-sharing semantics
 come only from the once-validated input flags, never from output-structure text.
-This is scoped syscall evidence for the recorded Ubuntu modes/tool versions,
+When actually run locally, this produces scoped syscall evidence for the
+recorded Ubuntu modes/tool versions,
 not proof about all kernel behavior, other versions, or unexecuted NVIDIA paths.
 No weakening by `DOTNET_EnableDiagnostics=0` or a native-trace skip occurs.
 The native fixtures assert measured exits 0/1/2/3 against their JSON schema,
@@ -296,16 +308,21 @@ provenance, scope and expected findings. A separate wrapper-level negative
 launches the verifier as a process against a missing ELF and a checksum-corrupt
 owned package copy; both must exit nonzero for their expected assertion.
 Only after all positive assertions does the verifier return 0, rather than
-propagating a deliberately accepted doctor's nonzero exit to CI.
+propagating a deliberately accepted doctor's nonzero exit to the local caller.
 Only its sanitized product report goes to logs; raw syscall traces stay in
-runner temp, not uploaded. This is CPU-runner package/inventory evidence,
-not owner hardware or GPU/daemon/container/firewall/setup qualification.
+the explicitly chosen local artifact directory, not uploaded. This is
+package/inventory evidence for that local development machine, not owner
+hardware or GPU/daemon/container/firewall/setup qualification.
 
 **Windows managed build/tests are not Linux execution evidence.** Linux gate
-is pending until the dedicated workflow for the reviewed head actually passes.
-The PR/CI run records the exact commit/outcome; no fixture or cross-compile
-can replace that evidence. No WSL, VM, Docker or system packages are installed
-to manufacture local Linux evidence.
+remains pending until the reviewed head is actually exercised on an authorized
+local Ubuntu machine. The previous hosted run at `7e644c2` produced matching
+archives but its full-trace step failed closed; the following `bbc1992` run
+never started because of account billing/minute availability. Neither is
+current-head qualification. Do not retry those hosted validation workflows.
+Record the exact commit, machine and outcome for later local evidence; no
+fixture or cross-compile can replace it. No WSL, VM, Docker or system packages
+are installed to manufacture local Linux evidence.
 
 Official boundaries: [Ubuntu NVIDIA drivers](https://documentation.ubuntu.com/server/how-to/graphics/install-nvidia-drivers/),
 [Docker Ubuntu installation](https://docs.docker.com/engine/install/ubuntu/),

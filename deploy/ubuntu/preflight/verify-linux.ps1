@@ -13,7 +13,7 @@ if (-not [IO.Path]::IsPathFullyQualified($Package) -or -not [IO.Path]::IsPathFul
 $binary = Join-Path $Package 'martlet-host'
 if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) { throw 'Missing actual publisher-produced binary.' }
 if (-not [IO.Path]::IsPathFullyQualified($TraceVerifier) -or -not (Test-Path -LiteralPath $TraceVerifier -PathType Leaf)) { throw 'Missing built trace-policy verifier.' }
-if (-not (Get-Command strace -ErrorAction SilentlyContinue)) { throw 'Hosted syscall gate needs preinstalled strace; no system package installation is authorized.' }
+if (-not (Get-Command strace -ErrorAction SilentlyContinue)) { throw 'Local syscall verification needs preinstalled strace; no system package installation is authorized.' }
 if (Test-Path -LiteralPath $ArtifactsPath) { throw 'Use a new verification artifact directory.' }
 New-Item -ItemType Directory -Path $ArtifactsPath | Out-Null
 Push-Location $Package
@@ -48,7 +48,7 @@ $fixture = Invoke-ReadOnlyCase 'fixture-inventory' @('doctor', '--fixture', 'inv
 $missing = Invoke-ReadOnlyCase 'fixture-missing' @('doctor', '--fixture', 'missing-tools', '--json') @(1) $false
 $incomplete = Invoke-ReadOnlyCase 'fixture-incomplete' @('doctor', '--fixture', 'prerequisites', '--json') @(2) $false
 $unsupported = Invoke-ReadOnlyCase 'fixture-unsupported' @('doctor', '--fixture', 'windows', '--json') @(3) $false
-$local = Invoke-ReadOnlyCase 'hosted-ubuntu-local' @('doctor', '--json', '--no-gpu-query') @(1, 2) $true
+$local = Invoke-ReadOnlyCase 'ubuntu-local' @('doctor', '--json', '--no-gpu-query') @(1, 2) $true
 if (-not ([IO.File]::ReadAllText($help.ReportPath).Contains('INTERNAL read-only inventory'))) { throw 'Native help output failed.' }
 function Read-ValidatedReport($Case, [string]$Provenance, [string]$Scope) {
     $document = Get-Content -LiteralPath $Case.ReportPath -Raw | ConvertFrom-Json
@@ -74,12 +74,12 @@ $document = Read-ValidatedReport $local 'LiveLocal' 'Prerequisites'
 $platform = $document.probes | Where-Object id -eq 'Platform'
 if ($platform.code -ne 'HOST_OBSERVED' -or $platform.evidence.platform.distribution -ne 'Ubuntu' -or
     $platform.evidence.platform.version -ne '24.04' -or $platform.evidence.platform.osArchitecture -ne 'X64') {
-    throw 'The actual runner did not establish the required Ubuntu 24.04 x64 package execution lane.'
+    throw 'The local machine did not establish the required Ubuntu 24.04 x64 package execution target.'
 }
 foreach ($id in @('Cpu', 'Memory', 'Disk', 'Network', 'GatewayPort', 'LocalClock')) {
     $probe = $document.probes | Where-Object id -eq $id
     if ($probe.code -ne 'HOST_OBSERVED' -and -not ($id -eq 'GatewayPort' -and $probe.code -eq 'HOST_PORT_IN_USE')) {
-        throw "Production $id local inventory did not return a valid observation on the hosted CPU runner."
+        throw "Production $id local inventory did not return a valid observation on this local development machine."
     }
 }
 foreach ($id in @('Nvidia', 'ContainerGpu', 'ModelInference', 'ClockAccuracy', 'PairingFirewall')) {
@@ -90,8 +90,8 @@ $after = (Get-ChildItem -LiteralPath $Package -File | Sort-Object Name | ForEach
     '{0} {1}' -f $_.Name, (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
 }) -join "`n"
 if ($before -ne $after) { throw 'Package files changed during read-only execution.' }
-Write-Output 'ACTUAL EPHEMERAL GITHUB UBUNTU 24.04 CPU RUNNER - NOT OWNER HARDWARE, NOT GPU/DAEMON/MODEL/FIREWALL/SETUP QUALIFICATION.'
-# Only the already-sanitized product report goes to the build log. Raw syscall traces remain in runner temp and are not uploaded.
+Write-Output 'LOCAL UBUNTU 24.04 DEVELOPMENT MACHINE - NOT OWNER HARDWARE, NOT GPU/DAEMON/MODEL/FIREWALL/SETUP QUALIFICATION.'
+# Only the already-sanitized product report goes to the log. Raw syscall traces remain in the chosen local artifacts.
 Get-Content -LiteralPath $local.ReportPath -Raw
 # Doctor exits 1/2 are expected above; do not leak that last native exit into the successful harness.
 exit 0
