@@ -6,7 +6,7 @@ public static class OpenAiTranscriptionCatalog
 {
     public const string ProviderId = "openai";
     public const string AdapterVersion = "0.1.0";
-    public static Uri Origin { get; } = new("https://api.openai.com");
+    public static Uri Origin => OpenAiTransport.Origin;
     internal static Uri Endpoint { get; } = new(Origin, "/v1/audio/transcriptions");
     public static DateOnly DocumentationDate { get; } = new(2026, 9, 12);
     public static IReadOnlyList<string> SupportedModelIds { get; } = Array.AsReadOnly(new[]
@@ -18,10 +18,7 @@ public static class OpenAiTranscriptionCatalog
     public static bool SupportsModel(string? upstreamModelId) =>
         SupportedModelIds.Contains(upstreamModelId, StringComparer.Ordinal);
 
-    internal static bool IsApprovedOrigin(Uri? origin) => origin is
-    {
-        IsAbsoluteUri: true, Scheme: "https", Port: 443, AbsolutePath: "/", Query: "", Fragment: "", UserInfo: ""
-    } && string.Equals(origin.IdnHost, "api.openai.com", StringComparison.Ordinal);
+    internal static bool IsApprovedOrigin(Uri? origin) => OpenAiTransport.IsApprovedOrigin(origin);
 
     // ModelAlias is the Core identifier. UpstreamModelId is never inferred from it.
     public static ProviderCapabilities Describe(string modelAlias, string upstreamModelId)
