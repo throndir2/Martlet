@@ -91,6 +91,11 @@ public sealed class SettingsStore
                     "Setup must preserve the existing profile identity and legacy credential references.", "settings.correct"));
             if (existing.Settings?.Setup is { } priorSetup && settings.Setup is { } nextSetup)
                 ValidateCredentialTransition(priorSetup, nextSetup, removedCredential);
+            if (existing.Settings?.Audio is { } priorAudio && settings.Audio is { } nextAudio)
+            {
+                ValidateAudioTransition(priorAudio.Input, nextAudio.Input);
+                ValidateAudioTransition(priorAudio.Output, nextAudio.Output);
+            }
             var migrated = existing.Settings?.SchemaVersion == 1 && settings.SchemaVersion == 2;
             var snapshot = migrated ? $"settings.v1.{Guid.NewGuid():N}.bak" : null;
             var temporary = Path.Combine(DataDirectory, $"settings.{Guid.NewGuid():N}.tmp");
@@ -180,6 +185,13 @@ public sealed class SettingsStore
             ContractRules.Require(pending.CredentialId == removed || next.PendingRemovals.Contains(pending) ||
                 next.Routes.Any(route => route.Role == pending.Role && route.CredentialId == pending.CredentialId),
                 "Use explicit credential cleanup to remove a pending owned reference.");
+    }
+
+    private static void ValidateAudioTransition(AudioChoice prior, AudioChoice next)
+    {
+        if (prior.EndpointId != next.EndpointId || prior.DisplayName != next.DisplayName)
+            ContractRules.Require(prior.ConfigurationRevision != next.ConfigurationRevision,
+                "Changed audio selection requires a fresh configuration revision; prior qualification cannot be reused.");
     }
 
     internal async Task<SetupSaveResult> RemoveDetachedCredentialAsync(AppSettings settings, string? expectedRevision,

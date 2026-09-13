@@ -14,6 +14,8 @@ public sealed record AppSettings : IContract
     public required ProfileSettings Profile { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public SetupSettings? Setup { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public AudioSettings? Audio { get; init; }
 
     public static AppSettings CreateUnconfigured() => new()
     {
@@ -29,6 +31,8 @@ public sealed record AppSettings : IContract
         ContractRules.Require(SchemaVersion == 1 ? Setup is null : Setup is not null,
             "Version 1 cannot contain setup; version 2 requires a setup checkpoint.");
         Setup?.Validate();
+        ContractRules.Require(SchemaVersion != 1 || Audio is null, "Version 1 cannot contain audio setup.");
+        Audio?.Validate();
         if (Setup is not null)
         {
             var legacy = Profile.Credentials.Select(item => item.CredentialId).ToHashSet();

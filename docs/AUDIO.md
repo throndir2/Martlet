@@ -4,8 +4,10 @@ This is an opt-in playback library, not a voice app or a passed audio hardware
 gate. F03c now connects Desktop/Windows Doctor fixture sessions to this same
 sink through a separate per-action synthetic-tone permission boundary.
 See [the fixture experience](DIAGNOSTICS.md#offline-fixture-experience-f03c).
-Settings, capture, VAD, microphones, loopback, provider APIs and avatars remain
-unwired.
+[V02b Audio setup](SETUP.md#explicit-local-audio-setup-v02b) additionally uses
+this same sink/tone for explicit selected-output local tests and human listening
+confirmation. The reviewed playback lifecycle is unchanged. VAD, loopback,
+provider APIs and avatars remain unwired in the Desktop.
 Remote D02 protocols remain partial. Loading either assembly, constructing
 `PcmPlaybackSink` / `WasapiDeviceFactory`, or disposing an unused sink does
 not enumerate, activate or play an endpoint.
@@ -77,8 +79,9 @@ Both modes bind an actual `MMDevice`; neither uses NAudio's automatic-routing
 virtual endpoint. Mid-stream default changes do not move the stream. Endpoint
 loss/invalidation stops the attempt, reports an error and requires an explicit
 new epoch/selection; no headset-to-room-speaker failover or automatic replay.
-Device enumeration/selection UI and endpoint notification subscriptions belong
-to V01; this minimal adapter polls selected-device state and observes WASAPI
+The V02b Desktop selection adapter explicitly enumerates capture/render choices
+without activating audio clients; it does not replace this adapter.
+This minimal playback adapter polls selected-device state and observes WASAPI
 operation errors. It does not change system defaults, endpoint volume, mute,
 permissions, drivers, services or another audio instance.
 

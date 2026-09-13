@@ -16,11 +16,13 @@ public static class SettingsJson
         public required int SchemaVersion { get; init; }
         public ProfileHeader? Profile { get; init; }
         public SetupHeader? Setup { get; init; }
+        public ProfileHeader? Audio { get; init; }
         public void Validate()
         {
             ContractRules.Require(SchemaVersion is 1 or AppSettings.CurrentSchemaVersion, "Unsupported settings version.", ErrorCode.UnsupportedVersion);
             ContractRules.Require(Profile is null || Profile.SchemaVersion == 1, "Unsupported profile version.", ErrorCode.UnsupportedVersion);
             ContractRules.Require(Setup is null || Setup.SchemaVersion == 1, "Unsupported setup version.", ErrorCode.UnsupportedVersion);
+            ContractRules.Require(Audio is null || Audio.SchemaVersion == 1, "Unsupported audio settings version.", ErrorCode.UnsupportedVersion);
             if (Setup?.Routes is { } routes)
                 foreach (var route in routes)
                     ContractRules.Require(route?.Consent is null || route.Consent.SchemaVersion == 1,

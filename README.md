@@ -8,8 +8,11 @@ The fixture uses no microphone, provider, network, credentials or GPU. Audio is 
 default; the separate confirmed 200 ms tone is not speech or proof of audibility.
 Resumable configuration and explicit Windows credential actions are available
 through **Setup / resume**; see [SETUP](docs/SETUP.md). Saved API routes are not
-working connections. Real conversations, capture, signed installation and
-supported end-user deployment are not available.
+working connections. **Audio setup (local only)** offers explicit microphone/
+output selection and separately confirmed bounded local capture/tone tests.
+Opening it does not enumerate or open devices. Historical local checkpoints
+are not device readiness or permission to listen later. Real conversations,
+learned VAD, signed installation and supported end-user deployment are not available.
 
 The intended first experience is a Windows installer, microphone and speaker
 setup, an explicitly selected AI provider, and a working voice conversation
@@ -29,7 +32,7 @@ voice and installation take priority over avatars.
 | [Delivery and release plan](docs/DELIVERY.md) | PR-sized backlog, dependencies, acceptance criteria, release gates, and traceability |
 | [Research and provenance](docs/RESEARCH.md) | Dated primary sources, verified constraints, and unresolved integration questions |
 | [Implemented foundation and decisions](docs/FOUNDATION.md) | Accepted/deferred decisions, exact APIs/bounds, current behavior and next ownership |
-| [Resumable setup and credentials](docs/SETUP.md) | Configuration-only V02a, role consent, strict migration, scoped Windows vault actions and remaining live gates |
+| [Resumable setup and local audio](docs/SETUP.md) | V02a configuration/vault actions and V02b explicit local device tests, historical checkpoints, strict migration and remaining live gates |
 
 The broader plan documents remain future specifications except for the current
 implementation/acceptance ledger in [DELIVERY](docs/DELIVERY.md) and the

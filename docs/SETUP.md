@@ -1,4 +1,4 @@
-# Resumable setup and Windows credentials (V02a)
+# Resumable setup, Windows credentials and local audio (V02a/V02b)
 
 **Configuration only, not a working voice connection.** Open **Setup / resume**
 in the existing Desktop. Fixture is the safe first-run choice; it needs no
@@ -150,8 +150,8 @@ count. Desktop/Doctor reports exclude route IDs, origins and credential IDs,
 retain the original twelve probes and exit-code semantics, and never turn
 saved metadata into provider readiness.
 
-V01b/V02b must integrate explicitly permissioned input/output selection,
-real local qualification and accessibility/novice evidence. V04 must bridge
+V02b adds the explicit local audio actions below, not physical qualification or
+novice evidence. V01b learned VAD/endpointer remains separate. V04b must bridge
 `ICredentialStore` to the provider credential source only after explicit fresh
 bounded per-turn authorization, matching role/model/origin, request IDs and
 limits. This PR references no provider library and registers no STT/LLM/TTS
@@ -177,3 +177,112 @@ roundtrip qualified**. Real Credential Manager write/read/delete, real
 microphone/speaker, live API, clean VM lifecycle, signing, release and novice
 gates remain **NOT RUN**. Do not run a real-key or OS-vault integration test in
 the shared Windows profile without separate permission.
+
+## Explicit local audio setup (V02b)
+
+Open **Audio setup (local only)** from Desktop. This is a separate local
+device-test surface, **not** a first-conversation wizard, AI/VAD test, provider
+capability check, or permission to listen on launch. Opening it only loads
+settings. It does not enumerate endpoints, open devices, sample a microphone,
+play output, resolve a key, contact a provider, or write settings.
+Status and the audio-OFF fixture remain usable without audio hardware.
+
+| Action | Actual effect and evidence |
+| --- | --- |
+| **Find devices** | Explicit off-dispatcher Windows capture/render enumeration, at most 128 of each. Uses the existing capture discovery factory and pinned NAudio render API. Lists are local snapshots, not privacy permission, working capture, or audible playback. Refresh only by pressing Find again; no automatic discovery loop. |
+| Microphone choice | Fixed opaque endpoint identity, or deliberate `FollowDefaultOnNextPress`. Default is resolved on each newly authorized test; a mid-capture default/input/property/format change stops and discards rather than reopening. |
+| Output choice | Fixed identity, or `DefaultAtStart`. The actual output binds once; active playback never follows a changed default or falls back. |
+| **Test microphone** | Default-No confirmation names the selected configuration and local-only boundary. Fresh IDs/epoch; actual `MicrophoneCapture`, at most 5 seconds with at most 20 seconds of consent including cleanup/transfer. Peak/RMS and counts come only from its real PCM events. Silence with samples is not VAD/no-speech; no samples or device failure is not a pass. |
+| **Test output** | Separate default-No confirmation for the existing `SyntheticTone`: 200 ms faded 440 Hz, low amplitude, not speech/TTS. Actual `PcmPlaybackSink`, five-second deadline, exact sample count, selected output only. No system/app volume or default changes. |
+| **I heard it** | Enabled only for this window's successfully drained current output test, never from a loaded checkpoint. Explicit human confirmation is separate from device consumption. Choice changes, interruption, deactivation and reopening invalidate confirmability. |
+| **Save audio choices and historical checkpoints** | Explicit atomic settings save with the loaded optimistic revision. It does not authorize a later test. Reload is required after conflicting/interrupted saves; files are never reset to make setup succeed. |
+| **Stop / Pause / Close / deactivation / session lock** | Cancel only the currently owned test handle, clear unclaimed capture, and stop observation. Unlock/reopen never rearms. No simultaneous input/output and no silent contention with the fixture tone. |
+
+Capture PCM is never copied to a recording, file, transcript, provider, or
+export. The one completed lease is taken solely to verify nonempty samples and
+immediately disposed/zeroed; cancellation/failure also discards unclaimed PCM.
+Capture retains its original caller-token, absolute UTC and original monotonic
+consent safeguards through transfer. The UI service additionally accounts for
+the action's elapsed time before dispatch. Output's adapter wrapper links
+native/caller cancellation and directly checks the original token and both
+consent clocks before native open/start/write/padding boundaries. An already
+in-flight native call cannot honestly be retracted.
+
+### Shared ownership, responsiveness and metadata
+
+`AudioSetupWindow` uses the existing app-shared `SetupOperationRunner`, also
+used by credential setup and fixture actions. `AudioSetupService.Start` offers
+an action with a snapshotted choice and per-action permission; it returns
+`AudioSetupOperation` with metadata-only status and the original worker handle.
+`Stop()` targets that handle, not sink-wide current playback. Workers never
+capture the observing audio window. Native enumeration and all device work run
+off the dispatcher. `IAudioDeviceCatalog`, capture/playback factories and
+`IAudioSessionEvents` are controlled-device test seams, not production fakes.
+
+Find/settings observations expire after five seconds; test observations after
+nine seconds. Stop/Close do not await blocked callbacks on WPF. A timed-out or
+closed observation discards late lists/events/results and leaves the shared
+worker reserved until actual native **and cancellation-handler** release.
+Failed native release remains quarantined; creating a replacement factory is
+not a recovery path. Fixture tone failure with unproven release conservatively
+holds the shared slot because its frozen public terminal cannot prove a late
+release. Close Martlet if an owned driver never returns. A terminal report or
+responsive window is not a measured physical Stop guarantee.
+
+Optional v2 `audio` contains versioned `AudioSettings`, two bounded
+`AudioChoice` values and optional `AudioCheckpoint` values. Existing v1/v2 files
+without audio still load unchanged. v1 explicit save retains the reviewed exact
+original snapshot; profile identity, legacy credentials, role routes/consents,
+pending removals and setup navigation survive. Unknown audio versions/fields,
+corrupt/oversize settings and stale revisions are rejected without rewriting
+original bytes. No package, project graph, capture contract, or playback
+lifecycle changed.
+
+An endpoint ID is at most 1,024 characters; a friendly label at most 256.
+Null identity deliberately means the direction-specific default policy.
+Changing identity or label renews that choice's configuration revision and
+invalidates its corresponding checkpoint. Save rejects changed identities
+reusing a prior revision. A checkpoint records the matching configuration
+revision, UTC test time and `SamplesReceived`, `ToneDrained`, or `Heard`.
+These are **local historical observations**, not provider/fixture evidence or
+evergreen device readiness. Default-policy history qualifies only that action's
+policy, not today's possibly different default endpoint. Reopened/saved
+evidence is always labeled stale for current readiness; it grants no capture,
+playback, cloud or vault permission.
+
+`AudioSetupDiagnostics` supplies shared stage descriptions and specific
+privacy/busy/missing/changed/format/cleanup/volume remedies. The Desktop local
+audio section is separate from the fixture and real-provider pipeline.
+Doctor's existing `settings.load` metadata includes only selection/default
+booleans, historical times/outcomes and `LocalObserved`/`LocalUserReported`
+provenance: never endpoint IDs, friendly labels,
+configuration IDs, user paths, or PCM. The existing twelve probes, exit codes
+and automatic read-only effect policy are unchanged. No new CLI device command
+pretends to be implemented.
+
+### V04b seam and remaining gates
+
+V04b may later map the saved choices to input/output policies, but must obtain
+fresh bounded per-turn permission and coordinate runtime ownership with these
+local actions. It must use reviewed runtime/provider boundaries and a separately
+authorized vault-to-provider bridge. This slice references no Conversation or
+Providers library, resolves no keys and installs no real provider adapter.
+V01b learned VAD/endpointer, acoustic tail/AEC, real AI speech, price/quality and
+paid access remain separate.
+
+Controlled-device regressions exercise actual WPF button events, metering,
+exact tone bytes, confirmation/invalidation, settings preservation/conflict,
+native open/read/disposal/callback blocking, heartbeat, timeout, bounded close,
+reopen quarantine, late generations, session-lock signals, and owned-HWND WPF
+deactivation. Core tests cover bounds, strict schema, revision binding,
+sanitized history and exact v1 snapshots. The executable audio-OFF smoke opens
+Audio setup and reads never-tested status **without pressing Find or Test**;
+existing owned-HWND Alt+F Stop assertions remain strict and unchanged.
+
+**NOT RUN / not passed:** physical endpoint enumeration/capture/audibility,
+USB unplug/reconnect, Bluetooth profile/default/format churn, Windows privacy
+denial and exclusive-device matrix, acoustic tails/physical Stop latency,
+novice/accessibility witness sessions, clean Windows/installer lifecycle,
+signing and G2. No OS-vault roundtrip, live provider/key/model request, cost or
+voice-quality test was run. Passing a controlled PCM meter test is not physical
+device qualification or learned VAD evidence.

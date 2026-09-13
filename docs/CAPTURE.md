@@ -1,8 +1,10 @@
 # V01a explicit microphone capture
 
 This is a **library foundation**, not full V01, a live conversation feature,
-validated VAD, microphone qualification, or a passed G2 gate. Desktop, Doctor,
-settings, provider routes, credential storage and packaging are unchanged.
+validated VAD, microphone qualification, or a passed G2 gate.
+The subsequent [V02b local audio setup](SETUP.md#explicit-local-audio-setup-v02b)
+now calls this library from explicit Desktop tests; it leaves this reviewed
+capture lifecycle unchanged and does not wire a provider or live conversation.
 Existing [playback](AUDIO.md) remains the single playback implementation.
 The portable and Windows targets of `Martlet.Audio` are reused, with the
 existing locked **NAudio.Wasapi 3.1.0** dependency and no new package.
@@ -258,8 +260,9 @@ without moving native-buffer ownership or adding a second device stack.
 No continuous capture/preroll is implemented or authorized in this slice.
 V01b must preserve cancellation/epoch rules for any copies it owns.
 
-**V02** owns human consent, device-selection UI, visible mic state, privacy
-remedies, mute/pause/lock signal delivery and destination approval.
+**V02b** implements explicit local device selection/tests, visible real amplitude,
+privacy remedies and Stop/Pause/deactivation/lock delivery; see [SETUP](SETUP.md).
+Destination approval remains distinct from every local test's authorization.
 **V04** owns playback coordination/tails, STT request conversion, turn epochs,
 frame consumption, provider cancellation and disposal of transferred audio.
 There is no live UI/CLI conversation or provider integration in V01a.

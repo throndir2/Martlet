@@ -10,10 +10,13 @@ public sealed record SetupStatus : IContract
     public required SetupStep Checkpoint { get; init; }
     public required IReadOnlyList<SetupRoleStatus> Roles { get; init; }
     public required int PendingRemovals { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public AudioSetupStatus? Audio { get; init; }
 
     public static SetupStatus? From(AppSettings? settings) => settings?.Setup is not { } setup ? null : new()
     {
         Checkpoint = setup.Checkpoint, PendingRemovals = setup.PendingRemovals.Count,
+        Audio = settings.Audio is null ? null : AudioSetupStatus.From(settings.Audio),
         Roles = Enum.GetValues<SetupRole>().Select(role =>
         {
             var route = setup.Routes.SingleOrDefault(r => r.Role == role);
@@ -24,6 +27,7 @@ public sealed record SetupStatus : IContract
     public void Validate()
     {
         ContractRules.Defined(Checkpoint);
+        Audio?.Validate();
         ContractRules.Require(PendingRemovals is >= 0 and <= 16 && Roles is { Count: 3 }, "Invalid setup status metadata.");
         var roles = new HashSet<SetupRole>();
         foreach (var item in Roles!)
@@ -43,7 +47,7 @@ public sealed record SetupStatus : IContract
                 $"{role.Role}: {(role.RouteSelected ? "route selected" : "not configured")}; " +
                 $"{(role.DestinationSelected ? "destination selected, not per-turn permission" : "consent missing or invalidated; review in Setup")}; " +
                 $"{(role.CredentialReferenced ? "key referenced, presence/API validity unknown" : "key not configured")}; not connected.")) +
-            $"{Environment.NewLine}Capture/screen/memory OFF; audio qualification NOT RUN. Price and quota unknown. " +
+            $"{Environment.NewLine}Capture/screen/memory OFF. {Audio?.Describe() ?? "Audio qualification NOT RUN."} Price and quota unknown. " +
             $"Detached key removals pending: {PendingRemovals}. Open Setup / resume; no secret lookup or network request was made.";
     }
 }
