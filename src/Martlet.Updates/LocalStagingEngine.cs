@@ -21,6 +21,7 @@ public sealed class LocalStagingEngine
     internal Action<StagingIoPoint, CancellationToken>? Io { get; init; }
     internal Func<long>? AvailableBytes { get; init; }
     public string? PendingCleanupDirectory => pending?.Directory;
+    internal string Root => root;
 
     public LocalStagingEngine(string existingPrivateStagingRoot, UpdateTrustPolicy trust,
         Func<InstalledVersionFacts> readInstalledFacts, StagingLimits? limits = null)
@@ -151,6 +152,82 @@ public sealed class LocalStagingEngine
         token.ThrowIfCancellationRequested();
         return new StagedReceipt(destination, bytes, candidate, installed);
     }, token, inspecting: true);
+
+    // Own both the engine and its lock until the synchronous transaction callback returns.
+    // Retained selections use their recorded receipt digest, never invented installed facts.
+    internal T WithPinnedStage<T>(string destination, string? recordedReceipt,
+        Func<PinnedStage, T> operation, CancellationToken token) =>
+        WithPinnedStages([new(destination, recordedReceipt)], stages => operation(stages[0]), token);
+
+    internal sealed record StageInspection(string Destination, string? RecordedReceipt);
+
+    internal T WithPinnedStages<T>(IReadOnlyList<StageInspection> requests,
+        Func<IReadOnlyList<PinnedStage>, T> operation, CancellationToken token) => Run(() =>
+    {
+        token.ThrowIfCancellationRequested();
+        if (requests.Count > 3) throw new StagingException(StagingFailure.CapacityExceeded);
+        using var rootLock = LockRoot();
+        var pins = new List<FileStream>();
+        try
+        {
+            var stages = requests.Select(request => PinStage(request, pins, token)).ToArray();
+            return operation(stages);
+        }
+        finally
+        {
+            foreach (var pin in pins) pin.Dispose();
+        }
+    }, token, inspecting: true);
+
+    private PinnedStage PinStage(StageInspection request, List<FileStream> pins, CancellationToken token)
+    {
+        var destination = Destination(request.Destination);
+        var recordedReceipt = request.RecordedReceipt;
+        var installed = recordedReceipt is null ? Current() : null;
+        token.ThrowIfCancellationRequested();
+        FileStream Pin(string name)
+        {
+            var stream = BoundedIo.OpenRead(Path.Combine(destination, name), bufferSize: 1);
+            pins.Add(stream);
+            return stream;
+        }
+        var envelope = Pin("candidate.json");
+        var envelopeBytes = BoundedIo.Read(envelope, Wire.MaximumEnvelopeBytes, token);
+        var candidate = installed is null ? verifier.ReadPackage(envelopeBytes) : verifier.ReadEnvelope(envelopeBytes, installed);
+        var receipt = Pin("staged.json");
+        var bytes = BoundedIo.Read(receipt, Wire.MaximumReceiptBytes, token);
+        var document = Wire.Read<ReceiptDocument>(bytes, Wire.MaximumReceiptBytes, canonical: true);
+        document.Installed.Validate();
+        if ((installed is not null && document.Installed != installed) ||
+            (recordedReceipt is not null && Wire.Hash(bytes) != recordedReceipt) ||
+            !bytes.AsSpan().SequenceEqual(Wire.Write(Document(destination, document.Installed, candidate))))
+            throw new StagingException(StagingFailure.InvalidReceipt);
+        var archive = Pin("candidate.zip");
+        verifier.VerifyArchive(archive, candidate, token);
+        VerifyExtracted(destination, candidate, bytes, token, pins);
+        void Reverify()
+        {
+            token.ThrowIfCancellationRequested();
+            using var namedEnvelope = BoundedIo.OpenRead(Path.Combine(destination, "candidate.json"));
+            var exact = BoundedIo.Read(namedEnvelope, Wire.MaximumEnvelopeBytes, token);
+            if (!exact.AsSpan().SequenceEqual(envelopeBytes))
+                throw new StagingException(StagingFailure.Conflict);
+            var fresh = verifier.ReadPackage(exact);
+            using var namedArchive = BoundedIo.OpenRead(Path.Combine(destination, "candidate.zip"));
+            verifier.VerifyArchive(namedArchive, fresh, token);
+            VerifyExtracted(destination, fresh, bytes, token);
+            if (installed is not null) RequireCurrent(installed);
+            token.ThrowIfCancellationRequested();
+        }
+        return new(new(destination, bytes, candidate, document.Installed), candidate, Reverify);
+    }
+
+    internal sealed class PinnedStage(StagedReceipt receipt, VerifiedCandidate candidate, Action reverify)
+    {
+        internal StagedReceipt Receipt { get; } = receipt;
+        internal VerifiedCandidate Candidate { get; } = candidate;
+        internal void Reverify() => reverify();
+    }
 
     public void RetryCleanup()
     {
@@ -377,7 +454,8 @@ public sealed class LocalStagingEngine
         Candidate = candidate.Manifest, NextSteps = StagedReceipt.NextSteps
     };
 
-    private static void VerifyExtracted(string directory, VerifiedCandidate candidate, byte[] receiptBytes, CancellationToken token)
+    private static void VerifyExtracted(string directory, VerifiedCandidate candidate, byte[] receiptBytes,
+        CancellationToken token, List<FileStream>? pins = null)
     {
         var expected = candidate.Manifest.Files.ToDictionary(f => "payload/" + f.Path, StringComparer.Ordinal);
         expected.Add("candidate.zip", new PayloadFile
@@ -417,8 +495,13 @@ public sealed class LocalStagingEngine
                     if (!remaining.Remove(relative)) throw new StagingException(StagingFailure.InvalidReceipt);
                     if (expected.TryGetValue(relative, out var file))
                     {
-                        using var input = BoundedIo.OpenRead(path);
-                        BoundedIo.CopyAndHash(input, null, file.Bytes, file.Sha256, token);
+                        var input = BoundedIo.OpenRead(path, bufferSize: pins is null ? 65536 : 1);
+                        try
+                        {
+                            BoundedIo.CopyAndHash(input, null, file.Bytes, file.Sha256, token);
+                            if (pins is not null) { pins.Add(input); input = null; }
+                        }
+                        finally { input?.Dispose(); }
                     }
                 }
             }
