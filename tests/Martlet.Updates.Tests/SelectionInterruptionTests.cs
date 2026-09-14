@@ -7,7 +7,7 @@ public sealed class SelectionInterruptionTests(SigningKeys keys) : IClassFixture
 {
     public static IEnumerable<object[]> DurableWrites()
     {
-        foreach (var file in new[] { "before.json", "configuration.martlet-config", "journal.json", "pending.json", "selected.json" })
+        foreach (var file in new[] { "before.json", "configuration.martlet-config", "journal-v2.json", "pending.json", "selected.json" })
             foreach (var point in new[] { SelectionIoPoint.BeforeCreate, SelectionIoPoint.AfterCreate,
                 SelectionIoPoint.BeforeWrite, SelectionIoPoint.AfterWrite, SelectionIoPoint.BeforeFlush, SelectionIoPoint.AfterFlush })
                 yield return [file, (int)point];

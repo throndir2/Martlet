@@ -5,10 +5,10 @@ namespace Martlet.Updates;
 internal static class BoundedIo
 {
     private static readonly uint[] CrcTable = CreateCrcTable();
-    internal static FileStream OpenRead(string path)
+    internal static FileStream OpenRead(string path, int bufferSize = 65536)
     {
         LocalPaths.NoReparse(path);
-        return new(path, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, FileOptions.SequentialScan);
+        return new(path, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize, FileOptions.SequentialScan);
     }
 
     internal static byte[] Read(Stream source, int maximum, CancellationToken token)

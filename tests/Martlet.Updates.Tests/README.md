@@ -47,6 +47,22 @@ interrupted recovery and recovery twice; initialization leftovers; blocked
 cancellation callbacks before/after finalization; and retained unknown children.
 The 138 original staging regressions remain in the same suite.
 
+`SelectionReviewRegressionTests` adds 64 owning-boundary cases. The first 18
+failed against the pre-review implementation (only the initialization fault hook
+was added): scratch overwrite/name substitution at all four atomic boundaries,
+control-only rewind with stale approvals, and current/previous stage/snapshot
+tamper during selection. The complete matrix also covers format-2 write-ahead
+publication create/write/flush interruption, before/after-rename cancellation
+with blocked callback delivery, missing/conflicting publication requirements,
+format-1 refusal, unpublished-v2 versus legacy orphans, retained evidence during
+recovery, and scratch substitution after publication intent. Ambiguous
+receipt/pointer states must fail read-only twice with every byte retained.
+
+The local review run retains `selection-review-before.trx` (18 failures) and
+subsequent after/extended TRX files under the session's own artifact TestResults
+directory, not in the repository. Passing these controlled tests does not
+establish physical power-loss durability or hostile same-user rename immunity.
+
 The direct Core graph additionally runs existing `ConfigurationRecoveryTests`
 and the new `ConfigurationSnapshotInspectionTests` (52 cases together), including
 actual snapshot creation, bounded pure inspection, immutable scalar metadata,

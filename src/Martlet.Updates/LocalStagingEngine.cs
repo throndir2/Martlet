@@ -156,17 +156,45 @@ public sealed class LocalStagingEngine
     // Own both the engine and its lock until the synchronous transaction callback returns.
     // Retained selections use their recorded receipt digest, never invented installed facts.
     internal T WithPinnedStage<T>(string destination, string? recordedReceipt,
-        Func<PinnedStage, T> operation, CancellationToken token) => Run(() =>
+        Func<PinnedStage, T> operation, CancellationToken token) =>
+        WithPinnedStages([new(destination, recordedReceipt)], stages => operation(stages[0]), token);
+
+    internal sealed record StageInspection(string Destination, string? RecordedReceipt);
+
+    internal T WithPinnedStages<T>(IReadOnlyList<StageInspection> requests,
+        Func<IReadOnlyList<PinnedStage>, T> operation, CancellationToken token) => Run(() =>
     {
         token.ThrowIfCancellationRequested();
-        destination = Destination(destination);
+        if (requests.Count > 3) throw new StagingException(StagingFailure.CapacityExceeded);
         using var rootLock = LockRoot();
+        var pins = new List<FileStream>();
+        try
+        {
+            var stages = requests.Select(request => PinStage(request, pins, token)).ToArray();
+            return operation(stages);
+        }
+        finally
+        {
+            foreach (var pin in pins) pin.Dispose();
+        }
+    }, token, inspecting: true);
+
+    private PinnedStage PinStage(StageInspection request, List<FileStream> pins, CancellationToken token)
+    {
+        var destination = Destination(request.Destination);
+        var recordedReceipt = request.RecordedReceipt;
         var installed = recordedReceipt is null ? Current() : null;
         token.ThrowIfCancellationRequested();
-        using var envelope = BoundedIo.OpenRead(Path.Combine(destination, "candidate.json"));
+        FileStream Pin(string name)
+        {
+            var stream = BoundedIo.OpenRead(Path.Combine(destination, name), bufferSize: 1);
+            pins.Add(stream);
+            return stream;
+        }
+        var envelope = Pin("candidate.json");
         var envelopeBytes = BoundedIo.Read(envelope, Wire.MaximumEnvelopeBytes, token);
         var candidate = installed is null ? verifier.ReadPackage(envelopeBytes) : verifier.ReadEnvelope(envelopeBytes, installed);
-        using var receipt = BoundedIo.OpenRead(Path.Combine(destination, "staged.json"));
+        var receipt = Pin("staged.json");
         var bytes = BoundedIo.Read(receipt, Wire.MaximumReceiptBytes, token);
         var document = Wire.Read<ReceiptDocument>(bytes, Wire.MaximumReceiptBytes, canonical: true);
         document.Installed.Validate();
@@ -174,33 +202,25 @@ public sealed class LocalStagingEngine
             (recordedReceipt is not null && Wire.Hash(bytes) != recordedReceipt) ||
             !bytes.AsSpan().SequenceEqual(Wire.Write(Document(destination, document.Installed, candidate))))
             throw new StagingException(StagingFailure.InvalidReceipt);
-        using var archive = BoundedIo.OpenRead(Path.Combine(destination, "candidate.zip"));
+        var archive = Pin("candidate.zip");
         verifier.VerifyArchive(archive, candidate, token);
-        var pins = new List<FileStream>();
-        try
+        VerifyExtracted(destination, candidate, bytes, token, pins);
+        void Reverify()
         {
-            VerifyExtracted(destination, candidate, bytes, token, pins);
-            void Reverify()
-            {
-                token.ThrowIfCancellationRequested();
-                using var namedEnvelope = BoundedIo.OpenRead(Path.Combine(destination, "candidate.json"));
-                var exact = BoundedIo.Read(namedEnvelope, Wire.MaximumEnvelopeBytes, token);
-                if (!exact.AsSpan().SequenceEqual(envelopeBytes))
-                    throw new StagingException(StagingFailure.Conflict);
-                var fresh = verifier.ReadPackage(exact);
-                using var namedArchive = BoundedIo.OpenRead(Path.Combine(destination, "candidate.zip"));
-                verifier.VerifyArchive(namedArchive, fresh, token);
-                VerifyExtracted(destination, fresh, bytes, token);
-                if (installed is not null) RequireCurrent(installed);
-                token.ThrowIfCancellationRequested();
-            }
-            return operation(new(new(destination, bytes, candidate, document.Installed), candidate, Reverify));
+            token.ThrowIfCancellationRequested();
+            using var namedEnvelope = BoundedIo.OpenRead(Path.Combine(destination, "candidate.json"));
+            var exact = BoundedIo.Read(namedEnvelope, Wire.MaximumEnvelopeBytes, token);
+            if (!exact.AsSpan().SequenceEqual(envelopeBytes))
+                throw new StagingException(StagingFailure.Conflict);
+            var fresh = verifier.ReadPackage(exact);
+            using var namedArchive = BoundedIo.OpenRead(Path.Combine(destination, "candidate.zip"));
+            verifier.VerifyArchive(namedArchive, fresh, token);
+            VerifyExtracted(destination, fresh, bytes, token);
+            if (installed is not null) RequireCurrent(installed);
+            token.ThrowIfCancellationRequested();
         }
-        finally
-        {
-            foreach (var pin in pins) pin.Dispose();
-        }
-    }, token, inspecting: true);
+        return new(new(destination, bytes, candidate, document.Installed), candidate, Reverify);
+    }
 
     internal sealed class PinnedStage(StagedReceipt receipt, VerifiedCandidate candidate, Action reverify)
     {
@@ -475,7 +495,7 @@ public sealed class LocalStagingEngine
                     if (!remaining.Remove(relative)) throw new StagingException(StagingFailure.InvalidReceipt);
                     if (expected.TryGetValue(relative, out var file))
                     {
-                        var input = BoundedIo.OpenRead(path);
+                        var input = BoundedIo.OpenRead(path, bufferSize: pins is null ? 65536 : 1);
                         try
                         {
                             BoundedIo.CopyAndHash(input, null, file.Bytes, file.Sha256, token);
