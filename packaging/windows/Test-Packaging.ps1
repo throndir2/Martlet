@@ -4,6 +4,7 @@ param(
     [Parameter(Mandatory)][string]$PayloadRoot,
     [Parameter(Mandatory)][string]$WorkDirectory,
     [string]$ComparePayloadRoot,
+    [string]$PublishDirectory,
     [string]$BuilderDirectory,
     [string]$DotnetPath = 'dotnet',
     [Parameter(Mandatory)][string]$CliHome
@@ -36,11 +37,212 @@ Copy-Item -LiteralPath $PayloadRoot -Destination $copy -Recurse
 $copied = Test-PayloadManifest $copy
 $manifestPath = Join-Path $copy 'manifest.json'
 $originalManifest = [IO.File]::ReadAllBytes($manifestPath)
-Write-PayloadManifest $copy $copied.sourceCommit $copied.sourceDirty
+Write-PayloadManifest $copy $copied.sourceCommit $copied.sourceDirty $copied.provenance
 if ([Convert]::ToHexString([IO.File]::ReadAllBytes($manifestPath)) -cne [Convert]::ToHexString($originalManifest)) {
     throw 'Manifest is not reproducible after copying to a different Unicode/spaced path.'
 }
 $script:cases++
+
+function Write-TestEnvelope($Value, [switch]$KeepInventory) {
+    if (-not $KeepInventory) { $Value.files = @(Get-PayloadFiles $copy) }
+    [IO.File]::WriteAllText($manifestPath, (ConvertTo-EvidenceJson $Value), [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText((Join-Path $copy 'SHA256SUMS.txt'),
+        (Get-ChecksumText $Value.files (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash))
+}
+
+$sbomPath = Join-Path $copy 'sbom.cdx.json'
+$originalSbom = [IO.File]::ReadAllBytes($sbomPath)
+$evidenceSums = [IO.File]::ReadAllBytes((Join-Path $copy 'SHA256SUMS.txt'))
+foreach ($case in @('missing component', 'duplicate component', 'wrong standard', 'circular file', 'wrong file hash')) {
+    try {
+        $changed = Read-PackagingJson $sbomPath -AsHashtable
+        switch ($case) {
+            'missing component' { $changed.components = @($changed.components | Select-Object -Skip 1) }
+            'duplicate component' { $changed.components += $changed.components[0] }
+            'wrong standard' { $changed.specVersion = '1.5' }
+            'circular file' { $changed.components += [ordered]@{ type = 'file'; 'bom-ref' = 'file:manifest.json'; name = 'manifest.json' } }
+            'wrong file hash' { $changed.components[0].components[0].hashes[0].content = '0' * 64 }
+        }
+        [IO.File]::WriteAllText($sbomPath, (ConvertTo-EvidenceJson $changed))
+        Write-TestEnvelope (Read-PackagingJson $manifestPath -AsHashtable)
+        Assert-Fails "rechecksummed SBOM $case" { Test-PayloadManifest $copy } '*SBOM differs*'
+        Assert-Fails "installer rejects SBOM $case" { Write-InstallerFileList $copy (Join-Path $WorkDirectory 'invalid-sbom.iss') } '*SBOM differs*'
+    } finally {
+        [IO.File]::WriteAllBytes($sbomPath, $originalSbom)
+        [IO.File]::WriteAllBytes($manifestPath, $originalManifest)
+        [IO.File]::WriteAllBytes((Join-Path $copy 'SHA256SUMS.txt'), $evidenceSums)
+    }
+}
+foreach ($case in @('archive digest', 'resolved hash', 'missing origin', 'duplicate library', 'source mismatch',
+        'legacy schema', 'missing provenance', 'missing edge', 'dangling edge', 'wrong facade owner', 'supporting version',
+        'file byte type', 'provenance schema type')) {
+    try {
+        $changed = Read-PackagingJson $manifestPath -AsHashtable
+        switch ($case) {
+            'archive digest' { $changed.provenance.archives[0].archiveSha512 = '0' * 128 }
+            'resolved hash' {
+                $target = @($changed.provenance.restores | Where-Object project -CEQ 'Martlet.Desktop')[0].targets[0]
+                @($target.libraries | Where-Object type -CEQ 'package')[0].contentHash = ('A' * 86) + '=='
+            }
+            'missing origin' { $changed.provenance.archives[0].origins = @($changed.provenance.archives[0].origins | Select-Object -Skip 1) }
+            'duplicate library' { $changed.provenance.applications[0].libraries += $changed.provenance.applications[0].libraries[0] }
+            'source mismatch' { $changed.sourceCommit = '0' * 40 }
+            'legacy schema' { $changed.schemaVersion = 1 }
+            'missing provenance' { $changed.Remove('provenance') }
+            'missing edge' { $changed.provenance.applications[0].libraries[0].dependencies = @() }
+            'dangling edge' { $changed.provenance.restores[0].targets[0].rootDependencies += 'missing/1.0.0' }
+            'wrong facade owner' {
+                $origin = @($changed.provenance.archives.origins | Where-Object path -CEQ 'Desktop\WindowsBase.dll')[0]
+                $origin.component = 'Desktop|runtimepack.Microsoft.NETCore.App.Runtime.win-x64/10.0.12'
+            }
+            'supporting version' { @($changed.provenance.restores | Where-Object project -CEQ 'Martlet.Audio')[0].version = '9.9.9' }
+            'file byte type' { $changed.files[0].bytes = [string]$changed.files[0].bytes }
+            'provenance schema type' { $changed.provenance.schemaVersion = '1' }
+        }
+        Write-TestEnvelope $changed -KeepInventory:($case -ceq 'file byte type')
+        $pattern = switch ($case) {
+            'archive digest' { '*Archive evidence differs*' }
+            'resolved hash' { '*Published dependency differs*' }
+            'missing origin' { '*Missing archive asset provenance*' }
+            'duplicate library' { '*dependency graph differs*' }
+            'source mismatch' { '*source metadata differs*' }
+            'legacy schema' { '*requires manifest schema v2*' }
+            'missing provenance' { '*exactly these properties*' }
+            'missing edge' { '*dependency graph differs*' }
+            'dangling edge' { '*Dangling or duplicate restored dependency edge*' }
+            'wrong facade owner' { '*incorrect component*' }
+            'supporting version' { '*Supporting project version contradicts*' }
+            'file byte type' { '*bytes must be a nonnegative*' }
+            'provenance schema type' { '*Unsupported unsigned provenance*' }
+        }
+        Assert-Fails "rechecksummed provenance $case" { Test-PayloadManifest $copy } $pattern
+    } finally {
+        [IO.File]::WriteAllBytes($manifestPath, $originalManifest)
+        [IO.File]::WriteAllBytes((Join-Path $copy 'SHA256SUMS.txt'), $evidenceSums)
+    }
+}
+
+$readerFixture = Join-Path $WorkDirectory 'invalid-evidence.json'
+foreach ($json in @('{"a":1,"a":2}', '{"a":1,"A":2}', '{"a":{"x":1,"x":2}}')) {
+    [IO.File]::WriteAllText($readerFixture, $json)
+    Assert-Fails 'duplicate JSON keys' { Read-PackagingJson $readerFixture } '*duplicate*'
+}
+[IO.File]::WriteAllText($readerFixture, '{"a":"' + ('x' * 16MB) + '"}')
+Assert-Fails 'metadata byte bound' { Read-PackagingJson $readerFixture } '*bound*'
+[IO.File]::WriteAllText($readerFixture, '{"a":"' + ('x' * (16MB - 8)) + '"}')
+$null = Read-PackagingJson $readerFixture
+$script:cases++
+[IO.File]::WriteAllText($readerFixture, ('{"a":' * 64) + '0' + ('}' * 64))
+$null = Read-PackagingJson $readerFixture
+$script:cases++
+[IO.File]::WriteAllText($readerFixture, ('{"a":' * 65) + '0' + ('}' * 65))
+Assert-Fails 'metadata depth bound' { Read-PackagingJson $readerFixture } '*depth*'
+Assert-EvidenceRelativePath (('d\' * 400) + ('a' * 224))
+$script:cases++
+foreach ($path in @('..\outside', 'C:\absolute', '\\server\share', 'Desktop\\double', 'Desktop/forward', ('a' * 1025))) {
+    Assert-Fails "invalid evidence path $path" { Assert-EvidenceRelativePath $path } '*path*'
+}
+Assert-Fails 'production rejects generated-file collision' { Write-PackageSbom $copy $copied.provenance } '*Generated evidence collision*'
+$sourceFixture = Read-PackagingJson $manifestPath -AsHashtable
+$sourceFixture.provenance.source.files += $sourceFixture.provenance.source.files[0]
+Assert-Fails 'duplicate source inputs' { Test-PackagingSourceReceipt $sourceFixture.provenance.source } '*source*'
+$sourceFixture.provenance.source.files = @($sourceFixture.provenance.source.files[0]) * 16385
+Assert-Fails 'source input count bound' { Test-PackagingSourceReceipt $sourceFixture.provenance.source } '*bound*'
+$sourceFixture.provenance.source.files = @(0..16383 | ForEach-Object {
+    [ordered]@{ path = ('f{0:D5}' -f $_); bytes = [long]0; sha256 = $null }
+})
+$sourceFixture.provenance.source.sha256 = Get-EvidenceSha256 $sourceFixture.provenance.source.files
+Test-PackagingSourceReceipt $sourceFixture.provenance.source
+$script:cases++
+
+$satellite = Join-Path $copy 'Desktop\cs\PresentationCore.resources.dll'
+$satelliteBytes = [IO.File]::ReadAllBytes($satellite)
+try {
+    $damaged = [byte[]]$satelliteBytes.Clone()
+    $damaged[-1] = $damaged[-1] -bxor 1
+    [IO.File]::WriteAllBytes($satellite, $damaged)
+    Write-TestEnvelope (Read-PackagingJson $manifestPath -AsHashtable)
+    Assert-Fails 'rechecksummed runtime satellite' { Test-PayloadManifest $copy } '*Archive asset integrity/ownership mismatch*'
+} finally {
+    [IO.File]::WriteAllBytes($satellite, $satelliteBytes)
+    [IO.File]::WriteAllBytes($manifestPath, $originalManifest)
+    [IO.File]::WriteAllBytes((Join-Path $copy 'SHA256SUMS.txt'), $evidenceSums)
+}
+
+# Unsigned evidence is not authentication: consistent rewriting is inspectable,
+# but the independent current-source installer boundary must still reject it.
+try {
+    $changed = Read-PackagingJson $manifestPath -AsHashtable
+    $changed.provenance.source.tree = '0' * 40
+    [IO.File]::WriteAllText($sbomPath, (ConvertTo-EvidenceJson (Get-PackageSbom $copy $changed.provenance)))
+    Write-TestEnvelope $changed
+    $null = Test-PayloadManifest $copy
+    $script:cases++
+    Assert-Fails 'current-source handoff rejects stale source' {
+        Write-InstallerFileList $copy (Join-Path $WorkDirectory 'stale-source.iss')
+    } '*Source input snapshot differs*'
+    $rejectedInstaller = Join-Path $WorkDirectory 'rejected-installer'
+    Assert-Fails 'actual installer preflight rejects source before compiler use' {
+        & "$PSScriptRoot\Build-Installer.ps1" -PayloadRoot $copy -BuilderDirectory (Join-Path $WorkDirectory 'missing-builder') -OutputDirectory $rejectedInstaller
+    } '*Source input snapshot differs*'
+    if (Test-Path -LiteralPath $rejectedInstaller) { throw 'Stale evidence created installer output.' }
+} finally {
+    [IO.File]::WriteAllBytes($sbomPath, $originalSbom)
+    [IO.File]::WriteAllBytes($manifestPath, $originalManifest)
+    [IO.File]::WriteAllBytes((Join-Path $copy 'SHA256SUMS.txt'), $evidenceSums)
+}
+
+if ($PublishDirectory) {
+    $restoreEvidence = @(Get-PackageRestoreEvidence $PublishDirectory $copied.provenance.source)
+    if ((Get-EvidenceSha256 $restoreEvidence) -cne (Get-EvidenceSha256 $copied.provenance.restores)) { throw 'Supplied publish assets do not match this payload.' }
+    $script:cases++
+    $restoreCopy = Join-Path $WorkDirectory 'real-restore-inputs'
+    [IO.Directory]::CreateDirectory($restoreCopy) | Out-Null
+    foreach ($entry in @('Desktop', 'Doctor')) {
+        Copy-Item -LiteralPath (Join-Path $PublishDirectory "$entry.restore-graph.json") -Destination $restoreCopy
+    }
+    foreach ($project in $copied.provenance.restores.project) {
+        $destination = Join-Path $restoreCopy "build\obj\$project"
+        [IO.Directory]::CreateDirectory($destination) | Out-Null
+        Copy-Item -LiteralPath (Join-Path $PublishDirectory "build\obj\$project\project.assets.json") -Destination $destination
+    }
+    $assetsPath = Join-Path $restoreCopy 'build\obj\Martlet.Desktop\project.assets.json'
+    $assetsBytes = [IO.File]::ReadAllBytes($assetsPath)
+    try {
+        $assets = Read-PackagingJson $assetsPath -AsHashtable
+        $assets.libraries['NAudio.Core/3.1.0'].sha512 = ('A' * 86) + '=='
+        [IO.File]::WriteAllText($assetsPath, (ConvertTo-EvidenceJson $assets))
+        Assert-Fails 'actual restored content hash must match lock' {
+            Get-PackageRestoreEvidence $restoreCopy $copied.provenance.source
+        } '*content hash differs from RID lock*'
+    } finally { [IO.File]::WriteAllBytes($assetsPath, $assetsBytes) }
+    $audioAssetsPath = Join-Path $restoreCopy 'build\obj\Martlet.Audio\project.assets.json'
+    $audioAssetsBytes = [IO.File]::ReadAllBytes($audioAssetsPath)
+    foreach ($case in @('omitted framework', 'omitted target', 'project version', 'project reference', 'package declaration')) {
+        try {
+            $assets = Read-PackagingJson $audioAssetsPath -AsHashtable
+            switch ($case) {
+                'omitted framework' { $assets.project.frameworks.Remove('net10.0-windows') }
+                'omitted target' { $assets.targets.Remove('net10.0-windows/win-x64') }
+                'project version' { $assets.project.version = '9.9.9' }
+                'project reference' { $assets.project.restore.frameworks['net10.0'].projectReferences.Clear() }
+                'package declaration' { $assets.project.frameworks['net10.0-windows'].dependencies['NAudio.Wasapi'].version = '[9.9.9, )' }
+            }
+            [IO.File]::WriteAllText($audioAssetsPath, (ConvertTo-EvidenceJson $assets))
+            $pattern = switch ($case) {
+                'omitted framework' { '*Complete framework/target set differs*' }
+                'omitted target' { '*Complete framework/target set differs*' }
+                'project version' { '*Project version differs*' }
+                default { '*Root dependency declarations differ*' }
+            }
+            Assert-Fails "actual supporting-project assets: $case" {
+                Get-PackageRestoreEvidence $restoreCopy $copied.provenance.source
+            } $pattern
+        } finally { [IO.File]::WriteAllBytes($audioAssetsPath, $audioAssetsBytes) }
+    }
+} else {
+    Write-Output 'NOT RUN: retained restore-input mutation cases (supply -PublishDirectory for acceptance).'
+}
 
 $help = [IO.File]::ReadAllText((Join-Path $copy 'help\INTERNAL.txt'))
 foreach ($required in @('FIXTURE - NOT AI', 'self-test --scenario streaming --json',
@@ -77,7 +279,7 @@ Assert-Fails 'protected scope modification' {
     Assert-ProtectedDataUnchanged $resolvedSentinel $protectedBefore
 } '*selected protected scope changed*'
 
-$requiredFiles = @('Doctor\Martlet.Doctor.exe', 'Desktop\coreclr.dll', 'Desktop\PresentationFramework.dll',
+$requiredFiles = @('sbom.cdx.json', 'Doctor\Martlet.Doctor.exe', 'Desktop\coreclr.dll', 'Desktop\PresentationFramework.dll',
         'Doctor\System.Text.Json.dll', 'notices\WPF-THIRD-PARTY-NOTICES.txt',
         'Desktop\Martlet.Support.dll', 'help\INTERNAL.txt', 'help\TROUBLESHOOTING.md', 'notices\DEPENDENCIES.txt',
         'Desktop\NAudio.Wasapi.dll', 'Doctor\NAudio.Core.dll', 'Desktop\System.Numerics.Tensors.dll',
@@ -248,7 +450,7 @@ foreach ($name in @('comma,name', 'semicolon;name', 'percent%2Cname', 'percent%3
 foreach ($name in @('source,comma', 'source;semicolon', 'source%2Cescape', 'source=equals')) {
     $scripts = Join-Path $WorkDirectory "$name\packaging\windows"
     [IO.Directory]::CreateDirectory($scripts) | Out-Null
-    foreach ($file in @('Publish-Windows.ps1', 'Packaging.Common.ps1')) {
+    foreach ($file in @('Publish-Windows.ps1', 'Packaging.Common.ps1', 'Provenance.Common.ps1')) {
         Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $scripts
     }
     $output = Join-Path $WorkDirectory 'rejected-source-output'
@@ -273,7 +475,7 @@ foreach ($file in Get-ChildItem -LiteralPath (Join-Path $repo 'src') -Recurse -F
 }
 $packaging = Join-Path $source 'packaging\windows'
 [IO.Directory]::CreateDirectory($packaging) | Out-Null
-foreach ($file in @('Packaging.targets', 'Packaging.Common.ps1', 'Update-PublishLocks.ps1', 'toolchain.json')) {
+foreach ($file in @('Packaging.targets', 'Packaging.Common.ps1', 'Provenance.Common.ps1', 'Update-PublishLocks.ps1', 'toolchain.json')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $packaging
 }
 Copy-Item -LiteralPath "$PSScriptRoot\locks" -Destination $packaging -Recurse

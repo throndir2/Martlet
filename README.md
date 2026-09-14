@@ -161,5 +161,9 @@ self-contained Desktop/Doctor payloads and an unsigned per-user Inno installer.
 They include the fixture experience, actual runtime/audio dependencies and
 notices, but do not install anything as part of validation. Internal artifacts
 are not a supported download or an instruction to bypass Windows protection.
+The V07c packaging foundation adds required offline unsigned provenance and a
+CycloneDX 1.6 SBOM tied to the actual payload and resolved dependency graph;
+these checksums and observations do not establish publisher trust or license
+clearance.
 A supported release must ultimately need no Git, SDK or separately installed .NET.
 Clean Windows, real audio/provider, Ubuntu/GPU and signing gates remain unpassed.

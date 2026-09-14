@@ -1,4 +1,4 @@
-# Internal Windows packaging (F02 skeleton, V04b/V06b/V07a app)
+# Internal Windows packaging (F02 skeleton, V07c evidence foundation)
 
 **INTERNAL DEVELOPMENT ONLY - UNSIGNED. Not a supported installer or a completed
 F02/AC-02/G1 gate.** This packages V04b real explicit typed / push-to-talk app
@@ -44,7 +44,7 @@ $builder = Join-Path $run 'inno'
 .\packaging\windows\Publish-Windows.ps1 -DotnetPath $sdk -CliHome $cliHome -OutputDirectory $first
 .\packaging\windows\Publish-Windows.ps1 -DotnetPath $sdk -CliHome $cliHome -OutputDirectory $second
 .\packaging\windows\Get-InnoSetup.ps1 -Destination $builder
-.\packaging\windows\Test-Packaging.ps1 -DotnetPath $sdk -CliHome $cliHome -PayloadRoot "$first\payload" -ComparePayloadRoot "$second\payload" -BuilderDirectory $builder -WorkDirectory "$run\tests"
+.\packaging\windows\Test-Packaging.ps1 -DotnetPath $sdk -CliHome $cliHome -PayloadRoot "$first\payload" -ComparePayloadRoot "$second\payload" -PublishDirectory $first -BuilderDirectory $builder -WorkDirectory "$run\tests"
 .\packaging\windows\Smoke-Package.ps1 -PayloadRoot "$first\payload" -InteractiveDesktop
 .\packaging\windows\Build-Installer.ps1 -PayloadRoot "$first\payload" -BuilderDirectory $builder -OutputDirectory "$run\package"
 # Also exercise the actual GitHub pwsh exit wrapper (includes assertions, Doctor and compiler).
@@ -89,6 +89,7 @@ payload\
   help\INTERNAL.txt
   help\TROUBLESHOOTING.md
   notices\DEPENDENCIES.txt, upstream licenses/notices
+  sbom.cdx.json
   manifest.json
   SHA256SUMS.txt
 ```
@@ -189,15 +190,87 @@ publish/validation never regenerates locks. Framework runtime archives are also
 pinned separately because NuGet
 framework downloads are not represented as ordinary package lock dependencies.
 
-Payload manifests contain a sorted complete relative file inventory, lengths,
-SHA-256s, versions, source HEAD and a dirty-worktree flag, with no timestamp or
-absolute build path. Generated C# file-local type paths are mapped to stable
-paths so repeated clean output directories produce identical application bytes.
+Schema-v2 payload manifests contain a sorted complete relative file inventory,
+lengths, SHA-256s, versions, source HEAD/dirty state and the unsigned build
+evidence described below, with no timestamp or absolute build path.
+Generated C# file-local type paths are mapped to stable paths so repeated clean
+output directories can be compared without incidental source-directory names.
 `SHA256SUMS.txt` covers all payload files **and** the manifest. Installer output
 has its own manifest/checksums including the payload manifest hash and toolchain
 pins. Checksums detect accidental corruption; they are not signatures. A dirty
 source flag is honest local evidence, not proof that HEAD contains those inputs.
-Byte-identical installers across machines/times are not claimed.
+Neither whole-build reproducibility nor byte-identical installers across
+machines/times are established by deterministic metadata.
+
+### Offline provenance and CycloneDX SBOM (V07c foundation)
+
+Every new payload requires `sbom.cdx.json`, a **CycloneDX 1.6 JSON** software
+bill of materials, plus the manifest's `provenance` object. Legacy schema-v1
+payloads lack this evidence and must be rebuilt; there is no allow-missing
+option. This is an **unsigned internal observation**, not publisher
+attestation, a SLSA level, a release signature, license clearance or a
+vulnerability assessment. Signing and distribution decisions remain deferred.
+
+The existing manifest is still the sole file inventory. The SBOM describes
+each actual application/help/notice file and its SHA-256, alongside the actual
+resolved project, managed-package and self-contained runtime graph. Desktop
+and Doctor remain separate contexts: matching NuGet identities do not erase
+different dependency edges or duplicate physical files. File containment and
+archive-entry evidence are distinct from component dependency relationships.
+Generated apphosts and dependency/runtime configuration are identified as
+generated files, not falsely claimed to equal upstream archive entries.
+WindowsDesktop facade replacements retain their actual owning pack.
+Satellite resource assemblies absent from `.deps.json` are matched to exact
+entries and bytes in the already pinned runtime archive.
+
+The source receipt records commit/tree, dirty state and observed
+repository-relative input paths, lengths and hashes, not source contents.
+Publishing compares this snapshot before and after work; changes prevent
+completed-payload promotion. Selected dotnet/MSBuild/compiler file fingerprints
+record what was observed locally, not the integrity of an entire installed SDK
+distribution. NuGet lock content hashes are recorded separately from raw
+signed archive SHA-512s. Actual restore assets, committed RID locks, published
+dependency metadata and verified archive entries must agree. Build-only tools
+and references are not mislabeled as shipped packages.
+
+Upstream license expressions are **declared**, not concluded or approved.
+Missing or ambiguous declarations remain unknown/not assessed; a notice file
+does not grant Martlet's project license. Optional BOM document licensing is
+omitted. CycloneDX 1.6 was selected because it supports the required JSON
+component/file/relationship facts without SPDX 2.3's mandatory CC0 metadata
+declaration. No new project or asset rights are granted.
+
+The SBOM excludes itself, `manifest.json` and `SHA256SUMS.txt` from its file
+subjects to avoid circular hashes. The manifest inventories and hashes the
+SBOM; `SHA256SUMS.txt` covers those files and the manifest. The existing
+installer receipt's payload-manifest hash therefore also binds the SBOM.
+Installer entries still enumerate every checked file exactly once.
+
+`Test-PayloadManifest` checks retained evidence offline, without the original
+SDK, NuGet cache or build directory. It reconstructs the canonical SBOM from
+the validated evidence and actual payload and requires identical bytes.
+Installer file-list/build handoff additionally requires a source receipt
+matching the current checkout. Use an unchanged matching checkout to compile
+an installer; rebuild after source changes. Copying an intact payload to a
+different space/Unicode path does not invalidate portable inspection.
+
+Malformed, oversized, duplicate, missing, extra, stale or inconsistent evidence
+is an error with a rebuild remedy, not a partial successful inventory. Metadata
+uses ordinal ordering, UTF-8 and no random serial number or wall-clock
+timestamp. Matching metadata from repeated local inputs is not proof of
+hermetic compilation or reproducible binaries. Coordinated rewriting of an
+unsigned payload and all its receipts cannot be authenticated by checksums.
+The inventory covers actual packaged files and the resolved .NET graph, not a
+complete decomposition of upstream vendored/native internals, the operating
+system, models or remote services.
+
+Supply `-PublishDirectory` to `Test-Packaging.ps1` to additionally exercise
+retained real restore assets against committed locks. Omitting it reports
+those input-mutation cases as NOT RUN; it does not fabricate equivalent
+coverage from the shipped graph. Package acceptance includes this parameter.
+Schema conformance is checked locally against the published CycloneDX 1.6 JSON
+schema, with its references resolved from retained local schema files, never a
+remote validation service.
 
 Production-path assertions cover omitted executables/framework/dependency/
 notice files, changed bytes/checksums/RID/PE architecture, data inclusion,
@@ -224,8 +297,9 @@ allowance for arbitrary local/network feeds.
 
 ## V04b integration, fixtures and dependency evidence
 
-The eleven RID locks cover Core, Audio, Fixtures, Sessions, Diagnostics,
-Credentials.Windows, Conversation, Providers, Participation, Desktop and Doctor.
+The twelve RID locks cover Core, Audio, Fixtures, Sessions, Diagnostics,
+Credentials.Windows, Conversation, Providers, Participation, Support, Desktop
+and Doctor.
 The three V04b library locks and Desktop's added project edges are generated
 by the existing maintenance helper, not hand-authored placeholder locks.
 Normal locks remain separate; maintenance regression checks hash

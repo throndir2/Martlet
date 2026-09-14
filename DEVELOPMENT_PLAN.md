@@ -22,6 +22,11 @@ build/package/release exception is not authorization to create or publish one.
 Unavailable real-OS/hardware qualification remains NOT RUN, not a reason to
 stop independent local development or to substitute hosted validation.
 
+**V07c build foundation:** the [internal Windows packaging pipeline](packaging/windows/README.md#offline-provenance-and-cyclonedx-sbom-v07c-foundation)
+records unsigned source/tool/dependency provenance and an offline CycloneDX 1.6
+SBOM using its existing payload integrity boundary. This does not complete
+signed distribution, license clearance, lifecycle qualification or V07/G1/G2.
+
 ## 1. Executive recommendation
 
 Build a companion that is easy to install, easy to understand when it is silent,

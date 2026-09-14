@@ -24,7 +24,7 @@ function Get-VerifiedInnoCompiler([string]$BuilderDirectory) {
 }
 
 function Write-InstallerFileList([string]$PayloadRoot, [string]$Destination) {
-    $manifest = Test-PayloadManifest $PayloadRoot
+    $manifest = Test-PayloadManifest $PayloadRoot -RequireCurrentSource
     $paths = @($manifest.files.path) + @('manifest.json', 'SHA256SUMS.txt')
     $lines = foreach ($path in $paths) {
         $source = Join-Path $PayloadRoot $path
