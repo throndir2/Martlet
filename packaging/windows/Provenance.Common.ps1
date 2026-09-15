@@ -2,8 +2,34 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function ConvertTo-EvidenceObject([object]$Value, [int]$Depth = 0) {
+    if ($Depth -gt 64) { throw 'Evidence exceeds the 64-level canonicalization depth bound.' }
+    if ($null -eq $Value) { return $null }
+    if ($Value -is [string] -or $Value -is [ValueType]) { return $Value }
+    if ($Value -is [array]) {
+        $items = [Collections.Generic.List[object]]::new()
+        foreach ($item in $Value) { $items.Add((ConvertTo-EvidenceObject $item ($Depth + 1))) }
+        return ,$items.ToArray()
+    }
+    if ($Value -is [Collections.IDictionary] -or $Value -is [pscustomobject]) {
+        $dictionary = $Value -is [Collections.IDictionary]
+        if ($dictionary) { $names = @($Value.psbase.Keys) } else { $names = @($Value.PSObject.Properties | ForEach-Object { $_.Name }) }
+        $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+        foreach ($name in $names) {
+            if ($name -isnot [string] -or -not $seen.Add($name)) { throw 'Evidence object keys must be unique, unambiguous strings.' }
+        }
+        $result = [ordered]@{}
+        foreach ($name in Get-EvidenceOrdinalStrings $names) {
+            if ($dictionary) { $item = $Value[$name] } else { $item = $Value.PSObject.Properties[$name].Value }
+            $result.Add($name, (ConvertTo-EvidenceObject $item ($Depth + 1)))
+        }
+        return $result
+    }
+    return $Value
+}
+
 function ConvertTo-EvidenceJson([object]$Value) {
-    $json = ConvertTo-Json -InputObject $Value -Depth 64 -WarningAction Stop
+    $json = ConvertTo-Json -InputObject (ConvertTo-EvidenceObject $Value) -Depth 64 -WarningAction Stop
     return $json.Replace("`r`n", "`n").Replace("`r", "`n") + "`n"
 }
 
@@ -58,6 +84,7 @@ function Assert-EvidenceRelativePath([string]$Path) {
 }
 
 function Get-EvidenceOrdinalStrings([string[]]$Values) {
+    if ($null -eq $Values) { return }
     [string[]]$sorted = @($Values)
     [Array]::Sort($sorted, [StringComparer]::Ordinal)
     return $sorted
@@ -109,6 +136,40 @@ function Get-EvidenceRelativeItem([IO.DirectoryInfo]$Root, [string]$Path, [switc
     return $current
 }
 
+function ConvertFrom-EvidenceJsonElement([Text.Json.JsonElement]$Element, [switch]$AsHashtable) {
+    switch ($Element.ValueKind) {
+        'Object' {
+            $properties = @{}
+            foreach ($property in $Element.EnumerateObject()) { $properties.Add($property.Name, $property.Value) }
+            $result = [ordered]@{}
+            foreach ($name in Get-EvidenceOrdinalStrings @($properties.Keys)) {
+                $result.Add($name, (ConvertFrom-EvidenceJsonElement $properties[$name] -AsHashtable:$AsHashtable))
+            }
+            if ($AsHashtable) { return $result }
+            return [pscustomobject]$result
+        }
+        'Array' {
+            $items = [Collections.Generic.List[object]]::new()
+            foreach ($item in $Element.EnumerateArray()) { $items.Add((ConvertFrom-EvidenceJsonElement $item -AsHashtable:$AsHashtable)) }
+            return ,$items.ToArray()
+        }
+        'String' { return $Element.GetString() }
+        'Number' {
+            $integer = [long]0
+            if ($Element.TryGetInt64([ref]$integer)) { return $integer }
+            $number = [decimal]0
+            if ($Element.TryGetDecimal([ref]$number)) { return $number }
+            $number = $Element.GetDouble()
+            if ([double]::IsInfinity($number) -or [double]::IsNaN($number)) { throw 'Evidence JSON numbers must be finite.' }
+            return $number
+        }
+        'True' { return $true }
+        'False' { return $false }
+        'Null' { return $null }
+        default { throw 'Unsupported evidence JSON value kind.' }
+    }
+}
+
 function Read-PackagingJson([string]$Path, [switch]$AsHashtable) {
     $file = Get-RequiredFile $Path
     if ($file -isnot [IO.FileInfo]) { throw "JSON input must be a regular filesystem file: $Path." }
@@ -151,7 +212,7 @@ function Read-PackagingJson([string]$Path, [switch]$AsHashtable) {
                 }
             }
         }
-        return ConvertFrom-Json -InputObject $document.RootElement.GetRawText() -Depth 64 -AsHashtable:$AsHashtable -ErrorAction Stop
+        return ConvertFrom-EvidenceJsonElement $document.RootElement -AsHashtable:$AsHashtable
     }
     catch [Text.Json.JsonException] {
         throw "Invalid packaging JSON '$Path': $($_.Exception.Message) Supply a nonempty object with unique property names, depth at most 64, and no comments or trailing commas."

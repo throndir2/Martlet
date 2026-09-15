@@ -256,16 +256,37 @@ different space/Unicode path does not invalidate portable inspection.
 
 Malformed, oversized, duplicate, missing, extra, stale or inconsistent evidence
 is an error with a rebuild remedy, not a partial successful inventory. Metadata
-uses ordinal ordering, UTF-8 and no random serial number or wall-clock
-timestamp. Matching metadata from repeated local inputs is not proof of
+sorts object keys recursively with `StringComparer.Ordinal`, preserves array
+order and uses UTF-8/LF with no random serial number or wall-clock timestamp.
+The bounded JSON reader constructs ordered objects directly from the parsed
+JSON tree rather than relying on `ConvertFrom-Json -AsHashtable` ordering
+(which differs before PowerShell 7.3). Canonical serialization also normalizes
+caller-supplied unordered dictionaries. PowerShell 7.0 remains the declared
+minimum; native 7.0/7.2 execution has not been qualified by current-host tests.
+Earlier unpublished v2 receipts whose internal hashes used insertion-ordered
+object keys require a fresh publish; their original evidence is not rewritten.
+This is the internal format's ordering policy, not a claim of RFC 8785 numeric
+canonicalization. Matching metadata from repeated local inputs is not proof of
 hermetic compilation or reproducible binaries. Coordinated rewriting of an
 unsigned payload and all its receipts cannot be authenticated by checksums.
 The inventory covers actual packaged files and the resolved .NET graph, not a
 complete decomposition of upstream vendored/native internals, the operating
 system, models or remote services.
 
+Every shipped `.dll`/`.exe`, regardless of extension or directory-name case,
+must have verified archive or authored/generated application ownership. An
+unowned binary cannot fall through to the SBOM's document classification.
+Framework download identity/version sets must match the actual NuGet-generated
+`build\obj\<project>\<project>.csproj.nuget.dgspec.json` for every project/TFM,
+in addition to preflight graph/lock checks. The actual restore specification
+contains SDK-injected downloads for referenced projects that may be absent
+from the initial preflight graph. It is required evidence, never a fallback to
+an empty set. Matching absent/empty declarations remain empty; null, duplicate,
+missing or changed declarations fail. Each shipped runtime pack must also have
+matching entry-point framework-download evidence.
+
 Supply `-PublishDirectory` to `Test-Packaging.ps1` to additionally exercise
-retained real restore assets against committed locks. Omitting it reports
+retained real restore assets/specifications against committed locks. Omitting it reports
 those input-mutation cases as NOT RUN; it does not fabricate equivalent
 coverage from the shipped graph. Package acceptance includes this parameter.
 Schema conformance is checked locally against the published CycloneDX 1.6 JSON

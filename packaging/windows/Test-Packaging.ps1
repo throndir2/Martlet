@@ -50,6 +50,52 @@ function Write-TestEnvelope($Value, [switch]$KeepInventory) {
         (Get-ChecksumText $Value.files (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash))
 }
 
+function ConvertTo-UnorderedTestObject($Value) {
+    if ($Value -is [Collections.IDictionary]) {
+        $result = @{}
+        foreach ($key in $Value.psbase.Keys) { $result[$key] = ConvertTo-UnorderedTestObject $Value[$key] }
+        return $result
+    }
+    if ($Value -is [array]) { return ,@($Value | ForEach-Object { ConvertTo-UnorderedTestObject $_ }) }
+    return $Value
+}
+
+$orderedFixture = Join-Path $WorkDirectory 'ordered-evidence.json'
+$firstObject = [ordered]@{ z = [ordered]@{ beta = 2; alpha = 1 }; a = @([ordered]@{ y = 2; x = 1 }); empty = @(); value = $null; object = [ordered]@{} }
+$secondObject = [ordered]@{ object = [ordered]@{}; value = $null; empty = @(); a = @([ordered]@{ x = 1; y = 2 }); z = [ordered]@{ alpha = 1; beta = 2 } }
+$canonical = ConvertTo-EvidenceJson $firstObject
+if ($canonical -cne (ConvertTo-EvidenceJson $secondObject) -or
+    $canonical -cne (ConvertTo-EvidenceJson (ConvertTo-UnorderedTestObject $firstObject))) {
+    throw 'Canonical evidence depends on dictionary insertion/enumeration order.'
+}
+$script:cases++
+foreach ($inputObject in @($firstObject, $secondObject)) {
+    [IO.File]::WriteAllText($orderedFixture, (ConvertTo-Json -InputObject $inputObject -Depth 64))
+    $parsed = Read-PackagingJson $orderedFixture -AsHashtable
+    if ($parsed -isnot [Collections.Specialized.OrderedDictionary] -or
+        $parsed.z -isnot [Collections.Specialized.OrderedDictionary] -or
+        $parsed.a[0] -isnot [Collections.Specialized.OrderedDictionary] -or
+        $parsed.object -isnot [Collections.Specialized.OrderedDictionary] -or $parsed.object.Count -ne 0 -or
+        $parsed.empty -isnot [array] -or $parsed.empty.Count -ne 0 -or $parsed.a.Count -ne 1 -or
+        (ConvertTo-EvidenceJson $parsed) -cne $canonical -or
+        (ConvertTo-EvidenceJson (Read-PackagingJson $orderedFixture)) -cne $canonical) {
+        throw 'Bounded JSON reader did not preserve canonical nested objects, nulls and arrays.'
+    }
+    $script:cases++
+}
+$unorderedProvenance = ConvertTo-UnorderedTestObject $copied.provenance
+Test-PackagingSourceReceipt $unorderedProvenance.source
+Test-PackageProvenance $copy $unorderedProvenance
+if ((ConvertTo-EvidenceJson $unorderedProvenance.publish) -cne (ConvertTo-EvidenceJson $copied.provenance.publish)) {
+    throw 'Publish settings canonical roundtrip depends on dictionary ordering.'
+}
+$script:cases++
+[IO.File]::WriteAllText($orderedFixture, (ConvertTo-Json -InputObject $unorderedProvenance -Depth 64))
+$roundtrip = Read-PackagingJson $orderedFixture -AsHashtable
+Test-PackagingSourceReceipt $roundtrip.source
+Test-PackageProvenance $copy $roundtrip
+$script:cases++
+
 $sbomPath = Join-Path $copy 'sbom.cdx.json'
 $originalSbom = [IO.File]::ReadAllBytes($sbomPath)
 $evidenceSums = [IO.File]::ReadAllBytes((Join-Path $copy 'SHA256SUMS.txt'))
@@ -75,7 +121,7 @@ foreach ($case in @('missing component', 'duplicate component', 'wrong standard'
 }
 foreach ($case in @('archive digest', 'resolved hash', 'missing origin', 'duplicate library', 'source mismatch',
         'legacy schema', 'missing provenance', 'missing edge', 'dangling edge', 'wrong facade owner', 'supporting version',
-        'file byte type', 'provenance schema type')) {
+        'file byte type', 'provenance schema type', 'missing runtime download')) {
     try {
         $changed = Read-PackagingJson $manifestPath -AsHashtable
         switch ($case) {
@@ -98,6 +144,9 @@ foreach ($case in @('archive digest', 'resolved hash', 'missing origin', 'duplic
             'supporting version' { @($changed.provenance.restores | Where-Object project -CEQ 'Martlet.Audio')[0].version = '9.9.9' }
             'file byte type' { $changed.files[0].bytes = [string]$changed.files[0].bytes }
             'provenance schema type' { $changed.provenance.schemaVersion = '1' }
+            'missing runtime download' {
+                @($changed.provenance.restores | Where-Object project -CEQ 'Martlet.Desktop')[0].targets[0].frameworkDownloads = @()
+            }
         }
         Write-TestEnvelope $changed -KeepInventory:($case -ceq 'file byte type')
         $pattern = switch ($case) {
@@ -114,6 +163,7 @@ foreach ($case in @('archive digest', 'resolved hash', 'missing origin', 'duplic
             'supporting version' { '*Supporting project version contradicts*' }
             'file byte type' { '*bytes must be a nonnegative*' }
             'provenance schema type' { '*Unsupported unsigned provenance*' }
+            'missing runtime download' { '*Published runtime pack is missing matching framework download evidence*' }
         }
         Assert-Fails "rechecksummed provenance $case" { Test-PayloadManifest $copy } $pattern
     } finally {
@@ -205,6 +255,7 @@ if ($PublishDirectory) {
         $destination = Join-Path $restoreCopy "build\obj\$project"
         [IO.Directory]::CreateDirectory($destination) | Out-Null
         Copy-Item -LiteralPath (Join-Path $PublishDirectory "build\obj\$project\project.assets.json") -Destination $destination
+        Copy-Item -LiteralPath (Join-Path $PublishDirectory "build\obj\$project\$project.csproj.nuget.dgspec.json") -Destination $destination
     }
     $assetsPath = Join-Path $restoreCopy 'build\obj\Martlet.Desktop\project.assets.json'
     $assetsBytes = [IO.File]::ReadAllBytes($assetsPath)
@@ -239,6 +290,113 @@ if ($PublishDirectory) {
                 Get-PackageRestoreEvidence $restoreCopy $copied.provenance.source
             } $pattern
         } finally { [IO.File]::WriteAllBytes($audioAssetsPath, $audioAssetsBytes) }
+    }
+    foreach ($project in $copied.provenance.restores) {
+        $projectAssetsPath = Join-Path $restoreCopy "build\obj\$($project.project)\project.assets.json"
+        $specPath = Join-Path $restoreCopy "build\obj\$($project.project)\$($project.project).csproj.nuget.dgspec.json"
+        $projectBytes = [IO.File]::ReadAllBytes($projectAssetsPath)
+        $specBytes = [IO.File]::ReadAllBytes($specPath)
+        foreach ($target in $project.targets) {
+            $alias = $target.name.Split('/')[0]
+            $downloadCases = @('missing field')
+            if ($project.project -cin @('Martlet.Desktop', 'Martlet.Doctor', 'Martlet.Audio')) {
+                $downloadCases += @('missing entry', 'identity', 'version', 'extra', 'duplicate', 'null', 'graph omission', 'graph duplicate', 'reverse order')
+            }
+            foreach ($case in $downloadCases) {
+                try {
+                    $assets = Read-PackagingJson $projectAssetsPath -AsHashtable
+                    $spec = Read-PackagingJson $specPath -AsHashtable
+                    $framework = $assets.project.frameworks[$alias]
+                    $specFramework = $spec.projects[$assets.project.restore.projectPath].frameworks[$alias]
+                    switch ($case) {
+                        'missing field' { $framework.Remove('downloadDependencies') }
+                        'missing entry' { $framework.downloadDependencies = @($framework.downloadDependencies | Select-Object -Skip 1) }
+                        'identity' { $framework.downloadDependencies[0].name = 'Microsoft.NETCore.App.Runtime.win-arm64' }
+                        'version' { $framework.downloadDependencies[0].version = '[9.9.9, 9.9.9]' }
+                        'extra' { $framework.downloadDependencies += [ordered]@{ name = 'Unreviewed.Framework'; version = '[10.0.12, 10.0.12]' } }
+                        'duplicate' { $framework.downloadDependencies += $framework.downloadDependencies[0] }
+                        'null' { $framework.downloadDependencies = $null }
+                        'graph omission' { $specFramework.Remove('downloadDependencies') }
+                        'graph duplicate' { $specFramework.downloadDependencies += $specFramework.downloadDependencies[0] }
+                        'reverse order' { [array]::Reverse($framework.downloadDependencies) }
+                    }
+                    [IO.File]::WriteAllText($projectAssetsPath, (ConvertTo-EvidenceJson $assets))
+                    [IO.File]::WriteAllText($specPath, (ConvertTo-EvidenceJson $spec))
+                    if ($case -ceq 'reverse order') {
+                        $actual = @(Get-PackageRestoreEvidence $restoreCopy $copied.provenance.source)
+                        if ((Get-EvidenceSha256 $actual) -cne (Get-EvidenceSha256 $copied.provenance.restores)) {
+                            throw 'Framework download set normalization depends on declaration order.'
+                        }
+                        $script:cases++
+                    } else {
+                        Assert-Fails "$($project.project) $alias framework downloads: $case" {
+                            Get-PackageRestoreEvidence $restoreCopy $copied.provenance.source
+                        } '*framework download*'
+                    }
+                } finally {
+                    [IO.File]::WriteAllBytes($projectAssetsPath, $projectBytes)
+                    [IO.File]::WriteAllBytes($specPath, $specBytes)
+                }
+            }
+        }
+    }
+    $coreAssetsPath = Join-Path $restoreCopy 'build\obj\Martlet.Core\project.assets.json'
+    $coreSpecPath = Join-Path $restoreCopy 'build\obj\Martlet.Core\Martlet.Core.csproj.nuget.dgspec.json'
+    $coreBytes = [IO.File]::ReadAllBytes($coreAssetsPath)
+    $coreSpecBytes = [IO.File]::ReadAllBytes($coreSpecPath)
+    foreach ($emptyStyle in @('absent', 'empty array')) {
+        try {
+            $assets = Read-PackagingJson $coreAssetsPath -AsHashtable
+            $spec = Read-PackagingJson $coreSpecPath -AsHashtable
+            foreach ($framework in @($assets.project.frameworks['net10.0'], $spec.projects[$assets.project.restore.projectPath].frameworks['net10.0'])) {
+                if ($emptyStyle -ceq 'absent') { $framework.Remove('downloadDependencies') }
+                else { $framework.downloadDependencies = @() }
+            }
+            [IO.File]::WriteAllText($coreAssetsPath, (ConvertTo-EvidenceJson $assets))
+            [IO.File]::WriteAllText($coreSpecPath, (ConvertTo-EvidenceJson $spec))
+            $actual = @(Get-PackageRestoreEvidence $restoreCopy $copied.provenance.source)
+            $core = @($actual | Where-Object project -CEQ 'Martlet.Core')[0]
+            if ($core.targets[0].frameworkDownloads -isnot [array] -or $core.targets[0].frameworkDownloads.Count -ne 0) {
+                throw 'Matching empty authoritative framework-download sets were not preserved.'
+            }
+            $script:cases++
+        } finally {
+            [IO.File]::WriteAllBytes($coreAssetsPath, $coreBytes)
+            [IO.File]::WriteAllBytes($coreSpecPath, $coreSpecBytes)
+        }
+    }
+
+    foreach ($directory in @('Desktop', 'Doctor', 'help')) {
+        foreach ($extension in @('dll', 'DLL', 'dLl', 'exe', 'EXE', 'eXe')) {
+            $plugin = Join-Path $copy "$directory\VendorPlugin.$extension"
+            Copy-Item -LiteralPath (Join-Path $copy 'Doctor\Martlet.Core.dll') -Destination $plugin
+            try {
+                Assert-Fails "production generator rejects $directory unowned .$extension" {
+                    Get-PackageProvenance $copy $restoreCopy $copied.provenance.source $copied.provenance.sdk
+                } '*Unowned shipped binary*'
+            } finally { [IO.File]::Delete($plugin) }
+        }
+    }
+    foreach ($entry in @('Desktop', 'Doctor')) {
+        $mixedCase = if ($entry -ceq 'Desktop') { 'dEsKtOp' } else { 'dOcToR' }
+        [IO.Directory]::Move((Join-Path $copy $entry), (Join-Path $copy 'renaming'))
+        [IO.Directory]::Move((Join-Path $copy 'renaming'), (Join-Path $copy $mixedCase))
+        try {
+            foreach ($extension in @('dll', 'DLL', 'exe', 'EXE')) {
+                $plugin = Join-Path $copy "$mixedCase\VendorPlugin.$extension"
+                Copy-Item -LiteralPath (Join-Path $copy "$mixedCase\Martlet.Core.dll") -Destination $plugin
+                try {
+                    Assert-Fails "production generator rejects $mixedCase unowned .$extension" {
+                        Get-PackageProvenance $copy $restoreCopy $copied.provenance.source $copied.provenance.sdk
+                    } '*Unowned shipped binary*'
+                } finally { [IO.File]::Delete($plugin) }
+            }
+            $null = Get-PackageProvenance $copy $restoreCopy $copied.provenance.source $copied.provenance.sdk
+            $script:cases++
+        } finally {
+            [IO.Directory]::Move((Join-Path $copy $mixedCase), (Join-Path $copy 'renaming'))
+            [IO.Directory]::Move((Join-Path $copy 'renaming'), (Join-Path $copy $entry))
+        }
     }
 } else {
     Write-Output 'NOT RUN: retained restore-input mutation cases (supply -PublishDirectory for acceptance).'

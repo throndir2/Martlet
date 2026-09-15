@@ -547,6 +547,25 @@ function Get-ResolvedEvidenceLibraries($Target, $Libraries) {
     }
 }
 
+function Get-FrameworkDownloadEvidence($Framework) {
+    if (-not $Framework.Contains('downloadDependencies')) { return }
+    $items = $Framework.downloadDependencies
+    if ($items -isnot [array] -or $items.Count -gt 16) { throw 'Invalid framework download declaration bound or type.' }
+    $downloads = @{}
+    foreach ($item in $items) {
+        Assert-EvidenceKeys $item @('name', 'version')
+        if ($item.name -isnot [string] -or $item.name -cnotmatch '^Microsoft\.(NETCore|WindowsDesktop|AspNetCore)\.App\.Runtime\.win-x64$' -or
+            $item.version -isnot [string] -or $item.version -cne "[$((Get-PackagingPins).runtimeVersion), $((Get-PackagingPins).runtimeVersion)]" -or
+            $downloads.ContainsKey($item.name)) {
+            throw 'Unpinned or duplicate framework download declaration.'
+        }
+        $downloads[$item.name] = $item.version
+    }
+    foreach ($id in Get-EvidenceOrdinalStrings @($downloads.Keys)) {
+        [ordered]@{ id = $id; requested = $downloads[$id] }
+    }
+}
+
 function Get-PackageRestoreEvidence([string]$PublishDirectory, $Source) {
     $root = Split-Path (Split-Path $PSScriptRoot)
     $projects = @{}
@@ -556,8 +575,15 @@ function Get-PackageRestoreEvidence([string]$PublishDirectory, $Source) {
         $graph = Read-PackagingJson $path -AsHashtable
         foreach ($project in $graph.projects.Values) {
             $name = $project.restore.projectName
-            if ($projects.ContainsKey($name) -and $projects[$name].restore.projectPath -cne $project.restore.projectPath) {
-                throw "Ambiguous restore project: $name"
+            if ($projects.ContainsKey($name)) {
+                if ($projects[$name].restore.projectPath -cne $project.restore.projectPath) { throw "Ambiguous restore project: $name" }
+                foreach ($alias in $projects[$name].frameworks.Keys) {
+                    if (-not $project.frameworks.Contains($alias) -or
+                        (Get-EvidenceSha256 @(Get-FrameworkDownloadEvidence $projects[$name].frameworks[$alias])) -cne
+                            (Get-EvidenceSha256 @(Get-FrameworkDownloadEvidence $project.frameworks[$alias]))) {
+                        throw "Framework downloads differ between generated restore graphs: $name $alias"
+                    }
+                }
             }
             $projects[$name] = $project
         }
@@ -573,6 +599,14 @@ function Get-PackageRestoreEvidence([string]$PublishDirectory, $Source) {
         if ($projectPath -cne "src\$name\$name.csproj") { throw "Unsupported external restore project: $name" }
         $assetsPath = Join-Path $PublishDirectory "build\obj\$name\project.assets.json"
         $assets = Read-PackagingJson $assetsPath -AsHashtable
+        $specPath = Join-Path $PublishDirectory "build\obj\$name\$name.csproj.nuget.dgspec.json"
+        Assert-RestoreGraphLocks $specPath
+        $spec = Read-PackagingJson $specPath -AsHashtable
+        $restoredProject = $spec.projects[$project.restore.projectPath]
+        if ($null -eq $restoredProject -or $restoredProject.restore.projectName -cne $name -or
+            $restoredProject.version -cne $project.version) {
+            throw "Actual restore specification differs from the preflight project: $name"
+        }
         if ($assets.project.restore.projectPath -ine $project.restore.projectPath -or
             $assets.project.restore.restoreLockProperties.restoreLockedMode -ne $true -or
             $assets.project.restore.restoreLockProperties.nuGetLockFilePath -ine $project.restore.restoreLockProperties.nuGetLockFilePath) {
@@ -590,18 +624,34 @@ function Get-PackageRestoreEvidence([string]$PublishDirectory, $Source) {
         if ((Get-EvidenceSha256 $aliases) -cne (Get-EvidenceSha256 @(Get-EvidenceOrdinalStrings @($assets.project.frameworks.Keys))) -or
             (Get-EvidenceSha256 $aliases) -cne (Get-EvidenceSha256 @(Get-EvidenceOrdinalStrings @($assets.project.restore.frameworks.Keys))) -or
             (Get-EvidenceSha256 $aliases) -cne (Get-EvidenceSha256 @(Get-EvidenceOrdinalStrings @($assets.project.restore.originalTargetFrameworks))) -or
+            (Get-EvidenceSha256 $aliases) -cne (Get-EvidenceSha256 @(Get-EvidenceOrdinalStrings @($restoredProject.frameworks.Keys))) -or
             (Get-EvidenceSha256 $expectedTargets) -cne (Get-EvidenceSha256 @(Get-EvidenceOrdinalStrings @($assets.targets.Keys)))) {
             throw "Complete framework/target set differs from the actual restore graph: $name"
         }
+        $frameworkDownloads = @{}
         foreach ($alias in $aliases) {
             $assetDeclarations = if ($assets.project.frameworks[$alias].Contains('dependencies')) { $assets.project.frameworks[$alias].dependencies } else { $null }
             $graphDeclarations = if ($project.frameworks[$alias].Contains('dependencies')) { $project.frameworks[$alias].dependencies } else { $null }
+            $restoreDeclarations = if ($restoredProject.frameworks[$alias].Contains('dependencies')) { $restoredProject.frameworks[$alias].dependencies } else { $null }
             if ($assets.project.frameworks[$alias].framework -cne $project.frameworks[$alias].framework -or
+                $restoredProject.frameworks[$alias].framework -cne $project.frameworks[$alias].framework -or
                 (Get-EvidenceSha256 $assetDeclarations) -cne (Get-EvidenceSha256 $graphDeclarations) -or
+                (Get-EvidenceSha256 $restoreDeclarations) -cne (Get-EvidenceSha256 $graphDeclarations) -or
                 (Get-EvidenceSha256 $assets.project.restore.frameworks[$alias].projectReferences) -cne
+                    (Get-EvidenceSha256 $project.restore.frameworks[$alias].projectReferences) -or
+                (Get-EvidenceSha256 $restoredProject.restore.frameworks[$alias].projectReferences) -cne
                     (Get-EvidenceSha256 $project.restore.frameworks[$alias].projectReferences)) {
                 throw "Root dependency declarations differ from the actual restore graph: $name $alias"
             }
+            $downloads = @(Get-FrameworkDownloadEvidence $assets.project.frameworks[$alias])
+            # NuGet's restore specification includes SDK-injected downloads for referenced projects.
+            $graphDownloads = @(Get-FrameworkDownloadEvidence $restoredProject.frameworks[$alias])
+            if ((Get-EvidenceSha256 $downloads) -cne (Get-EvidenceSha256 $graphDownloads) -or
+                ($project.frameworks[$alias].Contains('downloadDependencies') -and
+                    (Get-EvidenceSha256 $graphDownloads) -cne (Get-EvidenceSha256 @(Get-FrameworkDownloadEvidence $project.frameworks[$alias])))) {
+                throw "Framework downloads differ from the actual restore graph: $name $alias"
+            }
+            $frameworkDownloads[$alias] = $downloads
         }
         $lockPath = "packaging\windows\locks\$name.packages.lock.json"
         $lock = Read-PackagingJson (Join-Path $root $lockPath) -AsHashtable
@@ -651,17 +701,10 @@ function Get-PackageRestoreEvidence([string]$PublishDirectory, $Source) {
                         }
                     }
                 )
-                $downloads = @(
-                    if ($assets.project.frameworks[$alias].Contains('downloadDependencies')) {
-                        foreach ($download in $assets.project.frameworks[$alias].downloadDependencies) {
-                            [ordered]@{ id = $download.name; requested = $download.version }
-                        }
-                    }
-                )
                 [ordered]@{
                     name = $targetName; framework = $framework
                     rootDependencies = @(Get-EvidenceOrdinalStrings $rootDependencies)
-                    libraries = $libraries; frameworkDownloads = $downloads
+                    libraries = $libraries; frameworkDownloads = $frameworkDownloads[$alias]
                 }
             }
         )
@@ -879,6 +922,13 @@ function Test-PackageProvenance([string]$Root, $Provenance) {
         $target = @($restore.targets | Where-Object name -CEQ "net10.0-windows/$($pins.rid)")
         if ($target.Count -ne 1) { throw 'Missing entry-point restore target evidence.' }
         $rootKey = "$($restore.project)/$($restore.version)"
+        foreach ($runtime in @($application.libraries | Where-Object type -CEQ 'runtimepack')) {
+            $id, $version = $runtime.key.Substring('runtimepack.'.Length).Split('/')
+            $downloads = @($target[0].frameworkDownloads | Where-Object {
+                $_.id -ceq $id -and $_.requested -ceq "[$version, $version]"
+            })
+            if ($downloads.Count -ne 1) { throw "Published runtime pack is missing matching framework download evidence: $($runtime.key)" }
+        }
         $published = @($application.libraries | Where-Object { $_.type -cne 'runtimepack' })
         if ($published.Count -ne $target[0].libraries.Count + 1) { throw 'Published/restored dependency counts differ.' }
         foreach ($library in $published) {
@@ -948,22 +998,21 @@ function Test-PackageProvenance([string]$Root, $Provenance) {
             $origins[$origin.path] = $origin.component
         }
     }
+    $projectAssets = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     foreach ($application in $applications) {
+        $null = $projectAssets.Add("$($application.name)\Martlet.$($application.name).exe")
         foreach ($library in $application.libraries) {
             foreach ($asset in $library.assets) {
-                if ($library.type -ceq 'project') { continue }
+                if ($library.type -ceq 'project') { $null = $projectAssets.Add($asset.path); continue }
                 if (-not $origins.ContainsKey($asset.path) -or $origins[$asset.path] -cne "$($application.name)|$($library.key)") {
                     throw "Missing archive asset provenance: $($asset.path)"
                 }
             }
         }
-        foreach ($file in $fileMap.Values | Where-Object { $_.path.StartsWith("$($application.name)\", [StringComparison]::Ordinal) }) {
-            if ($file.path -cmatch '\.(dll|exe)$' -and -not $origins.ContainsKey($file.path)) {
-                $projectAssets = @($application.libraries | Where-Object type -CEQ 'project' | ForEach-Object { $_.assets.path })
-                if ($projectAssets -cnotcontains $file.path -and $file.path -cne "$($application.name)\Martlet.$($application.name).exe") {
-                    throw "Unowned shipped binary: $($file.path)"
-                }
-            }
+    }
+    foreach ($file in $fileMap.Values) {
+        if ($file.path -imatch '\.(dll|exe)$' -and -not $origins.ContainsKey($file.path) -and -not $projectAssets.Contains($file.path)) {
+            throw "Unowned shipped binary: $($file.path)"
         }
     }
 }
