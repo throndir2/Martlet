@@ -55,9 +55,11 @@ public sealed class SelectionReceipt
     public SelectedVersion? PreviousSelection { get; }
     public bool IsRunnable => false;
     public RollbackRestoreProgress ConfigurationRestoreProgress { get; }
+    public Guid? AcknowledgedRestoreTransactionId { get; }
     internal SelectionReceipt(ControlDocument state, SelectionOutcome outcome,
-        RollbackRestoreProgress restoreProgress = RollbackRestoreProgress.None)
+        RollbackRestoreProgress restoreProgress = RollbackRestoreProgress.None, Guid? acknowledgedRestore = null)
     {
+        AcknowledgedRestoreTransactionId = acknowledgedRestore;
         Revision = state.Revision; Outcome = outcome; TransactionId = state.Pending ?? state.LastTransaction;
         BootstrapVersion = state.Bootstrap.Version;
         CurrentSelection = state.Current is null ? null : new(state.Current);
@@ -179,4 +181,4 @@ internal sealed record ControlDocument(int FormatVersion, long Revision, string 
     Guid ProfileId, InstalledVersionFacts Bootstrap,
     SelectionEntry? Current, SelectionEntry? Previous, Guid? Pending, Guid? LastTransaction);
 internal sealed record SelectionJournal(int FormatVersion, Guid TransactionId, string PlanDigest,
-    ControlDocument Before, ControlDocument Pending, ControlDocument After);
+    ControlDocument Before, ControlDocument? Pending, ControlDocument After);

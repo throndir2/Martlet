@@ -101,17 +101,18 @@ public sealed partial class LocalSelectionEngine
                 scope.SourceFileDigest != plan.Snapshot.FileDigest || scope.CandidateDigest != plan.CandidateDigest)
                 throw new SelectionException(SelectionFailure.Conflict);
             var before = plan.Before;
-            var pending = before with { FormatVersion = 3, Revision = before.Revision + 1, Pending = plan.OperationId };
+            var format = Math.Max(3, before.FormatVersion);
+            var pending = before with { FormatVersion = format, Revision = before.Revision + 1, Pending = plan.OperationId };
             var after = before with
             {
-                FormatVersion = 3, Revision = before.Revision + 2, Pending = null, LastTransaction = plan.OperationId,
+                FormatVersion = format, Revision = before.Revision + 2, Pending = null, LastTransaction = plan.OperationId,
                 Current = before.Current! with { RestoreRequired = false }
             };
             var binding = new RestoreTransactionBinding(before.Current!.Snapshot, plan.ExpectedSettingsRevision,
                 plan.CandidateDigest, Path.GetFileName(scope.OriginalSnapshotPath));
             if (OriginalPath(binding.OriginalFileName) != scope.OriginalSnapshotPath)
                 throw new SelectionException(SelectionFailure.Conflict);
-            var journal = new SelectionJournal(3, plan.OperationId, plan.PlanDigest, before, pending, after);
+            var journal = new SelectionJournal(format, plan.OperationId, plan.PlanDigest, before, pending, after);
             ValidateRestoreJournal(journal, binding);
             var directory = TransactionDirectory(plan.OperationId);
             if (LocalPaths.Exists(directory)) throw new SelectionException(SelectionFailure.Conflict);
@@ -120,8 +121,8 @@ public sealed partial class LocalSelectionEngine
             Point(SelectionIoPoint.AfterCreate, directory, token);
             WriteNew(Path.Combine(directory, "before.json"), Wire.Write(before), token);
             var journalBytes = JournalBytes(journal, binding);
-            WriteNew(Path.Combine(directory, JournalV3File), journalBytes, token);
-            using var journalPin = BoundedIo.OpenRead(Path.Combine(directory, JournalV3File), 1);
+            WriteNew(Path.Combine(directory, JournalName(format)), journalBytes, token);
+            using var journalPin = BoundedIo.OpenRead(Path.Combine(directory, JournalName(format)), 1);
             using var beforePin = BoundedIo.OpenRead(Path.Combine(directory, "before.json"), 1);
             var pendingBytes = Wire.Write(pending);
             WriteNew(Path.Combine(directory, "pending.json"), pendingBytes, token);
@@ -169,7 +170,7 @@ public sealed partial class LocalSelectionEngine
             {
                 check();
                 RequireState(state, token);
-                using var named = BoundedIo.OpenRead(Path.Combine(directory, JournalV3File), 1);
+                using var named = BoundedIo.OpenRead(Path.Combine(directory, JournalName(format)), 1);
                 if (!BoundedIo.Read(named, MaximumJournalBytes, token).AsSpan().SequenceEqual(journalBytes))
                     throw new SelectionException(SelectionFailure.InvalidControl);
                 reverify();
@@ -290,15 +291,28 @@ public sealed partial class LocalSelectionEngine
         Compatible(state.Current.MinimumReader, state.Current.MaximumReader, AppSettings.CurrentSchemaVersion);
     }
 
-    private static byte[] JournalBytes(SelectionJournal journal, RestoreTransactionBinding? restore = null) =>
-        journal.FormatVersion == 2 ? Wire.Write(journal) : Wire.Write(new SelectionJournalV3(3,
+    private static string JournalName(int format) => format switch
+    {
+        2 => JournalFile, 3 => JournalV3File, 4 => JournalV4File,
+        _ => throw new SelectionException(SelectionFailure.InvalidControl)
+    };
+
+    private static byte[] JournalBytes(SelectionJournal journal, RestoreTransactionBinding? restore = null,
+        RestoreAcknowledgmentBinding? acknowledgment = null) =>
+        journal.FormatVersion == 2 ? Wire.Write(journal) :
+        journal.FormatVersion == 3 ? Wire.Write(new SelectionJournalV3(3,
             journal.TransactionId, restore is null ? SelectionTransactionKind.Selection : SelectionTransactionKind.ConfigurationRestore,
-            journal.PlanDigest, journal.Before, journal.Pending, journal.After, restore));
+            journal.PlanDigest, journal.Before, journal.Pending!, journal.After, restore)) :
+        Wire.Write(new SelectionJournalV4(4, journal.TransactionId,
+            acknowledgment is not null ? SelectionTransactionKind.ConfigurationAcknowledgment :
+            restore is null ? SelectionTransactionKind.Selection : SelectionTransactionKind.ConfigurationRestore,
+            journal.PlanDigest, journal.Before, journal.Pending, journal.After, restore, acknowledgment));
 
     private RestoreTransactionBinding? RestoreBinding(Guid id, CancellationToken token)
     {
         var path = SafePath(Path.Combine(TransactionDirectory(id), JournalV3File));
-        return LocalPaths.Exists(path) ? ReadDocument<SelectionJournalV3>(path, MaximumJournalBytes, token).Restore : null;
+        return LocalPaths.Exists(path) ? ReadDocument<SelectionJournalV3>(path, MaximumJournalBytes, token).Restore :
+            LocalPaths.Exists(SafePath(Path.Combine(TransactionDirectory(id), JournalV4File))) ? ReadV4(id, token).Restore : null;
     }
 
     private void ValidateRestoreJournal(SelectionJournal journal, RestoreTransactionBinding binding)
@@ -309,7 +323,7 @@ public sealed partial class LocalSelectionEngine
             !UpperHash(binding.CandidateDigest) ||
             !Same(journal.After, before with
             {
-                FormatVersion = 3, Revision = before.Revision + 2, Pending = null,
+                FormatVersion = Math.Max(3, before.FormatVersion), Revision = before.Revision + 2, Pending = null,
                 LastTransaction = journal.TransactionId, Current = before.Current with { RestoreRequired = false }
             }))
             throw new SelectionException(SelectionFailure.InvalidControl);
@@ -352,6 +366,9 @@ public sealed partial class LocalSelectionEngine
 
     private SelectionReceipt Receipt(ControlDocument state, SelectionOutcome outcome, CancellationToken token)
     {
+        if (state.Pending is null && state.LastTransaction is { } last &&
+            AcknowledgmentBinding(last, token) is { } acknowledged)
+            return new(state, outcome, RollbackRestoreProgress.AcknowledgedVerifiedState, acknowledged.RestoreTransactionId);
         var progress = RollbackRestoreProgress.None;
         if ((state.Pending ?? state.LastTransaction) is { } id && RestoreBinding(id, token) is not null)
         {
@@ -374,7 +391,7 @@ public sealed partial class LocalSelectionEngine
                 if (name.Length != 44 || !name.StartsWith("transaction-", StringComparison.Ordinal) ||
                     !Guid.TryParseExact(name[12..], "N", out var id) || name != TransactionName(id))
                     continue;
-                foreach (var file in new[] { "before.json", JournalFile, JournalV3File, "pending-publication.json",
+                foreach (var file in new[] { "before.json", JournalFile, JournalV3File, JournalV4File, "pending-publication.json",
                     "selected-publication.json", "restore-committed.json" }
                     .Concat(Enumerable.Range(0, 8).Select(index => $"recovered-{index}.json.publication")))
                 {
@@ -382,6 +399,9 @@ public sealed partial class LocalSelectionEngine
                     var path = SafePath(Path.Combine(directory, file));
                     if (LocalPaths.Exists(path)) owned.Add(BoundedIo.OpenRead(path, 1));
                 }
+                if (LocalPaths.Exists(Path.Combine(directory, "restore-committed.json")) &&
+                    RestoreBinding(id, token) is { } restore)
+                    owned.Add(BoundedIo.OpenRead(OriginalPath(restore.OriginalFileName), 1));
             }
             transferred = true;
             return owned;

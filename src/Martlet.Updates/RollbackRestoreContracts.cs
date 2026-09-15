@@ -4,7 +4,7 @@ namespace Martlet.Updates;
 
 public enum RollbackRestoreProgress
 {
-    None, AwaitingConsent, OutcomeUnproven, SettingsCommittedSelectionPending, Recorded
+    None, AwaitingConsent, OutcomeUnproven, SettingsCommittedSelectionPending, Recorded, AcknowledgedVerifiedState
 }
 
 public enum RollbackSettingsProgress { NotAttempted, NotCommitted, OutcomeUnproven, VerifiedCommitted }
@@ -63,7 +63,7 @@ public sealed class RollbackRestorePlan
     public string Scope => ConfigurationSnapshot.Scope;
     public DateTimeOffset ExpiresUtc => Lifetime.ExpiresUtc;
     public string PlanDigest { get; }
-    public string PlannedEffects => "Explicitly fence private selection control to format 3; preserve the exact current original; " +
+    public string PlannedEffects => $"Explicitly fence private selection control to format {Math.Max(3, Before.FormatVersion)}; preserve the exact current original; " +
         "restore the displayed inert V07a configuration; acknowledge only the actual verified commit. " +
         "Interrupted/unproven transactions require manual reconciliation. Remain AwaitingReadiness, NOT RUNNABLE.";
 
@@ -169,7 +169,7 @@ internal sealed class RestoreLifetime
     }
 }
 
-internal enum SelectionTransactionKind { Selection, ConfigurationRestore }
+internal enum SelectionTransactionKind { Selection, ConfigurationRestore, ConfigurationAcknowledgment }
 internal sealed record RestoreTransactionBinding(SnapshotBinding Snapshot, string ExpectedRevision,
     string CandidateDigest, string OriginalFileName);
 internal sealed record SelectionJournalV3(int FormatVersion, Guid TransactionId, SelectionTransactionKind Kind,

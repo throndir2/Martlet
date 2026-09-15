@@ -80,6 +80,7 @@ public sealed record StagingLimits
 public sealed class UpdateTrustPolicy
 {
     private readonly Dictionary<string, byte[]> keys = new(StringComparer.Ordinal);
+    internal string Digest => Wire.Hash(Wire.Write(keys.Keys.Order(StringComparer.Ordinal).ToArray()));
     public UpdateTrustPolicy(IEnumerable<byte[]> approvedSubjectPublicKeyInfos)
     {
         ArgumentNullException.ThrowIfNull(approvedSubjectPublicKeyInfos);

@@ -236,6 +236,53 @@ public sealed partial class SettingsStore
         }
     }
 
+    public async Task<ConfigurationCurrentReadScope> OpenCurrentConfigurationReadAsync(CancellationToken token = default)
+    {
+        FileStream? writeLock = null, currentLock = null, currentNameLock = null;
+        void Point(SettingsIoPoint point)
+        {
+            token.ThrowIfCancellationRequested();
+            RecoveryIo?.Invoke(point, token);
+            token.ThrowIfCancellationRequested();
+        }
+        try
+        {
+            token.ThrowIfCancellationRequested();
+            RecoveryPath(DataDirectory);
+            token.ThrowIfCancellationRequested();
+            RecoveryPath(FilePath);
+            token.ThrowIfCancellationRequested();
+            if (!Directory.Exists(DataDirectory)) throw new RecoveryException(RecoveryFailure.Unavailable);
+            token.ThrowIfCancellationRequested();
+            writeLock = new FileStream(FilePath + ".lock", FileMode.OpenOrCreate, FileAccess.Write, FileShare.None);
+            token.ThrowIfCancellationRequested();
+            if (Volatile.Read(ref standaloneRestoreCleanup) is { IsPending: true } pending)
+                throw new RecoveryException(RecoveryFailure.CleanupPending, pending.Path);
+            currentLock = ConfigurationRestoreScope.Pin(FilePath);
+            token.ThrowIfCancellationRequested();
+            currentNameLock = ConfigurationRestoreScope.Pin(FilePath);
+            Point(SettingsIoPoint.BeforeRead);
+            var current = await RecoveryCurrentAsync(token);
+            Point(SettingsIoPoint.AfterRead);
+            var inspection = new ConfigurationCurrentInspection(FilePath, System.Text.Encoding.UTF8.GetString(current.Bytes),
+                current.Revision, current.Settings.Profile.Id, current.Settings.SchemaVersion);
+            var scope = new ConfigurationCurrentReadScope(this, token, writeLock, currentLock, currentNameLock, inspection);
+            await scope.VerifyAsync();
+            token.ThrowIfCancellationRequested();
+            writeLock = currentLock = currentNameLock = null;
+            return scope;
+        }
+        catch (ContractException) { throw new RecoveryException(RecoveryFailure.InvalidBackup); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        { throw new RecoveryException(RecoveryFailure.Unavailable); }
+        finally
+        {
+            currentNameLock?.Dispose();
+            currentLock?.Dispose();
+            writeLock?.Dispose();
+        }
+    }
+
     internal static void ValidateRestoreCandidate(AppSettings current, byte[] candidate, ConfigurationRestorePlan plan)
     {
         var settings = SettingsJson.Read(candidate);

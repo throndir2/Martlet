@@ -15,7 +15,13 @@ The separately approved [rollback configuration coordination](SELECTION.md#expli
 can now invoke actual V07a restore under the supplied existing shared effect
 owner, with a distinct expiring one-use preview/approval and version-3 fence.
 Only a verified actual settings commit can be recorded as `AwaitingReadiness`;
-interrupted/unproven outcomes stay pending for manual reconciliation. Staging
+unproven or ambiguous outcomes stay pending for manual reconciliation. The
+distinct [fresh-consent acknowledgment](SELECTION.md#fresh-consent-acknowledgment-of-a-recorded-restore)
+can acknowledge only an authoritative interrupted restore with its valid
+recorded commit, no conflicting publication and byte-exact freshly verified
+present settings. It owns the actual store's read/writer-lock scope, never
+writes settings or restores again, and records a NEW format-4 acknowledgment
+while retaining the old operation as historically unacknowledged. Staging
 and ordinary selection never implicitly restore settings. There is no Desktop
 wiring, launcher, execution or shipped rollback workflow.
 

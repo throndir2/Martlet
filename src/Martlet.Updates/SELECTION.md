@@ -144,9 +144,9 @@ because today's V07a restore emits v2 even for historical v1 envelopes.
 
 A committed rollback selection remains `AwaitingConfigurationRestore` and then
 requires readiness. Neither another activation nor another rollback selection
-may bypass that requirement. Only the separate exact restore operation below
-can clear it; no caller assertion, selection approval or public recovery receipt
-is accepted as proof.
+may bypass that requirement. Only the separate exact restore operation below, or the separately consented
+acknowledgment of its recorded commit described later, can clear it; no caller
+assertion, selection approval or public recovery receipt is accepted as proof.
 
 ## Explicit rollback configuration restoration
 
@@ -273,15 +273,16 @@ purge or increased capacity.
 | No publication intent | Preserve inert v3 scratch/orphan; no settings restore was entered. Fresh consent uses a new transaction. |
 | Partial/full publication intent without its exact control pointer | `InvalidControl`, read-only manual reconciliation, as for v2 selection. |
 | Valid v3 pending fence, no valid recorded settings commit | `OutcomeUnproven`; even matching candidate/original bytes cannot reconstruct lost consent or prove the operation's outcome. |
-| Valid recorded settings commit, still-pending selection | `SettingsCommittedSelectionPending`; preserve actual settings and original, do not automatically acknowledge. |
+| Valid recorded settings commit, still-pending selection | `SettingsCommittedSelectionPending`; preserve actual settings and original, do not automatically acknowledge. The distinct fresh-consent acknowledgment below supports only exact unambiguous evidence and verified present settings. |
 | Valid terminal pointer, commit record and publication/history | `Recorded`, idempotent Inspect/Recover, `AwaitingReadiness`, never runnable. |
 
 `Recover` refuses an interrupted configuration restore with
 `ConfigurationRestoreReconciliationRequired`: it never takes the selection-only
 `RecoveredOriginal` path, reruns restore, reverses settings or silently finishes
 acknowledgment. Partial/mismatched commit records remain invalid evidence.
-Manual reconciliation of these ambiguous checkpoints is explicit later-owner
-debt, not an implemented repair command. All files remain intact.
+Manual reconciliation of ambiguous checkpoints is still later-owner debt. The
+new acknowledgment below does not change `Recover` into a repair command. All
+old files remain intact.
 
 Old v2 readers reject the v3 pointer at operational entrypoints. Control-only
 rewind cannot hide the new transaction while publication history remains:
@@ -291,6 +292,129 @@ filesystem authority, not protection from deleting/rewriting the entire history.
 Completed evidence describes a historical commit, not permanent agreement with
 future settings changes. Any later activation must establish actual current
 settings/policy/readiness again.
+
+## Fresh-consent acknowledgment of a recorded restore
+
+`PreviewRollbackConfigurationAcknowledgment(selectionRevision, sharedEffects)`
+is read-only review of **settings already restored**, not another restore
+preview. Its only eligible source is the exact authoritative format-3/4
+`ConfigurationRestore` Pending state with its exact valid recorded commit,
+pending publication, original and complete bounded ancestry. No terminal or
+recovery publication may exist for that old restore. All current/previous
+signed packages, receipts, snapshots, bootstrap origin and current immutable
+publisher policy are reverified. The actual settings file must still be valid
+same-profile schema 2 and byte-exactly match the recorded candidate revision.
+Missing/malformed/changed evidence, wrong profile/newer schema, revoked policy
+or any unmatched publication refuses read-only.
+
+The immutable `RollbackAcknowledgmentPlan` displays a NEW operation ID, the
+interrupted restore and original rollback IDs, old plan/journal/commit/pending
+digests, exact original and source snapshot, current/previous selections,
+actual current settings JSON/profile/schema/uppercase revision, policy/history
+fingerprints, proposed generation, skipped old terminal generation, original
+expiry and explicit durable effects. The JSON and paths are personal local
+review information, not sanitized support/log data. Constructors/setters,
+mutable settings arrays, public receipt ingestion and override booleans are
+not provided.
+
+After a distinct default-No host review:
+
+```csharp
+var work = engine.PreviewRollbackConfigurationAcknowledgment(revision, sharedEffects);
+var plan = await work.Completion;
+// Only after explicit review of THIS new acknowledgment, not old restore consent.
+var approval = plan.Approve(plan.OperationId, plan.ExpectedSelectionRevision,
+    plan.ExpectedSettingsRevision, plan.PlanDigest);
+var acknowledgment = engine.AcknowledgeRollbackConfiguration(plan, approval, sharedEffects);
+var result = await acknowledgment.Completion;
+```
+
+Issuance and use each burn one attempt, including wrong bindings, wrong
+plan/engine/runner, busy, stale, failed or canceled use. The original five-minute
+UTC **and** monotonic lifetime is not renewed by IO or wall-clock rollback.
+Restore and acknowledgment previews share the existing accepted-admission
+sequence: even an accepted pre-worker cancellation invalidates older plans;
+a refused busy call cannot invalidate or release already-owned work.
+
+The SAME supplied shared runner owns the whole offloaded operation. Selection
+engine/root/history ownership precedes one retained staging owner, then the
+actual store's `OpenCurrentConfigurationReadAsync` scope. That narrow Core
+scope owns the existing settings writer lock and exact current/name read pins;
+its immutable observation and `VerifyAsync` do not prove a historic commit.
+Updates separately verifies the actual retained commit/original/history. The
+scope has no Commit, arbitrary-path parameter or restore-evidence input.
+Concurrent/use-after-retirement verification is refused; disposal awaits actual
+in-flight IO. Existing persistent selection/staging/settings lock files may be
+opened/created on explicit actions, but missing settings/directories are never
+initialized. No real settings write, new original, snapshot creation, candidate
+transformation, credential operation or second Core restore is performed.
+
+The NEW transaction uses strict `journal-v4.json` kind
+`ConfigurationAcknowledgment`, with exact Before = OLD Pending, null Pending
+and Restore fields, an exact acknowledgment binding, and a new After. After
+changes only format to 4, generation, NEW transaction ID, Pending to null and
+current RestoreRequired to false. Old package/snapshot/previous facts stay
+unchanged. If the old restore has Pending generation R+1 and reserved terminal
+R+2, acknowledgment uses R+3, never the old terminal generation. Complete
+intentless v4 acknowledgment drafts also reserve their recorded generations:
+the new generation exceeds their bounded maximum. Overflow, duplicate
+reservations or an unreadable v4 reservation journal refuses without guessing.
+No new ledger or expanded bound is introduced.
+Preview/admission reserve room for the additional immediate control-root child;
+an already-full 128-child root refuses before a draft can make history unreadable.
+
+```text
+transaction-<NEW-32-hex-UUID>\
+  before.json
+  journal-v4.json
+  selected.json                consumed by the single terminal rename
+  selected-publication.json    flushed intent before that rename
+```
+
+One terminal rename installs both the format fence and acknowledgment because
+there are **no settings/original effects requiring an earlier fence**. The
+original restore's journal, original, marker and pending publication remain
+byte-identical, with no manufactured old terminal receipt. Ancestry traverses
+NEW After -> NEW Before / OLD Pending -> OLD Before. Strict history validation
+still sees the old restore as historically unacknowledged. Later ordinary
+selection/restore transactions stay v4 and retain their existing two-phase
+rules; the same narrow acknowledgment supports a later proven v4 restore.
+Existing v2/v3 records are not rewritten or reinterpreted.
+
+Before final publication, actual settings, original/source, current-policy
+stages and all bounded known history are checked again under retained pins.
+After its own intent is written, a narrow private veto validates the exact
+proposed After history while separately checking that the actual pointer
+still equals Before. Ordinary readers never receive an ignore-intent mode.
+The existing replacement helper releases only the checked old control target
+required for Windows overwrite, retaining source/evidence/settings pins.
+
+| New acknowledgment outcome | Meaning |
+| --- | --- |
+| No intent | Preserve inert draft; fresh consent uses a new ID and a provably fresh reservation. An unreadable reservation remains actionable refusal. |
+| Partial/full intent without exact new pointer | `PublicationAmbiguous` / `InvalidControl`; preserve every byte for manual reconciliation. No retry, intent removal or lost-consent completion. |
+| Exact terminal pointer and history | New acknowledgment `Recorded`, selection progress `AcknowledgedVerifiedState`, linked `AcknowledgedRestoreTransactionId`; `AwaitingReadiness`, never runnable. |
+| Later error/cancellation/callback failure | Preserve already observed facts and any actually recorded acknowledgment; expose failures/`OwnershipFailed` separately. Never claim the old operation completed successfully or permanent settings readiness. |
+
+`RollbackAcknowledgmentResult` distinguishes historical recorded-commit
+verification from fresh present-state verification and selection publication.
+It does not claim this operation committed settings. A later failed read
+preserves earlier observations but cannot authorize publication. Actual
+terminal rename wins later cancellation; shared admission stays owned through
+real callback retirement, not merely UI observation timeout.
+
+Restarted Inspect/Recover return Unchanged at the same new generation. Later
+legitimate settings changes do not erase historical acknowledgment, but every
+later effect still needs actual current verification. Old v3 readers can
+observe the old pending state during intentless scratch, not complete it.
+Once the recognized terminal publication filename exists they fail closed
+even while the pointer remains v3; the terminal v4 pointer is unsupported too.
+Control-only rewind cannot hide retained acknowledgment publication history.
+
+No acknowledgment cleanup API exists. Old originals/snapshots/settings/history,
+new interrupted drafts/intents and unknown files are preserved. This adds only
+one supported known-commit reconciliation case, not corrupt-control salvage,
+unproven restore adoption, automatic repair or an executable rollback workflow.
 
 ## Recovery and bounds
 
@@ -389,7 +513,7 @@ version, schema, current-fact, exact-receipt and trust rejection behavior.
 
 Still NOT RUN / not implemented here: executable activation coordinator and
 launcher, Desktop UI registration/wiring to its existing shared effect owner,
-manual ambiguous-restore reconciliation, actual readiness/migration,
+manual ambiguous-restore reconciliation beyond the exact recorded-commit case, actual readiness/migration,
 executed N-1/N rollback, uninstall, physical disk-full/power-loss/clean-Windows VM
 qualification, real publisher authorization/signing/revocation and release.
 No shipping trust key is invented. Existing unsigned packaging is not a trusted
