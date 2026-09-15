@@ -142,7 +142,7 @@ function ConvertFrom-EvidenceJsonElement([Text.Json.JsonElement]$Element, [switc
             $properties = @{}
             foreach ($property in $Element.EnumerateObject()) { $properties.Add($property.Name, $property.Value) }
             $result = [ordered]@{}
-            foreach ($name in Get-EvidenceOrdinalStrings @($properties.Keys)) {
+            foreach ($name in Get-EvidenceOrdinalStrings @($properties.psbase.Keys)) {
                 $result.Add($name, (ConvertFrom-EvidenceJsonElement $properties[$name] -AsHashtable:$AsHashtable))
             }
             if ($AsHashtable) { return $result }

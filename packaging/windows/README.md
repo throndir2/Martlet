@@ -261,7 +261,12 @@ order and uses UTF-8/LF with no random serial number or wall-clock timestamp.
 The bounded JSON reader constructs ordered objects directly from the parsed
 JSON tree rather than relying on `ConvertFrom-Json -AsHashtable` ordering
 (which differs before PowerShell 7.3). Canonical serialization also normalizes
-caller-supplied unordered dictionaries. PowerShell 7.0 remains the declared
+caller-supplied unordered dictionaries.
+JSON member names such as `Keys`, `Values` and `Count` remain data: dictionary
+introspection uses intrinsic members so parsing cannot silently discard fields.
+PowerShell-reserved member names remain explicit errors in PSCustomObject mode;
+dictionary mode retains them without treating them as collection metadata.
+PowerShell 7.0 remains the declared
 minimum; native 7.0/7.2 execution has not been qualified by current-host tests.
 Earlier unpublished v2 receipts whose internal hashes used insertion-ordered
 object keys require a fresh publish; their original evidence is not rewritten.

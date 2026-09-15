@@ -96,6 +96,58 @@ Test-PackagingSourceReceipt $roundtrip.source
 Test-PackageProvenance $copy $roundtrip
 $script:cases++
 
+$collisionFixture = Join-Path $WorkDirectory 'json-member-collisions.json'
+$collisionObjects = @(
+    [ordered]@{ keys = 'kept'; kept = 1; dropped = 2 }
+    [ordered]@{
+        Keys = 'kept'; Values = @('first', $null, 3); Count = 42; Length = 'length'
+        Add = $false; Remove = 'remove'; GetEnumerator = [ordered]@{ nested = $true }
+        kept = 1; dropped = 2
+    }
+)
+foreach ($collisionObject in $collisionObjects) {
+    foreach ($nested in @($false, $true)) {
+        $inputObject = if ($nested) { [ordered]@{ nested = $collisionObject; siblings = @($collisionObject) } } else { $collisionObject }
+        $expectedJson = ConvertTo-EvidenceJson $inputObject
+        foreach ($asHashtable in @($false, $true)) {
+            [IO.File]::WriteAllText($collisionFixture, (ConvertTo-Json -InputObject $inputObject -Depth 64))
+            $parsed = Read-PackagingJson $collisionFixture -AsHashtable:$asHashtable
+            $subject = if ($nested) { $parsed.nested } else { $parsed }
+            Assert-EvidenceKeys $subject @($collisionObject.psbase.Keys)
+            if ((ConvertTo-EvidenceJson $parsed) -cne $expectedJson) {
+                throw 'JSON member names shadowed collection introspection or changed property values/types.'
+            }
+            $script:cases++
+        }
+    }
+}
+foreach ($reserved in @('psbase', 'PSObject')) {
+    $inputObject = [ordered]@{ $reserved = 'kept'; other = 1 }
+    [IO.File]::WriteAllText($collisionFixture, (ConvertTo-Json -InputObject $inputObject))
+    $parsed = Read-PackagingJson $collisionFixture -AsHashtable
+    Assert-EvidenceKeys $parsed @($inputObject.psbase.Keys)
+    if ((ConvertTo-EvidenceJson $parsed) -cne (ConvertTo-EvidenceJson $inputObject)) {
+        throw 'Dictionary-mode JSON lost a PowerShell-reserved property name.'
+    }
+    $script:cases++
+    Assert-Fails "PSCustomObject mode preserves reserved-name rejection: $reserved" {
+        Read-PackagingJson $collisionFixture
+    } '*reserved*'
+}
+$collisionDepsPath = Join-Path $copy 'Desktop\Martlet.Desktop.deps.json'
+$collisionDepsBytes = [IO.File]::ReadAllBytes($collisionDepsPath)
+try {
+    $deps = Read-PackagingJson $collisionDepsPath -AsHashtable
+    $rootKey = @($deps.libraries.psbase.Keys | Where-Object { $_ -clike 'Martlet.Desktop/*' })[0]
+    $target = $deps.targets[$deps.runtimeTarget.name][$rootKey]
+    $target['keys'] = 'runtime'
+    $target['unsupportedAssets'] = [ordered]@{ 'unreviewed.dll' = [ordered]@{} }
+    [IO.File]::WriteAllText($collisionDepsPath, (ConvertTo-EvidenceJson $deps))
+    Assert-Fails 'actual dependency metadata retains and rejects shadowing and unknown asset members' {
+        Get-PackageApplications $copy
+    } '*Unsupported dependency type or asset category*'
+} finally { [IO.File]::WriteAllBytes($collisionDepsPath, $collisionDepsBytes) }
+
 $sbomPath = Join-Path $copy 'sbom.cdx.json'
 $originalSbom = [IO.File]::ReadAllBytes($sbomPath)
 $evidenceSums = [IO.File]::ReadAllBytes((Join-Path $copy 'SHA256SUMS.txt'))
