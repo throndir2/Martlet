@@ -146,6 +146,14 @@ GitHub repository/asset identity is unique across the entire document,
 independent of filename, hash, byte count, source revision or release metadata.
 Two contradictory observations cannot become separate payloads through
 runtime/role aliases; different assets within one release remain distinct.
+For HF records declaring `hugging_face_lfs_metadata`, a repeated Git blob
+identity must agree on its declared payload SHA-256 and payload byte count
+across the whole document, regardless of repository, revision or path.
+Payload bytes are never compared with a pointer blob's own size. Unavailable
+hash evidence supplies no LFS payload association. Consistent references may
+share one artifact; existing duplicate-payload alias rules still apply.
+This consistency check grants no payload verification, checksum promotion,
+publisher trust, rights or execution permission.
 
 ### Bounds and inert locators
 

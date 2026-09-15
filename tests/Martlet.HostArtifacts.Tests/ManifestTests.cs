@@ -350,6 +350,83 @@ public sealed class ManifestTests
     }
 
     [Theory]
+    [InlineData("both", false)]
+    [InlineData("both", true)]
+    [InlineData("hash", false)]
+    [InlineData("hash", true)]
+    [InlineData("size", false)]
+    [InlineData("size", true)]
+    public void HfLfsPointerRejectsContradictoryPayloadAssociations(string difference, bool reverse)
+    {
+        var doc = Fixture();
+        var f5 = Item(doc, "artifacts", 1);
+        var vocos = Item(doc, "artifacts", 3);
+        vocos["git_blob_sha1"] = f5["git_blob_sha1"]!.DeepClone();
+        if (difference == "hash") vocos["bytes"] = f5["bytes"]!.DeepClone();
+        if (difference == "size") vocos["sha256"] = f5["sha256"]!.DeepClone();
+        if (reverse)
+            doc["artifacts"] = new JsonArray(doc["artifacts"]!.AsArray().Reverse().Select(a => a!.DeepClone()).ToArray());
+        Assert.Equal("artifact.pin_invalid", Rejected(doc).DiagnosticCode);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("ollama-llm")]
+    [InlineData("f5-tts")]
+    public void HfLfsPointerConflictIsCheckedBeforeRoleFiltering(string? role)
+    {
+        var doc = Candidate();
+        Item(doc, "artifacts", 3)["git_blob_sha1"] = "c8bc622144d98f868d3156d6af4e5ed345d6e287";
+        var error = Assert.Throws<ArtifactManifestException>(() => ArtifactInspector.Inspect(Read(doc), role));
+        Assert.Equal("artifact.pin_invalid", error.DiagnosticCode);
+    }
+
+    [Fact]
+    public void HfDifferentPointersCanDeclareDifferentPayloadHashesAndSizes()
+    {
+        var doc = Fixture();
+        Item(doc, "artifacts", 3)["git_blob_sha1"] = new string('1', 40);
+        var report = Report(doc);
+        Assert.Equal(2_836_353_046L, report.GetProperty("disk").GetProperty("known_listed_payload_bytes").GetInt64());
+        Assert.False(report.GetProperty("payload_verified").GetBoolean());
+        Assert.False(report.GetProperty("execution_eligible").GetBoolean());
+    }
+
+    [Fact]
+    public void HfConsistentPointerReferencesShareOneArtifactWithoutDoubleCounting()
+    {
+        var doc = Fixture();
+        Item(doc, "roles", 1)["root_artifact_ids"]!.AsArray().Add("vocos-weights");
+        var report = Report(doc, "f5-tts");
+        Assert.Equal(4, report.GetProperty("artifacts").GetArrayLength());
+        Assert.Equal(1_402_816_013L, report.GetProperty("disk").GetProperty("known_listed_payload_bytes").GetInt64());
+        Assert.False(report.GetProperty("download_authorized").GetBoolean());
+        Assert.False(report.GetProperty("host_qualified").GetBoolean());
+    }
+
+    [Fact]
+    public void HfUnavailableHashEvidenceDoesNotSupplyAnLfsPayloadAssociation()
+    {
+        var doc = Fixture();
+        Item(doc, "artifacts", 2)["git_blob_sha1"] = Item(doc, "artifacts", 1)["git_blob_sha1"]!.DeepClone();
+        var report = Report(doc);
+        Assert.Contains("artifact.content_pin_missing", Codes(report));
+        Assert.Equal(2_836_353_046L, report.GetProperty("disk").GetProperty("known_listed_payload_bytes").GetInt64());
+        Assert.False(report.GetProperty("payload_verified").GetBoolean());
+    }
+
+    [Fact]
+    public void HfConsistentDuplicatePayloadRecordsRetainExistingAliasPolicy()
+    {
+        var doc = Fixture();
+        var f5 = Item(doc, "artifacts", 1);
+        var vocos = Item(doc, "artifacts", 3);
+        foreach (var field in new[] { "git_blob_sha1", "sha256", "bytes" })
+            vocos[field] = f5[field]!.DeepClone();
+        Assert.Equal("manifest.alias_invalid", Rejected(doc).DiagnosticCode);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void OneGithubAssetCannotHaveConflictingObservations(bool changeRelease)

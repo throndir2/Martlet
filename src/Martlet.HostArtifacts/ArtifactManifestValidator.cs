@@ -77,12 +77,21 @@ internal static class ArtifactManifestValidator
         var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var hashes = new HashSet<string>(StringComparer.Ordinal);
         var releaseAssets = new HashSet<(string Repository, long AssetId)>();
+        var hfLfsPointers = new Dictionary<string, (string PayloadSha256, long PayloadBytes)>(StringComparer.Ordinal);
         long total = 0;
         var edgeCount = 0;
         foreach (var artifact in artifacts.Values)
         {
             var source = Reference(sources, artifact.SourceId);
             Artifact(artifact, source);
+            if (source.Kind == SourceKind.HuggingFace && artifact.Sha256Evidence == HashEvidence.HuggingFaceLfsMetadata)
+            {
+                // A pointer blob identifies a payload declaration, not a blob with the payload's byte length.
+                var declaration = (artifact.Sha256!, artifact.Bytes);
+                Require(!hfLfsPointers.TryGetValue(artifact.GitBlobSha1!, out var previous) || previous == declaration,
+                    "artifact.pin_invalid");
+                hfLfsPointers[artifact.GitBlobSha1!] = declaration;
+            }
             if (artifact.Release is { } release)
                 Require(releaseAssets.Add((source.Repository.ToLowerInvariant(), release.AssetId)), "manifest.alias_invalid");
             Require(paths.Add($"{source.Kind}:{source.Repository}:{source.Revision}:{artifact.Path}"), "manifest.alias_invalid");
