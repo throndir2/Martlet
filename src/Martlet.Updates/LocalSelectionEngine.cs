@@ -7,11 +7,12 @@ internal enum SelectionIoPoint
     BeforeCreate, AfterCreate, BeforeWrite, AfterWrite, BeforeFlush, AfterFlush,
     BeforePendingReplace, AfterPendingReplace, BeforeSelectionReplace, AfterSelectionReplace,
     BeforeRecoveryReplace, AfterRecoveryReplace, BeforeInitializeReplace,
-    BeforePublicationRename, AfterPublicationRename
+    BeforePublicationRename, AfterPublicationRename,
+    BeforeConfigurationRestore, AfterConfigurationRestore, BeforeRestoreAcknowledgment
 }
 
-/// <summary>Private candidate selection only. No executable launcher pointer or settings are changed.</summary>
-public sealed class LocalSelectionEngine
+/// <summary>Private selection and explicitly approved configuration recovery. Never executable activation.</summary>
+public sealed partial class LocalSelectionEngine
 {
     private const int MaximumControlBytes = 32768;
     private const int MaximumJournalBytes = 131072;
@@ -19,6 +20,7 @@ public sealed class LocalSelectionEngine
     private const int MaximumTransactions = 32;
     private const int FormatVersion = 2;
     private const string JournalFile = "journal-v2.json";
+    private const string JournalV3File = "journal-v3.json";
     private readonly string root;
     private readonly LocalStagingEngine staging;
     private readonly SettingsStore settings;
@@ -75,7 +77,7 @@ public sealed class LocalSelectionEngine
         using var owner = LockRoot();
         var state = ReadState(token);
         VerifySelections(state, token);
-        return new SelectionReceipt(state, SelectionOutcome.Unchanged);
+        return Receipt(state, SelectionOutcome.Unchanged, token);
     }, token);
 
     public SelectionPlan PrepareActivation(string stagedDestination, long currentRevision, string freshSnapshotPath,
@@ -181,11 +183,12 @@ public sealed class LocalSelectionEngine
                     Pending = null, LastTransaction = plan.TransactionId
                 };
                 ValidateState(after);
-                var journal = new SelectionJournal(FormatVersion, plan.TransactionId, plan.PlanDigest, before, pending, after);
+                var journal = new SelectionJournal(before.FormatVersion, plan.TransactionId, plan.PlanDigest, before, pending, after);
                 WriteNew(Path.Combine(directory, "before.json"), Wire.Write(before), token);
                 WriteNew(Path.Combine(directory, "configuration.martlet-config"), plan.SnapshotBytes, token);
                 using var retainedSnapshot = PinSnapshot(plan.FreshSnapshot, token);
-                WriteNew(Path.Combine(directory, JournalFile), Wire.Write(journal), token);
+                WriteNew(Path.Combine(directory, before.FormatVersion == 2 ? JournalFile : JournalV3File),
+                    JournalBytes(journal), token);
                 var pendingBytes = Wire.Write(pending);
                 WriteNew(Path.Combine(directory, "pending.json"), pendingBytes, token);
                 using (var pendingReplacement = PinReplacement(Path.Combine(directory, "pending.json"), pendingBytes, token))
@@ -235,13 +238,15 @@ public sealed class LocalSelectionEngine
             if (interruptedTransaction is { } orphan && state.LastTransaction != orphan)
                 InspectOrphan(orphan);
             VerifySelections(state, token);
-            return new SelectionReceipt(state, SelectionOutcome.Unchanged);
+            return Receipt(state, SelectionOutcome.Unchanged, token);
         }
         var id = state.Pending.Value;
         if (interruptedTransaction is not null && interruptedTransaction != id)
             throw new SelectionException(SelectionFailure.Conflict);
         var directory = TransactionDirectory(id);
         var journal = ReadJournal(id, token);
+        if (RestoreBinding(id, token) is not null)
+            throw new SelectionException(SelectionFailure.ConfigurationRestoreReconciliationRequired, id);
         if (!Same(state, journal.Pending))
             throw new SelectionException(SelectionFailure.InvalidControl);
         return WithRetainedEvidence(journal.Before, null, (_, reverify) =>
@@ -321,20 +326,41 @@ public sealed class LocalSelectionEngine
     private SelectionJournal ReadJournal(Guid id, CancellationToken token)
     {
         var directory = TransactionDirectory(id);
-        if (LocalPaths.Exists(SafePath(Path.Combine(directory, "journal.json"))) ||
-            !LocalPaths.Exists(SafePath(Path.Combine(directory, JournalFile))))
+        var v2 = LocalPaths.Exists(SafePath(Path.Combine(directory, JournalFile)));
+        var v3 = LocalPaths.Exists(SafePath(Path.Combine(directory, JournalV3File)));
+        if (LocalPaths.Exists(SafePath(Path.Combine(directory, "journal.json"))) || v2 == v3)
             throw new SelectionException(SelectionFailure.InvalidControl);
-        var journal = ReadDocument<SelectionJournal>(Path.Combine(directory, JournalFile), MaximumJournalBytes, token);
+        SelectionJournal journal;
+        RestoreTransactionBinding? restore = null;
+        if (v2)
+            journal = ReadDocument<SelectionJournal>(Path.Combine(directory, JournalFile), MaximumJournalBytes, token);
+        else
+        {
+            var document = ReadDocument<SelectionJournalV3>(Path.Combine(directory, JournalV3File), MaximumJournalBytes, token);
+            if (document.FormatVersion != 3 ||
+                document.Kind is not (SelectionTransactionKind.Selection or SelectionTransactionKind.ConfigurationRestore) ||
+                (document.Kind == SelectionTransactionKind.ConfigurationRestore) != (document.Restore is not null))
+                throw new SelectionException(SelectionFailure.InvalidControl);
+            restore = document.Restore;
+            journal = new(document.FormatVersion, document.TransactionId, document.PlanDigest,
+                document.Before, document.Pending, document.After);
+        }
         ValidateState(journal.Before); ValidateState(journal.Pending); ValidateState(journal.After);
-        if (journal.FormatVersion != FormatVersion || journal.TransactionId != id || !Wire.IsHash(journal.PlanDigest) ||
+        var pendingFormat = restore is null ? journal.Before.FormatVersion : 3;
+        if (journal.FormatVersion != (v2 ? 2 : 3) || journal.Pending.FormatVersion != journal.FormatVersion ||
+            journal.After.FormatVersion != journal.FormatVersion ||
+            restore is null && journal.Before.FormatVersion != journal.FormatVersion ||
+            v3 && restore is null && journal.Before.Current?.RestoreRequired == true ||
+            journal.TransactionId != id || !Wire.IsHash(journal.PlanDigest) ||
             journal.Before.Pending is not null || journal.Pending.Pending != id || journal.After.Pending is not null ||
             journal.After.LastTransaction != id || journal.Before.Revision > long.MaxValue - 2 ||
             journal.Pending.Revision != journal.Before.Revision + 1 || journal.After.Revision != journal.Before.Revision + 2 ||
-            !Same(journal.Pending, journal.Before with { Revision = journal.Before.Revision + 1, Pending = id }) ||
+            !Same(journal.Pending, journal.Before with { FormatVersion = pendingFormat, Revision = journal.Before.Revision + 1, Pending = id }) ||
             journal.Before.Bootstrap != journal.After.Bootstrap ||
             journal.Before.ProfileId != journal.After.ProfileId || journal.After.Current is null ||
             !Same(journal.Before, ReadDocument<ControlDocument>(Path.Combine(directory, "before.json"), MaximumControlBytes, token)))
             throw new SelectionException(SelectionFailure.InvalidControl);
+        if (restore is not null) ValidateRestoreJournal(journal, restore);
         return journal;
     }
 
@@ -362,7 +388,7 @@ public sealed class LocalSelectionEngine
             var journal = ReadJournal(id, token);
             var recovered = journal.Before with { Revision = journal.After.Revision, LastTransaction = id, Pending = null };
             if (!(ancestor.Pending is not null ? Same(ancestor, journal.Pending) :
-                Same(ancestor, journal.After) || Same(ancestor, recovered)))
+                Same(ancestor, journal.After) || RestoreBinding(id, token) is null && Same(ancestor, recovered)))
                 throw new SelectionException(SelectionFailure.InvalidControl);
             ancestor = journal.Before;
         }
@@ -388,12 +414,14 @@ public sealed class LocalSelectionEngine
                 throw new SelectionException(SelectionFailure.InvalidControl);
             var pending = SafePath(Path.Combine(directory, "pending-publication.json"));
             var selected = SafePath(Path.Combine(directory, "selected-publication.json"));
+            var committedRestore = SafePath(Path.Combine(directory, "restore-committed.json"));
             var recoveries = Enumerable.Range(0, 8)
                 .Select(attempt => SafePath(Path.Combine(directory, $"recovered-{attempt}.json.publication")))
                 .Where(LocalPaths.Exists).ToArray();
             var publishedPending = LocalPaths.Exists(pending);
             var publishedSelection = LocalPaths.Exists(selected);
-            if (!publishedPending && !publishedSelection && recoveries.Length == 0)
+            if (!publishedPending && !publishedSelection && recoveries.Length == 0 &&
+                !LocalPaths.Exists(committedRestore))
             {
                 if (lineage.ContainsKey(id)) throw new SelectionException(SelectionFailure.InvalidControl);
                 // Only v2 never-published orphans can be left inert, including partial scratch.
@@ -403,6 +431,12 @@ public sealed class LocalSelectionEngine
                 recoveries.Length > 1 || publishedSelection && recoveries.Length != 0)
                 throw new SelectionException(SelectionFailure.InvalidControl);
             var journal = ReadJournal(id, token);
+            var restore = RestoreBinding(id, token);
+            if (restore is null && LocalPaths.Exists(committedRestore) ||
+                restore is not null && (recoveries.Length != 0 || publishedSelection && !LocalPaths.Exists(committedRestore)))
+                throw new SelectionException(SelectionFailure.InvalidControl);
+            if (restore is not null && LocalPaths.Exists(committedRestore))
+                ValidateRestoreCommit(journal, restore, token);
             if (!Same(ReadDocument<ControlDocument>(pending, MaximumControlBytes, token), journal.Pending))
                 throw new SelectionException(SelectionFailure.InvalidControl);
             ControlDocument expected;
@@ -426,7 +460,7 @@ public sealed class LocalSelectionEngine
 
     private void ValidateState(ControlDocument state)
     {
-        if (state.FormatVersion != FormatVersion || state.Revision < 0 || state.Bootstrap is null ||
+        if (state.FormatVersion is not (2 or 3) || state.Revision < 0 || state.Bootstrap is null ||
             state.ControlRoot != root || state.StagingRoot != staging.Root ||
             state.SettingsPath != settings.FilePath || state.ProfileId == Guid.Empty ||
             state.Pending == Guid.Empty || state.LastTransaction == Guid.Empty ||
@@ -465,6 +499,8 @@ public sealed class LocalSelectionEngine
     private static void RequireAvailable(ControlDocument state, long revision)
     {
         if (state.Pending is not null) throw new SelectionException(SelectionFailure.RecoveryRequired, state.Pending);
+        if (state.Current?.RestoreRequired == true)
+            throw new SelectionException(SelectionFailure.ConfigurationRestoreRequired);
         if (state.Revision != revision) throw new SelectionException(SelectionFailure.Conflict);
         if (state.Revision > long.MaxValue - 2) throw new SelectionException(SelectionFailure.CapacityExceeded);
     }
@@ -683,7 +719,7 @@ public sealed class LocalSelectionEngine
     }
 
     private void Publish(FileStream replacement, byte[] expected, string? publication,
-        ControlDocument? current, CancellationToken token)
+        ControlDocument? current, CancellationToken token, Action? committed = null)
     {
         var currentBytes = current is null ? null : Wire.Write(current);
         using var currentPin = currentBytes is null ? null : PinReplacement(ControlPath, currentBytes, token);
@@ -703,9 +739,11 @@ public sealed class LocalSelectionEngine
         currentPin?.Dispose();
         SafePath(ControlPath);
         token.ThrowIfCancellationRequested();
+        restoreValidation?.Invoke();
         // Windows ReplaceFile requires write access to the replacement and conflicts with the
         // read pin. Same-volume MoveFileEx replacement preserves write denial through rename.
         File.Move(replacement.Name, ControlPath, overwrite: publication is not null);
+        committed?.Invoke();
         Io?.Invoke(SelectionIoPoint.AfterPublicationRename, replacement.Name, CancellationToken.None);
     }
 
@@ -740,14 +778,22 @@ public sealed class LocalSelectionEngine
     private void Point(SelectionIoPoint point, string path, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
+        restoreValidation?.Invoke();
         Io?.Invoke(point, path, token);
         token.ThrowIfCancellationRequested();
+        restoreValidation?.Invoke();
     }
 
-    private T Run<T>(Func<T> operation, CancellationToken token, Guid? transactionId = null)
+    private T Run<T>(Func<T> operation, CancellationToken token, Guid? transactionId = null,
+        bool preserveRecovery = false)
     {
         if (Interlocked.CompareExchange(ref busy, 1, 0) != 0) throw new SelectionException(SelectionFailure.Busy);
-        try { token.ThrowIfCancellationRequested(); return operation(); }
+        try
+        {
+            token.ThrowIfCancellationRequested();
+            if (restoreCleanup?.IsPending == true) throw new SelectionException(SelectionFailure.CleanupPending);
+            return operation();
+        }
         catch (SelectionException ex) when (transactionId is not null && ex.TransactionId is null)
         { throw new SelectionException(ex.Failure, transactionId); }
         catch (StagingException ex) when (ex.Failure is StagingFailure.Unavailable or StagingFailure.InsufficientDisk or
@@ -762,7 +808,8 @@ public sealed class LocalSelectionEngine
                 _ => SelectionFailure.Unavailable
             }, transactionId);
         }
-        catch (RecoveryException) { throw new SelectionException(SelectionFailure.InvalidSnapshot, transactionId); }
+        catch (RecoveryException) when (!preserveRecovery)
+        { throw new SelectionException(SelectionFailure.InvalidSnapshot, transactionId); }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         { throw new SelectionException(SelectionFailure.Cancelled, transactionId); }
         catch (UnauthorizedAccessException) { throw new SelectionException(SelectionFailure.AccessDenied, transactionId); }

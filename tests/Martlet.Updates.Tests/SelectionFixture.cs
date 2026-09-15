@@ -9,10 +9,11 @@ internal sealed class SelectionFixture : IDisposable
     internal string Control => Path.Combine(Root, "selection.json");
     internal SettingsStore Settings { get; }
     internal LocalStagingEngine Staging => Package.Engine();
-    internal SelectionFixture(SigningKeys keys, bool legacy = false)
+    internal SelectionFixture(SigningKeys keys, bool legacy = false,
+        Action<SettingsIoPoint, CancellationToken>? settingsIo = null)
     {
         Package = new(keys, selectionLayout: true);
-        Settings = new(Path.Combine(Package.Root, "data"));
+        Settings = new(Path.Combine(Package.Root, "data")) { RecoveryIo = settingsIo };
         var settings = legacy ? AppSettings.CreateUnconfigured() : SetupSettings.Begin(null);
         if (!legacy) settings = settings with
         {
@@ -71,6 +72,16 @@ internal sealed class SelectionFixture : IDisposable
         };
         Assert.True(Settings.SaveAsync(changed, current.Revision).GetAwaiter().GetResult().Saved);
         RefreshFacts();
+    }
+    internal SelectionReceipt Rollback()
+    {
+        Initialize();
+        Select(Stage());
+        var selected = Select(Stage("0.3.0.0"));
+        ChangeSettings();
+        var engine = Engine();
+        var plan = engine.PrepareRollback(selected.Revision, Snapshot());
+        return engine.CommitSelection(plan, Approve(plan));
     }
     public void Dispose() => Package.Dispose();
 }

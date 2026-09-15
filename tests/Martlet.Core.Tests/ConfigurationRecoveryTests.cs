@@ -8,7 +8,7 @@ namespace Martlet.Core.Tests;
 
 public sealed class ConfigurationRecoveryTests : IDisposable
 {
-    private readonly string directory = Path.Combine(Path.GetTempPath(), "Martlet.Recovery.Tests", Guid.NewGuid().ToString("N"));
+    private readonly string directory = Path.Combine(AppContext.BaseDirectory, "recovery-fixtures", Guid.NewGuid().ToString("N"));
     private SettingsStore Store => new(directory);
     private string Backup => Path.Combine(directory, "selected.martlet-config");
     private static ConfigurationRestoreApproval Approve(ConfigurationRestorePlan plan) =>
@@ -279,7 +279,47 @@ public sealed class ConfigurationRecoveryTests : IDisposable
     }
 
     [Fact]
-    public async Task SourceOrDestinationMutationDuringStagingFailsLastRevisionCheck()
+    public async Task StandaloneRestoreRetainsOwnedCleanupForExistingDesktopRetryContract()
+    {
+        await Prepare();
+        await Store.CreateConfigurationSnapshotAsync(Backup);
+        var plan = await Store.PreviewConfigurationRestoreAsync(Backup);
+        var original = await File.ReadAllBytesAsync(Store.FilePath);
+        var source = await File.ReadAllBytesAsync(Backup);
+        var stages = 0;
+        var failCleanup = true;
+        var store = new SettingsStore(directory) { RecoveryIo = (point, _) =>
+        {
+            if (point == SettingsIoPoint.BeforeStage) stages++;
+            if (point == SettingsIoPoint.AfterWrite && stages == 2) throw new IOException();
+            if (point == SettingsIoPoint.BeforeCleanup && failCleanup) throw new UnauthorizedAccessException();
+        } };
+        var error = await Fails(RecoveryFailure.CleanupPending, () => store.RestoreConfigurationAsync(plan, Approve(plan)));
+        Assert.NotNull(error.RetainedFile);
+        Assert.Equal(".tmp", Path.GetExtension(error.RetainedFile));
+        Assert.True(File.Exists(error.RetainedFile));
+        Assert.Equal(original, await File.ReadAllBytesAsync(Store.FilePath));
+        Assert.Equal(original, await File.ReadAllBytesAsync(Assert.Single(Directory.GetFiles(directory, "settings.recovery.*.bak"))));
+        Assert.Equal(source, await File.ReadAllBytesAsync(Backup));
+        var next = await store.PreviewConfigurationRestoreAsync(Backup);
+        var blocked = await Fails(RecoveryFailure.CleanupPending, () => store.RestoreConfigurationAsync(next, Approve(next)));
+        Assert.Equal(error.RetainedFile, blocked.RetainedFile);
+        var nextScoped = await store.PreviewConfigurationRestoreAsync(Backup);
+        await Fails(RecoveryFailure.CleanupPending, () => store.OpenConfigurationRestoreAsync(nextScoped, Approve(nextScoped)));
+        Assert.Single(Directory.GetFiles(directory, "*.tmp"));
+        Assert.Single(Directory.GetFiles(directory, "settings.recovery.*.bak"));
+        Assert.Equal(RecoveryFailure.CleanupPending, Assert.Throws<RecoveryException>(() => store.RetryRecoveryCleanup(error.RetainedFile)).Failure);
+        failCleanup = false;
+        store.RetryRecoveryCleanup(error.RetainedFile);
+        Assert.False(File.Exists(error.RetainedFile));
+        Assert.Equal(original, await File.ReadAllBytesAsync(Store.FilePath));
+        Assert.Equal(source, await File.ReadAllBytesAsync(Backup));
+        var fresh = await store.PreviewConfigurationRestoreAsync(Backup);
+        Assert.Equal(fresh.CandidateDigest, (await store.RestoreConfigurationAsync(fresh, Approve(fresh))).Revision);
+    }
+
+    [Fact]
+    public async Task DestinationMutationDuringStagingIsDeniedOrDetected()
     {
         var settings = await Prepare();
         await Store.CreateConfigurationSnapshotAsync(Backup);
@@ -291,8 +331,11 @@ public sealed class ConfigurationRecoveryTests : IDisposable
             if (point == SettingsIoPoint.BeforeStage) stages++;
             if (point == SettingsIoPoint.BeforeCommit && stages == 2) File.WriteAllBytes(Store.FilePath, changed);
         } };
-        await Fails(RecoveryFailure.Conflict, () => store.RestoreConfigurationAsync(plan, Approve(plan)));
-        Assert.Equal(changed, await File.ReadAllBytesAsync(Store.FilePath));
+        var original = await File.ReadAllBytesAsync(Store.FilePath);
+        // The live restore now pins the current target. Windows rejects this attempted write before it can change bytes.
+        await Fails(OperatingSystem.IsWindows() ? RecoveryFailure.Unavailable : RecoveryFailure.Conflict,
+            () => store.RestoreConfigurationAsync(plan, Approve(plan)));
+        Assert.Equal(OperatingSystem.IsWindows() ? original : changed, await File.ReadAllBytesAsync(Store.FilePath));
     }
 
     [Fact]
@@ -392,6 +435,28 @@ public sealed class ConfigurationRecoveryTests : IDisposable
         else await Fails(RecoveryFailure.Unavailable, () => store.RestoreConfigurationAsync(plan, Approve(plan)));
         Assert.Equal(original, await File.ReadAllBytesAsync(Assert.Single(Directory.GetFiles(directory, "settings.recovery.*.bak"))));
         Assert.Equal(plan.CandidateJson, await File.ReadAllTextAsync(Store.FilePath));
+        Assert.Empty(Directory.GetFiles(directory, "*.tmp"));
+    }
+
+    [Fact]
+    public async Task CanceledRestoreRetiresOwnedScratchWithoutRequiringANewCleanupAction()
+    {
+        await Prepare();
+        await Store.CreateConfigurationSnapshotAsync(Backup);
+        var plan = await Store.PreviewConfigurationRestoreAsync(Backup);
+        var original = await File.ReadAllBytesAsync(Store.FilePath);
+        using var stop = new CancellationTokenSource();
+        var stages = 0;
+        var store = new SettingsStore(directory) { RecoveryIo = (point, _) =>
+        {
+            if (point == SettingsIoPoint.BeforeStage) stages++;
+            if (stages == 2 && point == SettingsIoPoint.AfterWrite) stop.Cancel();
+        } };
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            store.RestoreConfigurationAsync(plan, Approve(plan), stop.Token));
+        Assert.Equal(original, await File.ReadAllBytesAsync(Store.FilePath));
+        Assert.Equal(original, await File.ReadAllBytesAsync(Assert.Single(
+            Directory.GetFiles(directory, "settings.recovery.*.bak"))));
         Assert.Empty(Directory.GetFiles(directory, "*.tmp"));
     }
 

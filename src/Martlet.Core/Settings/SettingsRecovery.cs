@@ -3,11 +3,12 @@ using Martlet.Core.Contracts;
 namespace Martlet.Core.Settings;
 
 // A narrow internal fault/retirement seam around real IO, not a replaceable filesystem.
-internal enum SettingsIoPoint { BeforeStage, AfterWrite, BeforeFlush, AfterFlush, BeforeCommit, AfterCommit, BeforeCleanup }
+internal enum SettingsIoPoint { BeforeStage, AfterWrite, BeforeFlush, AfterFlush, BeforeCommit, AfterCommit, BeforeCleanup, BeforeRead, AfterRead }
 
 public sealed partial class SettingsStore
 {
     internal Action<SettingsIoPoint, CancellationToken>? RecoveryIo { get; init; }
+    private ConfigurationRestoreCleanup? standaloneRestoreCleanup;
 
     private static async Task<byte[]> ReadBoundedAsync(string path, int maximum, CancellationToken token)
     {
@@ -16,7 +17,7 @@ public sealed partial class SettingsStore
         return await ReadBoundedAsync(stream, maximum, token);
     }
 
-    private static async Task<byte[]> ReadBoundedAsync(Stream stream, int maximum, CancellationToken token)
+    internal static async Task<byte[]> ReadBoundedAsync(Stream stream, int maximum, CancellationToken token)
     {
         var buffer = new byte[maximum + 1];
         var length = await stream.ReadAtLeastAsync(buffer, buffer.Length, throwOnEndOfStream: false, token);
@@ -170,48 +171,90 @@ public sealed partial class SettingsStore
     public async Task<ConfigurationRecoveryReceipt> RestoreConfigurationAsync(ConfigurationRestorePlan plan,
         ConfigurationRestoreApproval approval, CancellationToken token = default)
     {
-        approval.Consume(plan);
-        if (plan.Destination != FilePath) throw new RecoveryException(RecoveryFailure.Conflict);
+        await using var scope = await OpenConfigurationRestoreAsync(plan, approval, token);
         try
         {
-            RecoveryPath(FilePath);
-            using var writeLock = new FileStream(FilePath + ".lock", FileMode.OpenOrCreate, FileAccess.Write, FileShare.None);
-            RecoveryPath(plan.SourcePath);
-            // Pin the approved source through commit. Windows sharing denies writes/renames;
-            // digest verification still rejects changes made since preview.
-            await using var sourceLock = new FileStream(plan.SourcePath, FileMode.Open, FileAccess.Read, FileShare.Read,
-                4096, FileOptions.Asynchronous | FileOptions.SequentialScan);
-            async Task ValidateCurrent()
+            await scope.CommitAsync(static () => { }, static () => { });
+            var evidence = await scope.VerifyCommittedAsync();
+            return new(evidence.Path, evidence.Revision, evidence.OriginalSnapshot);
+        }
+        finally
+        {
+            if (scope.Cleanup is { } pending)
             {
-                var current = await RecoveryCurrentAsync(token);
-                if (current.Revision != plan.ExpectedRevision || current.Settings.Profile.Id != plan.ProfileId)
-                    throw new RecoveryException(RecoveryFailure.Conflict);
-                RecoveryPath(plan.SourcePath);
-                // Only compare with the frozen source; never import newly read, unseen content.
-                sourceLock.Position = 0;
-                var source = await ReadBoundedAsync(sourceLock, ConfigurationSnapshot.MaximumBytes, token);
-                if (ConfigurationSnapshot.Hash(source) != plan.SourceFileDigest)
-                    throw new RecoveryException(RecoveryFailure.Conflict);
+                Volatile.Write(ref standaloneRestoreCleanup, pending);
             }
-            await ValidateCurrent();
+        }
+    }
+
+    public async Task<ConfigurationRestoreScope> OpenConfigurationRestoreAsync(ConfigurationRestorePlan plan,
+        ConfigurationRestoreApproval approval, CancellationToken token = default)
+    {
+        approval.Consume(plan);
+        if (plan.Destination != FilePath) throw new RecoveryException(RecoveryFailure.Conflict);
+        FileStream? writeLock = null, sourceLock = null, currentLock = null;
+        try
+        {
+            token.ThrowIfCancellationRequested();
+            RecoveryPath(FilePath);
+            token.ThrowIfCancellationRequested();
+            writeLock = new FileStream(FilePath + ".lock", FileMode.OpenOrCreate, FileAccess.Write, FileShare.None);
+            token.ThrowIfCancellationRequested();
+            if (Volatile.Read(ref standaloneRestoreCleanup) is { IsPending: true } pending)
+                throw new RecoveryException(RecoveryFailure.CleanupPending, pending.Path);
+            RecoveryPath(plan.SourcePath);
+            token.ThrowIfCancellationRequested();
+            sourceLock = ConfigurationRestoreScope.Pin(plan.SourcePath);
+            token.ThrowIfCancellationRequested();
+            currentLock = ConfigurationRestoreScope.Pin(FilePath);
+            token.ThrowIfCancellationRequested();
             var current = await RecoveryCurrentAsync(token);
+            token.ThrowIfCancellationRequested();
+            if (current.Revision != plan.ExpectedRevision || current.Settings.Profile.Id != plan.ProfileId)
+                throw new RecoveryException(RecoveryFailure.Conflict);
+            await ConfigurationRestoreScope.CheckBytesAsync(sourceLock, plan.SourcePath,
+                plan.SourceFileDigest, ConfigurationSnapshot.MaximumBytes, token, token.ThrowIfCancellationRequested);
+            await ConfigurationRestoreScope.CheckBytesAsync(currentLock, FilePath,
+                plan.ExpectedRevision, AppSettings.MaxFileBytes, token, token.ThrowIfCancellationRequested);
             var candidate = plan.CandidateBytes();
-            var settings = SettingsJson.Read(candidate);
-            ValidateCredentialTransition(SetupSettings.Begin(current.Settings).Setup!, settings.Setup!, null);
+            ValidateRestoreCandidate(current.Settings, candidate, plan);
+            token.ThrowIfCancellationRequested();
             var original = Path.Combine(DataDirectory, $"settings.recovery.{Guid.NewGuid():N}.bak");
-            // Create-only, flushed original BEFORE replacement. Failure after this leaves redundant
-            // recovery evidence, never an untracked native-key transaction or an overwritten snapshot.
-            await WriteAtomicAsync(current.Bytes, original, false, null, token, recovery: true);
-            await WriteAtomicAsync(candidate, FilePath, true, null, token, recovery: true, beforeCommit: ValidateCurrent);
-            return new(FilePath, ConfigurationSnapshot.Hash(candidate), original);
+            var scope = new ConfigurationRestoreScope(this, plan, token, writeLock, sourceLock, currentLock,
+                current.Bytes, candidate, original);
+            writeLock = sourceLock = currentLock = null;
+            return scope;
         }
         catch (ContractException) { throw new RecoveryException(RecoveryFailure.InvalidBackup); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         { throw new RecoveryException(RecoveryFailure.Unavailable); }
+        finally
+        {
+            currentLock?.Dispose();
+            sourceLock?.Dispose();
+            writeLock?.Dispose();
+        }
+    }
+
+    internal static void ValidateRestoreCandidate(AppSettings current, byte[] candidate, ConfigurationRestorePlan plan)
+    {
+        var settings = SettingsJson.Read(candidate);
+        if (settings.SchemaVersion != 2 || settings.Profile.Id != plan.ProfileId ||
+            ConfigurationSnapshot.Hash(candidate) != plan.CandidateDigest ||
+            !current.Profile.Credentials.SequenceEqual(settings.Profile.Credentials))
+            throw new RecoveryException(RecoveryFailure.Conflict);
+        ValidateCredentialTransition(SetupSettings.Begin(current).Setup!, settings.Setup!, null);
     }
 
     internal void RetryRecoveryCleanup(string ownedTemporary)
     {
+        var pending = Volatile.Read(ref standaloneRestoreCleanup);
+        if (pending?.Path == ownedTemporary)
+        {
+            Task.Run(() => pending.RetryAsync()).GetAwaiter().GetResult();
+            Interlocked.CompareExchange(ref standaloneRestoreCleanup, null, pending);
+            return;
+        }
         try
         {
             RecoveryIo?.Invoke(SettingsIoPoint.BeforeCleanup, CancellationToken.None);

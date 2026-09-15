@@ -2,11 +2,13 @@
 
 `LocalSelectionEngine` implements real private-file transactions, not an updater
 or a functional upgrade claim. It does not execute a payload, replace running
-files, stop processes, alter the installed layout, restore settings, access the
+files, stop processes, alter the installed layout, access the
 vault, download anything, modify Windows registration or delete history.
 `selection.json` is an **approved candidate selection**, never a launcher pointer.
 `SelectionReceipt.IsRunnable` is always false; there is no readiness bool, setter,
 public receipt constructor or method that changes it to true.
+The separate rollback configuration-restoration operation described below is
+the only settings effect. Ordinary selection/recovery never restores settings.
 
 ## Explicit ownership and initialization
 
@@ -47,8 +49,9 @@ An empty signing policy may retain a bootstrap, but cannot select any package.
 Neither unsigned receipts nor candidate-supplied keys establish trust.
 
 **Format 2 is not an automatic upgrade of the earlier unpublished format 1
-checkpoint.** Control and journal versions must both be 2, and the journal name
-is `journal-v2.json`. Format 1 control, legacy `journal.json` even in an orphan,
+checkpoint.** A format-2 control transaction requires a version-2 journal named
+`journal-v2.json`; the explicit restore fence below introduces version 3.
+Format 1 control, legacy `journal.json` even in an orphan,
 and missing required publication evidence fail closed. Preserve earlier local
 checkpoints for explicit manual reconciliation; never interpret their missing
 publication receipts as proof that no selection occurred.
@@ -140,12 +143,146 @@ with an old reader. Rollback also refuses a reader that cannot consume schema 2,
 because today's V07a restore emits v2 even for historical v1 envelopes.
 
 A committed rollback selection remains `AwaitingConfigurationRestore` and then
-requires readiness. A later shared effect owner must obtain a fresh
-`PreviewConfigurationRestoreAsync` for the exact retained snapshot, explicitly
-approve it and use `RestoreConfigurationAsync`. Existing V07a guards revoke
-stale acknowledgments/checkpoints and imported credential bindings, retaining
-current cleanup ownership. Selection never calls restore or any vault API, and
-does not clear the pending-restore requirement on a caller's assertion.
+requires readiness. Neither another activation nor another rollback selection
+may bypass that requirement. Only the separate exact restore operation below
+can clear it; no caller assertion, selection approval or public recovery receipt
+is accepted as proof.
+
+## Explicit rollback configuration restoration
+
+`PreviewRollbackConfigurationRestore(selectionRevision, sharedEffects)` takes
+the **existing caller-owned `SetupOperationRunner`**, not a new runner or a busy
+predicate. It returns an operation handle with `Completion` and
+`RequestCancellation()`. The whole synchronous selection/staging operation is
+offloaded by the runner; Core asynchronous work is awaited to actual completion
+inside the retained pinned callback. Returning a Task from that callback without
+awaiting it would release the pins early and is not used.
+
+Preview loads authoritative control and only its recorded rollback snapshot,
+reverifies current/previous package and snapshot evidence, and invokes the real
+`SettingsStore.PreviewConfigurationRestoreAsync`. There is no source/candidate
+path argument, injectable restorer, discovery or startup action. The immutable
+`RollbackRestorePlan` displays exact selection generation/transaction, package
+and snapshot identity, actual profile/revision/schema, Core's candidate JSON,
+candidate digest and summary, expiry, and the effects of the private format-3
+fence. It writes no settings, backup, transaction or control version.
+The existing persistent lock files may be opened/created on explicit operations.
+The preview contains personal configuration and opaque references; do not put it
+in generic logs/support bundles.
+
+After a host's distinct default-No review, explicitly call:
+
+```csharp
+var previewWork = engine.PreviewRollbackConfigurationRestore(revision, sharedEffects);
+var plan = await previewWork.Completion;
+// Only after explicit review of this exact plan; never unconditional in a host.
+var approval = plan.Approve(plan.OperationId, plan.ExpectedSelectionRevision,
+    plan.ExpectedSettingsRevision, plan.PlanDigest);
+var restoreWork = engine.RestoreRollbackConfiguration(plan, approval, sharedEffects);
+var result = await restoreWork.Completion;
+```
+
+Approval is engine/runner/plan/source/profile/revision/candidate-bound and one
+attempt, including wrong binding, busy, failed and canceled attempts. Another
+preparation supersedes the old plan. Its five-minute limit starts at the original
+preview start and checks **both monotonic elapsed time and UTC**; awaiting IO,
+approving, or a backward wall-clock change never renews it. This limit belongs
+to the new rollback coordination approval; standalone V07a did not previously
+have an approval-expiry feature.
+
+Ownership order is the supplied shared effect runner, selection engine/root,
+one bounded staging owner with all retained snapshots, then Core's actual
+settings writer/source/current/original/result scope. The caller does not borrow
+the settings lock, and standalone V07a does not recursively acquire it.
+`SettingsStore.OpenConfigurationRestoreAsync` issues the narrow live scope:
+one exact approved restore, not a generic writer capability. Core performs its
+existing inert candidate transformation, fresh create-only byte-exact original
+and actual replacement. Source and original remain pinned; only the checked old
+settings target is released for rename. The resulting settings file is pinned
+and verified against the exact candidate digest, same profile and emitted schema
+2 through selection acknowledgment. Core validation callbacks only veto; they
+cannot supply success or substitute bytes. Saved/public receipt objects are
+never restoration authority.
+
+The restore-only Core replacement uses exact write-denying, share-delete scratch
+pins plus immediate named-byte checks and same-volume overwrite `File.Move`.
+That preserves the same Windows source-ownership pattern as selection, without
+changing generic settings save/v1 migration backup behavior. Core scope
+retirement waits for actual IO. A failed temporary cleanup retains an exact
+Core-issued capability in this engine: `RetryRollbackRestoreCleanup(sharedEffects)`
+has no arbitrary path argument and never removes an original, snapshot, journal,
+unknown child or key. Other operations on that engine refuse while cleanup is
+pending.
+
+`RollbackRestoreResult` distinguishes settings not attempted/not committed,
+unproven replacement, verified settings commit, outstanding/ambiguous selection
+publication and recorded acknowledgment. A late error after actual settings
+replacement cannot be called "original unchanged." Actual verified result facts
+and a retained original are observations, not reusable authorizations. A
+later read failure preserves those already-observed facts for reporting but
+still prevents acknowledgment; fresh verification is never bypassed. A
+cancellation after settings commit but before acknowledgment leaves the selection
+pending; cancellation after the final selection rename cannot deny that recorded
+commit. Callback-retirement failure is separately exposed as `OwnershipFailed`.
+The shared runner remains occupied through actual cancellation callbacks, not
+just until a UI observer times out.
+
+### Version-3 fence and interrupted restore
+
+Read-only inspection/preview still accepts strict v2 control with unchanged v2
+history. First restore approval explicitly authorizes v3, which is published
+**before Core creates the pre-restore original or replaces settings**. Subsequent
+transactions stay v3. Control keeps its known field shape; `journal-v3.json`
+explicitly distinguishes selection from configuration restoration and binds the
+exact source, profile/current revision, candidate digest and Core-generated
+original filename. Existing `journal-v2.json` files are never rewritten or
+reinterpreted. Unsupported/legacy formats remain refused.
+
+The bounded restore transaction contains:
+
+```text
+transaction-<32-hex-UUID>\
+  before.json
+  journal-v3.json
+  pending.json                 consumed by v3 generation+1 fence
+  pending-publication.json
+  restore-committed.json        written only from real live Core result evidence
+  selected.json                consumed by generation+2 acknowledgment
+  selected-publication.json
+```
+
+The final state changes only generation/transaction markers, the version fence
+if necessary and current `RestoreRequired` from true to false. Packages,
+previous selection and compatible historical snapshot identity are unchanged.
+It requires valid commit evidence plus the existing exact publication/ancestry
+checks. No package manifest/settings parser, trust authority or readiness bool
+is introduced. The same 32 transactions/ancestry, 128 children, 8 recovery
+scratches and existing byte/path limits apply; there is no automatic history
+purge or increased capacity.
+
+| Retained state | Explicit inspection/recovery |
+| --- | --- |
+| No publication intent | Preserve inert v3 scratch/orphan; no settings restore was entered. Fresh consent uses a new transaction. |
+| Partial/full publication intent without its exact control pointer | `InvalidControl`, read-only manual reconciliation, as for v2 selection. |
+| Valid v3 pending fence, no valid recorded settings commit | `OutcomeUnproven`; even matching candidate/original bytes cannot reconstruct lost consent or prove the operation's outcome. |
+| Valid recorded settings commit, still-pending selection | `SettingsCommittedSelectionPending`; preserve actual settings and original, do not automatically acknowledge. |
+| Valid terminal pointer, commit record and publication/history | `Recorded`, idempotent Inspect/Recover, `AwaitingReadiness`, never runnable. |
+
+`Recover` refuses an interrupted configuration restore with
+`ConfigurationRestoreReconciliationRequired`: it never takes the selection-only
+`RecoveredOriginal` path, reruns restore, reverses settings or silently finishes
+acknowledgment. Partial/mismatched commit records remain invalid evidence.
+Manual reconciliation of these ambiguous checkpoints is explicit later-owner
+debt, not an implemented repair command. All files remain intact.
+
+Old v2 readers reject the v3 pointer at operational entrypoints. Control-only
+rewind cannot hide the new transaction while publication history remains:
+old readers also reject its missing v2 journal, and new readers require the
+versioned restore evidence throughout bounded ancestry. This remains private
+filesystem authority, not protection from deleting/rewriting the entire history.
+Completed evidence describes a historical commit, not permanent agreement with
+future settings changes. Any later activation must establish actual current
+settings/policy/readiness again.
 
 ## Recovery and bounds
 
@@ -243,8 +380,16 @@ callback returns. Public `Stage` and `InspectStaged` keep their original newer-
 version, schema, current-fact, exact-receipt and trust rejection behavior.
 
 Still NOT RUN / not implemented here: executable activation coordinator and
-launcher, Desktop UI/shared effect integration, actual readiness/migration,
+launcher, Desktop UI registration/wiring to its existing shared effect owner,
+manual ambiguous-restore reconciliation, actual readiness/migration,
 executed N-1/N rollback, uninstall, physical disk-full/power-loss/clean-Windows VM
 qualification, real publisher authorization/signing/revocation and release.
 No shipping trust key is invented. Existing unsigned packaging is not a trusted
 update. No remote validation or publication is part of this slice.
+
+The host must supply its actual `MainWindow.setupOperations`, actual store and
+explicit private roots, exclude existing SupportController resources, render the
+exact default-No review, invalidate stale presentation, and await actual
+ownership retirement on close/timeout. Updates does not discover that runner or
+add Desktop/setup/default-directory UI. This tested library capability is
+**not a shipped user workflow**, binary rollback or overall V07b completion.

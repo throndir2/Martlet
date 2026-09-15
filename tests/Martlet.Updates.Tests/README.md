@@ -69,6 +69,19 @@ actual snapshot creation, bounded pure inspection, immutable scalar metadata,
 malformed/future/tampered envelopes and uppercase revision preservation.
 Inspection is not a new settings parser or a restore authorization boundary.
 
+`RollbackRestoreTests`, `RollbackRestoreInterruptionTests` and
+`RollbackRestoreOwnershipTests` exercise the explicit configuration coordination
+using actual signed stages, Core previews/restores and the actual shared
+SetupOperationRunner in private fixtures. They cover distinct exact-bound
+one-use consent, original monotonic/UTC expiry, actual source/writer/result pins,
+blocked callback/observation lifetime, real Core before/after-commit errors,
+v2-to-v3 fencing, all new journal/publication write boundaries, control rewind,
+scratch substitution, and conservative repeated recovery. An exact matching
+settings file alone must never clear pending restore. A separate Core scope
+suite covers the common standalone/owned restore implementation and retirement.
+These are configuration-only library tests, not a Desktop workflow, executed
+candidate rollback or physical-crash qualification.
+
 Certificate expiry/chain tests are not applicable to this explicitly pinned
 raw-public-key protocol; certificates and trust-store policy are not used.
 Ephemeral signing exercises authenticity against the test policy only. Actual

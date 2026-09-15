@@ -1,7 +1,7 @@
 # V07b-a/b: local candidate verification, staging and selection
 
 **A staging library, not an updater, installer, signed release or supported
-upgrade.** No network, execution, activation, settings restore, credential access,
+upgrade.** No network, execution, activation, credential access,
 model access, process termination, shortcuts, registry, services, old-version
 deletion or release publication. Existing unsigned packaging remains unchanged.
 The library is not registered in the application or shared solution.
@@ -11,6 +11,13 @@ real staged-package verification to V07a snapshot inspection and durable local
 selection/rollback planning. It **never changes an executable launcher pointer**:
 every committed selection remains `AwaitingReadiness`, or additionally
 `AwaitingConfigurationRestore`. The staging API described below remains unchanged.
+The separately approved [rollback configuration coordination](SELECTION.md#explicit-rollback-configuration-restoration)
+can now invoke actual V07a restore under the supplied existing shared effect
+owner, with a distinct expiring one-use preview/approval and version-3 fence.
+Only a verified actual settings commit can be recorded as `AwaitingReadiness`;
+interrupted/unproven outcomes stay pending for manual reconciliation. Staging
+and ordinary selection never implicitly restore settings. There is no Desktop
+wiring, launcher, execution or shipped rollback workflow.
 
 ## Caller boundary
 
