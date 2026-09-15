@@ -22,6 +22,7 @@ public sealed class LocalStagingEngine
     internal Func<long>? AvailableBytes { get; init; }
     public string? PendingCleanupDirectory => pending?.Directory;
     internal string Root => root;
+    internal string TrustPolicyDigest => trust.Digest;
 
     public LocalStagingEngine(string existingPrivateStagingRoot, UpdateTrustPolicy trust,
         Func<InstalledVersionFacts> readInstalledFacts, StagingLimits? limits = null)

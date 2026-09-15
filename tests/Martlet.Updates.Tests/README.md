@@ -91,6 +91,27 @@ busy/wrong-runner refusal, fresh consent after retirement and engine ownership
 through worker failures and cancellation callbacks. Refused work never
 invalidates an already-running restore.
 
+`RollbackAcknowledgmentTests`, `RollbackAcknowledgmentInterruptionTests` and
+`RollbackAcknowledgmentOwnershipTests` produce the known-commit/pending state
+by interrupting the actual existing Core-backed restore after its marker is
+recorded. They do not fabricate successful commit markers or use a substitute
+restorer. The new preview/consent acknowledges actual present settings without
+entering any Core write/restore/original-creation path. Coverage checks old
+settings/original/history byte preservation, new v4 ancestry and generation
+reservations, rejected stale/missing/conflicting evidence, actual writer/stage/
+history ownership, accepted pre-start cancellation, fixed original expiry,
+publication faults, callback retirement and v4 continuation. Partial/full
+unmatched intent remains read-only manual debt.
+
+Core's `ConfigurationCurrentReadScopeTests` exercise the minimal actual
+no-write current-settings ownership seam separately. Compatibility evidence
+also needs actual retained pre-v4 assemblies, built from an unchanged baseline
+in the current owner's private artifacts: exercise old operational entrypoints
+at scratch-only, partial/full intent, terminal and control-only-rewind states.
+An unsupported-version unit assertion or simulated old parser alone does not
+establish that compatibility boundary. Preserve probe source, actual baseline
+assembly hashes and results; never reuse another owner's artifacts.
+
 Certificate expiry/chain tests are not applicable to this explicitly pinned
 raw-public-key protocol; certificates and trust-store policy are not used.
 Ephemeral signing exercises authenticity against the test policy only. Actual
