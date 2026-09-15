@@ -184,7 +184,15 @@ var result = await restoreWork.Completion;
 
 Approval is engine/runner/plan/source/profile/revision/candidate-bound and one
 attempt, including wrong binding, busy, failed and canceled attempts. Another
-preparation supersedes the old plan. Its five-minute limit starts at the original
+accepted rollback preview supersedes the old plan at admission, even if it is
+canceled before the runner invokes its worker. A busy/refused preview does not
+advance that in-memory generation or revoke a restore already running. The
+existing engine gate is reserved before runner admission; accepted generation
+is published before the worker proceeds or an older restore can reenter. That
+reservation retires only after actual worker/cancellation completion, including
+pre-start cancellation, without reacquiring the same gate inside the worker.
+No configuration or control file is written merely by admission.
+Its five-minute limit starts at the original
 preview start and checks **both monotonic elapsed time and UTC**; awaiting IO,
 approving, or a backward wall-clock change never renews it. This limit belongs
 to the new rollback coordination approval; standalone V07a did not previously

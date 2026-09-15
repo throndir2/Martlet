@@ -16,9 +16,8 @@ public sealed partial class LocalSelectionEngine
     {
         ArgumentNullException.ThrowIfNull(sharedEffects);
         var lifetime = new RestoreLifetime(RestoreClock);
-        return StartRestoreWork(sharedEffects, token => Run(() =>
+        return StartRestoreWork(sharedEffects, (token, admittedSequence) => RunOwned(() =>
         {
-            sequence++;
             lifetime.Check();
             using var owner = LockRoot();
             var before = ReadState(token);
@@ -46,10 +45,11 @@ public sealed partial class LocalSelectionEngine
                 RequireState(before, token);
                 reverify();
                 lifetime.Check();
-                return new RollbackRestorePlan(this, sharedEffects, sequence, before, preview,
+                return new RollbackRestorePlan(this, sharedEffects, admittedSequence, before, preview,
                     current.Settings.SchemaVersion, inspection, lifetime);
             }, token);
-        }, token, preserveRecovery: true), _ => throw new SelectionException(SelectionFailure.Unavailable));
+        }, token, preserveRecovery: true), _ => throw new SelectionException(SelectionFailure.Unavailable),
+            invalidatePreviews: true);
     }
 
     public RollbackRestoreOperation<RollbackRestoreResult> RestoreRollbackConfiguration(
@@ -59,10 +59,11 @@ public sealed partial class LocalSelectionEngine
         ArgumentNullException.ThrowIfNull(approval);
         ArgumentNullException.ThrowIfNull(sharedEffects);
         var coreApproval = approval.Consume(plan);
-        return StartRestoreWork(sharedEffects, token => Run(() =>
+        if (!ReferenceEquals(plan.Owner, this) || !ReferenceEquals(plan.Effects, sharedEffects))
+            throw new SelectionException(SelectionFailure.Conflict);
+        return StartRestoreWork(sharedEffects, (token, _) => RunOwned(() =>
         {
-            if (!ReferenceEquals(plan.Owner, this) || !ReferenceEquals(plan.Effects, sharedEffects) ||
-                plan.Sequence != sequence)
+            if (plan.Sequence != Volatile.Read(ref sequence))
                 throw new SelectionException(SelectionFailure.Conflict);
             void Check()
             {
@@ -222,49 +223,56 @@ public sealed partial class LocalSelectionEngine
     public RollbackRestoreOperation<RollbackRestoreResult> RetryRollbackRestoreCleanup(SetupOperationRunner sharedEffects)
     {
         ArgumentNullException.ThrowIfNull(sharedEffects);
-        return StartRestoreWork(sharedEffects, token =>
+        return StartRestoreWork(sharedEffects, (token, _) =>
         {
-            if (Interlocked.CompareExchange(ref busy, 1, 0) != 0)
-                throw new SelectionException(SelectionFailure.Busy);
-            try
-            {
-                if (!ReferenceEquals(cleanupEffects, sharedEffects) || restoreCleanup is not { IsPending: true } cleanup)
-                    throw new SelectionException(SelectionFailure.Conflict);
-                using var owner = LockRoot();
-                cleanup.RetryAsync(token).GetAwaiter().GetResult();
-                restoreCleanup = null;
-                cleanupEffects = null;
-                return new RollbackRestoreResult(cleanupOperation, RollbackSettingsProgress.OutcomeUnproven,
-                    RollbackAcknowledgment.NotRecorded, null, null, null);
-            }
-            finally { Volatile.Write(ref busy, 0); }
+            if (!ReferenceEquals(cleanupEffects, sharedEffects) || restoreCleanup is not { IsPending: true } cleanup)
+                throw new SelectionException(SelectionFailure.Conflict);
+            using var owner = LockRoot();
+            cleanup.RetryAsync(token).GetAwaiter().GetResult();
+            restoreCleanup = null;
+            cleanupEffects = null;
+            return new RollbackRestoreResult(cleanupOperation, RollbackSettingsProgress.OutcomeUnproven,
+                RollbackAcknowledgment.NotRecorded, null, null, null);
         }, result => result.WithOwnerFailure());
     }
 
-    private static RollbackRestoreOperation<T> StartRestoreWork<T>(SetupOperationRunner effects,
-        Func<CancellationToken, T> action, Func<T, T> ownerFailed)
+    private RollbackRestoreOperation<T> StartRestoreWork<T>(SetupOperationRunner effects,
+        Func<CancellationToken, long, T> action, Func<T, T> ownerFailed, bool invalidatePreviews = false)
     {
-        var result = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var operation = effects.TryStart(token =>
+        if (Interlocked.CompareExchange(ref busy, 1, 0) != 0)
+            throw new SelectionException(SelectionFailure.Busy);
+        SetupOperation? operation = null;
+        try
         {
-            try
+            var result = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var admitted = new TaskCompletionSource<long>(TaskCreationOptions.RunContinuationsAsynchronously);
+            operation = effects.TryStart(async token =>
             {
-                result.SetResult(action(token));
-                return Task.FromResult(new SetupWorkResult(SetupWorkOutcome.Completed));
-            }
-            catch (Exception error) when (RestoreError(error))
-            {
-                result.SetException(error);
-                return Task.FromResult(new SetupWorkResult(SetupWorkOutcome.Failed));
-            }
-            finally
-            {
-                if (!result.Task.IsCompleted)
-                    result.TrySetException(new SelectionException(SelectionFailure.Unavailable));
-            }
-        });
-        if (operation is null) throw new SelectionException(SelectionFailure.Busy);
-        return new(operation, result.Task, ownerFailed);
+                var admittedSequence = await admitted.Task.ConfigureAwait(false);
+                try
+                {
+                    result.SetResult(action(token, admittedSequence));
+                    return new SetupWorkResult(SetupWorkOutcome.Completed);
+                }
+                catch (Exception error) when (RestoreError(error))
+                {
+                    result.SetException(error);
+                    return new SetupWorkResult(SetupWorkOutcome.Failed);
+                }
+                finally
+                {
+                    if (!result.Task.IsCompleted)
+                        result.TrySetException(new SelectionException(SelectionFailure.Unavailable));
+                }
+            });
+            if (operation is null) throw new SelectionException(SelectionFailure.Busy);
+            // Admission, not worker execution, invalidates previews. Ownership prevents older
+            // restores from reentering even if a pre-start cancellation already retired the runner.
+            var admittedSequence = invalidatePreviews ? Interlocked.Increment(ref sequence) : Volatile.Read(ref sequence);
+            admitted.SetResult(admittedSequence);
+            return new(operation, result.Task, ownerFailed, () => Volatile.Write(ref busy, 0));
+        }
+        finally { if (operation is null) Volatile.Write(ref busy, 0); }
     }
 
     private static bool RestoreError(Exception error) =>

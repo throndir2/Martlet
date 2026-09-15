@@ -82,6 +82,15 @@ suite covers the common standalone/owned restore implementation and retirement.
 These are configuration-only library tests, not a Desktop workflow, executed
 candidate rollback or physical-crash qualification.
 
+`RollbackRestoreAdmissionTests` gates the real runner's captured execution
+context before its original cancellation check. A private, bounded, nonthrowing
+context-entry gate reproduces accepted/pre-start-canceled preview supersession
+without replacing the runner, disabling cancellation, changing thread-pool
+settings or relying on timing. Coverage includes concurrent admission,
+busy/wrong-runner refusal, fresh consent after retirement and engine ownership
+through worker failures and cancellation callbacks. Refused work never
+invalidates an already-running restore.
+
 Certificate expiry/chain tests are not applicable to this explicitly pinned
 raw-public-key protocol; certificates and trust-store policy are not used.
 Ephemeral signing exercises authenticity against the test policy only. Actual

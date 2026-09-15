@@ -14,21 +14,25 @@ public sealed class RollbackRestoreOperation<T>
 {
     private readonly SetupOperation operation;
     public Task<T> Completion { get; }
-    internal RollbackRestoreOperation(SetupOperation operation, Task<T> work, Func<T, T> ownerFailed)
+    internal RollbackRestoreOperation(SetupOperation operation, Task<T> work, Func<T, T> ownerFailed, Action released)
     {
         this.operation = operation;
-        Completion = CompleteAsync(operation, work, ownerFailed);
+        Completion = CompleteAsync(operation, work, ownerFailed, released);
     }
     public void RequestCancellation() => operation.RequestCancellation();
 
-    private static async Task<T> CompleteAsync(SetupOperation operation, Task<T> work, Func<T, T> ownerFailed)
+    private static async Task<T> CompleteAsync(SetupOperation operation, Task<T> work, Func<T, T> ownerFailed, Action released)
     {
-        var retired = await operation.Completion.ConfigureAwait(false);
-        if (!work.IsCompleted)
-            throw new SelectionException(retired.Outcome == SetupWorkOutcome.Canceled
-                ? SelectionFailure.Cancelled : SelectionFailure.Unavailable);
-        var result = await work.ConfigureAwait(false);
-        return retired.Outcome == SetupWorkOutcome.Failed ? ownerFailed(result) : result;
+        try
+        {
+            var retired = await operation.Completion.ConfigureAwait(false);
+            if (!work.IsCompleted)
+                throw new SelectionException(retired.Outcome == SetupWorkOutcome.Canceled
+                    ? SelectionFailure.Cancelled : SelectionFailure.Unavailable);
+            var result = await work.ConfigureAwait(false);
+            return retired.Outcome == SetupWorkOutcome.Failed ? ownerFailed(result) : result;
+        }
+        finally { released(); }
     }
 }
 

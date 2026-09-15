@@ -91,7 +91,7 @@ public sealed partial class LocalSelectionEngine
     private SelectionPlan Prepare(SelectionKind kind, string? destination, long revision, string snapshotPath,
         CancellationToken token) => Run(() =>
     {
-        sequence++;
+        var planSequence = Interlocked.Increment(ref sequence);
         using var owner = LockRoot();
         var before = ReadState(token);
         RequireAvailable(before, revision);
@@ -138,7 +138,7 @@ public sealed partial class LocalSelectionEngine
             RequireState(before, token);
             RequireSettings(current.Revision!, current.Settings!.Profile.Id, token);
             token.ThrowIfCancellationRequested();
-            return new SelectionPlan(this, sequence, id, kind, before, entry, bytes, fresh,
+            return new SelectionPlan(this, planSequence, id, kind, before, entry, bytes, fresh,
                 snapshotPath, stage.Receipt.Installed, snapshot, current.Settings.Profile.Id, current.Revision!);
         }, token);
     }, token);
@@ -151,7 +151,7 @@ public sealed partial class LocalSelectionEngine
         approval.Consume(plan);
         return Run(() =>
         {
-            if (!ReferenceEquals(plan.Owner, this) || plan.Sequence != sequence)
+            if (!ReferenceEquals(plan.Owner, this) || plan.Sequence != Volatile.Read(ref sequence))
                 throw new SelectionException(SelectionFailure.Conflict);
             using var owner = LockRoot();
             RequireState(plan.Before, token);
@@ -788,6 +788,13 @@ public sealed partial class LocalSelectionEngine
         bool preserveRecovery = false)
     {
         if (Interlocked.CompareExchange(ref busy, 1, 0) != 0) throw new SelectionException(SelectionFailure.Busy);
+        try { return RunOwned(operation, token, transactionId, preserveRecovery); }
+        finally { Volatile.Write(ref busy, 0); }
+    }
+
+    private T RunOwned<T>(Func<T> operation, CancellationToken token, Guid? transactionId = null,
+        bool preserveRecovery = false)
+    {
         try
         {
             token.ThrowIfCancellationRequested();
@@ -818,6 +825,5 @@ public sealed partial class LocalSelectionEngine
             throw new SelectionException((ex.HResult & 0xffff) is 112 or 39 or 28
                 ? SelectionFailure.InsufficientDisk : SelectionFailure.Unavailable, transactionId);
         }
-        finally { Volatile.Write(ref busy, 0); }
     }
 }
