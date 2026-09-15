@@ -230,7 +230,7 @@ public sealed class ConfigurationRestoreApproval
     internal ConfigurationRestoreApproval(ConfigurationRestorePlan plan) => this.plan = plan;
     internal void Consume(ConfigurationRestorePlan expected)
     {
-        if (!ReferenceEquals(plan, expected) || Interlocked.Exchange(ref consumed, 1) != 0)
+        if (Interlocked.Exchange(ref consumed, 1) != 0 || !ReferenceEquals(plan, expected))
             throw new RecoveryException(RecoveryFailure.Conflict);
     }
 }

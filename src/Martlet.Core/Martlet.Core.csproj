@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <InternalsVisibleTo Include="Martlet.Core.Tests" />
+    <InternalsVisibleTo Include="Martlet.Updates.Tests" />
     <InternalsVisibleTo Include="Martlet.Desktop" />
     <InternalsVisibleTo Include="Martlet.Desktop.Tests" />
   </ItemGroup>

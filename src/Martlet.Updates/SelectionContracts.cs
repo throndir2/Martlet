@@ -5,7 +5,8 @@ namespace Martlet.Updates;
 public enum SelectionFailure
 {
     Uninitialized, Conflict, Busy, InvalidControl, RecoveryRequired, CapacityExceeded,
-    InvalidSnapshot, IncompatibleSettings, NoVerifiedPrevious, AccessDenied, InsufficientDisk, Unavailable, Cancelled
+    InvalidSnapshot, IncompatibleSettings, NoVerifiedPrevious, AccessDenied, InsufficientDisk, Unavailable, Cancelled,
+    ConfigurationRestoreRequired, ConfigurationRestoreReconciliationRequired, ConsentExpired, CleanupPending
 }
 
 public sealed class SelectionException : Exception
@@ -26,6 +27,10 @@ public sealed class SelectionException : Exception
         SelectionFailure.AccessDenied => "Private local storage access was denied. Check ownership without elevation, permission changes or moving user data.",
         SelectionFailure.InsufficientDisk => "Private control storage ran out of space. Preserve transaction evidence and recover after resolving capacity.",
         SelectionFailure.Cancelled => "Selection was cancelled before atomic finalization. Preserve any retained transaction and recover it explicitly.",
+        SelectionFailure.ConfigurationRestoreRequired => "The selected rollback requires its separate configuration restore. Review that exact restore before selecting another version.",
+        SelectionFailure.ConfigurationRestoreReconciliationRequired => "Configuration restore was interrupted. Preserve settings, originals and all control evidence for explicit manual reconciliation. No restore or selection acknowledgment was resumed.",
+        SelectionFailure.ConsentExpired => "The original rollback restore review lifetime expired. No new effect is authorized; preserve any pending transaction and review its actual outcome.",
+        SelectionFailure.CleanupPending => "An exact owned restore temporary still requires cleanup. Keep this engine and retry its cleanup before another operation.",
         _ => "Private control IO failed. Preserve the control store and transaction evidence; resolve storage access and recover explicitly."
     }) { Failure = failure; TransactionId = transactionId; }
 }
@@ -49,12 +54,17 @@ public sealed class SelectionReceipt
     public SelectedVersion? CurrentSelection { get; }
     public SelectedVersion? PreviousSelection { get; }
     public bool IsRunnable => false;
-    internal SelectionReceipt(ControlDocument state, SelectionOutcome outcome)
+    public RollbackRestoreProgress ConfigurationRestoreProgress { get; }
+    internal SelectionReceipt(ControlDocument state, SelectionOutcome outcome,
+        RollbackRestoreProgress restoreProgress = RollbackRestoreProgress.None)
     {
         Revision = state.Revision; Outcome = outcome; TransactionId = state.Pending ?? state.LastTransaction;
         BootstrapVersion = state.Bootstrap.Version;
         CurrentSelection = state.Current is null ? null : new(state.Current);
         PreviousSelection = state.Previous is null ? null : new(state.Previous);
+        ConfigurationRestoreProgress = restoreProgress == RollbackRestoreProgress.None &&
+            state.Pending is null && state.Current?.RestoreRequired == true
+                ? RollbackRestoreProgress.AwaitingConsent : restoreProgress;
         Status = state.Pending is not null ? SelectionStatus.RecoveryRequired :
             state.Current is null ? SelectionStatus.BootstrapUnqualified :
             state.Current.RestoreRequired ? SelectionStatus.AwaitingConfigurationRestore : SelectionStatus.AwaitingReadiness;
