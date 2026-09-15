@@ -1,0 +1,62 @@
+using System.Security.Cryptography;
+using Martlet.Core.Contracts;
+
+namespace Martlet.HostArtifacts;
+
+public sealed class ArtifactManifest
+{
+    internal ManifestDocument Document { get; }
+    public string DocumentSha256 { get; }
+
+    internal ArtifactManifest(ManifestDocument document, string sha256)
+    {
+        Document = document;
+        DocumentSha256 = sha256;
+    }
+}
+
+public static class ArtifactManifestReader
+{
+    public const int MaximumBytes = 262_144;
+
+    public static ArtifactManifest Read(ReadOnlyMemory<byte> bytes)
+    {
+        if (bytes.Length > MaximumBytes)
+            throw new ArtifactManifestException("manifest.too_large");
+        var owned = bytes.ToArray();
+        try
+        {
+            ContractJson.Read<VersionHeader>(owned);
+            var document = ContractJson.Read<ManifestDocument>(owned);
+            return new(document, Convert.ToHexStringLower(SHA256.HashData(owned)));
+        }
+        catch (ContractException error)
+        {
+            throw new ArtifactManifestException(error.Code switch
+            {
+                ErrorCode.UnsupportedVersion => "manifest.unsupported_version",
+                ErrorCode.PayloadTooLarge => "manifest.too_large",
+                _ => "manifest.invalid_json"
+            });
+        }
+    }
+
+    private sealed record VersionHeader : IContract
+    {
+        public required int FormatVersion { get; init; }
+        public void Validate() => ContractRules.Require(FormatVersion == 1,
+            "Unsupported artifact manifest version.", ErrorCode.UnsupportedVersion);
+    }
+}
+
+public sealed class ArtifactManifestException : Exception
+{
+    public string DiagnosticCode { get; }
+    public string Remedy { get; }
+
+    internal ArtifactManifestException(string code) : base(InspectionFindings.Get(code).Summary)
+    {
+        DiagnosticCode = code;
+        Remedy = InspectionFindings.Get(code).Remedy;
+    }
+}
