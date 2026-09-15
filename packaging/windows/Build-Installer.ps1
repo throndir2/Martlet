@@ -7,8 +7,8 @@ param(
 )
 . "$PSScriptRoot\Installer.Common.ps1"
 Assert-PackagingHost
+$null = Test-PayloadManifest $PayloadRoot -RequireCurrentSource
 $compiler = Get-VerifiedInnoCompiler $BuilderDirectory
-$null = Test-PayloadManifest $PayloadRoot
 New-OutputDirectory $OutputDirectory
 $fileList = Join-Path $OutputDirectory 'payload-files.iss'
 $manifest = Write-InstallerFileList $PayloadRoot $fileList
@@ -27,7 +27,7 @@ $name = "Martlet-$($manifest.applicationVersion)-win-x64-INTERNAL-UNSIGNED.exe"
 $installer = (Get-RequiredFile (Join-Path $staging $name)).FullName
 Assert-X64Pe $installer
 if ((Get-Item -LiteralPath $installer).Length -gt 200MB) { throw 'Installer exceeds the 200 MiB planning budget; review before widening it.' }
-$null = Test-PayloadManifest $PayloadRoot
+$null = Test-PayloadManifest $PayloadRoot -RequireCurrentSource
 $provenance = [ordered]@{
     schemaVersion = 1
     channel = 'INTERNAL DEVELOPMENT ONLY - UNSIGNED'

@@ -14,10 +14,8 @@ Push-Location $root
 try {
     $sdk = Initialize-PackagingSdk $DotnetPath $CliHome -WorkingDirectory $root
     New-OutputDirectory $OutputDirectory
-    $sourceCommit = (& git rev-parse HEAD).Trim()
-    if ($LASTEXITCODE -ne 0) { throw 'Cannot determine source commit.' }
-    $sourceDirty = -not [string]::IsNullOrWhiteSpace((& git status --porcelain | Out-String))
-    if ($LASTEXITCODE -ne 0) { throw 'Cannot determine source worktree state.' }
+    $source = Get-PackagingSourceReceipt $root
+    $sdkReceipt = Get-PackagingSdkReceipt $sdk
     $staging = Join-Path $OutputDirectory 'staging'
     $build = Join-Path $OutputDirectory 'build'
     $properties = @(Get-PackagingProperties)
@@ -43,8 +41,13 @@ try {
     Copy-Item -LiteralPath "$PSScriptRoot\DEPENDENCIES.txt" -Destination (Join-Path $staging 'notices\DEPENDENCIES.txt')
     Copy-Item -LiteralPath "$PSScriptRoot\NAudio-THIRD-PARTY-NOTICES.txt" -Destination (Join-Path $staging 'notices\NAudio-THIRD-PARTY-NOTICES.txt')
     Copy-RuntimeNotices $staging (Join-Path $build 'obj\Martlet.Desktop\project.assets.json')
-    Write-PayloadManifest $staging $sourceCommit $sourceDirty
+    $provenance = Get-PackageProvenance $staging $OutputDirectory $source $sdkReceipt
+    Assert-PackagingSourceReceipt $source $root
+    Assert-PackagingSdkReceipt $sdkReceipt $sdk
+    Write-PackageSbom $staging $provenance
+    Write-PayloadManifest $staging $source.commit $source.dirty $provenance
     $manifest = Test-PayloadManifest $staging
+    Assert-PackagingSourceReceipt $source $root
     [IO.Directory]::Move($staging, (Join-Path $OutputDirectory 'payload'))
     Write-Output "INTERNAL ONLY: complete $($manifest.rid) payload at $OutputDirectory\payload ($($manifest.files.Count) files)."
 }
