@@ -150,6 +150,24 @@ private and expose a secured gateway. Verify chat/Responses/tool/image/stream/
 cancel capabilities per version and model. Ollama is a proposed first backend,
 not selected weights or a universal OpenAI server.
 
+#### S13a: pinned native chat contract (H02b)
+
+Read-only source inspection on **2026-09-15**, pinned to Ollama v0.34.0
+`d8ab4b4f0ca24b51d3a46b3bf4f462e58ce66b1f`; full immutable source links and the
+supported subset are in [the adapter guide](../src/Martlet.Providers/OLLAMA_CHAT.md#source-contract-and-limits-of-the-local-selector).
+The native `/api/chat` wire shape separates assistant content, thinking and
+tools. `:local` is source-traced through name parsing/local manifests to a
+remote-backed-alias rejection before proxy dispatch. A loopback destination
+alone would not prevent the source's ordinary cloud/remote alias paths.
+
+**Evidence limit:** this selector is not server attestation. Names/tags remain
+mutable, response.model echoes the request, and internal manifest digests are
+not an atomic caller-bound invocation digest. Model-owned system/messages and
+optional upstream request logs prevent whole-prompt/no-retention claims.
+The H02b implementation exercises only controlled HTTP/stream fixtures; no
+runtime/model was executed and no production authorization issuer or route is
+supplied. HostArtifacts metadata remains ineligible and grants no invocation.
+
 ### S14
 
 [whisper.cpp](https://github.com/ggml-org/whisper.cpp),

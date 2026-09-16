@@ -252,8 +252,13 @@ It refuses missing/corrupt/future/foreign destinations and preserves exact
 pre-replacement originals. This is neither the diagnostic bundle nor the broader
 database/voice/host/binary lifecycle below. See the
 [recovery walkthrough](TROUBLESHOOTING.md#local-configuration-backup--restore-v07a).
-V07b binary staging/activation/N-1/N rollback/uninstall qualification remains
-unimplemented and NOT RUN; V07a never launches an older executable.
+V07b now has merged [private staging/selection libraries](../src/Martlet.Updates/README.md),
+explicit rollback configuration restore under the shared owner, and fresh-consent
+reconciliation of a verified recorded restore without restoring again. These
+are internal libraries, not a runnable activation or shipped rollback workflow.
+Desktop wiring, executable/installer activation, N-1/N lifecycle and uninstall
+qualification remain unimplemented or NOT RUN; V07a never launches an older
+executable.
 
 | Lifecycle operation | Required behavior |
 | --- | --- |
