@@ -13,6 +13,8 @@ internal static class OllamaChatTransport
         Credentials = null,
         DefaultProxyCredentials = null,
         AutomaticDecompression = DecompressionMethods.None,
+        MaxResponseDrainSize = 0,
+        ResponseDrainTimeout = TimeSpan.Zero,
         MaxResponseHeadersLength = 16,
         PooledConnectionLifetime = TimeSpan.FromMinutes(5)
     };

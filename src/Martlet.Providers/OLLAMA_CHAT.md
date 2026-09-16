@@ -138,8 +138,9 @@ empty-message load/unload API. No images, tools, context, history, remote prompt
 system/template override, debug command, logprobs payload or model discovery.
 
 The loopback-only handler disables redirects (including same-origin), proxy,
-cookies, credentials/default proxy credentials and decompression. Response
-headers are bounded to 16 KiB; connection lifetime is five minutes. No TLS/key/
+cookies, credentials/default proxy credentials, decompression and automatic
+response draining (`MaxResponseDrainSize=0`, `ResponseDrainTimeout=TimeSpan.Zero`).
+Response headers are bounded to 16 KiB; connection lifetime is five minutes. No TLS/key/
 machine-security settings are changed. Per-request original deadlines own time;
 HttpClient's independent timeout is disabled. Shared `SingleSendContent` checks
 actual serializer entry and refuses repeat upload serialization. Retry-After is
@@ -234,7 +235,12 @@ OwnershipRelease. Early disposal creates a canceled result without pretending
 to have delivered a terminal event.
 
 The adapter owns its handler until actual stream work, cancellation callbacks,
-request/response/body and lease cleanup finish. Noncooperative work keeps
+request/response/body and lease cleanup finish. Disabling automatic response
+draining prevents disposal from starting framework body reads on a separate
+drain budget after the dispatch lease is released. Passive handler-policy
+assertions verify this configuration, not real network drain behavior. They do
+not establish zero already-buffered TCP bytes or physical server stop.
+Noncooperative work keeps
 ownership pending. A cleanup exception produces sanitized
 `OllamaChatCleanupException`, faulted release and quarantine; it does not
 release a still-unproven dispatch lease or allow precreated/new streams to

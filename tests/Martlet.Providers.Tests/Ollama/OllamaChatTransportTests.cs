@@ -69,6 +69,8 @@ public sealed class OllamaChatTransportTests
         Assert.Null(handler.DefaultProxyCredentials);
         Assert.Null(handler.SslOptions.RemoteCertificateValidationCallback);
         Assert.Equal(DecompressionMethods.None, handler.AutomaticDecompression);
+        Assert.Equal(0, handler.MaxResponseDrainSize);
+        Assert.Equal(TimeSpan.Zero, handler.ResponseDrainTimeout);
         Assert.Equal(16, handler.MaxResponseHeadersLength);
     }
 
