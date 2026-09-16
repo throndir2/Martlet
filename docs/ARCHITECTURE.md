@@ -9,6 +9,12 @@ The subsequent [V04b app integration](CONVERSATION.md) composes setup/vault,
 explicit typed/PTT capture, named STT, participation policy and the existing
 streaming conversation runtime under one app-shared operation owner. It does
 not implement learned VAD, automatic listening or the proposed remote topology.
+The separate [H02b native Ollama chat adapter](../src/Martlet.Providers/OLLAMA_CHAT.md)
+is a fixture-backed Providers library surface only: explicit literal-loopback
+origin, constructed `:local` request, exact-action trusted-caller permit and
+retained HTTP/lease ownership. It reuses Core text contracts without generalizing
+OpenAI conversation authority. No production issuer, gateway/Desktop route,
+immutable model binding or qualified runtime/host locality is established.
 Read [the development plan](../DEVELOPMENT_PLAN.md)
 for scope and approvals, [installation/support](INSTALLATION_SUPPORT.md) for
 lifecycle, and [delivery](DELIVERY.md) for task ownership. Source IDs refer to

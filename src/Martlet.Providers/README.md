@@ -2,6 +2,10 @@
 
 Provider library: bounded-file transcription (V03a), bounded text Responses
 streaming (V03b), and bounded PCM speech transport (V03c).
+The separate [H02b Ollama native chat wire adapter](OLLAMA_CHAT.md) now resides
+in `Martlet.Providers.Ollama`: one fixture-backed loopback `/api/chat` contract,
+with its own exact-action authorization seam and no production issuer or route.
+It neither uses OpenAI consent nor makes local runtime/model qualification claims.
 See [V04b conversation integration](../../docs/CONVERSATION.md) for explicit
 Desktop typed-text and push-to-talk wiring. There is still no automatic I/O,
 credential lookup, retry, model selection, cloud fallback or live account
