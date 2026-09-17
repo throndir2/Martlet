@@ -1,0 +1,36 @@
+Martlet.VoiceActivity dependency and model notice inventory
+
+No license is granted for Martlet's original code by this inventory.
+Model weights are not included, downloaded automatically, or redistributed here.
+Normal production native initialization remains privacy-unqualified and blocked.
+
+Silero VAD v6.2.1, 16-kHz opset-15 model
+Repository revision: 7e30209a3e901f9842f81b225f3e93d8199902b1
+Source: https://github.com/snakers4/silero-vad/tree/7e30209a3e901f9842f81b225f3e93d8199902b1
+Notice: Notices/Silero-VAD-LICENSE.txt
+The release distributes VAD under MIT. This is release-wide weight-distribution
+evidence, not a separate per-weight model card or a grant for training datasets.
+
+Microsoft.ML.OnnxRuntime 1.30.0 and Microsoft.ML.OnnxRuntime.Managed 1.30.0
+Source revision: f2c39fe2f838cf35ce7da92824f5a5e3ee6e88a7
+Source: https://github.com/microsoft/onnxruntime/tree/f2c39fe2f838cf35ce7da92824f5a5e3ee6e88a7
+Notices: Notices/OnnxRuntime-LICENSE, Notices/OnnxRuntime-ThirdPartyNotices.txt
+Both exact packages contain byte-identical license and third-party notice files;
+one complete copy of each is retained. Runtime MIT licensing does not imply that
+every incorporated component uses MIT. Preserve the complete third-party notice.
+
+System.Numerics.Tensors 9.0.0
+Source revision: 9d5a6a9aa463d6d10b0b0ba6d5982cc82f363dc3
+Source: https://github.com/dotnet/runtime/tree/9d5a6a9aa463d6d10b0b0ba6d5982cc82f363dc3
+Notices: Notices/Tensors-LICENSE.TXT, Notices/Tensors-THIRD-PARTY-NOTICES.TXT
+
+The resolved net10.0 inference graph contains these three packages. The earlier
+private material probe explicitly referenced System.Memory 4.5.5 as a fourth
+package. The SDK prunes that transitive edge for this net10.0 implementation;
+no artificial direct Memory reference or pruning-policy change is made here.
+Audio/Core and test dependencies retain their separate existing notices/pins.
+
+All notice texts were retained from the exact reviewed upstream release/archive.
+Archive hashes, NuGet content hashes, and model SHA-256 have distinct meanings;
+the model digest is a locally measured immutable artifact identity, not a
+publisher attestation or proof of production privacy, quality, or eligibility.
