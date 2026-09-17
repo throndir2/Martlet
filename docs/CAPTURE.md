@@ -264,6 +264,12 @@ without moving native-buffer ownership or adding a second device stack.
 No continuous capture/preroll is implemented or authorized in this slice.
 V01b must preserve cancellation/epoch rules for any copies it owns.
 
+The standalone [V01b post-capture library](VAD.md) now provides managed window/
+endpoint logic and an internal pinned CPU classifier composition. Normal public
+native initialization remains privacy-blocked; new-classifier native validation
+is pending. It borrows an already transferred utterance without changing this
+capture engine, PTT behavior, source bytes, app graph or live stopping policy.
+
 **V02b** implements explicit local device selection/tests, visible real amplitude,
 privacy remedies and Stop/Pause/deactivation/lock delivery; see [SETUP](SETUP.md).
 Destination approval remains distinct from every local test's authorization.

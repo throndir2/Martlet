@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Martlet.Audio\Martlet.Audio.csproj" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" GeneratePathProperty="true" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime.Managed" ExcludeAssets="build;buildTransitive;analyzers;contentFiles" />
+    <InternalsVisibleTo Include="Martlet.VoiceActivity.Tests" />
+    <InternalsVisibleTo Include="Martlet.VoiceActivity.Qualification" />
+    <EmbeddedResource Include="model-manifest.json" LogicalName="Martlet.VoiceActivity.model-manifest.json" />
+    <None Include="$(PkgMicrosoft_ML_OnnxRuntime)\runtimes\win-x64\native\onnxruntime.dll"
+          Link="runtimes\win-x64\native\onnxruntime.dll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(PkgMicrosoft_ML_OnnxRuntime)\runtimes\win-x64\native\onnxruntime_providers_shared.dll"
+          Link="runtimes\win-x64\native\onnxruntime_providers_shared.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

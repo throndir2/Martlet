@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "modelId": "silero-vad-v6.2.1-16k-op15",
+  "sourceRevision": "7e30209a3e901f9842f81b225f3e93d8199902b1",
+  "fileName": "silero_vad_16k_op15.onnx",
+  "modelBytes": 1289603,
+  "modelSha256": "7ed98ddbad84ccac4cd0aeb3099049280713df825c610a8ed34543318f1b2c49",
+  "sourceUrl": "https://raw.githubusercontent.com/snakers4/silero-vad/7e30209a3e901f9842f81b225f3e93d8199902b1/src/silero_vad/data/silero_vad_16k_op15.onnx",
+  "digestProvenance": "Locally measured official immutable artifact; Git-framed SHA1 corroborated upstream blob. Not an independently published SHA256 or publisher attestation.",
+  "license": "MIT; release-wide distribution evidence, not a separate weight-specific model card or training-data grant",
+  "runtimeVersion": "1.30.0",
+  "runtimeSourceRevision": "f2c39fe2f838cf35ce7da92824f5a5e3ee6e88a7",
+  "nativeFiles": [
+    {
+      "name": "onnxruntime.dll",
+      "bytes": 16462648,
+      "sha256": "7e39e2bdbba836d98071ef28620735ba36a47c554cf794585269aecc50fab0da"
+    },
+    {
+      "name": "onnxruntime_providers_shared.dll",
+      "bytes": 21816,
+      "sha256": "b9b7ab9e2a8b08ee7ae4a7ac1c8bfd44a741f17ad8d0f764953140a57de0b796"
+    }
+  ]
+}
