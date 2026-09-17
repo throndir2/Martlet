@@ -91,8 +91,7 @@ internal static class Wire
         if (bytes.Length == 0 || bytes.Length > maximum) throw new StagingException(StagingFailure.CapacityExceeded);
         try
         {
-            using var doc = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 16 });
-            CheckDuplicates(doc.RootElement);
+            using var doc = ReadDocument(bytes, maximum, CancellationToken.None);
             var value = JsonSerializer.Deserialize<T>(bytes, Options);
             if (value is null || canonical && !Write(value).AsSpan().SequenceEqual(bytes))
                 throw new StagingException(StagingFailure.InvalidManifest);
@@ -101,18 +100,39 @@ internal static class Wire
         catch (JsonException) { throw new StagingException(StagingFailure.InvalidManifest); }
     }
 
-    private static void CheckDuplicates(JsonElement value)
+    internal static JsonDocument ReadDocument(byte[] bytes, int maximum, CancellationToken token)
     {
+        if (bytes.Length == 0 || bytes.Length > maximum) throw new StagingException(StagingFailure.CapacityExceeded);
+        token.ThrowIfCancellationRequested();
+        JsonDocument document;
+        try { document = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 16 }); }
+        catch (JsonException) { throw new StagingException(StagingFailure.InvalidManifest); }
+        try
+        {
+            CheckDuplicates(document.RootElement, token);
+            return document;
+        }
+        catch (InvalidOperationException)
+        {
+            document.Dispose();
+            throw new StagingException(StagingFailure.InvalidManifest);
+        }
+        catch { document.Dispose(); throw; }
+    }
+
+    private static void CheckDuplicates(JsonElement value, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
         if (value.ValueKind == JsonValueKind.Object)
         {
             var names = new HashSet<string>(StringComparer.Ordinal);
             foreach (var property in value.EnumerateObject())
             {
                 if (!names.Add(property.Name)) throw new StagingException(StagingFailure.InvalidManifest);
-                CheckDuplicates(property.Value);
+                CheckDuplicates(property.Value, token);
             }
         }
         else if (value.ValueKind == JsonValueKind.Array)
-            foreach (var item in value.EnumerateArray()) CheckDuplicates(item);
+            foreach (var item in value.EnumerateArray()) CheckDuplicates(item, token);
     }
 }

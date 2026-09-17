@@ -241,24 +241,29 @@ function Write-PayloadManifest([string]$Root, [string]$SourceCommit, [bool]$Sour
         throw 'Payload source metadata differs from provenance.'
     }
     Test-PackageSbom $Root $Provenance
-    $manifest = [ordered]@{
-        schemaVersion = 2
-        channel = 'INTERNAL DEVELOPMENT ONLY - UNSIGNED'
-        applicationVersion = $version
-        rid = $pins.rid
-        sdkVersion = $pins.sdkVersion
-        runtimeVersion = $pins.runtimeVersion
-        sourceCommit = $SourceCommit
-        sourceDirty = $SourceDirty
-        provenance = $Provenance
-        files = $files
-    }
+    $manifest = New-PayloadManifestDocument $version $SourceCommit $SourceDirty $Provenance $files $pins
     $path = Join-Path $Root 'manifest.json'
     $text = ConvertTo-EvidenceJson $manifest
     if ([Text.Encoding]::UTF8.GetByteCount($text) -gt 16MB) { throw 'Manifest exceeds the 16 MiB evidence bound.' }
     [IO.File]::WriteAllText($path, $text, [Text.UTF8Encoding]::new($false))
     $text = Get-ChecksumText $files (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
     [IO.File]::WriteAllText((Join-Path $Root 'SHA256SUMS.txt'), $text, [Text.UTF8Encoding]::new($false))
+}
+
+function New-PayloadManifestDocument([string]$ApplicationVersion, [string]$SourceCommit,
+    [bool]$SourceDirty, $Provenance, [object[]]$Files, $Pins) {
+    return [ordered]@{
+        schemaVersion = 2
+        channel = 'INTERNAL DEVELOPMENT ONLY - UNSIGNED'
+        applicationVersion = $ApplicationVersion
+        rid = $Pins.rid
+        sdkVersion = $Pins.sdkVersion
+        runtimeVersion = $Pins.runtimeVersion
+        sourceCommit = $SourceCommit
+        sourceDirty = $SourceDirty
+        provenance = $Provenance
+        files = $Files
+    }
 }
 
 function Test-PayloadManifest([string]$Root, [switch]$RequireCurrentSource) {
@@ -817,15 +822,19 @@ function Get-PackageProvenance([string]$Root, [string]$PublishDirectory, $Source
     $applications = @(Get-PackageApplications $Root)
     $restores = @(Get-PackageRestoreEvidence $PublishDirectory $Source)
     $archives = @(Get-PackageArchiveEvidence $Root (Join-Path $PublishDirectory 'build\obj\Martlet.Desktop\project.assets.json') $applications)
-    $result = [ordered]@{
+    $result = New-PackageProvenanceDocument $Source $SdkReceipt $applications $restores $archives (Get-PackagingPins).rid
+    Test-PackageProvenance $Root $result
+    return $result
+}
+
+function New-PackageProvenanceDocument($Source, $SdkReceipt, $Applications, $Restores, $Archives, [string]$RuntimeIdentifier) {
+    return [ordered]@{
         schemaVersion = 1
         assurance = 'UNSIGNED INTERNAL OBSERVATION - NOT PUBLISHER ATTESTATION'
         source = $Source; sdk = $SdkReceipt
-        publish = [ordered]@{ configuration = 'Release'; framework = 'net10.0-windows'; rid = (Get-PackagingPins).rid; selfContained = $true; trimmed = $false; singleFile = $false; readyToRun = $false }
-        applications = $applications; restores = $restores; archives = $archives
+        publish = [ordered]@{ configuration = 'Release'; framework = 'net10.0-windows'; rid = $RuntimeIdentifier; selfContained = $true; trimmed = $false; singleFile = $false; readyToRun = $false }
+        applications = $Applications; restores = $Restores; archives = $Archives
     }
-    Test-PackageProvenance $Root $result
-    return $result
 }
 
 function Test-PackageProvenance([string]$Root, $Provenance) {
@@ -1019,11 +1028,15 @@ function Test-PackageProvenance([string]$Root, $Provenance) {
 
 function Get-PackageSbom([string]$Root, $Provenance) {
     $files = @(Get-PayloadFiles $Root -ExcludeSbom)
+    return New-PackageSbomDocument $files (Assert-PublishLayout $Root) $Provenance
+}
+
+function New-PackageSbomDocument([object[]]$Files, [string]$ApplicationVersion, $Provenance) {
     $fileComponents = @{}
     $components = [Collections.Generic.List[object]]::new()
     $dependencies = [Collections.Generic.List[object]]::new()
     $rootRefs = @()
-    foreach ($file in $files) {
+    foreach ($file in $Files) {
         $path = $file.path.Replace('\', '/')
         $fileComponents[$file.path] = [ordered]@{
             type = 'file'; 'bom-ref' = "file:$path"; name = $path
@@ -1102,7 +1115,7 @@ function Get-PackageSbom([string]$Root, $Provenance) {
                     foreach ($file in $Provenance.sdk.files) { [ordered]@{ name = "martlet:tool:sha256:$($file.path)"; value = $file.sha256 } }
                 ) }
             ) }
-            component = [ordered]@{ type = 'application'; 'bom-ref' = 'martlet-internal-payload'; name = 'Martlet INTERNAL UNSIGNED payload'; version = (Assert-PublishLayout $Root) }
+            component = [ordered]@{ type = 'application'; 'bom-ref' = 'martlet-internal-payload'; name = 'Martlet INTERNAL UNSIGNED payload'; version = $ApplicationVersion }
             properties = @(
                 [ordered]@{ name = 'martlet:assurance'; value = $Provenance.assurance }
                 [ordered]@{ name = 'martlet:source:commit'; value = $Provenance.source.commit }

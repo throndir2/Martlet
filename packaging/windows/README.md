@@ -211,6 +211,23 @@ option. This is an **unsigned internal observation**, not publisher
 attestation, a SLSA level, a release signature, license clearance or a
 vulnerability assessment. Signing and distribution decisions remain deferred.
 
+The separate [signed-candidate staging library](../../src/Martlet.Updates/README.md)
+now recognizes this v2 metadata shape and retains its own explicitly supported
+legacy-v1 history/admission contract. That does not make v1 acceptable to these
+packaging/installer producers or turn v2 byte verification into provenance
+qualification. Its restricted ZIP/layout, depth and outer-envelope budgets can
+be narrower than packaging's evidence bounds.
+
+`New-PackageProvenanceDocument`, `New-PackageSbomDocument` and
+`New-PayloadManifestDocument` are shared pure document constructors used by the
+normal production functions and the inert cross-boundary test. They are not
+validation entrypoints. `Get-PackageProvenance`, `Get-PackageSbom`,
+`Write-PackageSbom`, `Write-PayloadManifest` and `Test-PayloadManifest` retain their
+actual input/layout/provenance/SBOM checks; callers must not replace those
+validated workflows with a constructor or test fixture. Constructor-only
+conformance runs neither publish nor qualify executables, source/tool
+observations or upstream rights.
+
 The existing manifest is still the sole file inventory. The SBOM describes
 each actual application/help/notice file and its SHA-256, alongside the actual
 resolved project, managed-package and self-contained runtime graph. Desktop

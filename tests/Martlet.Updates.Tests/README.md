@@ -7,6 +7,45 @@ unapproved keys in memory for each test class lifetime and disposes them.
 No private key, package signer identity or purported production certificate is
 committed. Fixtures are created at runtime, not downloaded.
 
+`ProductionPayloadFixture.ps1` exercises the **actual production** pure
+provenance/SBOM/manifest constructors, `ConvertTo-EvidenceJson`,
+`Get-PayloadFiles` and `Get-ChecksumText` on inert synthetic leaves. The normal
+producer retains all real layout/provenance/SBOM validation; this test does not
+mock those checks or claim to have passed them. Existing tests default to legacy
+v1; `PayloadCompatibilityTests` covers current v2 and mixed retained histories.
+No checked-in parallel hand-authored v2 wire fixture is used.
+
+The test-only PowerShell 7 child runs with no profile and explicit source/output
+paths, a 60-second deadline, concurrent pipes and a combined 64 KiB output cap.
+Timeout/overflow/nonzero exit fail the fixture. The exact child must exit and
+both pipes retire before successful completion; uncertain/failed output remains
+in its unique temporary directory, never recursively cleaned by an active
+child's owner. Controlled failure/overflow/wait cases exercise this boundary.
+Normal fixture disposal refuses unknown children before deleting known outputs.
+Missing PowerShell/source lookup is an error, not a skipped test or fallback
+serializer. Deterministic `CI=true` maps compile-time paths to `/_`; for C:
+artifact builds set `MARTLET_UPDATES_SOURCE_ROOT` explicitly to the source checkout.
+
+Current coverage includes strict required/unknown/duplicate/null objects at
+every emitted nested shape, version/source/SDK/graph/SBOM-file inconsistencies
+despite rechecksumming and ephemeral re-signing, inclusive legacy 2 MiB/current
+16 MiB limits, declared/observed overflow, unchanged external/depth budgets,
+bounded descriptive Unicode source records, cancellation and exact cleanup
+ownership. Large exact-byte-boundary inputs use signed legal JSON whitespace;
+they are parser-boundary cases, not canonical production output. Retained mixed
+v1/v2 selection/rollback preserves historical bytes and remains non-runnable.
+
+The real unchanged-reader regression fails at `Preview` with `UnsafeEntry` for
+the current root SBOM; the fixed same staging/inspection test passes. Retain the
+red TRX and original consumer assembly/source hashes separately from green
+outputs. A prior fixture source-path setup failure is not old-reader evidence.
+The separately run `-ReferenceMetadataRoot` mode reconstructs only the three
+named, hash-pinned historical PR #25 metadata documents from declared inventories
+and current pure constructors. It writes only a new output directory and reads
+no historical binaries. Its exact-byte equality is historical serializer
+conformance, not current-main build, package authenticity or provenance
+qualification. Ordinary tests require no other session's artifacts.
+
 The tests invoke `LocalStagingEngine`, not a mock verifier. The internal IO seam
 injects failures at actual write/flush/rename/cleanup boundaries and can pause a
 real pending operation. It cannot supply a fake signature-verification result.
@@ -130,11 +169,22 @@ $env:DOTNET_CLI_HOME = 'C:\Users\mozar\.copilot\session-state\5144146e-e46e-49b9
 $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
 $env:DOTNET_GENERATE_ASPNET_CERTIFICATE = 'false'
 $env:DOTNET_NOLOGO = '1'
+$env:MARTLET_UPDATES_SOURCE_ROOT = (Get-Location).ProviderPath
 $artifacts = 'C:\Users\mozar\.copilot\session-state\5144146e-e46e-49b9-87a2-b608994d7985\files\ci-artifacts'
+$env:NUGET_PACKAGES = "$artifacts\packages"
+$env:NUGET_HTTP_CACHE_PATH = "$artifacts\http-cache"
+$env:NUGET_PLUGINS_CACHE_PATH = "$artifacts\plugin-cache"
+$env:NUGET_SCRATCH = "$artifacts\nuget-scratch"
+$env:TEMP = "$artifacts\tmp"
+$env:TMP = $env:TEMP
+# Create these private directories before invoking the SDK.
 $project = 'tests\Martlet.Updates.Tests\Martlet.Updates.Tests.csproj'
+dotnet build $project --no-restore -c Release -p:CI=true -p:UseSharedCompilation=false --artifacts-path $artifacts
+# Only a dependency-manifest change or actual missing-assets failure justifies restore.
+# Use an approved private offline feed/config when new acquisition is not authorized.
 dotnet restore $project --locked-mode -p:CI=true --artifacts-path $artifacts
-dotnet build $project --no-restore -p:CI=true --artifacts-path $artifacts
-dotnet test $project --no-build -p:CI=true --artifacts-path $artifacts --results-directory "$artifacts\TestResults"
+dotnet build $project --no-restore -c Release -p:CI=true -p:UseSharedCompilation=false --artifacts-path $artifacts
+dotnet test $project --no-build --no-restore -c Release -p:CI=true --artifacts-path $artifacts --results-directory "$artifacts\TestResults"
 ```
 
 A new session must substitute **its own** CLI home and C: artifact directory,
@@ -146,6 +196,15 @@ they do not modify or register projects in `Martlet.slnx`.
 Only new dependency manifests/missing assets justify restore. Lock generation
 for these new projects was followed by a locked restore using existing central
 package pins. No test pin or gate was weakened.
+
+The separately required Core configuration/runner filter uses the same local
+build/locked-restore pattern. Its existing Diagnostics -> Sessions -> Audio
+reference graph restores both declared Audio targets even though the selected
+Core tests execute `net10.0` only. Its existing NAudio.Wasapi/NAudio.Core 3.1.0
+and System.Numerics.Tensors 9.0.0 archives may therefore be needed in the approved
+offline feed. Do not prune target declarations, rewrite locks or equate raw
+signed-archive SHA-512 with NuGet lock content hashes to force a restore.
+Restoring that graph is not authorization to run Audio/native/device tests.
 
 Run only local gates. No workflow creation, dispatch, retries, pushes, PRs or
 release publication belong to these commands. A passing fixture suite is not

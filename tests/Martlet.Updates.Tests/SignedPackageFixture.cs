@@ -16,6 +16,7 @@ internal sealed class SignedPackageFixture : IDisposable
 {
     internal string Root { get; } = Directory.CreateTempSubdirectory("Martlet.Updates.Tests-").FullName;
     private readonly bool selectionLayout;
+    private readonly ProductionPayloadFixture? production;
     internal string StagingRoot => selectionLayout ? Path.Combine(Root, "control", "stages") : Path.Combine(Root, "staging");
     internal string Destination => Path.Combine(StagingRoot, "selected-version");
     internal string Archive => Path.Combine(Root, "candidate.zip");
@@ -29,9 +30,10 @@ internal sealed class SignedPackageFixture : IDisposable
     private readonly List<FileStream> privateSentinels = [];
     internal UpdateTrustPolicy Trust => new([Keys.Approved.ExportSubjectPublicKeyInfo()]);
 
-    internal SignedPackageFixture(SigningKeys keys, bool selectionLayout = false)
+    internal SignedPackageFixture(SigningKeys keys, bool selectionLayout = false, ProductionPayloadFixture? production = null)
     {
         this.selectionLayout = selectionLayout;
+        this.production = production;
         Keys = keys;
         Directory.CreateDirectory(StagingRoot);
         Directory.CreateDirectory(InstalledRoot);
@@ -53,10 +55,19 @@ internal sealed class SignedPackageFixture : IDisposable
         StagingLimits? limits = null, Func<long>? availableBytes = null) =>
         new(StagingRoot, Trust, () => Current, limits) { Io = io, AvailableBytes = availableBytes };
 
-    internal void Build(string version = "0.2.0.0")
+    internal void Build(string version = "0.2.0.0", ProductionPayloadFixture? current = null)
     {
+        var producer = current ?? production;
+        if (producer is not null)
+        {
+            Files.Clear();
+            foreach (var file in producer.Load(version)) Files.Add(file.Key, file.Value);
+            WriteSignedArchive(version);
+            return;
+        }
         Files.Remove("manifest.json");
         Files.Remove("SHA256SUMS.txt");
+        Files.Remove("sbom.cdx.json");
         var internalManifest = new InternalPayloadManifest
         {
             SchemaVersion = 1, Channel = "INTERNAL DEVELOPMENT ONLY - UNSIGNED",
@@ -72,6 +83,11 @@ internal sealed class SignedPackageFixture : IDisposable
         Files["SHA256SUMS.txt"] = Encoding.UTF8.GetBytes(
             string.Concat(internalManifest.Files.Select(f => $"{f.Sha256}  {f.Path}\n")) +
             $"{Wire.Hash(manifestBytes)}  manifest.json\n");
+        WriteSignedArchive(version);
+    }
+
+    private void WriteSignedArchive(string version)
+    {
         WriteZip(Files.Select(f => new Entry(f.Key, f.Value)));
         Manifest = new()
         {
@@ -134,6 +150,7 @@ internal sealed class SignedPackageFixture : IDisposable
 
     internal void AssertPrivateDataUnchanged()
     {
+        production?.AssertNotExecuted();
         Assert.False(File.Exists(ExecutedCanary));
         foreach (var sentinel in privateSentinels)
         {
