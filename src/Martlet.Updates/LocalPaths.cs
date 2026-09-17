@@ -55,7 +55,7 @@ internal static class LocalPaths
                     stem.StartsWith("LPT", StringComparison.Ordinal)) && stem[3] is >= '0' and <= '9')
                 throw new StagingException(StagingFailure.UnsafeEntry);
         }
-        if (path is "manifest.json" or "SHA256SUMS.txt") return;
+        if (path is "manifest.json" or "SHA256SUMS.txt" or "sbom.cdx.json") return;
         if (parts.Length < 2 || parts[0] is not ("Desktop" or "Doctor" or "help" or "notices") ||
             parts.Any(p => p.Equals("data", StringComparison.OrdinalIgnoreCase) ||
                 p.Equals("logs", StringComparison.OrdinalIgnoreCase) || p.Equals("models", StringComparison.OrdinalIgnoreCase) ||
@@ -92,6 +92,7 @@ internal static class LocalPaths
             }
             if (file.Bytes < 0 || file.Bytes > limits.MaximumFileBytes)
                 throw new StagingException(StagingFailure.CapacityExceeded);
+            PayloadMetadata.CheckLength(file);
         }
         if (paths.Overlaps(directories.Keys)) throw new StagingException(StagingFailure.UnsafeEntry);
         if (!paths.Contains("manifest.json") || !paths.Contains("SHA256SUMS.txt"))

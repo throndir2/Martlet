@@ -108,6 +108,7 @@ selected-version\
   payload\
     manifest.json     exact existing internal unsigned payload manifest
     SHA256SUMS.txt     exact existing payload checksums
+    sbom.cdx.json      required for internal schema v2; absent from legacy v1
     Desktop\...
     Doctor\...
     help\...
@@ -158,19 +159,54 @@ Each entry uses exactly `path`, `bytes`, `sha256` in that order; SHA-256 strings
 are lowercase, 64 characters. Archive digest/length cover every original ZIP
 byte including headers and directory, before any decompression.
 
-The existing `packaging\windows\Packaging.Common.ps1` internal payload contract
-is cross-checked, not rewritten: schema 1, exact application version/RID,
-channel `INTERNAL DEVELOPMENT ONLY - UNSIGNED`, bounded SDK/runtime versions,
-40-character lowercase source commit, Boolean dirty flag and complete file
-inventory. Its inventory excludes its own manifest/checksums, uses backslash
-paths sorted ordinally, and is compared to the signed wrapper's inventory.
+The current `packaging\windows\Packaging.Common.ps1` producer writes internal
+**schema 2**, with required provenance schema 1 and root `sbom.cdx.json`.
+`PayloadMetadata`, `PayloadProvenance` and `PayloadSbom` dispatch explicitly;
+unsupported versions are not interpreted as older formats. The common contract
+checks exact application version/RID, channel
+`INTERNAL DEVELOPMENT ONLY - UNSIGNED`, bounded SDK/runtime versions,
+40-character lowercase source commit, Boolean dirty flag and complete inventory.
+Its inventory excludes only its own manifest/checksums (therefore includes the
+SBOM), uses backslash paths sorted ordinally, and matches the signed inventory.
 Checksum text must be exact lowercase hashes, two spaces, original backslash
 path, LF, followed by the exact internal-manifest hash and LF. The internal
 manifest may retain PowerShell formatting; its **exact bytes** are authenticated
 by the wrapper inventory, not normalized or regenerated.
 
-This verifies the signed declarations and bytes, not PE machine headers,
-Authenticode, toolchain provenance assertions, SBOM completeness, licenses,
+V2 uses closed, bounded nested shapes, not arbitrary extension documents.
+Source commit/dirty and SDK version agree with the common manifest; publish
+facts, source/tool records, application and restore graphs, archive declarations
+and origin bindings are checked for their implemented internal consistency.
+Nullable missing-source hashes, non-package content hashes and upstream
+declarations are handled explicitly. Descriptive source/tool/upstream paths
+can contain Unicode/spaces and reach 1,024 characters: **none is opened or
+treated as an extraction path**. Raw archive SHA-512 and NuGet Base64 content
+hashes remain different declarations.
+
+The supported CycloneDX 1.6/document-v1 shape checks metadata/tool identities,
+source bindings, unique software/file subjects, properties, ownership and
+dependency references. File subjects cover every non-metadata payload file
+exactly once, with matching path/length/SHA-256. The three root metadata files
+are excluded from SBOM subjects to avoid circular hashes. Unknown, missing,
+duplicate, null, unsupported or inconsistent structure fails explicitly.
+
+**Legacy schema 1 remains supported**, including initial admission and
+verifier-backed retained selection/rollback inspection, with its original
+2 MiB metadata bounds and without provenance or SBOM. Adding v2 fields/SBOM
+to v1, or relabeling v1 as v2 without its evidence, is invalid. Old payload,
+receipt and journal bytes are not rewritten; no external format or history
+migration occurs. Forward admission stays strictly newer; only the recorded
+retained-selection path bypasses that admission policy, never current trust
+or byte verification.
+
+These are authenticated-document and internal-consistency checks, **not** a
+second implementation of packaging's full `Test-PackageProvenance` or canonical
+SBOM reconstruction. Source/restore subdocument hashes are authenticated
+declarations (source digest also cross-binds the SBOM), not recomputed with
+`Wire.Write` as a substitute for PowerShell canonicalization. No source tree,
+SDK files, NuGet archives or current build pins are opened to qualify a
+historical package. This does not establish PE machine headers, Authenticode,
+actual upstream/toolchain origin, SBOM semantic completeness, license rights,
 binary behavior or a functional installed layout. A signer could authorize a
 nonfunctional payload; staging must never be advertised as readiness/release
 qualification. The fixture executables are deliberately inert text.
@@ -197,13 +233,20 @@ between segments. No leading/trailing/doubled separator, traversal, backslash,
 absolute/drive/UNC path, colon/ADS, spaces, trailing dot, Unicode normalization
 ambiguity, Windows device name, file/directory prefix collision, duplicate or
 case-collision (including directory components). Payload files are limited to
-`Desktop`, `Doctor`, `help`, `notices` and the two root manifests. Mutable
+`Desktop`, `Doctor`, `help`, `notices` and the exact root names `manifest.json`,
+`SHA256SUMS.txt`, `sbom.cdx.json` (the last requires v2). Mutable
 settings, `.lock`, data, logs, models, profiles and recordings names are excluded.
 
 | Resource | Default and absolute maximum |
 | --- | --- |
 | External JSON envelope / receipt | 3 MiB each |
-| Decoded signed manifest / internal metadata file | 2 MiB each |
+| Decoded signed manifest | 2 MiB |
+| Legacy-v1 internal manifest / checksums | 2 MiB each |
+| V2 internal manifest / SBOM / checksums | 16 MiB each |
+| JSON depth, including provenance/SBOM | 16 |
+| Source evidence records / SDK fingerprints | 16,384 / exactly 3 |
+| Application contexts / libraries or edges per graph | exactly 2 / 2,048 |
+| Restore projects / targets per project / downloads per target | 128 / 8 / 16 |
 | Compressed archive | 512 MiB |
 | Individual expanded file | 256 MiB |
 | Total expanded bytes | 2 GiB |
@@ -217,6 +260,19 @@ settings, `.lock`, data, logs, models, profiles and recordings names are exclude
 Central-directory count is checked before `ZipArchive` creates its table.
 Metadata parsing, in-memory tables and persisted receipts have independent
 hard bounds. Source length and actual reads are bounded, not just ZIP metadata.
+Metadata declared lengths are checked before decompression; CRC/SHA and observed
+lengths still must match. Large JSON documents are read/validated one at a time,
+with only bounded cross-binding facts retained; checksums are compared
+incrementally. Cancellation is checked between reads and records and before/
+after bounded BCL parsing, not by interrupting a synchronous parser/OS call.
+
+Compatibility is the intersection with this restricted reader's existing
+budgets. The producer's broader descriptive-path/depth and 8,192-payload-file
+ceilings do not expand ZIP policy: at most 8,192 **total** ZIP files means at
+most 8,190 internal inventory files plus manifest/checksums. Outer JSON caps
+can constrain this further. Producer-extreme extraction paths or depth >16
+remain refused. The 16 MiB checksum ceiling is defensive; a valid checksum
+inventory cannot reach it under the unchanged outer/file/path ceilings.
 
 Required additional free bytes = archive copy + all expanded bytes + envelope
 bytes + 3 MiB receipt allowance + 16 MiB reserve +

@@ -117,11 +117,10 @@ internal static class RestrictedZip
     internal static void VerifyContent(Stream stream, VerifiedCandidate candidate, StagingLimits limits,
         CancellationToken token, Action<string, Stream, PayloadFile, uint>? extract = null)
     {
+        foreach (var file in candidate.Manifest.Files) PayloadMetadata.CheckLength(file);
         var crc = Inspect(stream, candidate.Manifest, limits, token);
         using var zip = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true);
         var entries = zip.Entries.ToDictionary(e => e.FullName, StringComparer.Ordinal);
-        byte[]? internalBytes = null;
-        byte[]? sums = null;
         foreach (var file in candidate.Manifest.Files)
         {
             token.ThrowIfCancellationRequested();
@@ -129,35 +128,7 @@ internal static class RestrictedZip
             using var input = entry.Open();
             if (extract is not null) extract(file.Path, input, file, crc[file.Path]);
             else BoundedIo.CopyAndHash(input, null, file.Bytes, file.Sha256, token, expectedCrc: crc[file.Path]);
-            if (file.Path is "manifest.json" or "SHA256SUMS.txt")
-            {
-                if (file.Bytes > Wire.MaximumManifestBytes) throw new StagingException(StagingFailure.CapacityExceeded);
-                using var metadata = entry.Open();
-                var bytes = BoundedIo.Read(metadata, Wire.MaximumManifestBytes, token);
-                if (Wire.Hash(bytes) != file.Sha256) throw new StagingException(StagingFailure.CorruptArchive);
-                if (file.Path == "manifest.json") internalBytes = bytes;
-                else sums = bytes;
-            }
         }
-        VerifyInternal(candidate.Manifest, internalBytes!, sums!);
-    }
-
-    private static void VerifyInternal(CandidateManifest candidate, byte[] bytes, byte[] sums)
-    {
-        var payload = Wire.Read<InternalPayloadManifest>(bytes, Wire.MaximumManifestBytes);
-        if (payload.SchemaVersion != 1) throw new StagingException(StagingFailure.IncompatibleFormat);
-        if (payload.Channel != "INTERNAL DEVELOPMENT ONLY - UNSIGNED" ||
-            payload.ApplicationVersion != candidate.ApplicationVersion || payload.Rid != candidate.Rid ||
-            payload.SdkVersion is not { Length: > 0 and <= 48 } || !System.Version.TryParse(payload.SdkVersion, out _) ||
-            payload.RuntimeVersion is not { Length: > 0 and <= 48 } || !System.Version.TryParse(payload.RuntimeVersion, out _) ||
-            !Wire.IsHex(payload.SourceCommit, 40) || payload.Files.Length != candidate.Files.Length - 2)
-            throw new StagingException(StagingFailure.InvalidManifest);
-        var expected = candidate.Files.Where(f => f.Path is not ("manifest.json" or "SHA256SUMS.txt"))
-            .Select(f => f with { Path = f.Path.Replace('/', '\\') }).OrderBy(f => f.Path, StringComparer.Ordinal).ToArray();
-        if (!expected.SequenceEqual(payload.Files)) throw new StagingException(StagingFailure.InvalidManifest);
-        var expectedSums = string.Concat(expected.Select(f => $"{f.Sha256}  {f.Path}\n")) +
-            $"{Wire.Hash(bytes)}  manifest.json\n";
-        if (!Encoding.UTF8.GetBytes(expectedSums).AsSpan().SequenceEqual(sums))
-            throw new StagingException(StagingFailure.InvalidManifest);
+        PayloadMetadata.Verify(candidate.Manifest, name => entries[name].Open(), token);
     }
 }
