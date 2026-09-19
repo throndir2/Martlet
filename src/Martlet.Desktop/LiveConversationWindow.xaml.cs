@@ -122,7 +122,8 @@ public partial class LiveConversationWindow : Window
         PttButton.IsEnabled = mouseHeld || keyHeld || available && accepted && AcceptCapture.IsChecked == true &&
             AcceptUpload.IsChecked == true && controller.Configuration!.Unavailable(voice, true) is null;
         ReleaseButton.IsEnabled = ownRunning && owned!.Authorization.Microphone && owned.Turn is null && owned.Transcription is null && !owned.Status.Finished;
-        StopButton.IsEnabled = ownRunning || loading is not null;
+        StopButton.IsEnabled = ownRunning || loading is not null || accepted ||
+            AcceptCapture.IsChecked == true || AcceptUpload.IsChecked == true;
         ReloadButton.IsEnabled = !operations.IsRunning;
         SetupButton.IsEnabled = AudioButton.IsEnabled = !operations.IsRunning;
         AudioButton.IsEnabled &= audio is not null;
@@ -199,6 +200,12 @@ public partial class LiveConversationWindow : Window
         RenderActions();
     }
     private void Stop_Click(object sender, RoutedEventArgs e) => Cancel("conversation.canceled");
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape) return;
+        e.Handled = true;
+        Cancel("conversation.canceled");
+    }
     private void Cancel(string reason)
     {
         mouseHeld = keyHeld = false;
