@@ -8,14 +8,16 @@ public enum ProfileKind { NotConfigured, Fixture, Api, ExistingEndpoints }
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record AppSettings : IContract
 {
-    public const int CurrentSchemaVersion = 2;
-    public const int MaxFileBytes = 65_536;
+    public const int CurrentSchemaVersion = 3;
+    public const int MaxFileBytes = 131_072;
     public required int SchemaVersion { get; init; }
     public required ProfileSettings Profile { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public SetupSettings? Setup { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public AudioSettings? Audio { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public CompanionSettings? Companion { get; init; }
 
     public static AppSettings CreateUnconfigured() => new()
     {
@@ -25,14 +27,17 @@ public sealed record AppSettings : IContract
 
     public void Validate()
     {
-        ContractRules.Require(SchemaVersion is 1 or CurrentSchemaVersion, "Use a compatible app or restore a compatible settings backup; this file was not changed.", ErrorCode.UnsupportedVersion);
+        ContractRules.Require(SchemaVersion is >= 1 and <= CurrentSchemaVersion, "Use a compatible app or restore a compatible settings backup; this file was not changed.", ErrorCode.UnsupportedVersion);
         ContractRules.Require(Profile is not null, "A profile is required.");
         Profile!.Validate();
         ContractRules.Require(SchemaVersion == 1 ? Setup is null : Setup is not null,
-            "Version 1 cannot contain setup; version 2 requires a setup checkpoint.");
+            "Version 1 cannot contain setup; later versions require a setup checkpoint.");
         Setup?.Validate();
         ContractRules.Require(SchemaVersion != 1 || Audio is null, "Version 1 cannot contain audio setup.");
         Audio?.Validate();
+        ContractRules.Require(SchemaVersion < 3 ? Companion is null : Companion is not null,
+            "Settings before version 3 cannot contain companion profiles; version 3 requires them.");
+        Companion?.Validate();
         if (Setup is not null)
         {
             var legacy = Profile.Credentials.Select(item => item.CredentialId).ToHashSet();
@@ -40,6 +45,18 @@ public sealed record AppSettings : IContract
                 Setup.PendingRemovals.All(item => !legacy.Contains(item.CredentialId)),
                 "Legacy credential references are preserved, never reused or deleted by setup.");
         }
+    }
+
+    internal static AppSettings UpgradeToCurrent(AppSettings? prior)
+    {
+        var settings = prior ?? CreateUnconfigured();
+        settings.Validate();
+        return settings with
+        {
+            SchemaVersion = CurrentSchemaVersion,
+            Setup = settings.Setup ?? new() { SchemaVersion = 1, Checkpoint = SetupStep.Choice, Routes = [], PendingRemovals = [] },
+            Companion = settings.Companion ?? CompanionSettings.Create()
+        };
     }
 }
 

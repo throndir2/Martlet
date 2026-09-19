@@ -38,7 +38,7 @@ personal. Configuration envelopes are LOCAL and **NOT encrypted or sanitized**.
    metadata, **not deleted**. Current legacy references/pending removals survive;
    obsolete imported IDs do not authorize key use or deletion.
 
-**V07a supports only an existing valid same-profile v1/v2 destination.** A missing,
+**V07a supports only an existing valid same-profile v1/v2/v3 destination.** A missing,
 foreign-profile, corrupt or future-version destination is refused; this is not
 portable profile import or corrupt-store repair. Preserve originals and use
 compatible manual recovery, not a reset or an older executable. If current

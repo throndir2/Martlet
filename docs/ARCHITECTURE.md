@@ -15,6 +15,10 @@ origin, constructed `:local` request, exact-action trusted-caller permit and
 retained HTTP/lease ownership. It reuses Core text contracts without generalizing
 OpenAI conversation authority. No production issuer, gateway/Desktop route,
 immutable model binding or qualified runtime/host locality is established.
+The [companion requirements](COMPANION_REQUIREMENTS.md) add explicit persona,
+reference-voice, model-selection and listen-first/barge-in controls. These
+remain future work, not extensions already implemented by V04b or the
+standalone post-capture VAD library.
 Read [the development plan](../DEVELOPMENT_PLAN.md)
 for scope and approvals, [installation/support](INSTALLATION_SUPPORT.md) for
 lifecycle, and [delivery](DELIVERY.md) for task ownership. Source IDs refer to
@@ -257,6 +261,23 @@ charge; an actual provider self-test is separately labeled billable and
 requires approval. Cache capability probes with timestamps and refresh on
 configuration/model/version change.
 
+### User-controlled persona, voice and model revisions
+
+R19-R21 require settings-backed named persona profiles, validated F5
+reference-audio/transcript presets, and independent LLM/VLM selections. Keep
+persona/style data separate from routing and permissions. Import/export is
+data-only; model choices use named adapters and verified role capabilities,
+not a universal OpenAI-compatible assumption.
+
+Apply changes only when idle or after stopping and completing current owned
+cleanup. New requests snapshot persona/style, route/model and voice-reference
+revisions; reject stale intents/authorizations/results instead of mixing old
+and new selections within a response. File replacement at an unchanged F5
+reference path requires revalidation and cache invalidation. Selection/save
+does not authorize upload, playback, download, warmup or inference. Re-budget
+context and revalidate capabilities/consent after model changes. Exact UI and
+failure requirements are in [R19-R21](COMPANION_REQUIREMENTS.md).
+
 ### Common identifiers, events, and errors
 
 Every request includes `session_id`, `turn_id`, `request_id`, deadline, and
@@ -336,6 +357,25 @@ local debug text. Tests cover name-in-quotation, similar names, multiple
 speakers, silence hallucination, continuous talk, wake during playback,
 and ignored input. Changing policy never silently activates continuous cloud STT.
 
+### Listen-first context and response styles
+
+[R22/R24](COMPANION_REQUIREMENTS.md) extend, rather than replace, the policy
+boundary. Caller-owned, consented observations may be retained as bounded
+session context without creating a reply per observation. Proposed limits are
+120 seconds, 32 observations and 16 KiB UTF-8 text, further bounded by model
+tokens; this is neither a pending-turn queue nor persistent memory. Expired
+intents cannot become dispatchable by retaining their text. Clear context on
+session end, pause/lock or consent revocation, and require explicit authorization
+before sending retained context to a changed route.
+
+New activity invalidates a proposed gap-based dispatch. Only a fresh eligible
+decision can lead to LLM/TTS; quiet accumulation uses no second inference
+model. Participation frequency/gap/cooldown and opt-in capture remain separate
+from per-persona helpful/sarcastic/silly/distracted/teasing weights. Select a
+style only after admission, using a testable weighted selector; persona/style
+never overrides truthfulness, explicit controls or permission. The current
+V04b path has no persona/history injection or automatic observation collector.
+
 ## 5. Audio, streaming, cancellation, and budgets
 
 Capture at the device's supported shared-mode format (commonly 44.1/48 kHz),
@@ -400,9 +440,21 @@ gated during Martlet playback, with a short measured acoustic tail. Manual
 PTT/Stop can interrupt instantly and start a new utterance after playback is
 flushed. This is supported manual barge-in, not full-duplex acoustic AEC.
 
-Optional speech barge-in is gated on H07 evidence using a validated echo
-reference/AEC path. Do not claim VAD, transcript equality, or lowering speaker
-volume solves echo. Default system loopback capture stays disabled; future
+R23 makes automatic speech barge-in a required future companion capability,
+opt-in and gated on H07 evidence using qualified feedback protection and an
+echo reference/AEC path where needed. In that mode, local VAD must remain
+active during playback; confirmed external speech onset goes directly to
+Stop/epoch invalidation/PCM and unsaid-segment flush, without waiting for STT
+or a name match. Target p95 <=250 ms from confirmed onset event to last rendered
+sample; acoustic detection latency is separately measured. Request upstream
+abort where supported, but never equate local silence with freed GPU work.
+Further transcription/reply still needs permission and fresh admission after
+owned cleanup; interruption cannot resurrect the canceled answer.
+
+Until native privacy and the selected topology qualify, keep automatic barge-in
+unavailable and manual PTT/Stop usable. Do not claim the post-capture VAD library,
+transcript equality, or lowering speaker volume solves echo. Default system
+loopback capture stays disabled; future
 app-scoped remote-participant capture must exclude Martlet output or supply
 an appropriate echo reference, with each participant's consent.
 

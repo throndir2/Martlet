@@ -521,7 +521,7 @@ public sealed partial class LocalSelectionEngine
             SnapshotPath(entry.Snapshot);
             if (entry.Snapshot.SnapshotId == Guid.Empty || entry.Snapshot.ProfileId == Guid.Empty ||
                 entry.Snapshot.ProfileId != state.ProfileId ||
-                entry.Snapshot.Schema is not (1 or 2) ||
+                entry.Snapshot.Schema is < 1 or > AppSettings.CurrentSchemaVersion ||
                 !UpperHash(entry.Snapshot.SourceRevision) || !UpperHash(entry.Snapshot.FileDigest) ||
                 !UpperHash(entry.Snapshot.ManifestDigest))
                 throw new SelectionException(SelectionFailure.InvalidControl);
