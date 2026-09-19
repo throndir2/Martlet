@@ -84,8 +84,8 @@ public partial class SetupWindow : Window
             revision = loaded.Revision;
             draft = loaded.Error is null ? SetupSettings.Begin(loaded.Settings) : null;
             needsReload = loaded.Error is not null;
-            ResultText.Text = loaded.Error?.Summary ?? (loaded.Settings?.SchemaVersion == 1
-                ? "Version 1 loaded unchanged. Explicit Save migrates it and atomically snapshots the original; profile ID and legacy references are preserved."
+            ResultText.Text = loaded.Error?.Summary ?? (loaded.Settings?.SchemaVersion is 1 or 2
+                ? $"Version {loaded.Settings.SchemaVersion} loaded unchanged. Explicit Save migrates it and atomically snapshots the original; profile ID, routes and legacy references are preserved."
                 : "Checkpoint loaded. No secret lookup, device or network action was performed.");
             if (draft is not null)
             {

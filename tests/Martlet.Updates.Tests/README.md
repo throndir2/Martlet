@@ -33,7 +33,7 @@ despite rechecksumming and ephemeral re-signing, inclusive legacy 2 MiB/current
 bounded descriptive Unicode source records, cancellation and exact cleanup
 ownership. Large exact-byte-boundary inputs use signed legal JSON whitespace;
 they are parser-boundary cases, not canonical production output. Retained mixed
-v1/v2 selection/rollback preserves historical bytes and remains non-runnable.
+v1/v2/v3 selection/rollback preserves historical bytes and remains non-runnable.
 
 The real unchanged-reader regression fails at `Preview` with `UnsafeEntry` for
 the current root SBOM; the fixed same staging/inspection test passes. Retain the

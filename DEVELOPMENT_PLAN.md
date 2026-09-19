@@ -13,6 +13,15 @@ name/group listening remain off.
 This plan's broader milestones remain proposals; that foundation does not
 establish a working conversation, installer or passed release gate.
 
+**Companion requirements update, 2026-09-19:** editable/swappable personas,
+F5 reference-voice replacement, independent LLM/VLM selection, listen-first
+participation, speech-triggered interruption and adjustable response-style
+weights are now explicit product requirements. See
+[Companion controls and behavior](docs/COMPANION_REQUIREMENTS.md) for the user
+experience, current gaps and boundaries, and Delivery R19-R24 / AC-18-AC-23
+for acceptance. This adds requirements, not implemented controls or permission
+to enable listening, run models or spend money.
+
 **Validation policy update, 2026-09-13:** the owner's
 [local-only validation policy](README.md#local-only-validation-policy)
 supersedes all earlier hosted-CI plans. Keep strong local tests/builds,
@@ -95,6 +104,16 @@ speech. A configurable name, direct address, or push-to-talk can request a
 response. Otherwise an independently observable turn-taking policy may remain
 silent. Personality changes wording and style, not permission, safety, routing,
 or whether the microphone is allowed to capture.
+
+Users must be able to edit and save named personas or swap persona text files,
+choose an F5 reference voice, and independently change compatible conversation
+and vision models without rebuilding the app. Response-style weights (helpful,
+sarcastic, silly, distracted, playful trolling/teasing) are separate from the
+decision to speak. Opt-in conversational listening gathers bounded recent
+context rather than producing an answer per input; qualified live VAD must
+eventually let a person cut off Martlet mid-sentence. Manual PTT/Stop remains
+the default until automatic listening, echo protection and native privacy are
+qualified. See the [detailed requirements](docs/COMPANION_REQUIREMENTS.md).
 
 ### MVP includes
 
@@ -262,6 +281,12 @@ microphone or provider without a terminal. The hardware owner can later
 reboot a qualified Ubuntu host and understand whether services are starting,
 warming, ready, or broken. Silence has an understandable reason; a broken
 optional subsystem does not make the whole product unusable.
+
+The user can change persona text, response-style mix and supported models from
+settings, and replace an F5 reference voice when that route is available.
+Qualified conversational mode listens selectively, uses bounded recent context
+and yields to human speech; it does not answer every observed input. These are
+separate delivery gates, not capabilities implied by the current PTT integration.
 
 Every advertised deployment has a signed/pinned artifact set, a completed
 clean-machine and lifecycle record, accurate documentation, a private support

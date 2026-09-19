@@ -57,7 +57,7 @@ settings or validate an installed executable on the caller's behalf.
 
 The only existing production dependency is Core, for
 `AppSettings.CurrentSchemaVersion`. Supported known settings schemas are the
-same v1/v2 accepted by `SettingsJson` and V07a recovery. The candidate's signed
+same v1/v2/v3 accepted by `SettingsJson` and V07a recovery. The candidate's signed
 `settingsMinimumReader`/`settingsMaximumReader` bounds must include the **actual
 persisted current schema**, not just the latest schema supported by Core.
 Unknown current schemas are refused. Only the existing payload RID `win-x64`
@@ -142,7 +142,7 @@ Manifest properties occur in this exact order. Values below are illustrative
 placeholders, not a usable signed package:
 
 ```json
-{"formatVersion":1,"minimumReaderFormat":1,"application":"Martlet.Update","algorithm":"RSA-PSS-SHA256","signerId":"LOWERCASE_SPKI_SHA256","applicationVersion":"0.2.0.0","rid":"win-x64","settingsMinimumReader":1,"settingsMaximumReader":2,"archiveBytes":12345,"archiveSha256":"LOWERCASE_ARCHIVE_SHA256","files":[{"path":"Desktop/example.dll","bytes":123,"sha256":"LOWERCASE_FILE_SHA256"}]}
+{"formatVersion":1,"minimumReaderFormat":1,"application":"Martlet.Update","algorithm":"RSA-PSS-SHA256","signerId":"LOWERCASE_SPKI_SHA256","applicationVersion":"0.2.0.0","rid":"win-x64","settingsMinimumReader":1,"settingsMaximumReader":3,"archiveBytes":12345,"archiveSha256":"LOWERCASE_ARCHIVE_SHA256","files":[{"path":"Desktop/example.dll","bytes":123,"sha256":"LOWERCASE_FILE_SHA256"}]}
 ```
 
 Every field is required/non-null. Integers use minimal unsigned-looking decimal

@@ -160,7 +160,7 @@ public sealed class ConfigurationRestoreScopeTests : IDisposable
             Assert.Equal(plan.CandidateDigest, evidence.Revision);
             Assert.Equal(plan.CandidateDigest.ToUpperInvariant(), evidence.Revision);
             Assert.Equal(plan.ProfileId, evidence.ProfileId);
-            Assert.Equal(2, evidence.SchemaVersion);
+            Assert.Equal(AppSettings.CurrentSchemaVersion, evidence.SchemaVersion);
             Assert.Equal(scope.OriginalSnapshotPath, evidence.OriginalSnapshot);
             Assert.Equal(ConfigurationSnapshot.Hash(original), evidence.OriginalRevision);
             Assert.Equal(original, await File.ReadAllBytesAsync(evidence.OriginalSnapshot));

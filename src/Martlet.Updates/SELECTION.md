@@ -448,7 +448,7 @@ receipts required by a history reference, a selected record substituted with a
 same-generation recovered-original record, or conflicting terminal receipts.
 
 Records are canonical bounded JSON: 32 KiB control/original, 128 KiB journal,
-128 KiB V07a snapshot (Core's bound). At most 32 transaction directories, 128
+256 KiB V07a snapshot (Core's bound). At most 32 transaction directories, 128
 immediate control-root children, 32 ancestry links and 8 recovery scratch attempts
 per transaction are allowed. Full paths are at most 240 characters, control roots
 166 (including room for publication filenames), stage names 100. Existing staging

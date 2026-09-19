@@ -6,7 +6,10 @@ namespace Martlet.Core.Settings;
 public enum SettingsLoadState { FirstRun, Loaded, Invalid, Inaccessible }
 public sealed record SettingsLoadResult(SettingsLoadState State, AppSettings? Settings, string? Revision, MartletError? Error);
 public sealed record SettingsSaveResult(bool Saved, string? Revision, MartletError? Error,
-    bool MigratedFromVersion1 = false, string? SnapshotFileName = null);
+    int? MigratedFromSchemaVersion = null, string? SnapshotFileName = null)
+{
+    public bool MigratedFromVersion1 => MigratedFromSchemaVersion == 1;
+}
 
 public sealed partial class SettingsStore
 {
@@ -81,10 +84,10 @@ public sealed partial class SettingsStore
                 return new(false, null, Failure(ErrorCode.SettingsConflict,
                     "Settings changed since they were loaded. Reload and review the current profile before saving.", "settings.reload"));
 
-            if (existing.Settings?.SchemaVersion == 2 && settings.SchemaVersion == 1)
+            if (existing.Settings is { } existingSettings && existingSettings.SchemaVersion > settings.SchemaVersion)
                 return new(false, null, Failure(ErrorCode.UnsupportedVersion,
-                    "A setup profile cannot be downgraded by saving version 1. Keep its snapshot and use compatible settings.", "settings.restore"));
-            if (existing.Settings is { } prior && settings.SchemaVersion == 2 &&
+                    "Settings cannot be downgraded. Keep the existing file or restore a compatible snapshot.", "settings.restore"));
+            if (existing.Settings is { } prior && settings.SchemaVersion >= 2 &&
                 (prior.Profile.Id != settings.Profile.Id ||
                  !prior.Profile.Credentials.SequenceEqual(settings.Profile.Credentials)))
                 return new(false, null, Failure(ErrorCode.InvalidContract,
@@ -96,11 +99,15 @@ public sealed partial class SettingsStore
                 ValidateAudioTransition(priorAudio.Input, nextAudio.Input);
                 ValidateAudioTransition(priorAudio.Output, nextAudio.Output);
             }
-            var migrated = existing.Settings?.SchemaVersion == 1 && settings.SchemaVersion == 2;
-            var snapshot = migrated ? $"settings.v1.{Guid.NewGuid():N}.bak" : null;
+            if (existing.Settings?.Companion is { } priorCompanion && settings.Companion is { } nextCompanion)
+                ValidateCompanionTransition(priorCompanion, nextCompanion);
+            int? migratedFrom = existing.Settings is { } old && old.SchemaVersion < settings.SchemaVersion
+                ? old.SchemaVersion
+                : null;
+            var snapshot = migratedFrom is { } version ? $"settings.v{version}.{Guid.NewGuid():N}.bak" : null;
             await WriteAtomicAsync(bytes, FilePath, existing.State != SettingsLoadState.FirstRun,
                 snapshot is null ? null : Path.Combine(DataDirectory, snapshot), cancellationToken);
-            return new(true, Convert.ToHexString(SHA256.HashData(bytes)), null, migrated, snapshot);
+            return new(true, Convert.ToHexString(SHA256.HashData(bytes)), null, migratedFrom, snapshot);
         }
         catch (ContractException ex)
         {
@@ -133,7 +140,7 @@ public sealed partial class SettingsStore
             try { committed = await SaveCoreAsync(updated, prepared.Revision, lockHeld: true, token); }
             catch (OperationCanceledException) { committed = AttachmentFailure(prepared); }
             if (committed.Saved)
-                return new(committed with { MigratedFromVersion1 = prepared.MigratedFromVersion1, SnapshotFileName = prepared.SnapshotFileName }, updated);
+                return new(committed with { MigratedFromSchemaVersion = prepared.MigratedFromSchemaVersion, SnapshotFileName = prepared.SnapshotFileName }, updated);
             var cleanup = credentials.Delete(binding);
             return new(AttachmentFailure(prepared), staged,
                 cleanup is CredentialError.None or CredentialError.Missing ? CredentialError.None : cleanup);
@@ -145,7 +152,7 @@ public sealed partial class SettingsStore
     private static SettingsSaveResult AttachmentFailure(SettingsSaveResult prepared) => new(false, prepared.Revision,
         Failure(ErrorCode.SettingsConflict,
             "The metadata checkpoint was saved, but the new key was not attached. Reload Setup and review the pending owned reference; explicitly retry removal before adding another key.",
-            "settings.reload"), prepared.MigratedFromVersion1, prepared.SnapshotFileName);
+            "settings.reload"), prepared.MigratedFromSchemaVersion, prepared.SnapshotFileName);
 
     private static void ValidateCredentialTransition(SetupSettings prior, SetupSettings next, Guid? removed)
     {
@@ -172,6 +179,18 @@ public sealed partial class SettingsStore
         if (prior.EndpointId != next.EndpointId || prior.DisplayName != next.DisplayName)
             ContractRules.Require(prior.ConfigurationRevision != next.ConfigurationRevision,
                 "Changed audio selection requires a fresh configuration revision; prior qualification cannot be reused.");
+    }
+
+    private static void ValidateCompanionTransition(CompanionSettings prior, CompanionSettings next)
+    {
+        foreach (var persona in prior.Personas)
+        {
+            var replacement = next.Personas.SingleOrDefault(item => item.Id == persona.Id);
+            if (replacement is not null &&
+                (replacement.Name != persona.Name || replacement.Text != persona.Text || replacement.Styles != persona.Styles))
+                ContractRules.Require(replacement.ConfigurationRevision != persona.ConfigurationRevision,
+                    "Changed persona content or response styles require a fresh configuration revision.");
+        }
     }
 
     internal async Task<SetupSaveResult> RemoveDetachedCredentialAsync(AppSettings settings, string? expectedRevision,
