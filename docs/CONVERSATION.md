@@ -35,6 +35,9 @@ not a live connection test.
    and separately permit the STT upload. Hold PTT with the mouse or Space key,
    then release to send. Accessible Invoke starts a bounded recording; **Finish
    recording and send** seals it. **Stop** always discards instead of sending.
+   Stop stays above the scrolling form, including at the minimum window size.
+   **Escape** anywhere in the conversation window performs the same Stop;
+   it does not close the window or submit typed text/audio.
 6. Real normalized response text streams into the answer field. Refusal has a
    separate field and is never ordinary speech. Selecting voice explicitly
    authorizes only bounded eligible response segments for this same action.
@@ -125,6 +128,14 @@ reserved; failed cleanup is quarantined rather than replaced with a fresh
 factory. Closing the main window exits the app, not a background tray listener.
 This is not a measured 250 ms physical-stop guarantee.
 
+The fixed **Stop / revoke (Esc)** control also clears accepted but unused
+action/capture/upload permissions. Escape works from the typed input, response
+fields and held PTT control. Releasing Space after Escape cannot send that
+discarded recording or rearm PTT. Stop during settings loading or a slow worker
+requests cancellation without releasing the shared ownership slot early.
+Partial response text remains available; stopped speech is not replayed.
+The shortcut is local to this conversation window, not a system-wide hotkey.
+
 The STT adapter's backwards-compatible two-token overload retains the original
 caller and app-operation tokens independently through credentials, serialization,
 send and result acceptance. A blocking newer cancellation callback cannot hide
@@ -181,6 +192,13 @@ Desktop smoke opens the live surface without a profile/key, requires Send/PTT
 disabled and voice/permission OFF, then exercises existing no-key setup and
 offline fixture behavior. Package smoke launches actual self-contained
 Desktop/Doctor apphosts; it does not run the installer.
+
+In-process WPF regression cases exercise fixed Stop bounds and hit testing at
+minimum/default window sizes and top/middle/bottom scroll positions, routed
+Escape from input/response/PTT, discarded capture and late Space release,
+controlled playback cleanup, unused consent revocation, and retained ownership
+during blocked settings/fake-vault work. These are managed UI and controlled
+HTTP/audio/vault evidence, not physical keyboard/device or apphost qualification.
 
 ## Separately authorized manual qualification (NOT RUN)
 

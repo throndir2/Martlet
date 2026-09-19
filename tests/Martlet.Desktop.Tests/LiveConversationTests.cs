@@ -213,6 +213,7 @@ public sealed class LiveConversationTests
 
     [Theory]
     [InlineData("stop")]
+    [InlineData("escape")]
     [InlineData("pause")]
     [InlineData("mute")]
     [InlineData("lock")]
@@ -237,6 +238,7 @@ public sealed class LiveConversationTests
             switch (transition)
             {
                 case "stop": Click(window, "StopButton"); break;
+                case "escape": Escape(window, "InputText"); break;
                 case "pause": Control<CheckBox>(window, "PauseChoice").IsChecked = true; break;
                 case "mute": Control<CheckBox>(window, "MuteChoice").IsChecked = true; break;
                 case "lock": fixture.Events.Signal(true); break;
@@ -565,6 +567,173 @@ public sealed class LiveConversationTests
         }
         finally { window.Close(); }
     });
+
+    [Theory]
+    [InlineData(550, 450)]
+    [InlineData(920, 850)]
+    public Task StopRemainsVisibleAndClickableAtEveryScrollPosition(double width, double height) => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        var window = fixture.Open();
+        try
+        {
+            await Loaded(window);
+            window.Width = width;
+            window.Height = height;
+            Permit(window);
+            var content = Assert.IsAssignableFrom<FrameworkElement>(window.Content);
+            var scroll = Assert.IsType<ScrollViewer>(
+                Assert.IsType<StackPanel>(Control<TextBox>(window, "InputText").Parent).Parent);
+            var stop = Control<Button>(window, "StopButton");
+            window.UpdateLayout();
+            Assert.True(scroll.ScrollableHeight > 0);
+            Point? fixedPosition = null;
+            foreach (double fraction in new[] { 0.0, 0.5, 1.0 })
+            {
+                scroll.ScrollToVerticalOffset(scroll.ScrollableHeight * fraction);
+                window.UpdateLayout();
+                var bounds = stop.TransformToAncestor(content).TransformBounds(new Rect(stop.RenderSize));
+                Assert.True(new Rect(content.RenderSize).Contains(bounds), $"Stop outside window content: {bounds}");
+                var hit = Assert.IsAssignableFrom<DependencyObject>(content.InputHitTest(
+                    new Point(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2)));
+                while (hit is FrameworkContentElement element)
+                    hit = Assert.IsAssignableFrom<DependencyObject>(element.Parent);
+                Assert.True(ReferenceEquals(hit, stop) || stop.IsAncestorOf(hit), "Stop is clipped or covered.");
+                if (fixedPosition is { } position) Assert.Equal(position, bounds.TopLeft);
+                fixedPosition = bounds.TopLeft;
+            }
+            Assert.Equal("Esc", System.Windows.Automation.AutomationProperties.GetAcceleratorKey(stop));
+            fixture.NoEffects();
+        }
+        finally { window.Close(); }
+    });
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public Task StopOrEscapeRevokesUnusedPermissionsWithoutStartingWork(bool escape) => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        var window = fixture.Open();
+        try
+        {
+            await Loaded(window);
+            Permit(window, voice: true, microphone: true);
+            Assert.True(Control<Button>(window, "StopButton").IsEnabled);
+            if (escape) Escape(window, "InputText");
+            else Click(window, "StopButton");
+            AssertPermissionsCleared(window);
+            Assert.False(Control<Button>(window, "StopButton").IsEnabled);
+            fixture.NoEffects();
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
+    public Task EscapeDiscardsHeldPttAndLateSpaceReleaseCannotUploadOrRearm() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        fixture.Capture.Packets.Enqueue(new byte[3200]);
+        var window = fixture.Open();
+        try
+        {
+            await Loaded(window);
+            Permit(window, voice: true, microphone: true);
+            SendKey(window, Key.Space, down: true);
+            await Until(() => fixture.Capture.Reads > 0);
+            Escape(window, "PttButton");
+            SendKey(window, Key.Space, down: false);
+            await fixture.Finish();
+            await Until(() => Text(window, "StatusText").Contains("app worker released: True", StringComparison.Ordinal));
+            Assert.Contains("conversation.canceled", Text(window, "StatusText"));
+            Assert.Contains("retained PCM: 0", Text(window, "StatusText"));
+            AssertPermissionsCleared(window);
+            SendKey(window, Key.Space, down: true);
+            SendKey(window, Key.Space, down: false);
+            Assert.Equal(1, fixture.Capture.Opens);
+            Assert.Equal(1, fixture.Capture.Stops);
+            Assert.Equal(1, fixture.Capture.Disposals);
+            Assert.Empty(fixture.Native.Targets);
+            Assert.Equal(0, fixture.Stt.Calls);
+            Assert.Equal(0, fixture.Llm.Calls);
+            Assert.Equal(0, fixture.Tts.Calls);
+            Assert.Equal(0, fixture.Output.Opens);
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
+    public Task EscapeFromResponseStopsPlaybackAndPreservesTextWithoutReplay() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create(new ControlledDevice { AutoConsume = false });
+        fixture.Answer("Retained response.");
+        var window = fixture.Open();
+        try
+        {
+            await Loaded(window);
+            Control<TextBox>(window, "InputText").Text = "test";
+            Permit(window, voice: true);
+            Click(window, "SendButton");
+            await Until(() => fixture.Output.Starts > 0);
+            Escape(window, "AnswerText");
+            await fixture.Finish();
+            await Until(() => Text(window, "StatusText").Contains("app worker released: True", StringComparison.Ordinal));
+            Assert.Contains("Retained response.", Text(window, "AnswerText"));
+            Assert.Contains("conversation.canceled", Text(window, "StatusText"));
+            Assert.True(fixture.Output.Samples > 0);
+            Assert.Equal(1, fixture.Output.Stops);
+            Assert.Equal(1, fixture.Output.Disposals);
+            Assert.Equal(1, fixture.Llm.Calls);
+            Assert.Equal(1, fixture.Tts.Calls);
+            AssertPermissionsCleared(window);
+            Escape(window, "AnswerText");
+            Assert.Equal(1, fixture.Output.Opens);
+            Assert.Equal(1, fixture.Tts.Calls);
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
+    public Task EscapeDuringSettingsLoadRetainsOwnershipUntilWorkerReturns() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Settings.BeforeLoad = async _ => { entered.TrySetResult(); await release.Task; };
+        var window = fixture.Open();
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.True(Control<Button>(window, "StopButton").IsEnabled);
+            Escape(window, "ConfigurationText");
+            await Heartbeat();
+            Assert.True(fixture.Runner.IsRunning);
+            Assert.Null(fixture.Runner.TryStart(_ => Task.FromResult(new SetupWorkResult(SetupWorkOutcome.Completed))));
+            AssertPermissionsCleared(window);
+            fixture.NoEffects();
+            release.TrySetResult();
+            await fixture.Finish();
+            Assert.False(Control<Button>(window, "SendButton").IsEnabled);
+            fixture.NoEffects();
+        }
+        finally { release.TrySetResult(); window.Close(); }
+    });
+
+    private static void AssertPermissionsCleared(Window window)
+    {
+        Assert.False(Control<CheckBox>(window, "AcceptAction").IsChecked);
+        Assert.False(Control<CheckBox>(window, "AcceptCapture").IsChecked);
+        Assert.False(Control<CheckBox>(window, "AcceptUpload").IsChecked);
+        Assert.False(Control<Button>(window, "SendButton").IsEnabled);
+        Assert.False(Control<Button>(window, "PttButton").IsEnabled);
+    }
+    private static void Escape(Window window, string target)
+    {
+        var key = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(window), 0, Key.Escape)
+            { RoutedEvent = Keyboard.PreviewKeyDownEvent };
+        Assert.IsAssignableFrom<UIElement>(window.FindName(target)).RaiseEvent(key);
+        Assert.True(key.Handled);
+    }
 
     private static T Control<T>(Window window, string name) => Assert.IsType<T>(window.FindName(name));
     private static string Text(Window window, string name) => name == "ResultText"
