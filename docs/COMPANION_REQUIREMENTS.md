@@ -19,7 +19,7 @@ like a broken connection.
 | --- | --- | --- |
 | R19: Editable personas | Edit persona text, save several named profiles, or import a replacement text file | **V05a/V05b implemented internally:** local named profiles, UTF-8 import/export and weights persist; fresh explicit turns use the fixed selected revision |
 | R20: Replaceable F5 voice | Select or replace reference audio and its matching transcript, then apply or preview the new voice | No app-integrated F5 worker or reference-voice picker; installing upstream F5 alone does not integrate it |
-| R21: Replaceable LLM and VLM | Independently select compatible models from settings, without rebuilding Martlet | Setup stores model IDs, but live adapters enforce narrow allowlists; no Desktop VLM route or general model-switching UI |
+| R21: Replaceable LLM and VLM | Independently select compatible models from settings, without rebuilding Martlet | V02c exposes exact compatible LLM catalog choices and validates fresh route consent; no Desktop VLM route yet |
 | R22: Listen-first participation | Collect bounded recent context and decide whether/when a reply is useful instead of answering every utterance | Deterministic policy exists; Desktop uses explicit typed/PTT only, with no conversation history or automatic listening |
 | R23: Speech barge-in | Detect a person speaking during playback and promptly stop Martlet's voice | Stop/cancellation foundations exist; standalone post-capture VAD is production-blocked and is not live barge-in |
 | R24: Adjustable response mix | Tune helpful, sarcastic, silly, distracted and playful trolling/teasing styles | Per-persona controls persist and the explicit conversation path selects one bounded dominant style; human-perceived style qualification remains |
@@ -108,6 +108,14 @@ license or redistribution permission.
 
 ## R21: Independent LLM and VLM model selection
 
+V02c provides a catalog-backed **Conversation model (LLM)** choice for the named
+OpenAI adapter. The pinned `gpt-4.1-mini-2025-04-14` and
+`gpt-4.1-2025-04-14` snapshots use the existing bounded Responses wire
+contract. Changing the model invalidates destination consent and the next fresh
+action binds its credential and request to that exact selection. Unsupported
+IDs leave the prior working route intact. Catalog presence remains **NOT RUN**,
+not account availability, price, quality, or live readiness.
+
 Provide separate **Conversation model (LLM)** and **Vision model (VLM)** settings
 showing adapter, destination, actual model ID/revision, capabilities, readiness
 and relevant resource/cost information. Support known catalogs and an explicit
@@ -134,7 +142,8 @@ LLM changes must not change the VLM or voice; VLM changes must not change the
 LLM or enable screen capture. Vision may remain disabled/unavailable while
 voice works. Local model fit/loading latency is visible; "change at will"
 means user-controlled selection, not instant GPU hot-swapping. LLM selection
-lands before VLM integration; the common role-selection design must serve both.
+now lands before VLM integration; the common role-selection design must serve
+both.
 
 ## R22: Listen first, respond selectively
 

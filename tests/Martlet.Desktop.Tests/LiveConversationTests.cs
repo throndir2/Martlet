@@ -136,6 +136,33 @@ public sealed class LiveConversationTests
     }
 
     [Fact]
+    public async Task SavedCompatibleLlmModelSwitchRebindsFreshAuthorizationAndRequest()
+    {
+        await using var fixture = await LiveFixture.Create();
+        const string model = "gpt-4.1-2025-04-14";
+        const string answer = "Switched model fixture response.";
+        fixture.Llm.Respond = (_, _) => Task.FromResult(TextRecordingHandler.Sse(
+            Harness.Trace(answer).Replace(TextFixtures.Model, model, StringComparison.Ordinal)));
+        var loaded = await fixture.Store.LoadAsync();
+        var changed = SetupSettings.SelectRoute(
+            loaded.Settings!, SetupRole.Llm, model, null);
+        var route = changed.Setup!.Routes.Single(item => item.Role == SetupRole.Llm);
+        changed = SetupSettings.ReplaceRoute(changed, route with { Consent = route.Selection() });
+        await fixture.Save(changed);
+
+        var operation = fixture.Start();
+        await fixture.Finish(operation);
+
+        Assert.Equal("runtime.Completed", operation.Status.Code);
+        Assert.Equal(answer, operation.Turn!.Content.Text);
+        using var body = JsonDocument.Parse(fixture.Llm.Body);
+        Assert.Equal(model, body.RootElement.GetProperty("model").GetString());
+        Assert.Contains("Be a helpful conversational companion.",
+            body.RootElement.GetProperty("instructions").GetString());
+        Assert.Contains("/openai-llm/", Assert.Single(fixture.Native.Targets));
+    }
+
+    [Fact]
     public async Task LegacyVersionTwoConversationRemainsAvailableWithoutImplicitPersonaUpload()
     {
         await using var fixture = await LiveFixture.Create(legacy: true);

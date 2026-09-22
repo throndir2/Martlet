@@ -14,11 +14,14 @@ not a live connection test.
    supported model IDs, store each role's key in its scoped Windows vault target,
    then review that role's destination choice again (changing a key invalidates
    the choice). Save the checkpoint. Do not put keys in model fields or files.
-2. LLM currently supports `gpt-4.1-mini-2025-04-14`. STT supports `gpt-transcribe`,
+2. LLM currently supports `gpt-4.1-mini-2025-04-14` and
+   `gpt-4.1-2025-04-14`. STT supports `gpt-transcribe`,
    `gpt-4o-transcribe`, `gpt-4o-mini-transcribe`,
    `gpt-4o-mini-transcribe-2025-12-15`, or `whisper-1`.
    Optional TTS supports `gpt-4o-mini-tts-2025-12-15`, voice `alloy` or `coral`,
-   raw mono 24 kHz PCM16. These are adapter allowlists, **not verified account
+   raw mono 24 kHz PCM16. Setup copies exact entries from local adapter catalogs
+   and refuses unsupported IDs without replacing the prior route. These are
+   adapter allowlists, **not verified account
    access, quality recommendations or automatically chosen defaults**.
 3. For PTT or voice output, explicitly save the intended policies in **Audio
    setup (local only)**. Fixed input/output is recommended for predictable
