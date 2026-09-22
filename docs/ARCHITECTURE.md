@@ -374,7 +374,9 @@ model. Participation frequency/gap/cooldown and opt-in capture remain separate
 from per-persona helpful/sarcastic/silly/distracted/teasing weights. Select a
 style only after admission, using a testable weighted selector; persona/style
 never overrides truthfulness, explicit controls or permission. The current
-V04b path has no persona/history injection or automatic observation collector.
+V05b adds fixed-revision persona and weighted style instructions to fresh
+explicit turns. It still has no conversation-history injection or automatic
+observation collector.
 
 ## 5. Audio, streaming, cancellation, and budgets
 

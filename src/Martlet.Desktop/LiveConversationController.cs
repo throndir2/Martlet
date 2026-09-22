@@ -33,6 +33,8 @@ internal sealed class LiveConversationOperation
     internal ConversationTurn? Turn => Volatile.Read(ref turn);
     internal TranscriptionResult? Transcription { get; set; }
     [JsonIgnore] internal string? Transcript { get; set; }
+    internal Guid? PersonaRevision { get; set; }
+    internal ResponseStyle? ResponseStyle { get; set; }
     internal bool OwnershipReleased => Worker.Completion.IsCompleted;
     internal bool ExecutionFinished => Volatile.Read(ref executionFinished) != 0;
     internal void FinishExecution() => Interlocked.Exchange(ref executionFinished, 1);
@@ -100,6 +102,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private readonly OpenAiTranscriptionAdapter transcription;
     private readonly ParticipationPolicy policy;
     private readonly TimeProvider clock;
+    private readonly Func<int, int> nextStyle;
     private readonly TaskCompletionSource quarantine = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private LiveConversationOperation? active;
     private LiveConversationConfiguration? configuration;
@@ -113,13 +116,15 @@ internal sealed class LiveConversationController : IAsyncDisposable
     internal LiveConversationController(SetupOperationRunner operations, ISetupService settings, ICredentialStore vault,
         ICaptureDeviceFactory captureDevices, IPlaybackDeviceFactory playbackDevices, TimeProvider? clock = null,
         Func<IProviderCredentialSource, TimeProvider, ConversationRuntime>? runtimeFactory = null,
-        Func<IProviderCredentialSource, TimeProvider, OpenAiTranscriptionAdapter>? transcriptionFactory = null)
+        Func<IProviderCredentialSource, TimeProvider, OpenAiTranscriptionAdapter>? transcriptionFactory = null,
+        Func<int, int>? nextStyle = null)
     {
         this.operations = operations;
         this.settings = settings;
         this.vault = vault;
         this.captureDevices = captureDevices;
         this.clock = clock ?? TimeProvider.System;
+        this.nextStyle = nextStyle ?? RandomNumberGenerator.GetInt32;
         var credentials = new ConversationCredentialSource(() => Volatile.Read(ref active)?.Authorization);
         runtime = runtimeFactory?.Invoke(credentials, this.clock) ??
             ConversationRuntime.Create(credentials, playbackDevices, clock: this.clock);
@@ -306,8 +311,6 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 input = new(result.Text!);
             }
             operation.Authorization.Check(worker);
-            operation.Authorization.BindInput(input!);
-            var request = operation.Authorization.Configuration.Request(input!, operation.Authorization.Voice);
             ConversationTurn turn;
             lock (gate)
             {
@@ -321,6 +324,14 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 operation.Publish(new("policy." + commit.Reason, Policy: commit.Reason, Finished: !commit.Accepted));
                 if (!commit.Accepted) return new(SetupWorkOutcome.Completed);
                 lease = commit.Lease;
+                var persona = operation.Authorization.Configuration.Persona;
+                ResponseStyle? style = persona is null ? null :
+                    ResponseStyleSelector.Select(persona.Styles, nextStyle);
+                var request = operation.Authorization.Configuration.Request(
+                    input!, operation.Authorization.Voice, style);
+                operation.PersonaRevision = persona?.ConfigurationRevision;
+                operation.ResponseStyle = style;
+                operation.Authorization.BindInput(request.Input);
                 // Exact-content commit, pause/consent state and immediate Start share this short, non-awaiting gate.
                 turn = runtime.Start(request, operation.Authorization, operation.OriginalCaller);
                 operation.Attach(turn);

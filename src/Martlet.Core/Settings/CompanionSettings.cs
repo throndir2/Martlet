@@ -32,6 +32,39 @@ public sealed record ResponseStyleWeights : IContract
     }
 }
 
+public enum ResponseStyle { Helpful, Sarcastic, Silly, Distracted, PlayfulTeasing }
+
+public static class ResponseStyleSelector
+{
+    public static ResponseStyle Select(ResponseStyleWeights weights, Func<int, int> next)
+    {
+        ArgumentNullException.ThrowIfNull(weights);
+        ArgumentNullException.ThrowIfNull(next);
+        weights.Validate();
+        var weighted = new[]
+        {
+            (ResponseStyle.Helpful, weights.Helpful),
+            (ResponseStyle.Sarcastic, weights.Sarcastic),
+            (ResponseStyle.Silly, weights.Silly),
+            (ResponseStyle.Distracted, weights.Distracted),
+            (ResponseStyle.PlayfulTeasing, weights.PlayfulTeasing)
+        };
+        var positive = weighted.Where(item => item.Item2 > 0).ToArray();
+        if (positive.Length == 1)
+            return positive[0].Item1;
+        var total = positive.Sum(item => item.Item2);
+        var selected = next(total);
+        ContractRules.Require(selected >= 0 && selected < total, "The response-style selector returned an invalid sample.");
+        foreach (var (style, weight) in positive)
+        {
+            if (selected < weight)
+                return style;
+            selected -= weight;
+        }
+        throw new ContractException(ErrorCode.InvalidContract, "The response-style selector could not select a style.");
+    }
+}
+
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record PersonaProfile : IContract
 {

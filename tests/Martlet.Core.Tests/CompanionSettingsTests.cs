@@ -69,6 +69,33 @@ public sealed class CompanionSettingsTests : IDisposable
     }
 
     [Fact]
+    public void ResponseStyleSelectionHonorsWeightsAndIsDeterministic()
+    {
+        var one = new ResponseStyleWeights
+        {
+            Helpful = 0, Sarcastic = 0, Silly = 0, Distracted = 0, PlayfulTeasing = 100
+        };
+        Assert.Equal(ResponseStyle.PlayfulTeasing,
+            ResponseStyleSelector.Select(one, _ => throw new InvalidOperationException("A sole style needs no sample.")));
+
+        var mixed = new ResponseStyleWeights
+        {
+            Helpful = 40, Sarcastic = 20, Silly = 15, Distracted = 10, PlayfulTeasing = 15
+        };
+        var random = new Random(19092026);
+        var counts = Enum.GetValues<ResponseStyle>().ToDictionary(style => style, _ => 0);
+        for (var index = 0; index < 10_000; index++)
+            counts[ResponseStyleSelector.Select(mixed, random.Next)]++;
+
+        Assert.InRange(counts[ResponseStyle.Helpful], 3_800, 4_200);
+        Assert.InRange(counts[ResponseStyle.Sarcastic], 1_800, 2_200);
+        Assert.InRange(counts[ResponseStyle.Silly], 1_300, 1_700);
+        Assert.InRange(counts[ResponseStyle.Distracted], 800, 1_200);
+        Assert.InRange(counts[ResponseStyle.PlayfulTeasing], 1_300, 1_700);
+        Assert.Throws<ContractException>(() => ResponseStyleSelector.Select(mixed, total => total));
+    }
+
+    [Fact]
     public async Task MaximumProfileCollectionFitsSettingsAndAggregateTextIsBounded()
     {
         var settings = CompanionSettings.Begin(null);

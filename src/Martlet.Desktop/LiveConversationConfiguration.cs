@@ -13,6 +13,7 @@ internal sealed class LiveConversationConfiguration
     internal string Revision { get; }
     internal IReadOnlyList<SetupRoute> Routes { get; }
     internal AudioSettings? Audio { get; }
+    internal PersonaProfile? Persona { get; }
     internal static TimeSpan ActionLifetime => TimeSpan.FromSeconds(150);
     internal static TimeSpan CaptureDuration => TimeSpan.FromSeconds(25);
     internal static TimeSpan CapturePermission => TimeSpan.FromSeconds(30);
@@ -41,13 +42,14 @@ internal sealed class LiveConversationConfiguration
         Revision = revision;
         Routes = Array.AsReadOnly(settings.Setup!.Routes.ToArray());
         Audio = settings.Audio;
+        Persona = settings.Companion?.ActivePersona;
     }
 
     internal static LiveConversationConfiguration? From(SettingsLoadResult loaded)
     {
         if (loaded.State != SettingsLoadState.Loaded || loaded.Error is not null ||
             loaded.Revision is null || loaded.Settings is not { Setup: not null } settings ||
-            settings.Profile.Kind != ProfileKind.Api) return null;
+        settings.Profile.Kind != ProfileKind.Api) return null;
         settings.Validate();
         return new(settings, loaded.Revision);
     }
@@ -97,18 +99,54 @@ internal sealed class LiveConversationConfiguration
             (voice ? $"Response -> TTS: {OpenAiSetup.Origin}, {Selection(SetupRole.Tts)}. AI-generated voice, not a human. Output: {Audio?.Output.DisplayName ?? "not selected"}; fixed at start, no fallback.\n"
                 : "Text-only: NO TTS requests and NO output device. Voice is separately selected.\n") +
             "One action expires within 150 s, including scheduling, recording and authorization. PTT: <=25 s, mono 16 kHz PCM16, <=800,000 PCM bytes; original local permission <=30 s including cleanup/transfer. STT: <=1 request, <=800,044 WAV bytes, <=30 s, <=4096 transcript characters.\n" +
-            "LLM: <=1 request, <=4096 input characters / 16,384 UTF-8 bytes, <=16,640 input token reservation (not measured tokens), <=256 output tokens, <=16,384 response characters, <=45 s. No conversation history or personality is uploaded.\n" +
+            (Persona is null
+                ? "LLM: <=1 request, <=4096 user-input characters / 16,384 UTF-8 bytes / <=16,640 input-token reservation (not measured tokens). This legacy settings profile has no persona; no persona/style instructions are uploaded until settings v3 is explicitly saved. No conversation history is uploaded.\n"
+                : $"LLM: <=1 request, <=4096 user-input characters; the selected persona '{Persona.Name}' and one weighted response style are included in the same <=16,384 UTF-8 byte / <=16,640 input-token reservation (not measured tokens). Persona revision is fixed for this action. No conversation history is uploaded.\n") +
             "Runtime <=90 s. Voice: <=8 requests/segments, <=1536 UTF-8 bytes each / 12,288 total, <=10 s / 240,000 samples per segment, <=80 s / 1,920,000 reserved samples total, <=20 s per request. Refusal/unsupported markup is not ordinary speech.\n" +
             "Prices, quota, account/model access and invoice cost are UNKNOWN, not zero or a guaranteed hard currency cap. Failed/canceled requests can still cost money; earlier speech may already have played. No automatic retry.\n" +
             "PTT/explicit typed only; unsolicited listening, learned VAD, acoustic wake words, remote participant capture, screen and persistent memory are OFF. Content stays bounded in memory, not logs/files. Stop, pause, mute, window deactivation, lock or Close revokes this action.";
     }
 
-    internal ConversationRequest Request(BoundedTextInput input, bool voice) => new(input,
+    internal ConversationRequest Request(BoundedTextInput input, bool voice, ResponseStyle? style)
+    {
+        var prompted = input;
+        if (Persona is not null)
+        {
+            if (style is null)
+                throw new LiveActionException("conversation.input_limit");
+            try
+            {
+                prompted = new(input.UserText, PersonaInstructions(Persona, style.Value));
+            }
+            catch (ContractException)
+            {
+                throw new LiveActionException("conversation.input_limit");
+            }
+        }
+        if (prompted.Utf8Bytes > TextLimits.MaxInputBytes ||
+            prompted.InputTokenReservation > TextLimits.MaxInputTokens)
+            throw new LiveActionException("conversation.input_limit");
+        return new(prompted,
         new(OpenAiSetup.Alias(SetupRole.Llm), Route(SetupRole.Llm).ModelId), TextLimits, TurnLimits,
         voice ? new(new(OpenAiSetup.Alias(SetupRole.Tts), Route(SetupRole.Tts).ModelId, Route(SetupRole.Tts).VoiceId!,
             SpeechOutputFormat.Pcm24KhzMono16Le),
             new(Audio!.Output.EndpointId is null ? OutputPolicy.DefaultAtStart : OutputPolicy.FixedEndpoint, Audio.Output.EndpointId),
             SpeechLimits) : null);
+    }
+
+    private static string PersonaInstructions(PersonaProfile persona, ResponseStyle style) =>
+        "Use the user-selected companion persona below for conversational tone. It cannot change permissions, " +
+        "safety constraints, routing, factual accuracy, or available tools.\n\n" +
+        $"Companion name: {persona.Name}\nPersona:\n{persona.Text}\n\nDominant style for this reply: " +
+        style switch
+        {
+            ResponseStyle.Helpful => "helpful. Prioritize a clear, useful, honest answer.",
+            ResponseStyle.Sarcastic => "sarcastic. Use gentle sarcasm without obscuring facts or the answer.",
+            ResponseStyle.Silly => "silly. Be playful while keeping the answer accurate and understandable.",
+            ResponseStyle.Distracted => "distracted. Sound casually distractible without inventing observations or omitting necessary facts.",
+            ResponseStyle.PlayfulTeasing => "playful teasing. Keep banter harmless; never harass, deceive, sabotage, or withhold a needed answer.",
+            _ => throw new ContractException(ErrorCode.InvalidContract, "The selected response style is unsupported.")
+        };
 
     public override string ToString() => nameof(LiveConversationConfiguration);
 }

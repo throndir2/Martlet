@@ -82,6 +82,8 @@ public sealed class LiveConversationTests
             Assert.Equal(256, body.RootElement.GetProperty("max_output_tokens").GetInt32());
             Assert.False(body.RootElement.GetProperty("store").GetBoolean());
             Assert.Contains("typed-content-canary", Encoding.UTF8.GetString(fixture.Llm.Body));
+            Assert.Contains("Be a helpful conversational companion.", body.RootElement.GetProperty("instructions").GetString());
+            Assert.Contains("Dominant style for this reply: helpful.", body.RootElement.GetProperty("instructions").GetString());
             Assert.Equal(voice ? 3 : 1, fixture.Native.Targets.Count);
             Assert.All(fixture.Native.Leases, lease => Assert.Throws<ObjectDisposedException>(() => lease.Use(_ => { })));
             Assert.All(fixture.Native.Threads, thread => Assert.NotEqual(Environment.CurrentManagedThreadId, thread));
@@ -103,6 +105,97 @@ public sealed class LiveConversationTests
         }
         finally { window.Close(); }
     });
+
+    [Fact]
+    public async Task FreshActionSnapshotsPersonaRevisionAndWeightedStyle()
+    {
+        await using var fixture = await LiveFixture.Create(nextStyle: _ => 40);
+        var loaded = await fixture.Store.LoadAsync();
+        var persona = loaded.Settings!.Companion!.ActivePersona;
+        var styles = new ResponseStyleWeights
+        {
+            Helpful = 40, Sarcastic = 20, Silly = 20, Distracted = 10, PlayfulTeasing = 10
+        };
+        var changed = loaded.Settings with
+        {
+            Companion = loaded.Settings.Companion.Update(
+                persona.Id, "Corvid", "Prefer concise companion replies.", styles)
+        };
+        await fixture.Save(changed);
+
+        var operation = fixture.Start();
+        await fixture.Finish(operation);
+
+        Assert.Equal(changed.Companion!.ActivePersona.ConfigurationRevision, operation.PersonaRevision);
+        Assert.Equal(ResponseStyle.Sarcastic, operation.ResponseStyle);
+        using var body = JsonDocument.Parse(fixture.Llm.Body);
+        var instructions = body.RootElement.GetProperty("instructions").GetString();
+        Assert.Contains("Companion name: Corvid", instructions);
+        Assert.Contains("Prefer concise companion replies.", instructions);
+        Assert.Contains("Dominant style for this reply: sarcastic.", instructions);
+    }
+
+    [Fact]
+    public async Task LegacyVersionTwoConversationRemainsAvailableWithoutImplicitPersonaUpload()
+    {
+        await using var fixture = await LiveFixture.Create(legacy: true);
+
+        var operation = fixture.Start();
+        await fixture.Finish(operation);
+
+        Assert.Equal("runtime.Completed", operation.Status.Code);
+        Assert.Null(operation.PersonaRevision);
+        Assert.Null(operation.ResponseStyle);
+        using var body = JsonDocument.Parse(fixture.Llm.Body);
+        Assert.False(body.RootElement.TryGetProperty("instructions", out _));
+        Assert.Contains("legacy settings profile has no persona", fixture.Controller.Configuration!.Disclosure(false));
+    }
+
+    [Fact]
+    public async Task PersonaChangeDuringAuthorizationRevokesBeforeProviderDisclosure()
+    {
+        await using var fixture = await LiveFixture.Create();
+        fixture.Settings.BeforeLoad = async _ =>
+        {
+            fixture.Settings.BeforeLoad = null;
+            var loaded = await fixture.Store.LoadAsync();
+            var persona = loaded.Settings!.Companion!.ActivePersona;
+            var changed = loaded.Settings with
+            {
+                Companion = loaded.Settings.Companion.Update(
+                    persona.Id, persona.Name, "Changed after action acceptance.", persona.Styles)
+            };
+            Assert.True((await fixture.Store.SaveAsync(changed, loaded.Revision)).Saved);
+        };
+
+        var operation = fixture.Start();
+        await fixture.Finish(operation);
+
+        Assert.Equal("conversation.configuration_changed", operation.Status.Code);
+        fixture.NoEffects();
+        Assert.Null(operation.PersonaRevision);
+    }
+
+    [Fact]
+    public async Task OversizedPersonaAndInputFailWithoutTruncationOrProviderCall()
+    {
+        await using var fixture = await LiveFixture.Create();
+        var loaded = await fixture.Store.LoadAsync();
+        var persona = loaded.Settings!.Companion!.ActivePersona;
+        var changed = loaded.Settings with
+        {
+            Companion = loaded.Settings.Companion.Update(
+                persona.Id, persona.Name, new string('\u00e9', PersonaProfile.MaximumTextCharacters), persona.Styles)
+        };
+        await fixture.Save(changed);
+
+        var operation = fixture.Start(new string('u', 4_096));
+        await fixture.Finish(operation);
+
+        Assert.Equal("conversation.input_limit", operation.Status.Code);
+        fixture.NoEffects();
+        Assert.Null(operation.PersonaRevision);
+    }
 
     [Fact]
     public Task KeyboardPttStreamsCanonicalWaveThroughSttPolicyAndVoice() => DispatcherTest(async () =>
@@ -628,7 +721,7 @@ internal sealed class LiveFixture : IAsyncDisposable
     internal ControlledCapture Capture { get; } = new();
     internal ControlledDevice Output { get; }
     internal LiveConversationController Controller { get; }
-    internal LiveFixture(ControlledDevice? output = null)
+    internal LiveFixture(ControlledDevice? output = null, Func<int, int>? nextStyle = null)
     {
         Store = new(DirectoryPath);
         Output = output ?? new();
@@ -638,7 +731,8 @@ internal sealed class LiveFixture : IAsyncDisposable
             (credentials, clock) => ConversationRuntime.ForFixture(
                 OpenAiTextGenerationAdapter.CreateForFixture(Llm, credentials, clock),
                 OpenAiSpeechSynthesisAdapter.CreateForFixture(Tts, credentials, clock), Output, new(), clock),
-            (credentials, clock) => OpenAiTranscriptionAdapter.CreateForFixture(Stt, credentials, clock));
+            (credentials, clock) => OpenAiTranscriptionAdapter.CreateForFixture(Stt, credentials, clock),
+            nextStyle);
         Events.LockedChanged += Controller.SetSessionLocked;
         Llm.Inspect = Tts.Inspect = request =>
         {
@@ -646,9 +740,10 @@ internal sealed class LiveFixture : IAsyncDisposable
             Assert.Equal("api.openai.com", request.RequestUri!.Host);
         };
     }
-    internal static async Task<LiveFixture> Create(ControlledDevice? output = null)
+    internal static async Task<LiveFixture> Create(ControlledDevice? output = null, Func<int, int>? nextStyle = null,
+        bool legacy = false)
     {
-        var fixture = new LiveFixture(output);
+        var fixture = new LiveFixture(output, nextStyle);
         var settings = SetupSettings.Begin(null);
         settings = settings with { Profile = settings.Profile with { Kind = ProfileKind.Api },
             Audio = AudioSettings.Create() };
@@ -666,6 +761,8 @@ internal sealed class LiveFixture : IAsyncDisposable
             var route = settings.Setup!.Routes.Single(r => r.Role == role).WithCredential(Guid.NewGuid());
             settings = SetupSettings.ReplaceRoute(settings, route with { Consent = route.Selection() });
         }
+        if (legacy)
+            settings = settings with { SchemaVersion = 2, Companion = null };
         await fixture.Save(settings);
         return fixture;
     }

@@ -17,12 +17,12 @@ like a broken connection.
 
 | Requirement | User-facing outcome | Current boundary |
 | --- | --- | --- |
-| R19: Editable personas | Edit persona text, save several named profiles, or import a replacement text file | **Settings/editor slice implemented:** local named profiles, UTF-8 import/export and weights persist; runtime persona injection is not implemented |
+| R19: Editable personas | Edit persona text, save several named profiles, or import a replacement text file | **V05a/V05b implemented internally:** local named profiles, UTF-8 import/export and weights persist; fresh explicit turns use the fixed selected revision |
 | R20: Replaceable F5 voice | Select or replace reference audio and its matching transcript, then apply or preview the new voice | No app-integrated F5 worker or reference-voice picker; installing upstream F5 alone does not integrate it |
 | R21: Replaceable LLM and VLM | Independently select compatible models from settings, without rebuilding Martlet | Setup stores model IDs, but live adapters enforce narrow allowlists; no Desktop VLM route or general model-switching UI |
 | R22: Listen-first participation | Collect bounded recent context and decide whether/when a reply is useful instead of answering every utterance | Deterministic policy exists; Desktop uses explicit typed/PTT only, with no conversation history or automatic listening |
 | R23: Speech barge-in | Detect a person speaking during playback and promptly stop Martlet's voice | Stop/cancellation foundations exist; standalone post-capture VAD is production-blocked and is not live barge-in |
-| R24: Adjustable response mix | Tune helpful, sarcastic, silly, distracted and playful trolling/teasing styles | No style-weight controls or runtime style selection |
+| R24: Adjustable response mix | Tune helpful, sarcastic, silly, distracted and playful trolling/teasing styles | Per-persona controls persist and the explicit conversation path selects one bounded dominant style; human-perceived style qualification remains |
 
 See [the implemented conversation](CONVERSATION.md),
 [participation policy](../src/Martlet.Participation/README.md) and
@@ -40,9 +40,11 @@ source preserves current v3 personas because those older snapshots contain no
 persona data. Import and export use explicit selected files; export is
 create-only and never overwrites an existing file.
 
-This slice is deliberately inert: the current conversation runtime still sends
-no persona/history and does not sample the saved style weights. It adds no
-listening, inference, provider, capture or preview action.
+The follow-on V05b slice sends the fixed active persona revision and one
+weighted style only after an explicit typed/PTT action passes participation.
+The combined user/persona/style input must fit the existing byte/token
+reservation and is never silently truncated. It adds no history, automatic
+listening, provider permission, capture or preview action.
 
 Provide a **Companion** settings page with a multiline persona text editor and
 named profiles. Create, duplicate, rename, select, save and delete profiles;
@@ -208,7 +210,7 @@ the normalized intended mix. Proposed representation: integer weights 0-100,
 at least one positive; reject all-zero/invalid input rather than invent a mix.
 Initial conservative preset is helpful 100, others 0; users can edit it freely.
 
-After participation allows a reply, choose one dominant style using these
+After participation allows a reply, the V05b runtime chooses one dominant style using these
 relative weights, then supply it with the active persona and bounded context.
 Zero-weight styles are never sampled; a single nonzero weight always wins.
 Inject the random source for reproducible production-path tests. These are
