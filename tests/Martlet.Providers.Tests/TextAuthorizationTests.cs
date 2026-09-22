@@ -236,7 +236,7 @@ public sealed class TextAuthorizationTests
         Assert.Equal("conversation", capabilities.ModelId);
         Assert.False(OpenAiTextGenerationCatalog.SupportsModel(null));
         Assert.Throws<ContractException>(() => OpenAiTextGenerationCatalog.Describe(new("conversation", "gpt-4.1-mini")));
-        Assert.Throws<ContractException>(() => new BoundedTextInput(new string('x', 16_385)));
+        Assert.Throws<ContractException>(() => new BoundedTextInput(new string('x', BoundedTextInput.HardMaxUtf8Bytes + 1)));
         Assert.Throws<ContractException>(() => new BoundedTextInput("Fixture", history: Enumerable.Repeat(new TextHistoryMessage(TextHistoryRole.User, "a"), 17)));
         Assert.Throws<ContractException>(() => new BoundedTextInput("\ud800"));
         Assert.Throws<ContractException>(() => new BoundedTextInput(" "));

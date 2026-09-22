@@ -69,6 +69,30 @@ public sealed class CompanionSettingsTests : IDisposable
     }
 
     [Fact]
+    public void StyleSelectionUsesExactRelativeWeightBoundaries()
+    {
+        var weights = new ResponseStyleWeights
+        {
+            Helpful = 0,
+            Sarcastic = 20,
+            Silly = 0,
+            Distracted = 30,
+            PlayfulTeasing = 50
+        };
+        Assert.Equal(ResponseStyle.Sarcastic, weights.Select(maximum => { Assert.Equal(100, maximum); return 0; }));
+        Assert.Equal(ResponseStyle.Sarcastic, weights.Select(_ => 19));
+        Assert.Equal(ResponseStyle.Distracted, weights.Select(_ => 20));
+        Assert.Equal(ResponseStyle.Distracted, weights.Select(_ => 49));
+        Assert.Equal(ResponseStyle.PlayfulTeasing, weights.Select(_ => 50));
+        Assert.Equal(ResponseStyle.PlayfulTeasing, weights.Select(_ => 99));
+        Assert.Throws<ContractException>(() => weights.Select(_ => 100));
+        Assert.Equal(ResponseStyle.Silly, (weights with
+        {
+            Sarcastic = 0, Distracted = 0, PlayfulTeasing = 0, Silly = 1
+        }).Select(_ => 0));
+    }
+
+    [Fact]
     public async Task MaximumProfileCollectionFitsSettingsAndAggregateTextIsBounded()
     {
         var settings = CompanionSettings.Begin(null);

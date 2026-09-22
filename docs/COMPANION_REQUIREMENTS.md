@@ -17,12 +17,12 @@ like a broken connection.
 
 | Requirement | User-facing outcome | Current boundary |
 | --- | --- | --- |
-| R19: Editable personas | Edit persona text, save several named profiles, or import a replacement text file | **Settings/editor slice implemented:** local named profiles, UTF-8 import/export and weights persist; runtime persona injection is not implemented |
+| R19: Editable personas | Edit persona text, save several named profiles, or import a replacement text file | **Implemented for explicit API turns:** local profiles persist and the active revision is included in each fresh policy-accepted LLM request |
 | R20: Replaceable F5 voice | Select or replace reference audio and its matching transcript, then apply or preview the new voice | No app-integrated F5 worker or reference-voice picker; installing upstream F5 alone does not integrate it |
 | R21: Replaceable LLM and VLM | Independently select compatible models from settings, without rebuilding Martlet | Setup stores model IDs, but live adapters enforce narrow allowlists; no Desktop VLM route or general model-switching UI |
 | R22: Listen-first participation | Collect bounded recent context and decide whether/when a reply is useful instead of answering every utterance | Deterministic policy exists; Desktop uses explicit typed/PTT only, with no conversation history or automatic listening |
 | R23: Speech barge-in | Detect a person speaking during playback and promptly stop Martlet's voice | Stop/cancellation foundations exist; standalone post-capture VAD is production-blocked and is not live barge-in |
-| R24: Adjustable response mix | Tune helpful, sarcastic, silly, distracted and playful trolling/teasing styles | No style-weight controls or runtime style selection |
+| R24: Adjustable response mix | Tune helpful, sarcastic, silly, distracted and playful trolling/teasing styles | **Implemented for explicit API turns:** persisted controls and weighted dominant-style selection; human-perceived style qualification remains |
 
 See [the implemented conversation](CONVERSATION.md),
 [participation policy](../src/Martlet.Participation/README.md) and
@@ -40,9 +40,12 @@ source preserves current v3 personas because those older snapshots contain no
 persona data. Import and export use explicit selected files; export is
 create-only and never overwrites an existing file.
 
-This slice is deliberately inert: the current conversation runtime still sends
-no persona/history and does not sample the saved style weights. It adds no
-listening, inference, provider, capture or preview action.
+The V05b runtime slice snapshots the active persona only after the existing
+participation policy accepts a fresh explicit typed/PTT action. It selects one
+dominant style from the saved relative weights, accounts for the complete
+persona/style instructions in the existing one-use LLM authorization and sends
+no conversation history. It adds no automatic listening, capture permission,
+provider route, retry, second inference or persistent memory.
 
 Provide a **Companion** settings page with a multiline persona text editor and
 named profiles. Create, duplicate, rename, select, save and delete profiles;
@@ -70,6 +73,14 @@ Persona text is user content, not a permission source or an override of safety,
 data routing, Stop, capture controls or provider budgets. Explain that the
 active persona text will be sent to the selected LLM; exclude it from ordinary
 logs/support exports. Imported profiles contain no credentials or permissions.
+
+**Implemented runtime slice:** the explicit API conversation now binds the
+active persona ID and configuration revision to the accepted turn, samples one
+dominant style after participation admission through an injectable bounded
+random source, and discloses the resulting instructions through the existing
+OpenAI LLM request. A stale settings/persona revision fails before sampling,
+credential access or provider transport. The combined user and instruction
+payload is bounded to 24,064 UTF-8 bytes and a 24,576-token reservation.
 
 ## R20: F5 reference-voice selection and replacement
 

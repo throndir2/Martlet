@@ -36,7 +36,7 @@ voice and installation take priority over avatars.
 | Document | Purpose |
 | --- | --- |
 | [Development plan](DEVELOPMENT_PLAN.md) | Scope, proposed decisions, priorities, risks, and reading order |
-| [Companion requirements](docs/COMPANION_REQUIREMENTS.md) | Planned persona editing, F5 reference voices, LLM/VLM selection, listen-first behavior, speech interruption and response-style controls; not current features |
+| [Companion requirements](docs/COMPANION_REQUIREMENTS.md) | Implemented persona editing and bounded persona/style use for explicit API turns; planned F5 reference voices, model selection, listen-first context and speech interruption |
 | [Architecture and provider contracts](docs/ARCHITECTURE.md) | Components, trust boundaries, conversation policy, streaming, and failure behavior |
 | [Installation and support design](docs/INSTALLATION_SUPPORT.md) | First run, host setup, lifecycle, doctor, and troubleshooting matrix |
 | [Delivery and release plan](docs/DELIVERY.md) | PR-sized backlog, dependencies, acceptance criteria, release gates, and traceability |

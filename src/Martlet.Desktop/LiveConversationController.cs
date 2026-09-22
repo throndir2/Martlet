@@ -32,6 +32,7 @@ internal sealed class LiveConversationOperation
     internal CaptureRun? Capture => Volatile.Read(ref capture);
     internal ConversationTurn? Turn => Volatile.Read(ref turn);
     internal TranscriptionResult? Transcription { get; set; }
+    internal PersonaTurnSelection? Persona { get; set; }
     [JsonIgnore] internal string? Transcript { get; set; }
     internal bool OwnershipReleased => Worker.Completion.IsCompleted;
     internal bool ExecutionFinished => Volatile.Read(ref executionFinished) != 0;
@@ -88,6 +89,42 @@ internal sealed class LiveConversationOperation
     public override string ToString() => nameof(LiveConversationOperation);
 }
 
+internal sealed class PersonaTurnSelection
+{
+    internal Guid PersonaId { get; }
+    internal Guid ConfigurationRevision { get; }
+    internal ResponseStyle Style { get; }
+    [JsonIgnore] internal string Instructions { get; }
+
+    private PersonaTurnSelection(Guid personaId, Guid configurationRevision, ResponseStyle style, string instructions)
+    {
+        PersonaId = personaId;
+        ConfigurationRevision = configurationRevision;
+        Style = style;
+        Instructions = instructions;
+    }
+
+    internal static PersonaTurnSelection Create(PersonaProfile persona, Func<int, int> sample)
+    {
+        persona.Validate();
+        var style = persona.Styles.Select(sample);
+        var guidance = style switch
+        {
+            ResponseStyle.Helpful => "Be especially useful, clear, and considerate.",
+            ResponseStyle.Sarcastic => "Use light sarcasm without hostility, deception, or obscuring the answer.",
+            ResponseStyle.Silly => "Use playful silliness while keeping the answer accurate and understandable.",
+            ResponseStyle.Distracted => "Use a mildly distracted conversational tone without ignoring the request or claiming unobserved context.",
+            _ => "Use harmless playful teasing without harassment, deception, or sabotage."
+        };
+        var instructions = $"Use the saved persona named \"{persona.Name}\" for this response.\n" +
+            $"Saved persona instructions:\n{persona.Text}\n\nDominant response style for this turn: {style}. {guidance}\n" +
+            "Style affects tone only. Preserve factual correctness, safety, permissions, serious-request priority, and the user's ability to stop.";
+        return new(persona.Id, persona.ConfigurationRevision, style, instructions);
+    }
+
+    public override string ToString() => nameof(PersonaTurnSelection);
+}
+
 // App-lifetime owner; setup, fixture and live work all reserve the SAME reviewed operation runner.
 internal sealed class LiveConversationController : IAsyncDisposable
 {
@@ -100,6 +137,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private readonly OpenAiTranscriptionAdapter transcription;
     private readonly ParticipationPolicy policy;
     private readonly TimeProvider clock;
+    private readonly Func<int, int> styleSample;
     private readonly TaskCompletionSource quarantine = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private LiveConversationOperation? active;
     private LiveConversationConfiguration? configuration;
@@ -113,13 +151,15 @@ internal sealed class LiveConversationController : IAsyncDisposable
     internal LiveConversationController(SetupOperationRunner operations, ISetupService settings, ICredentialStore vault,
         ICaptureDeviceFactory captureDevices, IPlaybackDeviceFactory playbackDevices, TimeProvider? clock = null,
         Func<IProviderCredentialSource, TimeProvider, ConversationRuntime>? runtimeFactory = null,
-        Func<IProviderCredentialSource, TimeProvider, OpenAiTranscriptionAdapter>? transcriptionFactory = null)
+        Func<IProviderCredentialSource, TimeProvider, OpenAiTranscriptionAdapter>? transcriptionFactory = null,
+        Func<int, int>? styleSample = null)
     {
         this.operations = operations;
         this.settings = settings;
         this.vault = vault;
         this.captureDevices = captureDevices;
         this.clock = clock ?? TimeProvider.System;
+        this.styleSample = styleSample ?? RandomNumberGenerator.GetInt32;
         var credentials = new ConversationCredentialSource(() => Volatile.Read(ref active)?.Authorization);
         runtime = runtimeFactory?.Invoke(credentials, this.clock) ??
             ConversationRuntime.Create(credentials, playbackDevices, clock: this.clock);
@@ -305,9 +345,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 operation.Transcript = result.Text;
                 input = new(result.Text!);
             }
+            await operation.Authorization.ValidateSettingsAsync(worker).ConfigureAwait(false);
             operation.Authorization.Check(worker);
-            operation.Authorization.BindInput(input!);
-            var request = operation.Authorization.Configuration.Request(input!, operation.Authorization.Voice);
             ConversationTurn turn;
             lock (gate)
             {
@@ -321,6 +360,11 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 operation.Publish(new("policy." + commit.Reason, Policy: commit.Reason, Finished: !commit.Accepted));
                 if (!commit.Accepted) return new(SetupWorkOutcome.Completed);
                 lease = commit.Lease;
+                var persona = PersonaTurnSelection.Create(operation.Authorization.Configuration.Persona, styleSample);
+                var exactInput = new BoundedTextInput(input!.UserText, persona.Instructions);
+                operation.Persona = persona;
+                operation.Authorization.BindInput(exactInput);
+                var request = operation.Authorization.Configuration.Request(exactInput, operation.Authorization.Voice);
                 // Exact-content commit, pause/consent state and immediate Start share this short, non-awaiting gate.
                 turn = runtime.Start(request, operation.Authorization, operation.OriginalCaller);
                 operation.Attach(turn);
@@ -346,9 +390,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
             operation.Publish(new(error.Code, Finished: true));
             return new(SetupWorkOutcome.Failed);
         }
-        catch (ContractException error)
+        catch (ContractException)
         {
-            operation.Publish(new("conversation.invalid_input", Finished: true, AudioFailure: error.Code));
+            operation.Publish(new("conversation.invalid_input", Finished: true));
             return new(SetupWorkOutcome.Failed);
         }
         catch (PolicyValidationException)

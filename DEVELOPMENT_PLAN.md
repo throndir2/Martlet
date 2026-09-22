@@ -19,8 +19,9 @@ participation, speech-triggered interruption and adjustable response-style
 weights are now explicit product requirements. See
 [Companion controls and behavior](docs/COMPANION_REQUIREMENTS.md) for the user
 experience, current gaps and boundaries, and Delivery R19-R24 / AC-18-AC-23
-for acceptance. This adds requirements, not implemented controls or permission
-to enable listening, run models or spend money.
+for acceptance. V05a/V05b now implement persisted persona/style controls and
+bounded runtime use for fresh explicit API turns. They do not authorize
+automatic listening, new provider routes, extra inference or spending.
 
 **Validation policy update, 2026-09-13:** the owner's
 [local-only validation policy](README.md#local-only-validation-policy)

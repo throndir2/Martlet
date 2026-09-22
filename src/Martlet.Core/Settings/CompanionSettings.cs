@@ -4,6 +4,8 @@ using Martlet.Core.Contracts;
 
 namespace Martlet.Core.Settings;
 
+public enum ResponseStyle { Helpful, Sarcastic, Silly, Distracted, PlayfulTeasing }
+
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record ResponseStyleWeights : IContract
 {
@@ -29,6 +31,29 @@ public sealed record ResponseStyleWeights : IContract
             "Each response-style weight must be from 0 through 100.");
         ContractRules.Require(values.Any(value => value > 0),
             "At least one response-style weight must be greater than zero.");
+    }
+
+    public ResponseStyle Select(Func<int, int> sample)
+    {
+        ArgumentNullException.ThrowIfNull(sample);
+        Validate();
+        var weighted = new[]
+        {
+            (ResponseStyle.Helpful, Helpful),
+            (ResponseStyle.Sarcastic, Sarcastic),
+            (ResponseStyle.Silly, Silly),
+            (ResponseStyle.Distracted, Distracted),
+            (ResponseStyle.PlayfulTeasing, PlayfulTeasing)
+        };
+        var total = weighted.Sum(item => item.Item2);
+        var draw = sample(total);
+        ContractRules.Require(draw >= 0 && draw < total, "The response-style random sample is out of range.");
+        foreach (var (style, weight) in weighted)
+        {
+            if (draw < weight) return style;
+            draw -= weight;
+        }
+        throw new ContractException(ErrorCode.InvalidContract, "A response style could not be selected.");
     }
 }
 

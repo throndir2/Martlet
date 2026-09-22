@@ -99,7 +99,7 @@ public partial class CompanionWindow : Window
         ReloadButton.IsEnabled = !active;
         ActivityText.Text = active
             ? "Companion settings worker active. No overlapping app effect can start."
-            : "Idle. Changes are local drafts until Apply and Save; runtime persona use is not enabled yet.";
+            : "Idle. Unsaved drafts stay local. A saved active persona/style is sent only with a fresh policy-accepted, explicitly authorized API turn.";
     }
 
     private void RenderPersonas(Guid? selected = null)

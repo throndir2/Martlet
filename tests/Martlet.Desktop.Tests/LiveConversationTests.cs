@@ -105,6 +105,150 @@ public sealed class LiveConversationTests
     });
 
     [Fact]
+    public async Task AcceptedTurnSnapshotsPersonaAndSelectsWeightedStyleAfterPolicy()
+    {
+        var samples = 0;
+        await using var fixture = await LiveFixture.Create(styleSample: maximum =>
+        {
+            samples++;
+            Assert.Equal(100, maximum);
+            return 20;
+        });
+        var loaded = await fixture.Store.LoadAsync();
+        var persona = loaded.Settings!.Companion!.ActivePersona;
+        var styles = new ResponseStyleWeights
+        {
+            Helpful = 0, Sarcastic = 20, Silly = 0, Distracted = 0, PlayfulTeasing = 80
+        };
+        var settings = loaded.Settings with
+        {
+            Companion = loaded.Settings.Companion.Update(persona.Id, "Rook", "Be concise and curious.", styles)
+        };
+        await fixture.Save(settings);
+
+        var ignored = fixture.Start(text: "...");
+        await fixture.Finish(ignored);
+        Assert.Equal(0, samples);
+        Assert.Equal(0, fixture.Llm.Calls);
+
+        var operation = fixture.Start(text: "Explain the fixture.");
+        await fixture.Finish(operation);
+        Assert.Equal(1, samples);
+        Assert.Equal(1, fixture.Llm.Calls);
+        Assert.NotNull(operation.Persona);
+        Assert.Equal(persona.Id, operation.Persona!.PersonaId);
+        Assert.Equal(settings.Companion!.ActivePersona.ConfigurationRevision, operation.Persona.ConfigurationRevision);
+        Assert.Equal(ResponseStyle.PlayfulTeasing, operation.Persona.Style);
+        Assert.DoesNotContain("Be concise and curious.", operation.Persona.ToString());
+
+        using var body = JsonDocument.Parse(fixture.Llm.Body);
+        var instructions = body.RootElement.GetProperty("instructions").GetString()!;
+        Assert.Contains("Rook", instructions);
+        Assert.Contains("Be concise and curious.", instructions);
+        Assert.Contains("PlayfulTeasing", instructions);
+        Assert.Contains("tone only", instructions);
+        Assert.Equal("Explain the fixture.",
+            body.RootElement.GetProperty("input")[0].GetProperty("content").GetString());
+    }
+
+    [Fact]
+    public async Task StalePersonaRevisionRevokesBeforeStyleSelectionOrProviderAccess()
+    {
+        var samples = 0;
+        await using var fixture = await LiveFixture.Create(styleSample: maximum =>
+        {
+            samples++;
+            return maximum - 1;
+        });
+        var loaded = await fixture.Store.LoadAsync();
+        var persona = loaded.Settings!.Companion!.ActivePersona;
+        var changed = loaded.Settings with
+        {
+            Companion = loaded.Settings.Companion.Update(persona.Id, persona.Name,
+                "Changed after the live configuration snapshot.", persona.Styles)
+        };
+        Assert.True((await fixture.Store.SaveAsync(changed, loaded.Revision)).Saved);
+
+        var operation = fixture.Start();
+        await fixture.Finish(operation);
+        Assert.Equal("conversation.configuration_changed", operation.Status.Code);
+        Assert.Equal(0, samples);
+        Assert.Null(operation.Persona);
+        fixture.NoEffects();
+    }
+
+    [Fact]
+    public async Task PersonaChangedDuringTranscriptionRevokesBeforeStyleSelection()
+    {
+        var samples = 0;
+        var sttEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseStt = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var fixture = await LiveFixture.Create(styleSample: maximum =>
+        {
+            samples++;
+            return maximum - 1;
+        });
+        fixture.Capture.Packets.Enqueue(new byte[3200]);
+        fixture.Stt.Respond = async (_, _) =>
+        {
+            sttEntered.TrySetResult();
+            await releaseStt.Task;
+            return ProviderFixtures.Json();
+        };
+        var operation = fixture.Start(microphone: true);
+        await Until(() => operation.Capture?.Snapshot.CanonicalSamples > 0);
+        operation.ReleasePress();
+        await sttEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var loaded = await fixture.Store.LoadAsync();
+        var persona = loaded.Settings!.Companion!.ActivePersona;
+        var changed = loaded.Settings with
+        {
+            Companion = loaded.Settings.Companion.Update(persona.Id, persona.Name,
+                "Changed while transcription was pending.", persona.Styles)
+        };
+        Assert.True((await fixture.Store.SaveAsync(changed, loaded.Revision)).Saved);
+        releaseStt.TrySetResult();
+
+        await fixture.Finish(operation);
+        Assert.Equal("conversation.configuration_changed", operation.Status.Code);
+        Assert.Equal(0, samples);
+        Assert.Null(operation.Persona);
+        Assert.Equal(1, fixture.Stt.Calls);
+        Assert.Equal(0, fixture.Llm.Calls);
+        Assert.Equal(0, fixture.Tts.Calls);
+    }
+
+    [Fact]
+    public Task OversizedCombinedPersonaShowsPromptRemedyWithoutAudioDiagnosis() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        var loaded = await fixture.Store.LoadAsync();
+        var persona = loaded.Settings!.Companion!.ActivePersona;
+        var settings = loaded.Settings with
+        {
+            Companion = loaded.Settings.Companion.Update(persona.Id, persona.Name,
+                new string('\u00e9', PersonaProfile.MaximumTextCharacters), persona.Styles)
+        };
+        await fixture.Save(settings);
+        var window = fixture.Open();
+        try
+        {
+            await Loaded(window);
+            Control<TextBox>(window, "InputText").Text = new string('\u00e9', 4096);
+            Control<CheckBox>(window, "AcceptAction").IsChecked = true;
+            Click(window, "SendButton");
+            await fixture.Finish();
+            await Until(() => Text(window, "ResultText").Contains("combined user text", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain("Typed fallback", Text(window, "ResultText"));
+            Assert.Equal(0, fixture.Llm.Calls);
+            Assert.Equal(0, fixture.Tts.Calls);
+            Assert.Equal(0, fixture.Output.Opens);
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
     public Task KeyboardPttStreamsCanonicalWaveThroughSttPolicyAndVoice() => DispatcherTest(async () =>
     {
         await using var fixture = await LiveFixture.Create();
@@ -628,7 +772,7 @@ internal sealed class LiveFixture : IAsyncDisposable
     internal ControlledCapture Capture { get; } = new();
     internal ControlledDevice Output { get; }
     internal LiveConversationController Controller { get; }
-    internal LiveFixture(ControlledDevice? output = null)
+    internal LiveFixture(ControlledDevice? output = null, Func<int, int>? styleSample = null)
     {
         Store = new(DirectoryPath);
         Output = output ?? new();
@@ -638,7 +782,8 @@ internal sealed class LiveFixture : IAsyncDisposable
             (credentials, clock) => ConversationRuntime.ForFixture(
                 OpenAiTextGenerationAdapter.CreateForFixture(Llm, credentials, clock),
                 OpenAiSpeechSynthesisAdapter.CreateForFixture(Tts, credentials, clock), Output, new(), clock),
-            (credentials, clock) => OpenAiTranscriptionAdapter.CreateForFixture(Stt, credentials, clock));
+            (credentials, clock) => OpenAiTranscriptionAdapter.CreateForFixture(Stt, credentials, clock),
+            styleSample);
         Events.LockedChanged += Controller.SetSessionLocked;
         Llm.Inspect = Tts.Inspect = request =>
         {
@@ -646,9 +791,9 @@ internal sealed class LiveFixture : IAsyncDisposable
             Assert.Equal("api.openai.com", request.RequestUri!.Host);
         };
     }
-    internal static async Task<LiveFixture> Create(ControlledDevice? output = null)
+    internal static async Task<LiveFixture> Create(ControlledDevice? output = null, Func<int, int>? styleSample = null)
     {
-        var fixture = new LiveFixture(output);
+        var fixture = new LiveFixture(output, styleSample);
         var settings = SetupSettings.Begin(null);
         settings = settings with { Profile = settings.Profile with { Kind = ProfileKind.Api },
             Audio = AudioSettings.Create() };

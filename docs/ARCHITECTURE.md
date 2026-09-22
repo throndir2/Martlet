@@ -342,8 +342,9 @@ decision can lead to LLM/TTS; quiet accumulation uses no second inference
 model. Participation frequency/gap/cooldown and opt-in capture remain separate
 from per-persona helpful/sarcastic/silly/distracted/teasing weights. Select a
 style only after admission, using a testable weighted selector; persona/style
-never overrides truthfulness, explicit controls or permission. The current
-V04b path has no persona/history injection or automatic observation collector.
+never overrides truthfulness, explicit controls or permission. The current V05b path injects the snapshotted active persona and one weighted
+dominant style after admission. It still has no conversation-history injection
+or automatic observation collector.
 
 ## 5. Audio, streaming, cancellation, and budgets
 

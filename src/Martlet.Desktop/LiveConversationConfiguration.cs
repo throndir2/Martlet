@@ -13,6 +13,7 @@ internal sealed class LiveConversationConfiguration
     internal string Revision { get; }
     internal IReadOnlyList<SetupRoute> Routes { get; }
     internal AudioSettings? Audio { get; }
+    internal PersonaProfile Persona { get; }
     internal static TimeSpan ActionLifetime => TimeSpan.FromSeconds(150);
     internal static TimeSpan CaptureDuration => TimeSpan.FromSeconds(25);
     internal static TimeSpan CapturePermission => TimeSpan.FromSeconds(30);
@@ -23,7 +24,8 @@ internal sealed class LiveConversationConfiguration
     };
     internal static TextGenerationLimits TextLimits { get; } = new()
     {
-        MaxInputTokens = 16_640, MaxOutputTokens = 256, MaxRequestTime = TimeSpan.FromSeconds(45)
+        MaxInputBytes = BoundedTextInput.HardMaxUtf8Bytes,
+        MaxInputTokens = 24_576, MaxOutputTokens = 256, MaxRequestTime = TimeSpan.FromSeconds(45)
     };
     internal static SpeechSynthesisLimits SpeechLimits { get; } = new()
     {
@@ -41,12 +43,13 @@ internal sealed class LiveConversationConfiguration
         Revision = revision;
         Routes = Array.AsReadOnly(settings.Setup!.Routes.ToArray());
         Audio = settings.Audio;
+        Persona = settings.Companion!.ActivePersona;
     }
 
     internal static LiveConversationConfiguration? From(SettingsLoadResult loaded)
     {
         if (loaded.State != SettingsLoadState.Loaded || loaded.Error is not null ||
-            loaded.Revision is null || loaded.Settings is not { Setup: not null } settings ||
+            loaded.Revision is null || loaded.Settings is not { Setup: not null, Companion: not null } settings ||
             settings.Profile.Kind != ProfileKind.Api) return null;
         settings.Validate();
         return new(settings, loaded.Revision);
@@ -93,11 +96,12 @@ internal sealed class LiveConversationConfiguration
                 : "not configured / unsupported";
         }
         return $"Text -> LLM: {OpenAiSetup.Origin}, {Selection(SetupRole.Llm)}.\n" +
+            $"Active persona: {Persona.Name}; its saved instructions and one weighted dominant style are disclosed to the LLM only after participation accepts this fresh action. Persona revision: {Persona.ConfigurationRevision}.\n" +
             $"PTT audio -> STT (only with separate local capture AND upload permission): {OpenAiSetup.Origin}, {Selection(SetupRole.Stt)}.\n" +
             (voice ? $"Response -> TTS: {OpenAiSetup.Origin}, {Selection(SetupRole.Tts)}. AI-generated voice, not a human. Output: {Audio?.Output.DisplayName ?? "not selected"}; fixed at start, no fallback.\n"
                 : "Text-only: NO TTS requests and NO output device. Voice is separately selected.\n") +
             "One action expires within 150 s, including scheduling, recording and authorization. PTT: <=25 s, mono 16 kHz PCM16, <=800,000 PCM bytes; original local permission <=30 s including cleanup/transfer. STT: <=1 request, <=800,044 WAV bytes, <=30 s, <=4096 transcript characters.\n" +
-            "LLM: <=1 request, <=4096 input characters / 16,384 UTF-8 bytes, <=16,640 input token reservation (not measured tokens), <=256 output tokens, <=16,384 response characters, <=45 s. No conversation history or personality is uploaded.\n" +
+            "LLM: <=1 request, <=4096 user-input characters; user text + persona/style instructions <=24,064 UTF-8 bytes and <=24,576 input-token reservation (not measured tokens); <=256 output tokens, <=16,384 response characters, <=45 s. No conversation history is uploaded.\n" +
             "Runtime <=90 s. Voice: <=8 requests/segments, <=1536 UTF-8 bytes each / 12,288 total, <=10 s / 240,000 samples per segment, <=80 s / 1,920,000 reserved samples total, <=20 s per request. Refusal/unsupported markup is not ordinary speech.\n" +
             "Prices, quota, account/model access and invoice cost are UNKNOWN, not zero or a guaranteed hard currency cap. Failed/canceled requests can still cost money; earlier speech may already have played. No automatic retry.\n" +
             "PTT/explicit typed only; unsolicited listening, learned VAD, acoustic wake words, remote participant capture, screen and persistent memory are OFF. Content stays bounded in memory, not logs/files. Stop, pause, mute, window deactivation, lock or Close revokes this action.";
