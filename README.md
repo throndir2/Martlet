@@ -8,6 +8,14 @@ Each new action requires a bounded data/cost/output authorization; no credential
 network or audio are accessed on launch. Text-only never requests TTS or opens output.
 Actual account/device/first-conversation qualification remains **NOT RUN**.
 
+The separate [H03 gateway security foundation](src/Martlet.Gateway/README.md)
+now provides standalone private/loopback TLS binding, out-of-band pairing,
+pinned host identity, signed scoped device credentials, replay/expiry/
+rotation/revocation checks and bounded role-filtered metadata over in-process
+HTTPS. It is outside the Desktop/settings/root-solution graph and exposes no
+inference or worker port. No LAN, firewall, Ubuntu service, certificate
+lifecycle or host qualification has been run.
+
 Martlet also retains an accessible Windows desktop demo and Doctor self-test, using the
 production text validator, bounded session state, diagnostics and optional PCM
 sink. All demo text is authored synthetic content, **FIXTURE - NOT AI**.

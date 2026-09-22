@@ -15,6 +15,14 @@ origin, constructed `:local` request, exact-action trusted-caller permit and
 retained HTTP/lease ownership. It reuses Core text contracts without generalizing
 OpenAI conversation authority. No production issuer, gateway/Desktop route,
 immutable model binding or qualified runtime/host locality is established.
+The separate [H03 gateway security foundation](../src/Martlet.Gateway/README.md)
+implements an isolated ASP.NET Core library boundary: explicit private/loopback
+TLS binding with a caller-supplied pinned identity, local-only pairing approval,
+signed scoped device requests with nonce/expiry/rotation/revocation, and
+role-filtered version/capability/status metadata behind worker interfaces. It
+does not join Desktop/Core settings or the root solution, expose an inference
+route/raw worker port, create a production key, change a firewall, or establish
+real LAN/Ubuntu/host qualification.
 Read [the development plan](../DEVELOPMENT_PLAN.md)
 for scope and approvals, [installation/support](INSTALLATION_SUPPORT.md) for
 lifecycle, and [delivery](DELIVERY.md) for task ownership. Source IDs refer to

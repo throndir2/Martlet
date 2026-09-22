@@ -34,6 +34,14 @@ audio choices without changing installer permissions or introducing background
 listening. This functional integration is not a witnessed account/device/novice
 trial, clean Windows installation or signing/release qualification.
 
+The standalone [H03 gateway security foundation](../src/Martlet.Gateway/README.md)
+now exercises private/loopback TLS, pinned identity, explicit one-use pairing,
+scoped signed device credentials, replay/expiry/rotation/revocation and bounded
+role-filtered metadata through in-process HTTPS. It performs no host discovery,
+firewall/router/Docker/service/certificate installation, raw worker exposure or
+inference. The Ubuntu bootstrap and real unauthorized-LAN/firewall checks below
+remain future qualification gates, not steps completed by that library.
+
 ## 1. One Windows golden path
 
 Target Windows 11 25H2 x64 Home/Pro on a currently serviced patch. Test a clean
