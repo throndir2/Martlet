@@ -20,7 +20,7 @@ like a broken connection.
 | R19: Editable personas | Edit persona text, save several named profiles, or import a replacement text file | **V05a/V05b implemented internally:** local named profiles, UTF-8 import/export and weights persist; fresh explicit turns use the fixed selected revision |
 | R20: Replaceable F5 voice | Select or replace reference audio and its matching transcript, then apply or preview the new voice | No app-integrated F5 worker or reference-voice picker; installing upstream F5 alone does not integrate it |
 | R21: Replaceable LLM and VLM | Independently select compatible models from settings, without rebuilding Martlet | V02c exposes exact compatible LLM catalog choices and validates fresh route consent; no Desktop VLM route yet |
-| R22: Listen-first participation | Collect bounded recent context and decide whether/when a reply is useful instead of answering every utterance | Deterministic policy exists; Desktop uses explicit typed/PTT only, with no conversation history or automatic listening |
+| R22: Listen-first participation | Collect bounded recent context and decide whether/when a reply is useful instead of answering every utterance | Explicit completed turns now supply bounded ephemeral context; automatic listening/observation collection remains unavailable |
 | R23: Speech barge-in | Detect a person speaking during playback and promptly stop Martlet's voice | Stop/cancellation foundations exist; standalone post-capture VAD is production-blocked and is not live barge-in |
 | R24: Adjustable response mix | Tune helpful, sarcastic, silly, distracted and playful trolling/teasing styles | Per-persona controls persist and the explicit conversation path selects one bounded dominant style; human-perceived style qualification remains |
 
@@ -164,6 +164,15 @@ text, whichever is reached first; evict oldest entries and further trim to the
 selected model's input budget. This is not persistent memory or an audio archive.
 Clear on session end, pause/lock or consent revocation; new routes require
 explicit authorization for any retained context they would receive.
+
+**Implemented explicit-turn foundation:** completed typed/PTT exchanges retain
+at most eight user/assistant pairs, 16 KiB UTF-8 and two minutes in memory.
+Each fresh action's displayed authorization covers this context; oldest pairs
+are omitted until current input, persona, style and context fit the existing
+LLM byte/token reservation. Failed, refused and policy-suppressed turns are not
+retained. Pause, lock, configuration load/change, Stop and closing the
+conversation clear the buffer. This does not enable automatic capture,
+unsolicited replies, persistent memory or an observation backlog.
 
 An observation is not a pending reply. Several utterances can inform one later
 response, but expired intents cannot be replayed and old provider permission

@@ -163,6 +163,63 @@ public sealed class LiveConversationTests
     }
 
     [Fact]
+    public async Task CompletedExplicitTurnsSupplyBoundedHistoryAndPauseClearsIt()
+    {
+        await using var fixture = await LiveFixture.Create();
+        fixture.Answer("First answer.");
+        await fixture.Finish(fixture.Start("First question."));
+        Assert.Equal(1, fixture.Controller.ContextTurns);
+
+        fixture.Answer("Second answer.");
+        var second = fixture.Start("Second question.");
+        await fixture.Finish(second);
+        Assert.Equal(2, second.ContextMessages);
+        Assert.Equal(0, second.ContextMessagesOmitted);
+        using (var body = JsonDocument.Parse(fixture.Llm.Body))
+        {
+            var input = body.RootElement.GetProperty("input");
+            Assert.Equal(3, input.GetArrayLength());
+            Assert.Equal("First question.", input[0].GetProperty("content").GetString());
+            Assert.Equal("First answer.", input[1].GetProperty("content").GetString());
+            Assert.Equal("Second question.", input[2].GetProperty("content").GetString());
+        }
+        Assert.Equal(2, fixture.Controller.ContextTurns);
+
+        fixture.Controller.Stop(second, "conversation.closed");
+        Assert.Equal(0, fixture.Controller.ContextTurns);
+        fixture.Answer("Before pause.");
+        await fixture.Finish(fixture.Start("Another question."));
+        Assert.Equal(1, fixture.Controller.ContextTurns);
+        fixture.Controller.SetControls(pause: true, mute: false, sessionLocked: false);
+        fixture.Controller.SetControls(pause: false, mute: false, sessionLocked: false);
+        Assert.Equal(0, fixture.Controller.ContextTurns);
+        fixture.Answer("After pause.");
+        var afterPause = fixture.Start("Fresh question.");
+        await fixture.Finish(afterPause);
+        Assert.Equal(0, afterPause.ContextMessages);
+        using var freshBody = JsonDocument.Parse(fixture.Llm.Body);
+        Assert.Single(freshBody.RootElement.GetProperty("input").EnumerateArray());
+    }
+
+    [Fact]
+    public void ConversationContextIsAgeCountAndByteBounded()
+    {
+        var clock = new RuntimeClock();
+        var context = new ConversationContextBuffer(clock);
+        for (var index = 0; index < ConversationContextBuffer.MaximumTurns + 1; index++)
+            context.Add($"Question {index}", $"Answer {index}");
+        Assert.Equal(ConversationContextBuffer.MaximumTurns, context.Count);
+        Assert.DoesNotContain(context.Snapshot(), item => item.Text == "Question 0");
+
+        context.Add(new string('u', 9_000), new string('a', 9_000));
+        Assert.Equal(0, context.Count);
+
+        context.Add("Recent", "Reply");
+        clock.Advance(ConversationContextBuffer.MaximumAge);
+        Assert.Equal(0, context.Count);
+    }
+
+    [Fact]
     public async Task LegacyVersionTwoConversationRemainsAvailableWithoutImplicitPersonaUpload()
     {
         await using var fixture = await LiveFixture.Create(legacy: true);

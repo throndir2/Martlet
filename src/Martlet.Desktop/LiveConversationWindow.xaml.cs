@@ -304,6 +304,7 @@ public partial class LiveConversationWindow : Window
             $"Mic: {capture?.State.ToString() ?? "not used"}; samples: {capture?.CanonicalSamples ?? 0}; retained PCM: {capture?.RetainedPcmBytes ?? 0}. VAD/wake/unsolicited: OFF.\n" +
             $"STT: {operation.Transcription?.Outcome.ToString() ?? "not completed / not used"}; Policy: {status.Policy?.ToString() ?? "see timeline"}; LLM/TTS: {snapshot?.State.ToString() ?? "not dispatched"}.\n" +
             $"Persona revision/style: {operation.PersonaRevision?.ToString() ?? "not dispatched"} / {operation.ResponseStyle?.ToString() ?? "not selected"}.\n" +
+            $"In-memory context messages used/omitted: {operation.ContextMessages}/{operation.ContextMessagesOmitted}; retained completed turns: {controller.ContextTurns}.\n" +
             $"Reserved requests: {operation.Authorization.ReservedRequests}; segments: {snapshot?.CommittedSegments ?? 0}; queued: {snapshot?.QueuedSegments ?? 0}; suppressed fragments: {snapshot?.SuppressedFragments ?? 0}.\n" +
             $"Playback accepted/submitted/device-consumed: {snapshot?.AcceptedSamples ?? 0}/{snapshot?.SubmittedSamples ?? 0}/{snapshot?.DeviceConsumedSamples ?? 0}; drain: {snapshot?.Playback?.DeviceDrainObserved ?? false}; may have played: {snapshot?.MayHavePlayed ?? false}. NOT proof of heard audio; cost UNKNOWN.\n" +
             $"Runtime failure: {snapshot?.Failure}; provider: {snapshot?.ProviderFailure ?? status.ProviderFailure}; audio: {snapshot?.Playback?.Error?.Code ?? status.AudioFailure}.\n" + operation.Timeline;
