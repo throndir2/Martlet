@@ -87,8 +87,14 @@
           "xunit.extensibility.core": "[2.9.3]"
         }
       },
-      "martlet.f5": {
+      "martlet.core": {
         "type": "Project"
+      },
+      "martlet.f5": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Core": "[0.1.0, )"
+        }
       }
     }
   }

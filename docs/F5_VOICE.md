@@ -7,6 +7,12 @@ settings, packaging, and the existing provider graph. Nothing in this slice
 installs or starts Python, F5-TTS, weights, CUDA, Docker, services, a gateway,
 or an audio device. The deterministic worker is **FIXTURE - NOT AI**.
 
+VS01 reuses the strict PCM16 WAV inspector from `Martlet.Core.Voices` in both
+the local Voice Library and this F5 adapter. F5 retains its original 4 MiB,
+1-30 second reference bounds and failure codes. This shared managed parser
+dependency does not connect the F5 worker/store to Desktop or change its
+private reference manifest.
+
 ## Reuse and installation boundary
 
 This slice is a focused mechanical import of

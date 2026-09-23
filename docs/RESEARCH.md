@@ -546,7 +546,19 @@ warmup and actual role inference. Cheap health checks must not download/load
 models or perform recurring paid inference. Startup ordering alone does not
 establish ongoing recovery, model readiness or a successful conversation.
 
-### Linux service state custody and durable I/O (H03b3)
+## S36-S40: multi-engine voice research, 2026-09-23
+
+The owner expanded self-hosted voice scope to F5-TTS, Qwen3-TTS, Chatterbox,
+GPT-SoVITS and XTTS-v2. [Voice Studio research](VOICE_STUDIO.md#research-implementation-not-marketing-compatibility)
+and primary sources V1-V5 record the respective S36-S40 findings: actual
+Python/native API entry points, reference limits, training recipes, conflicting
+dependency versions, implicit downloads/preprocessing and license boundaries.
+These are upstream observations, not pinned/installed/qualified Martlet
+runtimes. In particular, XTTS CPML restricts model and output use to
+noncommercial purposes; Chatterbox managed training is unverified. Each engine
+requires isolated dependencies and its own artifact closure.
+
+## Linux service state custody and durable I/O (H03b3)
 
 **Accessed 2026-09-23.** Primary upstream contracts, not native Martlet evidence:
 [Secret Service introduction](https://specifications.freedesktop.org/secret-service/latest/ch01.html)
