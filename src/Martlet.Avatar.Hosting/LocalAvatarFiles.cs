@@ -15,6 +15,11 @@ public static class LocalAvatarFiles
         ContractRules.Require(!string.IsNullOrWhiteSpace(path) && path.Length <= 1024 &&
             Path.IsPathFullyQualified(path) && !path.StartsWith(@"\\", StringComparison.Ordinal) &&
             !path.Any(char.IsControl), "Select a bounded absolute local path, not a network path.");
+        ContractRules.Require(path[Path.GetPathRoot(path)!.Length..].Split(Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar).All(segment => segment.Length == 0 ||
+                segment.IndexOfAny(Path.GetInvalidFileNameChars()) < 0 && !segment.EndsWith('.') && !segment.EndsWith(' ') &&
+                segment is not ("." or "..")),
+            "Avatar paths cannot contain alternate streams, traversal or ambiguous trailing characters.");
     }
 
     public static void CheckAncestors(string path)

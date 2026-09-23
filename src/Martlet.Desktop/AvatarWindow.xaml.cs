@@ -51,7 +51,7 @@ public partial class AvatarWindow : Window
     private void Selection_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e) => DraftChanged();
     private void DraftChanged()
     {
-        if (controller?.IsActive == true) controller.Revoke();
+        controller?.Revoke();
         if (AnalysisPermission is not null) AnalysisPermission.IsChecked = false;
     }
 
@@ -214,6 +214,13 @@ public partial class AvatarWindow : Window
     {
         controller.Revoke();
         await ActionAsync(async () => { await controller.StopAsync(); AnalysisPermission.IsChecked = false; }, allowBusy: true);
+    }
+
+    private void Window_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key != System.Windows.Input.Key.Escape) return;
+        e.Handled = true;
+        Stop_Click(sender, e);
     }
 
     private async Task ActionAsync(Func<Task> action, bool allowBusy = false)

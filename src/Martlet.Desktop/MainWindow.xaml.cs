@@ -234,7 +234,7 @@ public partial class MainWindow : Window
     private async void Setup_Click(object sender, RoutedEventArgs e)
     {
         if (store is null || closing || saving || runningFixture || model?.IsRunning == true) return;
-        await avatar.StopAsync();
+        if (!await StopAvatarSafelyAsync()) return;
         new SetupWindow(setupService!, setupOperations) { Owner = this, Troubleshooting = OpenTroubleshooting, ConfigurationRecovery = OpenRecovery }.ShowDialog();
         await RefreshAsync();
     }
@@ -276,9 +276,17 @@ public partial class MainWindow : Window
     {
         if (!locked) return;
         avatar.Revoke();
-        try { await avatar.StopAsync(); }
-        catch (Exception error) when (error is System.IO.IOException or InvalidOperationException or TimeoutException)
-        { ActionText.Text = "Avatar cleanup failed; close the app after current voice resources release."; }
+        await Dispatcher.InvokeAsync(StopAvatarSafelyAsync).Task.Unwrap();
+    }
+    private async Task<bool> StopAvatarSafelyAsync()
+    {
+        try { await avatar.StopAsync(); return true; }
+        catch (Exception error) when (error is System.IO.IOException or InvalidOperationException or TimeoutException or
+            System.ComponentModel.Win32Exception or UnauthorizedAccessException)
+        {
+            ActionText.Text = "Avatar cleanup is incomplete. Voice is unaffected; retry STOP avatar before changing its resources.";
+            return false;
+        }
     }
     private async void Recovery_Click(object sender, RoutedEventArgs e)
     {
@@ -340,6 +348,12 @@ public partial class MainWindow : Window
             await model.CloseAsync();
         await Task.Run(async () => await fixture.DisposeAsync());
         if (conversation is not null) await Task.Run(async () => await conversation.DisposeAsync());
+        if (!await StopAvatarSafelyAsync())
+        {
+            closing = false;
+            IsEnabled = true;
+            return;
+        }
         await avatar.DisposeAsync();
         // WPF OnMainWindowClose exits the process, including any non-cooperative in-process callback.
         // Even absent or synchronous cleanup must leave WPF's original Closing event before closing again.

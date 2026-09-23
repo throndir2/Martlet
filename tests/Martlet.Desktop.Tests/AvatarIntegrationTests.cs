@@ -22,21 +22,33 @@ public sealed class AvatarIntegrationTests
         internal ConcurrentQueue<RendererMessage> Messages { get; } = new();
         public RendererCapabilities? Capabilities { get; private set; }
         public bool HasExited { get; private set; }
+        private readonly TaskCompletionSource exited = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task Exited => exited.Task;
         internal bool FailApply { get; set; }
+        internal TaskCompletionSource? ConfigureRelease { get; set; }
+        internal TaskCompletionSource EnteredConfigure { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource? StartRelease { get; set; }
+        internal TaskCompletionSource EnteredStart { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly Guid activation = Guid.NewGuid();
-        public Task StartAsync(AvatarProfile profile, string revision, CancellationToken token)
+        public async Task StartAsync(AvatarProfile profile, string revision, CancellationToken token)
         {
+            EnteredStart.TrySetResult();
+            if (StartRelease is { } held) await held.Task;
             Capabilities = new(revision.ToLowerInvariant(), [new("Jaw", -10, 10, 0, ["Mouth"])]);
-            return Task.CompletedTask;
         }
-        public Task<RendererMessage> SendAsync<T>(string kind, T data, CancellationToken token, TimeSpan? timeout = null)
+        public async Task<RendererMessage> SendAsync<T>(string kind, T data, CancellationToken token, TimeSpan? timeout = null)
         {
             token.ThrowIfCancellationRequested();
             if (HasExited || FailApply && kind == "apply") throw new IOException("controlled renderer failure");
             Messages.Enqueue(RendererProtocol.Message(kind, activation, data));
-            return Task.FromResult(RendererProtocol.Message("ok", activation, new { }));
+            if (kind == "configure")
+            {
+                EnteredConfigure.TrySetResult();
+                if (ConfigureRelease is { } held) await held.Task;
+            }
+            return RendererProtocol.Message("ok", activation, new { });
         }
-        public ValueTask DisposeAsync() { HasExited = true; return ValueTask.CompletedTask; }
+        public ValueTask DisposeAsync() { HasExited = true; exited.TrySetResult(); return ValueTask.CompletedTask; }
     }
 
     private static AvatarConfiguration Mapping(string modelId) => new()
@@ -127,5 +139,89 @@ public sealed class AvatarIntegrationTests
             Assert.All(renderers, r => Assert.True(r.HasExited));
             Assert.DoesNotContain(renderers.SelectMany(r => r.Messages), m => m.Kind == "apply");
         }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Resource_or_profile_drift_requires_fresh_inspection(bool profileChanged)
+    {
+        using var scope = new AvatarHostingTests.Scope();
+        var renderer = new Renderer();
+        await using var controller = new AvatarController(createRenderer: () => renderer);
+        await controller.InspectAsync(scope.Profile(), default);
+        var selected = controller.InspectedProfile! with
+        {
+            Configuration = AvatarProfile.ConfigurationElement(Mapping(controller.Capabilities!.ModelId))
+        };
+        if (profileChanged) selected = selected with { ProfileId = Guid.NewGuid() };
+        else await File.WriteAllBytesAsync(scope.Model, [9, 9, 9]);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => controller.ActivateAsync(selected, true, default));
+        Assert.False(controller.Observer.IsEnabled);
+        Assert.DoesNotContain(renderer.Messages, m => m.Kind == "configure");
+    }
+
+    [Theory]
+    [InlineData("stop")]
+    [InlineData("revoke")]
+    [InlineData("caller")]
+    public async Task Revoking_held_configuration_cannot_commit_late_activation_or_feed_pcm(string cause)
+    {
+        using var scope = new AvatarHostingTests.Scope();
+        var renderer = new Renderer { ConfigureRelease = new(TaskCreationOptions.RunContinuationsAsynchronously) };
+        await using var controller = new AvatarController(createRenderer: () => renderer);
+        await controller.InspectAsync(scope.Profile(), default);
+        var profile = controller.InspectedProfile! with
+        { Configuration = AvatarProfile.ConfigurationElement(Mapping(controller.Capabilities!.ModelId)) };
+        using var caller = new CancellationTokenSource();
+        var activating = controller.ActivateAsync(profile, true, caller.Token);
+        await renderer.EnteredConfigure.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Task? stopping = null;
+        if (cause == "stop") stopping = controller.StopAsync();
+        else if (cause == "caller") caller.Cancel();
+        else controller.Revoke();
+        renderer.ConfigureRelease.TrySetResult();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => activating);
+        if (stopping is not null) await stopping.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(controller.Observer.IsEnabled);
+        Assert.False(controller.IsActive);
+        await using var voice = new Harness(generatedSpeech: controller.Observer);
+        voice.Answer("Voice unaffected after canceled activation.");
+        Assert.Equal(ConversationState.Completed, (await Harness.Finish(voice.Start())).State);
+        Assert.False(controller.Observer.Segments.TryRead(out _));
+        Assert.DoesNotContain(renderer.Messages, m => m.Kind is "reset" or "apply");
+    }
+
+    [Fact]
+    public async Task Stop_during_inspection_cannot_publish_stale_capabilities()
+    {
+        using var scope = new AvatarHostingTests.Scope();
+        var renderer = new Renderer { StartRelease = new(TaskCreationOptions.RunContinuationsAsynchronously) };
+        await using var controller = new AvatarController(createRenderer: () => renderer);
+        var inspecting = controller.InspectAsync(scope.Profile(), default);
+        await renderer.EnteredStart.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var stopping = controller.StopAsync();
+        renderer.StartRelease.TrySetResult();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => inspecting);
+        await stopping.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Null(controller.Capabilities);
+        Assert.False(controller.Observer.IsEnabled);
+        Assert.True(renderer.HasExited);
+    }
+
+    [Fact]
+    public async Task Idle_renderer_failure_is_reported_without_waiting_for_next_voice_segment()
+    {
+        using var scope = new AvatarHostingTests.Scope();
+        var renderer = new Renderer();
+        await using var controller = new AvatarController(createRenderer: () => renderer);
+        await controller.InspectAsync(scope.Profile(), default);
+        var profile = controller.InspectedProfile! with
+        { Configuration = AvatarProfile.ConfigurationElement(Mapping(controller.Capabilities!.ModelId)) };
+        await controller.ActivateAsync(profile, true, default);
+        await renderer.DisposeAsync();
+        await Harness.Until(() => controller.Status.Contains("unavailable", StringComparison.Ordinal));
+        Assert.False(controller.Observer.IsEnabled);
+        Assert.False(controller.IsActive);
     }
 }

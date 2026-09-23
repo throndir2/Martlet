@@ -13,6 +13,7 @@ internal interface IAvatarRenderer : IAsyncDisposable
 {
     RendererCapabilities? Capabilities { get; }
     bool HasExited { get; }
+    Task Exited { get; }
     Task StartAsync(AvatarProfile profile, string revision, CancellationToken token);
     Task<RendererMessage> SendAsync<T>(string kind, T data, CancellationToken token, TimeSpan? timeout = null);
 }
@@ -31,9 +32,11 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
     internal Guid Activation { get; } = Guid.NewGuid();
     public RendererCapabilities? Capabilities { get; private set; }
     public bool HasExited => process is null || process.HasExited;
+    public Task Exited { get; private set; } = Task.CompletedTask;
 
     public async Task StartAsync(AvatarProfile profile, string revision, CancellationToken token)
     {
+        token.ThrowIfCancellationRequested();
         var executable = Path.Combine(AppContext.BaseDirectory, "AvatarRenderer", "Martlet.Avatar.RendererHost.exe");
         LocalAvatarFiles.CheckAncestors(executable);
         if (!File.Exists(executable)) throw new FileNotFoundException("Build the private avatar renderer before activation.");
@@ -50,6 +53,7 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
         if (!SetInformationJobObject(job, 9, ref limits, Marshal.SizeOf<JobLimits>()))
             throw new Win32Exception(Marshal.GetLastWin32Error());
         process = Process.Start(info) ?? throw new IOException("Renderer process did not start.");
+        Exited = process.WaitForExitAsync();
         commands.DisposeLocalCopyOfClientHandle();
         replies.DisposeLocalCopyOfClientHandle();
         if (!AssignProcessToJobObject(job, process.Handle))

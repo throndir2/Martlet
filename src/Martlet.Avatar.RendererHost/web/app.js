@@ -12,6 +12,7 @@ const mouth = new Set(["aa", "ih", "ou", "ee", "oh"]);
 const blink = new Set(["blink", "blinkLeft", "blinkRight"]);
 window.chrome.webview.addEventListener("message", async ({ data: message }) => {
   try {
+    if (failed) throw new Error("Renderer is terminally failed; inspect again.");
     const data = message.data;
     if (message.kind === "load") {
       renderer = data.renderer;
@@ -73,7 +74,8 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
     else throw new Error("Unsupported command.");
   } catch {
     active = false; failed = true;
-    adapter?.stop(); post({ error: "avatar.renderer_rejected" });
+    try { adapter?.dispose(); }
+    finally { post({ error: "avatar.renderer_rejected" }); }
   }
 });
 function draw(now) {

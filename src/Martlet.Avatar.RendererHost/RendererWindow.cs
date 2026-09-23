@@ -10,13 +10,13 @@ namespace Martlet.Avatar.RendererHost;
 
 internal sealed class RendererWindow : Window
 {
-    private const string Origin = "https://martlet-avatar.invalid/";
     private readonly Stream input, output;
     private readonly CancellationTokenSource lifetime = new();
     private readonly Dictionary<string, AvatarAsset> resources = new(StringComparer.Ordinal);
     private readonly WebView2 browser = new();
     private TaskCompletionSource<JsonElement>? response;
     private Guid activation;
+    private readonly RendererFailureLatch failure = new();
     private string? userData;
 
     internal RendererWindow(Stream input, Stream output)
@@ -43,7 +43,7 @@ internal sealed class RendererWindow : Window
             var load = RendererProtocol.Data<RendererLoad>(message);
             var assets = await LocalAvatarFiles.SnapshotAsync(load.Profile, handshake.Token);
             if (assets.Revision != load.ResourceRevision) throw new InvalidDataException("Selected resources changed.");
-            foreach (var asset in assets.Assets) resources.Add("asset/" + asset.Name, asset);
+            foreach (var asset in assets.Assets) resources.Add(RendererResourcePolicy.CanonicalName("asset/" + asset.Name), asset);
             var web = Path.Combine(AppContext.BaseDirectory, "web");
             foreach (var name in new[] { "index.html", "app.js" })
                 resources.Add(name, new(name, await LocalAvatarFiles.ReadBoundedAsync(Path.Combine(web, name),
@@ -62,37 +62,42 @@ internal sealed class RendererWindow : Window
             core.PermissionRequested += (_, args) => args.State = CoreWebView2PermissionState.Deny;
             core.NewWindowRequested += (_, args) => args.Handled = true;
             core.DownloadStarting += (_, args) => args.Cancel = true;
-            core.NavigationStarting += (_, args) => args.Cancel = args.Uri != Origin + "index.html";
+            core.NavigationStarting += (_, args) => args.Cancel = args.Uri != RendererResourcePolicy.Document;
             core.FrameNavigationStarting += (_, args) => args.Cancel = true;
-            core.ProcessFailed += (_, _) => response?.TrySetException(new IOException("Renderer browser process failed."));
+            core.ProcessFailed += (_, _) => FailRenderer();
             core.WebMessageReceived += (_, args) =>
             {
-                if (args.Source != Origin + "index.html") return;
+                if (args.Source != RendererResourcePolicy.Document) return;
                 try
                 {
                     if (args.WebMessageAsJson.Length > RendererProtocol.MaximumMessageBytes)
                         throw new InvalidDataException("Browser reply exceeds its limit.");
                     using var document = JsonDocument.Parse(args.WebMessageAsJson);
+                    if (document.RootElement.TryGetProperty("error", out var rendererError))
+                    {
+                        FailRenderer();
+                        return;
+                    }
+                    failure.ThrowIfFailed();
                     response?.TrySetResult(document.RootElement.Clone());
                 }
                 catch (Exception error) when (error is JsonException or InvalidDataException)
-                { response?.TrySetException(error); }
+                { FailRenderer(); }
             };
             core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
             core.WebResourceRequested += (_, args) =>
             {
                 var uri = args.Request.Uri;
-                if (uri.StartsWith(Origin, StringComparison.Ordinal) &&
-                    resources.TryGetValue(uri[Origin.Length..], out var asset))
+                if (RendererResourcePolicy.ResourceName(uri, args.Request.Method) is { } name &&
+                    resources.TryGetValue(name, out var asset))
                     args.Response = environment.CreateWebResourceResponse(new MemoryStream(asset.Bytes, writable: false), 200, "OK",
                         $"Content-Type: {asset.ContentType}\r\nCache-Control: no-store\r\n" +
-                        "Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
-                        "connect-src 'self'; img-src 'self' blob:; worker-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'\r\n");
+                        $"Content-Security-Policy: {RendererResourcePolicy.ContentSecurityPolicy(load.Profile.Renderer == Martlet.Avatars.AvatarRenderer.Live2D)}\r\n");
                 else args.Response = environment.CreateWebResourceResponse(Stream.Null, 403, "Blocked", "Content-Type: text/plain");
             };
             Content = browser;
             response = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            core.Navigate(Origin + "index.html");
+            core.Navigate(RendererResourcePolicy.Document);
             await response.Task.WaitAsync(TimeSpan.FromSeconds(15), lifetime.Token);
             var loaded = await BrowserAsync("load", new { renderer = load.Profile.Renderer.ToString(),
                 modelFile = assets.ModelFile, resourceRevision = assets.Revision,
@@ -107,7 +112,7 @@ internal sealed class RendererWindow : Window
                 await ReplyAsync("ok", result);
             }
         }
-        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested && !failure.Failed) { }
         catch (Exception error) when (error is IOException or ArgumentException or InvalidOperationException or
             System.Runtime.InteropServices.COMException or TimeoutException or JsonException or
             Martlet.Core.Contracts.ContractException or OperationCanceledException)
@@ -126,11 +131,20 @@ internal sealed class RendererWindow : Window
 
     private async Task<JsonElement> BrowserAsync<T>(string kind, T data)
     {
+        failure.ThrowIfFailed();
         response = new(TaskCreationOptions.RunContinuationsAsynchronously);
         browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { kind, data }, RendererProtocol.Json));
         var result = await response.Task.WaitAsync(TimeSpan.FromSeconds(kind == "load" ? 30 : 2), lifetime.Token);
+        failure.ThrowIfFailed();
         if (result.TryGetProperty("error", out _)) throw new InvalidDataException("Browser rejected the selected resource or controls.");
         return result;
+    }
+
+    private void FailRenderer()
+    {
+        failure.Fail();
+        response?.TrySetException(new InvalidDataException("Renderer failed; fresh inspection required."));
+        lifetime.Cancel();
     }
 
     private Task ReplyAsync<T>(string kind, T data) =>

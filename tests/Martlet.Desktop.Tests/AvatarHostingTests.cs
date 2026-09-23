@@ -117,4 +117,55 @@ public sealed class AvatarHostingTests
         }
         Assert.Equal(0, starts);
     }
+
+    [Theory]
+    [InlineData("https://example.com/a")]
+    [InlineData("file:///C:/private.txt")]
+    [InlineData("https://martlet-avatar.invalid/asset/../index.html")]
+    [InlineData("https://martlet-avatar.invalid/asset/%2e%2e/index.html")]
+    [InlineData("https://martlet-avatar.invalid/asset/%252e%252e/index.html")]
+    [InlineData("https://martlet-avatar.invalid/asset/core.js?other=1")]
+    [InlineData("https://martlet-avatar.invalid.evil/index.html")]
+    public void Resource_policy_never_opens_arbitrary_paths_or_network(string url) =>
+        Assert.Null(RendererResourcePolicy.ResourceName(url, "GET"));
+
+    [Fact]
+    public void Resource_policy_handles_authorized_spaces_but_not_non_get_requests()
+    {
+        Assert.Equal("asset/texture%20one.png", RendererResourcePolicy.ResourceName(
+            RendererResourcePolicy.Origin + "asset/texture%20one.png", "GET"));
+        Assert.Null(RendererResourcePolicy.ResourceName(RendererResourcePolicy.Document, "POST"));
+        Assert.Equal(RendererResourcePolicy.CanonicalName("asset/My Model.model3.json"),
+            RendererResourcePolicy.ResourceName(RendererResourcePolicy.Origin + "asset/My%20Model.model3.json", "GET"));
+        Assert.Null(RendererResourcePolicy.ResourceName(RendererResourcePolicy.Origin + "asset%2fcore.js", "GET"));
+    }
+
+    [Fact]
+    public void Wasm_permission_is_narrow_to_live2d_and_fatal_state_cannot_be_acknowledged_as_success()
+    {
+        Assert.DoesNotContain("wasm-unsafe-eval", RendererResourcePolicy.ContentSecurityPolicy(false));
+        Assert.Contains("'wasm-unsafe-eval'", RendererResourcePolicy.ContentSecurityPolicy(true));
+        Assert.DoesNotContain("'unsafe-eval'", RendererResourcePolicy.ContentSecurityPolicy(true));
+        var state = new RendererFailureLatch();
+        state.ThrowIfFailed();
+        Assert.True(state.Fail());
+        Assert.False(state.Fail());
+        Assert.Throws<InvalidDataException>(state.ThrowIfFailed);
+    }
+
+    [Fact]
+    public async Task Explicit_recovery_retains_invalid_original_and_resets_consent()
+    {
+        using var scope = new Scope();
+        var store = new AvatarProfileStore(scope.DirectoryPath);
+        byte[] invalid = Encoding.UTF8.GetBytes("{broken");
+        await File.WriteAllBytesAsync(store.FilePath, invalid);
+        var revision = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(invalid));
+        await Assert.ThrowsAsync<ContractException>(() => store.RestoreAsync(scope.Profile(), "wrong"));
+        await store.RestoreAsync(scope.Profile(), revision);
+        var restored = await store.LoadAsync(scope.ProfileId);
+        Assert.False(restored.Profile!.Settings.Enabled);
+        Assert.Null(restored.Profile.ResourceRevision);
+        Assert.Equal(invalid, await File.ReadAllBytesAsync(Assert.Single(Directory.GetFiles(scope.DirectoryPath, "*.bak"))));
+    }
 }

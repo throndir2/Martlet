@@ -2,7 +2,10 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Martlet - optional Avatar" Width="900" Height="850" MinWidth="550" MinHeight="450"
-        Loaded="Window_Loaded" Closed="Window_Closed" WindowStartupLocation="CenterOwner">
+        Loaded="Window_Loaded" Closed="Window_Closed" PreviewKeyDown="Window_KeyDown" WindowStartupLocation="CenterOwner">
+    <DockPanel>
+        <Button Content="STOP avatar only (Escape)" Click="Stop_Click" DockPanel.Dock="Top" Padding="10,8" Margin="12,8"
+                AutomationProperties.AutomationId="StopAvatar" AutomationProperties.Name="Stop avatar only; voice continues"/>
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="20">
             <TextBlock Text="Avatar - OFF until explicit activation" FontSize="24" FontWeight="SemiBold"/>
@@ -47,11 +50,11 @@
                 Content="Activate for this session: send generated speech only to the displayed existing local A2F service. GPU/service/terms prerequisites are my responsibility."/>
             <WrapPanel>
                 <Button Content="_Activate reviewed avatar" Click="Activate_Click" Padding="10,6" Margin="0,0,8,0"/>
-                <Button Content="STOP avatar only" Click="Stop_Click" Padding="10,6" AutomationProperties.AutomationId="StopAvatar"/>
             </WrapPanel>
             <TextBlock Margin="0,12" TextWrapping="Wrap"
                 Text="Avatar settings/assets are preserved when disabled. Activation is never saved. Existing application backup/restore does NOT include avatar.json. A different restored profile cannot reuse this document. Physical device synchronization and licensed/GPU runtime qualification remain NOT RUN until witnessed. Closing this settings window does not stop an explicitly activated avatar; STOP is always available."/>
             <TextBlock x:Name="ResultText" TextWrapping="Wrap" Margin="0,8" AutomationProperties.LiveSetting="Polite"/>
         </StackPanel>
     </ScrollViewer>
+    </DockPanel>
 </Window>
