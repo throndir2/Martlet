@@ -40,7 +40,7 @@ internal sealed class NativeAuthority : IDisposable
     internal TimeProvider Clock { get; }
 
     internal NativeAuthority(string path, TimeProvider clock, bool create = false,
-        bool reset = false, Action<StoreStep>? fault = null)
+        Action<StoreStep>? fault = null, Guid? boot = null)
     {
         Clock = clock;
         if (create)
@@ -51,13 +51,13 @@ internal sealed class NativeAuthority : IDisposable
             finally { CryptographicOperations.ZeroMemory(bytes); }
         }
         else
-            Storage = WindowsAuthorityStore.Open(path, reset, clock.GetUtcNow(), fault, clock);
+            Storage = WindowsAuthorityStore.Open(path, clock.GetUtcNow(), fault, boot);
         var encoded = Storage.CopyCertificate();
         try
         {
             using var certificate = HostCertificate.Load(encoded);
             Identity = GatewayHostIdentity.FromCertificate(Storage.HostId, certificate);
-            Credentials = new(Identity, clock, Storage.Initial, Storage);
+            Credentials = new(Identity, clock, Storage.Initial, Storage, Storage.InitialSameBoot);
             Pairing = new(Identity, new("https://127.0.0.1:9443"), Credentials, clock);
         }
         catch

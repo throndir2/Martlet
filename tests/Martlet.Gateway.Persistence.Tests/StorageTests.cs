@@ -11,6 +11,80 @@ namespace Martlet.Gateway.Persistence.Tests;
 
 public sealed class StorageTests : NativeTest
 {
+    [Theory]
+    [InlineData("MRTLHM01")]
+    [InlineData("MARTLET1")]
+    public void Legacy_timed_or_prototype_storage_is_preserved_without_authority_migration(string magic)
+    {
+        var clock = new Clock();
+        using (var host = new NativeAuthority(Store, clock, create: true)) host.Issue();
+        var path = Path.Combine(Store, "authority.bin");
+        var bytes = File.ReadAllBytes(path);
+        Encoding.ASCII.GetBytes(magic).CopyTo(bytes, 0);
+        File.WriteAllBytes(path, bytes);
+        Assert.Equal(GatewayPersistenceFailure.MigrationRequired,
+            Assert.Throws<GatewayPersistenceException>(() => new NativeAuthority(Store, clock)).Failure);
+        Assert.Equal(bytes, File.ReadAllBytes(path));
+        Assert.Throws<GatewayPersistenceException>(() => new NativeAuthority(Store, clock, create: true));
+        Assert.Equal(bytes, File.ReadAllBytes(path));
+    }
+    [Fact]
+    public void Partial_unprepared_staging_is_discarded_without_unpairing_or_promoting_it()
+    {
+        var clock = new Clock();
+        IssuedDeviceCredential credential;
+        using (var host = new NativeAuthority(Store, clock, create: true))
+            credential = host.Issue();
+        File.WriteAllBytes(Path.Combine(Store, "staging.bin"), [1, 2, 3]);
+        using var next = new NativeAuthority(Store, clock);
+        next.Credentials.Authenticate(next.Signed(credential));
+        Assert.Single(next.Credentials.ListRegistrations());
+        Assert.False(File.Exists(Path.Combine(Store, "staging.bin")));
+    }
+
+    [Fact]
+    public void Corrupt_prepared_transaction_blocks_access_and_preserves_all_pairing_bytes()
+    {
+        var clock = new Clock();
+        using (var host = new NativeAuthority(Store, clock, create: true)) host.Issue();
+        var authority = File.ReadAllBytes(Path.Combine(Store, "authority.bin"));
+        byte[] pending = [1, 2, 3];
+        File.WriteAllBytes(Path.Combine(Store, "pending.bin"), pending);
+        Assert.Throws<GatewayPersistenceException>(() => new NativeAuthority(Store, clock));
+        Assert.Equal(authority, File.ReadAllBytes(Path.Combine(Store, "authority.bin")));
+        Assert.Equal(pending, File.ReadAllBytes(Path.Combine(Store, "pending.bin")));
+    }
+
+    [Fact]
+    public void Stale_prepared_transaction_cannot_resurrect_revoked_credentials()
+    {
+        var clock = new Clock();
+        byte[] stale;
+        IssuedDeviceCredential credential;
+        var armed = false;
+        using (var host = new NativeAuthority(Store, clock, create: true, fault: step =>
+        {
+            if (armed && step == StoreStep.PendingFlushed) throw new IOException("fixture");
+        }))
+        {
+            credential = host.Issue();
+            armed = true;
+            Code("auth.storage", () => host.Credentials.Authenticate(host.Signed(credential)));
+            stale = File.ReadAllBytes(Path.Combine(Store, "pending.bin"));
+        }
+        using (var recovered = new NativeAuthority(Store, clock))
+        {
+            recovered.Credentials.RevokeCredential(credential.CredentialId);
+            recovered.Clean();
+        }
+        var revoked = File.ReadAllBytes(Path.Combine(Store, "authority.bin"));
+        File.WriteAllBytes(Path.Combine(Store, "pending.bin"), stale);
+        Assert.Equal(GatewayPersistenceFailure.RecoveryRequired,
+            Assert.Throws<GatewayPersistenceException>(() => new NativeAuthority(Store, clock)).Failure);
+        Assert.Equal(revoked, File.ReadAllBytes(Path.Combine(Store, "authority.bin")));
+        Assert.Equal(stale, File.ReadAllBytes(Path.Combine(Store, "pending.bin")));
+    }
+
     [Fact]
     public void Format_rejects_invalid_roles_keys_budgets_and_collection_boundaries()
     {
@@ -31,8 +105,9 @@ public sealed class StorageTests : NativeTest
                 record with { Roles = [GatewayRole.Voice, GatewayRole.Voice] },
                 record with { SigningKey = new byte[31] },
                 record with { CredentialId = "foreign-id" },
-                record with { RemainingTicks = 0 },
-                record with { RemainingTicks = GatewayCredentialStore.MaximumLifetime.Ticks + 1 },
+                record with { RemainingTicks = 1 },
+                record with { Lifetime = null! },
+                record with { Lifetime = new RetiringCredentialLifetime { ExpiresAt = clock.GetUtcNow().AddMinutes(11) } },
                 record with { Nonces = [nonce, nonce] },
                 record with { Nonces = Enumerable.Repeat(nonce, 1025).ToArray() },
                 record with { Nonces = [nonce with { ExpiresAt = clock.GetUtcNow().AddMinutes(5) }] }
@@ -48,7 +123,7 @@ public sealed class StorageTests : NativeTest
             Assert.Throws<GatewayPersistenceException>(() => StoreFormat.Read(Encoding.UTF8.GetBytes(
                 json.Insert(1, "\"Unknown\":true,"))));
             Assert.Throws<GatewayPersistenceException>(() => StoreFormat.Read(Encoding.UTF8.GetBytes(
-                json.Replace("\"Version\":1", "\"Version\":1,\"Version\":1", StringComparison.Ordinal))));
+                json.Replace("\"Version\":2", "\"Version\":2,\"Version\":2", StringComparison.Ordinal))));
         }
         finally
         {
@@ -57,7 +132,7 @@ public sealed class StorageTests : NativeTest
         }
     }
     [Fact]
-    public void Changed_os_boot_requires_explicit_device_reset()
+    public void Changed_os_boot_preserves_permanent_pairing()
     {
         var clock = new Clock();
         using (var host = new NativeAuthority(Store, clock, create: true))
@@ -66,10 +141,9 @@ public sealed class StorageTests : NativeTest
             host.Clean();
         }
         var boot = Guid.NewGuid();
-        Assert.Equal(GatewayPersistenceFailure.RecoveryRequired, Assert.Throws<GatewayPersistenceException>(() =>
-            WindowsAuthorityStore.Open(Store, false, clock.GetUtcNow(), null, clock, boot)).Failure);
-        using var reset = WindowsAuthorityStore.Open(Store, true, clock.GetUtcNow(), null, clock, boot);
-        Assert.Empty(reset.Initial.Credentials);
+        using var reopened = WindowsAuthorityStore.Open(Store, clock.GetUtcNow(), null, boot);
+        Assert.False(reopened.InitialSameBoot);
+        Assert.IsType<PairedDeviceLifetime>(Assert.Single(reopened.Initial.Credentials).Lifetime);
     }
     [Fact]
     public void Actual_full_capacity_protected_checkpoint_fits_sixteen_MiB_and_roundtrips()
@@ -81,7 +155,8 @@ public sealed class StorageTests : NativeTest
             new StoredGatewayCredential(
                 Base64Url.Encode(RandomNumberGenerator.GetBytes(16)), new string('a', 64), new string('<', 64),
                 [GatewayRole.Voice, GatewayRole.Perception, GatewayRole.Memory],
-                RandomNumberGenerator.GetBytes(32), now, now.AddDays(90), TimeSpan.FromDays(90).Ticks,
+                RandomNumberGenerator.GetBytes(32), now,
+                new RetiringCredentialLifetime { ExpiresAt = now.AddMinutes(10) }, TimeSpan.FromMinutes(10).Ticks,
                 Base64Url.Encode(RandomNumberGenerator.GetBytes(16)),
                 Enumerable.Range(0, GatewayCredentialStore.MaximumNoncesPerCredential).Select(_ =>
                     new StoredGatewayNonce(Base64Url.Encode(RandomNumberGenerator.GetBytes(24)),
@@ -135,7 +210,7 @@ public sealed class StorageTests : NativeTest
             using var document = StoreFormat.Read(clear);
             Assert.Throws<GatewayPersistenceException>(() => StoreFormat.Write(document with { Protocol = "trust" }));
             Assert.Throws<GatewayPersistenceException>(() => StoreFormat.Write(document with { Algorithm = "bearer" }));
-            Assert.Throws<GatewayPersistenceException>(() => StoreFormat.Write(document with { Version = 2 }));
+            Assert.Throws<GatewayPersistenceException>(() => StoreFormat.Write(document with { Version = 1 }));
             "MARTLET1"u8.CopyTo(bytes);
             Assert.Throws<GatewayPersistenceException>(() => StoreFormat.Unwrap(bytes));
         }
@@ -156,11 +231,11 @@ public sealed class StorageTests : NativeTest
                 Assert.Throws<GatewayPersistenceException>(() => new NativeAuthority(Store, clock)).Failure);
             host.Issue();
         }
-        Assert.Equal(GatewayPersistenceFailure.RecoveryRequired,
-            Assert.Throws<GatewayPersistenceException>(() => new NativeAuthority(Store, clock)).Failure);
+        using (var reopened = new NativeAuthority(Store, clock))
+            Assert.Single(reopened.Credentials.ListRegistrations());
         File.WriteAllText(Path.Combine(Store, "backup.bin"), "fixture");
         Assert.Equal(GatewayPersistenceFailure.RecoveryRequired,
-            Assert.Throws<GatewayPersistenceException>(() => new NativeAuthority(Store, clock, reset: true)).Failure);
+            Assert.Throws<GatewayPersistenceException>(() => new NativeAuthority(Store, clock)).Failure);
     }
 
     [Fact]
@@ -201,7 +276,6 @@ public sealed class StorageTests : NativeTest
         if (kind == "oversized") bytes = new byte[StoreFormat.MaximumBytes + 1];
         File.WriteAllBytes(path, bytes);
         Assert.Throws<GatewayPersistenceException>(() => new NativeAuthority(Store, new Clock()));
-        Assert.Throws<GatewayPersistenceException>(() => new NativeAuthority(Store, new Clock(), reset: true));
         Assert.Equal(bytes, File.ReadAllBytes(path));
     }
 
@@ -210,13 +284,19 @@ public sealed class StorageTests : NativeTest
     [InlineData((int)StoreStep.PendingFlushed)]
     [InlineData((int)StoreStep.Replaced)]
     [InlineData((int)StoreStep.CheckpointCommitted)]
-    public void Interrupted_initialization_is_never_implicitly_restarted(int step)
+    public void Interrupted_initialization_recovers_only_a_complete_protected_initial_identity(int step)
     {
         Assert.ThrowsAny<Exception>(() => new NativeAuthority(Store, new Clock(), create: true, fault: observed =>
         {
             if (observed == (StoreStep)step) throw new IOException("fixture");
         }));
-        Assert.Throws<GatewayPersistenceException>(() => new NativeAuthority(Store, new Clock()));
+        if ((StoreStep)step == StoreStep.FenceFlushed)
+            Assert.Throws<GatewayPersistenceException>(() => new NativeAuthority(Store, new Clock()));
+        else
+        {
+            using var reopened = new NativeAuthority(Store, new Clock());
+            Assert.Empty(reopened.Credentials.ListRegistrations());
+        }
         Assert.Throws<GatewayPersistenceException>(() => new NativeAuthority(Store, new Clock(), create: true));
     }
 
@@ -234,7 +314,8 @@ public sealed class StorageTests : NativeTest
     [InlineData((int)StoreStep.Replaced, "issue")]
     [InlineData((int)StoreStep.CheckpointCommitted, "issue")]
     [InlineData((int)StoreStep.BeforeCleanFenceRemoval, "close")]
-    public async Task Actual_process_interruption_requires_explicit_device_reset(int step, string action)
+    [InlineData((int)StoreStep.StagingFlushed, "revoke")]
+    public async Task Actual_process_interruption_recovers_exact_committed_or_redone_transition(int step, string action)
     {
         var clock = new Clock();
         using (var host = new NativeAuthority(Store, clock, create: true))
@@ -265,10 +346,12 @@ public sealed class StorageTests : NativeTest
                 await process.WaitForExitAsync();
             }
         }
-        Assert.Equal(GatewayPersistenceFailure.RecoveryRequired,
-            Assert.Throws<GatewayPersistenceException>(() => new NativeAuthority(Store, new Clock())).Failure);
-        using var recovered = new NativeAuthority(Store, new Clock(), reset: true);
-        Assert.Empty(recovered.Credentials.ListRegistrations());
+        using var recovered = new NativeAuthority(Store, new Clock());
+        Assert.Equal(action switch { "revoke" when (StoreStep)step != StoreStep.StagingFlushed => 0,
+            "rotate" or "issue" => 2, _ => 1 },
+            recovered.Credentials.ListRegistrations().Count);
+        if (action == "nonce")
+            Assert.Single(Assert.Single(recovered.Storage.Initial.Credentials).Nonces);
         recovered.Clean();
     }
 

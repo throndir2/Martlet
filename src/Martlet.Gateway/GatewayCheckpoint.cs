@@ -17,7 +17,7 @@ internal sealed record StoredGatewayCredential(
     GatewayRole[] Roles,
     byte[] SigningKey,
     DateTimeOffset IssuedAt,
-    DateTimeOffset ExpiresAt,
+    GatewayCredentialLifetime Lifetime,
     long RemainingTicks,
     string? RotatedToCredentialId,
     StoredGatewayNonce[] Nonces);

@@ -112,8 +112,8 @@ public sealed class OwnerTests : NativeTest
             Assert.Equal(HttpStatusCode.OK, fresh.StatusCode);
             await renewed.CloseCleanlyAsync();
         }
-        await using var replacement = DurableGatewayHost.ReplaceIdentityForLocalRecovery(
-            Store, "replacement-host", origin, [], new Audit(), LocalGatewayDecision.Enable);
+        await using var replacement = DurableGatewayHost.CreateNew(
+            Path.Combine(Root, "new-identity"), "replacement-host", origin, [], new Audit(), LocalGatewayDecision.Enable);
         Assert.NotEqual(identity.SpkiFingerprint, replacement.Identity!.SpkiFingerprint);
         Assert.Empty(replacement.ListRegistrations());
         await replacement.StartAsync();
@@ -129,7 +129,7 @@ public sealed class OwnerTests : NativeTest
     }
 
     [Fact]
-    public async Task Unclean_owner_requires_explicit_reset_without_pin_change()
+    public async Task Unclean_owner_reopens_without_losing_pairing_or_pin()
     {
         var origin = Origin();
         GatewayHostIdentity identity;
@@ -141,12 +141,10 @@ public sealed class OwnerTests : NativeTest
             using var client = PinnedGatewayClient.Create(origin, identity);
             await Pair(host, client, origin);
         }
-        Assert.Equal(GatewayPersistenceFailure.RecoveryRequired, Assert.Throws<GatewayPersistenceException>(() =>
-            DurableGatewayHost.OpenExisting(Store, origin, [], new Audit(), LocalGatewayDecision.Enable)).Failure);
-        await using var recovered = DurableGatewayHost.ResetDevicesForLocalRecovery(
+        await using var recovered = DurableGatewayHost.OpenExisting(
             Store, origin, [], new Audit(), LocalGatewayDecision.Enable);
         Assert.Equal(identity, recovered.Identity);
-        Assert.Empty(recovered.ListRegistrations());
+        Assert.Single(recovered.ListRegistrations());
         await recovered.CloseCleanlyAsync();
     }
 
@@ -212,7 +210,7 @@ public sealed class OwnerTests : NativeTest
         });
         var json = JsonSerializer.Serialize(new
         {
-            protocol_version = new { major = 1, minor = 0 }, pairing_id = card.PairingId,
+            protocol_version = new { major = 2, minor = 0 }, pairing_id = card.PairingId,
             pairing_token = card.Token.Reveal(), host_id = card.HostId,
             spki_fingerprint = card.SpkiFingerprint, device_id = "fixture-device"
         });
@@ -224,13 +222,17 @@ public sealed class OwnerTests : NativeTest
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var result = document.RootElement;
+        Assert.Equal(2, result.GetProperty("protocol_version").GetProperty("major").GetInt32());
+        var lifetime = result.GetProperty("lifetime").Deserialize<GatewayCredentialLifetime>();
+        Assert.IsType<PairedDeviceLifetime>(lifetime);
+        Assert.False(result.TryGetProperty("expires_at", out _));
         return new()
         {
             CredentialId = result.GetProperty("credential_id").GetString()!,
             Secret = new(result.GetProperty("credential_secret").GetString()!),
             DeviceId = result.GetProperty("device_id").GetString()!,
             Roles = [GatewayRole.Voice],
-            ExpiresAt = result.GetProperty("expires_at").GetDateTimeOffset()
+            Lifetime = lifetime!
         };
     }
 
@@ -254,5 +256,45 @@ public sealed class OwnerTests : NativeTest
     {
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         return json.RootElement.GetProperty("code").GetString()!;
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Automatic_same_key_renewal_preserves_pairing_at_open_and_live_handshake(bool atOpen)
+    {
+        var clock = new Clock();
+        var elapsed = TimeSpan.FromDays(atOpen ? 100 : 61);
+        clock.Utc -= elapsed;
+        IssuedDeviceCredential credential;
+        GatewayHostIdentity identity;
+        using (var initial = new NativeAuthority(Store, clock, create: true))
+        {
+            identity = initial.Identity;
+            credential = initial.Issue();
+            initial.Clean();
+        }
+        if (atOpen) clock.Advance(elapsed);
+        var origin = Origin();
+        await using var host = DurableGatewayHost.Open(Store, null, origin, [], new Audit(),
+            LocalGatewayDecision.Enable, HostOpenMode.Open, clock);
+        await host.StartAsync();
+        if (!atOpen) clock.Advance(elapsed);
+        using var client = PinnedGatewayClient.Create(origin, identity);
+        using var request = Signed(origin, identity, credential);
+        using var response = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(identity, host.Identity);
+        Assert.Single(host.ListRegistrations());
+        await host.CloseCleanlyAsync();
+        using var reopened = new NativeAuthority(Store, clock);
+        var bytes = reopened.Storage.CopyCertificate();
+        try
+        {
+            using var certificate = HostCertificate.Load(bytes);
+            Assert.True(certificate.NotAfter.ToUniversalTime() > DateTime.UtcNow.AddDays(80));
+            Assert.Equal(identity.SpkiFingerprint, new SystemGatewayCrypto().SpkiFingerprint(certificate));
+        }
+        finally { System.Security.Cryptography.CryptographicOperations.ZeroMemory(bytes); }
     }
 }

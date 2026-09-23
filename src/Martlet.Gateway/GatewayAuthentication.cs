@@ -29,6 +29,7 @@ public sealed class GatewayRequestSigner
         ArgumentNullException.ThrowIfNull(identity);
         ArgumentNullException.ThrowIfNull(credential);
         identity.Validate();
+        GatewayRules.Require(credential.Lifetime is PairedDeviceLifetime, "protocol.unsupported");
         GatewayRules.Require(Base64Url.TryDecode(credential.CredentialId, 16, out _), "auth.invalid");
         this.crypto = crypto ?? new SystemGatewayCrypto();
         GatewayRules.Require(Base64Url.TryDecode(credential.Secret.Reveal(), 32, out var secret), "auth.invalid");

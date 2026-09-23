@@ -7,7 +7,7 @@ using static Martlet.Gateway.Persistence.PersistenceFailure;
 namespace Martlet.Gateway.Persistence;
 
 public enum LocalGatewayDecision { No, Enable }
-internal enum HostOpenMode { Create, Open, ResetDevices, RenewCertificate, ReplaceIdentity }
+internal enum HostOpenMode { Create, Open, RenewCertificate }
 
 // Local host-control capability. Never register this object in handler DI.
 public sealed class DurableGatewayHost : IAsyncDisposable
@@ -16,7 +16,10 @@ public sealed class DurableGatewayHost : IAsyncDisposable
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly GatewayServer? server;
     private readonly IDisposable? storage;
-    private readonly X509Certificate2? certificate;
+    private X509Certificate2? certificate;
+    private readonly object certificateGate = new();
+    private readonly List<X509Certificate2> retiredCertificates = [];
+    private readonly Action<byte[], GatewayCheckpoint>? replaceCertificate;
     private readonly TimeProvider clock;
     private readonly GatewayOrigin? origin;
     private GatewayListenerHandle? listener;
@@ -28,7 +31,8 @@ public sealed class DurableGatewayHost : IAsyncDisposable
     private DurableGatewayHost() => clock = TimeProvider.System;
 
     private DurableGatewayHost(GatewayOrigin origin, GatewayHostIdentity identity,
-        GatewayServer server, IDisposable storage, X509Certificate2 certificate, TimeProvider clock)
+        GatewayServer server, IDisposable storage, X509Certificate2 certificate, TimeProvider clock,
+        Action<byte[], GatewayCheckpoint> replaceCertificate)
     {
         this.origin = origin;
         Identity = identity;
@@ -36,6 +40,7 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         this.storage = storage;
         this.certificate = certificate;
         this.clock = clock;
+        this.replaceCertificate = replaceCertificate;
     }
 
     public static DurableGatewayHost CreateNew(string directory, string hostId, GatewayOrigin origin,
@@ -50,22 +55,10 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         Open(directory, null, origin, workers, audit, decision, HostOpenMode.Open,
             TimeProvider.System, null, cancellationToken);
 
-    public static DurableGatewayHost ResetDevicesForLocalRecovery(string directory, GatewayOrigin origin,
-        IEnumerable<IGatewayWorker> workers, IGatewayAuditSink audit,
-        LocalGatewayDecision decision = LocalGatewayDecision.No, CancellationToken cancellationToken = default) =>
-        Open(directory, null, origin, workers, audit, decision, HostOpenMode.ResetDevices,
-            TimeProvider.System, null, cancellationToken);
-
     public static DurableGatewayHost RenewCertificateForLocalHost(string directory, GatewayOrigin origin,
         IEnumerable<IGatewayWorker> workers, IGatewayAuditSink audit,
         LocalGatewayDecision decision = LocalGatewayDecision.No, CancellationToken cancellationToken = default) =>
         Open(directory, null, origin, workers, audit, decision, HostOpenMode.RenewCertificate,
-            TimeProvider.System, null, cancellationToken);
-
-    public static DurableGatewayHost ReplaceIdentityForLocalRecovery(string directory, string newHostId,
-        GatewayOrigin origin, IEnumerable<IGatewayWorker> workers, IGatewayAuditSink audit,
-        LocalGatewayDecision decision = LocalGatewayDecision.No, CancellationToken cancellationToken = default) =>
-        Open(directory, newHostId, origin, workers, audit, decision, HostOpenMode.ReplaceIdentity,
             TimeProvider.System, null, cancellationToken);
 
     internal static DurableGatewayHost Open(string directory, string? hostId, GatewayOrigin origin,
@@ -84,7 +77,7 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(audit);
         if (!IPAddress.IsLoopback(origin.Address))
             throw Error(GatewayPersistenceFailure.InvalidState);
-        if (mode is HostOpenMode.Create or HostOpenMode.ReplaceIdentity)
+        if (mode == HostOpenMode.Create)
             GatewayRules.Identifier(hostId!);
         cancellationToken.ThrowIfCancellationRequested();
         try { return OpenWindows(directory, hostId, origin, workers, audit, mode, clock, fault, cancellationToken); }
@@ -105,7 +98,7 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         {
             var now = clock.GetUtcNow();
             if (now.Offset != TimeSpan.Zero || now <= DateTimeOffset.MinValue ||
-                now > DateTimeOffset.MaxValue - GatewayCredentialStore.MaximumLifetime)
+                now > DateTimeOffset.MaxValue - TimeSpan.FromDays(90))
                 throw Error(GatewayPersistenceFailure.InvalidState);
             if (mode == HostOpenMode.Create)
             {
@@ -115,30 +108,23 @@ public sealed class DurableGatewayHost : IAsyncDisposable
                 finally { CryptographicOperations.ZeroMemory(bytes); }
             }
             else
-                store = WindowsAuthorityStore.Open(directory,
-                    mode is HostOpenMode.ResetDevices or HostOpenMode.ReplaceIdentity, now, fault, clock);
+                store = WindowsAuthorityStore.Open(directory, now, fault);
             var encoded = store.CopyCertificate();
             try { certificate = HostCertificate.Load(encoded); }
             finally { CryptographicOperations.ZeroMemory(encoded); }
-            if (mode is HostOpenMode.RenewCertificate or HostOpenMode.ReplaceIdentity)
-            {
-                using var retained = mode == HostOpenMode.RenewCertificate ? certificate.GetECDsaPrivateKey() : null;
-                using var replacement = HostCertificate.Create(now, retained);
-                var bytes = replacement.Export(X509ContentType.Pkcs12);
-                try
-                {
-                    store.ReplaceCertificate(bytes, mode == HostOpenMode.ReplaceIdentity ? hostId : null);
-                    certificate.Dispose();
-                    certificate = HostCertificate.Load(bytes);
-                }
-                finally { CryptographicOperations.ZeroMemory(bytes); }
-            }
             cancellationToken.ThrowIfCancellationRequested();
             var identity = GatewayHostIdentity.FromCertificate(store.HostId, certificate);
-            credentials = new(identity, clock, store.Initial, store);
+            credentials = new(identity, clock, store.Initial, store, store.InitialSameBoot);
             store.Initial.Dispose();
-            var server = new GatewayServer(identity, origin, workers, audit, clock, null, null, null, credentials);
-            return new(origin, identity, server, store, certificate, clock);
+            var server = new GatewayServer(identity, origin, workers, audit, clock, null, null, credentials);
+            var host = new DurableGatewayHost(origin, identity, server, store, certificate, clock, store.ReplaceCertificate);
+            try { host.SelectCertificate(mode == HostOpenMode.RenewCertificate); }
+            catch
+            {
+                host.DisposeCertificates();
+                throw;
+            }
+            return host;
         }
         catch
         {
@@ -159,7 +145,10 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         {
             RequireOpen();
             server!.Credentials.ObserveTime(clock);
-            var binding = new GatewayTlsBinding(origin!, Identity!, certificate!, clock);
+            var binding = new GatewayTlsBinding(origin!, Identity!, SelectCertificate(), clock)
+            {
+                CertificateSelector = () => SelectCertificate()
+            };
             listener = await server.StartAsync(binding, listenerFactory, cancellationToken)
                 .ConfigureAwait(false);
             server.Credentials.ObserveTime(clock);
@@ -186,10 +175,47 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         Local(() => server!.Credentials.RevokeCredential(credentialId, cancellationToken), cancellationToken);
 
     public int RevokeDevice(string deviceId, CancellationToken cancellationToken = default) =>
-        Local(() => server!.Credentials.RevokeDevice(deviceId, cancellationToken), cancellationToken);
+        Local(() => server!.Pairing.RevokeDevice(deviceId, cancellationToken), cancellationToken);
 
     public IReadOnlyList<GatewayDeviceRegistration> ListRegistrations(CancellationToken cancellationToken = default) =>
         Local(() => server!.Credentials.ListRegistrations(), cancellationToken);
+
+    private X509Certificate2 SelectCertificate(bool forceRenewal = false)
+    {
+        lock (certificateGate)
+        {
+            if (closed || certificate is null)
+                throw Error(GatewayPersistenceFailure.Closed);
+            server!.Credentials.ObserveTime(clock);
+            var now = clock.GetUtcNow();
+            if (forceRenewal || now >= new DateTimeOffset(certificate.NotAfter.ToUniversalTime()).AddDays(-30))
+            {
+                server.Credentials.CommitMaintenance(checkpoint =>
+                {
+                    using var key = certificate.GetECDsaPrivateKey();
+                    using var generated = HostCertificate.Create(checkpoint.ObservedAt, key);
+                    var bytes = generated.Export(X509ContentType.Pkcs12);
+                    X509Certificate2? next = null;
+                    try
+                    {
+                        next = HostCertificate.Load(bytes);
+                        _ = new GatewayTlsBinding(origin!, Identity!, next, clock);
+                        replaceCertificate!(bytes, checkpoint);
+                        retiredCertificates.Add(certificate);
+                        certificate = next;
+                        next = null;
+                    }
+                    finally
+                    {
+                        next?.Dispose();
+                        CryptographicOperations.ZeroMemory(bytes);
+                    }
+                });
+            }
+            _ = new GatewayTlsBinding(origin!, Identity!, certificate, clock);
+            return certificate;
+        }
+    }
 
     private T Local<T>(Func<T> action, CancellationToken cancellationToken)
     {
@@ -250,12 +276,23 @@ public sealed class DurableGatewayHost : IAsyncDisposable
             finally
             {
                 server.Credentials.Close();
-                certificate!.Dispose();
+                DisposeCertificates();
                 storage!.Dispose();
                 closed = true;
             }
         }
         finally { gate.Release(); }
+    }
+
+    private void DisposeCertificates()
+    {
+        lock (certificateGate)
+        {
+            certificate?.Dispose();
+            foreach (var previous in retiredCertificates)
+                previous.Dispose();
+            retiredCertificates.Clear();
+        }
     }
 
     public override string ToString() => nameof(DurableGatewayHost);

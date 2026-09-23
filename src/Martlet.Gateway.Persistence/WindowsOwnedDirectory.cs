@@ -90,7 +90,7 @@ internal sealed class WindowsOwnedDirectory : IDisposable
         foreach (var entry in Directory.EnumerateFileSystemEntries(Path))
         {
             var name = System.IO.Path.GetFileName(entry);
-            if (name is not ("owner.lock" or "authority.bin" or "running" or "pending.bin"))
+            if (name is not ("owner.lock" or "authority.bin" or "running" or "pending.bin" or "staging.bin"))
                 throw Error(GatewayPersistenceFailure.RecoveryRequired);
             if (name != "owner.lock")
                 CheckFile(entry, user);

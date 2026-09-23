@@ -67,23 +67,20 @@ internal sealed class GatewayTestHost : IAsyncDisposable
     internal PinnedGatewayClient Client { get; private set; } = null!;
 
     private GatewayTestHost(
-        IEnumerable<IGatewayWorker>? workers,
-        TimeSpan? credentialLifetime)
+        IEnumerable<IGatewayWorker>? workers)
     {
         Clock = new(new DateTimeOffset(2026, 9, 21, 20, 0, 0, TimeSpan.Zero));
         Certificate = CreateCertificate(Clock.GetUtcNow());
         Origin = new($"https://127.0.0.1:{ReserveLoopbackPort()}");
         Identity = GatewayHostIdentity.FromCertificate("fixture-host", Certificate);
         Audit = new();
-        Server = new(Identity, Origin, workers ?? DefaultWorkers(Clock), Audit, Clock,
-            credentialLifetime: credentialLifetime);
+        Server = new(Identity, Origin, workers ?? DefaultWorkers(Clock), Audit, Clock);
     }
 
     internal static async ValueTask<GatewayTestHost> StartAsync(
-        IEnumerable<IGatewayWorker>? workers = null,
-        TimeSpan? credentialLifetime = null)
+        IEnumerable<IGatewayWorker>? workers = null)
     {
-        var host = new GatewayTestHost(workers, credentialLifetime);
+        var host = new GatewayTestHost(workers);
         try
         {
             var binding = new GatewayTlsBinding(
@@ -121,6 +118,9 @@ internal sealed class GatewayTestHost : IAsyncDisposable
         using var document = await JsonDocument.ParseAsync(
             await response.Content.ReadAsStreamAsync());
         var root = document.RootElement;
+        Assert.Equal(2, root.GetProperty("protocol_version").GetProperty("major").GetInt32());
+        var lifetime = root.GetProperty("lifetime").Deserialize<GatewayCredentialLifetime>(Json);
+        Assert.IsType<PairedDeviceLifetime>(lifetime);
         return new()
         {
             CredentialId = root.GetProperty("credential_id").GetString()!,
@@ -128,7 +128,7 @@ internal sealed class GatewayTestHost : IAsyncDisposable
             Roles = root.GetProperty("roles").EnumerateArray()
                 .Select(item => ParseRole(item.GetString()!)).ToArray(),
             Secret = new(root.GetProperty("credential_secret").GetString()!),
-            ExpiresAt = root.GetProperty("expires_at").GetDateTimeOffset()
+            Lifetime = lifetime!
         };
     }
 

@@ -61,7 +61,7 @@ internal sealed class GatewayHttpApplication
                     CredentialSecret = credential.Secret.Reveal(),
                     DeviceId = credential.DeviceId,
                     Roles = credential.Roles,
-                    ExpiresAt = credential.ExpiresAt
+                    Lifetime = credential.Lifetime
                 }).ConfigureAwait(false);
                 return;
             }
@@ -80,7 +80,7 @@ internal sealed class GatewayHttpApplication
                     GatewayVersion = "0.1.0",
                     HostId = identity.HostId,
                     AuthorizedRole = principal.Role,
-                    CredentialExpiresAt = principal.CredentialExpiresAt
+                    CredentialLifetime = principal.CredentialLifetime
                 }).ConfigureAwait(false);
                 return;
             }
@@ -279,7 +279,7 @@ internal sealed class GatewayHttpApplication
         public required string CredentialSecret { get; init; }
         public required string DeviceId { get; init; }
         public required IReadOnlyList<GatewayRole> Roles { get; init; }
-        public required DateTimeOffset ExpiresAt { get; init; }
+        public required GatewayCredentialLifetime Lifetime { get; init; }
     }
 
     private sealed record VersionDocument
@@ -288,7 +288,7 @@ internal sealed class GatewayHttpApplication
         public required string GatewayVersion { get; init; }
         public required string HostId { get; init; }
         public required GatewayRole AuthorizedRole { get; init; }
-        public required DateTimeOffset CredentialExpiresAt { get; init; }
+        public required GatewayCredentialLifetime CredentialLifetime { get; init; }
     }
 
     private sealed record CapabilitiesDocument

@@ -11,6 +11,8 @@ public enum GatewayPersistenceFailure
     KeyProtectionFailed,
     StorageFailed,
     RecoveryRequired,
+    ClockUnavailable,
+    MigrationRequired,
     Disabled,
     Closed
 }
@@ -30,7 +32,9 @@ public sealed class GatewayPersistenceException : Exception
             GatewayPersistenceFailure.InvalidState => "The protected authority format or protocol is invalid.",
             GatewayPersistenceFailure.KeyProtectionFailed => "The protected key material could not be accessed.",
             GatewayPersistenceFailure.StorageFailed => "The authority storage operation failed; its outcome may be uncertain.",
-            GatewayPersistenceFailure.RecoveryRequired => "Explicit local device reset and re-pairing are required; never restore a backup.",
+            GatewayPersistenceFailure.RecoveryRequired => "Access is blocked pending protected-state recovery. Pairing data was preserved; do not reset devices or restore stale backups.",
+            GatewayPersistenceFailure.ClockUnavailable => "Correct the host clock and reopen the existing authority. Paired devices remain recorded.",
+            GatewayPersistenceFailure.MigrationRequired => "This earlier authority format requires a deliberate migration. Original identity and pairing bytes were preserved; do not reset or overwrite the store.",
             GatewayPersistenceFailure.Disabled => "The local gateway remains disabled until explicitly enabled.",
             _ => "The local gateway owner is closed."
         }) => Failure = failure;

@@ -54,7 +54,7 @@ public sealed record IssuedDeviceCredential
     public required string DeviceId { get; init; }
     public required IReadOnlyList<GatewayRole> Roles { get; init; }
     public required GatewaySecret Secret { get; init; }
-    public required DateTimeOffset ExpiresAt { get; init; }
+    public required GatewayCredentialLifetime Lifetime { get; init; }
 
     public override string ToString() => nameof(IssuedDeviceCredential);
 }
@@ -66,15 +66,13 @@ public sealed record GatewayDeviceRegistration
     public required string DisplayName { get; init; }
     public required IReadOnlyList<GatewayRole> Roles { get; init; }
     public required DateTimeOffset IssuedAt { get; init; }
-    public required DateTimeOffset ExpiresAt { get; init; }
+    public required GatewayCredentialLifetime Lifetime { get; init; }
     public required bool Revoked { get; init; }
     public string? RotatedToCredentialId { get; init; }
 }
 
 public sealed class GatewayCredentialStore : IGatewayRequestCredentials
 {
-    public static readonly TimeSpan DefaultLifetime = TimeSpan.FromDays(90);
-    public static readonly TimeSpan MaximumLifetime = TimeSpan.FromDays(90);
     public static readonly TimeSpan MaximumRotationOverlap = TimeSpan.FromMinutes(10);
     public const int MaximumRegistrations = 128;
     internal static readonly TimeSpan RequestClockSkew = TimeSpan.FromMinutes(2);
@@ -85,7 +83,6 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials
     private readonly GatewayHostIdentity identity;
     private readonly TimeProvider clock;
     private readonly IGatewayCrypto crypto;
-    private readonly TimeSpan lifetime;
     private DateTimeOffset? lastObservedTime;
     private bool clockInvalid;
     private bool closed;
@@ -97,37 +94,39 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials
     public GatewayCredentialStore(
         GatewayHostIdentity identity,
         TimeProvider? clock = null,
-        IGatewayCrypto? crypto = null,
-        TimeSpan? credentialLifetime = null)
+        IGatewayCrypto? crypto = null)
     {
         ArgumentNullException.ThrowIfNull(identity);
         identity.Validate();
         this.identity = identity;
         this.clock = clock ?? TimeProvider.System;
         this.crypto = crypto ?? new SystemGatewayCrypto();
-        lifetime = credentialLifetime ?? DefaultLifetime;
-        GatewayRules.Require(lifetime > TimeSpan.Zero && lifetime <= MaximumLifetime, "request.invalid");
     }
 
     internal GatewayCredentialStore(
         GatewayHostIdentity identity, TimeProvider clock, GatewayCheckpoint checkpoint,
-        IGatewayPersistence persistence) : this(identity, clock)
+        IGatewayPersistence persistence, bool sameBoot = true) : this(identity, clock)
     {
         this.persistence = persistence;
         try
         {
             var now = ObserveTimeLocked(clock);
-            GatewayRules.Require(now >= checkpoint.ObservedAt && checkpoint.Frequency == frequency &&
-                checkpoint.Timestamp <= lastTimestamp!.Value, "auth.clock_invalid");
-            var offlineTicks = Math.Max((decimal)(now - checkpoint.ObservedAt).Ticks,
-                decimal.Ceiling(((decimal)lastTimestamp!.Value - checkpoint.Timestamp) *
-                    TimeSpan.TicksPerSecond / frequency));
+            GatewayRules.Require(now >= checkpoint.ObservedAt &&
+                (!sameBoot || checkpoint.Frequency == frequency && checkpoint.Timestamp <= lastTimestamp!.Value),
+                "auth.clock_invalid");
+            var offlineTicks = (decimal)(now - checkpoint.ObservedAt).Ticks;
+            if (sameBoot)
+                offlineTicks = Math.Max(offlineTicks, decimal.Ceiling(((decimal)lastTimestamp!.Value -
+                    checkpoint.Timestamp) * TimeSpan.TicksPerSecond / frequency));
             foreach (var saved in checkpoint.Credentials)
             {
-                var remaining = Math.Min(saved.RemainingTicks - offlineTicks,
-                    (saved.ExpiresAt - now).Ticks);
-                if (remaining <= 0)
-                    continue;
+                var remaining = 0m;
+                if (saved.Lifetime is RetiringCredentialLifetime retiring)
+                {
+                    remaining = Math.Min(saved.RemainingTicks - offlineTicks, (retiring.ExpiresAt - now).Ticks);
+                    if (remaining <= 0)
+                        continue;
+                }
                 var record = new CredentialRecord
                 {
                     CredentialId = saved.CredentialId,
@@ -136,7 +135,7 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials
                     Roles = saved.Roles.ToArray(),
                     Verifier = saved.SigningKey.ToArray(),
                     IssuedAt = saved.IssuedAt,
-                    ExpiresAt = saved.ExpiresAt,
+                    Lifetime = saved.Lifetime,
                     RotatedToCredentialId = saved.RotatedToCredentialId,
                     StartedAt = lastTimestamp!.Value,
                     RemainingTicks = (long)remaining
@@ -187,10 +186,15 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials
                 current.Revoked || ExpiredLocked(current, now))
                 throw new GatewayProtocolException("auth.invalid");
             var replacement = IssueLocked(current.DeviceId, current.DisplayName, current.Roles, now);
-            current.ExpiresAt = Min(current.ExpiresAt, now + overlap);
+            var remainingOverlap = current.Lifetime is RetiringCredentialLifetime
+                ? Math.Min(RemainingLocked(current, now), overlap.Ticks) : overlap.Ticks;
+            var retirement = now + overlap;
+            if (current.Lifetime is RetiringCredentialLifetime previous)
+                retirement = Min(previous.ExpiresAt, retirement);
+            current.Lifetime = new RetiringCredentialLifetime { ExpiresAt = retirement };
             if (persistence is not null)
             {
-                current.RemainingTicks = Math.Min(RemainingLocked(current, now), overlap.Ticks);
+                current.RemainingTicks = remainingOverlap;
                 current.StartedAt = lastTimestamp!.Value;
             }
             current.RotatedToCredentialId = replacement.CredentialId;
@@ -265,7 +269,7 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials
                     DisplayName = value.DisplayName,
                     Roles = Array.AsReadOnly(value.Roles.ToArray()),
                     IssuedAt = value.IssuedAt,
-                    ExpiresAt = value.ExpiresAt,
+                    Lifetime = value.Lifetime,
                     Revoked = value.Revoked,
                     RotatedToCredentialId = value.RotatedToCredentialId
                 }).ToList());
@@ -325,7 +329,7 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials
                 CredentialId = credential.CredentialId,
                 DeviceId = credential.DeviceId,
                 Role = request.Role,
-                CredentialExpiresAt = credential.ExpiresAt
+                CredentialLifetime = credential.Lifetime
             };
         }
     }
@@ -354,7 +358,6 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials
         var secretText = Base64Url.Encode(secretBytes);
         var verifier = crypto.Sha256(secretBytes);
         CryptographicOperations.ZeroMemory(secretBytes);
-        var expiresAt = now + lifetime;
         credentials.Add(credentialId!, new()
         {
             CredentialId = credentialId!,
@@ -363,9 +366,9 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials
             Roles = roles.ToArray(),
             Verifier = verifier,
             IssuedAt = now,
-            ExpiresAt = expiresAt,
+            Lifetime = new PairedDeviceLifetime(),
             StartedAt = lastTimestamp ?? 0,
-            RemainingTicks = lifetime.Ticks
+            RemainingTicks = 0
         });
         return new()
         {
@@ -373,7 +376,7 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials
             DeviceId = deviceId,
             Roles = Array.AsReadOnly(roles.ToArray()),
             Secret = new(secretText),
-            ExpiresAt = expiresAt
+            Lifetime = new PairedDeviceLifetime()
         };
     }
 
@@ -404,7 +407,7 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials
         var timestamp = persistence is null ? 0 : source.GetTimestamp();
         var currentFrequency = persistence is null ? 0 : source.TimestampFrequency;
         if (now.Offset != TimeSpan.Zero ||
-            now <= DateTimeOffset.MinValue || now > DateTimeOffset.MaxValue - MaximumLifetime ||
+            now <= DateTimeOffset.MinValue || now > DateTimeOffset.MaxValue - TimeSpan.FromDays(90) ||
             lastObservedTime is { } previous && now < previous ||
             persistence is not null && (currentFrequency <= 0 ||
                 lastTimestamp is { } previousTimestamp &&
@@ -440,7 +443,9 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials
 
     private long RemainingLocked(CredentialRecord record, DateTimeOffset now)
     {
-        var utc = (record.ExpiresAt - now).Ticks;
+        if (record.Lifetime is not RetiringCredentialLifetime retiring)
+            return 0;
+        var utc = (retiring.ExpiresAt - now).Ticks;
         if (persistence is null)
             return utc;
         var elapsed = ((decimal)lastTimestamp!.Value - record.StartedAt) *
@@ -449,14 +454,15 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials
     }
 
     private bool ExpiredLocked(CredentialRecord record, DateTimeOffset now) =>
-        record.ExpiresAt <= now || persistence is not null && RemainingLocked(record, now) <= 0;
+        record.Lifetime is RetiringCredentialLifetime retiring &&
+        (retiring.ExpiresAt <= now || persistence is not null && RemainingLocked(record, now) <= 0);
 
     private GatewayCheckpoint CheckpointLocked(DateTimeOffset now)
     {
         SweepInactiveLocked(now);
         return new(now, credentials.Values.Select(record => new StoredGatewayCredential(
             record.CredentialId, record.DeviceId, record.DisplayName, record.Roles.ToArray(),
-            record.Verifier.ToArray(), record.IssuedAt, record.ExpiresAt,
+            record.Verifier.ToArray(), record.IssuedAt, record.Lifetime,
             RemainingLocked(record, now), record.RotatedToCredentialId,
             record.Nonces.Where(item => item.Value > now)
                 .Select(item => new StoredGatewayNonce(item.Key, item.Value)).ToArray())).ToArray(),
@@ -525,6 +531,24 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials
             stopping = true;
     }
 
+    internal void CommitMaintenance(Action<GatewayCheckpoint> commit)
+    {
+        lock (gate)
+        {
+            try
+            {
+                using var checkpoint = CheckpointLocked(ObserveTimeLocked(clock));
+                commit(checkpoint);
+                ObserveTimeLocked(clock);
+            }
+            catch
+            {
+                CloseLocked();
+                throw;
+            }
+        }
+    }
+
     internal void Complete(CancellationToken cancellationToken = default)
     {
         lock (gate)
@@ -572,7 +596,7 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials
         internal required GatewayRole[] Roles { get; init; }
         internal required byte[] Verifier { get; init; }
         internal required DateTimeOffset IssuedAt { get; init; }
-        internal required DateTimeOffset ExpiresAt { get; set; }
+        internal required GatewayCredentialLifetime Lifetime { get; set; }
         internal bool Revoked { get; set; }
         internal string? RotatedToCredentialId { get; set; }
         internal long StartedAt { get; set; }
@@ -719,6 +743,18 @@ public sealed class GatewayPairingService : IGatewayPairingExchange
             CryptographicOperations.ZeroMemory(window.TokenVerifier);
     }
 
+    internal int RevokeDevice(string deviceId, CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            GatewayRules.Identifier(deviceId);
+            foreach (var id in windows.Where(item => item.Value.DeviceId == deviceId).Select(item => item.Key).ToArray())
+                RemoveWindowLocked(id);
+            return credentials.RevokeDevice(deviceId, cancellationToken);
+        }
+    }
+
     internal void Close()
     {
         lock (gate)
@@ -769,5 +805,5 @@ public sealed record GatewayPrincipal
     public required string CredentialId { get; init; }
     public required string DeviceId { get; init; }
     public required GatewayRole Role { get; init; }
-    public required DateTimeOffset CredentialExpiresAt { get; init; }
+    public required GatewayCredentialLifetime CredentialLifetime { get; init; }
 }

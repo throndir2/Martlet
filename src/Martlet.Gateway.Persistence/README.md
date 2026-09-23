@@ -1,222 +1,236 @@
-# Canonical HMAC gateway durability
+# Durable paired-device gateway
 
-**Windows-only internal library composition, OFF by default; not an installed
-host or a qualified hosting preset.** This project references the canonical
-`Martlet.Gateway` and composes its existing server, Kestrel listener and pinned
-client protocol. It does not compose `Martlet.Gateway.Trust`, introduce another
-TLS stack, install anything, expose a LAN interface or invoke an engine.
+**Windows-only internal library, default No; not an installed or qualified
+host.** This composes the canonical `Martlet.Gateway` authority and its existing
+Kestrel/TLS stack. No LAN listener, engine dispatch, service, firewall or
+AppSettings/Desktop/companion integration is added.
 
-## Lineage and scope
+## Pairing is not connectivity
 
-Windows DPAPI, private NTFS directory/ACL/handle checks, atomic file replacement,
-fencing and certificate mechanics are adapted from held PR #37's exact final
-source `18daa4acfa90d7c7dff52861c93800a2f63b0823` (those source bytes are unchanged
-from introducing commit `b5073a332ffbe0c73d7ab2064f89a3339730124f`).
-The code is adapted here, not merged or cherry-picked with that PR's
-incompatible Trust authority. Its UUIDs, scope flags, uppercase pins,
-bearer-verifier checkpoints and `MARTLET1` format are **not accepted**.
+Device pairing is explicitly **non-expiring**. Ordinary process restarts, OS
+reboots, updates, offline periods and recoverable interruptions do not unpair a
+device. Access can be unavailable because of clock, storage, network or
+certificate problems while the same pairing remains recorded.
 
-Canonical string IDs, `sha256:` lowercase SPKI pins, 16-byte credential IDs,
-32-byte issued secrets, `voice`/`perception`/`memory` roles, request HMAC bytes
-and successful JSON documents remain unchanged. The 128-registration cap,
-inactive reclamation, shared observed-UTC closure, eight pairing windows,
-five failed proofs, five-minute pairing limit, 90-day credential limit and
-ten-minute maximum rotation overlap remain.
+Only deliberate revocation/unpairing removes the corresponding authority.
+An explicitly rotated credential may have a short retirement overlap; the
+replacement device pairing remains permanent. Actual loss of the protected
+identity is different from a temporary access problem. There is no default
+reset-all-devices recovery API.
 
-The separate explicit **local approval executable/UI is a dependent future
-PR**, not supplied by this library. It must obtain deliberate local approval
-for the exact host, device, roles, recovery and key actions, and keep the
-owner out of handler DI. A library capability or enum is not proof that a
-human authenticated or consented. No root-solution, Desktop, settings,
-companion schema, installer, updates, host-artifact or deployment wiring is
-added here.
+Invitation expiry/one-use, scoped requests, request timestamp freshness and
+bounded nonce replay history remain mandatory. Permanent pairing is not an
+unlimited action permit, model/provider authorization, memory consent or trust
+in the LAN/IP address.
 
-## Explicit local ownership
+## Explicit version and compatibility decision
 
-Every factory defaults `LocalGatewayDecision` to `No`. No returns an inert
-disabled owner without validating/opening the path, accessing DPAPI, generating
-keys or starting a listener. `Enable` is an explicit call by trusted local
-composition. Only canonical loopback origins are accepted by this owner; the
-existing standalone Gateway origin contract is unchanged.
+Gateway protocol **2.0** requires a discriminated lifetime:
 
-| Local action | Result |
-| --- | --- |
-| `CreateNew` | New previously absent private directory and P-256 host key; exact supplied string host ID |
-| `OpenExisting` | Opens only valid clean canonical state within the same Windows OS boot; never creates, repairs, converts or restores |
-| `StartAsync` | Separately starts the existing TLS listener after identity, time, SAN and certificate checks |
-| `OpenPairing` | Freezes the exact locally approved device/display name/roles in a one-use volatile window |
-| `Rotate` / `RevokeCredential` / `RevokeDevice` | Commits the canonical transition before returning success |
-| `ListRegistrations` | Detached non-secret current registrations; not a durable audit history |
-| `CloseCleanlyAsync` | Blocks new admissions, stops/drains listener, commits final state, removes fence last |
-| `DisposeAsync` | Stops/disposes without marking clean; next open requires recovery |
-| `ResetDevicesForLocalRecovery` | Explicitly drops every device, retains only a validated host key, advances generation; re-pair |
-| `RenewCertificateForLocalHost` | Stopped clean-host same-key renewal; retains pin, credentials and live replay history |
-| `ReplaceIdentityForLocalRecovery` | Explicit new host ID/key/pin with all devices removed; out-of-band re-pair required |
-
-The owner exposes no server, mutable credential store, certificate/key,
-protector, public checkpoint importer or raw signing-key collection.
-Internal request capabilities only exchange an already-approved pairing proof
-or authenticate a signed request. They cannot open approvals, list/revoke
-devices, rotate or recover identity.
-
-Only one store owner exists at a time. Owner controls and start/stop are
-serialized; canonical authority operations serialize local and HTTP mutations
-under the same authority gate. Gateway authentication remains point-in-time
-admission, not a provider/action permit or a running-work lease. Revocation
-blocks later admission; it does not retroactively cancel an already admitted
-operation. Future inference, perception and memory consent remain separate.
-
-## Signing-key custody and storage format
-
-The SHA-256 verifier in this HMAC protocol is itself a **request signing key**.
-It is protected like a credential, never considered a safe password hash.
-The server does not persist the original device secret or pairing token.
-
-Storage requires a canonical absolute path on a fixed local NTFS volume with
-an existing parent. No UNC, ADS, reparse traversal or linked state files.
-The new app-owned directory has a protected DACL, current-user ownership and
-only current-user/SYSTEM access. A pinned directory handle, hardlink/file-type
-checks and exclusive `owner.lock` enforce the owned-directory contract.
-Broadened permissions and unexpected entries are rejected, not repaired.
-
-Only `owner.lock`, `authority.bin`, `running` and transactional `pending.bin`
-are allowed. Writes use create-new pending files, write-through/flush,
-same-volume move/atomic replacement without a backup, and a committed-file
-flush. Live revision/hash checks reject replaced committed bytes.
-
-The new 16-byte envelope has eight ASCII bytes `MRTLHM01`, little-endian Int32
-version 1, and exact Int32 ciphertext length. Total size is at most 16 MiB.
-Current-user DPAPI protects the entire strict UTF-8 document, which contains:
-
-- Schema 1, exact `martlet-request-v1` and `hmac-sha256-key-sha256` identifiers,
-  host ID, generation, positive checked revision, Windows boot identifier,
-  observed UTC and boot-scoped monotonic timestamp/frequency.
-- Protected PKCS#12 identity; key possession, certificate profile and actual
-  canonical SPKI are checked. No plaintext private-key file or adjacent password.
-- At most 128 credentials with IDs, names, exact roles, signing keys, original
-  issue/expiry times, remaining lifetime budget and optional rotation linkage.
-- At most 1,024 live nonce/expiry entries per credential.
-
-Unknown/duplicate fields, foreign formats, invalid IDs/roles/times/budgets,
-duplicate records, over-limit collections and invalid lengths are rejected.
-There is no Trust conversion, snapshot import, backup selection or key
-regeneration on malformed state. The 16 MiB ceiling is tested using a real
-DPAPI-protected 128-by-1,024 checkpoint, not a reduced-capacity proxy.
-
-One complete protected checkpoint is written per authoritative transition.
-There is no batching, write-behind window, live nonce eviction or unchecked
-journal. This prioritizes reviewable safety over throughput: full-capacity
-native serialization/protection is exercised, but production throughput is
-not qualified. DPAPI and disk flush are synchronous and not forcibly cancelable;
-no hard per-write wall-clock guarantee is claimed.
-
-Temporary clear checkpoint/key buffers are zeroed on disposal/error. Existing
-client `GatewaySecret.Reveal()` and managed secret-string wire APIs remain
-compatible; managed strings cannot be reliably erased. No real vault, provider
-credential or existing production key is involved in the tests.
-
-## Commit, replay and time
-
-Issuance, rotation (new credential and old overlap together), revocation and
-**every nonce admission** commit before a secret, successful result or
-principal is returned. A failure with uncertain outcome closes the entire live
-authority and leaves its fence; there is no permissive in-memory rollback.
-HTTP failures use fixed redacted codes, never storage paths or key material.
-
-Replay history survives every clean restart. Keep the existing two-minute
-request skew and nonce retention of accepted UTC plus four minutes plus one
-tick. Never shorten nonce retention using monotonic elapsed time: a stalled
-UTC clock can leave the signed timestamp admissible. Saturation returns
-`auth.rate`, including after restart, rather than evicting history.
-
-Credentials, overlap and volatile pairing windows are additionally bounded by
-monotonic elapsed time in the durable path. Checkpoints save the smaller
-remaining UTC/monotonic budget and its boot-scoped monotonic observation.
-Windows QPC (`TimeProvider.System`) is comparable across processes within one
-OS boot. The protected Windows boot GUID is obtained through read-only
-`NtQuerySystemInformation(SystemBootEnvironmentInformation)`; unavailable boot
-identity is an unsupported backend, not permission to assume clock continuity.
-Reopening within the same boot subtracts the larger of elapsed UTC and QPC
-time and anchors the remaining budget without extending original expiry.
-Observed UTC/monotonic rollback, timestamp-frequency change or invalid time
-closes authority permanently. Backwards startup UTC is refused.
-
-**A changed OS boot requires explicit all-device reset and re-pairing.** The
-protected host key may be retained by that deliberate recovery. This backend
-does not silently switch to UTC-only lifetime accounting across a reboot,
-where a trustworthy elapsed-time bound is unavailable. Normal clean process
-restarts within the same boot retain credentials and replay history.
-
-After durable I/O, credential expiry, request timestamp window and cancellation
-are checked again before returning a principal; pairing checks its window
-again before returning a secret. A committed-but-lost or canceled issuance
-cannot retransmit its secret or reuse the consumed proof. Explicit local
-revoke/new approval is the remedy. Cancellation after a revocation commit
-cannot undo it.
-
-Clean shutdown grants at most 30 seconds to listener drain. Timeout or uncertain
-stop leaves dirty authority and retains ownership until the listener actually
-stops; disposal can be retried. The final checkpoint passes clock/cancellation
-checks before fence removal. There is no artificial lifetime reserve or claimed
-hard deadline on synchronous final filesystem I/O: boot-scoped elapsed-time
-accounting charges **all** final write/fence-removal time on reopening, including
-a stall after the last check and repeated short-overlap restarts with frozen
-UTC. Repeated restarts cannot refund that elapsed lifetime. Nonce UTC horizons
-are never shortened by monotonic lifetime accounting.
-
-All pending pairing windows are discarded on restart. A capacity refusal
-retains a valid proof in the current process; it does not persist the window.
-The clean checkpoint retains nonces even if the original HTTP response was lost.
-
-## Fail-closed recovery and limits
-
-A surviving running fence, pending file, changed OS boot, corrupt identity,
-unknown record or uncertain mutation never opens as normal authority. Explicit device reset
-validates the committed protected identity, advances generation and commits
-empty credentials; it may delete only the exact verified pending file and
-never promotes its contents. If identity cannot be validated, recovery fails:
-deliberately create a new identity at a new owned path rather than overwriting
-unknown files. Key replacement always invalidates old devices and changes pin.
-
-Same-key renewal is explicit, not automatic. The certificate covers loopback
-IP SANs and is valid for 90 days. Expired certificates can be loaded for local
-maintenance, but cannot start TLS. Windows Schannel uses a user-scoped key
-handle loaded from the protected identity; no certificate/trust store is
-modified, and the owned handle is disposed after listener shutdown.
-
-DPAPI/ACLs do not defend against same-user code, administrators, a compromised
-OS or restoration of an entire older clean profile. A complete rollback while
-no owner is running cannot be reliably distinguished using these local files.
-There is no public restoration path, but no hardware anti-rollback or trusted
-offline clock guarantee. Real process interruption is tested; universal
-power-loss durability is not inferred.
-
-## Local validation and follow-up gates
-
-Use the pinned existing SDK 10.0.401 with `DOTNET_ROOT` set to its directory
-in the same process, unique C: artifacts/temp state, locked restore and Release:
-
-```powershell
-& $sdk restore tests\Martlet.Gateway.Persistence.Tests --locked-mode --artifacts-path $artifacts
-& $sdk test tests\Martlet.Gateway.Persistence.Tests -c Release --no-restore --artifacts-path $artifacts
-& $sdk restore tests\Martlet.Gateway.Tests --locked-mode --artifacts-path $artifacts
-& $sdk test tests\Martlet.Gateway.Tests -c Release --no-restore --artifacts-path $artifacts
+```json
+{"lifetime":{"kind":"paired"}}
 ```
 
-The persistence suite requires actual Windows/NTFS and uses newly generated
-disposable keys only. It covers DPAPI/ACL/links, strict format/capacity,
-clean/unclean restart, revocation/rotation/replay, clocks, cancellation,
-post-I/O checks, native process interruption and real pinned-loopback TLS
-with persisted key loading/renewal. The test executable is solely a bounded
-interruption harness, not a shipped local host console.
+The paired variant has **no expiry field**. It is not a null/missing date,
+`DateTimeOffset.MaxValue`, far-future sentinel or parser default. Version
+responses carry `credential_lifetime`; when an explicitly rotated old key is
+used within its overlap, that value is:
 
-POSIX protection and native Ubuntu service identity remain separately gated;
-Windows results are not Linux evidence. Local approval UI/executable,
-packaging/service boot, LAN/firewall/two-host behavior, real engines/models,
-power loss and production performance remain unqualified. H01 / PR #21's
-native hold and all unqualified hosting presets remain unchanged.
+```json
+{"credential_lifetime":{"kind":"retiring","expires_at":"2026-09-23T18:10:00Z"}}
+```
 
-PR #37 remains held until this replacement is independently reviewed and
-accepted; then the coordinator can mark it superseded without deleting its
-preserved branch. Isolated Gateway.Trust remains uncomposed historical work,
-not a second production authority.
+`IssuedDeviceCredential.Lifetime`, `GatewayDeviceRegistration.Lifetime` and
+`GatewayPrincipal.CredentialLifetime` use explicit sealed variants.
+Timed-device constructor options are removed, so source consumers must adapt
+deliberately rather than silently treating missing expiry as permanent.
+Version-1 pairing requests fail `protocol.unsupported` without consuming the
+invitation. Established routes retain their `/martlet/v1/` transport paths and
+the exact `martlet-request-v1` HMAC canonicalization; response/request protocol
+version is the authority-semantics negotiation. IDs, roles, pins and key bytes
+are unchanged. Future client reuse must validate protocol 2 and the required
+lifetime discriminator; no automatic v1 fallback is supplied.
+
+Storage is a distinct **v2** format (`MRTLHM02`, envelope version 2, protected
+protocol `martlet-paired-v2`, algorithm `hmac-sha256-key-sha256`). Old timed
+`MRTLHM01` and prototype `MARTLET1` report **MigrationRequired** without changing
+their files. Unknown versions and malformed/missing lifetime variants are also
+refused, never interpreted as permanent. No bulk migration
+turns expired, swept or revoked prototype/timed credentials into permanent
+authority. Those development formats were not deployed by this work; a real
+legacy migration would need a separately reviewed explicit current-authority
+and revocation policy, not a guess from old snapshots.
+
+### Deliberate earlier-format transition plan
+
+Routine updates **within the supported permanent v2 format** reopen the same
+identity and pairings. That guarantee does not describe an upgrade from the
+superseded internal timed experiment. Current main's earlier canonical v1
+constructor is volatile; it has no durable record to migrate. Earlier source
+clients must be changed to require major 2, explicitly deserialize lifetime
+variants and stop equating connectivity/clock failures with unpairing.
+
+For any owner who actually retained timed experimental state: stop its sole
+writer, preserve original files, and establish the exact latest committed
+authority and all pending revocations using that format's reviewed rules.
+Do not pick an older clean backup because the latest state is inconvenient.
+A future dedicated migration must retain the verified host key/SPKI and only
+offer live, explicitly selected current credentials/roles for permanent trust;
+revoked, swept, expired and ambiguous records cannot be silently resurrected.
+An explicit new local approval would be needed for authority that no longer
+exists. Migration must be atomic and versioned, with a source digest/receipt,
+no dual writers, and rollback that never restores revoked authority.
+Prototype Trust IDs/scopes require a separate deliberate mapping decision,
+not an automatic conversion into HMAC credentials.
+
+**That migration tool is not implemented or claimed here.** MigrationRequired
+is a data-preserving compatibility block, not an instruction to delete the
+identity, reset all devices or silently claim a normal permanent-state update.
+
+## Local ownership and certificate lifecycle
+
+Every factory defaults to `LocalGatewayDecision.No`, which returns an inert
+owner without touching storage, DPAPI, keys or sockets. Only an explicit Enable
+and canonical loopback origin can open a Windows authority. Loading state and
+starting its listener are separate actions. Host-control objects, certificate
+keys and mutable authority are never exposed to request handlers or DI.
+
+| Local operation | Effect |
+| --- | --- |
+| `CreateNew` | New absent private path and host key with exact selected host ID; never overwrites/adopts existing state |
+| `OpenExisting` | Loads committed state and performs authenticated redo if needed, keeping the same pairings |
+| `StartAsync` | Starts the existing TLS listener; fresh certificate/key/pin/SAN/time validation |
+| `OpenPairing` | Explicit exact device/name/roles approval; volatile five-minute one-use invitation |
+| `Rotate` | New permanent credential and old-key retirement (up to ten minutes), committed together |
+| `RevokeCredential` / `RevokeDevice` | Explicit durable unpair/revoke; device revoke also closes its pending invitations |
+| `ListRegistrations` | Detached non-secret current paired/retiring records, not a connectivity status |
+| `CloseCleanlyAsync` | Stop new admissions, drain listener, save state, remove diagnostic running marker |
+| `DisposeAsync` | Stop/dispose without marking clean; later open still recovers the existing pairings |
+| `RenewCertificateForLocalHost` | Optional deliberate same-key renewal, in addition to automatic renewal |
+
+Certificates are renewed automatically with the **same protected key/SPKI**
+when opened or selected for a new TLS handshake within 30 days of expiry.
+An expired certificate can be loaded for renewal, but is never served in place
+of a valid one. Renewal commits the new certificate with the **current**
+credential/revocation/replay state under the authority lock before use.
+Failure blocks access and preserves recovery state; it does not unpair devices.
+TLS validity, IP SAN, server EKU and pinned-key checks are not disabled.
+Existing TLS connections are not forcibly renegotiated on certificate renewal.
+Old certificate handles remain owned until listener shutdown so concurrent
+handshakes cannot see a disposed key; one handle per actual renewal is retained.
+
+No implicit new-key generation repairs a corrupt existing identity. Deliberately
+creating a new identity at a **different** path produces a different pin and
+requires verified pairing to that identity; it does not erase the old store.
+
+The real authenticated local approval executable/UI remains a **separate
+dependent PR**. API capability possession is not proof of human consent.
+No installer, packaging, service or hosting preset is enabled here.
+
+## Protected state and crash-safe commit
+
+The HMAC SHA-256 verifier is itself a **signing key**. Treat it like a credential,
+not a harmless password hash. Current-user DPAPI protects all signing keys,
+PKCS#12 identity, role/ID records, revision/generation/predecessor hashes,
+clock observations and live nonce history. Raw issued secrets and pending
+pairing tokens are not persisted. Temporary clear key/checkpoint buffers are
+zeroed; existing managed wire secret strings cannot be reliably erased.
+
+Storage requires an app-owned canonical fixed local NTFS path, current-user
+owner and protected DACL granting only current-user/SYSTEM. Directory pinning,
+file-type/link/ACL checks and an exclusive owner lock reject UNC/ADS/reparse/
+hardlink attacks and concurrent writers; permissions are never auto-repaired.
+
+The exact allowlist is `owner.lock`, `authority.bin`, `running`, `staging.bin`
+and `pending.bin`. The state format is strict, bounded to 16 MiB, 128 credential
+registrations and 1,024 live nonces per registration; no live eviction.
+Full escaped-field capacity is tested through actual DPAPI. Each mutation
+writes a complete protected checkpoint, not an unchecked write-behind cache.
+
+1. Serialize the canonical transition under its authority gate. The protected
+   successor binds host ID, generation, revision + 1 and SHA-256 of the exact
+   committed predecessor ciphertext.
+2. Create `staging.bin`, write-through and flush. This is **unprepared** work;
+   no result or dispatch may rely on it.
+3. Atomically rename staging to `pending.bin` and flush it. This is the durable
+   prepared transaction and is replayed even if its response was lost.
+4. Atomically replace/move into `authority.bin`, without a backup, then flush
+   the committed file. Only then return a credential, revocation result or
+   authenticated principal.
+
+On restart, the running marker alone is not a failure or reset instruction.
+An authenticated complete pending successor is promoted only if its exact
+predecessor hash, revision, generation, host and same SPKI match current state.
+Initialization can recover a complete revision-1 pending identity when no
+committed state exists. A stale/foreign pending transaction cannot replace a
+newer committed revocation. No older backup is selected.
+
+Unprepared staging (including an interrupted partial write) is never promoted.
+After the committed identity is validated, that exact unused stage is removed
+and existing pairings resume. An operation interrupted **before preparation**
+was not acknowledged and may need deliberate retry. From preparation onward,
+revocations and nonce admission are redone before serving access.
+
+Malformed/corrupt **prepared** transactions, conflicting files, corrupt identity
+or mismatched predecessors fail closed and preserve both committed and pending
+bytes for diagnosis. Reopen after correcting access/clock problems retries
+nondestructively. Arbitrary corrupted authority cannot be reconstructed safely
+without verified original data: this library does not pretend deleting pending
+records, resetting devices or restoring stale snapshots is recovery.
+
+## Independent time safeguards
+
+Permanent paired records have no clock-based lifetime and no boot-reset gate.
+UTC high-water checks still prevent backward time from resurrecting pruned
+nonce windows. Correct the clock and reopen the **same store**; no re-pair is
+required. Certificate time limits and five-minute invitation budgets are
+independent of device trust.
+
+Retiring old keys retain UTC deadlines and bounded remaining overlap budgets.
+Within the same native Windows boot, elapsed QPC and UTC are both charged;
+after a changed boot only observed UTC can measure downtime. No trusted
+offline clock is claimed. Pairing itself never uses either clock to expire.
+
+Signed requests still require the exact canonical signature and role, a
+timestamp within two minutes, and a new nonce. Nonces retain accepted UTC plus
+four minutes plus one tick, **including across dirty restart and reboot**.
+Monotonic time never shortens nonce retention when UTC stalls.
+Saturation fails `auth.rate`, not eviction.
+
+Credential/role/request time and cancellation are checked around durable
+admission. Invitation expiry is rechecked after I/O. A lost/canceled issuance
+response does not retransmit a secret or revive its invitation; local revoke
+and a deliberately new approval remain available. Cancellation cannot undo a
+prepared/committed revocation. Storage failure closes live access, not the
+persisted device relationship.
+
+Listener drain has a 30-second wait limit. Uncertain stop retains ownership
+until the listener actually stops. DPAPI and disk flush are synchronous, not
+forcibly cancelable; no hard wall-clock disk deadline is promised. Final fence
+deletion cannot refund any device lifetime because paired devices have none;
+remaining old-key overlap is charged on reopen.
+
+## Provenance, validation and remaining gates
+
+DPAPI/ACL/NTFS/atomic-file and certificate mechanics are adapted from held #37
+final source `18daa4acfa90d7c7dff52861c93800a2f63b0823`, byte-identical mechanics
+introduced by `b5073a332ffbe0c73d7ab2064f89a3339730124f`. Its Trust credentials,
+scope flags, schema and reset-on-crash behavior are **not** imported.
+Gateway.Trust remains uncomposed; #37 and preserved branches are untouched.
+
+Use existing SDK 10.0.401, same-process `DOTNET_ROOT`, unique C: artifacts,
+locked restore and Release tests directly for Gateway and Persistence. Native
+tests use only newly generated disposable keys and private temp directories:
+real DPAPI/ACL/links, actual interrupted subprocesses, exact replay, native
+boot identification plus injected boot changes, pinned loopback TLS,
+same-key automatic renewal and malformed/stale recovery cases.
+
+No real OS reboot, arbitrary hardware power loss, Linux backend, service
+identity, LAN/firewall/two-host, engines/models or installed update is qualified
+by those tests. Windows passes are not Linux support. H01/#21 and deployment
+holds remain unchanged. No remote CI is enabled or dispatched.
+
+DPAPI/ACLs do not protect against same-user code, administrators, compromised
+OS or rollback of the entire profile. Local revision chains prevent this
+implementation from selecting stale backups; they are not a hardware
+anti-rollback counter or external trusted clock.

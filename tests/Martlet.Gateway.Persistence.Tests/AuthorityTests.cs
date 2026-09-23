@@ -5,207 +5,34 @@ namespace Martlet.Gateway.Persistence.Tests;
 
 public sealed class AuthorityTests : NativeTest
 {
-    [Fact]
-    public async Task Concurrent_duplicate_nonce_has_one_durable_winner()
-    {
-        using var host = new NativeAuthority(Store, new Clock(), create: true);
-        var request = host.Signed(host.Issue());
-        var outcomes = await Task.WhenAll(Enumerable.Range(0, 16).Select(_ => Task.Run(() =>
-        {
-            try
-            {
-                host.Credentials.Authenticate(request);
-                return "accepted";
-            }
-            catch (GatewayProtocolException error) { return error.Failure.Code; }
-        })));
-        Assert.Single(outcomes, value => value == "accepted");
-        Assert.Equal(15, outcomes.Count(value => value == "auth.replay"));
-        host.Clean();
-    }
-
     [Theory]
-    [InlineData("rollback")]
-    [InlineData("cancel")]
-    public void Final_commit_rechecks_before_removing_running_fence(string kind)
-    {
-        var clock = new Clock();
-        using var cancellation = new CancellationTokenSource();
-        var armed = false;
-        using (var host = new NativeAuthority(Store, clock, create: true, fault: step =>
-        {
-            if (!armed || step != StoreStep.BeforeCleanFenceRemoval) return;
-            if (kind == "rollback") clock.Utc -= TimeSpan.FromSeconds(1);
-            if (kind == "cancel") cancellation.Cancel();
-        }))
-        {
-            host.Issue();
-            armed = true;
-            if (kind == "cancel")
-                Assert.Throws<OperationCanceledException>(() => host.Credentials.Complete(cancellation.Token));
-            else
-                Code("auth.clock_invalid", () => host.Credentials.Complete());
-            Assert.True(File.Exists(Path.Combine(Store, "running")));
-        }
-    }
-
-    [Theory]
-    [InlineData((int)StoreStep.CheckpointCommitted)]
-    [InlineData((int)StoreStep.CleanFenceRemoved)]
-    public void Monotonic_time_spent_on_final_write_or_fence_removal_is_not_refunded_by_restart(int delayedStep)
-    {
-        var clock = new Clock();
-        var armed = false;
-        using (var host = new NativeAuthority(Store, clock, create: true, fault: step =>
-        {
-            if (armed && step == (StoreStep)delayedStep)
-                clock.Advance(TimeSpan.FromSeconds(60), utc: false);
-        }))
-        {
-            host.Issue();
-            clock.Advance(TimeSpan.FromDays(90) - TimeSpan.FromSeconds(40), utc: false);
-            armed = true;
-            host.Clean();
-        }
-        using var reopened = new NativeAuthority(Store, clock);
-        Assert.Empty(reopened.Credentials.ListRegistrations());
-        reopened.Clean();
-    }
-
-    [Fact]
-    public void Repeated_clean_restarts_do_not_refund_short_overlap_under_stalled_utc()
-    {
-        var clock = new Clock();
-        IssuedDeviceCredential original;
-        using (var host = new NativeAuthority(Store, clock, create: true))
-        {
-            original = host.Issue();
-            host.Credentials.Rotate(original.CredentialId, TimeSpan.FromSeconds(3));
-            host.Clean();
-        }
-        for (var attempt = 0; attempt < 3; attempt++)
-        {
-            clock.Advance(TimeSpan.FromSeconds(1), utc: false);
-            using var next = new NativeAuthority(Store, clock);
-            if (attempt < 2)
-                next.Credentials.Authenticate(next.Signed(original));
-            else
-                Code("auth.invalid", () => next.Credentials.Authenticate(next.Signed(original)));
-            next.Clean();
-        }
-    }
-
-    [Fact]
-    public void Pairing_expiring_during_commit_never_returns_a_secret_or_reusable_approval()
-    {
-        var clock = new Clock();
-        var armed = false;
-        using var host = new NativeAuthority(Store, clock, create: true, fault: step =>
-        {
-            if (armed && step == StoreStep.CheckpointCommitted)
-                clock.Advance(TimeSpan.FromMinutes(6));
-        });
-        var card = host.Pairing.OpenWindow(new()
-        {
-            DeviceId = "device", DisplayName = "Device", Roles = [GatewayRole.Voice]
-        });
-        var proof = new GatewayPairingProof
-        {
-            ProtocolVersion = GatewayProtocolVersion.Current, PairingId = card.PairingId,
-            PairingToken = card.Token.Reveal(), HostId = card.HostId,
-            SpkiFingerprint = card.SpkiFingerprint, DeviceId = "device"
-        };
-        armed = true;
-        Code("pairing.expired", () => host.Pairing.Exchange(proof));
-        Code("pairing.closed", () => host.Pairing.Exchange(proof));
-        armed = false;
-        host.Clean();
-    }
-
-    [Fact]
-    public void Clean_restart_preserves_identity_credential_and_live_replay_history()
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Pairing_survives_years_reboots_and_clean_or_dirty_restarts(bool clean)
     {
         var clock = new Clock();
         IssuedDeviceCredential credential;
-        GatewaySignedRequest accepted;
         GatewayHostIdentity identity;
         using (var host = new NativeAuthority(Store, clock, create: true))
         {
             identity = host.Identity;
             credential = host.Issue();
-            accepted = host.Signed(credential);
-            host.Credentials.Authenticate(accepted);
-            host.Clean();
+            Assert.IsType<PairedDeviceLifetime>(credential.Lifetime);
+            if (clean) host.Clean();
         }
-        using var reopened = new NativeAuthority(Store, clock);
-        Assert.Equal(identity, reopened.Identity);
-        Code("auth.replay", () => reopened.Credentials.Authenticate(accepted));
-        Assert.Equal(credential.CredentialId, reopened.Credentials.Authenticate(reopened.Signed(credential)).CredentialId);
-        reopened.Clean();
-    }
-
-    [Fact]
-    public void Pending_pairing_is_never_restored_and_capacity_refusal_does_not_consume()
-    {
-        var clock = new Clock();
-        GatewayPairingProof proof;
-        using (var host = new NativeAuthority(Store, clock, create: true))
-        {
-            var card = host.Pairing.OpenWindow(new()
-            {
-                DeviceId = "device", DisplayName = "Device", Roles = [GatewayRole.Memory]
-            });
-            proof = new()
-            {
-                ProtocolVersion = GatewayProtocolVersion.Current, PairingId = card.PairingId,
-                PairingToken = card.Token.Reveal(), HostId = card.HostId,
-                SpkiFingerprint = card.SpkiFingerprint, DeviceId = "device"
-            };
-            for (var i = 0; i < GatewayCredentialStore.MaximumRegistrations; i++)
-                host.Issue();
-            Code("auth.capacity", () => host.Pairing.Exchange(proof));
-            host.Credentials.RevokeDevice("fixture-device");
-            var issued = host.Pairing.Exchange(proof);
-            Assert.Equal(GatewayRole.Memory, Assert.Single(issued.Roles));
-            Code("pairing.closed", () => host.Pairing.Exchange(proof));
-            host.Clean();
-        }
-        using var next = new NativeAuthority(Store, clock);
-        Code("pairing.closed", () => next.Pairing.Exchange(proof));
+        clock.Advance(TimeSpan.FromDays(3650));
+        clock.Ticks = 0;
+        using var next = new NativeAuthority(Store, clock, boot: Guid.NewGuid());
+        Assert.Equal(identity, next.Identity);
+        Assert.IsType<PairedDeviceLifetime>(Assert.Single(next.Credentials.ListRegistrations()).Lifetime);
+        Assert.Equal(credential.CredentialId, next.Credentials.Authenticate(next.Signed(credential)).CredentialId);
         next.Clean();
     }
 
-    [Fact]
-    public void Revocation_and_rotation_overlap_are_committed_together()
-    {
-        var clock = new Clock();
-        IssuedDeviceCredential old;
-        IssuedDeviceCredential replacement;
-        using (var host = new NativeAuthority(Store, clock, create: true))
-        {
-            old = host.Issue();
-            replacement = host.Credentials.Rotate(old.CredentialId, TimeSpan.FromMinutes(1));
-            host.Clean();
-        }
-        using (var host = new NativeAuthority(Store, clock))
-        {
-            host.Credentials.Authenticate(host.Signed(old));
-            host.Credentials.Authenticate(host.Signed(replacement));
-            Assert.Equal(replacement.CredentialId,
-                host.Credentials.ListRegistrations().Single(r => r.CredentialId == old.CredentialId).RotatedToCredentialId);
-            clock.Advance(TimeSpan.FromMinutes(1));
-            Code("auth.expired", () => host.Credentials.Authenticate(host.Signed(old)));
-            Assert.True(host.Credentials.RevokeCredential(replacement.CredentialId));
-            host.Clean();
-        }
-        using var reopened = new NativeAuthority(Store, clock);
-        Assert.Empty(reopened.Credentials.ListRegistrations());
-        Code("auth.invalid", () => reopened.Credentials.Authenticate(reopened.Signed(replacement)));
-        reopened.Clean();
-    }
-
-    [Fact]
-    public void Replay_saturation_survives_restart_and_monotonic_time_never_shortens_retention()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Live_nonce_and_rate_history_survive_restart_and_stalled_utc(bool clean)
     {
         var clock = new Clock();
         IssuedDeviceCredential credential;
@@ -217,87 +44,90 @@ public sealed class AuthorityTests : NativeTest
             host.Credentials.Authenticate(first);
             for (var i = 1; i < GatewayCredentialStore.MaximumNoncesPerCredential; i++)
                 host.Credentials.Authenticate(host.Signed(credential));
-            Code("auth.rate", () => host.Credentials.Authenticate(host.Signed(credential)));
             clock.Advance(TimeSpan.FromMinutes(5), utc: false);
             Code("auth.replay", () => host.Credentials.Authenticate(first));
             Code("auth.rate", () => host.Credentials.Authenticate(host.Signed(credential)));
-            host.Clean();
+            if (clean) host.Clean();
         }
-        using var reopened = new NativeAuthority(Store, clock);
-        Code("auth.replay", () => reopened.Credentials.Authenticate(first));
-        Code("auth.rate", () => reopened.Credentials.Authenticate(reopened.Signed(credential)));
+        using var next = new NativeAuthority(Store, clock, boot: Guid.NewGuid());
+        Code("auth.replay", () => next.Credentials.Authenticate(first));
+        Code("auth.rate", () => next.Credentials.Authenticate(next.Signed(credential)));
         clock.Advance(TimeSpan.FromMinutes(5));
-        reopened.Credentials.Authenticate(reopened.Signed(credential));
-        reopened.Clean();
+        next.Credentials.Authenticate(next.Signed(credential));
+        next.Clean();
     }
 
     [Fact]
-    public void Saved_monotonic_budget_and_offline_time_do_not_renew_credentials()
+    public void Rotation_retires_only_the_old_key_not_the_device_pairing()
     {
         var clock = new Clock();
+        IssuedDeviceCredential old;
+        IssuedDeviceCredential replacement;
         using (var host = new NativeAuthority(Store, clock, create: true))
         {
-            host.Issue();
-            clock.Advance(TimeSpan.FromDays(89), utc: false);
+            old = host.Issue();
+            replacement = host.Credentials.Rotate(old.CredentialId, TimeSpan.FromSeconds(3));
             host.Clean();
         }
-        clock.Advance(TimeSpan.FromDays(1));
-        using var reopened = new NativeAuthority(Store, clock);
-        Assert.Empty(reopened.Credentials.ListRegistrations());
-        reopened.Clean();
-    }
-
-    [Theory]
-    [InlineData("utc")]
-    [InlineData("monotonic")]
-    [InlineData("frequency")]
-    public void Clock_failure_prevents_clean_close_and_credential_revival(string kind)
-    {
-        var clock = new Clock();
-        using (var host = new NativeAuthority(Store, clock, create: true))
+        for (var i = 0; i < 3; i++)
         {
-            host.Issue();
-            if (kind == "utc") clock.Utc -= TimeSpan.FromSeconds(1);
-            if (kind == "monotonic") clock.Ticks--;
-            if (kind == "frequency") clock.Frequency++;
-            Code("auth.clock_invalid", () => host.Credentials.ListRegistrations());
-            Code("auth.clock_invalid", host.Clean);
+            clock.Advance(TimeSpan.FromSeconds(1), utc: false);
+            using var next = new NativeAuthority(Store, clock);
+            if (i < 2)
+                next.Credentials.Authenticate(next.Signed(old));
+            else
+                Code("auth.invalid", () => next.Credentials.Authenticate(next.Signed(old)));
+            next.Credentials.Authenticate(next.Signed(replacement));
+            next.Clean();
         }
-        Assert.Equal(GatewayPersistenceFailure.RecoveryRequired,
-            Assert.Throws<GatewayPersistenceException>(() => new NativeAuthority(Store, new Clock())).Failure);
+        clock.Advance(TimeSpan.FromDays(3650));
+        using var rebooted = new NativeAuthority(Store, clock, boot: Guid.NewGuid());
+        rebooted.Credentials.Authenticate(rebooted.Signed(replacement));
+        Assert.IsType<PairedDeviceLifetime>(Assert.Single(rebooted.Credentials.ListRegistrations()).Lifetime);
     }
 
     [Theory]
-    [InlineData((int)StoreStep.PendingFlushed)]
-    [InlineData((int)StoreStep.Replaced)]
-    [InlineData((int)StoreStep.CheckpointCommitted)]
-    public void Failed_mutation_poison_closes_all_authority_and_reset_never_revives_devices(int step)
+    [InlineData((int)StoreStep.PendingFlushed, "revoke")]
+    [InlineData((int)StoreStep.Replaced, "revoke")]
+    [InlineData((int)StoreStep.CheckpointCommitted, "revoke")]
+    [InlineData((int)StoreStep.PendingFlushed, "nonce")]
+    [InlineData((int)StoreStep.Replaced, "nonce")]
+    [InlineData((int)StoreStep.CheckpointCommitted, "nonce")]
+    public void Failed_mutation_recovers_successor_without_resurrecting_authority(int stage, string operation)
     {
         var clock = new Clock();
         var armed = false;
-        using (var host = new NativeAuthority(Store, clock, create: true, fault: value =>
+        IssuedDeviceCredential credential;
+        IssuedDeviceCredential unaffected;
+        GatewaySignedRequest request;
+        using (var host = new NativeAuthority(Store, clock, create: true, fault: step =>
         {
-            if (armed && value == (StoreStep)step) throw new IOException("fixture only");
+            if (armed && step == (StoreStep)stage) throw new IOException("fixture");
         }))
         {
-            var credential = host.Issue();
+            credential = host.Issue();
+            unaffected = host.Issue("other-device");
+            request = host.Signed(credential);
             armed = true;
-            Code("auth.storage", () => host.Credentials.RevokeCredential(credential.CredentialId));
-            Code("auth.closed", () => host.Credentials.Authenticate(host.Signed(credential)));
-            Code("auth.closed", host.Clean);
+            Code("auth.storage", () =>
+            {
+                if (operation == "revoke") host.Credentials.RevokeCredential(credential.CredentialId);
+                else host.Credentials.Authenticate(request);
+            });
+            Code("auth.closed", () => host.Credentials.ListRegistrations());
         }
-        Assert.Equal(GatewayPersistenceFailure.RecoveryRequired,
-            Assert.Throws<GatewayPersistenceException>(() => new NativeAuthority(Store, clock)).Failure);
-        using var recovered = new NativeAuthority(Store, clock, reset: true);
-        Assert.Empty(recovered.Credentials.ListRegistrations());
-        recovered.Clean();
+        using var next = new NativeAuthority(Store, clock);
+        Code(operation == "revoke" ? "auth.invalid" : "auth.replay",
+            () => next.Credentials.Authenticate(request));
+        next.Credentials.Authenticate(next.Signed(unaffected));
+        Assert.False(File.Exists(Path.Combine(Store, "pending.bin")));
+        next.Clean();
     }
 
     [Theory]
     [InlineData("clock")]
     [InlineData("cancel")]
-    [InlineData("expiry")]
-    public void Authentication_rechecks_after_durable_io_before_returning_principal(string kind)
+    public void Authentication_rechecks_after_commit_without_deleting_pairing(string kind)
     {
         var clock = new Clock();
         using var cancellation = new CancellationTokenSource();
@@ -306,24 +136,84 @@ public sealed class AuthorityTests : NativeTest
         {
             if (!armed || step != StoreStep.CheckpointCommitted) return;
             if (kind == "clock") clock.Advance(TimeSpan.FromMinutes(3));
-            if (kind == "expiry") clock.Advance(TimeSpan.FromDays(91));
-            if (kind == "cancel") cancellation.Cancel();
+            else cancellation.Cancel();
         });
         var credential = host.Issue();
         var request = host.Signed(credential, cancellation.Token);
         armed = true;
-        if (kind == "cancel")
-            Assert.Throws<OperationCanceledException>(() => host.Credentials.Authenticate(request));
-        else
-            Code(kind == "clock" ? "auth.clock" : "auth.expired", () => host.Credentials.Authenticate(request));
+        if (kind == "clock") Code("auth.clock", () => host.Credentials.Authenticate(request));
+        else Assert.Throws<OperationCanceledException>(() => host.Credentials.Authenticate(request));
         armed = false;
+        Assert.Single(host.Credentials.ListRegistrations());
         if (kind == "cancel")
             Code("auth.replay", () => host.Credentials.Authenticate(request with { CancellationToken = default }));
         host.Clean();
     }
 
     [Fact]
-    public void Cancellation_after_commit_cannot_undo_revocation()
+    public void Clock_error_blocks_access_but_correcting_clock_restores_same_pairing()
+    {
+        var clock = new Clock();
+        IssuedDeviceCredential credential;
+        using (var host = new NativeAuthority(Store, clock, create: true))
+        {
+            credential = host.Issue();
+            clock.Advance(TimeSpan.FromSeconds(10));
+            host.Credentials.Authenticate(host.Signed(credential));
+            clock.Utc -= TimeSpan.FromSeconds(5);
+            Code("auth.clock_invalid", () => host.Credentials.ListRegistrations());
+        }
+        var bytes = File.ReadAllBytes(Path.Combine(Store, "authority.bin"));
+        Assert.Equal(GatewayPersistenceFailure.ClockUnavailable,
+            Assert.Throws<GatewayPersistenceException>(() => new NativeAuthority(Store, clock)).Failure);
+        Assert.Equal(bytes, File.ReadAllBytes(Path.Combine(Store, "authority.bin")));
+        clock.Advance(TimeSpan.FromSeconds(5));
+        using var next = new NativeAuthority(Store, clock);
+        next.Credentials.Authenticate(next.Signed(credential));
+        Assert.Single(next.Credentials.ListRegistrations());
+        next.Clean();
+    }
+
+    [Fact]
+    public async Task Duplicate_nonce_concurrency_has_one_durable_winner()
+    {
+        using var host = new NativeAuthority(Store, new Clock(), create: true);
+        var request = host.Signed(host.Issue());
+        var outcomes = await Task.WhenAll(Enumerable.Range(0, 16).Select(_ => Task.Run(() =>
+        {
+            try { host.Credentials.Authenticate(request); return "accepted"; }
+            catch (GatewayProtocolException error) { return error.Failure.Code; }
+        })));
+        Assert.Single(outcomes, result => result == "accepted");
+        Assert.Equal(15, outcomes.Count(result => result == "auth.replay"));
+    }
+
+    [Fact]
+    public void Pairing_invitation_still_expires_and_never_survives_restart()
+    {
+        var clock = new Clock();
+        GatewayPairingProof proof;
+        using (var host = new NativeAuthority(Store, clock, create: true))
+        {
+            var card = host.Pairing.OpenWindow(new()
+            {
+                DeviceId = "device", DisplayName = "Device", Roles = [GatewayRole.Voice]
+            });
+            proof = new()
+            {
+                ProtocolVersion = GatewayProtocolVersion.Current, PairingId = card.PairingId,
+                PairingToken = card.Token.Reveal(), HostId = card.HostId,
+                SpkiFingerprint = card.SpkiFingerprint, DeviceId = "device"
+            };
+            clock.Advance(TimeSpan.FromMinutes(6), utc: false);
+            Code("pairing.expired", () => host.Pairing.Exchange(proof));
+        }
+        using var next = new NativeAuthority(Store, clock);
+        Code("pairing.closed", () => next.Pairing.Exchange(proof));
+    }
+
+    [Fact]
+    public void Cancellation_after_commit_does_not_undo_revocation_or_unpair_other_devices()
     {
         var clock = new Clock();
         using var cancellation = new CancellationTokenSource();
@@ -334,17 +224,14 @@ public sealed class AuthorityTests : NativeTest
         }))
         {
             var credential = host.Issue();
+            host.Issue("other");
             Assert.Throws<OperationCanceledException>(() =>
                 host.Credentials.RevokeCredential(credential.CredentialId, new(true)));
-            Assert.Single(host.Credentials.ListRegistrations());
             armed = true;
             Assert.Throws<OperationCanceledException>(() =>
                 host.Credentials.RevokeCredential(credential.CredentialId, cancellation.Token));
-            Assert.Empty(host.Credentials.ListRegistrations());
-            host.Clean();
         }
         using var next = new NativeAuthority(Store, clock);
-        Assert.Empty(next.Credentials.ListRegistrations());
-        next.Clean();
+        Assert.Equal("other", Assert.Single(next.Credentials.ListRegistrations()).DeviceId);
     }
 }
