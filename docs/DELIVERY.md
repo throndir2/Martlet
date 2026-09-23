@@ -218,15 +218,24 @@ preserved. All execution/qualification remains local and separately consented.
 
 ## 1. Execution rules
 
+Follow [the repository agent instructions](../AGENTS.md) for the autonomous
+engineering loop, task branch/worktree ownership and publication/merge protocol.
+Implementation requests normally proceed through local acceptance, independent
+review and verified merge into `main` without routine approval prompts.
+Explicit user holds, required reviews/protections and authorization boundaries
+remain binding; queued auto-merge is not verified integration.
+
 Each row below is an owned work item; small items can be one PR, while the
 larger items have mandatory PR slices listed below. Retain the parent ID and
 acceptance criteria across slices. If another item grows beyond a focused
 change, split it before assigning implementation. Do not combine installer,
 network security, model selection, and avatar work in one change.
 
-Before implementation, approve the architecture/contract decisions affected by
-the task, inspect current repository instructions, and coordinate ownership of
-shared files. A PR needs production-path tests where feasible, a reproducible
+Before implementation, confirm the affected architecture/contract decisions
+against current repository instructions and coordinate ownership of shared
+files. Use established decisions for routine work; obtain approval for
+consequential unresolved decisions rather than reopening accepted choices.
+A PR needs production-path tests where feasible, a reproducible
 acceptance description, documentation/remedies for new behavior, independent
 review, and fixes/local revalidation before merge. Run targeted checks first
 and the full affected suites before acceptance; retain actual local package
