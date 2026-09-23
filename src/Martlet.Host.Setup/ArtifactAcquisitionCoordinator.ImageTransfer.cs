@@ -374,6 +374,9 @@ public sealed partial class ArtifactAcquisitionCoordinator
     }
 
     private static byte[] BuildImageIndex(ArtifactImageAcquisitionPlan plan, Dictionary<string, VerifiedImageManifest> graph)
+        => BuildImageIndex(plan.Selection, graph);
+
+    private static byte[] BuildImageIndex(ArtifactAcquisitionSelection selection, Dictionary<string, VerifiedImageManifest> graph)
     {
         using var bytes = new MemoryStream();
         using (var writer = new Utf8JsonWriter(bytes))
@@ -382,7 +385,7 @@ public sealed partial class ArtifactAcquisitionCoordinator
             writer.WriteNumber("schemaVersion", 2);
             writer.WriteString("mediaType", HttpsArtifactImageTransport.OciIndex);
             writer.WriteStartArray("manifests");
-            foreach (var image in plan.Selection.ImageCandidates)
+            foreach (var image in selection.ImageCandidates)
             {
                 writer.WriteStartObject();
                 writer.WriteString("mediaType", graph[image.ArtifactId].MediaType);
