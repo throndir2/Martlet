@@ -5,7 +5,7 @@ using Martlet.HostArtifacts;
 
 namespace Martlet.Host.Setup;
 
-public sealed class ArtifactAcquisitionCoordinator : IDisposable
+public sealed partial class ArtifactAcquisitionCoordinator : IDisposable
 {
     public static readonly TimeSpan DefaultPlanLifetime = TimeSpan.FromMinutes(10);
     public static readonly TimeSpan DefaultTransferTimeout = TimeSpan.FromMinutes(30);
@@ -755,52 +755,22 @@ public sealed class ArtifactAcquisitionCoordinator : IDisposable
             CancellationToken cancellationToken,
             RunCursor cursor)
     {
-        var buffer = new byte[BufferBytes];
         var checkpoint = writer.Position;
         try
         {
-            while (true)
+            await ArtifactContentTransfer.CopyAsync(body, plan.Candidate.ExpectedBytes, writer.Position,
+                token => RequireSetupCurrentAsync(plan, token), async (bytes, token) =>
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                await RequireSetupCurrentAsync(plan, cancellationToken).ConfigureAwait(false);
-                var remaining = plan.Candidate.ExpectedBytes - writer.Position;
-                var maximumRead = (int)Math.Min(
-                    buffer.Length,
-                    checked(remaining + 1));
-                int read;
-                try
-                {
-                    read = await body.ReadAsync(
-                        buffer.AsMemory(0, maximumRead),
-                        cancellationToken).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException)
-                {
-                    throw;
-                }
-                catch (Exception error) when (error is IOException or HttpRequestException)
-                {
-                    throw new ArtifactAcquisitionException(
-                        ArtifactAcquisitionFailure.TransportFailed,
-                        error);
-                }
-                if (read == 0)
-                    break;
-                if (read > remaining)
-                    throw new ArtifactAcquisitionException(
-                        ArtifactAcquisitionFailure.SizeExceeded);
-                await writer.WriteAsync(
-                    buffer.AsMemory(0, read),
-                    cancellationToken).ConfigureAwait(false);
+                await writer.WriteAsync(bytes, token).ConfigureAwait(false);
                 await ReportAsync(
                     plan,
                     ArtifactAcquisitionProgressPhase.Downloading,
                     writer.Position,
                     resumed,
-                    cancellationToken).ConfigureAwait(false);
+                    token).ConfigureAwait(false);
                 if (writer.Position - checkpoint >= JournalCheckpointBytes)
                 {
-                    await writer.FlushToDiskAsync(cancellationToken)
+                    await writer.FlushToDiskAsync(token)
                         .ConfigureAwait(false);
                     document = document with
                     {
@@ -811,10 +781,10 @@ public sealed class ArtifactAcquisitionCoordinator : IDisposable
                         paths,
                         document,
                         version,
-                        cancellationToken, cursor).ConfigureAwait(false);
+                        token, cursor).ConfigureAwait(false);
                     checkpoint = writer.Position;
                 }
-            }
+            }, cancellationToken).ConfigureAwait(false);
             await writer.FlushToDiskAsync(cancellationToken).ConfigureAwait(false);
             document = document with
             {
@@ -1372,7 +1342,12 @@ public sealed class ArtifactAcquisitionCoordinator : IDisposable
         SetupPlan setupPlan,
         SetupPreview setupPreview,
         ArtifactAcquisitionCandidate candidate,
-        ArtifactAcquisitionPaths paths)
+        ArtifactAcquisitionPaths paths) =>
+        ValidateSetupBoundary(setupPlan, setupPreview, candidate.ManifestSha256, candidate.RoleIds, paths.RootPath);
+
+    private void ValidateSetupBoundary(
+        SetupPlan setupPlan, SetupPreview setupPreview, string manifestSha256,
+        IEnumerable<string> contributingRoles, string rootPath)
     {
         if (!string.Equals(
                 setupPlan.Fingerprint,
@@ -1395,7 +1370,7 @@ public sealed class ArtifactAcquisitionCoordinator : IDisposable
         var artifactRoot = setupPlan.ExpectedResources.SingleOrDefault(
             resource => resource.Id == "artifact-directory");
         if (artifactRoot is null ||
-            !string.Equals(paths.RootPath, storage.RootPath, PathComparison))
+            !string.Equals(rootPath, storage.RootPath, PathComparison))
             throw new ArtifactAcquisitionException(
                 ArtifactAcquisitionFailure.DestinationInvalid);
         var manifest = setupPlan.ExpectedResources.SingleOrDefault(
@@ -1403,7 +1378,7 @@ public sealed class ArtifactAcquisitionCoordinator : IDisposable
         if (manifest is null ||
             !string.Equals(
                 manifest.Value,
-                "sha256:" + candidate.ManifestSha256,
+                "sha256:" + manifestSha256,
                 StringComparison.Ordinal))
             throw new ArtifactAcquisitionException(
                 ArtifactAcquisitionFailure.SetupPlanChanged);
@@ -1412,7 +1387,7 @@ public sealed class ArtifactAcquisitionCoordinator : IDisposable
                 resource.Kind == SetupExpectedResourceKind.RoleArtifactSet)
             .Select(resource => resource.Value)
             .ToHashSet(StringComparer.Ordinal);
-        if (!candidate.RoleIds.Any(selectedRoles.Contains))
+        if (!contributingRoles.Any(selectedRoles.Contains))
             throw new ArtifactAcquisitionException(
                 ArtifactAcquisitionFailure.ArtifactNotSelected);
         foreach (var required in new[]

@@ -20,6 +20,15 @@ internal static class ArtifactDownloadConnectionPolicy
         if (endpoint.Port != 443 ||
             endpoint.Host is not ("api.github.com" or "release-assets.githubusercontent.com"))
             throw new ArtifactAcquisitionException(ArtifactAcquisitionFailure.RedirectRejected);
+        return await ConnectVettedEndpointAsync(endpoint, cancellationToken, resolve, connect).ConfigureAwait(false);
+    }
+
+    internal static async ValueTask<Stream> ConnectVettedEndpointAsync(
+        DnsEndPoint endpoint, CancellationToken cancellationToken,
+        Func<string, CancellationToken, Task<IPAddress[]>> resolve,
+        Func<IPAddress, int, CancellationToken, ValueTask<Stream>> connect)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
         var addresses = await resolve(endpoint.Host, cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
         if (addresses.Length == 0 || addresses.Any(address => !IsGloballyReachable(address)))
@@ -29,7 +38,7 @@ internal static class ArtifactDownloadConnectionPolicy
         return await connect(addresses[0], endpoint.Port, cancellationToken).ConfigureAwait(false);
     }
 
-    private static async ValueTask<Stream> ConnectAddressAsync(
+    internal static async ValueTask<Stream> ConnectAddressAsync(
         IPAddress address, int port, CancellationToken cancellationToken)
     {
         var socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp)

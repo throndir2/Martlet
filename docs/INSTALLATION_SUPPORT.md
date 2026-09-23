@@ -412,14 +412,22 @@ host-network, or desktop Docker socket mounts.
 Show **exact selected-artifact bytes** before consent, plus expanded image
 size, staging space, rollback retention, and user-data reserve. Metadata can
 inform planning but is not the checksum verification of a downloaded file.
+Unknown expanded/installed/peak quantities must remain unknown, not inferred
+from compressed descriptor bytes.
 
 The focused [H05b acquisition library](../src/Martlet.Host.Setup/README.md)
 now separates durable local review from fresh exact-artifact acquisition consent.
 It supports pinned public GitHub release assets through a bounded reviewed CDN
-policy and owned, hash-verified local staging; it does not install or execute
-them. Hugging Face and OCI downloads remain explicitly unsupported in this
-slice, so this is not a completed model-provisioning or F5 installation journey.
-Catalog and host/runtime qualification remain unchanged.
+policy and owned, hash-verified local staging. Its separate image API also
+acquires the current named public Docker Hub Ollama and GHCR F5 candidates,
+exact `linux/amd64`, using scoped anonymous tokens and documented CDN redirects.
+The entire selected image batch is verified before atomic OCI-layout publication;
+original Docker schema-2 bytes and repeated layer order are retained. Deduplication
+is within that batch only, so separate batches may repeat downloads/storage.
+Neither API installs, loads or executes containers. Hugging Face/model downloads
+remain unsupported, so this is not a completed model-provisioning or F5
+installation journey. Catalog inspection, host/runtime qualification and
+permanent device-pairing trust remain unchanged.
 
 | Artifact | Observed upstream metadata / planning treatment |
 | --- | --- |

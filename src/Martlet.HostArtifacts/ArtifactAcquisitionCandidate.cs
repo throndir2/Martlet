@@ -102,7 +102,7 @@ public sealed class ArtifactAcquisitionCandidate
         ]);
     }
 
-    private static string Token<T>(T value) where T : struct, Enum
+    internal static string Token<T>(T value) where T : struct, Enum
     {
         var name = value.ToString();
         var builder = new StringBuilder(name.Length + 4);
@@ -173,6 +173,8 @@ public sealed class ArtifactAcquisitionSelection
     public bool DeclaredMismatch { get; }
     public ImmutableArray<ArtifactAcquisitionCandidate> Artifacts { get; }
     public ImmutableArray<AcquisitionImage> Images { get; }
+    public ImmutableArray<ArtifactImageAcquisitionCandidate> ImageCandidates { get; }
+    public ArtifactImageContentInventory ImageContentInventory { get; }
     public long KnownListedBytes { get; }
     public long KnownImageCompressedBytes { get; }
     public long KnownImageExpandedBytes { get; }
@@ -207,6 +209,14 @@ public sealed class ArtifactAcquisitionSelection
             image.Metadata.Blobs.Select(blob => new AcquisitionImageBlob(blob.Digest,
                 blob.Kind.ToString(), blob.CompressedBytes, blob.ExpandedBytes, blob.StagingBytes))
                 .ToImmutableArray())).ToImmutableArray();
+        ImageCandidates = (report.ContainerImages ?? []).Select(image =>
+            new ArtifactImageAcquisitionCandidate(manifest, image.Metadata,
+                report.Sources.Single(source => source.Id == image.Metadata.SourceId),
+                report.Licenses.Where(license => image.Metadata.LicenseIds.Contains(license.Id, StringComparer.Ordinal)),
+                report.Roles.Where(role => role.ArtifactIds.Contains(image.Metadata.Id, StringComparer.Ordinal))
+                    .Select(role => role.Id))).ToImmutableArray();
+        ImageContentInventory = new ArtifactImageContentInventory(
+            (report.ContainerImages ?? []).Select(image => image.Metadata), ImageCandidates);
         KnownListedBytes = report.Disk?.KnownListedPayloadBytes ?? 0;
         KnownImageCompressedBytes = report.Disk?.ContainerContent?.KnownCompressedBytes ?? 0;
         KnownImageExpandedBytes = report.Disk?.ContainerContent?.KnownExpandedBlobBytes ?? 0;

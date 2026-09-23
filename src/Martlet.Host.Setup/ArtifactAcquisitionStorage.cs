@@ -134,7 +134,7 @@ internal interface IArtifactAcquisitionMutationStorage : IArtifactAcquisitionSto
 /// cooperative leases do not provide arbitrary hostile namespace race defense.
 /// Construction and inspection never create directories or payload files.
 /// </summary>
-public sealed class LocalArtifactAcquisitionStorage : IArtifactAcquisitionMutationStorage
+public sealed partial class LocalArtifactAcquisitionStorage : IArtifactAcquisitionMutationStorage
 {
     private readonly ISetupDirectoryCommitter directoryCommitter;
     private readonly IArtifactFreeSpaceProbe freeSpaceProbe;
@@ -231,50 +231,9 @@ public sealed class LocalArtifactAcquisitionStorage : IArtifactAcquisitionMutati
 
     internal ValueTask<SetupFileSnapshot> WriteJournalAsync(ArtifactAcquisitionPaths paths,
         string? expectedVersion, ReadOnlyMemory<byte> content, CancellationToken cancellationToken) =>
-        IoAsync(async () =>
-        {
-            RequireLease(paths);
-            cancellationToken.ThrowIfCancellationRequested();
-            if (content.Length > ArtifactAcquisitionJournalCodec.MaximumBytes)
-                throw Failure(ArtifactAcquisitionFailure.JournalTooLarge);
-            if (expectedVersion is not null)
-                AcquisitionGuard.Fingerprint(expectedVersion, ArtifactAcquisitionFailure.JournalChanged);
-            if (FileState(paths, paths.JournalPath + ".pending") is not null)
-                throw Failure(ArtifactAcquisitionFailure.JournalChanged);
-            var before = FileState(paths, paths.JournalPath);
-            var current = await ReadJournalAsync(paths, cancellationToken).ConfigureAwait(false);
-            if (!string.Equals(current?.Version, expectedVersion, StringComparison.Ordinal))
-                throw Failure(ArtifactAcquisitionFailure.JournalChanged);
-            var ownedContent = content.ToArray();
-            string pendingIdentity;
-            RequireLease(paths);
-            await using (var stream = CreateNew(paths.JournalPath + ".pending"))
-            {
-                pendingIdentity = ArtifactAcquisitionFileIdentity.Read(stream.SafeFileHandle).Identity;
-                await stream.WriteAsync(ownedContent, cancellationToken).ConfigureAwait(false);
-                RequireLease(paths);
-                await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
-                stream.Flush(true);
-            }
-            RequireLease(paths);
-            cancellationToken.ThrowIfCancellationRequested();
-            var latest = await ReadJournalAsync(paths, cancellationToken).ConfigureAwait(false);
-            if (latest?.Version != expectedVersion ||
-                FileState(paths, paths.JournalPath) != before)
-                throw Failure(ArtifactAcquisitionFailure.JournalChanged);
-            RequireFile(paths, paths.JournalPath + ".pending", pendingIdentity,
-                ownedContent.Length, ArtifactAcquisitionFailure.JournalChanged);
-            RequireLease(paths);
-            File.Move(paths.JournalPath + ".pending", paths.JournalPath, overwrite: before is not null);
-            Commit(paths);
-            RequireFile(paths, paths.JournalPath, pendingIdentity, ownedContent.Length,
-                ArtifactAcquisitionFailure.JournalChanged);
-            var result = await ReadJournalAsync(paths, CancellationToken.None).ConfigureAwait(false);
-            var intended = Convert.ToHexStringLower(SHA256.HashData(ownedContent));
-            if (result?.Version != intended)
-                throw Failure(ArtifactAcquisitionFailure.JournalChanged);
-            return result!;
-        });
+        IoAsync(() => ArtifactOwnedJournalIO.WriteAsync(paths.JournalPath,
+            ArtifactAcquisitionJournalCodec.MaximumBytes, expectedVersion, content,
+            () => RequireLease(paths), directoryCommitter, cancellationToken));
 
     internal ValueTask<IArtifactPartialWriter> OpenPartialAsync(ArtifactAcquisitionPaths paths,
         long offset, string? expectedIdentity, CancellationToken cancellationToken) =>
@@ -402,50 +361,18 @@ public sealed class LocalArtifactAcquisitionStorage : IArtifactAcquisitionMutati
         if (before.Bytes != expectedBytes ||
             expectedIdentity is not null && before.Identity != expectedIdentity)
             throw Failure(mismatch);
-        ValidatePaths(paths);
-        await using var stream = ArtifactAcquisitionFileIdentity.OpenRead(path);
-        if (ArtifactAcquisitionFileIdentity.Read(stream.SafeFileHandle) != before)
-            throw Failure(mismatch);
-        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        var buffer = new byte[65_536];
-        long total = 0;
-        while (true)
+        return await ArtifactAcquisitionFileIdentity.HashOwnedFileAsync(path, before, token =>
         {
+            token.ThrowIfCancellationRequested();
             ValidatePaths(paths);
-            if (ArtifactAcquisitionFileIdentity.Read(stream.SafeFileHandle) != before)
-                throw Failure(mismatch);
-            var count = await stream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
-            if (count == 0) break;
-            total = checked(total + count);
-            if (total > expectedBytes) throw Failure(mismatch);
-            hash.AppendData(buffer, 0, count);
-        }
-        if (total != expectedBytes || FileState(paths, path) != before ||
-            ArtifactAcquisitionFileIdentity.Read(stream.SafeFileHandle) != before)
-            throw Failure(mismatch);
-        return Convert.ToHexStringLower(hash.GetHashAndReset());
+            return ValueTask.CompletedTask;
+        }, mismatch, cancellationToken).ConfigureAwait(false);
     });
 
-    private async ValueTask<SetupFileSnapshot?> ReadJournalAsync(
-        ArtifactAcquisitionPaths paths, CancellationToken cancellationToken)
-    {
-        var before = FileState(paths, paths.JournalPath);
-        if (before is null) return null;
-        if (before.Value.Bytes > ArtifactAcquisitionJournalCodec.MaximumBytes)
-            throw Failure(ArtifactAcquisitionFailure.JournalTooLarge);
-        ValidatePaths(paths);
-        await using var stream = ArtifactAcquisitionFileIdentity.OpenRead(paths.JournalPath);
-        if (ArtifactAcquisitionFileIdentity.Read(stream.SafeFileHandle) != before.Value)
-            throw Failure(ArtifactAcquisitionFailure.JournalChanged);
-        var content = new byte[checked((int)before.Value.Bytes)];
-        await stream.ReadExactlyAsync(content, cancellationToken).ConfigureAwait(false);
-        ValidatePaths(paths);
-        if (stream.ReadByte() != -1 ||
-            ArtifactAcquisitionFileIdentity.Read(stream.SafeFileHandle) != before.Value ||
-            FileState(paths, paths.JournalPath) != before)
-            throw Failure(ArtifactAcquisitionFailure.JournalChanged);
-        return new(content, Convert.ToHexStringLower(SHA256.HashData(content)));
-    }
+    private ValueTask<SetupFileSnapshot?> ReadJournalAsync(
+        ArtifactAcquisitionPaths paths, CancellationToken cancellationToken) =>
+        ArtifactOwnedJournalIO.ReadAsync(paths.JournalPath, ArtifactAcquisitionJournalCodec.MaximumBytes,
+            () => ValidatePaths(paths), cancellationToken);
 
     private ArtifactAcquisitionFileMetadata? FileState(ArtifactAcquisitionPaths paths, string path)
     {

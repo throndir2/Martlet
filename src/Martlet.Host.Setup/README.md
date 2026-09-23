@@ -63,12 +63,13 @@ same logical API identity to obtain a fresh location and checks the stable conte
 validator, exact range and total size; changing URL signatures do not change the
 artifact. Changed content never silently appends or restarts.
 
-**Hugging Face and OCI acquisition are unsupported before network.** HF's
+**Hugging Face acquisition is unsupported before network.** HF's
 documented LFS/Xet bridge needs a separately reviewed origin policy; native Xet
-token/reconstruction behavior is outside this slice. OCI descriptions remain
-metadata-only, with distinct compressed/expanded/staging unknowns and owner-owned
-deduplication. No F5 model download, full runtime closure, extraction, registry
-pull, execution or installation is implied.
+token/reconstruction behavior is outside this slice. The separate image API
+below acquires only the current named public OCI/Docker image candidates.
+Catalog descriptions remain metadata, with distinct compressed/expanded/staging
+unknowns and owner-owned deduplication. No F5 model download, full runtime
+closure, extraction, Docker pull/run, execution or installation is implied.
 
 Acquisition has its own strict format-2 `ArtifactAcquisition` journal. Legacy v1,
 wrong-purpose, corrupt and foreign files are preserved and refused. The state
@@ -96,6 +97,168 @@ and actual private journal/partial/final files. No test fetches model, runtime,
 driver, engine or registry payloads. Windows directory-commit injection is not
 evidence of Linux fsync, power-loss durability, Ubuntu/native behavior or actual
 provider qualification. Those gates and real hardware/inference remain unrun.
+
+## Verified selected image acquisition
+
+`PreviewImagesAsync` / `RunImagesAsync` extend the existing coordinator with
+actual content acquisition for the **exact selected-role image batch**. The
+public production path owns the transport and local IO; there is no public
+HTTP handler, arbitrary URL, registry plugin or caller eligibility switch.
+HostArtifacts supplies immutable `ImageCandidates` and `ImageContentInventory`
+through `DescribeAcquisition`. It remains the only catalog, role-closure,
+descriptor-fact and unique-byte accounting owner. The older `Images` and file
+candidate APIs and both catalog/inspection wire formats are unchanged.
+
+```csharp
+var selection = manifest.DescribeAcquisition(
+    selectedRoleIds, "ubuntu-24.04-x64", "linux/amd64");
+// Create a selection-bound ArtifactRightsReview for EACH ImageCandidates entry,
+// using its ArtifactId, explicit reviewed terms and current evidence.
+var preview = await acquisition.PreviewImagesAsync(
+    selection, setupPlan, recordedReview, imageRights);
+// Only after separate user approval of this exact image batch and destination:
+var permit = preview.Approve(
+    ArtifactAcquisitionDecision.Approve, preview.Plan.RequiredConsentScopes);
+var result = await acquisition.RunImagesAsync(preview.Plan, permit);
+```
+
+Rights are separate default-No local declarations, not publisher attestations
+or automatic legal clearance. Unknown bundled-component claims need explicit
+per-claim reviewed terms and evidence. Extra/missing/duplicate/wrong-selection
+authorizations are refused. Approval freezes current LocalReview, selected
+roles, catalog/source/content identities, all applicable rights, destination,
+local observations, byte/reserve budget, recovery action and journal versions.
+It is one-use and expires with the earliest relevant review window.
+
+### Exact public registry profiles
+
+| Image | Registry/repository | Anonymous token realm / service | Blob CDN |
+| --- | --- | --- | --- |
+| Ollama | `registry-1.docker.io/ollama/ollama` | `https://auth.docker.io/token` / `registry.docker.io` | `production.cloudfront.docker.com` |
+| F5 | `ghcr.io/swivid/f5-tts` | `https://ghcr.io/token` / `ghcr.io` | `pkg-containers.githubusercontent.com` |
+
+Only `repository:<exact-repository>:pull` is requested. A single bounded
+Bearer challenge must agree with that exact realm, service and resource scope.
+The token exchange is anonymous, read-only and in-memory; no personal Docker
+configuration, credential helper, login, refresh token or paired-device
+credential is used. Private images and other registries/repositories/platforms
+are explicitly unsupported. Tokens are not reusable authorization receipts.
+
+The implementation supports direct registry content and one manually validated
+302/307 blob/config redirect to the profile's exact CDN. It never forwards the
+bearer to the CDN/token endpoint or follows token/manifest redirects. Signed
+query text is preserved only for that request, not journaled or emitted.
+Each hop rechecks current review/permit/CAS/lease; DNS must resolve exclusively
+to vetted public addresses, the socket connects to an already-vetted address,
+and ordinary hostname TLS verification remains enabled. No proxy, cookies,
+automatic redirects/decompression/retry or cross-provider fallback.
+
+These origins follow the current
+[Docker allowlist](https://docs.docker.com/desktop/setup/allow-list/) and
+[GitHub package domains](https://docs.github.com/en/actions/reference/runners/self-hosted-runners#accessible-domains-by-function).
+Docker [removed its previous Cloudflare/R2 domains](https://github.com/docker/docs/commit/466c7e537900a5efbf6a8bf30efc2b93d6b0908d);
+they are not retained as permissive fallbacks. Authentication follows
+[Distribution token auth](https://distribution.github.io/distribution/spec/auth/token/).
+[GitHub documents anonymous public access](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry);
+its [public source also shows the GHCR token/service recipe](https://github.com/github/gh-aw/blob/c35393777e5604a63721d09512263b1383301d4f/.github/workflows/cli-version-checker.md).
+Actual future challenges must still match the frozen policy.
+
+### Verified closure, not runtime qualification
+
+The [Distribution 1.1.1 digest endpoints](https://github.com/opencontainers/distribution-spec/blob/v1.1.1/spec.md#pull)
+are requested without tag discovery. Index, selected manifest and configuration
+bytes are exact-length/SHA-256 checked before parsing. An optional
+`Docker-Content-Digest` header must agree; it never substitutes for hashing.
+Supported HTTP and body media types must match. Metadata bodies are bounded
+to 1 MiB, token JSON to 64 KiB, bearer values to 8 KiB and headers to 16 KiB.
+Duplicate/unknown graph-bearing fields, invalid UTF-8, ambiguous platform
+selection, unsupported algorithms/media, extra/missing/swapped descriptors,
+foreign `urls`, embedded `data`, nondistributable layers, plugins and artifact
+envelopes fail explicitly. This is a curated image profile, not a claim of
+general OCI conformance.
+
+All selected small metadata/configuration is validated before any large layer
+request. Actual manifest descriptor occurrences must exactly match the
+owner-projected catalog, including order and multiplicity; a repeated layer
+is downloaded/stored once but retains every ordered occurrence. Config
+OS/architecture/variant and rootfs/DiffID declarations are checked structurally.
+No config command, health check, label, history entry or archive is executed.
+Compressed digests do **not** verify uncompressed DiffIDs. No decompressor,
+tar extraction or engine is involved.
+
+The plan exposes known unique encoded content bytes, remaining content bytes,
+separate maximum application-read content/control response bytes (including
+overflow-detection probes), finite request/token/redirect counts and new-storage
+allowance/reserve. The response ceilings are enforced before body reads. These are
+not total network wire costs, complete model/runtime downloads, expanded
+storage or installation peak disk. Expanded/peak fields remain unknown.
+Current authority, owned identities and available reserve are checked during
+streaming and bounded read-back hashing, not only before the first request.
+
+### Atomic batch layout and recovery
+
+After approval only, an owned staging sibling is created under the explicitly
+selected existing private local parent. Full SHA-256 CAS filenames are used
+under `blobs/sha256`. Verified metadata and layers are flushed/read back before
+non-overwrite partial finalization. An
+[OCI layout](https://github.com/opencontainers/image-spec/blob/v1.1.1/image-layout.md)
+marker (`1.0.0`) and generated `index.json` are written inside staging only
+after the whole selected closure is verified. A single non-overwrite,
+same-volume directory rename publishes the entire batch, followed by native
+identity/content checks and journal completion. No partial image is exposed
+through the published index or a successful result.
+
+The root index references **only selected image manifests**. Ollama's original
+multi-platform index remains an unreferenced verified evidence blob; arm64 is
+not fetched or advertised as acquired. F5's original
+[Docker schema-2 bytes/media types](https://distribution.github.io/distribution/spec/manifest-v2-2/)
+are preserved, not rewritten into a different digest. A downstream consumer
+must understand those media types; no Docker interoperability was exercised.
+
+Deduplication is within this exact batch only. Separate role selections may
+repeat downloads and disk storage. No global cache savings, hardlinking,
+Docker cache adoption or automatic reuse of foreign layouts is claimed.
+
+Image acquisition has a separate strict **format-3 `OciImageAcquisition`**
+journal (512 KiB/depth 16). File acquisition remains format 2, LocalReview
+remains format 2, and cross-purpose/legacy journals are refused and preserved.
+The image lease combines a journal-bound marker identity with an explicitly
+successful held cooperative native lock; unsupported locking is an error,
+not best-effort acceptance. Resume reacquires only the exact owned marker
+after the former lock is released, under a fresh preview/permit and CAS.
+Unknown bootstrap markers and pending/foreign writes require operator review.
+
+Checkpoints record actual durable prefix length/SHA-256. Resume verifies the
+prefix before any append/request, returns to the logical registry/repository/
+digest, obtains fresh ephemeral transport credentials and requires an exact
+206 range/total. OCI resume is not tied to a signed URL or CDN ETag.
+No full 200 response is silently appended, no unexpected tail is truncated,
+and no retry silently increases the approved budget.
+
+Owned corrupt partial/published batches or unusable ranges require a **new
+reviewed whole-layout quarantine/reacquisition action** and full replacement
+budget. One quarantine sibling is retained; it is never overwritten/purged.
+Replaced identities, unknown children, links and excessive unexpected sizes
+are preserved as conflicts. Recovery preflights all observed file lengths
+against one aggregate tree hash allowance before reading payload bytes.
+Reacquisition does not silently adopt retained
+quarantine bytes. Exact pre/post-move identities allow recovery after a move
+but before journal completion, still under a full replacement budget.
+Interrupted revalidation preserves a published layout's location state.
+Ambiguous publication never returns success.
+
+Native handles, exact directory/file identities and CAS support the existing
+private, non-hostile, non-replaceable namespace contract; they do not defeat
+every ancestor, mount or hostile same-user replacement race. Windows tests
+exercise the actual exclusive lease and directory-handle behavior, but the
+injected committer is not Linux fsync/power-loss evidence. Linux native
+locking/durability, live registry availability/rate limits, real payloads,
+engine/runtime/GPU compatibility, inference and installation remain unrun.
+
+The result reports only verified selected image bytes/publication. Runtime
+enabled, host ready and execution authorized remain false; HostArtifacts
+inspection and permanent device pairing are unchanged. This library is not
+yet an end-user Ubuntu installer or a completed F5/model-provisioning flow.
 
 ## H05a local review scope
 
