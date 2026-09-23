@@ -24,18 +24,23 @@ internal sealed class DesktopMemoryService : IDisposable
     private readonly object gate = new();
     private readonly SettingsStore settings;
     private readonly TimeProvider clock;
+    private readonly Func<MemoryStoreActivationPreview, MemoryStoreAuthorization, CancellationToken, MemoryStore> openStore;
+    private TaskCompletionSource? cleanupRetry;
     private CancellationTokenSource invalidation = new();
     private long generation;
     private bool disposed;
 
     internal Action<DesktopMemoryPoint, CancellationToken>? TestHook { get; set; }
+    internal bool HasPendingCleanup { get { lock (gate) return cleanupRetry is not null; } }
     internal string DefaultDirectory =>
         Path.Combine(settings.DataDirectory, MemorySettings.AppLocalDirectoryName);
 
-    internal DesktopMemoryService(SettingsStore settings, TimeProvider? clock = null)
+    internal DesktopMemoryService(SettingsStore settings, TimeProvider? clock = null,
+        Func<MemoryStoreActivationPreview, MemoryStoreAuthorization, CancellationToken, MemoryStore>? openStore = null)
     {
         this.settings = settings;
         this.clock = clock ?? TimeProvider.System;
+        this.openStore = openStore ?? MemoryStore.Open;
     }
 
     internal Task<SettingsLoadResult> LoadAsync(CancellationToken token = default) =>
@@ -228,8 +233,41 @@ internal sealed class DesktopMemoryService : IDisposable
         var preview = MemoryStoreActivationPreview.Create(configured.Directory);
         preview.ValidateLocalScope();
         var approval = preview.Authorize(MemoryConsentDecision.Allow);
-        using var store = MemoryStore.Open(preview, approval, token);
-        return await action(store, token).ConfigureAwait(false);
+        var store = openStore(preview, approval, token);
+        try
+        {
+            return await action(store, token).ConfigureAwait(false);
+        }
+        finally
+        {
+            // Cancellation/closed observers cannot abandon private partials or release the app effect slot.
+            while (store.HasPendingCleanup)
+            {
+                Task retry;
+                lock (gate)
+                {
+                    cleanupRetry = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    retry = cleanupRetry.Task;
+                }
+                await retry.ConfigureAwait(false);
+                try
+                {
+                    await store.RetryCleanupAsync(CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (MemoryException error) when (error.Failure is MemoryFailure.CleanupPending or MemoryFailure.AccessDenied)
+                {
+                    // The same owner remains quarantined until a later explicit retry succeeds.
+                }
+            }
+            store.Dispose();
+            lock (gate) cleanupRetry = null;
+        }
+    }
+
+    internal void RetryCleanup()
+    {
+        lock (gate)
+            cleanupRetry?.TrySetResult();
     }
 
     private async Task<(MemorySettings Settings, string Directory)> RequireEnabledAsync(

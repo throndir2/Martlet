@@ -234,6 +234,95 @@ public sealed class MemoryWindowTests
         Assert.Single(Directory.GetFiles(scope.Data, "settings.v1.*.bak"));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public Task FailedPartialCleanupRetainsStoreAndSharedWorkerAcrossCloseAndRetry(bool export) =>
+        OnDispatcher(async () =>
+    {
+        using var scope = new Scope();
+        var settings = new SettingsStore(scope.Data);
+        var initial = SetupSettings.Begin(null);
+        var saved = await settings.SaveAsync(initial, null);
+        var runner = new SetupOperationRunner();
+        FileStream? blockedPartial = null;
+        var failNext = false;
+        var hooks = new MemoryTestHooks
+        {
+            Io = (point, _) =>
+            {
+                if (!failNext || point != (export ? MemoryIoPoint.AfterExportStageWrite : MemoryIoPoint.AfterStoreStageWrite))
+                    return;
+                failNext = false;
+                var path = export ? Directory.GetFiles(scope.Root, "*.partial").Single() :
+                    Path.Combine(scope.Memory, ".martlet-memory.v1.pending");
+                blockedPartial = new(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+                throw new IOException("Synthetic stage failure.");
+            }
+        };
+        using var memory = new DesktopMemoryService(settings, openStore: (preview, approval, token) =>
+            MemoryStore.Open(preview, approval, TimeProvider.System, hooks, token));
+        var configured = await memory.SaveConfigurationAsync(initial, saved.Revision, true, true,
+            MemoryStoragePolicy.AppLocalData, null);
+        var revision = configured.Settings.Memory!.ConfigurationRevision;
+        await memory.SaveFactAsync(revision, "Existing synthetic fact.", MemoryRetention.UntilDeleted());
+        var original = File.ReadAllBytes(Path.Combine(scope.Memory, MemoryStore.StoreFileName));
+        var window = new MemoryWindow(memory, runner) { ShowActivated = false, ShowInTaskbar = false };
+        MemoryWindow? reopened = null;
+        window.Show();
+        try
+        {
+            await Until(() => !runner.IsRunning && Text(window, "ConfigurationStatus").Contains("ENABLED", StringComparison.Ordinal));
+            if (export)
+            {
+                Click(window, "MemoryCreateExportPreview");
+                await Until(() => !runner.IsRunning && Text(window, "ExportSummary").Contains("NO", StringComparison.Ordinal));
+                Control<TextBox>(window, "ExportDestination").Text = scope.Export;
+                Check(window, "MemoryAcceptExport").IsChecked = true;
+            }
+            else
+            {
+                Control<TextBox>(window, "FactContent").Text = "Uncommitted synthetic fact.";
+                Control<ComboBox>(window, "RetentionChoice").SelectedIndex = 0;
+            }
+            failNext = true;
+            Click(window, export ? "MemoryExport" : "MemorySaveFact");
+            await Until(() => memory.HasPendingCleanup &&
+                Text(window, "ConfigurationStatus").Contains("cleanup is pending", StringComparison.Ordinal));
+            Assert.True(runner.IsRunning);
+            Assert.Null(runner.TryStart(_ => Task.FromResult(new SetupWorkResult(SetupWorkOutcome.Completed))));
+            var preview = MemoryStoreActivationPreview.Create(scope.Memory);
+            Assert.Equal(MemoryFailure.Busy, Assert.Throws<MemoryException>(() =>
+                MemoryStore.Open(preview, preview.Authorize(MemoryConsentDecision.Allow))).Failure);
+            window.Close();
+            reopened = new MemoryWindow(memory, runner) { ShowActivated = false, ShowInTaskbar = false };
+            reopened.Show();
+            Assert.True(Control<Button>(reopened, "RetryCleanupButton").IsEnabled);
+            Click(reopened, "MemoryRetryCleanup");
+            await Task.Delay(300);
+            Assert.True(runner.IsRunning);
+            Assert.True(memory.HasPendingCleanup);
+            blockedPartial!.Dispose();
+            blockedPartial = null;
+            Click(reopened, "MemoryRetryCleanup");
+            await Until(() => !runner.IsRunning);
+            Assert.False(memory.HasPendingCleanup);
+            Assert.False(File.Exists(scope.Export));
+            Assert.Empty(Directory.GetFiles(scope.Root, "*.partial"));
+            Assert.False(File.Exists(Path.Combine(scope.Memory, ".martlet-memory.v1.pending")));
+            Assert.Equal(original, File.ReadAllBytes(Path.Combine(scope.Memory, MemoryStore.StoreFileName)));
+            Assert.Single((await memory.InspectAsync(revision)).Facts);
+        }
+        finally
+        {
+            blockedPartial?.Dispose();
+            memory.RetryCleanup();
+            window.Close();
+            reopened?.Close();
+            await Until(() => !runner.IsRunning);
+        }
+    });
+
     private static T Control<T>(Window window, string name) where T : FrameworkElement =>
         Assert.IsType<T>(window.FindName(name));
 

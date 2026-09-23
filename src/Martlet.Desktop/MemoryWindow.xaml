@@ -21,6 +21,8 @@
             <WrapPanel>
                 <Button x:Name="ReloadButton" Content="_Reload memory settings (does not open the fact store)" Click="Reload_Click"
                         Padding="10,6" Margin="0,4,8,4" AutomationProperties.AutomationId="MemoryReload" />
+                <Button x:Name="RetryCleanupButton" Content="Retry owned _cleanup" Click="RetryCleanup_Click"
+                        Padding="10,6" Margin="0,4,8,4" AutomationProperties.AutomationId="MemoryRetryCleanup" />
                 <Button Content="_Close memory" Click="Close_Click" Padding="10,6" Margin="0,4,8,4"
                         AutomationProperties.AutomationId="MemoryClose" />
             </WrapPanel>

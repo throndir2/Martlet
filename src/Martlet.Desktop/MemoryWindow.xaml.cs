@@ -57,6 +57,7 @@ public partial class MemoryWindow : Window
 
     private async void Window_Loaded(object sender, RoutedEventArgs e) => await LoadAsync();
     private async void Reload_Click(object sender, RoutedEventArgs e) => await LoadAsync();
+    private void RetryCleanup_Click(object sender, RoutedEventArgs e) => service.RetryCleanup();
 
     private async Task LoadAsync()
     {
@@ -412,9 +413,16 @@ public partial class MemoryWindow : Window
 
     private async Task RunAsync(Func<CancellationToken, Task> action, string failureText)
     {
-        if (closed || operations.IsRunning)
+        if (closed) return;
+        if (operations.IsRunning)
         {
             ConfigurationStatus.Text = "Another app effect still owns resources or cleanup. Wait for actual release; no memory action was queued.";
+            while (!closed && operations.IsRunning)
+            {
+                RenderActions();
+                await Task.Delay(250);
+            }
+            if (!closed) RenderActions();
             return;
         }
         Exception? failure = null;
@@ -438,6 +446,11 @@ public partial class MemoryWindow : Window
             return;
         active = worker;
         RenderActions();
+        while (!worker.Completion.IsCompleted)
+        {
+            await Task.WhenAny(worker.Completion, Task.Delay(250));
+            if (!closed) RenderActions();
+        }
         var completed = await worker.Completion;
         active = null;
         if (closed)
@@ -460,6 +473,11 @@ public partial class MemoryWindow : Window
         if (SaveConfigurationButton is null)
             return;
         var busy = operations.IsRunning;
+        RetryCleanupButton.IsEnabled = service.HasPendingCleanup;
+        if (service.HasPendingCleanup)
+            ConfigurationStatus.Text = "Private memory cleanup is pending. The store and app effect slot remain owned. " +
+                "Resolve local file access, then Retry owned cleanup. Closing this window does not release ownership; " +
+                "exiting Martlet may leave private partial bytes on disk.";
         var enabled = ConfigurationMatchesPersisted() &&
             loadedSettings?.Memory is { Enabled: true } memory &&
             memory.ConfigurationRevision == configurationRevision;

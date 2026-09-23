@@ -174,6 +174,15 @@ process memory until reclaimed, and atomic replacement is not a secure disk
 wipe; the guarantee is exact logical source/index/cache removal and stale-result
 suppression.
 
+If a private store/export partial cannot be removed after a failed or canceled
+Desktop action, the original store and app effect slot remain owned. Memory
+shows the pending cleanup and **Retry owned cleanup** retries only the engine's
+recorded paths, even from a reopened Memory window. Cancellation and closing
+an observer never release this quarantine; no new app effect is admitted until
+cleanup and disposal finish. There is no automatic cleanup sweep or retry timer.
+Exiting the process can still leave private partial bytes; this is not secure
+erasure or crash recovery of an export.
+
 The held-out synthetic fixture at
 `tests\Martlet.Memory.Tests\Fixtures\retrieval-held-out.json` keeps its facts and
 queries outside the retrieval implementation. It checks bounded top-result
