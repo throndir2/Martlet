@@ -48,7 +48,7 @@ $builder = Join-Path $run 'inno'
 .\packaging\windows\Smoke-Package.ps1 -PayloadRoot "$first\payload" -InteractiveDesktop
 .\packaging\windows\Build-Installer.ps1 -PayloadRoot "$first\payload" -BuilderDirectory $builder -OutputDirectory "$run\package"
 # Also exercise the actual GitHub pwsh exit wrapper (includes assertions, Doctor and compiler).
-.\packaging\windows\Test-WorkflowExit.ps1 -DotnetPath $sdk -CliHome $cliHome -PayloadRoot "$first\payload" -ComparePayloadRoot "$second\payload" -BuilderDirectory $builder -WorkDirectory "$run\workflow-tests"
+.\packaging\windows\Test-WorkflowExit.ps1 -DotnetPath $sdk -CliHome $cliHome -PayloadRoot "$first\payload" -ComparePayloadRoot "$second\payload" -BuilderDirectory $builder -WorkDirectory "$run\workflow-tests" -InteractiveDesktop
 ```
 
 These are build commands, **not novice installation instructions**. Initial
@@ -79,6 +79,18 @@ the local smoke runs Doctor only, not a simulated interactive or clean-OS claim.
 Both programs receive a unique temporary Unicode data path. The smoke checks read-only launch and
 existing/malformed settings preservation, snapshots real settings without
 displaying their contents, and fails on unexpected writes.
+Interactive packaging requires both the original general Desktop scenario and
+an additional `Smoke-Desktop.ps1 -CompanionOnly` scenario, each in a fresh process
+with isolated data and the unchanged 180-second child deadline. The companion
+scenario repeats real no-key setup/migration/route checks and verifies editor
+save/restart and read-only opening. This avoids accumulating fixed Windows UIA
+RPC latency in the original general scenario; neither scenario's assertions or
+deadline is relaxed. Use `-Verbose` on the direct Desktop script for control-level
+timings.
+The workflow-exit regression also exercises nonzero exits and actual 180-second
+timeouts for each controlled native scenario, requiring the combined gate to fail
+in all four cases. Those controlled failures are wrapper tests, not app passes;
+the interactive command separately requires both actual Desktop scenarios.
 
 ## One payload and installation layout
 

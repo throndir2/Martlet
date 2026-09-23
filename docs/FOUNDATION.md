@@ -16,11 +16,17 @@ local locked restore/build/test/smoke commands, assertions and independent
 review. Historical workflow descriptions below do not request hosted execution
 or reclassify past runs as local passes.
 
-**V02a update:** [Resumable setup](SETUP.md) now adds strict settings v2 with
+**V02a update:** [Resumable setup](SETUP.md) added strict settings v2 with
 explicit atomic v1 migration/snapshot, role-scoped destination choices, and
 explicit Windows Credential Manager actions. Original v1 reads and profile
 references are preserved. The historical "no migration/credential setup"
 statements below describe F01, not the current setup implementation.
+
+**V05a settings update:** [Companion personas](COMPANION_REQUIREMENTS.md)
+adds strict settings v3 and an inert Desktop editor for named persona text and
+response-style weights. Explicit save migrates v1/v2 with an atomic source
+snapshot. This does not inject persona text into the current conversation,
+choose a style, start listening or authorize provider use.
 
 ## Decision disposition
 
@@ -113,7 +119,7 @@ Derived `is_terminal`/PCM alignment are not serialized. Report `exit_code` and
 
 | Bound | Enforced behavior |
 | --- | --- |
-| JSON / settings | At most 256 KiB per contract document; settings at most 64 KiB. Settings reads stop at limit + 1 before decoding. |
+| JSON / settings | At most 256 KiB per contract document; settings at most 128 KiB. Settings reads stop at limit + 1 before decoding. |
 | IDs | Nonempty UUID session/turn/request/profile/credential IDs. Provider/model/adapter/action/probe tokens: 1-64 ASCII letters/digits/dot/underscore/hyphen, starting with a letter/digit. These are internal aliases, not arbitrary upstream model names or URLs. |
 | Text / summaries | At most 16,384 UTF-16 characters per event text and 512 per error/probe summary; no control characters except CR/LF/tab. JSON byte cap also applies. |
 | Sequence / epoch | 0 through signed 32-bit maximum, held in `long`. These are per-attempt/turn labels; temporal ordering is not yet enforced. |

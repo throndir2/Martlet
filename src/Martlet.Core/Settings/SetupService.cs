@@ -6,8 +6,8 @@ public sealed record SetupSaveResult(SettingsSaveResult Save, AppSettings Settin
     CredentialError CredentialError = CredentialError.None)
 {
     public string Summary => (Save.Saved
-        ? Save.MigratedFromVersion1
-            ? "Setup saved. Version 1 was migrated with an atomic original-file snapshot. Saving does not establish live account/device readiness."
+        ? Save.MigratedFromSchemaVersion is { } previous
+            ? $"Setup saved. Version {previous} was migrated with an atomic original-file snapshot. Saving does not establish live account/device readiness."
             : "Setup saved. Saving does not establish live account/device readiness."
         : Save.Error?.Summary ?? "Setup was not saved.") +
         (CredentialError != CredentialError.None ? " " + CredentialMessages.Describe(CredentialError) : "");

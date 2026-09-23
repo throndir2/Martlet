@@ -143,6 +143,7 @@ public sealed partial class SettingsStore
 
     private static AppSettings RestoreCandidate(AppSettings current, AppSettings imported)
     {
+        var importedCompanion = imported.Companion;
         var restored = SetupSettings.Begin(imported);
         var pending = (current.Setup?.PendingRemovals ?? []).Concat(
             (current.Setup?.Routes ?? []).Where(route => route.CredentialId is not null)
@@ -162,7 +163,8 @@ public sealed partial class SettingsStore
             {
                 Input = audio.Input with { ConfigurationRevision = Guid.NewGuid(), Checkpoint = null },
                 Output = audio.Output with { ConfigurationRevision = Guid.NewGuid(), Checkpoint = null }
-            }
+            },
+            Companion = importedCompanion ?? current.Companion ?? CompanionSettings.Create()
         };
         restored.Validate();
         return restored;
@@ -286,7 +288,7 @@ public sealed partial class SettingsStore
     internal static void ValidateRestoreCandidate(AppSettings current, byte[] candidate, ConfigurationRestorePlan plan)
     {
         var settings = SettingsJson.Read(candidate);
-        if (settings.SchemaVersion != 2 || settings.Profile.Id != plan.ProfileId ||
+        if (settings.SchemaVersion != AppSettings.CurrentSchemaVersion || settings.Profile.Id != plan.ProfileId ||
             ConfigurationSnapshot.Hash(candidate) != plan.CandidateDigest ||
             !current.Profile.Credentials.SequenceEqual(settings.Profile.Credentials))
             throw new RecoveryException(RecoveryFailure.Conflict);

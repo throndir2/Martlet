@@ -8,6 +8,7 @@ using System.Windows.Navigation;
 using System.Windows.Threading;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
+using Martlet.Providers;
 
 namespace Martlet.Desktop;
 
@@ -84,8 +85,8 @@ public partial class SetupWindow : Window
             revision = loaded.Revision;
             draft = loaded.Error is null ? SetupSettings.Begin(loaded.Settings) : null;
             needsReload = loaded.Error is not null;
-            ResultText.Text = loaded.Error?.Summary ?? (loaded.Settings?.SchemaVersion == 1
-                ? "Version 1 loaded unchanged. Explicit Save migrates it and atomically snapshots the original; profile ID and legacy references are preserved."
+            ResultText.Text = loaded.Error?.Summary ?? (loaded.Settings?.SchemaVersion is 1 or 2
+                ? $"Version {loaded.Settings.SchemaVersion} loaded unchanged. Explicit Save migrates it and atomically snapshots the original; profile ID, routes and legacy references are preserved."
                 : "Checkpoint loaded. No secret lookup, device or network action was performed.");
             if (draft is not null)
             {
@@ -179,6 +180,10 @@ public partial class SetupWindow : Window
         rendering = true;
         var route = draft?.Setup?.Routes.SingleOrDefault(r => r.Role == Role);
         BoundaryText.Text = $"{OpenAiSetup.Boundary(Role)} Internal alias: {OpenAiSetup.Alias(Role)}. Destination: {OpenAiSetup.Origin}.";
+        var catalog = Catalog(Role);
+        ModelCatalogChoice.ItemsSource = catalog;
+        ModelCatalogChoice.SelectedItem = route is not null && catalog.Contains(route.ModelId, StringComparer.Ordinal)
+            ? route.ModelId : null;
         ModelId.Text = route?.ModelId ?? "";
         VoiceId.Text = route?.VoiceId ?? "";
         VoiceId.IsEnabled = Role == SetupRole.Tts;
@@ -220,11 +225,24 @@ public partial class SetupWindow : Window
         ResultText.Text = "Route fields changed. Apply the route and explicitly review its destination consent again before saving.";
     }
 
+    private void UseCatalogModel_Click(object sender, RoutedEventArgs e)
+    {
+        if (draft is null || ModelCatalogChoice.SelectedItem is not string selected) return;
+        ModelId.Text = selected;
+        ResultText.Text = "Compatible model ID copied into the unsaved route. Review the exact model and destination, then apply and consent again.";
+    }
+
     private void ApplyRoute_Click(object sender, RoutedEventArgs e)
     {
         if (draft is null) return;
         try
         {
+            if (!Catalog(Role).Contains(ModelId.Text, StringComparer.Ordinal))
+                throw new ContractException(ErrorCode.ProviderCapability,
+                    "This named OpenAI adapter does not support that model ID. Select an exact compatible catalog entry; the prior route was not replaced.");
+            if (Role == SetupRole.Tts && !OpenAiSpeechSynthesisCatalog.SupportsVoice(VoiceId.Text))
+                throw new ContractException(ErrorCode.ProviderCapability,
+                    "This named OpenAI TTS adapter does not support that voice ID. Review the displayed compatible voices; the prior route was not replaced.");
             var updated = SetupSettings.SelectRoute(draft, Role, ModelId.Text, Role == SetupRole.Tts ? VoiceId.Text : null);
             var route = updated.Setup!.Routes.Single(r => r.Role == Role);
             draft = SetupSettings.ReplaceRoute(updated, route with { Consent = ConsentChoice.IsChecked == true ? route.Selection() : null });
@@ -234,6 +252,14 @@ public partial class SetupWindow : Window
         }
         catch (ContractException ex) { ResultText.Text = ex.Message; }
     }
+
+    private static IReadOnlyList<string> Catalog(SetupRole role) => role switch
+    {
+        SetupRole.Stt => OpenAiTranscriptionCatalog.SupportedModelIds,
+        SetupRole.Llm => OpenAiTextGenerationCatalog.SupportedModelIds,
+        SetupRole.Tts => OpenAiSpeechSynthesisCatalog.SupportedModelIds,
+        _ => throw new ContractException(ErrorCode.InvalidContract, "Choose STT, LLM or TTS.")
+    };
 
     private void Consent_Changed(object sender, RoutedEventArgs e)
     {
