@@ -162,6 +162,32 @@ dotnet run --project src\Martlet.Doctor -f net10.0-windows --no-build -c Release
 dotnet run --project src\Martlet.Doctor -f net10.0-windows --no-build -c Release -- self-test --scenario streaming --json --data-directory $data
 ```
 
+### Appearance
+
+The desktop's **Your palette** selector switches between **Pink light** (blush,
+cream and berry) and **Rose dark** (deep plum and soft rose). Rounded controls,
+matching form fields and the companion home screen share the palette across
+conversation, setup, companion, memory, audio, troubleshooting and recovery windows. Windows high
+contrast overrides the decorative colors; native Windows confirmation and file
+dialogs retain their system appearance.
+
+Pink light is the first-launch default. Changing the selector saves only
+`appearance.txt` in the selected data directory, separately from profile settings,
+credentials and consent. It is not part of configuration backup/restore. Launch
+reads this preference without creating files; inaccessible or malformed preferences
+are reported on the home screen. An unsavable choice still applies for the current
+session. Appearance changes never start a conversation, network or audio action.
+
+The original **Martlet bird** icon matches both palettes: a cream bird with rosy
+cheeks and a berry heart on a pink badge. It is embedded in the desktop executable,
+window/taskbar icons and internal installer; the Start menu shortcut uses the
+desktop executable's icon. `src\Martlet.Desktop\Assets\Martlet.svg` is the editable,
+favicon-ready vector source, alongside a transparent 256 px PNG and a multi-size
+ICO (16, 20, 24, 32, 40, 48, 64, 128 and 256 px). There is no web frontend to wire
+a browser favicon into. Regenerate the PNG/ICO locally after artwork changes with
+`.\scripts\Generate-AppIcon.ps1` on Windows with PowerShell 7; no downloads or
+third-party image tooling are needed.
+
 Doctor `status` currently exits **2 (incomplete)** on first run or a valid
 unconfigured profile, not success. Exit 3 means invalid invocation/settings;
 exit 1 is reserved for reported probe failures; exit 0 means requested required

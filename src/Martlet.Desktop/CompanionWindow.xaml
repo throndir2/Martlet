@@ -1,4 +1,5 @@
 <Window x:Class="Martlet.Desktop.CompanionWindow"
+        Style="{DynamicResource AppWindowStyle}"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Martlet - Companion" Width="850" Height="820" MinWidth="620" MinHeight="560"

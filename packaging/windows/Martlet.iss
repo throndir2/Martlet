@@ -35,6 +35,7 @@ MinVersion=10.0.26200
 Uninstallable=yes
 UninstallDisplayName=Martlet (Internal)
 UninstallDisplayIcon={app}\Desktop\Martlet.Desktop.exe
+SetupIconFile=..\..\src\Martlet.Desktop\Assets\Martlet.ico
 UninstallFilesDir={app}\uninstall
 OutputDir={#BuildOutput}
 OutputBaseFilename=Martlet-{#AppVersion}-win-x64-INTERNAL-UNSIGNED
