@@ -23,6 +23,10 @@ role-filtered version/capability/status metadata behind worker interfaces. It
 does not join Desktop/Core settings or the root solution, expose an inference
 route/raw worker port, create a production key, change a firewall, or establish
 real LAN/Ubuntu/host qualification.
+The isolated [P03a/P03b local memory foundation](MEMORY.md) implements an
+OFF-by-default versioned fact store and lexical retrieval contract without
+Desktop/Core settings/root-solution integration. It is not the proposed
+SQLite/gateway service, automatic conversation memory or a passed AC-16/G4 gate.
 Read [the development plan](../DEVELOPMENT_PLAN.md)
 for scope and approvals, [installation/support](INSTALLATION_SUPPORT.md) for
 lifecycle, and [delivery](DELIVERY.md) for task ownership. Source IDs refer to
@@ -447,6 +451,16 @@ to embeddings/caches, increments a memory revision to invalidate in-flight
 retrieval, and explains that previously exported/backed-up copies are outside
 immediate erasure. Export is readable, versioned, and contains no credentials.
 Do not transmit the complete memory store on every turn.
+
+**Implemented isolated P03a/P03b foundation:** `Martlet.Memory` currently owns
+one explicitly selected local schema-1 JSON store rather than a host SQLite
+service. That narrower library supplies path-bound OFF-by-default activation,
+explicit fact save/inspect/edit/delete, typed provenance/retention, exact
+revisioned deletion from its source/index/cache, stale in-flight result
+invalidation, held-out lexical fixtures and frozen default-No local JSON
+export. It adds no transcript collector, app route, gateway endpoint, backup,
+embedding or network dependency. See [MEMORY](MEMORY.md) for exact limits,
+crash/cancellation semantics and the remaining app/gateway/real-user gates.
 
 A01-A03 choose a rights-cleared renderer after classifying Live2D SDK use.
 Only then accept user assets with limits on archive expansion, paths, file

@@ -41,6 +41,12 @@ Ollama / Windows Docker-WSL hosting lanes. Multiple roles may share a machine;
 Docker is not required for the Windows client. These remain design targets,
 not available host installers or enabled application routes.
 
+An isolated [P03a/P03b consented memory foundation](docs/MEMORY.md) now provides
+an OFF-by-default local fact store, exact inspect/edit/delete/export and bounded
+lexical retrieval tests. It is not wired into Desktop, conversation, Core
+settings, a gateway, packaging or the root solution and does not capture
+transcripts, call providers, upload, embed or create backups.
+
 | Document | Purpose |
 | --- | --- |
 | [Development plan](DEVELOPMENT_PLAN.md) | Scope, proposed decisions, priorities, risks, and reading order |
@@ -51,6 +57,7 @@ not available host installers or enabled application routes.
 | [Implemented foundation and decisions](docs/FOUNDATION.md) | Accepted/deferred decisions, exact APIs/bounds, current behavior and next ownership |
 | [Resumable setup and local audio](docs/SETUP.md) | V02a configuration/vault actions and V02b explicit local device tests, historical checkpoints, strict migration and remaining live gates |
 | [Explicit API conversation](docs/CONVERSATION.md) | V04b typed/PTT path, exact supported models and bounds, fresh authorization, Stop/cleanup, troubleshooting and separately authorized live-trial checklist |
+| [Consented local memory foundation](docs/MEMORY.md) | Isolated P03a/P03b fact-store/retrieval contracts, privacy/deletion/export semantics and remaining integration/qualification gates |
 
 The broader plan documents remain future specifications except for the current
 implementation/acceptance ledger in [DELIVERY](docs/DELIVERY.md) and the
