@@ -221,6 +221,27 @@ or start stopped workers. Compose health checks stay cheap/non-inference.
 conversation works ([S35](RESEARCH.md#s35)). All validation is local or a
 separately authorized selected endpoint action, never remote CI.
 
+### Companion customization after setup
+
+The planned [Companion controls](COMPANION_REQUIREMENTS.md) must remain
+accessible after onboarding, without a reinstall or source-code change:
+
+| Surface | Planned controls and safe application |
+| --- | --- |
+| Companion | Named personas, multiline editor, explicit plain-text import/export, save/duplicate/select, and separate response-style weights; show unsaved/active revision |
+| Participation | Explicit typed/PTT default; opt-in conversational listening, rate/gap/cooldown/context retention and qualified speech interruption; show why unavailable or silent |
+| Models | Independent LLM and VLM adapter/destination/model choices, role limits and readiness; VLM selection never enables screen capture |
+| F5 voice | Reference audio and matching transcript, explicit reload after file replacement, named presets, validation and separately authorized preview; no automatic reference transcription |
+
+Apply at idle or after explicit Stop and owned cleanup, never midway through
+authorized work. Show an actionable error for invalid persona files, all-zero
+style weights, changed/missing reference audio, incompatible models and
+unqualified barge-in. Preserve prior saved choices without pretending a failed
+Apply succeeded or falling back silently. Save/resume preserves inert choices,
+not listening, spending, preview permission or model readiness. The current
+Desktop implements the companion editor and named OpenAI LLM catalog selection;
+the remaining surfaces are not yet integrated.
+
 ### Provider cost and mode controls
 
 No promised free quota, trial balance, perpetual free tier, or bundled API key.
@@ -384,7 +405,9 @@ network egress denied after downloads. Unknown optional downloads block readines
 
 **Implemented internal V07a:** Desktop offers explicit LOCAL configuration
 snapshots and exact previewed restore into an existing valid same-profile
-v1/v2 store. It recovers inert preferences, not credentials/permissions/readiness.
+v1/v2/v3 store. Version 3 includes inert companion personas/styles; older
+sources preserve current personas. Recovery does not restore credentials,
+permissions, runtime persona use or readiness.
 It refuses missing/corrupt/future/foreign destinations and preserves exact
 pre-replacement originals. This is neither the diagnostic bundle nor the broader
 database/voice/host/binary lifecycle below. See the

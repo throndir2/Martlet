@@ -117,6 +117,16 @@ format, show the disclosure, and do not hard-code a universal voice count.
 The accessed page itself had differing voice counts in different sections;
 use model-specific catalog/probes rather than repeat that count as a guarantee.
 
+### S09a: pinned GPT-4.1 text models
+
+[OpenAI GPT-4.1 model reference](https://developers.openai.com/api/docs/models/gpt-4.1)
+
+**Verified upstream 2026-09-21:** the `gpt-4.1-2025-04-14` snapshot supports
+text output, the Responses endpoint and streaming. Martlet's existing
+`gpt-4.1-mini-2025-04-14` and this full snapshot remain exact local adapter
+allowlist entries, not aliases, discovery results, account-access evidence,
+price guarantees or live qualification.
+
 ### S11
 
 [OpenAI API pricing](https://developers.openai.com/api/docs/pricing)

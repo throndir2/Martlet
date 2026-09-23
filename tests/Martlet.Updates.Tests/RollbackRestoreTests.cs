@@ -28,7 +28,7 @@ public sealed class RollbackRestoreTests(SigningKeys keys) : IClassFixture<Signi
         Assert.Equal(rollback.CurrentSelection.SnapshotFileDigest, plan.Snapshot.FileDigest);
         Assert.Equal(f.Package.Current.SettingsRevision, plan.ExpectedSettingsRevision);
         Assert.Equal(f.Package.Current.SettingsRevision.ToUpperInvariant(), plan.ExpectedSettingsRevision);
-        Assert.Equal(legacy ? 1 : 2, plan.CurrentSettingsSchemaVersion);
+        Assert.Equal(legacy ? 1 : AppSettings.CurrentSchemaVersion, plan.CurrentSettingsSchemaVersion);
         Assert.Contains("format 3", plan.PlannedEffects);
         Assert.Contains("NOT RUNNABLE", plan.PlannedEffects);
         var result = await engine.RestoreRollbackConfiguration(plan, Approve(plan), effects).Completion;
@@ -43,7 +43,7 @@ public sealed class RollbackRestoreTests(SigningKeys keys) : IClassFixture<Signi
         Assert.False(result.Selection.IsRunnable);
         Assert.Equal(rollback.Revision + 2, result.Selection.Revision);
         Assert.Equal(plan.ProfileId, result.ProfileId);
-        Assert.Equal(2, result.SettingsSchemaVersion);
+        Assert.Equal(AppSettings.CurrentSchemaVersion, result.SettingsSchemaVersion);
         Assert.Equal(plan.CandidateDigest, result.ResultingSettingsRevision);
         Assert.Equal(Encoding.UTF8.GetBytes(plan.CandidateJson), File.ReadAllBytes(f.Settings.FilePath));
         Assert.Equal(before, File.ReadAllBytes(result.OriginalSnapshot!));

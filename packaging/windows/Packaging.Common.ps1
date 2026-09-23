@@ -339,6 +339,14 @@ function Invoke-BoundedProcess(
     }
 }
 
+function Invoke-ExecutableSmoke([string]$Script, [string]$Executable, [switch]$CompanionOnly) {
+    $arguments = @('-NoProfile', '-NonInteractive', '-File', $Script, '-ExecutablePath', $Executable)
+    if ($CompanionOnly) { $arguments += '-CompanionOnly' }
+    $result = Invoke-BoundedProcess (Get-Command pwsh).Source $arguments 180
+    if ($result.ExitCode -ne 0) { throw "Packaged executable regression smoke failed: $($result.Stderr)" }
+    if ($result.Stdout) { $result.Stdout.TrimEnd() | Out-Host }
+}
+
 function Initialize-PackagingSdk([string]$DotnetPath, [string]$CliHome, [string]$WorkingDirectory = (Get-Location).Path) {
     Assert-PackagingHost
     $sdk = (Get-Command $DotnetPath -CommandType Application -ErrorAction Stop).Source

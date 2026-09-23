@@ -56,6 +56,8 @@
                         AutomationProperties.AutomationId="OpenConfigurationRecovery" AutomationProperties.Name="Open passive local configuration backup and restore"/>
                 <Button x:Name="AudioSetupButton" Content="_Audio setup (local only)" Click="AudioSetup_Click" Padding="12,8" Margin="0,4,12,4"
                         AutomationProperties.AutomationId="OpenAudioSetup" AutomationProperties.Name="Open local audio setup without enumerating or testing devices" />
+                <Button x:Name="CompanionButton" Content="_Companion personas" Click="Companion_Click" Padding="12,8" Margin="0,4,12,4"
+                        AutomationProperties.AutomationId="OpenCompanion" AutomationProperties.Name="Edit local companion personas and response-style weights" />
                 <Button x:Name="RefreshButton" Content="_Refresh local status" Padding="12,8" Margin="0,4,12,4"
                         AutomationProperties.AutomationId="RefreshDiagnostics"
                         AutomationProperties.Name="Refresh local status" Click="Refresh_Click" />

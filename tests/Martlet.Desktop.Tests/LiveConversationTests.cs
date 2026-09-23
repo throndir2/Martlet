@@ -38,6 +38,8 @@ public sealed class LiveConversationTests
             Assert.Contains("800,044", Text(window, "EnvelopeText"));
             Assert.Contains("UNKNOWN", Text(window, "EnvelopeText"));
             Assert.Contains("150 s", Text(window, "EnvelopeText"));
+            Assert.Contains("<=256 tokens, <=16,384 response characters, <=45 s", Text(window, "EnvelopeText"));
+            Assert.Contains("eight completed explicit exchanges", Text(window, "EnvelopeText"));
             Assert.Contains("configured, NOT live verified", Text(window, "ConfigurationText"));
             fixture.NoEffects();
             Click(window, "SendButton"); // Even a programmatic routed click cannot bypass missing permission.
@@ -82,6 +84,8 @@ public sealed class LiveConversationTests
             Assert.Equal(256, body.RootElement.GetProperty("max_output_tokens").GetInt32());
             Assert.False(body.RootElement.GetProperty("store").GetBoolean());
             Assert.Contains("typed-content-canary", Encoding.UTF8.GetString(fixture.Llm.Body));
+            Assert.Contains("Be a helpful conversational companion.", body.RootElement.GetProperty("instructions").GetString());
+            Assert.Contains("Dominant style for this reply: helpful.", body.RootElement.GetProperty("instructions").GetString());
             Assert.Equal(voice ? 3 : 1, fixture.Native.Targets.Count);
             Assert.All(fixture.Native.Leases, lease => Assert.Throws<ObjectDisposedException>(() => lease.Use(_ => { })));
             Assert.All(fixture.Native.Threads, thread => Assert.NotEqual(Environment.CurrentManagedThreadId, thread));
@@ -103,6 +107,181 @@ public sealed class LiveConversationTests
         }
         finally { window.Close(); }
     });
+
+    [Fact]
+    public async Task FreshActionSnapshotsPersonaRevisionAndWeightedStyle()
+    {
+        await using var fixture = await LiveFixture.Create(nextStyle: _ => 40);
+        var loaded = await fixture.Store.LoadAsync();
+        var persona = loaded.Settings!.Companion!.ActivePersona;
+        var styles = new ResponseStyleWeights
+        {
+            Helpful = 40, Sarcastic = 20, Silly = 20, Distracted = 10, PlayfulTeasing = 10
+        };
+        var changed = loaded.Settings with
+        {
+            Companion = loaded.Settings.Companion.Update(
+                persona.Id, "Corvid", "Prefer concise companion replies.", styles)
+        };
+        await fixture.Save(changed);
+
+        var operation = fixture.Start();
+        await fixture.Finish(operation);
+
+        Assert.Equal(changed.Companion!.ActivePersona.ConfigurationRevision, operation.PersonaRevision);
+        Assert.Equal(ResponseStyle.Sarcastic, operation.ResponseStyle);
+        using var body = JsonDocument.Parse(fixture.Llm.Body);
+        var instructions = body.RootElement.GetProperty("instructions").GetString();
+        Assert.Contains("Companion name: Corvid", instructions);
+        Assert.Contains("Prefer concise companion replies.", instructions);
+        Assert.Contains("Dominant style for this reply: sarcastic.", instructions);
+    }
+
+    [Fact]
+    public async Task SavedCompatibleLlmModelSwitchRebindsFreshAuthorizationAndRequest()
+    {
+        await using var fixture = await LiveFixture.Create();
+        const string model = "gpt-4.1-2025-04-14";
+        const string answer = "Switched model fixture response.";
+        fixture.Llm.Respond = (_, _) => Task.FromResult(TextRecordingHandler.Sse(
+            Harness.Trace(answer).Replace(TextFixtures.Model, model, StringComparison.Ordinal)));
+        var loaded = await fixture.Store.LoadAsync();
+        var changed = SetupSettings.SelectRoute(
+            loaded.Settings!, SetupRole.Llm, model, null);
+        var route = changed.Setup!.Routes.Single(item => item.Role == SetupRole.Llm);
+        changed = SetupSettings.ReplaceRoute(changed, route with { Consent = route.Selection() });
+        await fixture.Save(changed);
+
+        var operation = fixture.Start();
+        await fixture.Finish(operation);
+
+        Assert.Equal("runtime.Completed", operation.Status.Code);
+        Assert.Equal(answer, operation.Turn!.Content.Text);
+        using var body = JsonDocument.Parse(fixture.Llm.Body);
+        Assert.Equal(model, body.RootElement.GetProperty("model").GetString());
+        Assert.Contains("Be a helpful conversational companion.",
+            body.RootElement.GetProperty("instructions").GetString());
+        Assert.Contains("/openai-llm/", Assert.Single(fixture.Native.Targets));
+    }
+
+    [Fact]
+    public async Task CompletedExplicitTurnsSupplyBoundedHistoryAndPauseClearsIt()
+    {
+        await using var fixture = await LiveFixture.Create();
+        fixture.Answer("First answer.");
+        await fixture.Finish(fixture.Start("First question."));
+        Assert.Equal(1, fixture.Controller.ContextTurns);
+
+        fixture.Answer("Second answer.");
+        var second = fixture.Start("Second question.");
+        await fixture.Finish(second);
+        Assert.Equal(2, second.ContextMessages);
+        Assert.Equal(0, second.ContextMessagesOmitted);
+        using (var body = JsonDocument.Parse(fixture.Llm.Body))
+        {
+            var input = body.RootElement.GetProperty("input");
+            Assert.Equal(3, input.GetArrayLength());
+            Assert.Equal("First question.", input[0].GetProperty("content").GetString());
+            Assert.Equal("First answer.", input[1].GetProperty("content").GetString());
+            Assert.Equal("Second question.", input[2].GetProperty("content").GetString());
+        }
+        Assert.Equal(2, fixture.Controller.ContextTurns);
+
+        fixture.Controller.Stop(second, "conversation.closed");
+        Assert.Equal(0, fixture.Controller.ContextTurns);
+        fixture.Answer("Before pause.");
+        await fixture.Finish(fixture.Start("Another question."));
+        Assert.Equal(1, fixture.Controller.ContextTurns);
+        fixture.Controller.SetControls(pause: true, mute: false, sessionLocked: false);
+        fixture.Controller.SetControls(pause: false, mute: false, sessionLocked: false);
+        Assert.Equal(0, fixture.Controller.ContextTurns);
+        fixture.Answer("After pause.");
+        var afterPause = fixture.Start("Fresh question.");
+        await fixture.Finish(afterPause);
+        Assert.Equal(0, afterPause.ContextMessages);
+        using var freshBody = JsonDocument.Parse(fixture.Llm.Body);
+        Assert.Single(freshBody.RootElement.GetProperty("input").EnumerateArray());
+    }
+
+    [Fact]
+    public void ConversationContextIsAgeCountAndByteBounded()
+    {
+        var clock = new RuntimeClock();
+        var context = new ConversationContextBuffer(clock);
+        for (var index = 0; index < ConversationContextBuffer.MaximumTurns + 1; index++)
+            context.Add($"Question {index}", $"Answer {index}");
+        Assert.Equal(ConversationContextBuffer.MaximumTurns, context.Count);
+        Assert.DoesNotContain(context.Snapshot(), item => item.Text == "Question 0");
+
+        context.Add(new string('u', 9_000), new string('a', 9_000));
+        Assert.Equal(0, context.Count);
+
+        context.Add("Recent", "Reply");
+        clock.Advance(ConversationContextBuffer.MaximumAge);
+        Assert.Equal(0, context.Count);
+    }
+
+    [Fact]
+    public async Task LegacyVersionTwoConversationRemainsAvailableWithoutImplicitPersonaUpload()
+    {
+        await using var fixture = await LiveFixture.Create(legacy: true);
+
+        var operation = fixture.Start();
+        await fixture.Finish(operation);
+
+        Assert.Equal("runtime.Completed", operation.Status.Code);
+        Assert.Null(operation.PersonaRevision);
+        Assert.Null(operation.ResponseStyle);
+        using var body = JsonDocument.Parse(fixture.Llm.Body);
+        Assert.False(body.RootElement.TryGetProperty("instructions", out _));
+        Assert.Contains("legacy settings profile has no persona", fixture.Controller.Configuration!.Disclosure(false));
+    }
+
+    [Fact]
+    public async Task PersonaChangeDuringAuthorizationRevokesBeforeProviderDisclosure()
+    {
+        await using var fixture = await LiveFixture.Create();
+        fixture.Settings.BeforeLoad = async _ =>
+        {
+            fixture.Settings.BeforeLoad = null;
+            var loaded = await fixture.Store.LoadAsync();
+            var persona = loaded.Settings!.Companion!.ActivePersona;
+            var changed = loaded.Settings with
+            {
+                Companion = loaded.Settings.Companion.Update(
+                    persona.Id, persona.Name, "Changed after action acceptance.", persona.Styles)
+            };
+            Assert.True((await fixture.Store.SaveAsync(changed, loaded.Revision)).Saved);
+        };
+
+        var operation = fixture.Start();
+        await fixture.Finish(operation);
+
+        Assert.Equal("conversation.configuration_changed", operation.Status.Code);
+        fixture.NoEffects();
+        Assert.Null(operation.PersonaRevision);
+    }
+
+    [Fact]
+    public async Task OversizedPersonaAndInputFailWithoutTruncationOrProviderCall()
+    {
+        await using var fixture = await LiveFixture.Create();
+        var loaded = await fixture.Store.LoadAsync();
+        var persona = loaded.Settings!.Companion!.ActivePersona;
+        var changed = loaded.Settings with
+        {
+            Companion = loaded.Settings.Companion.Update(
+                persona.Id, persona.Name, new string('\u00e9', PersonaProfile.MaximumTextCharacters), persona.Styles)
+        };
+        await fixture.Save(changed);
+
+        var operation = fixture.Start(new string('u', 4_096));
+        await fixture.Finish(operation);
+
+        Assert.Equal("conversation.input_limit", operation.Status.Code);
+        fixture.NoEffects();
+        Assert.Null(operation.PersonaRevision);
+    }
 
     [Fact]
     public Task KeyboardPttStreamsCanonicalWaveThroughSttPolicyAndVoice() => DispatcherTest(async () =>
@@ -213,6 +392,7 @@ public sealed class LiveConversationTests
 
     [Theory]
     [InlineData("stop")]
+    [InlineData("escape")]
     [InlineData("pause")]
     [InlineData("mute")]
     [InlineData("lock")]
@@ -237,6 +417,7 @@ public sealed class LiveConversationTests
             switch (transition)
             {
                 case "stop": Click(window, "StopButton"); break;
+                case "escape": Escape(window, "InputText"); break;
                 case "pause": Control<CheckBox>(window, "PauseChoice").IsChecked = true; break;
                 case "mute": Control<CheckBox>(window, "MuteChoice").IsChecked = true; break;
                 case "lock": fixture.Events.Signal(true); break;
@@ -566,6 +747,173 @@ public sealed class LiveConversationTests
         finally { window.Close(); }
     });
 
+    [Theory]
+    [InlineData(550, 450)]
+    [InlineData(920, 850)]
+    public Task StopRemainsVisibleAndClickableAtEveryScrollPosition(double width, double height) => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        var window = fixture.Open();
+        try
+        {
+            await Loaded(window);
+            window.Width = width;
+            window.Height = height;
+            Permit(window);
+            var content = Assert.IsAssignableFrom<FrameworkElement>(window.Content);
+            var scroll = Assert.IsType<ScrollViewer>(
+                Assert.IsType<StackPanel>(Control<TextBox>(window, "InputText").Parent).Parent);
+            var stop = Control<Button>(window, "StopButton");
+            window.UpdateLayout();
+            Assert.True(scroll.ScrollableHeight > 0);
+            Point? fixedPosition = null;
+            foreach (double fraction in new[] { 0.0, 0.5, 1.0 })
+            {
+                scroll.ScrollToVerticalOffset(scroll.ScrollableHeight * fraction);
+                window.UpdateLayout();
+                var bounds = stop.TransformToAncestor(content).TransformBounds(new Rect(stop.RenderSize));
+                Assert.True(new Rect(content.RenderSize).Contains(bounds), $"Stop outside window content: {bounds}");
+                var hit = Assert.IsAssignableFrom<DependencyObject>(content.InputHitTest(
+                    new Point(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2)));
+                while (hit is FrameworkContentElement element)
+                    hit = Assert.IsAssignableFrom<DependencyObject>(element.Parent);
+                Assert.True(ReferenceEquals(hit, stop) || stop.IsAncestorOf(hit), "Stop is clipped or covered.");
+                if (fixedPosition is { } position) Assert.Equal(position, bounds.TopLeft);
+                fixedPosition = bounds.TopLeft;
+            }
+            Assert.Equal("Esc", System.Windows.Automation.AutomationProperties.GetAcceleratorKey(stop));
+            fixture.NoEffects();
+        }
+        finally { window.Close(); }
+    });
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public Task StopOrEscapeRevokesUnusedPermissionsWithoutStartingWork(bool escape) => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        var window = fixture.Open();
+        try
+        {
+            await Loaded(window);
+            Permit(window, voice: true, microphone: true);
+            Assert.True(Control<Button>(window, "StopButton").IsEnabled);
+            if (escape) Escape(window, "InputText");
+            else Click(window, "StopButton");
+            AssertPermissionsCleared(window);
+            Assert.False(Control<Button>(window, "StopButton").IsEnabled);
+            fixture.NoEffects();
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
+    public Task EscapeDiscardsHeldPttAndLateSpaceReleaseCannotUploadOrRearm() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        fixture.Capture.Packets.Enqueue(new byte[3200]);
+        var window = fixture.Open();
+        try
+        {
+            await Loaded(window);
+            Permit(window, voice: true, microphone: true);
+            SendKey(window, Key.Space, down: true);
+            await Until(() => fixture.Capture.Reads > 0);
+            Escape(window, "PttButton");
+            SendKey(window, Key.Space, down: false);
+            await fixture.Finish();
+            await Until(() => Text(window, "StatusText").Contains("app worker released: True", StringComparison.Ordinal));
+            Assert.Contains("conversation.canceled", Text(window, "StatusText"));
+            Assert.Contains("retained PCM: 0", Text(window, "StatusText"));
+            AssertPermissionsCleared(window);
+            SendKey(window, Key.Space, down: true);
+            SendKey(window, Key.Space, down: false);
+            Assert.Equal(1, fixture.Capture.Opens);
+            Assert.Equal(1, fixture.Capture.Stops);
+            Assert.Equal(1, fixture.Capture.Disposals);
+            Assert.Empty(fixture.Native.Targets);
+            Assert.Equal(0, fixture.Stt.Calls);
+            Assert.Equal(0, fixture.Llm.Calls);
+            Assert.Equal(0, fixture.Tts.Calls);
+            Assert.Equal(0, fixture.Output.Opens);
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
+    public Task EscapeFromResponseStopsPlaybackAndPreservesTextWithoutReplay() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create(new ControlledDevice { AutoConsume = false });
+        fixture.Answer("Retained response.");
+        var window = fixture.Open();
+        try
+        {
+            await Loaded(window);
+            Control<TextBox>(window, "InputText").Text = "test";
+            Permit(window, voice: true);
+            Click(window, "SendButton");
+            await Until(() => fixture.Output.Starts > 0);
+            Escape(window, "AnswerText");
+            await fixture.Finish();
+            await Until(() => Text(window, "StatusText").Contains("app worker released: True", StringComparison.Ordinal));
+            Assert.Contains("Retained response.", Text(window, "AnswerText"));
+            Assert.Contains("conversation.canceled", Text(window, "StatusText"));
+            Assert.True(fixture.Output.Samples > 0);
+            Assert.Equal(1, fixture.Output.Stops);
+            Assert.Equal(1, fixture.Output.Disposals);
+            Assert.Equal(1, fixture.Llm.Calls);
+            Assert.Equal(1, fixture.Tts.Calls);
+            AssertPermissionsCleared(window);
+            Escape(window, "AnswerText");
+            Assert.Equal(1, fixture.Output.Opens);
+            Assert.Equal(1, fixture.Tts.Calls);
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
+    public Task EscapeDuringSettingsLoadRetainsOwnershipUntilWorkerReturns() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Settings.BeforeLoad = async _ => { entered.TrySetResult(); await release.Task; };
+        var window = fixture.Open();
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.True(Control<Button>(window, "StopButton").IsEnabled);
+            Escape(window, "ConfigurationText");
+            await Heartbeat();
+            Assert.True(fixture.Runner.IsRunning);
+            Assert.Null(fixture.Runner.TryStart(_ => Task.FromResult(new SetupWorkResult(SetupWorkOutcome.Completed))));
+            AssertPermissionsCleared(window);
+            fixture.NoEffects();
+            release.TrySetResult();
+            await fixture.Finish();
+            Assert.False(Control<Button>(window, "SendButton").IsEnabled);
+            fixture.NoEffects();
+        }
+        finally { release.TrySetResult(); window.Close(); }
+    });
+
+    private static void AssertPermissionsCleared(Window window)
+    {
+        Assert.False(Control<CheckBox>(window, "AcceptAction").IsChecked);
+        Assert.False(Control<CheckBox>(window, "AcceptCapture").IsChecked);
+        Assert.False(Control<CheckBox>(window, "AcceptUpload").IsChecked);
+        Assert.False(Control<Button>(window, "SendButton").IsEnabled);
+        Assert.False(Control<Button>(window, "PttButton").IsEnabled);
+    }
+    private static void Escape(Window window, string target)
+    {
+        var key = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(window), 0, Key.Escape)
+            { RoutedEvent = Keyboard.PreviewKeyDownEvent };
+        Assert.IsAssignableFrom<UIElement>(window.FindName(target)).RaiseEvent(key);
+        Assert.True(key.Handled);
+    }
+
     private static T Control<T>(Window window, string name) => Assert.IsType<T>(window.FindName(name));
     private static string Text(Window window, string name) => name == "ResultText"
         ? Control<TextBlock>(window, name).Text : Control<TextBox>(window, name).Text;
@@ -628,7 +976,7 @@ internal sealed class LiveFixture : IAsyncDisposable
     internal ControlledCapture Capture { get; } = new();
     internal ControlledDevice Output { get; }
     internal LiveConversationController Controller { get; }
-    internal LiveFixture(ControlledDevice? output = null)
+    internal LiveFixture(ControlledDevice? output = null, Func<int, int>? nextStyle = null)
     {
         Store = new(DirectoryPath);
         Output = output ?? new();
@@ -638,7 +986,8 @@ internal sealed class LiveFixture : IAsyncDisposable
             (credentials, clock) => ConversationRuntime.ForFixture(
                 OpenAiTextGenerationAdapter.CreateForFixture(Llm, credentials, clock),
                 OpenAiSpeechSynthesisAdapter.CreateForFixture(Tts, credentials, clock), Output, new(), clock),
-            (credentials, clock) => OpenAiTranscriptionAdapter.CreateForFixture(Stt, credentials, clock));
+            (credentials, clock) => OpenAiTranscriptionAdapter.CreateForFixture(Stt, credentials, clock),
+            nextStyle);
         Events.LockedChanged += Controller.SetSessionLocked;
         Llm.Inspect = Tts.Inspect = request =>
         {
@@ -646,9 +995,10 @@ internal sealed class LiveFixture : IAsyncDisposable
             Assert.Equal("api.openai.com", request.RequestUri!.Host);
         };
     }
-    internal static async Task<LiveFixture> Create(ControlledDevice? output = null)
+    internal static async Task<LiveFixture> Create(ControlledDevice? output = null, Func<int, int>? nextStyle = null,
+        bool legacy = false)
     {
-        var fixture = new LiveFixture(output);
+        var fixture = new LiveFixture(output, nextStyle);
         var settings = SetupSettings.Begin(null);
         settings = settings with { Profile = settings.Profile with { Kind = ProfileKind.Api },
             Audio = AudioSettings.Create() };
@@ -666,6 +1016,8 @@ internal sealed class LiveFixture : IAsyncDisposable
             var route = settings.Setup!.Routes.Single(r => r.Role == role).WithCredential(Guid.NewGuid());
             settings = SetupSettings.ReplaceRoute(settings, route with { Consent = route.Selection() });
         }
+        if (legacy)
+            settings = settings with { SchemaVersion = 2, Companion = null };
         await fixture.Save(settings);
         return fixture;
     }

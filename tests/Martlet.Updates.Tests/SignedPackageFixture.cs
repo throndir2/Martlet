@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
+using Martlet.Core.Settings;
 using Martlet.Updates;
 
 namespace Martlet.Updates.Tests;
@@ -37,7 +38,8 @@ internal sealed class SignedPackageFixture : IDisposable
         Keys = keys;
         Directory.CreateDirectory(StagingRoot);
         Directory.CreateDirectory(InstalledRoot);
-        Current = new("0.1.0.0", "win-x64", InstalledRoot, Wire.Hash("installed"u8), 2, Wire.Hash("settings"u8));
+        Current = new("0.1.0.0", "win-x64", InstalledRoot, Wire.Hash("installed"u8),
+            AppSettings.CurrentSchemaVersion, Wire.Hash("settings"u8));
         foreach (var name in new[] { "settings.json", "credential-vault", "models", "Martlet.Desktop.exe" })
         {
             var path = Path.Combine(InstalledRoot, name);
@@ -93,7 +95,7 @@ internal sealed class SignedPackageFixture : IDisposable
         {
             FormatVersion = 1, MinimumReaderFormat = 1, Application = "Martlet.Update", Algorithm = "RSA-PSS-SHA256",
             SignerId = Wire.Hash(Keys.Approved.ExportSubjectPublicKeyInfo()), ApplicationVersion = version,
-            Rid = "win-x64", SettingsMinimumReader = 1, SettingsMaximumReader = 2,
+            Rid = "win-x64", SettingsMinimumReader = 1, SettingsMaximumReader = AppSettings.CurrentSchemaVersion,
             ArchiveBytes = new FileInfo(Archive).Length, ArchiveSha256 = Wire.Hash(File.ReadAllBytes(Archive)),
             Files = Inventory()
         };

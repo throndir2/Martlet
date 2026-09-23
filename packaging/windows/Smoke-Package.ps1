@@ -27,12 +27,6 @@ function Get-RealSettingsSnapshot {
 $before = Get-RealSettingsSnapshot
 $environmentBefore = @{}
 $process = $null
-function Invoke-ExecutableSmoke([string]$Script, [string]$Executable) {
-    $result = Invoke-BoundedProcess (Get-Command pwsh).Source @('-NoProfile', '-NonInteractive',
-        '-File', $Script, '-ExecutablePath', $Executable) 180
-    if ($result.ExitCode -ne 0) { throw "Packaged executable regression smoke failed: $($result.Stderr)" }
-    if ($result.Stdout) { $result.Stdout.TrimEnd() | Out-Host }
-}
 try {
     # These child processes cannot use a developer SDK/runtime through environment discovery.
     foreach ($key in @('DOTNET_ROOT', 'DOTNET_ROOT_X64', 'DOTNET_MULTILEVEL_LOOKUP')) {
@@ -85,6 +79,7 @@ try {
         }
         if (Test-Path -LiteralPath $data) { throw 'Desktop wrote data during read-only first-run launch.' }
         Invoke-ExecutableSmoke "$scripts\Smoke-Desktop.ps1" (Join-Path $PayloadRoot 'Desktop\Martlet.Desktop.exe')
+        Invoke-ExecutableSmoke "$scripts\Smoke-Desktop.ps1" (Join-Path $PayloadRoot 'Desktop\Martlet.Desktop.exe') -CompanionOnly
     }
 
     [IO.Directory]::CreateDirectory($data) | Out-Null

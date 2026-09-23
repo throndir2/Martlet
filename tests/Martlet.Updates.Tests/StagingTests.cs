@@ -170,7 +170,7 @@ public sealed class StagingTests(SigningKeys keys) : IClassFixture<SigningKeys>
     [InlineData(2, 3, 4, false)]
     [InlineData(2, 2, 1, false)]
     [InlineData(2, 0, 2, false)]
-    [InlineData(3, 1, 3, false)]
+    [InlineData(3, 1, 3, true)]
     public void CompatibilityUsesKnownPersistedSchemaWithoutReadingSettings(int schema, int minimum, int maximum, bool allowed)
     {
         using var f = new SignedPackageFixture(keys);
