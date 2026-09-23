@@ -152,7 +152,7 @@ invalidation, and preview separation. It opens no network or audio device.
 
 ## Gates still not run
 
-This foundation does **not** complete H04, AC-19, H06, or G3. Remaining gates
+This foundation does **not** complete H04, AC-22, H06, or G3. Remaining gates
 include:
 
 - a selected, fully locked Python/F5/PyTorch/torchaudio/CUDA worker image and
