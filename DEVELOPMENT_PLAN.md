@@ -60,6 +60,18 @@ audio/packaging constraint invalidates it. Exact dependency pins, license
 grants, signing, provider spending, and optional-feature distribution remain
 separate decisions; no software is implemented by this plan.
 
+**Installation direction update, 2026-09-22:** design one feature-first setup
+coordinator for API, self-hosted and mixed routes, with multiple roles per
+machine and optional features genuinely optional. Provide guided Ubuntu
+Desktop host setup as well as a headless path; use Docker Engine + Compose
+under the guided Linux experience, not mandatory Docker Desktop. Advanced
+users can manage Compose themselves. Evaluate native Windows Ollama first
+for simple Windows hosting and Docker Desktop/WSL2 as a separate advanced
+lane. These are planned support lanes, not enabled routes or qualified hosts.
+Upstream findings are recorded in [S30-S35](docs/RESEARCH.md#s30); the
+[installation flow](docs/INSTALLATION_SUPPORT.md#feature-first-multi-machine-setup)
+and H08-H10/AC-18-AC-20 in [Delivery](docs/DELIVERY.md) define the remaining work.
+
 ## 2. Repository baseline
 
 Observed in the assigned isolated worktree at initial inspection:
@@ -86,6 +98,7 @@ remains empty.
 | --- | --- | --- |
 | Windows gamer | Talk naturally without reducing game performance or fighting setup | Native audio, quick pause/mute, no desktop GPU inference requirement, no avatar requirement |
 | Novice Ubuntu hardware owner | Start/reboot services without remembering Python environments or Linux commands | Guided preflight, reviewed host setup, persistent role profiles, explicit readiness and repair |
+| Mixed-machine owner | Combine an API, services on this Windows PC, and Ubuntu hosts without several unrelated setup procedures | One role/destination plan, graphical local host setup, independent readiness and clear ownership of existing services |
 | Developer without GPU hosts | Build and diagnose the real product without pretending to test CUDA | Deterministic fixtures, provider contract harness, opt-in API lane, optional CPU STT |
 | Privacy-focused self-hoster | Keep conversation on chosen machines | Paired LAN endpoints, explicit routing, no cloud fallback, local data controls |
 | Avatar enthusiast | Supply a character, lip sync, and lifelike movement | Later optional renderer; separate SDK/asset rights and performance budget |
@@ -138,9 +151,32 @@ privileged services. Later host setup must obtain specific consent.
 | P0: Try/demo | Deterministic prerecorded fixtures and simulated provider events; clearly marked NOT AI | Windows app only; optional mic/speaker local tests | M1; offline, no credentials, no inference claims |
 | P1: API voice | Windows capture/VAD/playback; selected cloud STT/LLM/TTS over HTTPS | Supported Windows, mic/output, internet, user-provided authorized API credentials | M2 golden path; no Git/Python/Node/Docker or separate runtime installation |
 | P2: Existing endpoints | Client adapters use explicitly configured STT/LLM/TTS routes; may be mixed local/cloud only by consent | Reachable endpoints and known adapters; TLS/authentication for LAN | M2 expert configuration; only tested provider tuples qualify |
-| P3: One Ubuntu host | Gateway plus LLM/F5-TTS and optional STT workers on one machine; Windows remains lightweight | Qualified host manifest, accepted model/voice terms, paired client | M3 self-host beta; privacy-local route requires local STT too |
+| P3: One Ubuntu host | Gateway plus selected LLM/F5-TTS/STT workers on one machine; Windows remains lightweight | Qualified host manifest, accepted model/voice terms, paired client | M3 self-host beta; privacy-local microphone input requires local STT too |
 | P4: Two Ubuntu hosts | Host 1 LLM/F5-TTS, host 2 later vision/OCR/detection/memory; client owns routing | Each host independently qualified and paired | M3 topology qualification with host-2 fixtures, M4 real perception workloads |
 | P5: Optional avatar | Separately enabled Windows renderer consuming local playback/state events | Approved SDK distribution and user asset rights | M5 only; P1-P4 remain usable without it |
+| P6: Windows hosting | Selected roles on the client PC or another Windows PC; native Ollama candidate first, Linux containers via Docker Desktop/WSL2 as a separate advanced lane | Named adapter, supported runtime/model/OS tuple, approved local setup; paired gateway for another PC | H10 expansion; neither lane is currently qualified; no native F5 or Windows Server promise |
+
+Profiles are presets, not mutually exclusive modes or a fixed machine count.
+Persist enabled features, required roles, role destinations, host identities
+and installation ownership separately. A machine may be both client and host;
+one host may serve several roles. Co-located roles share real CPU/RAM/VRAM/disk
+budgets, even when separate containers or a WSL VM are involved.
+
+Typed text conversation requires an LLM but no STT, TTS, microphone or speaker.
+Microphone input adds capture and STT; spoken replies add TTS and output.
+Perception, persistent memory and avatars add only their selected dependencies.
+An API LLM plus self-hosted TTS is valid; a "fully local" badge requires every
+enabled data path to be local. Do not download, start, probe or demand keys for
+disabled roles. Disabling a feature preserves data by default and does not
+silently reroute its work to a cloud provider.
+
+Installation has three ownership modes: **guided managed host**, **advanced
+user-managed Compose**, and **connect existing service**. The last two never
+authorize Martlet to adopt, upgrade or remove another application's resources.
+The coordinator shows one plan across machines; each new managed remote host
+needs a local trusted setup/approval and pairing step, not a remote admin
+credential in the desktop. Ubuntu's host setup UI is not a Linux port of the
+WPF companion. See the installation design for the exact handoff and probes.
 
 Ubuntu CPU fixtures are a development profile, not a promise of responsive CPU
 F5-TTS or large-model inference. Optional `whisper.cpp` on the Windows CPU is a
@@ -162,7 +198,7 @@ direction, not purchases, public releases, or host modification.
 | AD-03: Runtime ownership | Client runs turn orchestration; shared .NET core/doctor; optional ASP.NET Core Linux gateway; inference workers isolated by engine | Python/FastAPI gateway is viable if team expertise favors it, but duplicates core contract/probe implementation across languages. Do not embed all inference in the desktop | D01, D02 |
 | AD-04: First AI route | One explicit API provider preset; typed fallback and separate fixtures | Local-first CPU STT + local LLM reduces cloud exposure but adds model downloads, latency, and hardware-dependent installation before basic UX is proven | D01, V03 |
 | AD-05: Self-hosted LLM | Evaluate Ollama first for simple model/service lifecycle; use its own tested adapter | `llama.cpp` server gives GGUF/control flexibility; vLLM may suit higher throughput but adds compatibility/scheduling demands. One golden host backend first, not three | H02 |
-| AD-06: Host deployment | Ubuntu 24.04 LTS x86_64, reviewed bootstrap and separate pinned Compose services | Native systemd workers can avoid Docker but multiply Python/runtime support paths. Ubuntu 26.04 is upstream-listed, not automatically Martlet-qualified | H01-H02 |
+| AD-06: Host deployment | Ubuntu 24.04 LTS x86_64 Desktop/Server first; guided host UI over reviewed bootstrap and pinned Docker Engine/Compose services; advanced user-managed Compose uses the same role contracts | Native existing services remain connect-only candidates. Docker Desktop on Linux adds a VM and is not the managed-host default. Other distributions/versions and Windows native/WSL lanes need separate qualification | H01-H02, H09-H10 |
 | AD-07: LAN trust | TLS 1.2+ with per-host pinned identity, out-of-band pairing token, scoped per-device credentials; no public ports | Managed CA/mTLS may suit managed homes/labs but complicates first run. Do not offer unauthenticated HTTP LAN as a supported shortcut | H03 |
 | AD-08: F5 and voice rights | Optional noncommercial experimental profile until permitted usage is confirmed; supply a consented reference voice plus transcript | A commercial-compatible TTS provider or differently licensed weights may be needed. User-supplied files do not remove license/voice-rights duties | D01, H02, H04 |
 | AD-09: Avatar | Defer, isolate, and verify Live2D Expandable Application status before distribution | No avatar or a simple non-Live2D indicator preserves voice delivery without SDK licensing risk | A01 |

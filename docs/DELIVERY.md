@@ -229,16 +229,28 @@ If signing/budget access is unavailable, keep an internal pre-release status.
 | H02 | Locked role/image/model manifest, LLM backend spike, dependency/license/disk inventory / runtime + release | D01, H01, V03 contract patterns | Concrete downloadable bytes/digests/revisions; no floating `main`/`latest`; exact candidate GPU matrix has known/unknown fields; no preset enabled before rights and fit validation | H |
 | H03 | Gateway TLS/pairing/scoped authentication, rotation/revocation, capability negotiation and firewall guidance / gateway | D02, H01 | AC-13 against synthetic workers on two processes/hosts; reject unpaired clients, bad pins, expiry, replay, wrong roles, unsafe redirects; no Docker/admin API | H |
 | H04 | Isolated pinned Python F5 worker and gateway TTS adapter with reference/audio consent / runtime | H02, H03, V04 | Chunked synthesis/transport correctly declared; auxiliary downloads explicit; contract cancellation/bounds pass; real GPU TTFA/VRAM awaited in H06, not claimed by CPU mocks | H |
-| H05 | Reviewed idempotent bootstrap, role Compose profiles, boot readiness, persistent volumes, repair/upgrade/backup/rollback/uninstall / host | H01, H02, H03, H04 | AC-12 lifecycle on target Ubuntu with declared fixture/real workers: interruption/resume, precise privileges, no root worker/default socket, failed warmup stays failed, data-preserving removal/restore; GPU cells await H06 | H |
-| H07 | Optional local CPU whisper.cpp STT package, private-route audit, qualified speech barge-in option / audio | V01, V04, H02 | AC-05/AC-08: consented model provisioning, denied-egress local STT works on declared CPU; full-duplex only on proven topology, manual barge-in remains default fallback | H |
+| H05 | Reviewed idempotent bootstrap, selected-role Compose profiles, boot readiness, persistent volumes, repair/upgrade/backup/rollback/uninstall / host | H01, H02, H03; H04 only for F5 roles | AC-12 lifecycle on target Ubuntu with declared fixture/real workers: interruption/resume, precise privileges, no root worker/default socket, failed warmup stays failed, data-preserving removal/restore; LLM-only has no F5 prerequisite; GPU cells await H06 | H |
+| H07 | Optional native CPU whisper.cpp STT package, selected hosted-STT worker, private-route audit, qualified speech barge-in option / audio + runtime | V01, V04, H02; H03/H05 for hosted lane | AC-05/AC-07/AC-08: consented model provisioning, denied-egress local STT works on declared CPU; hosted adapter/worker qualified independently with explicit audio destination; full-duplex only on proven topology, manual barge-in remains default fallback | H |
 | H06 | Witnessed single/two-GPU-host acceptance, combined LLM/F5 fit, host-2 fault isolation, optional admin guide / hardware + release | H04, H05, H07, V06 | AC-12/AC-13/AC-14 on exact owner inventory: reboot, concurrent load, unplug host 2, OOM recovery, local-only data path; optional power/remote desktop tests separately consented | H |
+| H08 | Feature/role/host/ownership plan and unified resumable setup coordinator / core + client | D02, V02, F04; H03/H05 for managed-host integration | AC-18/AC-19: hybrid role routes, multiple roles on one machine, disabled-feature dependency pruning, selected-route probes, stable host identities, per-machine progress and no remote admin authority; production Ollama issuer/internal transport reviewed, not a blanket loopback relaxation | H |
+| H09 | Graphical Ubuntu host setup and matching headless CLI / host + UX | H01, H05, H08 | AC-12/AC-18/AC-19 on Ubuntu Desktop and Server: locally authorized loopback browser UI, accessible plan/remedies, same journal/probes as CLI, local approvals and safe remote handoff, resume after reboot; no Linux WPF companion promise | H |
+| H10 | Windows hosting qualification, native Ollama first and separate advanced Docker Desktop/WSL2 lane / host + release | H02, H03, H08; H05 role manifests for container lane | AC-20: exact native and container matrices, ownership/coexistence, licensing/prerequisites, local and paired-remote use, selected-role trial and documented login/boot lifecycle; no native F5, Windows Server or generic GPU guarantee | H |
 
-H07 precedes H06 deliberately: a private self-host profile needs a proven local
-STT route, not an undisclosed cloud transcription dependency. H06 qualifies the
+H07 precedes H06 deliberately: a private microphone-enabled self-host profile
+needs a proven local STT route, not an undisclosed cloud transcription
+dependency. Typed-only profiles do not require STT. H06 qualifies the
 two-host transport using fixture context on host 2; **real VLM/OCR/detector/memory
 qualification is still P04**, with explicit labels in the support matrix.
 The local-STT part of H07 is required for this private route; optional speech
 barge-in can remain disabled and does not block G3.
+
+H08/H09 specify the guided installation experience; they do not claim that the
+current OpenAI-only setup can already connect to hosts. H10 is a separately
+gated expansion and does not delay a qualified Ubuntu preset. Use the
+[installation flow](INSTALLATION_SUPPORT.md#feature-first-multi-machine-setup)
+and [upstream evidence](RESEARCH.md#s30) as acceptance inputs. Native existing
+Linux services can be connect-only candidates; no second managed Python/native
+Linux stack or all-distribution installer is promised.
 
 **Exit G3:** publish a tested host manifest and reproducible host setup/support
 guide only after real NVIDIA evidence. Remote witness reports must identify
@@ -294,13 +306,79 @@ slices may be explicitly disabled, not silently described as shipped.
 | V07d | Clean Windows and novice walkthrough/support release record | V07b/V07c; AC-02/AC-06/AC-11 real-environment exit |
 | H05a | Reviewed prerequisite plan and idempotent setup journal | H01/H02; dry-run mutates nothing, resume reconciles approved steps |
 | H05b | Artifact download consent/progress/resume/integrity | H05a; interrupted/corrupt/changed-ETag/disk-full fixtures; no heavy download without authorization |
-| H05c | Role Compose generation and boot/readiness supervision | H05b/H03/H04; real Ubuntu fixture-role reboot/stop evidence, no GPU claim |
+| H05c | Selected-role Compose generation and boot/readiness supervision | H05b/H03; H04 only for F5; explicit owned engine/context, disabled roles absent, shared dependencies retained; real Ubuntu fixture-role reboot/stop evidence, no GPU claim |
 | H05d | Consistent backup and restore | H05c; separate-profile restore preserves data/schema and requires safe re-pairing |
 | H05e | Host upgrade staging and compatible rollback | H05d; failed warmup/migration restores documented prior state |
 | H05f | Targeted repair/reconfigure and data-preserving removal | H05c/H05d; no unrelated host package/volume deletion |
+| H07a | Native optional CPU STT packaging and adapter | H02/V01/V04; declared CPU/model and denied-egress speech trials; no Docker required, no STT prerequisite for typed input |
+| H07b | Optional hosted STT worker and gateway adapter | H02/H03/H05c; pinned selected worker, bounded upload/cancel/format checks, explicit audio destination and real speech trial; no exposed unqualified example server |
+| H08a | Feature/role/host/ownership schema and pure installation planner | D02/V02; AC-18 fixtures for typed-only, mixed routes, co-location, external ownership, disabled roles, unsupported tuples and migration preserving existing API behavior |
+| H08b | Bounded connection/model/real-trial probes through shared diagnostics | H08a/F04/H03; AC-19 deadlines, no side effects on open, scoped consent, no inference in cheap checks, cleanup ownership and stale-evidence invalidation |
+| H08c | Coordinator UX, local/remote handoff and exact-experience completion | H08a/H08b; AC-18 checkpoint/back/resume and actionable per-host failure; managed provisioning integration uses H05, never remote admin credentials |
+| H09a | Local graphical Ubuntu host setup over the existing host engine | H05/H08c; AC-12/AC-18/AC-19, Desktop browser accessibility, session authorization/origin protection, CLI parity and no LAN management listener |
+| H10a | Native Windows Ollama route and lifecycle qualification | H02/H03/H08c; AC-20; connect-only first, approved managed packaging separately, native gateway packaging for paired remote access, no tray-process-as-boot-service assumption |
+| H10b | Advanced Windows Docker Desktop/WSL2 qualification | H02/H03/H05c/H08c; AC-20; explicit Linux-container engine, WSL/driver/license prerequisites, shared resources and actual login/reboot evidence |
 | P03a | Consented fact store, inspect/edit/delete/export API | H03/V06; AC-16 storage/privacy/deletion cases |
 | P03b | Lexical retrieval with provenance and expiry | P03a; held-out useful-retrieval evaluation and in-flight delete invalidation |
 | P03c | Optional embedding/reranking adapter and index lifecycle | P03b; only after measured benefit/rights review, derived-data rebuild/delete cases |
+
+### Installation program execution order (2026-09-22)
+
+**Owner direction:** implement the researched installation program in dependency
+order, using independent worktree branches/PRs in parallel where ownership does
+not overlap. The coordinator may publish and normally merge locally validated,
+independently reviewed changes to `main`. This is not authorization to waive
+qualification, install host prerequisites, run paid inference, publish releases,
+change protections/permissions or start remote CI.
+
+Scope is the installation and connection experience for the roles described
+above, not implementing the separate perception/memory/avatar product backlogs
+early. Disabled/unimplemented optional features remain honest unavailable
+selections; when those products exist they join the same installation planner.
+No empty worker, mock authorization issuer or fixture pass may enable a live
+hosting preset. Foundation slices are explicitly internal until integrated.
+
+| Wave | Parallel work / branch ownership | Dependency and deliverable boundary |
+| --- | --- | --- |
+| 0: Plan and reconcile | This installation plan; inspect existing work and source/publication holds | The existing H01 preflight PR #21 is retained, not reimplemented. Its target-native evidence hold remains until real authorized local Ubuntu evidence and review satisfy it. |
+| 1: Independent foundations | H08a pure feature/role/host/ownership planner in Core; H03a isolated gateway trust/authorization library; H02c container artifact inventory in HostArtifacts | Three independent PRs from current main. Do not change Desktop settings/UI in this wave. Planner uses explicit capability/eligibility inputs, not invented qualified tuples; gateway library opens no listener; artifact inventory downloads/executes nothing. |
+| 2: Persist and connect | H08d versioned installation settings/checkpoint migration; H03b persistent host identity/TLS gateway; H02d exact runtime/image/model closure | H08d follows H08a; H03b follows H03a; H02d follows H02c. Keep each owner separate. Resolve named provider capability and credential boundaries before any real route/probe is registered. |
+| 3: First usable guided path | H08b/H08c Windows feature-first setup and bounded checks; H05a/H05b host desired-state journal and authorized download engine; H10a native Windows connect-only integration | UI follows H08d and reviewed providers/gateway. Host lifecycle follows H01/H02 and consumes the shared plan, never a second competing planner. Windows local Ollama can proceed independently of Ubuntu qualification but cannot use an untrusted issuer or raw remote LAN port. |
+| 4: Managed Ubuntu services | H05c selected-role Compose reconciliation; H04 F5 worker; H07a native CPU STT / H07b hosted STT | First real managed preset is LLM-only; F5 and STT are conditional additions, not prerequisites for typed text. Workers can be implemented in parallel once contracts are frozen. Integrate per-role artifacts, rights, budgets, cancellation and private transport. |
+| 5: Installers and platform UX | H09 graphical Ubuntu host setup + CLI parity; H10a approved native Windows lifecycle; H10b advanced Windows Docker/WSL2; H05d/H05e/H05f backup/update/rollback/removal | Consume the same tested host plan/journal and role contracts. Separate per-OS/per-runtime qualification. Windows Docker does not require native Windows F5. No desktop-client Docker dependency. |
+| 6: End-to-end qualification | H06 Ubuntu combined load/reboot/multi-host; AC-18/AC-19 novice/hybrid/quick checks; AC-20 Windows lanes | Real declared machines, local-only execution, explicitly authorized samples and installed software. Qualify each exact selected experience, not every optional feature at once. Missing hardware/rights/signing remains blocked; never relabel it as a pass. |
+
+H03a owns bounded one-use pairing and scoped device authorization, expiry/
+revocation and clock/cancellation behavior with production-backed local tests.
+It is not a production gateway until H03b supplies protected persistence,
+trusted TLS identity, transport admission and deliberate local approval.
+H03b must exercise actual loopback TLS in local tests and unauthorized-client
+cases; protected key storage and target-host lifecycle need separate native
+evidence. The gateway never receives Docker/admin privileges.
+
+H02c extends the existing offline artifact eligibility/inventory boundary for
+immutable container image identities/platforms, dependency and disk/rights
+unknowns. H02d records exact upstream runtime/model artifacts and closes their
+dependency/rights/runtime-fit requirements; registry metadata is not locally
+verified bytes or executable approval. Unknown sizes, rights or compatibility
+remain unknown. No floating-image example becomes a deployable preset.
+
+H08d integrates the planner into versioned persistent settings with migration,
+backup/restore and support metadata. Preserve existing v1/v2 files, profile/
+credential ownership and the current OpenAI conversation behavior. Only this
+owner changes the shared settings schema; H08c consumes it after merge.
+Disabled role configuration can be retained without authorizing its execution.
+
+**Per-PR completion and merge protocol:** keep one bounded change per branch,
+test the production path locally, record exact commit/commands/outcomes and
+unrun gates, obtain independent review, fix findings and rerun affected checks.
+Inspect base/head workflow trees and triggering events before every push/PR/
+merge so publishing cannot start remote validation. Merge one eligible PR at
+a time against the reviewed head; if main advanced, reconcile and revalidate
+the affected integration before merging. Do not force-push, bypass protections,
+manufacture statuses or merge a held PR. Stop only dependent waves for a genuine
+blocker and continue independent work. Update this ledger with actual merged
+evidence; a queued session or code-only foundation is not a completed feature.
 
 ## 3. Parallelization boundaries and first implementation batch
 
@@ -358,6 +436,9 @@ what remains a real-device/manual gate.
 | AC-15: Perception | No capture/upload without selected-source/destination consent; lock/close/pause works; output has age/provenance; stale/failed perception excluded; useful labeled-task accuracy and resource budgets recorded |
 | AC-16: Memory | Explicit saved facts retrieved with provenance; inspect/delete/export works; cascaded delete invalidates embeddings/cache/in-flight results; restore compatible snapshot; no surprise cloud upload or backup-erasure claim |
 | AC-17: Avatar | Approved SDK/assets, safe bounded import, lip sync follows played samples, predictable idle/motion budget; disabled/missing/crashed/uninstalled renderer leaves voice and provider setup intact |
+| AC-18: Topology-aware installation | One plan covers typed-only, API-only, one multi-role Ubuntu host, Windows client+host, mixed cloud/local roles and split hosts. Each selected experience requires only its dependencies; zero downloads/keys/probes for disabled roles. Failed optional context leaves voice/text usable with disclosure. Per-machine Back/Save/resume survives interruption; remote handoff contains no secrets/admin authority; external services are never silently adopted. Removing one role preserves shared dependencies/data. Ubuntu Desktop GUI and Server CLI operate the same journal/engine with accessible remedies. |
+| AC-19: Fast honest readiness | Check acknowledgement within 1 s; cheap group completes or reports exact-stage timeout within 15 s wall time including queueing, at most four probes, 5 s per network stage; unstarted checks remain not checked. No live probe starts on opening setup. Connected/model-present/request-passed/stale/disabled remain distinct; unsupported metadata is unknown. Small real probes default to a visible 60 s deadline or disclose a qualified override before approval; downloads/warmup are separate. Test failure/cancel/slow/unsupported/wrong-role cases, timestamp/config binding and no overlapping retries before cleanup; no billable periodic health calls. Witness actual selected-role trials separately from fixture timing cases. |
+| AC-20: Windows hosting lanes | Record independent native Ollama and Docker Desktop/WSL2 Linux-container matrices and real-machine results, not inherited Ubuntu passes. Exercise co-resident client+host and paired remote client, compatible external installation reuse, ports/engine ownership, driver/GPU availability, model fit, sleep/resume, user-login versus boot availability, scoped repair/removal and text-only/API alternatives. No automatic WSL/driver/firewall changes or terms acceptance; unavailable prerequisites remain blocked. Managed lifecycle claims require their own install/update/rollback/uninstall evidence. |
 
 For quality evaluation, use consented/licensed fixtures and a held-out scenario
 set. Measure STT errors on companion names and gaming terms, suppression false
