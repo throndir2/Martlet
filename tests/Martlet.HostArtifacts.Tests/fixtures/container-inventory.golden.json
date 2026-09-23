@@ -1,0 +1,12 @@
+{
+  "known_compressed_bytes": 660,
+  "unknown_compressed_count": 0,
+  "known_expanded_blob_bytes": 330,
+  "unknown_expanded_blob_count": 0,
+  "known_staging_blob_bytes": 130,
+  "unknown_staging_blob_count": 0,
+  "unique_content_count": 6,
+  "incomplete_image_count": 0,
+  "scope": "unique_content_metadata_not_snapshot_or_peak_disk",
+  "size_evidence": "supplied_metadata_not_locally_measured"
+}

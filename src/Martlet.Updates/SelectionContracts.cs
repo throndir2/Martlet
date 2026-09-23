@@ -135,14 +135,15 @@ public sealed class SelectionPlan
 
     internal SelectionPlan(object owner, long sequence, Guid id, SelectionKind kind, ControlDocument before,
         SelectionEntry entry, byte[] snapshot, SnapshotBinding freshSnapshot, string sourcePath,
-        InstalledVersionFacts origin, ConfigurationSnapshotInspection inspection, Guid profile, string settingsRevision)
+        InstalledVersionFacts origin, ConfigurationSnapshotInspection inspection, Guid profile, string settingsRevision,
+        SelectionEntry? retainedPreviousOverride = null)
     {
         Owner = owner; Sequence = sequence; TransactionId = id; Kind = kind; Before = before; Entry = entry;
         SnapshotBytes = snapshot; FreshSnapshot = freshSnapshot; SourcePath = sourcePath; Origin = origin;
         Snapshot = inspection; Profile = profile; SettingsRevision = settingsRevision; Candidate = new(entry);
-        RetainedPrevious = before.Current is null ? null :
+        RetainedPrevious = retainedPreviousOverride ?? (before.Current is null ? null :
             freshSnapshot.Schema >= before.Current.MinimumReader && freshSnapshot.Schema <= before.Current.MaximumReader
-                ? before.Current with { Snapshot = freshSnapshot } : before.Current;
+                ? before.Current with { Snapshot = freshSnapshot } : before.Current);
         PreviousAfterSelection = RetainedPrevious is null ? null : new(RetainedPrevious);
         PlanDigest = Wire.Hash(Wire.Write(new
         {

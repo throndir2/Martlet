@@ -20,7 +20,12 @@ public sealed class ConfigurationCurrentReadScopeTests : IDisposable
         {
             Credentials = [new() { ProviderId = Canary, CredentialId = Guid.NewGuid() }]
         } };
-        if (version == 2) settings = SetupSettings.Begin(settings) with { SchemaVersion = 2, Companion = null };
+        if (version == 2) settings = SetupSettings.Begin(settings) with
+        {
+            SchemaVersion = 2,
+            Companion = null,
+            Memory = null
+        };
         Assert.True((await Store.SaveAsync(settings, null)).Saved);
         return settings;
     }

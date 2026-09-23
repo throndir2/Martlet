@@ -133,7 +133,7 @@ public sealed partial class LocalSelectionEngine
                 if (previous.Snapshot.ProfileId != current.Settings!.Profile.Id)
                     throw new SelectionException(SelectionFailure.InvalidSnapshot);
                 Compatible(previous.MinimumReader, previous.MaximumReader, previous.Snapshot.Schema);
-                // V07a restore currently emits schema 2, even for a v1 historical snapshot.
+                // New restores emit the current schema even for a historical snapshot.
                 Compatible(previous.MinimumReader, previous.MaximumReader, AppSettings.CurrentSchemaVersion);
                 entry = previous with { RestoreRequired = true };
             }
@@ -165,6 +165,8 @@ public sealed partial class LocalSelectionEngine
             token.ThrowIfCancellationRequested();
             using var sourcePin = BoundedIo.OpenRead(plan.SourcePath);
             RequireExactSnapshot(sourcePin, plan, token);
+            using var rollbackSnapshot = plan.Kind == SelectionKind.Rollback
+                ? PinSnapshot(plan.Entry.Snapshot, token) : null;
             var incoming = new LocalStagingEngine.StageInspection(StagePath(plan.Entry.StageName),
                 plan.Kind == SelectionKind.Rollback ? plan.Entry.ReceiptSha256 : null);
             return WithRetainedEvidence(plan.Before, incoming, (stages, reverify) =>
@@ -187,7 +189,8 @@ public sealed partial class LocalSelectionEngine
                 ValidateState(after);
                 var journal = new SelectionJournal(before.FormatVersion, plan.TransactionId, plan.PlanDigest, before, pending, after);
                 WriteNew(Path.Combine(directory, "before.json"), Wire.Write(before), token);
-                WriteNew(Path.Combine(directory, "configuration.martlet-config"), plan.SnapshotBytes, token);
+                WriteNew(Path.Combine(directory, "configuration.martlet-config"), plan.SnapshotBytes, token,
+                    ConfigurationSnapshot.MaximumBytes);
                 using var retainedSnapshot = PinSnapshot(plan.FreshSnapshot, token);
                 WriteNew(Path.Combine(directory, JournalName(before.FormatVersion)),
                     JournalBytes(journal), token);
@@ -222,6 +225,10 @@ public sealed partial class LocalSelectionEngine
                     using var named = BoundedIo.OpenRead(plan.SourcePath);
                     RequireExactSnapshot(named, plan, token);
                     using var retained = PinSnapshot(plan.FreshSnapshot, token);
+                    if (rollbackSnapshot is not null)
+                    {
+                        using var namedRollback = PinSnapshot(plan.Entry.Snapshot, token);
+                    }
                     reverify();
                     token.ThrowIfCancellationRequested();
                 }
@@ -716,7 +723,7 @@ public sealed partial class LocalSelectionEngine
         { throw new SelectionException(SelectionFailure.InvalidControl); }
     }
 
-    private void WriteNew(string path, byte[] bytes, CancellationToken token)
+    private void WriteNew(string path, byte[] bytes, CancellationToken token, int maximum = MaximumJournalBytes)
     {
         SafePath(path);
         Point(SelectionIoPoint.BeforeCreate, path, token);
@@ -731,7 +738,7 @@ public sealed partial class LocalSelectionEngine
             Point(SelectionIoPoint.AfterFlush, path, token);
         }
         using var read = BoundedIo.OpenRead(path);
-        if (!BoundedIo.Read(read, MaximumJournalBytes, token).AsSpan().SequenceEqual(bytes))
+        if (!BoundedIo.Read(read, maximum, token).AsSpan().SequenceEqual(bytes))
             throw new SelectionException(SelectionFailure.InvalidControl);
     }
 

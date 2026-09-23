@@ -4,8 +4,6 @@ using Martlet.Core.Contracts;
 
 namespace Martlet.Core.Settings;
 
-public enum ResponseStyle { Helpful, Sarcastic, Silly, Distracted, PlayfulTeasing }
-
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record ResponseStyleWeights : IContract
 {
@@ -32,28 +30,38 @@ public sealed record ResponseStyleWeights : IContract
         ContractRules.Require(values.Any(value => value > 0),
             "At least one response-style weight must be greater than zero.");
     }
+}
 
-    public ResponseStyle Select(Func<int, int> sample)
+public enum ResponseStyle { Helpful, Sarcastic, Silly, Distracted, PlayfulTeasing }
+
+public static class ResponseStyleSelector
+{
+    public static ResponseStyle Select(ResponseStyleWeights weights, Func<int, int> next)
     {
-        ArgumentNullException.ThrowIfNull(sample);
-        Validate();
+        ArgumentNullException.ThrowIfNull(weights);
+        ArgumentNullException.ThrowIfNull(next);
+        weights.Validate();
         var weighted = new[]
         {
-            (ResponseStyle.Helpful, Helpful),
-            (ResponseStyle.Sarcastic, Sarcastic),
-            (ResponseStyle.Silly, Silly),
-            (ResponseStyle.Distracted, Distracted),
-            (ResponseStyle.PlayfulTeasing, PlayfulTeasing)
+            (ResponseStyle.Helpful, weights.Helpful),
+            (ResponseStyle.Sarcastic, weights.Sarcastic),
+            (ResponseStyle.Silly, weights.Silly),
+            (ResponseStyle.Distracted, weights.Distracted),
+            (ResponseStyle.PlayfulTeasing, weights.PlayfulTeasing)
         };
-        var total = weighted.Sum(item => item.Item2);
-        var draw = sample(total);
-        ContractRules.Require(draw >= 0 && draw < total, "The response-style random sample is out of range.");
-        foreach (var (style, weight) in weighted)
+        var positive = weighted.Where(item => item.Item2 > 0).ToArray();
+        if (positive.Length == 1)
+            return positive[0].Item1;
+        var total = positive.Sum(item => item.Item2);
+        var selected = next(total);
+        ContractRules.Require(selected >= 0 && selected < total, "The response-style selector returned an invalid sample.");
+        foreach (var (style, weight) in positive)
         {
-            if (draw < weight) return style;
-            draw -= weight;
+            if (selected < weight)
+                return style;
+            selected -= weight;
         }
-        throw new ContractException(ErrorCode.InvalidContract, "A response style could not be selected.");
+        throw new ContractException(ErrorCode.InvalidContract, "The response-style selector could not select a style.");
     }
 }
 
@@ -109,6 +117,7 @@ public sealed record CompanionSettings : IContract
     public required Guid ActivePersonaId { get; init; }
     public required IReadOnlyList<PersonaProfile> Personas { get; init; }
 
+    [JsonIgnore]
     public PersonaProfile ActivePersona =>
         Personas.Single(persona => persona.Id == ActivePersonaId);
 

@@ -21,7 +21,7 @@ public sealed class TextHistoryMessage(TextHistoryRole role, string text)
 
 public sealed class BoundedTextInput
 {
-    public const int HardMaxUtf8Bytes = 24_064;
+    public const int HardMaxUtf8Bytes = 16_384;
     public const int HardMaxHistoryMessages = 16;
     [JsonIgnore]
     public string UserText { get; }

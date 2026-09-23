@@ -289,7 +289,7 @@ public sealed class LocalStagingEngine
         _ => StagingFailure.Unavailable
     };
 
-    private InstalledVersionFacts Current()
+    internal InstalledVersionFacts Current()
     {
         var installed = readInstalledFacts();
         if (installed is null) throw new StagingException(StagingFailure.Conflict);

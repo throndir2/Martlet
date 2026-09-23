@@ -89,6 +89,144 @@ role needs a verified adapter/capability; LLM-only endpoints do not supply STT
 or TTS. Show missing roles and let the user deliberately choose replacements
 without turning on a paid cloud service automatically.
 
+### Feature-first multi-machine setup
+
+**Design update, 2026-09-22; not implemented.** The storyboard above is the
+voice preset, not a requirement to configure every role. One Windows coordinator
+owns the user's desired experience and overall progress. A local host installer
+owns approved changes on each managed machine. Users should not need to
+understand Compose, Python environments or port numbers to choose guided setup.
+
+| User selection | Required capabilities | What setup must skip |
+| --- | --- | --- |
+| Fixture demo | Authored local fixture only | Providers, host provisioning, keys, models and audio unless separately requested |
+| Typed text conversation | Text LLM | Microphone, STT, TTS and output-device prerequisites |
+| Microphone input | Selected capture path and STT, plus LLM for conversation | TTS/output if replies remain text; continuous listening is a separate opt-in |
+| Spoken replies | TTS and selected output, plus conversation LLM | Microphone/STT when input is typed |
+| Screen context, memory or avatar | Only dependencies of the explicitly enabled feature | Every disabled feature's services, keys, downloads and readiness checks |
+
+Presets populate this dependency plan but never lock roles to numbered machines.
+Keep a stable machine/host identity separate from its label/address, role routes,
+runtime instances and ownership. A Windows PC can both run the client and host
+an LLM; one Ubuntu machine can host LLM/TTS/STT; another can provide context.
+An external API can supply any supported role alongside either layout.
+Do not count a WSL VM's resources as additional physical RAM or GPU capacity.
+
+The proposed guided flow is:
+
+1. **Choose features.** Start with typed text, microphone input and spoken
+   replies as understandable choices. Screen, memory and avatar remain off.
+   Explain which roles each choice adds; no provider calls or downloads yet.
+2. **Choose where each role runs.** Offer external API, this computer, another
+   computer, or compatible existing service. Recommend only qualified presets;
+   label unqualified lanes as unavailable/experimental with an exact reason.
+   Show data destinations and usage costs together, including mixed routes.
+3. **Review a single plan.** Group actions by named machine, with role badges,
+   managed/external ownership, selected runtime/model, download and expanded
+   sizes, storage, shared resource budget, licenses, privileges and reboot needs.
+   Reuse compatible owned dependencies once; do not take over existing services
+   or silently uninstall conflicting packages. Resolve port/engine collisions.
+4. **Prepare selected hosts.** Run local setup directly where supported. For a
+   remote host, show "Run Host Setup on Kitchen Ubuntu PC" with the correct OS
+   bundle, a non-secret role plan and clear return/pairing instructions. No API
+   keys, admin passwords or reusable tokens belong in that plan. Initial trust
+   is established out of band; discovery is opt-in, never a subnet-wide scan.
+5. **Approve local changes and pair.** The host shows its own plan and obtains
+   scoped local approvals. Resume after reboot without replaying approval or
+   starting capture. Present the host identity/fingerprint and short-lived
+   pairing flow from Architecture. The coordinator receives scoped readiness,
+   not a shell, Docker socket, administrator token or arbitrary install API.
+   Established device pairing is non-expiring and must survive routine
+   restart, reboot, updates and recoverable interruption. Do not present an
+   offline/clock/storage fault as unpaired or recommend reset-all-devices.
+   One-use invitation expiry and request freshness/replay remain independent.
+   Renew TLS certificates automatically with the same key/pin before serving;
+   no routine certificate expiry should require pairing again.
+6. **Check connection, then try a request.** Use the staged checks below for only
+   the selected roles. A failed optional role must not erase successful checks.
+   Offer an explicit feature change to continue in text-only mode if speech is
+   unavailable; never silently send data elsewhere.
+7. **Finish for this experience.** Show "Ready for text chat" or the exact tested
+   voice path, with disabled/deferred features distinct from failures. Include
+   local/remote startup expectations and a per-machine resume/remedy link.
+   Adding another role later reuses this plan without restarting onboarding.
+
+Most coordination occurs on one computer, but an untouched remote machine still
+needs its local setup/trust/privilege step. Headless Ubuntu uses the same
+packaged host engine through a guided CLI; an administrator may access that CLI
+through an independently secured existing session. Martlet does not install
+SSH/remote desktop or retain remote admin credentials. The initial host GUI is
+a loopback-only browser UI launched locally by the host bundle with local-session
+authorization, origin/CSRF protection and narrowly scoped privileged actions.
+It is not exposed on the LAN; the paired inference/status gateway is separate.
+Packaging and novice accessibility of this UI remain H09 work.
+
+### Deployment choices and ownership
+
+| Choice | Recommended use / responsibilities |
+| --- | --- |
+| Guided Ubuntu Desktop or Server host | First managed Linux target: Docker Engine + Compose on the host, selected pinned workers, persistent volumes and reviewed boot supervision. Desktop users get a graphical host setup; headless users use the same plan/journal via CLI. No Docker Desktop requirement. |
+| Advanced Docker/Compose | User installs/manages the qualified engine and explicit Compose project. Supply versioned role configuration and checks; no automatic adoption, upgrade, restart or removal by Martlet. Still require trusted transport, models, consent and capability checks. |
+| Native Windows hosting | Qualify native Ollama first; upstream provides a normal installer and standalone CLI. Reuse an existing install in connect-only mode. A Martlet-managed native lifecycle/package is separate H10 work, not permission to invoke an arbitrary installer or add a service wrapper. |
+| Windows Docker hosting | Separate advanced Docker Desktop + WSL2 Linux-container lane. Explain virtualization, disk/memory, driver, possible reboot, Desktop licensing and login/startup behavior. Do not claim Windows containers or Windows Server support. |
+| Existing native/container service | Connect only through a named tested adapter and approved transport. Validate capabilities without assuming ownership of its models, configuration, volumes or upgrades. Remote raw inference ports are not a substitute for TLS/authentication. |
+| External API | No host runtime to install; configure only selected roles, credentials and data/cost consent. Never require Docker for the API or fixture path. |
+
+Docker is a useful managed Linux packaging default, not "all Linux is supported."
+Docker lists distro/version/architecture-specific packages and does not test
+every derivative. Native Engine and Docker Desktop are different deployments:
+Desktop on Linux adds a VM, separate storage and a separate context. Qualify
+the host kernel, architecture, driver, engine/toolkit and selected image/model
+together. The initial target remains Ubuntu 24.04 x86_64; Desktop and Server
+need their own lifecycle evidence. Other distros, AMD/Intel, rootless GPU and
+WSL are separate matrix entries, not inferred passes ([S30-S32](RESEARCH.md#s30)).
+
+For every role, record who owns start/stop/update/removal. Switching from
+external to managed requires a new explicit adoption/migration plan; changing
+the route alone never authorizes takeover. Removing one feature stops only its
+owned work and preserves data; shared dependencies stay while other roles need
+them. Uninstall never removes a shared engine, driver or an external project's
+volumes. Pin the intended engine/context rather than changing the user's global
+Docker context or assuming the CLI's current context targets this computer.
+
+### Quick connection checks and a small real trial
+
+**Proposed observable targets, not measured performance:** acknowledge Check
+within one second; cap the cheap connection group at 15 seconds wall time,
+including queueing, with at most four independent probes and five seconds per
+network stage. Cache one host handshake per selected host for that check, then
+check role capabilities. Use monotonic deadlines, no automatic retry loop and
+no arbitrary network discovery. Timeout yields an exact stage/remedy, not a
+green result; queued checks that never started remain "not checked." Users can
+retry a selected host without repeating healthy hosts. Model downloads/warmup
+are not squeezed into the connection deadline.
+
+| Stage | What it establishes | Authorization and result limits |
+| --- | --- | --- |
+| Local plan check | Required routes present, supported adapter/OS selections, structural settings and storage/port inventory where accessible | No network, credential retrieval, devices, driver changes, pulls or inference on opening setup. Denied/unavailable observations stay unknown. |
+| Check connection | Selected endpoint reachable, TLS identity and scoped authentication valid, protocol/role capability compatible | Explicit destination-bound action; bounded metadata requests only through the named adapter. No secret on redirects, no guessed health URL; absent metadata support is unknown, not failure or a request to infer. |
+| Check runtime/model | Managed runtime responds; exact selected model/dependencies provisioned; GPU visible if needed | Container/GPU execution and model loading require their own approval. A version string, model listing or `nvidia-smi` is not proof of inference, immutable weights, fit or data locality. |
+| Try a small request | Real selected STT/LLM/TTS operation returns a valid bounded result | Separate explicit data/cost/compute authorization; show exact destination and sample. Use an owned/licensed short speech fixture for STT, short text for LLM/TTS, approved voice reference for F5. No personal microphone data or playback by default. |
+| Try my selected experience | Actual selected end-to-end path, and audio capture/playback only if requested | Fresh action approval and separate human audibility confirmation. Typed-only needs no audio checks. This does not substitute for release/hardware qualification. |
+
+Small live probes should default to a visible 60-second action deadline with
+strict adapter-specific input/output bounds. Preflight may disclose a different
+qualified model-specific limit before approval; cold warmup needs separate
+progress and explicit bounded waiting, not a hidden extended timeout.
+Stop suppresses late output immediately; a timeout or closed HTTP connection
+must not claim server/GPU work ended. Retain operation ownership until cleanup
+completes and prohibit overlapping retries while cleanup is unresolved.
+
+Show **configured**, **connected**, **model available**, **warming**, **request
+passed**, **failed**, **unknown**, **stale** and **disabled** separately, with
+timestamp, scope, duration and actionable remedy. Model/route/credential/runtime
+changes invalidate affected evidence and approvals, not unrelated roles.
+Ordinary status displays stored observations; it does not run billable probes
+or start stopped workers. Compose health checks stay cheap/non-inference.
+`service_healthy` helps startup ordering but cannot prove a model or whole
+conversation works ([S35](RESEARCH.md#s35)). All validation is local or a
+separately authorized selected endpoint action, never remote CI.
+
 ### Companion customization after setup
 
 The planned [Companion controls](COMPANION_REQUIREMENTS.md) must remain
@@ -107,7 +245,8 @@ style weights, changed/missing reference audio, incompatible models and
 unqualified barge-in. Preserve prior saved choices without pretending a failed
 Apply succeeded or falling back silently. Save/resume preserves inert choices,
 not listening, spending, preview permission or model readiness. The current
-setup UI does not yet implement these companion surfaces.
+Desktop implements the companion editor and named OpenAI LLM catalog selection;
+the remaining surfaces are not yet integrated.
 
 ### Provider cost and mode controls
 
@@ -151,7 +290,7 @@ Text input/output and doctor remain operable when every audio device is absent.
 
 | Layer | First qualification target | Required evidence / exclusions |
 | --- | --- | --- |
-| Host OS | Ubuntu 24.04 LTS x86_64, latest qualified security point release/kernel | Record exact OS/kernel and reboot outcome; 22.04/26.04 are separate expansion lanes, although Docker and NVIDIA list them upstream |
+| Host OS | Ubuntu 24.04 LTS x86_64 Desktop/Server, latest qualified security point release/kernel | Qualify both setup experiences and boot without graphical login; 22.04/26.04 are separate expansion lanes, although Docker and NVIDIA list them upstream |
 | CPU/RAM | x86_64 with instruction set required by selected native wheels/engine; provisional planning envelope 4+ CPU cores, 32 GiB RAM | Not a proven minimum; inventory actual system and measure combined load, swap, and context size |
 | GPU | NVIDIA discrete GPU(s), each selected by UUID, exact models/VRAM currently unknown | No generic "CUDA-capable = supported" claim; card compute capability must match all selected binaries/kernels |
 | Driver | One tested distro-packaged NVIDIA branch meeting each chosen image's CUDA and GPU requirements | Numeric floor/pin unresolved until H02; Secure Boot/module status and post-reboot readiness required |
@@ -174,7 +313,32 @@ execute the required kernels. Check runtime/driver/GPU compatibility using
 the selected versions and a real inference smoke run
 ([S20-S22](RESEARCH.md#s20)). AMD/ROCm, Intel, Jetson/ARM, WSL-hosted inference,
 rootless GPU containers, and unmanaged existing Python environments are
-out of the initial supported host matrix.
+out of the initial supported host matrix. Windows native and WSL2 containers
+are planned H10 expansion lanes, not categorically excluded product goals;
+native F5 is not promised. Only selected GPU roles require GPU prerequisites:
+an API-only client or qualified CPU role must not be blocked for lacking CUDA.
+
+### Linux gateway state backend boundary
+
+The canonical gateway includes an opt-in `LinuxServicePermissions` storage
+candidate for non-root Linux x86_64/glibc on local persistent ext4. Setup must
+not treat library availability or a modeled check as host qualification.
+Existing factory signatures remain Windows DPAPI; Linux selection is an
+explicit trusted local-owner call, not a stored wizard permission.
+
+Linux stores signing/private keys as service-permission-isolated **plaintext**:
+0700 directory, 0600 files, strict UID/ACL/link/mount checks and durable redo.
+This is not Windows DPAPI parity. Explain same-UID/root/offline-disk exposure
+and operator-managed disk encryption where needed. The library creates only an
+absent leaf under an existing safe private parent; it never provisions a UID,
+repairs ownership/modes, migrates Windows ciphertext or resets devices.
+Storage/clock failures mean access blocked, not unpaired.
+
+Linux local approval/disclosure, GUI/headless lifecycle, real native execution,
+reboot, service/container mounts and LAN qualification remain **NOT RUN**.
+The Windows Host CLI has not become portable. Preserve H01/#21 and managed
+preset holds; a future installer must use the same authority rather than fork
+pairing records. See [backend contract](../src/Martlet.Gateway.Persistence/README.md#explicit-linux-service-permissions-candidate).
 
 ### Read-only discovery and preflight
 
@@ -203,8 +367,10 @@ existing machine's driver just because an upstream quickstart suggests it.
    documented channel. Display and verify the artifact manifest; review its
    intended changes locally. No blind curl-pipe-root execution.
 2. Preflight distinguishes unsupported from repairable. Choose a profile:
-   `voice-host` (LLM/TTS, optional STT), `context-host` (optional perception/memory),
-   or `single-host` with explicitly chosen roles. CPU fixture-only mode remains
+   `voice-host` (preset LLM/TTS, optional STT), `context-host` (optional
+   perception/memory), or `single-host` with explicitly chosen roles. These
+   are editable presets, not mandatory bundles: disabled roles or roles supplied
+   by an external API add no host prerequisite. CPU fixture-only mode remains
    available to developers.
 3. Show installation plan and storage/download/license summary. Obtain separate
    approval for package repositories, driver/container runtime configuration,
@@ -238,6 +404,14 @@ host-network, or desktop Docker socket mounts.
 Show **exact selected-artifact bytes** before consent, plus expanded image
 size, staging space, rollback retention, and user-data reserve. Metadata can
 inform planning but is not the checksum verification of a downloaded file.
+
+The focused [H05b acquisition library](../src/Martlet.Host.Setup/README.md)
+now separates durable local review from fresh exact-artifact acquisition consent.
+It supports pinned public GitHub release assets through a bounded reviewed CDN
+policy and owned, hash-verified local staging; it does not install or execute
+them. Hugging Face and OCI downloads remain explicitly unsupported in this
+slice, so this is not a completed model-provisioning or F5 installation journey.
+Catalog and host/runtime qualification remain unchanged.
 
 | Artifact | Observed upstream metadata / planning treatment |
 | --- | --- |
@@ -423,7 +597,7 @@ trace IDs, not private audio/transcripts/secrets.
 | Host unreachable: `NET_UNREACHABLE` | Wrong address, host asleep, service stopped, VLAN isolation | DNS -> TCP selected port -> TLS -> gateway | Verify host-local readiness, correct host address/port, reconnect same intended LAN | Stage/timeouts and pseudonymized route |
 | IP works, name fails: `NET_DNS` | DNS/mDNS unavailable, stale lease, suffix mismatch | Resolve name vs saved host-ID address | Use verified current address then correct DHCP/DNS; do not re-trust a changed certificate | Resolver result and host identity comparison |
 | Connection refused/times out: `NET_PORT` | Port collision, wrong binding, firewall/router policy | Host listen/bind vs client TCP and unauthorized-client denial | Review exact selected-interface and client-source rule; no blanket firewall disable or public forwarding | Binding/rule summary, both-side probe result |
-| TLS/pairing fails: `PAIR_TRUST` | Wrong host, expired cert, clock skew, expired token, identity change | Time/identity/pin/token lifecycle probe | Check host clock, compare pairing fingerprint locally, generate new one-use token if needed | Error category; never token/private key |
+| TLS/pairing fails: `PAIR_TRUST` | Wrong host, certificate renewal failure, clock skew, expired invitation, identity change | Time/identity/pin/invitation lifecycle probe | Correct clock or same-key renewal/access problem while retaining pairing; replace only an expired invitation. A genuine changed identity requires deliberate verification, never automatic re-trust | Error category; never token/private key |
 | API key rejected: `AUTH_EXPIRED` | Revoked/expired key, wrong origin/project/scope | Non-billable auth metadata where supported; sanitized real failure otherwise | Re-enter authorized credentials for displayed origin; verify account/project access | Provider status/request ID; no key |
 | Limit reached: `QUOTA_EXCEEDED` | Provider billing/rate quota or local session ceiling | Typed provider error, Retry-After, usage/budget | Wait stated interval or review provider account/local limit; user alone approves changed spending | Quota class and timestamps |
 | `/v1` endpoint fails: `PROVIDER_CAPABILITY` | Partial OpenAI compatibility, wrong adapter, missing model/voice or schema | Named role contract probes, not just `/models` | Select correct adapter and supported model; configure missing STT/TTS independently | Adapter/model/version and failed contract case |

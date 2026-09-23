@@ -403,7 +403,7 @@ Their rejection is not evidence that the wider upstream API cannot emit them.
 
 | Resource | Default / hard ceiling |
 | --- | --- |
-| Input | 24,064 UTF-8 content bytes; 16 history messages, one current message, optional personality |
+| Input | 16,384 UTF-8 content bytes; 16 history messages, one current message, optional personality |
 | Local input token admission | Content UTF-8 byte count plus 256 reserved units per message/personality; reservation <= `MaxInputTokens` (default/hard 24,576) |
 | Output | `max_output_tokens` default 256 / hard 4,096; no retry to finish an incomplete answer |
 | Local context budget | Input token reservation limit + output limit <= `MaxContextTokens` (default/hard 32,768); `truncation:disabled` |

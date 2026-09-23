@@ -45,7 +45,8 @@ access are **unknown**, not free or verified. Official
 [data retention policy](https://platform.openai.com/docs/guides/your-data)
 are linked in the UI (copy reviewed 2026-09-13; no rates cached). Opening a link
 requires an explicit browser action. A ChatGPT subscription is not API quota.
-Screen and persistent memory remain OFF. No health test, account login,
+Screen remains OFF; [local memory](MEMORY.md) is separately OFF by default,
+never enabled by Setup or an installation plan. No health test, account login,
 provider listing or billable probe is run.
 
 Back/Next and the tabs navigate Choice, Destinations, Credentials and Review.
@@ -79,14 +80,16 @@ checkpoint remains the restart recovery boundary.
 
 ## Consent and schema
 
-`AppSettings` accepts the original strict v1 schema and the new strict v2
-schema. Profile schema stays v1. v2 adds versioned `SetupSettings`: a bounded
+`AppSettings` accepts strict schemas v1-v4. Profile schema stays v1.
+v3 adds companion personas/styles; v4 adds separately consented OFF-by-default
+local-memory enable/path policy, not facts. v2 adds versioned `SetupSettings`: a bounded
 checkpoint, up to three `SetupRoute` values and at most sixteen pending owned
 credential removals. Settings contain no secret or transcript. Unknown fields,
 invalid states, newer versions, malformed encodings and oversize files are
 rejected without rewriting their original bytes.
 
-`SetupSettings.Begin` only prepares an in-memory edit. Explicit v1-to-v2 save
+`SetupSettings.Begin` only prepares an in-memory edit at the current schema.
+Explicit migration from v1-v3 preserves the original bytes; a v1 save
 uses `File.Replace` to commit and snapshot the exact original as
 `settings.v1.<opaque-id>.bak` in the same directory. `SettingsSaveResult`
 explicitly reports `MigratedFromVersion1` and `SnapshotFileName`. Existing
@@ -168,7 +171,7 @@ envelope, not a ZIP/support bundle. Its deterministic manifest records
 `Martlet.Configuration`, producer assembly version, minimum reader format,
 settings schema, source profile UUID, snapshot UUID, UTC creation time and
 source SHA-256. `settings_bytes` is base64 of the **exact** <=128 KiB validated
-v1/v2/v3 settings file (base64 is not encryption). Envelope SHA-256 covers the
+v1-v4 settings file (base64 is not encryption). Envelope SHA-256 covers the
 canonical serialized manifest, including the payload; source SHA-256 covers
 the original bytes. A fixed manifest serializes deterministically, but new
 snapshots intentionally have new identifiers/times. Integrity detects damage,
@@ -183,10 +186,14 @@ walk directories or include the opt-in support journal. Route/device IDs and
 configuration are personal; these LOCAL backups are neither encrypted nor
 sanitized diagnostic exports. Version 3 includes named persona text and response-style weights; v1/v2
 snapshots contain no persona data. There is currently no persisted F5 voice,
-downloaded model or memory database to back up. Secrets, transient text/audio, environment,
+downloaded model to back up. Memory settings are included, but the separately
+owned fact store and its exports are never included. Secrets, transient text/audio, environment,
 arbitrary files and diagnostic logs are excluded.
 
-Restore requires an **existing valid same-profile** v1/v2/v3 destination. Missing,
+Restore requires an **existing valid same-profile** v1-v4 destination. Memory is
+always forced OFF with a fresh revision: v4 sources retain their path policy,
+older sources preserve the current path policy, and no fact store is opened.
+Missing,
 malformed, inaccessible or newer destination files are never overwritten as a
 repair shortcut. Foreign profile IDs are not remapped. Preview generates a
 private immutable candidate byte array and displays its entire JSON, SHA-256,
@@ -336,7 +343,7 @@ arbitrary native `AudioPlaybackFailed`/`DeadlineExceeded` errors are not
 successful-cleanup evidence and remain quarantined.
 
 Optional v2 `audio` contains versioned `AudioSettings`, two bounded
-`AudioChoice` values and optional `AudioCheckpoint` values. Existing v1/v2/v3 files
+`AudioChoice` values and optional `AudioCheckpoint` values. Existing v1-v4 files
 without audio still load unchanged. v1 explicit save retains the reviewed exact
 original snapshot; profile identity, legacy credentials, role routes/consents,
 pending removals and setup navigation survive. Unknown audio versions/fields,

@@ -85,8 +85,7 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
         var latest = LiveConversationConfiguration.From(loaded);
         if (latest is null || latest.Revision != Configuration.Revision || latest.Profile != Configuration.Profile ||
             !latest.Routes.SequenceEqual(Configuration.Routes) || latest.Audio != Configuration.Audio ||
-            latest.Persona.Id != Configuration.Persona.Id ||
-            latest.Persona.ConfigurationRevision != Configuration.Persona.ConfigurationRevision)
+            latest.Persona != Configuration.Persona || latest.Memory != Configuration.Memory)
         {
             Revoke();
             throw new LiveActionException("conversation.configuration_changed");

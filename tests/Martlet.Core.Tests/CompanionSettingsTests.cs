@@ -13,14 +13,14 @@ public sealed class CompanionSettingsTests : IDisposable
     public async Task VersionTwoMigratesAtomicallyAndPreservesExistingConfiguration()
     {
         var versionThree = SetupSettings.SelectRoute(SetupSettings.Begin(null), SetupRole.Llm, "model-1", null);
-        var versionTwo = versionThree with { SchemaVersion = 2, Companion = null };
+        var versionTwo = versionThree with { SchemaVersion = 2, Companion = null, Memory = null };
         versionTwo.Validate();
         var saved = await Store.SaveAsync(versionTwo, null);
         var original = await File.ReadAllBytesAsync(Store.FilePath);
 
         var loaded = await Store.LoadAsync();
         var draft = CompanionSettings.Begin(loaded.Settings);
-        Assert.Equal(3, draft.SchemaVersion);
+        Assert.Equal(AppSettings.CurrentSchemaVersion, draft.SchemaVersion);
         Assert.Equal(versionTwo.Profile.Id, draft.Profile.Id);
         Assert.Equal(versionTwo.Profile.Kind, draft.Profile.Kind);
         Assert.Equal(versionTwo.Profile.Credentials, draft.Profile.Credentials);
@@ -69,27 +69,30 @@ public sealed class CompanionSettingsTests : IDisposable
     }
 
     [Fact]
-    public void StyleSelectionUsesExactRelativeWeightBoundaries()
+    public void ResponseStyleSelectionHonorsWeightsAndIsDeterministic()
     {
-        var weights = new ResponseStyleWeights
+        var one = new ResponseStyleWeights
         {
-            Helpful = 0,
-            Sarcastic = 20,
-            Silly = 0,
-            Distracted = 30,
-            PlayfulTeasing = 50
+            Helpful = 0, Sarcastic = 0, Silly = 0, Distracted = 0, PlayfulTeasing = 100
         };
-        Assert.Equal(ResponseStyle.Sarcastic, weights.Select(maximum => { Assert.Equal(100, maximum); return 0; }));
-        Assert.Equal(ResponseStyle.Sarcastic, weights.Select(_ => 19));
-        Assert.Equal(ResponseStyle.Distracted, weights.Select(_ => 20));
-        Assert.Equal(ResponseStyle.Distracted, weights.Select(_ => 49));
-        Assert.Equal(ResponseStyle.PlayfulTeasing, weights.Select(_ => 50));
-        Assert.Equal(ResponseStyle.PlayfulTeasing, weights.Select(_ => 99));
-        Assert.Throws<ContractException>(() => weights.Select(_ => 100));
-        Assert.Equal(ResponseStyle.Silly, (weights with
+        Assert.Equal(ResponseStyle.PlayfulTeasing,
+            ResponseStyleSelector.Select(one, _ => throw new InvalidOperationException("A sole style needs no sample.")));
+
+        var mixed = new ResponseStyleWeights
         {
-            Sarcastic = 0, Distracted = 0, PlayfulTeasing = 0, Silly = 1
-        }).Select(_ => 0));
+            Helpful = 40, Sarcastic = 20, Silly = 15, Distracted = 10, PlayfulTeasing = 15
+        };
+        var random = new Random(19092026);
+        var counts = Enum.GetValues<ResponseStyle>().ToDictionary(style => style, _ => 0);
+        for (var index = 0; index < 10_000; index++)
+            counts[ResponseStyleSelector.Select(mixed, random.Next)]++;
+
+        Assert.InRange(counts[ResponseStyle.Helpful], 3_800, 4_200);
+        Assert.InRange(counts[ResponseStyle.Sarcastic], 1_800, 2_200);
+        Assert.InRange(counts[ResponseStyle.Silly], 1_300, 1_700);
+        Assert.InRange(counts[ResponseStyle.Distracted], 800, 1_200);
+        Assert.InRange(counts[ResponseStyle.PlayfulTeasing], 1_300, 1_700);
+        Assert.Throws<ContractException>(() => ResponseStyleSelector.Select(mixed, total => total));
     }
 
     [Fact]
@@ -115,6 +118,37 @@ public sealed class CompanionSettingsTests : IDisposable
                 Personas = companion.Personas.Select(persona =>
                     persona.Id == overflow.Id ? overflow : persona).ToArray()
             }).Validate());
+    }
+
+    [Fact]
+    public async Task MaximumUtf8PersonasPersistWithoutDuplicatingTheActiveProfile()
+    {
+        var settings = CompanionSettings.Begin(null);
+        var persona = settings.Companion!.ActivePersona;
+        var companion = settings.Companion.Update(persona.Id, persona.Name, new string('\u00e9', 8192), persona.Styles);
+        companion = companion.Add("Second", companion.ActivePersona);
+        settings = settings with { Companion = companion };
+        var saved = await Store.SaveAsync(settings, null);
+        Assert.True(saved.Saved);
+        var bytes = await File.ReadAllBytesAsync(Store.FilePath);
+        Assert.DoesNotContain("\"active_persona\":", Encoding.UTF8.GetString(bytes));
+        Assert.Equal(ContractJson.Write(settings), ContractJson.Write((await Store.LoadAsync()).Settings!));
+        Assert.Equal(32_768, settings.Companion.Personas.Sum(item => Encoding.UTF8.GetByteCount(item.Text)));
+    }
+
+    [Fact]
+    public async Task EarlierVersionThreeDerivedPersonaFieldStillLoadsWithoutRewriting()
+    {
+        var settings = CompanionSettings.Begin(null);
+        var document = System.Text.Json.Nodes.JsonNode.Parse(ContractJson.Write(settings))!;
+        document["companion"]!["active_persona"] = document["companion"]!["personas"]![0]!.DeepClone();
+        var original = Encoding.UTF8.GetBytes(document.ToJsonString());
+        Directory.CreateDirectory(directory);
+        await File.WriteAllBytesAsync(Store.FilePath, original);
+        var loaded = await Store.LoadAsync();
+        Assert.Equal(SettingsLoadState.Loaded, loaded.State);
+        Assert.Equal(ContractJson.Write(settings), ContractJson.Write(loaded.Settings!));
+        Assert.Equal(original, await File.ReadAllBytesAsync(Store.FilePath));
     }
 
     [Fact]
@@ -214,7 +248,7 @@ public sealed class CompanionSettingsTests : IDisposable
         Assert.Equal("Original persona", (await Store.LoadAsync()).Settings!.Companion!.ActivePersona.Text);
 
         var v3 = (await Store.LoadAsync()).Settings!;
-        var versionTwo = v3 with { SchemaVersion = 2, Companion = null };
+        var versionTwo = v3 with { SchemaVersion = 2, Companion = null, Memory = null };
         var versionTwoBytes = ContractJson.Write(versionTwo);
         var versionTwoBackup = Path.Combine(directory, "v2.martlet-config");
         await File.WriteAllBytesAsync(versionTwoBackup, ConfigurationSnapshot.Create(versionTwoBytes));

@@ -149,11 +149,17 @@ public sealed class ArtifactDoctorTests : IDisposable
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task ActualExecutableReportsExitAndStableJson(bool invalid)
+    [InlineData(false, false, false)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(false, true, true)]
+    public async Task ActualExecutableReportsExitAndStableJson(bool invalid, bool container, bool catalog)
     {
         await CreateInput();
+        if (container) await File.WriteAllBytesAsync(Input,
+            await File.ReadAllBytesAsync(Path.Combine(AppContext.BaseDirectory, "fixtures", "container-images.v2.json")));
+        if (catalog) await File.WriteAllBytesAsync(Input,
+            await File.ReadAllBytesAsync(Path.Combine(AppContext.BaseDirectory, "host-artifacts.v2.json")));
         if (invalid) await File.WriteAllTextAsync(Input, "{\"format_version\":99,\"secret\":\"PRIVATE-CANARY\"}");
         var start = new ProcessStartInfo
         {
@@ -177,6 +183,11 @@ public sealed class ArtifactDoctorTests : IDisposable
             using var json = JsonDocument.Parse(text);
             Assert.Equal(process.ExitCode, json.RootElement.GetProperty("exit_code").GetInt32());
             Assert.False(json.RootElement.GetProperty("host_qualified").GetBoolean());
+            if (container)
+            {
+                Assert.Equal(2, json.RootElement.GetProperty("format_version").GetInt32());
+                Assert.Equal(catalog ? 16_879_012_039L : 660, json.RootElement.GetProperty("disk").GetProperty("known_listed_payload_bytes").GetInt64());
+            }
             Assert.DoesNotContain("PRIVATE-CANARY", text);
             Assert.DoesNotContain(root, text);
         }

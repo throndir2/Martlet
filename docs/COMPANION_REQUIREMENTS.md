@@ -17,12 +17,12 @@ like a broken connection.
 
 | Requirement | User-facing outcome | Current boundary |
 | --- | --- | --- |
-| R19: Editable personas | Edit persona text, save several named profiles, or import a replacement text file | **Implemented for explicit API turns:** local profiles persist and the active revision is included in each fresh policy-accepted LLM request |
+| R19: Editable personas | Edit persona text, save several named profiles, or import a replacement text file | **V05a/V05b implemented internally:** local named profiles, UTF-8 import/export and weights persist; fresh explicit turns use the fixed selected revision |
 | R20: Replaceable F5 voice | Select or replace reference audio and its matching transcript, then apply or preview the new voice | No app-integrated F5 worker or reference-voice picker; installing upstream F5 alone does not integrate it |
-| R21: Replaceable LLM and VLM | Independently select compatible models from settings, without rebuilding Martlet | Setup stores model IDs, but live adapters enforce narrow allowlists; no Desktop VLM route or general model-switching UI |
-| R22: Listen-first participation | Collect bounded recent context and decide whether/when a reply is useful instead of answering every utterance | Deterministic policy exists; Desktop uses explicit typed/PTT only, with no conversation history or automatic listening |
+| R21: Replaceable LLM and VLM | Independently select compatible models from settings, without rebuilding Martlet | V02c exposes exact compatible LLM catalog choices and validates fresh route consent; no Desktop VLM route yet |
+| R22: Listen-first participation | Collect bounded recent context and decide whether/when a reply is useful instead of answering every utterance | Explicit completed turns now supply bounded ephemeral context; automatic listening/observation collection remains unavailable |
 | R23: Speech barge-in | Detect a person speaking during playback and promptly stop Martlet's voice | Stop/cancellation foundations exist; standalone post-capture VAD is production-blocked and is not live barge-in |
-| R24: Adjustable response mix | Tune helpful, sarcastic, silly, distracted and playful trolling/teasing styles | **Implemented for explicit API turns:** persisted controls and weighted dominant-style selection; human-perceived style qualification remains |
+| R24: Adjustable response mix | Tune helpful, sarcastic, silly, distracted and playful trolling/teasing styles | Per-persona controls persist and the explicit conversation path selects one bounded dominant style; human-perceived style qualification remains |
 
 See [the implemented conversation](CONVERSATION.md),
 [participation policy](../src/Martlet.Participation/README.md) and
@@ -40,12 +40,12 @@ source preserves current v3 personas because those older snapshots contain no
 persona data. Import and export use explicit selected files; export is
 create-only and never overwrites an existing file.
 
-The V05b runtime slice snapshots the active persona only after the existing
-participation policy accepts a fresh explicit typed/PTT action. It selects one
-dominant style from the saved relative weights, accounts for the complete
-persona/style instructions in the existing one-use LLM authorization and sends
-no conversation history. It adds no automatic listening, capture permission,
-provider route, retry, second inference or persistent memory.
+The follow-on V05b slice sends the fixed active persona revision and one
+weighted style only after an explicit typed/PTT action passes participation.
+The combined user/persona/style input must fit the existing byte/token
+reservation and is never silently truncated. The subsequent bounded explicit
+context slice includes recent completed exchanges within that same budget;
+neither slice enables automatic listening, provider permission, capture or preview.
 
 Provide a **Companion** settings page with a multiline persona text editor and
 named profiles. Create, duplicate, rename, select, save and delete profiles;
@@ -73,14 +73,6 @@ Persona text is user content, not a permission source or an override of safety,
 data routing, Stop, capture controls or provider budgets. Explain that the
 active persona text will be sent to the selected LLM; exclude it from ordinary
 logs/support exports. Imported profiles contain no credentials or permissions.
-
-**Implemented runtime slice:** the explicit API conversation now binds the
-active persona ID and configuration revision to the accepted turn, samples one
-dominant style after participation admission through an injectable bounded
-random source, and discloses the resulting instructions through the existing
-OpenAI LLM request. A stale settings/persona revision fails before sampling,
-credential access or provider transport. The combined user and instruction
-payload is bounded to 24,064 UTF-8 bytes and a 24,576-token reservation.
 
 ## R20: F5 reference-voice selection and replacement
 
@@ -117,6 +109,14 @@ license or redistribution permission.
 
 ## R21: Independent LLM and VLM model selection
 
+V02c provides a catalog-backed **Conversation model (LLM)** choice for the named
+OpenAI adapter. The pinned `gpt-4.1-mini-2025-04-14` and
+`gpt-4.1-2025-04-14` snapshots use the existing bounded Responses wire
+contract. Changing the model invalidates destination consent and the next fresh
+action binds its credential and request to that exact selection. Unsupported
+IDs leave the prior working route intact. Catalog presence remains **NOT RUN**,
+not account availability, price, quality, or live readiness.
+
 Provide separate **Conversation model (LLM)** and **Vision model (VLM)** settings
 showing adapter, destination, actual model ID/revision, capabilities, readiness
 and relevant resource/cost information. Support known catalogs and an explicit
@@ -143,7 +143,8 @@ LLM changes must not change the VLM or voice; VLM changes must not change the
 LLM or enable screen capture. Vision may remain disabled/unavailable while
 voice works. Local model fit/loading latency is visible; "change at will"
 means user-controlled selection, not instant GPU hot-swapping. LLM selection
-lands before VLM integration; the common role-selection design must serve both.
+now lands before VLM integration; the common role-selection design must serve
+both.
 
 ## R22: Listen first, respond selectively
 
@@ -164,6 +165,15 @@ text, whichever is reached first; evict oldest entries and further trim to the
 selected model's input budget. This is not persistent memory or an audio archive.
 Clear on session end, pause/lock or consent revocation; new routes require
 explicit authorization for any retained context they would receive.
+
+**Implemented explicit-turn foundation:** completed typed/PTT exchanges retain
+at most eight user/assistant pairs, 16 KiB UTF-8 and two minutes in memory.
+Each fresh action's displayed authorization covers this context; oldest pairs
+are omitted until current input, persona, style and context fit the existing
+LLM byte/token reservation. Failed, refused and policy-suppressed turns are not
+retained. Pause, lock, configuration load/change, Stop and closing the
+conversation clear the buffer. This does not enable automatic capture,
+unsolicited replies, persistent memory or an observation backlog.
 
 An observation is not a pending reply. Several utterances can inform one later
 response, but expired intents cannot be replayed and old provider permission
@@ -219,7 +229,7 @@ the normalized intended mix. Proposed representation: integer weights 0-100,
 at least one positive; reject all-zero/invalid input rather than invent a mix.
 Initial conservative preset is helpful 100, others 0; users can edit it freely.
 
-After participation allows a reply, choose one dominant style using these
+After participation allows a reply, the V05b runtime chooses one dominant style using these
 relative weights, then supply it with the active persona and bounded context.
 Zero-weight styles are never sampled; a single nonzero weight always wins.
 Inject the random source for reproducible production-path tests. These are
@@ -244,7 +254,7 @@ reference controls land with the self-hosted F5 adapter; VLM selection lands
 with opt-in vision. None requires an avatar or persistent memory first.
 
 [Delivery](DELIVERY.md#8-requirements-to-delivery-traceability) maps R19-R24 to
-owned work and AC-18 through AC-23. An earlier PTT-only release may ship without
+owned work and AC-21 through AC-26. An earlier PTT-only release may ship without
 automatic listening/barge-in, but must not advertise those capabilities.
 Future implementation must add production-backed local tests plus separately
 authorized real-device/model evidence; this requirements change supplies neither.

@@ -1,0 +1,57 @@
+Martlet perception worker - third-party boundaries
+==================================================
+
+This directory does not bundle third-party source, wheels, native libraries,
+runtime images, OCR trained data, tokenizers, projectors, or model weights.
+
+Candidate production integration references, but does not redistribute:
+
+1. Tesseract OCR
+   Project: tesseract-ocr/tesseract
+   Candidate native version: 5.5.0
+   Declared project license: Apache-2.0
+   Source: https://github.com/tesseract-ocr/tesseract
+
+2. tesserocr
+   Project/package: sirfz/tesserocr
+   Candidate version: 2.8.0
+   Declared project license: MIT
+   Source: https://github.com/sirfz/tesserocr
+
+3. Tesseract English trained data
+   Candidate artifact family: tesseract-ocr/tessdata or tessdata_best
+   Exact repository, revision, payload digest, provenance, and applicable
+   license remain unselected and unreviewed.
+   Source: https://github.com/tesseract-ocr/tessdata
+
+4. Pillow
+   Candidate version: 11.1.0
+   Declared project license: HPND
+   Source: https://github.com/python-pillow/Pillow
+
+5. Hugging Face Transformers and safetensors
+   Candidate versions: transformers 4.49.0; safetensors 0.5.3
+   Declared project licenses: Apache-2.0
+   Source: https://github.com/huggingface/transformers
+   Source: https://github.com/huggingface/safetensors
+
+6. PyTorch
+   Candidate version: torch 2.6.0+cu124
+   Declared project license: BSD-style
+   Source: https://github.com/pytorch/pytorch
+
+7. LLaVA-NeXT model family
+   Implemented architecture selector: LLaVA-NeXT with Mistral text and CLIP
+   vision configuration, normalized Martlet model ID
+   "llava-v1.6-mistral-7b".
+   No repository, revision, tokenizer, projector, model payload, or license
+   has been approved or acquired by this implementation.
+   Reference project: https://github.com/LLaVA-VL/LLaVA-NeXT
+
+All declarations above require verification against the exact acquired
+payloads and complete transitive/native/runtime contents before distribution
+or use. They are not Martlet approval, a complete notice file, or legal
+advice. Source-code terms do not necessarily grant model-weight,
+trained-data, tokenizer, projector, dataset, runtime-image, game-content,
+capture, privacy, publicity, or redistribution rights. No third-party payload
+was downloaded or inspected by this worker implementation or its tests.

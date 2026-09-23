@@ -9,7 +9,7 @@
         <StackPanel Margin="20">
             <TextBlock Text="Companion personas" FontSize="24" FontWeight="SemiBold"/>
             <TextBlock TextWrapping="Wrap" Margin="0,8"
-                       Text="Edit local persona text and response-style weights. Opening, importing or saving does not start capture, contact a provider, run a model or authorize a request. Runtime persona injection and automatic listening are not enabled yet."/>
+                       Text="Edit local persona text and response-style weights. Opening, importing or saving does not start capture, contact a provider, run a model or authorize a request. Fresh explicit typed/PTT turns use the saved active revision; automatic listening is not enabled."/>
             <StackPanel x:Name="EditorPanel">
                 <Label Target="{Binding ElementName=PersonaChoice}" Content="_Named persona"/>
                 <ComboBox x:Name="PersonaChoice" MinHeight="30" DisplayMemberPath="Name"

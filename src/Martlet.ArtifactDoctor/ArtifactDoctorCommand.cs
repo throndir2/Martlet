@@ -5,13 +5,14 @@ namespace Martlet.ArtifactDoctor;
 public static class ArtifactDoctorCommand
 {
     public const string Usage = """
-        Usage: Martlet.ArtifactDoctor inspect --manifest ABSOLUTE_LOCAL_JSON_PATH [--role ROLE_ID] [--target TARGET_ID] [--json]
+        Usage: Martlet.ArtifactDoctor inspect --manifest ABSOLUTE_LOCAL_JSON_PATH [--role ROLE_ID] [--target TARGET_ID] [--platform OS/ARCH[/VARIANT]] [--json]
                Martlet.ArtifactDoctor --help | --version
         Reads only the selected bounded local JSON document. No settings, directory/artifact/cache discovery,
         network/URL resolution, Docker, OS/GPU probes, model loading, execution, downloads or writes.
         Target is supplied metadata, not an observed host. All candidates remain disabled and unqualified.
         This standalone developer tool is not part of the shipped Windows installer.
-        Exit 0: help/version only; 1: declared target mismatch; 2: disabled/incomplete/canceled inspection;
+        Platform compares v2 image metadata only. Formats 1 and 2 are supported.
+        Exit 0: help/version only; 1: declared target/platform mismatch; 2: disabled/incomplete/canceled inspection;
         3: invalid invocation/document or inaccessible/disallowed input. No inspection result is host-ready.
         """;
 
@@ -24,7 +25,7 @@ public static class ArtifactDoctorCommand
         }
         if (args is ["--version"])
         {
-            await output.WriteLineAsync("Martlet.ArtifactDoctor 0.1.0 (metadata-only format 1)");
+            await output.WriteLineAsync("Martlet.ArtifactDoctor 0.1.0 (metadata-only formats 1 and 2)");
             return 0;
         }
         var json = args.Contains("--json", StringComparer.Ordinal);
@@ -34,7 +35,7 @@ public static class ArtifactDoctorCommand
             var selection = Parse(args);
             cancellationToken.ThrowIfCancellationRequested();
             var input = await ReadDocumentAsync(selection.Path, cancellationToken);
-            report = ArtifactInspector.Inspect(ArtifactManifestReader.Read(input), selection.Role, selection.Target);
+            report = ArtifactInspector.Inspect(ArtifactManifestReader.Read(input), selection.Role, selection.Target, selection.Platform);
             cancellationToken.ThrowIfCancellationRequested();
         }
         catch (ArtifactManifestException error) { report = InspectionReport.Failure(error.DiagnosticCode); }
@@ -51,10 +52,10 @@ public static class ArtifactDoctorCommand
 
     private static Selection Parse(string[] args)
     {
-        if (args.Length is < 3 or > 8 || args[0] != "inspect" ||
+        if (args.Length is < 3 or > 10 || args[0] != "inspect" ||
             args.Any(a => a is null || a.Length > 4096))
             throw new InputException("inspection.invalid_invocation");
-        string? path = null, role = null, target = null;
+        string? path = null, role = null, target = null, platform = null;
         var seen = new HashSet<string>(StringComparer.Ordinal);
         for (var i = 1; i < args.Length; i++)
         {
@@ -67,11 +68,12 @@ public static class ArtifactDoctorCommand
                 case "--manifest": path = args[++i]; break;
                 case "--role": role = args[++i]; break;
                 case "--target": target = args[++i]; break;
+                case "--platform": platform = args[++i]; break;
                 default: throw new InputException("inspection.invalid_invocation");
             }
         }
         if (path is null) throw new InputException("inspection.invalid_invocation");
-        return new(path, role, target);
+        return new(path, role, target, platform);
     }
 
     private static async Task<byte[]> ReadDocumentAsync(string path, CancellationToken cancellationToken)
@@ -117,7 +119,7 @@ public static class ArtifactDoctorCommand
         }
     }
 
-    private sealed record Selection(string Path, string? Role, string? Target);
+    private sealed record Selection(string Path, string? Role, string? Target, string? Platform);
     private sealed class InputException(string code) : Exception
     {
         internal string Code { get; } = code;

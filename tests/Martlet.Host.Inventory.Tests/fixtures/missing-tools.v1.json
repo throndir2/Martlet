@@ -1,0 +1,747 @@
+{
+  "schemaVersion": 1,
+  "applicationVersion": "0.1.0",
+  "manifestId": "ubuntu-24.04-x64-h01-candidate",
+  "scope": "Prerequisites",
+  "provenance": "AuthoredFixture",
+  "createdAt": "2026-09-13T00:00:10+00:00",
+  "probes": [
+    {
+      "id": "Platform",
+      "required": true,
+      "code": "HOST_OBSERVED",
+      "provenance": "AuthoredFixture",
+      "observedAt": "2026-09-13T00:00:00+00:00",
+      "durationMilliseconds": 1,
+      "ageMilliseconds": 10000,
+      "source": "runtime architecture; /etc/os-release; /proc/sys/kernel/osrelease",
+      "evidence": {
+        "platform": {
+          "distribution": "Ubuntu",
+          "version": "24.04",
+          "kernelRelease": "6.8.0-99",
+          "kernelFlavor": "Generic",
+          "osArchitecture": "X64",
+          "processArchitecture": "X64",
+          "dotnetRuntime": "10.0.9",
+          "linux": true
+        },
+        "context": null,
+        "cpu": null,
+        "memory": null,
+        "disk": null,
+        "gpus": null,
+        "tool": null,
+        "dockerAccess": null,
+        "network": null,
+        "port": null,
+        "clock": null,
+        "reboot": null
+      },
+      "state": "Observed",
+      "summary": "Local metadata observed; this is not deployment readiness.",
+      "remedy": {
+        "action": "ReviewObservation",
+        "instruction": "Review the Ubuntu 24.04 LTS x86_64 target. Other releases and container/WSL observations do not qualify a physical host. Do not reinstall or upgrade just for this report.",
+        "officialUrl": "https://documentation.ubuntu.com/server/",
+        "privilege": "None for this read-only command. Manual package/configuration changes require separate administrator approval.",
+        "download": "None performed. Future package/image/model download sizes are unknown until selected; review before consent.",
+        "reboot": "None performed. Driver/package changes may require an owner-scheduled reboot."
+      }
+    },
+    {
+      "id": "Context",
+      "required": true,
+      "code": "HOST_OBSERVED",
+      "provenance": "AuthoredFixture",
+      "observedAt": "2026-09-13T00:00:00+00:00",
+      "durationMilliseconds": 1,
+      "ageMilliseconds": 10000,
+      "source": "kernel; /proc/1/cgroup; /.dockerenv; /run/.containerenv (indicators only)",
+      "evidence": {
+        "platform": null,
+        "context": {
+          "context": "NoContainerIndicators",
+          "physicalHostConfirmed": false
+        },
+        "cpu": null,
+        "memory": null,
+        "disk": null,
+        "gpus": null,
+        "tool": null,
+        "dockerAccess": null,
+        "network": null,
+        "port": null,
+        "clock": null,
+        "reboot": null
+      },
+      "state": "Observed",
+      "summary": "Local metadata observed; this is not deployment readiness.",
+      "remedy": {
+        "action": "ReviewObservation",
+        "instruction": "Review the Ubuntu 24.04 LTS x86_64 target. Other releases and container/WSL observations do not qualify a physical host. Do not reinstall or upgrade just for this report.",
+        "officialUrl": "https://documentation.ubuntu.com/server/",
+        "privilege": "None for this read-only command. Manual package/configuration changes require separate administrator approval.",
+        "download": "None performed. Future package/image/model download sizes are unknown until selected; review before consent.",
+        "reboot": "None performed. Driver/package changes may require an owner-scheduled reboot."
+      }
+    },
+    {
+      "id": "Cpu",
+      "required": true,
+      "code": "HOST_OBSERVED",
+      "provenance": "AuthoredFixture",
+      "observedAt": "2026-09-13T00:00:00+00:00",
+      "durationMilliseconds": 1,
+      "ageMilliseconds": 10000,
+      "source": "/proc/cpuinfo (selected flags and logical count)",
+      "evidence": {
+        "platform": null,
+        "context": null,
+        "cpu": {
+          "logicalProcessors": 2,
+          "sse42": true,
+          "avx": true,
+          "avx2": true,
+          "avx512F": false
+        },
+        "memory": null,
+        "disk": null,
+        "gpus": null,
+        "tool": null,
+        "dockerAccess": null,
+        "network": null,
+        "port": null,
+        "clock": null,
+        "reboot": null
+      },
+      "state": "Observed",
+      "summary": "Local metadata observed; this is not deployment readiness.",
+      "remedy": {
+        "action": "ReviewObservation",
+        "instruction": "These are current CPU and byte-count observations, not model fit. The plan\u0027s 4 cores / 32 GiB are recommendations, not enforced minima. H02 must select workloads before capacity decisions.",
+        "officialUrl": "https://documentation.ubuntu.com/server/",
+        "privilege": "None for this read-only command. Manual package/configuration changes require separate administrator approval.",
+        "download": "None performed. Future package/image/model download sizes are unknown until selected; review before consent.",
+        "reboot": "None performed. Driver/package changes may require an owner-scheduled reboot."
+      }
+    },
+    {
+      "id": "Memory",
+      "required": true,
+      "code": "HOST_OBSERVED",
+      "provenance": "AuthoredFixture",
+      "observedAt": "2026-09-13T00:00:00+00:00",
+      "durationMilliseconds": 1,
+      "ageMilliseconds": 10000,
+      "source": "/proc/meminfo (selected KiB counters converted to bytes)",
+      "evidence": {
+        "platform": null,
+        "context": null,
+        "cpu": null,
+        "memory": {
+          "totalBytes": 8589934592,
+          "availableBytes": 4294967296,
+          "swapTotalBytes": 1073741824,
+          "swapFreeBytes": 1073741824
+        },
+        "disk": null,
+        "gpus": null,
+        "tool": null,
+        "dockerAccess": null,
+        "network": null,
+        "port": null,
+        "clock": null,
+        "reboot": null
+      },
+      "state": "Observed",
+      "summary": "Local metadata observed; this is not deployment readiness.",
+      "remedy": {
+        "action": "ReviewObservation",
+        "instruction": "These are current CPU and byte-count observations, not model fit. The plan\u0027s 4 cores / 32 GiB are recommendations, not enforced minima. H02 must select workloads before capacity decisions.",
+        "officialUrl": "https://documentation.ubuntu.com/server/",
+        "privilege": "None for this read-only command. Manual package/configuration changes require separate administrator approval.",
+        "download": "None performed. Future package/image/model download sizes are unknown until selected; review before consent.",
+        "reboot": "None performed. Driver/package changes may require an owner-scheduled reboot."
+      }
+    },
+    {
+      "id": "Disk",
+      "required": true,
+      "code": "HOST_OBSERVED",
+      "provenance": "AuthoredFixture",
+      "observedAt": "2026-09-13T00:00:00+00:00",
+      "durationMilliseconds": 1,
+      "ageMilliseconds": 10000,
+      "source": "filesystem API: / (available to caller)",
+      "evidence": {
+        "platform": null,
+        "context": null,
+        "cpu": null,
+        "memory": null,
+        "disk": {
+          "totalBytes": 137438953472,
+          "availableBytes": 68719476736,
+          "location": "RootFilesystem",
+          "freeInodes": null
+        },
+        "gpus": null,
+        "tool": null,
+        "dockerAccess": null,
+        "network": null,
+        "port": null,
+        "clock": null,
+        "reboot": null
+      },
+      "state": "Observed",
+      "summary": "Local metadata observed; this is not deployment readiness.",
+      "remedy": {
+        "action": "ReviewObservation",
+        "instruction": "This is available space on / only, not a selected model directory or download budget. Inodes and per-model staging/rollback needs are UNKNOWN. Review storage after H02 selects exact artifacts.",
+        "officialUrl": "https://documentation.ubuntu.com/server/",
+        "privilege": "None for this read-only command. Manual package/configuration changes require separate administrator approval.",
+        "download": "None performed. Future package/image/model download sizes are unknown until selected; review before consent.",
+        "reboot": "None performed. Driver/package changes may require an owner-scheduled reboot."
+      }
+    },
+    {
+      "id": "Nvidia",
+      "required": true,
+      "code": "HOST_OBSERVED",
+      "provenance": "AuthoredFixture",
+      "observedAt": "2026-09-13T00:00:00+00:00",
+      "durationMilliseconds": 1,
+      "ageMilliseconds": 10000,
+      "source": "/usr/bin/nvidia-smi (fixed name, driver_version, memory.total query)",
+      "evidence": {
+        "platform": null,
+        "context": null,
+        "cpu": null,
+        "memory": null,
+        "disk": null,
+        "gpus": [
+          {
+            "model": "NVIDIA GeForce RTX 4090",
+            "driverVersion": "570.124.06",
+            "memoryMiB": 24564
+          }
+        ],
+        "tool": null,
+        "dockerAccess": null,
+        "network": null,
+        "port": null,
+        "clock": null,
+        "reboot": null
+      },
+      "state": "Observed",
+      "summary": "Local metadata observed; this is not deployment readiness.",
+      "remedy": {
+        "action": "ReviewObservation",
+        "instruction": "On Ubuntu 24.04, review Ubuntu\u0027s distro-packaged NVIDIA driver guide with the administrator. Match the actual GPU and future H02 image; no driver floor is selected. Preserve Secure Boot and existing driver policy.",
+        "officialUrl": "https://documentation.ubuntu.com/server/how-to/graphics/install-nvidia-drivers/",
+        "privilege": "None for this read-only command. Manual package/configuration changes require separate administrator approval.",
+        "download": "None performed. Future package/image/model download sizes are unknown until selected; review before consent.",
+        "reboot": "None performed. Driver/package changes may require an owner-scheduled reboot."
+      }
+    },
+    {
+      "id": "DockerEngine",
+      "required": true,
+      "code": "HOST_OBSERVED",
+      "provenance": "AuthoredFixture",
+      "observedAt": "2026-09-13T00:00:00+00:00",
+      "durationMilliseconds": 1,
+      "ageMilliseconds": 10000,
+      "source": "fixed dpkg-query package metadata and system executable-file metadata; no tool/plugin execution",
+      "evidence": {
+        "platform": null,
+        "context": null,
+        "cpu": null,
+        "memory": null,
+        "disk": null,
+        "gpus": null,
+        "tool": {
+          "tool": "DockerEngine",
+          "package": "Installed",
+          "standardFile": "Present",
+          "versionCore": "28.0.4"
+        },
+        "dockerAccess": null,
+        "network": null,
+        "port": null,
+        "clock": null,
+        "reboot": null
+      },
+      "state": "Observed",
+      "summary": "Local metadata observed; this is not deployment readiness.",
+      "remedy": {
+        "action": "ReviewObservation",
+        "instruction": "Review Docker\u0027s Ubuntu 24.04 Engine instructions and existing package conflicts with the administrator. Do not remove an existing engine/team configuration. This checks package metadata, not a running daemon.",
+        "officialUrl": "https://docs.docker.com/engine/install/ubuntu/",
+        "privilege": "None for this read-only command. Manual package/configuration changes require separate administrator approval.",
+        "download": "None performed. Future package/image/model download sizes are unknown until selected; review before consent.",
+        "reboot": "None performed. Driver/package changes may require an owner-scheduled reboot."
+      }
+    },
+    {
+      "id": "Compose",
+      "required": true,
+      "code": "HOST_MISSING",
+      "provenance": "AuthoredFixture",
+      "observedAt": "2026-09-13T00:00:00+00:00",
+      "durationMilliseconds": 1,
+      "ageMilliseconds": 10000,
+      "source": "fixed dpkg-query package metadata and system executable-file metadata; no tool/plugin execution",
+      "evidence": {
+        "platform": null,
+        "context": null,
+        "cpu": null,
+        "memory": null,
+        "disk": null,
+        "gpus": null,
+        "tool": {
+          "tool": "Compose",
+          "package": "NotInstalled",
+          "standardFile": "Missing",
+          "versionCore": null
+        },
+        "dockerAccess": null,
+        "network": null,
+        "port": null,
+        "clock": null,
+        "reboot": null
+      },
+      "state": "Missing",
+      "summary": "A requested prerequisite is missing at the checked standard location.",
+      "remedy": {
+        "action": "ReviewPrerequisite",
+        "instruction": "Review the Compose v2 system plugin instructions for the existing Engine installation. A user-local plugin is deliberately not executed or inspected. Exact tested version awaits H02.",
+        "officialUrl": "https://docs.docker.com/compose/install/linux/",
+        "privilege": "None for this read-only command. Manual package/configuration changes require separate administrator approval.",
+        "download": "None performed. Future package/image/model download sizes are unknown until selected; review before consent.",
+        "reboot": "None performed. Driver/package changes may require an owner-scheduled reboot."
+      }
+    },
+    {
+      "id": "ContainerToolkit",
+      "required": true,
+      "code": "HOST_OBSERVED",
+      "provenance": "AuthoredFixture",
+      "observedAt": "2026-09-13T00:00:00+00:00",
+      "durationMilliseconds": 1,
+      "ageMilliseconds": 10000,
+      "source": "fixed dpkg-query package metadata and system executable-file metadata; no tool/plugin execution",
+      "evidence": {
+        "platform": null,
+        "context": null,
+        "cpu": null,
+        "memory": null,
+        "disk": null,
+        "gpus": null,
+        "tool": {
+          "tool": "ContainerToolkit",
+          "package": "Installed",
+          "standardFile": "Present",
+          "versionCore": "1.17.8"
+        },
+        "dockerAccess": null,
+        "network": null,
+        "port": null,
+        "clock": null,
+        "reboot": null
+      },
+      "state": "Observed",
+      "summary": "Local metadata observed; this is not deployment readiness.",
+      "remedy": {
+        "action": "ReviewObservation",
+        "instruction": "Review NVIDIA\u0027s Ubuntu/Debian toolkit instructions with the administrator after H02 selects a compatible tuple. Do not run nvidia-ctk configure or restart Docker as part of preflight.",
+        "officialUrl": "https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html",
+        "privilege": "None for this read-only command. Manual package/configuration changes require separate administrator approval.",
+        "download": "None performed. Future package/image/model download sizes are unknown until selected; review before consent.",
+        "reboot": "None performed. Driver/package changes may require an owner-scheduled reboot."
+      }
+    },
+    {
+      "id": "DockerAccess",
+      "required": true,
+      "code": "HOST_INCOMPLETE",
+      "provenance": "AuthoredFixture",
+      "observedAt": "2026-09-13T00:00:00+00:00",
+      "durationMilliseconds": 1,
+      "ageMilliseconds": 10000,
+      "source": "/proc/self/status; /etc/group docker GID; standard socket metadata; no daemon connection",
+      "evidence": {
+        "platform": null,
+        "context": null,
+        "cpu": null,
+        "memory": null,
+        "disk": null,
+        "gpus": null,
+        "tool": null,
+        "dockerAccess": {
+          "effectiveRoot": false,
+          "dockerGroupMember": false,
+          "standardSocket": "Present",
+          "daemonContacted": false,
+          "daemonAccess": null
+        },
+        "network": null,
+        "port": null,
+        "clock": null,
+        "reboot": null
+      },
+      "state": "Unknown",
+      "summary": "Local metadata is insufficient or installation metadata and file presence disagree.",
+      "remedy": {
+        "action": "ReviewPrerequisite",
+        "instruction": "Daemon access is UNKNOWN: no socket connection or Docker context command was made. Review existing access policy with the administrator; never automatically add Docker groups or grant socket permissions.",
+        "officialUrl": "https://docs.docker.com/engine/install/ubuntu/",
+        "privilege": "None for this read-only command. Manual package/configuration changes require separate administrator approval.",
+        "download": "None performed. Future package/image/model download sizes are unknown until selected; review before consent.",
+        "reboot": "None performed. Driver/package changes may require an owner-scheduled reboot."
+      }
+    },
+    {
+      "id": "Network",
+      "required": true,
+      "code": "HOST_OBSERVED",
+      "provenance": "AuthoredFixture",
+      "observedAt": "2026-09-13T00:00:00+00:00",
+      "durationMilliseconds": 1,
+      "ageMilliseconds": 10000,
+      "source": "/proc/net/dev; /proc/net/fib_trie; /proc/net/if_inet6 (counts only)",
+      "evidence": {
+        "platform": null,
+        "context": null,
+        "cpu": null,
+        "memory": null,
+        "disk": null,
+        "gpus": null,
+        "tool": null,
+        "dockerAccess": null,
+        "network": {
+          "interfaces": 2,
+          "loopbackV4": 1,
+          "privateV4": 1,
+          "linkLocalV4": 0,
+          "otherV4": 0,
+          "loopbackV6": 1,
+          "linkLocalV6": 0,
+          "uniqueLocalV6": 0,
+          "otherV6": 0
+        },
+        "port": null,
+        "clock": null,
+        "reboot": null
+      },
+      "state": "Observed",
+      "summary": "Local metadata observed; this is not deployment readiness.",
+      "remedy": {
+        "action": "ReviewObservation",
+        "instruction": "Only interface/address-shape counts in the current namespace are reported. No addresses, names, DNS requests, LAN scans, or reachability checks are exported. Confirm the intended private LAN manually later.",
+        "officialUrl": "https://documentation.ubuntu.com/server/how-to/security/firewalls/",
+        "privilege": "None for this read-only command. Manual package/configuration changes require separate administrator approval.",
+        "download": "None performed. Future package/image/model download sizes are unknown until selected; review before consent.",
+        "reboot": "None performed. Driver/package changes may require an owner-scheduled reboot."
+      }
+    },
+    {
+      "id": "GatewayPort",
+      "required": true,
+      "code": "HOST_OBSERVED",
+      "provenance": "AuthoredFixture",
+      "observedAt": "2026-09-13T00:00:00+00:00",
+      "durationMilliseconds": 1,
+      "ageMilliseconds": 10000,
+      "source": "/proc/net/tcp,tcp6,udp,udp6 (current namespace, no bind)",
+      "evidence": {
+        "platform": null,
+        "context": null,
+        "cpu": null,
+        "memory": null,
+        "disk": null,
+        "gpus": null,
+        "tool": null,
+        "dockerAccess": null,
+        "network": null,
+        "port": {
+          "port": 7443,
+          "occupancyObserved": false,
+          "gatewayAvailabilityEstablished": false
+        },
+        "clock": null,
+        "reboot": null
+      },
+      "state": "Observed",
+      "summary": "Local metadata observed; this is not deployment readiness.",
+      "remedy": {
+        "action": "ReviewObservation",
+        "instruction": "Review the chosen port with the administrator, or rerun with --port 7444 (or another agreed unused port). Do not stop unrelated services or change firewall rules. No observed collision is NOT gateway availability.",
+        "officialUrl": "https://documentation.ubuntu.com/server/how-to/security/firewalls/",
+        "privilege": "None for this read-only command. Manual package/configuration changes require separate administrator approval.",
+        "download": "None performed. Future package/image/model download sizes are unknown until selected; review before consent.",
+        "reboot": "None performed. Driver/package changes may require an owner-scheduled reboot."
+      }
+    },
+    {
+      "id": "LocalClock",
+      "required": true,
+      "code": "HOST_OBSERVED",
+      "provenance": "AuthoredFixture",
+      "observedAt": "2026-09-13T00:00:00+00:00",
+      "durationMilliseconds": 1,
+      "ageMilliseconds": 10000,
+      "source": "local runtime UTC clock only",
+      "evidence": {
+        "platform": null,
+        "context": null,
+        "cpu": null,
+        "memory": null,
+        "disk": null,
+        "gpus": null,
+        "tool": null,
+        "dockerAccess": null,
+        "network": null,
+        "port": null,
+        "clock": {
+          "localUtc": "2026-09-13T00:00:00+00:00",
+          "accuracyEstablished": false
+        },
+        "reboot": null
+      },
+      "state": "Observed",
+      "summary": "Local metadata observed; this is not deployment readiness.",
+      "remedy": {
+        "action": "ReviewObservation",
+        "instruction": "The local UTC clock is observed, not externally verified. Review timedatectl/time synchronization with the administrator later; this tool contacts no time or TLS service.",
+        "officialUrl": "https://documentation.ubuntu.com/server/how-to/networking/timedatectl-and-timesyncd/",
+        "privilege": "None for this read-only command. Manual package/configuration changes require separate administrator approval.",
+        "download": "None performed. Future package/image/model download sizes are unknown until selected; review before consent.",
+        "reboot": "None performed. Driver/package changes may require an owner-scheduled reboot."
+      }
+    },
+    {
+      "id": "Reboot",
+      "required": false,
+      "code": "HOST_OBSERVED",
+      "provenance": "AuthoredFixture",
+      "observedAt": "2026-09-13T00:00:00+00:00",
+      "durationMilliseconds": 1,
+      "ageMilliseconds": 10000,
+      "source": "/run/reboot-required marker only",
+      "evidence": {
+        "platform": null,
+        "context": null,
+        "cpu": null,
+        "memory": null,
+        "disk": null,
+        "gpus": null,
+        "tool": null,
+        "dockerAccess": null,
+        "network": null,
+        "port": null,
+        "clock": null,
+        "reboot": {
+          "markerPresent": false,
+          "rebootOutcomeEstablished": false
+        }
+      },
+      "state": "Observed",
+      "summary": "Local metadata observed; this is not deployment readiness.",
+      "remedy": {
+        "action": "ReviewObservation",
+        "instruction": "Review Ubuntu\u0027s pending reboot notice and schedule any reboot with the owner after saving work. Absence of the marker does not prove driver readiness or a successful reboot.",
+        "officialUrl": "https://documentation.ubuntu.com/server/",
+        "privilege": "None for this read-only command. Manual package/configuration changes require separate administrator approval.",
+        "download": "None performed. Future package/image/model download sizes are unknown until selected; review before consent.",
+        "reboot": "None performed. Driver/package changes may require an owner-scheduled reboot."
+      }
+    },
+    {
+      "id": "QualifiedTuple",
+      "required": true,
+      "code": "HOST_UNQUALIFIED_VERSIONS",
+      "provenance": "AuthoredFixture",
+      "observedAt": "2026-09-13T00:00:00+00:00",
+      "durationMilliseconds": 1,
+      "ageMilliseconds": 10000,
+      "source": "not executed: future selected/consented qualification",
+      "evidence": null,
+      "state": "Unknown",
+      "summary": "No GPU/driver/image/framework/model tuple is Martlet-qualified yet.",
+      "remedy": {
+        "action": "AwaitQualification",
+        "instruction": "Await H02\u0027s selected, rights-reviewed artifact tuple and H03/H06 consented hardware/network evidence. GPU visibility does not prove CUDA kernels, PyTorch, container GPU access, model fit, inference, pairing, or firewall isolation.",
+        "officialUrl": "https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html",
+        "privilege": "None for this read-only command. Manual package/configuration changes require separate administrator approval.",
+        "download": "None performed. Future package/image/model download sizes are unknown until selected; review before consent.",
+        "reboot": "None performed. Driver/package changes may require an owner-scheduled reboot."
+      }
+    },
+    {
+      "id": "ContainerGpu",
+      "required": false,
+      "code": "HOST_NOT_RUN",
+      "provenance": "NotObserved",
+      "observedAt": null,
+      "durationMilliseconds": 0,
+      "ageMilliseconds": null,
+      "source": "not executed: future selected/consented qualification",
+      "evidence": null,
+      "state": "NotRun",
+      "summary": "Not run. This check needs a later scope, selected artifacts, or separate consent.",
+      "remedy": {
+        "action": "AwaitQualification",
+        "instruction": "Await H02\u0027s selected, rights-reviewed artifact tuple and H03/H06 consented hardware/network evidence. GPU visibility does not prove CUDA kernels, PyTorch, container GPU access, model fit, inference, pairing, or firewall isolation.",
+        "officialUrl": "https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html",
+        "privilege": "None for this read-only command. Manual package/configuration changes require separate administrator approval.",
+        "download": "None performed. Future package/image/model download sizes are unknown until selected; review before consent.",
+        "reboot": "None performed. Driver/package changes may require an owner-scheduled reboot."
+      }
+    },
+    {
+      "id": "ModelInference",
+      "required": false,
+      "code": "HOST_NOT_RUN",
+      "provenance": "NotObserved",
+      "observedAt": null,
+      "durationMilliseconds": 0,
+      "ageMilliseconds": null,
+      "source": "not executed: future selected/consented qualification",
+      "evidence": null,
+      "state": "NotRun",
+      "summary": "Not run. This check needs a later scope, selected artifacts, or separate consent.",
+      "remedy": {
+        "action": "AwaitQualification",
+        "instruction": "Await H02\u0027s selected, rights-reviewed artifact tuple and H03/H06 consented hardware/network evidence. GPU visibility does not prove CUDA kernels, PyTorch, container GPU access, model fit, inference, pairing, or firewall isolation.",
+        "officialUrl": "https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html",
+        "privilege": "None for this read-only command. Manual package/configuration changes require separate administrator approval.",
+        "download": "None performed. Future package/image/model download sizes are unknown until selected; review before consent.",
+        "reboot": "None performed. Driver/package changes may require an owner-scheduled reboot."
+      }
+    },
+    {
+      "id": "ClockAccuracy",
+      "required": false,
+      "code": "HOST_NOT_RUN",
+      "provenance": "NotObserved",
+      "observedAt": null,
+      "durationMilliseconds": 0,
+      "ageMilliseconds": null,
+      "source": "not executed: future selected/consented qualification",
+      "evidence": null,
+      "state": "NotRun",
+      "summary": "Not run. This check needs a later scope, selected artifacts, or separate consent.",
+      "remedy": {
+        "action": "AwaitQualification",
+        "instruction": "The local UTC clock is observed, not externally verified. Review timedatectl/time synchronization with the administrator later; this tool contacts no time or TLS service.",
+        "officialUrl": "https://documentation.ubuntu.com/server/how-to/networking/timedatectl-and-timesyncd/",
+        "privilege": "None for this read-only command. Manual package/configuration changes require separate administrator approval.",
+        "download": "None performed. Future package/image/model download sizes are unknown until selected; review before consent.",
+        "reboot": "None performed. Driver/package changes may require an owner-scheduled reboot."
+      }
+    },
+    {
+      "id": "PairingFirewall",
+      "required": false,
+      "code": "HOST_NOT_RUN",
+      "provenance": "NotObserved",
+      "observedAt": null,
+      "durationMilliseconds": 0,
+      "ageMilliseconds": null,
+      "source": "not executed: future selected/consented qualification",
+      "evidence": null,
+      "state": "NotRun",
+      "summary": "Not run. This check needs a later scope, selected artifacts, or separate consent.",
+      "remedy": {
+        "action": "AwaitQualification",
+        "instruction": "Await H02\u0027s selected, rights-reviewed artifact tuple and H03/H06 consented hardware/network evidence. GPU visibility does not prove CUDA kernels, PyTorch, container GPU access, model fit, inference, pairing, or firewall isolation.",
+        "officialUrl": "https://documentation.ubuntu.com/server/how-to/security/firewalls/",
+        "privilege": "None for this read-only command. Manual package/configuration changes require separate administrator approval.",
+        "download": "None performed. Future package/image/model download sizes are unknown until selected; review before consent.",
+        "reboot": "None performed. Driver/package changes may require an owner-scheduled reboot."
+      }
+    }
+  ],
+  "deploymentQualified": false,
+  "candidateRequirements": {
+    "schemaVersion": 1,
+    "id": "ubuntu-24.04-x64-h01-candidate",
+    "status": "CandidateNotQualified",
+    "diagnosticOs": "Ubuntu",
+    "diagnosticVersion": "24.04",
+    "diagnosticArchitecture": "X64",
+    "requirements": [
+      {
+        "probe": "Nvidia",
+        "role": "Candidate LLM and speech synthesis host visibility",
+        "version": {
+          "state": "UnknownUntilH02",
+          "requiredMajor": null,
+          "exactVersion": null
+        }
+      },
+      {
+        "probe": "DockerEngine",
+        "role": "Candidate isolated workers",
+        "version": {
+          "state": "UnknownUntilH02",
+          "requiredMajor": null,
+          "exactVersion": null
+        }
+      },
+      {
+        "probe": "Compose",
+        "role": "Candidate worker lifecycle (Compose v2 family only; exact version unqualified)",
+        "version": {
+          "state": "Known",
+          "requiredMajor": 2,
+          "exactVersion": null
+        }
+      },
+      {
+        "probe": "ContainerToolkit",
+        "role": "Candidate NVIDIA containers",
+        "version": {
+          "state": "UnknownUntilH02",
+          "requiredMajor": null,
+          "exactVersion": null
+        }
+      },
+      {
+        "probe": "QualifiedTuple",
+        "role": "Gateway, LLM, speech synthesis, and local STT for a private route",
+        "version": {
+          "state": "UnknownUntilH02",
+          "requiredMajor": null,
+          "exactVersion": null
+        }
+      }
+    ],
+    "qualifiedTuple": {
+      "osKernel": null,
+      "cpuFeatures": null,
+      "gpuModel": null,
+      "gpuMemoryMiB": null,
+      "driver": null,
+      "docker": null,
+      "compose": null,
+      "toolkit": null,
+      "cuda": null,
+      "framework": null,
+      "llmImageDigest": null,
+      "ttsImageDigest": null,
+      "sttImageDigest": null,
+      "modelRevisions": null,
+      "precision": null,
+      "contextTokens": null,
+      "concurrency": null,
+      "peakRamBytes": null,
+      "peakDiskBytes": null,
+      "warmLatencyMilliseconds": null,
+      "rightsApproved": null
+    }
+  },
+  "scopeNotice": "AUTHORED FIXTURE - NOT THIS HOST, NOT AI, NOT GPU OR DEPLOYMENT QUALIFICATION.",
+  "exitCode": 1
+}
