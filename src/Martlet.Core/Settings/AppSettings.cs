@@ -8,7 +8,7 @@ public enum ProfileKind { NotConfigured, Fixture, Api, ExistingEndpoints }
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record AppSettings : IContract
 {
-    public const int CurrentSchemaVersion = 3;
+    public const int CurrentSchemaVersion = 4;
     public const int MaxFileBytes = 131_072;
     public required int SchemaVersion { get; init; }
     public required ProfileSettings Profile { get; init; }
@@ -18,6 +18,8 @@ public sealed record AppSettings : IContract
     public AudioSettings? Audio { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public CompanionSettings? Companion { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public MemorySettings? Memory { get; init; }
 
     public static AppSettings CreateUnconfigured() => new()
     {
@@ -38,6 +40,9 @@ public sealed record AppSettings : IContract
         ContractRules.Require(SchemaVersion < 3 ? Companion is null : Companion is not null,
             "Settings before version 3 cannot contain companion profiles; version 3 requires them.");
         Companion?.Validate();
+        ContractRules.Require(SchemaVersion < 4 ? Memory is null : Memory is not null,
+            "Settings before version 4 cannot contain memory settings; version 4 requires them.");
+        Memory?.Validate();
         if (Setup is not null)
         {
             var legacy = Profile.Credentials.Select(item => item.CredentialId).ToHashSet();
@@ -55,7 +60,8 @@ public sealed record AppSettings : IContract
         {
             SchemaVersion = CurrentSchemaVersion,
             Setup = settings.Setup ?? new() { SchemaVersion = 1, Checkpoint = SetupStep.Choice, Routes = [], PendingRemovals = [] },
-            Companion = settings.Companion ?? CompanionSettings.Create()
+            Companion = settings.Companion ?? CompanionSettings.Create(),
+            Memory = settings.Memory ?? MemorySettings.Create()
         };
     }
 }

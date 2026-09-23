@@ -41,11 +41,11 @@ Ollama / Windows Docker-WSL hosting lanes. Multiple roles may share a machine;
 Docker is not required for the Windows client. These remain design targets,
 not available host installers or enabled application routes.
 
-An isolated [P03a/P03b consented memory foundation](docs/MEMORY.md) now provides
-an OFF-by-default local fact store, exact inspect/edit/delete/export and bounded
-lexical retrieval tests. It is not wired into Desktop, conversation, Core
-settings, a gateway, packaging or the root solution and does not capture
-transcripts, call providers, upload, embed or create backups.
+[P03a/P03b/P03c consented local memory](docs/MEMORY.md) provides OFF-by-default
+Desktop settings and explicit save/inspect/edit/delete/export over one local
+fact store. Optional next-turn retrieval sends only bounded matching facts
+with provenance to the already authorized LLM; it never ingests transcripts.
+There is no remote memory, embedding, vector database or automatic backup.
 
 | Document | Purpose |
 | --- | --- |
@@ -58,7 +58,7 @@ transcripts, call providers, upload, embed or create backups.
 | [Implemented foundation and decisions](docs/FOUNDATION.md) | Accepted/deferred decisions, exact APIs/bounds, current behavior and next ownership |
 | [Resumable setup and local audio](docs/SETUP.md) | V02a configuration/vault actions and V02b explicit local device tests, historical checkpoints, strict migration and remaining live gates |
 | [Explicit API conversation](docs/CONVERSATION.md) | V04b typed/PTT path, exact supported models and bounds, fresh authorization, Stop/cleanup, troubleshooting and separately authorized live-trial checklist |
-| [Consented local memory foundation](docs/MEMORY.md) | Isolated P03a/P03b fact-store/retrieval contracts, privacy/deletion/export semantics and remaining integration/qualification gates |
+| [Consented local memory](docs/MEMORY.md) | OFF-by-default P03a/P03b/P03c Desktop fact management, per-turn retrieval, privacy/deletion/export and remaining qualification gates |
 
 The broader plan documents remain future specifications except for the current
 implementation/acceptance ledger in [DELIVERY](docs/DELIVERY.md) and the

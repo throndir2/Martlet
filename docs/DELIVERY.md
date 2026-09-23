@@ -27,11 +27,25 @@ rules remain unchanged.
 
 ### Current internal implementation
 
+**Canonical local-memory reuse:** the memory-only delta of `b80920a` and the
+memory named-argument correction from `68bd6c8` are adapted onto PR #44, not
+copied as old project snapshots. Schema 3 remains companion; schema 4 adds
+OFF-by-default local-memory policy and Desktop management/retrieval. PR #39
+finalization-time expiry/top-K regressions and PR #44 exact snapshot limits,
+legacy-v2 receipts, mandatory General/CompanionOnly native smokes and wrapper
+failure propagation remain required. No avatar/listen-first, Gateway,
+installation schema, remote-memory or host-action integration is imported.
+AC-16 and installation AC-18-AC-20 remain unchanged; source companion AC-18-23
+map to canonical AC-21-26 (source H07b barge-in remains canonical H07c).
+Historical package hashes elsewhere in this ledger are not evidence for this
+candidate. Its exact local commands, results and review are recorded in its PR.
+
 | Item | Actual status |
 | --- | --- |
 | D01 | Dispositions recorded in [FOUNDATION.md](FOUNDATION.md). .NET/WPF/core direction and pins chosen; license, distribution/signing, provider spending and optional model/SDK rights remain deferred gates. |
 | D02 | Versioned settings/profile/provider contracts, bounded PCM, production JSON and temporal text validators, explicit refusal, epochs/cancel/EOF/deadlines and golden traces exist. Role request bodies, remote schemas/SSE/binary wire framing remain; **AC-01 is partial, not frozen or fully passed**. |
 | F01 | Offline accessible text/status shell, explicit unconfigured-profile save, atomic validated settings and truthful shared-status CLI implemented. Local developer-host build/tests/CLI and bounded desktop-launch scope are documented; no clean consumer-OS claim. |
+| P03c local memory | [Consented local memory](MEMORY.md): strict schema-4 policy, explicit enable/save/inspect/edit/delete/purge/frozen export and next-turn-only bounded retrieval using the existing single-owner library. No transcript ingestion, remote memory, embedding or installation activation. v1-v3 migration keeps exact originals; v1-v4 recovery excludes facts and forces memory OFF. Desktop/root/package graph includes Memory with regenerated normal/RID locks. AC-16/G4, clean-machine, real-user usefulness and physical storage failure remain unqualified. |
 | F03a/F03b/F04 | Merged deterministic 30-script fixture engine, bounded real PCM sink/WASAPI adapter and local diagnostic registry/CLI/WPF shell. Headless evidence is not actual listening or install qualification. |
 | F03c | Shared `FixtureSession` now joins production cursor/validator, ordered synthetic text, optional actual sink, shared status and accessible Desktop/Doctor commands. Ten novice scenarios, per-action tone permission, Stop/fresh IDs/epochs, no default device/network/write effects. |
 | F05 integration | Normal solution includes fixture projects/tests and session tests; portable/Windows Doctor executable smokes remain required local checks with the pinned SDK. Packaging includes actual fixture/audio references, separate normal/RID locks, notices and audio-OFF native fixture smokes. |

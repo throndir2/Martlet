@@ -1,0 +1,114 @@
+<Window x:Class="Martlet.Desktop.MemoryWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Martlet - Local memory" Width="900" Height="850" MinWidth="560" MinHeight="480"
+        WindowStartupLocation="CenterOwner" Loaded="Window_Loaded" Closing="Window_Closing"
+        AutomationProperties.Name="Local memory management, off by default">
+    <Window.Resources>
+        <Style TargetType="CheckBox">
+            <Setter Property="ContentTemplate">
+                <Setter.Value>
+                    <DataTemplate><TextBlock Text="{Binding}" TextWrapping="Wrap" /></DataTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="20">
+            <TextBlock Text="Local memory" FontSize="24" FontWeight="SemiBold" TextWrapping="Wrap" />
+            <TextBlock Margin="0,8" TextWrapping="Wrap"
+                       Text="OFF by default. Martlet saves only facts you type here and explicitly choose to save; it never ingests conversation transcripts. The store stays local, has no cloud/upload/embedding/vector database/background backup, and is not included in configuration or support exports." />
+            <WrapPanel>
+                <Button x:Name="ReloadButton" Content="_Reload memory settings (does not open the fact store)" Click="Reload_Click"
+                        Padding="10,6" Margin="0,4,8,4" AutomationProperties.AutomationId="MemoryReload" />
+                <Button Content="_Close memory" Click="Close_Click" Padding="10,6" Margin="0,4,8,4"
+                        AutomationProperties.AutomationId="MemoryClose" />
+            </WrapPanel>
+
+            <TextBlock Text="Enablement and local storage" FontSize="18" FontWeight="SemiBold" Margin="0,14,0,4" />
+            <RadioButton x:Name="AppLocalChoice" GroupName="Storage" Content="Use app-owned local data (recommended)"
+                         Checked="Configuration_Changed" AutomationProperties.AutomationId="MemoryAppLocal" />
+            <RadioButton x:Name="CustomChoice" GroupName="Storage" Content="Use a custom absolute local directory"
+                         Checked="Configuration_Changed" Margin="0,4" AutomationProperties.AutomationId="MemoryCustom" />
+            <Label Target="{Binding ElementName=CustomDirectory}" Content="Custom local _directory" />
+            <DockPanel>
+                <Button DockPanel.Dock="Right" x:Name="BrowseDirectoryButton" Content="_Browse" Click="BrowseDirectory_Click"
+                        Padding="10,5" Margin="8,0,0,0" AutomationProperties.AutomationId="MemoryBrowseDirectory" />
+                <TextBox x:Name="CustomDirectory" TextChanged="ConfigurationText_Changed"
+                         AutomationProperties.AutomationId="MemoryCustomDirectory" />
+            </DockPanel>
+            <TextBlock x:Name="ResolvedDirectoryText" Margin="0,5" TextWrapping="Wrap"
+                       AutomationProperties.Name="Resolved local memory directory" />
+            <CheckBox x:Name="EnableChoice" Content="Enable local memory (OFF on new or migrated profiles)"
+                      Checked="Configuration_Changed" Unchecked="Configuration_Changed" Margin="0,8,0,4"
+                      AutomationProperties.AutomationId="MemoryEnable" />
+            <CheckBox x:Name="AcceptEnable" Margin="0,4"
+                      Content="I reviewed this exact local scope. I authorize Martlet to open it only for my explicit memory actions and separately authorized retrieval actions. This setting does not save transcripts or authorize provider disclosure."
+                      Checked="Configuration_Changed" Unchecked="Configuration_Changed"
+                      AutomationProperties.AutomationId="MemoryAcceptEnable" />
+            <Button x:Name="SaveConfigurationButton" Content="_Save memory configuration" Click="SaveConfiguration_Click"
+                    Padding="10,7" Margin="0,6,0,6" HorizontalAlignment="Left"
+                    AutomationProperties.AutomationId="MemorySaveConfiguration" />
+            <TextBox x:Name="ConfigurationStatus" IsReadOnly="True" TextWrapping="Wrap"
+                     AutomationProperties.AutomationId="MemoryStatus" AutomationProperties.LiveSetting="Polite"
+                     AutomationProperties.Name="Memory configuration status" />
+
+            <TextBlock Text="Explicit facts" FontSize="18" FontWeight="SemiBold" Margin="0,16,0,4" />
+            <TextBlock Text="The fact store is opened only by the actions below while memory is enabled. Select retention for every new fact; expiry is physically purged on the next explicit store operation." TextWrapping="Wrap" />
+            <WrapPanel>
+                <Button x:Name="RefreshFactsButton" Content="_Inspect / refresh facts" Click="RefreshFacts_Click"
+                        Padding="10,6" Margin="0,6,8,6" AutomationProperties.AutomationId="MemoryRefreshFacts" />
+                <Button x:Name="PurgeExpiredButton" Content="P_urge expired facts" Click="PurgeExpired_Click"
+                        Padding="10,6" Margin="0,6,8,6" AutomationProperties.AutomationId="MemoryPurgeExpired" />
+            </WrapPanel>
+            <Label Target="{Binding ElementName=FactContent}" Content="_Fact content (typed explicitly; never populated from a transcript)" />
+            <TextBox x:Name="FactContent" AcceptsReturn="True" TextWrapping="Wrap" MaxLength="4096" Height="90"
+                     VerticalScrollBarVisibility="Auto" AutomationProperties.AutomationId="MemoryFactContent" />
+            <Label Target="{Binding ElementName=RetentionChoice}" Content="_Retention" />
+            <ComboBox x:Name="RetentionChoice" MinHeight="30" AutomationProperties.AutomationId="MemoryRetention" />
+            <WrapPanel>
+                <Button x:Name="SaveFactButton" Content="_Save new fact" Click="SaveFact_Click"
+                        Padding="10,6" Margin="0,6,8,6" AutomationProperties.AutomationId="MemorySaveFact" />
+                <Button x:Name="EditFactButton" Content="_Edit selected fact" Click="EditFact_Click"
+                        Padding="10,6" Margin="0,6,8,6" AutomationProperties.AutomationId="MemoryEditFact" />
+                <Button x:Name="DeleteFactButton" Content="_Delete selected fact" Click="DeleteFact_Click"
+                        Padding="10,6" Margin="0,6,8,6" AutomationProperties.AutomationId="MemoryDeleteFact" />
+            </WrapPanel>
+            <Label Target="{Binding ElementName=FactsList}" Content="Saved _facts" />
+            <ListBox x:Name="FactsList" Height="150" DisplayMemberPath="Content" SelectionChanged="FactsList_SelectionChanged"
+                     AutomationProperties.AutomationId="MemoryFacts" AutomationProperties.Name="Saved local facts" />
+            <Label Target="{Binding ElementName=FactDetails}" Content="Selected fact _provenance and expiry" />
+            <TextBox x:Name="FactDetails" IsReadOnly="True" TextWrapping="Wrap" Height="100"
+                     VerticalScrollBarVisibility="Auto" AutomationProperties.AutomationId="MemoryFactDetails" />
+            <TextBlock x:Name="FactStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
+                       AutomationProperties.Name="Memory fact action status" />
+
+            <TextBlock Text="Frozen exact export" FontSize="18" FontWeight="SemiBold" Margin="0,16,0,4" />
+            <TextBlock TextWrapping="Wrap"
+                       Text="Preview freezes the exact JSON bytes, revision, count and digest. Export remains NO by default and is create-only. A later store change invalidates this preview; user-created exported copies are outside Martlet's deletion ownership." />
+            <Button x:Name="CreateExportPreviewButton" Content="Create exact export _preview" Click="CreateExportPreview_Click"
+                    Padding="10,6" Margin="0,6,0,6" HorizontalAlignment="Left"
+                    AutomationProperties.AutomationId="MemoryCreateExportPreview" />
+            <TextBlock x:Name="ExportSummary" TextWrapping="Wrap" AutomationProperties.Name="Frozen export summary" />
+            <TextBox x:Name="ExportPreviewText" IsReadOnly="True" TextWrapping="NoWrap" Height="180"
+                     HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                     AutomationProperties.AutomationId="MemoryExportPreview" AutomationProperties.Name="Exact frozen memory export JSON" />
+            <Label Target="{Binding ElementName=ExportDestination}" Content="New local export _destination (.json)" />
+            <DockPanel>
+                <Button DockPanel.Dock="Right" x:Name="BrowseExportButton" Content="B_rowse" Click="BrowseExport_Click"
+                        Padding="10,5" Margin="8,0,0,0" AutomationProperties.AutomationId="MemoryBrowseExport" />
+                <TextBox x:Name="ExportDestination" TextChanged="ExportDestination_Changed"
+                         AutomationProperties.AutomationId="MemoryExportDestination" />
+            </DockPanel>
+            <CheckBox x:Name="AcceptExport" Margin="0,8,0,4"
+                      Content="I reviewed the exact frozen JSON above and authorize creating this one local export at the selected new destination. The default is No; Martlet will not overwrite or upload it."
+                      Checked="ExportConsent_Changed" Unchecked="ExportConsent_Changed"
+                      AutomationProperties.AutomationId="MemoryAcceptExport" />
+            <Button x:Name="ExportButton" Content="_Export reviewed frozen JSON" Click="Export_Click"
+                    Padding="10,7" Margin="0,6,0,6" HorizontalAlignment="Left"
+                    AutomationProperties.AutomationId="MemoryExport" />
+            <TextBlock x:Name="ExportStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
+                       AutomationProperties.Name="Memory export status" />
+        </StackPanel>
+    </ScrollViewer>
+</Window>

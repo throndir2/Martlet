@@ -17,7 +17,8 @@ personal. Configuration envelopes are LOCAL and **NOT encrypted or sanitized**.
    device preferences, opaque credential references and cleanup metadata are
    captured. No secret values, vault, environment, conversation/audio, arbitrary
    files, crash dumps, models or optional support journal/logs are included.
-   There is no persistent voice/model/memory database in this product yet.
+   The separately owned local-memory facts/store/exports are excluded; only
+   memory enable/path settings are included.
 2. Choose a new explicit local `.martlet-config` output in an existing parent
    directory. **Create local configuration snapshot** asks for confirmation.
    Output is create-only; an existing file is never overwritten. No cloud
@@ -38,7 +39,9 @@ personal. Configuration envelopes are LOCAL and **NOT encrypted or sanitized**.
    metadata, **not deleted**. Current legacy references/pending removals survive;
    obsolete imported IDs do not authorize key use or deletion.
 
-**V07a supports only an existing valid same-profile v1/v2/v3 destination.** A missing,
+**V07a supports only an existing valid same-profile v1-v4 destination.** Memory
+is always forced OFF with a fresh revision, without opening or copying its store.
+A missing,
 foreign-profile, corrupt or future-version destination is refused; this is not
 portable profile import or corrupt-store repair. Preserve originals and use
 compatible manual recovery, not a reset or an older executable. If current
