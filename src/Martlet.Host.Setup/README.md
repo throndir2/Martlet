@@ -1,4 +1,107 @@
-# Host setup review and artifact acquisition (H05a/H05b)
+# Host setup review, acquisition and configuration publication
+
+## Selected-role configuration publication (H05c-A)
+
+This slice implements actual bounded local configuration publication, **not
+service execution or a runnable Compose preset**. It reuses the deterministic
+generation and owned-publication approach from
+`016f1131e899d1aaa03c7e130534d6d7c5cf108d`, originally authored by throndir with
+Copilot App co-authorship. The dependency-lock follow-up
+`97a76e94011d851b6ee6a9b5c8b2f4751551c9e9` was inspected, not copied.
+Old Doctor imports, setup `Completed` prerequisites, caller `LiveLocal` authority,
+timed Gateway v1 assumptions, invented health commands and default-refusing
+supervisors are not imported.
+
+`HostDeploymentDefinition` binds the current bound H05a plan/configuration to
+the exact HostArtifacts selection and explicit host/deployment/owner IDs.
+Only the frozen managed Compose Llm/Tts adapter is accepted; LLM-only requires
+neither F5 nor STT. Existing Core `InstallationMachine` owns shared resources,
+co-location and demand. Its capacity/eligibility and all Inventory reports
+remain unauthenticated planning claims. Unsupported managed roles, another
+owner/host or a mismatched artifact target fail explicitly.
+
+`ArtifactAcquisitionCoordinator.ObservePublishedImagesAsync` reads only existing
+acquisition state. It reuses native identity/lease and bounded read-back hashing,
+validates current v3 journal binding, metadata/configuration graph, selected root
+index and layout marker. No HTTP request, download, journal update, repair,
+quarantine, extraction or engine operation is performed. Missing owned
+publication is explicitly unverified; corrupt, changed, pending or foreign
+state is refused. The lease must actually be acquired. Its existing marker is
+never created by observation. Detached observations prove only inspected bytes,
+not publisher authenticity, legal clearance, Docker image availability or
+executable permission.
+
+```csharp
+var identity = new HostDeploymentIdentity(targetHostId, deploymentId, ownerId);
+var definition = new HostDeploymentDefinition(configuration, setupPlan, selection, identity);
+var publisher = new HostDeploymentCoordinator(
+    new LocalHostDeploymentStore(existingPrivateConfigurationRoot),
+    localReviewStore, localArtifactStorage);
+var preview = await publisher.PreviewAsync(definition, recordedReview);
+// Display the exact files, destination, scopes and unresolved runtime findings.
+var permit = preview.Approve(
+    HostDeploymentConfigurationDecision.Publish,
+    [HostDeploymentConfigurationScope.LocalConfigurationFiles]);
+var result = await publisher.PublishAsync(definition, preview, permit);
+```
+
+`Approve()` without arguments is No. The decision is one-use, valid for at most
+ten minutes and no longer than the current LocalReview plan window. It binds the
+exact bundle, root/file observations, journal versions and selected identities.
+It grants **only local configuration-file publication**, not human-authenticated
+approval, runtime rights, a listener, model use or host changes. LocalReview is
+history, not setup completion. Preview does not create files. Publication holds
+the existing acquisition lease through its critical section and revalidates
+content before returning success.
+
+The deterministic output is `deployment.json` plus, when selected image bytes
+are actually verified, `ollama-llm.compose-fragment.json`. The latter is an
+individual **partial service object**, not a top-level Compose document. It
+records immutable image/platform, no-pull and proposed isolation constraints,
+not a compatible non-root recipe, model mount, gateway, ports, command or health
+executable. F5's upstream image is not the Martlet stdio worker host: it produces
+explicit missing-recipe findings, not a fabricated runnable fragment. Missing
+bytes produce a report-only bundle. All current tuples retain explicit
+gateway/service/model/provenance/rights/engine/qualification blockers and
+`RunnableComposeAvailable`, `ExecutionAuthorized`, `RuntimeEnabled` and
+`HostReady` remain false.
+
+The stable project name derives from the deployment ID, not changing content
+hashes; native local ownership also binds the explicit host and owner IDs.
+Configuration revisions occupy distinct immutable directories. The manifest's
+proposed Ubuntu identity path is independent of revision and remains only a
+proposal. Actual Windows staging paths are never converted into Ubuntu mounts.
+No secret, credential, certificate or identity store is read or written here.
+Permanent Gateway protocol 2 pairing stays permanent until deliberate revocation.
+
+Publication has its own strict format-2 `HostDeploymentConfiguration` journal
+and a held cooperative native lease, separate from LocalReview v2, file
+acquisition v2 and OCI v3. It retains at most 16 revisions; each bundle is at
+most 32 files/1 MiB, each file and journal at most 256 KiB and JSON depth 16.
+Duplicate/unknown/noncanonical/corrupt/legacy-purpose state fails closed.
+Old deployment v1 is preserved, not migrated. No acquisition `Published` or
+`Finalized` state becomes setup `Completed`.
+
+The existing private local parent is validated and pinned. New markers,
+directories and files are exclusive creations; only journal-recorded native
+identities and verified matching prefixes can resume. Identical foreign bytes,
+orphan directories, replacements, links, DOS aliases and unexpected children
+are not adopted. Writes use CAS, flush/readback and non-overwrite same-volume
+rename. A post-rename interruption reconciles the exact recorded identity,
+including retrying directory durability. Creation before durable ownership
+can leave a preserved bootstrap conflict requiring operator review.
+Unknown pending writes and corrupt state are never silently removed.
+No previous revision, gateway identity or unrelated service/data is deleted.
+
+This is a cooperative private/non-hostile namespace contract, not protection
+against every hostile ancestor/mount/same-user replacement race. The production
+committer remains Linux-only. Windows tests exercise real native identities,
+locks, files, JSON and rename with an internal committer fault boundary;
+they are not Linux fsync/power-loss or service qualification.
+
+See [the Compose boundary and next executable path](../../deploy/ubuntu/compose/README.md).
+No root project/package graph, new package, Docker command, host install,
+driver/firewall/group change, live provider or remote CI is added.
 
 ## Verified artifact acquisition (H05b)
 

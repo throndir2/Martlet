@@ -44,6 +44,14 @@ trial, clean Windows installation or signing/release qualification.
 
 ## 1. One Windows golden path
 
+The internal [H05c-A configuration publisher](../src/Martlet.Host.Setup/README.md#selected-role-configuration-publication-h05c-a)
+now binds selected host/owner roles to verified OCI-byte observations and writes
+reviewed owned configuration revisions. Its partial service fragments and
+missing-recipe findings are **not runnable Compose, installation completion or
+runtime permission**. The [next service/recipe and supervision work](../deploy/ubuntu/compose/README.md)
+must supply a real Linux gateway/Ollama path independently of optional F5/STT.
+Permanent device identity remains separate and is never reset by publication.
+
 Target Windows 11 25H2 x64 Home/Pro on a currently serviced patch. Test a clean
 standard-user account with no Git, Python, Node, Docker, developer SDK, or
 preinstalled .NET required by Martlet. The app bundles its selected .NET runtime
