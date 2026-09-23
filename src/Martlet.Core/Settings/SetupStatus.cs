@@ -65,7 +65,12 @@ public sealed record SetupStatus : IContract
     {
         Validate();
         return $"Setup checkpoint: {Checkpoint}; configuration only, live account and device readiness not established by this summary.{Environment.NewLine}" +
-            string.Join(Environment.NewLine, Roles.Select(role =>
+            string.Join(Environment.NewLine, Roles.Select(role => role.RouteType is null or SetupRouteType.OpenAi
+                ? $"{role.Role}: {(role.RouteSelected ? "route selected" : "not configured")}; " +
+                  $"{(role.DestinationSelected ? "destination selected, not per-turn permission" : "consent missing or invalidated; review in Setup")}; " +
+                  $"{(role.CredentialReferenced ? "key referenced, presence/API validity unknown" : "key not configured")}; connection not checked by this summary." +
+                  (role.RouteSelected && !role.Enabled ? " Route is OFF." : "")
+                :
                 $"{role.Role}: {(role.RouteSelected ? $"{role.RouteType} route selected; {(role.Enabled ? "ON" : "OFF")}" : "not configured")}; " +
                 $"{(role.DestinationSelected ? "destination selected, not per-turn permission" : "consent missing or invalidated; review in Setup")}; " +
                 $"{(role.CredentialReferenced ? "credential referenced, vault presence/revocation unknown" : "credential not configured or not required")}; " +

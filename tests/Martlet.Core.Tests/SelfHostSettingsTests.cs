@@ -13,6 +13,19 @@ public sealed class SelfHostSettingsTests : IDisposable
     private SettingsStore Store => new(directory);
 
     [Fact]
+    public void CurrentOpenAiAccessibleSummariesPreserveExistingSetupAndStatusContract()
+    {
+        var settings = SetupSettings.SelectRoute(SetupSettings.Begin(null), SetupRole.Stt, "whisper-1", null);
+        var route = settings.Setup!.Routes.Single();
+        Assert.Contains("Stt: route selected; consent missing or invalidated", SetupSettings.Describe(settings));
+        settings = SetupSettings.ReplaceRoute(settings, route with { Consent = route.Selection() });
+        Assert.Contains("Stt: route selected; destination choice recorded, NOT per-turn authorization; credential not configured",
+            SetupSettings.Describe(settings));
+        Assert.Contains("Stt: route selected; destination selected, not per-turn permission; key not configured",
+            SetupStatus.From(settings)!.Describe());
+    }
+
+    [Fact]
     public void VersionedSelfHostRoutesAreClosedOffByDefaultAndRequireExactEvidence()
     {
         var initial = SetupSettings.Begin(null);

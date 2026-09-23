@@ -1024,9 +1024,19 @@ public sealed record SetupSettings : IContract
                 lines.Add($"{role}: not configured. Select a named versioned route in Setup.");
                 continue;
             }
+            if (route.RouteType is null or SetupRouteType.OpenAi)
+            {
+                lines.Add($"{role}: route selected; " +
+                    $"{(route.Consent is null ? "consent missing or invalidated by a change; review again" : "destination choice recorded, NOT per-turn authorization")}; " +
+                    $"{(route.CredentialId is null ? "credential not configured" : "credential reference saved, OS presence and API validity unknown")}. Connection not checked by this summary." +
+                    (route.Enabled == false ? " Route is OFF." : ""));
+                continue;
+            }
             var paired = route.RouteType is SetupRouteType.GatewayOllama or SetupRouteType.GatewayF5
                 ? route.CredentialId is null
-                    ? "gateway credential not paired"
+                    ? (setup.RetainedGatewayCredentials ?? []).Any(item => item.Role == role)
+                        ? "saved pairing retained; route not connected/mismatched"
+                        : "gateway credential not paired"
                     : "permanent role-scoped gateway pairing referenced; vault presence and revocation status unknown"
                 : route.RouteType == SetupRouteType.OpenAi
                     ? route.CredentialId is null ? "credential not configured" : "credential reference saved; API validity unknown"
