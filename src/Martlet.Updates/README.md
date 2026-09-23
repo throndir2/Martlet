@@ -23,15 +23,19 @@ present settings. It owns the actual store's read/writer-lock scope, never
 writes settings or restores again, and records a NEW format-4 acknowledgment
 while retaining the old operation as historically unacknowledged. Staging
 and ordinary selection never implicitly restore settings. There is no Desktop
-wiring, launcher, execution or shipped rollback workflow.
+wiring or shipped rollback workflow.
 
 The separate [activation-pointer transaction](ACTIVATION.md) consumes that exact
 selection under retained ownership, rechecks current trust, installed-image
 facts, settings and signed files, and publishes its own pending/terminal record.
-Only internal inert test probes exercise terminal publication in this slice.
+The separate [launcher](../Martlet.Launcher/README.md) can supply its closed
+owned-process readiness adapter with independently provisioned host publisher
+policy and fresh consent; there is no public arbitrary probe callback.
 `PointerPublished` describes that record, not launch permission:
 `Readiness` remains `MissingReadiness` and `IsRunnable` remains false.
-Production preparation fails with `ReadinessUnavailable` without a transaction.
+Default construction still fails preparation with `ReadinessUnavailable`.
+Staging keys alone are not publisher execution authorization. Old/inert
+activation records never automatically acquire executable authority.
 
 ## Caller boundary
 

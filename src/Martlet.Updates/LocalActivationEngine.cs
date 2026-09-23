@@ -12,7 +12,7 @@ internal enum ActivationIoPoint
 /// <summary>
 /// Private local activation-pointer transaction. It never launches a candidate or supplies a production readiness probe.
 /// </summary>
-public sealed class LocalActivationEngine
+public sealed partial class LocalActivationEngine
 {
     private const int FormatVersion = 1;
     private const int MaximumControlBytes = 65536;
@@ -115,7 +115,11 @@ public sealed class LocalActivationEngine
                 RequireCurrentCompatibility(before, evidence);
                 var kind = Transition(before, evidence);
                 var target = Target(evidence);
-                var plan = new ActivationPlan(this, planSequence, kind, before, target, ReadinessProbeId);
+                var stage = evidence.Stages[target.StageName];
+                var executionScope = launcherProbe?.Prepare(new LauncherCandidate(
+                    before.ProfileId, root, stage, target, evidence.Settings.Revision!), token);
+                var plan = new ActivationPlan(this, planSequence, kind, before, target, ReadinessProbeId,
+                    executionScope);
                 reverify();
                 RequireState(before, token);
                 return plan;
@@ -213,13 +217,18 @@ public sealed class LocalActivationEngine
             plan.Target.ExecutableRelativePath.Replace('/', Path.DirectorySeparatorChar));
         var request = new ActivationReadinessRequest(plan, stage.Receipt.Destination,
             executablePath, expiresUtc);
+        using var executionOwnership = launcherProbe?.Open(
+            new LauncherCandidate(before.ProfileId, root, stage, plan.Target, evidence.Settings.Revision!),
+            plan.ExecutionScope!, plan.TransactionId, plan.Kind, expiresUtc, token);
         Point(ActivationIoPoint.BeforeReadiness, executablePath, token);
         Recheck(pending);
         RequireDeadline();
         ActivationProbeOutcome probeOutcome;
         try
         {
-            probeOutcome = ReadinessProbe!(request, token);
+            probeOutcome = executionOwnership is null
+                ? ReadinessProbe!(request, token)
+                : executionOwnership.Probe(token);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
@@ -260,10 +269,10 @@ public sealed class LocalActivationEngine
         Publish(activeReplacement, afterBytes, Path.Combine(directory, "active-publication.json"),
             pending, token, () =>
             {
+                RecheckReadiness();
                 reverify();
                 if (Transition(plan.Before, evidence) != plan.Kind || Target(evidence) != plan.Target)
                     throw new ActivationException(ActivationFailure.Conflict, plan.TransactionId);
-                RecheckReadiness();
                 ValidateHistory(after, token);
             }, RequireDeadline);
         AfterPublication(ActivationIoPoint.AfterActiveReplace, directory, plan.TransactionId);
@@ -291,6 +300,7 @@ public sealed class LocalActivationEngine
 
         void RecheckReadiness()
         {
+            executionOwnership?.Verify();
             RequireDeadline();
             RequireExactBytes(intentPin, intentBytes, MaximumReadinessBytes, token);
             RequireExactBytes(resultPin, resultBytes, MaximumReadinessBytes, token);
@@ -305,6 +315,7 @@ public sealed class LocalActivationEngine
 
         void RequireDeadline()
         {
+            executionOwnership?.CheckDeadline();
             if (ReadinessClock.GetElapsedTime(startedTimestamp) >= ReadinessLimit ||
                 ReadinessClock.GetUtcNow() >= expiresUtc)
                 throw new ActivationException(ActivationFailure.ReadinessTimedOut, plan.TransactionId);

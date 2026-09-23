@@ -165,6 +165,8 @@ public sealed partial class LocalSelectionEngine
             token.ThrowIfCancellationRequested();
             using var sourcePin = BoundedIo.OpenRead(plan.SourcePath);
             RequireExactSnapshot(sourcePin, plan, token);
+            using var rollbackSnapshot = plan.Kind == SelectionKind.Rollback
+                ? PinSnapshot(plan.Entry.Snapshot, token) : null;
             var incoming = new LocalStagingEngine.StageInspection(StagePath(plan.Entry.StageName),
                 plan.Kind == SelectionKind.Rollback ? plan.Entry.ReceiptSha256 : null);
             return WithRetainedEvidence(plan.Before, incoming, (stages, reverify) =>
@@ -223,6 +225,10 @@ public sealed partial class LocalSelectionEngine
                     using var named = BoundedIo.OpenRead(plan.SourcePath);
                     RequireExactSnapshot(named, plan, token);
                     using var retained = PinSnapshot(plan.FreshSnapshot, token);
+                    if (rollbackSnapshot is not null)
+                    {
+                        using var namedRollback = PinSnapshot(plan.Entry.Snapshot, token);
+                    }
                     reverify();
                     token.ThrowIfCancellationRequested();
                 }

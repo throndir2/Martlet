@@ -12,6 +12,13 @@ selection under ownership; it never promotes this receipt into launch permission
 The separate rollback configuration-restoration operation described below is
 the only settings effect. Ordinary selection/recovery never restores settings.
 
+The launcher rollback coordinator may additionally prepare the active record's
+exact retained N-1 from immutable selection history when selection has advanced
+ahead of activation. That internal path retains the active current as previous,
+pins the historical rollback snapshot through commit, and uses the same
+separate restore/acknowledgment gates. It cannot select arbitrary deeper history,
+restore automatically, or alter permanent Gateway pairing.
+
 ## Explicit ownership and initialization
 
 The caller supplies an existing private control directory, an existing
