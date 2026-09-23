@@ -271,6 +271,10 @@ package metadata and complete runtime license files; it verifies all four
 published browser files against the actual build receipt. The closed 17-package
 graph distinguishes 15 runtime packages (including type-only packages with
 notices but no bundle bytes) from esbuild and its Windows build executable.
+The two build-script package inputs are exactly esbuild's `lib/main.js` and
+the Windows package's `esbuild.exe`; the latter's archive-verified hash and
+length must equal the observed tool fingerprint. No runtime package can be
+relabeled as a build script to evade bundle ownership.
 Source materializations under the two exact module node_modules directories and
 the host's exact web/dist directory are excluded only with this compensating
 input/output evidence. Arbitrary vendor/dist trees are not ignored.

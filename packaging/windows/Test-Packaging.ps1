@@ -252,7 +252,8 @@ Test-AvatarBrowserEvidence $copy $copied.provenance.browser $copied.provenance.s
 $script:cases++
 foreach ($case in @('missing package', 'extra package', 'scope', 'identity', 'archive hash', 'missing dependency',
         'notice coverage', 'source hash', 'package entry', 'recipe', 'tool version', 'output hash', 'output path',
-        'duplicate input', 'input role', 'static mismatch', 'lock hash', 'unknown field')) {
+        'duplicate input', 'input role', 'static mismatch', 'lock hash', 'unknown field',
+        'missing build material', 'runtime build material', 'build material role', 'build fingerprint hash', 'build fingerprint bytes')) {
     $browser = Read-PackagingJson $browserFixture -AsHashtable
     switch ($case) {
         'missing package' { $browser.packages = @($browser.packages | Select-Object -Skip 1) }
@@ -273,6 +274,13 @@ foreach ($case in @('missing package', 'extra package', 'scope', 'identity', 'ar
         'static mismatch' { $browser.outputs[3].inputs = @($browser.recipe.script) }
         'lock hash' { $browser.lockFiles[0].sha256 = '0' * 64 }
         'unknown field' { $browser.extra = $true }
+        'missing build material' { $browser.inputs = @($browser.inputs | Where-Object entry -CNE 'package/lib/main.js') }
+        'runtime build material' {
+            @($browser.inputs | Where-Object { $_.package -ceq 'node_modules/three' -and $_.roles -ccontains 'bundle-source' })[0].roles = @('build-script')
+        }
+        'build material role' { @($browser.inputs | Where-Object entry -CEQ 'package/lib/main.js')[0].roles = @('package-metadata') }
+        'build fingerprint hash' { $browser.tools[2].files[0].sha256 = '0' * 64 }
+        'build fingerprint bytes' { $browser.tools[2].files[0].bytes++ }
     }
     Assert-Fails "browser production validator: $case" {
         Test-AvatarBrowserEvidence $copy $browser $copied.provenance.source

@@ -207,6 +207,10 @@ function Test-AvatarBrowserEvidence([string]$Root, $Browser, $Source) {
     $inputs = @{}
     $roles = @{}
     foreach ($role in @('build-script', 'bundle-source', 'lock', 'notice', 'package-metadata', 'static')) { $roles[$role] = $true }
+    $buildMaterials = @{
+        'node_modules/esbuild' = 'package/lib/main.js'
+        'node_modules/@esbuild/win32-x64' = 'package/esbuild.exe'
+    }
     $previous = $null
     foreach ($input in $Browser.inputs) {
         Assert-EvidenceKeys $input @('path', 'bytes', 'sha256', 'package', 'entry', 'roles')
@@ -226,9 +230,27 @@ function Test-AvatarBrowserEvidence([string]$Root, $Browser, $Source) {
             $expected = "src\Martlet.Avatar.Vrm\$($input.package.Replace('/', '\'))\$($input.entry.Substring(8).Replace('/', '\'))"
             if ($input.path -cne $expected) { throw 'Npm source input path differs from archive owner.' }
             if ($packages[$input.package].scope -ceq 'build' -and $input.roles -ccontains 'bundle-source') { throw 'Build tool falsely contributes runtime bundle bytes.' }
+            if ($input.roles -ccontains 'build-script' -and
+                ($packages[$input.package].scope -cne 'build' -or -not $buildMaterials.ContainsKey($input.package) -or
+                 $input.entry -cne $buildMaterials[$input.package] -or $input.roles.Count -ne 1)) {
+                throw 'Unreviewed npm build material.'
+            }
         }
         $inputs[$input.path] = $input
         $previous = $input.path
+    }
+    foreach ($key in $buildMaterials.Keys) {
+        $material = @($Browser.inputs | Where-Object {
+            $_.package -ceq $key -and $_.entry -ceq $buildMaterials[$key] -and
+            $_.roles.Count -eq 1 -and $_.roles[0] -ceq 'build-script'
+        })
+        if ($material.Count -ne 1) { throw 'Required npm build material missing.' }
+        if ($key -ceq 'node_modules/@esbuild/win32-x64') {
+            $toolFile = @($Browser.tools[2].files | Where-Object path -CEQ 'esbuild.exe')
+            if ($toolFile.Count -ne 1 -or $toolFile[0].sha256 -cne $material[0].sha256 -or $toolFile[0].bytes -ne $material[0].bytes) {
+                throw 'Esbuild tool fingerprint differs from verified npm build material.'
+            }
+        }
     }
     foreach ($package in $Browser.packages) {
         Assert-BrowserReferences $package.notices 8192 $inputs -Nonempty:($package.scope -ceq 'runtime')
