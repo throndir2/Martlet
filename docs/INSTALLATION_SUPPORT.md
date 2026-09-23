@@ -318,6 +318,28 @@ are planned H10 expansion lanes, not categorically excluded product goals;
 native F5 is not promised. Only selected GPU roles require GPU prerequisites:
 an API-only client or qualified CPU role must not be blocked for lacking CUDA.
 
+### Linux gateway state backend boundary
+
+The canonical gateway includes an opt-in `LinuxServicePermissions` storage
+candidate for non-root Linux x86_64/glibc on local persistent ext4. Setup must
+not treat library availability or a modeled check as host qualification.
+Existing factory signatures remain Windows DPAPI; Linux selection is an
+explicit trusted local-owner call, not a stored wizard permission.
+
+Linux stores signing/private keys as service-permission-isolated **plaintext**:
+0700 directory, 0600 files, strict UID/ACL/link/mount checks and durable redo.
+This is not Windows DPAPI parity. Explain same-UID/root/offline-disk exposure
+and operator-managed disk encryption where needed. The library creates only an
+absent leaf under an existing safe private parent; it never provisions a UID,
+repairs ownership/modes, migrates Windows ciphertext or resets devices.
+Storage/clock failures mean access blocked, not unpaired.
+
+Linux local approval/disclosure, GUI/headless lifecycle, real native execution,
+reboot, service/container mounts and LAN qualification remain **NOT RUN**.
+The Windows Host CLI has not become portable. Preserve H01/#21 and managed
+preset holds; a future installer must use the same authority rather than fork
+pairing records. See [backend contract](../src/Martlet.Gateway.Persistence/README.md#explicit-linux-service-permissions-candidate).
+
 ### Read-only discovery and preflight
 
 The proposed packaged `martlet-host doctor` starts without changing the machine.

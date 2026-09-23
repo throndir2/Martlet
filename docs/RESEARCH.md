@@ -546,6 +546,35 @@ warmup and actual role inference. Cheap health checks must not download/load
 models or perform recurring paid inference. Startup ordering alone does not
 establish ongoing recovery, model readiness or a successful conversation.
 
+### Linux service state custody and durable I/O (H03b3)
+
+**Accessed 2026-09-23.** Primary upstream contracts, not native Martlet evidence:
+[Secret Service introduction](https://specifications.freedesktop.org/secret-service/latest/ch01.html)
+describes a login-session service that may need unlocking.
+[systemd-creds 255](https://www.freedesktop.org/software/systemd/man/255/systemd-creds.html)
+describes host/TPM key custody; its `tpm2-absent` mode explicitly provides neither
+confidentiality nor authenticity. Credential delivery is not automatically a
+writable crash-safe checkpoint store. No such null-key mode is proposed.
+
+[openat2](https://man7.org/linux/man-pages/man2/openat2.2.html) supplies non-following,
+beneath and no-mount-crossing resolution;
+[statx](https://man7.org/linux/man-pages/man2/statx.2.html) requires checking
+returned metadata masks;
+[flock](https://man7.org/linux/man-pages/man2/flock.2.html) provides cooperative
+open-file-description locks;
+[renameat2](https://man7.org/linux/man-pages/man2/rename.2.html) provides atomic
+replacement/no-replace semantics. Crucially,
+[fsync](https://man7.org/linux/man-pages/man2/fsync.2.html) of a file does not
+persist its directory entry: directory fsync is also required.
+
+**Implemented candidate, not native-qualified:** explicitly selected
+`LinuxServicePermissions` under a stable non-root UID, local ext4, 0700/0600;
+plaintext at rest with damage checksum, not encrypted/authenticated against a
+state writer. Same-UID/root/offline-disk/rollback threats remain. Operator-managed
+disk encryption is separate; no machine policy is changed. Windows DPAPI is
+unchanged and never silently downgraded. Portable modeled checks and compilation
+do not establish real Ubuntu/UID/mount/fsync/reboot/container evidence.
+
 ## Provenance policy for future implementation
 
 For every shipped dependency/artifact, record upstream URL, immutable source/
