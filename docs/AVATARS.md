@@ -8,9 +8,11 @@ and generated-PCM -> Audio2Face -> shared composition -> both renderer paths
 are implemented. Local controlled checks and audio-OFF smoke evidence do not
 qualify native Core/WebGL/model/GPU rendering or physical synchronization.
 Use the [Desktop integration guide](../src/Martlet.Avatar.Hosting/README.md)
-for explicit local setup and exact runtime boundaries. Package producer/
-consumer integration remains in progress; no completed payload, installer or
-release qualification is claimed here.
+for explicit local setup and exact runtime boundaries. The local package
+producer and current reader are implemented with manifest 3 / provenance 2 /
+CycloneDX 1.6; reader support for legacy manifest 1 and manifest 2 / provenance 1
+is preserved. Successful frozen-build payload/conformance evidence is not a
+pass for a later changed tree, a published installer or release qualification.
 
 Avatars remain **OFF until the user enables them**. No-avatar voice/text is a
 normal supported product path, not a fallback error. Development authorization
@@ -54,7 +56,7 @@ owns the system boundaries.
 | Audio2Face, A01b | Implemented/reviewed [NIM gRPC adapter](../src/Martlet.Avatar.Audio2Face/README.md), wired to explicit Desktop session activation through bounded nonblocking live `GeneratedSpeechStream`; buffered clips remain a comparison/offline API. Actual HTTP/2 fixtures establish protocol behavior, not live NVIDIA inference. Speech never waits for analysis. Requires separately provisioned NIM service, permitted models and supported NVIDIA GPU/runtime; no automatic probe, installation or measured GPU/model result. SDK MIT does not license NIM or weights. |
 | Live2D, A02a | Implemented/reviewed standalone [importer/mapping/renderer adapter](../src/Martlet.Avatar.Live2D/README.md), with local checks. Targets official Cubism Web Framework 5-r.4 (`8df84780f2aa1298f3b30965cdae143e049f3c8e`) and matching host-supplied Core **05.01.0000** (`0x05010000`, not editor/SDK marketing version). Embedded shaders avoid the newer asynchronous shader lifecycle; unsupported MOC/Core versions and Cubism 5.3 blend/offscreen features are rejected, not downgraded. Motions/expressions/physics remain inactive; host-composed bounded parameter writes apply without a second mapping. No proprietary runtime/artist model acquired; full SDK linking, native parsing/GPU rendering remain NOT RUN. |
 | VRM, A02b | Implemented/reviewed standalone [VRM importer/facial mapping/renderer adapter](../src/Martlet.Avatar.Vrm/README.md): Three.js 0.180.0 + three-vrm 3.5.5, conservative local self-contained VRM 1 subset. VRM 0, unsupported extensions, non-PNG textures, sparse accessors and embedded animations are rejected. Trusted local gaze/head controls are separate from A2F facial frames. Real-loader/control and bundle checks exist; review corrections are cleared. Actual graphics/artist-rig/device-sync qualification is NOT RUN. VRMA/body playback is **unsupported in the first slice**. |
-| Composition/app integration, A02c | Internal normal WPF setup/session surface, atomic avatar-only sidecar and private WPF/WebView2 renderer host are implemented and reviewed. Explicit A2F mouth/expression activation wires admitted generated PCM, opt-in device clock and shared composition to both renderers exactly once. Passive open has no renderer/inference effects; inspection and activation require separate explicit actions/prerequisites. Local controlled/bridge/audio-OFF smoke evidence is not actual rendering/physical-sync qualification. Packaging producer/consumer work remains separate and incomplete. |
+| Composition/app integration, A02c | Internal normal WPF setup/session surface, atomic avatar-only sidecar and private WPF/WebView2 renderer host are implemented and reviewed. Explicit A2F mouth/expression activation wires admitted generated PCM, opt-in device clock and shared composition to both renderers exactly once. Passive open has no renderer/inference effects; inspection and activation require separate explicit actions/prerequisites. Local controlled/bridge/audio-OFF smoke evidence is not actual rendering/physical-sync qualification. Local package producer/current-reader integration is implemented; exact frozen-build evidence does not qualify later trees or a release. |
 | Rich motion, A02d | Planned capability/wire extensions and procedural/clip integration for head, body, gaze and secondary motion. A facial gaze mapping may consume actual ARKit eye-look channels; that does not create general gaze/pose support. |
 | Qualification, A03 | Planned local real-model/renderer/GPU/device trials, performance and lifecycle evidence; separately reviewed rights/release. No end-to-end avatar acceptance is passed by this guide. |
 
@@ -268,7 +270,8 @@ A01a/A01b start early; Live2D and VRM develop in parallel against coordinated
 interfaces. First-wave fixtures do not depend on licensed model/GPU access.
 A02c now wires the locally integrated contracts/adapters and opt-in
 clock/nonblocking PCM handoff into the normal internal app. Broader composition/
-comparison acceptance, packaging and runtime qualification remain open.
+comparison acceptance, final-tree package qualification and runtime qualification
+remain open.
 A02d extends channels without claiming the v1 face frame carries
 poses. A03a qualifies each advertised subset; facial-only trials need not wait
 for body implementation, but full-motion claims do. Rights research may run
@@ -290,6 +293,20 @@ but revokes activation; no activation permission is persisted. Existing global
 backup/restore excludes the sidecar with visible disclosure until that lifecycle
 integration is qualified. This feature-local recovery is not inclusion in
 global backup, installer/update lifecycle qualification or release readiness.
+
+The [local packaging pipeline](../packaging/windows/README.md) and
+[current update reader](../src/Martlet.Updates/README.md#avatar-payload-schema-3)
+now coordinate manifest 3 / provenance 2 / CycloneDX 1.6, including the real
+Desktop, Doctor and private renderer contexts and browser evidence. The reader
+retains legacy manifest 1 and manifest 2 / provenance 1 paths without rewriting
+their history; older readers reject manifest 3. Actual self-contained payload,
+three-document consumer conformance and repeated local package assertions have
+passed for specific frozen builds. Those receipts do not transfer to a changed
+source tree: final current-tree qualification remains pending this reconciliation
+followed by a fresh source freeze/run.
+No published installer, signed release, native/model/GPU qualification or
+executable update/rollback readiness follows from this metadata compatibility.
+
 G2 voice reliability and G5 avatar release remain
 intact; neither G2 nor G4 blocks independent avatar development. All execution
 and review are local. [Delivery](DELIVERY.md#m5-optional-avatar) owns

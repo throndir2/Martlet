@@ -624,8 +624,15 @@ the settings window preserves explicit session activation; Stop/Escape,
 relevant edits, lock and exit revoke it. No activation survives restart.
 Inherited bounded pipes carry composed targets, never PCM/credentials; each
 target is mapped once. Process/crash isolation is not a general OS sandbox.
-Package producer/consumer integration remains in progress; no completed
-payload, installer or release qualification is claimed.
+The [local package producer](../packaging/windows/README.md) and
+[current metadata reader](../src/Martlet.Updates/README.md#avatar-payload-schema-3)
+are implemented for manifest 3 / provenance 2 / CycloneDX 1.6 with distinct
+Desktop/Doctor/private-renderer ownership. Reader compatibility retains legacy
+manifest 1 and manifest 2 / provenance 1 without rewriting history; older
+readers reject manifest 3. Actual payload/conformance checks passed for specific
+frozen builds, not every subsequent tree. Final current-tree package qualification
+is pending a fresh freeze/run; no published installer, native qualification,
+release approval or executable update/rollback readiness is implied.
 A03 witnesses local real-model/renderer/GPU timing
 and crash behavior before support claims; rights and release remain separate.
 
