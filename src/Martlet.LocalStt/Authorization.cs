@@ -21,6 +21,8 @@ public sealed class LocalAudioAuthorization
     public string AudioSha256 { get; }
     public int AudioBytes { get; }
     public DateTimeOffset ExpiresAt { get; }
+    public DateTimeOffset RequestDeadline { get; }
+    public bool AllowProcessLaunch { get; }
     public bool AllowLocalAudioProcessing { get; }
     public bool AllowEphemeralAudioFile { get; }
     public bool RequireDeniedEgress { get; }
@@ -40,7 +42,9 @@ public sealed class LocalAudioAuthorization
         bool allowLocalAudioProcessing,
         bool allowEphemeralAudioFile,
         bool requireDeniedEgress,
-        bool rightsReviewedForCandidate)
+        bool rightsReviewedForCandidate,
+        DateTimeOffset requestDeadline,
+        bool allowProcessLaunch)
     {
         OperationId = operationId;
         PackageId = packageId;
@@ -51,6 +55,8 @@ public sealed class LocalAudioAuthorization
         AudioSha256 = audioSha256;
         AudioBytes = audioBytes;
         ExpiresAt = expiresAt;
+        RequestDeadline = requestDeadline;
+        AllowProcessLaunch = allowProcessLaunch;
         AllowLocalAudioProcessing = allowLocalAudioProcessing;
         AllowEphemeralAudioFile = allowEphemeralAudioFile;
         RequireDeniedEgress = requireDeniedEgress;

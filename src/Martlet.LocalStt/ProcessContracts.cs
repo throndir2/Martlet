@@ -19,7 +19,7 @@ public enum LocalSttProcessCompletionStatus
     PipeFailure
 }
 
-public sealed class LocalSttProcessStartRequest
+internal sealed class LocalSttProcessStartRequest
 {
     public string ExecutablePath { get; }
     public string WorkingDirectory { get; }
@@ -55,16 +55,16 @@ public sealed record LocalSttProcessCompletion(
     ReadOnlyMemory<byte> StandardOutput,
     ReadOnlyMemory<byte> StandardError);
 
-public sealed record LocalSttProcessStartResult(
+internal sealed record LocalSttProcessStartResult(
     LocalSttProcessStartStatus Status,
     ILocalSttProcess? Process = null);
 
-public interface ILocalSttProcessRunner
+internal interface ILocalSttProcessRunner
 {
     LocalSttProcessStartResult Start(LocalSttProcessStartRequest request);
 }
 
-public interface ILocalSttProcess : IAsyncDisposable
+internal interface ILocalSttProcess : IAsyncDisposable
 {
     int Id { get; }
     Task<LocalSttProcessCompletion> Completion { get; }

@@ -6,6 +6,184 @@ namespace Martlet.LocalStt.Tests;
 public sealed class AdapterTests
 {
     [Fact]
+    public async Task Public_candidate_api_cannot_enable_execution_even_with_matching_hashes_and_audit_fixture()
+    {
+        await using var harness = new AdapterHarness();
+        await using var candidate = new LocalSttAdapter(harness.Verifier, harness.Egress, harness.Clock);
+        var request = harness.Request();
+        var result = await candidate.TranscribeAsync(request, harness.Audio, harness.Authorization(request));
+        Assert.Equal(LocalSttFailureCode.PackageUnqualified, result.Failure!.Code);
+        Assert.Equal(0, harness.Verifier.Calls);
+        Assert.Equal(0, harness.Egress.Calls);
+        Assert.False(typeof(SystemLocalSttProcessRunner).IsPublic);
+        Assert.False(typeof(ILocalSttProcessRunner).IsPublic);
+        Assert.False(typeof(LocalSttProcessStartRequest).IsPublic);
+    }
+
+    [Theory]
+    [InlineData("deadline")]
+    [InlineData("package")]
+    [InlineData("manifest")]
+    [InlineData("model-hash")]
+    [InlineData("operation")]
+    [InlineData("audio-size")]
+    public async Task Every_action_identity_and_original_budget_is_bound_before_consumption(string mismatch)
+    {
+        await using var harness = new AdapterHarness();
+        var request = harness.Request();
+        var authorization = harness.Authorization(request,
+            requestDeadline: mismatch == "deadline" ? request.Deadline.AddSeconds(-1) : null,
+            packageId: mismatch == "package" ? "different" : null,
+            manifestSha256: mismatch == "manifest" ? new string('0', 64) : null,
+            modelSha256: mismatch == "model-hash" ? new string('0', 64) : null,
+            operationId: mismatch == "operation" ? Guid.NewGuid() : null,
+            audioBytes: mismatch == "audio-size" ? 44 : null);
+        var result = await harness.Adapter.TranscribeAsync(request, harness.Audio, authorization);
+        Assert.Equal(LocalSttFailureCode.AuthorizationMismatch, result.Failure!.Code);
+        Assert.True(authorization.TryConsume());
+        Assert.Equal(0, harness.Workspaces.Calls);
+        Assert.Equal(0, harness.Processes.Calls);
+    }
+
+    [Theory]
+    [InlineData("process")]
+    [InlineData("file")]
+    [InlineData("egress")]
+    public async Task Each_distinct_effect_requires_explicit_permission(string permission)
+    {
+        await using var harness = new AdapterHarness();
+        var request = harness.Request();
+        var result = await harness.Adapter.TranscribeAsync(request, harness.Audio,
+            harness.Authorization(request, allowProcess: permission != "process",
+                allowFile: permission != "file", deniedEgress: permission != "egress"));
+        Assert.Equal(LocalSttFailureCode.AuthorizationMissing, result.Failure!.Code);
+        Assert.Equal(0, harness.Workspaces.Calls);
+        Assert.Equal(0, harness.Processes.Calls);
+    }
+
+    [Fact]
+    public async Task Original_deadline_covers_package_verification_without_consuming_permission()
+    {
+        await using var harness = new AdapterHarness();
+        harness.Verifier.Gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        var request = harness.Request(TimeSpan.FromSeconds(5));
+        var authorization = harness.Authorization(request);
+        var pending = harness.Adapter.TranscribeAsync(request, harness.Audio, authorization);
+        await WaitUntilAsync(() => harness.Verifier.Calls == 1);
+        harness.Clock.Advance(TimeSpan.FromSeconds(5));
+        var result = await pending.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(LocalSttFailureCode.DeadlineExceeded, result.Failure!.Code);
+        Assert.True(authorization.TryConsume());
+        Assert.Equal(0, harness.Workspaces.Calls);
+    }
+
+    [Fact]
+    public async Task Cancellation_at_egress_return_disposes_the_returned_session_before_owner_reuse()
+    {
+        await using var harness = new AdapterHarness();
+        using var cancel = new CancellationTokenSource();
+        harness.Egress.BeforeReturn = cancel.Cancel;
+        harness.Egress.Session.DisposeGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        var request = harness.Request();
+        var pending = harness.Adapter.TranscribeAsync(request, harness.Audio, harness.Authorization(request), cancel.Token);
+        await WaitUntilAsync(() => harness.Egress.Session.DisposeCalls == 1);
+        var other = harness.Request();
+        Assert.Equal(LocalSttFailureCode.Busy,
+            (await harness.Adapter.TranscribeAsync(other, harness.Audio, harness.Authorization(other))).Failure!.Code);
+        Assert.False(pending.IsCompleted);
+        harness.Egress.Session.DisposeGate.SetResult();
+        Assert.Equal(LocalSttOutcome.Canceled, (await pending).Outcome);
+        Assert.Equal(0, harness.Processes.Calls);
+        Assert.Equal(1, harness.Workspaces.Workspace.CleanupCalls);
+    }
+
+    [Fact]
+    public async Task Late_egress_admission_is_not_abandoned_after_cancellation()
+    {
+        await using var harness = new AdapterHarness();
+        using var cancel = new CancellationTokenSource();
+        harness.Egress.BeginGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.Egress.IgnoreBeginCancellation = true;
+        var request = harness.Request();
+        var pending = harness.Adapter.TranscribeAsync(request, harness.Audio, harness.Authorization(request), cancel.Token);
+        await WaitUntilAsync(() => harness.Egress.Calls == 1);
+        cancel.Cancel();
+        Assert.False(pending.IsCompleted);
+        var other = harness.Request();
+        Assert.Equal(LocalSttFailureCode.Busy,
+            (await harness.Adapter.TranscribeAsync(other, harness.Audio, harness.Authorization(other))).Failure!.Code);
+        harness.Egress.BeginGate.SetResult();
+        Assert.Equal(LocalSttOutcome.Canceled, (await pending).Outcome);
+        Assert.Equal(1, harness.Egress.Session.DisposeCalls);
+        Assert.Equal(0, harness.Processes.Calls);
+    }
+
+    [Fact]
+    public async Task Dispose_cancels_admitted_work_and_waits_for_private_cleanup_before_returning()
+    {
+        await using var harness = new AdapterHarness();
+        harness.Processes.Process = new FakeProcess();
+        harness.Workspaces.Workspace.CleanupGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        var request = harness.Request();
+        var pending = harness.Adapter.TranscribeAsync(request, harness.Audio, harness.Authorization(request));
+        await harness.WaitForProcessStartAsync();
+        var disposing = harness.Adapter.DisposeAsync().AsTask();
+        await WaitUntilAsync(() => harness.Workspaces.Workspace.CleanupCalls == 1);
+        Assert.False(disposing.IsCompleted);
+        Assert.False(pending.IsCompleted);
+        Assert.Equal(1, harness.Processes.Process.KillCalls);
+        harness.Workspaces.Workspace.CleanupGate.SetResult();
+        await disposing;
+        Assert.Equal(LocalSttOutcome.Canceled, (await pending).Outcome);
+        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
+            harness.Adapter.TranscribeAsync(request, harness.Audio, harness.Authorization(request)));
+    }
+
+    [Fact]
+    public async Task Cancellation_during_final_audit_discards_success_and_clears_transcript_bytes()
+    {
+        await using var harness = new AdapterHarness();
+        using var cancel = new CancellationTokenSource();
+        harness.Egress.Session.BeforeComplete = cancel.Cancel;
+        var request = harness.Request();
+        var result = await harness.Adapter.TranscribeAsync(request, harness.Audio, harness.Authorization(request), cancel.Token);
+        Assert.Equal(LocalSttOutcome.Canceled, result.Outcome);
+        Assert.Null(result.Text);
+        Assert.All(harness.Workspaces.Workspace.Transcript, value => Assert.Equal(0, value));
+        Assert.Equal(1, harness.Workspaces.Workspace.CleanupCalls);
+    }
+
+    [Fact]
+    public async Task Caller_disposal_after_admission_does_not_change_the_authorized_audio_copy()
+    {
+        await using var harness = new AdapterHarness();
+        var request = harness.Request();
+        var permit = harness.Authorization(request);
+        harness.Verifier.BeforeReturn = harness.Audio.Dispose;
+        var result = await harness.Adapter.TranscribeAsync(request, harness.Audio, permit);
+        Assert.Equal(LocalSttOutcome.Completed, result.Outcome);
+        Assert.Equal(1, harness.Workspaces.Calls);
+        Assert.Equal(1, harness.Processes.Calls);
+    }
+
+    [Fact]
+    public async Task One_permit_cannot_be_admitted_by_two_adapter_owners()
+    {
+        await using var first = new AdapterHarness();
+        await using var second = new AdapterHarness();
+        first.Egress.BeginGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        var request = first.Request();
+        var permit = first.Authorization(request);
+        var pending = first.Adapter.TranscribeAsync(request, first.Audio, permit);
+        await WaitUntilAsync(() => first.Egress.Calls == 1);
+        var duplicate = await second.Adapter.TranscribeAsync(request, second.Audio, permit);
+        Assert.Equal(LocalSttFailureCode.AuthorizationConsumed, duplicate.Failure!.Code);
+        Assert.Equal(0, second.Workspaces.Calls);
+        first.Egress.BeginGate.SetResult();
+        Assert.Equal(LocalSttOutcome.Completed, (await pending).Outcome);
+    }
+
+    [Fact]
     public async Task Construction_and_precancellation_are_inert_and_do_not_consume_authorization()
     {
         await using var harness = new AdapterHarness();

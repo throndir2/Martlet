@@ -4,8 +4,13 @@ using Martlet.LocalStt;
 namespace Martlet.LocalStt.Tests;
 
 [Collection("Local STT process fixtures")]
-public sealed class SystemProcessRunnerTests
+public sealed class SystemProcessRunnerTests : IDisposable
 {
+    private readonly string root = Directory.CreateDirectory(
+        Path.Combine(Path.GetTempPath(), "Martlet.LocalStt.ProcessTests", Guid.NewGuid().ToString("N"))).FullName;
+
+    public void Dispose() => Directory.Delete(root, recursive: true);
+
     [Fact]
     public async Task Real_runner_collects_bounded_inert_fixture_output_without_a_shell()
     {
@@ -26,13 +31,15 @@ public sealed class SystemProcessRunnerTests
         var started = runner.Start(request);
         var process = Assert.IsAssignableFrom<ILocalSttProcess>(started.Process);
         var completed = await process.Completion.WaitAsync(TimeSpan.FromSeconds(10));
-        await process.DisposeAsync();
 
         Assert.Equal(LocalSttProcessCompletionStatus.Exited, completed.Status);
         Assert.True(completed.TreeExited);
         Assert.Equal(0, completed.ExitCode);
         Assert.Equal("synthetic stdout", System.Text.Encoding.UTF8.GetString(completed.StandardOutput.Span));
         Assert.Equal("synthetic stderr", System.Text.Encoding.UTF8.GetString(completed.StandardError.Span));
+        await process.DisposeAsync();
+        Assert.All(completed.StandardOutput.ToArray(), value => Assert.Equal(0, value));
+        Assert.All(completed.StandardError.ToArray(), value => Assert.Equal(0, value));
     }
 
     [Theory]
@@ -56,7 +63,7 @@ public sealed class SystemProcessRunnerTests
     [Fact]
     public async Task Tree_kill_stops_parent_and_child_but_not_an_unrelated_fixture()
     {
-        var pidFile = Path.Combine(Path.GetTempPath(), $"Martlet.LocalStt.child.{Guid.NewGuid():N}.txt");
+        var pidFile = Path.Combine(root, "child.txt");
         var runner = new SystemLocalSttProcessRunner();
         var owned = Assert.IsAssignableFrom<ILocalSttProcess>(
             runner.Start(FixtureRequest("tree", pidFile)).Process);
@@ -83,7 +90,7 @@ public sealed class SystemProcessRunnerTests
     [Fact]
     public async Task Root_exit_is_not_reported_as_tree_exit_while_an_owned_child_survives()
     {
-        var pidFile = Path.Combine(Path.GetTempPath(), $"Martlet.LocalStt.orphan.{Guid.NewGuid():N}.txt");
+        var pidFile = Path.Combine(root, "orphan.txt");
         var process = Assert.IsAssignableFrom<ILocalSttProcess>(
             new SystemLocalSttProcessRunner().Start(FixtureRequest("orphan", pidFile)).Process);
         try
@@ -104,7 +111,57 @@ public sealed class SystemProcessRunnerTests
         }
     }
 
-    private static LocalSttProcessStartRequest FixtureRequest(string mode, string? argument = null)
+    [Fact]
+    public void Assignment_failure_never_runs_the_suspended_fixture_and_cleans_the_root()
+    {
+        var marker = Path.Combine(root, "never-written.txt");
+        var pid = 0;
+        var runner = new SystemLocalSttProcessRunner(process =>
+        {
+            pid = process.Id;
+            Assert.False(File.Exists(marker));
+            throw new InvalidOperationException("Injected assignment boundary failure.");
+        });
+        var started = runner.Start(FixtureRequest("marker", marker));
+        Assert.Equal(LocalSttProcessStartStatus.Failed, started.Status);
+        Assert.Null(started.Process);
+        Assert.False(File.Exists(marker));
+        AssertTerminated(pid);
+    }
+
+    [Fact]
+    public async Task Exact_pipe_limits_and_immediate_root_exit_are_drained_without_false_overflow()
+    {
+        for (var iteration = 0; iteration < 20; iteration++)
+        {
+            var process = Assert.IsAssignableFrom<ILocalSttProcess>(
+                new SystemLocalSttProcessRunner().Start(FixtureRequest("exact-limits")).Process);
+            await using (process)
+            {
+                var completed = await process.Completion.WaitAsync(TimeSpan.FromSeconds(10));
+                Assert.Equal(LocalSttProcessCompletionStatus.Exited, completed.Status);
+                Assert.True(completed.TreeExited);
+                Assert.Equal(LocalSttPackageManifest.MaximumStandardOutputBytes, completed.StandardOutput.Length);
+                Assert.Equal(LocalSttPackageManifest.MaximumStandardErrorBytes, completed.StandardError.Length);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("spaces and a trailing slash\\")]
+    [InlineData("literal \"quote\" and \\\\\"quoted\"")]
+    public async Task Native_launch_preserves_each_argument_exactly(string value)
+    {
+        var process = Assert.IsAssignableFrom<ILocalSttProcess>(
+            new SystemLocalSttProcessRunner().Start(FixtureRequest("arguments", value)).Process);
+        await using (process)
+        {
+            var result = await process.Completion.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(value, System.Text.Encoding.UTF8.GetString(result.StandardOutput.Span));
+        }
+    }
+
+    private LocalSttProcessStartRequest FixtureRequest(string mode, string? argument = null)
     {
         var dotnetRoot = Environment.GetEnvironmentVariable("DOTNET_ROOT")
             ?? throw new InvalidOperationException("Tests require the pinned DOTNET_ROOT.");
@@ -119,14 +176,16 @@ public sealed class SystemProcessRunnerTests
             arguments.Add(argument);
         return new(
             executable,
-            Path.GetDirectoryName(typeof(ProcessFixture).Assembly.Location)!,
+            root,
             arguments,
             new[]
             {
                 new KeyValuePair<string, string>(
                     "SYSTEMROOT",
                     Environment.GetFolderPath(Environment.SpecialFolder.Windows)),
-                new KeyValuePair<string, string>("DOTNET_ROOT", dotnetRoot)
+                new KeyValuePair<string, string>("DOTNET_ROOT", dotnetRoot),
+                new KeyValuePair<string, string>("TEMP", root),
+                new KeyValuePair<string, string>("TMP", root)
             },
             LocalSttPackageManifest.MaximumStandardOutputBytes,
             LocalSttPackageManifest.MaximumStandardErrorBytes,

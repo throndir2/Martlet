@@ -65,14 +65,20 @@ internal sealed class EphemeralLocalSttWorkspaceFactory : ILocalSttWorkspaceFact
         var operationDirectory = LocalPathRules.Combine(root, operationId.ToString("N"));
         var inputPath = LocalPathRules.Combine(operationDirectory, "input.wav");
         FileStream? input = null;
+        WindowsDirectoryLease? rootLease = null;
+        WindowsDirectoryLease? operationLease = null;
+        var created = false;
         try
         {
             Directory.CreateDirectory(root);
             pathInspector.AssertSafeExisting(root, directory: true);
+            rootLease = new WindowsDirectoryLease(root);
             if (Directory.Exists(operationDirectory) || File.Exists(operationDirectory))
                 return new(WorkspaceStatus.UnsafePath);
-            Directory.CreateDirectory(operationDirectory);
+            WindowsLocalPath.CreateOwnedDirectory(operationDirectory);
+            created = true;
             pathInspector.AssertSafeExisting(operationDirectory, directory: true);
+            operationLease = new WindowsDirectoryLease(operationDirectory, ownsDirectory: true);
             var transcriptPrefix = LocalPathRules.Combine(operationDirectory, "transcript");
             input = new FileStream(
                 inputPath,
@@ -81,6 +87,7 @@ internal sealed class EphemeralLocalSttWorkspaceFactory : ILocalSttWorkspaceFact
                 FileShare.Read,
                 65_536,
                 FileOptions.Asynchronous | FileOptions.SequentialScan);
+            WindowsLocalPath.Validate(input.SafeFileHandle, inputPath, directory: false);
             await audio.WriteToAsync(input, cancellationToken).ConfigureAwait(false);
             await input.FlushAsync(cancellationToken).ConfigureAwait(false);
             input.Position = 0;
@@ -90,7 +97,8 @@ internal sealed class EphemeralLocalSttWorkspaceFactory : ILocalSttWorkspaceFact
                     inputPath,
                     transcriptPrefix,
                     input,
-                    pathInspector));
+                    pathInspector,
+                    operationLease));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -112,11 +120,17 @@ internal sealed class EphemeralLocalSttWorkspaceFactory : ILocalSttWorkspaceFact
         {
             return CreationFailure(WorkspaceStatus.IoFailure);
         }
+        finally
+        {
+            rootLease?.Dispose();
+        }
 
-        WorkspaceCreateResult CreationFailure(WorkspaceStatus status) =>
-            new(TryCleanupFailedCreation(input, inputPath, operationDirectory)
+        WorkspaceCreateResult CreationFailure(WorkspaceStatus status)
+        {
+            return new(!created || TryCleanupFailedCreation(input, inputPath, operationDirectory, operationLease)
                 ? status
                 : WorkspaceStatus.CleanupFailed);
+        }
     }
 
     private static bool IsDiskFull(IOException error)
@@ -128,7 +142,8 @@ internal sealed class EphemeralLocalSttWorkspaceFactory : ILocalSttWorkspaceFact
     internal bool TryCleanupFailedCreation(
         FileStream? input,
         string inputPath,
-        string directory)
+        string directory,
+        WindowsDirectoryLease? directoryLease = null)
     {
         var clean = true;
         try
@@ -144,19 +159,26 @@ internal sealed class EphemeralLocalSttWorkspaceFactory : ILocalSttWorkspaceFact
             if (File.Exists(inputPath))
             {
                 pathInspector.AssertSafeExisting(inputPath, directory: false);
-                File.Delete(inputPath);
+                WindowsLocalPath.DeleteOwnedFile(inputPath);
             }
             if (Directory.Exists(directory))
             {
                 pathInspector.AssertSafeExisting(directory, directory: true);
                 if (Directory.EnumerateFileSystemEntries(directory).Any())
                     return false;
-                Directory.Delete(directory);
+                if (directoryLease is not null)
+                    directoryLease.DeleteOwnedDirectory();
+                else
+                    Directory.Delete(directory);
             }
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or LocalPathException)
         {
             return false;
+        }
+        finally
+        {
+            directoryLease?.Dispose();
         }
         return clean && !File.Exists(inputPath) && !Directory.Exists(directory);
     }
@@ -167,7 +189,8 @@ internal sealed class EphemeralLocalSttWorkspace : ILocalSttWorkspace
     private readonly string operationDirectory;
     private readonly FileStream input;
     private readonly ILocalPathInspector pathInspector;
-    private int cleaned;
+    private readonly WindowsDirectoryLease directoryLease;
+    private WorkspaceStatus? cleanupStatus;
 
     public string AudioPath { get; }
     public string TranscriptPrefixPath { get; }
@@ -178,13 +201,15 @@ internal sealed class EphemeralLocalSttWorkspace : ILocalSttWorkspace
         string audioPath,
         string transcriptPrefixPath,
         FileStream input,
-        ILocalPathInspector pathInspector)
+        ILocalPathInspector pathInspector,
+        WindowsDirectoryLease directoryLease)
     {
         this.operationDirectory = operationDirectory;
         AudioPath = audioPath;
         TranscriptPrefixPath = transcriptPrefixPath;
         this.input = input;
         this.pathInspector = pathInspector;
+        this.directoryLease = directoryLease;
     }
 
     public async Task<WorkspaceReadResult> ReadTranscriptAsync(CancellationToken cancellationToken)
@@ -200,6 +225,7 @@ internal sealed class EphemeralLocalSttWorkspace : ILocalSttWorkspace
                 FileShare.Read,
                 4096,
                 FileOptions.Asynchronous | FileOptions.SequentialScan);
+            WindowsLocalPath.Validate(stream.SafeFileHandle, path, directory: false);
             if (stream.Length > LocalSttPackageManifest.MaximumTranscriptBytes)
                 return new(WorkspaceStatus.OutputLimit);
             var bytes = new byte[LocalSttPackageManifest.MaximumTranscriptBytes + 1];
@@ -243,38 +269,48 @@ internal sealed class EphemeralLocalSttWorkspace : ILocalSttWorkspace
 
     public Task<WorkspaceStatus> CleanupAsync()
     {
-        if (Interlocked.Exchange(ref cleaned, 1) != 0)
-            return Task.FromResult(WorkspaceStatus.Ready);
+        if (cleanupStatus is { } previous)
+            return Task.FromResult(previous);
         try
         {
             input.Dispose();
             if (File.Exists(AudioPath))
-                File.Delete(AudioPath);
+                WindowsLocalPath.DeleteOwnedFile(AudioPath);
             if (Directory.Exists(operationDirectory))
             {
-                var entries = Directory.EnumerateFileSystemEntries(operationDirectory).ToArray();
+                var entries = Directory.EnumerateFileSystemEntries(operationDirectory).Take(9).ToArray();
                 if (entries.Length > 8)
-                    return Task.FromResult(WorkspaceStatus.IoFailure);
+                    return Result(WorkspaceStatus.IoFailure);
                 foreach (var path in entries)
                 {
                     pathInspector.AssertSafeExisting(path, directory: false);
-                    File.Delete(path);
+                    WindowsLocalPath.DeleteOwnedFile(path);
                 }
-                Directory.Delete(operationDirectory);
+                directoryLease.DeleteOwnedDirectory();
             }
-            return Task.FromResult(WorkspaceStatus.Ready);
+            return Result(WorkspaceStatus.Ready);
         }
         catch (UnauthorizedAccessException)
         {
-            return Task.FromResult(WorkspaceStatus.AccessDenied);
+            return Result(WorkspaceStatus.AccessDenied);
         }
         catch (LocalPathException)
         {
-            return Task.FromResult(WorkspaceStatus.UnsafePath);
+            return Result(WorkspaceStatus.UnsafePath);
         }
         catch (IOException)
         {
-            return Task.FromResult(WorkspaceStatus.IoFailure);
+            return Result(WorkspaceStatus.IoFailure);
+        }
+        finally
+        {
+            directoryLease.Dispose();
+        }
+
+        Task<WorkspaceStatus> Result(WorkspaceStatus status)
+        {
+            cleanupStatus = status;
+            return Task.FromResult(status);
         }
     }
 }

@@ -124,19 +124,22 @@ internal sealed class FakePackageVerifier : ILocalSttPackageVerifier
     internal VerifiedLocalSttPackage Package { get; set; }
     internal int Calls { get; private set; }
     internal Action? BeforeReturn { get; set; }
+    internal TaskCompletionSource? Gate { get; set; }
 
     internal FakePackageVerifier(VerifiedLocalSttPackage package)
     {
         Package = package;
     }
 
-    public Task<PackageVerificationResult> VerifyForLaunchAsync(CancellationToken cancellationToken)
+    public async Task<PackageVerificationResult> VerifyForLaunchAsync(CancellationToken cancellationToken)
     {
         Calls++;
+        if (Gate is not null)
+            await Gate.Task.WaitAsync(cancellationToken);
         BeforeReturn?.Invoke();
-        return Task.FromResult(Status == PackageVerificationStatus.Verified
+        return Status == PackageVerificationStatus.Verified
             ? new PackageVerificationResult(Status, Package)
-            : new PackageVerificationResult(Status));
+            : new PackageVerificationResult(Status);
     }
 }
 
@@ -165,6 +168,7 @@ internal sealed class FakeWorkspace : ILocalSttWorkspace
     internal WorkspaceStatus CleanupStatus { get; set; } = WorkspaceStatus.Ready;
     internal int CleanupCalls { get; private set; }
     internal int ReadCalls { get; private set; }
+    internal TaskCompletionSource? CleanupGate { get; set; }
 
     public string AudioPath => @"C:\fixture-work\input.wav";
     public string TranscriptPrefixPath => @"C:\fixture-work\transcript";
@@ -178,10 +182,12 @@ internal sealed class FakeWorkspace : ILocalSttWorkspace
             : new WorkspaceReadResult(ReadStatus));
     }
 
-    public Task<WorkspaceStatus> CleanupAsync()
+    public async Task<WorkspaceStatus> CleanupAsync()
     {
         CleanupCalls++;
-        return Task.FromResult(CleanupStatus);
+        if (CleanupGate is not null)
+            await CleanupGate.Task;
+        return CleanupStatus;
     }
 }
 
@@ -258,6 +264,8 @@ internal sealed class FakeEgressAuditor : ILocalSttEgressAuditor
     internal LocalSttEgressAuditRequest? Request { get; private set; }
     internal int Calls { get; private set; }
     internal TaskCompletionSource? BeginGate { get; set; }
+    internal bool IgnoreBeginCancellation { get; set; }
+    internal Action? BeforeReturn { get; set; }
 
     public async ValueTask<LocalSttEgressBeginResult> BeginAsync(
         LocalSttEgressAuditRequest request,
@@ -266,9 +274,10 @@ internal sealed class FakeEgressAuditor : ILocalSttEgressAuditor
         Calls++;
         Request = request;
         if (BeginGate is not null)
-            await BeginGate.Task.WaitAsync(cancellationToken);
+            await BeginGate.Task.WaitAsync(IgnoreBeginCancellation ? CancellationToken.None : cancellationToken);
         Session.OperationId = request.OperationId;
         Session.Policy = request.Policy;
+        BeforeReturn?.Invoke();
         return Status == LocalSttEgressBeginStatus.Ready
             ? new LocalSttEgressBeginResult(Status, Session)
             : new LocalSttEgressBeginResult(Status);
@@ -292,6 +301,8 @@ internal sealed class FakeEgressSession : ILocalSttEgressAuditSession
     internal int DisposeCalls { get; private set; }
     internal TaskCompletionSource? BindGate { get; set; }
     internal bool BoundToProcessTree { get; private set; }
+    internal TaskCompletionSource? DisposeGate { get; set; }
+    internal Action? BeforeComplete { get; set; }
 
     public async ValueTask<bool> BindProcessTreeAsync(int processId, CancellationToken cancellationToken)
     {
@@ -306,6 +317,7 @@ internal sealed class FakeEgressSession : ILocalSttEgressAuditSession
     public ValueTask<LocalSttEgressAuditReport> CompleteAsync(CancellationToken cancellationToken)
     {
         CompleteCalls++;
+        BeforeComplete?.Invoke();
         return ValueTask.FromResult(new LocalSttEgressAuditReport(
             OperationId,
             ProcessId,
@@ -319,10 +331,11 @@ internal sealed class FakeEgressSession : ILocalSttEgressAuditSession
             NonLoopbackAttempts));
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         DisposeCalls++;
-        return ValueTask.CompletedTask;
+        if (DisposeGate is not null)
+            await DisposeGate.Task;
     }
 }
 
@@ -367,22 +380,33 @@ internal sealed class AdapterHarness : IAsyncDisposable
         string? audioSha256 = null,
         bool allow = true,
         bool rightsReviewed = true,
-        DateTimeOffset? expiresAt = null)
+        DateTimeOffset? expiresAt = null,
+        DateTimeOffset? requestDeadline = null,
+        string? packageId = null,
+        string? manifestSha256 = null,
+        string? modelSha256 = null,
+        Guid? operationId = null,
+        int? audioBytes = null,
+        bool? allowProcess = null,
+        bool? allowFile = null,
+        bool? deniedEgress = null)
     {
         return new(
-            request.OperationId,
-            Package.PackageId,
-            Package.ManifestSha256,
+            operationId ?? request.OperationId,
+            packageId ?? Package.PackageId,
+            manifestSha256 ?? Package.ManifestSha256,
             modelId ?? Package.ModelId,
-            Package.ModelSha256,
+            modelSha256 ?? Package.ModelSha256,
             language ?? Package.Language,
             audioSha256 ?? Audio.Sha256,
-            Audio.ByteLength,
+            audioBytes ?? Audio.ByteLength,
             expiresAt ?? request.Deadline,
             allow,
-            allow,
-            allow,
-            rightsReviewed);
+            allowFile ?? allow,
+            deniedEgress ?? allow,
+            rightsReviewed,
+            requestDeadline ?? request.Deadline,
+            allowProcess ?? allow);
     }
 
     internal async Task WaitForProcessStartAsync()

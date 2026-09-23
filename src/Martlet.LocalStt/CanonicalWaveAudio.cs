@@ -14,6 +14,7 @@ public sealed class CanonicalWaveAudio : IDisposable
     public static TimeSpan MaximumDuration => TimeSpan.FromSeconds(25);
 
     private byte[]? bytes;
+    private readonly object gate = new();
 
     public int ByteLength => GetBytes().Length;
     public int SamplesPerChannel => (ByteLength - HeaderBytes) / 2;
@@ -32,6 +33,8 @@ public sealed class CanonicalWaveAudio : IDisposable
             throw new LocalSttContractException(wave.Length > MaximumWaveBytes
                 ? LocalSttFailureCode.AudioLimit
                 : LocalSttFailureCode.AudioFormatUnsupported);
+        var owned = wave.ToArray();
+        wave = owned;
         if (!wave[..4].SequenceEqual("RIFF"u8) ||
             !wave.Slice(8, 8).SequenceEqual("WAVEfmt "u8) ||
             !wave.Slice(36, 4).SequenceEqual("data"u8) ||
@@ -45,8 +48,11 @@ public sealed class CanonicalWaveAudio : IDisposable
             BinaryPrimitives.ReadUInt16LittleEndian(wave[34..]) != BitsPerSample ||
             BinaryPrimitives.ReadUInt32LittleEndian(wave[40..]) != wave.Length - HeaderBytes ||
             (wave.Length - HeaderBytes) % 2 != 0)
+        {
+            CryptographicOperations.ZeroMemory(owned);
             throw new LocalSttContractException(LocalSttFailureCode.AudioFormatUnsupported);
-        return new(wave.ToArray());
+        }
+        return new(owned);
     }
 
     internal async ValueTask WriteToAsync(Stream destination, CancellationToken cancellationToken)
@@ -58,14 +64,23 @@ public sealed class CanonicalWaveAudio : IDisposable
     internal bool Matches(string sha256, int byteLength) =>
         byteLength == ByteLength && string.Equals(sha256, Sha256, StringComparison.Ordinal);
 
+    internal CanonicalWaveAudio CopyForAction()
+    {
+        lock (gate)
+            return new(GetBytes().ToArray());
+    }
+
     private byte[] GetBytes() =>
         bytes ?? throw new ObjectDisposedException(nameof(CanonicalWaveAudio));
 
     public void Dispose()
     {
-        var owned = Interlocked.Exchange(ref bytes, null);
-        if (owned is not null)
-            CryptographicOperations.ZeroMemory(owned);
+        lock (gate)
+        {
+            var owned = Interlocked.Exchange(ref bytes, null);
+            if (owned is not null)
+                CryptographicOperations.ZeroMemory(owned);
+        }
     }
 
     public override string ToString() => nameof(CanonicalWaveAudio);

@@ -10,6 +10,17 @@ internal static class ProcessFixture
             return 3;
         switch (mode)
         {
+            case "marker" when rest is [var marker]:
+                await File.WriteAllTextAsync(marker, "fixture ran");
+                await Task.Delay(TimeSpan.FromSeconds(30));
+                return 0;
+            case "arguments" when rest is [var expected]:
+                await Console.Out.WriteAsync(expected);
+                return 0;
+            case "exact-limits":
+                await Console.Out.WriteAsync(new string(' ', LocalSttPackageManifest.MaximumStandardOutputBytes));
+                await Console.Error.WriteAsync(new string(' ', LocalSttPackageManifest.MaximumStandardErrorBytes));
+                return 0;
             case "echo":
                 await Console.Out.WriteAsync("synthetic stdout");
                 await Console.Error.WriteAsync("synthetic stderr");

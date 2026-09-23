@@ -8,6 +8,36 @@ discovery, firewall/service change, background listener or automatic enablement.
 Ordinary validation uses only inert bytes and test processes; it does not
 download or execute whisper.cpp or a Whisper model.
 
+## Reuse provenance and compatibility
+
+The source module, embedded manifest and direct tests were mechanically imported
+from `3a7f4389fe391473d2e004ce8c5e7183560c9748` ("Add optional local STT
+foundation", original author throndir), without its central documentation or
+frozen-branch ancestry. This optional CPU candidate requires **no Docker**.
+It does not change the installation plan or claim a working speech provider.
+
+Fresh review hardened the imported boundary. The later `abea6f6` acquisition
+slice must adapt to these changes rather than overwrite them:
+
+- The public adapter no longer accepts a process runner. Process launch
+  requests/runners are internal; only the friend test assembly exercises their
+  inert-fixture execution seam. Every public transcription request returns
+  `PackageUnqualified` (or precancellation), even with exact package hashes and
+  an injected auditor. There is no enabled public route or qualification switch.
+- Authorization now requires `RequestDeadline` and `AllowProcessLaunch` in
+  addition to the original audio/file/egress/rights permissions. A changed
+  request deadline does not rebind an existing permit.
+- Native Windows launch creates a **suspended** root, assigns its private Job,
+  then resumes it. Failure before assignment cannot run fixture/runtime code.
+  The only inherited handles are the explicitly listed stdin/stdout/stderr pipes.
+- Package/workspace directories are pinned against rename, opened file handles
+  are checked for exact final paths, reparse attributes and hard links, and
+  ephemeral files are deleted through checked handles.
+- Cancellation does not abandon a pending egress admission or a returned
+  session. The adapter retains its owner until that call/session and private
+  cleanup complete; disposal cancels and joins admitted work. A future trusted
+  auditor must honor cancellation and complete cleanup, not detach live leases.
+
 ## Exact candidate identities
 
 The embedded [`whisper-package.v1.json`](whisper-package.v1.json) is the only
@@ -43,10 +73,11 @@ no code in this project resolves them.
 exact `downloads`, `runtime` and `models` contents. It rejects UNC/device/ADS,
 noncanonical paths, symlink/reparse/device entries, undeclared runtime files,
 changed archive/model bytes, unsafe ZIP entries and extracted bytes that differ
-from the exact pinned archive entries. Read handles deny replacement through
-the owned action on Windows. A same-user hostile directory race, Authenticode,
-binary imports, archive-component notices/SBOM and source reproducibility still
-need separate qualification.
+from the exact pinned archive entries. Read handles and pinned ancestor
+directories deny replacement through the owned action on Windows. Hostile
+same-user interference before initial directory acquisition, Authenticode,
+binary imports, archive-component notices/SBOM and source reproducibility
+still need separate qualification.
 
 ## One-use audio and process ownership
 
@@ -55,9 +86,10 @@ WAV: mono, 16 kHz, signed PCM16, at most 800,044 bytes / 25 seconds. Disposal
 zeroes the managed copy. A trusted caller must provide one
 `LocalAudioAuthorization` bound to the exact operation, manifest fingerprint,
 package/model/language, audio SHA-256/length and original deadline. It must
-explicitly allow local processing, the ephemeral file, denied egress and the
-caller's candidate-rights review. The permit is atomically consumed once and
-is never persisted or renewed.
+explicitly allow local processing, process launch, the ephemeral file, denied
+egress and the caller's candidate-rights review. The original request deadline
+is separately bound even when permit expiry is earlier. The permit is
+atomically consumed once and is never persisted or renewed.
 
 The current v1.9.2 CLI source supports file or stdin audio, but this candidate
 deliberately uses only an adapter-owned file:
@@ -65,7 +97,7 @@ deliberately uses only an adapter-owned file:
 | Data | Owner and lifetime |
 | --- | --- |
 | Source capture/canonical conversion | Calling audio path; outside this standalone project |
-| Managed WAV | `CanonicalWaveAudio`; copied, hash-bound and zeroed on dispose |
+| Managed WAV | `CanonicalWaveAudio`; copied before validation, hash-bound, independently snapshotted at admission and zeroed on dispose |
 | `input.wav` | One operation directory under the current-user temp root; process-read-only and explicitly removed after owned tree exit |
 | Process stdin | Redirected and closed before inference; no audio or control input |
 | `transcript.txt` | Exact operation-owned output basename; bounded read after successful exit, then deleted |
@@ -80,26 +112,31 @@ request):
 --no-gpu --no-timestamps --output-txt --output-file OUTPUT --no-prints
 ```
 
-`SystemLocalSttProcessRunner` has a side-effect-free constructor. On authorized
-launch it uses `UseShellExecute=false`, separate `ArgumentList` entries, closed
-stdin, redirected pipes, no window, the verified runtime working directory and
-an environment cleared to `PATH`, `SYSTEMROOT`, owned `TEMP`/`TMP`, `LANG`,
-`LC_ALL` and `OMP_NUM_THREADS`. The started process is immediately assigned to
-a private kill-on-close Windows Job; completion is accepted only when the Job
-is empty, so a root that exits before an owned child is still cleaned as a
-tree. It has no arbitrary executable, model, path, flags, provider secret,
+The internal `SystemLocalSttProcessRunner` has a side-effect-free constructor.
+Its inert fixture path uses native `CreateProcessW` with no shell, individually
+quoted fixed arguments, closed stdin, redirected pipes, no window, the verified
+runtime working directory and an environment cleared to `PATH`, `SYSTEMROOT`,
+owned `TEMP`/`TMP`, `LANG`, `LC_ALL` and `OMP_NUM_THREADS`. The root is created
+with `CREATE_SUSPENDED` and assigned to a private kill-on-close Windows Job
+**before** `ResumeThread`; completion is accepted only when the Job is empty,
+so a root that exits before an owned child is still cleaned as a tree. The
+public adapter has no arbitrary executable, model, path, flags, provider secret,
 retry, alternate model/provider or download fallback.
 
-The adapter has one nonqueueing owner. Original cancellation, authorization
-expiry or the 30-second deadline kills only the spawned process tree and
+The adapter has one nonqueueing owner. The original deadline includes package
+verification. Original cancellation, authorization expiry or the 30-second
+deadline kills only the spawned process tree and
 discards late output. Pipe overflow, malformed output and nonzero exit accept no
 transcript. Failure to stop the tree or delete private files quarantines the
-adapter; it cannot evade cleanup with a replacement process.
+adapter; it cannot evade cleanup with a replacement process. Successful output
+is also discarded if cancellation/expiry occurs during final cleanup. Managed
+transcript and pipe buffers are cleared once consumed and disposed.
 
 ## Denied-egress evidence
 
-Process source inspection is not proof of offline behavior and whisper-cli has
-no no-network flag. Every launch therefore requires an injected
+**A Windows Job owns lifetime, not network egress.** Process source inspection
+is not proof of offline behavior and whisper-cli has no no-network flag.
+Every launch therefore requires an injected
 `ILocalSttEgressAuditor` session that establishes denial **before** start, binds
 the exact PID tree and observes through tree exit. The committed policy is
 `no_network`: both loopback and nonloopback attempt counts must be zero; system
@@ -130,7 +167,10 @@ Coverage includes strict manifest/audio shapes; one-use/mismatched/expired
 authorization; changed archive/executable/dependency/model; missing, extra,
 access-denied and reparse paths; exact arguments/environment; malformed,
 oversized, no-speech and nonzero results; stderr redaction; egress violations;
-hung/canceled/late children; actual inert process-tree termination; disk/access
+hung/canceled/late children; suspended-start assignment failure, immediate
+root/child exit races, exact native argument quoting and actual inert
+process-tree termination; real private junction/hard-link rejection, held
+directory identity, late egress-session cleanup and adapter disposal; disk/access
 and private-file cleanup quarantine. No root-solution/package smoke is
 applicable because this slice does not join either graph.
 

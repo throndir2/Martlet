@@ -8,21 +8,23 @@ public sealed class LocalSttAdapter : IAsyncDisposable
     private readonly ILocalSttWorkspaceFactory workspaceFactory;
     private readonly TimeProvider clock;
     private readonly SemaphoreSlim slot = new(1, 1);
+    private readonly CancellationTokenSource shutdown = new();
+    private readonly bool fixtureExecution;
     private int quarantined;
     private int disposed;
 
     public LocalSttAdapter(
         ILocalSttPackageVerifier packageVerifier,
-        ILocalSttProcessRunner processRunner,
         ILocalSttEgressAuditor egressAuditor,
         TimeProvider? timeProvider = null)
         : this(
             packageVerifier,
-            processRunner,
+            new SystemLocalSttProcessRunner(),
             egressAuditor,
             new EphemeralLocalSttWorkspaceFactory(),
             timeProvider ?? TimeProvider.System)
     {
+        fixtureExecution = false;
     }
 
     internal LocalSttAdapter(
@@ -42,6 +44,7 @@ public sealed class LocalSttAdapter : IAsyncDisposable
         this.egressAuditor = egressAuditor;
         this.workspaceFactory = workspaceFactory;
         this.clock = clock;
+        fixtureExecution = true;
     }
 
     public async Task<LocalSttResult> TranscribeAsync(
@@ -55,6 +58,8 @@ public sealed class LocalSttAdapter : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(audio);
         if (cancellationToken.IsCancellationRequested)
             return LocalSttResult.Canceled(request.OperationId);
+        if (!fixtureExecution)
+            return LocalSttResult.Failed(request.OperationId, LocalSttFailureCode.PackageUnqualified);
         try
         {
             request.Validate(clock.GetUtcNow());
@@ -65,21 +70,33 @@ public sealed class LocalSttAdapter : IAsyncDisposable
         }
         if (!await slot.WaitAsync(0, CancellationToken.None).ConfigureAwait(false))
             return LocalSttResult.Failed(request.OperationId, LocalSttFailureCode.Busy);
+        var callerCancellation = cancellationToken;
+        using var requestBudget = new CancellationTokenSource();
+        using var ownerLifetime = CancellationTokenSource.CreateLinkedTokenSource(callerCancellation, shutdown.Token);
         try
         {
+            var requestRemaining = request.Deadline - clock.GetUtcNow();
+            using var requestTimer = clock.CreateTimer(CancelTimer, requestBudget,
+                requestRemaining > TimeSpan.Zero ? requestRemaining : TimeSpan.Zero, Timeout.InfiniteTimeSpan);
+            ObjectDisposedException.ThrowIf(disposed != 0, this);
             if (quarantined != 0)
                 return LocalSttResult.Failed(request.OperationId, LocalSttFailureCode.Quarantined);
+            using var admittedAudio = audio.CopyForAction();
+            audio = admittedAudio;
+            using var admittedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                ownerLifetime.Token, requestBudget.Token);
+            cancellationToken = admittedCancellation.Token;
             var verification = await packageVerifier.VerifyForLaunchAsync(cancellationToken).ConfigureAwait(false);
             if (verification.Package is null)
                 return cancellationToken.IsCancellationRequested ||
                     verification.Status == PackageVerificationStatus.Canceled
-                    ? LocalSttResult.Canceled(request.OperationId)
+                    ? AdmissionCutoff()
                     : LocalSttResult.Failed(request.OperationId, MapVerification(verification.Status));
 
             await using var package = verification.Package;
             if (cancellationToken.IsCancellationRequested ||
                 verification.Status == PackageVerificationStatus.Canceled)
-                return LocalSttResult.Canceled(request.OperationId);
+                return AdmissionCutoff();
             if (verification.Status != PackageVerificationStatus.Verified)
                 return LocalSttResult.Failed(request.OperationId, MapVerification(verification.Status));
 
@@ -95,7 +112,7 @@ public sealed class LocalSttAdapter : IAsyncDisposable
             if (!authorization!.TryConsume())
                 return LocalSttResult.Failed(request.OperationId, LocalSttFailureCode.AuthorizationConsumed);
             if (cancellationToken.IsCancellationRequested)
-                return LocalSttResult.Canceled(request.OperationId);
+                return AdmissionCutoff();
 
             var cutoffAt = request.Deadline < authorization.ExpiresAt
                 ? request.Deadline
@@ -106,21 +123,12 @@ public sealed class LocalSttAdapter : IAsyncDisposable
                 return LocalSttResult.Failed(request.OperationId, LocalSttFailureCode.DeadlineExceeded);
             using var deadline = new CancellationTokenSource();
             using var deadlineTimer = clock.CreateTimer(
-                static state =>
-                {
-                    try
-                    {
-                        ((CancellationTokenSource)state!).Cancel();
-                    }
-                    catch (ObjectDisposedException)
-                    {
-                    }
-                },
+                CancelTimer,
                 deadline,
                 remaining,
                 Timeout.InfiniteTimeSpan);
             using var operation = CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken,
+                ownerLifetime.Token,
                 deadline.Token);
             var workspaceResult = await workspaceFactory.CreateAsync(
                 request.OperationId,
@@ -137,7 +145,7 @@ public sealed class LocalSttAdapter : IAsyncDisposable
                 return operation.IsCancellationRequested
                     ? CutoffResult(
                         request.OperationId,
-                        cancellationToken,
+                        ownerLifetime.Token,
                         deadline.Token,
                         authorizationCutoff)
                     : LocalSttResult.Failed(request.OperationId, MapWorkspace(workspaceResult.Status));
@@ -149,19 +157,34 @@ public sealed class LocalSttAdapter : IAsyncDisposable
                 workspaceResult.Workspace,
                 cutoffAt,
                 operation.Token,
-                cancellationToken,
+                ownerLifetime.Token,
                 deadline.Token,
                 authorizationCutoff).ConfigureAwait(false);
         }
+
         catch (OperationCanceledException)
         {
-            return cancellationToken.IsCancellationRequested
-                ? LocalSttResult.Canceled(request.OperationId)
-                : LocalSttResult.Failed(request.OperationId, LocalSttFailureCode.DeadlineExceeded);
+            return AdmissionCutoff();
         }
         finally
         {
             slot.Release();
+        }
+
+        LocalSttResult AdmissionCutoff() =>
+            callerCancellation.IsCancellationRequested || shutdown.IsCancellationRequested
+                ? LocalSttResult.Canceled(request.OperationId)
+                : LocalSttResult.Failed(request.OperationId, LocalSttFailureCode.DeadlineExceeded);
+    }
+
+    private static void CancelTimer(object? state)
+    {
+        try
+        {
+            ((CancellationTokenSource)state!).Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
         }
     }
 
@@ -274,7 +297,7 @@ public sealed class LocalSttAdapter : IAsyncDisposable
                 }
                 catch (Exception error) when (error is IOException or InvalidOperationException or
                     UnauthorizedAccessException or System.ComponentModel.Win32Exception or
-                    AggregateException)
+                    AggregateException or TimeoutException)
                 {
                     Interlocked.Exchange(ref quarantined, 1);
                     result = LocalSttResult.Failed(
@@ -329,6 +352,9 @@ public sealed class LocalSttAdapter : IAsyncDisposable
                     completion.StandardError.Length,
                     completion.ExitCode);
         }
+        if (result.Outcome is LocalSttOutcome.Completed or LocalSttOutcome.NoSpeech &&
+            (operationToken.IsCancellationRequested || clock.GetUtcNow() >= cutoffAt))
+            return CutoffResult(request.OperationId, originalCancellationToken, deadlineToken, authorizationCutoff);
         return result;
 
         async Task<LocalSttResult> ExecuteCoreAsync()
@@ -341,7 +367,8 @@ public sealed class LocalSttAdapter : IAsyncDisposable
                     package.ExecutableArchiveSha256,
                     package.ModelSha256,
                     package.NetworkPolicy),
-                operationToken).AsTask().WaitAsync(operationToken).ConfigureAwait(false);
+                operationToken).ConfigureAwait(false);
+            audit = begin.Session;
             if (operationToken.IsCancellationRequested ||
                 begin.Status == LocalSttEgressBeginStatus.Canceled)
             {
@@ -351,7 +378,6 @@ public sealed class LocalSttAdapter : IAsyncDisposable
                     deadlineToken,
                     authorizationCutoff);
             }
-            audit = begin.Session;
             if (begin.Status != LocalSttEgressBeginStatus.Ready ||
                 audit is null ||
                 !audit.DenialEstablishedBeforeLaunch)
@@ -388,8 +414,7 @@ public sealed class LocalSttAdapter : IAsyncDisposable
                     originalCancellationToken,
                     deadlineToken,
                     authorizationCutoff);
-            if (!await audit.BindProcessTreeAsync(processId, operationToken)
-                    .AsTask().WaitAsync(operationToken).ConfigureAwait(false))
+            if (!await audit.BindProcessTreeAsync(processId, operationToken).ConfigureAwait(false))
                 return operationToken.IsCancellationRequested
                     ? CutoffResult(
                         request.OperationId,
@@ -444,22 +469,27 @@ public sealed class LocalSttAdapter : IAsyncDisposable
                     LocalSttFailureCode.ProcessFailed);
             var transcript = await workspace.ReadTranscriptAsync(operationToken)
                 .ConfigureAwait(false);
-            if (operationToken.IsCancellationRequested || clock.GetUtcNow() >= cutoffAt)
-                return CutoffResult(
-                    request.OperationId,
-                    originalCancellationToken,
-                    deadlineToken,
-                    authorizationCutoff);
-            return transcript.Status switch
+            try
             {
-                WorkspaceStatus.Ready when transcript.Bytes is not null =>
-                    TranscriptParser.Parse(request.OperationId, transcript.Bytes),
-                WorkspaceStatus.MissingOutput =>
-                    LocalSttResult.Failed(request.OperationId, LocalSttFailureCode.TranscriptMissing),
-                WorkspaceStatus.OutputLimit =>
-                    LocalSttResult.Failed(request.OperationId, LocalSttFailureCode.TranscriptLimit),
-                _ => LocalSttResult.Failed(request.OperationId, MapWorkspace(transcript.Status))
-            };
+                if (operationToken.IsCancellationRequested || clock.GetUtcNow() >= cutoffAt)
+                    return CutoffResult(
+                        request.OperationId, originalCancellationToken, deadlineToken, authorizationCutoff);
+                return transcript.Status switch
+                {
+                    WorkspaceStatus.Ready when transcript.Bytes is not null =>
+                        TranscriptParser.Parse(request.OperationId, transcript.Bytes),
+                    WorkspaceStatus.MissingOutput =>
+                        LocalSttResult.Failed(request.OperationId, LocalSttFailureCode.TranscriptMissing),
+                    WorkspaceStatus.OutputLimit =>
+                        LocalSttResult.Failed(request.OperationId, LocalSttFailureCode.TranscriptLimit),
+                    _ => LocalSttResult.Failed(request.OperationId, MapWorkspace(transcript.Status))
+                };
+            }
+            finally
+            {
+                if (transcript.Bytes is not null)
+                    System.Security.Cryptography.CryptographicOperations.ZeroMemory(transcript.Bytes);
+            }
         }
     }
 
@@ -495,6 +525,7 @@ public sealed class LocalSttAdapter : IAsyncDisposable
         if (authorization is null ||
             !authorization.AllowLocalAudioProcessing ||
             !authorization.AllowEphemeralAudioFile ||
+            !authorization.AllowProcessLaunch ||
             !authorization.RequireDeniedEgress ||
             !authorization.RightsReviewedForCandidate)
             return LocalSttFailureCode.AuthorizationMissing;
@@ -504,6 +535,7 @@ public sealed class LocalSttAdapter : IAsyncDisposable
             authorization.ModelId != package.ModelId ||
             authorization.ModelSha256 != package.ModelSha256 ||
             authorization.Language != package.Language ||
+            authorization.RequestDeadline != request.Deadline ||
             !audio.Matches(authorization.AudioSha256, authorization.AudioBytes))
             return LocalSttFailureCode.AuthorizationMismatch;
         if (authorization.ExpiresAt <= now ||
@@ -534,9 +566,11 @@ public sealed class LocalSttAdapter : IAsyncDisposable
         _ => LocalSttFailureCode.WorkspaceIo
     };
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         Interlocked.Exchange(ref disposed, 1);
-        return ValueTask.CompletedTask;
+        await shutdown.CancelAsync().ConfigureAwait(false);
+        await slot.WaitAsync().ConfigureAwait(false);
+        slot.Release();
     }
 }

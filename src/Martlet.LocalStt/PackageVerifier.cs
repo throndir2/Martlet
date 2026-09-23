@@ -28,7 +28,7 @@ public interface ILocalSttPackageVerifier
 
 public sealed class VerifiedLocalSttPackage : IAsyncDisposable
 {
-    private IReadOnlyList<Stream>? locks;
+    private IReadOnlyList<IDisposable>? locks;
 
     public string PackageId { get; }
     public string ManifestSha256 { get; }
@@ -46,7 +46,7 @@ public sealed class VerifiedLocalSttPackage : IAsyncDisposable
         string executablePath,
         string modelPath,
         string runtimeDirectory,
-        IReadOnlyList<Stream>? locks = null)
+        IReadOnlyList<IDisposable>? locks = null)
     {
         PackageId = manifest.Id;
         ManifestSha256 = manifest.DocumentSha256;
@@ -112,16 +112,21 @@ public sealed class PhysicalLocalSttPackageVerifier : ILocalSttPackageVerifier
         if (!hostSupported())
             return new(PackageVerificationStatus.UnsupportedHost);
 
-        var held = new List<Stream>();
+        var held = new List<IDisposable>();
         try
         {
             pathInspector.AssertSafeExisting(packageRoot, directory: true);
+            held.Add(new WindowsDirectoryLease(packageRoot));
             var downloads = LocalPathRules.Combine(packageRoot, "downloads");
             var runtime = LocalPathRules.Combine(packageRoot, "runtime");
             var models = LocalPathRules.Combine(packageRoot, "models");
             pathInspector.AssertSafeExisting(downloads, directory: true);
             pathInspector.AssertSafeExisting(runtime, directory: true);
             pathInspector.AssertSafeExisting(models, directory: true);
+            held.Add(new WindowsDirectoryLease(downloads));
+            held.Add(new WindowsDirectoryLease(runtime));
+            held.Add(new WindowsDirectoryLease(models));
+            RequireExactEntries(packageRoot, ["downloads", "runtime", "models"], directories: true);
 
             var runtimeDocument = manifest.Document.Runtime;
             var modelDocument = manifest.Document.Model;
@@ -238,15 +243,15 @@ public sealed class PhysicalLocalSttPackageVerifier : ILocalSttPackageVerifier
         }
     }
 
-    private void RequireExactEntries(string directory, IEnumerable<string> expected)
+    private void RequireExactEntries(string directory, IEnumerable<string> expected, bool directories = false)
     {
         var required = expected.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var observed = Directory.EnumerateFileSystemEntries(directory).ToArray();
+        var observed = Directory.EnumerateFileSystemEntries(directory).Take(required.Count + 1).ToArray();
         if (observed.Length != required.Count)
             throw new InvalidDataException("The package directory contains undeclared entries.");
         foreach (var path in observed)
         {
-            pathInspector.AssertSafeExisting(path, directory: false);
+            pathInspector.AssertSafeExisting(path, directory: directories);
             if (!required.Remove(Path.GetFileName(path)))
                 throw new InvalidDataException("The package directory contains undeclared entries.");
         }
@@ -254,9 +259,21 @@ public sealed class PhysicalLocalSttPackageVerifier : ILocalSttPackageVerifier
             throw new FileNotFoundException("A package entry is missing.");
     }
 
-    private static FileStream OpenLockedRead(string path) =>
-        new(path, FileMode.Open, FileAccess.Read, FileShare.Read, 65_536,
+    private static FileStream OpenLockedRead(string path)
+    {
+        var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 65_536,
             FileOptions.Asynchronous | FileOptions.SequentialScan);
+        try
+        {
+            WindowsLocalPath.Validate(stream.SafeFileHandle, path, directory: false);
+            return stream;
+        }
+        catch
+        {
+            stream.Dispose();
+            throw;
+        }
+    }
 
     private static async Task<bool> HashMatchesAsync(
         FileStream stream,
@@ -305,13 +322,13 @@ public sealed class PhysicalLocalSttPackageVerifier : ILocalSttPackageVerifier
 
     private static PackageVerificationResult Failure(
         PackageVerificationStatus status,
-        List<Stream> held)
+        List<IDisposable> held)
     {
         Dispose(held);
         return new(status);
     }
 
-    private static void Dispose(List<Stream> streams)
+    private static void Dispose(List<IDisposable> streams)
     {
         foreach (var stream in streams)
             stream.Dispose();
@@ -371,7 +388,8 @@ internal static class LocalPathRules
                 full == Path.TrimEndingDirectorySeparator(Path.GetPathRoot(full)!))
                 throw new LocalPathException();
             if (OperatingSystem.IsWindows() &&
-                (full[1] != ':' || full[2..].Contains(':')))
+                (full[1] != ':' || full[2..].Contains(':') ||
+                 full[3..].Split('\\').Any(segment => segment.EndsWith('.') || segment.EndsWith(' '))))
                 throw new LocalPathException();
             return full;
         }

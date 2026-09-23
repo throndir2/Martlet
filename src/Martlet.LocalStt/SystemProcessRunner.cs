@@ -1,12 +1,16 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Security.Cryptography;
 
 namespace Martlet.LocalStt;
 
-public sealed class SystemLocalSttProcessRunner : ILocalSttProcessRunner
+internal sealed class SystemLocalSttProcessRunner : ILocalSttProcessRunner
 {
-    public SystemLocalSttProcessRunner()
+    private readonly Action<Process>? beforeAssignment;
+
+    internal SystemLocalSttProcessRunner(Action<Process>? beforeAssignment = null)
     {
+        this.beforeAssignment = beforeAssignment;
     }
 
     public LocalSttProcessStartResult Start(LocalSttProcessStartRequest request)
@@ -15,34 +19,37 @@ public sealed class SystemLocalSttProcessRunner : ILocalSttProcessRunner
         if (!OperatingSystem.IsWindows())
             return new(LocalSttProcessStartStatus.Unsupported);
         Process? process = null;
+        WindowsSuspendedProcess? native = null;
         WindowsProcessJob? job = null;
         var started = false;
         var assigned = false;
         try
         {
             job = WindowsProcessJob.Create();
-            process = new Process { StartInfo = BuildStartInfo(request) };
-            if (!process.Start())
-            {
-                process.Dispose();
-                job.Dispose();
-                return new(LocalSttProcessStartStatus.Failed);
-            }
+            native = WindowsSuspendedProcess.Create(BuildStartInfo(request));
+            process = native.Process;
             started = true;
+            beforeAssignment?.Invoke(process);
             job.Assign(process);
             assigned = true;
-            if (request.CloseStandardInput)
-                process.StandardInput.Close();
+            native.Resume();
             return new(LocalSttProcessStartStatus.Started,
                 new SystemLocalSttProcess(
-                    process,
+                    native,
                     job,
                     request.MaximumStandardOutputBytes,
                     request.MaximumStandardErrorBytes));
         }
+        catch (SuspendedProcessCleanupException)
+        {
+            job?.Dispose();
+            return new(LocalSttProcessStartStatus.CleanupFailed);
+        }
         catch (Win32Exception error)
         {
-            if (!CleanupFailedStart(process, job, started, assigned))
+            var cleaned = CleanupFailedStart(process, job, started, assigned);
+            native?.Dispose();
+            if (!cleaned)
                 return new(LocalSttProcessStartStatus.CleanupFailed);
             return new(error.NativeErrorCode switch
             {
@@ -54,7 +61,9 @@ public sealed class SystemLocalSttProcessRunner : ILocalSttProcessRunner
         }
         catch (Exception error) when (error is InvalidOperationException or IOException)
         {
-            if (!CleanupFailedStart(process, job, started, assigned))
+            var cleaned = CleanupFailedStart(process, job, started, assigned);
+            native?.Dispose();
+            if (!cleaned)
                 return new(LocalSttProcessStartStatus.CleanupFailed);
             return new(LocalSttProcessStartStatus.Failed);
         }
@@ -115,7 +124,7 @@ public sealed class SystemLocalSttProcessRunner : ILocalSttProcessRunner
         catch (Exception error) when (error is InvalidOperationException or Win32Exception or
             AggregateException or NotSupportedException or IOException)
         {
-            cleaned = HasExited(process);
+            cleaned = !assigned && HasExited(process);
         }
         finally
         {
@@ -141,6 +150,7 @@ public sealed class SystemLocalSttProcessRunner : ILocalSttProcessRunner
 internal sealed class SystemLocalSttProcess : ILocalSttProcess
 {
     private readonly Process process;
+    private readonly WindowsSuspendedProcess native;
     private readonly WindowsProcessJob job;
     private readonly int id;
     private readonly CancellationTokenSource reads = new();
@@ -154,21 +164,22 @@ internal sealed class SystemLocalSttProcess : ILocalSttProcess
     public Task<LocalSttProcessCompletion> Completion { get; }
 
     internal SystemLocalSttProcess(
-        Process process,
+        WindowsSuspendedProcess native,
         WindowsProcessJob job,
         int maximumStandardOutputBytes,
         int maximumStandardErrorBytes)
     {
-        this.process = process;
+        this.native = native;
+        process = native.Process;
         this.job = job;
         id = process.Id;
         standardOutput = ReadCappedAsync(
-            process.StandardOutput.BaseStream,
+            native.StandardOutput,
             maximumStandardOutputBytes,
             outputLimit,
             reads.Token);
         standardError = ReadCappedAsync(
-            process.StandardError.BaseStream,
+            native.StandardError,
             maximumStandardErrorBytes,
             outputLimit,
             reads.Token);
@@ -197,7 +208,8 @@ internal sealed class SystemLocalSttProcess : ILocalSttProcess
                     ReadOnlyMemory<byte>.Empty,
                     ReadOnlyMemory<byte>.Empty);
             var pipes = Task.WhenAll(standardOutput, standardError);
-            first = await Task.WhenAny(pipes, outputLimit.Task).ConfigureAwait(false);
+            first = await Task.WhenAny(pipes, outputLimit.Task)
+                .WaitAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
             if (first == outputLimit.Task)
                 return new(
                     LocalSttProcessCompletionStatus.OutputLimit,
@@ -220,7 +232,8 @@ internal sealed class SystemLocalSttProcess : ILocalSttProcess
                 standardOutput.Result,
                 standardError.Result);
         }
-        catch (Exception error) when (error is IOException or ObjectDisposedException or TimeoutException)
+        catch (Exception error) when (error is IOException or ObjectDisposedException or TimeoutException or
+            OperationCanceledException)
         {
             return new(
                 LocalSttProcessCompletionStatus.PipeFailure,
@@ -278,36 +291,59 @@ internal sealed class SystemLocalSttProcess : ILocalSttProcess
     {
         if (Interlocked.Exchange(ref disposed, 1) != 0)
             return;
-        if (!TreeExited())
-            await KillTreeAsync(LocalSttPackageManifest.ProcessCleanupTimeout).ConfigureAwait(false);
-        await reads.CancelAsync().ConfigureAwait(false);
-        reads.Dispose();
-        process.Dispose();
-        job.Dispose();
+        try
+        {
+            if (!await KillTreeAsync(LocalSttPackageManifest.ProcessCleanupTimeout).ConfigureAwait(false))
+                throw new IOException("The owned local STT tree did not stop.");
+            await Task.WhenAll(standardOutput, standardError, Completion)
+                .WaitAsync(LocalSttPackageManifest.ProcessCleanupTimeout).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (reads.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            job.Dispose();
+            native.Dispose();
+            reads.Dispose();
+            if (standardOutput.IsCompletedSuccessfully)
+                CryptographicOperations.ZeroMemory(standardOutput.Result);
+            if (standardError.IsCompletedSuccessfully)
+                CryptographicOperations.ZeroMemory(standardError.Result);
+        }
     }
 
-    private static async Task<byte[]> ReadCappedAsync(
+    private static Task<byte[]> ReadCappedAsync(
         Stream stream,
         int maximum,
         TaskCompletionSource outputLimit,
         CancellationToken cancellationToken)
+        => Task.Run(() =>
     {
         var buffer = new byte[maximum + 1];
         var count = 0;
-        while (count <= maximum)
+        try
         {
-            var read = await stream.ReadAsync(buffer.AsMemory(count), cancellationToken).ConfigureAwait(false);
-            if (read == 0)
-                return buffer[..count];
-            count += read;
-            if (count > maximum)
+            while (count <= maximum)
             {
-                outputLimit.TrySetResult();
-                return [];
+                cancellationToken.ThrowIfCancellationRequested();
+                var read = stream.Read(buffer.AsSpan(count));
+                if (read == 0)
+                    return buffer[..count];
+                count += read;
+                if (count > maximum)
+                {
+                    outputLimit.TrySetResult();
+                    return [];
+                }
             }
+            throw new InvalidOperationException("Unreachable bounded process output state.");
         }
-        throw new InvalidOperationException("Unreachable bounded process output state.");
-    }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(buffer);
+        }
+    });
 
     private bool TreeExited()
     {
