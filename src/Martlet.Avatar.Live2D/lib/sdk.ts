@@ -21,6 +21,7 @@ export interface CubismModel {
 }
 
 export interface CubismMoc {
+  getMocVersion(): number;
   createModel(): CubismModel | null;
   deleteModel(model: CubismModel): void;
   release(): void;
@@ -59,7 +60,6 @@ export interface SdkModules {
 
 interface CoreVersionApi {
   csmGetVersion(): number;
-  csmGetMocVersion(bytes: ArrayBuffer): number;
   csmGetLatestMocVersion(): number;
 }
 

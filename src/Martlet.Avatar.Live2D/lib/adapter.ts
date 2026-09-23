@@ -164,12 +164,12 @@ export class Live2DAdapter {
       const bytes = bundle.read(bundle.description.moc);
       requireCondition(bytes.length >= 8 && bytes[0] === 77 && bytes[1] === 79 && bytes[2] === 67 && bytes[3] === 51,
         "INVALID_MOC", "MOC3 signature is missing.");
-      const version = core.csmGetMocVersion(bytes.buffer);
-      requireCondition(Number.isInteger(version) && version > 0 && version <= core.csmGetLatestMocVersion(),
-        "UNSUPPORTED_MOC", "This MOC is unsupported by Core 05.01.0000; obtain compatible original assets.");
       const moc = sdk.CubismMoc.create(bytes.buffer, true);
       requireCondition(moc, "INVALID_MOC", "Core rejected the MOC consistency check or could not allocate it.");
       resources.moc = moc;
+      const version = moc.getMocVersion();
+      requireCondition(Number.isInteger(version) && version > 0 && version <= core.csmGetLatestMocVersion(),
+        "UNSUPPORTED_MOC", "This MOC is unsupported by Core 05.01.0000; obtain compatible original assets.");
       const model = moc.createModel();
       requireCondition(model, "MODEL_CREATE_FAILED", "Core could not create this model.");
       resources.model = model;

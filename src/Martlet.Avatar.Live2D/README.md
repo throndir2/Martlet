@@ -93,8 +93,12 @@ A fresh accepted frame may be followed by `startClock()` to resume.
 
 `LocalModelBundle` snapshots a map of user-selected relative paths to byte arrays.
 It parses JSON using the built-in JSON parser, never Cubism's JSON parser.
-`load()` calls `CubismMoc.create(bytes, true)`, then `createModel()`, and reads
+`load()` calls `CubismMoc.create(bytes, true)`, checks the created object's
+`getMocVersion()` before `createModel()`, and reads
 `getParameterId`, minimum, maximum and default for every real parameter.
+The pinned Framework owns its Core version lookup using the required
+`csmGetMocVersion(moc, mocBytes)` signature; this adapter never calls the newer
+single-buffer overload. Version rejection releases the created MOC and Framework.
 `LipSync`/`EyeBlink` groups are reported as authored metadata, not inferred names.
 It never uses `getParameterIndex` for absent IDs (the SDK can synthesize virtual
 entries there), assumes `ParamMouthOpenY`, or invents a default `0..1` output range.

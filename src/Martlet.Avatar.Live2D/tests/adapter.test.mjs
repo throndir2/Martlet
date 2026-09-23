@@ -186,13 +186,24 @@ test("delayed first RAF expires frame and reset cancels previously queued callba
   assert.equal(env.calls.length, count);
 });
 
-test("unsupported MOC rejects before consistency/native creation and frees Framework", async t => {
+test("pinned Core MOC version is read through the consistency-checked Framework object", async t => {
   const env = environment();
-  env.core.Version.csmGetMocVersion = () => 6;
+  await loaded(env, t);
+  const names = env.calls.map(c => c[0]);
+  assert.ok(names.indexOf("moc.create") < names.indexOf("core.mocVersion"));
+  assert.ok(names.indexOf("core.mocVersion") < names.indexOf("moc.getMocVersion"));
+  assert.ok(names.indexOf("moc.getMocVersion") < names.indexOf("model.create"));
+  assert.equal(names.filter(name => name === "core.mocVersion").length, 1);
+});
+
+test("unsupported MOC rejects before model creation and releases the checked MOC and Framework", async t => {
+  const env = environment();
+  env.mocVersion.value = 6;
   const adapter = create(env);
   t.after(() => adapter.dispose());
   await assert.rejects(adapter.load(bundle()), code("UNSUPPORTED_MOC"));
-  assert.ok(!env.calls.some(c => c[0] === "moc.create"));
+  assert.ok(!env.calls.some(c => c[0] === "model.create"));
+  assert.ok(env.calls.some(c => c[0] === "moc.release"));
   assert.ok(env.calls.some(c => c[0] === "framework.dispose"));
 });
 

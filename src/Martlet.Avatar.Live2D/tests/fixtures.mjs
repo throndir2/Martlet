@@ -1,4 +1,5 @@
 import { CORE_VERSION, FRAMEWORK_REVISION, LocalModelBundle } from "../dist/index.js";
+import assert from "node:assert/strict";
 
 export function png(width = 2, height = 2) {
   const bytes = new Uint8Array(33);
@@ -63,8 +64,18 @@ export function environment() {
   };
   let started = false;
   let initialized = false;
+  const coreMoc = {};
+  const mocVersion = { value: 5 };
   const core = { Version: {
-    csmGetVersion: () => CORE_VERSION, csmGetMocVersion: () => 5, csmGetLatestMocVersion: () => 5,
+    csmGetVersion: () => CORE_VERSION,
+    csmGetMocVersion(moc, bytes) {
+      assert.equal(arguments.length, 2, "Core 05.01.0000 requires csmGetMocVersion(moc, mocBytes).");
+      assert.equal(moc, coreMoc);
+      assert.ok(bytes instanceof ArrayBuffer);
+      calls.push(["core.mocVersion", moc, bytes]);
+      return mocVersion.value;
+    },
+    csmGetLatestMocVersion: () => 5,
   } };
   globalThis.Live2DCubismCore = core;
   const sdk = {
@@ -79,8 +90,11 @@ export function environment() {
     },
     CubismMoc: { create: (bytes, consistency) => {
       calls.push(["moc.create", consistency]);
+      assert.equal(consistency, true);
+      const version = core.Version.csmGetMocVersion(coreMoc, bytes);
       return {
-        createModel: () => model,
+        getMocVersion: () => { calls.push(["moc.getMocVersion"]); return version; },
+        createModel: () => { calls.push(["model.create"]); return model; },
         deleteModel: () => calls.push(["model.delete"]),
         release: () => calls.push(["moc.release"]),
       };
@@ -126,5 +140,5 @@ export function environment() {
     now: () => 0,
   };
   const diagnostics = [];
-  return { calls, values, parameters, model, core, sdk, gl, canvas, services, frames, events, diagnostics };
+  return { calls, values, parameters, model, core, mocVersion, sdk, gl, canvas, services, frames, events, diagnostics };
 }
