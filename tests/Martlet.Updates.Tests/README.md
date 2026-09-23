@@ -41,6 +41,9 @@ v2 restores, fresh-consent acknowledgment, unchanged old evidence after later
 v3 settings migration, invalid recorded schemas and continued current-schema
 admission for new rollback. Historical marker/ack schemas are never inferred from
 `CurrentSchemaVersion`; this does not introduce a new journal format.
+A valid two-persona Unicode snapshot larger than 128 KiB also traverses actual
+selection, restore and acknowledgment with the 256 KiB snapshot-specific limit;
+journal/control limits remain unchanged.
 
 The real unchanged-reader regression fails at `Preview` with `UnsafeEntry` for
 the current root SBOM; the fixed same staging/inspection test passes. Retain the

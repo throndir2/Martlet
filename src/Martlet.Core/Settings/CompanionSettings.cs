@@ -117,6 +117,7 @@ public sealed record CompanionSettings : IContract
     public required Guid ActivePersonaId { get; init; }
     public required IReadOnlyList<PersonaProfile> Personas { get; init; }
 
+    [JsonIgnore]
     public PersonaProfile ActivePersona =>
         Personas.Single(persona => persona.Id == ActivePersonaId);
 

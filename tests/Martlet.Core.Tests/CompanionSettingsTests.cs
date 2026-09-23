@@ -121,6 +121,37 @@ public sealed class CompanionSettingsTests : IDisposable
     }
 
     [Fact]
+    public async Task MaximumUtf8PersonasPersistWithoutDuplicatingTheActiveProfile()
+    {
+        var settings = CompanionSettings.Begin(null);
+        var persona = settings.Companion!.ActivePersona;
+        var companion = settings.Companion.Update(persona.Id, persona.Name, new string('\u00e9', 8192), persona.Styles);
+        companion = companion.Add("Second", companion.ActivePersona);
+        settings = settings with { Companion = companion };
+        var saved = await Store.SaveAsync(settings, null);
+        Assert.True(saved.Saved);
+        var bytes = await File.ReadAllBytesAsync(Store.FilePath);
+        Assert.DoesNotContain("\"active_persona\":", Encoding.UTF8.GetString(bytes));
+        Assert.Equal(ContractJson.Write(settings), ContractJson.Write((await Store.LoadAsync()).Settings!));
+        Assert.Equal(32_768, settings.Companion.Personas.Sum(item => Encoding.UTF8.GetByteCount(item.Text)));
+    }
+
+    [Fact]
+    public async Task EarlierVersionThreeDerivedPersonaFieldStillLoadsWithoutRewriting()
+    {
+        var settings = CompanionSettings.Begin(null);
+        var document = System.Text.Json.Nodes.JsonNode.Parse(ContractJson.Write(settings))!;
+        document["companion"]!["active_persona"] = document["companion"]!["personas"]![0]!.DeepClone();
+        var original = Encoding.UTF8.GetBytes(document.ToJsonString());
+        Directory.CreateDirectory(directory);
+        await File.WriteAllBytesAsync(Store.FilePath, original);
+        var loaded = await Store.LoadAsync();
+        Assert.Equal(SettingsLoadState.Loaded, loaded.State);
+        Assert.Equal(ContractJson.Write(settings), ContractJson.Write(loaded.Settings!));
+        Assert.Equal(original, await File.ReadAllBytesAsync(Store.FilePath));
+    }
+
+    [Fact]
     public async Task StoreRejectsPersonaMutationWithoutFreshRevision()
     {
         var settings = CompanionSettings.Begin(null);

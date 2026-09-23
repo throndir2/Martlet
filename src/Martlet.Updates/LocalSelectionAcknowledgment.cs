@@ -376,7 +376,7 @@ public sealed partial class LocalSelectionEngine
                 var path = SafePath(Path.Combine(directory, file));
                 if (!LocalPaths.Exists(path)) continue;
                 Add(Path.GetFileName(directory) + "/" + file);
-                AddFile(path, MaximumJournalBytes);
+                AddFile(path, file == "configuration.martlet-config" ? ConfigurationSnapshot.MaximumBytes : MaximumJournalBytes);
             }
         }
         return Convert.ToHexStringLower(hash.GetHashAndReset());

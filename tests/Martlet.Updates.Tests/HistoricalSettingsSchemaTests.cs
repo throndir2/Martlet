@@ -7,6 +7,28 @@ namespace Martlet.Updates.Tests;
 
 public sealed class HistoricalSettingsSchemaTests(SigningKeys keys) : IClassFixture<SigningKeys>
 {
+    [Fact]
+    public async Task LargeValidPersonaSnapshotsSurviveSelectionRestoreAndAcknowledgment()
+    {
+        using var f = new SelectionFixture(keys);
+        var loaded = await f.Settings.LoadAsync();
+        var companion = loaded.Settings!.Companion!;
+        var persona = companion.ActivePersona;
+        companion = companion.Update(persona.Id, persona.Name, new string('\u00e9', 8192), persona.Styles);
+        companion = companion.Add("Second", companion.ActivePersona);
+        Assert.True((await f.Settings.SaveAsync(loaded.Settings with { Companion = companion }, loaded.Revision)).Saved);
+        f.RefreshFacts();
+        Assert.InRange(new FileInfo(f.Snapshot()).Length, 131_073, ConfigurationSnapshot.MaximumBytes);
+        await Interrupt(f);
+        var engine = f.Engine();
+        var effects = new SetupOperationRunner();
+        var plan = await engine.PreviewRollbackConfigurationAcknowledgment(engine.Inspect().Revision, effects).Completion;
+        var result = await engine.AcknowledgeRollbackConfiguration(plan, ApproveAcknowledgment(plan), effects).Completion;
+        Assert.Null(result.Failure);
+        Assert.Equal(RollbackAcknowledgment.Recorded, result.Acknowledgment);
+        Assert.Equal(result.Selection!.Revision, f.Engine().Recover().Revision);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

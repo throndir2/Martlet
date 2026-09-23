@@ -187,7 +187,8 @@ public sealed partial class LocalSelectionEngine
                 ValidateState(after);
                 var journal = new SelectionJournal(before.FormatVersion, plan.TransactionId, plan.PlanDigest, before, pending, after);
                 WriteNew(Path.Combine(directory, "before.json"), Wire.Write(before), token);
-                WriteNew(Path.Combine(directory, "configuration.martlet-config"), plan.SnapshotBytes, token);
+                WriteNew(Path.Combine(directory, "configuration.martlet-config"), plan.SnapshotBytes, token,
+                    ConfigurationSnapshot.MaximumBytes);
                 using var retainedSnapshot = PinSnapshot(plan.FreshSnapshot, token);
                 WriteNew(Path.Combine(directory, JournalName(before.FormatVersion)),
                     JournalBytes(journal), token);
@@ -716,7 +717,7 @@ public sealed partial class LocalSelectionEngine
         { throw new SelectionException(SelectionFailure.InvalidControl); }
     }
 
-    private void WriteNew(string path, byte[] bytes, CancellationToken token)
+    private void WriteNew(string path, byte[] bytes, CancellationToken token, int maximum = MaximumJournalBytes)
     {
         SafePath(path);
         Point(SelectionIoPoint.BeforeCreate, path, token);
@@ -731,7 +732,7 @@ public sealed partial class LocalSelectionEngine
             Point(SelectionIoPoint.AfterFlush, path, token);
         }
         using var read = BoundedIo.OpenRead(path);
-        if (!BoundedIo.Read(read, MaximumJournalBytes, token).AsSpan().SequenceEqual(bytes))
+        if (!BoundedIo.Read(read, maximum, token).AsSpan().SequenceEqual(bytes))
             throw new SelectionException(SelectionFailure.InvalidControl);
     }
 
