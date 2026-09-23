@@ -21,17 +21,7 @@ public sealed class AvatarWindowTests
         var renderer = new ControlledRenderer();
         await using var controller = new AvatarController(createRenderer: () => renderer);
         await controller.InspectAsync(scope.Profile(), default);
-        var configuration = new AvatarConfiguration
-        {
-            Version = Martlet.Core.Contracts.ContractVersion.Current, Enabled = false,
-            PreferredBackend = AvatarBackend.Audio2Face, RequestedAspects = [AvatarAspect.Mouth], OmittedAspects = [],
-            Assignments = [new() { Aspect = AvatarAspect.Mouth, SourceId = AvatarController.SourceId,
-                MappingId = "jaw", AcceptReduced = true }],
-            MappingProfiles = [new() { Id = "jaw", SourceId = AvatarController.SourceId, ModelId = renderer.Capabilities!.ModelId,
-                Mappings = [new() { Source = new() { Blendshape = "jawOpen" }, TargetParameterId = "Jaw", OutputMinimum = 0, OutputMaximum = 1 }] }]
-        };
-        await store.SaveAsync(controller.InspectedProfile! with
-            { Configuration = AvatarProfile.ConfigurationElement(configuration) }, null);
+        await SaveMappingAsync(store, controller);
         AvatarWindow Open() => new(controller, store, new SetupService(settings, new ForbiddenVault()), new SetupOperationRunner())
             { ShowActivated = false, ShowInTaskbar = false };
         var window = Open();
@@ -59,6 +49,52 @@ public sealed class AvatarWindowTests
         }
         finally { reopened.Close(); }
     });
+
+    [Fact]
+    public Task Closing_while_configuration_acknowledgement_is_held_revokes_pending_activation() => OnDispatcher(async () =>
+    {
+        using var scope = new AvatarHostingTests.Scope();
+        var settings = new SettingsStore(scope.DirectoryPath);
+        var initial = AppSettings.CreateUnconfigured();
+        Assert.True((await settings.SaveAsync(initial with { Profile = initial.Profile with { Id = scope.ProfileId } }, null)).Saved);
+        var store = new AvatarProfileStore(scope.DirectoryPath);
+        var renderer = new ControlledRenderer { ConfigureRelease = new(TaskCreationOptions.RunContinuationsAsynchronously) };
+        await using var controller = new AvatarController(createRenderer: () => renderer);
+        await controller.InspectAsync(scope.Profile(), default);
+        await SaveMappingAsync(store, controller);
+        var window = new AvatarWindow(controller, store, new SetupService(settings, new ForbiddenVault()), new SetupOperationRunner())
+            { ShowActivated = false, ShowInTaskbar = false };
+        window.Show();
+        try
+        {
+            var result = (TextBlock)window.FindName("ResultText");
+            await Until(() => result.Text.Contains("loaded", StringComparison.Ordinal));
+            ((CheckBox)window.FindName("AnalysisPermission")).IsChecked = true;
+            ((Button)window.FindName("ActivateButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await renderer.ConfigureEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            window.Close();
+            renderer.ConfigureRelease.TrySetResult();
+            await Until(() => result.Text.Contains("canceled", StringComparison.Ordinal));
+            Assert.False(controller.IsActive);
+            Assert.False(controller.Observer.IsEnabled);
+        }
+        finally { renderer.ConfigureRelease.TrySetResult(); window.Close(); }
+    });
+
+    private static Task<string> SaveMappingAsync(AvatarProfileStore store, AvatarController controller)
+    {
+        var configuration = new AvatarConfiguration
+        {
+            Version = Martlet.Core.Contracts.ContractVersion.Current, Enabled = false,
+            PreferredBackend = AvatarBackend.Audio2Face, RequestedAspects = [AvatarAspect.Mouth], OmittedAspects = [],
+            Assignments = [new() { Aspect = AvatarAspect.Mouth, SourceId = AvatarController.SourceId,
+                MappingId = "jaw", AcceptReduced = true }],
+            MappingProfiles = [new() { Id = "jaw", SourceId = AvatarController.SourceId, ModelId = controller.Capabilities!.ModelId,
+                Mappings = [new() { Source = new() { Blendshape = "jawOpen" }, TargetParameterId = "Jaw", OutputMinimum = 0, OutputMaximum = 1 }] }]
+        };
+        return store.SaveAsync(controller.InspectedProfile! with
+            { Configuration = AvatarProfile.ConfigurationElement(configuration) }, null);
+    }
 
     private static async Task Until(Func<bool> condition)
     {
@@ -98,15 +134,22 @@ public sealed class AvatarWindowTests
         public RendererCapabilities? Capabilities { get; private set; }
         public bool HasExited => exited.Task.IsCompleted;
         public Task Exited => exited.Task;
+        internal TaskCompletionSource? ConfigureRelease { get; init; }
+        internal TaskCompletionSource ConfigureEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Task StartAsync(AvatarProfile profile, string revision, CancellationToken token)
         {
             Capabilities = new(revision.ToLowerInvariant(), [new("Jaw", 0, 1, 0, ["Mouth"])]);
             return Task.CompletedTask;
         }
-        public Task<RendererMessage> SendAsync<T>(string kind, T data, CancellationToken token, TimeSpan? timeout = null)
+        public async Task<RendererMessage> SendAsync<T>(string kind, T data, CancellationToken token, TimeSpan? timeout = null)
         {
             token.ThrowIfCancellationRequested();
-            return Task.FromResult(RendererProtocol.Message("ok", Guid.NewGuid(), new { }));
+            if (kind == "configure")
+            {
+                ConfigureEntered.TrySetResult();
+                if (ConfigureRelease is { } held) await held.Task;
+            }
+            return RendererProtocol.Message("ok", Guid.NewGuid(), new { });
         }
         public ValueTask DisposeAsync() { exited.TrySetResult(); return ValueTask.CompletedTask; }
     }
