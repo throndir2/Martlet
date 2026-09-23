@@ -115,12 +115,18 @@ substitute fixtures or install a VM, WSL, Docker, drivers or services.
 
 For **development**, use Windows with .NET SDK **10.0.401** (the exact .NET 10
 LTS SDK in `global.json`). PowerShell 7 is needed only for the smoke scripts.
-Initial NuGet restore needs internet; no provider keys, microphone, GPU, Docker,
-Python, Node, administrator rights or model downloads are needed.
+Desktop/solution builds also require Node.js and npm to build the real bundled
+avatar shell (locally exercised with Node **20.11.1**, npm **10.2.4** and locked
+esbuild **0.25.12**). Initial NuGet/npm restores need internet; no provider keys,
+microphone, GPU, Docker, Python, administrator rights or model downloads are
+needed for building. End users need no Node/npm/dev server: the shell is bundled.
+Actual avatar activation has separate user-owned runtime/model prerequisites;
+see the [Desktop avatar guide](src/Martlet.Avatar.Hosting/README.md).
 
 ```powershell
+npm ci --prefix src\Martlet.Avatar.Vrm --no-audit --no-fund
 dotnet restore Martlet.slnx --locked-mode
-dotnet build Martlet.slnx --no-restore -c Release
+dotnet build Martlet.slnx --no-restore -c Release "-p:NodeExecutable=$((Get-Command node).Source)"
 dotnet test Martlet.slnx --no-build -c Release
 .\scripts\Smoke-Doctor.ps1
 .\scripts\Smoke-Desktop.ps1
@@ -129,6 +135,13 @@ dotnet test Martlet.slnx --no-build -c Release
 The desktop smoke needs an interactive Windows desktop and exits the app after
 reading its accessible status. Both smoke scripts use unique temporary data
 paths, never the real user profile.
+
+`NodeExecutable` defaults to `node`; the explicit property also works when a
+long inherited Windows PATH is truncated by nested command execution. It does
+not modify machine settings or skip the browser build. Explicit RID restores
+use project-local generated `obj\runtime-locks` documents, not ordinary source
+locks. Those development locks are not release reproducibility evidence;
+reviewed packaging supplies separate authoritative committed lock paths.
 
 Launch with an explicit disposable data location while developing:
 

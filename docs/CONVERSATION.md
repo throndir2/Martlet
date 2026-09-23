@@ -8,6 +8,16 @@ enumerates devices, records, plays, discovers a model or makes an API request.
 Ordinary Doctor/status remains read-only; `self-test` is still a fixture command,
 not a live connection test.
 
+An optional **Avatar setup / STOP avatar** entry is available within the live
+window and from the main window. Its [feature guide](../src/Martlet.Avatar.Hosting/README.md)
+describes separately permitted local renderer inspection and generated-speech
+analysis. Opening it is passive; activation is never inherited from conversation
+permission or persisted. Only accepted generated TTS PCM is observed, never mic
+capture or token arrival. Avatar backpressure, missing actual device clock,
+renderer failure and Audio2Face unavailability do not delay or fail voice.
+Only explicit A2F mouth/expression mapping is currently wired; alternatives and
+other aspects require explicit omission, not automatic fallback.
+
 ## First configured action
 
 1. In **Setup / resume**, choose the named OpenAI API profile. Apply explicit
