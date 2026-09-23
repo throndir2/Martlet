@@ -15,6 +15,15 @@ public sealed class GatewayHostAuthority : IDisposable
         Devices = new(state);
     }
 
+    internal GatewayHostAuthority(GatewayHostIdentity identity, TimeProvider clock,
+        TrustCheckpoint checkpoint, IDurableTrust persistence)
+    {
+        state = new(identity, clock, checkpoint, persistence);
+        Devices = new(state);
+    }
+
+    internal void Complete(CancellationToken cancellationToken) => state.Complete(cancellationToken);
+
     public GatewayPairingOffer ApprovePairing(Guid deviceId, GatewayScope scopes,
         CancellationToken cancellationToken = default) =>
         state.Approve(deviceId, scopes, rotation: false, cancellationToken);
@@ -51,7 +60,7 @@ public sealed class GatewayDeviceAccess
     public override string ToString() => nameof(GatewayDeviceAccess);
 }
 
-internal sealed class GatewayTrustState : IDisposable
+internal sealed partial class GatewayTrustState : IDisposable
 {
     private const GatewayScope KnownScopes = GatewayScope.Status | GatewayScope.Transcription |
         GatewayScope.Generation | GatewayScope.Synthesis | GatewayScope.Perception |
@@ -132,20 +141,29 @@ internal sealed class GatewayTrustState : IDisposable
             var overlap = NewLifetime(now, GatewayTrustLimits.RotationOverlap);
             ct.ThrowIfCancellationRequested();
             var secret = GatewaySecret.Generate();
-            var current = new Credential(secret.Verifier(), life);
-            if (approval.Rotation)
+            try
             {
-                var device = devices[deviceId];
-                device.Previous = device.Current;
-                device.Overlap = overlap;
-                device.Current = current;
+                var current = new Credential(secret.Verifier(), life);
+                if (approval.Rotation)
+                {
+                    var device = devices[deviceId];
+                    device.Previous = device.Current;
+                    device.Overlap = overlap;
+                    device.Current = current;
+                }
+                else
+                {
+                    devices.Add(deviceId, new(approval.Scopes, current));
+                }
+                RemoveApproval(approvalId);
+                Commit(now);
+                return new(identity, deviceId, approval.Scopes, life.ExpiresAt, secret);
             }
-            else
+            catch
             {
-                devices.Add(deviceId, new(approval.Scopes, current));
+                secret.Dispose();
+                throw;
             }
-            RemoveApproval(approvalId);
-            return new(identity, deviceId, approval.Scopes, life.ExpiresAt, secret);
         }
     }
 
@@ -188,11 +206,12 @@ internal sealed class GatewayTrustState : IDisposable
     {
         lock (gate)
         {
-            Enter(ct);
+            var now = Enter(ct);
             if (!devices.ContainsKey(deviceId))
                 throw Failure(GatewayTrustFailure.CredentialRejected);
             ct.ThrowIfCancellationRequested();
             RemoveDevice(deviceId);
+            Commit(now);
         }
     }
 

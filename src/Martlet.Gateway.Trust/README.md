@@ -7,6 +7,13 @@ Desktop settings, provider permits or host artifact schemas. It uses the .NET
 `TimeProvider`/cancellation conventions and disposable, redacted secret ownership
 used elsewhere in Martlet without reusing cloud-provider permission semantics.
 
+The separate [H03b1 durable owner](../Martlet.Gateway.Persistence/README.md)
+now supplies an explicit Windows DPAPI/owned-file composition through internal
+wiring. The public constructor described here remains memory-only. That
+composition adds synchronous durable commits under the authority lock and
+clean-restart clock checkpoints; failure closes authority and leaves a recovery
+fence. It exposes no general state import and is not yet a TLS gateway.
+
 ## Authority and approval boundary
 
 The future trusted host composition constructs and exclusively retains
