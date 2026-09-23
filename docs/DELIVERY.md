@@ -456,6 +456,23 @@ manufacture statuses or merge a held PR. Stop only dependent waves for a genuine
 blocker and continue independent work. Update this ledger with actual merged
 evidence; a queued session or code-only foundation is not a completed feature.
 
+#### H03b3: explicit Linux state backend candidate
+
+The canonical durable owner now shares one checkpoint/redo engine across its
+unchanged Windows-DPAPI default and an explicit `LinuxServicePermissions`
+candidate. Linux x86_64/glibc/local-ext4 state uses native FD/UID/mode/ACL/link/
+mount verification, cooperative lock and atomic rename plus directory fsync.
+Its distinct envelope is **permission-isolated plaintext**, not DPAPI parity;
+no silent migration/fallback or second paired-device authority exists.
+
+Permanent relationships, revocations/nonces, same-key renewal, default No and
+loopback-only behavior are retained. Windows regressions and the modeled
+production Linux boundary run locally; the separate native Linux test target
+is compile-only here. Actual Linux execution, reboot/service/container lifecycle,
+portable approval UI/console, private worker transport and LAN remain
+**NOT RUN / unqualified**. H01/#21 and hosting-preset holds remain unchanged.
+See [custody/recovery and evidence](../src/Martlet.Gateway.Persistence/README.md#explicit-linux-service-permissions-candidate).
+
 ## 3. Parallelization boundaries and first implementation batch
 
 Start from the reviewed plan. The shortest useful batch is:

@@ -1,7 +1,9 @@
 # Durable paired-device gateway
 
-**Windows-only internal library, default No; not an installed or qualified
-host.** This composes the canonical `Martlet.Gateway` authority and its existing
+**Internal library, default No; not an installed or qualified host.** Existing
+factories retain Windows current-user DPAPI. An explicitly selected
+`LinuxServicePermissions` backend is an **unqualified Linux candidate**, not
+DPAPI-equivalent encryption. This composes the canonical `Martlet.Gateway` authority and its existing
 Kestrel/TLS stack. Optional typed inference workers can now be supplied through
 the existing trusted owner; defaults and the CLI still supply none. No LAN
 listener, model activation, service, firewall or AppSettings/Desktop/companion
@@ -95,14 +97,16 @@ identity, reset all devices or silently claim a normal permanent-state update.
 
 Every factory defaults to `LocalGatewayDecision.No`, which returns an inert
 owner without touching storage, DPAPI, keys or sockets. Only an explicit Enable
-and canonical loopback origin can open a Windows authority. Loading state and
+and canonical loopback origin can open the selected authority. Existing
+signatures still select Windows DPAPI; Linux requires the explicit overload
+described below. Loading state and
 starting its listener are separate actions. Host-control objects, certificate
 keys and mutable authority are never exposed to request handlers or DI.
 
 | Local operation | Effect |
 | --- | --- |
 | `CreateNew` | New absent private path and host key with exact selected host ID; never overwrites/adopts existing state |
-| `OpenExisting` | Loads committed state and performs authenticated redo if needed, keeping the same pairings |
+| `OpenExisting` | Loads committed state and performs validated predecessor-bound redo if needed, keeping the same pairings |
 | `StartAsync` | Starts the existing TLS listener; fresh certificate/key/pin/SAN/time validation |
 | `OpenPairing` | Explicit exact device/name/roles approval; volatile five-minute one-use invitation |
 | `Rotate` | New permanent credential and old-key retirement (up to ten minutes), committed together |
@@ -127,20 +131,22 @@ No implicit new-key generation repairs a corrupt existing identity. Deliberately
 creating a new identity at a **different** path produces a different pin and
 requires verified pairing to that identity; it does not erase the old store.
 
-The real authenticated local approval executable/UI remains a **separate
-dependent PR**. API capability possession is not proof of human consent.
-No installer, packaging, service or hosting preset is enabled here.
+The [local approval executable](../Martlet.Gateway.Host/README.md) remains a
+Windows-only console application. Linux approval/disclosure, graphical setup
+and headless service lifecycle remain separate work. API capability possession
+is not proof of human consent. No installer, packaging, service or hosting
+preset is enabled here.
 
 ## Protected state and crash-safe commit
 
 The HMAC SHA-256 verifier is itself a **signing key**. Treat it like a credential,
-not a harmless password hash. Current-user DPAPI protects all signing keys,
+not a harmless password hash. **On the Windows backend**, current-user DPAPI protects all signing keys,
 PKCS#12 identity, role/ID records, revision/generation/predecessor hashes,
 clock observations and live nonce history. Raw issued secrets and pending
 pairing tokens are not persisted. Temporary clear key/checkpoint buffers are
 zeroed; existing managed wire secret strings cannot be reliably erased.
 
-Storage requires an app-owned canonical fixed local NTFS path, current-user
+Windows storage requires an app-owned canonical fixed local NTFS path, current-user
 owner and protected DACL granting only current-user/SYSTEM. Directory pinning,
 file-type/link/ACL checks and an exclusive owner lock reject UNC/ADS/reparse/
 hardlink attacks and concurrent writers; permissions are never auto-repaired.
@@ -216,6 +222,115 @@ remaining old-key overlap is charged on reopen.
 
 ## Provenance, validation and remaining gates
 
+### Explicit Linux service-permissions candidate
+
+The new overloads put `GatewayStorageBackend storageBackend` immediately after
+`GatewayOrigin origin`, before workers/audit. They preserve all existing public
+signatures as Windows-DPAPI defaults. No automatically selected Linux fallback,
+environment selector or stored approval flag exists. For example, a future
+trusted local owner can explicitly choose:
+
+```csharp
+await using var host = DurableGatewayHost.OpenExisting(
+    selectedPath, loopbackOrigin, GatewayStorageBackend.LinuxServicePermissions,
+    workers, audit, LocalGatewayDecision.Enable);
+```
+
+Opening and starting remain separate. `CreateNew` still requires an absent
+selected leaf; it never adopts an existing empty directory. `OpenExisting`
+never creates missing state. `RenewCertificateForLocalHost` has the same
+explicit backend overload and retains the host key/pin. Routine updates reopen
+the same backend/path; changing custody is not an update/migration mechanism.
+
+**LinuxServicePermissions is plaintext at rest**, isolated by native filesystem
+permissions under a stable non-root service UID. Signing keys and the PKCS#12
+private key are in the same canonical state document, not in another authority
+or a companion key file. The separate `MRTLUP02` envelope contains version,
+length, payload and SHA-256 checksum over the header/payload. That checksum
+detects accidental damage, **not authenticity against a writer of the state**.
+There is no encryption, vault claim, key-beside-ciphertext scheme or DPAPI parity.
+The unchanged strict inner v2 document and Gateway protocol 2 are shared.
+Opposite-backend envelopes report `StorageBackendMismatch`; known timed formats
+report `MigrationRequired`. Original state is preserved, not translated.
+
+This does not protect against same-UID code, root/privileged administrators,
+compromised OS, offline disk/backup reads, memory inspection, privileged namespace
+changes or complete-state rollback. Use separately operator-managed disk
+encryption when offline confidentiality is needed; the library does not
+configure/detect it. A desktop Secret Service can require login/unlock.
+systemd encrypted credentials require separate key provisioning and lifecycle
+integration; neither is silently assumed available at unattended boot.
+
+The initial native candidate is **Linux x86_64 with glibc, persistent local
+ext4**, targeting Ubuntu 24.04. Missing native APIs/metadata or unsupported
+filesystems fail explicitly. ARM64, musl, tmpfs, overlay, NFS/SMB/FUSE,
+container user/mount mappings and arbitrary Docker volumes are not supported
+by this candidate. ext4 identification includes the mount record, not just
+the filesystem magic shared with ext2/ext3. No native acceptance has run here.
+
+| Native boundary | Policy |
+| --- | --- |
+| Identity | Current real/effective non-root UID and unchanged real/effective GID; no supplied administrator identity or environment-derived UID. |
+| Parents | Canonical absolute path; existing ancestors root/current-UID owned, not group/other writable, no ACLs/symlinks. Selected existing parent is current-UID-owned 0700. Shared sticky temp directories do not qualify. |
+| Creation | Only the exact absent leaf, mode 0700; files created exclusively with 0600. No ancestor creation, permission repair, chown, umask changes or adoption. A restrictive umask can cause explicit refusal. |
+| Native references | Held directory FDs; openat2 no-symlink/no-magic-link resolution, beneath-relative access and no mount crossing below the selected parent. statx masks, inode/device/mount/type/UID/modes and named/held identities are rechecked. |
+| Files | Five-name allowlist; regular files, mode 0600, UID match, one hardlink, no ACL and same device/mount. Symlinks/FIFOs/devices/unknown entries are refused. |
+| Ownership | Stable CLOEXEC owner.lock inode with nonblocking exclusive cooperative flock; never removed on close. It does not constrain hostile same-UID writers. |
+| Timing | Kernel procfs boot ID, canonical monotonic/UTC checks; changed boot does not expire paired credentials. No trusted offline clock is claimed. |
+
+The shared `AuthorityStore` owns the same transition and predecessor-bound redo
+algorithm for both platforms; Windows NTFS/DPAPI mechanics remain in their
+adapters. Linux uses same-directory `renameat2`: preparation is no-replace,
+promotion replaces only the verified current predecessor. It flushes the staged
+file and directory, then the **directory after preparation**, then committed
+file and **directory after promotion** before returning authority/results.
+Creation, running-marker changes and unprepared-stage removal also flush
+directory metadata. No `File.Exists` error becomes implicit absence in the
+shared engine. No path-based reopen/delete/rename is used by the Linux store.
+
+On error, live admission closes and prepared bytes remain available for redo.
+Corrupt committed/prepared state, unknown entries and foreign successors are
+preserved and block access. Reserved, correctly owned unprepared staging may
+be removed only after committed authority validates and no pending transaction
+exists; a decodable foreign-host/generation stage is preserved instead.
+Interrupted initialization before preparation may leave no recoverable identity,
+but cannot have issued a device credential. There is no implicit new identity.
+
+Raw Linux envelopes contain secrets, unlike Windows ciphertext: shared
+read/encode/recovery buffers and owned native transfer copies are zeroed on
+success/failure. Checkpoint/certificate ownership remains explicit. Managed
+JSON/certificate-internal allocations and wire strings cannot be promised
+perfectly erasable. Errors are bounded failure categories, not raw native
+messages, key data or serialized state.
+
+### Evidence separation
+
+The portable test project runs production Linux directory/envelope/shared-store
+code through a stateful syscall model; it checks flags, permissions, identity,
+short transfers, lock ownership, exact file/directory flush ordering and crashes
+at preparation/promotion boundaries. Actual canonical pinned loopback TLS and
+inference admission use generated synthetic identities with that modeled disk.
+These results are **not native Linux filesystem or service evidence**.
+
+`tests/Martlet.Gateway.Persistence.Linux.Tests` is a separately compiled native
+target. On a separately authorized Linux host it requires
+`MARTLET_LINUX_TEST_PARENT` to name an existing current-UID-owned private ext4
+parent and `DOTNET_ROOT` to select the test host. It creates only uniquely named
+child paths and generated keys; it does not create service accounts or repair
+existing modes. Unsupported OS/missing authorization prerequisites fail with
+**NOT RUN**, not a passing platform skip. Tests cover native owned handles/modes,
+cooperative subprocess lock, interruption, proc boot identity, symlink refusal,
+and actual canonical loopback pairing/replay/renewal/revocation.
+**This target was compiled, not executed, on Windows.**
+
+Actual Ubuntu UID/ACL/mount/fsync behavior, boot without login, OS reboot and
+power loss, service installation, container volumes/namespaces, Linux approval
+console/UI, private-worker transport and LAN/two-host deployment remain
+**NOT RUN / unqualified**. No Linux setup preset becomes eligible from a
+portable pass, compile, saved setup report or this backend's existence.
+
+### Windows provenance and unchanged holds
+
 DPAPI/ACL/NTFS/atomic-file and certificate mechanics are adapted from held #37
 final source `18daa4acfa90d7c7dff52861c93800a2f63b0823`, byte-identical mechanics
 introduced by `b5073a332ffbe0c73d7ab2064f89a3339730124f`. Its Trust credentials,
@@ -229,7 +344,7 @@ real DPAPI/ACL/links, actual interrupted subprocesses, exact replay, native
 boot identification plus injected boot changes, pinned loopback TLS,
 same-key automatic renewal and malformed/stale recovery cases.
 
-No real OS reboot, arbitrary hardware power loss, Linux backend, service
+No real OS reboot, arbitrary hardware power loss, native Linux backend execution, service
 identity, LAN/firewall/two-host, engines/models or installed update is qualified
 by those tests. Windows passes are not Linux support. H01/#21 and deployment
 holds remain unchanged. No remote CI is enabled or dispatched.

@@ -208,12 +208,13 @@ Display cloud retention links; "not used for training by default" is not
 
 Use standard cryptographic/TLS libraries, not custom crypto. Threat-model and
 exercise bootstrap, invitation expiry, durable revocation/replay recovery and
-key rotation in H03. The internal Windows-only
+key rotation in H03. The internal
 [durable canonical owner](../src/Martlet.Gateway.Persistence/README.md) implements
 explicit protocol-2 paired/retiring lifetimes and predecessor-bound crash redo.
 Earlier timed/prototype files are preserved as migration-needed, not silently
 made permanent; source clients must adopt the versioned semantics. The local
-approval executable/UI, Ubuntu/service backend and real deployment remain gated.
+Windows approval CLI is separate; Linux approval UI/service lifecycle and real
+deployment remain gated.
 Unpaired clients may access only a minimal liveness/pairing surface, not
 model inventories, system data, logs, or job results.
 
@@ -232,6 +233,24 @@ world-readable Compose environment files. Explain that an OS key store is not
 protection from malware already executing as that user. Bind provider credentials
 to approved origins; reject credential-bearing cross-origin redirects and
 never reuse a cloud key for a user-entered endpoint.
+
+### Linux gateway state custody candidate
+
+The durable owner now has an explicitly selected `LinuxServicePermissions`
+backend sharing the canonical authority/checkpoint/redo algorithm. Existing
+factories still select Windows DPAPI. Linux x86_64/glibc/local-ext4 storage uses
+service-UID-owned 0700/0600 permissions and is **plaintext at rest**, not
+DPAPI-equivalent encryption. Its separate envelope prevents silent cross-backend
+interpretation; its checksum detects damage, not hostile-writer tampering.
+Same-UID/root/offline-disk and whole-store rollback threats remain; optional
+operator-managed disk encryption is outside the application.
+
+Native handle/mount/UID checks, cooperative locking and file/directory-fsynced
+redo are implemented as an **unqualified candidate**. Native Ubuntu execution,
+service/container lifecycle, Linux approval UI/console and LAN qualification
+remain NOT RUN. No alternate TLS/device state, stored approval authority or
+qualified hosting preset is introduced. See the
+[storage contract and evidence boundaries](../src/Martlet.Gateway.Persistence/README.md#explicit-linux-service-permissions-candidate).
 
 ## 3. Capability negotiation and provider contract
 

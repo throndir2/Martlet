@@ -14,7 +14,8 @@ public enum GatewayPersistenceFailure
     ClockUnavailable,
     MigrationRequired,
     Disabled,
-    Closed
+    Closed,
+    StorageBackendMismatch
 }
 
 public sealed class GatewayPersistenceException : Exception
@@ -24,8 +25,8 @@ public sealed class GatewayPersistenceException : Exception
     internal GatewayPersistenceException(GatewayPersistenceFailure failure)
         : base(failure switch
         {
-            GatewayPersistenceFailure.UnsupportedPlatform => "This authority requires Windows and local NTFS storage.",
-            GatewayPersistenceFailure.InvalidPath => "Select a canonical, app-owned local NTFS directory with an existing parent.",
+            GatewayPersistenceFailure.UnsupportedPlatform => "The selected authority backend requires its supported native OS and local filesystem.",
+            GatewayPersistenceFailure.InvalidPath => "Select a canonical, app-owned path with an existing private parent on the backend's supported local filesystem.",
             GatewayPersistenceFailure.InsecureStorage => "The owned storage permissions, ownership or file identity are unsafe.",
             GatewayPersistenceFailure.StoreMissing => "The protected authority does not exist; it was not automatically created.",
             GatewayPersistenceFailure.StoreBusy => "The protected authority already has an owner.",
@@ -36,6 +37,7 @@ public sealed class GatewayPersistenceException : Exception
             GatewayPersistenceFailure.ClockUnavailable => "Correct the host clock and reopen the existing authority. Paired devices remain recorded.",
             GatewayPersistenceFailure.MigrationRequired => "This earlier authority format requires a deliberate migration. Original identity and pairing bytes were preserved; do not reset or overwrite the store.",
             GatewayPersistenceFailure.Disabled => "The local gateway remains disabled until explicitly enabled.",
+            GatewayPersistenceFailure.StorageBackendMismatch => "The stored authority belongs to a different storage backend. Original bytes were preserved; no automatic custody migration is available.",
             _ => "The local gateway owner is closed."
         }) => Failure = failure;
 }

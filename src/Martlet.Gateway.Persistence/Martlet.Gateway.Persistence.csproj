@@ -2,5 +2,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Martlet.Gateway\Martlet.Gateway.csproj" />
     <InternalsVisibleTo Include="Martlet.Gateway.Persistence.Tests" />
+    <InternalsVisibleTo Include="Martlet.Gateway.Persistence.Portable.Tests" />
+    <InternalsVisibleTo Include="Martlet.Gateway.Persistence.Linux.Tests" />
   </ItemGroup>
 </Project>
