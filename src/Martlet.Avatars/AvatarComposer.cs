@@ -116,8 +116,10 @@ public sealed class AvatarComposition
         {
             ContractRules.Require(frame.TryGetValue(mapping.Source, out var coefficient),
                 "The frame is missing a mapped channel; incomplete frames cannot substitute neutral values.");
-            parameters.Add(mapping.TargetParameterId,
-                mapping.OutputMinimum + coefficient * (mapping.OutputMaximum - mapping.OutputMinimum));
+            var value = mapping.OutputMinimum + coefficient * (mapping.OutputMaximum - mapping.OutputMinimum);
+            // Contain interpolation roundoff; coefficients and authored endpoints have already been validated.
+            parameters.Add(mapping.TargetParameterId, Math.Clamp(value,
+                Math.Min(mapping.OutputMinimum, mapping.OutputMaximum), Math.Max(mapping.OutputMinimum, mapping.OutputMaximum)));
         }
         var disposition = gate.TryAccept(frame, playback);
         return new(disposition, disposition == FrameDisposition.Accepted

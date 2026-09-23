@@ -7,6 +7,27 @@ namespace Martlet.Avatars.Tests;
 public sealed class AvatarJsonTests
 {
     [Fact]
+    public void PublishedSchemaCatalogAndRequiredFieldsMatchProduction()
+    {
+        using var schema = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "frame-v1.schema.json")));
+        using var frame = JsonDocument.Parse(AvatarJson.WriteFrame(TestData.Frame));
+        Assert.Equal(
+            frame.RootElement.EnumerateObject().Select(p => p.Name).Order(),
+            schema.RootElement.GetProperty("required").EnumerateArray().Select(p => p.GetString()!).Order());
+        Assert.Equal(AvatarChannels.BlendshapeNames.Order(),
+            schema.RootElement.GetProperty("$defs").GetProperty("blendshape_name").GetProperty("enum")
+                .EnumerateArray().Select(n => n.GetString()!).Order());
+        Assert.Equal(Enum.GetValues<SemanticChannel>().Select(AvatarChannels.SemanticName).Order(),
+            schema.RootElement.GetProperty("properties").GetProperty("semantics").GetProperty("items")
+                .GetProperty("properties").GetProperty("channel").GetProperty("enum")
+                .EnumerateArray().Select(n => n.GetString()!).Order());
+        Assert.Equal(9_007_199_254_740_991,
+            schema.RootElement.GetProperty("properties").GetProperty("sample_offset").GetProperty("maximum").GetInt64());
+        var config = AvatarJson.ReadConfiguration(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "configuration-v1.json")));
+        Assert.Equal(AvatarJson.WriteConfiguration(AvatarConfiguration.Disabled), AvatarJson.WriteConfiguration(config));
+    }
+
+    [Fact]
     public void GoldenRoundTripsProductionEnvelope()
     {
         var frame = AvatarJson.ReadFrame(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "frame-v1.json")));

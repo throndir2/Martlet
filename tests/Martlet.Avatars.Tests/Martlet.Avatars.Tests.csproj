@@ -10,5 +10,7 @@
     <ProjectReference Include="..\..\src\Martlet.Avatars\Martlet.Avatars.csproj" />
     <Using Include="Xunit" />
     <None Include="..\..\contracts\avatars\frame-v1.json" Link="frame-v1.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\contracts\avatars\frame-v1.schema.json" Link="frame-v1.schema.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\contracts\avatars\configuration-v1.json" Link="configuration-v1.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

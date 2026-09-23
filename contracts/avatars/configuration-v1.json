@@ -1,0 +1,9 @@
+{
+  "version": { "major": 1, "minor": 0 },
+  "enabled": false,
+  "preferred_backend": "audio2_face",
+  "requested_aspects": [],
+  "omitted_aspects": [],
+  "assignments": [],
+  "mapping_profiles": []
+}
