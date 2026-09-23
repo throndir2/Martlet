@@ -72,6 +72,69 @@ public sealed class RetrievalTests
     }
 
     [Fact]
+    public async Task TiedRankingUsesRecencyBeforeTruncationAcrossResultLimits()
+    {
+        using var scope = new TestScope();
+        var clock = new ManualClock();
+        using var store = scope.Open(clock);
+        var first = await store.SaveAsync(MemoryFixtures.Save(clock, "shared rankingmarker"));
+        var second = await store.SaveAsync(MemoryFixtures.Save(clock, "shared rankingmarker"));
+        var laterId = new[] { first.Fact, second.Fact }.MaxBy(fact => fact.Id)!;
+        clock.Advance(TimeSpan.FromMinutes(1));
+        await store.EditAsync(new()
+        {
+            Id = laterId.Id,
+            ExpectedRevision = laterId.Revision,
+            Content = laterId.Content,
+            Provenance = MemoryFixtures.Provenance(clock),
+            Retention = MemoryRetention.UntilDeleted()
+        });
+
+        var single = await store.RetrieveAsync(new() { Text = "rankingmarker", MaximumResults = 1 });
+        var both = await store.RetrieveAsync(new() { Text = "rankingmarker", MaximumResults = 2 });
+        var cached = await store.RetrieveAsync(new() { Text = "rankingmarker", MaximumResults = 1 });
+
+        Assert.Equal(laterId.Id, Assert.Single(single.Hits).Fact.Id);
+        Assert.Equal(both.Hits.Take(1), single.Hits);
+        Assert.Equal(single.Hits, cached.Hits);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExpiryDuringRetrievalInvalidatesCacheMissAndHit(bool warmCache)
+    {
+        using var scope = new TestScope();
+        var clock = new ManualClock();
+        var expireDuringQuery = false;
+        var hooks = new MemoryTestHooks
+        {
+            Query = (point, _) =>
+            {
+                if (expireDuringQuery && point == MemoryQueryPoint.BeforeRevisionCheck)
+                    clock.Advance(TimeSpan.FromMinutes(6));
+            }
+        };
+        using var store = scope.Open(clock, hooks);
+        await store.SaveAsync(MemoryFixtures.Save(clock, "ephemeral retrievalmarker",
+            MemoryRetention.ExpiringAt(clock.Utc + TimeSpan.FromMinutes(5))));
+        var query = new MemoryQuery { Text = "retrievalmarker" };
+        if (warmCache)
+            Assert.Single((await store.RetrieveAsync(query)).Hits);
+        expireDuringQuery = true;
+
+        await MemoryFixtures.FailureAsync(MemoryFailure.QueryInvalidated,
+            async () => await store.RetrieveAsync(query));
+
+        Assert.Equal(0, store.DerivedState.IndexedFacts);
+        Assert.Equal(0, store.DerivedState.CachedQueries);
+        Assert.False(store.DerivedIndexContains("retrievalmarker"));
+        Assert.DoesNotContain("retrievalmarker", await File.ReadAllTextAsync(scope.StorePath),
+            StringComparison.Ordinal);
+        Assert.Empty((await store.InspectAsync()).Facts);
+    }
+
+    [Fact]
     public async Task ConcurrentIdenticalCacheMissesShareOneSafeEntry()
     {
         using var scope = new TestScope();

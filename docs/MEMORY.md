@@ -7,6 +7,12 @@ retrieval. It performs no capture, transcript ingestion, provider call, upload,
 embedding, model execution, vector-database access, backup or background timer.
 Opening or using the application does not open this store.
 
+Reused from integration commit `fc1fd57f59fed0899ccbd5991797f1699d4e9bfb`
+by an attributed cherry-pick onto current main, without its later Desktop,
+settings or service layers. The reuse review adds finalization-time expiry
+invalidation and consistent top-K ranking regressions. An installation plan
+does not enable memory, grant consent or confer ownership of an existing store.
+
 This is internal P03a/P03b contract evidence, not completed P03, AC-16, P04 or
 G4 qualification. App consent UX, gateway authentication/role enforcement,
 host lifecycle/restore, real-user usefulness and physical crash/power-loss
@@ -114,10 +120,14 @@ runs are not indexed. Scores combine term frequency and inverse document
 frequency. Results are bounded, deterministic and return the full fact plus its
 creation/edit provenance and the exact store revision. There are no embeddings,
 semantic summaries, external rerankers, vector stores or provider calls.
+The full ranking (score, matched terms, newest modification time, then UUID)
+is applied before the requested result limit.
 
 Every save, edit, delete or expiry swaps in a freshly built index and clears the
 bounded query cache. A retrieval snapshots one revision, computes outside the
-writer boundary, then rechecks that revision before returning or caching. A
+writer boundary, then samples expiry under the writer boundary and rechecks
+that revision before returning or caching. Facts expired at that final sample
+are purged and invalidate the query, including cache hits. A
 delete that commits while retrieval is in flight makes that retrieval fail with
 `QueryInvalidated`; it cannot return the deleted fact. Tests also inspect the
 real derived index/cache after deletion. Old managed strings can remain in

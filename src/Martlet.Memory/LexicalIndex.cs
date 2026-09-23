@@ -6,12 +6,14 @@ internal readonly record struct LexicalMatch(Guid FactId, double Score, int Matc
 
 internal sealed class LexicalIndex
 {
+    private sealed record IndexedDocument(DateTimeOffset UpdatedAtUtc, IReadOnlyDictionary<string, int> Terms);
+
     private const int MaximumTokenRunes = 64;
-    private readonly IReadOnlyDictionary<Guid, IReadOnlyDictionary<string, int>> documents;
+    private readonly IReadOnlyDictionary<Guid, IndexedDocument> documents;
     private readonly IReadOnlyDictionary<string, int> documentFrequency;
 
     private LexicalIndex(
-        IReadOnlyDictionary<Guid, IReadOnlyDictionary<string, int>> documents,
+        IReadOnlyDictionary<Guid, IndexedDocument> documents,
         IReadOnlyDictionary<string, int> documentFrequency)
     {
         this.documents = documents;
@@ -24,14 +26,14 @@ internal sealed class LexicalIndex
 
     internal static LexicalIndex Build(IEnumerable<MemoryFact> facts)
     {
-        var documents = new Dictionary<Guid, IReadOnlyDictionary<string, int>>();
+        var documents = new Dictionary<Guid, IndexedDocument>();
         var frequencies = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var fact in facts)
         {
             var terms = Tokenize(fact.Content, MemoryLimits.MaximumContentCharacters)
                 .GroupBy(term => term, StringComparer.Ordinal)
                 .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
-            documents.Add(fact.Id, terms);
+            documents.Add(fact.Id, new(fact.UpdatedAtUtc, terms));
             foreach (var term in terms.Keys)
                 frequencies[term] = frequencies.GetValueOrDefault(term) + 1;
         }
@@ -69,7 +71,7 @@ internal sealed class LexicalIndex
             var matched = 0;
             foreach (var term in queryTerms)
             {
-                if (!document.Value.TryGetValue(term, out var frequency))
+                if (!document.Value.Terms.TryGetValue(term, out var frequency))
                     continue;
                 matched++;
                 var inverseDocumentFrequency =
@@ -82,6 +84,7 @@ internal sealed class LexicalIndex
         return matches
             .OrderByDescending(match => match.Score)
             .ThenByDescending(match => match.MatchedTerms)
+            .ThenByDescending(match => documents[match.FactId].UpdatedAtUtc)
             .ThenBy(match => match.FactId)
             .Take(maximumResults)
             .ToArray();

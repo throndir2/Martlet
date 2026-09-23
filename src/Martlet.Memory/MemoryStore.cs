@@ -204,7 +204,7 @@ public sealed class MemoryStore : IDisposable
         await writeGate.WaitAsync(cancellationToken);
         try
         {
-            await PurgeExpiredUnderWriteGateAsync(cancellationToken);
+            await PurgeExpiredUnderWriteGateAsync(CurrentUtc(), cancellationToken);
             var now = CurrentUtc();
             ValidateWrite(request?.Content, request?.Provenance, request?.Retention, now);
             StoreState current;
@@ -243,7 +243,7 @@ public sealed class MemoryStore : IDisposable
         await writeGate.WaitAsync(cancellationToken);
         try
         {
-            await PurgeExpiredUnderWriteGateAsync(cancellationToken);
+            await PurgeExpiredUnderWriteGateAsync(CurrentUtc(), cancellationToken);
             var now = CurrentUtc();
             ValidateWrite(request!.Content, request.Provenance, request.Retention, now);
             StoreState current;
@@ -283,7 +283,7 @@ public sealed class MemoryStore : IDisposable
         await writeGate.WaitAsync(cancellationToken);
         try
         {
-            await PurgeExpiredUnderWriteGateAsync(cancellationToken);
+            await PurgeExpiredUnderWriteGateAsync(CurrentUtc(), cancellationToken);
             var now = CurrentUtc();
             StoreState current;
             MemoryFact existing;
@@ -338,30 +338,36 @@ public sealed class MemoryStore : IDisposable
         hooks?.Query?.Invoke(MemoryQueryPoint.BeforeRevisionCheck, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
 
-        lock (gate)
+        await writeGate.WaitAsync(cancellationToken);
+        try
         {
-            EnsureOpen();
-            MemoryGuard.Require(state.Revision == snapshot.Revision, MemoryFailure.QueryInvalidated);
-            if (cached is null)
-            {
-                if (queryCache.TryGetValue(key, out var winner))
-                    hits = winner;
-                else
-                {
-                    if (queryCache.Count >= MemoryLimits.MaximumCachedQueries)
-                        queryCache.Remove(queryCache.Keys.First());
-                    queryCache.Add(key, hits);
-                }
-            }
             var now = CurrentUtc();
-            var materialized = hits
-                .Select(hit => new MemoryRetrievalHit(snapshot.Facts[hit.FactId], hit.Score, hit.MatchedTerms))
-                .OrderByDescending(hit => hit.Score)
-                .ThenByDescending(hit => hit.MatchedTerms)
-                .ThenByDescending(hit => hit.Fact.UpdatedAtUtc)
-                .ThenBy(hit => hit.Fact.Id)
-                .ToArray();
-            return new(snapshot.Revision, now, materialized);
+            await PurgeExpiredUnderWriteGateAsync(now, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (gate)
+            {
+                EnsureOpen();
+                MemoryGuard.Require(state.Revision == snapshot.Revision, MemoryFailure.QueryInvalidated);
+                if (cached is null)
+                {
+                    if (queryCache.TryGetValue(key, out var winner))
+                        hits = winner;
+                    else
+                    {
+                        if (queryCache.Count >= MemoryLimits.MaximumCachedQueries)
+                            queryCache.Remove(queryCache.Keys.First());
+                        queryCache.Add(key, hits);
+                    }
+                }
+                var materialized = hits
+                    .Select(hit => new MemoryRetrievalHit(snapshot.Facts[hit.FactId], hit.Score, hit.MatchedTerms))
+                    .ToArray();
+                return new(snapshot.Revision, now, materialized);
+            }
+        }
+        finally
+        {
+            writeGate.Release();
         }
     }
 
@@ -441,7 +447,7 @@ public sealed class MemoryStore : IDisposable
                 cancellationToken.ThrowIfCancellationRequested();
                 MemoryPaths.CheckAncestors(Path.GetDirectoryName(destination)!);
                 MemoryPaths.CheckEntry(destination);
-                await PurgeExpiredUnderWriteGateAsync(cancellationToken);
+                await PurgeExpiredUnderWriteGateAsync(CurrentUtc(), cancellationToken);
                 lock (gate)
                 {
                     EnsureWritable();
@@ -565,7 +571,7 @@ public sealed class MemoryStore : IDisposable
         await writeGate.WaitAsync(token);
         try
         {
-            return await PurgeExpiredUnderWriteGateAsync(token);
+            return await PurgeExpiredUnderWriteGateAsync(CurrentUtc(), token);
         }
         finally
         {
@@ -573,9 +579,8 @@ public sealed class MemoryStore : IDisposable
         }
     }
 
-    private async Task<MemoryExpiryReceipt> PurgeExpiredUnderWriteGateAsync(CancellationToken token)
+    private async Task<MemoryExpiryReceipt> PurgeExpiredUnderWriteGateAsync(DateTimeOffset now, CancellationToken token)
     {
-        var now = CurrentUtc();
         StoreState current;
         MemoryFact[] active;
         lock (gate)
