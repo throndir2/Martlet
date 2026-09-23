@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "ubuntu-24.04-x64-h01-candidate",
+  "status": "CandidateNotQualified",
+  "diagnosticOs": "Ubuntu",
+  "diagnosticVersion": "24.04",
+  "diagnosticArchitecture": "X64",
+  "requirements": [
+    { "probe": "Nvidia", "role": "Candidate LLM and speech synthesis host visibility", "version": { "state": "UnknownUntilH02", "requiredMajor": null, "exactVersion": null } },
+    { "probe": "DockerEngine", "role": "Candidate isolated workers", "version": { "state": "UnknownUntilH02", "requiredMajor": null, "exactVersion": null } },
+    { "probe": "Compose", "role": "Candidate worker lifecycle (Compose v2 family only; exact version unqualified)", "version": { "state": "Known", "requiredMajor": 2, "exactVersion": null } },
+    { "probe": "ContainerToolkit", "role": "Candidate NVIDIA containers", "version": { "state": "UnknownUntilH02", "requiredMajor": null, "exactVersion": null } },
+    { "probe": "QualifiedTuple", "role": "Gateway, LLM, speech synthesis, and local STT for a private route", "version": { "state": "UnknownUntilH02", "requiredMajor": null, "exactVersion": null } }
+  ],
+  "qualifiedTuple": {
+    "osKernel": null, "cpuFeatures": null, "gpuModel": null, "gpuMemoryMiB": null,
+    "driver": null, "docker": null, "compose": null, "toolkit": null,
+    "cuda": null, "framework": null, "llmImageDigest": null, "ttsImageDigest": null,
+    "sttImageDigest": null, "modelRevisions": null, "precision": null,
+    "contextTokens": null, "concurrency": null, "peakRamBytes": null,
+    "peakDiskBytes": null, "warmLatencyMilliseconds": null, "rightsApproved": null
+  }
+}
