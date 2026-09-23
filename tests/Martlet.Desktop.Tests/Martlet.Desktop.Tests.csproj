@@ -10,6 +10,7 @@
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
     <ProjectReference Include="..\..\src\Martlet.Desktop\Martlet.Desktop.csproj" />
+    <ProjectReference Include="..\..\src\Martlet.Mcp.Protocol\Martlet.Mcp.Protocol.csproj" />
     <Using Include="Xunit" />
     <Using Include="System.IO" />
     <Using Include="System.Net.Http" />

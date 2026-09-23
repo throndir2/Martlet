@@ -4,6 +4,7 @@
         Title="Martlet - Your companion corner" Width="1000" Height="860" MinWidth="520" MinHeight="420"
         Style="{DynamicResource AppWindowStyle}"
         WindowStartupLocation="CenterScreen"
+        AutomationProperties.AutomationId="MartletMainWindow"
         AutomationProperties.Name="Martlet foundation status"
         Loaded="Window_Loaded" Closing="Window_Closing">
     <ScrollViewer VerticalScrollBarVisibility="Auto">
