@@ -28,7 +28,7 @@ function New-InertAvatarPayloads([string]$OutputDirectory, $Pins, $Encoding, [st
     $static = Authored "$webSource\index.html" 'INERT static HTML, never render' 'static'
     $locks = @(
         foreach ($module in @('Live2D', 'Vrm')) {
-            $null = Source "src\Martlet.Avatar.$module\package.json" "INERT $module package"
+            $null = Authored "src\Martlet.Avatar.$module\package.json" "INERT $module package" 'package-metadata'
             Authored "src\Martlet.Avatar.$module\package-lock.json" "INERT $module lock" 'lock'
         }
     )
@@ -62,6 +62,8 @@ function New-InertAvatarPayloads([string]$OutputDirectory, $Pins, $Encoding, [st
             $key = "node_modules/$($description.name)"
             $notices = @()
             $entries = @('package.json')
+            if ($name -ceq '@esbuild/win32-x64') { $entries += 'esbuild.exe' }
+            if ($name -ceq 'esbuild') { $entries += 'lib/main.js' }
             if ($description.scope -ceq 'runtime') {
                 $entries += 'LICENSE'
                 if ($name -cnotlike '@pixiv/types-*') { $entries += 'dist/index.js' }
@@ -70,7 +72,8 @@ function New-InertAvatarPayloads([string]$OutputDirectory, $Pins, $Encoding, [st
                 $text = "INERT $key $entry material"
                 $bytes = $Encoding.GetBytes($text)
                 $path = 'src\Martlet.Avatar.Vrm\' + $key.Replace('/', '\') + '\' + $entry.Replace('/', '\')
-                $role = if ($entry -ceq 'package.json') { 'package-metadata' } elseif ($entry -ceq 'LICENSE') { 'notice' } else { 'bundle-source' }
+                $role = if ($entry -ceq 'package.json') { 'package-metadata' } elseif ($buildTool) { 'build-script' }
+                    elseif ($entry -ceq 'LICENSE') { 'notice' } else { 'bundle-source' }
                 if ($role -ceq 'notice') { $notices += $path }
                 $browserInputs.Add([ordered]@{
                     path = $path; bytes = $bytes.Length; sha256 = [Convert]::ToHexStringLower([Security.Cryptography.SHA256]::HashData($bytes))
@@ -87,6 +90,7 @@ function New-InertAvatarPayloads([string]$OutputDirectory, $Pins, $Encoding, [st
     $inputMap = @{}
     foreach ($input in $browserInputs) { $inputMap[$input.path] = $input }
     $orderedInputs = @(foreach ($path in Get-EvidenceOrdinalStrings @($inputMap.Keys)) { $inputMap[$path] })
+    $esbuildInput = @($orderedInputs | Where-Object { $_.package -ceq 'node_modules/@esbuild/win32-x64' -and $_.entry -ceq 'package/esbuild.exe' })[0]
     $sourceMap = @{}
     foreach ($record in $sourceFiles) { $sourceMap[$record.path] = $record }
     $sourceList = @(foreach ($path in Get-EvidenceOrdinalStrings @($sourceMap.Keys)) { $sourceMap[$path] })
@@ -219,7 +223,9 @@ function New-InertAvatarPayloads([string]$OutputDirectory, $Pins, $Encoding, [st
             lockFiles = $locks
             tools = @(
                 foreach ($tool in @(@('node', '20.11.1', 'node.exe'), @('npm', '10.2.4', 'bin\npm-cli.js'), @('esbuild', '0.25.12', 'esbuild.exe'))) {
-                    [ordered]@{ name = $tool[0]; version = $tool[1]; files = @([ordered]@{ path = $tool[2]; bytes = 1; sha256 = 'c' * 64 }) }
+                    $file = if ($tool[0] -ceq 'esbuild') { [ordered]@{ path = $tool[2]; bytes = $esbuildInput.bytes; sha256 = $esbuildInput.sha256 } }
+                        else { [ordered]@{ path = $tool[2]; bytes = 1; sha256 = 'c' * 64 } }
+                    [ordered]@{ name = $tool[0]; version = $tool[1]; files = @($file) }
                 }
             )
             packages = $npmPackages; inputs = $orderedInputs; outputs = $outputs

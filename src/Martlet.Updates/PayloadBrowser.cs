@@ -9,6 +9,11 @@ internal static class PayloadBrowser
     internal const string SourceRoot = "src\\Martlet.Avatar.RendererHost\\web\\";
     private const string PackageRoot = "src\\Martlet.Avatar.Vrm\\";
     internal const string Reference = "AvatarRenderer|browser";
+    private static readonly Dictionary<string, string> BuildInputs = new(StringComparer.Ordinal)
+    {
+        ["node_modules/@esbuild/win32-x64"] = "package/esbuild.exe",
+        ["node_modules/esbuild"] = "package/lib/main.js"
+    };
     private static readonly Dictionary<string, string[]> PackageDependencies = new(StringComparer.Ordinal)
     {
         ["@esbuild/win32-x64"] = [],
@@ -118,7 +123,10 @@ internal static class PayloadBrowser
                 r.Require(entry!.StartsWith("package/", StringComparison.Ordinal) && !entry.Contains('\\'));
                 r.Path(entry.Replace('/', '\\'));
                 r.Equal(path, PackageRoot + package.Replace('/', '\\') + "\\" + entry["package/".Length..].Replace('/', '\\'));
-                r.Require(!roles.Contains("build-script") && !roles.Contains("lock") && !roles.Contains("static"));
+                r.Require(!roles.Contains("lock") && !roles.Contains("static"));
+                if (roles.Contains("build-script"))
+                    r.Require(BuildInputs.TryGetValue(package, out var expectedEntry) && entry == expectedEntry &&
+                        roles.SequenceEqual(new[] { "build-script" }));
             }
             r.Require(inputs.TryAdd(path, new(path, bytes, hash, package, entry, roles)));
         }
@@ -129,7 +137,22 @@ internal static class PayloadBrowser
         Authored(SourceRoot + "build.mjs", "build-script");
         Authored(SourceRoot + "app.js", "bundle-source");
         Authored(SourceRoot + "index.html", "static");
-        foreach (var file in lockFiles) Authored(file.Path, "lock");
+        foreach (var file in lockFiles)
+        {
+            Authored(file.Path, "lock");
+            Authored(file.Path.Replace("package-lock.json", "package.json", StringComparison.Ordinal), "package-metadata");
+        }
+        foreach (var (package, entry) in BuildInputs)
+        {
+            var path = PackageRoot + package.Replace('/', '\\') + "\\" + entry["package/".Length..].Replace('/', '\\');
+            r.Require(inputs.TryGetValue(path, out var input) && input.Package == package && input.Entry == entry &&
+                input.Roles.SequenceEqual(new[] { "build-script" }));
+            if (entry == "package/esbuild.exe")
+            {
+                var fingerprint = tools[2].Files.SingleOrDefault(file => file.Path == "esbuild.exe");
+                r.Require(fingerprint is not null && fingerprint.Bytes == input!.Bytes && fingerprint.Hash == input.Hash);
+            }
+        }
 
         var packages = new Dictionary<string, Package>(StringComparer.Ordinal);
         Span<byte> digest = stackalloc byte[64];

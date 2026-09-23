@@ -255,6 +255,48 @@ public sealed class AvatarPayloadCompatibilityTests(SigningKeys keys, AvatarPayl
     }
 
     [Theory]
+    [InlineData("missing-native")]
+    [InlineData("missing-javascript")]
+    [InlineData("wrong-package")]
+    [InlineData("wrong-entry")]
+    [InlineData("wrong-role")]
+    [InlineData("extra-role")]
+    [InlineData("native-hash")]
+    [InlineData("native-length")]
+    [InlineData("tool-path")]
+    [InlineData("tool-hash")]
+    [InlineData("tool-length")]
+    [InlineData("runtime-bundle")]
+    public void ObservedEsbuildMaterialHasExactBuildOnlyIdentityAndFingerprint(string change)
+    {
+        using var fixture = Fixture();
+        Rewrite(fixture, manifest =>
+        {
+            var browser = manifest["provenance"]!["browser"]!;
+            var inputs = browser["inputs"]!.AsArray();
+            var native = inputs.Single(i => i!["entry"]?.GetValue<string>() == "package/esbuild.exe")!;
+            var script = inputs.Single(i => i!["entry"]?.GetValue<string>() == "package/lib/main.js")!;
+            var fingerprint = browser["tools"]![2]!["files"]![0]!;
+            switch (change)
+            {
+                case "missing-native": inputs.Remove(native); break;
+                case "missing-javascript": inputs.Remove(script); break;
+                case "wrong-package": native["package"] = "node_modules/three"; break;
+                case "wrong-entry": native["entry"] = "package/bin/other.exe"; break;
+                case "wrong-role": native["roles"]![0] = "package-metadata"; break;
+                case "extra-role": native["roles"]!.AsArray().Add("notice"); break;
+                case "native-hash": native["sha256"] = new string('f', 64); break;
+                case "native-length": native["bytes"] = native["bytes"]!.GetValue<long>() + 1; break;
+                case "tool-path": fingerprint["path"] = "other.exe"; break;
+                case "tool-hash": fingerprint["sha256"] = new string('f', 64); break;
+                case "tool-length": fingerprint["bytes"] = fingerprint["bytes"]!.GetValue<long>() + 1; break;
+                case "runtime-bundle": native["roles"]![0] = "bundle-source"; break;
+            }
+        });
+        Refused(fixture);
+    }
+
+    [Theory]
     [InlineData("extra-web")]
     [InlineData("extra-exe")]
     [InlineData("extra-xml")]

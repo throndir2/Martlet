@@ -23,6 +23,11 @@ archive qualification. It exercises the three contexts with no tolerated restore
 omissions, exact WebView2 reference/copy shape, restore-only Grpc.Tools, the
 reviewed 17-package npm graph (including type-only dependencies), and all four
 browser outputs. It never runs a bundled script or executable.
+The default graph also includes the actual esbuild JavaScript/native build-input
+shape and both authored package manifests. Native material matches the esbuild
+tool fingerprint by length/hash. These records reproduced a real-producer
+compatibility failure in the prior authored-only build-script rule; negative
+cases reject missing, misidentified, retagged or fingerprint-mismatched inputs.
 
 `AvatarPayloadCompatibilityTests` drives the real ephemeral-key signed preview,
 staging, receipt reopening and mixed v1/v2/v3 retained-selection/rollback paths.

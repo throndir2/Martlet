@@ -234,7 +234,11 @@ Browser evidence binds the two module locks, authored inputs, Node/npm/esbuild
 fingerprints, reviewed 17-package npm identity/version/dependency graph, tar-entry
 declarations, SHA-512 SRI/archive-digest equality, input roles and complete notice
 relationships. Type-only runtime dependencies retain metadata/notices without
-being described as bundle contributors. Exactly four web outputs are allowed:
+being described as bundle contributors. Package `build-script` inputs are limited
+to esbuild's `package/lib/main.js` and the win32-x64 package's `package/esbuild.exe`;
+both are required, build-only, and the executable length/hash must match its
+observed tool fingerprint. This does not admit arbitrary package build scripts.
+Exactly four web outputs are allowed:
 app.js, app.js.LEGAL.txt, index.html and THIRD-PARTY-NOTICES.txt. Output hashes and
 lengths must match the signed payload, static output must match its source input,
 and every bundle input and applicable runtime notice has an explicit relationship.
