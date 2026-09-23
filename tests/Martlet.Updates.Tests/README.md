@@ -65,6 +65,24 @@ Installed executable, settings, vault and model sentinels remain locked with
 `FileShare.None` throughout verification/staging on Windows and are checked
 byte-for-byte afterward. No actual user profile, vault, audio or model is used.
 
+`ActivationTests`, `ActivationInterruptionTests` and `ActivationOwnershipTests`
+exercise `LocalActivationEngine` through real staging, selection, Core settings
+and the production-constructed inert payload. The internal test-only readiness
+probe never launches anything. Published records report `PointerPublished` and
+`MissingReadiness`, not executable readiness. Production preparation refuses a
+missing probe without writing a transaction.
+
+Coverage includes forward/retained rollback with actual restore or fresh
+acknowledgment, unchanged schema-1/2/3/4 settings and receipt semantics, enabled
+schema-4 memory preservation on activation, current-trust revocation/omission,
+live installation drift, writer contention, retained stage/history handles,
+exact one-use consent, pending recovery, publication ambiguity, source
+substitution, bounded documents, interruption of every durable write, deadline
+expiry before/after the probe, and ownership until a cancelled probe actually
+returns. Post-rename failures distinguish a published outcome from cancellation.
+No tests establish clean-machine installation, N-1 executable startup, signing
+or release readiness.
+
 Coverage includes trusted exact stage/reopened receipt, standard deflate and
 signed data descriptors, empty entries, self-declared/absent/wrong trust,
 tampering, noncanonical/duplicate/null JSON, PKCS#1 padding refusal, wrong
