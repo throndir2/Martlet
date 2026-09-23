@@ -33,6 +33,14 @@ Later milestones cover Ubuntu self-hosting, two-host GPU deployments, opt-in
 screen understanding and memory, and optional user-supplied avatars. Reliable
 voice and installation take priority over avatars.
 
+The [planned installation flow](docs/INSTALLATION_SUPPORT.md#feature-first-multi-machine-setup)
+coordinates optional features and mixed API/self-hosted roles across machines.
+It targets guided Ubuntu Desktop/Server hosting with Docker Engine/Compose,
+advanced user-managed containers, and separately qualified native Windows
+Ollama / Windows Docker-WSL hosting lanes. Multiple roles may share a machine;
+Docker is not required for the Windows client. These remain design targets,
+not available host installers or enabled application routes.
+
 | Document | Purpose |
 | --- | --- |
 | [Development plan](DEVELOPMENT_PLAN.md) | Scope, proposed decisions, priorities, risks, and reading order |

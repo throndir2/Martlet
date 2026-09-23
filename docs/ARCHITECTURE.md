@@ -33,6 +33,7 @@ and conformance fixtures before adapters are built independently.
 | Host gateway | ASP.NET Core in dedicated non-root Linux image, host team | Paired TLS/auth, capability/readiness reporting, authenticated job transport, bounded scheduling; no Docker socket or arbitrary commands |
 | Inference workers | One pinned image/runtime per engine, runtime team | Ollama candidate LLM; dedicated Python F5 worker; optional STT/VLM/OCR/detection/reranker; private container networks |
 | Host lifecycle tool | Reviewed packaged host utility, host/release team | Local preflight, installation journal, Compose reconciliation, backup/repair; explicit local administrative boundary |
+| Setup coordinator / host setup UI | Windows setup coordinator plus local Ubuntu host UI and headless CLI, client + host teams | One feature/role/destination plan; shared host planning/probe/journal engine, local privileged approval, clear managed versus external ownership; no remote shell or Docker administration through pairing |
 | Optional memory service | Single-owner SQLite database plus replaceable retrieval adapters, memory team | Consent, source provenance, retention, export/delete; embeddings/index are derived data, not a second authority |
 | Optional avatar process | Renderer selected in A01, avatar team | Local animation/playback events only; bounded IPC; crash does not interrupt voice or expose credentials |
 
@@ -79,6 +80,36 @@ P1 has no Ubuntu gateway. P3 co-locates selected roles behind one gateway.
 P4 gives the client separate host identities and route assignments; host 1
 need not call or wait for host 2. STT can remain on the client CPU; remote STT
 means microphone audio crosses the selected boundary.
+
+These are example layouts, not hard-coded machine roles or a two-host limit.
+The [feature-first installation flow](INSTALLATION_SUPPORT.md#feature-first-multi-machine-setup)
+separates enabled features, role requirements, destinations, hosts and lifecycle
+ownership. One computer can be client and host or supply several roles; each
+role can independently use a cloud API or a compatible hosted service. Disabled
+features create no provisioning/probe prerequisite. Required-role failure
+blocks only dependent experiences; loss of optional context must be disclosed
+without blocking a healthy voice/text route or silently choosing another provider.
+
+The Linux managed-host target uses Docker Engine/Compose whether Ubuntu has a
+desktop or is headless. Its local graphical setup is a proposed loopback-only
+browser UI over the same host setup engine, not a second WPF application or a
+public management website. A session-bound local authorization and request-origin/
+CSRF checks protect mutations; loopback alone is not authorization. Privileged
+steps stay in a narrowly scoped locally approved lifecycle boundary, never the
+inference gateway. Windows native Ollama and Docker Desktop/WSL2 are separate
+future qualification lanes, not implied by the portable core. H10 must package
+and qualify a native Windows gateway if that host serves another computer
+without Docker; a raw Ollama LAN port is not that gateway.
+
+Managed and external deployments share worker contracts, not administrative
+authority. Pin engine/context and owned resource identities explicitly; an
+ambient Docker context must not redirect setup to a different machine.
+Cross-container workers need a reviewed internal transport authority: the
+existing H02b adapter accepts only literal loopback, which inside a gateway
+container is that container, not an `ollama` sibling. Do not loosen that rule
+globally, use default host networking, or claim Compose supplies an app route.
+H03/H08 must define the production issuer and trusted worker identity before
+any internal service-name routing is enabled.
 
 Persist routing by role/provider/host ID, not a mutable hostname alone. A
 personality is data, not a plugin executing arbitrary code. Maintain the

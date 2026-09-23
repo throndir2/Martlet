@@ -392,6 +392,150 @@ constraints. **Proposed:** optional separately consented host-admin guide with
 package/display/GPU/firewall/boot verification. No claim of universal headless
 Ubuntu remote desktop, no required privileged container, no public exposure.
 
+## Installation flow research refresh
+
+**Accessed 2026-09-22, America/Los_Angeles.** S30-S35 below are direct reads of
+primary upstream documentation, not search-summary claims. Mutable upstream
+pages describe candidate deployment paths; they neither update the frozen H02a/
+H02b artifacts nor qualify a Martlet installation. No installer, container,
+model, host probe or inference was executed.
+
+### S30
+
+[Docker Engine installation matrix](https://docs.docker.com/engine/install/),
+[Ubuntu installation](https://docs.docker.com/engine/install/ubuntu/),
+[Docker Desktop on Linux](https://docs.docker.com/desktop/setup/install/linux/)
+
+**Verified upstream:** Docker supplies package instructions for named distro/
+architecture combinations including Ubuntu, Debian, Fedora, RHEL and CentOS.
+Its Ubuntu page currently lists 22.04/24.04/26.04; derivatives are not tested/
+verified by Docker. Static binaries are available for other distributions,
+which is not a tested GPU/service-lifecycle matrix. Docker Desktop on Linux
+runs a VM with separate image/container storage and a `desktop-linux` context;
+it can coexist with Engine but introduce port/resource conflicts.
+
+**Consequence:** "all Linux supports Docker" is too broad for a support promise.
+Recommend native Docker Engine + Compose for the managed Ubuntu host, even
+with an Ubuntu desktop UI. Martlet's graphical host setup need not install
+Docker Desktop. Qualify distribution, kernel, CPU architecture, engine,
+driver/toolkit and image/model together. Detect existing contexts/services
+without silently switching context, stopping another engine or removing packages.
+S19's warning about published ports bypassing ordinary firewall rules remains.
+
+### S31
+
+[Docker Desktop Windows installation](https://docs.docker.com/desktop/setup/install/windows-install/),
+[Desktop GPU support](https://docs.docker.com/desktop/features/gpu/),
+[Desktop license terms](https://docs.docker.com/subscription-billing/desktop-license/)
+
+**Verified upstream:** Windows Linux-container hosting has virtualization/WSL
+prerequisites. Docker documents Desktop GPU access on Windows with the WSL2
+backend and NVIDIA GPU/compatible Windows driver/WSL kernel. This is not an
+AMD/Intel, native Windows-container GPU or Linux-Desktop GPU support claim.
+Windows Server is excluded from Docker Desktop support. Installation/user
+scope and backend have different permission requirements; a per-user install
+does not establish that all prerequisites need no administrator or reboot.
+
+Docker Desktop has its own subscription agreement: personal use, education,
+noncommercial open source and qualifying small businesses have free-use terms;
+larger commercial organizations and government entities require paid terms.
+The stated small-business thresholds are fewer than 250 employees **and**
+less than USD 10 million annual revenue. The page distinguishes these terms
+from the unchanged open-source Docker Engine/Moby terms.
+
+**Consequence:** Windows Docker/WSL2 is an explicit advanced lane, not a
+prerequisite for the Windows companion or native Ollama. Recheck current OS
+servicing, backend, GPU and licensing eligibility at the chosen release; do
+not promise silent installation, universal GPU support or unattended boot.
+No purchase or acceptance of third-party terms is authorized by this research.
+
+### S32
+
+[Ollama Windows](https://docs.ollama.com/windows),
+[Ollama Linux](https://docs.ollama.com/linux),
+[Ollama Docker](https://docs.ollama.com/docker)
+
+**Verified upstream:** Ollama documents a native Windows application with a
+per-user installer, background API, NVIDIA/AMD device-specific support, and a
+standalone CLI archive for embedding/service integration. Its Linux guide
+documents native archives and a systemd service. Its Docker guide provides
+CPU, NVIDIA toolkit and AMD ROCm/device-access paths. These options do not
+prove that an arbitrary GPU, driver or model will work.
+
+**Consequence:** native Ollama is the simplest Windows hosting candidate;
+Docker is not required just to run a Windows LLM. Containerized Ollama is the
+first managed Ubuntu candidate. A tray/background process is not proof of
+reboot-without-login service availability. Upstream installer auto-update and
+external model changes must invalidate stale Martlet compatibility evidence;
+do not call an externally managed install immutable. No service wrapper is
+selected or installed by this plan.
+
+The current H02b library remains literal-loopback-only and has no production
+authorization issuer or application route. Container service-name transport,
+host trust, model binding and native Windows lifecycle require implementation,
+not just a Compose file. Current upstream docs do not supersede the pinned
+native chat contract in S13a.
+
+### S33
+
+[Official F5-TTS README](https://github.com/SWivid/F5-TTS/blob/main/README.md),
+[official weight card](https://huggingface.co/SWivid/F5-TTS)
+
+**Verified upstream:** SWivid/F5-TTS documents Python environment/pip/editable
+installation, matched PyTorch/torchaudio device variants, CLI and Gradio
+inference, and Docker/Compose examples. Docker is one documented option, not
+the only upstream installation path. The example uses a mutable GHCR `main`
+image and exposes a Gradio port; it is not a pinned authenticated Martlet worker.
+The README distinguishes MIT code from noncommercial pretrained-model terms,
+consistent with S17's recorded CC-BY-NC-4.0 model card. Reference audio without
+reference text can invoke extra ASR and GPU memory use.
+
+**Consequence:** prefer an isolated pinned Linux worker for managed F5
+deployment, with reference rights/transcript, explicit auxiliary provisioning
+and a bounded adapter behind the gateway. Do not infer native Windows support
+or a universal production API from pip install, Gradio, Docker examples or
+device-specific instructions. Keep F5 optional: users may select API TTS or
+text-only output. S16's chunk-generation versus audio-transport streaming
+distinction and real cancellation/latency qualification remain unchanged.
+
+### S34
+
+[whisper.cpp README](https://github.com/ggml-org/whisper.cpp/blob/master/README.md),
+[whisper.cpp server example](https://github.com/ggml-org/whisper.cpp/blob/master/examples/server/README.md),
+[Microsoft .NET containers](https://learn.microsoft.com/en-us/dotnet/core/docker/introduction)
+
+**Verified upstream:** whisper.cpp lists Windows (MSVC/MinGW), Linux and Docker
+and supports CPU-only inference as well as backend-specific acceleration.
+Its HTTP server is an example accepting audio uploads; the documentation warns
+against administrative execution and requires isolation/input validation.
+Microsoft supplies official .NET runtime/ASP.NET and SDK container images,
+including Linux images and non-root options.
+
+**Consequence:** package optional client-side CPU STT natively; use a separate
+worker if users choose hosted STT. Do not expose an example upload server on
+the LAN as a qualified/authenticated Martlet service. The planned ASP.NET Core
+gateway fits a small non-root Linux container; this does not make WPF, WASAPI,
+Windows credentials or device setup Linux/container applications. SQLite-backed
+memory needs one owning service and persistent storage, not a newly required
+PostgreSQL/Redis/vector database deployment.
+
+### S35
+
+[Compose GPU reservations](https://docs.docker.com/compose/how-tos/gpu-support/),
+[Compose startup/readiness ordering](https://docs.docker.com/compose/how-tos/startup-order/)
+
+**Verified upstream:** GPU access requires host support and explicit
+`capabilities`; `count` and `device_ids` are mutually exclusive. Compose waits
+for dependencies to start by default, not become ready; `service_healthy`
+can gate dependency startup on a configured health check.
+
+**Consequence:** device assignment is not a per-role VRAM quota. Measure
+co-located inference workloads and preserve capacity for the desktop/other
+users. Separate process health, trusted connectivity, artifact availability,
+warmup and actual role inference. Cheap health checks must not download/load
+models or perform recurring paid inference. Startup ordering alone does not
+establish ongoing recovery, model readiness or a successful conversation.
+
 ## Provenance policy for future implementation
 
 For every shipped dependency/artifact, record upstream URL, immutable source/
