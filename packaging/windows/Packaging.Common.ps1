@@ -251,9 +251,10 @@ function Write-PayloadManifest([string]$Root, [string]$SourceCommit, [bool]$Sour
 }
 
 function New-PayloadManifestDocument([string]$ApplicationVersion, [string]$SourceCommit,
-    [bool]$SourceDirty, $Provenance, [object[]]$Files, $Pins) {
+    [bool]$SourceDirty, $Provenance, [object[]]$Files, $Pins, [ValidateSet(2, 3)][int]$FormatVersion = 2) {
+    if ($Provenance.schemaVersion -ne ($FormatVersion - 1)) { throw 'Manifest and provenance format selections disagree.' }
     return [ordered]@{
-        schemaVersion = 2
+        schemaVersion = $FormatVersion
         channel = 'INTERNAL DEVELOPMENT ONLY - UNSIGNED'
         applicationVersion = $ApplicationVersion
         rid = $Pins.rid
@@ -835,14 +836,21 @@ function Get-PackageProvenance([string]$Root, [string]$PublishDirectory, $Source
     return $result
 }
 
-function New-PackageProvenanceDocument($Source, $SdkReceipt, $Applications, $Restores, $Archives, [string]$RuntimeIdentifier) {
-    return [ordered]@{
-        schemaVersion = 1
+function New-PackageProvenanceDocument($Source, $SdkReceipt, $Applications, $Restores, $Archives, [string]$RuntimeIdentifier,
+    [ValidateSet(1, 2)][int]$SchemaVersion = 1, $Browser, [object[]]$BuildArchives) {
+    if (($SchemaVersion -eq 1 -and ($PSBoundParameters.ContainsKey('Browser') -or $PSBoundParameters.ContainsKey('BuildArchives'))) -or
+        ($SchemaVersion -eq 2 -and ($null -eq $Browser -or $null -eq $BuildArchives))) {
+        throw 'Browser and build-archive evidence must be selected explicitly with provenance schema 2.'
+    }
+    $document = [ordered]@{
+        schemaVersion = $SchemaVersion
         assurance = 'UNSIGNED INTERNAL OBSERVATION - NOT PUBLISHER ATTESTATION'
         source = $Source; sdk = $SdkReceipt
         publish = [ordered]@{ configuration = 'Release'; framework = 'net10.0-windows'; rid = $RuntimeIdentifier; selfContained = $true; trimmed = $false; singleFile = $false; readyToRun = $false }
         applications = $Applications; restores = $Restores; archives = $Archives
     }
+    if ($SchemaVersion -eq 2) { $document.browser = $Browser; $document.buildArchives = $BuildArchives }
+    return $document
 }
 
 function Test-PackageProvenance([string]$Root, $Provenance) {
@@ -1040,6 +1048,8 @@ function Get-PackageSbom([string]$Root, $Provenance) {
 }
 
 function New-PackageSbomDocument([object[]]$Files, [string]$ApplicationVersion, $Provenance) {
+    if ($Provenance.schemaVersion -notin @(1, 2)) { throw 'Unsupported SBOM provenance format.' }
+    $avatar = $Provenance.schemaVersion -eq 2
     $fileComponents = @{}
     $components = [Collections.Generic.List[object]]::new()
     $dependencies = [Collections.Generic.List[object]]::new()
@@ -1058,11 +1068,13 @@ function New-PackageSbomDocument([object[]]$Files, [string]$ApplicationVersion, 
         }
     }
     foreach ($application in $Provenance.applications) {
+        $project = if ($avatar) { $application.project } else { "Martlet.$($application.name)" }
+        $directory = if ($avatar) { $application.directory } else { $application.name }
         foreach ($library in $application.libraries) {
             $id, $version = $library.key.Split('/')
             $reference = "$($application.name)|$($library.key)"
-            $isRoot = $id -ceq "Martlet.$($application.name)"
-            if ($isRoot) { $rootRefs += $reference }
+            $isRoot = $id -ceq $project
+            if ($isRoot -and (-not $avatar -or $null -eq $application.parent)) { $rootRefs += $reference }
             $type = if ($isRoot) { 'application' } elseif ($library.type -ceq 'runtimepack') { 'framework' } else { 'library' }
             $component = [ordered]@{
                 type = $type; 'bom-ref' = $reference; name = $id; version = $version
@@ -1071,13 +1083,17 @@ function New-PackageSbomDocument([object[]]$Files, [string]$ApplicationVersion, 
             $ownedPaths = @($library.assets.path)
             if ($library.type -cne 'project') {
                 $packageId = $id -creplace '^runtimepack\.', ''
+                if ($avatar -and $library.type -ceq 'reference') { $packageId = 'Microsoft.Web.WebView2' }
                 $archive = @($Provenance.archives | Where-Object id -IEQ $packageId)[0]
-                $component.purl = "pkg:nuget/$($packageId.ToLowerInvariant())@$version"
+                if ($library.type -cne 'reference') { $component.purl = "pkg:nuget/$($packageId.ToLowerInvariant())@$version" }
                 $component.properties += @(
                     [ordered]@{ name = 'martlet:nuget:archive-sha512'; value = $archive.archiveSha512 }
                     [ordered]@{ name = 'martlet:nuget:nuspec-sha256'; value = $archive.nuspecSha256 }
                     [ordered]@{ name = 'martlet:license:status'; value = 'UPSTREAM DECLARATION ONLY - rights not assessed' }
                 )
+                if ($avatar -and $library.type -ceq 'reference') {
+                    $component.properties += [ordered]@{ name = 'martlet:nuget:source-package'; value = "$packageId/$version" }
+                }
                 if ($library.contentHash) { $component.properties += [ordered]@{ name = 'martlet:nuget:lock-content-hash'; value = $library.contentHash } }
                 if ($archive.licenseExpression) { $component.licenses = @([ordered]@{ expression = $archive.licenseExpression; acknowledgement = 'declared' }) }
                 if ($archive.licenseFile) { $component.properties += [ordered]@{ name = 'martlet:nuget:license-file'; value = $archive.licenseFile } }
@@ -1095,7 +1111,7 @@ function New-PackageSbomDocument([object[]]$Files, [string]$ApplicationVersion, 
                 $component.properties += [ordered]@{ name = 'martlet:license:status'; value = 'UNKNOWN - no project license granted' }
                 foreach ($path in $ownedPaths) { $fileComponents[$path].properties[3].value = 'Project build output; not a copy of source bytes' }
                 if ($isRoot) {
-                    $generated = @("$($application.name)\Martlet.$($application.name).exe", "$($application.name)\Martlet.$($application.name).deps.json", "$($application.name)\Martlet.$($application.name).runtimeconfig.json")
+                    $generated = @("$directory\$project.exe", "$directory\$project.deps.json", "$directory\$project.runtimeconfig.json")
                     foreach ($path in $generated) { $fileComponents[$path].properties[3].value = 'SDK-generated publish output; not an unchanged archive asset' }
                     $ownedPaths += $generated
                 }
@@ -1108,12 +1124,22 @@ function New-PackageSbomDocument([object[]]$Files, [string]$ApplicationVersion, 
                 }
             )
             $components.Add($component)
-            $dependencies.Add([ordered]@{ ref = $reference; dependsOn = @($library.dependencies | ForEach-Object { "$($application.name)|$_" }) })
+            $edges = @($library.dependencies | ForEach-Object { "$($application.name)|$_" })
+            if ($avatar -and $isRoot) {
+                foreach ($child in $Provenance.applications | Where-Object parent -CEQ $application.name) {
+                    $childRoot = @($child.libraries | Where-Object { $_.key.Split('/')[0] -ceq $child.project })[0]
+                    $edges += "$($child.name)|$($childRoot.key)"
+                }
+                if ($application.name -ceq 'AvatarRenderer') { $edges += 'AvatarRenderer|browser' }
+            }
+            if ($avatar) { $edges = @(Get-EvidenceOrdinalStrings $edges) }
+            $dependencies.Add([ordered]@{ ref = $reference; dependsOn = $edges })
         }
     }
+    if ($avatar) { Add-AvatarSbomComponents $Provenance $ApplicationVersion $fileComponents $components $dependencies }
     foreach ($path in Get-EvidenceOrdinalStrings @($fileComponents.Keys)) { $components.Add($fileComponents[$path]) }
     $dependencies.Insert(0, [ordered]@{ ref = 'martlet-internal-payload'; dependsOn = $rootRefs })
-    return [ordered]@{
+    $document = [ordered]@{
         bomFormat = 'CycloneDX'; specVersion = '1.6'; version = 1
         metadata = [ordered]@{
             tools = [ordered]@{ components = @(
@@ -1139,6 +1165,8 @@ function New-PackageSbomDocument([object[]]$Files, [string]$ApplicationVersion, 
         components = @($components.ToArray()); dependencies = @($dependencies.ToArray())
         compositions = @([ordered]@{ aggregate = 'incomplete'; assemblies = @('martlet-internal-payload'); dependencies = @('martlet-internal-payload') })
     }
+    if ($avatar) { Add-AvatarSbomMetadata $document $Provenance }
+    return $document
 }
 
 function Write-PackageSbom([string]$Root, $Provenance) {
@@ -1163,3 +1191,4 @@ function Test-PackageSbom([string]$Root, $Provenance) {
 }
 
 . "$PSScriptRoot\Provenance.Common.ps1"
+. "$PSScriptRoot\AvatarEvidence.Common.ps1"
