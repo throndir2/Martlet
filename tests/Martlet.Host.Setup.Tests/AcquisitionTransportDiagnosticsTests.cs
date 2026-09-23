@@ -299,7 +299,7 @@ public sealed class AcquisitionTransportDiagnosticsTests
         }
     }
 
-    private sealed class HttpDiagnostics : EventListener,
+    internal sealed class HttpDiagnostics : EventListener,
         IObserver<DiagnosticListener>, IObserver<KeyValuePair<string, object?>>
     {
         private readonly ConcurrentBag<IDisposable> subscriptions = [];

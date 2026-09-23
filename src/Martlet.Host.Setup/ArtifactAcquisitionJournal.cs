@@ -389,7 +389,7 @@ internal static class ArtifactAcquisitionJournalCodec
         return options;
     }
 
-    private sealed class ExactEnumConverter<T> : JsonConverter<T> where T : struct, Enum
+    internal sealed class ExactEnumConverter<T> : JsonConverter<T> where T : struct, Enum
     {
         public override T Read(
             ref Utf8JsonReader reader,

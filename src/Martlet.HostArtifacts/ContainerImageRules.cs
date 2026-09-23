@@ -78,7 +78,7 @@ internal static partial class ContainerImageRules
             facts.Length, selected.Count(i => !i.BlobInventoryComplete));
     }
 
-    private static IEnumerable<ContentFact> Facts(ContainerImageDocument image)
+    internal static IEnumerable<ContentFact> Facts(ContainerImageDocument image)
     {
         yield return new(image.Digest, "manifest", image.ManifestBytes, null, null);
         if (image.Index is { } index)
@@ -97,7 +97,7 @@ internal static partial class ContainerImageRules
     private static void Token(string value) =>
         Require(value.Length is > 0 and <= 32 && PlatformPattern().IsMatch(value), "image.platform_invalid");
 
-    private sealed record ContentFact(string Digest, string Kind, long? CompressedBytes, long? ExpandedBytes, long? StagingBytes);
+    internal sealed record ContentFact(string Digest, string Kind, long? CompressedBytes, long? ExpandedBytes, long? StagingBytes);
 
     [GeneratedRegex(@"\A(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}\z", RegexOptions.CultureInvariant)]
     private static partial Regex RegistryPattern();

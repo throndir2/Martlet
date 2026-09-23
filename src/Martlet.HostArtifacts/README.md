@@ -118,8 +118,15 @@ upstream metadata or a direct-response qualification. `DirectTransportEligible`
 does not promote the committed catalogs; execution/preset eligibility remains
 false. Actual byte acquisition requires the Host.Setup coordinator's separately
 bound rights and fresh acquisition approval. No arbitrary URL setter or caller
-eligibility Boolean exists. Hugging Face and OCI remain unsupported for network
-acquisition in this slice. OCI image/index/platform/blob metadata and known versus
+eligibility Boolean exists. Hugging Face remains unsupported for network
+acquisition. Additive immutable `ImageCandidates` and `ImageContentInventory`
+carry image source/rights/role bindings, exact manifest/index byte sizes and the
+same owner-owned unique-content facts as inspection, while retaining ordered
+layer occurrences. The older `Images` and file candidate APIs are unchanged.
+The separate [Host.Setup image API](../Martlet.Host.Setup/README.md#verified-selected-image-acquisition)
+supports the current named public Docker Hub Ollama and GHCR F5 recipes under
+fresh exact rights/download approval; these projections never authorize it.
+OCI image/index/platform/blob metadata and known versus
 unknown compressed/expanded/staging subtotals remain available without implying
 complete runtime closure, local payload verification or install size.
 

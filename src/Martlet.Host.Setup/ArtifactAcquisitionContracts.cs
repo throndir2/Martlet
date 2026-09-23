@@ -42,7 +42,7 @@ public sealed class ArtifactReviewedLicense
 
 public sealed class ArtifactRightsReview
 {
-    private readonly ArtifactAcquisitionCandidate candidate;
+    private readonly ArtifactRightsSubject candidate;
 
     public string ArtifactIdentityFingerprint => candidate.IdentityFingerprint;
     public string ReviewRevision { get; }
@@ -55,8 +55,7 @@ public sealed class ArtifactRightsReview
     public ArtifactRightsReview(ArtifactAcquisitionSelection selection, string artifactId,
         string reviewRevision, string evidenceSha256,
         IEnumerable<ArtifactReviewedLicense>? reviewedTerms = null, TimeProvider? clock = null)
-        : this(selection.Artifacts.SingleOrDefault(artifact => artifact.ArtifactId == artifactId)
-            ?? throw new ArtifactAcquisitionException(ArtifactAcquisitionFailure.ArtifactNotSelected),
+        : this(ArtifactRightsSubject.From(selection, artifactId),
             reviewRevision, evidenceSha256, reviewedTerms, clock)
     {
         SelectionFingerprint = selection.Fingerprint;
@@ -68,6 +67,16 @@ public sealed class ArtifactRightsReview
         string evidenceSha256,
         IEnumerable<ArtifactReviewedLicense>? reviewedTerms = null,
         TimeProvider? clock = null)
+        : this(ArtifactRightsSubject.From(candidate), reviewRevision, evidenceSha256, reviewedTerms, clock)
+    {
+    }
+
+    private ArtifactRightsReview(
+        ArtifactRightsSubject candidate,
+        string reviewRevision,
+        string evidenceSha256,
+        IEnumerable<ArtifactReviewedLicense>? reviewedTerms,
+        TimeProvider? clock)
     {
         this.candidate = candidate ?? throw new ArgumentNullException(nameof(candidate));
         this.clock = clock ?? TimeProvider.System;
@@ -108,7 +117,7 @@ public sealed class ArtifactRightsAuthorization
     public DateTimeOffset ExpiresAtUtc => CreatedAtUtc.AddMinutes(10);
 
     private ArtifactRightsAuthorization(
-        ArtifactAcquisitionCandidate candidate,
+        ArtifactRightsSubject candidate,
         string reviewRevision,
         string evidenceSha256,
         bool approved,
@@ -134,17 +143,37 @@ public sealed class ArtifactRightsAuthorization
     }
 
     internal static ArtifactRightsAuthorization Refused(
-        ArtifactAcquisitionCandidate candidate,
+        ArtifactRightsSubject candidate,
         string reviewRevision,
         string evidenceSha256) =>
         new(candidate, reviewRevision, evidenceSha256, false);
 
     internal static ArtifactRightsAuthorization Approved(
-        ArtifactAcquisitionCandidate candidate,
+        ArtifactRightsSubject candidate,
         string reviewRevision,
         string evidenceSha256,
         ImmutableArray<ArtifactReviewedLicense> terms, string? selectionFingerprint, DateTimeOffset createdAt) =>
         new(candidate, reviewRevision, evidenceSha256, true, terms, selectionFingerprint, createdAt);
+}
+
+internal sealed record ArtifactRightsSubject(
+    string IdentityFingerprint, ImmutableArray<ArtifactLicenseClaim> Licenses)
+{
+    internal static ArtifactRightsSubject From(ArtifactAcquisitionCandidate candidate)
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
+        return new(candidate.IdentityFingerprint, candidate.Licenses);
+    }
+
+    internal static ArtifactRightsSubject From(ArtifactAcquisitionSelection selection, string artifactId)
+    {
+        ArgumentNullException.ThrowIfNull(selection);
+        if (selection.Artifacts.SingleOrDefault(artifact => artifact.ArtifactId == artifactId) is { } artifact)
+            return From(artifact);
+        if (selection.ImageCandidates.SingleOrDefault(image => image.ArtifactId == artifactId) is { } image)
+            return new(image.IdentityFingerprint, image.Licenses);
+        throw new ArtifactAcquisitionException(ArtifactAcquisitionFailure.ArtifactNotSelected);
+    }
 }
 
 public sealed class ArtifactAcquisitionPlan
