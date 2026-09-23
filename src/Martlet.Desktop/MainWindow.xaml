@@ -1,20 +1,65 @@
 <Window x:Class="Martlet.Desktop.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Martlet - Diagnostics" Width="950" Height="800" MinWidth="520" MinHeight="420"
+        Title="Martlet - Your companion corner" Width="1000" Height="860" MinWidth="520" MinHeight="420"
+        Style="{DynamicResource AppWindowStyle}"
         WindowStartupLocation="CenterScreen"
         AutomationProperties.Name="Martlet foundation status"
         Loaded="Window_Loaded" Closing="Window_Closing">
     <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Margin="24">
-            <TextBlock Text="Martlet - conversations, offline fixture and diagnostics" FontSize="26" FontWeight="SemiBold" TextWrapping="Wrap" />
-            <TextBlock Text="Not connected / not configured" FontSize="18" Margin="0,8,0,12" />
-            <TextBlock TextWrapping="Wrap" Margin="0,0,0,16"
-                       Text="Try the offline fixture without creating a profile. All demo text is scripted, NOT live transcription or AI. Real API conversation is a separate explicit typed / push-to-talk surface using your supported saved routes. Setup saves configuration and explicitly manages Windows credentials. Audio setup offers separately permitted LOCAL microphone and synthetic-tone tests; no provider call. No network or audio action is authorized on launch." />
-            <Button x:Name="ConversationButton" Content="Open _real API conversation (explicit permission required)" Click="Conversation_Click" Padding="12,8" Margin="0,4,12,12"
-                    AutomationProperties.AutomationId="OpenLiveConversation" AutomationProperties.Name="Open real API conversation without network, credentials or device effects" />
-            <Button Content="Open _Troubleshooting (recording OFF by default)" Click="Troubleshooting_Click" Padding="12,8" Margin="0,4,12,12"
-                    AutomationProperties.AutomationId="OpenTroubleshooting" AutomationProperties.Name="Open passive troubleshooting and local support preview" />
+        <StackPanel Margin="28" MaxWidth="1120">
+            <WrapPanel Margin="0,0,0,18">
+                <StackPanel Margin="0,0,32,8">
+                    <TextBlock Text="martlet" FontSize="30" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"/>
+                    <TextBlock Text="A little space for your companion." Foreground="{DynamicResource MutedBrush}"/>
+                </StackPanel>
+                <StackPanel>
+                    <Label Content="Your _palette" Target="{Binding ElementName=ThemeChoice}" Padding="0,0,0,4"/>
+                    <ComboBox x:Name="ThemeChoice" Width="190" SelectionChanged="Theme_Changed"
+                              AutomationProperties.AutomationId="AppearanceTheme" AutomationProperties.Name="Appearance theme">
+                        <ComboBoxItem Content="Pink light"/>
+                        <ComboBoxItem Content="Rose dark"/>
+                    </ComboBox>
+                </StackPanel>
+            </WrapPanel>
+            <TextBlock x:Name="AppearanceStatus" TextWrapping="Wrap" Margin="0,0,0,12"
+                       Foreground="{DynamicResource MutedBrush}" AutomationProperties.LiveSetting="Polite"
+                       AutomationProperties.AutomationId="AppearanceStatus"/>
+            <Border Style="{DynamicResource CardStyle}" Background="{DynamicResource SoftBrush}" Padding="26">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Your cozy companion corner" FontSize="28" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                        <TextBlock Text="A conversation, a little company, a moment for you." TextWrapping="Wrap"
+                                   Foreground="{DynamicResource MutedBrush}" Margin="0,8,0,16"/>
+                        <TextBlock Text="You're in control" FontWeight="SemiBold"/>
+                        <TextBlock Text="Nothing listens or connects on launch. Real conversations need your configured routes and explicit permission for each action."
+                                   TextWrapping="Wrap" Margin="0,4,0,16"/>
+                        <WrapPanel>
+                            <Button x:Name="ConversationButton" Content="Open _real API conversation" Click="Conversation_Click"
+                                    Style="{DynamicResource PrimaryButton}" Margin="0,0,12,6"
+                                    AutomationProperties.AutomationId="OpenLiveConversation" AutomationProperties.Name="Open real API conversation without network, credentials or device effects" />
+                            <Button x:Name="SetupButton" Content="Set_up / resume" Click="Setup_Click" Margin="0,0,0,6"
+                                    AutomationProperties.AutomationId="OpenSetup" AutomationProperties.Name="Open resumable setup, no network or credential lookup" />
+                        </WrapPanel>
+                    </StackPanel>
+                    <Viewbox Grid.Column="1" Width="74" Height="90" Margin="16,0,0,0" VerticalAlignment="Top"
+                             IsHitTestVisible="False" Focusable="False">
+                        <Canvas Width="90" Height="100">
+                            <Ellipse Width="78" Height="78" Canvas.Top="10" Fill="{DynamicResource SurfaceBrush}"/>
+                            <Path Data="M 39 66 C 33 59 14 48 19 34 C 23 23 35 26 39 33 C 45 23 58 24 62 34 C 68 47 48 61 39 66 Z"
+                                  Fill="{DynamicResource AccentBrush}"/>
+                            <Path Data="M 72 3 L 75 12 L 84 15 L 75 18 L 72 27 L 69 18 L 60 15 L 69 12 Z M 12 73 L 14 79 L 20 81 L 14 83 L 12 89 L 10 83 L 4 81 L 10 79 Z"
+                                  Fill="{DynamicResource AccentBrush}"/>
+                        </Canvas>
+                    </Viewbox>
+                </Grid>
+            </Border>
+            <Border Style="{DynamicResource CardStyle}">
+                <StackPanel>
+            <TextBlock Text="A tiny test, no strings attached" Style="{DynamicResource SectionHeading}"/>
+            <TextBlock Text="Explore a scripted demo without an account. FIXTURE - NOT AI. No microphone, provider or network; audio stays off unless you separately confirm a tone."
+                       TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}"/>
             <Label Target="{Binding ElementName=ScenarioChoice}" Content="_Offline scenario (FIXTURE - NOT AI)" />
             <ComboBox x:Name="ScenarioChoice" SelectedIndex="0" MinHeight="30"
                       AutomationProperties.AutomationId="FixtureScenario" AutomationProperties.Name="Offline fixture scenario" />
@@ -31,6 +76,26 @@
                      AutomationProperties.AutomationId="FixtureStatus" AutomationProperties.Name="Scripted fixture text and trace, not AI" />
             <TextBlock x:Name="ActivityText" TextWrapping="Wrap" Margin="0,0,0,8"
                        AutomationProperties.Name="Diagnostic activity" AutomationProperties.LiveSetting="Polite" />
+                </StackPanel>
+            </Border>
+            <Border Style="{DynamicResource CardStyle}">
+                <StackPanel>
+            <TextBlock Text="Make yourself at home" Style="{DynamicResource SectionHeading}"/>
+            <TextBlock Text="Set up your routes, choose local audio devices, or check in on your configuration."
+                       TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,12"/>
+            <WrapPanel>
+                <Button x:Name="AudioSetupButton" Content="_Audio setup (local only)" Click="AudioSetup_Click" Padding="12,8" Margin="0,4,12,4"
+                        AutomationProperties.AutomationId="OpenAudioSetup" AutomationProperties.Name="Open local audio setup without enumerating or testing devices" />
+                <Button Content="Open _Troubleshooting" Click="Troubleshooting_Click" Padding="12,8" Margin="0,4,12,4"
+                        AutomationProperties.AutomationId="OpenTroubleshooting" AutomationProperties.Name="Open passive troubleshooting and local support preview" />
+            </WrapPanel>
+                </StackPanel>
+            </Border>
+            <Border Style="{DynamicResource CardStyle}">
+                <StackPanel>
+            <TextBlock Text="Behind the scenes" Style="{DynamicResource SectionHeading}"/>
+            <TextBlock Text="Local diagnostics and honest status. A demo result never means a real connection is ready."
+                       TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}"/>
             <Label Target="{Binding ElementName=PipelineText}" Content="_Pipeline status" />
             <TextBox x:Name="PipelineText" IsReadOnly="True" TextWrapping="Wrap"
                      Height="180" VerticalScrollBarVisibility="Auto"
@@ -50,12 +115,8 @@
                        AutomationProperties.Name="Settings action result"
                        AutomationProperties.LiveSetting="Polite" />
             <WrapPanel>
-                <Button x:Name="SetupButton" Content="Set_up / resume" Click="Setup_Click" Padding="12,8" Margin="0,4,12,4"
-                        AutomationProperties.AutomationId="OpenSetup" AutomationProperties.Name="Open resumable setup, no network or credential lookup" />
                 <Button Content="Configuration backup / restore (local only)" Click="Recovery_Click" Padding="12,8" Margin="0,4,12,4"
                         AutomationProperties.AutomationId="OpenConfigurationRecovery" AutomationProperties.Name="Open passive local configuration backup and restore"/>
-                <Button x:Name="AudioSetupButton" Content="_Audio setup (local only)" Click="AudioSetup_Click" Padding="12,8" Margin="0,4,12,4"
-                        AutomationProperties.AutomationId="OpenAudioSetup" AutomationProperties.Name="Open local audio setup without enumerating or testing devices" />
                 <Button x:Name="RefreshButton" Content="_Refresh local status" Padding="12,8" Margin="0,4,12,4"
                         AutomationProperties.AutomationId="RefreshDiagnostics"
                         AutomationProperties.Name="Refresh local status" Click="Refresh_Click" />
@@ -70,6 +131,10 @@
             </WrapPanel>
             <TextBlock TextWrapping="Wrap" Margin="0,12,0,0"
                        Text="Creating a profile saves unconfigured settings only. It grants no consent. Tone output binds the Windows default once at explicit start, never follows a changed default or falls back to room speakers. Tone accounting is not proof of audibility. Closing exits Martlet; there is no background tray process." />
+                </StackPanel>
+            </Border>
+            <TextBlock Text="Made for a little more warmth in your day." HorizontalAlignment="Center"
+                       Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,12" TextWrapping="Wrap"/>
         </StackPanel>
     </ScrollViewer>
 </Window>

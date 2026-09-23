@@ -100,6 +100,23 @@ function Select-Fixture([string]$Name) {
     $item.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
     $choice.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Collapse()
 }
+function Select-Theme([string]$Name) {
+    $choice = Find-Control 'AppearanceTheme'
+    if ($null -eq $choice -or -not $choice.Current.IsKeyboardFocusable) { throw 'Appearance selector is not keyboard accessible.' }
+    $choice.GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
+    $condition = [Windows.Automation.PropertyCondition]::new(
+        [Windows.Automation.AutomationElement]::NameProperty, $Name)
+    $item = $choice.FindFirst([Windows.Automation.TreeScope]::Descendants, $condition)
+    if ($null -eq $item) { throw 'Requested theme is unavailable.' }
+    $item.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern).Select()
+    $choice.GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern).Collapse()
+    $deadline = [DateTime]::UtcNow.AddSeconds(10)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        if ((Find-Control 'AppearanceStatus').Current.Name -like "$Name saved locally*") { return }
+        Start-Sleep -Milliseconds 50
+    }
+    throw 'Theme selection did not report successful persistence.'
+}
 function Wait-Fixture([string]$Pattern) {
     $deadline = [DateTime]::UtcNow.AddSeconds(20)
     while ([DateTime]::UtcNow -lt $deadline) {
@@ -374,13 +391,38 @@ try {
     Invoke-Control 'StartFixture'
     $null = Wait-Fixture '*Scenario: slow*Stage: Script*'
     Close-Desktop
+    Start-Desktop
+    $null = Wait-Status '*First run:*'
+    Select-Theme 'Rose dark'
+    if ([IO.File]::ReadAllText((Join-Path $data 'appearance.txt')) -cne 'Dark' -or [IO.File]::Exists($settings)) {
+        throw 'Theme selection must persist separately without creating a profile.'
+    }
+    Close-Desktop
+    Start-Desktop
+    $null = Wait-Status '*First run:*'
+    $selection = (Find-Control 'AppearanceTheme').GetCurrentPattern([Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()
+    if ($selection.Count -ne 1 -or $selection[0].Current.Name -ne 'Rose dark') { throw 'Saved dark theme was not restored.' }
+    Select-Theme 'Pink light'
+    Close-Desktop
+    $appearance = Join-Path $data 'appearance.txt'
+    [IO.File]::WriteAllText($appearance, 'unrecognized-theme')
+    Start-Desktop
+    $null = Wait-Status '*First run:*'
+    if ((Find-Control 'AppearanceStatus').Current.Name -notlike 'Could not read appearance.txt*' -or
+        [IO.File]::ReadAllText($appearance) -cne 'unrecognized-theme') {
+        throw 'Malformed appearance must show a recovery notice without rewriting the preference on launch.'
+    }
+    $selection = (Find-Control 'AppearanceTheme').GetCurrentPattern([Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()
+    if ($selection.Count -ne 1 -or $selection[0].Current.Name -ne 'Pink light') { throw 'Malformed appearance must fall back to pink light.' }
+    Select-Theme 'Rose dark'
+    Close-Desktop
     Start-Desktop 'relative'
     $value = Wait-Status '*Cannot open the data directory*'
     if ((Find-Control 'CreateProfile').Current.IsEnabled -or (Find-Control 'RefreshDiagnostics').Current.IsEnabled) {
         throw 'Invalid launch arguments must leave a read-only, actionable startup error.'
     }
     Close-Desktop
-    Write-Output 'PASS: passive Troubleshooting from main/setup, recording and export OFF; actual offline fixtures/refusal/Stop, audio OFF; accessible no-key setup/migration/save/resume/Back/model consent invalidation; profile/remedies/preservation; bounded close. No OS credential actions or network.'
+    Write-Output 'PASS: passive Troubleshooting from main/setup, recording and export OFF; actual offline fixtures/refusal/Stop, audio OFF; accessible no-key setup/migration/save/resume/Back/model consent invalidation; profile/remedies/preservation; pink/dark selection and restart persistence without profile creation; bounded close. No OS credential actions or network.'
 }
 finally {
     if ($null -ne $process) {
@@ -392,5 +434,7 @@ finally {
     $lockFile = Join-Path $data 'settings.json.lock'
     if ([System.IO.File]::Exists($lockFile)) { [System.IO.File]::Delete($lockFile) }
     foreach ($snapshot in $setupSnapshots) { [IO.File]::Delete($snapshot) }
+    $appearance = Join-Path $data 'appearance.txt'
+    if ([IO.File]::Exists($appearance)) { [IO.File]::Delete($appearance) }
     if ([System.IO.Directory]::Exists($data)) { [System.IO.Directory]::Delete($data) }
 }

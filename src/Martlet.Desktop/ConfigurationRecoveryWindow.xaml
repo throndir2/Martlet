@@ -1,4 +1,5 @@
 <Window x:Class="Martlet.Desktop.ConfigurationRecoveryWindow"
+        Style="{DynamicResource AppWindowStyle}"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Martlet - Local configuration backup / restore" Width="900" Height="800" MinWidth="620" MinHeight="500"
