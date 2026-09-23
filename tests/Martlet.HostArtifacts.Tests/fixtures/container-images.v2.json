@@ -1,0 +1,187 @@
+{
+  "format_version": 2,
+  "kind": "host_artifact_candidate_lock",
+  "id": "authored-container-metadata",
+  "provenance": "synthetic_fixture",
+  "scope": "metadata_only",
+  "sources": [
+    {
+      "id": "ollama-source",
+      "kind": "github",
+      "repository": "ollama/ollama",
+      "revision": "1111111111111111111111111111111111111111",
+      "commit_url": "https://github.com/ollama/ollama/commit/1111111111111111111111111111111111111111"
+    },
+    {
+      "id": "f5-source",
+      "kind": "github",
+      "repository": "SWivid/F5-TTS",
+      "revision": "2222222222222222222222222222222222222222",
+      "commit_url": "https://github.com/SWivid/F5-TTS/commit/2222222222222222222222222222222222222222"
+    }
+  ],
+  "runtimes": [
+    {
+      "id": "ollama-runtime",
+      "family": "ollama",
+      "role": "llm",
+      "source_id": "ollama-source",
+      "upstream_version": "1.0.0",
+      "target": "ubuntu-24.04-x64",
+      "license_id": "ollama-code",
+      "dependency_evidence_path": "Dockerfile",
+      "dependency_evidence_url": "https://raw.githubusercontent.com/ollama/ollama/1111111111111111111111111111111111111111/Dockerfile",
+      "dependencies": [],
+      "unresolved": ["runtime_dependencies", "expanded_bytes"]
+    },
+    {
+      "id": "f5-runtime",
+      "family": "f5_tts",
+      "role": "tts",
+      "source_id": "f5-source",
+      "upstream_version": "1.0.0",
+      "target": "ubuntu-24.04-x64",
+      "license_id": "f5-code",
+      "dependency_evidence_path": "Dockerfile",
+      "dependency_evidence_url": "https://raw.githubusercontent.com/SWivid/F5-TTS/2222222222222222222222222222222222222222/Dockerfile",
+      "dependencies": [],
+      "unresolved": ["runtime_dependencies"]
+    }
+  ],
+  "artifacts": [],
+  "container_images": [
+    {
+      "id": "ollama-image",
+      "source_id": "ollama-source",
+      "registry": "registry.example.invalid",
+      "repository": "authored/ollama",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "manifest_bytes": 200,
+      "index": {
+        "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "bytes": 80
+      },
+      "platform": { "os": "linux", "architecture": "amd64", "variant": null },
+      "evidence": "synthetic_fixture",
+      "evidence_url": "https://registry.example.invalid/v2/authored/ollama/manifests/sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "blobs": [
+        {
+          "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "kind": "configuration",
+          "compressed_bytes": 10,
+          "expanded_bytes": 10,
+          "staging_bytes": 10
+        },
+        {
+          "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "kind": "layer",
+          "compressed_bytes": 100,
+          "expanded_bytes": 300,
+          "staging_bytes": 100
+        }
+      ],
+      "blob_inventory_complete": true,
+      "license_ids": ["ollama-components"],
+      "depends_on": []
+    },
+    {
+      "id": "f5-image",
+      "source_id": "f5-source",
+      "registry": "registry.example.invalid",
+      "repository": "authored/f5",
+      "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "manifest_bytes": 250,
+      "index": {
+        "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "bytes": 80
+      },
+      "platform": { "os": "linux", "architecture": "amd64", "variant": null },
+      "evidence": "synthetic_fixture",
+      "evidence_url": "https://registry.example.invalid/v2/authored/f5/manifests/sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "blobs": [
+        {
+          "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "kind": "configuration",
+          "compressed_bytes": 20,
+          "expanded_bytes": 20,
+          "staging_bytes": 20
+        },
+        {
+          "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "kind": "layer",
+          "compressed_bytes": 100,
+          "expanded_bytes": 300,
+          "staging_bytes": 100
+        }
+      ],
+      "blob_inventory_complete": true,
+      "license_ids": ["f5-components"],
+      "depends_on": []
+    }
+  ],
+  "licenses": [
+    {
+      "id": "ollama-code",
+      "source_id": "ollama-source",
+      "scope": "source_code",
+      "spdx": "unknown",
+      "disposition": "unreviewed",
+      "evidence_path": null,
+      "evidence_url": null
+    },
+    {
+      "id": "ollama-components",
+      "source_id": "ollama-source",
+      "scope": "container_image_components",
+      "spdx": "unknown",
+      "disposition": "unreviewed",
+      "evidence_path": null,
+      "evidence_url": null
+    },
+    {
+      "id": "f5-code",
+      "source_id": "f5-source",
+      "scope": "source_code",
+      "spdx": "unknown",
+      "disposition": "unreviewed",
+      "evidence_path": null,
+      "evidence_url": null
+    },
+    {
+      "id": "f5-components",
+      "source_id": "f5-source",
+      "scope": "container_image_components",
+      "spdx": "unknown",
+      "disposition": "unreviewed",
+      "evidence_path": null,
+      "evidence_url": null
+    }
+  ],
+  "roles": [
+    {
+      "id": "ollama-llm",
+      "role": "llm",
+      "runtime_id": "ollama-runtime",
+      "target": "ubuntu-24.04-x64",
+      "root_artifact_ids": ["ollama-image"],
+      "components": [
+        { "kind": "container_image", "artifact_id": "ollama-image" },
+        { "kind": "llm_weights", "artifact_id": null }
+      ]
+    },
+    {
+      "id": "f5-tts",
+      "role": "tts",
+      "runtime_id": "f5-runtime",
+      "target": "ubuntu-24.04-x64",
+      "root_artifact_ids": ["f5-image"],
+      "components": [
+        { "kind": "container_image", "artifact_id": "f5-image" },
+        { "kind": "tts_weights", "artifact_id": null },
+        { "kind": "vocabulary", "artifact_id": null },
+        { "kind": "vocoder_weights", "artifact_id": null },
+        { "kind": "vocoder_configuration", "artifact_id": null }
+      ]
+    }
+  ]
+}

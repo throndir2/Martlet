@@ -363,6 +363,15 @@ dependency/rights/runtime-fit requirements; registry metadata is not locally
 verified bytes or executable approval. Unknown sizes, rights or compatibility
 remain unknown. No floating-image example becomes a deployable preset.
 
+**H02c implementation evidence (foundation only):** the standalone
+[HostArtifacts v2 contract](../src/Martlet.HostArtifacts/README.md#version-2-container-metadata-h02c)
+preserves v1 and adds strict selected-image/index/platform metadata, shared
+content fact consistency and explicit compressed/expanded/staging unknowns.
+Production-path tests use authored synthetic image metadata and a golden byte
+inventory, not upstream/runtime evidence. No image/catalog qualification,
+download, daemon access, host observation, installation or execution is added;
+H02d and all native rights/runtime/host gates remain separate.
+
 H08d integrates the planner into versioned persistent settings with migration,
 backup/restore and support metadata. Preserve existing v1/v2 files, profile/
 credential ownership and the current OpenAI conversation behavior. Only this

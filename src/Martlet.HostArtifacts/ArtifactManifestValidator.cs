@@ -5,19 +5,23 @@ namespace Martlet.HostArtifacts;
 
 internal static class ArtifactManifestValidator
 {
-    internal static ArtifactKind[] RequiredComponents(RuntimeFamily family) => family == RuntimeFamily.Ollama
-        ? [ArtifactKind.RuntimeArchive, ArtifactKind.LlmWeights]
-        : [ArtifactKind.RuntimeArchive, ArtifactKind.TtsWeights, ArtifactKind.Vocabulary,
+    internal static ArtifactKind[] RequiredComponents(RuntimeFamily family, ArtifactKind runtimeKind) => family == RuntimeFamily.Ollama
+        ? [runtimeKind, ArtifactKind.LlmWeights]
+        : [runtimeKind, ArtifactKind.TtsWeights, ArtifactKind.Vocabulary,
             ArtifactKind.VocoderWeights, ArtifactKind.VocoderConfiguration];
 
     internal static void Validate(ManifestDocument doc)
     {
-        Require(doc.FormatVersion == 1, "manifest.unsupported_version");
+        Require(doc.FormatVersion is 1 or 2, "manifest.unsupported_version");
+        Require(doc.FormatVersion == 1 ? doc.ContainerImages is null : doc.ContainerImages is not null, "manifest.invalid_json");
         Require(doc.Kind == "host_artifact_candidate_lock" && doc.Scope == "metadata_only", "manifest.invalid_json");
         Id(doc.Id);
         var sources = Index(doc.Sources, 8, s => s.Id);
         var runtimes = Index(doc.Runtimes, 4, r => r.Id);
         var artifacts = Index(doc.Artifacts, 64, a => a.Id, allowEmpty: true);
+        var images = Index(doc.ContainerImages ?? [], 4, a => a.Id, allowEmpty: true);
+        Require(artifacts.Count + images.Count <= 64, "manifest.bounds_invalid");
+        var nodes = Nodes(doc);
         var licenses = Index(doc.Licenses, 16, l => l.Id);
         var roles = Index(doc.Roles, 4, r => r.Id);
         var sourceKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -32,7 +36,8 @@ internal static class ArtifactManifestValidator
             Require(license.Spdx is "MIT" or "CC-BY-NC-4.0" or "unknown", "manifest.license_invalid");
             Require(license.Scope == LicenseScope.ModelRepository ? source.Kind == SourceKind.HuggingFace :
                 source.Kind == SourceKind.Github, "manifest.license_invalid");
-            Require(license.Scope != LicenseScope.RuntimeArchiveComponents || license.Spdx == "unknown",
+            Require(doc.FormatVersion != 1 || license.Scope != LicenseScope.ContainerImageComponents, "manifest.license_invalid");
+            Require(license.Scope is not (LicenseScope.RuntimeArchiveComponents or LicenseScope.ContainerImageComponents) || license.Spdx == "unknown",
                 "manifest.license_invalid");
             if (license.Spdx == "unknown")
                 Require(license.EvidencePath is null && license.EvidenceUrl is null, "manifest.license_invalid");
@@ -98,7 +103,7 @@ internal static class ArtifactManifestValidator
             Require(artifact.Sha256 is null || hashes.Add(artifact.Sha256), "manifest.alias_invalid");
             total = checked(total + artifact.Bytes);
             Require(total <= 70_368_744_177_664L, "manifest.bounds_invalid");
-            UniqueReferences(artifact.DependsOn, 16, artifacts, allowEmpty: true);
+            UniqueReferences(artifact.DependsOn, 16, nodes, allowEmpty: true);
             UniqueReferences(artifact.LicenseIds, 16, licenses);
             edgeCount += artifact.DependsOn.Length;
             Require(edgeCount <= 256, "manifest.bounds_invalid");
@@ -110,29 +115,50 @@ internal static class ArtifactManifestValidator
                     "manifest.license_invalid");
             }
         }
-        DetectCycles(artifacts);
+        ContainerImageRules.Validate(doc, images.Values, artifacts.Values);
+        foreach (var image in images.Values)
+        {
+            Require(Reference(sources, image.SourceId).Kind == SourceKind.Github, "artifact.source_invalid");
+            UniqueReferences(image.DependsOn, 16, nodes, allowEmpty: true);
+            UniqueReferences(image.LicenseIds, 16, licenses);
+            edgeCount += image.DependsOn.Length;
+            Require(edgeCount <= 256, "manifest.bounds_invalid");
+            foreach (var licenseId in image.LicenseIds)
+            {
+                var license = licenses[licenseId];
+                Require(license.SourceId == image.SourceId && license.Scope == LicenseScope.ContainerImageComponents,
+                    "manifest.license_invalid");
+            }
+        }
+        DetectCycles(nodes);
         var reachable = new HashSet<string>(StringComparer.Ordinal);
         var usedRuntimes = new HashSet<string>(StringComparer.Ordinal);
         foreach (var role in roles.Values)
         {
             var runtime = Reference(runtimes, role.RuntimeId);
             Require(usedRuntimes.Add(runtime.Id) && role.Role == runtime.Role && role.Target == runtime.Target, "manifest.role_invalid");
-            UniqueReferences(role.RootArtifactIds, 16, artifacts, allowEmpty: true);
-            Require(role.Components.Length == RequiredComponents(runtime.Family).Length &&
+            UniqueReferences(role.RootArtifactIds, 16, nodes, allowEmpty: true);
+            Require(role.Components.All(c => c is not null), "manifest.role_invalid");
+            var runtimeKind = role.Components.Any(c => c.Kind == ArtifactKind.ContainerImage)
+                ? ArtifactKind.ContainerImage : ArtifactKind.RuntimeArchive;
+            Require(doc.FormatVersion != 1 || runtimeKind == ArtifactKind.RuntimeArchive, "manifest.role_invalid");
+            Require(role.Components.Length == RequiredComponents(runtime.Family, runtimeKind).Length &&
                 role.Components.All(c => c is not null), "manifest.role_invalid");
             var components = role.Components.ToDictionarySafe(c => c.Kind);
-            Require(RequiredComponents(runtime.Family).All(components.ContainsKey), "manifest.role_invalid");
+            Require(RequiredComponents(runtime.Family, runtimeKind).All(components.ContainsKey), "manifest.role_invalid");
             var bound = new HashSet<string>(StringComparer.Ordinal);
             foreach (var component in components.Values)
             {
                 if (component.ArtifactId is null) continue;
-                var artifact = Reference(artifacts, component.ArtifactId);
+                var artifact = Reference(nodes, component.ArtifactId);
                 Require(bound.Add(artifact.Id) && artifact.Kind == component.Kind, "manifest.role_invalid");
                 if (artifact.Kind == ArtifactKind.RuntimeArchive)
-                    Require(artifact.SourceId == runtime.SourceId && artifact.Release!.Tag == "v" + runtime.UpstreamVersion,
+                    Require(artifact.SourceId == runtime.SourceId && artifacts[artifact.Id].Release!.Tag == "v" + runtime.UpstreamVersion,
                         "manifest.role_invalid");
+                if (artifact.Kind == ArtifactKind.ContainerImage)
+                    Require(artifact.SourceId == runtime.SourceId, "manifest.role_invalid");
             }
-            var closure = Closure(role.RootArtifactIds, artifacts);
+            var closure = Closure(role.RootArtifactIds, nodes);
             Require(bound.SetEquals(closure), "manifest.role_invalid");
             if (runtime.Family == RuntimeFamily.F5Tts)
             {
@@ -140,24 +166,30 @@ internal static class ArtifactManifestValidator
                 RequireEdge(ArtifactKind.TtsWeights, ArtifactKind.VocoderWeights);
                 RequireEdge(ArtifactKind.VocoderWeights, ArtifactKind.VocoderConfiguration);
             }
-            else RequireEdge(ArtifactKind.LlmWeights, ArtifactKind.RuntimeArchive);
+            else RequireEdge(ArtifactKind.LlmWeights, runtimeKind);
             reachable.UnionWith(closure);
 
             void RequireEdge(ArtifactKind from, ArtifactKind to)
             {
                 if (components[from].ArtifactId is { } parent && components[to].ArtifactId is { } child)
-                    Require(artifacts[parent].DependsOn.Contains(child, StringComparer.Ordinal), "manifest.dependency_invalid");
+                    Require(nodes[parent].DependsOn.Contains(child, StringComparer.Ordinal), "manifest.dependency_invalid");
             }
         }
-        Require(reachable.Count == artifacts.Count && usedRuntimes.Count == runtimes.Count, "manifest.unreachable");
+        Require(reachable.Count == nodes.Count && usedRuntimes.Count == runtimes.Count, "manifest.unreachable");
         var usedLicenses = runtimes.Values.Select(r => r.LicenseId)
-            .Concat(artifacts.Values.SelectMany(a => a.LicenseIds)).ToHashSet(StringComparer.Ordinal);
-        var usedSources = runtimes.Values.Select(r => r.SourceId).Concat(artifacts.Values.Select(a => a.SourceId))
+            .Concat(nodes.Values.SelectMany(a => a.LicenseIds)).ToHashSet(StringComparer.Ordinal);
+        var usedSources = runtimes.Values.Select(r => r.SourceId).Concat(nodes.Values.Select(a => a.SourceId))
             .Concat(licenses.Values.Select(l => l.SourceId)).ToHashSet(StringComparer.Ordinal);
         Require(usedLicenses.Count == licenses.Count && usedSources.Count == sources.Count, "manifest.unreachable");
     }
 
-    internal static HashSet<string> Closure(IEnumerable<string> roots, IReadOnlyDictionary<string, ArtifactDocument> artifacts)
+    internal static Dictionary<string, ArtifactNode> Nodes(ManifestDocument doc) =>
+        doc.Artifacts.Select(a => new ArtifactNode(a.Id, a.Kind, a.SourceId, a.LicenseIds, a.DependsOn))
+            .Concat((doc.ContainerImages ?? []).Select(a =>
+                new ArtifactNode(a.Id, ArtifactKind.ContainerImage, a.SourceId, a.LicenseIds, a.DependsOn)))
+            .ToDictionarySafe(a => a.Id);
+
+    internal static HashSet<string> Closure(IEnumerable<string> roots, IReadOnlyDictionary<string, ArtifactNode> artifacts)
     {
         var result = new HashSet<string>(StringComparer.Ordinal);
         var pending = new Stack<string>(roots);
@@ -220,7 +252,7 @@ internal static class ArtifactManifestValidator
         foreach (var id in ids) Reference(values, id);
     }
 
-    private static void DetectCycles(IReadOnlyDictionary<string, ArtifactDocument> artifacts)
+    private static void DetectCycles(IReadOnlyDictionary<string, ArtifactNode> artifacts)
     {
         var visiting = new HashSet<string>(StringComparer.Ordinal);
         var visited = new HashSet<string>(StringComparer.Ordinal);

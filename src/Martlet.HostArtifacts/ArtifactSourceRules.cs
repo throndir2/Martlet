@@ -64,6 +64,7 @@ internal static partial class ArtifactSourceRules
 
     internal static void Artifact(ArtifactDocument artifact, SourceDocument source)
     {
+        Require(artifact.Kind != ArtifactKind.ContainerImage, "artifact.pin_invalid");
         Path(artifact.Path);
         Require(artifact.Bytes is > 0 and <= 17_592_186_044_416L, "artifact.pin_invalid");
         Require(artifact.Sha256 is null ? artifact.Sha256Evidence == HashEvidence.Unavailable :
