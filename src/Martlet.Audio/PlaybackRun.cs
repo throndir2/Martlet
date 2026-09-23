@@ -212,6 +212,10 @@ public sealed class PlaybackRun
                 var padding = device.GetPadding(cancellation.Token);
                 if (padding < 0 || padding > info.BufferCapacitySamples || padding > committed)
                     throw new ContractException(ErrorCode.AudioPlaybackFailed, "The device returned invalid sample accounting.");
+                if (started && padding == 0)
+                {
+                    lock (gate) InvalidateClock(PlaybackClockState.Underrun);
+                }
                 ReportProgress(committed, committed - padding);
                 if (started && request.ObserveDeviceClock && !clockInvalidated)
                     ObserveClock(device, committed);

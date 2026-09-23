@@ -90,4 +90,25 @@ public sealed class PlaybackClockTests
         Assert.Equal(PlaybackState.Completed, (await run.Completion.WaitAsync(TimeSpan.FromSeconds(5))).State);
         Assert.Equal(PlaybackClockState.Underrun, run.DeviceClock.State);
     }
+
+    [Fact]
+    public async Task Empty_endpoint_with_queued_refill_invalidates_clock_before_new_commit()
+    {
+        var device = new ControlledDevice { AutoConsume = false };
+        await using var sink = new PcmPlaybackSink(device, new() { Prebuffer = TimeSpan.Zero });
+        var request = Request();
+        var run = sink.Start(request);
+        run.Submit(Frame(request));
+        run.Submit(Frame(request, 1, 1200));
+        await Until(() => run.DeviceClock.State == PlaybackClockState.Available);
+        Assert.Equal(1200, run.Snapshot.SubmittedSamples);
+        device.ClockReading = new(96000, 48000, PlaybackClockOrigin.ControlledTest);
+        device.Consume(1200);
+        await Until(() => run.Snapshot.SubmittedSamples == 2400);
+        Assert.Equal(PlaybackClockState.Underrun, run.DeviceClock.State);
+        Assert.Null(run.DeviceClock.SampleOffset);
+        run.CompleteInput(2400);
+        device.Consume(1200);
+        Assert.Equal(PlaybackState.Completed, (await run.Completion.WaitAsync(TimeSpan.FromSeconds(5))).State);
+    }
 }
