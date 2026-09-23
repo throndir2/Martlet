@@ -1,0 +1,36 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net10.0": {
+      "martlet.core": {
+        "type": "Project"
+      },
+      "martlet.f5": {
+        "type": "Project"
+      },
+      "martlet.gateway": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.F5": "[0.1.0, )",
+          "Martlet.Perception": "[0.1.0, )",
+          "Martlet.Providers": "[0.1.0, )"
+        }
+      },
+      "martlet.gateway.persistence": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Gateway": "[0.1.0, )"
+        }
+      },
+      "martlet.perception": {
+        "type": "Project"
+      },
+      "martlet.providers": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Core": "[0.1.0, )"
+        }
+      }
+    }
+  }
+}

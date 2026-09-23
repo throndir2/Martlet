@@ -263,6 +263,42 @@ public sealed class SetupDispatcherTests(ITestOutputHelper output)
         finally { window.Close(); }
     });
 
+    [Fact]
+    public Task CompatibleModelCatalogSelectionPersistsAndUnsupportedInputPreservesRoute() => OnDispatcher(async () =>
+    {
+        using var fixture = new SetupFixture();
+        var runner = new SetupOperationRunner();
+        var window = fixture.Open(runner);
+        try
+        {
+            await WaitUntil(() => Control<StackPanel>(window, "EditorPanel").IsEnabled);
+            Control<RadioButton>(window, "ApiChoice").IsChecked = true;
+            Control<TabControl>(window, "Steps").SelectedIndex = (int)SetupStep.Destinations;
+            Control<ComboBox>(window, "RoleChoice").SelectedItem = SetupRole.Llm;
+            var catalog = Control<ComboBox>(window, "ModelCatalogChoice");
+            Assert.Contains("gpt-4.1-2025-04-14", catalog.Items.Cast<string>());
+            catalog.SelectedItem = "gpt-4.1-2025-04-14";
+            Click(window, "SetupUseCatalogModel");
+            Assert.Equal("gpt-4.1-2025-04-14", Control<TextBox>(window, "ModelId").Text);
+            Control<CheckBox>(window, "ConsentChoice").IsChecked = true;
+            Click(window, "SetupApplyRoute");
+            Click(window, "SetupSave");
+            await WaitUntil(() => Control<TextBox>(window, "ResultText").Text.Contains("saved", StringComparison.OrdinalIgnoreCase));
+            var saved = await Task.Run(() => fixture.Store.LoadAsync());
+            var route = saved.Settings!.Setup!.Routes.Single(item => item.Role == SetupRole.Llm);
+            Assert.Equal("gpt-4.1-2025-04-14", route.ModelId);
+            Assert.Equal(route.Selection(), route.Consent);
+
+            Control<TextBox>(window, "ModelId").Text = "unsupported-model";
+            Control<CheckBox>(window, "ConsentChoice").IsChecked = true;
+            Click(window, "SetupApplyRoute");
+            Assert.Contains("does not support", Control<TextBox>(window, "ResultText").Text);
+            Assert.Equal(route, (await Task.Run(() => fixture.Store.LoadAsync())).Settings!.Setup!.Routes
+                .Single(item => item.Role == SetupRole.Llm));
+        }
+        finally { window.Close(); }
+    });
+
     private static string ActionId(string action) => action switch
     {
         "Write" => "SetupStoreKey", "Read" => "SetupReadKey", _ => "SetupRemoveKey"

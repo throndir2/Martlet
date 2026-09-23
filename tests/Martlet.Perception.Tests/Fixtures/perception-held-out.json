@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "fixture_provenance": "synthetic-shape-only-not-ai",
+  "tasks": [
+    {
+      "fixture_id": "ocr-selected-settings-menu",
+      "role": "ocr",
+      "width": 24,
+      "height": 16,
+      "question": null,
+      "expected_output": "ocr_regions",
+      "minimum_items": 1,
+      "maximum_age_ms": 3000
+    },
+    {
+      "fixture_id": "ocr-selected-chat-overlay",
+      "role": "ocr",
+      "width": 32,
+      "height": 18,
+      "question": null,
+      "expected_output": "ocr_regions",
+      "minimum_items": 1,
+      "maximum_age_ms": 2000
+    },
+    {
+      "fixture_id": "vlm-selected-menu-question",
+      "role": "vlm",
+      "width": 28,
+      "height": 20,
+      "question": "Which synthetic menu is visible in the selected-window fixture?",
+      "expected_output": "answer_with_uncertainty",
+      "minimum_items": 1,
+      "maximum_age_ms": 3000
+    },
+    {
+      "fixture_id": "vlm-selected-state-question",
+      "role": "vlm",
+      "width": 30,
+      "height": 18,
+      "question": "What synthetic state is shown in the selected-window fixture?",
+      "expected_output": "answer_with_uncertainty",
+      "minimum_items": 1,
+      "maximum_age_ms": 2500
+    }
+  ],
+  "scheduler_cases": [
+    {
+      "fixture_id": "latest-frame-replaces-older-ocr",
+      "role": "ocr",
+      "older_epoch": 41,
+      "newer_epoch": 42,
+      "expected_outcome": "latest_only"
+    },
+    {
+      "fixture_id": "late-vlm-frame-is-rejected",
+      "role": "vlm",
+      "older_epoch": 71,
+      "newer_epoch": 72,
+      "expected_outcome": "late_rejected"
+    }
+  ]
+}

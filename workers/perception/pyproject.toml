@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools==84.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "martlet-perception-worker"
+version = "1.0.0"
+description = "Bounded martlet.perception.worker v1 stdio process"
+requires-python = "==3.12.*"
+dependencies = []
+
+[project.scripts]
+martlet-perception-worker = "martlet_perception_worker.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["martlet_perception_worker*"]
+
+[tool.setuptools.package-data]
+martlet_perception_worker = ["runtime-pins.v1.json"]

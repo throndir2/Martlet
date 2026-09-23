@@ -45,7 +45,8 @@ access are **unknown**, not free or verified. Official
 [data retention policy](https://platform.openai.com/docs/guides/your-data)
 are linked in the UI (copy reviewed 2026-09-13; no rates cached). Opening a link
 requires an explicit browser action. A ChatGPT subscription is not API quota.
-Screen and persistent memory remain OFF. No health test, account login,
+Screen remains OFF; [local memory](MEMORY.md) is separately OFF by default,
+never enabled by Setup or an installation plan. No health test, account login,
 provider listing or billable probe is run.
 
 Back/Next and the tabs navigate Choice, Destinations, Credentials and Review.
@@ -79,14 +80,16 @@ checkpoint remains the restart recovery boundary.
 
 ## Consent and schema
 
-`AppSettings` accepts the original strict v1 schema and the new strict v2
-schema. Profile schema stays v1. v2 adds versioned `SetupSettings`: a bounded
+`AppSettings` accepts strict schemas v1-v4. Profile schema stays v1.
+v3 adds companion personas/styles; v4 adds separately consented OFF-by-default
+local-memory enable/path policy, not facts. v2 adds versioned `SetupSettings`: a bounded
 checkpoint, up to three `SetupRoute` values and at most sixteen pending owned
 credential removals. Settings contain no secret or transcript. Unknown fields,
 invalid states, newer versions, malformed encodings and oversize files are
 rejected without rewriting their original bytes.
 
-`SetupSettings.Begin` only prepares an in-memory edit. Explicit v1-to-v2 save
+`SetupSettings.Begin` only prepares an in-memory edit at the current schema.
+Explicit migration from v1-v3 preserves the original bytes; a v1 save
 uses `File.Replace` to commit and snapshot the exact original as
 `settings.v1.<opaque-id>.bak` in the same directory. `SettingsSaveResult`
 explicitly reports `MigratedFromVersion1` and `SnapshotFileName`. Existing
@@ -163,12 +166,12 @@ hostile same-user manipulation and OS-vault roundtrips are not qualified here.
 
 ### Local configuration recovery transaction (V07a)
 
-The explicit `.martlet-config` output is a bounded 128 KiB format-1 JSON
+The explicit `.martlet-config` output is a bounded 256 KiB format-1 JSON
 envelope, not a ZIP/support bundle. Its deterministic manifest records
 `Martlet.Configuration`, producer assembly version, minimum reader format,
 settings schema, source profile UUID, snapshot UUID, UTC creation time and
-source SHA-256. `settings_bytes` is base64 of the **exact** <=64 KiB validated
-v1/v2 settings file (base64 is not encryption). Envelope SHA-256 covers the
+source SHA-256. `settings_bytes` is base64 of the **exact** <=128 KiB validated
+v1-v4 settings file (base64 is not encryption). Envelope SHA-256 covers the
 canonical serialized manifest, including the payload; source SHA-256 covers
 the original bytes. A fixed manifest serializes deterministically, but new
 snapshots intentionally have new identifiers/times. Integrity detects damage,
@@ -181,11 +184,16 @@ and rechecks the revision before a create-only staged/flush/rename to the
 chosen local destination. It does not copy an unlocked live file, read a vault,
 walk directories or include the opt-in support journal. Route/device IDs and
 configuration are personal; these LOCAL backups are neither encrypted nor
-sanitized diagnostic exports. There is currently no persisted voice/model/
-memory database to back up. Secrets, transient text/audio, environment,
+sanitized diagnostic exports. Version 3 includes named persona text and response-style weights; v1/v2
+snapshots contain no persona data. There is currently no persisted F5 voice,
+downloaded model to back up. Memory settings are included, but the separately
+owned fact store and its exports are never included. Secrets, transient text/audio, environment,
 arbitrary files and diagnostic logs are excluded.
 
-Restore requires an **existing valid same-profile** v1/v2 destination. Missing,
+Restore requires an **existing valid same-profile** v1-v4 destination. Memory is
+always forced OFF with a fresh revision: v4 sources retain their path policy,
+older sources preserve the current path policy, and no fact store is opened.
+Missing,
 malformed, inaccessible or newer destination files are never overwritten as a
 repair shortcut. Foreign profile IDs are not remapped. Preview generates a
 private immutable candidate byte array and displays its entire JSON, SHA-256,
@@ -195,7 +203,9 @@ source bytes or stale destination settings invalidate it. Commit pins the
 source with a read-only sharing handle and verifies its frozen digest; reread
 bytes are compared only, never substituted for the reviewed candidate.
 
-Imported route/model/voice and audio choices remain useful **inert preferences**:
+Imported v3 personas/styles remain inert preferences. An older v1/v2 source
+preserves the current v3 personas rather than inventing or erasing settings it
+could not have contained. Imported route/model/voice and audio choices remain useful **inert preferences**:
 fresh configuration revisions, cleared destination `Consent`/`CredentialId`
 and audio `Checkpoint`, and setup returns to Destinations. CURRENT legacy
 references and pending removals are preserved; current active owned keys become
@@ -333,7 +343,7 @@ arbitrary native `AudioPlaybackFailed`/`DeadlineExceeded` errors are not
 successful-cleanup evidence and remain quarantined.
 
 Optional v2 `audio` contains versioned `AudioSettings`, two bounded
-`AudioChoice` values and optional `AudioCheckpoint` values. Existing v1/v2 files
+`AudioChoice` values and optional `AudioCheckpoint` values. Existing v1-v4 files
 without audio still load unchanged. v1 explicit save retains the reviewed exact
 original snapshot; profile identity, legacy credentials, role routes/consents,
 pending removals and setup navigation survive. Unknown audio versions/fields,

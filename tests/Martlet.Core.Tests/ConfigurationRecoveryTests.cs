@@ -364,7 +364,7 @@ public sealed class ConfigurationRecoveryTests : IDisposable
         var original = await File.ReadAllBytesAsync(Store.FilePath);
         var plan = await Store.PreviewConfigurationRestoreAsync(Backup);
         var first = await Store.RestoreConfigurationAsync(plan, Approve(plan));
-        Assert.Equal(2, (await Store.LoadAsync()).Settings!.SchemaVersion);
+        Assert.Equal(AppSettings.CurrentSchemaVersion, (await Store.LoadAsync()).Settings!.SchemaVersion);
         Assert.Equal(original, await File.ReadAllBytesAsync(first.OriginalSnapshot!));
         var afterFirst = await File.ReadAllBytesAsync(Store.FilePath);
         plan = await Store.PreviewConfigurationRestoreAsync(Backup);
@@ -471,11 +471,13 @@ public sealed class ConfigurationRecoveryTests : IDisposable
         var node = JsonNode.Parse(await File.ReadAllTextAsync(Backup))!;
         var manifest = node["manifest"]!;
         var payload = Encoding.UTF8.GetString(Convert.FromBase64String(manifest["settings_bytes"]!.GetValue<string>()));
+        var currentVersion = $"\"schema_version\": {AppSettings.CurrentSchemaVersion},";
         payload = mutation switch
         {
-            "unknown" => payload.Replace("\"schema_version\": 2,", "\"schema_version\": 2,\"unexpected\":true,", StringComparison.Ordinal),
-            "future" => payload.Replace("\"schema_version\": 2,", "\"schema_version\": 3,", StringComparison.Ordinal),
-            _ => payload.Replace("\"schema_version\": 2,", "\"schema_version\": 2,\"schema_version\": 2,", StringComparison.Ordinal)
+            "unknown" => payload.Replace(currentVersion, currentVersion + "\"unexpected\":true,", StringComparison.Ordinal),
+            "future" => payload.Replace(currentVersion,
+                $"\"schema_version\": {AppSettings.CurrentSchemaVersion + 1},", StringComparison.Ordinal),
+            _ => payload.Replace(currentVersion, currentVersion + currentVersion, StringComparison.Ordinal)
         };
         var bytes = Encoding.UTF8.GetBytes(payload);
         manifest["settings_bytes"] = Convert.ToBase64String(bytes);

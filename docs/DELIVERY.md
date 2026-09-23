@@ -17,22 +17,49 @@ requirements. Missing native/OS/model/hardware evidence remains NOT RUN or
 blocked for that qualification; independent local development can continue.
 No replacement Action or release is requested by this plan.
 
+**Requirements expansion, 2026-09-19:** [Companion controls and behavior](COMPANION_REQUIREMENTS.md)
+defines R19-R24 and AC-21-AC-26: editable personas, F5 reference-voice replacement,
+independent LLM/VLM choices, listen-first context, VAD-driven interruption and
+response-style weights. All are **planned / not accepted as complete**. Existing
+policy, settings, cancellation and standalone VAD foundations do not close
+these new end-user requirements. Native VAD holds and local-only qualification
+rules remain unchanged.
+
 ### Current internal implementation
+
+**Canonical local-memory reuse:** the memory-only delta of `b80920a` and the
+memory named-argument correction from `68bd6c8` are adapted onto PR #44, not
+copied as old project snapshots. Schema 3 remains companion; schema 4 adds
+OFF-by-default local-memory policy and Desktop management/retrieval. PR #39
+finalization-time expiry/top-K regressions and PR #44 exact snapshot limits,
+legacy-v2 receipts, mandatory General/CompanionOnly native smokes and wrapper
+failure propagation remain required. No avatar/listen-first, Gateway,
+installation schema, remote-memory or host-action integration is imported.
+AC-16 and installation AC-18-AC-20 remain unchanged; source companion AC-18-23
+map to canonical AC-21-26 (source H07b barge-in remains canonical H07c).
+Historical package hashes elsewhere in this ledger are not evidence for this
+candidate. Its exact local commands, results and review are recorded in its PR.
 
 | Item | Actual status |
 | --- | --- |
 | D01 | Dispositions recorded in [FOUNDATION.md](FOUNDATION.md). .NET/WPF/core direction and pins chosen; license, distribution/signing, provider spending and optional model/SDK rights remain deferred gates. |
 | D02 | Versioned settings/profile/provider contracts, bounded PCM, production JSON and temporal text validators, explicit refusal, epochs/cancel/EOF/deadlines and golden traces exist. Role request bodies, remote schemas/SSE/binary wire framing remain; **AC-01 is partial, not frozen or fully passed**. |
 | F01 | Offline accessible text/status shell, explicit unconfigured-profile save, atomic validated settings and truthful shared-status CLI implemented. Local developer-host build/tests/CLI and bounded desktop-launch scope are documented; no clean consumer-OS claim. |
+| P03c local memory | [Consented local memory](MEMORY.md): strict schema-4 policy, explicit enable/save/inspect/edit/delete/purge/frozen export and next-turn-only bounded retrieval using the existing single-owner library. No transcript ingestion, remote memory, embedding or installation activation. v1-v3 migration keeps exact originals; v1-v4 recovery excludes facts and forces memory OFF. Desktop/root/package graph includes Memory with regenerated normal/RID locks. AC-16/G4, clean-machine, real-user usefulness and physical storage failure remain unqualified. |
 | F03a/F03b/F04 | Merged deterministic 30-script fixture engine, bounded real PCM sink/WASAPI adapter and local diagnostic registry/CLI/WPF shell. Headless evidence is not actual listening or install qualification. |
 | F03c | Shared `FixtureSession` now joins production cursor/validator, ordered synthetic text, optional actual sink, shared status and accessible Desktop/Doctor commands. Ten novice scenarios, per-action tone permission, Stop/fresh IDs/epochs, no default device/network/write effects. |
 | F05 integration | Normal solution includes fixture projects/tests and session tests; portable/Windows Doctor executable smokes remain required local checks with the pinned SDK. Packaging includes actual fixture/audio references, separate normal/RID locks, notices and audio-OFF native fixture smokes. |
 | V02a | Configuration-only [Setup / resume](SETUP.md): fixture or named OpenAI routes, exact per-role destination selection, strict v2 settings with explicit v1 snapshot migration, and real scoped Windows Credential Manager code. No provider registration/calls, fake completed voice setup or persisted per-turn spending permission. Native wrapper is fake-boundary tested, not OS-vault roundtrip qualified. V01b/V02b/V03/V04 live/audio integration remains. |
 | V02b / V05 / V04a | Reviewed local audio choices/tests, deterministic participation policy and reusable typed text-to-voice runtime are merged foundations; their internal fixture evidence does not qualify a real account or device. |
 | V01b standalone | [Post-capture voice activity library](VAD.md): bounded managed window/endpoint/ownership path with an internal pinned CPU classifier; normal public native initialization fails closed before consent consumption or data/native access. No app/solution/payload integration or PTT change. Unfiltered tests are managed/fake-native only; the new classifier's native execution remains pending, production privacy/eligibility blocked, and speech/device/performance/V01/G2 unqualified. |
+| V05a companion settings | [Companion personas](COMPANION_REQUIREMENTS.md#r19-editable-persona-profiles): strict settings v3 adds up to 16 named persona profiles, bounded editable text, validated helpful/sarcastic/silly/distracted/playful-teasing weights, fresh per-persona revisions and explicit create-only UTF-8 export/import. Desktop uses the app-shared effect owner; v1/v2 migration keeps an atomic original, v3 configuration recovery includes personas and older snapshots preserve current personas. This is inert configuration only: no runtime prompt/style selection, automatic listening, model call, capture or provider permission. |
+| V05b persona runtime | Explicit typed/PTT turns snapshot the active persona revision after participation accepts, select one dominant style from validated weights with an injectable production selector, and include both in the existing bounded LLM request. Combined persona/style/user bytes and token reservation fail closed without truncation or provider access; settings are revalidated before credential disclosure. No conversation history, automatic listening, response-frequency change or new permission is added. |
+| V02c LLM model selection | Setup exposes exact local model catalogs for each named OpenAI role and validates an applied model/voice before replacing the working draft. The LLM adapter accepts pinned `gpt-4.1-mini-2025-04-14` and `gpt-4.1-2025-04-14` Responses snapshots; a changed route clears destination consent and each fresh action/credential/request binds the saved exact model. No discovery, probe, fallback, VLM route or live account claim. |
+| V05b explicit context | The explicit Desktop conversation retains only completed typed/PTT user/assistant pairs in a bounded eight-turn, 16 KiB, two-minute in-memory buffer. Fresh authorization includes and budget-trims whole oldest pairs with persona/style/current input; failed/refused/suppressed turns are excluded. Pause, lock, configuration load/change, Stop and conversation close clear it. No automatic listening, unsolicited dispatch, persistence or memory service. |
 | V04b | [Explicit Desktop API conversation](CONVERSATION.md) joins saved route/vault bindings, local audio policies, typed or <=25 s PTT, named STT, pre-dispatch policy and streaming LLM/optional TTS/PCM sink. One app-shared effect owner, fresh bounded per-action envelope, exact reservations/role permissions, original cancellation/expiry and ownership quarantine. Text-only sends no TTS and opens no output. Root graph now includes existing Providers/Conversation/Participation and their suites; dedicated local project commands remain. |
+| V04b Stop accessibility | Conversation Stop remains above the scrolling form; window-local Escape uses the same discard/revoke path from input, response or held PTT. Unused permissions can also be revoked without starting work. Existing exact-operation ownership, cleanup, retained text and fresh-consent rules remain. In-process WPF/controlled-boundary regression coverage is not physical Stop latency, native apphost or device qualification. |
 | V06b | [Desktop Troubleshooting](TROUBLESHOOTING.md) integrates the merged Support engine: passive shared status, explicit OFF-by-default local journal, bounded typed live/fixture metadata, exact five-file preview, default-No destination-bound create-only ZIP and retained cleanup ownership. Support projects join the solution/Desktop/package graph. Doctor help is read-only; no CLI export, upload or support contact channel. Internal functionality, not G2/support-service qualification. |
-| V07a | [Local configuration recovery](TROUBLESHOOTING.md#local-configuration-backup--restore-v07a): bounded versioned integrity envelope of exact validated settings; explicit Desktop create-only backup and immutable default-No restore preview; existing valid same-profile v1/v2 only; inert preferences, unbound imported keys, current owned cleanup retained; fresh byte-exact pre-restore original and shared writer/effect ownership. No new dependencies or settings authority. Not portable import, corrupt-store repair, binary rollback or clean-VM qualification. |
+| V07a | [Local configuration recovery](TROUBLESHOOTING.md#local-configuration-backup--restore-v07a): bounded versioned integrity envelope of exact validated settings; explicit Desktop create-only backup and immutable default-No restore preview; existing valid same-profile v1/v2/v3 only; v3 restores personas while older sources preserve current personas; unbound imported keys, current owned cleanup retained; fresh byte-exact pre-restore original and shared writer/effect ownership. Not portable profile import, corrupt-store repair, binary rollback or clean-VM qualification. |
 | V07b recovery coordination | [Private rollback configuration restore](../src/Martlet.Updates/SELECTION.md#explicit-rollback-configuration-restoration) joins the recorded signed rollback selection to actual V07a restore under the supplied shared effect runner and Core writer/source/original/result ownership. Separate bounded one-use consent and explicit v3 fence; a distinct [fresh-consent acknowledgment](../src/Martlet.Updates/SELECTION.md#fresh-consent-acknowledgment-of-a-recorded-restore) handles only a valid recorded commit with authoritative pending selection, no conflicting publication and verified present settings, without restoring/writing settings again. New v4 history preserves the earlier interrupted operation; unproven/ambiguous cases still require manual reconciliation. Library surface only: no Desktop wiring, executable activation, runnable receipt, shipped rollback workflow or overall V07b completion. |
 | V07b payload compatibility | [Signed-candidate metadata verification](../src/Martlet.Updates/README.md#signed-format-1--byte-contract) accepts current production-shaped internal v2/provenance-v1/CycloneDX 1.6 metadata through real staging and retained verification, while explicitly preserving supported legacy v1 bytes/history. Separate 16 MiB v2 internal metadata caps do not widen signed-envelope, receipt, depth or ZIP policy. Actual producer-constructor/serializer conformance uses inert ephemeral-signed fixtures; authenticated declarations and implemented consistency checks are not full provenance/build/SBOM qualification, publisher authorization or executable readiness. No app graph, launcher or activation change; receipts remain non-runnable. |
 | V07c foundation | [Offline package evidence](../packaging/windows/README.md#offline-provenance-and-cyclonedx-sbom-v07c-foundation): required unsigned source/tool/locked-dependency provenance and CycloneDX 1.6 SBOM integrated with the existing actual-file manifest and installer handoff. No publisher attestation, license clearance, vulnerability scan, signed release or lifecycle qualification is implied; overall V07c remains incomplete. |
@@ -209,10 +236,10 @@ F02/F04 are required early; neither may be postponed until after voice features.
 | ID | Deliverable / owner | Depends on | Acceptance | Risk |
 | --- | --- | --- | --- | --- |
 | V01 | WASAPI capture/playback, NAudio adapter, CPU VAD integration and device policy / audio | D02, F01, F03, F04 | AC-05 with actual USB/headset/default-change cases; correct formats and bounded VAD segmentation; no unwanted room-speaker switch; PTT and Stop work | H |
-| V02 | Resumable onboarding, profile/model/voice choices, destination consent, Credential Manager, typed fallback / client | F02, F04, V01 | AC-06 checkpoint/credential cases using fixture adapters: interrupt/relaunch each step; key not in config/log/export; local audio tests; destination change invalidates consent. Full real novice trial belongs to V07 | H |
+| V02 | Resumable onboarding, profile/model/voice choices, destination consent, Credential Manager, typed fallback; independent role-model settings / client | F02, F04, V01 | AC-06 checkpoint/credential cases using fixture adapters; AC-23 LLM model switching without rebuilding, capability/consent revalidation and idle-boundary application; no key in config/log/export. VLM counterpart lands with P02; full real novice trial belongs to V07 | H |
 | V03 | One real API provider preset for STT, text LLM, TTS, versioned catalog and capability/error adapters / provider | D02, F03 | AC-07 contract fixtures and authorized live smoke; no surprise charges, model access assumed from listing, free-tier promise, or automatic cloud/model fallback | H |
 | V04 | End-to-end streaming orchestration, text segmentation, epochs/cancel, bounded queues and partial states / core | V01, V02, V03, F03 | AC-03/AC-08: real consented mic-to-voice; stop suppresses late audio; network/slow-consumer/duplicate events never replay stale speech or leak memory | H |
-| V05 | Separate talk-decision policy, names/aliases/personality config, explicit-address and conservative group behavior / core | D02, F03, V04 | AC-09: unaddressed/cooldown/self-audio/silence cases suppressed with reason; PTT works; non-speaking participants and unknown confidence handled honestly | H |
+| V05 | Separate talk-decision policy, editable named personas, weighted response styles, bounded recent context and listen-first group behavior / core + client | D02, F03, V04 | AC-09/AC-21/AC-24/AC-26: explicit controls work; silence has reasons; persona import/edit/restart and deterministic style selection; consented context accumulation without per-input replies, backlog or hidden listening | H |
 | V06 | Redacted structured logs, status remedies, local support bundle preview/consent and retention / diagnostics | F04, V02, V04, V05 | AC-04/AC-10: new failures have stable codes, golden remedies and canary leak tests; no transcript/audio/screen/secret collection by default | H |
 | V07 | Application-aware upgrade/rollback/uninstall, signed candidate pipeline, onboarding/usability/support docs / release | F05, V02, V04, V05, V06 | AC-02/AC-06/AC-11 on clean target OS; publisher signature/provenance verified; novice trials meet gate; no real-GPU claim | H |
 
@@ -228,9 +255,9 @@ If signing/budget access is unavailable, keep an internal pre-release status.
 | H01 | Packaged read-only host inventory/preflight and precise prerequisite remedies / host | D02, F04 | AC-12 discovery: unsupported/missing/permission-denied are distinct; dry-run changes nothing; Ubuntu CPU fixtures exercise remedies, not GPU qualification | M |
 | H02 | Locked role/image/model manifest, LLM backend spike, dependency/license/disk inventory / runtime + release | D01, H01, V03 contract patterns | Concrete downloadable bytes/digests/revisions; no floating `main`/`latest`; exact candidate GPU matrix has known/unknown fields; no preset enabled before rights and fit validation | H |
 | H03 | Gateway TLS/pairing/scoped authentication, rotation/revocation, capability negotiation and firewall guidance / gateway | D02, H01 | AC-13 against synthetic workers on two processes/hosts; reject unpaired clients, bad pins, expiry, replay, wrong roles, unsafe redirects; no Docker/admin API | H |
-| H04 | Isolated pinned Python F5 worker and gateway TTS adapter with reference/audio consent / runtime | H02, H03, V04 | Chunked synthesis/transport correctly declared; auxiliary downloads explicit; contract cancellation/bounds pass; real GPU TTFA/VRAM awaited in H06, not claimed by CPU mocks | H |
+| H04 | Isolated pinned Python F5 worker/gateway adapter plus named reference-audio/transcript presets and replacement/preview controls / runtime + client | H02, H03, V04 | AC-22: validated reference revision/cache invalidation, explicit rights/destination/preview consent and safe voice changes; truthful chunked transport/cancellation/bounds, no hidden downloads/transcription; actual voice/TTFA/VRAM evidence awaits H06 | H |
 | H05 | Reviewed idempotent bootstrap, selected-role Compose profiles, boot readiness, persistent volumes, repair/upgrade/backup/rollback/uninstall / host | H01, H02, H03; H04 only for F5 roles | AC-12 lifecycle on target Ubuntu with declared fixture/real workers: interruption/resume, precise privileges, no root worker/default socket, failed warmup stays failed, data-preserving removal/restore; LLM-only has no F5 prerequisite; GPU cells await H06 | H |
-| H07 | Optional native CPU whisper.cpp STT package, selected hosted-STT worker, private-route audit, qualified speech barge-in option / audio + runtime | V01, V04, H02; H03/H05 for hosted lane | AC-05/AC-07/AC-08: consented model provisioning, denied-egress local STT works on declared CPU; hosted adapter/worker qualified independently with explicit audio destination; full-duplex only on proven topology, manual barge-in remains default fallback | H |
+| H07 | Optional native CPU whisper.cpp STT package, selected hosted-STT worker, private-route audit, qualified live VAD/feedback protection and speech barge-in / audio + runtime | V01, V04, H02; H03/H05 for hosted lane | AC-05/AC-07/AC-08/AC-25: consented model provisioning, denied-egress native STT and independently qualified hosted adapter/worker with explicit audio destination; speech-onset interruption without STT/name wait, no stale audio; automatic barge-in only on privacy/feedback-qualified topology, manual controls retained | H |
 | H06 | Witnessed single/two-GPU-host acceptance, combined LLM/F5 fit, host-2 fault isolation, optional admin guide / hardware + release | H04, H05, H07, V06 | AC-12/AC-13/AC-14 on exact owner inventory: reboot, concurrent load, unplug host 2, OOM recovery, local-only data path; optional power/remote desktop tests separately consented | H |
 | H08 | Feature/role/host/ownership plan and unified resumable setup coordinator / core + client | D02, V02, F04; H03/H05 for managed-host integration | AC-18/AC-19: hybrid role routes, multiple roles on one machine, disabled-feature dependency pruning, selected-route probes, stable host identities, per-machine progress and no remote admin authority; production Ollama issuer/internal transport reviewed, not a blanket loopback relaxation | H |
 | H09 | Graphical Ubuntu host setup and matching headless CLI / host + UX | H01, H05, H08 | AC-12/AC-18/AC-19 on Ubuntu Desktop and Server: locally authorized loopback browser UI, accessible plan/remedies, same journal/probes as CLI, local approvals and safe remote handoff, resume after reboot; no Linux WPF companion promise | H |
@@ -241,8 +268,11 @@ needs a proven local STT route, not an undisclosed cloud transcription
 dependency. Typed-only profiles do not require STT. H06 qualifies the
 two-host transport using fixture context on host 2; **real VLM/OCR/detector/memory
 qualification is still P04**, with explicit labels in the support matrix.
-The local-STT part of H07 is required for this private route; optional speech
-barge-in can remain disabled and does not block G3.
+The local-STT part of H07 is required for this private route. Automatic speech
+barge-in can remain disabled and does not block a clearly labeled manual/PTT
+G3 profile, but R23 remains required before advertising conversational
+speech interruption. H07c is independent of the local-STT choice: it must
+eventually work with either authorized API or local STT, not require F5.
 
 H08/H09 specify the guided installation experience; they do not claim that the
 current OpenAI-only setup can already connect to hosts. H10 is a separately
@@ -263,7 +293,7 @@ own hardware-specific evidence. Unvalidated deployments remain experimental.
 | ID | Deliverable / owner | Depends on | Acceptance | Risk |
 | --- | --- | --- | --- | --- |
 | P01 | Explicit selected-window screenshot capture, preview, pause/lock handling and budgets / client | V02, V06, H03 | AC-15: zero capture before consent; source closed/locked/denied stops; no desktop-wide fallback or game injection; exact destination visible | H |
-| P02 | Host-2 VLM/OCR adapters, optional separately licensed detector, freshness/resource scheduler / perception | P01, H02, H03, H06 | AC-15/AC-14: labeled task evaluation, bounded latest-frame queue, stale data excluded, host-2 loss does not block voice; choose detector only if needed | H |
+| P02 | Host-2 VLM/OCR adapters, independent VLM model selection, optional separately licensed detector, freshness/resource scheduler / perception | P01, H02, H03, H06, V02c | AC-15/AC-14/AC-23 VLM: compatible model changes without rebuilding or changing LLM/voice; stale model results excluded, capture permission unchanged, bounded latest-frame queue and host-2 fault isolation | H |
 | P03 | Opt-in memory service, user-save/inspect/edit/delete/export, lexical retrieval then evaluated embedding/reranker option / memory | D02, H03, V06 | AC-16: provenance/consent and deletion propagate through index/cache/in-flight work; no store-wide cloud upload; backup/restore semantics documented | H |
 | P04 | Real host-2 model and combined gaming-load qualification, privacy and restore exercises / release | P02, P03 | AC-14/AC-15/AC-16 with real enabled roles/models; offline/host-loss fallback truthful; no advertised unlimited simultaneous models | H |
 
@@ -300,10 +330,17 @@ slices may be explicitly disabled, not silently described as shipped.
 | V03a | STT adapter and shared provider catalog structure | Contract fixtures; authorized small transcription smoke recorded separately |
 | V03b | Text LLM adapter and streaming error normalization | V03a shared infrastructure only; final/partial/refusal/error fixtures |
 | V03c | TTS adapter and selected voice/format validation | V03a shared infrastructure only; PCM/stream/error fixtures; no auto fallback |
-| V07a | Implemented internal settings/configuration snapshot and previewed restore transaction; see [scope and limits](SETUP.md#local-configuration-recovery-transaction-v07a) | Existing valid same-profile v1/v2 only; controlled transaction interruption retains original; physical crash/power-loss and actual upgrade qualification remain NOT RUN |
+| V02c | User-editable LLM role/model selection using reusable role-selection contracts | V02/V03 foundations and D02 schema review; AC-23 LLM cases, explicit named-adapter support, no arbitrary catalog bypass, no automatic download/probe; P02 adds VLM using the same boundary |
+| V05a | Named persona text editor/import/export and validated style-weight settings | Existing settings/migration ownership and V02; AC-21 persistence/import/error cases and AC-26 weight validation; inert settings only, no permission changes |
+| V05b | Persona/context prompt budgeting and weighted style selection in the real conversation path | V05a/V04; AC-21 next-action revision and AC-26 production selection/prompt tests; no current-turn mutation, no change to response frequency or permissions |
+| V05c | Bounded observation context and opt-in listen-first participation | V05b/V01 qualified live capture/VAD integration; AC-09/AC-24, metadata reasons, no ignored-input LLM/TTS or stale backlog; managed fixtures do not enable native production listening |
+| V07a | Implemented internal settings/configuration snapshot and previewed restore transaction; see [scope and limits](SETUP.md#local-configuration-recovery-transaction-v07a) | Existing valid same-profile v1/v2/v3 only; v3 persona data restored and older sources preserve current personas; controlled interruption retains original; physical crash/power-loss and actual upgrade qualification remain NOT RUN |
 | V07b | Version staging, activation, rollback and uninstall preservation | V07a; compatible restore and N-1/N failure cases |
 | V07c | Signed build/manifest, provenance, SBOM and notices | Build foundation may proceed in parallel; protected signing access required before release, never mocked as valid |
 | V07d | Clean Windows and novice walkthrough/support release record | V07b/V07c; AC-02/AC-06/AC-11 real-environment exit |
+| H04a | Version-qualified F5 worker/gateway synthesis, formats, bounds and cancellation | H02/H03/V04; explicit valid reference/audio permission, truthful chunked transport and compute-cancel limits; no model execution/download without authorization |
+| H04b | Reference-voice picker, transcript, named presets, revision/cache lifecycle and preview | H04a/V02; AC-22 actual adapter-path A/B/same-path replacement/error tests; real voice difference and GPU evidence recorded separately in H06 |
+| H07c | Live speech-onset interruption with topology-qualified feedback protection | V01/V04/V05c and native privacy approval; AC-25 Stop/flush/late-output/ownership cases plus authorized actual-audio latency/echo evidence; neither F5 nor local STT is a prerequisite |
 | H05a | Reviewed prerequisite plan and idempotent setup journal | H01/H02; dry-run mutates nothing, resume reconciles approved steps |
 | H05b | Artifact download consent/progress/resume/integrity | H05a; interrupted/corrupt/changed-ETag/disk-full fixtures; no heavy download without authorization |
 | H05c | Selected-role Compose generation and boot/readiness supervision | H05b/H03; H04 only for F5; explicit owned engine/context, disabled roles absent, shared dependencies retained; real Ubuntu fixture-role reboot/stop evidence, no GPU claim |
@@ -323,6 +360,36 @@ slices may be explicitly disabled, not silently described as shipped.
 | P03c | Optional embedding/reranking adapter and index lifecycle | P03b; only after measured benefit/rights review, derived-data rebuild/delete cases |
 
 ### Installation program execution order (2026-09-22)
+
+#### Prior implementation reuse amendment (2026-09-23)
+
+**User decision:** reconcile and reuse earlier work through focused reviewed
+PRs, then finish the missing installation features. Canonical frozen source:
+`1715d194c03e9b1399c93c4f496f382e7076afc5` (69 unmerged commits at discovery).
+This is selective reuse, not a merge of that branch or a claim that all 69 are
+integrated. The source stays untouched. Its old candidate
+`54a71ae8d741572bb898a4a3194097c4d1c79872` and historical reviews/test/package
+receipts are context only, never fresh-head evidence.
+
+| Reuse phase | Exact source / boundary | Required gates and remaining work |
+| --- | --- | --- |
+| Persona baseline (this change) | In order, `e031817021838d528ed027372f343603323f3563`, `1e1615c24226d6914fbc072a5659912c8b4a9ce2`, `585f86518b29bd432bcb422e48d1d62cec40eb6e`, `f48fc94df7e562470212481b5491e3e890f59eea`, `bc0c954c91954d9dba85f36e6e67eaf572f76902`, reused with `cherry-pick -x` onto `5f7a2881577dd0520e178a48cc4b1b10b194d3fe` | Editable personas/settings v3, explicit-turn style, compatible LLM selection, visible Stop/Escape and bounded explicit context only. Preserve v1/v2 migration, credential ownership, recovery and historical Updates receipts. Fresh Core/Desktop/Providers/Updates, full affected solution, audio-OFF native/package gates and independent diff review; no live provider qualification. |
+| Independent modules (separate PRs, not included here) | Gateway `ec6db3979a1e2b8164176d455e4017475b9865ca`; F5 `b46e49be729977411a8c73bc14baeaeb2d8a2ceb`; Memory `fc1fd57f59fed0899ccbd5991797f1699d4e9bfb` | Isolated module/tests/module-doc imports with original attribution and fresh local direct-project checks. Reconcile Gateway against current Gateway.Trust; no competing settings/UI ownership, listener deployment, model run or qualification inferred. |
+| Sequential settings reuse (not included here) | v4 local memory -> v5 self-host voice -> v6 perception -> v7 barge-in -> v8 remote memory, one settings/Desktop/Updates owner | Review each original diff and bring its legacy prerequisite modules first: Memory for v4; gateway, reference-voice, STT/F5 and provider boundaries for v5; capture/perception contracts for v6; live VAD/participation/feedback boundaries for v7; remote memory protocol/store for v8. Each PR must prove exact migrations, recovery/history compatibility, credential/consent behavior and affected app/package paths locally; real account/device/native privacy/GPU/host rights remain separate gates. |
+| Installation completion (after reconciliation) | Retain the current research, Core/Installation pure planner, HostArtifacts OCI v2/candidate catalog and isolated Gateway.Trust | Reconcile prior host/artifact/journal implementations with these foundations before adding missing guided installation. H08d's installation-v3 draft is paused: schema 3 belongs to personas. Use the next compatible schema after v8, not a conflicting schema or second journal/planner. |
+
+H01 PR #21 / `22d76dfdd278d24b8a2d9c7b87621216dc93c687` remains held and
+**is not imported**, including its ancestry. Pending PR #37, the new journal and
+new installation drafts are preserved on hold, not silently superseded or
+deleted. The earlier wave table below is the installation program, not permission
+to bypass this reconciliation sequence. Normal reviewed PR publication is
+authorized for selected reuse only; no self-merge, remote CI, release, live
+provider, host/device/credential/model/driver/Docker/WSL installation is authorized.
+
+Documentation reconciliation preserves installation AC-18/AC-19/AC-20 and
+maps the source companion AC-18..AC-23 to AC-21..AC-26 respectively. Source H07b
+speech interruption becomes H07c here; existing H07a native-STT and H07b hosted-STT
+retain their meanings. These are identifier reconciliations, not changed gates.
 
 **Owner direction:** implement the researched installation program in dependency
 order, using independent worktree branches/PRs in parallel where ownership does
@@ -389,6 +456,23 @@ manufacture statuses or merge a held PR. Stop only dependent waves for a genuine
 blocker and continue independent work. Update this ledger with actual merged
 evidence; a queued session or code-only foundation is not a completed feature.
 
+#### H03b3: explicit Linux state backend candidate
+
+The canonical durable owner now shares one checkpoint/redo engine across its
+unchanged Windows-DPAPI default and an explicit `LinuxServicePermissions`
+candidate. Linux x86_64/glibc/local-ext4 state uses native FD/UID/mode/ACL/link/
+mount verification, cooperative lock and atomic rename plus directory fsync.
+Its distinct envelope is **permission-isolated plaintext**, not DPAPI parity;
+no silent migration/fallback or second paired-device authority exists.
+
+Permanent relationships, revocations/nonces, same-key renewal, default No and
+loopback-only behavior are retained. Windows regressions and the modeled
+production Linux boundary run locally; the separate native Linux test target
+is compile-only here. Actual Linux execution, reboot/service/container lifecycle,
+portable approval UI/console, private worker transport and LAN remain
+**NOT RUN / unqualified**. H01/#21 and hosting-preset holds remain unchanged.
+See [custody/recovery and evidence](../src/Martlet.Gateway.Persistence/README.md#explicit-linux-service-permissions-candidate).
+
 ## 3. Parallelization boundaries and first implementation batch
 
 Start from the reviewed plan. The shortest useful batch is:
@@ -448,6 +532,12 @@ what remains a real-device/manual gate.
 | AC-18: Topology-aware installation | One plan covers typed-only, API-only, one multi-role Ubuntu host, Windows client+host, mixed cloud/local roles and split hosts. Each selected experience requires only its dependencies; zero downloads/keys/probes for disabled roles. Failed optional context leaves voice/text usable with disclosure. Per-machine Back/Save/resume survives interruption; remote handoff contains no secrets/admin authority; external services are never silently adopted. Removing one role preserves shared dependencies/data. Ubuntu Desktop GUI and Server CLI operate the same journal/engine with accessible remedies. |
 | AC-19: Fast honest readiness | Check acknowledgement within 1 s; cheap group completes or reports exact-stage timeout within 15 s wall time including queueing, at most four probes, 5 s per network stage; unstarted checks remain not checked. No live probe starts on opening setup. Connected/model-present/request-passed/stale/disabled remain distinct; unsupported metadata is unknown. Small real probes default to a visible 60 s deadline or disclose a qualified override before approval; downloads/warmup are separate. Test failure/cancel/slow/unsupported/wrong-role cases, timestamp/config binding and no overlapping retries before cleanup; no billable periodic health calls. Witness actual selected-role trials separately from fixture timing cases. |
 | AC-20: Windows hosting lanes | Record independent native Ollama and Docker Desktop/WSL2 Linux-container matrices and real-machine results, not inherited Ubuntu passes. Exercise co-resident client+host and paired remote client, compatible external installation reuse, ports/engine ownership, driver/GPU availability, model fit, sleep/resume, user-login versus boot availability, scoped repair/removal and text-only/API alternatives. No automatic WSL/driver/firewall changes or terms acceptance; unavailable prerequisites remain blocked. Managed lifecycle claims require their own install/update/rollback/uninstall evidence. |
+| AC-21: Editable personas | Create two named profiles; edit/import/export/reselect/restart preserves exact valid text and weights; malformed/oversized/unreadable import leaves saved state and draft intact; next fresh authorized LLM action uses the selected bounded revision, never mutating an active request or permissions |
+| AC-22: F5 reference voice | Through the real adapter boundary, select A then B and replace A's bytes at the same path; new authorized synthesis uses only the applied audio/transcript revision with no stale conditioning; invalid/missing/changed reference blocks use with a remedy, no hidden transcript model/default voice; preview consent and mid-turn switching enforced; separately authorized F5 listening trial confirms audible change on the exact model/runtime |
+| AC-23: Model selection | Exercise at least two compatible IDs per enabled role through production selection/adapter paths without rebuild; LLM and VLM choices are independent, survive restart and preserve persona/voice; unsupported/unavailable or over-budget selection fails visibly; busy changes, stale results, capability refresh and fresh consent covered; fixtures do not qualify live model access/fit or enable screen capture |
+| AC-24: Listen first | A scripted multi-utterance conversation retains only eligible bounded context, ignores irrelevant/no-speech/self-audio inputs, resets the quiet gap on new speech and produces at most one fresh eligible response, not one per observation; assert zero LLM/TTS for suppressed inputs, exact time/count/byte/token caps, eviction/clear/revocation/expiry and zero unsolicited replies when opted out; explicit typed/PTT remains usable |
+| AC-25: Speech interruption | Inject onset during generation, synthesis and playback through the live activity/cancellation boundary; flush unsaid output, reject late frames, retain cleanup ownership and never auto-resume; actual authorized headset/speaker trials distinguish external speech from self-voice/noise, record missed/false interruptions and acoustic detection latency, and meet p95 <=250 ms confirmed onset event to last rendered sample over at least 20 interruptions per advertised topology; unqualified modes remain unavailable |
+| AC-26: Response-style ratios | Production selector rejects invalid/all-zero weights, never samples zero-weight styles and always selects the sole positive style; fixed-seed 10,000-selection corpus matches a mixed target within two percentage points per style; chosen style reaches the next authorized prompt, not participation/permissions; held-out human review separately checks perceived helpful/sarcastic/silly/distracted/teasing style and factual/control boundaries |
 
 For quality evaluation, use consented/licensed fixtures and a held-out scenario
 set. Measure STT errors on companion names and gaming terms, suppression false
@@ -468,6 +558,7 @@ conditions in the evidence record before comparing results.
 | API response onset | End of user speech -> first audible sample: median at most 5 s, p95 at most 10 s | 20+ short English turns, bounded reply, warm provider, recorded model/account region, stable link with measured RTT at most 100 ms |
 | Qualified self-host onset | Median at most 4 s, p95 at most 8 s | Same conversation set, warmed selected LLM/F5/local-STT profile, wired LAN RTT at most 5 ms; GPU/model/precision/context/concurrency disclosed |
 | Stop responsiveness | p95 at most 250 ms to silence | Stop activation to last rendered sample, real output device; compute abort is a separate measurement |
+| Qualified speech barge-in | p95 at most 250 ms from confirmed speech-onset event to silence | At least 20 real interruptions per advertised topology; report acoustic-onset-to-detection latency and false/missed triggers separately, including self-audio/noise; AC-25, not implied by manual Stop or post-capture VAD |
 | Stability | Zero canceled-turn/duplicate audio; no unbounded queue growth | 100 deterministic fault cases plus 30-minute real conversation/load session |
 | Desktop CPU/RAM | Idle under 3% total CPU and 350 MiB private bytes; API conversation under 15% total CPU and 600 MiB | Defined 4-core/8-thread-or-better reference PC, avatar/perception/CPU STT off; record actual CPU, sample interval and percentile |
 | Desktop GPU | No required GPU inference workload | Confirm provider/audio path does not allocate CUDA models; UI compositing is not "zero GPU use" |
@@ -514,6 +605,7 @@ Required cross-cutting scenarios for relevant lanes:
 | Provider | Invalid/revoked key, expired pairing, rate/billing quota, absent model/voice, wrong OpenAI subset, refused/empty response, partial stream/cancel; AC-01/AC-07/AC-08/AC-13 |
 | GPU/load | Unsupported architecture/driver, host-visible but container-invisible GPU, VRAM exhaustion with LLM/F5, warmup stuck, slow consumer, concurrent game/perception/remote desktop if enabled; AC-12/AC-14 |
 | Privacy | No capture before consent, pause/lock, destination change, content in error bodies, trace/bundle redaction, memory delete while query active; AC-10/AC-15/AC-16 |
+| Companion controls | Persona import/edit/restart, invalid weights, F5 same-path replacement and stale caches, independent LLM/VLM switching and busy apply, bounded context without reply backlog, style selection versus actual wording, speech-onset/echo/late-audio races; AC-21-AC-26 |
 
 ## 7. Release, provenance, and support gates
 
@@ -570,7 +662,7 @@ version, stage/code and reproducible steps first, not a full raw recording.
 | R08: Upgrade/rollback/backups/uninstall preserve data | F02, V07, H05, P03 / M1-M4 | AC-02/AC-11/AC-12/AC-16 |
 | R09: Authenticated LAN, version/capability negotiation, host-2 loss | H03, H06, P02 / M3-M4 | AC-01/AC-13/AC-14 |
 | R10: VAD/STT/LLM/TTS streaming/cancel/backpressure/audio formats | D02, V01, V03-V04, H04, H07 / M0-M3 | AC-01/AC-03/AC-05/AC-08 |
-| R11: Participant behavior, name/personality, observable silence | V05 / M2 | AC-09 |
+| R11: Participant behavior, name/personality, observable silence | V05 / M2 | AC-09; expanded by R19/R22/R24 and AC-21/AC-24/AC-26 |
 | R12: Opt-in perception and gaming resource budgets | P01-P02, P04 / M4 | AC-14/AC-15, G4 |
 | R13: Inspectable/deletable/exportable memory and provenance | P03-P04 / M4 | AC-10/AC-16, G4 |
 | R14: Unified status/doctor, fixtures, redaction and support | F03-F04, V06-V07 / M1-M2 | AC-03/AC-04/AC-10, G1-G2 |
@@ -578,6 +670,12 @@ version, stage/code and reproducible steps first, not a full raw recording.
 | R16: Hardware-dependent tuning/remote desktop remain optional | H06 / M3 | AC-14 only when enabled; no wiring/circuit-safety claim |
 | R17: Measured real-OS/GPU gates, local validation, signing and support readiness | F05, V07, H06, P04, A03 / M1-M5 | G1-G5, all relevant AC cases; never fixture-only hardware support |
 | R18: Optional later avatar and no-avatar parity | A01-A03 / M5 | AC-17, G5 |
+| R19: Easy persona text editing, named profiles and swappable text files | V05a-V05b, V02 / M2 | AC-21; persisted data and runtime use, not permission or multiple autonomous agents |
+| R20: User-changeable F5 reference audio/transcript and consented preview | H04a-H04b, H06 / M3 | AC-22, G3; actual reference replacement/voice evidence, separate model/voice rights |
+| R21: Independently change compatible LLM and VLM models without rebuilding | V02c, V03 / M2 LLM; P02 / M4 VLM | AC-23; capability/consent revalidation and atomic idle-boundary selection, no universal compatibility promise |
+| R22: Listen-first bounded context, selective replies and separate participation controls | V05b-V05c, V01 / M2 | AC-09/AC-24; ignored input is not a reply queue or LLM/TTS call, automatic listening separately qualified |
+| R23: VAD-driven cut-off during TTS with feedback protection | V01, V04, H07c / M3, independent of F5/local STT | AC-08/AC-25; mandatory before advertising automatic speech interruption, PTT-only earlier profiles explicitly exclude it |
+| R24: Adjustable helpful/sarcastic/silly/distracted/playful trolling response ratios | V05a-V05b / M2 | AC-26; test selection weights and human-perceived style separately, no permission/frequency override |
 
 ## 9. Handoff and evidence still required
 

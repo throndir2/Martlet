@@ -84,6 +84,10 @@
             <TextBlock Text="Set up your routes, choose local audio devices, or check in on your configuration."
                        TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,12"/>
             <WrapPanel>
+                <Button x:Name="CompanionButton" Content="_Companion personas" Click="Companion_Click" Padding="12,8" Margin="0,4,12,4"
+                        AutomationProperties.AutomationId="OpenCompanion" AutomationProperties.Name="Edit local companion personas and response-style weights" />
+                <Button x:Name="MemoryButton" Content="Local _memory (OFF by default)" Click="Memory_Click" Padding="12,8" Margin="0,4,12,4"
+                        AutomationProperties.AutomationId="OpenMemory" AutomationProperties.Name="Manage explicit local memory facts without opening the store on launch" />
                 <Button x:Name="AudioSetupButton" Content="_Audio setup (local only)" Click="AudioSetup_Click" Padding="12,8" Margin="0,4,12,4"
                         AutomationProperties.AutomationId="OpenAudioSetup" AutomationProperties.Name="Open local audio setup without enumerating or testing devices" />
                 <Button Content="Open _Troubleshooting" Click="Troubleshooting_Click" Padding="12,8" Margin="0,4,12,4"

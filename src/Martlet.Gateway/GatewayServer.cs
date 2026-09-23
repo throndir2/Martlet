@@ -32,6 +32,7 @@ public sealed class GatewayServer
     private readonly GatewayHostIdentity identity;
     private readonly GatewayOrigin origin;
     private readonly GatewayHttpApplication application;
+    private readonly GatewayInferenceRouteRegistry inference;
     private int started;
 
     public GatewayCredentialStore Credentials { get; }
@@ -44,8 +45,23 @@ public sealed class GatewayServer
         IGatewayAuditSink audit,
         TimeProvider? clock = null,
         IGatewayCrypto? crypto = null,
-        TimeSpan? credentialLifetime = null,
-        TimeSpan? pairingWindow = null)
+        TimeSpan? pairingWindow = null,
+        IEnumerable<IGatewayInferenceWorker>? inferenceWorkers = null)
+        : this(identity, origin, workers, audit, clock, crypto, pairingWindow, null, inferenceWorkers)
+    {
+    }
+
+    internal GatewayServer(
+        GatewayHostIdentity identity,
+        GatewayOrigin origin,
+        IEnumerable<IGatewayWorker> workers,
+        IGatewayAuditSink audit,
+        TimeProvider? clock,
+        IGatewayCrypto? crypto,
+        TimeSpan? pairingWindow,
+        GatewayCredentialStore? ownedCredentials,
+        IEnumerable<IGatewayInferenceWorker>? inferenceWorkers = null,
+        GatewayInferenceRouteRegistry? inferenceRegistry = null)
     {
         ArgumentNullException.ThrowIfNull(identity);
         ArgumentNullException.ThrowIfNull(origin);
@@ -56,9 +72,11 @@ public sealed class GatewayServer
         this.origin = origin;
         var effectiveClock = clock ?? TimeProvider.System;
         var effectiveCrypto = crypto ?? new SystemGatewayCrypto();
-        Credentials = new(identity, effectiveClock, effectiveCrypto, credentialLifetime);
+        Credentials = ownedCredentials ?? new(identity, effectiveClock, effectiveCrypto);
         Pairing = new(identity, origin, Credentials, effectiveClock, effectiveCrypto, pairingWindow);
+        inference = inferenceRegistry ?? new(inferenceWorkers ?? [], effectiveClock);
         application = new(identity, Pairing, Credentials, new(workers),
+            inference,
             effectiveClock, effectiveCrypto, audit);
     }
 
@@ -74,13 +92,27 @@ public sealed class GatewayServer
         GatewayRules.Require(Interlocked.CompareExchange(ref started, 1, 0) == 0, "request.invalid");
         try
         {
-            return await listenerFactory.StartAsync(
+            var listener = await listenerFactory.StartAsync(
                 binding, application.InvokeAsync, cancellationToken).ConfigureAwait(false);
+            return new InferenceListener(listener, inference);
         }
         catch
         {
             Interlocked.Exchange(ref started, 0);
             throw;
+        }
+
+    }
+
+    private sealed class InferenceListener(
+        GatewayListenerHandle listener, GatewayInferenceRouteRegistry inference) : GatewayListenerHandle
+    {
+        public override GatewayOrigin Origin => listener.Origin;
+        public override async ValueTask DisposeAsync()
+        {
+            var closing = inference.CloseAsync().AsTask();
+            await listener.DisposeAsync().ConfigureAwait(false);
+            await closing.ConfigureAwait(false);
         }
     }
 }
@@ -115,6 +147,8 @@ public sealed class KestrelGatewayListenerFactory : IGatewayListenerFactory
                 listen.UseHttps(new HttpsConnectionAdapterOptions
                 {
                     ServerCertificate = binding.Certificate,
+                    ServerCertificateSelector = binding.CertificateSelector is { } select
+                        ? (_, _) => select() : null,
                     SslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
                     ClientCertificateMode = ClientCertificateMode.NoCertificate
                 });

@@ -19,6 +19,8 @@ public partial class MainWindow : Window
     private TroubleshootingWindow? troubleshooting;
     private readonly SetupOperationRunner setupOperations = new();
     private readonly ISetupService? setupService;
+    private readonly ICompanionSettingsService? companionService;
+    private readonly DesktopMemoryService? memory;
     private readonly ConfigurationRecoveryController? recovery;
     private readonly AudioSetupService audioSetup;
     private readonly LiveConversationController? conversation;
@@ -52,10 +54,13 @@ public partial class MainWindow : Window
         audioSessionEvents.LockedChanged += audioSetup.SetSessionLocked;
         var vault = new WindowsCredentialStore();
         setupService = store is null ? null : new SetupService(store, vault);
+        companionService = store is null ? null : new CompanionSettingsService(store);
+        memory = store is null ? null : new DesktopMemoryService(store);
         recovery = store is null ? null : new(store, setupOperations, () => !support.HasResources);
         if (setupService is not null)
         {
-            conversation = new(setupOperations, setupService, vault, new WasapiCaptureDeviceFactory(), new WasapiDeviceFactory());
+            conversation = new(setupOperations, setupService, vault, new WasapiCaptureDeviceFactory(),
+                new WasapiDeviceFactory(), memory: memory);
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
         }
         this.startupError = startupError;
@@ -77,7 +82,9 @@ public partial class MainWindow : Window
         else
         {
             PipelineText.Text = "Mic / VAD / STT / Policy / LLM / TTS / Playback: unavailable; not run. Correct the launch data directory first.";
-            DemoButton.IsEnabled = ToneButton.IsEnabled = ScenarioChoice.IsEnabled = SetupButton.IsEnabled = AudioSetupButton.IsEnabled = ConversationButton.IsEnabled = false;
+            DemoButton.IsEnabled = ToneButton.IsEnabled = ScenarioChoice.IsEnabled =
+                SetupButton.IsEnabled = AudioSetupButton.IsEnabled = CompanionButton.IsEnabled =
+                MemoryButton.IsEnabled = ConversationButton.IsEnabled = false;
         }
     }
 
@@ -134,6 +141,8 @@ public partial class MainWindow : Window
         CreateButton.IsEnabled = !saving && !runningFixture && !setupOperations.IsRunning && model.CanCreateProfile;
         SetupButton.IsEnabled = !saving && !runningFixture && !model.IsRunning;
         AudioSetupButton.IsEnabled = SetupButton.IsEnabled;
+        CompanionButton.IsEnabled = SetupButton.IsEnabled;
+        MemoryButton.IsEnabled = SetupButton.IsEnabled;
         ConversationButton.IsEnabled = SetupButton.IsEnabled;
         RefreshButton.IsEnabled = !saving && !runningFixture && model.CanRefresh;
         StopButton.IsEnabled = !saving && model.IsRunning;
@@ -266,6 +275,20 @@ public partial class MainWindow : Window
         await RefreshAsync();
     }
 
+    private async void Companion_Click(object sender, RoutedEventArgs e)
+    {
+        if (companionService is null || closing || saving || runningFixture || model?.IsRunning == true) return;
+        new CompanionWindow(companionService, setupOperations) { Owner = this }.ShowDialog();
+        await RefreshAsync();
+    }
+
+    private async void Memory_Click(object sender, RoutedEventArgs e)
+    {
+        if (memory is null || closing || saving || runningFixture || model?.IsRunning == true) return;
+        new MemoryWindow(memory, setupOperations) { Owner = this }.ShowDialog();
+        await RefreshAsync();
+    }
+
     private async void Conversation_Click(object sender, RoutedEventArgs e)
     {
         if (conversation is null || closing || saving || runningFixture || model?.IsRunning == true) return;
@@ -333,6 +356,7 @@ public partial class MainWindow : Window
             await model.CloseAsync();
         await Task.Run(async () => await fixture.DisposeAsync());
         if (conversation is not null) await Task.Run(async () => await conversation.DisposeAsync());
+        memory?.Dispose();
         // WPF OnMainWindowClose exits the process, including any non-cooperative in-process callback.
         // Even absent or synchronous cleanup must leave WPF's original Closing event before closing again.
         await Dispatcher.InvokeAsync(() =>

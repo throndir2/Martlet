@@ -137,15 +137,7 @@ public sealed record SetupSettings : IContract
 
     // Preparing an edit is in memory only. Migration occurs on an explicit successful save.
     public static AppSettings Begin(AppSettings? prior)
-    {
-        var settings = prior ?? AppSettings.CreateUnconfigured();
-        settings.Validate();
-        return settings with
-        {
-            SchemaVersion = AppSettings.CurrentSchemaVersion,
-            Setup = settings.Setup ?? new() { SchemaVersion = 1, Checkpoint = SetupStep.Choice, Routes = [], PendingRemovals = [] }
-        };
-    }
+        => AppSettings.UpgradeToCurrent(prior);
 
     public static AppSettings SelectRoute(AppSettings settings, SetupRole role, string modelId, string? voiceId)
     {

@@ -112,9 +112,10 @@ public sealed class AppearanceTests
         var choice = new ComboBox { ItemsSource = new[] { "Light", "Dark" }, SelectedIndex = 0 };
         var check = new CheckBox { Content = "I permit this explicit action", IsChecked = false };
         var radio = new RadioButton { Content = "Fixture only", IsChecked = true };
+        var facts = new ListBox { ItemsSource = new[] { "Explicit local fact" }, SelectedIndex = 0 };
         var tabText = new TextBlock { Text = "Configuration only" };
         var tabs = new TabControl { Items = { new TabItem { Header = "_Setup", Content = tabText } } };
-        foreach (var control in new Control[] { button, input, password, choice, check, radio, tabs })
+        foreach (var control in new Control[] { button, input, password, choice, check, radio, tabs, facts })
             panel.Children.Add(control);
         var window = new Window { Content = panel, Width = 500, Height = 550, ShowActivated = false, ShowInTaskbar = false };
         window.Resources.MergedDictionaries.Add(new ResourceDictionary
@@ -149,6 +150,10 @@ public sealed class AppearanceTests
             Assert.Same(dark["TextBrush"], check.Foreground);
             Assert.Same(dark["TextBrush"], tabs.Foreground);
             Assert.Same(dark["TextBrush"], tabText.Foreground);
+            Assert.Same(dark["SurfaceBrush"], facts.Background);
+            var selectedFact = Assert.IsType<ListBoxItem>(facts.ItemContainerGenerator.ContainerFromIndex(0));
+            Assert.Same(dark["AccentBrush"], selectedFact.Background);
+            Assert.Same(dark["OnAccentBrush"], selectedFact.Foreground);
             choice.SelectedIndex = 1;
             Assert.Equal("Dark", choice.SelectedItem);
             Assert.False(check.IsChecked);

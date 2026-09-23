@@ -4,65 +4,82 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Martlet - Real API conversation" Width="920" Height="850" MinWidth="550" MinHeight="450"
         WindowStartupLocation="CenterOwner" Loaded="Window_Loaded" Closing="Window_Closing"
-        Deactivated="Window_Deactivated" AutomationProperties.Name="Real API conversation, explicit actions only">
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Margin="20">
-            <Button Content="Troubleshooting (local metadata only)" Click="Troubleshooting_Click" Padding="8" Margin="0,4"
-                    AutomationProperties.AutomationId="LiveTroubleshooting" />
-            <TextBlock Text="Real API conversation - explicit typed / push-to-talk" FontSize="23" FontWeight="SemiBold" TextWrapping="Wrap" />
-            <TextBlock Text="NOT the offline fixture. No request, credential lookup or device access occurs on opening. Configured routes are not verified account/model readiness." TextWrapping="Wrap" Margin="0,8" />
-            <WrapPanel>
-                <Button x:Name="ReloadButton" Content="_Reload saved choices" Click="Reload_Click" Padding="10,6" Margin="0,4,8,4" AutomationProperties.AutomationId="ReloadLive" />
-                <Button x:Name="SetupButton" Content="Set_up / credentials" Click="Setup_Click" Padding="10,6" Margin="0,4,8,4"
-                        AutomationProperties.AutomationId="LiveOpenSetup" />
-                <Button x:Name="AudioButton" Content="_Audio setup (local only)" Click="Audio_Click" Padding="10,6" Margin="0,4,8,4" />
-                <Button Content="_Close conversation" Click="Close_Click" Padding="10,6" Margin="0,4,8,4" AutomationProperties.AutomationId="CloseLive" />
-            </WrapPanel>
-            <Label Target="{Binding ElementName=ConfigurationText}" Content="Selected _configuration and supported adapter IDs" />
-            <TextBox x:Name="ConfigurationText" IsReadOnly="True" TextWrapping="Wrap" Height="125" VerticalScrollBarVisibility="Auto"
-                     AutomationProperties.AutomationId="LiveConfiguration" AutomationProperties.Name="Configuration only, not live readiness" />
-            <CheckBox x:Name="VoiceChoice" Content="Select AI-generated _voice output for the next action (OFF by default)" Checked="Output_Changed" Unchecked="Output_Changed" Margin="0,8"
-                      AutomationProperties.AutomationId="LiveVoice" />
-            <Label Target="{Binding ElementName=EnvelopeText}" Content="One-action data, cost and output _envelope" />
-            <TextBox x:Name="EnvelopeText" IsReadOnly="True" TextWrapping="Wrap" Height="210" VerticalScrollBarVisibility="Auto"
-                     AutomationProperties.AutomationId="LiveEnvelope" AutomationProperties.Name="Exact action bounds and data destinations" />
-            <CheckBox x:Name="AcceptAction" Content="I authorize my next Send / PTT action within this displayed envelope, including potential API charges and the selected generated-voice output." Margin="0,8"
-                      Checked="Consent_Changed" Unchecked="Consent_Changed" AutomationProperties.AutomationId="LiveAcceptAction" />
-            <CheckBox x:Name="AcceptCapture" Content="For PTT only: I permit bounded LOCAL microphone capture, including other people only with their permission." Margin="0,4"
-                      Checked="Consent_Changed" Unchecked="Consent_Changed" AutomationProperties.AutomationId="LiveAcceptCapture" />
-            <CheckBox x:Name="AcceptUpload" Content="For PTT only: I separately permit uploading this audio to the named STT destination with potential charges, even if policy later suppresses it." Margin="0,4"
-                      Checked="Consent_Changed" Unchecked="Consent_Changed" AutomationProperties.AutomationId="LiveAcceptUpload" />
-            <Label Target="{Binding ElementName=InputText}" Content="_Typed text (no history sent, at most 4096 characters)" />
-            <TextBox x:Name="InputText" AcceptsReturn="True" TextWrapping="Wrap" MaxLength="4096" Height="80" VerticalScrollBarVisibility="Auto"
-                     TextChanged="Input_Changed" AutomationProperties.AutomationId="LiveInput" />
-            <WrapPanel>
-                <Button x:Name="SendButton" Content="_Send typed text (one paid action)" Click="Send_Click" IsEnabled="False" Padding="10,7" Margin="0,6,8,6" Style="{DynamicResource PrimaryButton}"
-                        AutomationProperties.AutomationId="LiveSend" />
-                <Button x:Name="PttButton" Content="Hold _PTT (Space key), release to send" Click="Ptt_Click" IsEnabled="False" Padding="10,7" Margin="0,6,8,6"
-                        PreviewMouseLeftButtonDown="Ptt_Down" PreviewMouseLeftButtonUp="Ptt_Up" LostMouseCapture="Ptt_LostCapture"
-                        PreviewKeyDown="Ptt_KeyDown" PreviewKeyUp="Ptt_KeyUp" LostKeyboardFocus="Ptt_LostFocus"
-                        AutomationProperties.AutomationId="LivePtt"
-                        AutomationProperties.HelpText="Hold mouse or Space to record, release to send. Accessible Invoke starts a bounded recording; use Finish recording to send or Stop to discard. Never records automatically." />
-                <Button x:Name="ReleaseButton" Content="_Finish recording and send" Click="Release_Click" IsEnabled="False" Padding="10,7" Margin="0,6,8,6"
-                        AutomationProperties.AutomationId="LiveRelease" />
-                <Button x:Name="StopButton" Content="S_top / revoke this action" Click="Stop_Click" IsEnabled="False" Padding="10,7" Margin="0,6,8,6"
-                        AutomationProperties.AutomationId="LiveStop" />
-            </WrapPanel>
-            <WrapPanel>
-                <CheckBox x:Name="PauseChoice" Content="Pause all live work" Checked="Controls_Changed" Unchecked="Controls_Changed" Margin="0,4,16,4" AutomationProperties.AutomationId="LivePause" />
-                <CheckBox x:Name="MuteChoice" Content="Mute / stop live work" Checked="Controls_Changed" Unchecked="Controls_Changed" Margin="0,4,16,4" AutomationProperties.AutomationId="LiveMute" />
-            </WrapPanel>
-            <TextBlock Text="Retry is a NEW explicit Send/PTT with fresh consent and limits. Earlier speech may already have played; no queue is replayed. Microphone/STT failures allow typed fallback. Output failure leaves response text visible." TextWrapping="Wrap" Margin="0,8" />
-            <TextBlock x:Name="ResultText" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Live action result and remedy" />
-            <Label Target="{Binding ElementName=TranscriptText}" Content="PTT _transcript and evidence" />
-            <TextBox x:Name="TranscriptText" IsReadOnly="True" TextWrapping="Wrap" Height="65" VerticalScrollBarVisibility="Auto" AutomationProperties.AutomationId="LiveTranscript" />
-            <Label Target="{Binding ElementName=AnswerText}" Content="Response _text (retained even if output fails)" />
-            <TextBox x:Name="AnswerText" IsReadOnly="True" TextWrapping="Wrap" Height="160" VerticalScrollBarVisibility="Auto" AutomationProperties.AutomationId="LiveAnswer" />
-            <Label Target="{Binding ElementName=RefusalText}" Content="Separate _refusal (never ordinary speech)" />
-            <TextBox x:Name="RefusalText" IsReadOnly="True" TextWrapping="Wrap" Height="55" VerticalScrollBarVisibility="Auto" AutomationProperties.AutomationId="LiveRefusal" />
-            <Label Target="{Binding ElementName=StatusText}" Content="Same-engine stages / bounded _timeline" />
-            <TextBox x:Name="StatusText" IsReadOnly="True" TextWrapping="Wrap" Height="175" VerticalScrollBarVisibility="Auto"
-                     AutomationProperties.AutomationId="LiveStatus" AutomationProperties.Name="Mic STT policy LLM TTS playback and actual ownership" />
-        </StackPanel>
-    </ScrollViewer>
+        Deactivated="Window_Deactivated" PreviewKeyDown="Window_PreviewKeyDown"
+        AutomationProperties.Name="Real API conversation, explicit actions only">
+    <DockPanel>
+        <Grid DockPanel.Dock="Top" Margin="20,12,20,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Button x:Name="StopButton" Content="S_top / revoke (Esc)" Click="Stop_Click" IsEnabled="False"
+                    Padding="10,7" Margin="0,0,12,0" VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="LiveStop" AutomationProperties.AcceleratorKey="Esc"
+                    AutomationProperties.HelpText="Discard recording and revoke this action or unused permissions. Escape works anywhere in this conversation window. Does not close the window or send audio." />
+            <TextBlock Grid.Column="1" Text="Stop / Esc discards recording and revokes this action. Cleanup may still own resources; nothing resumes automatically."
+                       TextWrapping="Wrap" VerticalAlignment="Center" />
+        </Grid>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="20">
+                <Button Content="Troubleshooting (local metadata only)" Click="Troubleshooting_Click" Padding="8" Margin="0,4"
+                        AutomationProperties.AutomationId="LiveTroubleshooting" />
+                <TextBlock Text="Real API conversation - explicit typed / push-to-talk" FontSize="23" FontWeight="SemiBold" TextWrapping="Wrap" />
+                <TextBlock Text="NOT the offline fixture. No request, credential lookup or device access occurs on opening. Configured routes are not verified account/model readiness." TextWrapping="Wrap" Margin="0,8" />
+                <WrapPanel>
+                    <Button x:Name="ReloadButton" Content="_Reload saved choices" Click="Reload_Click" Padding="10,6" Margin="0,4,8,4" AutomationProperties.AutomationId="ReloadLive" />
+                    <Button x:Name="SetupButton" Content="Set_up / credentials" Click="Setup_Click" Padding="10,6" Margin="0,4,8,4"
+                            AutomationProperties.AutomationId="LiveOpenSetup" />
+                    <Button x:Name="AudioButton" Content="_Audio setup (local only)" Click="Audio_Click" Padding="10,6" Margin="0,4,8,4" />
+                    <Button Content="_Close conversation" Click="Close_Click" Padding="10,6" Margin="0,4,8,4" AutomationProperties.AutomationId="CloseLive" />
+                </WrapPanel>
+                <Label Target="{Binding ElementName=ConfigurationText}" Content="Selected _configuration and supported adapter IDs" />
+                <TextBox x:Name="ConfigurationText" IsReadOnly="True" TextWrapping="Wrap" Height="125" VerticalScrollBarVisibility="Auto"
+                         AutomationProperties.AutomationId="LiveConfiguration" AutomationProperties.Name="Configuration only, not live readiness" />
+                <CheckBox x:Name="VoiceChoice" Content="Select AI-generated _voice output for the next action (OFF by default)" Checked="Output_Changed" Unchecked="Output_Changed" Margin="0,8"
+                          AutomationProperties.AutomationId="LiveVoice" />
+                <Label Target="{Binding ElementName=EnvelopeText}" Content="One-action data, cost and output _envelope" />
+                <TextBox x:Name="EnvelopeText" IsReadOnly="True" TextWrapping="Wrap" Height="210" VerticalScrollBarVisibility="Auto"
+                         AutomationProperties.AutomationId="LiveEnvelope" AutomationProperties.Name="Exact action bounds and data destinations" />
+                <CheckBox x:Name="AcceptAction" Content="I authorize my next Send / PTT action within this displayed envelope, including potential API charges and the selected generated-voice output." Margin="0,8"
+                          Checked="Consent_Changed" Unchecked="Consent_Changed" AutomationProperties.AutomationId="LiveAcceptAction" />
+                <CheckBox x:Name="AcceptMemory" Margin="0,4"
+                          Content="Optional, next Send / PTT only: I separately authorize bounded lexical retrieval from my enabled local memory and disclosure of only fitting top facts (at most three) with provenance to the selected LLM. This is fresh permission, not provider permission, and is cleared after use."
+                          Checked="Consent_Changed" Unchecked="Consent_Changed" AutomationProperties.AutomationId="LiveAcceptMemory"
+                          AutomationProperties.HelpText="OFF for every action by default. Does not save this conversation or upload the complete memory store." />
+                <CheckBox x:Name="AcceptCapture" Content="For PTT only: I permit bounded LOCAL microphone capture, including other people only with their permission." Margin="0,4"
+                          Checked="Consent_Changed" Unchecked="Consent_Changed" AutomationProperties.AutomationId="LiveAcceptCapture" />
+                <CheckBox x:Name="AcceptUpload" Content="For PTT only: I separately permit uploading this audio to the named STT destination with potential charges, even if policy later suppresses it." Margin="0,4"
+                          Checked="Consent_Changed" Unchecked="Consent_Changed" AutomationProperties.AutomationId="LiveAcceptUpload" />
+                <Label Target="{Binding ElementName=InputText}" Content="_Typed text (bounded recent context, at most 4096 characters)" />
+                <TextBox x:Name="InputText" AcceptsReturn="True" TextWrapping="Wrap" MaxLength="4096" Height="80" VerticalScrollBarVisibility="Auto"
+                         TextChanged="Input_Changed" AutomationProperties.AutomationId="LiveInput" />
+                <WrapPanel>
+                    <Button x:Name="SendButton" Content="_Send typed text (one paid action)" Click="Send_Click" IsEnabled="False" Padding="10,7" Margin="0,6,8,6" Style="{DynamicResource PrimaryButton}"
+                            AutomationProperties.AutomationId="LiveSend" />
+                    <Button x:Name="PttButton" Content="Hold _PTT (Space key), release to send" Click="Ptt_Click" IsEnabled="False" Padding="10,7" Margin="0,6,8,6"
+                            PreviewMouseLeftButtonDown="Ptt_Down" PreviewMouseLeftButtonUp="Ptt_Up" LostMouseCapture="Ptt_LostCapture"
+                            PreviewKeyDown="Ptt_KeyDown" PreviewKeyUp="Ptt_KeyUp" LostKeyboardFocus="Ptt_LostFocus"
+                            AutomationProperties.AutomationId="LivePtt"
+                            AutomationProperties.HelpText="Hold mouse or Space to record, release to send. Accessible Invoke starts a bounded recording; use Finish recording to send or Stop to discard. Never records automatically." />
+                    <Button x:Name="ReleaseButton" Content="_Finish recording and send" Click="Release_Click" IsEnabled="False" Padding="10,7" Margin="0,6,8,6"
+                            AutomationProperties.AutomationId="LiveRelease" />
+                </WrapPanel>
+                <WrapPanel>
+                    <CheckBox x:Name="PauseChoice" Content="Pause all live work" Checked="Controls_Changed" Unchecked="Controls_Changed" Margin="0,4,16,4" AutomationProperties.AutomationId="LivePause" />
+                    <CheckBox x:Name="MuteChoice" Content="Mute / stop live work" Checked="Controls_Changed" Unchecked="Controls_Changed" Margin="0,4,16,4" AutomationProperties.AutomationId="LiveMute" />
+                </WrapPanel>
+                <TextBlock Text="Retry is a NEW explicit Send/PTT with fresh consent and limits. Earlier speech may already have played; no queue is replayed. Microphone/STT failures allow typed fallback. Output failure leaves response text visible." TextWrapping="Wrap" Margin="0,8" />
+                <TextBlock x:Name="ResultText" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Live action result and remedy" />
+                <Label Target="{Binding ElementName=TranscriptText}" Content="PTT _transcript and evidence" />
+                <TextBox x:Name="TranscriptText" IsReadOnly="True" TextWrapping="Wrap" Height="65" VerticalScrollBarVisibility="Auto" AutomationProperties.AutomationId="LiveTranscript" />
+                <Label Target="{Binding ElementName=AnswerText}" Content="Response _text (retained even if output fails)" />
+                <TextBox x:Name="AnswerText" IsReadOnly="True" TextWrapping="Wrap" Height="160" VerticalScrollBarVisibility="Auto" AutomationProperties.AutomationId="LiveAnswer" />
+                <Label Target="{Binding ElementName=RefusalText}" Content="Separate _refusal (never ordinary speech)" />
+                <TextBox x:Name="RefusalText" IsReadOnly="True" TextWrapping="Wrap" Height="55" VerticalScrollBarVisibility="Auto" AutomationProperties.AutomationId="LiveRefusal" />
+                <Label Target="{Binding ElementName=StatusText}" Content="Same-engine stages / bounded _timeline" />
+                <TextBox x:Name="StatusText" IsReadOnly="True" TextWrapping="Wrap" Height="175" VerticalScrollBarVisibility="Auto"
+                         AutomationProperties.AutomationId="LiveStatus" AutomationProperties.Name="Mic STT policy LLM TTS playback and actual ownership" />
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
 </Window>

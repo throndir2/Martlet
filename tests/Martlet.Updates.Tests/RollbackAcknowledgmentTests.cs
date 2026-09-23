@@ -67,8 +67,8 @@ public sealed class RollbackAcknowledgmentTests(SigningKeys keys) : IClassFixtur
         Assert.Equal(history.Keys.Order(), History(f).Keys.Order());
         Assert.Equal(old.OperationId, plan.InterruptedRestoreTransactionId);
         Assert.Equal(old.ResultingSettingsRevision, plan.ExpectedSettingsRevision);
-        Assert.Equal(2, plan.SettingsSchemaVersion);
-        Assert.Equal(legacy ? 1 : 2, plan.OriginalSchemaVersion);
+        Assert.Equal(AppSettings.CurrentSchemaVersion, plan.SettingsSchemaVersion);
+        Assert.Equal(legacy ? 1 : AppSettings.CurrentSchemaVersion, plan.OriginalSchemaVersion);
         Assert.Equal(File.ReadAllText(f.Settings.FilePath), plan.CurrentJson);
         Assert.Contains("WITHOUT performing another restore", plan.PlannedEffects);
         Assert.Equal(pending.Revision + 2, plan.ProposedSelectionRevision);

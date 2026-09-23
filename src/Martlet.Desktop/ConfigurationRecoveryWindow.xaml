@@ -9,7 +9,7 @@
         <StackPanel Margin="20">
             <TextBlock Text="Local configuration backup / restore" FontSize="24" FontWeight="SemiBold" TextWrapping="Wrap"/>
             <TextBlock x:Name="ScopeText" TextWrapping="Wrap" Margin="0,10"/>
-            <TextBlock TextWrapping="Wrap" Margin="0,6" Text="Same-profile recovery ONLY into existing valid v1/v2 settings. Not portable profile import, corrupt-store repair, an updater or executable rollback. Opening reads no backup or vault, scans no files and starts no diagnostics, audio or network."/>
+            <TextBlock TextWrapping="Wrap" Margin="0,6" Text="Same-profile recovery ONLY into existing valid v1/v2/v3 settings. Version 3 snapshots include companion profiles; older snapshots preserve current companion profiles. Not portable profile import, corrupt-store repair, an updater or executable rollback. Opening reads no backup or vault, scans no files and starts no diagnostics, audio or network."/>
             <StackPanel x:Name="Actions">
                 <Label Target="{Binding ElementName=BackupPath}" Content="New local _backup output (existing parent directory; never overwrite)"/>
                 <TextBox x:Name="BackupPath" MaxLength="2048" AutomationProperties.AutomationId="RecoveryBackupPath"/>

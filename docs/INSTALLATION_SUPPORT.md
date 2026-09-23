@@ -136,6 +136,12 @@ The proposed guided flow is:
    starting capture. Present the host identity/fingerprint and short-lived
    pairing flow from Architecture. The coordinator receives scoped readiness,
    not a shell, Docker socket, administrator token or arbitrary install API.
+   Established device pairing is non-expiring and must survive routine
+   restart, reboot, updates and recoverable interruption. Do not present an
+   offline/clock/storage fault as unpaired or recommend reset-all-devices.
+   One-use invitation expiry and request freshness/replay remain independent.
+   Renew TLS certificates automatically with the same key/pin before serving;
+   no routine certificate expiry should require pairing again.
 6. **Check connection, then try a request.** Use the staged checks below for only
    the selected roles. A failed optional role must not erase successful checks.
    Offer an explicit feature change to continue in text-only mode if speech is
@@ -221,6 +227,27 @@ or start stopped workers. Compose health checks stay cheap/non-inference.
 conversation works ([S35](RESEARCH.md#s35)). All validation is local or a
 separately authorized selected endpoint action, never remote CI.
 
+### Companion customization after setup
+
+The planned [Companion controls](COMPANION_REQUIREMENTS.md) must remain
+accessible after onboarding, without a reinstall or source-code change:
+
+| Surface | Planned controls and safe application |
+| --- | --- |
+| Companion | Named personas, multiline editor, explicit plain-text import/export, save/duplicate/select, and separate response-style weights; show unsaved/active revision |
+| Participation | Explicit typed/PTT default; opt-in conversational listening, rate/gap/cooldown/context retention and qualified speech interruption; show why unavailable or silent |
+| Models | Independent LLM and VLM adapter/destination/model choices, role limits and readiness; VLM selection never enables screen capture |
+| F5 voice | Reference audio and matching transcript, explicit reload after file replacement, named presets, validation and separately authorized preview; no automatic reference transcription |
+
+Apply at idle or after explicit Stop and owned cleanup, never midway through
+authorized work. Show an actionable error for invalid persona files, all-zero
+style weights, changed/missing reference audio, incompatible models and
+unqualified barge-in. Preserve prior saved choices without pretending a failed
+Apply succeeded or falling back silently. Save/resume preserves inert choices,
+not listening, spending, preview permission or model readiness. The current
+Desktop implements the companion editor and named OpenAI LLM catalog selection;
+the remaining surfaces are not yet integrated.
+
 ### Provider cost and mode controls
 
 No promised free quota, trial balance, perpetual free tier, or bundled API key.
@@ -291,6 +318,28 @@ are planned H10 expansion lanes, not categorically excluded product goals;
 native F5 is not promised. Only selected GPU roles require GPU prerequisites:
 an API-only client or qualified CPU role must not be blocked for lacking CUDA.
 
+### Linux gateway state backend boundary
+
+The canonical gateway includes an opt-in `LinuxServicePermissions` storage
+candidate for non-root Linux x86_64/glibc on local persistent ext4. Setup must
+not treat library availability or a modeled check as host qualification.
+Existing factory signatures remain Windows DPAPI; Linux selection is an
+explicit trusted local-owner call, not a stored wizard permission.
+
+Linux stores signing/private keys as service-permission-isolated **plaintext**:
+0700 directory, 0600 files, strict UID/ACL/link/mount checks and durable redo.
+This is not Windows DPAPI parity. Explain same-UID/root/offline-disk exposure
+and operator-managed disk encryption where needed. The library creates only an
+absent leaf under an existing safe private parent; it never provisions a UID,
+repairs ownership/modes, migrates Windows ciphertext or resets devices.
+Storage/clock failures mean access blocked, not unpaired.
+
+Linux local approval/disclosure, GUI/headless lifecycle, real native execution,
+reboot, service/container mounts and LAN qualification remain **NOT RUN**.
+The Windows Host CLI has not become portable. Preserve H01/#21 and managed
+preset holds; a future installer must use the same authority rather than fork
+pairing records. See [backend contract](../src/Martlet.Gateway.Persistence/README.md#explicit-linux-service-permissions-candidate).
+
 ### Read-only discovery and preflight
 
 The proposed packaged `martlet-host doctor` starts without changing the machine.
@@ -356,6 +405,14 @@ Show **exact selected-artifact bytes** before consent, plus expanded image
 size, staging space, rollback retention, and user-data reserve. Metadata can
 inform planning but is not the checksum verification of a downloaded file.
 
+The focused [H05b acquisition library](../src/Martlet.Host.Setup/README.md)
+now separates durable local review from fresh exact-artifact acquisition consent.
+It supports pinned public GitHub release assets through a bounded reviewed CDN
+policy and owned, hash-verified local staging; it does not install or execute
+them. Hugging Face and OCI downloads remain explicitly unsupported in this
+slice, so this is not a completed model-provisioning or F5 installation journey.
+Catalog and host/runtime qualification remain unchanged.
+
 | Artifact | Observed upstream metadata / planning treatment |
 | --- | --- |
 | F5 v1 base `model_1250000.safetensors` | 1,348,435,761 bytes; separate vocabulary 13,800 bytes. CC-BY-NC-4.0 official weights; revision/rights must be approved |
@@ -384,7 +441,9 @@ network egress denied after downloads. Unknown optional downloads block readines
 
 **Implemented internal V07a:** Desktop offers explicit LOCAL configuration
 snapshots and exact previewed restore into an existing valid same-profile
-v1/v2 store. It recovers inert preferences, not credentials/permissions/readiness.
+v1/v2/v3 store. Version 3 includes inert companion personas/styles; older
+sources preserve current personas. Recovery does not restore credentials,
+permissions, runtime persona use or readiness.
 It refuses missing/corrupt/future/foreign destinations and preserves exact
 pre-replacement originals. This is neither the diagnostic bundle nor the broader
 database/voice/host/binary lifecycle below. See the
@@ -538,7 +597,7 @@ trace IDs, not private audio/transcripts/secrets.
 | Host unreachable: `NET_UNREACHABLE` | Wrong address, host asleep, service stopped, VLAN isolation | DNS -> TCP selected port -> TLS -> gateway | Verify host-local readiness, correct host address/port, reconnect same intended LAN | Stage/timeouts and pseudonymized route |
 | IP works, name fails: `NET_DNS` | DNS/mDNS unavailable, stale lease, suffix mismatch | Resolve name vs saved host-ID address | Use verified current address then correct DHCP/DNS; do not re-trust a changed certificate | Resolver result and host identity comparison |
 | Connection refused/times out: `NET_PORT` | Port collision, wrong binding, firewall/router policy | Host listen/bind vs client TCP and unauthorized-client denial | Review exact selected-interface and client-source rule; no blanket firewall disable or public forwarding | Binding/rule summary, both-side probe result |
-| TLS/pairing fails: `PAIR_TRUST` | Wrong host, expired cert, clock skew, expired token, identity change | Time/identity/pin/token lifecycle probe | Check host clock, compare pairing fingerprint locally, generate new one-use token if needed | Error category; never token/private key |
+| TLS/pairing fails: `PAIR_TRUST` | Wrong host, certificate renewal failure, clock skew, expired invitation, identity change | Time/identity/pin/invitation lifecycle probe | Correct clock or same-key renewal/access problem while retaining pairing; replace only an expired invitation. A genuine changed identity requires deliberate verification, never automatic re-trust | Error category; never token/private key |
 | API key rejected: `AUTH_EXPIRED` | Revoked/expired key, wrong origin/project/scope | Non-billable auth metadata where supported; sanitized real failure otherwise | Re-enter authorized credentials for displayed origin; verify account/project access | Provider status/request ID; no key |
 | Limit reached: `QUOTA_EXCEEDED` | Provider billing/rate quota or local session ceiling | Typed provider error, Retry-After, usage/budget | Wait stated interval or review provider account/local limit; user alone approves changed spending | Quota class and timestamps |
 | `/v1` endpoint fails: `PROVIDER_CAPABILITY` | Partial OpenAI compatibility, wrong adapter, missing model/voice or schema | Named role contract probes, not just `/models` | Select correct adapter and supported model; configure missing STT/TTS independently | Adapter/model/version and failed contract case |
