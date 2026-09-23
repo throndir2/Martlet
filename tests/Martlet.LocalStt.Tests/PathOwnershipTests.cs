@@ -14,6 +14,19 @@ public sealed class PathOwnershipTests : IDisposable
     public void Dispose() => Directory.Delete(root, recursive: true);
 
     [Fact]
+    public void Directory_lease_without_file_handles_blocks_root_and_ancestor_rename()
+    {
+        var parent = Directory.CreateDirectory(Path.Combine(root, "parent")).FullName;
+        var empty = Directory.CreateDirectory(Path.Combine(parent, "empty")).FullName;
+        using (var lease = new WindowsDirectoryLease(empty))
+        {
+            Assert.Throws<IOException>(() => Directory.Move(empty, empty + "-moved"));
+            Assert.Throws<IOException>(() => Directory.Move(parent, parent + "-moved"));
+        }
+        Directory.Move(empty, empty + "-moved");
+    }
+
+    [Fact]
     public async Task Verified_package_holds_directory_and_file_identity_until_disposal()
     {
         using var fixture = new PackageFixture();

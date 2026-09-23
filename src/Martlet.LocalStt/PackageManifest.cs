@@ -15,6 +15,24 @@ public enum LocalSttNetworkPolicy
     LoopbackOnly
 }
 
+public enum LocalSttPackageAcquisitionMode
+{
+    CallerSuppliedOfflineImportOnly
+}
+
+public enum LocalSttSourceLocatorBehavior
+{
+    Direct,
+    Redirecting,
+    Unknown
+}
+
+public enum LocalSttEvidenceRequirement
+{
+    Complete,
+    CallerSuppliedRequired
+}
+
 internal enum RuntimeFilePurpose
 {
     Executable,
@@ -48,6 +66,7 @@ public sealed class LocalSttPackageManifest
     public static TimeSpan ProcessCleanupTimeout => TimeSpan.FromSeconds(5);
 
     private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
+    private readonly byte[] documentBytes;
 
     internal ManifestDocument Document { get; }
     public string DocumentSha256 { get; }
@@ -59,10 +78,20 @@ public sealed class LocalSttPackageManifest
     public LocalSttCandidateStatus Status => Document.Status;
     public LocalSttNetworkPolicy NetworkPolicy => Document.Execution.NetworkPolicy;
     public long MaximumProvisioningBytes => Document.Provisioning.MaximumStagingBytes;
+    public LocalSttPackageAcquisitionMode AcquisitionMode => Document.Acquisition.Mode;
+    public bool AutomaticDownloadAllowed => Document.Acquisition.AutomaticDownload;
+    public LocalSttSourceLocatorBehavior RuntimeLocatorBehavior =>
+        Document.Acquisition.RuntimeLocator;
+    public LocalSttSourceLocatorBehavior ModelLocatorBehavior =>
+        Document.Acquisition.ModelLocator;
 
-    private LocalSttPackageManifest(ManifestDocument document, string documentSha256)
+    private LocalSttPackageManifest(
+        ManifestDocument document,
+        byte[] documentBytes,
+        string documentSha256)
     {
         Document = document;
+        this.documentBytes = documentBytes;
         DocumentSha256 = documentSha256;
     }
 
@@ -79,7 +108,7 @@ public sealed class LocalSttPackageManifest
             var document = JsonSerializer.Deserialize<ManifestDocument>(owned, JsonOptions)
                 ?? throw new JsonException();
             document.Validate();
-            return new(document, Convert.ToHexStringLower(SHA256.HashData(owned)));
+            return new(document, owned, Convert.ToHexStringLower(SHA256.HashData(owned)));
         }
         catch (Exception error) when (error is JsonException or OverflowException or
             InvalidOperationException or NullReferenceException)
@@ -87,6 +116,8 @@ public sealed class LocalSttPackageManifest
             throw new LocalSttContractException(LocalSttFailureCode.PackageInvalid);
         }
     }
+
+    internal byte[] CopyDocumentBytes() => documentBytes.ToArray();
 
     private static LocalSttPackageManifest LoadCurrent()
     {
@@ -166,6 +197,7 @@ internal sealed record ManifestDocument
     public required ModelDocument Model { get; init; }
     public required ExecutionDocument Execution { get; init; }
     public required ProvisioningDocument Provisioning { get; init; }
+    public AcquisitionDocument Acquisition { get; init; } = AcquisitionDocument.OfflineImport;
     public required RightsDocument Rights { get; init; }
 
     internal void Validate()
@@ -178,6 +210,7 @@ internal sealed record ManifestDocument
         Model.Validate();
         Execution.Validate(this);
         Provisioning.Validate(this);
+        Acquisition.Validate();
         Rights.Validate();
     }
 }
@@ -319,6 +352,44 @@ internal sealed record ProvisioningDocument
             MaximumStagingBytes >= checked(exactDownload + MaximumExpandedRuntimeBytes) &&
             MaximumStagingBytes <= 2_147_483_648 &&
             AllowedOrigins.SequenceEqual(["github.com", "huggingface.co"], StringComparer.Ordinal));
+    }
+}
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+internal sealed record AcquisitionDocument
+{
+    internal static AcquisitionDocument OfflineImport { get; } = new()
+    {
+        Mode = LocalSttPackageAcquisitionMode.CallerSuppliedOfflineImportOnly,
+        AutomaticDownload = false,
+        RuntimeLocator = LocalSttSourceLocatorBehavior.Redirecting,
+        ModelLocator = LocalSttSourceLocatorBehavior.Redirecting,
+        RuntimeArchiveContentHash = LocalSttEvidenceRequirement.Complete,
+        ModelContentHash = LocalSttEvidenceRequirement.Complete,
+        RuntimeFileHashes = LocalSttEvidenceRequirement.CallerSuppliedRequired,
+        LicenseNotices = LocalSttEvidenceRequirement.CallerSuppliedRequired
+    };
+
+    public required LocalSttPackageAcquisitionMode Mode { get; init; }
+    public required bool AutomaticDownload { get; init; }
+    public required LocalSttSourceLocatorBehavior RuntimeLocator { get; init; }
+    public required LocalSttSourceLocatorBehavior ModelLocator { get; init; }
+    public required LocalSttEvidenceRequirement RuntimeArchiveContentHash { get; init; }
+    public required LocalSttEvidenceRequirement ModelContentHash { get; init; }
+    public required LocalSttEvidenceRequirement RuntimeFileHashes { get; init; }
+    public required LocalSttEvidenceRequirement LicenseNotices { get; init; }
+
+    internal void Validate()
+    {
+        ManifestRules.Require(
+            Mode == LocalSttPackageAcquisitionMode.CallerSuppliedOfflineImportOnly &&
+            !AutomaticDownload &&
+            RuntimeLocator == LocalSttSourceLocatorBehavior.Redirecting &&
+            ModelLocator == LocalSttSourceLocatorBehavior.Redirecting &&
+            RuntimeArchiveContentHash == LocalSttEvidenceRequirement.Complete &&
+            ModelContentHash == LocalSttEvidenceRequirement.Complete &&
+            RuntimeFileHashes == LocalSttEvidenceRequirement.CallerSuppliedRequired &&
+            LicenseNotices == LocalSttEvidenceRequirement.CallerSuppliedRequired);
     }
 }
 
