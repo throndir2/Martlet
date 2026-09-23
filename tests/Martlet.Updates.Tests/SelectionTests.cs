@@ -36,7 +36,7 @@ public sealed class SelectionTests(SigningKeys keys) : IClassFixture<SigningKeys
         Assert.Equal(f.Settings.FilePath, plan.SettingsPath);
         Assert.Equal(plan.Snapshot.FileDigest, ConfigurationSnapshot.Inspect(File.ReadAllBytes(plan.ConfigurationSnapshotPath)).FileDigest);
         Assert.Equal(1, plan.Candidate.SettingsMinimumReader);
-        Assert.Equal(2, plan.Candidate.SettingsMaximumReader);
+        Assert.Equal(AppSettings.CurrentSchemaVersion, plan.Candidate.SettingsMaximumReader);
         Assert.Equal("win-x64", plan.Candidate.Rid);
         Assert.Contains("No installation or settings mutation", plan.PlannedEffects);
         var result = engine.CommitSelection(plan, Approve(plan));

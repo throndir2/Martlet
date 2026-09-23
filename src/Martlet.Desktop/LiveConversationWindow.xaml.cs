@@ -116,13 +116,15 @@ public partial class LiveConversationWindow : Window
             !operations.IsRunning && controller.Configuration is not null;
         bool accepted = AcceptAction.IsChecked == true;
         bool voice = VoiceChoice.IsChecked == true;
+        AcceptMemory.IsEnabled = available && controller.Configuration?.Memory is { Enabled: true };
         SendButton.IsEnabled = available && accepted && !string.IsNullOrWhiteSpace(InputText.Text) &&
             controller.Configuration!.Unavailable(voice, false) is null;
         // Keep a held control enabled until release; disabling it would lose capture and cancel.
         PttButton.IsEnabled = mouseHeld || keyHeld || available && accepted && AcceptCapture.IsChecked == true &&
             AcceptUpload.IsChecked == true && controller.Configuration!.Unavailable(voice, true) is null;
         ReleaseButton.IsEnabled = ownRunning && owned!.Authorization.Microphone && owned.Turn is null && owned.Transcription is null && !owned.Status.Finished;
-        StopButton.IsEnabled = ownRunning || loading is not null;
+        StopButton.IsEnabled = ownRunning || loading is not null || accepted || AcceptMemory.IsChecked == true ||
+            AcceptCapture.IsChecked == true || AcceptUpload.IsChecked == true;
         ReloadButton.IsEnabled = !operations.IsRunning;
         SetupButton.IsEnabled = AudioButton.IsEnabled = !operations.IsRunning;
         AudioButton.IsEnabled &= audio is not null;
@@ -131,7 +133,7 @@ public partial class LiveConversationWindow : Window
     private void ClearPermission()
     {
         rendering = true;
-        AcceptAction.IsChecked = AcceptCapture.IsChecked = AcceptUpload.IsChecked = false;
+        AcceptAction.IsChecked = AcceptMemory.IsChecked = AcceptCapture.IsChecked = AcceptUpload.IsChecked = false;
         rendering = false;
     }
 
@@ -141,7 +143,8 @@ public partial class LiveConversationWindow : Window
         try
         {
             var next = controller.Start(microphone ? null : InputText.Text, VoiceChoice.IsChecked == true, microphone,
-                AcceptAction.IsChecked == true, AcceptCapture.IsChecked == true, AcceptUpload.IsChecked == true);
+                AcceptAction.IsChecked == true, AcceptCapture.IsChecked == true, AcceptUpload.IsChecked == true,
+                memoryApproved: AcceptMemory.IsChecked == true);
             owned = next;
             ClearPermission();
             AnswerText.Clear();
@@ -199,6 +202,12 @@ public partial class LiveConversationWindow : Window
         RenderActions();
     }
     private void Stop_Click(object sender, RoutedEventArgs e) => Cancel("conversation.canceled");
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape) return;
+        e.Handled = true;
+        Cancel("conversation.canceled");
+    }
     private void Cancel(string reason)
     {
         mouseHeld = keyHeld = false;
@@ -221,6 +230,7 @@ public partial class LiveConversationWindow : Window
     {
         if (rendering || controller is null || AcceptAction is null) return;
         if (owned is { OwnershipReleased: false } && (AcceptAction.IsChecked != true ||
+            owned.MemoryRequested && AcceptMemory.IsChecked != true ||
             owned.Authorization.Microphone && (AcceptCapture.IsChecked != true || AcceptUpload.IsChecked != true)))
             controller.Stop(owned, "conversation.revoked");
         RenderActions();
@@ -296,6 +306,9 @@ public partial class LiveConversationWindow : Window
         StatusText.Text = $"{status.Code}; app worker released: {operation.OwnershipReleased}; quarantine: {status.Quarantined}.\n" +
             $"Mic: {capture?.State.ToString() ?? "not used"}; samples: {capture?.CanonicalSamples ?? 0}; retained PCM: {capture?.RetainedPcmBytes ?? 0}. VAD/wake/unsolicited: OFF.\n" +
             $"STT: {operation.Transcription?.Outcome.ToString() ?? "not completed / not used"}; Policy: {status.Policy?.ToString() ?? "see timeline"}; LLM/TTS: {snapshot?.State.ToString() ?? "not dispatched"}.\n" +
+            $"Persona revision/style: {operation.PersonaRevision?.ToString() ?? "not dispatched"} / {operation.ResponseStyle?.ToString() ?? "not selected"}.\n" +
+            $"In-memory context messages used/omitted: {operation.ContextMessages}/{operation.ContextMessagesOmitted}; retained completed turns: {controller.ContextTurns}.\n" +
+            $"Local memory retrieval requested: {operation.MemoryRequested}; store revision: {operation.MemoryStoreRevision?.ToString() ?? "not read"}; facts used/omitted: {operation.MemoryFactsUsed}/{operation.MemoryFactsOmitted}. Fact content is never shown in this metadata timeline.\n" +
             $"Reserved requests: {operation.Authorization.ReservedRequests}; segments: {snapshot?.CommittedSegments ?? 0}; queued: {snapshot?.QueuedSegments ?? 0}; suppressed fragments: {snapshot?.SuppressedFragments ?? 0}.\n" +
             $"Playback accepted/submitted/device-consumed: {snapshot?.AcceptedSamples ?? 0}/{snapshot?.SubmittedSamples ?? 0}/{snapshot?.DeviceConsumedSamples ?? 0}; drain: {snapshot?.Playback?.DeviceDrainObserved ?? false}; may have played: {snapshot?.MayHavePlayed ?? false}. NOT proof of heard audio; cost UNKNOWN.\n" +
             $"Runtime failure: {snapshot?.Failure}; provider: {snapshot?.ProviderFailure ?? status.ProviderFailure}; audio: {snapshot?.Playback?.Error?.Code ?? status.AudioFailure}.\n" + operation.Timeline;
@@ -327,9 +340,13 @@ public partial class LiveConversationWindow : Window
     internal static string Remedy(string code) => code switch
     {
         "conversation.permission_required" => "Permission missing. Review the displayed envelope; PTT additionally needs separate local-capture and STT-upload permission.",
+        "memory.disabled" => "Local memory is OFF or not available for this loaded configuration. No memory store was opened. Use Local memory to review and enable a safe local scope, then Reload before a fresh action.",
+        "memory.configuration_changed" => "Memory configuration changed. Retrieval and this action were revoked; Reload and review a fresh action.",
+        "memory.retrieval_invalidated" => "Memory changed or permission was revoked while retrieval was active. No retrieved fact was accepted and no LLM request followed; review a fresh action.",
         "conversation.ownership_busy" => "An app operation still owns resources or cleanup. No queue or replacement started. Stop that action and wait for actual release; close Martlet if native cleanup remains stuck.",
         "conversation.setup_required" or "conversation.configuration_unsupported" => "Review the supported named routes, credential references, destination choices and selected audio policy in Setup. No provider was contacted by this rejection.",
         "conversation.configuration_changed" => "Configuration changed during the action. Permission revoked; Reload and review the new role/model/voice/key/output before a fresh action.",
+        "conversation.input_limit" => "The user input plus selected persona/style exceeds the displayed LLM input budget. Shorten the input or persona, then review and authorize a fresh action. Nothing was truncated.",
         "conversation.expired" => "The original permission window expired. No permission was renewed. Discard old input/capture and explicitly authorize a new action.",
         "stt.deadline_exceeded" => "The original STT deadline expired. Upload/credential work may still own resources; no LLM follows. Wait for actual cleanup, then use typed fallback or authorize a fresh recording.",
         "stt.NoSpeech" => "STT returned no speech. No LLM or TTS request followed. Try a fresh PTT action or use typed input.",

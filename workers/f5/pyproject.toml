@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools==84.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "martlet-f5-worker"
+version = "1.0.0"
+description = "Bounded martlet.f5.worker v1 stdio process"
+requires-python = "==3.12.*"
+dependencies = []
+
+[project.scripts]
+martlet-f5-worker = "martlet_f5_worker.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["martlet_f5_worker*"]
+
+[tool.setuptools.package-data]
+martlet_f5_worker = ["runtime-pins.v1.json"]

@@ -106,7 +106,7 @@ public sealed class ConfigurationRestoreScope : IAsyncDisposable
         await ReadPinnedAsync(source, plan.SourcePath, SourceFileDigest, ConfigurationSnapshot.MaximumBytes,
             static () => { }, accounting: true);
         var settings = SettingsJson.Read(bytes);
-        if (settings.SchemaVersion != 2 || settings.Profile.Id != ProfileId)
+        if (settings.SchemaVersion != AppSettings.CurrentSchemaVersion || settings.Profile.Id != ProfileId)
             throw new RecoveryException(RecoveryFailure.Conflict);
         Volatile.Write(ref commitState, (int)ConfigurationRestoreCommitState.VerifiedCommitted);
         return new ConfigurationRestoreEvidence(Destination, CandidateDigest, ProfileId, settings.SchemaVersion,

@@ -1,0 +1,106 @@
+{
+  "format_version": 1,
+  "kind": "local_stt_package_candidate",
+  "id": "whisper-cpp-v1.9.2-base.en-win-x64-cpu",
+  "status": "disabled_pending_qualification",
+  "target": "win-x64",
+  "runtime": {
+    "repository": "ggml-org/whisper.cpp",
+    "revision": "306c88f4d1286aec1bf96e544632897886af5501",
+    "release_tag": "v1.9.2",
+    "release_id": 364972418,
+    "archive_file_name": "whisper-bin-x64.zip",
+    "asset_id": 501504923,
+    "archive_bytes": 8194445,
+    "archive_sha256": "49dcc16de826f20bd53d44f947a1ae49dfa81f86cad67a64d80820cb192d674a",
+    "archive_sha256_evidence": "github_release_metadata",
+    "archive_url": "https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.2/whisper-bin-x64.zip",
+    "file_layout_evidence": "source_workflow_unverified",
+    "files": [
+      {
+        "purpose": "executable",
+        "archive_entry": "Release/whisper-cli.exe",
+        "installed_name": "whisper-cli.exe"
+      },
+      {
+        "purpose": "dependency",
+        "archive_entry": "Release/whisper.dll",
+        "installed_name": "whisper.dll"
+      },
+      {
+        "purpose": "dependency",
+        "archive_entry": "Release/ggml.dll",
+        "installed_name": "ggml.dll"
+      },
+      {
+        "purpose": "dependency",
+        "archive_entry": "Release/ggml-base.dll",
+        "installed_name": "ggml-base.dll"
+      },
+      {
+        "purpose": "dependency",
+        "archive_entry": "Release/ggml-cpu.dll",
+        "installed_name": "ggml-cpu.dll"
+      },
+      {
+        "purpose": "dependency",
+        "archive_entry": "Release/SDL2.dll",
+        "installed_name": "SDL2.dll"
+      }
+    ]
+  },
+  "model": {
+    "id": "ggml-base.en",
+    "repository": "ggerganov/whisper.cpp",
+    "revision": "80da2d8bfee42b0e836fc3a9890373e5defc00a6",
+    "file_name": "ggml-base.en.bin",
+    "bytes": 147964211,
+    "sha256": "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002",
+    "sha256_evidence": "hugging_face_lfs_metadata",
+    "source_url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/80da2d8bfee42b0e836fc3a9890373e5defc00a6/ggml-base.en.bin",
+    "language": "en"
+  },
+  "execution": {
+    "executable": "whisper-cli.exe",
+    "input_format": "wav_pcm16_mono_16000",
+    "input_mode": "ephemeral_file",
+    "output_mode": "utf8_text_file",
+    "network_policy": "no_network",
+    "threads": 4,
+    "processors": 1,
+    "timeout_seconds": 30,
+    "maximum_audio_bytes": 800044,
+    "maximum_audio_seconds": 25,
+    "maximum_transcript_bytes": 16384,
+    "maximum_transcript_characters": 4096,
+    "maximum_standard_output_bytes": 4096,
+    "maximum_standard_error_bytes": 8192
+  },
+  "provisioning": {
+    "maximum_archive_entries": 64,
+    "maximum_expanded_runtime_bytes": 268435456,
+    "maximum_download_bytes": 156158656,
+    "maximum_staging_bytes": 424594112,
+    "allowed_origins": [
+      "github.com",
+      "huggingface.co"
+    ]
+  },
+  "acquisition": {
+    "mode": "caller_supplied_offline_import_only",
+    "automatic_download": false,
+    "runtime_locator": "redirecting",
+    "model_locator": "redirecting",
+    "runtime_archive_content_hash": "complete",
+    "model_content_hash": "complete",
+    "runtime_file_hashes": "caller_supplied_required",
+    "license_notices": "caller_supplied_required"
+  },
+  "rights": {
+    "runtime_spdx": "MIT",
+    "model_spdx": "MIT",
+    "disposition": "unreviewed",
+    "runtime_evidence_url": "https://github.com/ggml-org/whisper.cpp/blob/306c88f4d1286aec1bf96e544632897886af5501/LICENSE",
+    "model_evidence_url": "https://github.com/openai/whisper/blob/86098128c0b4f24f0e2aa2994de830614b474227/LICENSE"
+  }
+}

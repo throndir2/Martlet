@@ -1,10 +1,9 @@
-# H03 gateway security foundation
+# H03 authenticated gateway contracts
 
 **Standalone internal library and controlled HTTPS contracts, not a deployed
 LAN service or completed H03 acceptance.** `Martlet.Gateway` implements the
-security boundary needed before a future host gateway can expose worker-backed
-operations. It does not join `Martlet.slnx`, Desktop, Core settings, Doctor,
-packaging, host artifacts, provider authorization, Compose, systemd, firewall
+security boundary and bounded worker-backed inference routes. It does not join
+`Martlet.slnx`, Desktop, Core settings, Doctor, packaging, host artifacts, Compose, systemd, firewall
 or installer graphs.
 
 The project performs no startup work by construction. A caller must supply one
@@ -12,15 +11,26 @@ exact private/loopback origin, an existing server certificate/private key, a
 host identity derived from that certificate, workers, an audit sink and an
 explicit listener factory. It never generates or installs a production host
 key/certificate, changes a trust store, opens a firewall, publishes a Docker
-port, runs an administrative command, downloads a model or calls inference.
+port, runs an administrative command, downloads a model or activates inference.
+The CLI still supplies no workers and truthfully advertises no inference.
 
-The dedicated tests use generated fixture certificates and synthetic metadata
-workers only. They do not contact Ollama, F5, a LAN host or a public service.
+The dedicated tests use generated fixture certificates and controlled synthetic
+workers only (**NOT AI**). They do not contact Ollama, F5, a LAN host or a public service.
 The runtime fixture certificate is loaded as a user-scoped key handle because
 Windows Schannel cannot serve an ephemeral key; it is never added to a
 certificate store and is disposed with the in-process listener.
 
 ## Reuse lineage and authority boundary
+
+**Current policy: permanent paired-device trust, protocol 2.0.** This revision
+deliberately replaces the inherited timed-device contract. Devices do not
+expire, unpair on reboot or lose pairing after recoverable interruption.
+Invitations, signed-request freshness/replay, rotation overlap and action
+budgets remain independently bounded. Protocol-1 pairing is refused; source
+clients must explicitly adopt the required lifetime discriminator, not default
+missing/null expiry to permanent. Existing route paths, IDs, roles, pins and
+HMAC canonical bytes remain stable. See the durable owner's
+[version and recovery contract](../Martlet.Gateway.Persistence/README.md).
 
 This is the standalone H03 source slice from
 `ec6db3979a1e2b8164176d455e4017475b9865ca`, reused by an attributed cherry-pick.
@@ -28,9 +38,13 @@ It preserves the transport/authentication protocol and host identity expected
 by the earlier Gateway consumers. A focused follow-up adds a 128-registration
 ceiling, inactive-state reclamation and shared observed-UTC rollback closure;
 identity encoding, credential bytes, roles, HMAC canonicalization and successful
-wire documents are unchanged. It does **not** import the later
-`d2a5db8` inference/routes slice or the final `1715d19` source-branch snapshot,
-their F5/Perception/Memory.Service dependencies, or Host.Doctor/Host.Setup.
+wire documents are unchanged. The inference layer is a focused reuse of
+`d2a5db82fe559dc332151c87c1f6dd82c6102a1b`, resolved from the frozen
+`1715d194c03e9b1399c93c4f496f382e7076afc5` lineage. Only its inference contracts,
+HTTP/JSON/registry/perception output and tests were reused, with additive signing
+and capability changes. Old security/pairing/server snapshots were not restored.
+Current F5, Perception and Providers APIs are referenced without changing them.
+Memory.Service, Host.Doctor and Host.Setup are not imported.
 Core installation planning, settings, Desktop and HostArtifacts v2/catalog
 remain independent and unchanged.
 
@@ -38,9 +52,9 @@ The newer [Gateway.Trust foundation](../Martlet.Gateway.Trust/README.md) remains
 isolated and **uncomposed**. These are alternative implementation lineages, not
 two production authorities or interchangeable credentials. This reused Gateway
 is the transport/authentication lineage for subsequent earlier-consumer reuse;
-neither library currently owns a deployed host. Protected Gateway.Persistence
-PR #37 remains **held** for a deliberate consolidation/adaptation decision.
-This import neither adopts its storage format nor changes that hold.
+neither library currently owns a deployed host. The permanent protocol-2
+Gateway.Persistence owner is the sole composed durable authority; no Trust
+bridge, timed-device store, expiry sentinel or secondary approval surface is added.
 
 | Boundary | Reused `Martlet.Gateway` | Isolated `Martlet.Gateway.Trust` |
 | --- | --- | --- |
@@ -48,24 +62,35 @@ This import neither adopts its storage format nor changes that hold.
 | Authorization | `voice`, `perception`, `memory`; per-request scoped HMAC, timestamp and nonce | Independent status/transcription/generation/synthesis/perception/memory-read/memory-write flags; point-in-time secret authorization, no signed-request replay contract |
 | Secret ownership | Base64url strings exposed explicitly by `Reveal`; SHA-256 verifier is an HMAC signing key | Disposable 32-byte buffers with explicit copy/import; SHA-256 verifier for equality checks |
 | Pairing and rotation | Eight local windows, five failed proofs/window; direct local rotation with up to ten-minute overlap | Sixteen pending approvals, authority-wide redemption limit; one-use locally approved renewal with two-minute overlap |
-| State/time | At most 128 volatile credential records (including rotation overlap), bounded per-credential nonces; UTC expiry and shared observed-UTC rollback closure | Volatile bounded live-device state; UTC and monotonic expiry with rollback closure |
+| State/time | At most 128 non-expiring paired/retiring records, bounded per-credential nonces; shared observed-UTC access closure | Volatile bounded live-device state; UTC and monotonic device expiry with rollback closure |
 
 There is no conversion, fallback, shared authority, secret cast, scope widening
 or credential interchange between these namespaces. Even though both use
 SHA-256 over random device secrets, persisting a Gateway HMAC verifier requires
 **signing-key protection**, not treating it as a harmless password hash.
 
-Before choosing or adapting protected persistence, reconcile the exact identity,
-wire/version, role/scope, credential-ID, renewal and revocation contracts.
-The reused store has no durable import/export or restart recovery. It does not
-inherit Trust's monotonic elapsed-time expiry, disposable secrets, per-device
-admission policy or approval/handler capability split.
-Production composition must keep `GatewayServer` and its local management
-objects private to trusted host code, not expose them through remote DI.
-Persisting credentials alone would also lose replay history on restart:
-an explicit fail-closed restart/re-pair or reviewed replay-restoration policy
-is required. Local approval UI, protected host keys, atomic durable
-rotation/revocation and native-host recovery remain unimplemented gates.
+The public volatile constructor has no durable import/export or restart recovery;
+use the durable owner when pairing must survive process lifetime. It does not
+inherit Trust's device-expiry policy or interchangeable secret/scope types.
+The optional [canonical durable owner](../Martlet.Gateway.Persistence/README.md)
+now supplies a Windows current-user DPAPI/private-NTFS backend and composes this
+same server privately. It preserves HMAC signing keys **and live replay history**
+across clean restarts, commits admission/rotation/revocation before success, and
+recovers validated prepared transactions without resetting devices after a
+crash or reboot. It never imports Trust records or restores a stale backup.
+Its protocol-distinct schema, automatic same-key renewal and native
+limitations are documented there.
+
+The existing public constructor remains the explicit volatile path, not a
+fallback when durable open fails. Production composition must keep
+`GatewayServer` and its local management objects private to trusted host code,
+not expose them through remote DI. Internal HTTP dependencies now receive only
+pairing-exchange and signed-request authentication capabilities. The durable
+owner is default-No and loopback-only. Its optional trailing `inferenceWorkers`
+argument preserves existing positional calls, is not enumerated under No, and is
+bounded/validated before durable creation under Enable. Local CLI approval
+exists separately; service/backend qualification and deployed-host recovery
+remain separate gates.
 
 ## Standalone local workflow
 
@@ -112,8 +137,10 @@ a changed key fails closed and requires a separately verified re-pairing or
 future authenticated transition policy.
 
 `KestrelGatewayListenerFactory` binds that one address only, serves HTTP/1.1
-over TLS 1.2/1.3, suppresses the server header and limits the request body to
-8 KiB. It also caps concurrent connections at 64, request headers at 32 /
+over TLS 1.2/1.3, suppresses the server header and defaults request bodies to
+8 KiB. Only recognized inference routes raise the per-request limit to their
+advertised bound (at most 5,700,000 bytes); cancellation is limited to 2 KiB.
+It also caps concurrent connections at 64, request headers at 32 /
 16 KiB, header receipt at five seconds and keep-alive at 30 seconds. There is
 no HTTP listener or redirect endpoint. The listener is injectable so tests and
 future host composition do not need to alter OS state.
@@ -158,18 +185,19 @@ windows cannot be revived.
 Pairing returns a random 16-byte credential ID and one 32-byte device secret.
 The clear secret is returned once and is excluded from all registration,
 audit, status, error and `ToString` surfaces. The host retains a SHA-256
-verifier used as the HMAC key; the raw secret is not retained. Default and
-maximum credential lifetime is 90 days.
+verifier used as the HMAC key; the raw secret is not retained. Protocol 2 returns
+required `lifetime: {"kind":"paired"}` with no expiry. There is no timed-device
+constructor option, date sentinel or silent missing-field fallback.
 
 Local host management code can list non-secret registrations, revoke one
 credential/device, or rotate a credential. Rotation issues a fresh ID/secret
 and shortens the old credential to an explicit overlap of at most ten minutes.
-Revocation clears its nonce cache. An expired, revoked or rotated-out
+Revocation clears its nonce cache. A revoked or rotated-out
 credential never falls back to another credential and cannot be reconstructed
 from configuration.
 
 The store retains at most 128 registrations, including live rotation overlap.
-Issuance, listing and authentication sweep expired/revoked records, zero their
+Issuance, listing and authentication sweep retired/revoked records, zero their
 verifiers and clear their nonces; revocation also zeros the verifier immediately.
 Later requests for swept IDs return `auth.invalid`, never restored authority.
 Listing reports currently active registrations, not a durable audit history.
@@ -182,10 +210,10 @@ Pairing and credential operations share a serialized observed-UTC high-water
 mark. Any observed backwards movement permanently closes their shared authority,
 clears retained credential verifiers/nonces, and rejects every existing pairing
 card and subsequent approval with `auth.clock_invalid`. Correcting the clock
-does not reopen it: trusted host code must replace the volatile authority and
-explicitly re-pair. This is not monotonic elapsed-time expiry or protection
-against backwards movement entirely between samples; those remain consolidation
-gaps. Clock sampling occurs inside the store lock, not before admission.
+does not reopen the same in-memory instance. With the durable owner, correct
+the clock and reopen the same protected store: pairing data was not erased.
+The standalone volatile constructor has no persistence guarantee.
+Clock sampling occurs inside the store lock, not before admission.
 
 ## Signed request and replay contract
 
@@ -200,9 +228,11 @@ X-Martlet-Role: voice | perception | memory
 
 The signature covers an ASCII canonical record containing the protocol label,
 host ID, credential ID, exact method, raw path/query target, requested role,
-timestamp, nonce and SHA-256 body digest. The implemented authenticated
-metadata routes are bodyless; inference/request-body signing remains future
-contract work.
+timestamp, nonce and SHA-256 body digest. Metadata routes remain bodyless.
+`GatewayRequestSigner.Sign(request, role, body)` signs the exact POST bytes;
+callers must send those bytes unchanged. Bounded body reading precedes hashing,
+authentication precedes JSON parsing/worker dispatch, and durable nonce commit
+precedes principal publication. A fresh nonce is not permission to replay a batch.
 
 The server first verifies the credential and signature, then requires a
 timestamp within two minutes, the requested role in the credential scope and a
@@ -218,11 +248,17 @@ the same request returns `auth.replay`.
 | --- | --- | --- |
 | `GET /health/live` | None | Exact `{"status":"live"}`; no host ID, version, worker or system data |
 | `POST /martlet/v1/pair` | Locally opened one-use proof | One scoped credential; 8 KiB strict JSON with required fields, duplicate/unknown rejection |
-| `GET /martlet/v1/version` | Signed scoped device request | Protocol `1.0`, gateway `0.1.0`, host ID, authorized role and credential expiry |
-| `GET /martlet/v1/capabilities` | Signed scoped device request | At most 16 configured worker capability records for only that role |
+| `GET /martlet/v1/version` | Signed scoped device request | Protocol `2.0`, gateway `0.2.0`, host ID, authorized role and explicit `credential_lifetime` (`paired` or retiring old key with deadline) |
+| `GET /martlet/v1/capabilities` | Signed scoped device request | Registry `martlet.gateway.inference-routes` `1.0`, at most 8 fixed routes and 16 status workers, filtered by role |
 | `GET /martlet/v1/status` | Signed scoped device request | Two-second cooperative cancellation for status reads for only that role |
+| `POST /martlet/v1/inference/ollama-chat` | Signed `voice` body plus action permission | Exact selected native-chat model/revision/artifacts; bounded UTF-8 text events |
+| `POST /martlet/v1/inference/f5-synthesis` | Signed `voice` body plus action permission | Exact F5/reference identity, WAV/transcript/chunk bounds and contiguous 24 kHz PCM |
+| `POST /martlet/v1/inference/perception/ocr` | Signed `perception` body plus action permission | Selected P02 OCR identity and bounded selected-window frame |
+| `POST /martlet/v1/inference/perception/vlm` | Signed `perception` body plus action permission | Selected P02 VLM identity, frame and bounded question |
+| `POST /martlet/v1/inference/cancel` | Signed owning credential/host/device/role | Local discard acknowledgment, bounded compute-cancellation report; no compute-stop claim |
 
-Responses are snake-case JSON and at most 64 KiB. Authenticated operations
+Non-streaming responses are snake-case JSON and at most 64 KiB. Inference uses
+bounded pull-driven NDJSON. Authenticated operations
 require an exact route with no query. Unknown methods/routes do not redirect.
 Unpaired clients cannot read version, capabilities, status, worker IDs, model
 metadata or failure details.
@@ -234,6 +270,91 @@ download API, arbitrary command or inference method. Synthetic tests use
 Ollama/F5 services remain outside the LAN gateway surface.
 Worker adapters must honor the supplied cancellation token; this foundation
 does not forcibly terminate an uncooperative status reader.
+
+## Trusted inference composition and lifecycle
+
+Fixed factories `GatewayInferenceRoute.OllamaChat`, `.F5Synthesis` and
+`.Perception` freeze destination/worker/model/revision/artifact identity and
+request/event/aggregate/deadline bounds. Clients cannot supply arbitrary paths,
+raw worker addresses, provider alternatives, commands or model-management actions.
+Mutable route replacement is refused both at admission and before effects.
+Source adapter names and declared artifact hashes are **not runtime attestation**.
+
+`IOllamaGatewayInferenceWorker`, `IF5GatewayInferenceWorker` and
+`IPerceptionGatewayInferenceWorker` are trusted host-composition interfaces,
+not remotely registrable handlers. Each must implement `AcquirePermissionAsync`
+and return a distinct request/host/device/credential/role-bound
+`GatewayInferencePermissionLease`. This is a deliberate addition to the source
+interface. The implementation must consume the actual per-role provider/action
+permit, verify readiness and the exact selected worker/model/artifact identity,
+and hold all reference/capture permission ownership until disposal. Its
+`Validate` must recheck current permission and its `Revoked` token must signal
+revocation; a no-op/forever-valid production lease is not an implementation.
+Adapters report typed `GatewayInferenceWorkerException` failures, including
+`PermissionDenied` and `IdentityMismatch`; worker exception messages are never
+published.
+Acquisition/cancellation/iterator methods must return promptly without blocking
+the caller; asynchronous validation belongs in the returned operation.
+
+Trusted adapters must use reviewed private transport (the existing literal
+loopback restrictions for C# Ollama remain unchanged; remote worker transport
+requires independently authenticated/pinned identity). No unauthenticated raw
+LAN, IP/username ownership inference, alternate cloud/provider/model fallback
+or promotion of client-supplied frame/reference metadata into permission is
+allowed. This module does **not** supply those production adapters or claim that
+an interface declaration proves an actual runtime. Controlled leases in tests
+are explicitly synthetic, not runtime qualification.
+
+The authenticating store mints an internal authority capability. Publicly
+constructed `GatewayPrincipal` records have no authority. Current credential
+state is checked under that same store lock at admission and immediately before
+dispatch/publication. A bounded periodic check also retires waiting operations
+after revocation/rotation; publication never waits for that poll to validate
+authority. Permanent pairing does not make a principal valid forever.
+Already-issued transport writes cannot be retracted; publication linearizes
+when the authorized bounded write is initiated.
+
+Each role/worker owns at most one job, with no pending queue. In-process admitted
+request IDs are remembered until their deadlines with a 1,024-entry cap;
+duplicate IDs return `job.replay`, including newly signed duplicates. This is
+not a durable inference ledger: durable exact-signed-request replay is the
+credential nonce store, and action-permit consumption belongs to the trusted
+provider owner.
+
+Only one valid started event, contiguous identity/correlation/sequence, and one
+valid terminal are accepted. Terminal output is held until EOF and iterator
+cleanup are proven. F5 preserves chunk/frame/sample order and validates
+reference WAV/transcript/revision hashes. P02 enforces selected worker image
+limits, matching evidence/model/frame/source provenance, and freshness again
+at dispatch and publication. Perception route job epochs are explicitly
+`1..2147483646`, matching the worker's inner H03b boundary; generic P02 positive
+long epochs and P01 capture epochs are distinct contracts, never truncated.
+Clients must require both a valid terminal and clean EOF. Permission-lease
+disposal remains owned through final publication; if it fails or stalls after a
+terminal write, the server records `stream.cleanup`, quarantines the route and
+aborts the apparent-success stream rather than delivering a successful EOF.
+
+Cancellation/disconnect/deadline stops local publication and attempts one
+bounded worker cancellation. A receipt does not release admission or clear
+reference bytes while preparation, pending `MoveNext`, worker cancellation,
+iterator disposal or permission disposal still owns them. Unproven cleanup
+quarantines the route, retains that ownership and prevents replacement work.
+Listener shutdown drains owned retirement before the durable host can mark a
+clean checkpoint. A worker that never retires deliberately keeps the host dirty
+and unavailable rather than pretending cleanup succeeded.
+
+### Earlier self-host voice client migration
+
+The later Settings5 reuse must require Gateway protocol **2.0** and mandatory
+`lifetime` / `credential_lifetime` discriminators, retain paired credentials
+across reboot/connectivity failures, and handle only explicit old-key retirement
+as timed. Do not reintroduce `credentialLifetime`, `CredentialExpiresAt`,
+automatic re-pairing or protocol-1 fallback. Keep the existing `/martlet/v1/`
+paths and `martlet-request-v1` HMAC label; they are not auth-version negotiation.
+All outer inference/cancel/error envelopes are protocol 2. Inner F5 and
+Perception worker identities and registry version remain **1.0**, separately.
+The pinned client still rejects redirects and cross-origin sends, and uses
+response-headers completion; callers own bounded stream reading/cancellation.
 
 ## Errors and audit boundary
 
@@ -253,12 +374,15 @@ operator actions are:
 | `binding.*`, `host.*` | Select one safe address/certificate; stop and compare a changed pin out of band |
 | `pairing.*` | Open a new locally approved window; never reuse/repair an old token |
 | `auth.missing`, `auth.invalid` | Use the credential for the verified paired host or revoke/re-pair if lost |
-| `auth.expired`, `auth.revoked` | Explicitly renew/re-pair; never resurrect the old credential |
+| `auth.expired`, `auth.revoked` | Use the explicit rotation replacement or respect revocation; a paired device itself does not expire |
 | `auth.clock`, `auth.replay` | Correct clocks and create a fresh nonce/signature; never replay |
-| `auth.clock_invalid` | Correct the host clock, replace the closed volatile authority and explicitly re-pair; never revive its cards/credentials |
-| `auth.capacity` | Locally revoke unused credentials or wait for expiry, then retry an unexpired pairing proof/local rotation; active registrations are never evicted |
+| `auth.clock_invalid` | Correct the host clock and reopen the existing durable authority; pairing records are preserved |
+| `auth.closed`, `auth.storage` | Inspect local access/recovery status, then reopen the same protected store; no reset-all-devices or stale backup restoration |
+| `auth.capacity` | Locally revoke unused credentials or wait for old-key rotation overlap to end; permanent paired registrations are never evicted |
 | `auth.rate` | Reduce authenticated polling and wait for the four-minute replay window to drain |
 | `auth.role` | Use a separately approved least-privilege role |
+| `action.denied` | Obtain the exact provider/action permission; permanent pairing is not approval |
+| `job.replay` | Use a new explicitly permitted action and request ID; a new nonce alone cannot duplicate a batch |
 | `worker.*` | Keep only the named private worker unavailable and repair its local adapter/status |
 | `gateway.redirect_rejected` | Use the exact paired origin; never follow another destination |
 | `gateway.connection_failed`, `gateway.deadline` | Verify readiness/address/pin or the private path; never bypass TLS validation or retry indefinitely |
@@ -270,9 +394,14 @@ The dedicated suite covers exact origin rejection, injected listeners, actual
 loopback TLS handshakes, good/bad SPKI pins, missing private keys, redirect and
 cross-origin refusal, minimal unauthenticated liveness, strict pairing JSON,
 one-use/expiry/bad-pin pairing, scoped signed requests, timestamp/path/role
-binding, replay/rate saturation, pairing window/attempt bounds, credential
-expiry, rotation overlap, revocation, bounded worker inventory/status,
+binding, replay/rate saturation, pairing window/attempt bounds, permanent
+pairing, rotation overlap, revocation, bounded worker inventory/status,
 thread-safe audit correlation and redacted failures.
+Fresh protocol-2 cases additionally exercise action denial/readiness, revocation
+and rotation during preparation/streaming, duplicate batches/permission reuse,
+delayed retirement with retained reference bytes, selected identities, and
+actual DPAPI-backed Kestrel signed-body replay across clean/unclean restart,
+same-key renewal and interrupted nonce commits.
 
 This is in-process evidence on one Windows development machine. It is **not**
 AC-13 or G3 LAN/host qualification. The following remain NOT RUN:
@@ -291,6 +420,8 @@ AC-13 or G3 LAN/host qualification. The following remain NOT RUN:
   hostile/replayed traffic across a real network;
 - raw Ollama/F5 worker isolation in separate processes/private networks,
   readiness under load and any inference, model, GPU, rights or latency result.
+- production implementations of the trusted inference/permission interfaces,
+  actual Ubuntu/LAN/two-host acceptance and factory provisioning.
 
 H01/H05 own host observation/lifecycle and firewall guidance; H02/H04 own the
 actual Ollama/F5 runtime contracts; H06 owns witnessed one/two-host acceptance.

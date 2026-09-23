@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <OutputType>Exe</OutputType>
+    <StartupObject>Martlet.Gateway.Persistence.Tests.Program</StartupObject>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\Martlet.Gateway.Tests\GatewayInferenceTestSupport.cs" Link="GatewayInferenceTestSupport.cs" />
+    <Compile Include="..\Martlet.Gateway.Tests\GatewayControlledInferenceWorker.cs" Link="GatewayControlledInferenceWorker.cs" />
+    <Compile Include="..\Martlet.Gateway.Tests\GatewayTestHost.cs" Link="GatewayTestHost.cs" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
+    <ProjectReference Include="..\..\src\Martlet.Gateway.Persistence\Martlet.Gateway.Persistence.csproj" />
+    <Using Include="Xunit" />
+  </ItemGroup>
+</Project>

@@ -13,6 +13,15 @@ name/group listening remain off.
 This plan's broader milestones remain proposals; that foundation does not
 establish a working conversation, installer or passed release gate.
 
+**Companion requirements update, 2026-09-19:** editable/swappable personas,
+F5 reference-voice replacement, independent LLM/VLM selection, listen-first
+participation, speech-triggered interruption and adjustable response-style
+weights are now explicit product requirements. See
+[Companion controls and behavior](docs/COMPANION_REQUIREMENTS.md) for the user
+experience, current gaps and boundaries, and Delivery R19-R24 / AC-21-AC-26
+for acceptance. This adds requirements, not implemented controls or permission
+to enable listening, run models or spend money.
+
 **Validation policy update, 2026-09-13:** the owner's
 [local-only validation policy](README.md#local-only-validation-policy)
 supersedes all earlier hosted-CI plans. Keep strong local tests/builds,
@@ -28,6 +37,23 @@ SBOM using its existing payload integrity boundary. This does not complete
 signed distribution, license clearance, lifecycle qualification or V07/G1/G2.
 
 ## 1. Executive recommendation
+
+**Reconciliation amendment, 2026-09-23:** the user chose to reconcile and reuse
+the earlier implementation through reviewed PRs, then finish missing installation
+features. The frozen canonical source is
+`1715d194c03e9b1399c93c4f496f382e7076afc5`; it is not merged wholesale.
+The [reuse ledger](docs/DELIVERY.md#prior-implementation-reuse-amendment-2026-09-23)
+records the five-commit persona/settings-v3 baseline, independent Gateway/F5/Memory
+imports, and subsequent single-owner v4 local memory -> v5 self-host voice ->
+v6 perception -> v7 barge-in -> v8 remote memory integration with prerequisite
+modules and fresh local gates. Installation persistence must use the next
+compatible schema after that lineage, not redefine v3. Existing installation
+research, pure planner, HostArtifacts and Gateway.Trust remain intact.
+H01 PR #21 / `22d76df` stays held; PR #37, new host-journal work and installation
+drafts remain on hold for reconciliation. No claim of all 69 commits integrated,
+no old candidate receipt as new-main evidence, and no release/host authorization.
+The imported companion cases use AC-21 through AC-26; AC-18 through AC-20 retain
+their current installation meanings.
 
 Build a companion that is easy to install, easy to understand when it is silent,
 and safe to stop. Prove one complete Windows voice experience without dedicated
@@ -117,6 +143,16 @@ speech. A configurable name, direct address, or push-to-talk can request a
 response. Otherwise an independently observable turn-taking policy may remain
 silent. Personality changes wording and style, not permission, safety, routing,
 or whether the microphone is allowed to capture.
+
+Users must be able to edit and save named personas or swap persona text files,
+choose an F5 reference voice, and independently change compatible conversation
+and vision models without rebuilding the app. Response-style weights (helpful,
+sarcastic, silly, distracted, playful trolling/teasing) are separate from the
+decision to speak. Opt-in conversational listening gathers bounded recent
+context rather than producing an answer per input; qualified live VAD must
+eventually let a person cut off Martlet mid-sentence. Manual PTT/Stop remains
+the default until automatic listening, echo protection and native privacy are
+qualified. See the [detailed requirements](docs/COMPANION_REQUIREMENTS.md).
 
 ### MVP includes
 
@@ -311,6 +347,12 @@ microphone or provider without a terminal. The hardware owner can later
 reboot a qualified Ubuntu host and understand whether services are starting,
 warming, ready, or broken. Silence has an understandable reason; a broken
 optional subsystem does not make the whole product unusable.
+
+The user can change persona text, response-style mix and supported models from
+settings, and replace an F5 reference voice when that route is available.
+Qualified conversational mode listens selectively, uses bounded recent context
+and yields to human speech; it does not answer every observed input. These are
+separate delivery gates, not capabilities implied by the current PTT integration.
 
 Every advertised deployment has a signed/pinned artifact set, a completed
 clean-machine and lifecycle record, accurate documentation, a private support

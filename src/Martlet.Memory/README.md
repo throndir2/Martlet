@@ -2,12 +2,15 @@
 
 Portable `net10.0` P03a/P03b foundation for an explicit, consented local fact
 store and bounded lexical retrieval. It has no project references or runtime
-packages and is intentionally absent from Desktop, Core settings, conversation,
-gateway, packaging and `Martlet.slnx`.
+packages. P03c now consumes it from Desktop, Core settings/recovery,
+conversation, packaging and `Martlet.slnx`; the library itself remains
+UI/provider/network independent.
 
 The public surface has no default path and no automatic ingestion:
 
 1. `MemoryStoreActivationPreview.Create` is pure and defaults OFF.
+   `ValidateLocalScope` may explicitly inspect local path safety without creating
+   a directory or store.
 2. A path-bound one-use `Allow` authorization is required to `Open`.
 3. `SaveAsync`, `InspectAsync`, `EditAsync`, `DeleteAsync` and
    `PurgeExpiredAsync` are the only source/retention actions.

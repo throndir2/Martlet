@@ -50,7 +50,7 @@ public sealed record InstalledVersionFacts(
     {
         Wire.Version(Version);
         if (Rid != "win-x64") throw new StagingException(StagingFailure.IncompatibleRid);
-        if (SettingsSchemaVersion is not (1 or AppSettings.CurrentSchemaVersion))
+        if (SettingsSchemaVersion is < 1 or > AppSettings.CurrentSchemaVersion)
             throw new StagingException(StagingFailure.IncompatibleSettings);
         if (!Wire.IsHash(InstallationRevision) ||
             SettingsRevision is not { Length: > 0 and <= 128 } || SettingsRevision.Any(char.IsControl))

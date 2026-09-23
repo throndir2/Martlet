@@ -42,7 +42,8 @@ internal sealed class SelectionFixture : IDisposable
         Settings.CreateConfigurationSnapshotAsync(path).GetAwaiter().GetResult();
         return path;
     }
-    internal string Stage(string version = "0.2.0.0", int maximumReader = 2, ProductionPayloadFixture? production = null)
+    internal string Stage(string version = "0.2.0.0",
+        int maximumReader = AppSettings.CurrentSchemaVersion, ProductionPayloadFixture? production = null)
     {
         Package.Build(version, production);
         Package.Sign(Package.Manifest with { SettingsMaximumReader = maximumReader });

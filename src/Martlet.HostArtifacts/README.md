@@ -76,6 +76,13 @@ cannot mutate validated arrays. `ArtifactInspector.Inspect(manifest, roleId,
 target, platform)` computes the actual direct/transitive closure and returns an immutable
 `InspectionReport`. `ToJson()` and `ToHuman()` format the same report;
 `ExitCode`, `KnownPayloadBytes` and `DocumentSha256` are directly available.
+`ArtifactInspector.InspectRoles(manifest, roleIds, target, platform)` selects an
+explicit set of one through four unique exact role IDs through that same
+inventory path. Missing, duplicate, empty or invalid IDs are rejected; optional
+unselected catalog roles are excluded before closure/unique-byte accounting.
+Selection order does not change output. Existing `Inspect` semantics (one role,
+or null for all) and the report wire format are unchanged. Neither entry point
+confers eligibility, authenticity, acquisition permission or rights approval.
 Invalid input raises a sanitized `ArtifactManifestException` containing a
 stable diagnostic code/remedy, never a supplied path or raw parser exception.
 
@@ -94,6 +101,27 @@ Different whitespace changes the exact document fingerprint. No source
 signature or API assertion is authenticated by offline parsing.
 
 ## Version 1 contract
+
+### Typed acquisition descriptions
+
+`ArtifactManifest.DescribeAcquisition(roleIds, target, platform)` projects the
+same validated exact-role selection and unique inventory as `InspectRoles`.
+Its immutable candidates bind source/content identity, applicable license claims
+and contributing selected roles. The compatibility `DescribeArtifact(id)` API
+describes one artifact in the full catalog. Neither method contacts a provider.
+The source candidate projection is reused from
+`81bf855b3b342563f2dbf2eb512672e717b41932` and adapted to current v1/v2 owners.
+
+GitHub candidates can describe an exact numeric release-asset API request under
+a versioned bounded provider policy. This is a request recipe, not authenticated
+upstream metadata or a direct-response qualification. `DirectTransportEligible`
+does not promote the committed catalogs; execution/preset eligibility remains
+false. Actual byte acquisition requires the Host.Setup coordinator's separately
+bound rights and fresh acquisition approval. No arbitrary URL setter or caller
+eligibility Boolean exists. Hugging Face and OCI remain unsupported for network
+acquisition in this slice. OCI image/index/platform/blob metadata and known versus
+unknown compressed/expanded/staging subtotals remain available without implying
+complete runtime closure, local payload verification or install size.
 
 The [candidate document](../../deploy/ubuntu/artifacts/host-artifacts.v1.json)
 is the concrete example and pin authority. All properties on the following

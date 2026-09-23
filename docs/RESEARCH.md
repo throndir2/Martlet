@@ -117,6 +117,16 @@ format, show the disclosure, and do not hard-code a universal voice count.
 The accessed page itself had differing voice counts in different sections;
 use model-specific catalog/probes rather than repeat that count as a guarantee.
 
+### S09a: pinned GPT-4.1 text models
+
+[OpenAI GPT-4.1 model reference](https://developers.openai.com/api/docs/models/gpt-4.1)
+
+**Verified upstream 2026-09-21:** the `gpt-4.1-2025-04-14` snapshot supports
+text output, the Responses endpoint and streaming. Martlet's existing
+`gpt-4.1-mini-2025-04-14` and this full snapshot remain exact local adapter
+allowlist entries, not aliases, discovery results, account-access evidence,
+price guarantees or live qualification.
+
 ### S11
 
 [OpenAI API pricing](https://developers.openai.com/api/docs/pricing)
@@ -547,6 +557,35 @@ These are upstream observations, not pinned/installed/qualified Martlet
 runtimes. In particular, XTTS CPML restricts model and output use to
 noncommercial purposes; Chatterbox managed training is unverified. Each engine
 requires isolated dependencies and its own artifact closure.
+
+## Linux service state custody and durable I/O (H03b3)
+
+**Accessed 2026-09-23.** Primary upstream contracts, not native Martlet evidence:
+[Secret Service introduction](https://specifications.freedesktop.org/secret-service/latest/ch01.html)
+describes a login-session service that may need unlocking.
+[systemd-creds 255](https://www.freedesktop.org/software/systemd/man/255/systemd-creds.html)
+describes host/TPM key custody; its `tpm2-absent` mode explicitly provides neither
+confidentiality nor authenticity. Credential delivery is not automatically a
+writable crash-safe checkpoint store. No such null-key mode is proposed.
+
+[openat2](https://man7.org/linux/man-pages/man2/openat2.2.html) supplies non-following,
+beneath and no-mount-crossing resolution;
+[statx](https://man7.org/linux/man-pages/man2/statx.2.html) requires checking
+returned metadata masks;
+[flock](https://man7.org/linux/man-pages/man2/flock.2.html) provides cooperative
+open-file-description locks;
+[renameat2](https://man7.org/linux/man-pages/man2/rename.2.html) provides atomic
+replacement/no-replace semantics. Crucially,
+[fsync](https://man7.org/linux/man-pages/man2/fsync.2.html) of a file does not
+persist its directory entry: directory fsync is also required.
+
+**Implemented candidate, not native-qualified:** explicitly selected
+`LinuxServicePermissions` under a stable non-root UID, local ext4, 0700/0600;
+plaintext at rest with damage checksum, not encrypted/authenticated against a
+state writer. Same-UID/root/offline-disk/rollback threats remain. Operator-managed
+disk encryption is separate; no machine policy is changed. Windows DPAPI is
+unchanged and never silently downgraded. Portable modeled checks and compilation
+do not establish real Ubuntu/UID/mount/fsync/reboot/container evidence.
 
 ## Provenance policy for future implementation
 

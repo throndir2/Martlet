@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Martlet.Gateway.Persistence\Martlet.Gateway.Persistence.csproj" />
+    <InternalsVisibleTo Include="Martlet.Gateway.Host.Tests" />
+  </ItemGroup>
+</Project>

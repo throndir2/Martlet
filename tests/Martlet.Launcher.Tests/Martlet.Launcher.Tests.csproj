@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
+    <ProjectReference Include="..\..\src\Martlet.Launcher\Martlet.Launcher.csproj" />
+    <ProjectReference Include="..\..\src\Martlet.Updates\Martlet.Updates.csproj" />
+    <ProjectReference Include="..\Martlet.Launcher.FixtureChild\Martlet.Launcher.FixtureChild.csproj"
+                      ReferenceOutputAssembly="false" />
+    <Using Include="Xunit" />
+  </ItemGroup>
+  <Target Name="CopyFixtureChildOutput" AfterTargets="Build">
+    <PropertyGroup>
+      <FixtureChildOutputDirectory Condition="'$(ArtifactsPath)' != ''">$(ArtifactsPath)\bin\Martlet.Launcher.FixtureChild\$(Configuration)</FixtureChildOutputDirectory>
+      <FixtureChildOutputDirectory Condition="'$(ArtifactsPath)' == ''">..\Martlet.Launcher.FixtureChild\bin\$(Configuration)\net10.0</FixtureChildOutputDirectory>
+    </PropertyGroup>
+    <ItemGroup>
+      <FixtureChildOutput Include="$(FixtureChildOutputDirectory)\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(FixtureChildOutput)"
+          DestinationFiles="@(FixtureChildOutput->'$(OutDir)fixture-child\%(Filename)%(Extension)')" />
+  </Target>
+</Project>

@@ -43,11 +43,11 @@ public sealed record GatewayProtocolVersion
     public required int Major { get; init; }
     public required int Minor { get; init; }
 
-    public static GatewayProtocolVersion Current => new() { Major = 1, Minor = 0 };
+    public static GatewayProtocolVersion Current => new() { Major = 2, Minor = 0 };
 
     internal void Validate()
     {
-        GatewayRules.Require(Major == 1, "protocol.unsupported");
+        GatewayRules.Require(Major == 2, "protocol.unsupported");
         GatewayRules.Require(Minor is >= 0 and <= 9999, "request.invalid");
     }
 }
@@ -214,8 +214,25 @@ internal static partial class GatewayRules
     internal static void Defined<T>(T value) where T : struct, Enum =>
         Require(Enum.IsDefined(value), "request.invalid");
 
-    internal static void Identifier(string? value) =>
-        Require(value is { Length: > 0 and <= 64 } && IdentifierPattern().IsMatch(value), "request.invalid");
+    internal static void Identifier(string? value) => Identifier(value, 64);
+
+    internal static void Identifier(string? value, int maximum) =>
+        Require(maximum is > 0 and <= 128 &&
+            value is { Length: > 0 } &&
+            value.Length <= maximum &&
+            IdentifierPattern().IsMatch(value), "request.invalid");
+
+    internal static void Sha256(string? value) =>
+        Require(value is { Length: 64 } &&
+            value.All(character => character is >= '0' and <= '9' or >= 'a' and <= 'f'),
+            "request.invalid");
+
+    internal static void Sha256Fingerprint(string? value)
+    {
+        Require(value is { Length: 71 } &&
+            value.StartsWith("sha256:", StringComparison.Ordinal), "request.invalid");
+        Sha256(value![7..]);
+    }
 
     internal static void Token(string? value, int maximum)
     {

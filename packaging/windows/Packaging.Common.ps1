@@ -119,7 +119,8 @@ function Get-PublishedAssetPath([string]$Entry, [string]$Kind, [string]$Name, $M
 function Get-PublishProjectNames([ValidateSet('Desktop', 'Doctor')][string]$Entry) {
     @("Martlet.$Entry", 'Martlet.Core', 'Martlet.Diagnostics', 'Martlet.Fixtures', 'Martlet.Sessions', 'Martlet.Audio')
     if ($Entry -eq 'Desktop') {
-        @('Martlet.Credentials.Windows', 'Martlet.Conversation', 'Martlet.Providers', 'Martlet.Participation', 'Martlet.Support')
+        @('Martlet.Credentials.Windows', 'Martlet.Conversation', 'Martlet.Memory',
+            'Martlet.Providers', 'Martlet.Participation', 'Martlet.Support')
     }
 }
 
@@ -337,6 +338,14 @@ function Invoke-BoundedProcess(
     finally {
         $process.Dispose()
     }
+}
+
+function Invoke-ExecutableSmoke([string]$Script, [string]$Executable, [switch]$CompanionOnly) {
+    $arguments = @('-NoProfile', '-NonInteractive', '-File', $Script, '-ExecutablePath', $Executable)
+    if ($CompanionOnly) { $arguments += '-CompanionOnly' }
+    $result = Invoke-BoundedProcess (Get-Command pwsh).Source $arguments 180
+    if ($result.ExitCode -ne 0) { throw "Packaged executable regression smoke failed: $($result.Stderr)" }
+    if ($result.Stdout) { $result.Stdout.TrimEnd() | Out-Host }
 }
 
 function Initialize-PackagingSdk([string]$DotnetPath, [string]$CliHome, [string]$WorkingDirectory = (Get-Location).Path) {

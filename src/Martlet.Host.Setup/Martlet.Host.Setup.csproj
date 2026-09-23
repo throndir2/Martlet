@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\Martlet.Core\Martlet.Core.csproj" />
+    <ProjectReference Include="..\Martlet.Host.Inventory\Martlet.Host.Inventory.csproj" />
+    <ProjectReference Include="..\Martlet.HostArtifacts\Martlet.HostArtifacts.csproj" />
+    <InternalsVisibleTo Include="Martlet.Host.Setup.Tests" />
+  </ItemGroup>
+</Project>
