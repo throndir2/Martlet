@@ -7,6 +7,7 @@ using Martlet.Audio;
 using Martlet.Audio.Windows;
 using Martlet.Sessions;
 using Martlet.Credentials.Windows;
+using Martlet.Core.Voices;
 
 namespace Martlet.Desktop;
 
@@ -34,6 +35,7 @@ public partial class MainWindow : Window
     private bool closing;
     private bool mayClose;
     private SetupOperation? fixtureOperation;
+    private SetupOperation? voiceOperation;
     private readonly TaskCompletionSource fixtureQuarantine = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public MainWindow(SettingsStore? store, string? startupError) : this(store, startupError, new(store?.DataDirectory)) { }
@@ -72,7 +74,7 @@ public partial class MainWindow : Window
         else
         {
             PipelineText.Text = "Mic / VAD / STT / Policy / LLM / TTS / Playback: unavailable; not run. Correct the launch data directory first.";
-            DemoButton.IsEnabled = ToneButton.IsEnabled = ScenarioChoice.IsEnabled = SetupButton.IsEnabled = AudioSetupButton.IsEnabled = ConversationButton.IsEnabled = false;
+            DemoButton.IsEnabled = ToneButton.IsEnabled = ScenarioChoice.IsEnabled = SetupButton.IsEnabled = AudioSetupButton.IsEnabled = ConversationButton.IsEnabled = VoiceLibraryButton.IsEnabled = false;
         }
     }
 
@@ -109,6 +111,7 @@ public partial class MainWindow : Window
         SetupButton.IsEnabled = !saving && !runningFixture && !model.IsRunning;
         AudioSetupButton.IsEnabled = SetupButton.IsEnabled;
         ConversationButton.IsEnabled = SetupButton.IsEnabled;
+        VoiceLibraryButton.IsEnabled = SetupButton.IsEnabled;
         RefreshButton.IsEnabled = !saving && !runningFixture && model.CanRefresh;
         StopButton.IsEnabled = !saving && model.IsRunning;
         DemoButton.IsEnabled = ToneButton.IsEnabled = !saving && !runningFixture && !model.IsRunning && !setupOperations.IsRunning;
@@ -248,6 +251,15 @@ public partial class MainWindow : Window
         await RefreshAsync();
     }
 
+    private void VoiceLibrary_Click(object sender, RoutedEventArgs e)
+    {
+        if (store is null || closing || saving || runningFixture || model?.IsRunning == true) return;
+        new VoiceLibraryWindow(new VoiceLibrary(System.IO.Path.Combine(store.DataDirectory, "voice-library")), setupOperations)
+            { Owner = this, OperationStarted = ObserveVoiceOperation }.ShowDialog();
+    }
+
+    internal void ObserveVoiceOperation(SetupOperation operation) => voiceOperation = operation;
+
     private void Troubleshooting_Click(object sender, RoutedEventArgs e) => OpenTroubleshooting(this);
     private async void Recovery_Click(object sender, RoutedEventArgs e)
     {
@@ -281,6 +293,12 @@ public partial class MainWindow : Window
         e.Cancel = true;
         if (closing)
             return;
+        if (voiceOperation is { Completion.IsCompleted: false } pendingVoice)
+        {
+            pendingVoice.RequestCancellation();
+            ActionText.Text = "Exit is waiting for Voice Library IO and owned staging cleanup. Keep Martlet open, then Exit again after the local operation finishes.";
+            return;
+        }
         if (recovery?.HasResources == true)
         {
             recovery.StopObserving();

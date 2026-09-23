@@ -5,7 +5,8 @@ reference preset store, gateway client adapter, and deterministic fake worker.
 See [F5 worker and reference-voice foundation](../../docs/F5_VOICE.md) for the
 wire/lifecycle bounds, validation command, evidence, and deferred gates.
 
-This project has no external package dependency and remains outside
+This project has no external package dependency; it references Core for the
+shared strict WAV inspector and remains outside
 `Martlet.slnx`, Desktop, Core settings, packaging, and service graphs. It
 contains no Python, F5-TTS, model weights, CUDA, Docker, network client, audio
 device integration, default voice, automatic transcription, model download,

@@ -21,6 +21,7 @@ No replacement Action or release is requested by this plan.
 
 | Item | Actual status |
 | --- | --- |
+| VS01 | [Voice Library](VOICE_STUDIO.md): passive five-engine catalog and real local reference/training-material WAV import, transcript/rights checks, immutable versioned bundles, explicit reload/inspect/remove, shared effect ownership and engine-specific preparation guidance. No model runtime, upload, training, preview playback or conversation route; VS02-VS06 and actual device/model/novice qualification remain incomplete. |
 | D01 | Dispositions recorded in [FOUNDATION.md](FOUNDATION.md). .NET/WPF/core direction and pins chosen; license, distribution/signing, provider spending and optional model/SDK rights remain deferred gates. |
 | D02 | Versioned settings/profile/provider contracts, bounded PCM, production JSON and temporal text validators, explicit refusal, epochs/cancel/EOF/deadlines and golden traces exist. Role request bodies, remote schemas/SSE/binary wire framing remain; **AC-01 is partial, not frozen or fully passed**. |
 | F01 | Offline accessible text/status shell, explicit unconfigured-profile save, atomic validated settings and truthful shared-status CLI implemented. Local developer-host build/tests/CLI and bounded desktop-launch scope are documented; no clean consumer-OS claim. |
@@ -146,6 +147,17 @@ locks. The verified Inno Setup 7.1.0 compiler produced an internal unsigned
 installer below the proposed 200 MiB compressed target. The installer was
 **not executed**. This is build/fixture evidence, not a passed clean-VM install,
 uninstall, signature, physical-audio, novice or G1 gate.
+
+### Voice expansion VS01-VS06 (2026-09-23)
+
+The accepted [five-engine Voice Studio plan](VOICE_STUDIO.md#delivery-slices-and-acceptance)
+extends H04's F5-only direction without removing H02/H03/H05/H08 gates.
+VS01 implements local preparation; VS02 owns isolated installation and exact
+artifact closure; VS03 owns named worker adapters; VS04 owns safe A/B preview
+switching; VS05 owns supported fine-tuning; VS06 owns conversation application
+and novice qualification. Engine availability and model training are not
+inferred from catalog entries or imported audio. Existing API behavior is
+preserved. All execution/qualification remains local and separately consented.
 
 ## 1. Execution rules
 

@@ -1,5 +1,11 @@
 # Architecture and provider contracts
 
+The [Voice Studio expansion](VOICE_STUDIO.md) adds five planned self-hosted
+TTS adapters, isolated engine runtimes, shared source-voice/dataset ownership
+and preview-versus-active selection. VS01 implements only Core's local Voice
+Library and its Desktop preparation UI. It does not register a self-hosted
+provider or generalize the existing OpenAI/F5 authorization contracts.
+
 **Broader proposed design.** The implemented D02/F01 subset and remaining
 conformance work are recorded in [Foundation boundaries](FOUNDATION.md);
 the subsequent internal fixture/session/sink/status implementation is recorded

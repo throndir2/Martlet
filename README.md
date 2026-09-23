@@ -33,6 +33,13 @@ Later milestones cover Ubuntu self-hosting, two-host GPU deployments, opt-in
 screen understanding and memory, and optional user-supplied avatars. Reliable
 voice and installation take priority over avatars.
 
+**Voice Library (local preparation)** now offers all five self-hosted research
+targets (F5-TTS, Qwen3-TTS, Chatterbox, GPT-SoVITS, XTTS-v2), explicit private
+WAV/transcript import for reference or training material, persistent
+inspection/removal and engine-specific guidance. It does not install models,
+upload audio, train, synthesize, preview speech or change the conversation
+voice. Those stages follow the [Voice Studio plan](docs/VOICE_STUDIO.md).
+
 The [planned installation flow](docs/INSTALLATION_SUPPORT.md#feature-first-multi-machine-setup)
 coordinates optional features and mixed API/self-hosted roles across machines.
 It targets guided Ubuntu Desktop/Server hosting with Docker Engine/Compose,
@@ -58,6 +65,7 @@ transcripts, call providers, upload, embed or create backups.
 | [Resumable setup and local audio](docs/SETUP.md) | V02a configuration/vault actions and V02b explicit local device tests, historical checkpoints, strict migration and remaining live gates |
 | [Explicit API conversation](docs/CONVERSATION.md) | V04b typed/PTT path, exact supported models and bounds, fresh authorization, Stop/cleanup, troubleshooting and separately authorized live-trial checklist |
 | [Consented local memory foundation](docs/MEMORY.md) | Isolated P03a/P03b fact-store/retrieval contracts, privacy/deletion/export semantics and remaining integration/qualification gates |
+| [Voice Studio research and setup](docs/VOICE_STUDIO.md) | Five-engine implementation research, guided setup, audio imports, A/B previews, training and staged acceptance |
 
 The broader plan documents remain future specifications except for the current
 implementation/acceptance ledger in [DELIVERY](docs/DELIVERY.md) and the
