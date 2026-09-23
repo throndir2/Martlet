@@ -575,14 +575,33 @@ device loss and disable invalidate old epochs, flush bounded queues and
 neutralize speech-owned channels; late callbacks cannot animate a new turn.
 Upstream compute cancellation is reported separately from local stale discard.
 
+**Current gap:** the existing sink reports `DeviceConsumedSamples` from
+committed samples minus padding, with `AudibleSamples=null`; its device
+interface does not expose `IAudioClock`. A02c must integrate and validate
+WASAPI `IAudioClock`, original-PCM mapping and discontinuity/reset semantics.
+Until then, synchronized speech animation is unavailable; queue consumption
+is not a qualified playback clock or evidence of physical audibility.
+The initial Audio2Face clip-only API is being corrected through an authorized
+live-streaming extension using a bounded nonblocking generated-PCM tee.
+Voice must never await that analysis, its backpressure or renderer readiness;
+late/over-budget animation is visibly discarded or disabled independently.
+
 Imports are bounded data only: validate schema, paths, archive expansion,
 file count/bytes, decoded textures, meshes/parameters and motion resources
 before activation; reject scripts, external network resources and path escapes.
 Pin renderer dependencies locally rather than adopting CDN examples.
 Renderer or analyzer failure leaves voice independent and visibly unavailable
-animation; restarting it must not replay canceled speech. A02c alone integrates
-configuration into the current settings owner after reconciliation, without
-forking a competing schema. A03 witnesses local real-model/renderer/GPU timing
+animation; restarting it must not replay canceled speech. A02c coordinates
+configuration with the current settings owner without forking global
+`AppSettings` authority or its reconciliation lineage. The approved avatar-only
+sidecar is one atomic outer envelope containing shared `AvatarConfiguration`,
+profile binding, resource identities and runtime references; no unsynchronized
+paths file or new global settings version. Its single owner validates revisions
+and defines recovery/delete semantics. Disable preserves the document, never
+activation permission. Existing global backup/restore excludes it with visible
+disclosure until qualified; actual persistence/lifecycle integration remains
+planned.
+A03 witnesses local real-model/renderer/GPU timing
 and crash behavior before support claims; rights and release remain separate.
 
 ## 7. Explicit degradation

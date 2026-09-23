@@ -316,10 +316,10 @@ prerequisite. Voice reliability, local validation and release rights stay intact
 | Slice | Deliverable and dependency | Current disposition |
 | --- | --- | --- |
 | A01a | Standalone strict facial frames, per-model capability/mapping records, compatibility/readiness and single-owner composer; coordinate schemas before adapters finalize | In progress; no general pose/body payload or arbitrary blends |
-| A01b | Preferred Audio2Face client against official NIM v2 bidirectional gRPC; consumes A01a facial boundary, original PCM clock and bounded stale-discard semantics | In progress first analyzer lane; pre-existing literal-loopback service, runtime/model/GPU/access prerequisites external and unverified; not native MIT SDK embedding |
+| A01b | Preferred Audio2Face client against official NIM v2 bidirectional gRPC; consumes A01a facial boundary, original PCM clock and bounded stale-discard semantics | In progress first analyzer lane; initial complete-clip API being corrected to live bounded PCM streaming without ever gating speech; pre-existing literal-loopback service, runtime/model/GPU/access prerequisites external and unverified; not native MIT SDK embedding |
 | A02a | Live2D importer/mapping/adapter against A01a; host-supplied local Cubism Web Framework 5-r.4 / matching Core 05.01.0000 (`0x05010000`) | In progress independently; unsupported newer features rejected; no Core/assets acquired, actual parsing/rendering NOT RUN |
 | A02b | VRM importer/facial mapping/renderer against A01a | In progress independently; basic expressions optional, detailed ARKit mapping authored; VRMA/body playback unsupported in first slice |
-| A02c | One app owner integrates normal WPF host, adapters, bounded actual playback, OFF-by-default configuration, explicit masks/remedies and comparisons after A01/A02a/A02b | Planned; preserve reconciliation settings/migration ownership, speech/voice/model choices and existing recovery |
+| A02c | One app owner integrates normal WPF host, adapters, missing WASAPI IAudioClock mapping, authorized bounded nonblocking PCM tee, OFF-by-default configuration, explicit masks/remedies and comparisons after A01/A02a/A02b | Planning; existing padding-derived DeviceConsumedSamples is not a qualified clock and AudibleSamples is null. Approved single atomic avatar-only envelope holds shared AvatarConfiguration/profile/resource/runtime identities, not unsynchronized paths or global AppSettings changes. Single owner validates revisions/recovery/delete; disable preserves preferences, never activation permission; global backup/restore visibly excludes it until qualified |
 | A02d | Extend reviewed capabilities/wire as needed for procedural/clip gaze/head/body/secondary motion, including optional VRMA on VRM; explicitly qualified blends only | Planned after shared boundary/app composition; no direct VRMA-on-Live2D claim |
 | A03a | Local exact-model/renderer/clock/Stop/crash/load/comparison qualification for each advertised subset after its integration | NOT RUN; missing native runtime/device/GPU access is a distinct blocker, not a fixture pass |
 | A03b | SDK/Core/framework, NIM/dependencies, model/asset/motion rights, Live2D classification, notices and release approval | Separate unpassed gate; research can run early, distribution only after rights and relevant A03a/voice/lifecycle evidence |
@@ -501,8 +501,9 @@ Independent later scopes: H01 read-only preflight and H03 gateway can start from
 stable D02/F04; H04 owns only its Python worker; H05 owns host lifecycle, not
 provider internals. P03 memory can progress against fixture retrieval independently
 of P02 model work. The accepted avatar batch starts A01a/A01b early and
-A02a/A02b in parallel now; A02c follows their reviewed interfaces and V04
-actual-playback boundary. A02d/A03 qualify extended motion and each advertised
+A02a/A02b in parallel now; A02c follows their reviewed interfaces and extends
+V04 playback with the required, currently missing IAudioClock boundary and
+nonblocking streaming analysis handoff. A02d/A03 qualify extended motion and each advertised
 runtime tuple later. Rights research proceeds independently; it does not turn
 unavailable SDK/model/GPU checks into passes or block fixture-only development.
 Never let simultaneous sessions edit one model lock or migration schema.
@@ -547,6 +548,14 @@ what remains a real-device/manual gate.
 | AC-30: Avatar isolation and no-avatar parity | Compare the same explicit voice session with avatar OFF, missing runtime/model, failed analyzer, hung/crashed renderer, restart and removal. Voice/text/Stop/provider configuration remain unchanged; animation error visible, bounded cleanup retained, no credentials exposed or second audio output. Independent renderer restart cannot restart core, replay canceled speech or alter voice/model settings. Witness real process failure separately from fixtures. |
 | AC-31: Avatar comparison controls | Save/reselect/restart comparison presets without changing persona, conversation/STT/TTS models, voice, speech sample or playback settings. Analyzer comparisons retain model identity; renderer comparisons disclose different asset/rig identities. Preview active sources/masks/mapping coverage/omissions and apply at safe fresh revision; exact changed assets invalidate old evidence. No hidden additional inference/cost/audio; report actual sample count, latency/frame drops/resource measurements and NOT RUN for missing values. |
 | AC-32: Avatar local and release qualification | For every advertised renderer/analyzer/model/mapping/runtime tuple record exact pins, rights/access, local hardware/driver, actual load/render/playback/Stop/crash/removal results and measured CPU/RAM/GPU/VRAM/frame-time budget. Compatible is not ready or fast; unknown remains unqualified. Review Live2D release/Expandable classification separately from development and SDK MIT separately from NIM/weights/dependencies/assets. No rights or real-render/GPU gate passes from authored fixtures; no remote CI or publication implied. |
+
+For A02c, AC-28 also requires the real IAudioClock mapping/reset path and a
+bounded nonblocking PCM tee: slow/failed analysis never delays speech; unavailable
+clock evidence cannot become ready from padding counters. AC-31 includes the
+single avatar-envelope save/revision/profile boundary, preserved preferences
+but revoked activation on disable, no persisted activation permission, and
+visible exclusion from current global backup/restore until qualified. Clip-only
+adapter fixtures do not pass live streaming integration.
 
 For quality evaluation, use consented/licensed fixtures and a held-out scenario
 set. Measure STT errors on companion names and gaming terms, suppression false
