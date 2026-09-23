@@ -44,16 +44,17 @@ locations (such as `Env:`) fail with an actionable directory requirement.
 
 ```powershell
 $sdk = (Get-Command dotnet).Source # Or an explicit verified SDK dotnet.exe.
+$node = (Get-Command node).Source # Existing reviewed Node 20.11.1.
 $run = Join-Path $PWD ("artifacts\windows-" + [guid]::NewGuid().ToString('N'))
 $cliHome = Join-Path $run 'cli-home'
 $first = Join-Path $run ("publish one " + [char]0x00E9)
 $second = Join-Path $run ("publish two " + [char]0x00E9)
 $builder = Join-Path $run 'inno'
 
-.\packaging\windows\Publish-Windows.ps1 -DotnetPath $sdk -CliHome $cliHome -OutputDirectory $first
-.\packaging\windows\Publish-Windows.ps1 -DotnetPath $sdk -CliHome $cliHome -OutputDirectory $second
+.\packaging\windows\Publish-Windows.ps1 -DotnetPath $sdk -NodePath $node -CliHome $cliHome -OutputDirectory $first
+.\packaging\windows\Publish-Windows.ps1 -DotnetPath $sdk -NodePath $node -CliHome $cliHome -OutputDirectory $second
 .\packaging\windows\Get-InnoSetup.ps1 -Destination $builder
-.\packaging\windows\Test-Packaging.ps1 -DotnetPath $sdk -CliHome $cliHome -PayloadRoot "$first\payload" -ComparePayloadRoot "$second\payload" -PublishDirectory $first -BuilderDirectory $builder -WorkDirectory "$run\tests"
+.\packaging\windows\Test-Packaging.ps1 -DotnetPath $sdk -NodePath $node -CliHome $cliHome -PayloadRoot "$first\payload" -ComparePayloadRoot "$second\payload" -PublishDirectory $first -BuilderDirectory $builder -WorkDirectory "$run\tests"
 .\packaging\windows\Smoke-Package.ps1 -PayloadRoot "$first\payload" -InteractiveDesktop
 .\packaging\windows\Build-Installer.ps1 -PayloadRoot "$first\payload" -BuilderDirectory $builder -OutputDirectory "$run\package"
 # Also exercise the actual GitHub pwsh exit wrapper (includes assertions, Doctor and compiler).

@@ -7,6 +7,7 @@ param(
     [string]$PublishDirectory,
     [string]$BuilderDirectory,
     [string]$DotnetPath = 'dotnet',
+    [string]$NodePath = 'node',
     [Parameter(Mandatory)][string]$CliHome
 )
 . "$PSScriptRoot\Installer.Common.ps1"
@@ -16,6 +17,7 @@ Assert-MSBuildPath (Split-Path (Split-Path $PSScriptRoot))
 Assert-MSBuildPath $WorkDirectory
 New-OutputDirectory $WorkDirectory
 $sdk = Initialize-PackagingSdk $DotnetPath $CliHome
+$node = (Get-Command $NodePath -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
 $manifest = Test-PayloadManifest $PayloadRoot
 $script:cases = 0
 function Assert-Fails([string]$Name, [scriptblock]$Action, [string]$MessagePattern, [string]$NativeErrorCode) {
@@ -31,6 +33,26 @@ function Assert-Fails([string]$Name, [scriptblock]$Action, [string]$MessagePatte
     if (-not $failed) { throw "Expected failure did not occur: $Name" }
     $script:cases++
 }
+
+& {
+    $calls = @{ browser = 0; build = 0 }
+    $browserValidator = ${function:Test-AvatarBrowserEvidence}
+    $buildValidator = ${function:Test-BuildArchiveEvidence}
+    function Test-AvatarBrowserEvidence($Root, $Browser, $Source) {
+        $calls.browser++
+        & $browserValidator $Root $Browser $Source
+    }
+    function Test-BuildArchiveEvidence($Provenance) {
+        $calls.build++
+        & $buildValidator $Provenance
+    }
+    if ($manifest.files.Count -le 1) { throw 'Whole-inventory regression requires a real multi-file payload.' }
+    Test-PackageProvenance $PayloadRoot $manifest.provenance
+    if ($calls.browser -ne 1 -or $calls.build -ne 1) {
+        throw 'Whole-inventory browser/build validation must run exactly once per provenance validation.'
+    }
+}
+$script:cases++
 
 $copy = Join-Path $WorkDirectory ("payload with spaces $([char]0x00E9)")
 Copy-Item -LiteralPath $PayloadRoot -Destination $copy -Recurse
@@ -399,8 +421,15 @@ if ($PublishDirectory) {
         $changedArchive[0] = $changedArchive[0] -bxor 1
         [IO.File]::WriteAllBytes($cachedArchive.FullName, $changedArchive)
         Assert-Fails 'npm archive bytes must match lock integrity' {
-            Get-AvatarBrowserEvidence $copy $restoreCopy $copied.provenance.source
+            Get-AvatarBrowserEvidence $copy $restoreCopy $copied.provenance.source -NodePath $node
         } '*Npm archive integrity failure*'
+        $savedPath = $env:PATH
+        try {
+            $env:PATH = [Environment]::SystemDirectory
+            Assert-Fails 'explicit Node path reaches archive assertion without PATH discovery' {
+                Get-AvatarBrowserEvidence $copy $restoreCopy $copied.provenance.source -NodePath $node
+            } '*Npm archive integrity failure*'
+        } finally { $env:PATH = $savedPath }
     } finally { [IO.File]::WriteAllBytes($cachedArchive.FullName, $archiveBytes) }
     $assetsPath = Join-Path $restoreCopy 'build\obj\Martlet.Desktop\project.assets.json'
     $assetsBytes = [IO.File]::ReadAllBytes($assetsPath)
@@ -517,7 +546,7 @@ if ($PublishDirectory) {
             Copy-Item -LiteralPath (Join-Path $copy 'Doctor\Martlet.Core.dll') -Destination $plugin
             try {
                 Assert-Fails "production generator rejects $directory unowned .$extension" {
-                    Get-PackageProvenance $copy $restoreCopy $copied.provenance.source $copied.provenance.sdk
+                    Get-PackageProvenance $copy $restoreCopy $copied.provenance.source $copied.provenance.sdk -NodePath $node
                 } '*Unowned shipped binary*'
             } finally { [IO.File]::Delete($plugin) }
         }
@@ -532,11 +561,11 @@ if ($PublishDirectory) {
                 Copy-Item -LiteralPath (Join-Path $copy "$mixedCase\Martlet.Core.dll") -Destination $plugin
                 try {
                     Assert-Fails "production generator rejects $mixedCase unowned .$extension" {
-                        Get-PackageProvenance $copy $restoreCopy $copied.provenance.source $copied.provenance.sdk
+                        Get-PackageProvenance $copy $restoreCopy $copied.provenance.source $copied.provenance.sdk -NodePath $node
                     } '*Unowned shipped binary*'
                 } finally { [IO.File]::Delete($plugin) }
             }
-            $null = Get-PackageProvenance $copy $restoreCopy $copied.provenance.source $copied.provenance.sdk
+            $null = Get-PackageProvenance $copy $restoreCopy $copied.provenance.source $copied.provenance.sdk -NodePath $node
             $script:cases++
         } finally {
             [IO.Directory]::Move((Join-Path $copy $mixedCase), (Join-Path $copy 'renaming'))

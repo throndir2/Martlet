@@ -1108,24 +1108,24 @@ function Test-PackageProvenance([string]$Root, $Provenance) {
                     'Desktop\AvatarRenderer\web\index.html', 'Desktop\AvatarRenderer\web\THIRD-PARTY-NOTICES.txt')
             if ($allowed -inotcontains $file.path) { throw "Unowned published content: $($file.path)" }
         }
-        foreach ($asset in Get-WebViewArchiveAssets) {
-            if (-not $origins.ContainsKey($asset.path) -or $origins[$asset.path] -cne $asset.component) { throw "Missing fixed WebView2 archive origin: $($asset.path)" }
-        }
-        $webViewPaths = @((Get-WebViewArchiveAssets).path)
-        foreach ($file in $fileMap.Values) {
-            if ($file.path -imatch '(^|\\)[^\\]*WebView2[^\\]*\.(dll|exe|xml)$' -and
-                $webViewPaths -inotcontains $file.path) { throw "Unreviewed WebView2 payload path: $($file.path)" }
-        }
-        Test-BuildArchiveEvidence $Provenance
-        Test-AvatarBrowserEvidence $Root $Provenance.browser $Provenance.source
-        foreach ($notice in @(
-            @{ source = 'src\Martlet.Avatar.Audio2Face\THIRD-PARTY-NOTICES.md'; target = 'notices\Audio2Face-THIRD-PARTY-NOTICES.md' },
-            @{ source = 'src\Martlet.Avatar.Audio2Face\Protos\LICENSE-2.0.txt'; target = 'notices\Audio2Face-Protos-LICENSE.txt' })) {
-            $sourceNotice = @($Provenance.source.files | Where-Object path -CEQ $notice.source)
-            if ($sourceNotice.Count -ne 1 -or -not $fileMap.ContainsKey($notice.target) -or
-                $sourceNotice[0].sha256 -cne $fileMap[$notice.target].sha256 -or $sourceNotice[0].bytes -ne $fileMap[$notice.target].bytes) {
-                throw 'Copied Audio2Face protocol notice differs from its source receipt.'
-            }
+    }
+    foreach ($asset in Get-WebViewArchiveAssets) {
+        if (-not $origins.ContainsKey($asset.path) -or $origins[$asset.path] -cne $asset.component) { throw "Missing fixed WebView2 archive origin: $($asset.path)" }
+    }
+    $webViewPaths = @((Get-WebViewArchiveAssets).path)
+    foreach ($file in $fileMap.Values) {
+        if ($file.path -imatch '(^|\\)[^\\]*WebView2[^\\]*\.(dll|exe|xml)$' -and
+            $webViewPaths -inotcontains $file.path) { throw "Unreviewed WebView2 payload path: $($file.path)" }
+    }
+    Test-BuildArchiveEvidence $Provenance
+    Test-AvatarBrowserEvidence $Root $Provenance.browser $Provenance.source
+    foreach ($notice in @(
+        @{ source = 'src\Martlet.Avatar.Audio2Face\THIRD-PARTY-NOTICES.md'; target = 'notices\Audio2Face-THIRD-PARTY-NOTICES.md' },
+        @{ source = 'src\Martlet.Avatar.Audio2Face\Protos\LICENSE-2.0.txt'; target = 'notices\Audio2Face-Protos-LICENSE.txt' })) {
+        $sourceNotice = @($Provenance.source.files | Where-Object path -CEQ $notice.source)
+        if ($sourceNotice.Count -ne 1 -or -not $fileMap.ContainsKey($notice.target) -or
+            $sourceNotice[0].sha256 -cne $fileMap[$notice.target].sha256 -or $sourceNotice[0].bytes -ne $fileMap[$notice.target].bytes) {
+            throw 'Copied Audio2Face protocol notice differs from its source receipt.'
         }
     }
 }
