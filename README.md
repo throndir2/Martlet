@@ -32,10 +32,13 @@ to the selected provider; a separate fixture demo will not perform AI inference.
 Later milestones cover Ubuntu self-hosting, two-host GPU deployments, opt-in
 screen understanding and memory. [Live2D and VRM avatar development](docs/AVATARS.md)
 is authorized in parallel now, with Audio2Face first/preferred and avatars OFF
-by default. Standalone compatibility, analyzer and renderer implementations
-now exist; the normal Desktop route is still under development, not a working
-end-user avatar feature. Voice reliability and release qualification remain
-separate requirements.
+by default. The internal Desktop route renders either model in a transparent,
+always-on-top character overlay: drag the character or its **Move character**
+handle to reposition it while she talks. Explicit model inspection and
+generated-speech activation still require the local prerequisites in the
+[Desktop avatar guide](src/Martlet.Avatar.Hosting/README.md). This is not a
+qualified end-user avatar release; voice reliability and model/device
+qualification remain separate requirements.
 
 **Voice Library (local preparation)** now offers all five self-hosted research
 targets (F5-TTS, Qwen3-TTS, Chatterbox, GPT-SoVITS, XTTS-v2), explicit private

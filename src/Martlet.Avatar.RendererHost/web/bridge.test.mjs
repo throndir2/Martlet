@@ -3,6 +3,14 @@ import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readFile } from "node:fs/promises";
 
+test("shared Live2D/VRM page leaves the desktop visible behind the canvas", async () => {
+  const html = await readFile(new URL("index.html", import.meta.url), "utf8");
+  assert.match(html, /html,body\{[^}]*background:transparent[;}]/);
+  assert.match(html, /canvas\{[^}]*background:transparent[;}]/);
+  assert.match(html, /overflow:hidden/);
+  assert.doesNotMatch(html, /background:\s*#/);
+});
+
 test("actual shell latches idle draw failure and never acknowledges a later apply", async () => {
   const posts = [];
   let onMessage, draw, applies = 0;

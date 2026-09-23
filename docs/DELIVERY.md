@@ -36,6 +36,10 @@ A02c provides passive main/conversation entry points, profile-bound atomic
 session activation of generated PCM -> A2F -> shared composition -> both
 renderers. Only mouth/expression is enabled in that path; amplitude/other
 analyzers and gaze/head/body/secondary-motion composition are not implemented.
+The shared renderer shell presents either model as a transparent, borderless,
+always-on-top draggable desktop character, with keyboard movement and explicit
+avatar-only close. Its position is session-only; real-model/GPU, mixed-DPI and
+physical sync qualification remain separate from controlled shell evidence.
 Configuration is inspected mapping/helper + JSON, not a full graphical autorig
 wizard. Controlled app/protocol/bridge checks and audio-OFF smoke evidence do
 not qualify Core/WebGL/GPU/artist models or actual physical/device sync.

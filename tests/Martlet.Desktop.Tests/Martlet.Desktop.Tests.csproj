@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <UseWPF>true</UseWPF>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
@@ -12,6 +12,7 @@
     <PackageReference Include="Grpc.AspNetCore.Server" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\..\src\Martlet.Desktop\Martlet.Desktop.csproj" />
+    <ProjectReference Include="..\..\src\Martlet.Avatar.RendererHost\Martlet.Avatar.RendererHost.csproj" />
     <ProjectReference Include="..\..\src\Martlet.Mcp.Protocol\Martlet.Mcp.Protocol.csproj" />
     <Using Include="Xunit" />
     <Using Include="System.IO" />

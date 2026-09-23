@@ -48,6 +48,33 @@ Voice continues. Closing the configuration window does not revoke explicit
 session activation; app exit, session lock, relevant configuration/control
 changes and explicit Stop do. No activation is restored after restart.
 
+## Draggable desktop character
+
+After explicit **Inspect model**, both Live2D and VRM appear in a transparent,
+borderless, always-on-top desktop overlay, initially near the lower-right corner
+of the primary work area. The character stays visible over other ordinary
+windows while an activated, authorized voice conversation animates her through
+the existing generated-speech path. Inspection alone does not enable analysis.
+
+Drag the character or **Move character** handle to reposition the overlay,
+including onto another monitor. With the move handle focused, use arrow keys
+for 10-DIP steps (device-independent pixels), Shift+arrows for 1-DIP steps, or Home to return to the
+primary screen. The small move/close controls stay available; the model has no
+opaque panel or title bar. The overlay does not take keyboard focus on opening.
+Position is session-only, and this is not a global click-through or game-injected
+overlay. Exclusive-fullscreen applications may cover it.
+
+**Close**, Alt+F4, or Escape while the overlay has focus closes only the renderer;
+normal voice playback continues. Inspect again before reactivation. Closing
+the setup form alone still leaves the character visible; **STOP avatar** removes
+it. No new analysis, microphone, provider or startup permissions are introduced.
+The host uses WPF composition WebView2 and transparent page/WebGL surfaces for
+both models, with Windows 10 2004+ graphics-composition bindings included in the
+renderer build. Local controlled shell checks and actual WebView2 rendering of
+the repository's synthetic VRM triangle establish the transparent host path,
+not artist-model/Live2D Core, mixed-DPI or physical speech-sync qualification;
+those checks remain **NOT RUN**.
+
 ## Ownership and isolation
 
 `AvatarProfileStore` owns one atomic, revision-checked `avatar.json` under the

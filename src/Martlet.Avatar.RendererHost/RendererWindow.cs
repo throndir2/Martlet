@@ -2,6 +2,10 @@ using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Automation;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
 using Martlet.Avatar.Hosting;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
@@ -13,7 +17,14 @@ internal sealed class RendererWindow : Window
     private readonly Stream input, output;
     private readonly CancellationTokenSource lifetime = new();
     private readonly Dictionary<string, AvatarAsset> resources = new(StringComparer.Ordinal);
-    private readonly WebView2 browser = new();
+    // Composition avoids the child-HWND airspace/opacity of the ordinary WPF WebView2.
+    private readonly WebView2CompositionControl browser = new()
+    {
+        DefaultBackgroundColor = System.Drawing.Color.Transparent,
+        IsHitTestVisible = false,
+        Focusable = false
+    };
+    private readonly Grid viewport = new() { Background = Brushes.Transparent, Cursor = Cursors.SizeAll };
     private TaskCompletionSource<JsonElement>? response;
     private Guid activation;
     private readonly RendererFailureLatch failure = new();
@@ -23,12 +34,82 @@ internal sealed class RendererWindow : Window
     {
         this.input = input;
         this.output = output;
-        Title = "Martlet Avatar - local isolated renderer";
-        Width = 600;
-        Height = 700;
-        Content = new System.Windows.Controls.TextBlock { Text = "Awaiting private initialization.", Margin = new Thickness(20) };
+        Title = "Martlet character overlay";
+        WindowStyle = WindowStyle.None;
+        AllowsTransparency = true;
+        Background = Brushes.Transparent;
+        ResizeMode = ResizeMode.NoResize;
+        Topmost = true;
+        ShowActivated = false;
+        WindowStartupLocation = WindowStartupLocation.Manual;
+        PlaceOnDesktop();
+
+        var move = new Button
+        {
+            Content = "Move character", Cursor = Cursors.SizeAll, Padding = new Thickness(10, 5, 10, 5),
+            ToolTip = "Drag the character or this handle. Arrow keys move; Shift makes fine adjustments. Home returns to the primary screen."
+        };
+        AutomationProperties.SetAutomationId(move, "MoveAvatar");
+        AutomationProperties.SetName(move, "Move character");
+        AutomationProperties.SetHelpText(move, (string)move.ToolTip);
+        move.PreviewMouseLeftButtonDown += DragCharacter;
+        move.PreviewKeyDown += (_, e) =>
+        {
+            var step = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? 1 : 10;
+            switch (e.Key)
+            {
+                case Key.Left: Left -= step; break;
+                case Key.Right: Left += step; break;
+                case Key.Up: Top -= step; break;
+                case Key.Down: Top += step; break;
+                case Key.Home: PlaceOnDesktop(); break;
+                default: return;
+            }
+            e.Handled = true;
+        };
+        var close = new Button
+        {
+            Content = "Close", Padding = new Thickness(10, 5, 10, 5),
+            ToolTip = "Close the avatar only. Voice continues."
+        };
+        AutomationProperties.SetAutomationId(close, "CloseAvatar");
+        AutomationProperties.SetName(close, "Close character overlay");
+        close.Click += (_, _) => Close();
+        var controls = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
+        controls.Children.Add(move);
+        controls.Children.Add(close);
+        DockPanel.SetDock(controls, Dock.Top);
+        var layout = new DockPanel();
+        layout.Children.Add(controls);
+        layout.Children.Add(viewport);
+        viewport.Children.Add(browser);
+        viewport.Children.Add(new TextBlock
+        {
+            Text = "Loading character...", Background = SystemColors.WindowBrush, Foreground = SystemColors.WindowTextBrush,
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top, Padding = new Thickness(8)
+        });
+        viewport.MouseLeftButtonDown += DragCharacter;
+        PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) { e.Handled = true; Close(); } };
+        Content = layout;
         Loaded += async (_, _) => await RunAsync();
         Closed += (_, _) => { lifetime.Cancel(); input.Dispose(); output.Dispose(); browser.Dispose(); };
+    }
+
+    private void PlaceOnDesktop()
+    {
+        var area = SystemParameters.WorkArea;
+        Width = Math.Min(420, area.Width);
+        Height = Math.Min(560, area.Height);
+        Left = Math.Max(area.Left, area.Right - Width - 24);
+        Top = Math.Max(area.Top, area.Bottom - Height - 24);
+    }
+
+    private void DragCharacter(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ButtonState != MouseButtonState.Pressed) return;
+        e.Handled = true;
+        if (sender is Button handle) handle.Focus();
+        DragMove();
     }
 
     private async Task RunAsync()
@@ -95,7 +176,7 @@ internal sealed class RendererWindow : Window
                         $"Content-Security-Policy: {RendererResourcePolicy.ContentSecurityPolicy(load.Profile.Renderer == Martlet.Avatars.AvatarRenderer.Live2D)}\r\n");
                 else args.Response = environment.CreateWebResourceResponse(Stream.Null, 403, "Blocked", "Content-Type: text/plain");
             };
-            Content = browser;
+            viewport.Children.RemoveAt(1);
             response = new(TaskCreationOptions.RunContinuationsAsynchronously);
             core.Navigate(RendererResourcePolicy.Document);
             await response.Task.WaitAsync(TimeSpan.FromSeconds(15), lifetime.Token);

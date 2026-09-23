@@ -1,11 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <UseWPF>true</UseWPF>
     <NodeExecutable Condition="'$(NodeExecutable)' == ''">node</NodeExecutable>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Martlet.Desktop.Tests" />
     <PackageReference Include="Microsoft.Web.WebView2" />
     <ProjectReference Include="..\Martlet.Avatar.Hosting\Martlet.Avatar.Hosting.csproj" />
     <Content Include="web\dist\app.js" Link="web\app.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
