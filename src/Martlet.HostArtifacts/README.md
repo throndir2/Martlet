@@ -1,4 +1,4 @@
-# Offline host artifact inspection (H02a/H02c)
+# Offline host artifact inspection (H02a/H02c/H02d metadata)
 
 **Standalone internal managed-code foundation, not a shipped installer feature.**
 The library and `Martlet.ArtifactDoctor` inspect one explicitly selected local
@@ -194,6 +194,11 @@ it never gains container semantics implicitly. The existing catalog is unchanged
 The report uses format 1 for v1 input and format 2 for v2 input. V2 reports add
 `container_images`, optional `requested_platform`, and `disk.container_content`;
 old file metadata remains under `artifacts`. No deployable v2 catalog is shipped.
+The [H02d metadata catalog](../../deploy/ubuntu/artifacts/host-artifacts.v2.json)
+now supplies real public-upstream image candidates, still disabled. Its
+[capture evidence and gaps](../../deploy/ubuntu/artifacts/README.md) distinguish
+the completed metadata slice from remaining acquired-byte, rights, dependency,
+runtime/GPU and host qualification.
 
 | Object | Required fields, including explicit nullable values |
 | --- | --- |
@@ -245,8 +250,10 @@ claimed complete blob list is **not** a resolved runtime/package closure.
 ### Shared content and byte accounting
 
 One selected image manifest digest must appear once in the document; roles
-reference its ID. Duplicate blob digests within an image are rejected. Across
-images, shared index/configuration/layer digests are counted once and **must**
+reference its ID. Repeated layer occurrences within an image are preserved:
+the official F5 image repeats the same empty layer three times. Configuration
+records may not repeat. Within and across images, shared
+index/configuration/layer digests are counted once and **must**
 agree on kind and all size facts, including null versus known. Conflicts are
 invalid, not silently merged or selected by input order. Cross-kind digest
 aliases and aliases of v1 file payload hashes are rejected because their
@@ -277,7 +284,8 @@ overall. A claimed complete blob inventory requires exactly one configuration
 record; incomplete lists may omit it. Compressed/manifest/index sizes are
 positive or null; expanded/staging blob sizes are nonnegative or null. Each
 known size is at most 16 TiB; each unique known byte subtotal is at most 64 TiB,
-including files in the combined compressed subtotal. Graph edges retain the
+including files in the combined compressed subtotal. Repeated layers still
+consume the per-image and document occurrence limits. Graph edges retain the
 16-per-node/256-total bounds. The CLI now allows at most 10 arguments.
 
 The [v2 fixture](../../tests/Martlet.HostArtifacts.Tests/fixtures/container-images.v2.json)
