@@ -270,8 +270,8 @@ A01a/A01b start early; Live2D and VRM develop in parallel against coordinated
 interfaces. First-wave fixtures do not depend on licensed model/GPU access.
 A02c now wires the locally integrated contracts/adapters and opt-in
 clock/nonblocking PCM handoff into the normal internal app. Broader composition/
-comparison acceptance, final-tree package qualification and runtime qualification
-remain open.
+comparison acceptance and runtime qualification remain open. Package evidence
+must identify the exact frozen source revision it covers.
 A02d extends channels without claiming the v1 face frame carries
 poses. A03a qualifies each advertised subset; facial-only trials need not wait
 for body implementation, but full-motion claims do. Rights research may run
@@ -302,8 +302,7 @@ retains legacy manifest 1 and manifest 2 / provenance 1 paths without rewriting
 their history; older readers reject manifest 3. Actual self-contained payload,
 three-document consumer conformance and repeated local package assertions have
 passed for specific frozen builds. Those receipts do not transfer to a changed
-source tree: final current-tree qualification remains pending this reconciliation
-followed by a fresh source freeze/run.
+source tree: every candidate requires its own frozen-source build and checks.
 No published installer, signed release, native/model/GPU qualification or
 executable update/rollback readiness follows from this metadata compatibility.
 
