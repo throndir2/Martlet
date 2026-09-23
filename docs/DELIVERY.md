@@ -34,8 +34,9 @@ usable normal Desktop avatar features or passed end-to-end acceptance.
 Controlled contract/protocol/importer checks do not qualify Core/WebGL/GPU/
 artist models. The first contract is facial only; general pose/body and VRMA
 playback remain unsupported in that slice. A02c now includes initial opt-in
-native clock/PCM-observation code, with a zero-padding/queued-refill clock
-invalidation correction underway; physical/device sync remains NOT RUN.
+native clock/PCM-observation code. The zero-padding/queued-refill invalidation
+defect is corrected, locally regression-checked and reviewed; physical/device
+sync remains NOT RUN.
 Normal WPF UI/host/configuration/publish wiring remains in development;
 A02d extended motion remains planned. See [AVATARS](AVATARS.md) for
 exact lane choices, supported/degraded/blocked permutations and evidence limits.
@@ -324,7 +325,7 @@ prerequisite. Voice reliability, local validation and release rights stay intact
 | A01b | Preferred Audio2Face client against official NIM v2 bidirectional gRPC; A01a facial boundary, original PCM clock and bounded stale discard | Implemented/reviewed live bounded nonblocking GeneratedSpeechStream plus separate offline/comparison clip path; actual HTTP/2 fixture evidence, not normal app/NIM/GPU qualification; pre-existing literal-loopback service and runtime/model/access remain external prerequisites, not native MIT SDK embedding |
 | A02a | Live2D importer/mapping/adapter against A01a; host-supplied local Cubism Web Framework 5-r.4 / matching Core 05.01.0000 (`0x05010000`) | Implemented standalone, locally checked/reviewed; unsupported newer features rejected; no Core/assets acquired, full SDK/native parsing/GPU rendering NOT RUN |
 | A02b | VRM importer/facial mapping/renderer against A01a | Implemented standalone, real-loader/control/bundle checks and review corrections cleared; basic expressions optional, detailed ARKit mapping authored; VRMA/body unsupported, actual graphics/artist/device qualification NOT RUN |
-| A02c | One app owner integrates normal WPF host/adapters, opt-in native clock mapping and bounded nonblocking PCM observation, OFF-by-default configuration, masks/remedies and comparisons | In development; IPlaybackClockDevice/PlaybackRun.DeviceClock now exist locally, zero-padding/queued-refill invalidation correction underway. Legacy DeviceConsumedSamples remains padding-derived and AudibleSamples null; actual sync NOT RUN. Approved atomic avatar-only envelope holds shared configuration/profile/resource/runtime identities, no competing global AppSettings. Single owner validates revisions/recovery/delete; disable preserves preferences, never activation permission; global backup/restore visibly excludes it until qualified |
+| A02c | One app owner integrates normal WPF host/adapters, opt-in native clock mapping and bounded nonblocking PCM observation, OFF-by-default configuration, masks/remedies and comparisons | In development; IPlaybackClockDevice/PlaybackRun.DeviceClock exist locally; zero-padding/queued-refill invalidation defect corrected with local regression evidence and cleared review. Legacy DeviceConsumedSamples remains padding-derived and AudibleSamples null; actual sync NOT RUN. Approved atomic avatar-only envelope holds shared configuration/profile/resource/runtime identities, no competing global AppSettings. Single owner validates revisions/recovery/delete; disable preserves preferences, never activation permission; global backup/restore visibly excludes it until qualified |
 | A02d | Extend reviewed capabilities/wire as needed for procedural/clip gaze/head/body/secondary motion, including optional VRMA on VRM; explicitly qualified blends only | Planned after shared boundary/app composition; no direct VRMA-on-Live2D claim |
 | A03a | Local exact-model/renderer/clock/Stop/crash/load/comparison qualification for each advertised subset after its integration | NOT RUN; missing native runtime/device/GPU access is a distinct blocker, not a fixture pass |
 | A03b | SDK/Core/framework, NIM/dependencies, model/asset/motion rights, Live2D classification, notices and release approval | Separate unpassed gate; research can run early, distribution only after rights and relevant A03a/voice/lifecycle evidence |
@@ -507,7 +508,7 @@ stable D02/F04; H04 owns only its Python worker; H05 owns host lifecycle, not
 provider internals. P03 memory can progress against fixture retrieval independently
 of P02 model work. The accepted avatar batch starts A01a/A01b early and
 A02a/A02b in parallel now; A02c follows their reviewed interfaces and extends
-V04 playback with opt-in clock hardening and normal-app wiring of the
+V04 playback with opt-in clock qualification and normal-app wiring of the
 nonblocking streaming analysis handoff. Initial clock/observation code exists;
 actual device synchronization is unqualified. A02d/A03 qualify extended motion and each advertised
 runtime tuple later. Rights research proceeds independently; it does not turn

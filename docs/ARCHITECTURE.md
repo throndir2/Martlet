@@ -581,7 +581,9 @@ and both renderer adapters are locally integrated and reviewed. Opt-in
 observations, clock state and a nullable original-PCM sample offset.
 Legacy `DeviceConsumedSamples` still means committed samples minus padding,
 and `AudibleSamples` remains null; neither is a qualified presentation clock.
-A concrete zero-padding/queued-refill invalidation correction is underway.
+The known zero-padding/queued-refill defect is corrected with local regression
+evidence and cleared review: an emptied running endpoint invalidates the clock
+before refill, even when more PCM is queued.
 Normal app wiring and actual device/physical synchronization remain incomplete;
 invalid/unavailable clock state disables synchronized animation, not voice.
 Audio2Face now has bounded nonblocking live `GeneratedSpeechStream` ingress;
