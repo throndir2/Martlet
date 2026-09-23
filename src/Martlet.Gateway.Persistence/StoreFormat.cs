@@ -51,6 +51,8 @@ internal static class StoreFormat
 
     internal static byte[] Unwrap(byte[] bytes)
     {
+        if (bytes.Length >= 8 && bytes.AsSpan(0, 8).SequenceEqual(LinuxPermissionEnvelope.Magic))
+            throw Error(GatewayPersistenceFailure.StorageBackendMismatch);
         if (bytes.Length >= 8 && (bytes.AsSpan(0, 8).SequenceEqual("MRTLHM01"u8) ||
             bytes.AsSpan(0, 8).SequenceEqual("MARTLET1"u8)))
             throw Error(GatewayPersistenceFailure.MigrationRequired);
