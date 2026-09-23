@@ -50,7 +50,7 @@ standalone preview, not a Desktop bridge.
 | `new VrmRuntime()` | Actual importer and controls, usable without WebGL for CPU-side importer tests. |
 | `new VrmAvatarAdapter(canvas)` | Extends runtime with WebGL2 renderer, camera, lights. No owned RAF. |
 | `await load(buffer)` | Copies/preflights supplied bytes before async import. Success replaces/disposes the previous model and clears all binding/configuration. Failure retains the current model. Concurrent loads reject; dispose cancels pending adoption. |
-| `configure(selection, revision?)` | Validates explicit selected aspects and target ownership transactionally, then neutralizes controls and clears playback binding. |
+| `configure(selection, revision, inputMode = "composed")` | Requires model/mapping revisions in both exclusive input modes; validates selected aspects and ownership transactionally, then neutralizes controls and clears playback binding. |
 | `reset(identity)` | Trusted explicit turn/start transition: neutralizes face, head, gaze and springs; binds full correlation/source/epoch/rate and restarts sequence. |
 | `applyFrame(input, actualPlaybackSampleOffset)` | Adapter-local normalized coefficient route, applies explicit affine mapping. **Not** an AvatarFrame JSON parser. |
 | `applyComposedParameters(input, actualPlaybackSampleOffset)` | Preferred shared-host route: validates current model/mapping revision and exact selected native target parameters; applies values directly, with **no second affine mapping**. |
@@ -80,7 +80,9 @@ sequence are integers 0..2147483647; original PCM sample rate is one of
 }
 ```
 
-The coefficient input is `{identity,sequence,sampleOffset,coefficients}`. It must
+The coefficient route requires explicit `inputMode: "coefficients"` (third
+configure argument). Its input is
+`{identity,sequence,sampleOffset,modelRevision,mappingRevision,coefficients}`. It must
 contain exactly the selected source channels, finite 0..1; no implicit missing
 values or ignored unknown channels. One channel may explicitly drive multiple
 non-overlapping targets. Distinct expressions may not write the same morph or
@@ -88,7 +90,7 @@ material property; gaze owns its directional expressions. Blink is an internal
 expression subcategory, not a new shared compatibility aspect.
 
 For the shared compositor, call `configure(selection, {modelRevision,
-mappingRevision})` with host-bound, nonempty bounded revision identifiers. Pass
+mappingRevision})` (default `"composed"` mode) with host-bound, nonempty bounded revision identifiers. Pass
 `{identity,sequence,sampleOffset,modelRevision,mappingRevision,parameters}` to
 `applyComposedParameters`. `parameters` contains exactly the selected authored
 expression target names and their native **0..1** values. Shared composition has
@@ -97,7 +99,12 @@ Revisions are trusted host bindings, not a substitute for the host's asset hash
 verification. The single-source A2F route preserves its original full identity,
 source ID and sequence; do not invent a universal composed source.
 
-Both routes share one monotonic sequence and sample clock gate. Wrong identity,
+The two entrypoints are mutually exclusive for a configuration: coefficient input
+cannot overwrite a composed session, or vice versa. Both enforce the current
+model/mapping revision, including after a same-identity reset. Changing route
+requires trusted reconfiguration and reset.
+
+Both routes use a monotonic sequence and sample clock gate. Wrong identity,
 stale sequence, wrong revision, future frame, frame older than 250ms, non-finite/
 out-of-range values, and missing/extra controls **throw before any active state
 change**. A late turn A never resets or overwrites current turn B. Future frames
@@ -138,6 +145,9 @@ rigs and VRM0 migration are not implemented.**
 Only GLB2 with exact byte length, aligned bounded JSON and at most one embedded
 BIN chunk, glTF2 asset version, exact `VRMC_vrm` version1.0, required humanoid
 roles and standard ancestry, a single scene, and VRM1 metadata are accepted.
+Every extension object must be consistently declared in `extensionsUsed`;
+required/used declarations cannot refer to absent extensions. Advertised spring
+support is additionally checked against imported nonzero-length runtime joints.
 The `licenseUrl` format check is **not consent** or a claim of model usage rights.
 
 Allowed extensions:
@@ -160,8 +170,12 @@ qualified support, never silently discard unsupported controls.
 All URI fields (including data/file/network URIs) and prototype keys reject
 recursively. No model scripts or dynamic plugins load. Only embedded PNG
 textures are accepted; JPEG/WebP/KTX require re-export. PNG dimensions are
-checked before browser decode, then decode failures surface rather than render
-success with a silently missing texture. The bounded parser is defense-in-depth,
+checked before browser decode. A per-parser embedded image decoder uses
+`createImageBitmap` directly on the validated bytes: no object URL or fetch is
+created, and decoded bitmaps are owned across success, failure, reload and late
+completion/disposal. Browser `createImageBitmap` support is required for textured
+models. Decode failures surface rather than render success with a silently missing
+texture. The bounded parser is defense-in-depth,
 **not a full glTF schema validator or an OS/browser security sandbox**.
 
 Main hard limits are in `LIMITS`: 32MiB input, 2MiB JSON, 120,000 JSON entries,
@@ -182,6 +196,8 @@ They cover malformed headers/resources, absent controls, subset rejections,
 ownership/override behavior, finite/range constraints, stale-turn inertness,
 playback gating, direct-target revision binding, stop/dispose/reload, and pending
 load cancellation. These are not mocked successful import results.
+PNG resource-lifetime tests run the production importer with a simulated browser
+decoder; they verify ownership/error paths, not real PNG decode or visual quality.
 
 Local TypeScript compilation, importer/control tests and offline bundle creation
 are runnable without GPU. The localhost harness was served and its static route

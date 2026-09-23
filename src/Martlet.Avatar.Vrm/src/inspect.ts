@@ -123,6 +123,8 @@ function parse(buffer: ArrayBuffer): Parsed {
 
 function checkTree(json: JsonObject): void {
   let entries = 0;
+  const declared = new Set(optionalArray(json.extensionsUsed, "extensionsUsed", 16));
+  const present = new Set<string>();
   const visit = (value: unknown, depth: number): void => {
     requireValid(++entries <= 120000 && depth <= 48, "JSON resource/depth budget exceeded.");
     if (typeof value === "number") finite(value, -1e12, 1e12, "JSON number");
@@ -133,8 +135,11 @@ function checkTree(json: JsonObject): void {
         requireValid(!["uri", "url", "__proto__", "prototype", "constructor"].includes(key),
           `Forbidden field ${key}: external/data/file resources and prototype keys are not accepted.`);
         if (key === "extensions") {
-          for (const name of Object.keys(object(child, "extensions")))
+          for (const name of Object.keys(object(child, "extensions"))) {
             requireValid(allowedExtensions.has(name), `Unsupported extension ${name}; re-export without it.`);
+            requireValid(declared.has(name), `Extension ${name} is missing from extensionsUsed; re-export consistent declarations.`);
+            present.add(name);
+          }
         }
         visit(child, depth + 1);
       }
@@ -142,8 +147,10 @@ function checkTree(json: JsonObject): void {
   };
   visit(json, 0);
   for (const key of ["extensionsUsed", "extensionsRequired"]) {
-    for (const name of optionalArray(json[key], key, 16))
+    for (const name of optionalArray(json[key], key, 16)) {
       requireValid(typeof name === "string" && allowedExtensions.has(name), `Unsupported ${key} entry ${String(name)}.`);
+      requireValid(declared.has(name) && present.has(name), `${key} contains undeclared or absent extension ${name}.`);
+    }
   }
 }
 
@@ -378,6 +385,7 @@ export function inspectVrm(buffer: ArrayBuffer): VrmCapabilities {
       requireValid(group !== "custom" || !presets.has(name), `Custom expression must not shadow preset ${name}.`);
       const expression = object(e, "expression");
       const targets: string[] = [];
+      const authoredTargets = new Set<string>();
       for (const b of optionalArray(expression.morphTargetBinds, "morphTargetBinds", 128)) {
         const bind = object(b, "morph bind");
         const node = at(nodes, bind.node, "morph node");
@@ -388,7 +396,10 @@ export function inspectVrm(buffer: ArrayBuffer): VrmCapabilities {
           integer(bind.index, 0, optionalArray(primitive.targets, "targets").length - 1, "morph target index");
         }
         const weight = finite(bind.weight, 0, 1, "morph bind weight");
-        if (weight > 0) targets.push(`${Number(bind.node)}:${Number(bind.index)}`);
+        const target = `${Number(bind.node)}:${Number(bind.index)}`;
+        requireValid(!authoredTargets.has(target), `Duplicate morph target ${target} within expression ${name}; merge or remove the duplicate binding.`);
+        authoredTargets.add(target);
+        if (weight > 0) targets.push(target);
       }
       const materialBinds = optionalArray(expression.materialColorBinds, "materialColorBinds", 32);
       const textureBinds = optionalArray(expression.textureTransformBinds, "textureTransformBinds", 32);

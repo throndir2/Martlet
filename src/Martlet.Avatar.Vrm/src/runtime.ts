@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { VRM, VRMLoaderPlugin } from "@pixiv/three-vrm";
-import { blinkPresets, finite, gazePresets, inspectVrm, integer, mouthPresets, requireValid, VrmError,
+import { blinkPresets, finite, gazePresets, inspectVrm, integer, mouthPresets, object, requireValid, VrmError,
   type VrmCapabilities } from "./inspect.js";
 
 /** Adapter-local controls, not the shared AvatarFrame wire envelope. */
@@ -13,7 +13,7 @@ export interface PlaybackIdentity {
   epoch: number;
   sampleRate: number;
 }
-export interface CoefficientInput {
+export interface CoefficientInput extends CompositionRevision {
   identity: PlaybackIdentity;
   sequence: number;
   sampleOffset: number;
@@ -23,6 +23,7 @@ export interface CompositionRevision {
   modelRevision: string;
   mappingRevision: string;
 }
+export type InputMode = "composed" | "coefficients";
 export interface ComposedParameterInput extends CompositionRevision {
   identity: PlaybackIdentity;
   sequence: number;
@@ -100,15 +101,53 @@ export async function loadLocalVrm(buffer: ArrayBuffer): Promise<{ vrm: VRM; cap
   const errors: string[] = [];
   manager.onError = () => { errors.push("Embedded resource decode failed."); };
   manager.setURLModifier(url => {
-    // GLTFLoader creates blob URLs only for already-validated embedded PNG buffer views.
-    requireValid(url.startsWith("blob:"), "External resource loading is forbidden.");
-    return url;
+    throw new VrmError("forbidden-resource", `URL loading is forbidden: ${url.slice(0, 64)}`);
   });
   const loader = new GLTFLoader(manager);
   const resources = new Set<unknown>();
   const released = new Set<unknown>();
   let failed = false;
   loader.register(parser => {
+    const images = new Map<number, Promise<THREE.Texture>>();
+    // Per-parser boundary avoids GLTFLoader's success-only object-URL revocation.
+    // Decode embedded bytes directly: no fetch, shared URL hooks, or object URLs.
+    parser.loadImageSource = (sourceIndex) => {
+      let pending = images.get(sourceIndex);
+      if (!pending) {
+        pending = (async () => {
+          try {
+            requireValid(typeof createImageBitmap === "function", "Embedded PNG requires browser createImageBitmap support.");
+            const json = object(parser.json, "parser JSON");
+            requireValid(Array.isArray(json.images), "Missing embedded images.");
+            const image = object(json.images[sourceIndex], "embedded image");
+            const bytes: unknown = await parser.getDependency("bufferView", Number(image.bufferView));
+            requireValid(bytes instanceof ArrayBuffer && image.mimeType === "image/png", "Expected validated embedded PNG bytes.");
+            const bitmap = await createImageBitmap(new Blob([bytes], { type: "image/png" }),
+              { premultiplyAlpha: "none", colorSpaceConversion: "none" });
+            const texture = new THREE.Texture(bitmap);
+            texture.needsUpdate = true;
+            texture.userData.mimeType = "image/png";
+            resources.add(texture);
+            if (failed) {
+              releaseResources(texture, released);
+              throw new VrmError("import-failed", "Embedded PNG completed after import failed.");
+            }
+            return texture;
+          } catch (error) {
+            errors.push("Embedded resource decode failed.");
+            throw error;
+          }
+        })();
+        images.set(sourceIndex, pending);
+        return pending;
+      }
+      return pending.then(texture => {
+        const clone = texture.clone();
+        resources.add(clone);
+        if (failed) releaseResources(clone, released);
+        return clone;
+      });
+    };
     const original = parser.getDependency.bind(parser);
     parser.getDependency = async (type, index) => {
       const result: unknown = await original(type, index);
@@ -137,6 +176,11 @@ export async function loadLocalVrm(buffer: ArrayBuffer): Promise<{ vrm: VRM; cap
       const imported = candidate.expressionManager?.getExpression(expression.name);
       requireValid(imported && imported.binds.length > 0, `Importer omitted usable bindings for authored expression ${expression.name}.`);
     }
+    if (capabilities.secondaryMotion)
+      requireValid(candidate.springBoneManager && [...candidate.springBoneManager.joints]
+        .some(joint => joint.child && joint.initialLocalChildPosition.lengthSq() > 1e-12),
+      "Importer did not produce usable spring joints; re-export a nonzero-length VRMC_springBone chain.");
+    if (capabilities.gaze !== "absent") requireValid(candidate.lookAt, "Importer omitted the advertised gaze controller.");
     if (candidate.lookAt) candidate.lookAt.autoUpdate = false;
     candidate.scene.updateWorldMatrix(true, true);
     const box = new THREE.Box3().setFromObject(candidate.scene);
@@ -155,6 +199,7 @@ export class VrmRuntime {
   private inspected: VrmCapabilities | undefined;
   private selection: Selection | undefined;
   private revision: CompositionRevision | undefined;
+  private inputMode: InputMode | undefined;
   private identity: string | undefined;
   private sequence = -1;
   private sampleOffset = -1;
@@ -187,14 +232,14 @@ export class VrmRuntime {
     } finally { this.pending = false; }
   }
 
-  configure(selection: Selection, revision?: CompositionRevision): void {
+  configure(selection: Selection, revision: CompositionRevision, inputMode: InputMode = "composed"): void {
     const model = this.loaded();
     const capabilities = this.inspected!;
     requireValid(selection !== null && typeof selection === "object", "Selection required.");
-    if (revision) {
-      identifier(revision.modelRevision, "model revision");
-      identifier(revision.mappingRevision, "mapping revision");
-    }
+    requireValid(revision !== null && typeof revision === "object", "Model/mapping revision binding is required.");
+    identifier(revision.modelRevision, "model revision");
+    identifier(revision.mappingRevision, "mapping revision");
+    requireValid(inputMode === "composed" || inputMode === "coefficients", "Unknown input mode.");
     identifier(selection.faceSource, "face source");
     requireValid(["authored-explicit", "reduced-vowel-jaw-only"].includes(selection.faceMode), "Explicit face mapping mode required.");
     for (const key of ["gaze", "head", "secondaryMotion"] as const) requireValid(typeof selection[key] === "boolean", `${key} must be explicitly selected or omitted (false).`);
@@ -235,7 +280,8 @@ export class VrmRuntime {
     // Validate everything before changing an active turn.
     this.clearControls();
     this.selection = structuredClone(selection);
-    this.revision = revision ? { ...revision } : undefined;
+    this.revision = { ...revision };
+    this.inputMode = inputMode;
     const expressions = model.expressionManager;
     if (expressions) {
       expressions.mouthExpressionNames = [...new Set([...mouthPresets, ...selection.mappings.filter(m => m.aspect === "mouth").map(m => m.expression)])];
@@ -256,6 +302,8 @@ export class VrmRuntime {
   applyFrame(input: CoefficientInput, actualPlaybackSampleOffset: number): void {
     const model = this.loaded();
     this.validateFrame(input, actualPlaybackSampleOffset);
+    requireValid(this.inputMode === "coefficients", "Coefficient input is disabled in composed input mode.");
+    this.validateRevision(input);
     const selection = this.selection!;
     this.validateValues(input.coefficients, new Set(selection.mappings.map(m => m.channel)));
     for (const mapping of selection.mappings)
@@ -267,13 +315,17 @@ export class VrmRuntime {
   applyComposedParameters(input: ComposedParameterInput, actualPlaybackSampleOffset: number): void {
     const model = this.loaded();
     this.validateFrame(input, actualPlaybackSampleOffset);
-    requireValid(this.revision && input.modelRevision === this.revision.modelRevision && input.mappingRevision === this.revision.mappingRevision,
-      "Composed parameters require the current bound model/mapping revision.");
+    requireValid(this.inputMode === "composed", "Composed input is disabled in coefficient input mode.");
+    this.validateRevision(input);
     this.validateValues(input.parameters, new Set(this.selection!.mappings.map(m => m.expression)));
     for (const [target, value] of Object.entries(input.parameters)) model.expressionManager!.setValue(target, value);
     this.acceptFrame(input, actualPlaybackSampleOffset);
   }
 
+  private validateRevision(input: CompositionRevision): void {
+    requireValid(this.revision && input.modelRevision === this.revision.modelRevision && input.mappingRevision === this.revision.mappingRevision,
+      "Input requires the current bound model/mapping revision.");
+  }
   private validateFrame(input: Pick<CoefficientInput, "identity" | "sequence" | "sampleOffset">, actualPlaybackSampleOffset: number): void {
     requireValid(this.selection && this.identity, "Configure and reset a trusted playback identity before applying frames.");
     validateIdentity(input.identity);
@@ -386,6 +438,6 @@ export class VrmRuntime {
       this.model.scene.removeFromParent();
       releaseResources(this.model.scene);
     }
-    this.model = undefined; this.inspected = undefined; this.selection = undefined; this.revision = undefined;
+    this.model = undefined; this.inspected = undefined; this.selection = undefined; this.revision = undefined; this.inputMode = undefined;
   }
 }

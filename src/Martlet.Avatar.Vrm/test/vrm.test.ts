@@ -8,6 +8,7 @@ const identity: PlaybackIdentity = {
   sessionId: "11111111-1111-1111-1111-111111111111", turnId: "22222222-2222-2222-2222-222222222222",
   requestId: "33333333-3333-3333-3333-333333333333", sourceId: "host-composed-a2f", epoch: 0, sampleRate: 24000,
 };
+const revision = { modelRevision: "fixture-v1", mappingRevision: "mapping-v1" };
 const selection: Selection = {
   faceSource: identity.sourceId, faceMode: "authored-explicit",
   mappings: [
@@ -22,10 +23,10 @@ function morphs(runtime: VrmRuntime): number[] {
   assert.ok(found); return found;
 }
 async function active(): Promise<VrmRuntime> {
-  const runtime = new VrmRuntime(); await runtime.load(fixture()); runtime.configure(selection); runtime.reset(identity); return runtime;
+  const runtime = new VrmRuntime(); await runtime.load(fixture()); runtime.configure(selection, revision, "coefficients"); runtime.reset(identity); return runtime;
 }
 function frame(sequence = 0, coefficients = { jawOpen: 0.8, happy: 0, blink: 0.6 }) {
-  return { identity, sequence, sampleOffset: 0, coefficients };
+  return { identity, ...revision, sequence, sampleOffset: 0, coefficients };
 }
 
 test("synthetic importer inspects actual authored controls, not guessed ARKit detail", async () => {
@@ -47,8 +48,8 @@ test("missing optional expressions stay absent and cannot be selected", async ()
   const caps = inspectVrm(data);
   assert.equal(caps.facialDetail, "absent"); assert.equal(caps.gaze, "absent");
   const runtime = new VrmRuntime(); await runtime.load(data);
-  assert.throws(() => runtime.configure({ ...selection, gaze: false }), /absent/);
-  runtime.configure({ ...selection, gaze: false, mappings: [] });
+  assert.throws(() => runtime.configure({ ...selection, gaze: false }, revision, "coefficients"), /absent/);
+  runtime.configure({ ...selection, gaze: false, mappings: [] }, revision, "coefficients");
   runtime.dispose();
 });
 
@@ -174,10 +175,10 @@ test("future/late/rewinding audio frames reject; actual playback position is man
 test("ownership/range/unsupported selection and unknown channels are explicit, transactional failures", async () => {
   const runtime = await active(); runtime.applyFrame(frame(), 0); runtime.update(0);
   const before = [...morphs(runtime)];
-  assert.throws(() => runtime.configure({ ...selection, mappings: [...selection.mappings, selection.mappings[0]!] }), /Duplicate/);
-  assert.throws(() => runtime.configure({ ...selection, faceMode: "reduced-vowel-jaw-only" }), /Reduced mode/);
-  assert.throws(() => runtime.configure({ ...selection, mappings: [{ ...selection.mappings[0]!, maximum: 2 }] }), /maximum/);
-  assert.throws(() => runtime.configure({ ...selection, mappings: [{ ...selection.mappings[0]!, expression: "lookUp" }] }), /exclusively/);
+  assert.throws(() => runtime.configure({ ...selection, mappings: [...selection.mappings, selection.mappings[0]!] }, revision, "coefficients"), /Duplicate/);
+  assert.throws(() => runtime.configure({ ...selection, faceMode: "reduced-vowel-jaw-only" }, revision, "coefficients"), /Reduced mode/);
+  assert.throws(() => runtime.configure({ ...selection, mappings: [{ ...selection.mappings[0]!, maximum: 2 }] }, revision, "coefficients"), /maximum/);
+  assert.throws(() => runtime.configure({ ...selection, mappings: [{ ...selection.mappings[0]!, expression: "lookUp" }] }, revision, "coefficients"), /exclusively/);
   assert.throws(() => runtime.applyFrame({ ...frame(1), coefficients: { invented: 1 } }, 0), /selected channels/);
   assert.throws(() => runtime.setPose({ head: [0, 0, 0, 0] }), /normalized/);
   assert.throws(() => runtime.update(Infinity), /finite/);
@@ -189,11 +190,11 @@ test("custom mouth mappings participate in VRM overrideMouth; reduced mode is ex
   const runtime = await active();
   runtime.configure({ ...selection, mappings: [
     { ...selection.mappings[0]!, expression: "AuthoredLip" }, selection.mappings[1]!,
-  ] });
+  ] }, revision, "coefficients");
   runtime.reset(identity);
   runtime.applyFrame({ ...frame(), coefficients: { jawOpen: 0.9, happy: 0.5 } }, 0); runtime.update(0);
   assert.equal(morphs(runtime)[7], 0);
-  runtime.configure({ ...selection, faceMode: "reduced-vowel-jaw-only", mappings: [selection.mappings[0]!] });
+  runtime.configure({ ...selection, faceMode: "reduced-vowel-jaw-only", mappings: [selection.mappings[0]!] }, revision, "coefficients");
   runtime.reset(identity); runtime.applyFrame({ ...frame(), coefficients: { jawOpen: 0.4 } }, 0); runtime.update(0);
   assert.equal(morphs(runtime)[0], 0.4);
   runtime.dispose();
@@ -224,7 +225,7 @@ test("overlapping underlying morph writers are rejected even with different expr
   const runtime = new VrmRuntime(); await runtime.load(encodeGlb(document, bin));
   assert.throws(() => runtime.configure({ ...selection, mappings: [
     selection.mappings[0]!, { ...selection.mappings[0]!, expression: "AuthoredLip", channel: "another" },
-  ] }), /competing/);
+  ] }, revision, "coefficients"), /competing/);
   runtime.dispose();
 });
 
@@ -285,7 +286,7 @@ test("bone gaze partial overrides scale saturated mapped eye rotation, not input
   for (const range of [lookAt.rangeMapHorizontalInner, lookAt.rangeMapHorizontalOuter, lookAt.rangeMapVerticalDown, lookAt.rangeMapVerticalUp]) {
     range.inputMaxValue = 10; range.outputScale = 30;
   }
-  const runtime = new VrmRuntime(); await runtime.load(encodeGlb(document, bin)); runtime.configure(selection); runtime.reset(identity);
+  const runtime = new VrmRuntime(); await runtime.load(encodeGlb(document, bin)); runtime.configure(selection, revision, "coefficients"); runtime.reset(identity);
   runtime.setPose({ gaze: [2, 1.5, 2] });
   const angles: number[] = [];
   for (const [sequence, happy] of [0, 0.5, 1].entries()) {

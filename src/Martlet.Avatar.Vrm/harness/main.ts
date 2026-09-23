@@ -22,6 +22,7 @@ let raf = 0;
 let sequence = 0;
 let previous = 0;
 let identity: PlaybackIdentity;
+let revision = { modelRevision: crypto.randomUUID(), mappingRevision: crypto.randomUUID() };
 
 function report(error: unknown): void {
   status.textContent = error instanceof Error ? error.message : String(error);
@@ -38,12 +39,13 @@ function tick(now: number): void {
 function configure(): void {
   requireValid(avatar, "No renderer.");
   const name = expression.value;
+  revision = { ...revision, mappingRevision: crypto.randomUUID() };
   const aspect = mouthPresets.some(p => p === name) ? "mouth" : blinkPresets.some(p => p === name) ? "blink" : "expression";
   avatar.configure({
     faceSource: "manual-preview", faceMode: aspect === "mouth" ? "reduced-vowel-jaw-only" : "authored-explicit",
     mappings: name ? [{ channel: "manual", expression: name, aspect, minimum: 0, maximum: 1 }] : [],
     gaze: gaze.checked, head: false, secondaryMotion: spring.checked,
-  });
+  }, revision, "coefficients");
   identity = { sessionId: crypto.randomUUID(), turnId: crypto.randomUUID(), requestId: crypto.randomUUID(),
     sourceId: "manual-preview", epoch: 0, sampleRate: 24000 };
   sequence = 0;
@@ -57,6 +59,7 @@ async function load(bytes: ArrayBuffer): Promise<void> {
   try {
     avatar ??= new VrmAvatarAdapter(canvas);
     const result = await avatar.load(bytes);
+    revision = { modelRevision: crypto.randomUUID(), mappingRevision: crypto.randomUUID() };
     avatar.resize(640, 640);
     expression.replaceChildren(new Option("Omit face control", ""));
     for (const entry of result.expressions.filter(e => e.usable && !["lookUp", "lookDown", "lookLeft", "lookRight"].includes(e.name)))
@@ -86,7 +89,7 @@ for (const control of [expression, gaze, spring]) control.addEventListener("chan
 weight.addEventListener("input", () => {
   try {
     requireValid(avatar, "No renderer.");
-    avatar.applyFrame({ identity, sequence: sequence++, sampleOffset: 0,
+    avatar.applyFrame({ identity, ...revision, sequence: sequence++, sampleOffset: 0,
       coefficients: expression.value ? { manual: Number(weight.value) } : {} }, 0);
   } catch (error) { report(error); }
 });
