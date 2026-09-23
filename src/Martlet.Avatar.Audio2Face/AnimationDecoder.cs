@@ -4,7 +4,7 @@ using NvidiaAce.Controller.V1;
 
 namespace Martlet.Avatar.Audio2Face;
 
-internal sealed class AnimationDecoder(GeneratedSpeechClip clip, Audio2FaceOptions options)
+internal sealed class AnimationDecoder(ISpeechInput clip, Audio2FaceOptions options)
 {
     private static readonly IReadOnlyDictionary<string, string> Names = AvatarChannels.BlendshapeNames
         .ToDictionary(name => char.ToUpperInvariant(name[0]) + name[1..], StringComparer.Ordinal);

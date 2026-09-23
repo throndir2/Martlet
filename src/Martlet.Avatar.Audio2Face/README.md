@@ -25,7 +25,69 @@ The local tests use a Kestrel HTTP/2 fixture implementing the generated upstream
 service. They establish protocol behavior, not NVIDIA GPU execution, animation
 quality, latency, renderer appearance, or end-to-end application integration.
 
-## Caller-owned activation
+## Live generated-speech ingress
+
+The live path must not delay, pause or fail voice to wait for animation. Use
+`GeneratedSpeechStream`, not a buffered full clip, for the generated PCM tee:
+
+```csharp
+using var input = new GeneratedSpeechStream(
+    ids, playbackEpoch, pcmFormat, firstSequence, originalSampleOffset,
+    maxSamples, queueCapacity: 16);
+using var permission = new Audio2FaceAuthorization(
+    input, options, DateTimeOffset.UtcNow.AddSeconds(90),
+    allowGeneratedSpeechAnalysis: true);
+// Run this consumer independently of the voice producer.
+await foreach (var frame in adapter.AnimateAsync(input, permission, cancellationToken))
+{
+    // Queue validated frames against the actual playback sample clock.
+}
+```
+
+The caller obtains permission before starting this consumer; the example is
+not itself a consent flow. `TrySubmit(PcmFrame)` on the voice producer never
+waits for queue capacity. It returns `SpeechIngressResult.Accepted` or the
+explicit `Closed`, `InvalidFrame`, `LimitExceeded`, or `QueueFull` result.
+Invalid/discontinuous input, exceeded bounds and capacity exhaustion fail the
+animation segment, clear pending ingress and cancel its RPC. They never drop
+audio covertly to make the animation appear successful. The voice producer
+must report the animation failure, stop submitting for that segment, and
+continue its normal playback independently. There is no engine fallback.
+
+`CompleteInput(finalSampleCount)` requires a nonempty stream and the exact
+accepted sample count, relative to the original start offset. It returns
+`Completed` on success or an explicit rejection; closing without that count
+cannot succeed. No subsequent PCM is accepted. `Dispose()` cancels an unfinished
+stream, and is idempotent. `Failure` exposes a typed animation failure when
+ingress rejected data. `SampleCount` is the accepted original-rate sample count.
+The bounded channel may be prefilled before enumeration to avoid a startup
+race, but no network is touched until the one-shot authorization is consumed.
+
+The immutable stream identity binds original correlation IDs, playback epoch,
+mono PCM format, first sequence, original start offset, maximum samples and
+queue capacity. Maximum samples cannot exceed 90 seconds at the original rate;
+capacity is 1..128 frames, default 16, with a separate 10,000-input-frame ceiling.
+Use the *mapped playback epoch*, not a different provider epoch. Authorization
+binds the exact stream instance and endpoint/options; it cannot authorize a
+different stream with equal-looking fields. The stream can be activated once.
+This authorizes bounded future generated audio, not a hash of unknown future
+samples and never microphone capture.
+
+The actual gRPC input writer and output reader run concurrently. Frames can
+arrive while ingress is still open. Output time codes may refer only to samples
+already accepted, never to the future maximum allowance, and after completion
+remain bounded by the explicit final count. A service EOF while input remains
+open is a protocol failure. Input/output/transport failures propagate to the
+independent animation consumer; callers must invalidate its pending frames and
+display the failure without coupling it to voice.
+
+`InspectPrerequisites()` is not runtime readiness. An application can remain
+"armed, awaiting generated speech" until the first valid frame from an explicitly
+authorized action demonstrates operation-local service response. Advertise only
+that frame's actual blendshape keys as observed capabilities, not all possible
+52 schema channels; this backend never emits semantic channels.
+
+## Buffered clip activation (comparison/offline path)
 
 1. Construct `Audio2FaceOptions` with an exact address, for example
    `new Uri("http://127.0.0.1:52000")`. This example is not a discovered/default
@@ -48,8 +110,9 @@ quality, latency, renderer appearance, or end-to-end application integration.
    Dispose the enumerator and authorization when finished. Exceptions terminate
    the operation; there is no fallback backend or success-shaped error result.
 
-The bounded clip is prepared before transmission; this first slice is not an
-unbounded live microphone or growing TTS input queue. The actual upstream RPC is
+The bounded clip is prepared before transmission and is useful for repeatable
+comparison or offline use. Do not gate normal voice playback on this method;
+use the bounded streaming ingress above for the live tee. The upstream RPC is
 bidirectional streaming: input uploads and output reads run concurrently.
 `Conversation` remains the sole audio playback owner. Echoed service audio is
 counted against response limits and discarded, never replayed or returned.
@@ -71,7 +134,8 @@ relative seconds are converted by flooring `time_code * originalSampleRate`,
 then adding the clip's original `SampleOffset`. Service wall-clock epochs are
 not used as playback clocks. Output retains original IDs/epoch/rate and has its
 own increasing sequence. Times must be finite, strictly increasing, within the
-clip's duration, and map to strictly increasing original sample offsets.
+clip's duration (or accepted streaming sample count), and map to strictly
+increasing original sample offsets.
 
 Output is shared `Martlet.Avatars.AvatarFrame` v1.0, `SourceId` =
 `nvidia-audio2face`. Header-indexed PascalCase ARKit names are mapped exactly to
@@ -113,7 +177,8 @@ with a two-second producer cleanup bound.
 
 Cancellation and revocation surface cancellation exceptions; protocol,
 upstream, transport, limit and deadline failures are explicit
-`Audio2FaceException` categories. Callers must always dispose async enumerators; abandoned enumerators cannot
+`Audio2FaceException` categories, including `InvalidInput` and `Backpressure`
+for live ingress failures. Callers must always dispose async enumerators; abandoned enumerators cannot
 provide deterministic managed cleanup.
 
 ## Local validation

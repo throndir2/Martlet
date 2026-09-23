@@ -3,7 +3,7 @@ namespace Martlet.Avatar.Audio2Face;
 // The owner constructs this only after permission for this exact clip and destination.
 public sealed class Audio2FaceAuthorization : IDisposable
 {
-    private readonly GeneratedSpeechClip input;
+    private readonly object input;
     private readonly Audio2FaceOptions options;
     private readonly long started = System.Diagnostics.Stopwatch.GetTimestamp();
     private readonly TimeSpan lifetime;
@@ -19,6 +19,14 @@ public sealed class Audio2FaceAuthorization : IDisposable
 
     public Audio2FaceAuthorization(GeneratedSpeechClip input, Audio2FaceOptions options,
         DateTimeOffset expiresAt, bool allowGeneratedSpeechAnalysis = false)
+        : this((object)input, options, expiresAt, allowGeneratedSpeechAnalysis) { }
+
+    public Audio2FaceAuthorization(GeneratedSpeechStream input, Audio2FaceOptions options,
+        DateTimeOffset expiresAt, bool allowGeneratedSpeechAnalysis = false)
+        : this((object)input, options, expiresAt, allowGeneratedSpeechAnalysis) { }
+
+    private Audio2FaceAuthorization(object input, Audio2FaceOptions options,
+        DateTimeOffset expiresAt, bool allowGeneratedSpeechAnalysis)
     {
         ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(options);
@@ -65,7 +73,7 @@ public sealed class Audio2FaceAuthorization : IDisposable
         }
     }
 
-    internal void Consume(GeneratedSpeechClip candidate, Audio2FaceOptions selected)
+    internal void Consume(object candidate, Audio2FaceOptions selected)
     {
         if (!allowGeneratedSpeechAnalysis)
             throw new Audio2FaceException(Audio2FaceFailure.AuthorizationRequired);

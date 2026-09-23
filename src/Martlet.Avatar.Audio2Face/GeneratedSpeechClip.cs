@@ -1,10 +1,11 @@
 using Martlet.Core.Audio;
 using Martlet.Core.Contracts;
+using System.Runtime.CompilerServices;
 
 namespace Martlet.Avatar.Audio2Face;
 
 // An immutable, bounded copy of synthesized speech, never a capture-device input.
-public sealed class GeneratedSpeechClip
+public sealed class GeneratedSpeechClip : ISpeechInput
 {
     internal IReadOnlyList<PcmFrame> Frames { get; }
     public CorrelationIds Ids { get; }
@@ -46,4 +47,19 @@ public sealed class GeneratedSpeechClip
     }
 
     public override string ToString() => nameof(GeneratedSpeechClip);
+
+    CancellationToken ISpeechInput.Stopped => CancellationToken.None;
+    bool ISpeechInput.IsComplete => true;
+    void ISpeechInput.Begin() { }
+    void ISpeechInput.Check() { }
+    void ISpeechInput.Stop() { }
+    async IAsyncEnumerable<PcmFrame> ISpeechInput.ReadFrames([EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await Task.CompletedTask.ConfigureAwait(false);
+        foreach (var frame in Frames)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            yield return frame;
+        }
+    }
 }

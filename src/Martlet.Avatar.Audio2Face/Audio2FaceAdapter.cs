@@ -34,15 +34,24 @@ public sealed class Audio2FaceAdapter
         "This adapter generates face coefficients only; it does not generate body gestures, play audio, or select a renderer."
     ]);
 
-    public async IAsyncEnumerable<AvatarFrame> AnimateAsync(GeneratedSpeechClip clip,
-        Audio2FaceAuthorization authorization, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public IAsyncEnumerable<AvatarFrame> AnimateAsync(GeneratedSpeechClip clip,
+        Audio2FaceAuthorization authorization, CancellationToken cancellationToken = default) =>
+        RunAsync(clip, authorization, cancellationToken);
+
+    public IAsyncEnumerable<AvatarFrame> AnimateAsync(GeneratedSpeechStream input,
+        Audio2FaceAuthorization authorization, CancellationToken cancellationToken = default) =>
+        RunAsync(input, authorization, cancellationToken);
+
+    private async IAsyncEnumerable<AvatarFrame> RunAsync(ISpeechInput clip,
+        Audio2FaceAuthorization authorization, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(clip);
         ArgumentNullException.ThrowIfNull(authorization);
         cancellationToken.ThrowIfCancellationRequested();
         authorization.Consume(clip, options);
+        clip.Begin();
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken, authorization.Revocation);
+            cancellationToken, authorization.Revocation, clip.Stopped);
         var remaining = authorization.Remaining;
         if (remaining <= TimeSpan.Zero) throw new Audio2FaceException(Audio2FaceFailure.AuthorizationExpired);
         var timeout = remaining < options.RequestTimeout ? remaining : options.RequestTimeout;
@@ -66,30 +75,36 @@ public sealed class Audio2FaceAdapter
         try
         {
             while (await ReadAsync(call.ResponseStream, writer, lifetime.Token,
-                cancellationToken, authorization.Revocation).ConfigureAwait(false))
+                cancellationToken, authorization.Revocation, clip).ConfigureAwait(false))
             {
                 foreach (var frame in decoder.Decode(call.ResponseStream.Current))
                 {
+                    clip.Check();
                     CheckCancellation(lifetime.Token, cancellationToken, authorization.Revocation);
                     yield return frame;
                 }
             }
-            var sendFailure = await writer.ConfigureAwait(false);
-            CheckCancellation(lifetime.Token, cancellationToken, authorization.Revocation);
-            if (sendFailure is { } failure) throw new Audio2FaceException(failure);
             decoder.Complete();
+            if (!clip.IsComplete) throw new Audio2FaceException(Audio2FaceFailure.InvalidProtocol);
+            var sendFailure = await writer.ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            authorization.Revocation.ThrowIfCancellationRequested();
+            clip.Check();
+            if (sendFailure is { } failure) throw new Audio2FaceException(failure);
+            CheckCancellation(lifetime.Token, cancellationToken, authorization.Revocation);
         }
         finally
         {
             lifetime.Cancel();
             call.Dispose();
+            clip.Stop();
             // Disposal cancels pending HTTP/2 writes; do not leave an unobserved producer behind.
             await writer.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
         }
     }
 
     private async Task<Audio2FaceFailure?> SendAsync(IClientStreamWriter<Input> stream,
-        GeneratedSpeechClip clip, CancellationTokenSource lifetime)
+        ISpeechInput clip, CancellationTokenSource lifetime)
     {
         try
         {
@@ -105,7 +120,7 @@ public sealed class Audio2FaceAdapter
                     BlendshapeParams = new BlendShapeParameters { EnableClampingBsWeight = true }
                 }
             }).ConfigureAwait(false);
-            foreach (var frame in clip.Frames)
+            await foreach (var frame in clip.ReadFrames(lifetime.Token).ConfigureAwait(false))
             {
                 lifetime.Token.ThrowIfCancellationRequested();
                 await WriteAsync(new Input
@@ -123,6 +138,11 @@ public sealed class Audio2FaceAdapter
             return exception.StatusCode == StatusCode.DeadlineExceeded
                 ? Audio2FaceFailure.DeadlineExceeded : Audio2FaceFailure.TransportFailure;
         }
+        catch (Audio2FaceException exception)
+        {
+            lifetime.Cancel();
+            return exception.Failure;
+        }
         catch (OperationCanceledException)
         {
             lifetime.Cancel();
@@ -139,7 +159,7 @@ public sealed class Audio2FaceAdapter
     }
 
     private async Task<bool> ReadAsync(IAsyncStreamReader<Output> stream, Task<Audio2FaceFailure?> writer,
-        CancellationToken lifetime, CancellationToken caller, CancellationToken revoked)
+        CancellationToken lifetime, CancellationToken caller, CancellationToken revoked, ISpeechInput input)
     {
         try
         {
@@ -149,6 +169,7 @@ public sealed class Audio2FaceAdapter
         {
             caller.ThrowIfCancellationRequested();
             revoked.ThrowIfCancellationRequested();
+            input.Check();
             throw new Audio2FaceException(exception.StatusCode == StatusCode.DeadlineExceeded
                 ? Audio2FaceFailure.DeadlineExceeded : Audio2FaceFailure.TransportFailure);
         }
@@ -156,6 +177,7 @@ public sealed class Audio2FaceAdapter
         {
             caller.ThrowIfCancellationRequested();
             revoked.ThrowIfCancellationRequested();
+            input.Check();
             var failure = writer.IsCompletedSuccessfully ? writer.Result : null;
             throw new Audio2FaceException(failure ?? Audio2FaceFailure.DeadlineExceeded);
         }

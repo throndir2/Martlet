@@ -23,6 +23,8 @@ public sealed class ProtocolFixture : IAsyncDisposable
     internal Func<IServerStreamWriter<Output>, ServerCallContext, Task> Respond { get; }
     internal Uri Endpoint { get; private set; } = null!;
     internal bool RespondBeforeUpload { get; private init; }
+    internal bool CompleteAfterFirstInput { get; private init; }
+    internal Func<Input, IServerStreamWriter<Output>, ServerCallContext, Task>? OnInput { get; private init; }
 
     private ProtocolFixture(WebApplication app, Func<IServerStreamWriter<Output>, ServerCallContext, Task> respond)
     {
@@ -31,7 +33,9 @@ public sealed class ProtocolFixture : IAsyncDisposable
     }
 
     internal static async Task<ProtocolFixture> StartAsync(
-        Func<IServerStreamWriter<Output>, ServerCallContext, Task> respond, bool respondBeforeUpload = false)
+        Func<IServerStreamWriter<Output>, ServerCallContext, Task> respond, bool respondBeforeUpload = false,
+        Func<Input, IServerStreamWriter<Output>, ServerCallContext, Task>? onInput = null,
+        bool completeAfterFirstInput = false)
     {
         var builder = WebApplication.CreateSlimBuilder();
         builder.Logging.ClearProviders();
@@ -41,7 +45,10 @@ public sealed class ProtocolFixture : IAsyncDisposable
         var holder = new Holder();
         builder.Services.AddSingleton(holder);
         var app = builder.Build();
-        var fixture = new ProtocolFixture(app, respond) { RespondBeforeUpload = respondBeforeUpload };
+        var fixture = new ProtocolFixture(app, respond)
+        {
+            RespondBeforeUpload = respondBeforeUpload, OnInput = onInput, CompleteAfterFirstInput = completeAfterFirstInput
+        };
         holder.Fixture = fixture;
         app.MapGrpcService<Service>();
         await app.StartAsync();
@@ -73,8 +80,10 @@ public sealed class ProtocolFixture : IAsyncDisposable
                 await foreach (var input in requestStream.ReadAllAsync(context.CancellationToken))
                 {
                     fixture.Requests.Enqueue(input);
+                    if (fixture.OnInput is { } onInput) await onInput(input, responseStream, context);
                     if (fixture.RespondBeforeUpload && fixture.Requests.Count == 1)
                         await fixture.Respond(responseStream, context);
+                    if (fixture.CompleteAfterFirstInput) break;
                 }
                 fixture.ReceivedAudio.TrySetResult();
                 if (!fixture.RespondBeforeUpload)

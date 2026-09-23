@@ -32,7 +32,7 @@ public sealed record Audio2FaceOptions
 public enum Audio2FaceFailure
 {
     AuthorizationRequired, AuthorizationExpired, AuthorizationConsumed, InvalidBinding,
-    InvalidProtocol, LimitExceeded, UpstreamFailure, TransportFailure, DeadlineExceeded
+    InvalidProtocol, InvalidInput, Backpressure, LimitExceeded, UpstreamFailure, TransportFailure, DeadlineExceeded
 }
 
 public sealed class Audio2FaceException(Audio2FaceFailure failure)
