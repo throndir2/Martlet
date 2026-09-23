@@ -1,11 +1,10 @@
-function New-InertAvatarPayloads([string]$OutputDirectory, $Pins, $Encoding) {
+function New-InertAvatarPayloads([string]$OutputDirectory, $Pins, $Encoding, [string]$Mutation = 'None') {
     $package = $Pins.managedPackages[0]
     $runtime = $Pins.runtimePackages[0]
     $runtimeId = 'Microsoft.NETCore.App.Runtime.win-x64'
     $runtimeKey = "runtimepack.$runtimeId/$($Pins.runtimeVersion)"
     $packageKey = "$($package.id)/$($package.version)"
     $webKey = 'Microsoft.Web.WebView2/1.0.4191.47'
-    $hostKey = 'Martlet.Avatar.RendererHost/0.1.0'
     $audioKey = 'Martlet.Avatar.Audio2Face/0.1.0'
     $contentHash = [Convert]::ToBase64String([byte[]]::new(64))
     $sourceFiles = [Collections.Generic.List[object]]::new()
@@ -164,20 +163,11 @@ function New-InertAvatarPayloads([string]$OutputDirectory, $Pins, $Encoding) {
             $libraryMap = @{}
             foreach ($library in $libraries) { $libraryMap[$library.key] = $library }
             $libraries = @(foreach ($key in Get-EvidenceOrdinalStrings @($libraryMap.Keys)) { $libraryMap[$key] })
-            $buildOnly = @()
             $restoreLibraries = @($libraries | Where-Object { $_.key -cne $rootLibrary.key -and $_.type -cin @('project', 'package') } | ForEach-Object { Restored $_ })
             $restoreRoots = @($rootLibrary.dependencies | Where-Object { $_ -cnotlike 'runtimepack.*' -and $_ -cnotlike 'Microsoft.Web.WebView2.*/*' })
-            if ($context.name -ceq 'Desktop') {
-                $buildOnly = @(Get-EvidenceOrdinalStrings @($hostKey, $webKey))
-                $restoreRoots = @(Get-EvidenceOrdinalStrings @($restoreRoots + $hostKey))
-                $restoreLibraries += @(
-                    [ordered]@{ key = $hostKey; type = 'project'; contentHash = $null; dependencies = @($webKey) }
-                    [ordered]@{ key = $webKey; type = 'package'; contentHash = $contentHash; dependencies = @() }
-                )
-            }
             $applications += [ordered]@{
                 name = $context.name; project = $project; directory = $directory; parent = $context.parent
-                target = '.NETCoreApp,Version=v10.0/win-x64'; buildOnlyLibraries = $buildOnly; libraries = $libraries
+                target = '.NETCoreApp,Version=v10.0/win-x64'; buildOnlyLibraries = @(); libraries = $libraries
             }
             $lockPath = "packaging\windows\locks\$project.packages.lock.json"
             $restores += [ordered]@{
@@ -237,6 +227,27 @@ function New-InertAvatarPayloads([string]$OutputDirectory, $Pins, $Encoding) {
         $canary = (Join-Path $OutputDirectory 'PAYLOAD-EXECUTED').Replace("'", "''")
         $null = Leaf 'help\do-not-run.ps1' "[IO.File]::WriteAllText('$canary','BAD')"
         $null = Leaf 'notices\INTERNAL.txt' 'Inert synthetic graph; no publisher or native qualification.'
+        if ($Mutation.StartsWith('Project', [StringComparison]::Ordinal)) {
+            $path = switch ($Mutation) {
+                'ProjectLoader' { 'Desktop\AvatarRenderer\runtimes\win-arm64\native\WebView2Loader.dll' }
+                'ProjectWebViewAlias' { 'Desktop\AvatarRenderer\Microsoft.Web.WebView2.Unknown.dll' }
+                'ProjectWebViewXml' { 'Desktop\AvatarRenderer\Microsoft.Web.WebView2.Unknown.xml' }
+                'ProjectRuntimeInstaller' { 'Desktop\AvatarRenderer\MicrosoftEdgeWebView2Setup.exe' }
+                'ProjectSiblingLoader' { 'Desktop\AvatarRendererX\WebView2Loader.dll' }
+                default { throw 'Unknown explicit project mutation.' }
+            }
+            $extra = Leaf $path 'INERT unsupported project claim'
+            $context = if ($Mutation -ceq 'ProjectSiblingLoader') { $applications[0] } else { $applications[2] }
+            $projectRoot = @($context.libraries | Where-Object key -CEQ "$($context.project)/0.1.0")[0]
+            $projectRoot.assets += [ordered]@{ path = $extra.path; kind = 'native'; source = $path.Replace('\', '/') }
+        }
+        if ($Mutation -ceq 'OmittedRuntimeEdge') {
+            $applications[0].buildOnlyLibraries = @($webKey)
+            $desktopRestore = @($restores | Where-Object project -CEQ 'Martlet.Desktop')[0].targets[0]
+            $desktopRestore.libraries += [ordered]@{ key = $webKey; type = 'package'; contentHash = $contentHash; dependencies = @() }
+            $audio = @($desktopRestore.libraries | Where-Object key -CEQ $audioKey)[0]
+            $audio.dependencies = @($webKey)
+        }
         $provenance = New-PackageProvenanceDocument $source $sdk $applications $restores $archives $Pins.rid -SchemaVersion 2 -Browser $browser -BuildArchives $buildArchives
         $sbom = New-PackageSbomDocument @(Get-PayloadFiles $root) $version $provenance
         [IO.File]::WriteAllText((Join-Path $root 'sbom.cdx.json'), (ConvertTo-EvidenceJson $sbom), $Encoding)

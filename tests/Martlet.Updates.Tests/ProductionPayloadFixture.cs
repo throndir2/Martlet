@@ -11,9 +11,9 @@ public sealed class ProductionPayloadFixture : IDisposable
 
     public ProductionPayloadFixture() : this(2) { }
 
-    internal ProductionPayloadFixture(int formatVersion)
+    internal ProductionPayloadFixture(int formatVersion, string avatarMutation = "None")
     {
-        Produce(root, formatVersion: formatVersion).GetAwaiter().GetResult();
+        Produce(root, formatVersion: formatVersion, avatarMutation: avatarMutation).GetAwaiter().GetResult();
         files = Directory.GetFiles(root, "*", SearchOption.AllDirectories);
         directories = Directory.GetDirectories(root, "*", SearchOption.AllDirectories);
     }
@@ -39,7 +39,7 @@ public sealed class ProductionPayloadFixture : IDisposable
     }
 
     internal static async Task Produce(string root, string mode = "Payload", TimeSpan? deadline = null,
-        Action<int>? onRetired = null, int formatVersion = 2)
+        Action<int>? onRetired = null, int formatVersion = 2, string avatarMutation = "None")
     {
         var timeout = deadline ?? TimeSpan.FromSeconds(60);
         if (timeout <= TimeSpan.Zero || timeout > TimeSpan.FromSeconds(60)) throw new ArgumentOutOfRangeException(nameof(deadline));
@@ -52,7 +52,7 @@ public sealed class ProductionPayloadFixture : IDisposable
             }
         };
         foreach (var arg in new[] { "-NoLogo", "-NoProfile", "-NonInteractive", "-File", Script(), "-OutputDirectory", root, "-Mode", mode,
-            "-FormatVersion", formatVersion.ToString(System.Globalization.CultureInfo.InvariantCulture) })
+            "-FormatVersion", formatVersion.ToString(System.Globalization.CultureInfo.InvariantCulture), "-AvatarMutation", avatarMutation })
             process.StartInfo.ArgumentList.Add(arg);
         if (!process.Start()) throw new InvalidOperationException("Fixture producer did not start.");
         var overflow = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

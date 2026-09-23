@@ -19,7 +19,7 @@ public sealed class AvatarPayloadCompatibilityTests(SigningKeys keys, AvatarPayl
     private SignedPackageFixture Fixture() => new(keys, production: avatar.Production);
 
     private static void Rewrite(SignedPackageFixture fixture, Action<JsonObject>? manifest = null,
-        Action<JsonObject>? sbom = null, Func<byte[], byte[]>? rawManifest = null)
+        Action<JsonObject>? sbom = null, Func<byte[], byte[]>? rawManifest = null, Func<byte[], byte[]>? rawSbom = null)
     {
         if (sbom is not null)
         {
@@ -27,6 +27,7 @@ public sealed class AvatarPayloadCompatibilityTests(SigningKeys keys, AvatarPayl
             sbom(node);
             fixture.Files["sbom.cdx.json"] = Encoding.UTF8.GetBytes(node.ToJsonString());
         }
+        if (rawSbom is not null) fixture.Files["sbom.cdx.json"] = rawSbom(fixture.Files["sbom.cdx.json"]);
         var files = fixture.Inventory().Where(f => f.Path is not ("manifest.json" or "SHA256SUMS.txt"))
             .Select(f => f with { Path = f.Path.Replace('/', '\\') }).OrderBy(f => f.Path, StringComparer.Ordinal).ToArray();
         var payload = JsonNode.Parse(fixture.Files["manifest.json"])!.AsObject();
@@ -60,6 +61,21 @@ public sealed class AvatarPayloadCompatibilityTests(SigningKeys keys, AvatarPayl
         foreach (var (name, bytes) in fixture.Files)
             Assert.Equal(bytes, File.ReadAllBytes(Path.Combine(fixture.Destination, "payload", name.Replace('/', '\\'))));
         fixture.AssertPrivateDataUnchanged();
+    }
+
+    [Theory]
+    [InlineData("ProjectLoader")]
+    [InlineData("ProjectWebViewAlias")]
+    [InlineData("ProjectWebViewXml")]
+    [InlineData("ProjectRuntimeInstaller")]
+    [InlineData("ProjectSiblingLoader")]
+    [InlineData("OmittedRuntimeEdge")]
+    public void ActualProducerRegenerationCannotHideUnsupportedBinariesOrRuntimeEdges(string mutation)
+    {
+        using var changed = new ProductionPayloadFixture(3, mutation);
+        using var fixture = new SignedPackageFixture(keys, production: changed);
+        Refused(fixture);
+        changed.AssertNotExecuted();
     }
 
     [Fact]
@@ -137,7 +153,8 @@ public sealed class AvatarPayloadCompatibilityTests(SigningKeys keys, AvatarPayl
     [InlineData("xml-entry")]
     [InlineData("loader-hash")]
     [InlineData("missing-copy")]
-    [InlineData("undeclared-omission")]
+    [InlineData("desktop-omission")]
+    [InlineData("host-omission")]
     [InlineData("doctor-omission")]
     [InlineData("runtime-omission")]
     [InlineData("build-use-project")]
@@ -170,7 +187,8 @@ public sealed class AvatarPayloadCompatibilityTests(SigningKeys keys, AvatarPayl
                 case "xml-entry": web["origins"]![1]!["entry"] = "lib/net462/Microsoft.Web.WebView2.Core.xml"; break;
                 case "loader-hash": web["origins"]![6]!["sha256"] = new string('f', 64); break;
                 case "missing-copy": web["origins"]!.AsArray().RemoveAt(7); break;
-                case "undeclared-omission": apps[0]!["buildOnlyLibraries"]!.AsArray().Clear(); break;
+                case "desktop-omission": apps[0]!["buildOnlyLibraries"]!.AsArray().Add("Martlet.Avatar.RendererHost/0.1.0"); break;
+                case "host-omission": apps[2]!["buildOnlyLibraries"]!.AsArray().Add("Martlet.Core/0.1.0"); break;
                 case "doctor-omission": apps[1]!["buildOnlyLibraries"]!.AsArray().Add("Martlet.Avatar.RendererHost/0.1.0"); break;
                 case "runtime-omission": apps[0]!["buildOnlyLibraries"]!.AsArray().Add("Martlet.Avatar.Audio2Face/0.1.0"); break;
                 case "build-use-project": p["buildArchives"]![0]!["uses"]![0]!["project"] = "Martlet.Desktop"; break;
@@ -251,6 +269,167 @@ public sealed class AvatarPayloadCompatibilityTests(SigningKeys keys, AvatarPayl
         })] = "inert"u8.ToArray();
         Rewrite(fixture);
         Refused(fixture);
+    }
+
+    private static JsonObject SbomObject(JsonObject root, string name)
+    {
+        var browser = root["components"]!.AsArray().Single(c => c!["bom-ref"]!.GetValue<string>() == PayloadBrowser.Reference)!;
+        var npm = root["components"]!.AsArray().First(c => c!["bom-ref"]!.GetValue<string>().StartsWith("AvatarRenderer|npm:", StringComparison.Ordinal))!;
+        return (name switch
+        {
+            "browser" => browser,
+            "npm" => npm,
+            "file" => browser["components"]![0]!,
+            "file-property" => browser["components"]![0]!["properties"]![4]!,
+            "browser-property" => browser["properties"]![2]!,
+            "npm-property" => npm["properties"]![5]!,
+            "browser-tool" => root["metadata"]!["tools"]!["components"]![2]!,
+            "build-tool" => root["metadata"]!["tools"]!["components"]![5]!,
+            "metadata-property" => root["metadata"]!["properties"]!.AsArray().Single(p => p!["name"]!.GetValue<string>() == "martlet:browser-evidence:sha256")!,
+            _ => root["dependencies"]!.AsArray().Single(d => d!["ref"]!.GetValue<string>() == PayloadBrowser.Reference)!
+        }).AsObject();
+    }
+
+    public static IEnumerable<object[]> ClosedSbomShapes()
+    {
+        foreach (var name in new[] { "browser", "npm", "file", "file-property", "browser-property",
+                     "npm-property", "browser-tool", "build-tool", "metadata-property", "dependency" })
+            foreach (var change in new[] { "unknown", "missing", "null", "duplicate", "wrong-case" })
+                yield return [name, change];
+    }
+
+    [Theory]
+    [MemberData(nameof(ClosedSbomShapes))]
+    public void NewSbomObjectsRemainClosed(string name, string change)
+    {
+        using var fixture = Fixture();
+        Rewrite(fixture, rawSbom: bytes =>
+        {
+            var root = JsonNode.Parse(bytes)!.AsObject();
+            var node = SbomObject(root, name);
+            var property = node.First();
+            var value = property.Value!.ToJsonString();
+            switch (change)
+            {
+                case "unknown": node.Add("unknown", true); break;
+                case "missing": node.Remove(property.Key); break;
+                case "null": node[property.Key] = null; break;
+                case "wrong-case":
+                    node.Remove(property.Key);
+                    node.Add(property.Key.ToUpperInvariant(), property.Value.DeepClone());
+                    break;
+                case "duplicate": node[property.Key] = "DUPLICATE-MARKER"; break;
+            }
+            var json = root.ToJsonString();
+            if (change == "duplicate")
+                json = json.Replace($"\"{property.Key}\":\"DUPLICATE-MARKER\"",
+                    $"\"{property.Key}\":{value},\"{property.Key}\":{value}", StringComparison.Ordinal);
+            return Encoding.UTF8.GetBytes(json);
+        });
+        Refused(fixture);
+    }
+
+    [Theory]
+    [InlineData("browser-digest")]
+    [InlineData("input-digest")]
+    [InlineData("notices-digest")]
+    [InlineData("uses-digest")]
+    [InlineData("tool-hash")]
+    [InlineData("fake-reference-purl")]
+    [InlineData("duplicate-owner")]
+    [InlineData("runtime-build-edge")]
+    [InlineData("missing-host-edge")]
+    [InlineData("dangling-software")]
+    public void NewSbomEvidenceCannotDriftDespiteResigning(string change)
+    {
+        using var fixture = Fixture();
+        Rewrite(fixture, sbom: root =>
+        {
+            var components = root["components"]!.AsArray();
+            switch (change)
+            {
+                case "browser-digest": SbomObject(root, "metadata-property")["value"] = new string('f', 64); break;
+                case "input-digest": SbomObject(root, "file-property")["value"] = new string('f', 64); break;
+                case "notices-digest": SbomObject(root, "npm")["properties"]![6]!["value"] = new string('f', 64); break;
+                case "uses-digest": SbomObject(root, "build-tool")["properties"]![2]!["value"] = new string('f', 64); break;
+                case "tool-hash": SbomObject(root, "browser-tool")["properties"]![1]!["value"] = new string('f', 64); break;
+                case "fake-reference-purl":
+                    components.Single(c => c!["bom-ref"]!.GetValue<string>() == "AvatarRenderer|Microsoft.Web.WebView2.Core/1.0.4191.47")!["purl"] =
+                        "pkg:nuget/microsoft.web.webview2.core@1.0.4191.47"; break;
+                case "duplicate-owner": SbomObject(root, "browser")["components"]![1] = SbomObject(root, "file").DeepClone(); break;
+                case "runtime-build-edge": SbomObject(root, "dependency")["dependsOn"]!.AsArray().Insert(0, "AvatarRenderer|npm:node_modules/@esbuild/win32-x64"); break;
+                case "missing-host-edge":
+                    root["dependencies"]!.AsArray().Single(d => d!["ref"]!.GetValue<string>() == "Desktop|Martlet.Desktop/0.1.0")!["dependsOn"]!
+                        .AsArray().RemoveAt(0); break;
+                case "dangling-software": SbomObject(root, "npm")["bom-ref"] = "AvatarRenderer|npm:node_modules/unknown"; break;
+            }
+        });
+        Refused(fixture);
+    }
+
+    [Theory]
+    [InlineData("manifest.json", false)]
+    [InlineData("manifest.json", true)]
+    [InlineData("sbom.cdx.json", false)]
+    [InlineData("sbom.cdx.json", true)]
+    public void AvatarMetadataRetainsExactExistingByteCeilings(string name, bool overflow)
+    {
+        using var fixture = Fixture();
+        byte[] Pad(byte[] bytes) => bytes.Concat(Enumerable.Repeat((byte)' ',
+            PayloadMetadata.MaximumV2Bytes + (overflow ? 1 : 0) - bytes.Length)).ToArray();
+        Rewrite(fixture, rawManifest: name == "manifest.json" ? Pad : null, rawSbom: name == "sbom.cdx.json" ? Pad : null);
+        if (overflow) Refused(fixture, StagingFailure.CapacityExceeded);
+        else fixture.Preview(fixture.Engine());
+        fixture.AssertPrivateDataUnchanged();
+    }
+
+    [Theory]
+    [InlineData("tool-files", 33)]
+    [InlineData("packages", 257)]
+    [InlineData("inputs", 8193)]
+    [InlineData("roles", 7)]
+    [InlineData("output-inputs", 8193)]
+    [InlineData("build-archives", 17)]
+    [InlineData("build-uses", 1025)]
+    public void NewCollectionsHaveIndependentFiniteLimits(string area, int count)
+    {
+        using var fixture = Fixture();
+        Rewrite(fixture, manifest =>
+        {
+            var p = manifest["provenance"]!;
+            var b = p["browser"]!;
+            var collection = (area switch
+            {
+                "tool-files" => b["tools"]![0]!["files"],
+                "packages" => b["packages"],
+                "inputs" => b["inputs"],
+                "roles" => b["inputs"]![0]!["roles"],
+                "output-inputs" => b["outputs"]![0]!["inputs"],
+                "build-archives" => p["buildArchives"],
+                _ => p["buildArchives"]![0]!["uses"]
+            })!.AsArray();
+            while (collection.Count < count) collection.Add(collection[0]!.DeepClone());
+        });
+        Refused(fixture, StagingFailure.CapacityExceeded);
+    }
+
+    [Theory]
+    [InlineData("manifest", StagingFailure.IncompatibleFormat)]
+    [InlineData("provenance", StagingFailure.IncompatibleFormat)]
+    [InlineData("browser", StagingFailure.IncompatibleFormat)]
+    [InlineData("sbom", StagingFailure.IncompatibleFormat)]
+    [InlineData("legacy-relabel", StagingFailure.InvalidManifest)]
+    public void ExplicitVersionsNeverFallThroughToOtherFormats(string area, StagingFailure failure)
+    {
+        using var fixture = Fixture();
+        Rewrite(fixture, manifest =>
+        {
+            if (area == "manifest") manifest["schemaVersion"] = 4;
+            if (area == "provenance") manifest["provenance"]!["schemaVersion"] = 3;
+            if (area == "browser") manifest["provenance"]!["browser"]!["schemaVersion"] = 2;
+            if (area == "legacy-relabel") manifest["schemaVersion"] = 2;
+        }, sbom => { if (area == "sbom") sbom["version"] = 2; });
+        Refused(fixture, failure);
     }
 
     [Theory]

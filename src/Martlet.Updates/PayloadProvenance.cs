@@ -27,7 +27,7 @@ internal static class PayloadProvenance
     internal sealed record Facts(string Source, string Tree, bool Dirty, string SourceHash, string Sdk,
         EvidenceReader.FileRecord[] Tools, Dictionary<string, Library> Libraries, Dictionary<string, Archive> Archives,
         AvatarFacts? Avatar = null);
-    internal sealed record Application(string Name, string Project, string Directory, string? Parent, string[] BuildOnly);
+    internal sealed record Application(string Name, string Project, string Directory, string? Parent);
     internal sealed record BuildArchive(string Id, string Version, string Hash, string Nuspec, string UsesHash);
     internal sealed record AvatarFacts(Application[] Applications, BuildArchive[] BuildArchives, string BuildArchivesHash,
         PayloadBrowser.Facts Browser);
@@ -102,9 +102,9 @@ internal static class PayloadProvenance
     {
         Application[] expected =
         [
-            new("Desktop", "Martlet.Desktop", "Desktop", null, []),
-            new("Doctor", "Martlet.Doctor", "Doctor", null, []),
-            new("AvatarRenderer", "Martlet.Avatar.RendererHost", PayloadBrowser.Host, "Desktop", [])
+            new("Desktop", "Martlet.Desktop", "Desktop", null),
+            new("Doctor", "Martlet.Doctor", "Doctor", null),
+            new("AvatarRenderer", "Martlet.Avatar.RendererHost", PayloadBrowser.Host, "Desktop")
         ];
         var items = r.Items(value, 3, 3).ToArray();
         for (var i = 0; i < items.Length; i++)
@@ -119,8 +119,7 @@ internal static class PayloadProvenance
             if (context.Parent is null) r.Require(parent.ValueKind == JsonValueKind.Null);
             else r.Equal(r.Text(parent), context.Parent);
             var buildOnly = PayloadBrowser.Strings(r.Member(item, "buildOnlyLibraries"), 2048, r);
-            if (context.Name != "Desktop") r.Require(buildOnly.Length == 0);
-            expected[i] = context with { BuildOnly = buildOnly };
+            r.Require(buildOnly.Length == 0);
         }
         return expected;
     }
@@ -276,24 +275,9 @@ internal static class PayloadProvenance
             var published = applications.Values.Where(l => l.Context == app.Context && !l.IsRoot && l.Type != "runtimepack" &&
                 (contexts is null || l.Type != "reference")).ToArray();
             var restored = r.Items(r.Member(target, "libraries"), 2048).ToDictionary(e => r.Text(e, "key", 256), StringComparer.Ordinal);
-            var omitted = contexts?.Single(c => c.Name == app.Context).BuildOnly ?? [];
-            foreach (var key in omitted)
-            {
-                var host = applications.Values.SingleOrDefault(l => l.Context == "AvatarRenderer" && l.Key == key &&
-                    l.Type is "project" or "package");
-                r.Require(host is not null && !published.Any(l => l.Key == key) && restored.TryGetValue(key, out _));
-                var item = restored[key];
-                r.Equal(r.Text(item, "type", 16), host!.Type);
-                r.Require(Hash(item, host.Type, r) == host.ContentHash);
-                r.Require(r.Items(r.Member(item, "dependencies"), 2048).Select(e => r.Text(e, 264))
-                    .SequenceEqual(host.Dependencies.Where(d => !WebViewReferences.Contains(d) &&
-                        !d.StartsWith("runtimepack.", StringComparison.Ordinal))));
-            }
-            var allKeys = restored.Keys.ToHashSet(StringComparer.Ordinal);
-            foreach (var key in omitted) restored.Remove(key);
             r.Require(published.Length == restored.Count);
             var keys = restored.Keys.ToHashSet(StringComparer.Ordinal);
-            r.Require(r.Edges(r.Member(target, "rootDependencies"), allKeys).Where(d => !omitted.Contains(d)).SequenceEqual(
+            r.Require(r.Edges(r.Member(target, "rootDependencies"), keys).SequenceEqual(
                 app.Dependencies.Where(d => !d.StartsWith("runtimepack.", StringComparison.Ordinal) &&
                     (contexts is null || !WebViewReferences.Contains(d)))));
             foreach (var library in published)
@@ -301,7 +285,7 @@ internal static class PayloadProvenance
                 r.Require(restored.TryGetValue(library.Key, out var item));
                 r.Equal(r.Text(item, "type", 16), library.Type);
                 r.Require(Hash(item, library.Type, r) == library.ContentHash &&
-                    r.Edges(r.Member(item, "dependencies"), allKeys).Where(d => !omitted.Contains(d)).SequenceEqual(library.Dependencies));
+                    r.Edges(r.Member(item, "dependencies"), keys).SequenceEqual(library.Dependencies));
             }
             foreach (var library in applications.Values.Where(l => l.Context == app.Context && l.Type == "runtimepack"))
                 r.Require(r.Items(r.Member(target, "frameworkDownloads"), 16).Any(d =>
@@ -386,6 +370,10 @@ internal static class PayloadProvenance
         var nested = PayloadBrowser.Host + "\\runtimes\\win-x64\\native\\WebView2Loader.dll";
         foreach (var path in new[] { loader, nested })
             expected.Add(path, ("AvatarRenderer|Microsoft.Web.WebView2/1.0.4191.47", "runtimes/win-x64/native/WebView2Loader.dll"));
+        var physical = payload.Keys.Where(path =>
+            Path.GetFileName(path).Contains("WebView2", StringComparison.OrdinalIgnoreCase) &&
+            new[] { ".dll", ".xml", ".exe" }.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase));
+        r.Require(physical.Order(StringComparer.Ordinal).SequenceEqual(expected.Keys.Order(StringComparer.Ordinal)));
         r.Require(archives.TryGetValue("Microsoft.Web.WebView2", out var archive) && archive.Id == "Microsoft.Web.WebView2" &&
             archive.Version == "1.0.4191.47" && archive.Origins.Length == expected.Count);
         foreach (var origin in archive!.Origins)

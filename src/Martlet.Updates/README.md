@@ -218,8 +218,10 @@ CycloneDX remains 1.6/document-v1. The new branch has exactly Desktop, Doctor an
 the private AvatarRenderer context (`Desktop\AvatarRenderer`, project
 `Martlet.Avatar.RendererHost`, parent Desktop). The parent cannot own files in
 the child's subtree. Root/generated identities, restore graphs and archive
-ownership are checked per context. Desktop's explicit build-only host closure
-is not an arbitrary restored/published mismatch allowance.
+ownership are checked per context. All three `buildOnlyLibraries` arrays must
+be empty, matching the actual RID self-contained publish: the build-only host
+is in the combined restore-project closure, not Desktop's restored target.
+No restored/published omission is tolerated.
 
 WebView2 1.0.4191.47's three injected references are distinct from its real NuGet
 package: only the reviewed Core/WinForms/Wpf keys, DLL/XML archive entries and

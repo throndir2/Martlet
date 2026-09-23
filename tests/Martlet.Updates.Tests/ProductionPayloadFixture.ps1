@@ -4,6 +4,8 @@ param(
     [Parameter(Mandatory)][string]$OutputDirectory,
     [string]$ReferenceMetadataRoot,
     [ValidateSet(2, 3)][int]$FormatVersion = 2,
+    [ValidateSet('None', 'ProjectLoader', 'ProjectWebViewAlias', 'ProjectWebViewXml', 'ProjectRuntimeInstaller',
+        'ProjectSiblingLoader', 'OmittedRuntimeEdge')][string]$AvatarMutation = 'None',
     [ValidateSet('Payload', 'Failure', 'OutputOverflow', 'Wait')][string]$Mode = 'Payload'
 )
 . "$PSScriptRoot\..\..\packaging\windows\Packaging.Common.ps1"
@@ -22,10 +24,11 @@ if ($Mode -ne 'Payload') {
 if ($FormatVersion -eq 3) {
     if ($ReferenceMetadataRoot) { throw 'Historical byte reconstruction is legacy-only.' }
     . "$PSScriptRoot\AvatarPayloadFixture.ps1"
-    New-InertAvatarPayloads $OutputDirectory $pins $encoding
+    New-InertAvatarPayloads $OutputDirectory $pins $encoding $AvatarMutation
     Write-Output 'PASS: inert fixtures from explicit avatar production constructors; not qualified payloads.'
     return
 }
+if ($AvatarMutation -ne 'None') { throw 'Avatar graph mutations require explicit format 3.' }
 
 if ($ReferenceMetadataRoot) {
     $hashes = @{

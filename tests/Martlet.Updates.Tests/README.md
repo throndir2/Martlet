@@ -19,7 +19,7 @@ No checked-in parallel hand-authored v2 wire fixture is used.
 production constructors; the original parameterless/legacy paths remain intact.
 Its executables, npm materials, tool observations and source leaves are
 deliberately inert synthetic data, not a successful native build or upstream
-archive qualification. It exercises the three contexts, private-host restore
+archive qualification. It exercises the three contexts with no tolerated restore
 omissions, exact WebView2 reference/copy shape, restore-only Grpc.Tools, the
 reviewed 17-package npm graph (including type-only dependencies), and all four
 browser outputs. It never runs a bundled script or executable.
