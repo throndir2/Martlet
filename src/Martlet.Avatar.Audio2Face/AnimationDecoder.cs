@@ -69,13 +69,14 @@ internal sealed class AnimationDecoder(ISpeechInput clip, Audio2FaceOptions opti
                 var result = new List<AvatarFrame>(animation.BlendShapeWeights.Count);
                 foreach (var weights in animation.BlendShapeWeights)
                 {
-                    if (!double.IsFinite(weights.TimeCode) || weights.TimeCode < 0 ||
+                    var acceptedSamples = clip.SampleCount;
+                    if (acceptedSamples <= 0 || !double.IsFinite(weights.TimeCode) || weights.TimeCode < 0 ||
                         weights.TimeCode <= lastTime || weights.Values.Count != names.Length ||
-                        weights.TimeCode > (double)clip.SampleCount / clip.SampleRate)
+                        weights.TimeCode > (double)acceptedSamples / clip.SampleRate)
                         throw Invalid();
                     var relative = (long)Math.Floor(weights.TimeCode * clip.SampleRate);
                     var offset = checked(clip.SampleOffset + relative);
-                    if (relative > clip.SampleCount || offset <= lastOffset) throw Invalid();
+                    if (relative > acceptedSamples || offset <= lastOffset) throw Invalid();
                     var blendshapes = new Dictionary<string, double>(StringComparer.Ordinal);
                     for (var i = 0; i < names.Length; i++)
                     {

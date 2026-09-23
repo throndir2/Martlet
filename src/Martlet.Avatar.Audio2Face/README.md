@@ -76,7 +76,9 @@ samples and never microphone capture.
 The actual gRPC input writer and output reader run concurrently. Frames can
 arrive while ingress is still open. Output time codes may refer only to samples
 already accepted, never to the future maximum allowance, and after completion
-remain bounded by the explicit final count. A service EOF while input remains
+remain bounded by the explicit final count. No coefficient frame, including a
+zero-time frame, is accepted before any PCM samples have been submitted.
+A service EOF while input remains
 open is a protocol failure. Input/output/transport failures propagate to the
 independent animation consumer; callers must invalidate its pending frames and
 display the failure without coupling it to voice.

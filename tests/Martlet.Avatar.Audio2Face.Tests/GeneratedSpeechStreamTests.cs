@@ -33,6 +33,7 @@ public sealed class GeneratedSpeechStreamTests
         Assert.Equal(first.Epoch, firstOutput.Epoch);
         Assert.Equal(first.SampleOffset, firstOutput.SampleOffset);
         Assert.Equal(first.Format.SampleRate, firstOutput.SampleRate);
+        Assert.Equal(0, firstOutput.Sequence);
         Assert.Equal(SpeechIngressResult.Accepted, input.TrySubmit(Next(first)));
         Assert.Equal(SpeechIngressResult.Completed, input.CompleteInput(4800));
         var outputs = await run.WaitAsync(TimeSpan.FromSeconds(3));
@@ -160,6 +161,27 @@ public sealed class GeneratedSpeechStreamTests
         Assert.Equal(Audio2FaceFailure.InvalidProtocol,
             (await Assert.ThrowsAsync<Audio2FaceException>(() => Collect(new Audio2FaceAdapter(options)
                 .AnimateAsync(input, permission)))).Failure);
+    }
+
+    [Fact]
+    public async Task Rejects_zero_time_coefficients_before_any_pcm_is_submitted_without_yielding()
+    {
+        await using var fixture = await ProtocolFixture.StartAsync((_, _) => Task.CompletedTask,
+            onInput: async (message, writer, _) =>
+            {
+                if (message.StreamPartCase != AudioStream.StreamPartOneofCase.AudioStreamHeader) return;
+                await writer.WriteAsync(Header("JawOpen"));
+                await writer.WriteAsync(Data(0, 0.5f));
+            });
+        using var input = Stream(Pcm());
+        var options = Options(fixture);
+        using var permission = Permit(input, options);
+        await using var output = new Audio2FaceAdapter(options).AnimateAsync(input, permission).GetAsyncEnumerator();
+        Assert.Equal(Audio2FaceFailure.InvalidProtocol,
+            (await Assert.ThrowsAsync<Audio2FaceException>(() => output.MoveNextAsync().AsTask())).Failure);
+        Assert.Equal(0, input.SampleCount);
+        Assert.Equal(AudioStream.StreamPartOneofCase.AudioStreamHeader, Assert.Single(fixture.Requests).StreamPartCase);
+        await fixture.Stopped.Task.WaitAsync(TimeSpan.FromSeconds(2));
     }
 
     [Fact]
