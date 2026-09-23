@@ -1,10 +1,15 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Windows;
+using System.Windows.Automation;
+using System.Windows.Threading;
 using Martlet.Mcp;
+using Xunit.Abstractions;
 
 namespace Martlet.Desktop.Tests;
 
-public sealed class McpServerTests
+public sealed class McpServerTests(ITestOutputHelper output)
 {
     [Fact]
     public async Task NegotiatesAndRunsRealOfflineFixtureOverStdio()
@@ -46,8 +51,82 @@ public sealed class McpServerTests
         Assert.Equal(2, messages[1].GetProperty("id").GetInt32());
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public Task AttachesToRealDesktopAndInvokesOfflineFixture(bool churn) => WithDesktop(async (_, automation) =>
+    {
+        var churnTask = churn ? ChurnWindows() : Task.CompletedTask;
+        try
+        {
+            await Task.Run(() => automation.ClickAsync("StartFixture"));
+            var fixture = "";
+            for (var attempt = 0; attempt < 50 && !fixture.Contains("Scenario: complete", StringComparison.Ordinal); attempt++)
+            {
+                await Task.Delay(100);
+                fixture = JsonSerializer.Serialize(await Task.Run(automation.Snapshot));
+            }
+            Assert.Contains("FIXTURE - NOT AI", fixture);
+            Assert.Contains("Scenario: complete", fixture);
+            if (churn)
+            {
+                for (var iteration = 0; iteration < 100; iteration++)
+                {
+                    var snapshot = JsonSerializer.SerializeToElement(await Task.Run(automation.Snapshot));
+                    Assert.Single(snapshot.GetProperty("windows").EnumerateArray());
+                    await Task.Delay(5);
+                }
+            }
+        }
+        finally { await churnTask; }
+    });
+
     [Fact]
-    public async Task AttachesToRealDesktopAndInvokesOfflineFixture()
+    public Task PreservesDialogsAndRejectsWrongOwnerHiddenMainAndExitedProcess() => WithDesktop(async (process, automation) =>
+    {
+        var pid = process.Id;
+        process.Refresh();
+        var mainHandle = process.MainWindowHandle;
+        Assert.NotEqual(0, mainHandle);
+        await Task.Run(() =>
+        {
+            Assert.Throws<ArgumentException>(() => automation.Connect(Environment.ProcessId));
+            Assert.Throws<InvalidOperationException>(() => DesktopAutomation.WindowForProcess(Environment.ProcessId, mainHandle));
+        });
+
+        await Task.Run(() => automation.ClickAsync("OpenSetup"));
+        var snapshot = await WaitForWindowCount(automation, 2);
+        Assert.Single(snapshot.GetProperty("controls").EnumerateArray(),
+            control => control.GetProperty("id").GetString() == "SetupClose");
+        var setupHandle = await Task.Run(() => (nint)DesktopAutomation.WindowForProcess(pid, mainHandle)
+            .FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "SetupWindow"))
+            .Current.NativeWindowHandle);
+        Assert.NotEqual(0, setupHandle);
+
+        Assert.True(ShowWindowAsync(mainHandle, 0));
+        await WaitForVisibility(mainHandle, false);
+        await Task.Run(() =>
+        {
+            Assert.Throws<InvalidOperationException>(() => DesktopAutomation.WindowForProcess(pid, mainHandle));
+            Assert.Throws<InvalidOperationException>(() => automation.Snapshot());
+            Assert.Throws<InvalidOperationException>(() => new DesktopAutomation(false).Connect(pid));
+        });
+        Assert.True(ShowWindowAsync(mainHandle, 4));
+        await WaitForVisibility(mainHandle, true);
+        await Task.Run(() => automation.ClickAsync("SetupClose"));
+        await WaitForVisibility(setupHandle, false);
+        await WaitForWindowCount(automation, 1);
+
+        process.Kill();
+        await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        await Task.Run(() =>
+        {
+            Assert.Throws<InvalidOperationException>(() => DesktopAutomation.WindowForProcess(pid, mainHandle));
+            Assert.Throws<ArgumentException>(() => automation.Snapshot());
+        });
+    });
+
+    private async Task WithDesktop(Func<Process, DesktopAutomation, Task> action)
     {
         var executable = Path.Combine(AppContext.BaseDirectory, "Martlet.Desktop.exe");
         var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.Tests." + Guid.NewGuid().ToString("N"));
@@ -72,24 +151,87 @@ public sealed class McpServerTests
                 catch (InvalidOperationException error) { lastError = error; }
             }
             Assert.True(connected, lastError?.Message);
-            await Task.Run(() => automation.ClickAsync("StartFixture"));
-            var fixture = "";
-            for (var attempt = 0; attempt < 50 && !fixture.Contains("Scenario: complete", StringComparison.Ordinal); attempt++)
-            {
-                await Task.Delay(100);
-                var snapshot = JsonSerializer.Serialize(await Task.Run(automation.Snapshot));
-                fixture = snapshot;
-            }
-            Assert.Contains("FIXTURE - NOT AI", fixture);
-            Assert.Contains("Scenario: complete", fixture);
+            await action(process, automation);
+        }
+        catch
+        {
+            process.Refresh();
+            output.WriteLine($"Owned fixture: pid={process.Id}, exited={process.HasExited}, exitCode={(process.HasExited ? process.ExitCode : null)}, hwnd={(process.HasExited ? 0 : process.MainWindowHandle)}");
+            throw;
         }
         finally
         {
             if (!process.HasExited) process.Kill();
-            await process.WaitForExitAsync();
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
             if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
         }
     }
+
+    private static Task ChurnWindows()
+    {
+        var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thread = new Thread(() =>
+        {
+            var dispatcher = Dispatcher.CurrentDispatcher;
+            SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(dispatcher));
+            Exception? failure = null;
+            dispatcher.BeginInvoke(async () =>
+            {
+                try
+                {
+                    for (var iteration = 0; iteration < 200; iteration++)
+                    {
+                        var window = new Window
+                        {
+                            Title = "MCP owned churn fixture", Width = 100, Height = 100,
+                            ShowActivated = false, ShowInTaskbar = false
+                        };
+                        try
+                        {
+                            window.Show();
+                            await Task.Delay(5);
+                        }
+                        finally { window.Close(); }
+                    }
+                }
+                catch (Exception error) { failure = error; }
+                finally { dispatcher.BeginInvokeShutdown(DispatcherPriority.Send); }
+            });
+            Dispatcher.Run();
+            if (failure is null) finished.SetResult();
+            else finished.SetException(failure);
+        }) { IsBackground = true };
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        return finished.Task;
+    }
+
+    private static async Task WaitForVisibility(nint handle, bool visible)
+    {
+        for (var attempt = 0; attempt < 50 && IsWindowVisible(handle) != visible; attempt++)
+            await Task.Delay(20);
+        Assert.Equal(visible, IsWindowVisible(handle));
+    }
+
+    private static async Task<JsonElement> WaitForWindowCount(DesktopAutomation automation, int count)
+    {
+        var snapshot = JsonSerializer.SerializeToElement(await Task.Run(automation.Snapshot));
+        for (var attempt = 0; attempt < 50 && snapshot.GetProperty("windows").GetArrayLength() != count; attempt++)
+        {
+            await Task.Delay(100);
+            snapshot = JsonSerializer.SerializeToElement(await Task.Run(automation.Snapshot));
+        }
+        Assert.Equal(count, snapshot.GetProperty("windows").GetArrayLength());
+        return snapshot;
+    }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ShowWindowAsync(nint window, int command);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowVisible(nint window);
 
     private static JsonElement ToolResult(JsonElement message)
     {

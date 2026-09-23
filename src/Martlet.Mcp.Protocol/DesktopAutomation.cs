@@ -1,4 +1,6 @@
+using System.ComponentModel;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Windows.Automation;
 
 namespace Martlet.Mcp;
@@ -39,8 +41,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         {
             processId,
             windows = windows.Select(window => window.Current.Name).ToArray(),
-            controls = windows.SelectMany(window => Elements(window).Select(element =>
+            controls = Controls(windows).Select(control =>
             {
+                var (window, element) = control;
                 var id = element.Current.AutomationId;
                 var value = SafeValues.Contains(id) && element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern)
                     ? ((ValuePattern)pattern).Current.Value : null;
@@ -54,7 +57,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
                     checkedState = element.TryGetCurrentPattern(TogglePattern.Pattern, out var toggle)
                         ? ((TogglePattern)toggle).Current.ToggleState.ToString() : null
                 };
-            })).Take(200).ToArray()
+            }).Take(200).ToArray()
         };
     }
 
@@ -125,7 +128,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
     private AutomationElement Find(string id)
     {
         if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("A control automation ID is required.");
-        var matches = ConnectedWindows().SelectMany(Elements).Where(element => element.Current.AutomationId == id)
+        var matches = Controls(ConnectedWindows()).Select(control => control.Element)
+            .Where(element => element.Current.AutomationId == id)
             .Take(2).ToArray();
         return matches.Length switch
         {
@@ -147,13 +151,59 @@ internal sealed class DesktopAutomation(bool allowEffects)
         return windows;
     }
 
-    private static AutomationElement[] Windows(int pid) =>
-        AutomationElement.RootElement.FindAll(TreeScope.Children,
-            new PropertyCondition(AutomationElement.ProcessIdProperty, pid))
-            .Cast<AutomationElement>().ToArray();
+    private static AutomationElement[] Windows(int pid)
+    {
+        // UIA's desktop-root traversal can omit live windows while unrelated WPF
+        // windows are closing. Discover HWNDs first, then query only this process.
+        var handles = new List<nint>();
+        if (!EnumWindows((handle, _) =>
+            {
+                GetWindowThreadProcessId(handle, out var owner);
+                if (owner == pid && IsWindowVisible(handle)) handles.Add(handle);
+                return true;
+            }, 0))
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        return handles.Select(handle => WindowForProcess(pid, handle)).ToArray();
+    }
+
+    internal static AutomationElement WindowForProcess(int pid, nint handle)
+    {
+        RequireOwnedVisibleWindow(pid, handle);
+        var window = AutomationElement.FromHandle(handle);
+        RequireOwnedVisibleWindow(pid, handle);
+        if (window.Current.ProcessId != pid || window.Current.NativeWindowHandle != unchecked((int)handle))
+            throw new InvalidOperationException("The Martlet window changed during discovery.");
+        return window;
+    }
+
+    private static void RequireOwnedVisibleWindow(int pid, nint handle)
+    {
+        _ = GetWindowThreadProcessId(handle, out var owner);
+        if (owner != pid || !IsWindowVisible(handle))
+            throw new InvalidOperationException("The Martlet window closed or changed during discovery.");
+    }
+
+    private delegate bool EnumWindowsCallback(nint window, nint parameter);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool EnumWindows(EnumWindowsCallback callback, nint parameter);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(nint window, out uint processId);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowVisible(nint window);
 
     private static IEnumerable<AutomationElement> Elements(AutomationElement window) =>
         window.FindAll(TreeScope.Descendants,
             new PropertyCondition(AutomationElement.IsControlElementProperty, true))
             .Cast<AutomationElement>().Where(element => !string.IsNullOrEmpty(element.Current.AutomationId));
+
+    private static IEnumerable<(AutomationElement Window, AutomationElement Element)> Controls(AutomationElement[] windows) =>
+        // WPF can also expose an owned native dialog beneath its owner's UIA tree.
+        // Deduplicate element identity, not IDs: two different controls remain ambiguous.
+        windows.SelectMany(window => Elements(window).Select(element => (Window: window, Element: element)))
+            .DistinctBy(control => control.Element);
 }
