@@ -1,5 +1,6 @@
-using System.Buffers.Binary;
 using System.Security.Cryptography;
+using Martlet.Core.Contracts;
+using Martlet.Core.Voices;
 
 namespace Martlet.F5;
 
@@ -77,69 +78,20 @@ internal static class F5ReferenceAudio
 
     internal static F5ReferenceAudioFormat Parse(ReadOnlySpan<byte> bytes)
     {
-        F5Guard.Require(bytes.Length is >= 44 and <= F5ReferenceLimits.MaximumAudioFileBytes,
-            F5Failure.InvalidAudio);
-        F5Guard.Require(bytes[..4].SequenceEqual("RIFF"u8) &&
-            bytes.Slice(8, 4).SequenceEqual("WAVE"u8), F5Failure.InvalidAudio);
-        var riffBytes = BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(4, 4));
-        F5Guard.Require(riffBytes + 8UL == (ulong)bytes.Length, F5Failure.InvalidAudio);
-
-        int? sampleRate = null;
-        int? dataBytes = null;
-        var usableSample = false;
-        var offset = 12;
-        while (offset < bytes.Length)
+        PcmWaveInfo wave;
+        try { wave = PcmWaveInfo.Inspect(bytes, F5ReferenceLimits.MaximumAudioFileBytes); }
+        catch (ContractException)
         {
-            F5Guard.Require(bytes.Length - offset >= 8, F5Failure.InvalidAudio);
-            var id = bytes.Slice(offset, 4);
-            var declaredChunkBytes = BinaryPrimitives.ReadUInt32LittleEndian(
-                bytes.Slice(offset + 4, 4));
-            var payload = offset + 8;
-            F5Guard.Require(declaredChunkBytes <= int.MaxValue &&
-                declaredChunkBytes <= bytes.Length - payload, F5Failure.InvalidAudio);
-            var chunkBytes = (int)declaredChunkBytes;
-            var end = payload + chunkBytes;
-            if (id.SequenceEqual("fmt "u8))
-            {
-                F5Guard.Require(sampleRate is null && chunkBytes == 16, F5Failure.InvalidAudio);
-                var formatTag = BinaryPrimitives.ReadUInt16LittleEndian(bytes.Slice(payload, 2));
-                var channels = BinaryPrimitives.ReadUInt16LittleEndian(bytes.Slice(payload + 2, 2));
-                var rate = BinaryPrimitives.ReadInt32LittleEndian(bytes.Slice(payload + 4, 4));
-                var byteRate = BinaryPrimitives.ReadInt32LittleEndian(bytes.Slice(payload + 8, 4));
-                var blockAlign = BinaryPrimitives.ReadUInt16LittleEndian(bytes.Slice(payload + 12, 2));
-                var bits = BinaryPrimitives.ReadUInt16LittleEndian(bytes.Slice(payload + 14, 2));
-                F5Guard.Require(formatTag == 1 && channels == 1 && bits == 16 &&
-                    rate is 16_000 or 22_050 or 24_000 or 44_100 or 48_000 &&
-                    blockAlign == 2 && byteRate == checked(rate * 2), F5Failure.InvalidAudio);
-                sampleRate = rate;
-            }
-            else if (id.SequenceEqual("data"u8))
-            {
-                F5Guard.Require(dataBytes is null && chunkBytes > 0 && chunkBytes % 2 == 0,
-                    F5Failure.InvalidAudio);
-                dataBytes = checked((int)chunkBytes);
-                for (var sample = payload; sample < end; sample += 2)
-                    usableSample |= BinaryPrimitives.ReadInt16LittleEndian(bytes.Slice(sample, 2)) != 0;
-            }
-
-            offset = end + ((chunkBytes & 1) == 0 ? 0 : 1);
-            F5Guard.Require(offset <= bytes.Length, F5Failure.InvalidAudio);
+            throw new F5Exception(F5Failure.InvalidAudio);
         }
-
-        F5Guard.Require(offset == bytes.Length && sampleRate is not null && dataBytes is not null &&
-            usableSample, F5Failure.InvalidAudio);
-        var validatedRate = sampleRate ?? throw new F5Exception(F5Failure.InvalidAudio);
-        var validatedDataBytes = dataBytes ?? throw new F5Exception(F5Failure.InvalidAudio);
-        var samples = validatedDataBytes / 2L;
-        var duration = checked((int)Math.Ceiling(samples * 1000d / validatedRate));
         var result = new F5ReferenceAudioFormat
         {
-            SampleRate = validatedRate,
+            SampleRate = wave.SampleRate,
             Channels = 1,
             BitsPerSample = 16,
-            SampleCount = samples,
-            DataBytes = validatedDataBytes,
-            DurationMilliseconds = duration
+            SampleCount = wave.SampleCount,
+            DataBytes = checked((int)wave.SampleCount * 2),
+            DurationMilliseconds = wave.DurationMilliseconds
         };
         result.Validate();
         return result;

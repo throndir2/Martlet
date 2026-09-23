@@ -1,0 +1,73 @@
+<Window x:Class="Martlet.Desktop.VoiceLibraryWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Martlet - Voice Library (local preparation)" Width="850" Height="850"
+        MinWidth="520" MinHeight="420" WindowStartupLocation="CenterOwner"
+        AutomationProperties.Name="Voice Library local preparation"
+        Closing="Window_Closing">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="24">
+            <TextBlock Text="Voice Library" FontSize="26" FontWeight="SemiBold"/>
+            <TextBlock TextWrapping="Wrap" Margin="0,8,0,12"
+                       Text="Prepare audio for five self-hosted engines. No engines are installed, loaded or contacted here. Speech previews, fine-tuning and applying these voices to conversations are not yet available. Opening this window performs no file scan, network request or playback."/>
+            <Label Target="{Binding ElementName=EngineChoice}" Content="_Engine to explore"/>
+            <ComboBox x:Name="EngineChoice" DisplayMemberPath="Name" MinHeight="30"
+                      SelectionChanged="Engine_Changed"
+                      AutomationProperties.AutomationId="VoiceEngine" AutomationProperties.Name="Voice engine research target"/>
+            <TextBox x:Name="EngineDetails" IsReadOnly="True" TextWrapping="Wrap" Height="165"
+                     VerticalScrollBarVisibility="Auto" Margin="0,8,0,12"
+                     AutomationProperties.Name="Engine requirements, license and unavailable execution"/>
+            <StackPanel x:Name="ImportPanel">
+                <TextBlock Text="Import a private local copy" FontSize="18" FontWeight="SemiBold"/>
+                <TextBlock TextWrapping="Wrap" Margin="0,8,0,8"
+                           Text="Mono PCM16 WAV only: 16, 22.05, 24, 44.1 or 48 kHz, non-silent, up to 64 MiB. Reference: 1-30 seconds. Training material: 1-600 seconds; importing is not training. Other formats need explicit conversion outside this build. Originals are never modified."/>
+                <Button Content="_Browse for WAV..." Click="Browse_Click" HorizontalAlignment="Left" Padding="12,6"
+                        AutomationProperties.AutomationId="VoiceBrowse" AutomationProperties.Name="Select a local voice WAV file"/>
+                <TextBlock x:Name="SourceText" Text="No source selected." TextWrapping="Wrap" Margin="0,6,0,6"
+                           AutomationProperties.Name="Selected local voice file"/>
+                <Label Target="{Binding ElementName=NameInput}" Content="Voice _name"/>
+                <TextBox x:Name="NameInput" MaxLength="80" AutomationProperties.Name="Voice asset name"/>
+                <Label Target="{Binding ElementName=PurposeChoice}" Content="_Purpose"/>
+                <ComboBox x:Name="PurposeChoice" DisplayMemberPath="Name" MinHeight="30"
+                          AutomationProperties.Name="Reference clip or training material"/>
+                <Label Target="{Binding ElementName=TranscriptInput}" Content="_Reviewed transcript matching this audio"/>
+                <TextBox x:Name="TranscriptInput" AcceptsReturn="True" TextWrapping="Wrap" Height="85"
+                         VerticalScrollBarVisibility="Auto" MaxLength="16384" AutomationProperties.Name="Reviewed voice transcript"/>
+                <Label Target="{Binding ElementName=RightsChoice}" Content="Speaker _rights"/>
+                <ComboBox x:Name="RightsChoice" DisplayMemberPath="Name" MinHeight="30"
+                          AutomationProperties.Name="Own voice or explicit speaker permission"/>
+                <CheckBox x:Name="RightsConfirmed" Margin="0,10,0,8"
+                          AutomationProperties.Name="Confirm voice rights and local private storage only">
+                    <TextBlock TextWrapping="Wrap"
+                               Text="I have the selected voice rights and approve storing this audio and transcript locally. This does not authorize upload, training, synthesis or playback."/>
+                </CheckBox>
+                <Button Content="_Import local copy" Click="Import_Click" HorizontalAlignment="Left" Padding="12,6"
+                        AutomationProperties.AutomationId="VoiceImport" AutomationProperties.Name="Import local voice copy without training or upload"/>
+            </StackPanel>
+            <TextBlock Text="Saved local assets" FontSize="18" FontWeight="SemiBold" Margin="0,16,0,4"/>
+            <TextBlock TextWrapping="Wrap"
+                       Text="Stored under the app data directory in voice-library. Copies are not encrypted by Martlet and are excluded from settings backups and support bundles. Limit: 64 assets / 512 MiB. Removing a copy never deletes its source."/>
+            <Button x:Name="ReloadButton" Content="_Load / reload saved assets" Click="Reload_Click"
+                    HorizontalAlignment="Left" Padding="12,6" Margin="0,6,0,6"
+                    AutomationProperties.AutomationId="VoiceReload" AutomationProperties.Name="Explicitly inspect saved local voice assets"/>
+            <Label Target="{Binding ElementName=AssetChoice}" Content="Saved _asset"/>
+            <ComboBox x:Name="AssetChoice" DisplayMemberPath="Name" MinHeight="30" SelectionChanged="Asset_Changed"
+                      AutomationProperties.Name="Saved local voice asset"/>
+            <TextBox x:Name="AssetDetails" IsReadOnly="True" TextWrapping="Wrap" Height="120"
+                     VerticalScrollBarVisibility="Auto" AutomationProperties.Name="Saved voice details and engine preparation"/>
+            <Button x:Name="DeleteButton" Content="Remove selected imported cop_y..." Click="Delete_Click"
+                    HorizontalAlignment="Left" Padding="12,6" Margin="0,6,0,6" IsEnabled="False"
+                    AutomationProperties.AutomationId="VoiceDelete" AutomationProperties.Name="Confirm removal of selected imported voice copy"/>
+            <TextBox x:Name="ResultText" IsReadOnly="True" TextWrapping="Wrap" MinHeight="60"
+                     Text="Saved assets have not been read. Choose an engine to inspect its requirements."
+                     AutomationProperties.AutomationId="VoiceResult" AutomationProperties.Name="Voice library action result"
+                     AutomationProperties.LiveSetting="Polite"/>
+            <WrapPanel Margin="0,10,0,0">
+                <Button x:Name="CancelButton" Content="_Cancel local operation" Click="Cancel_Click" IsEnabled="False" Padding="12,6"
+                        AutomationProperties.AutomationId="VoiceCancel"/>
+                <Button Content="_Close" Click="Close_Click" Padding="12,6" Margin="12,0,0,0"
+                        AutomationProperties.AutomationId="VoiceClose" AutomationProperties.Name="Close Voice Library"/>
+            </WrapPanel>
+        </StackPanel>
+    </ScrollViewer>
+</Window>
