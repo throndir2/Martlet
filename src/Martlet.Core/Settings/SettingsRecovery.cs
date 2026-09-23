@@ -146,8 +146,29 @@ public sealed partial class SettingsStore
         var importedCompanion = imported.Companion;
         var importedMemory = imported.Memory;
         var restored = SetupSettings.Begin(imported);
+        var currentPairings = (current.Setup?.RetainedGatewayCredentials ?? []).Concat(
+            (current.Setup?.Routes ?? []).Where(route =>
+                route.CredentialId is not null &&
+                route.RouteType is SetupRouteType.GatewayOllama or SetupRouteType.GatewayF5)
+            .Select(RetainedGatewayCredential.From)).ToArray();
+        var routes = restored.Setup!.Routes.Select(route =>
+        {
+            var disabled = route.DisableForRestore();
+            var matches = currentPairings.Where(item => MatchesDestination(disabled, item)).ToArray();
+            return matches.Length == 1 ? disabled with
+            {
+                CredentialId = matches[0].CredentialId,
+                GatewayDeviceId = matches[0].Scope.DeviceId
+            } : disabled;
+        }).ToArray();
+        var attached = routes.Where(route => route.CredentialId is not null)
+            .Select(route => route.CredentialId!.Value).ToHashSet();
+        var retained = currentPairings.Where(item => !attached.Contains(item.CredentialId)).ToArray();
+        if (retained.Length > SetupSettings.MaximumRetainedGatewayCredentials)
+            throw new RecoveryException(RecoveryFailure.CleanupCapacity);
         var pending = (current.Setup?.PendingRemovals ?? []).Concat(
-            (current.Setup?.Routes ?? []).Where(route => route.CredentialId is not null)
+            (current.Setup?.Routes ?? []).Where(route => route.CredentialId is not null &&
+                route.RouteType is null or SetupRouteType.OpenAi)
             .Select(route => new PendingCredentialRemoval { Role = route.Role, CredentialId = route.CredentialId!.Value })).ToArray();
         if (pending.Length > 16)
             throw new RecoveryException(RecoveryFailure.CleanupCapacity);
@@ -157,8 +178,9 @@ public sealed partial class SettingsStore
             Setup = restored.Setup! with
             {
                 Checkpoint = SetupStep.Destinations,
-                Routes = restored.Setup!.Routes.Select(route => route.WithCredential(null)).ToArray(),
-                PendingRemovals = pending
+                Routes = routes,
+                PendingRemovals = pending,
+                RetainedGatewayCredentials = retained
             },
             Audio = restored.Audio is not { } audio ? null : audio with
             {
@@ -171,6 +193,13 @@ public sealed partial class SettingsStore
         restored.Validate();
         return restored;
     }
+
+    private static bool MatchesDestination(SetupRoute route, RetainedGatewayCredential pairing) =>
+        route.Role == pairing.Role && route.RouteType == pairing.Scope.RouteType &&
+        route.ProviderAlias == pairing.Scope.ProviderAlias && route.Origin == pairing.Scope.Origin &&
+        route.Gateway?.HostId == pairing.Scope.HostId &&
+        route.Gateway?.SpkiFingerprint == pairing.Scope.SpkiFingerprint &&
+        route.Gateway?.DeviceRole == pairing.Scope.DeviceRole;
 
     public async Task<ConfigurationRecoveryReceipt> RestoreConfigurationAsync(ConfigurationRestorePlan plan,
         ConfigurationRestoreApproval approval, CancellationToken token = default)
@@ -296,6 +325,20 @@ public sealed partial class SettingsStore
             throw new RecoveryException(RecoveryFailure.Conflict);
         ValidateCredentialTransition(SetupSettings.Begin(current).Setup!, settings.Setup!, null);
         if (settings.Memory?.Enabled != false)
+            throw new RecoveryException(RecoveryFailure.Conflict);
+        var owned = (current.Setup?.RetainedGatewayCredentials ?? []).Concat(
+            (current.Setup?.Routes ?? []).Where(route => route.CredentialId is not null &&
+                route.RouteType is SetupRouteType.GatewayOllama or SetupRouteType.GatewayF5)
+            .Select(RetainedGatewayCredential.From)).ToArray();
+        foreach (var route in settings.Setup!.Routes.Where(route =>
+            route.RouteType is SetupRouteType.GatewayOllama or SetupRouteType.GatewayF5 or SetupRouteType.LocalWhisper))
+        {
+            if (route.Enabled != false || route.Consent is not null || route.GatewaySnapshot is not null ||
+                route.Reference is not null || route.LocalStt is not null ||
+                route.CredentialId is not null && !owned.Contains(RetainedGatewayCredential.From(route)))
+                throw new RecoveryException(RecoveryFailure.Conflict);
+        }
+        if ((settings.Setup.RetainedGatewayCredentials ?? []).Any(item => !owned.Contains(item)))
             throw new RecoveryException(RecoveryFailure.Conflict);
     }
 

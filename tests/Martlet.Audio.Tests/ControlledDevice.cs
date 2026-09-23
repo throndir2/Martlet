@@ -3,13 +3,26 @@ using Martlet.Core.Contracts;
 
 namespace Martlet.Audio.Tests;
 
-internal sealed class ControlledDevice : IPlaybackDeviceFactory, IPlaybackDevice
+internal sealed class ControlledDevice : IPlaybackDeviceFactory, IPlaybackDevice, IPlaybackClockDevice
 {
     private readonly object gate = new();
     private readonly List<byte> output = new();
     private int padding, opens, stops, disposals, starts;
     private int workerThread;
     private PcmFormat? format;
+    private DeviceClockReading? clockReading = new(0, 48000, PlaybackClockOrigin.ControlledTest);
+    private int clockReads;
+    public DeviceClockReading? ClockReading { get => Volatile.Read(ref clockReading); set => Volatile.Write(ref clockReading, value); }
+    public int ClockReads => Volatile.Read(ref clockReads);
+    public bool FailClock { get; set; }
+    public DeviceClockReading? ReadClock(CancellationToken cancellationToken)
+    {
+        Assert.Equal(workerThread, Environment.CurrentManagedThreadId);
+        Interlocked.Increment(ref clockReads);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (FailClock) throw new InvalidOperationException("PRIVATE clock detail");
+        return ClockReading;
+    }
     public bool AutoConsume { get; set; } = true;
     public bool BlockOpen { get; init; }
     public bool BlockOpenCancellation { get; init; }

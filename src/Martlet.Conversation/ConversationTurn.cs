@@ -34,6 +34,7 @@ public sealed class ConversationTurn
     private MonotonicWindow? textWindow, speechWindow;
     private SpeechSegmenter? segmentation;
     private PlaybackRun? playback;
+    private GeneratedSpeechObservation? speechObservation;
     private PlaybackSnapshot? lastPlayback;
     private PlaybackSnapshot? observedPlayback;
     private ConversationState state = ConversationState.Authorizing;
@@ -108,6 +109,7 @@ public sealed class ConversationTurn
         if (invalidated) return;
         Owner.InvalidateEpoch(this);
         invalidated = true;
+        speechObservation?.Stop();
         segmentation?.Clear();
         while (segments.Reader.TryRead(out _)) { }
         segments.Writer.TryComplete();
@@ -370,6 +372,7 @@ public sealed class ConversationTurn
                         CheckActive();
                         run = Owner.StartPlayback(this, ids, voice.Output, Deadline(window), stop.Token);
                         playback = run;
+                        speechObservation = Owner.GeneratedSpeech?.Begin(run, frame.Format);
                     }
                 }
                 await SubmitAsync(run, frame, window).ConfigureAwait(false);
@@ -382,6 +385,7 @@ public sealed class ConversationTurn
             }
             if (run is null || !run.CompleteInput(samples))
                 throw new ConversationException(ConversationFailure.PlaybackFailed);
+            speechObservation?.CompleteInput(samples);
             var terminalPlayback = await run.Completion.WaitAsync(stop.Token).ConfigureAwait(false);
             Check(window);
             if (terminalPlayback.State != PlaybackState.Completed)
@@ -391,6 +395,7 @@ public sealed class ConversationTurn
         {
             if (run is not null)
             {
+                speechObservation?.Stop();
                 // Never concurrently dispose a provider enumerator or release a native device.
                 var finished = await run.StopAsync().ConfigureAwait(false);
                 lock (Sync)
@@ -409,6 +414,7 @@ public sealed class ConversationTurn
                     quarantined |= !final.DeviceReleased || final.Error?.Code == ErrorCode.AudioPlaybackFailed;
                     lastPlayback = final;
                     playback = null;
+                    speechObservation = null;
                     speechRequest = null;
                     if (!invalidated && !textComplete) SetState(ConversationState.Generating);
                 }
@@ -435,6 +441,7 @@ public sealed class ConversationTurn
                     var mapped = PlaybackFrameMapping.Map(frame, snapshot.Ids, Epoch, snapshot.Epoch);
                     if (run.Submit(mapped) != FrameAcceptance.Accepted)
                         throw new ConversationException(ConversationFailure.InvalidStream);
+                    speechObservation?.Submit(mapped);
                     Emit(ConversationEventKind.Playback);
                 }
                 return;

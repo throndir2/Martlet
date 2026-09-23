@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Martlet avatar frame 1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "ids", "source_id", "epoch", "sequence", "sample_rate", "sample_offset", "blendshapes", "semantics"],
+  "properties": {
+    "version": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["major", "minor"],
+      "properties": {
+        "major": { "const": 1 },
+        "minor": { "const": 0 }
+      }
+    },
+    "ids": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["session_id", "turn_id", "request_id"],
+      "properties": {
+        "session_id": { "$ref": "#/$defs/nonempty_uuid" },
+        "turn_id": { "$ref": "#/$defs/nonempty_uuid" },
+        "request_id": { "$ref": "#/$defs/nonempty_uuid" }
+      }
+    },
+    "source_id": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*$", "maxLength": 64 },
+    "epoch": { "type": "integer", "minimum": 0, "maximum": 2147483647 },
+    "sequence": { "type": "integer", "minimum": 0, "maximum": 2147483647 },
+    "sample_rate": { "enum": [16000, 24000, 44100, 48000] },
+    "sample_offset": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "Original playback PCM samples per channel, not inference-resampled samples, submitted PCM or wall-clock time."
+    },
+    "blendshapes": {
+      "type": "object",
+      "maxProperties": 52,
+      "propertyNames": { "$ref": "#/$defs/blendshape_name" },
+      "additionalProperties": { "$ref": "#/$defs/coefficient" }
+    },
+    "semantics": {
+      "type": "array",
+      "maxItems": 13,
+      "uniqueItems": true,
+      "description": "Channels must be unique even when their values differ; production validation enforces channel-key uniqueness.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["channel", "value"],
+        "properties": {
+          "channel": {
+            "enum": ["mouth_open", "vowel_aa", "vowel_ih", "vowel_ou", "vowel_ee", "vowel_oh", "blink_left", "blink_right", "happy", "angry", "sad", "relaxed", "surprised"]
+          },
+          "value": { "$ref": "#/$defs/coefficient" }
+        }
+      }
+    }
+  },
+  "anyOf": [
+    { "properties": { "blendshapes": { "minProperties": 1 } } },
+    { "properties": { "semantics": { "minItems": 1 } } }
+  ],
+  "$defs": {
+    "nonempty_uuid": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+      "not": { "const": "00000000-0000-0000-0000-000000000000" }
+    },
+    "coefficient": { "type": "number", "minimum": 0, "maximum": 1 },
+    "blendshape_name": {
+      "enum": [
+        "eyeBlinkLeft", "eyeLookDownLeft", "eyeLookInLeft", "eyeLookOutLeft", "eyeLookUpLeft", "eyeSquintLeft", "eyeWideLeft",
+        "eyeBlinkRight", "eyeLookDownRight", "eyeLookInRight", "eyeLookOutRight", "eyeLookUpRight", "eyeSquintRight", "eyeWideRight",
+        "jawForward", "jawLeft", "jawRight", "jawOpen",
+        "mouthClose", "mouthFunnel", "mouthPucker", "mouthLeft", "mouthRight",
+        "mouthSmileLeft", "mouthSmileRight", "mouthFrownLeft", "mouthFrownRight",
+        "mouthDimpleLeft", "mouthDimpleRight", "mouthStretchLeft", "mouthStretchRight",
+        "mouthRollLower", "mouthRollUpper", "mouthShrugLower", "mouthShrugUpper",
+        "mouthPressLeft", "mouthPressRight", "mouthLowerDownLeft", "mouthLowerDownRight", "mouthUpperUpLeft", "mouthUpperUpRight",
+        "browDownLeft", "browDownRight", "browInnerUp", "browOuterUpLeft", "browOuterUpRight",
+        "cheekPuff", "cheekSquintLeft", "cheekSquintRight", "noseSneerLeft", "noseSneerRight", "tongueOut"
+      ]
+    }
+  }
+}

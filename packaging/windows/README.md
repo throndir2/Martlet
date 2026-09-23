@@ -1,4 +1,4 @@
-# Internal Windows packaging (F02 skeleton, V07c evidence foundation)
+# Internal Windows packaging (F02 skeleton, optional-avatar evidence)
 
 **INTERNAL DEVELOPMENT ONLY - UNSIGNED. Not a supported installer or a completed
 F02/AC-02/G1 gate.** This packages V04b real explicit typed / push-to-talk app
@@ -11,6 +11,13 @@ not a diagnostic ZIP or installer updater. Transactional binary upgrades,
 rollback and signed distribution remain unimplemented.
 No project code/asset license is granted.
 The existing foundation/planning documents retain their broader future gates.
+
+The desktop executable, its Start menu shortcut and the installer use the original
+pink Martlet bird icon. The shared WPF window style also sets it explicitly, so
+development launches through `dotnet` do not show the generic runtime icon.
+Artwork and favicon-ready SVG/PNG/ICO assets live in
+`src\Martlet.Desktop\Assets`; regenerate the checked-in raster assets with
+`.\scripts\Generate-AppIcon.ps1` before building if the SVG changes.
 
 ## Developer commands
 
@@ -25,6 +32,15 @@ SDK in `global.json` (10.0.401). The scripts accept an explicit, read-only
 `-DotnetPath` and set `DOTNET_ROOT`, process PATH, telemetry opt-out and certificate
 generation only in the calling process. Supply your own `-CliHome`; never use a
 shared SDK directory as a CLI home. No SDK/driver/runtime installer is run.
+Avatar browser builds additionally require the reviewed existing Node 20.11.1,
+npm 10.2.4 and locked esbuild 0.25.12. Restore the VRM module's committed npm
+lock locally with `npm ci --prefix src\Martlet.Avatar.Vrm --ignore-scripts
+--no-audit --no-fund`; the pinned Windows esbuild package supplies its executable.
+No global Node/npm installation is performed. `Publish-Windows.ps1 -NodePath`
+selects the exact Node executable for both the normal host build and evidence
+collection. Use a short process-local PATH if a machine's inherited PATH exceeds
+Windows cmd limits; never replace the machine PATH.
+
 Each bounded native child receives a validated filesystem working directory.
 Build/maintenance wrappers explicitly use their repository root; other calls
 use PowerShell's current filesystem location, not the process-wide OS cwd.
@@ -35,16 +51,17 @@ locations (such as `Env:`) fail with an actionable directory requirement.
 
 ```powershell
 $sdk = (Get-Command dotnet).Source # Or an explicit verified SDK dotnet.exe.
+$node = (Get-Command node).Source # Existing reviewed Node 20.11.1.
 $run = Join-Path $PWD ("artifacts\windows-" + [guid]::NewGuid().ToString('N'))
 $cliHome = Join-Path $run 'cli-home'
 $first = Join-Path $run ("publish one " + [char]0x00E9)
 $second = Join-Path $run ("publish two " + [char]0x00E9)
 $builder = Join-Path $run 'inno'
 
-.\packaging\windows\Publish-Windows.ps1 -DotnetPath $sdk -CliHome $cliHome -OutputDirectory $first
-.\packaging\windows\Publish-Windows.ps1 -DotnetPath $sdk -CliHome $cliHome -OutputDirectory $second
+.\packaging\windows\Publish-Windows.ps1 -DotnetPath $sdk -NodePath $node -CliHome $cliHome -OutputDirectory $first
+.\packaging\windows\Publish-Windows.ps1 -DotnetPath $sdk -NodePath $node -CliHome $cliHome -OutputDirectory $second
 .\packaging\windows\Get-InnoSetup.ps1 -Destination $builder
-.\packaging\windows\Test-Packaging.ps1 -DotnetPath $sdk -CliHome $cliHome -PayloadRoot "$first\payload" -ComparePayloadRoot "$second\payload" -PublishDirectory $first -BuilderDirectory $builder -WorkDirectory "$run\tests"
+.\packaging\windows\Test-Packaging.ps1 -DotnetPath $sdk -NodePath $node -CliHome $cliHome -PayloadRoot "$first\payload" -ComparePayloadRoot "$second\payload" -PublishDirectory $first -BuilderDirectory $builder -WorkDirectory "$run\tests"
 .\packaging\windows\Smoke-Package.ps1 -PayloadRoot "$first\payload" -InteractiveDesktop
 .\packaging\windows\Build-Installer.ps1 -PayloadRoot "$first\payload" -BuilderDirectory $builder -OutputDirectory "$run\package"
 # Also exercise the actual GitHub pwsh exit wrapper (includes assertions, Doctor and compiler).
@@ -98,6 +115,8 @@ the interactive command separately requires both actual Desktop scenarios.
 ```text
 payload\
   Desktop\Martlet.Desktop.exe, *.dll, *.deps.json, *.runtimeconfig.json, ...
+  Desktop\AvatarRenderer\Martlet.Avatar.RendererHost.exe, complete private runtime, ...
+  Desktop\AvatarRenderer\web\app.js, app.js.LEGAL.txt, index.html, THIRD-PARTY-NOTICES.txt
   Doctor\Martlet.Doctor.exe, *.dll, *.deps.json, *.runtimeconfig.json, ...
   help\INTERNAL.txt
   help\TROUBLESHOOTING.md
@@ -107,7 +126,7 @@ payload\
   SHA256SUMS.txt
 ```
 
-Each entry point owns its complete runtime directory. There is **no merge** of
+Each entry point, including the private renderer host, owns its complete runtime directory. There is **no merge** of
 Desktop and Doctor publish files and no dependence on their relative DLL search
 paths. This duplicates some runtime bytes deliberately: the installed layout is
 simple and avoids conflicting WPF/Core runtime facades. No trimming, single-file
@@ -121,6 +140,15 @@ application's `.deps.json` (including each project's runtime asset):
 - Desktop only: `Martlet.Desktop`, `Martlet.Credentials.Windows`,
   `Martlet.Conversation`, `Martlet.Providers`, `Martlet.Participation`,
   `Martlet.Support`, `Martlet.Memory`.
+- Desktop additionally: `Martlet.Avatars`, `Martlet.Avatar.Hosting` and
+  `Martlet.Avatar.Audio2Face`. The Audio2Face client brings only its reviewed
+  protobuf/gRPC managed runtime closure; Grpc.Tools is a separate verified
+  restore-only build input.
+- Private renderer: `Martlet.Avatar.RendererHost`, `Martlet.Avatar.Hosting`,
+  `Martlet.Avatars`, `Martlet.Core` and the exact WebView2 SDK assets. It has no
+  conversation, credential or Audio2Face reference. The parent application's
+  ordinary publish target owns this subtree; packaging never substitutes a
+  different application.
 - Doctor only: `Martlet.Doctor`. Doctor's graph and offline semantics are
   unchanged; no conversation, provider, participation or vault assembly is
   included there.
@@ -203,7 +231,7 @@ publish/validation never regenerates locks. Framework runtime archives are also
 pinned separately because NuGet
 framework downloads are not represented as ordinary package lock dependencies.
 
-Schema-v2 payload manifests contain a sorted complete relative file inventory,
+Schema-v3 payload manifests contain a sorted complete relative file inventory,
 lengths, SHA-256s, versions, source HEAD/dirty state and the unsigned build
 evidence described below, with no timestamp or absolute build path.
 Generated C# file-local type paths are mapped to stable paths so repeated clean
@@ -224,12 +252,56 @@ option. This is an **unsigned internal observation**, not publisher
 attestation, a SLSA level, a release signature, license clearance or a
 vulnerability assessment. Signing and distribution decisions remain deferred.
 
-The separate [signed-candidate staging library](../../src/Martlet.Updates/README.md)
-now recognizes this v2 metadata shape and retains its own explicitly supported
-legacy-v1 history/admission contract. That does not make v1 acceptable to these
-packaging/installer producers or turn v2 byte verification into provenance
-qualification. Its restricted ZIP/layout, depth and outer-envelope budgets can
-be narrower than packaging's evidence bounds.
+The avatar producer explicitly selects manifest 3 / provenance 2. Its coordinated
+[signed-candidate metadata reader](../../src/Martlet.Updates/README.md) must support
+that pair before integration; older readers reject manifest 3 as incompatible.
+Legacy manifest 1 and manifest 2 / provenance 1 remain explicit reader/history
+paths, and legacy pure constructors preserve their historical bytes. None is an
+allow-missing path for the current producer. Candidate signing, activation,
+settings compatibility and trust policy do not change. The reader's depth-16
+and restricted ZIP/layout budgets remain narrower than the producer's general
+bounded JSON reader.
+
+The three application descriptors bind exact root project, directory and private
+parent. Each application's reviewed project/package graph is separate; no global
+union is accepted as an application's closure. `buildOnlyLibraries` is required
+empty in all three contexts: the host is a build project reference, not a hidden
+Desktop resolved-library omission. Its three actual WebView2 SDK-injected
+`reference` identities are explicitly mapped to the single verified SDK NuGet
+archive, not invented package IDs. DLL/XML pairs and the root/nested x64 loader
+copies have eight fixed paths and archive origins. Extra architectures, copies,
+XML or binaries cannot be relabeled as project output.
+
+The normal browser build retains its source/output receipt and raw esbuild
+metafile in private-host intermediate output. Packaging independently verifies
+the exact npm lock's tarball SHA-512, consumed package-relative input bytes,
+package metadata and complete runtime license files; it verifies all four
+published browser files against the actual build receipt. The closed 17-package
+graph distinguishes 15 runtime packages (including type-only packages with
+notices but no bundle bytes) from esbuild and its Windows build executable.
+The two build-script package inputs are exactly esbuild's `lib/main.js` and
+the Windows package's `esbuild.exe`; the latter's archive-verified hash and
+length must equal the observed tool fingerprint. No runtime package can be
+relabeled as a build script to evade bundle ownership.
+Source materializations under the two exact module node_modules directories and
+the host's exact web/dist directory are excluded only with this compensating
+input/output evidence. Arbitrary vendor/dist trees are not ignored.
+
+CycloneDX records actual npm identities and dependencies, source/notice hashes,
+the transformed bundle's hashes and contributor links without duplicating
+physical file ownership. Complete bundled JavaScript licenses and esbuild legal
+comments remain distributed; npm metadata alone is not notice coverage.
+Live2D Framework/Core, user models/avatar assets, NIM, GPU drivers and the
+WebView2 runtime remain external prerequisites and are never packaged or
+automatically installed. No license clearance is inferred.
+
+Retained npm archives and normalized build evidence reside outside the payload.
+Their reuse by local regression probes verifies identical bytes, never silently
+overwrites evidence or changes pins. A normal publish still requires a fresh
+absolute output directory and exact committed packaging RID locks. The
+development RID-lock fallback under obj is not packaging evidence; nested host
+restores must honor the explicit packaging lock imports. Normal source locks
+remain unchanged.
 
 `New-PackageProvenanceDocument`, `New-PackageSbomDocument` and
 `New-PayloadManifestDocument` are shared pure document constructors used by the

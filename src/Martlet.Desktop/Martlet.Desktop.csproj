@@ -3,8 +3,10 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <ApplicationIcon>Assets\Martlet.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <Resource Include="Assets\Martlet.ico" />
     <InternalsVisibleTo Include="Martlet.Desktop.Tests" />
     <ProjectReference Include="..\Martlet.Conversation\Martlet.Conversation.csproj" />
     <ProjectReference Include="..\Martlet.Participation\Martlet.Participation.csproj" />
@@ -12,6 +14,25 @@
     <ProjectReference Include="..\Martlet.Diagnostics\Martlet.Diagnostics.csproj" />
     <ProjectReference Include="..\Martlet.Support\Martlet.Support.csproj" />
     <ProjectReference Include="..\Martlet.Audio\Martlet.Audio.csproj" />
+    <ProjectReference Include="..\Martlet.Avatar.Hosting\Martlet.Avatar.Hosting.csproj" />
+    <ProjectReference Include="..\Martlet.Avatar.Audio2Face\Martlet.Avatar.Audio2Face.csproj" />
+    <ProjectReference Include="..\Martlet.Avatar.RendererHost\Martlet.Avatar.RendererHost.csproj" ReferenceOutputAssembly="false" Private="false" />
     <ProjectReference Include="..\Martlet.Memory\Martlet.Memory.csproj" />
   </ItemGroup>
+  <Target Name="CopyAvatarRenderer" AfterTargets="Build">
+    <MSBuild Projects="..\Martlet.Avatar.RendererHost\Martlet.Avatar.RendererHost.csproj" Targets="GetTargetPath">
+      <Output TaskParameter="TargetOutputs" ItemName="AvatarRendererTarget" />
+    </MSBuild>
+    <PropertyGroup>
+      <AvatarRendererOutput>@(AvatarRendererTarget->'%(RootDir)%(Directory)')</AvatarRendererOutput>
+    </PropertyGroup>
+    <ItemGroup>
+      <AvatarRendererFiles Include="$(AvatarRendererOutput)**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(AvatarRendererFiles)" DestinationFiles="@(AvatarRendererFiles->'$(OutDir)AvatarRenderer\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="PublishAvatarRenderer" AfterTargets="Publish">
+    <MSBuild Projects="..\Martlet.Avatar.RendererHost\Martlet.Avatar.RendererHost.csproj"
+             Targets="Publish" Properties="Configuration=$(Configuration);PublishDir=$(PublishDir)AvatarRenderer\;RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=$(SelfContained)" />
+  </Target>
 </Project>

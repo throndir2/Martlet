@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Martlet VRM1 local preview</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main>
+    <h1>VRM1 local preview</h1>
+    <p>Manual, offline renderer harness. No microphone, audio, provider or model download.
+      Use only a model whose terms you have independently reviewed. Loading does not record legal acceptance.</p>
+    <label>Local VRM1 file (32 MiB maximum) <input id="file" type="file" accept=".vrm,.glb"></label>
+    <button id="synthetic">Load synthetic importer fixture (not quality evidence)</button>
+    <fieldset id="controls" disabled>
+      <legend>Explicit manual controls</legend>
+      <label>Authored expression <select id="expression"><option value="">Omit face control</option></select></label>
+      <label>Value <input id="weight" type="range" min="0" max="1" step="0.01" value="0"></label>
+      <label><input id="gaze" type="checkbox"> Preview gaze (only if supported)</label>
+      <label><input id="spring" type="checkbox"> Enable secondary physics (only if supported)</label>
+      <button id="stop">Stop and reset</button>
+    </fieldset>
+    <button id="dispose" disabled>Dispose renderer (reload page to restart)</button>
+    <p id="status" role="status">No model loaded.</p>
+    <canvas id="avatar" width="640" height="640" aria-label="VRM model preview"></canvas>
+    <details open><summary>Inspected capabilities and missing-control remedies</summary><pre id="capabilities"></pre></details>
+  </main>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

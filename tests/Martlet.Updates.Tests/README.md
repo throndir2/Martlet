@@ -15,6 +15,31 @@ mock those checks or claim to have passed them. Existing tests default to legacy
 v1; `PayloadCompatibilityTests` covers current v2 and mixed retained histories.
 No checked-in parallel hand-authored v2 wire fixture is used.
 
+`AvatarPayloadFixture.ps1` adds an explicit format-3 path through those same
+production constructors; the original parameterless/legacy paths remain intact.
+Its executables, npm materials, tool observations and source leaves are
+deliberately inert synthetic data, not a successful native build or upstream
+archive qualification. It exercises the three contexts with no tolerated restore
+omissions, exact WebView2 reference/copy shape, restore-only Grpc.Tools, the
+reviewed 17-package npm graph (including type-only dependencies), and all four
+browser outputs. It never runs a bundled script or executable.
+The default graph also includes the actual esbuild JavaScript/native build-input
+shape and both authored package manifests. Native material matches the esbuild
+tool fingerprint by length/hash. These records reproduced a real-producer
+compatibility failure in the prior authored-only build-script rule; negative
+cases reject missing, misidentified, retagged or fingerprint-mismatched inputs.
+
+`AvatarPayloadCompatibilityTests` drives the real ephemeral-key signed preview,
+staging, receipt reopening and mixed v1/v2/v3 retained-selection/rollback paths.
+Rechecksummed/re-signed context, ownership, graph, source, notice, tool and browser
+tampering remains invalid. Actual production-serializer vectors cover exact
+canonical bytes including empty/singleton containers, required nulls, Unicode,
+escape sequences and Int64 values beyond JavaScript precision. New subdocument
+hashes are recomputed; existing source/restore hashes remain declarations.
+The separate local old-reader probe must use the retained unchanged baseline
+assembly against these actual new producer documents, not a simulated parser.
+No fixture result authorizes activation or qualifies the updater rollout.
+
 The test-only PowerShell 7 child runs with no profile and explicit source/output
 paths, a 60-second deadline, concurrent pipes and a combined 64 KiB output cap.
 Timeout/overflow/nonzero exit fail the fixture. The exact child must exit and

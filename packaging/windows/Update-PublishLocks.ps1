@@ -13,8 +13,8 @@ Push-Location $root
 try {
     $sdk = Initialize-PackagingSdk $DotnetPath $CliHome -WorkingDirectory $root
     New-OutputDirectory $WorkDirectory
-    foreach ($application in @('Desktop', 'Doctor')) {
-        Invoke-Dotnet $sdk (@('restore', "src\Martlet.$application\Martlet.$application.csproj",
+    foreach ($context in Get-PublishContexts) {
+        Invoke-Dotnet $sdk (@('restore', "src\$($context.project)\$($context.project).csproj",
             '--force-evaluate', '-p:RestoreLockedMode=false', '-r', (Get-PackagingPins).rid,
             '--artifacts-path', $WorkDirectory, '--verbosity', 'minimal') + @(Get-PackagingProperties)) -WorkingDirectory $root
     }

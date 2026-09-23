@@ -319,7 +319,7 @@ public sealed class ActivationTests(SigningKeys keys, ProductionPayloadFixture p
         var historical = loaded with
         {
             SchemaVersion = schema,
-            Setup = schema >= 2 ? loaded.Setup : null,
+            Setup = schema >= 2 ? loaded.Setup!.DowngradeOpenAiForHistoricalSettings() : null,
             Audio = schema >= 2 ? loaded.Audio : null,
             Companion = schema >= 3 ? loaded.Companion : null,
             Memory = schema >= 4 ? loaded.Memory!.Configure(true, MemoryStoragePolicy.AppLocalData, null) : null

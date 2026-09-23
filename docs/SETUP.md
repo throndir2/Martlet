@@ -80,7 +80,7 @@ checkpoint remains the restart recovery boundary.
 
 ## Consent and schema
 
-`AppSettings` accepts strict schemas v1-v4. Profile schema stays v1.
+`AppSettings` accepts strict schemas v1-v5. Profile schema stays v1.
 v3 adds companion personas/styles; v4 adds separately consented OFF-by-default
 local-memory enable/path policy, not facts. v2 adds versioned `SetupSettings`: a bounded
 checkpoint, up to three `SetupRoute` values and at most sixteen pending owned
@@ -89,7 +89,7 @@ invalid states, newer versions, malformed encodings and oversize files are
 rejected without rewriting their original bytes.
 
 `SetupSettings.Begin` only prepares an in-memory edit at the current schema.
-Explicit migration from v1-v3 preserves the original bytes; a v1 save
+Explicit migration from v1-v4 preserves the original bytes; a v1 save
 uses `File.Replace` to commit and snapshot the exact original as
 `settings.v1.<opaque-id>.bak` in the same directory. `SettingsSaveResult`
 explicitly reports `MigratedFromVersion1` and `SnapshotFileName`. Existing
@@ -111,6 +111,42 @@ SHA-256 optimistic revisions, one cooperating-writer lock, flushed temporary
 files and atomic replacement. Stale saves require reload/review. A normal save
 cannot silently drop an active credential or a pending cleanup marker.
 No app-data directory/file is created by launch or first-run load.
+
+### Schema 5 self-host client foundation (layer 1)
+
+Schema 5 uses setup schema 2 with explicit `OpenAi`, `GatewayOllama`,
+`GatewayF5`, and `LocalWhisper` role discriminators. Migrating ordinary API
+settings preserves their role/model/voice/credential choices and does not select
+self-host routes. Endpoint, model, package and reference snapshots are passive
+configuration, not runtime qualification. The current Desktop still offers
+Fixture/OpenAI setup only and refuses self-host dispatch. Actual accessible
+self-host Setup, typed/PTT/optional-TTS routing and the expanded published
+dependency graph are a **mandatory separate layer 2**, not completed by this
+foundation.
+
+Gateway bindings use exact HTTPS IP origin, host ID, SPKI pin, device identity,
+voice role, route type and a fresh opaque credential reference. The Windows
+namespace is `Martlet/v3/<profile>/gateway/<route-type>/<scope-sha256>/<reference>`;
+OpenAI targets remain unchanged. No origin/key forwarding, discovery,
+trust-on-first-use, vault reads or requests occur on load/save.
+
+Paired devices are permanent: no expiry timer or reboot-triggered re-pairing.
+This client binding is distinct from the server's durable device authority and
+from per-action data/cost/resource permission. Server revocation or actual key
+loss needs deliberate repair; an ordinary connection failure does not delete
+the saved association.
+
+Recovery never adopts snapshot active/retained credential references. It uses
+only the current destination's exact owned bindings, clears route enablement,
+action/destination consent, probe/package/reference evidence, and preserves
+matching current references. Mismatches remain in bounded
+`RetainedGatewayCredentials`, separate from pending deletion. A retained pairing
+can be explicitly reconnected to its exact destination using the settings
+writer; that action remains offline and requires fresh probe/action approval
+before inference. Explicit detachment moves only the selected binding into
+scoped cleanup. Active, retained, legacy and pending IDs cannot overlap.
+Capacity overflow is an explicit refusal, never silent eviction. Neither
+restoration nor client cleanup changes server device authority.
 
 ## Real vault boundary and explicit transactions
 
@@ -171,7 +207,7 @@ envelope, not a ZIP/support bundle. Its deterministic manifest records
 `Martlet.Configuration`, producer assembly version, minimum reader format,
 settings schema, source profile UUID, snapshot UUID, UTC creation time and
 source SHA-256. `settings_bytes` is base64 of the **exact** <=128 KiB validated
-v1-v4 settings file (base64 is not encryption). Envelope SHA-256 covers the
+v1-v5 settings file (base64 is not encryption). Envelope SHA-256 covers the
 canonical serialized manifest, including the payload; source SHA-256 covers
 the original bytes. A fixed manifest serializes deterministically, but new
 snapshots intentionally have new identifiers/times. Integrity detects damage,
@@ -190,7 +226,7 @@ downloaded model to back up. Memory settings are included, but the separately
 owned fact store and its exports are never included. Secrets, transient text/audio, environment,
 arbitrary files and diagnostic logs are excluded.
 
-Restore requires an **existing valid same-profile** v1-v4 destination. Memory is
+Restore requires an **existing valid same-profile** v1-v5 destination. Memory is
 always forced OFF with a fresh revision: v4 sources retain their path policy,
 older sources preserve the current path policy, and no fact store is opened.
 Missing,
@@ -208,8 +244,10 @@ preserves the current v3 personas rather than inventing or erasing settings it
 could not have contained. Imported route/model/voice and audio choices remain useful **inert preferences**:
 fresh configuration revisions, cleared destination `Consent`/`CredentialId`
 and audio `Checkpoint`, and setup returns to Destinations. CURRENT legacy
-references and pending removals are preserved; current active owned keys become
-pending removals. Imported legacy/active/pending IDs never become live authority.
+references and pending removals are preserved; current active OpenAI keys become
+pending removals. Current gateway bindings are preserved separately as described
+above, not queued for deletion. Imported legacy/active/retained/pending IDs never
+become live authority.
 If detaching current keys would exceed sixteen pending removals, preview refuses
 with an explicit Setup cleanup remedy; it never drops a reference or deletes a
 key to make space. Subsequent native removal still requires Setup's exact
@@ -399,3 +437,38 @@ novice/accessibility witness sessions, clean Windows/installer lifecycle,
 signing and G2. No OS-vault roundtrip, live provider/key/model request, cost or
 voice-quality test was run. Passing a controlled PCM meter test is not physical
 device qualification or learned VAD evidence.
+
+## Voice Library: local preparation (VS01)
+
+From the main window, open **Voice Library**. Choose any of the five engines
+to inspect its reference requirements, training availability and license
+caveats. No models or files are loaded merely by opening or changing engines.
+This does not replace the existing API setup described above.
+
+Use **Browse for WAV**, enter a name and matching reviewed transcript, choose
+reference or training-material purpose, select speaker rights and explicitly
+confirm local storage. **Import local copy** preserves the source and saves
+an immutable versioned bundle under `voice-library` in the app data directory.
+Accepted input is non-silent mono PCM16 WAV at 16/22.05/24/44.1/48 kHz, up to
+64 MiB: references are 1-30 seconds, training material 1-600 seconds. A format
+check does not establish speech, single-speaker content or voice quality.
+No decoder/model download, conversion, cropping or transcription is automatic.
+
+**Load / reload saved assets** explicitly reads and verifies local copies.
+Selecting a saved asset and another engine shows preparation guidance without
+changing either the asset or the active conversation. **Remove selected
+imported copy** requires confirmation and preserves the original file.
+Files are not encrypted by Martlet, not included in settings backup/support
+export, and are bounded to 64 assets / 512 MiB. Keep any desired originals.
+An interrupted `.pending` file blocks further imports/listing with a visible
+repair message; preserve saved `.voice` files and remove only the identified
+staging data after confirming no import is running.
+
+Close/Cancel requests cancellation without releasing the shared app worker
+early. Other setup/audio/conversation effects cannot overlap this IO.
+Normal app Exit also waits for outstanding voice IO/cleanup; after the
+operation finishes, Exit again. A crash or forced process termination can
+still leave staging data, handled as an explicit recovery condition.
+**Installation, worker upload, reference preprocessing, training, A/B speech
+previews and applying a self-hosted voice are not implemented by VS01.**
+See [VS02-VS06](VOICE_STUDIO.md#delivery-slices-and-acceptance).

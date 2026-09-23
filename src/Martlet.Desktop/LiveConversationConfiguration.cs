@@ -65,6 +65,8 @@ internal sealed class LiveConversationConfiguration
             if (role == SetupRole.Stt && !microphone || role == SetupRole.Tts && !voice) continue;
             var route = Routes.SingleOrDefault(r => r.Role == role);
             if (route is null) return $"{role}: missing route. Open Setup / resume.";
+            if (route.RouteType is not (null or SetupRouteType.OpenAi) || route.Enabled == false)
+                return $"{role}: this Desktop build supports enabled OpenAI routes only; the saved self-host choice is retained, not dispatched.";
             if (route.Consent != route.Selection()) return $"{role}: destination choice missing or changed. Review it in Setup.";
             if (route.CredentialId is null) return $"{role}: missing credential reference. Store a key explicitly in Setup.";
             var supported = role switch

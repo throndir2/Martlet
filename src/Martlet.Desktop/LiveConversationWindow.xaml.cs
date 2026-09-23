@@ -13,6 +13,8 @@ public partial class LiveConversationWindow : Window
 {
     internal Action<Window>? Troubleshooting { get; init; }
     internal Action<Window>? ConfigurationRecovery { get; init; }
+    internal Action<Window>? Avatar { get; init; }
+    private void Avatar_Click(object sender, RoutedEventArgs e) => Avatar?.Invoke(this);
     internal SupportController? Support { get; init; }
     private readonly LiveSupportProjection supportProjection = new();
     private void Troubleshooting_Click(object sender, RoutedEventArgs e) => Troubleshooting?.Invoke(this);

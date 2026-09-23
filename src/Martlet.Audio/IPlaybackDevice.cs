@@ -18,3 +18,13 @@ public interface IPlaybackDevice : IDisposable
     void Start(CancellationToken cancellationToken);
     void StopAndReset();
 }
+
+public enum PlaybackClockOrigin { NativeDevice, ControlledTest }
+
+public sealed record DeviceClockReading(ulong Position, ulong Frequency, PlaybackClockOrigin Origin);
+
+// Optional observation only. A failed clock must not terminate otherwise healthy voice playback.
+public interface IPlaybackClockDevice
+{
+    DeviceClockReading? ReadClock(CancellationToken cancellationToken);
+}

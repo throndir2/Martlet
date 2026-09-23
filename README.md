@@ -30,8 +30,19 @@ planned API-backed route. API use may cost money and sends the selected data
 to the selected provider; a separate fixture demo will not perform AI inference.
 
 Later milestones cover Ubuntu self-hosting, two-host GPU deployments, opt-in
-screen understanding and memory, and optional user-supplied avatars. Reliable
-voice and installation take priority over avatars.
+screen understanding and memory. [Live2D and VRM avatar development](docs/AVATARS.md)
+is authorized in parallel now, with Audio2Face first/preferred and avatars OFF
+by default. Standalone compatibility, analyzer and renderer implementations
+now exist; the normal Desktop route is still under development, not a working
+end-user avatar feature. Voice reliability and release qualification remain
+separate requirements.
+
+**Voice Library (local preparation)** now offers all five self-hosted research
+targets (F5-TTS, Qwen3-TTS, Chatterbox, GPT-SoVITS, XTTS-v2), explicit private
+WAV/transcript import for reference or training material, persistent
+inspection/removal and engine-specific guidance. It does not install models,
+upload audio, train, synthesize, preview speech or change the conversation
+voice. Those stages follow the [Voice Studio plan](docs/VOICE_STUDIO.md).
 
 The [planned installation flow](docs/INSTALLATION_SUPPORT.md#feature-first-multi-machine-setup)
 coordinates optional features and mixed API/self-hosted roles across machines.
@@ -49,15 +60,19 @@ There is no remote memory, embedding, vector database or automatic backup.
 
 | Document | Purpose |
 | --- | --- |
+| [Coding-agent instructions](AGENTS.md) | Task branches, autonomous local engineering loop, independent review, and normal merge into `main`; explicit holds and safety boundaries remain binding |
 | [Development plan](DEVELOPMENT_PLAN.md) | Scope, proposed decisions, priorities, risks, and reading order |
 | [Companion requirements](docs/COMPANION_REQUIREMENTS.md) | Planned persona editing, F5 reference voices, LLM/VLM selection, listen-first behavior, speech interruption and response-style controls; not current features |
+| [Avatar guide and compatibility](docs/AVATARS.md) | Accepted Live2D/VRM direction, Audio2Face-first analysis, per-model mappings, working/degraded/blocked permutations, parallel plan and remaining qualification |
 | [Architecture and provider contracts](docs/ARCHITECTURE.md) | Components, trust boundaries, conversation policy, streaming, and failure behavior |
 | [Installation and support design](docs/INSTALLATION_SUPPORT.md) | First run, host setup, lifecycle, doctor, and troubleshooting matrix |
 | [Delivery and release plan](docs/DELIVERY.md) | PR-sized backlog, dependencies, acceptance criteria, release gates, and traceability |
 | [Research and provenance](docs/RESEARCH.md) | Dated primary sources, verified constraints, and unresolved integration questions |
+| [Local MCP control](docs/MCP.md) | Stdio tools for headless diagnostics/fixtures and interactive desktop UI Automation |
 | [Implemented foundation and decisions](docs/FOUNDATION.md) | Accepted/deferred decisions, exact APIs/bounds, current behavior and next ownership |
 | [Resumable setup and local audio](docs/SETUP.md) | V02a configuration/vault actions and V02b explicit local device tests, historical checkpoints, strict migration and remaining live gates |
 | [Explicit API conversation](docs/CONVERSATION.md) | V04b typed/PTT path, exact supported models and bounds, fresh authorization, Stop/cleanup, troubleshooting and separately authorized live-trial checklist |
+| [Voice Studio research and setup](docs/VOICE_STUDIO.md) | Five-engine implementation research, guided setup, audio imports, A/B previews, training and staged acceptance |
 | [Consented local memory](docs/MEMORY.md) | OFF-by-default P03a/P03b/P03c Desktop fact management, per-turn retrieval, privacy/deletion/export and remaining qualification gates |
 
 The broader plan documents remain future specifications except for the current
@@ -110,12 +125,18 @@ substitute fixtures or install a VM, WSL, Docker, drivers or services.
 
 For **development**, use Windows with .NET SDK **10.0.401** (the exact .NET 10
 LTS SDK in `global.json`). PowerShell 7 is needed only for the smoke scripts.
-Initial NuGet restore needs internet; no provider keys, microphone, GPU, Docker,
-Python, Node, administrator rights or model downloads are needed.
+Desktop/solution builds also require Node.js and npm to build the real bundled
+avatar shell (locally exercised with Node **20.11.1**, npm **10.2.4** and locked
+esbuild **0.25.12**). Initial NuGet/npm restores need internet; no provider keys,
+microphone, GPU, Docker, Python, administrator rights or model downloads are
+needed for building. End users need no Node/npm/dev server: the shell is bundled.
+Actual avatar activation has separate user-owned runtime/model prerequisites;
+see the [Desktop avatar guide](src/Martlet.Avatar.Hosting/README.md).
 
 ```powershell
+npm ci --prefix src\Martlet.Avatar.Vrm --no-audit --no-fund
 dotnet restore Martlet.slnx --locked-mode
-dotnet build Martlet.slnx --no-restore -c Release
+dotnet build Martlet.slnx --no-restore -c Release "-p:NodeExecutable=$((Get-Command node).Source)"
 dotnet test Martlet.slnx --no-build -c Release
 .\scripts\Smoke-Doctor.ps1
 .\scripts\Smoke-Desktop.ps1
@@ -125,6 +146,13 @@ The desktop smoke needs an interactive Windows desktop and exits the app after
 reading its accessible status. Both smoke scripts use unique temporary data
 paths, never the real user profile.
 
+`NodeExecutable` defaults to `node`; the explicit property also works when a
+long inherited Windows PATH is truncated by nested command execution. It does
+not modify machine settings or skip the browser build. Explicit RID restores
+use project-local generated `obj\runtime-locks` documents, not ordinary source
+locks. Those development locks are not release reproducibility evidence;
+reviewed packaging supplies separate authoritative committed lock paths.
+
 Launch with an explicit disposable data location while developing:
 
 ```powershell
@@ -133,6 +161,32 @@ dotnet run --project src\Martlet.Desktop --no-build -c Release -- --data-directo
 dotnet run --project src\Martlet.Doctor -f net10.0-windows --no-build -c Release -- status --json --data-directory $data
 dotnet run --project src\Martlet.Doctor -f net10.0-windows --no-build -c Release -- self-test --scenario streaming --json --data-directory $data
 ```
+
+### Appearance
+
+The desktop's **Your palette** selector switches between **Pink light** (blush,
+cream and berry) and **Rose dark** (deep plum and soft rose). Rounded controls,
+matching form fields and the companion home screen share the palette across
+conversation, setup, companion, memory, audio, troubleshooting and recovery windows. Windows high
+contrast overrides the decorative colors; native Windows confirmation and file
+dialogs retain their system appearance.
+
+Pink light is the first-launch default. Changing the selector saves only
+`appearance.txt` in the selected data directory, separately from profile settings,
+credentials and consent. It is not part of configuration backup/restore. Launch
+reads this preference without creating files; inaccessible or malformed preferences
+are reported on the home screen. An unsavable choice still applies for the current
+session. Appearance changes never start a conversation, network or audio action.
+
+The original **Martlet bird** icon matches both palettes: a cream bird with rosy
+cheeks and a berry heart on a pink badge. It is embedded in the desktop executable,
+window/taskbar icons and internal installer; the Start menu shortcut uses the
+desktop executable's icon. `src\Martlet.Desktop\Assets\Martlet.svg` is the editable,
+favicon-ready vector source, alongside a transparent 256 px PNG and a multi-size
+ICO (16, 20, 24, 32, 40, 48, 64, 128 and 256 px). There is no web frontend to wire
+a browser favicon into. Regenerate the PNG/ICO locally after artwork changes with
+`.\scripts\Generate-AppIcon.ps1` on Windows with PowerShell 7; no downloads or
+third-party image tooling are needed.
 
 Doctor `status` currently exits **2 (incomplete)** on first run or a valid
 unconfigured profile, not success. Exit 3 means invalid invocation/settings;

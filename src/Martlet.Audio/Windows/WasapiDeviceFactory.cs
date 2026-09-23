@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Diagnostics;
 using Martlet.Core.Audio;
 using Martlet.Core.Contracts;
 using NAudio.CoreAudioApi;
@@ -67,13 +68,28 @@ public sealed class WasapiDeviceFactory : IPlaybackDeviceFactory
             : ex.HResult == AudioClientErrorCode.DeviceInvalidated ? ErrorCode.AudioDeviceLost
             : opening ? ErrorCode.AudioDeviceUnavailable : ErrorCode.AudioPlaybackFailed);
 
-    private sealed class WasapiDevice : IPlaybackDevice
+    private sealed class WasapiDevice : IPlaybackDevice, IPlaybackClockDevice
     {
         private readonly MMDevice endpoint;
         private readonly AudioClient client;
         private readonly AudioRenderClient render;
         private readonly int alignment;
         public PlaybackDeviceInfo Info { get; }
+
+        public DeviceClockReading? ReadClock(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var clock = client.AudioClockClient;
+            var before = Stopwatch.GetTimestamp();
+            if (!clock.GetPosition(out var position, out var qpc)) return null;
+            var after = Stopwatch.GetTimestamp();
+            var now = (UInt128)(ulong)after * 10_000_000 / (ulong)Stopwatch.Frequency;
+            // NAudio's Boolean alone does not distinguish every native inaccurate-result status.
+            if (Stopwatch.GetElapsedTime(before, after) > TimeSpan.FromMilliseconds(10) ||
+                qpc > now || now - qpc > 1_000_000)
+                return null;
+            return new(position, clock.Frequency, PlaybackClockOrigin.NativeDevice);
+        }
 
         internal WasapiDevice(MMDevice endpoint, AudioClient client, int alignment, PlaybackDeviceInfo info)
         {

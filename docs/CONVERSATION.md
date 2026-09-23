@@ -8,6 +8,16 @@ enumerates devices, records, plays, discovers a model or makes an API request.
 Ordinary Doctor/status remains read-only; `self-test` is still a fixture command,
 not a live connection test.
 
+An optional **Avatar setup / STOP avatar** entry is available within the live
+window and from the main window. Its [feature guide](../src/Martlet.Avatar.Hosting/README.md)
+describes separately permitted local renderer inspection and generated-speech
+analysis. Opening it is passive; activation is never inherited from conversation
+permission or persisted. Only accepted generated TTS PCM is observed, never mic
+capture or token arrival. Avatar backpressure, missing actual device clock,
+renderer failure and Audio2Face unavailability do not delay or fail voice.
+Only explicit A2F mouth/expression mapping is currently wired; alternatives and
+other aspects require explicit omission, not automatic fallback.
+
 ## First configured action
 
 1. In **Setup / resume**, choose the named OpenAI API profile. Apply explicit
@@ -149,7 +159,7 @@ factory. Closing the main window exits the app, not a background tray listener.
 This is not a measured 250 ms physical-stop guarantee.
 
 The fixed **Stop / revoke (Esc)** control also clears accepted but unused
-action/capture/upload permissions. Escape works from the typed input, response
+action/memory/capture/upload permissions. Escape works from the typed input, response
 fields and held PTT control. Releasing Space after Escape cannot send that
 discarded recording or rearm PTT. Stop during settings loading or a slow worker
 requests cancellation without releasing the shared ownership slot early.

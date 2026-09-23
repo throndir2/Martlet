@@ -367,7 +367,7 @@ public sealed class StagingTests(SigningKeys keys) : IClassFixture<SigningKeys>
             case "version": payload = payload with { ApplicationVersion = "7.0.0.0" }; break;
             case "channel": payload = payload with { Channel = "TRUSTED RELEASE" }; break;
             case "inventory": payload = payload with { Files = [] }; break;
-            case "schema": payload = payload with { SchemaVersion = 3 }; break;
+            case "schema": payload = payload with { SchemaVersion = 4 }; break;
             case "sums": f.Files["SHA256SUMS.txt"] = "wrong checksums"u8.ToArray(); break;
         }
         f.Files["manifest.json"] = Wire.Write(payload);

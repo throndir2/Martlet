@@ -13,7 +13,13 @@ public sealed class CompanionSettingsTests : IDisposable
     public async Task VersionTwoMigratesAtomicallyAndPreservesExistingConfiguration()
     {
         var versionThree = SetupSettings.SelectRoute(SetupSettings.Begin(null), SetupRole.Llm, "model-1", null);
-        var versionTwo = versionThree with { SchemaVersion = 2, Companion = null, Memory = null };
+        var versionTwo = versionThree with
+        {
+            SchemaVersion = 2,
+            Setup = versionThree.Setup!.DowngradeOpenAiForHistoricalSettings(),
+            Companion = null,
+            Memory = null
+        };
         versionTwo.Validate();
         var saved = await Store.SaveAsync(versionTwo, null);
         var original = await File.ReadAllBytesAsync(Store.FilePath);
@@ -25,7 +31,9 @@ public sealed class CompanionSettingsTests : IDisposable
         Assert.Equal(versionTwo.Profile.Kind, draft.Profile.Kind);
         Assert.Equal(versionTwo.Profile.Credentials, draft.Profile.Credentials);
         Assert.Equal(versionTwo.Setup!.Checkpoint, draft.Setup!.Checkpoint);
-        Assert.Equal(versionTwo.Setup.Routes, draft.Setup.Routes);
+        Assert.Equal(versionTwo.Setup.Routes.Select(route => route.ModelId),
+            draft.Setup.Routes.Select(route => route.ModelId));
+        Assert.All(draft.Setup.Routes, route => Assert.Equal(SetupRouteType.OpenAi, route.RouteType));
         Assert.Equal(versionTwo.Setup.PendingRemovals, draft.Setup.PendingRemovals);
         Assert.Equal("Martlet", draft.Companion!.ActivePersona.Name);
         Assert.Equal(ResponseStyleWeights.HelpfulOnly(), draft.Companion.ActivePersona.Styles);
@@ -248,7 +256,13 @@ public sealed class CompanionSettingsTests : IDisposable
         Assert.Equal("Original persona", (await Store.LoadAsync()).Settings!.Companion!.ActivePersona.Text);
 
         var v3 = (await Store.LoadAsync()).Settings!;
-        var versionTwo = v3 with { SchemaVersion = 2, Companion = null, Memory = null };
+        var versionTwo = v3 with
+        {
+            SchemaVersion = 2,
+            Setup = v3.Setup!.DowngradeOpenAiForHistoricalSettings(),
+            Companion = null,
+            Memory = null
+        };
         var versionTwoBytes = ContractJson.Write(versionTwo);
         var versionTwoBackup = Path.Combine(directory, "v2.martlet-config");
         await File.WriteAllBytesAsync(versionTwoBackup, ConfigurationSnapshot.Create(versionTwoBytes));

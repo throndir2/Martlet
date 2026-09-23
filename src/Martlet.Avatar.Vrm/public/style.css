@@ -1,0 +1,10 @@
+:root { font-family: system-ui, sans-serif; color: #ecedf4; background: #181c27; }
+main { max-width: 960px; margin: 1.5rem auto; padding: 0 1rem; }
+label { display: block; margin: .7rem 0; }
+button, select, input { font: inherit; }
+button { margin: .5rem .5rem .5rem 0; padding: .5rem; }
+fieldset { margin: 1rem 0; border: 1px solid #7e88a4; }
+canvas { width: min(100%, 640px); height: auto; background: #30384b; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .85rem; }
+#status { min-height: 1.5rem; color: #ffda87; }
+:focus-visible { outline: 3px solid #b2d5ff; outline-offset: 3px; }

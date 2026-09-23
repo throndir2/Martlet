@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <InternalsVisibleTo Include="Martlet.F5.Tests" />
+    <ProjectReference Include="..\Martlet.Core\Martlet.Core.csproj" />
   </ItemGroup>
 </Project>

@@ -1,5 +1,7 @@
 using System.Windows;
 using System.ComponentModel;
+using System.IO;
+using System.Windows.Controls;
 using System.Windows.Threading;
 using Martlet.Core.Settings;
 using Martlet.Diagnostics;
@@ -7,6 +9,8 @@ using Martlet.Audio;
 using Martlet.Audio.Windows;
 using Martlet.Sessions;
 using Martlet.Credentials.Windows;
+using Martlet.Avatar.Hosting;
+using Martlet.Core.Voices;
 
 namespace Martlet.Desktop;
 
@@ -22,6 +26,7 @@ public partial class MainWindow : Window
     private readonly ConfigurationRecoveryController? recovery;
     private readonly AudioSetupService audioSetup;
     private readonly LiveConversationController? conversation;
+    private readonly AvatarController avatar = new();
     private readonly WindowsAudioSessionEvents audioSessionEvents = new();
     private readonly string? startupError;
     private readonly DiagnosticStatusModel? model;
@@ -36,6 +41,7 @@ public partial class MainWindow : Window
     private bool closing;
     private bool mayClose;
     private SetupOperation? fixtureOperation;
+    private SetupOperation? voiceOperation;
     private readonly TaskCompletionSource fixtureQuarantine = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public MainWindow(SettingsStore? store, string? startupError) : this(store, startupError, new(store?.DataDirectory)) { }
@@ -44,6 +50,9 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         this.store = store;
+        ThemeChoice.SelectedIndex = Application.Current is App { SelectedTheme: PinkTheme.Dark } ? 1 : 0;
+        AppearanceStatus.Text = (Application.Current as App)?.AppearanceNotice
+            ?? "Pink light / rose dark. Your choice is saved locally; Windows high contrast takes priority.";
         this.support = support;
         audioSetup = new(setupOperations, new WindowsAudioDeviceCatalog(), new WasapiCaptureDeviceFactory(), new WasapiDeviceFactory());
         audioSessionEvents.LockedChanged += audioSetup.SetSessionLocked;
@@ -54,10 +63,11 @@ public partial class MainWindow : Window
         recovery = store is null ? null : new(store, setupOperations, () => !support.HasResources);
         if (setupService is not null)
         {
-            conversation = new(setupOperations, setupService, vault, new WasapiCaptureDeviceFactory(),
-                new WasapiDeviceFactory(), memory: memory);
+            conversation = new(setupOperations, setupService, vault, new WasapiCaptureDeviceFactory(), new WasapiDeviceFactory(),
+                memory: memory, generatedSpeech: avatar.Observer, revokeAvatar: avatar.Revoke);
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
         }
+        audioSessionEvents.LockedChanged += AvatarSessionLocked;
         this.startupError = startupError;
         ScenarioChoice.ItemsSource = FixtureSession.Scenarios;
         ScenarioChoice.SelectedIndex = 0;
@@ -79,7 +89,28 @@ public partial class MainWindow : Window
             PipelineText.Text = "Mic / VAD / STT / Policy / LLM / TTS / Playback: unavailable; not run. Correct the launch data directory first.";
             DemoButton.IsEnabled = ToneButton.IsEnabled = ScenarioChoice.IsEnabled =
                 SetupButton.IsEnabled = AudioSetupButton.IsEnabled = CompanionButton.IsEnabled =
-                MemoryButton.IsEnabled = ConversationButton.IsEnabled = false;
+                MemoryButton.IsEnabled = ConversationButton.IsEnabled = VoiceLibraryButton.IsEnabled = false;
+        }
+    }
+
+    private void Theme_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (!IsLoaded || Application.Current is not App app) return;
+        var theme = ThemeChoice.SelectedIndex == 1 ? PinkTheme.Dark : PinkTheme.Light;
+        app.ApplyTheme(theme);
+        if (store is null)
+        {
+            AppearanceStatus.Text = "Theme applied for this session only. Correct the launch data directory to save your preference.";
+            return;
+        }
+        try
+        {
+            Appearance.Save(store.DataDirectory, theme);
+            AppearanceStatus.Text = $"{(theme == PinkTheme.Dark ? "Rose dark" : "Pink light")} saved locally. Windows high contrast takes priority.";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AppearanceStatus.Text = "Theme applied for this session, but appearance.txt could not be saved. Check access to your data directory and choose again. Profile settings were not changed.";
         }
     }
 
@@ -118,6 +149,7 @@ public partial class MainWindow : Window
         CompanionButton.IsEnabled = SetupButton.IsEnabled;
         MemoryButton.IsEnabled = SetupButton.IsEnabled;
         ConversationButton.IsEnabled = SetupButton.IsEnabled;
+        VoiceLibraryButton.IsEnabled = SetupButton.IsEnabled;
         RefreshButton.IsEnabled = !saving && !runningFixture && model.CanRefresh;
         StopButton.IsEnabled = !saving && model.IsRunning;
         DemoButton.IsEnabled = ToneButton.IsEnabled = !saving && !runningFixture && !model.IsRunning && !setupOperations.IsRunning;
@@ -236,6 +268,7 @@ public partial class MainWindow : Window
     private async void Setup_Click(object sender, RoutedEventArgs e)
     {
         if (store is null || closing || saving || runningFixture || model?.IsRunning == true) return;
+        if (!await StopAvatarSafelyAsync()) return;
         new SetupWindow(setupService!, setupOperations) { Owner = this, Troubleshooting = OpenTroubleshooting, ConfigurationRecovery = OpenRecovery }.ShowDialog();
         await RefreshAsync();
     }
@@ -267,11 +300,44 @@ public partial class MainWindow : Window
     {
         if (conversation is null || closing || saving || runningFixture || model?.IsRunning == true) return;
         new LiveConversationWindow(setupService!, setupOperations, conversation, audioSessionEvents, audioSetup)
-            { Owner = this, Troubleshooting = OpenTroubleshooting, Support = support, ConfigurationRecovery = OpenRecovery }.ShowDialog();
+            { Owner = this, Troubleshooting = OpenTroubleshooting, Support = support, ConfigurationRecovery = OpenRecovery,
+                Avatar = OpenAvatar }.ShowDialog();
         await RefreshAsync();
     }
 
+    private void VoiceLibrary_Click(object sender, RoutedEventArgs e)
+    {
+        if (store is null || closing || saving || runningFixture || model?.IsRunning == true) return;
+        new VoiceLibraryWindow(new VoiceLibrary(System.IO.Path.Combine(store.DataDirectory, "voice-library")), setupOperations)
+            { Owner = this, OperationStarted = ObserveVoiceOperation }.ShowDialog();
+    }
+
+    internal void ObserveVoiceOperation(SetupOperation operation) => voiceOperation = operation;
+
     private void Troubleshooting_Click(object sender, RoutedEventArgs e) => OpenTroubleshooting(this);
+    private void Avatar_Click(object sender, RoutedEventArgs e) => OpenAvatar(this);
+    private void OpenAvatar(Window owner)
+    {
+        if (store is null || setupService is null || closing) return;
+        new AvatarWindow(avatar, new AvatarProfileStore(store.DataDirectory), setupService, setupOperations)
+            { Owner = owner }.ShowDialog();
+    }
+    private async void AvatarSessionLocked(bool locked)
+    {
+        if (!locked) return;
+        avatar.Revoke();
+        await Dispatcher.InvokeAsync(StopAvatarSafelyAsync).Task.Unwrap();
+    }
+    private async Task<bool> StopAvatarSafelyAsync()
+    {
+        try { await avatar.StopAsync(); return true; }
+        catch (Exception error) when (error is System.IO.IOException or InvalidOperationException or TimeoutException or
+            System.ComponentModel.Win32Exception or UnauthorizedAccessException)
+        {
+            ActionText.Text = "Avatar cleanup is incomplete. Voice is unaffected; retry STOP avatar before changing its resources.";
+            return false;
+        }
+    }
     private async void Recovery_Click(object sender, RoutedEventArgs e)
     {
         OpenRecovery(this);
@@ -280,6 +346,7 @@ public partial class MainWindow : Window
     private void OpenRecovery(Window owner)
     {
         if (recovery is null || closing || saving) return;
+        avatar.Revoke();
         new ConfigurationRecoveryWindow(recovery) { Owner = owner }.ShowDialog();
     }
     private void OpenTroubleshooting(Window owner)
@@ -304,6 +371,12 @@ public partial class MainWindow : Window
         e.Cancel = true;
         if (closing)
             return;
+        if (voiceOperation is { Completion.IsCompleted: false } pendingVoice)
+        {
+            pendingVoice.RequestCancellation();
+            ActionText.Text = "Exit is waiting for Voice Library IO and owned staging cleanup. Keep Martlet open, then Exit again after the local operation finishes.";
+            return;
+        }
         if (recovery?.HasResources == true)
         {
             recovery.StopObserving();
@@ -320,6 +393,7 @@ public partial class MainWindow : Window
         ageTimer.Stop();
         fixtureTimer.Stop();
         audioSessionEvents.LockedChanged -= audioSetup.SetSessionLocked;
+        audioSessionEvents.LockedChanged -= AvatarSessionLocked;
         if (conversation is not null) audioSessionEvents.LockedChanged -= conversation.SetSessionLocked;
         audioSessionEvents.Dispose();
         lifetime.Cancel();
@@ -330,6 +404,13 @@ public partial class MainWindow : Window
             await model.CloseAsync();
         await Task.Run(async () => await fixture.DisposeAsync());
         if (conversation is not null) await Task.Run(async () => await conversation.DisposeAsync());
+        if (!await StopAvatarSafelyAsync())
+        {
+            closing = false;
+            IsEnabled = true;
+            return;
+        }
+        await avatar.DisposeAsync();
         memory?.Dispose();
         // WPF OnMainWindowClose exits the process, including any non-cooperative in-process callback.
         // Even absent or synchronous cleanup must leave WPF's original Closing event before closing again.
