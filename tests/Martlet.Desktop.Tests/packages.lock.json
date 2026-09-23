@@ -2,6 +2,15 @@
   "version": 2,
   "dependencies": {
     "net10.0-windows7.0": {
+      "Grpc.AspNetCore.Server": {
+        "type": "Direct",
+        "requested": "[2.84.0, )",
+        "resolved": "2.84.0",
+        "contentHash": "RXUkMjU+Hu5tvf5EXNoJlKX+ADvR2HERkNRznMFpsQQiHFsaQ+OYyhgomuLxAaiNuPUmCUGPxyiCdqq//lrQdg==",
+        "dependencies": {
+          "Grpc.Net.Common": "2.84.0"
+        }
+      },
       "Microsoft.NET.Test.Sdk": {
         "type": "Direct",
         "requested": "[18.10.0, )",
@@ -28,6 +37,19 @@
         "requested": "[3.1.5, )",
         "resolved": "3.1.5",
         "contentHash": "tKi7dSTwP4m5m9eXPM2Ime4Kn7xNf4x4zT9sdLO/G4hZVnQCRiMTWoSZqI/pYTVeI27oPPqHBKYI/DjJ9GsYgA=="
+      },
+      "Grpc.Core.Api": {
+        "type": "Transitive",
+        "resolved": "2.84.0",
+        "contentHash": "p2SOMl6q/GZ4/5MLkgboC/z55g4zKUEruRn/g46QgppjQBVnsLZVBU/9VO7n60ll38G3Eo8Zu9b7x+W01GKFVg=="
+      },
+      "Grpc.Net.Common": {
+        "type": "Transitive",
+        "resolved": "2.84.0",
+        "contentHash": "DPxm/H8G/lDRrz997wM0M2zN/PGqVeZKDakhBbtABEbv6WIW4HI9g3BvntBQT6ZUROuGacMzfyyF9e5kiTVFfQ==",
+        "dependencies": {
+          "Grpc.Core.Api": "2.84.0"
+        }
       },
       "Microsoft.CodeCoverage": {
         "type": "Transitive",
@@ -107,6 +129,27 @@
           "NAudio.Wasapi": "[3.1.0, )"
         }
       },
+      "martlet.avatar.audio2face": {
+        "type": "Project",
+        "dependencies": {
+          "Google.Protobuf": "[3.36.2, )",
+          "Grpc.Net.Client": "[2.84.0, )",
+          "Martlet.Avatars": "[0.1.0, )",
+          "Martlet.Core": "[0.1.0, )"
+        }
+      },
+      "martlet.avatar.hosting": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Avatars": "[0.1.0, )"
+        }
+      },
+      "martlet.avatars": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Core": "[0.1.0, )"
+        }
+      },
       "martlet.conversation": {
         "type": "Project",
         "dependencies": {
@@ -128,6 +171,8 @@
         "type": "Project",
         "dependencies": {
           "Martlet.Audio": "[0.1.0, )",
+          "Martlet.Avatar.Audio2Face": "[0.1.0, )",
+          "Martlet.Avatar.Hosting": "[0.1.0, )",
           "Martlet.Conversation": "[0.1.0, )",
           "Martlet.Credentials.Windows": "[0.1.0, )",
           "Martlet.Diagnostics": "[0.1.0, )",
@@ -185,6 +230,21 @@
         "type": "Project",
         "dependencies": {
           "Martlet.Diagnostics": "[0.1.0, )"
+        }
+      },
+      "Google.Protobuf": {
+        "type": "CentralTransitive",
+        "requested": "[3.36.2, )",
+        "resolved": "3.36.2",
+        "contentHash": "Ci1q1iJg74qAE5riTA2FbMS0wPbpruPQI/JQ9DrAsRo2VsSxgt1e/pmxGxgrci+pXJEgrSYg2vPl8rrStZkclQ=="
+      },
+      "Grpc.Net.Client": {
+        "type": "CentralTransitive",
+        "requested": "[2.84.0, )",
+        "resolved": "2.84.0",
+        "contentHash": "My6Fms2YCyAbihTBZZ3kLS39iTY2pkMAzGDBTC6XhPOujg70eB07AEJ7tPiW3tZ70bhFzHcc3+d4j3DaIPF3aA==",
+        "dependencies": {
+          "Grpc.Net.Common": "2.84.0"
         }
       },
       "NAudio.Wasapi": {

@@ -47,6 +47,36 @@ publish/repeat packaging, actual Doctor/Desktop smokes and wrapper failure/
 timeout propagation against synthetic protected data. No source-era receipt,
 fixture worker or successful package import qualifies a real engine.
 
+**Avatar expansion, 2026-09-23:** A01a shared compatibility contracts, A01b
+Audio2Face NIM client with live streaming, A02a Live2D and A02b VRM are
+**implemented modules with an internal normal WPF integration**, not a
+qualified end-user release or passed end-to-end avatar acceptance.
+A02c provides passive main/conversation entry points, profile-bound atomic
+`avatar.json`, explicit local inspection/private WPF-WebView2 host and explicit
+session activation of generated PCM -> A2F -> shared composition -> both
+renderers. Only mouth/expression is enabled in that path; amplitude/other
+analyzers and gaze/head/body/secondary-motion composition are not implemented.
+Configuration is inspected mapping/helper + JSON, not a full graphical autorig
+wizard. Controlled app/protocol/bridge checks and audio-OFF smoke evidence do
+not qualify Core/WebGL/GPU/artist models or actual physical/device sync.
+The corrected opt-in clock/PCM tee never gates voice; invalidation/underrun
+freezes segment animation until a fresh segment. The first contract remains
+facial only; general pose/body and VRMA playback are unsupported. A02d remains
+planned. Local package producer/current-reader integration now supports
+manifest 3 / provenance 2 / CycloneDX 1.6, retaining reader paths for legacy
+manifest 1 and manifest 2 / provenance 1. Actual self-contained payload,
+three-document consumer conformance and repeated package assertions passed
+on specific frozen builds; their receipts do not qualify later source changes.
+Package qualification requires receipts for the exact frozen source revision,
+not an earlier implementation checkpoint. No published
+installer, signed release or native qualification is claimed. See the
+[packaging guide](../packaging/windows/README.md),
+[reader compatibility](../src/Martlet.Updates/README.md#avatar-payload-schema-3),
+[AVATARS](AVATARS.md) and the
+[internal hosting guide](../src/Martlet.Avatar.Hosting/README.md) for
+exact lane choices, supported/degraded/blocked permutations and evidence limits.
+No current ledger entry below is promoted by this development authorization.
+
 **Canonical local-memory reuse:** the memory-only delta of `b80920a` and the
 memory named-argument correction from `68bd6c8` are adapted onto PR #44, not
 copied as old project snapshots. Schema 3 remains companion; schema 4 adds
@@ -337,15 +367,37 @@ task and consent review; it is not implied by P01 screenshot capture.
 
 ### M5: Optional avatar
 
+**Accepted sequencing amendment, 2026-09-23:** Live2D and VRM development starts
+now. Audio2Face is the first/preferred speech-animation implementation, with
+amplitude as a planned explicit baseline and other analyzers as later candidates;
+the current Desktop live path implements only Audio2Face.
+M5 is a qualification milestone, not a prohibition on earlier parallel work.
+This supersedes A01's former G2 prerequisite and A02's blanket release-license
+prerequisite. Voice reliability, local validation and release rights stay intact.
+
 | ID | Deliverable / owner | Depends on | Acceptance | Risk |
 | --- | --- | --- | --- | --- |
-| A01 | Exact SDK/renderer decision, Expandable Application classification, asset import rules / product + avatar | D01, G2 | Recorded distribution permission/terms and user asset rights workflow; no assumption MIT project code licenses Cubism Core or assets | H |
-| A02 | Isolated renderer, safe import, actual-playback lip sync, blinking/breathing/gaze motions / avatar | A01, V04 | AC-17: voice unchanged without renderer; late/canceled audio not animated; malformed/oversized/path-traversal assets rejected | H |
-| A03 | Avatar performance/device/crash/uninstall and licensing release checklist / release | A02, G4 | AC-17/AC-14: bounded idle/FPS, renderer crash/restart and removal cannot erase or stop voice; notices and distribution terms complete | M |
+| A01 | Shared capability/compatibility contracts and Audio2Face-first analysis / avatar contracts + analyzer owners | Existing D02/Core boundaries; no G2 development hold | AC-27/AC-28: exact facial schema, original sample clock, mapping/ownership, compatibility separate from readiness; visible unavailable preferred backend, no silent fallback | H |
+| A02 | Both isolated renderers, bounded import, composition/configuration/playback and later motion / avatar + app integration owner | A01 interfaces; renderer libraries parallel; app integration uses V04 playback and current settings owner | AC-17/AC-27-AC-31: safe actual-playback animation, explicit partial permutations, independent voice and configuration-preserving comparisons | H |
+| A03 | Per-tuple local model/device/GPU/performance and separate release/rights qualification / release + avatar | Integrated advertised A02 subset; relevant voice/lifecycle gates, not unrelated G4 workloads | AC-17/AC-32/AC-14: actual renderer/Stop/load/crash evidence; exact SDK/model/asset rights and notices before distribution | H |
 
-**Exit G5:** avatar remains optional, with measured cost and rights-cleared
-distribution. A01 research may run earlier after voice MVP; no avatar
-implementation takes priority over unpassed voice/self-host gates.
+| Slice | Deliverable and dependency | Current disposition |
+| --- | --- | --- |
+| A01a | Standalone strict facial frames, per-model capability/mapping records, compatibility/readiness and single-owner composer | Implemented, locally integrated/reviewed with controlled checks; no general pose/body payload or arbitrary blends |
+| A01b | Preferred Audio2Face client against official NIM v2 bidirectional gRPC; A01a facial boundary, original PCM clock and bounded stale discard | Implemented/reviewed live bounded nonblocking GeneratedSpeechStream wired to explicit internal Desktop activation, plus separate offline/comparison clip API; HTTP/2 and controlled app evidence, not live NIM/GPU qualification; pre-existing literal-loopback service/runtime/model/access remain external prerequisites, not native MIT SDK embedding |
+| A02a | Live2D importer/mapping/adapter against A01a; host-supplied local Cubism Web Framework 5-r.4 / matching Core 05.01.0000 (`0x05010000`) | Implemented standalone, locally checked/reviewed; unsupported newer features rejected; no Core/assets acquired, full SDK/native parsing/GPU rendering NOT RUN |
+| A02b | VRM importer/facial mapping/renderer against A01a | Implemented standalone, real-loader/control/bundle checks and review corrections cleared; basic expressions optional, detailed ARKit mapping authored; VRMA/body unsupported, actual graphics/artist/device qualification NOT RUN |
+| A02c | Normal WPF host/adapters, opt-in native clock/nonblocking PCM, OFF-by-default configuration, composition/remedies and comparison boundaries | Internal integrated/reviewed setup/activation surface and private host for A2F mouth/expression on both renderers; no other analyzer/aspect runtime or complete comparison UX. Atomic profile-bound avatar.json and local export/restore retain .bak; global backup excludes it. Closing settings preserves explicit activation; Stop/edit/lock/exit revoke, never persisted. Nullable clock is separate from padding; corrected refill invalidation freezes segment animation without voice delay. Local manifest-3/provenance-2 producer/current reader implemented; package evidence must match the exact frozen source revision. Actual sync, wider acceptance and release remain unqualified |
+| A02d | Extend reviewed capabilities/wire as needed for procedural/clip gaze/head/body/secondary motion, including optional VRMA on VRM; explicitly qualified blends only | Planned after shared boundary/app composition; no direct VRMA-on-Live2D claim |
+| A03a | Local exact-model/renderer/clock/Stop/crash/load/comparison qualification for each advertised subset after its integration | NOT RUN; missing native runtime/device/GPU access is a distinct blocker, not a fixture pass |
+| A03b | SDK/Core/framework, NIM/dependencies, model/asset/motion rights, Live2D classification, notices and release approval | Separate unpassed gate; research can run early, distribution only after rights and relevant A03a/voice/lifecycle evidence |
+
+**Exit G5:** both renderer targets and each advertised feature permutation have
+honest capability/mapping and exact runtime/performance evidence; avatar OFF,
+missing/crashed/uninstalled paths preserve voice and settings. Distribution
+requires A03b rights clearance and relevant product release gates. Development
+approval grants no download, terms acceptance, host/GPU execution, paid use,
+remote CI or publication. No-avatar voice delivery is never contingent on G5.
 
 ### Mandatory slices for larger work items
 
@@ -533,7 +585,14 @@ silently delegated to agents without access.
 Independent later scopes: H01 read-only preflight and H03 gateway can start from
 stable D02/F04; H04 owns only its Python worker; H05 owns host lifecycle, not
 provider internals. P03 memory can progress against fixture retrieval independently
-of P02 model work. A01 licensing research can proceed without touching audio.
+of P02 model work. The accepted avatar batch starts A01a/A01b early and
+A02a/A02b in parallel now; A02c follows their reviewed interfaces and extends
+V04 playback with the internally integrated opt-in clock and nonblocking
+streaming analysis handoff. Actual device synchronization, package lifecycle
+and broader composition/comparison acceptance remain unqualified.
+A02d/A03 qualify extended motion and each advertised
+runtime tuple later. Rights research proceeds independently; it does not turn
+unavailable SDK/model/GPU checks into passes or block fixture-only development.
 Never let simultaneous sessions edit one model lock or migration schema.
 
 ## 4. Acceptance cases
@@ -560,7 +619,7 @@ what remains a real-device/manual gate.
 | AC-14: Hardware/load | Witnessed selected GPU/driver/image/model tuples fit and execute under combined roles; bounded OOM/slow/reboot recovery, host-2 loss, game frame time, sustained streaming, and optional admin policies measured on actual hardware |
 | AC-15: Perception | No capture/upload without selected-source/destination consent; lock/close/pause works; output has age/provenance; stale/failed perception excluded; useful labeled-task accuracy and resource budgets recorded |
 | AC-16: Memory | Explicit saved facts retrieved with provenance; inspect/delete/export works; cascaded delete invalidates embeddings/cache/in-flight results; restore compatible snapshot; no surprise cloud upload or backup-erasure claim |
-| AC-17: Avatar | Approved SDK/assets, safe bounded import, lip sync follows played samples, predictable idle/motion budget; disabled/missing/crashed/uninstalled renderer leaves voice and provider setup intact |
+| AC-17: Avatar | Both Live2D and VRM targets, explicit Audio2Face-first enabled preset, approved SDK/assets before distribution, safe bounded import, lip sync follows played samples, predictable supported idle/motion budget; disabled/missing/crashed/uninstalled renderer leaves voice and provider setup intact; detailed acceptance AC-27-AC-32 |
 | AC-18: Topology-aware installation | One plan covers typed-only, API-only, one multi-role Ubuntu host, Windows client+host, mixed cloud/local roles and split hosts. Each selected experience requires only its dependencies; zero downloads/keys/probes for disabled roles. Failed optional context leaves voice/text usable with disclosure. Per-machine Back/Save/resume survives interruption; remote handoff contains no secrets/admin authority; external services are never silently adopted. Removing one role preserves shared dependencies/data. Ubuntu Desktop GUI and Server CLI operate the same journal/engine with accessible remedies. |
 | AC-19: Fast honest readiness | Check acknowledgement within 1 s; cheap group completes or reports exact-stage timeout within 15 s wall time including queueing, at most four probes, 5 s per network stage; unstarted checks remain not checked. No live probe starts on opening setup. Connected/model-present/request-passed/stale/disabled remain distinct; unsupported metadata is unknown. Small real probes default to a visible 60 s deadline or disclose a qualified override before approval; downloads/warmup are separate. Test failure/cancel/slow/unsupported/wrong-role cases, timestamp/config binding and no overlapping retries before cleanup; no billable periodic health calls. Witness actual selected-role trials separately from fixture timing cases. |
 | AC-20: Windows hosting lanes | Record independent native Ollama and Docker Desktop/WSL2 Linux-container matrices and real-machine results, not inherited Ubuntu passes. Exercise co-resident client+host and paired remote client, compatible external installation reuse, ports/engine ownership, driver/GPU availability, model fit, sleep/resume, user-login versus boot availability, scoped repair/removal and text-only/API alternatives. No automatic WSL/driver/firewall changes or terms acceptance; unavailable prerequisites remain blocked. Managed lifecycle claims require their own install/update/rollback/uninstall evidence. |
@@ -570,6 +629,20 @@ what remains a real-device/manual gate.
 | AC-24: Listen first | A scripted multi-utterance conversation retains only eligible bounded context, ignores irrelevant/no-speech/self-audio inputs, resets the quiet gap on new speech and produces at most one fresh eligible response, not one per observation; assert zero LLM/TTS for suppressed inputs, exact time/count/byte/token caps, eviction/clear/revocation/expiry and zero unsolicited replies when opted out; explicit typed/PTT remains usable |
 | AC-25: Speech interruption | Inject onset during generation, synthesis and playback through the live activity/cancellation boundary; flush unsaid output, reject late frames, retain cleanup ownership and never auto-resume; actual authorized headset/speaker trials distinguish external speech from self-voice/noise, record missed/false interruptions and acoustic detection latency, and meet p95 <=250 ms confirmed onset event to last rendered sample over at least 20 interruptions per advertised topology; unqualified modes remain unavailable |
 | AC-26: Response-style ratios | Production selector rejects invalid/all-zero weights, never samples zero-weight styles and always selects the sole positive style; fixed-seed 10,000-selection corpus matches a mixed target within two percentage points per style; chosen style reaches the next authorized prompt, not participation/permissions; held-out human review separately checks perceived helpful/sarcastic/silly/distracted/teasing style and factual/control boundaries |
+| AC-27: Avatar compatibility and ownership | Exercise both renderers with detailed/basic/missing rig channels, explicit per-aspect selection and calibrated mapping revisions. Distinguish Supported/RequiresMapping/Reduced/Unsupported/Unknown from runtime readiness. Assert no accidental same-target writers, including model override/clip side effects; unsupported blends/pose/VRMA are rejected, omitted aspects disclosed. Resolver can select known alternate/mask only explicitly and cannot override schema, safety, rights/access or runtime prerequisites. OFF and unavailable Audio2Face cause zero automatic fallback/probe/inference. |
+| AC-28: Avatar actual playback and stale discard | Through actual sink-progress -> composition -> renderer boundary, cover at least 100 deterministic timestamp/sequence/turn/epoch schedules including resampling, analysis-ahead, underrun/pause, Stop, replace, disable, device loss and late callbacks. Zero stale frames and zero advancement from queued-only PCM; original sample clock preserved, bounded queues/backpressure, speech channels reset without overwriting other owners. Actual authorized audio/render trials separately record sync offset and p95 Stop <=250 ms to cleared speech animation over at least 20 stops, alongside AC-08 audio latency; no fixture-only audibility/GPU claim. |
+| AC-29: Avatar imports and streams | Both importers and common frame parser enforce explicit versioned byte/count/depth/expanded-resource/texture/geometry/parameter/motion/queue limits, including exact limit and limit+1 cases. Reject traversal, escaping links, scripts, remote references, malformed/nonfinite/out-of-range data, wrong schema/version and archive bombs before activation. Invalid/replaced assets leave prior configuration intact; no implicit network/download or silent feature downgrade. |
+| AC-30: Avatar isolation and no-avatar parity | Compare the same explicit voice session with avatar OFF, missing runtime/model, failed analyzer, hung/crashed renderer, restart and removal. Voice/text/Stop/provider configuration remain unchanged; animation error visible, bounded cleanup retained, no credentials exposed or second audio output. Independent renderer restart cannot restart core, replay canceled speech or alter voice/model settings. Witness real process failure separately from fixtures. |
+| AC-31: Avatar comparison controls | Save/reselect/restart comparison presets without changing persona, conversation/STT/TTS models, voice, speech sample or playback settings. Analyzer comparisons retain model identity; renderer comparisons disclose different asset/rig identities. Preview active sources/masks/mapping coverage/omissions and apply at safe fresh revision; exact changed assets invalidate old evidence. No hidden additional inference/cost/audio; report actual sample count, latency/frame drops/resource measurements and NOT RUN for missing values. |
+| AC-32: Avatar local and release qualification | For every advertised renderer/analyzer/model/mapping/runtime tuple record exact pins, rights/access, local hardware/driver, actual load/render/playback/Stop/crash/removal results and measured CPU/RAM/GPU/VRAM/frame-time budget. Compatible is not ready or fast; unknown remains unqualified. Review Live2D release/Expandable classification separately from development and SDK MIT separately from NIM/weights/dependencies/assets. No rights or real-render/GPU gate passes from authored fixtures; no remote CI or publication implied. |
+
+For A02c, AC-28 also requires the real IAudioClock mapping/reset path and a
+bounded nonblocking PCM tee: slow/failed analysis never delays speech; unavailable
+clock evidence cannot become ready from padding counters. AC-31 includes the
+single avatar-envelope save/revision/profile boundary, preserved preferences
+but revoked activation on disable, no persisted activation permission, and
+visible exclusion from current global backup/restore until qualified. Clip-only
+adapter fixtures do not pass live streaming integration.
 
 For quality evaluation, use consented/licensed fixtures and a held-out scenario
 set. Measure STT errors on companion names and gaming terms, suppression false
@@ -698,10 +771,10 @@ version, stage/code and reproducible steps first, not a full raw recording.
 | R12: Opt-in perception and gaming resource budgets | P01-P02, P04 / M4 | AC-14/AC-15, G4 |
 | R13: Inspectable/deletable/exportable memory and provenance | P03-P04 / M4 | AC-10/AC-16, G4 |
 | R14: Unified status/doctor, fixtures, redaction and support | F03-F04, V06-V07 / M1-M2 | AC-03/AC-04/AC-10, G1-G2 |
-| R15: F5 licensing/streaming truth, separate upstream asset terms | D01, H02, H04, A01 / M0-M5 | AC-01/AC-11/AC-17; research S15-S18/S26-S28 |
+| R15: F5 licensing/streaming truth, separate upstream asset terms | D01, H02, H04, A01, A03b / M0-M5 | AC-01/AC-11/AC-17/AC-32; research S15-S18/S26-S28/S42-S47 |
 | R16: Hardware-dependent tuning/remote desktop remain optional | H06 / M3 | AC-14 only when enabled; no wiring/circuit-safety claim |
 | R17: Measured real-OS/GPU gates, local validation, signing and support readiness | F05, V07, H06, P04, A03 / M1-M5 | G1-G5, all relevant AC cases; never fixture-only hardware support |
-| R18: Optional later avatar and no-avatar parity | A01-A03 / M5 | AC-17, G5 |
+| R18: Optional Live2D/VRM avatars, Audio2Face-first analysis, selective composition/comparisons and no-avatar parity | A01a/A01b + A02a/A02b parallel now; A02c/A02d integration; A03 / M5 qualification | AC-17/AC-27-AC-32, G5; per-model matrix in AVATARS, S42-S47; initial facial libraries are not complete motion or end-user support |
 | R19: Easy persona text editing, named profiles and swappable text files | V05a-V05b, V02 / M2 | AC-21; persisted data and runtime use, not permission or multiple autonomous agents |
 | R20: User-changeable F5 reference audio/transcript and consented preview | H04a-H04b, H06 / M3 | AC-22, G3; actual reference replacement/voice evidence, separate model/voice rights |
 | R21: Independently change compatible LLM and VLM models without rebuilding | V02c, V03 / M2 LLM; P02 / M4 VLM | AC-23; capability/consent revalidation and atomic idle-boundary selection, no universal compatibility promise |

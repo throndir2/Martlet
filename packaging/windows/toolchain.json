@@ -3,6 +3,50 @@
   "runtimeVersion": "10.0.12",
   "nativeRuntimeFileVersion": "10.0.1226.42308",
   "rid": "win-x64",
+  "applicationGraphs": {
+    "Desktop": {
+      "projects": ["Martlet.Desktop", "Martlet.Core", "Martlet.Diagnostics", "Martlet.Fixtures", "Martlet.Sessions", "Martlet.Audio", "Martlet.Credentials.Windows", "Martlet.Conversation", "Martlet.Memory", "Martlet.Providers", "Martlet.Participation", "Martlet.Support", "Martlet.Avatars", "Martlet.Avatar.Hosting", "Martlet.Avatar.Audio2Face"],
+      "packages": ["NAudio.Wasapi", "NAudio.Core", "System.Numerics.Tensors", "Google.Protobuf", "Grpc.Core.Api", "Grpc.Net.Client", "Grpc.Net.Common", "Microsoft.Extensions.DependencyInjection.Abstractions", "Microsoft.Extensions.Logging.Abstractions"],
+      "frameworks": ["Microsoft.NETCore.App", "Microsoft.WindowsDesktop.App"]
+    },
+    "Doctor": {
+      "projects": ["Martlet.Doctor", "Martlet.Core", "Martlet.Diagnostics", "Martlet.Fixtures", "Martlet.Sessions", "Martlet.Audio"],
+      "packages": ["NAudio.Wasapi", "NAudio.Core", "System.Numerics.Tensors"],
+      "frameworks": ["Microsoft.NETCore.App"]
+    },
+    "AvatarRenderer": {
+      "projects": ["Martlet.Avatar.RendererHost", "Martlet.Avatar.Hosting", "Martlet.Avatars", "Martlet.Core"],
+      "packages": ["Microsoft.Web.WebView2"],
+      "frameworks": ["Microsoft.NETCore.App", "Microsoft.WindowsDesktop.App"]
+    }
+  },
+  "browserTools": { "node": "20.11.1", "npm": "10.2.4", "esbuild": "0.25.12" },
+  "browserDependencies": {
+    "node_modules/@esbuild/win32-x64": [],
+    "node_modules/@pixiv/three-vrm": ["node_modules/@pixiv/three-vrm-core", "node_modules/@pixiv/three-vrm-materials-hdr-emissive-multiplier", "node_modules/@pixiv/three-vrm-materials-mtoon", "node_modules/@pixiv/three-vrm-materials-v0compat", "node_modules/@pixiv/three-vrm-node-constraint", "node_modules/@pixiv/three-vrm-springbone", "node_modules/three"],
+    "node_modules/@pixiv/three-vrm-core": ["node_modules/@pixiv/types-vrm-0.0", "node_modules/@pixiv/types-vrmc-vrm-1.0", "node_modules/three"],
+    "node_modules/@pixiv/three-vrm-materials-hdr-emissive-multiplier": ["node_modules/@pixiv/types-vrmc-materials-hdr-emissive-multiplier-1.0", "node_modules/three"],
+    "node_modules/@pixiv/three-vrm-materials-mtoon": ["node_modules/@pixiv/types-vrm-0.0", "node_modules/@pixiv/types-vrmc-materials-mtoon-1.0", "node_modules/three"],
+    "node_modules/@pixiv/three-vrm-materials-v0compat": ["node_modules/@pixiv/types-vrm-0.0", "node_modules/@pixiv/types-vrmc-materials-mtoon-1.0", "node_modules/three"],
+    "node_modules/@pixiv/three-vrm-node-constraint": ["node_modules/@pixiv/types-vrmc-node-constraint-1.0", "node_modules/three"],
+    "node_modules/@pixiv/three-vrm-springbone": ["node_modules/@pixiv/types-vrm-0.0", "node_modules/@pixiv/types-vrmc-springbone-1.0", "node_modules/@pixiv/types-vrmc-springbone-extended-collider-1.0", "node_modules/three"],
+    "node_modules/@pixiv/types-vrm-0.0": [],
+    "node_modules/@pixiv/types-vrmc-materials-hdr-emissive-multiplier-1.0": [],
+    "node_modules/@pixiv/types-vrmc-materials-mtoon-1.0": [],
+    "node_modules/@pixiv/types-vrmc-node-constraint-1.0": [],
+    "node_modules/@pixiv/types-vrmc-springbone-1.0": [],
+    "node_modules/@pixiv/types-vrmc-springbone-extended-collider-1.0": [],
+    "node_modules/@pixiv/types-vrmc-vrm-1.0": [],
+    "node_modules/esbuild": ["node_modules/@esbuild/win32-x64"],
+    "node_modules/three": []
+  },
+  "buildPackages": [
+    {
+      "id": "Grpc.Tools",
+      "version": "2.84.0",
+      "sha512": "83e2c107f3ec9f66d40ea0612b5fe03432962df3242c90e40d316d404fac92004acc78368b16d9191cdc3b3c2fcdbf13cb127cc4fb3799a4a415a87c64cbf8cb"
+    }
+  ],
   "runtimePackages": [
     {
       "id": "microsoft.netcore.app.runtime.win-x64",
@@ -36,8 +80,66 @@
       "sha512": "adace58eeed48082d0fd56fb0685b5451ff120404373c627ab4b1193be0aa4b0476b2dd031925f80af25cb8204ce52656c562508ec6974f6bb0cd05461a62d23",
       "runtimeAsset": "lib/net9.0/System.Numerics.Tensors.dll",
       "notices": [
-        { "source": "LICENSE.TXT", "file": "System.Numerics.Tensors-LICENSE.txt" },
-        { "source": "THIRD-PARTY-NOTICES.TXT", "file": "System.Numerics.Tensors-THIRD-PARTY-NOTICES.txt" }
+        { "source": "LICENSE.TXT", "file": "System.Numerics.Tensors-LICENSE.txt", "sha256": "d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b" },
+        { "source": "THIRD-PARTY-NOTICES.TXT", "file": "System.Numerics.Tensors-THIRD-PARTY-NOTICES.txt", "sha256": "40686c6447a7d5b5d3693068e4571b5f483d7ed335aeee773ef662440de4c5d5" }
+      ]
+    },
+    {
+      "id": "Google.Protobuf",
+      "version": "3.36.2",
+      "sha512": "126a97e24840fc3eb7346067e0663173ac098eb09e26ac7a75b93aac506e74847df3b8ecab9af560645646b2f0cb2eea0eee32d7fe53a3fa5d0db5b01207a4a4",
+      "runtimeAsset": "lib/net8.0/Google.Protobuf.dll",
+      "notices": []
+    },
+    {
+      "id": "Grpc.Core.Api",
+      "version": "2.84.0",
+      "sha512": "b22d106cd700266f014412f910afa8c2591476bd058423fa4fc819d43ee4f1f8d90527368ca8a4b3a1c4b638e90e78178786c66d09f4f394fb2fed156db1a37f",
+      "runtimeAsset": "lib/netstandard2.1/Grpc.Core.Api.dll",
+      "notices": []
+    },
+    {
+      "id": "Grpc.Net.Client",
+      "version": "2.84.0",
+      "sha512": "f53cca69ed7b6bca9d0ca8fbfdf25e9daa124a97bd087bae3720dedadf5ddcac6a018904d8b436906cd58410c6707bf168b78dc6be9d3967d6d891af53e76d97",
+      "runtimeAsset": "lib/net10.0/Grpc.Net.Client.dll",
+      "notices": []
+    },
+    {
+      "id": "Grpc.Net.Common",
+      "version": "2.84.0",
+      "sha512": "f28b1cc197433cbeb253f7dfadc79dd0f3d54262df12c86804cb5deb1abf431c2ccd1c9e22190256e0d4473691cfdfe3d9e0c8ec12dd0a5ac4726f2a64be8c30",
+      "runtimeAsset": "lib/net10.0/Grpc.Net.Common.dll",
+      "notices": []
+    },
+    {
+      "id": "Microsoft.Extensions.DependencyInjection.Abstractions",
+      "version": "8.0.1",
+      "sha512": "8118da9932da382b1c22379f9169bea93cabcf17f5d56c1b6616fae23b1bf14b4a38539b7f8417f63f161b14021f2634df9e4f9fa62f5fc84667018a1d92c967",
+      "runtimeAsset": "lib/net8.0/Microsoft.Extensions.DependencyInjection.Abstractions.dll",
+      "notices": [
+        { "source": "LICENSE.TXT", "file": "Microsoft.Extensions.DependencyInjection.Abstractions-LICENSE.txt", "sha256": "d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b" },
+        { "source": "THIRD-PARTY-NOTICES.TXT", "file": "Microsoft.Extensions.DependencyInjection.Abstractions-THIRD-PARTY-NOTICES.txt", "sha256": "19c19dcac9f3ee6302cfbc6745bb8e79f08efc4c933eb8dc5509bf14b88347ec" }
+      ]
+    },
+    {
+      "id": "Microsoft.Extensions.Logging.Abstractions",
+      "version": "8.0.1",
+      "sha512": "c8e0fdb230e0133f2e3e2f84f300258f4348fc34af23ce597cf12446e0e91711cb4d4d0fef3333de3ac23a49e006a9eef36baf95d2b5b7449c3d755a6d55c045",
+      "runtimeAsset": "lib/net8.0/Microsoft.Extensions.Logging.Abstractions.dll",
+      "notices": [
+        { "source": "LICENSE.TXT", "file": "Microsoft.Extensions.Logging.Abstractions-LICENSE.txt", "sha256": "d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b" },
+        { "source": "THIRD-PARTY-NOTICES.TXT", "file": "Microsoft.Extensions.Logging.Abstractions-THIRD-PARTY-NOTICES.txt", "sha256": "19c19dcac9f3ee6302cfbc6745bb8e79f08efc4c933eb8dc5509bf14b88347ec" }
+      ]
+    },
+    {
+      "id": "Microsoft.Web.WebView2",
+      "version": "1.0.4191.47",
+      "sha512": "adf91bda1a71d860c098cd0e426b5a238e187ea73c694832f8fde36809a9165fda8844fc9c2b9fc8a870b0da53cd9eb97ec140d9a2f104a228301ffae841db8c",
+      "runtimeAsset": "runtimes/win-x64/native/WebView2Loader.dll",
+      "notices": [
+        { "source": "LICENSE.txt", "file": "Microsoft.Web.WebView2-LICENSE.txt", "sha256": "0af8f1b807512aae39c2ac1aa4d0cae65cabecb6fd554b8439a5162a0d6eca55" },
+        { "source": "NOTICE.txt", "file": "Microsoft.Web.WebView2-NOTICE.txt", "sha256": "106423785c5b7eba0a8e61d1837f2132e9c828e20ad530f565d981c1df60dd90" }
       ]
     }
   ],
@@ -46,6 +148,16 @@
       "file": "NAudio-LICENSE.txt",
       "url": "https://raw.githubusercontent.com/naudio/NAudio/0aaef29d04bec9567bdf2f669036fabecc33a2e2/LICENSE",
       "sha256": "e518e168af44d37da3de236e719c986169e47b46b90e37c1355056175744e037"
+    },
+    {
+      "file": "Google.Protobuf-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/protocolbuffers/protobuf/2c74169b34066ceb8ddb6b882fcb3fb32d737a55/LICENSE",
+      "sha256": "6e5e117324afd944dcf67f36cf329843bc1a92229a8cd9bb573d7a83130fea7d"
+    },
+    {
+      "file": "gRPC-Dotnet-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/grpc/grpc-dotnet/4c6997a214601422dd66c5c74c1969db749479e9/LICENSE",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
     },
     {
       "file": "WPF-THIRD-PARTY-NOTICES.txt",

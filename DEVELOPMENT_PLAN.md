@@ -2,6 +2,18 @@
 
 **Proposed plan, researched 2026-09-12 (America/Los_Angeles). Documentation only.**
 
+**Accepted avatar amendment, 2026-09-23:** develop both Live2D and VRM now,
+independently of unpassed voice/release gates. Implement Audio2Face first as
+the preferred speech-animation backend, alongside shared compatibility
+contracts and parallel renderer development. Keep avatars OFF until enabled.
+Renderer, analyzer and per-feature ownership are independent choices, with
+explicit partial mappings and no silent fallback. See the
+[avatar guide and permutation matrix](docs/AVATARS.md) and Delivery
+A01-A03 / AC-27-AC-32. Development authorization does not grant SDK/model
+downloads, license acceptance, installation, GPU inference, paid use or release
+rights. Standalone modules and the internal normal Desktop route are implemented
+and reviewed; native/runtime and end-user qualification remain open.
+
 **Implementation status update:** the subsequent D01/D02-first-slice/narrow-F01
 work is recorded in [Foundation decisions and boundaries](docs/FOUNDATION.md).
 The current internal explicit typed/PTT API integration, preserved offline fixture and still-unpassed acceptance
@@ -56,9 +68,10 @@ The imported companion cases use AC-21 through AC-26; AC-18 through AC-20 retain
 their current installation meanings.
 
 Build a companion that is easy to install, easy to understand when it is silent,
-and safe to stop. Prove one complete Windows voice experience without dedicated
-AI hardware before orchestrating GPUs, adding screen perception, or rendering
-an avatar. Installation, privacy controls, and diagnosis are product features,
+and safe to stop. Qualify one complete Windows voice experience without dedicated
+AI hardware as the core release path. Independent optional-avatar development
+can proceed now without delaying or weakening that qualification.
+Installation, privacy controls, and diagnosis are product features,
 not final release chores.
 
 The recommended sequence is:
@@ -71,7 +84,9 @@ The recommended sequence is:
 4. Qualify Ubuntu self-hosting, first on one host and then across the owner's
    two GPU PCs. Do not call it supported until the actual topology passes.
 5. Add useful, permissioned vision and inspectable memory under strict budgets.
-6. Add an optional avatar renderer without making voice depend on it.
+6. Qualify optional Live2D and VRM renderers without making voice depend on them;
+   shared contracts, Audio2Face-first analysis and renderers develop in parallel
+   now, rather than waiting for M2-M4 release exits.
 
 All components, commands, endpoints, defaults, estimates, and support promises
 below are **proposed**, unless specifically labeled **observed**, **verified
@@ -136,7 +151,7 @@ remains empty.
 | Mixed-machine owner | Combine an API, services on this Windows PC, and Ubuntu hosts without several unrelated setup procedures | One role/destination plan, graphical local host setup, independent readiness and clear ownership of existing services |
 | Developer without GPU hosts | Build and diagnose the real product without pretending to test CUDA | Deterministic fixtures, provider contract harness, opt-in API lane, optional CPU STT |
 | Privacy-focused self-hoster | Keep conversation on chosen machines | Paired LAN endpoints, explicit routing, no cloud fallback, local data controls |
-| Avatar enthusiast | Supply a character, lip sync, and lifelike movement | Later optional renderer; separate SDK/asset rights and performance budget |
+| Avatar enthusiast | Supply a character, lip sync, and lifelike movement | Optional Live2D/VRM, Audio2Face-first speech animation, selectable feature owners and comparisons; separate SDK/asset rights and performance budget |
 
 The companion is a participant, not an automatic responder to all detected
 speech. A configurable name, direct address, or push-to-talk can request a
@@ -202,7 +217,7 @@ privileged services. Later host setup must obtain specific consent.
 | P2: Existing endpoints | Client adapters use explicitly configured STT/LLM/TTS routes; may be mixed local/cloud only by consent | Reachable endpoints and known adapters; TLS/authentication for LAN | M2 expert configuration; only tested provider tuples qualify |
 | P3: One Ubuntu host | Gateway plus selected LLM/F5-TTS/STT workers on one machine; Windows remains lightweight | Qualified host manifest, accepted model/voice terms, paired client | M3 self-host beta; privacy-local microphone input requires local STT too |
 | P4: Two Ubuntu hosts | Host 1 LLM/F5-TTS, host 2 later vision/OCR/detection/memory; client owns routing | Each host independently qualified and paired | M3 topology qualification with host-2 fixtures, M4 real perception workloads |
-| P5: Optional avatar | Separately enabled Windows renderer consuming local playback/state events | Approved SDK distribution and user asset rights | M5 only; P1-P4 remain usable without it |
+| P5: Optional avatar | Separately enabled Live2D or VRM renderer; independent speech analyzer and motion sources | Selected rig/mapping/runtime, explicit activation and applicable SDK/model/asset rights | Development now; M5/G5 qualification before support/distribution; P1-P4 remain usable without it |
 | P6: Windows hosting | Selected roles on the client PC or another Windows PC; native Ollama candidate first, Linux containers via Docker Desktop/WSL2 as a separate advanced lane | Named adapter, supported runtime/model/OS tuple, approved local setup; paired gateway for another PC | H10 expansion; neither lane is currently qualified; no native F5 or Windows Server promise |
 
 Profiles are presets, not mutually exclusive modes or a fixed machine count.
@@ -237,7 +252,8 @@ offline fixtures work without those downloads.
 
 AD-01's .NET/WPF direction and AD-03's UI-independent core/isolated-role
 boundaries are accepted for implementation; D01 records their detailed
-disposition. Other choices remain recommendations. Approval authorizes design
+disposition. AD-09's dual-renderer/Audio2Face-first development is also accepted
+by the 2026-09-23 amendment. Other choices remain recommendations. Approval authorizes design
 direction, not purchases, public releases, or host modification.
 
 | Decision | Recommendation | Material alternative / tradeoff | Resolve by |
@@ -250,7 +266,7 @@ direction, not purchases, public releases, or host modification.
 | AD-06: Host deployment | Ubuntu 24.04 LTS x86_64 Desktop/Server first; guided host UI over reviewed bootstrap and pinned Docker Engine/Compose services; advanced user-managed Compose uses the same role contracts | Native existing services remain connect-only candidates. Docker Desktop on Linux adds a VM and is not the managed-host default. Other distributions/versions and Windows native/WSL lanes need separate qualification | H01-H02, H09-H10 |
 | AD-07: LAN trust | TLS 1.2+ with per-host pinned identity, out-of-band pairing token, scoped per-device credentials; no public ports | Managed CA/mTLS may suit managed homes/labs but complicates first run. Do not offer unauthenticated HTTP LAN as a supported shortcut | H03 |
 | AD-08: F5 and voice rights | Optional noncommercial experimental profile until permitted usage is confirmed; supply a consented reference voice plus transcript | A commercial-compatible TTS provider or differently licensed weights may be needed. User-supplied files do not remove license/voice-rights duties | D01, H02, H04 |
-| AD-09: Avatar | Defer, isolate, and verify Live2D Expandable Application status before distribution | No avatar or a simple non-Live2D indicator preserves voice delivery without SDK licensing risk | A01 |
+| AD-09: Avatar | Accepted Live2D + VRM development now; Audio2Face first/preferred, independent renderer/analyzer, explicit per-channel composition; OFF by default | Detailed authored VRM face for richest A2F output; approved reduced Live2D mapping, amplitude baseline and later named alternatives; no silent fallback or universal rig claim | A01 contracts/development; A03 rights/runtime/release qualification |
 
 .NET self-contained deployment includes its runtime; it does not automatically
 bundle every native library or make Windows policy restrictions disappear.
@@ -291,7 +307,13 @@ it a dependency or reuse foundation ([S26](docs/RESEARCH.md#s26)).
 
 **Live2D and detection:** Live2D distinguishes SDK development, release, and
 Expandable Applications; an app importing users' avatars needs classification
-review. Ultralytics advertises AGPL-3.0 or Enterprise terms, not universal
+review before release, not before independent authorized development.
+Audio2Face animates faces, not whole-body gestures; VRM preset expressions are
+optional, and detailed ARKit-compatible mapping requires a suitable authored
+rig. Live2D is a full renderer target, with model-specific reduced mappings
+rather than assumed ARKit shapes. See [S42-S47](docs/RESEARCH.md#s42) for
+primary-source constraints and later analyzer candidates.
+Ultralytics advertises AGPL-3.0 or Enterprise terms, not universal
 permissive use. Select actual implementation and model licenses before
 shipping either feature ([S27-S28](docs/RESEARCH.md#s27)).
 
@@ -304,7 +326,7 @@ shipping either feature ([S27-S28](docs/RESEARCH.md#s27)).
 | M2: API voice MVP | Real consented mic-to-voice, turn policy, recovery, signed release candidate | 5-9 person-weeks |
 | M3: Self-host beta | Repeatable Ubuntu role setup, F5 adapter, local STT option, witnessed one/two-host gates | 5-10 person-weeks plus hardware/driver/rights waiting time |
 | M4: Perception and memory | Opt-in screen understanding, useful retrieval, delete/export, host-2 isolation | 4-8 person-weeks |
-| M5: Optional avatar | Rights-cleared import, lip sync/idle motions, renderer-independent voice | 3-7 person-weeks plus licensing lead time |
+| M5: Optional avatar qualification | Both renderer targets, Audio2Face-first animation, explicit compatible/degraded permutations, safe import and no-avatar voice parity | Original 3-7 person-week estimate needs re-estimation for dual renderers/composition; independent development now, hardware/rights/release lead time separate |
 
 These are uncertain engineering effort ranges for an experienced small team,
 including product diagnostics and hardening, not calendar commitments. Novice
@@ -315,8 +337,11 @@ or hide support work in "polish."
 
 [Delivery](docs/DELIVERY.md) defines small task IDs, dependencies, named
 acceptance cases, ownership boundaries, release gates, and requirement
-traceability. Start with D01-D02, then F01-F04. Do not begin by building a
-multi-GPU Docker stack or importing an avatar framework.
+traceability. The original foundation sequence was D01-D02, then F01-F04.
+The accepted avatar expansion now starts A01a shared boundaries and A01b
+Audio2Face, with A02a Live2D and A02b VRM in independent worktrees. A02c
+composition/configuration/playback follows those boundaries. No workstream
+starts a multi-GPU stack or changes the installation/settings lineage.
 
 ## 8. Risks, unresolved decisions, and constraints
 
@@ -333,7 +358,8 @@ multi-GPU Docker stack or importing an avatar framework.
 | Host 2 failure could block conversation | Optional context gets short deadlines and freshness metadata; voice remains independent and reports unavailable context | Core owner, P02 |
 | Installer signing credentials and publisher budget absent | Internal unsigned artifacts only in controlled development tests; public/novice release blocked until trusted signing path is approved | Release owner, G2 |
 | AIRI identity and desired reuse unknown | Treat as candidate inspiration only; request exact link before dependency/reuse decisions | Product owner, D01 |
-| Avatar import may be an Expandable Application | Obtain Live2D classification/terms before release; no-avatar remains fully supported | Product/legal owner, A01 |
+| Avatar import may be an Expandable Application | Continue authorized development; obtain Live2D classification/terms before release; no-avatar remains fully supported | Product/legal owner, A03b |
+| Preferred Audio2Face or model rig unavailable | Show compatibility separately from readiness/performance; retain valid selected aspects only with explicit masks/mappings; do not silently use amplitude or claim missing blendshapes exist | Avatar owner, A01-A03 |
 
 The development plan itself is not blocked by these unknowns. Subsequent
 implementation can advance fixtures and contracts while decisions are made,

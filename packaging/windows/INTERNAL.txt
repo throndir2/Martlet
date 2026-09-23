@@ -10,6 +10,14 @@ or network inference on launch. Demo defaults require no profile or sound device
 Do not publish this installer or tell users to bypass SmartScreen/antivirus.
 No project code or asset license is granted. Distribution/signing remains gated.
 
+Optional avatar setup is an explicit, separate action. The renderer runs in the
+private AvatarRenderer process; its browser shell is bundled offline. Doctor
+remains unchanged and does not load avatar, WebView2 or Audio2Face dependencies.
+The WebView2 runtime, licensed Live2D Framework/Core, avatar/model assets and
+NIM/GPU runtime are user-supplied prerequisites, not installed by this package.
+Saving a profile does not establish rendering, model, hardware or inference
+readiness. Full bundled dependency notices are retained with this internal build.
+
 Start menu: Martlet (Internal) opens the fixture/status shell. Real API
 conversation is a separate explicit action; opening it does not start a request.
 Martlet Doctor (Internal) opens a command window and prints the same status.

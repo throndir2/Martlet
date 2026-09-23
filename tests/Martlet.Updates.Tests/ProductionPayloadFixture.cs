@@ -9,9 +9,11 @@ public sealed class ProductionPayloadFixture : IDisposable
     private string[] files = [];
     private string[] directories = [];
 
-    public ProductionPayloadFixture()
+    public ProductionPayloadFixture() : this(2) { }
+
+    internal ProductionPayloadFixture(int formatVersion, string avatarMutation = "None")
     {
-        Produce(root).GetAwaiter().GetResult();
+        Produce(root, formatVersion: formatVersion, avatarMutation: avatarMutation).GetAwaiter().GetResult();
         files = Directory.GetFiles(root, "*", SearchOption.AllDirectories);
         directories = Directory.GetDirectories(root, "*", SearchOption.AllDirectories);
     }
@@ -22,6 +24,9 @@ public sealed class ProductionPayloadFixture : IDisposable
             File.ReadAllBytes, StringComparer.Ordinal);
 
     internal void AssertNotExecuted() => Assert.False(File.Exists(Path.Combine(root, "PAYLOAD-EXECUTED")));
+
+    internal byte[][] CanonicalVectors() => Directory.GetFiles(root, "canonical-*.json")
+        .Order(StringComparer.Ordinal).Select(File.ReadAllBytes).ToArray();
 
     private static string Script([CallerFilePath] string source = "")
     {
@@ -34,7 +39,7 @@ public sealed class ProductionPayloadFixture : IDisposable
     }
 
     internal static async Task Produce(string root, string mode = "Payload", TimeSpan? deadline = null,
-        Action<int>? onRetired = null)
+        Action<int>? onRetired = null, int formatVersion = 2, string avatarMutation = "None")
     {
         var timeout = deadline ?? TimeSpan.FromSeconds(60);
         if (timeout <= TimeSpan.Zero || timeout > TimeSpan.FromSeconds(60)) throw new ArgumentOutOfRangeException(nameof(deadline));
@@ -46,7 +51,8 @@ public sealed class ProductionPayloadFixture : IDisposable
                 WorkingDirectory = Path.GetDirectoryName(Script())!
             }
         };
-        foreach (var arg in new[] { "-NoLogo", "-NoProfile", "-NonInteractive", "-File", Script(), "-OutputDirectory", root, "-Mode", mode })
+        foreach (var arg in new[] { "-NoLogo", "-NoProfile", "-NonInteractive", "-File", Script(), "-OutputDirectory", root, "-Mode", mode,
+            "-FormatVersion", formatVersion.ToString(System.Globalization.CultureInfo.InvariantCulture), "-AvatarMutation", avatarMutation })
             process.StartInfo.ArgumentList.Add(arg);
         if (!process.Start()) throw new InvalidOperationException("Fixture producer did not start.");
         var overflow = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

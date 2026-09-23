@@ -1,0 +1,61 @@
+<Window x:Class="Martlet.Desktop.AvatarWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Martlet - optional Avatar" Width="900" Height="850" MinWidth="550" MinHeight="450"
+        Loaded="Window_Loaded" Closed="Window_Closed" PreviewKeyDown="Window_KeyDown" WindowStartupLocation="CenterOwner">
+    <DockPanel>
+        <Button Content="STOP avatar only (Escape)" Click="Stop_Click" DockPanel.Dock="Top" Padding="10,8" Margin="12,8"
+                AutomationProperties.AutomationId="StopAvatar" AutomationProperties.Name="Stop avatar only; voice continues"/>
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="20">
+            <TextBlock Text="Avatar - OFF until explicit activation" FontSize="24" FontWeight="SemiBold"/>
+            <TextBlock TextWrapping="Wrap" Margin="0,8"
+                Text="Choose your own lawful local model. Inspection starts an isolated local renderer only. Activation separately allows generated TTS PCM to your existing numeric-loopback Audio2Face NIM service. No microphone feed, downloads, credential sharing, service install or silent fallback."/>
+            <TextBlock x:Name="StatusText" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
+                       AutomationProperties.AutomationId="AvatarStatus" Margin="0,8"/>
+            <Label Target="{Binding ElementName=RendererChoice}" Content="_Renderer"/>
+            <ComboBox x:Name="RendererChoice" MinHeight="28" SelectionChanged="Selection_Changed"/>
+            <Label Target="{Binding ElementName=ModelPathText}" Content="Local _model (.vrm or .model3.json)"/>
+            <DockPanel><Button Content="Browse model" DockPanel.Dock="Right" Click="BrowseModel_Click"/>
+                <TextBox x:Name="ModelPathText" MinHeight="28" TextChanged="Configuration_Changed"/></DockPanel>
+            <Label Target="{Binding ElementName=SdkPathText}" Content="Live2D prepared SDK directory (core.js and sdk.js; blank for VRM)"/>
+            <TextBox x:Name="SdkPathText" MinHeight="28" TextChanged="Configuration_Changed"/>
+            <Label Target="{Binding ElementName=EndpointText}" Content="Existing local Audio2Face NIM _endpoint"/>
+            <TextBox x:Name="EndpointText" Text="http://127.0.0.1:52000/" MinHeight="28" TextChanged="Configuration_Changed"/>
+            <CheckBox x:Name="InspectPermission" Content="I authorize local GPU model inspection using my installed runtime and selected assets." Margin="0,10"/>
+            <WrapPanel>
+                <Button Content="_Inspect model (analysis OFF)" Click="Inspect_Click" Padding="10,6" Margin="0,0,8,0"/>
+                <Button Content="_Reload local configuration" Click="Reload_Click" Padding="10,6"/>
+            </WrapPanel>
+            <Label Target="{Binding ElementName=CapabilityText}" Content="Inspected _controls and compatibility"/>
+            <TextBox x:Name="CapabilityText" IsReadOnly="True" TextWrapping="Wrap" Height="100" VerticalScrollBarVisibility="Auto"/>
+            <TextBlock TextWrapping="Wrap" Margin="0,8"
+                Text="Explicit mapping: choose a real inspected target and an ARKit source channel. Reduced coverage must be acknowledged. Unavailable aspects can only be explicitly omitted; other analyzers, body/head/motion control and arbitrary blending are not implemented."/>
+            <Label Target="{Binding ElementName=SourceChoice}" Content="ARKit _source channel (availability verified only on actual A2F response)"/>
+            <ComboBox x:Name="SourceChoice" MinHeight="28"/>
+            <Label Target="{Binding ElementName=TargetChoice}" Content="Inspected native _target"/>
+            <ComboBox x:Name="TargetChoice" DisplayMemberPath="Id" MinHeight="28"/>
+            <CheckBox x:Name="ReducedChoice" Content="Accept reduced fidelity for mapped mouth/expression aspects" Margin="0,8"/>
+            <Button Content="Add mapping using inspected native bounds" Click="AddMapping_Click" Padding="10,6"/>
+            <Label Target="{Binding ElementName=ConfigurationText}" Content="Shared avatar configuration (editable exact JSON; one owner per aspect)"/>
+            <TextBox x:Name="ConfigurationText" AcceptsReturn="True" FontFamily="Consolas" Height="230" TextChanged="Configuration_Changed"
+                     HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"/>
+            <WrapPanel Margin="0,8">
+                <Button Content="_Validate compatibility" Click="Validate_Click" Padding="10,6" Margin="0,0,8,0"/>
+                <Button Content="_Save configuration only" Click="Save_Click" Padding="10,6" Margin="0,0,8,0"/>
+                <Button Content="Export local avatar document" Click="Export_Click" Padding="10,6"/>
+                <Button Content="Restore avatar document" Click="Restore_Click" Padding="10,6"/>
+            </WrapPanel>
+            <CheckBox x:Name="AnalysisPermission" Margin="0,8"
+                Content="Activate for this session: send generated speech only to the displayed existing local A2F service. GPU/service/terms prerequisites are my responsibility."/>
+            <WrapPanel>
+                <Button x:Name="ActivateButton" Content="_Activate reviewed avatar" Click="Activate_Click" Padding="10,6" Margin="0,0,8,0"
+                        AutomationProperties.AutomationId="ActivateAvatar"/>
+            </WrapPanel>
+            <TextBlock Margin="0,12" TextWrapping="Wrap"
+                Text="Avatar settings/assets are preserved when disabled. Activation is never saved. Existing application backup/restore does NOT include avatar.json. A different restored profile cannot reuse this document. Physical device synchronization and licensed/GPU runtime qualification remain NOT RUN until witnessed. Closing this settings window does not stop an explicitly activated avatar; STOP is always available."/>
+            <TextBlock x:Name="ResultText" TextWrapping="Wrap" Margin="0,8" AutomationProperties.LiveSetting="Polite"/>
+        </StackPanel>
+    </ScrollViewer>
+    </DockPanel>
+</Window>

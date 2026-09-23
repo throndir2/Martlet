@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Martlet Live2D local development</title>
+</head>
+<body>
+  <h1>Live2D local development only</h1>
+  <p>No automatic audio, camera, microphone, analyzer, or remote assets. SDK and models must be supplied locally under their terms.</p>
+  <label>Single-model folder <input id="files" type="file" webkitdirectory multiple></label>
+  <button id="load">Inspect and load</button>
+  <p><label>Explicit mapping profile (no assumed parameter names)<br><textarea id="mappings" rows="7" cols="90">[]</textarea></label></p>
+  <button id="configure">Configure and reset</button>
+  <p><label>Normalized preview channels<br><textarea id="channels" rows="4" cols="90">{}</textarea></label></p>
+  <button id="apply">Apply once (expires after 250ms)</button>
+  <button id="stop">Stop and neutralize</button>
+  <button id="dispose">Dispose model</button>
+  <p><canvas width="640" height="640" aria-label="Live2D model preview"></canvas></p>
+  <pre role="status" aria-live="polite"></pre>
+  <script src="/core.js"></script>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
