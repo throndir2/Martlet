@@ -1,0 +1,17 @@
+{
+  "name": "@martlet/avatar-live2d",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20.11" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test tests",
+    "build:dev": "npm run build && node harness/build.mjs",
+    "serve:dev": "node harness/serve.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.10",
+    "typescript": "5.9.3"
+  }
+}
