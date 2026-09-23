@@ -20,6 +20,14 @@ reference-voice, model-selection and listen-first/barge-in controls. These
 are partially implemented by the reused persona/settings, explicit-context and
 LLM-selection slices; reference voice, VLM, listening and barge-in remain future
 integration, not capabilities of the standalone post-capture VAD library.
+The separate [H03 gateway security foundation](../src/Martlet.Gateway/README.md)
+implements an isolated ASP.NET Core library boundary: explicit private/loopback
+TLS binding with a caller-supplied pinned identity, local-only pairing approval,
+signed scoped device requests with nonce/expiry/rotation/revocation, and
+role-filtered version/capability/status metadata behind worker interfaces. It
+does not join Desktop/Core settings or the root solution, expose an inference
+route/raw worker port, create a production key, change a firewall, or establish
+real LAN/Ubuntu/host qualification.
 The isolated [P03a/P03b local memory foundation](MEMORY.md) implements an
 OFF-by-default versioned fact store and lexical retrieval contract without
 Desktop/Core settings/root-solution integration. It is not the proposed
