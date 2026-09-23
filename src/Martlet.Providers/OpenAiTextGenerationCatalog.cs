@@ -5,12 +5,16 @@ namespace Martlet.Providers;
 public static class OpenAiTextGenerationCatalog
 {
     public const string ProviderId = "openai";
-    public const string AdapterVersion = "0.1.0";
+    public const string AdapterVersion = "0.2.0";
     public static Uri Origin => OpenAiTransport.Origin;
     internal static Uri Endpoint { get; } = new(Origin, "/v1/responses");
-    public static DateOnly DocumentationDate { get; } = new(2026, 9, 12);
+    public static DateOnly DocumentationDate { get; } = new(2026, 9, 21);
     public static IReadOnlyList<string> SupportedModelIds { get; } =
-        System.Array.AsReadOnly(new[] { "gpt-4.1-mini-2025-04-14" });
+        System.Array.AsReadOnly(new[]
+        {
+            "gpt-4.1-mini-2025-04-14",
+            "gpt-4.1-2025-04-14"
+        });
 
     public static bool SupportsModel(string? upstreamModelId) =>
         SupportedModelIds.Contains(upstreamModelId, StringComparer.Ordinal);

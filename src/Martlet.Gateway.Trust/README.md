@@ -12,9 +12,16 @@ preserves the earlier consumers' pinned TLS and HMAC protocol. This Trust librar
 remains isolated and uncomposed, not a second production authority. Its UUIDs,
 fingerprint encoding, granular scopes and secret/renewal contracts are not
 interchangeable with that protocol. No bridge or persistence integration is
-provided; protected Gateway.Persistence PR #37 remains held pending a deliberate
-consolidation/adaptation decision. The H03b responsibilities below describe
+provided for this library; protected Gateway.Persistence PR #37 remains held
+pending review and acceptance of the canonical adaptation. The H03b responsibilities below describe
 this library's remaining gaps, not instructions to create another transport.
+
+The [canonical HMAC persistence adaptation](../Martlet.Gateway.Persistence/README.md)
+now references `Martlet.Gateway` only and composes its existing transport. It
+does not adopt this library's credential format or authorize conversion between
+lineages. This library remains isolated/uncomposed; PR #37 is not merged by the
+adaptation, and its supersession is a coordinator decision after review and
+acceptance. Its preserved branch and this historical implementation are retained.
 
 ## Authority and approval boundary
 

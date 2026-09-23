@@ -43,11 +43,11 @@ public sealed record GatewayProtocolVersion
     public required int Major { get; init; }
     public required int Minor { get; init; }
 
-    public static GatewayProtocolVersion Current => new() { Major = 1, Minor = 0 };
+    public static GatewayProtocolVersion Current => new() { Major = 2, Minor = 0 };
 
     internal void Validate()
     {
-        GatewayRules.Require(Major == 1, "protocol.unsupported");
+        GatewayRules.Require(Major == 2, "protocol.unsupported");
         GatewayRules.Require(Minor is >= 0 and <= 9999, "request.invalid");
     }
 }

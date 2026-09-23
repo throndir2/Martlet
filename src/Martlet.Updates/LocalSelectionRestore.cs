@@ -142,7 +142,7 @@ public sealed partial class LocalSelectionEngine
             evidence = observed;
             Point(SelectionIoPoint.AfterConfigurationRestore, directory, token);
             Recheck(pending);
-            var committedBytes = Wire.Write(CommitDocument(journal, binding));
+            var committedBytes = Wire.Write(CommitDocument(journal, binding, observed.SchemaVersion));
             using var committedPin = WritePublication(Path.Combine(directory, "restore-committed.json"), committedBytes, token);
             Point(SelectionIoPoint.BeforeRestoreAcknowledgment, directory, token);
             observed = scope.VerifyCommittedAsync().GetAwaiter().GetResult();
@@ -328,7 +328,10 @@ public sealed partial class LocalSelectionEngine
             }))
             throw new SelectionException(SelectionFailure.InvalidControl);
         OriginalPath(binding.OriginalFileName);
-        Compatible(before.Current.MinimumReader, before.Current.MaximumReader, AppSettings.CurrentSchemaVersion);
+        // A historical journal predates this reader's schema. Only new restore admission
+        // requires the current writer; recorded commits below bind their actual schema.
+        if (before.Current.MaximumReader < 2 || before.Current.MinimumReader > AppSettings.CurrentSchemaVersion)
+            throw new SelectionException(SelectionFailure.IncompatibleSettings);
     }
 
     private string OriginalPath(string name)
@@ -339,9 +342,9 @@ public sealed partial class LocalSelectionEngine
         return SafePath(Path.Combine(settings.DataDirectory, name));
     }
 
-    private static RestoreCommitDocument CommitDocument(SelectionJournal journal, RestoreTransactionBinding binding) =>
+    private static RestoreCommitDocument CommitDocument(SelectionJournal journal, RestoreTransactionBinding binding, int schema) =>
         new(1, journal.TransactionId, journal.PlanDigest, journal.Before.ProfileId, binding.CandidateDigest,
-            AppSettings.CurrentSchemaVersion, binding.OriginalFileName, binding.ExpectedRevision);
+            schema, binding.OriginalFileName, binding.ExpectedRevision);
 
     private void RequireCoreEvidence(ConfigurationRestoreEvidence evidence, SelectionJournal journal,
         RestoreTransactionBinding binding)
@@ -353,15 +356,18 @@ public sealed partial class LocalSelectionEngine
             throw new SelectionException(SelectionFailure.Conflict);
     }
 
-    private void ValidateRestoreCommit(SelectionJournal journal, RestoreTransactionBinding binding, CancellationToken token)
+    private RestoreCommitDocument ValidateRestoreCommit(SelectionJournal journal, RestoreTransactionBinding binding, CancellationToken token)
     {
         var path = Path.Combine(TransactionDirectory(journal.TransactionId), "restore-committed.json");
         var committed = ReadDocument<RestoreCommitDocument>(path, MaximumControlBytes, token);
-        if (committed != CommitDocument(journal, binding))
+        if (committed.SchemaVersion is < 2 or > AppSettings.CurrentSchemaVersion ||
+            committed != CommitDocument(journal, binding, committed.SchemaVersion))
             throw new SelectionException(SelectionFailure.InvalidControl);
+        Compatible(journal.Before.Current!.MinimumReader, journal.Before.Current.MaximumReader, committed.SchemaVersion);
         using var original = BoundedIo.OpenRead(OriginalPath(binding.OriginalFileName), 1);
         if (Convert.ToHexString(SHA256.HashData(BoundedIo.Read(original, AppSettings.MaxFileBytes, token))) != binding.ExpectedRevision)
             throw new SelectionException(SelectionFailure.InvalidControl);
+        return committed;
     }
 
     private SelectionReceipt Receipt(ControlDocument state, SelectionOutcome outcome, CancellationToken token)

@@ -22,6 +22,16 @@ certificate store and is disposed with the in-process listener.
 
 ## Reuse lineage and authority boundary
 
+**Current policy: permanent paired-device trust, protocol 2.0.** This revision
+deliberately replaces the inherited timed-device contract. Devices do not
+expire, unpair on reboot or lose pairing after recoverable interruption.
+Invitations, signed-request freshness/replay, rotation overlap and action
+budgets remain independently bounded. Protocol-1 pairing is refused; source
+clients must explicitly adopt the required lifetime discriminator, not default
+missing/null expiry to permanent. Existing route paths, IDs, roles, pins and
+HMAC canonical bytes remain stable. See the durable owner's
+[version and recovery contract](../Martlet.Gateway.Persistence/README.md).
+
 This is the standalone H03 source slice from
 `ec6db3979a1e2b8164176d455e4017475b9865ca`, reused by an attributed cherry-pick.
 It preserves the transport/authentication protocol and host identity expected
@@ -48,24 +58,32 @@ This import neither adopts its storage format nor changes that hold.
 | Authorization | `voice`, `perception`, `memory`; per-request scoped HMAC, timestamp and nonce | Independent status/transcription/generation/synthesis/perception/memory-read/memory-write flags; point-in-time secret authorization, no signed-request replay contract |
 | Secret ownership | Base64url strings exposed explicitly by `Reveal`; SHA-256 verifier is an HMAC signing key | Disposable 32-byte buffers with explicit copy/import; SHA-256 verifier for equality checks |
 | Pairing and rotation | Eight local windows, five failed proofs/window; direct local rotation with up to ten-minute overlap | Sixteen pending approvals, authority-wide redemption limit; one-use locally approved renewal with two-minute overlap |
-| State/time | At most 128 volatile credential records (including rotation overlap), bounded per-credential nonces; UTC expiry and shared observed-UTC rollback closure | Volatile bounded live-device state; UTC and monotonic expiry with rollback closure |
+| State/time | At most 128 non-expiring paired/retiring records, bounded per-credential nonces; shared observed-UTC access closure | Volatile bounded live-device state; UTC and monotonic device expiry with rollback closure |
 
 There is no conversion, fallback, shared authority, secret cast, scope widening
 or credential interchange between these namespaces. Even though both use
 SHA-256 over random device secrets, persisting a Gateway HMAC verifier requires
 **signing-key protection**, not treating it as a harmless password hash.
 
-Before choosing or adapting protected persistence, reconcile the exact identity,
-wire/version, role/scope, credential-ID, renewal and revocation contracts.
-The reused store has no durable import/export or restart recovery. It does not
-inherit Trust's monotonic elapsed-time expiry, disposable secrets, per-device
-admission policy or approval/handler capability split.
-Production composition must keep `GatewayServer` and its local management
-objects private to trusted host code, not expose them through remote DI.
-Persisting credentials alone would also lose replay history on restart:
-an explicit fail-closed restart/re-pair or reviewed replay-restoration policy
-is required. Local approval UI, protected host keys, atomic durable
-rotation/revocation and native-host recovery remain unimplemented gates.
+The public volatile constructor has no durable import/export or restart recovery;
+use the durable owner when pairing must survive process lifetime. It does not
+inherit Trust's device-expiry policy or interchangeable secret/scope types.
+The optional [canonical durable owner](../Martlet.Gateway.Persistence/README.md)
+now supplies a Windows current-user DPAPI/private-NTFS backend and composes this
+same server privately. It preserves HMAC signing keys **and live replay history**
+across clean restarts, commits admission/rotation/revocation before success, and
+recovers validated prepared transactions without resetting devices after a
+crash or reboot. It never imports Trust records or restores a stale backup.
+Its protocol-distinct schema, automatic same-key renewal and native
+limitations are documented there.
+
+The existing public constructor remains the explicit volatile path, not a
+fallback when durable open fails. Production composition must keep
+`GatewayServer` and its local management objects private to trusted host code,
+not expose them through remote DI. Internal HTTP dependencies now receive only
+pairing-exchange and signed-request authentication capabilities. The durable
+owner is default-No and loopback-only; real local approval executable/UI,
+service/backend qualification and deployed-host recovery remain separate gates.
 
 ## Standalone local workflow
 
@@ -158,18 +176,19 @@ windows cannot be revived.
 Pairing returns a random 16-byte credential ID and one 32-byte device secret.
 The clear secret is returned once and is excluded from all registration,
 audit, status, error and `ToString` surfaces. The host retains a SHA-256
-verifier used as the HMAC key; the raw secret is not retained. Default and
-maximum credential lifetime is 90 days.
+verifier used as the HMAC key; the raw secret is not retained. Protocol 2 returns
+required `lifetime: {"kind":"paired"}` with no expiry. There is no timed-device
+constructor option, date sentinel or silent missing-field fallback.
 
 Local host management code can list non-secret registrations, revoke one
 credential/device, or rotate a credential. Rotation issues a fresh ID/secret
 and shortens the old credential to an explicit overlap of at most ten minutes.
-Revocation clears its nonce cache. An expired, revoked or rotated-out
+Revocation clears its nonce cache. A revoked or rotated-out
 credential never falls back to another credential and cannot be reconstructed
 from configuration.
 
 The store retains at most 128 registrations, including live rotation overlap.
-Issuance, listing and authentication sweep expired/revoked records, zero their
+Issuance, listing and authentication sweep retired/revoked records, zero their
 verifiers and clear their nonces; revocation also zeros the verifier immediately.
 Later requests for swept IDs return `auth.invalid`, never restored authority.
 Listing reports currently active registrations, not a durable audit history.
@@ -182,10 +201,10 @@ Pairing and credential operations share a serialized observed-UTC high-water
 mark. Any observed backwards movement permanently closes their shared authority,
 clears retained credential verifiers/nonces, and rejects every existing pairing
 card and subsequent approval with `auth.clock_invalid`. Correcting the clock
-does not reopen it: trusted host code must replace the volatile authority and
-explicitly re-pair. This is not monotonic elapsed-time expiry or protection
-against backwards movement entirely between samples; those remain consolidation
-gaps. Clock sampling occurs inside the store lock, not before admission.
+does not reopen the same in-memory instance. With the durable owner, correct
+the clock and reopen the same protected store: pairing data was not erased.
+The standalone volatile constructor has no persistence guarantee.
+Clock sampling occurs inside the store lock, not before admission.
 
 ## Signed request and replay contract
 
@@ -218,7 +237,7 @@ the same request returns `auth.replay`.
 | --- | --- | --- |
 | `GET /health/live` | None | Exact `{"status":"live"}`; no host ID, version, worker or system data |
 | `POST /martlet/v1/pair` | Locally opened one-use proof | One scoped credential; 8 KiB strict JSON with required fields, duplicate/unknown rejection |
-| `GET /martlet/v1/version` | Signed scoped device request | Protocol `1.0`, gateway `0.1.0`, host ID, authorized role and credential expiry |
+| `GET /martlet/v1/version` | Signed scoped device request | Protocol `2.0`, gateway `0.1.0`, host ID, authorized role and explicit `credential_lifetime` (`paired` or retiring old key with deadline) |
 | `GET /martlet/v1/capabilities` | Signed scoped device request | At most 16 configured worker capability records for only that role |
 | `GET /martlet/v1/status` | Signed scoped device request | Two-second cooperative cancellation for status reads for only that role |
 
@@ -253,10 +272,11 @@ operator actions are:
 | `binding.*`, `host.*` | Select one safe address/certificate; stop and compare a changed pin out of band |
 | `pairing.*` | Open a new locally approved window; never reuse/repair an old token |
 | `auth.missing`, `auth.invalid` | Use the credential for the verified paired host or revoke/re-pair if lost |
-| `auth.expired`, `auth.revoked` | Explicitly renew/re-pair; never resurrect the old credential |
+| `auth.expired`, `auth.revoked` | Use the explicit rotation replacement or respect revocation; a paired device itself does not expire |
 | `auth.clock`, `auth.replay` | Correct clocks and create a fresh nonce/signature; never replay |
-| `auth.clock_invalid` | Correct the host clock, replace the closed volatile authority and explicitly re-pair; never revive its cards/credentials |
-| `auth.capacity` | Locally revoke unused credentials or wait for expiry, then retry an unexpired pairing proof/local rotation; active registrations are never evicted |
+| `auth.clock_invalid` | Correct the host clock and reopen the existing durable authority; pairing records are preserved |
+| `auth.closed`, `auth.storage` | Inspect local access/recovery status, then reopen the same protected store; no reset-all-devices or stale backup restoration |
+| `auth.capacity` | Locally revoke unused credentials or wait for old-key rotation overlap to end; permanent paired registrations are never evicted |
 | `auth.rate` | Reduce authenticated polling and wait for the four-minute replay window to drain |
 | `auth.role` | Use a separately approved least-privilege role |
 | `worker.*` | Keep only the named private worker unavailable and repair its local adapter/status |
@@ -270,8 +290,8 @@ The dedicated suite covers exact origin rejection, injected listeners, actual
 loopback TLS handshakes, good/bad SPKI pins, missing private keys, redirect and
 cross-origin refusal, minimal unauthenticated liveness, strict pairing JSON,
 one-use/expiry/bad-pin pairing, scoped signed requests, timestamp/path/role
-binding, replay/rate saturation, pairing window/attempt bounds, credential
-expiry, rotation overlap, revocation, bounded worker inventory/status,
+binding, replay/rate saturation, pairing window/attempt bounds, permanent
+pairing, rotation overlap, revocation, bounded worker inventory/status,
 thread-safe audit correlation and redacted failures.
 
 This is in-process evidence on one Windows development machine. It is **not**

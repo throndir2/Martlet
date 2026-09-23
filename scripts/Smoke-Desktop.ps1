@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$Configuration = 'Release',
-    [string]$ExecutablePath
+    [string]$ExecutablePath,
+    [switch]$CompanionOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -83,11 +84,13 @@ function Close-Desktop {
     $script:process = $null
 }
 function Invoke-Control([string]$Id) {
+    Write-Verbose "$([DateTime]::UtcNow.ToString('O')) Invoking $Id"
     $control = Find-Control $Id
     if ($null -eq $control -or -not $control.Current.IsEnabled -or [string]::IsNullOrWhiteSpace($control.Current.Name)) {
         throw 'Required accessible action is unavailable.'
     }
     $control.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    Write-Verbose "$([DateTime]::UtcNow.ToString('O')) Invoked $Id"
 }
 
 function Select-Fixture([string]$Name) {
@@ -119,6 +122,7 @@ function Wait-Fixture([string]$Pattern) {
 }
 
 function Wait-Setup([string]$Pattern, [string]$StatusId = 'SetupStatus') {
+    Write-Verbose "$([DateTime]::UtcNow.ToString('O')) Waiting for $StatusId"
     $deadline = [DateTime]::UtcNow.AddSeconds(20)
     while ([DateTime]::UtcNow -lt $deadline) {
         if ($script:process.HasExited) { throw 'Desktop exited during setup.' }
@@ -129,8 +133,9 @@ function Wait-Setup([string]$Pattern, [string]$StatusId = 'SetupStatus') {
             $status = Find-Control $StatusId
             if ($null -ne $status -and (Read-Value $status) -like $Pattern) {
                 if (-not $status.Current.IsKeyboardFocusable) { throw 'Setup status is not keyboard accessible.' }
-                $status.SetFocus()
+                if (-not $status.Current.HasKeyboardFocus) { $status.SetFocus() }
                 if (-not $status.Current.HasKeyboardFocus) { throw 'Setup status did not accept keyboard focus.' }
+                Write-Verbose "$([DateTime]::UtcNow.ToString('O')) Ready $StatusId"
                 return Read-Value $status
             }
         }
@@ -170,123 +175,125 @@ try {
     $first = Wait-Status '*First run:*'
     if ($first -notlike '*not ready*') { throw 'First-run diagnostics must remain incomplete.' }
     if (Test-Path -LiteralPath $data) { throw 'Read-only launch unexpectedly created a data directory.' }
-    Invoke-Control 'OpenTroubleshooting'
-    $support = Wait-Setup '*Recording: OFF*worker: idle*' 'SupportStatus'
-    if ((Find-Control 'SupportExport').Current.IsEnabled -or
-        (Find-Control 'SupportIncludeLogs').GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne
-        [Windows.Automation.ToggleState]::Off) { throw 'Support export must be unavailable without preview, and journal selection must default OFF.' }
-    $supportHelp = Read-Value (Find-Control 'SupportHelp')
-    if ($supportHelp -notlike '*No support contact or upload channel is configured*' -or
-        $supportHelp -notlike '*CLI export is not implemented*') { throw 'Support limitations are not visible.' }
-    if (Test-Path -LiteralPath $data) { throw 'Passive troubleshooting unexpectedly created app data or started a journal.' }
-    Invoke-Control 'SupportClose'
-    $null = Wait-Status '*First run:*'
-    $pipeline = Find-Control 'PipelineStatus'
-    if ($null -eq $pipeline -or -not $pipeline.Current.IsKeyboardFocusable) { throw 'Pipeline must support keyboard and accessibility access.' }
-    $pipelineText = Read-Value $pipeline
-    foreach ($stage in @('Mic', 'VAD', 'STT', 'Policy', 'LLM', 'TTS', 'Playback')) {
-        if ($pipelineText -notlike "*${stage}:*NotRun*") { throw 'A pipeline stage lacks truthful accessible state.' }
+    if (-not $CompanionOnly) {
+        Invoke-Control 'OpenTroubleshooting'
+        $support = Wait-Setup '*Recording: OFF*worker: idle*' 'SupportStatus'
+        if ((Find-Control 'SupportExport').Current.IsEnabled -or
+            (Find-Control 'SupportIncludeLogs').GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne
+            [Windows.Automation.ToggleState]::Off) { throw 'Support export must be unavailable without preview, and journal selection must default OFF.' }
+        $supportHelp = Read-Value (Find-Control 'SupportHelp')
+        if ($supportHelp -notlike '*No support contact or upload channel is configured*' -or
+            $supportHelp -notlike '*CLI export is not implemented*') { throw 'Support limitations are not visible.' }
+        if (Test-Path -LiteralPath $data) { throw 'Passive troubleshooting unexpectedly created app data or started a journal.' }
+        Invoke-Control 'SupportClose'
+        $null = Wait-Status '*First run:*'
+        $pipeline = Find-Control 'PipelineStatus'
+        if ($null -eq $pipeline -or -not $pipeline.Current.IsKeyboardFocusable) { throw 'Pipeline must support keyboard and accessibility access.' }
+        $pipelineText = Read-Value $pipeline
+        foreach ($stage in @('Mic', 'VAD', 'STT', 'Policy', 'LLM', 'TTS', 'Playback')) {
+            if ($pipelineText -notlike "*${stage}:*NotRun*") { throw 'A pipeline stage lacks truthful accessible state.' }
+        }
+        $pipeline.SetFocus()
+        if (-not $pipeline.Current.HasKeyboardFocus) { throw 'Pipeline did not accept keyboard focus.' }
+        Invoke-Control 'StartFixture'
+        $complete = Wait-Fixture '*fixture.completed*'
+        if ($complete -notlike '*Synthetic text: A synthetic fixture response.*' -or $complete -notlike '*Audio OFF / not run*') {
+            throw 'The desktop demo did not render actual fixture text with audio off.'
+        }
+        if ((Read-Value $pipeline) -notlike '*LLM:*NotRun*' -or (Test-Path -LiteralPath $data)) {
+            throw 'Fixture success modified real readiness or persisted a profile.'
+        }
+        Select-Fixture 'refused-after-partial'
+        Invoke-Control 'StartFixture'
+        $refused = Wait-Fixture '*fixture.refused*'
+        if ($refused -notlike '*partial; not a completed answer*' -or $refused -notlike '*Separate scripted refusal (never read aloud)*') {
+            throw 'Refusal was not kept separate from partial synthetic text.'
+        }
+        Select-Fixture 'slow'
+        Invoke-Control 'StartFixture'
+        $running = Wait-Fixture '*Scenario: slow*Stage: Script*'
+        Stop-ActiveFixture
+        $stopped = Wait-Fixture '*Scenario: slow*Stage: Finished*fixture.stopped*'
+        if ($stopped -notlike '*Scenario: slow*Stage: Finished*' -or $stopped -notlike '*outcome: Canceled*' -or
+            $stopped -notlike '*queued text: 0*' -or $stopped -notmatch '(?m)^Synthetic text: \r?$') {
+            throw 'Stop did not finish with an explicit canceled outcome and empty text/queue.'
+        }
+        Select-Fixture 'streaming'
+        Invoke-Control 'StartFixture'
+        $streaming = Wait-Fixture '*fixture.completed*'
+        if ($streaming -notlike '*Synthetic text: Synthetic text.*' -or $streaming -like '*Partial fixture.*') {
+            throw 'New fixture did not replace retired output in order.'
+        }
+        $oldIds = [regex]::Match($stopped, '(?m)^Session:.*').Value
+        $newIds = [regex]::Match($streaming, '(?m)^Session:.*').Value
+        if (-not $oldIds -or -not $newIds -or $oldIds -ceq $newIds) {
+            throw 'New fixture did not use fresh IDs after Stop; retired output cannot be accepted.'
+        }
+        $stop = Find-Control 'StopDiagnostics'
+        if ($null -eq $stop -or $stop.Current.IsEnabled -or $stop.Current.Name -ne 'Stop diagnostics') {
+            throw 'Stop must be exposed and disabled while idle.'
+        }
+        Invoke-Control 'RefreshDiagnostics'
+        $refreshed = Wait-Status '*First run:*' $first
+        if ($refreshed -notlike '*settings.first_run*') { throw 'Refresh did not use the shared diagnostic catalog.' }
+        Invoke-Control 'OpenAudioSetup'
+        $audio = Wait-Setup '*never tested*UNVERIFIED*' 'AudioStatus'
+        if ($audio -notlike '*No provider*' -or (Find-Control 'AudioHeard').Current.IsEnabled) {
+            throw 'Unrun audio setup must remain local, unverified and not confirmable.'
+        }
+        if (Test-Path -LiteralPath $data) { throw 'Opening audio setup wrote settings before explicit save.' }
+        # Deliberately do not invoke Find, microphone, tone, or any effectful audio action.
+        Invoke-Control 'AudioClose'
+        $null = Wait-Status '*First run:*'
+        Invoke-Control 'OpenLiveConversation'
+        $live = Wait-Setup '*REAL API mode; NOT RUN*No effects authorized*Choices loaded*' 'LiveStatus'
+        foreach ($id in @('LiveSend', 'LivePtt', 'LiveRelease')) {
+            $control = Find-Control $id
+            if ($null -eq $control -or $control.Current.IsEnabled) { throw 'Unconfigured live actions must be explicitly gated.' }
+        }
+        foreach ($id in @('LiveVoice', 'LiveAcceptAction', 'LiveAcceptCapture', 'LiveAcceptUpload')) {
+            $control = Find-Control $id
+            if ($null -eq $control -or $control.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne
+                [Windows.Automation.ToggleState]::Off) { throw 'Live output and permission must start OFF.' }
+        }
+        if (Test-Path -LiteralPath $data) { throw 'Opening live conversation unexpectedly wrote settings.' }
+        # Do not accept permission or invoke a live Send/PTT. This is a no-key/no-network/no-device native smoke.
+        Invoke-Control 'LiveOpenSetup'
+        $null = Wait-Setup '*Checkpoint: Choice*'
+        Invoke-Control 'SetupRecovery'
+        $null = Wait-Setup '*No backup read or written*' 'RecoveryResult'
+        if ((Find-Control 'RecoveryRestore').Current.IsEnabled -or (Test-Path -LiteralPath $data)) {
+            throw 'Conversation -> Setup -> Recovery must remain passive and require an exact preview.'
+        }
+        Invoke-Control 'RecoveryClose'
+        $null = Wait-Setup '*Recovery closed*Reload*' 'SetupResult'
+        Invoke-Control 'SetupClose'
+        $null = Wait-Setup '*Choices loaded*' 'LiveStatus'
+        Invoke-Control 'CloseLive'
+        $null = Wait-Status '*First run:*'
+        Invoke-Control 'OpenConfigurationRecovery'
+        $null = Wait-Setup '*No backup read or written*' 'RecoveryResult'
+        if ((Find-Control 'RecoveryRestore').Current.IsEnabled -or (Test-Path -LiteralPath $data)) {
+            throw 'Passive recovery must not read/write snapshots or enable restore without a preview.'
+        }
+        Invoke-Control 'RecoveryClose'
+        $null = Wait-Status '*First run:*'
+        Invoke-Control 'OpenSetup'
+        $null = Wait-Setup '*Checkpoint: Choice*'
+        if (Test-Path -LiteralPath $data) { throw 'Opening setup wrote files before an explicit save.' }
+        Invoke-Control 'SetupTroubleshooting'
+        $null = Wait-Setup '*Recording: OFF*worker: idle*' 'SupportStatus'
+        if (Test-Path -LiteralPath $data) { throw 'Troubleshooting inside first-run setup wrote files.' }
+        Invoke-Control 'SupportClose'
+        $null = Wait-Setup '*Checkpoint: Choice*'
+        Invoke-Control 'SetupRecovery'
+        $null = Wait-Setup '*No backup read or written*' 'RecoveryResult'
+        if (Test-Path -LiteralPath $data) { throw 'Passive recovery inside setup wrote files.' }
+        Invoke-Control 'RecoveryClose'
+        $null = Wait-Setup '*Recovery closed*Reload*' 'SetupResult'
+        Invoke-Control 'SetupClose'
+        $null = Wait-Status '*First run:*'
     }
-    $pipeline.SetFocus()
-    if (-not $pipeline.Current.HasKeyboardFocus) { throw 'Pipeline did not accept keyboard focus.' }
-    Invoke-Control 'StartFixture'
-    $complete = Wait-Fixture '*fixture.completed*'
-    if ($complete -notlike '*Synthetic text: A synthetic fixture response.*' -or $complete -notlike '*Audio OFF / not run*') {
-        throw 'The desktop demo did not render actual fixture text with audio off.'
-    }
-    if ((Read-Value $pipeline) -notlike '*LLM:*NotRun*' -or (Test-Path -LiteralPath $data)) {
-        throw 'Fixture success modified real readiness or persisted a profile.'
-    }
-    Select-Fixture 'refused-after-partial'
-    Invoke-Control 'StartFixture'
-    $refused = Wait-Fixture '*fixture.refused*'
-    if ($refused -notlike '*partial; not a completed answer*' -or $refused -notlike '*Separate scripted refusal (never read aloud)*') {
-        throw 'Refusal was not kept separate from partial synthetic text.'
-    }
-    Select-Fixture 'slow'
-    Invoke-Control 'StartFixture'
-    $running = Wait-Fixture '*Scenario: slow*Stage: Script*'
-    Stop-ActiveFixture
-    $stopped = Wait-Fixture '*Scenario: slow*Stage: Finished*fixture.stopped*'
-    if ($stopped -notlike '*Scenario: slow*Stage: Finished*' -or $stopped -notlike '*outcome: Canceled*' -or
-        $stopped -notlike '*queued text: 0*' -or $stopped -notmatch '(?m)^Synthetic text: \r?$') {
-        throw 'Stop did not finish with an explicit canceled outcome and empty text/queue.'
-    }
-    Select-Fixture 'streaming'
-    Invoke-Control 'StartFixture'
-    $streaming = Wait-Fixture '*fixture.completed*'
-    if ($streaming -notlike '*Synthetic text: Synthetic text.*' -or $streaming -like '*Partial fixture.*') {
-        throw 'New fixture did not replace retired output in order.'
-    }
-    $oldIds = [regex]::Match($stopped, '(?m)^Session:.*').Value
-    $newIds = [regex]::Match($streaming, '(?m)^Session:.*').Value
-    if (-not $oldIds -or -not $newIds -or $oldIds -ceq $newIds) {
-        throw 'New fixture did not use fresh IDs after Stop; retired output cannot be accepted.'
-    }
-    $stop = Find-Control 'StopDiagnostics'
-    if ($null -eq $stop -or $stop.Current.IsEnabled -or $stop.Current.Name -ne 'Stop diagnostics') {
-        throw 'Stop must be exposed and disabled while idle.'
-    }
-    Invoke-Control 'RefreshDiagnostics'
-    $refreshed = Wait-Status '*First run:*' $first
-    if ($refreshed -notlike '*settings.first_run*') { throw 'Refresh did not use the shared diagnostic catalog.' }
-    Invoke-Control 'OpenAudioSetup'
-    $audio = Wait-Setup '*never tested*UNVERIFIED*' 'AudioStatus'
-    if ($audio -notlike '*No provider*' -or (Find-Control 'AudioHeard').Current.IsEnabled) {
-        throw 'Unrun audio setup must remain local, unverified and not confirmable.'
-    }
-    if (Test-Path -LiteralPath $data) { throw 'Opening audio setup wrote settings before explicit save.' }
-    # Deliberately do not invoke Find, microphone, tone, or any effectful audio action.
-    Invoke-Control 'AudioClose'
-    $null = Wait-Status '*First run:*'
-    Invoke-Control 'OpenLiveConversation'
-    $live = Wait-Setup '*REAL API mode; NOT RUN*No effects authorized*Choices loaded*' 'LiveStatus'
-    foreach ($id in @('LiveSend', 'LivePtt', 'LiveRelease')) {
-        $control = Find-Control $id
-        if ($null -eq $control -or $control.Current.IsEnabled) { throw 'Unconfigured live actions must be explicitly gated.' }
-    }
-    foreach ($id in @('LiveVoice', 'LiveAcceptAction', 'LiveAcceptCapture', 'LiveAcceptUpload')) {
-        $control = Find-Control $id
-        if ($null -eq $control -or $control.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne
-            [Windows.Automation.ToggleState]::Off) { throw 'Live output and permission must start OFF.' }
-    }
-    if (Test-Path -LiteralPath $data) { throw 'Opening live conversation unexpectedly wrote settings.' }
-    # Do not accept permission or invoke a live Send/PTT. This is a no-key/no-network/no-device native smoke.
-    Invoke-Control 'LiveOpenSetup'
-    $null = Wait-Setup '*Checkpoint: Choice*'
-    Invoke-Control 'SetupRecovery'
-    $null = Wait-Setup '*No backup read or written*' 'RecoveryResult'
-    if ((Find-Control 'RecoveryRestore').Current.IsEnabled -or (Test-Path -LiteralPath $data)) {
-        throw 'Conversation -> Setup -> Recovery must remain passive and require an exact preview.'
-    }
-    Invoke-Control 'RecoveryClose'
-    $null = Wait-Setup '*Recovery closed*Reload*' 'SetupResult'
-    Invoke-Control 'SetupClose'
-    $null = Wait-Setup '*Choices loaded*' 'LiveStatus'
-    Invoke-Control 'CloseLive'
-    $null = Wait-Status '*First run:*'
-    Invoke-Control 'OpenConfigurationRecovery'
-    $null = Wait-Setup '*No backup read or written*' 'RecoveryResult'
-    if ((Find-Control 'RecoveryRestore').Current.IsEnabled -or (Test-Path -LiteralPath $data)) {
-        throw 'Passive recovery must not read/write snapshots or enable restore without a preview.'
-    }
-    Invoke-Control 'RecoveryClose'
-    $null = Wait-Status '*First run:*'
-    Invoke-Control 'OpenSetup'
-    $null = Wait-Setup '*Checkpoint: Choice*'
-    if (Test-Path -LiteralPath $data) { throw 'Opening setup wrote files before an explicit save.' }
-    Invoke-Control 'SetupTroubleshooting'
-    $null = Wait-Setup '*Recording: OFF*worker: idle*' 'SupportStatus'
-    if (Test-Path -LiteralPath $data) { throw 'Troubleshooting inside first-run setup wrote files.' }
-    Invoke-Control 'SupportClose'
-    $null = Wait-Setup '*Checkpoint: Choice*'
-    Invoke-Control 'SetupRecovery'
-    $null = Wait-Setup '*No backup read or written*' 'RecoveryResult'
-    if (Test-Path -LiteralPath $data) { throw 'Passive recovery inside setup wrote files.' }
-    Invoke-Control 'RecoveryClose'
-    $null = Wait-Setup '*Recovery closed*Reload*' 'SetupResult'
-    Invoke-Control 'SetupClose'
-    $null = Wait-Status '*First run:*'
     Invoke-Control 'CreateProfile'
     $saved = Wait-Status '*Profile: NotConfigured;*'
     if ($saved -notlike '*settings.valid*' -or -not [System.IO.File]::Exists($settings)) { throw 'Explicit profile creation failed.' }
@@ -333,12 +340,47 @@ try {
     $null = Wait-Setup '*Stt: route selected; consent missing or invalidated*'
     Invoke-Control 'SetupSaveExit'
     $null = Wait-Status '*Setup checkpoint: Destinations*consent missing or invalidated*'
+    if ($CompanionOnly) {
+        $beforeCompanion = [IO.File]::ReadAllBytes($settings)
+        Invoke-Control 'OpenCompanion'
+        $null = Wait-Setup '*Companion settings loaded*' 'CompanionResult'
+        if ([Convert]::ToHexString([IO.File]::ReadAllBytes($settings)) -cne [Convert]::ToHexString($beforeCompanion)) {
+            throw 'Opening the companion editor modified saved settings.'
+        }
+        (Find-Control 'CompanionName').GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).SetValue('Smoke persona')
+        (Find-Control 'CompanionText').GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).SetValue('Offline smoke persona; no provider action.')
+        Invoke-Control 'CompanionSave'
+        $null = Wait-Setup '*Companion settings saved*' 'CompanionResult'
+        Invoke-Control 'CompanionClose'
+        $null = Wait-Status '*Setup checkpoint: Destinations*consent missing or invalidated*'
+    }
     Close-Desktop
     $configured = Get-Content -LiteralPath $settings -Raw | ConvertFrom-Json
-    if ($configured.schema_version -ne 2 -or $configured.profile.id -ne $legacyId -or
+    if ($configured.schema_version -ne 3 -or $configured.profile.id -ne $legacyId -or
+        $configured.companion.personas.Count -ne 1 -or
+        $configured.companion.active_persona_id -ne $configured.companion.personas[0].id -or
         $configured.setup.routes[0].model_id -cne 'whisper-1' -or $null -ne $configured.setup.routes[0].consent -or
         $null -ne $configured.setup.routes[0].credential_id -or $configured.setup.pending_removals.Count -ne 0) {
-        throw 'Actual no-key setup did not preserve identity, model edit and consent invalidation.'
+        throw 'Actual no-key setup/companion save did not preserve identity, persona, model edit and consent invalidation.'
+    }
+    if ($CompanionOnly) {
+        if ($configured.companion.personas[0].name -cne 'Smoke persona' -or
+            $configured.companion.personas[0].text -cne 'Offline smoke persona; no provider action.') {
+            throw 'Companion editing did not persist the exact selected persona.'
+        }
+        Start-Desktop
+        $null = Wait-Status '*Setup checkpoint: Destinations*consent missing or invalidated*'
+        Invoke-Control 'OpenCompanion'
+        $null = Wait-Setup '*Companion settings loaded*' 'CompanionResult'
+        if ((Read-Value (Find-Control 'CompanionName')) -cne 'Smoke persona' -or
+            (Read-Value (Find-Control 'CompanionText')) -cne 'Offline smoke persona; no provider action.') {
+            throw 'Restart did not load the saved persona through the actual editor.'
+        }
+        Invoke-Control 'CompanionClose'
+        $null = Wait-Status '*Setup checkpoint: Destinations*consent missing or invalidated*'
+        Close-Desktop
+        Write-Output 'PASS: independent native companion editor/save/restart; read-only open; exact persona/profile/route/consent preservation; v1 migration original preserved; no keys/network/audio.'
+        return
     }
 
     foreach ($case in @(

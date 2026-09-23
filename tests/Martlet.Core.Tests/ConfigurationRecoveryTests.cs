@@ -364,7 +364,7 @@ public sealed class ConfigurationRecoveryTests : IDisposable
         var original = await File.ReadAllBytesAsync(Store.FilePath);
         var plan = await Store.PreviewConfigurationRestoreAsync(Backup);
         var first = await Store.RestoreConfigurationAsync(plan, Approve(plan));
-        Assert.Equal(2, (await Store.LoadAsync()).Settings!.SchemaVersion);
+        Assert.Equal(AppSettings.CurrentSchemaVersion, (await Store.LoadAsync()).Settings!.SchemaVersion);
         Assert.Equal(original, await File.ReadAllBytesAsync(first.OriginalSnapshot!));
         var afterFirst = await File.ReadAllBytesAsync(Store.FilePath);
         plan = await Store.PreviewConfigurationRestoreAsync(Backup);
@@ -473,9 +473,9 @@ public sealed class ConfigurationRecoveryTests : IDisposable
         var payload = Encoding.UTF8.GetString(Convert.FromBase64String(manifest["settings_bytes"]!.GetValue<string>()));
         payload = mutation switch
         {
-            "unknown" => payload.Replace("\"schema_version\": 2,", "\"schema_version\": 2,\"unexpected\":true,", StringComparison.Ordinal),
-            "future" => payload.Replace("\"schema_version\": 2,", "\"schema_version\": 3,", StringComparison.Ordinal),
-            _ => payload.Replace("\"schema_version\": 2,", "\"schema_version\": 2,\"schema_version\": 2,", StringComparison.Ordinal)
+            "unknown" => payload.Replace("\"schema_version\": 3,", "\"schema_version\": 3,\"unexpected\":true,", StringComparison.Ordinal),
+            "future" => payload.Replace("\"schema_version\": 3,", "\"schema_version\": 4,", StringComparison.Ordinal),
+            _ => payload.Replace("\"schema_version\": 3,", "\"schema_version\": 3,\"schema_version\": 3,", StringComparison.Ordinal)
         };
         var bytes = Encoding.UTF8.GetBytes(payload);
         manifest["settings_bytes"] = Convert.ToBase64String(bytes);

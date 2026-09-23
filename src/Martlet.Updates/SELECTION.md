@@ -139,8 +139,12 @@ When leaving a selection, its last compatible configuration snapshot is retained
 A fresh snapshot becomes that previous entry's snapshot only when the signed
 reader bounds include its schema; otherwise the prior compatible snapshot remains
 visible in `PreviousAfterSelection`. No incompatible snapshot is silently paired
-with an old reader. Rollback also refuses a reader that cannot consume schema 2,
-because today's V07a restore emits v2 even for historical v1 envelopes.
+with an old reader. A new rollback also refuses a reader that cannot consume the
+current settings schema (v3), because V07a emits it even for historical envelopes.
+Historical restore journals and acknowledgment records are different: their
+commit marker's exact recorded schema (v2 or v3) is validated against the selected
+signed reader, never reconstructed from the current writer constant. No journal
+format is changed and no old receipt is rewritten by this compatibility check.
 
 A committed rollback selection remains `AwaitingConfigurationRestore` and then
 requires readiness. Neither another activation nor another rollback selection
@@ -303,8 +307,10 @@ pending publication, original and complete bounded ancestry. No terminal or
 recovery publication may exist for that old restore. All current/previous
 signed packages, receipts, snapshots, bootstrap origin and current immutable
 publisher policy are reverified. The actual settings file must still be valid
-same-profile schema 2 and byte-exactly match the recorded candidate revision.
-Missing/malformed/changed evidence, wrong profile/newer schema, revoked policy
+same-profile settings with the exact recorded commit schema and byte-exactly
+match the recorded candidate revision. An already acknowledged historical
+transaction remains historical even after a later explicit settings migration.
+Missing/malformed/changed evidence, wrong profile/unsupported or mismatched schema, revoked policy
 or any unmatched publication refuses read-only.
 
 The immutable `RollbackAcknowledgmentPlan` displays a NEW operation ID, the
@@ -448,7 +454,7 @@ receipts required by a history reference, a selected record substituted with a
 same-generation recovered-original record, or conflicting terminal receipts.
 
 Records are canonical bounded JSON: 32 KiB control/original, 128 KiB journal,
-128 KiB V07a snapshot (Core's bound). At most 32 transaction directories, 128
+256 KiB V07a snapshot (Core's bound). At most 32 transaction directories, 128
 immediate control-root children, 32 ancestry links and 8 recovery scratch attempts
 per transaction are allowed. Full paths are at most 240 characters, control roots
 166 (including room for publication filenames), stage names 100. Existing staging

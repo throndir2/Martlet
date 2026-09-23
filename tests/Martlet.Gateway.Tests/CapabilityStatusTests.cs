@@ -61,7 +61,7 @@ public sealed class CapabilityStatusTests
         var card = host.OpenPairing();
         var token = card.Token.Reveal();
         var unknown = $$"""
-            {"protocol_version":{"major":1,"minor":0},"pairing_id":"{{card.PairingId}}",
+            {"protocol_version":{"major":2,"minor":0},"pairing_id":"{{card.PairingId}}",
              "pairing_token":"{{token}}","host_id":"{{card.HostId}}",
              "spki_fingerprint":"{{card.SpkiFingerprint}}","device_id":"fixture-device",
              "redirect":"https://8.8.8.8/"}

@@ -33,7 +33,17 @@ despite rechecksumming and ephemeral re-signing, inclusive legacy 2 MiB/current
 bounded descriptive Unicode source records, cancellation and exact cleanup
 ownership. Large exact-byte-boundary inputs use signed legal JSON whitespace;
 they are parser-boundary cases, not canonical production output. Retained mixed
-v1/v2 selection/rollback preserves historical bytes and remains non-runnable.
+v1/v2/v3 selection/rollback preserves historical bytes and remains non-runnable.
+
+`HistoricalSettingsSchemaTests` adds authored pre-persona wire histories backed
+by real signed/staged packages and v2 settings. It covers completed and interrupted
+v2 restores, fresh-consent acknowledgment, unchanged old evidence after later
+v3 settings migration, invalid recorded schemas and continued current-schema
+admission for new rollback. Historical marker/ack schemas are never inferred from
+`CurrentSchemaVersion`; this does not introduce a new journal format.
+A valid two-persona Unicode snapshot larger than 128 KiB also traverses actual
+selection, restore and acknowledgment with the 256 KiB snapshot-specific limit;
+journal/control limits remain unchanged.
 
 The real unchanged-reader regression fails at `Preview` with `UnsafeEntry` for
 the current root SBOM; the fixed same staging/inspection test passes. Retain the
