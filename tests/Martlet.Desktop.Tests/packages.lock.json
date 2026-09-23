@@ -131,6 +131,7 @@
           "Martlet.Conversation": "[0.1.0, )",
           "Martlet.Credentials.Windows": "[0.1.0, )",
           "Martlet.Diagnostics": "[0.1.0, )",
+          "Martlet.Memory": "[0.1.0, )",
           "Martlet.Participation": "[0.1.0, )",
           "Martlet.Support": "[0.1.0, )"
         }
@@ -147,6 +148,9 @@
         "dependencies": {
           "Martlet.Core": "[0.1.0, )"
         }
+      },
+      "martlet.memory": {
+        "type": "Project"
       },
       "martlet.participation": {
         "type": "Project"
