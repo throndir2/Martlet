@@ -15,6 +15,10 @@ limited to `src/Martlet.F5`, `tests/Martlet.F5.Tests`, and this document.
 It does not import the old branch's ancestry, later Python worker, or final
 Gateway/Desktop settings integration. The original central-document changes
 are intentionally excluded; the current installation plan remains authoritative.
+Independent review of the imported slice also led to two store-lifecycle fixes:
+disposal retains exclusive ownership through snapshot commit/cleanup, and applied
+selection is revalidated atomically with lease reservation. Barrier-controlled
+regressions exercise concurrent disposal and both Apply/acquisition orderings.
 
 The [installation requirements](INSTALLATION_SUPPORT.md), upstream findings
 [S30-S35](RESEARCH.md#s30), and

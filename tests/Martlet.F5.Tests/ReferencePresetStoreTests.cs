@@ -8,6 +8,116 @@ namespace Martlet.F5.Tests;
 public sealed class ReferencePresetStoreTests
 {
     [Fact]
+    public async Task Disposal_during_snapshot_commit_retains_ownership_and_persisted_audio()
+    {
+        using var scope = new F5TestScope();
+        using var clock = new CommitBarrierClock();
+        F5TestData.WriteWav(scope.SourcePath);
+        F5ReferenceSnapshot snapshot;
+        using (var store = scope.OpenStore(clock))
+        {
+            clock.BlockOnCall(2);
+            var pending = Task.Run(() => F5TestData.SnapshotAsync(store, scope.SourcePath));
+            Exception? disposeError;
+            Exception? reopenError;
+            try
+            {
+                await clock.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                disposeError = Record.Exception(store.Dispose);
+                reopenError = Record.Exception(() =>
+                {
+                    using var _ = scope.OpenStore();
+                });
+            }
+            finally
+            {
+                clock.Release();
+            }
+            snapshot = await pending.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(F5Failure.Busy, Assert.IsType<F5Exception>(disposeError).Failure);
+            Assert.Equal(F5Failure.Busy, Assert.IsType<F5Exception>(reopenError).Failure);
+        }
+
+        using var reopened = scope.OpenStore();
+        using var lease = await reopened.AcquireForPreviewAsync(
+            snapshot.PresetId, snapshot.ReferenceRevision);
+        Assert.Equal(snapshot.ReferenceRevision, lease.ReferenceRevision);
+        Assert.Equal(snapshot.ReferenceRevision,
+            Assert.Single(Assert.Single(reopened.Inspect().Presets).Snapshots).ReferenceRevision);
+    }
+
+    [Fact]
+    public async Task Apply_and_applied_acquisition_preserve_selection_in_both_orders()
+    {
+        using var scope = new F5TestScope();
+        using var clock = new CommitBarrierClock();
+        F5TestData.WriteWav(scope.SourcePath);
+        using var store = scope.OpenStore(clock);
+        var first = await F5TestData.SnapshotAsync(store, scope.SourcePath);
+        var second = await F5TestData.SnapshotAsync(store, scope.SourcePath,
+            first.PresetId, transcript: "A different reviewed transcript.");
+        await F5TestData.ApplyAsync(store, first);
+        var preview = await store.CreateApplyPreviewAsync(second.PresetId, second.ReferenceRevision);
+        var authorization = preview.Authorize(F5ApplyDecision.Allow);
+
+        using (var lease = await store.AcquireAppliedAsync(first.ReferenceRevision))
+        {
+            await F5TestData.FailureAsync(F5Failure.Busy, async () =>
+                await store.ApplyAsync(preview, authorization));
+            Assert.Equal(first.ReferenceRevision, store.Inspect().AppliedReferenceRevision);
+        }
+
+        clock.BlockOnCall(1);
+        var apply = Task.Run(() => store.ApplyAsync(preview, authorization));
+        try
+        {
+            await clock.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await F5TestData.FailureAsync(F5Failure.Busy, async () =>
+            {
+                using var _ = await store.AcquireAppliedAsync(first.ReferenceRevision);
+            });
+        }
+        finally
+        {
+            clock.Release();
+        }
+        await apply.WaitAsync(TimeSpan.FromSeconds(10));
+        await F5TestData.FailureAsync(F5Failure.Conflict, async () =>
+        {
+            using var _ = await store.AcquireAppliedAsync(first.ReferenceRevision);
+        });
+        using var selected = await store.AcquireAppliedAsync(second.ReferenceRevision);
+        Assert.Equal(second.ReferenceRevision, selected.ReferenceRevision);
+        using var previewLease = await store.AcquireForPreviewAsync(
+            first.PresetId, first.ReferenceRevision);
+        Assert.Equal(first.ReferenceRevision, previewLease.ReferenceRevision);
+    }
+
+    private sealed class CommitBarrierClock : TimeProvider, IDisposable
+    {
+        private readonly ManualResetEventSlim release = new();
+        private int remainingCalls;
+        internal TaskCompletionSource Entered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        internal void BlockOnCall(int calls) => remainingCalls = calls;
+        internal void Release() => release.Set();
+
+        public override DateTimeOffset GetUtcNow()
+        {
+            if (Interlocked.Decrement(ref remainingCalls) == 0)
+            {
+                Entered.TrySetResult();
+                if (!release.Wait(TimeSpan.FromSeconds(10)))
+                    throw new TimeoutException("The test did not release the commit barrier.");
+            }
+            return F5TestData.Now;
+        }
+
+        public void Dispose() => release.Dispose();
+    }
+
+    [Fact]
     public async Task Snapshot_persists_exact_bytes_digests_transcript_and_reopens()
     {
         using var scope = new F5TestScope();

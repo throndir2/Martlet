@@ -382,7 +382,7 @@ public sealed class F5ReferencePresetStore : IDisposable
             presetId = state.AppliedPresetId ??
                 throw new F5Exception(F5Failure.Conflict);
         }
-        return AcquireAsync(presetId, expectedReferenceRevision, cancellationToken);
+        return AcquireAsync(presetId, expectedReferenceRevision, requireApplied: true, cancellationToken);
     }
 
     public Task<F5ReferenceUseLease> AcquireForPreviewAsync(
@@ -392,7 +392,7 @@ public sealed class F5ReferencePresetStore : IDisposable
     {
         F5Guard.Require(presetId != Guid.Empty);
         F5Guard.Sha256(referenceRevision);
-        return AcquireAsync(presetId, referenceRevision, cancellationToken);
+        return AcquireAsync(presetId, referenceRevision, requireApplied: false, cancellationToken);
     }
 
     public async Task<F5ReferenceSourceStatus> CheckSourceAsync(
@@ -438,6 +438,7 @@ public sealed class F5ReferencePresetStore : IDisposable
     private async Task<F5ReferenceUseLease> AcquireAsync(
         Guid presetId,
         string referenceRevision,
+        bool requireApplied,
         CancellationToken cancellationToken)
     {
         F5ReferenceSnapshotDocument snapshot;
@@ -445,6 +446,10 @@ public sealed class F5ReferencePresetStore : IDisposable
         {
             EnsureOpen();
             F5Guard.Require(!selectionMutation, F5Failure.Busy);
+            F5Guard.Require(!requireApplied ||
+                (state.AppliedPresetId == presetId &&
+                    state.AppliedReferenceRevision == referenceRevision),
+                F5Failure.Conflict);
             snapshot = FindSnapshot(state, presetId, referenceRevision);
             F5ReferenceDigests.Validate(snapshot);
             activeUses = checked(activeUses + 1);
@@ -677,9 +682,17 @@ public sealed class F5ReferencePresetStore : IDisposable
             if (disposed)
                 return;
             F5Guard.Require(activeUses == 0 && !selectionMutation, F5Failure.Busy);
-            disposed = true;
+            F5Guard.Require(mutationGate.Wait(0), F5Failure.Busy);
+            try
+            {
+                disposed = true;
+                ownershipLock.Dispose();
+            }
+            finally
+            {
+                // Queued mutations must wake and observe Closed, not a disposed semaphore.
+                mutationGate.Release();
+            }
         }
-        ownershipLock.Dispose();
-        mutationGate.Dispose();
     }
 }
