@@ -76,6 +76,13 @@ cannot mutate validated arrays. `ArtifactInspector.Inspect(manifest, roleId,
 target, platform)` computes the actual direct/transitive closure and returns an immutable
 `InspectionReport`. `ToJson()` and `ToHuman()` format the same report;
 `ExitCode`, `KnownPayloadBytes` and `DocumentSha256` are directly available.
+`ArtifactInspector.InspectRoles(manifest, roleIds, target, platform)` selects an
+explicit set of one through four unique exact role IDs through that same
+inventory path. Missing, duplicate, empty or invalid IDs are rejected; optional
+unselected catalog roles are excluded before closure/unique-byte accounting.
+Selection order does not change output. Existing `Inspect` semantics (one role,
+or null for all) and the report wire format are unchanged. Neither entry point
+confers eligibility, authenticity, acquisition permission or rights approval.
 Invalid input raises a sanitized `ArtifactManifestException` containing a
 stable diagnostic code/remedy, never a supplied path or raw parser exception.
 

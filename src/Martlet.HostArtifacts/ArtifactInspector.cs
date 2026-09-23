@@ -5,13 +5,30 @@ namespace Martlet.HostArtifacts;
 public static class ArtifactInspector
 {
     public static InspectionReport Inspect(ArtifactManifest manifest, string? roleId = null, string? target = null,
-        string? platform = null)
+        string? platform = null) =>
+        InspectCore(manifest, roleId is null ? null : [roleId], target, platform);
+
+    public static InspectionReport InspectRoles(ArtifactManifest manifest, IEnumerable<string> roleIds,
+        string? target = null, string? platform = null)
+    {
+        ArgumentNullException.ThrowIfNull(roleIds);
+        return InspectCore(manifest, roleIds.Take(5).ToArray(), target, platform);
+    }
+
+    private static InspectionReport InspectCore(ArtifactManifest manifest, string[]? selectedRoleIds,
+        string? target, string? platform)
     {
         ArgumentNullException.ThrowIfNull(manifest);
         ImagePlatform? requestedPlatform = null;
         try
         {
-            if (roleId is not null) ArtifactSourceRules.Id(roleId);
+            if (selectedRoleIds is not null)
+            {
+                if (selectedRoleIds.Length is < 1 or > 4 ||
+                    selectedRoleIds.Distinct(StringComparer.Ordinal).Count() != selectedRoleIds.Length)
+                    throw new ArtifactManifestException("inspection.invalid_invocation");
+                foreach (var id in selectedRoleIds) ArtifactSourceRules.Id(id);
+            }
             if (target is not null) ArtifactSourceRules.Id(target);
             if (platform is not null) requestedPlatform = ContainerImageRules.ParsePlatform(platform);
         }
@@ -20,8 +37,10 @@ public static class ArtifactInspector
         var doc = manifest.Document;
         if (platform is not null && doc.FormatVersion == 1)
             throw new ArtifactManifestException("inspection.invalid_invocation");
-        var roles = doc.Roles.Where(r => roleId is null || r.Id == roleId).OrderBy(r => r.Id, StringComparer.Ordinal).ToArray();
-        if (roles.Length == 0) throw new ArtifactManifestException("inspection.invalid_invocation");
+        var roles = doc.Roles.Where(r => selectedRoleIds is null || selectedRoleIds.Contains(r.Id, StringComparer.Ordinal))
+            .OrderBy(r => r.Id, StringComparer.Ordinal).ToArray();
+        if (roles.Length == 0 || selectedRoleIds is not null && roles.Length != selectedRoleIds.Length)
+            throw new ArtifactManifestException("inspection.invalid_invocation");
         var artifactMap = ArtifactManifestValidator.Nodes(doc);
         var runtimeMap = doc.Runtimes.ToDictionary(r => r.Id, StringComparer.Ordinal);
         var selectedIds = new HashSet<string>(StringComparer.Ordinal);
