@@ -98,7 +98,8 @@ function Get-PayloadFiles([string]$Root, [switch]$ExcludeSbom) {
 }
 
 function Get-PublishDependencyManifest([string]$Root, [string]$Entry) {
-    $deps = Read-PackagingJson (Join-Path $Root "$Entry\Martlet.$Entry.deps.json")
+    $context = Get-PublishContext $Entry
+    $deps = Read-PackagingJson (Join-Path $Root "$($context.directory)\$($context.project).deps.json")
     if (-not $deps.runtimeTarget.name.EndsWith("/$((Get-PackagingPins).rid)", [StringComparison]::Ordinal) -or
         $null -eq $deps.targets.PSObject.Properties[$deps.runtimeTarget.name]) {
         throw "Wrong RID or missing target in $Entry dependency manifest."
@@ -113,23 +114,20 @@ function Get-PublishedAssetPath([string]$Entry, [string]$Kind, [string]$Name, $M
         Assert-EvidenceRelativePath $Metadata.locale
         $relative = Join-Path $Metadata.locale $relative
     }
-    return "$Entry\$relative"
+    return "$((Get-PublishContext $Entry).directory)\$relative"
 }
 
-function Get-PublishProjectNames([ValidateSet('Desktop', 'Doctor')][string]$Entry) {
-    @("Martlet.$Entry", 'Martlet.Core', 'Martlet.Diagnostics', 'Martlet.Fixtures', 'Martlet.Sessions', 'Martlet.Audio')
-    if ($Entry -eq 'Desktop') {
-        @('Martlet.Credentials.Windows', 'Martlet.Conversation', 'Martlet.Memory',
-            'Martlet.Providers', 'Martlet.Participation', 'Martlet.Support')
-    }
+function Get-PublishProjectNames([ValidateSet('Desktop', 'Doctor', 'AvatarRenderer')][string]$Entry) {
+    (Get-PackagingPins).applicationGraphs.$Entry.projects
 }
 
 function Assert-PublishLayout([string]$Root) {
     $pins = Get-PackagingPins
     $versions = @()
-    foreach ($entry in @('Desktop', 'Doctor')) {
-        $directory = Join-Path $Root $entry
-        $name = "Martlet.$entry"
+    foreach ($context in Get-PublishContexts) {
+        $entry = $context.name
+        $directory = Join-Path $Root $context.directory
+        $name = $context.project
         $projects = @(Get-PublishProjectNames $entry)
         foreach ($project in $projects) {
             $null = Get-RequiredFile (Join-Path $directory "$project.dll")
@@ -154,8 +152,7 @@ function Assert-PublishLayout([string]$Root) {
             $options.PSObject.Properties.Name -notcontains 'includedFrameworks') {
             throw "$entry is not self-contained. Publish with the WindowsInternal profile."
         }
-        $expectedFrameworks = @('Microsoft.NETCore.App')
-        if ($entry -eq 'Desktop') { $expectedFrameworks += 'Microsoft.WindowsDesktop.App' }
+        $expectedFrameworks = @($pins.applicationGraphs.$entry.frameworks)
         if (@(Compare-Object $expectedFrameworks @($options.includedFrameworks.name)).Count -ne 0) {
             throw "Unexpected included runtime frameworks for $entry."
         }
@@ -178,7 +175,11 @@ function Assert-PublishLayout([string]$Root) {
                 throw "Missing project runtime asset $project.dll in $entry dependency manifest."
             }
         }
-        foreach ($package in $pins.managedPackages) {
+        $packageIds = @($pins.applicationGraphs.$entry.packages)
+        $actualPackageIds = @($deps.libraries.PSObject.Properties | Where-Object { $_.Value.type -ceq 'package' } |
+            ForEach-Object { $_.Name.Split('/')[0] })
+        if (@(Compare-Object $packageIds $actualPackageIds -CaseSensitive).Count) { throw "Unreviewed package graph in $entry." }
+        foreach ($package in $pins.managedPackages | Where-Object { $packageIds -ccontains $_.id }) {
             if ($null -eq $target.PSObject.Properties["$($package.id)/$($package.version)"]) {
                 throw "Missing or incorrect managed package $($package.id) $($package.version) in $entry."
             }
@@ -206,22 +207,30 @@ function Assert-PublishLayout([string]$Root) {
             throw "Native runtime version does not match $($pins.runtimeVersion) in $entry."
         }
     }
-    if ($versions[0] -cne $versions[1]) { throw 'Desktop and Doctor versions do not agree.' }
-    foreach ($file in @('PresentationFramework.dll', 'PresentationCore.dll', 'wpfgfx_cor3.dll', 'D3DCompiler_47_cor3.dll')) {
-        $null = Get-RequiredFile (Join-Path $Root "Desktop\$file")
+    if (@($versions | Select-Object -Unique).Count -ne 1) { throw 'Desktop, Doctor and private renderer versions do not agree.' }
+    foreach ($directory in @('Desktop', 'Desktop\AvatarRenderer')) {
+        foreach ($file in @('PresentationFramework.dll', 'PresentationCore.dll', 'wpfgfx_cor3.dll', 'D3DCompiler_47_cor3.dll')) {
+            $null = Get-RequiredFile (Join-Path $Root "$directory\$file")
+        }
     }
+    foreach ($asset in Get-WebViewArchiveAssets) { $null = Get-RequiredFile (Join-Path $Root $asset.path) }
+    Assert-X64Pe (Join-Path $Root 'Desktop\AvatarRenderer\runtimes\win-x64\native\WebView2Loader.dll')
+    Assert-AvatarWebInventory $Root
     foreach ($file in @('help\INTERNAL.txt', 'help\TROUBLESHOOTING.md', 'notices\DEPENDENCIES.txt',
             'notices\NAudio-THIRD-PARTY-NOTICES.txt',
+            'notices\Audio2Face-Protos-LICENSE.txt', 'notices\Audio2Face-THIRD-PARTY-NOTICES.md',
             'notices\Microsoft.WindowsDesktop.App\LICENSE.txt', 'notices\WPF-THIRD-PARTY-NOTICES.txt',
             'notices\WinForms-THIRD-PARTY-NOTICES.txt', 'notices\Inno-Setup-LICENSE.txt')) {
         $null = Get-RequiredFile (Join-Path $Root $file)
     }
     foreach ($notice in $pins.notices) {
         $null = Get-RequiredFile (Join-Path $Root "notices\$($notice.file)")
+        Assert-Sha256 (Join-Path $Root "notices\$($notice.file)") $notice.sha256
     }
     foreach ($package in $pins.managedPackages) {
         foreach ($notice in $package.notices) {
             $null = Get-RequiredFile (Join-Path $Root "notices\$($notice.file)")
+            Assert-Sha256 (Join-Path $Root "notices\$($notice.file)") $notice.sha256
         }
     }
     return $versions[0]
@@ -242,7 +251,7 @@ function Write-PayloadManifest([string]$Root, [string]$SourceCommit, [bool]$Sour
         throw 'Payload source metadata differs from provenance.'
     }
     Test-PackageSbom $Root $Provenance
-    $manifest = New-PayloadManifestDocument $version $SourceCommit $SourceDirty $Provenance $files $pins
+    $manifest = New-PayloadManifestDocument $version $SourceCommit $SourceDirty $Provenance $files $pins -FormatVersion 3
     $path = Join-Path $Root 'manifest.json'
     $text = ConvertTo-EvidenceJson $manifest
     if ([Text.Encoding]::UTF8.GetByteCount($text) -gt 16MB) { throw 'Manifest exceeds the 16 MiB evidence bound.' }
@@ -252,9 +261,10 @@ function Write-PayloadManifest([string]$Root, [string]$SourceCommit, [bool]$Sour
 }
 
 function New-PayloadManifestDocument([string]$ApplicationVersion, [string]$SourceCommit,
-    [bool]$SourceDirty, $Provenance, [object[]]$Files, $Pins) {
+    [bool]$SourceDirty, $Provenance, [object[]]$Files, $Pins, [ValidateSet(2, 3)][int]$FormatVersion = 2) {
+    if ($Provenance.schemaVersion -ne ($FormatVersion - 1)) { throw 'Manifest and provenance format selections disagree.' }
     return [ordered]@{
-        schemaVersion = 2
+        schemaVersion = $FormatVersion
         channel = 'INTERNAL DEVELOPMENT ONLY - UNSIGNED'
         applicationVersion = $ApplicationVersion
         rid = $Pins.rid
@@ -272,7 +282,7 @@ function Test-PayloadManifest([string]$Root, [switch]$RequireCurrentSource) {
     $version = Assert-PublishLayout $Root
     $manifestPath = (Get-RequiredFile (Join-Path $Root 'manifest.json')).FullName
     $manifest = Read-PackagingJson $manifestPath -AsHashtable
-    if ($manifest.schemaVersion -ne 2) { throw 'Payload evidence requires manifest schema v2. Rebuild the complete payload.' }
+    if ($manifest.schemaVersion -ne 3) { throw 'Payload evidence requires manifest schema v3. Rebuild the complete payload.' }
     Assert-EvidenceKeys $manifest @('schemaVersion', 'channel', 'applicationVersion', 'rid', 'sdkVersion',
         'runtimeVersion', 'sourceCommit', 'sourceDirty', 'provenance', 'files')
     if ($manifest.schemaVersion -isnot [long] -or $manifest.channel -cne 'INTERNAL DEVELOPMENT ONLY - UNSIGNED' -or
@@ -421,7 +431,7 @@ function Copy-RuntimeNotices([string]$Root, [string]$AssetsPath) {
         $archivePath = Get-VerifiedPackageArchive $assets $package.id $pins.runtimeVersion $package.sha512
         $archive = [IO.Compression.ZipFile]::OpenRead($archivePath)
         try {
-            $destinations = if ($package.id -like 'microsoft.netcore.*') { @('Desktop', 'Doctor') }
+            $destinations = if ($package.id -like 'microsoft.netcore.*') { @((Get-PublishContexts).directory) }
                 else { @('notices\Microsoft.WindowsDesktop.App') }
             foreach ($destination in $destinations) {
                 $directory = Join-Path $Root $destination
@@ -432,7 +442,7 @@ function Copy-RuntimeNotices([string]$Root, [string]$AssetsPath) {
                 }
             }
             $packAssets = @{}
-            foreach ($application in @('Desktop', 'Doctor')) {
+            foreach ($application in (Get-PublishContexts).name) {
                 $deps = Get-PublishDependencyManifest $Root $application
                 $target = $deps.targets.PSObject.Properties[$deps.runtimeTarget.name].Value
                 $owner = $target.PSObject.Properties["runtimepack.$($package.id)/$($pins.runtimeVersion)"]
@@ -442,8 +452,8 @@ function Copy-RuntimeNotices([string]$Root, [string]$AssetsPath) {
             foreach ($entry in $archive.Entries) {
                 if ($entry.FullName -notmatch '^runtimes/win-x64/(native|lib/net10\.0)/(.+)$') { continue }
                 $relative = $Matches[2].Replace('/', '\')
-                foreach ($application in @('Desktop', 'Doctor')) {
-                    $published = Join-Path $Root "$application\$relative"
+                foreach ($application in (Get-PublishContexts).name) {
+                    $published = Join-Path $Root "$((Get-PublishContext $application).directory)\$relative"
                     if (-not (Test-Path -LiteralPath $published -PathType Leaf)) { continue }
                     # WindowsDesktop overrides some Core runtime facade assemblies, e.g. WindowsBase.
                     if ($relative.Replace('\', '/') -notin $packAssets[$application]) { continue }
@@ -457,7 +467,8 @@ function Copy-RuntimeNotices([string]$Root, [string]$AssetsPath) {
         finally { $archive.Dispose() }
     }
     foreach ($package in $pins.managedPackages) {
-        $archivePath = Get-VerifiedPackageArchive $assets $package.id $package.version $package.sha512
+        $packageAssets = Get-PackageOwnerAssets $AssetsPath $package.id
+        $archivePath = Get-VerifiedPackageArchive $packageAssets $package.id $package.version $package.sha512
         $archive = [IO.Compression.ZipFile]::OpenRead($archivePath)
         try {
             $entry = $archive.GetEntry($package.runtimeAsset)
@@ -465,8 +476,9 @@ function Copy-RuntimeNotices([string]$Root, [string]$AssetsPath) {
             $stream = $entry.Open()
             try { $hash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($stream)) }
             finally { $stream.Dispose() }
-            foreach ($application in @('Desktop', 'Doctor')) {
-                Assert-Sha256 (Join-Path $Root "$application\$([IO.Path]::GetFileName($package.runtimeAsset))") $hash
+            foreach ($context in Get-PublishContexts) {
+                if ($pins.applicationGraphs.($context.name).packages -cnotcontains $package.id) { continue }
+                Assert-Sha256 (Join-Path $Root "$($context.directory)\$([IO.Path]::GetFileName($package.runtimeAsset))") $hash
             }
             foreach ($notice in $package.notices) {
                 $entry = $archive.GetEntry($notice.source)
@@ -484,7 +496,8 @@ function Copy-RuntimeNotices([string]$Root, [string]$AssetsPath) {
 }
 
 function Get-PackageApplications([string]$Root) {
-    foreach ($application in @('Desktop', 'Doctor')) {
+    foreach ($context in Get-PublishContexts) {
+        $application = $context.name
         $deps = Get-PublishDependencyManifest $Root $application
         $target = $deps.targets.PSObject.Properties[$deps.runtimeTarget.name].Value
         $keys = @(Get-EvidenceOrdinalStrings @($deps.libraries.PSObject.Properties.Name))
@@ -500,7 +513,8 @@ function Get-PackageApplications([string]$Root) {
                 }
                 $metadata = $deps.libraries.PSObject.Properties[$key].Value
                 $node = $target.PSObject.Properties[$key].Value
-                if ($metadata.type -cnotin @('package', 'project', 'runtimepack') -or
+                $reference = Test-WebViewReference $application $key
+                if (($metadata.type -cnotin @('package', 'project', 'runtimepack') -and -not ($reference -and $metadata.type -ceq 'reference')) -or
                     @($node.PSObject.Properties.Name | Where-Object { $_ -cnotin @('dependencies', 'runtime', 'native', 'resources') }).Count) {
                     throw "Unsupported dependency type or asset category: $key"
                 }
@@ -531,10 +545,19 @@ function Get-PackageApplications([string]$Root) {
                     }
                     $Matches[1]
                 } else { $null }
+                if ($metadata.type -ceq 'reference' -and
+                    ($dependencies.Count -ne 0 -or $assets.Count -ne 1 -or $assets[0].kind -cne 'runtime' -or
+                     $assets[0].source -cne "$($key.Split('/')[0]).dll")) { throw 'Unexpected WebView2 injected reference assets.' }
+                if ($metadata.type -ceq 'project' -and
+                    ($assets.Count -ne 1 -or $assets[0].kind -cne 'runtime' -or
+                     $assets[0].source -cne "$($key.Split('/')[0]).dll")) { throw 'Unreviewed project runtime assets.' }
                 [ordered]@{ key = $key; type = $metadata.type; contentHash = $contentHash; dependencies = $dependencies; assets = $assets }
             }
         )
-        [ordered]@{ name = $application; target = $deps.runtimeTarget.name; libraries = $libraries }
+        [ordered]@{
+            name = $application; project = $context.project; directory = $context.directory; parent = $context.parent
+            target = $deps.runtimeTarget.name; buildOnlyLibraries = @(); libraries = $libraries
+        }
     }
 }
 
@@ -583,7 +606,7 @@ function Get-FrameworkDownloadEvidence($Framework) {
 function Get-PackageRestoreEvidence([string]$PublishDirectory, $Source) {
     $root = Split-Path (Split-Path $PSScriptRoot)
     $projects = @{}
-    foreach ($application in @('Desktop', 'Doctor')) {
+    foreach ($application in (Get-PublishContexts).name) {
         $path = Join-Path $PublishDirectory "$application.restore-graph.json"
         Assert-RestoreGraphLocks $path
         $graph = Read-PackagingJson $path -AsHashtable
@@ -602,7 +625,7 @@ function Get-PackageRestoreEvidence([string]$PublishDirectory, $Source) {
             $projects[$name] = $project
         }
     }
-    $expectedProjects = @(@(Get-PublishProjectNames Desktop) + @(Get-PublishProjectNames Doctor) | Select-Object -Unique)
+    $expectedProjects = @(Get-PublishContexts | ForEach-Object { Get-PublishProjectNames $_.name } | Select-Object -Unique)
     if ($projects.Count -gt 128 -or @(Compare-Object $expectedProjects @($projects.Keys) -CaseSensitive).Count) {
         throw 'Restore project closure differs from the reviewed publish graph.'
     }
@@ -726,7 +749,7 @@ function Get-PackageRestoreEvidence([string]$PublishDirectory, $Source) {
     }
 }
 
-function Get-PackageArchiveEvidence([string]$Root, [string]$AssetsPath, $Applications) {
+function Get-PackageArchiveEvidence([string]$Root, [string]$AssetsPath, $Applications, [switch]$BuildOnly, $Restores) {
     $pins = Get-PackagingPins
     $assets = Read-PackagingJson $AssetsPath
     $packages = @($pins.managedPackages | ForEach-Object {
@@ -734,9 +757,11 @@ function Get-PackageArchiveEvidence([string]$Root, [string]$AssetsPath, $Applica
     }) + @($pins.runtimePackages | ForEach-Object {
         [ordered]@{ id = $_.id; version = $pins.runtimeVersion; sha512 = $_.sha512 }
     })
+    if ($BuildOnly) { $packages = @($pins.buildPackages) }
     foreach ($id in Get-EvidenceOrdinalStrings @($packages.id)) {
         $package = @($packages | Where-Object id -CEQ $id)[0]
-        $archivePath = Get-VerifiedPackageArchive $assets $id $package.version $package.sha512
+        $ownerAssets = if ($id -like 'microsoft.*.app.runtime.*') { $assets } else { Get-PackageOwnerAssets $AssetsPath $id }
+        $archivePath = Get-VerifiedPackageArchive $ownerAssets $id $package.version $package.sha512
         $archive = [IO.Compression.ZipFile]::OpenRead($archivePath)
         try {
             $names = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
@@ -782,6 +807,7 @@ function Get-PackageArchiveEvidence([string]$Root, [string]$AssetsPath, $Applica
             }
             $origins = @(
                 foreach ($application in $Applications) {
+                    if ($BuildOnly) { continue }
                     $owners = @($application.libraries | Where-Object {
                         $_.key -ieq "$id/$($package.version)" -or $_.key -ieq "runtimepack.$id/$($package.version)"
                     })
@@ -789,6 +815,7 @@ function Get-PackageArchiveEvidence([string]$Root, [string]$AssetsPath, $Applica
                     if ($owners.Count -ne 1) { throw "Ambiguous package owner: $id" }
                     $owner = $owners[0]
                     $entryPaths = @{}
+                    $components = @{}
                     foreach ($asset in $owner.assets) {
                         $archiveName = $asset.source
                         if ($owner.type -ceq 'runtimepack') {
@@ -800,9 +827,15 @@ function Get-PackageArchiveEvidence([string]$Root, [string]$AssetsPath, $Applica
                     if ($owner.type -ceq 'runtimepack') {
                         foreach ($entry in $archive.Entries) {
                             if ($entry.FullName -cmatch '^runtimes/win-x64/lib/net10\.0/([^/]+/[^/]+\.resources\.dll)$') {
-                                $relative = "$($application.name)\$($Matches[1].Replace('/', '\'))"
+                                $relative = "$($application.directory)\$($Matches[1].Replace('/', '\'))"
                                 if (Test-Path -LiteralPath (Join-Path $Root $relative) -PathType Leaf) { $entryPaths[$relative] = $entry.FullName }
                             }
+                        }
+                    }
+                    if ($id -ceq 'Microsoft.Web.WebView2' -and $application.name -ceq 'AvatarRenderer') {
+                        foreach ($asset in Get-WebViewArchiveAssets) {
+                            $entryPaths[$asset.path] = $asset.entry
+                            $components[$asset.path] = $asset.component
                         }
                     }
                     foreach ($path in Get-EvidenceOrdinalStrings @($entryPaths.Keys)) {
@@ -812,45 +845,68 @@ function Get-PackageArchiveEvidence([string]$Root, [string]$AssetsPath, $Applica
                         try { $hash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($stream)).ToLowerInvariant() }
                         finally { $stream.Dispose() }
                         Assert-Sha256 (Join-Path $Root $path) $hash
-                        [ordered]@{ path = $path; component = "$($application.name)|$($owner.key)"; entry = $entry.FullName; sha256 = $hash }
+                        $component = if ($components.ContainsKey($path)) { $components[$path] } else { "$($application.name)|$($owner.key)" }
+                        [ordered]@{ path = $path; component = $component; entry = $entry.FullName; sha256 = $hash }
                     }
                 }
             )
-            [ordered]@{
+            $record = [ordered]@{
                 id = $id; version = $package.version; archiveSha512 = $package.sha512
                 nuspecSha256 = $nuspecHash; licenseExpression = $expression; licenseFile = $licenseFile
-                repositoryUrl = $repositoryUrl; repositoryCommit = $repositoryCommit; origins = $origins
+                repositoryUrl = $repositoryUrl; repositoryCommit = $repositoryCommit
             }
+            if ($BuildOnly) {
+                $record.uses = @(
+                    foreach ($restore in $Restores) {
+                        foreach ($target in $restore.targets) {
+                            foreach ($library in $target.libraries | Where-Object key -CEQ "$id/$($package.version)") {
+                                [ordered]@{ project = $restore.project; target = $target.name; key = $library.key; contentHash = $library.contentHash }
+                            }
+                        }
+                    }
+                )
+            } else { $record.origins = $origins }
+            $record
         } finally { $archive.Dispose() }
     }
 }
 
-function Get-PackageProvenance([string]$Root, [string]$PublishDirectory, $Source, $SdkReceipt) {
+function Get-PackageProvenance([string]$Root, [string]$PublishDirectory, $Source, $SdkReceipt, [string]$NodePath = 'node') {
     Test-PackagingSourceReceipt $Source
     Test-PackagingSdkReceipt $SdkReceipt
     $applications = @(Get-PackageApplications $Root)
     $restores = @(Get-PackageRestoreEvidence $PublishDirectory $Source)
+    Set-PublishBuildOnlyLibraries $applications $restores
     $archives = @(Get-PackageArchiveEvidence $Root (Join-Path $PublishDirectory 'build\obj\Martlet.Desktop\project.assets.json') $applications)
-    $result = New-PackageProvenanceDocument $Source $SdkReceipt $applications $restores $archives (Get-PackagingPins).rid
+    $buildArchives = @(Get-PackageArchiveEvidence $Root (Join-Path $PublishDirectory 'build\obj\Martlet.Desktop\project.assets.json') $applications -BuildOnly -Restores $restores)
+    $browser = Get-AvatarBrowserEvidence $Root $PublishDirectory $Source -NodePath $NodePath
+    $result = New-PackageProvenanceDocument $Source $SdkReceipt $applications $restores $archives (Get-PackagingPins).rid -SchemaVersion 2 -Browser $browser -BuildArchives $buildArchives
     Test-PackageProvenance $Root $result
     return $result
 }
 
-function New-PackageProvenanceDocument($Source, $SdkReceipt, $Applications, $Restores, $Archives, [string]$RuntimeIdentifier) {
-    return [ordered]@{
-        schemaVersion = 1
+function New-PackageProvenanceDocument($Source, $SdkReceipt, $Applications, $Restores, $Archives, [string]$RuntimeIdentifier,
+    [ValidateSet(1, 2)][int]$SchemaVersion = 1, $Browser, [object[]]$BuildArchives) {
+    if (($SchemaVersion -eq 1 -and ($PSBoundParameters.ContainsKey('Browser') -or $PSBoundParameters.ContainsKey('BuildArchives'))) -or
+        ($SchemaVersion -eq 2 -and ($null -eq $Browser -or $null -eq $BuildArchives))) {
+        throw 'Browser and build-archive evidence must be selected explicitly with provenance schema 2.'
+    }
+    $document = [ordered]@{
+        schemaVersion = $SchemaVersion
         assurance = 'UNSIGNED INTERNAL OBSERVATION - NOT PUBLISHER ATTESTATION'
         source = $Source; sdk = $SdkReceipt
         publish = [ordered]@{ configuration = 'Release'; framework = 'net10.0-windows'; rid = $RuntimeIdentifier; selfContained = $true; trimmed = $false; singleFile = $false; readyToRun = $false }
         applications = $Applications; restores = $Restores; archives = $Archives
     }
+    if ($SchemaVersion -eq 2) { $document.browser = $Browser; $document.buildArchives = $BuildArchives }
+    return $document
 }
 
 function Test-PackageProvenance([string]$Root, $Provenance) {
     if ($null -eq $Provenance) { throw 'Required provenance missing. Rebuild the complete payload.' }
-    Assert-EvidenceKeys $Provenance @('schemaVersion', 'assurance', 'source', 'sdk', 'publish', 'applications', 'restores', 'archives')
+    Assert-EvidenceKeys $Provenance @('schemaVersion', 'assurance', 'source', 'sdk', 'publish', 'applications', 'restores', 'archives', 'browser', 'buildArchives')
     if (($Provenance.schemaVersion -isnot [int] -and $Provenance.schemaVersion -isnot [long]) -or
-        $Provenance.schemaVersion -ne 1 -or $Provenance.assurance -cne 'UNSIGNED INTERNAL OBSERVATION - NOT PUBLISHER ATTESTATION') {
+        $Provenance.schemaVersion -ne 2 -or $Provenance.assurance -cne 'UNSIGNED INTERNAL OBSERVATION - NOT PUBLISHER ATTESTATION') {
         throw 'Unsupported unsigned provenance metadata.'
     }
     Test-PackagingSourceReceipt $Provenance.source
@@ -859,6 +915,7 @@ function Test-PackageProvenance([string]$Root, $Provenance) {
     $publish = [ordered]@{ configuration = 'Release'; framework = 'net10.0-windows'; rid = $pins.rid; selfContained = $true; trimmed = $false; singleFile = $false; readyToRun = $false }
     if ((ConvertTo-EvidenceJson $Provenance.publish) -cne (ConvertTo-EvidenceJson $publish)) { throw 'Unsupported provenance publish settings.' }
     $applications = @(Get-PackageApplications $Root)
+    Set-PublishBuildOnlyLibraries $applications $Provenance.restores
     if ((ConvertTo-EvidenceJson $Provenance.applications) -cne (ConvertTo-EvidenceJson $applications)) {
         throw 'Provenance dependency graph differs from actual published dependencies.'
     }
@@ -866,7 +923,7 @@ function Test-PackageProvenance([string]$Root, $Provenance) {
     if ($Provenance.restores -isnot [array] -or $Provenance.restores.Count -gt 128) { throw 'Invalid restore evidence bound.' }
     foreach ($restore in $Provenance.restores) {
         Assert-EvidenceKeys $restore @('project', 'path', 'version', 'lockPath', 'lockSha256', 'sourceSetSha256', 'targets')
-        if ($restore.project -cnotmatch '^Martlet\.[A-Za-z.]+$' -or $projects.ContainsKey($restore.project) -or
+        if ($restore.project -cnotmatch '^Martlet\.[A-Za-z0-9.]+$' -or $projects.ContainsKey($restore.project) -or
             $restore.path -cne "src\$($restore.project)\$($restore.project).csproj" -or
             $restore.lockPath -cne "packaging\windows\locks\$($restore.project).packages.lock.json" -or
             $restore.sourceSetSha256 -cnotmatch '^[0-9a-f]{64}$') {
@@ -894,7 +951,7 @@ function Test-PackageProvenance([string]$Root, $Provenance) {
                 $libraries[$library.key] = $library
                 if ($library.type -ceq 'package') {
                     $id, $version = $library.key.Split('/')
-                    if (@($pins.managedPackages | Where-Object { $_.id -ceq $id -and $_.version -ceq $version }).Count -ne 1 -or
+                    if (@(@($pins.managedPackages) + @($pins.buildPackages) | Where-Object { $_.id -ceq $id -and $_.version -ceq $version }).Count -ne 1 -or
                         $library.contentHash -cnotmatch '^[A-Za-z0-9+/]{86}==$') { throw 'Unpinned restored package or invalid content hash.' }
                 } elseif ($null -ne $library.contentHash) { throw 'Project cannot claim a NuGet content hash.' }
             }
@@ -922,7 +979,7 @@ function Test-PackageProvenance([string]$Root, $Provenance) {
             }
         }
     }
-    $expectedProjects = @(@(Get-PublishProjectNames Desktop) + @(Get-PublishProjectNames Doctor) | Select-Object -Unique)
+    $expectedProjects = @(Get-PublishContexts | ForEach-Object { Get-PublishProjectNames $_.name } | Select-Object -Unique)
     if (@(Compare-Object $expectedProjects @($projects.Keys) -CaseSensitive).Count) { throw 'Provenance restore project closure differs.' }
     foreach ($restore in $Provenance.restores) {
         foreach ($target in $restore.targets) {
@@ -936,7 +993,7 @@ function Test-PackageProvenance([string]$Root, $Provenance) {
         }
     }
     foreach ($application in $applications) {
-        $restore = $projects["Martlet.$($application.name)"]
+        $restore = $projects[$application.project]
         $target = @($restore.targets | Where-Object name -CEQ "net10.0-windows/$($pins.rid)")
         if ($target.Count -ne 1) { throw 'Missing entry-point restore target evidence.' }
         $rootKey = "$($restore.project)/$($restore.version)"
@@ -947,17 +1004,19 @@ function Test-PackageProvenance([string]$Root, $Provenance) {
             })
             if ($downloads.Count -ne 1) { throw "Published runtime pack is missing matching framework download evidence: $($runtime.key)" }
         }
-        $published = @($application.libraries | Where-Object { $_.type -cne 'runtimepack' })
-        if ($published.Count -ne $target[0].libraries.Count + 1) { throw 'Published/restored dependency counts differ.' }
+        $published = @($application.libraries | Where-Object { $_.type -cnotin @('runtimepack', 'reference') })
+        if ($published.Count + $application.buildOnlyLibraries.Count -ne $target[0].libraries.Count + 1) { throw 'Published/restored dependency counts differ.' }
         foreach ($library in $published) {
             if ($library.key -ceq $rootKey) {
-                $expectedEdges = $target[0].rootDependencies
-                $actualEdges = @($library.dependencies | Where-Object { -not $_.StartsWith('runtimepack.', [StringComparison]::Ordinal) })
+                $expectedEdges = @($target[0].rootDependencies | Where-Object { $application.buildOnlyLibraries -cnotcontains $_ })
+                $actualEdges = @($library.dependencies | Where-Object {
+                    -not $_.StartsWith('runtimepack.', [StringComparison]::Ordinal) -and -not (Test-WebViewReference $application.name $_)
+                })
                 if ((Get-EvidenceSha256 $expectedEdges) -cne (Get-EvidenceSha256 $actualEdges)) { throw 'Published root dependencies differ from restore evidence.' }
             } else {
                 $match = @($target[0].libraries | Where-Object key -CEQ $library.key)
                 if ($match.Count -ne 1 -or $match[0].type -cne $library.type -or $match[0].contentHash -cne $library.contentHash -or
-                    (Get-EvidenceSha256 $match[0].dependencies) -cne (Get-EvidenceSha256 $library.dependencies)) {
+                    (Get-EvidenceSha256 @($match[0].dependencies | Where-Object { $application.buildOnlyLibraries -cnotcontains $_ })) -cne (Get-EvidenceSha256 $library.dependencies)) {
                     throw "Published dependency differs from resolved evidence: $($library.key)"
                 }
             }
@@ -998,19 +1057,28 @@ function Test-PackageProvenance([string]$Root, $Provenance) {
             $parts = $origin.component.Split('|')
             $application = @($applications | Where-Object name -CEQ $parts[0])
             $key = if ($runtime) { "runtimepack.$($archive.id)/$version" } else { "$($archive.id)/$version" }
+            $webView = @()
+            if ($archive.id -ceq 'Microsoft.Web.WebView2') {
+                $webView = @(Get-WebViewArchiveAssets | Where-Object path -CEQ $origin.path)
+                if ($webView.Count -eq 1) { $key = $webView[0].component.Split('|')[1] }
+            }
             $owner = @($application.libraries | Where-Object key -IEQ $key)
             if ($parts.Count -ne 2 -or $application.Count -ne 1 -or $owner.Count -ne 1 -or $parts[1] -cne $owner[0].key) {
                 throw 'Archive asset refers to an incorrect component.'
             }
             $asset = @($owner[0].assets | Where-Object path -CEQ $origin.path)
-            if ($asset.Count -eq 1) {
+            if ($webView.Count -eq 1) {
+                if ($origin.component -cne $webView[0].component) { throw 'WebView2 archive component differs from fixed ownership.' }
+                $expected = $webView[0].entry
+            } elseif ($asset.Count -eq 1) {
                 $expected = $asset[0].source
                 if ($runtime) {
                     $kind = if ($asset[0].kind -ceq 'native') { 'native' } else { 'lib/net10.0' }
                     $expected = "runtimes/$($pins.rid)/$kind/$expected"
                 }
-            } elseif ($runtime -and $origin.path -cmatch '^(Desktop|Doctor)\\[^\\]+\\[^\\]+\.resources\.dll$') {
-                $expected = "runtimes/$($pins.rid)/lib/net10.0/" + $origin.path.Substring($parts[0].Length + 1).Replace('\', '/')
+            } elseif ($runtime -and $origin.path.StartsWith("$($application[0].directory)\", [StringComparison]::Ordinal) -and
+                $origin.path.Substring($application[0].directory.Length + 1) -cmatch '^[^\\]+\\[^\\]+\.resources\.dll$') {
+                $expected = "runtimes/$($pins.rid)/lib/net10.0/" + $origin.path.Substring($application[0].directory.Length + 1).Replace('\', '/')
             } else { throw 'Unowned archive asset is not an evidenced runtime satellite.' }
             if ($origin.entry -cne $expected) { throw 'Archive asset entry differs from actual dependency ownership.' }
             $origins[$origin.path] = $origin.component
@@ -1018,7 +1086,9 @@ function Test-PackageProvenance([string]$Root, $Provenance) {
     }
     $projectAssets = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     foreach ($application in $applications) {
-        $null = $projectAssets.Add("$($application.name)\Martlet.$($application.name).exe")
+        $null = $projectAssets.Add("$($application.directory)\$($application.project).exe")
+        $null = $projectAssets.Add("$($application.directory)\$($application.project).deps.json")
+        $null = $projectAssets.Add("$($application.directory)\$($application.project).runtimeconfig.json")
         foreach ($library in $application.libraries) {
             foreach ($asset in $library.assets) {
                 if ($library.type -ceq 'project') { $null = $projectAssets.Add($asset.path); continue }
@@ -1032,6 +1102,31 @@ function Test-PackageProvenance([string]$Root, $Provenance) {
         if ($file.path -imatch '\.(dll|exe)$' -and -not $origins.ContainsKey($file.path) -and -not $projectAssets.Contains($file.path)) {
             throw "Unowned shipped binary: $($file.path)"
         }
+        if ($file.path -imatch '^(Desktop|Doctor)\\' -and -not $origins.ContainsKey($file.path) -and -not $projectAssets.Contains($file.path)) {
+            $allowed = @((Get-PublishContexts).directory | ForEach-Object { "$_\LICENSE.txt"; "$_\THIRD-PARTY-NOTICES.txt" }) +
+                @('Desktop\AvatarRenderer\web\app.js', 'Desktop\AvatarRenderer\web\app.js.LEGAL.txt',
+                    'Desktop\AvatarRenderer\web\index.html', 'Desktop\AvatarRenderer\web\THIRD-PARTY-NOTICES.txt')
+            if ($allowed -inotcontains $file.path) { throw "Unowned published content: $($file.path)" }
+        }
+    }
+    foreach ($asset in Get-WebViewArchiveAssets) {
+        if (-not $origins.ContainsKey($asset.path) -or $origins[$asset.path] -cne $asset.component) { throw "Missing fixed WebView2 archive origin: $($asset.path)" }
+    }
+    $webViewPaths = @((Get-WebViewArchiveAssets).path)
+    foreach ($file in $fileMap.Values) {
+        if ($file.path -imatch '(^|\\)[^\\]*WebView2[^\\]*\.(dll|exe|xml)$' -and
+            $webViewPaths -inotcontains $file.path) { throw "Unreviewed WebView2 payload path: $($file.path)" }
+    }
+    Test-BuildArchiveEvidence $Provenance
+    Test-AvatarBrowserEvidence $Root $Provenance.browser $Provenance.source
+    foreach ($notice in @(
+        @{ source = 'src\Martlet.Avatar.Audio2Face\THIRD-PARTY-NOTICES.md'; target = 'notices\Audio2Face-THIRD-PARTY-NOTICES.md' },
+        @{ source = 'src\Martlet.Avatar.Audio2Face\Protos\LICENSE-2.0.txt'; target = 'notices\Audio2Face-Protos-LICENSE.txt' })) {
+        $sourceNotice = @($Provenance.source.files | Where-Object path -CEQ $notice.source)
+        if ($sourceNotice.Count -ne 1 -or -not $fileMap.ContainsKey($notice.target) -or
+            $sourceNotice[0].sha256 -cne $fileMap[$notice.target].sha256 -or $sourceNotice[0].bytes -ne $fileMap[$notice.target].bytes) {
+            throw 'Copied Audio2Face protocol notice differs from its source receipt.'
+        }
     }
 }
 
@@ -1041,6 +1136,8 @@ function Get-PackageSbom([string]$Root, $Provenance) {
 }
 
 function New-PackageSbomDocument([object[]]$Files, [string]$ApplicationVersion, $Provenance) {
+    if ($Provenance.schemaVersion -notin @(1, 2)) { throw 'Unsupported SBOM provenance format.' }
+    $avatar = $Provenance.schemaVersion -eq 2
     $fileComponents = @{}
     $components = [Collections.Generic.List[object]]::new()
     $dependencies = [Collections.Generic.List[object]]::new()
@@ -1059,11 +1156,13 @@ function New-PackageSbomDocument([object[]]$Files, [string]$ApplicationVersion, 
         }
     }
     foreach ($application in $Provenance.applications) {
+        $project = if ($avatar) { $application.project } else { "Martlet.$($application.name)" }
+        $directory = if ($avatar) { $application.directory } else { $application.name }
         foreach ($library in $application.libraries) {
             $id, $version = $library.key.Split('/')
             $reference = "$($application.name)|$($library.key)"
-            $isRoot = $id -ceq "Martlet.$($application.name)"
-            if ($isRoot) { $rootRefs += $reference }
+            $isRoot = $id -ceq $project
+            if ($isRoot -and (-not $avatar -or $null -eq $application.parent)) { $rootRefs += $reference }
             $type = if ($isRoot) { 'application' } elseif ($library.type -ceq 'runtimepack') { 'framework' } else { 'library' }
             $component = [ordered]@{
                 type = $type; 'bom-ref' = $reference; name = $id; version = $version
@@ -1072,13 +1171,17 @@ function New-PackageSbomDocument([object[]]$Files, [string]$ApplicationVersion, 
             $ownedPaths = @($library.assets.path)
             if ($library.type -cne 'project') {
                 $packageId = $id -creplace '^runtimepack\.', ''
+                if ($avatar -and $library.type -ceq 'reference') { $packageId = 'Microsoft.Web.WebView2' }
                 $archive = @($Provenance.archives | Where-Object id -IEQ $packageId)[0]
-                $component.purl = "pkg:nuget/$($packageId.ToLowerInvariant())@$version"
+                if ($library.type -cne 'reference') { $component.purl = "pkg:nuget/$($packageId.ToLowerInvariant())@$version" }
                 $component.properties += @(
                     [ordered]@{ name = 'martlet:nuget:archive-sha512'; value = $archive.archiveSha512 }
                     [ordered]@{ name = 'martlet:nuget:nuspec-sha256'; value = $archive.nuspecSha256 }
                     [ordered]@{ name = 'martlet:license:status'; value = 'UPSTREAM DECLARATION ONLY - rights not assessed' }
                 )
+                if ($avatar -and $library.type -ceq 'reference') {
+                    $component.properties += [ordered]@{ name = 'martlet:nuget:source-package'; value = "$packageId/$version" }
+                }
                 if ($library.contentHash) { $component.properties += [ordered]@{ name = 'martlet:nuget:lock-content-hash'; value = $library.contentHash } }
                 if ($archive.licenseExpression) { $component.licenses = @([ordered]@{ expression = $archive.licenseExpression; acknowledgement = 'declared' }) }
                 if ($archive.licenseFile) { $component.properties += [ordered]@{ name = 'martlet:nuget:license-file'; value = $archive.licenseFile } }
@@ -1096,7 +1199,7 @@ function New-PackageSbomDocument([object[]]$Files, [string]$ApplicationVersion, 
                 $component.properties += [ordered]@{ name = 'martlet:license:status'; value = 'UNKNOWN - no project license granted' }
                 foreach ($path in $ownedPaths) { $fileComponents[$path].properties[3].value = 'Project build output; not a copy of source bytes' }
                 if ($isRoot) {
-                    $generated = @("$($application.name)\Martlet.$($application.name).exe", "$($application.name)\Martlet.$($application.name).deps.json", "$($application.name)\Martlet.$($application.name).runtimeconfig.json")
+                    $generated = @("$directory\$project.exe", "$directory\$project.deps.json", "$directory\$project.runtimeconfig.json")
                     foreach ($path in $generated) { $fileComponents[$path].properties[3].value = 'SDK-generated publish output; not an unchanged archive asset' }
                     $ownedPaths += $generated
                 }
@@ -1109,12 +1212,22 @@ function New-PackageSbomDocument([object[]]$Files, [string]$ApplicationVersion, 
                 }
             )
             $components.Add($component)
-            $dependencies.Add([ordered]@{ ref = $reference; dependsOn = @($library.dependencies | ForEach-Object { "$($application.name)|$_" }) })
+            $edges = @($library.dependencies | ForEach-Object { "$($application.name)|$_" })
+            if ($avatar -and $isRoot) {
+                foreach ($child in $Provenance.applications | Where-Object parent -CEQ $application.name) {
+                    $childRoot = @($child.libraries | Where-Object { $_.key.Split('/')[0] -ceq $child.project })[0]
+                    $edges += "$($child.name)|$($childRoot.key)"
+                }
+                if ($application.name -ceq 'AvatarRenderer') { $edges += 'AvatarRenderer|browser' }
+            }
+            if ($avatar) { $edges = @(Get-EvidenceOrdinalStrings $edges) }
+            $dependencies.Add([ordered]@{ ref = $reference; dependsOn = $edges })
         }
     }
+    if ($avatar) { Add-AvatarSbomComponents $Provenance $ApplicationVersion $fileComponents $components $dependencies }
     foreach ($path in Get-EvidenceOrdinalStrings @($fileComponents.Keys)) { $components.Add($fileComponents[$path]) }
     $dependencies.Insert(0, [ordered]@{ ref = 'martlet-internal-payload'; dependsOn = $rootRefs })
-    return [ordered]@{
+    $document = [ordered]@{
         bomFormat = 'CycloneDX'; specVersion = '1.6'; version = 1
         metadata = [ordered]@{
             tools = [ordered]@{ components = @(
@@ -1140,6 +1253,8 @@ function New-PackageSbomDocument([object[]]$Files, [string]$ApplicationVersion, 
         components = @($components.ToArray()); dependencies = @($dependencies.ToArray())
         compositions = @([ordered]@{ aggregate = 'incomplete'; assemblies = @('martlet-internal-payload'); dependencies = @('martlet-internal-payload') })
     }
+    if ($avatar) { Add-AvatarSbomMetadata $document $Provenance }
+    return $document
 }
 
 function Write-PackageSbom([string]$Root, $Provenance) {
@@ -1164,3 +1279,4 @@ function Test-PackageSbom([string]$Root, $Provenance) {
 }
 
 . "$PSScriptRoot\Provenance.Common.ps1"
+. "$PSScriptRoot\AvatarEvidence.Common.ps1"

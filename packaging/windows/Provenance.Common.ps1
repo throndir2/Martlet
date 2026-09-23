@@ -224,6 +224,11 @@ function Read-PackagingJson([string]$Path, [switch]$AsHashtable) {
 }
 
 function Test-EvidenceOutputPath([string]$Path) {
+    foreach ($root in @('src\Martlet.Avatar.Live2D\node_modules', 'src\Martlet.Avatar.Vrm\node_modules',
+            'src\Martlet.Avatar.RendererHost\web\dist')) {
+        if ([string]::Equals($Path, $root, [StringComparison]::OrdinalIgnoreCase) -or
+            $Path.StartsWith("$root\", [StringComparison]::OrdinalIgnoreCase)) { return $true }
+    }
     foreach ($segment in $Path.Split('\')) {
         foreach ($excluded in @('.git', 'bin', 'obj', 'artifacts', '.vs', 'TestResults')) {
             if ([string]::Equals($segment, $excluded, [StringComparison]::OrdinalIgnoreCase)) { return $true }

@@ -8,7 +8,11 @@ See [the fixture experience](DIAGNOSTICS.md#offline-fixture-experience-f03c).
 this same sink/tone for explicit selected-output local tests and human listening
 confirmation. The reviewed playback lifecycle is unchanged. The later
 [V04b explicit API conversation](CONVERSATION.md) now routes authorized
-TTS segments through this sink. Learned VAD, loopback and avatars remain unwired.
+TTS segments through this sink. The optional
+[Desktop avatar integration](../src/Martlet.Avatar.Hosting/README.md) now observes
+accepted generated PCM and an independently nullable device clock; it does not
+change ordinary playback permission or error behavior. Learned VAD and loopback
+remain unwired in this conversation path.
 Remote D02 protocols remain partial. Loading either assembly, constructing
 `PcmPlaybackSink` / `WasapiDeviceFactory`, or disposing an unused sink does
 not enumerate, activate or play an endpoint.
@@ -160,6 +164,18 @@ separate from terminal success. Cancellation/loss after any read is conservative
 A timed-out terminal snapshot stays frozen; late driver work cannot inflate it
 into success. Avatar integration may use device progress only with these
 qualifications and must reject stale epochs; queued text/audio is not lip sync.
+
+The opt-in `PlaybackRequest.ObserveDeviceClock` additionally exposes
+`PlaybackRun.DeviceClock` / `DeviceClockAge`. The optional `IPlaybackClockDevice`
+returns raw position/frequency with native-vs-controlled-test provenance. NAudio
+observations stay on the owning audio worker, are converted with checked integer
+arithmetic to source-format sample offsets, and are never extrapolated.
+Unavailable/failed/regressed observations do not fail voice or substitute padding.
+Any zero-padding observation after Start invalidates the avatar clock before
+refill, even when more PCM is already queued, because the device may have advanced
+through OS silence. Voice retains its existing bounded underrun/resume behavior;
+that segment's animation does not resume. The next segment establishes a new
+binding. `AudibleSamples` remains null and native synchronization is unqualified.
 
 Errors use the existing `MartletError`/`ContractException` shape and `Stage.Playback`.
 The approved additive Core members are `AudioDeviceUnavailable`, `AudioDeviceLost`,

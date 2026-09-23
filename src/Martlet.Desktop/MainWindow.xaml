@@ -95,6 +95,8 @@
                         AutomationProperties.AutomationId="OpenAudioSetup" AutomationProperties.Name="Open local audio setup without enumerating or testing devices" />
                 <Button Content="Open _Troubleshooting" Click="Troubleshooting_Click" Padding="12,8" Margin="0,4,12,4"
                         AutomationProperties.AutomationId="OpenTroubleshooting" AutomationProperties.Name="Open passive troubleshooting and local support preview" />
+                <Button Content="Optional _Avatar (OFF until activation)" Click="Avatar_Click" Padding="12,8" Margin="0,4,12,4"
+                        AutomationProperties.AutomationId="OpenAvatar" AutomationProperties.Name="Open passive avatar configuration, no render or analysis started" />
             </WrapPanel>
                 </StackPanel>
             </Border>

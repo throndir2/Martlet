@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Grpc.Net.Client" />
+    <PackageReference Include="Grpc.Tools" PrivateAssets="all" />
+    <ProjectReference Include="..\Martlet.Core\Martlet.Core.csproj" />
+    <ProjectReference Include="..\Martlet.Avatars\Martlet.Avatars.csproj" />
+    <Protobuf Include="Protos\*.proto" ProtoRoot="Protos" GrpcServices="Both" />
+  </ItemGroup>
+</Project>

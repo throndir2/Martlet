@@ -30,6 +30,10 @@ public sealed class PlaybackRun
     private PlaybackState stopOutcome = PlaybackState.Canceled;
     private MartletError? error;
     private PlaybackDeviceInfo? deviceInfo;
+    private PlaybackClockSnapshot clockSnapshot;
+    private bool clockInvalidated;
+    private ulong? lastClockPosition;
+    private ulong lastClockFrequency;
 
     internal PlaybackRun(IPlaybackDeviceFactory devices, PlaybackRequest request, PlaybackOptions options,
         TimeProvider time, CancellationToken callerToken)
@@ -37,6 +41,9 @@ public sealed class PlaybackRun
         this.request = request;
         this.options = options;
         this.time = time;
+        clockSnapshot = new(request.Ids, request.Epoch, request.Format.SampleRate,
+            request.ObserveDeviceClock ? PlaybackClockState.Waiting : PlaybackClockState.NotRequested,
+            null, 0, null);
         startedAt = time.GetTimestamp();
         deadline = request.Deadline - time.GetUtcNow();
         events = Channel.CreateBounded<PlaybackEvent>(new BoundedChannelOptions(128)
@@ -59,6 +66,15 @@ public sealed class PlaybackRun
     public Task<MartletError?> DeviceRelease { get; }
     internal bool WorkerReleased { get { lock (gate) return DeviceRelease.IsCompleted && deviceReleased; } }
     public PlaybackSnapshot Snapshot { get { lock (gate) return GetSnapshot(); } }
+    public PlaybackClockSnapshot DeviceClock { get { lock (gate) return clockSnapshot; } }
+    public TimeSpan? DeviceClockAge
+    {
+        get
+        {
+            lock (gate) return clockSnapshot.State == PlaybackClockState.Available
+                ? time.GetElapsedTime(clockSnapshot.ObservedTimestamp) : null;
+        }
+    }
 
     public FrameAcceptance Submit(PcmFrame frame)
     {
@@ -129,6 +145,7 @@ public sealed class PlaybackRun
             stopOutcome = outcome;
             error = failure;
             state = PlaybackState.Stopping;
+            InvalidateClock(PlaybackClockState.Stopped);
             queue.Clear();
             history.Clear();
             frameByteOffset = 0;
@@ -203,7 +220,13 @@ public sealed class PlaybackRun
                 var padding = device.GetPadding(cancellation.Token);
                 if (padding < 0 || padding > info.BufferCapacitySamples || padding > committed)
                     throw new ContractException(ErrorCode.AudioPlaybackFailed, "The device returned invalid sample accounting.");
+                if (started && padding == 0)
+                {
+                    lock (gate) InvalidateClock(PlaybackClockState.Underrun);
+                }
                 ReportProgress(committed, committed - padding);
+                if (started && request.ObserveDeviceClock && !clockInvalidated)
+                    ObserveClock(device, committed);
                 var available = info.BufferCapacitySamples - padding;
                 var end = false;
                 if (pending == 0 && available > 0)
@@ -260,6 +283,7 @@ public sealed class PlaybackRun
                         if (underrunAt is null && !inputCompleted && !stop.Task.IsCompleted)
                         {
                             underrunAt = time.GetTimestamp();
+                            InvalidateClock(PlaybackClockState.Underrun);
                             state = PlaybackState.Underrun;
                             Emit(PlaybackEventKind.Underrun);
                         }
@@ -292,6 +316,53 @@ public sealed class PlaybackRun
             consumed = played;
             Emit(PlaybackEventKind.Progress);
         }
+
+    }
+
+    private void ObserveClock(IPlaybackDevice device, long committed)
+    {
+        DeviceClockReading? reading;
+        try { reading = (device as IPlaybackClockDevice)?.ReadClock(cancellation.Token); }
+        catch (OperationCanceledException) when (stop.Task.IsCompleted) { return; }
+        catch (Exception)
+        {
+            // An optional external/native clock is an independent failure domain.
+            lock (gate) InvalidateClock(PlaybackClockState.Unavailable);
+            return;
+        }
+        lock (gate)
+        {
+            if (terminal || stop.Task.IsCompleted || clockInvalidated) return;
+            if (reading is null || reading.Frequency == 0 || !Enum.IsDefined(reading.Origin))
+            {
+                InvalidateClock(PlaybackClockState.Unavailable);
+                return;
+            }
+            if (lastClockPosition is { } raw && (reading.Position < raw || reading.Frequency != lastClockFrequency))
+            {
+                InvalidateClock(PlaybackClockState.Regressed);
+                return;
+            }
+            var converted = (UInt128)reading.Position * (uint)request.Format.SampleRate / reading.Frequency;
+            if (converted > long.MaxValue)
+            {
+                InvalidateClock(PlaybackClockState.Unavailable);
+                return;
+            }
+            lastClockPosition = reading.Position;
+            lastClockFrequency = reading.Frequency;
+            // Never animate source samples not yet committed, even if the endpoint advances through silence.
+            long offset = Math.Min((long)converted, committed);
+            clockSnapshot = new(request.Ids, request.Epoch, request.Format.SampleRate,
+                PlaybackClockState.Available, offset, time.GetTimestamp(), reading.Origin);
+        }
+    }
+
+    private void InvalidateClock(PlaybackClockState reason)
+    {
+        if (!request.ObserveDeviceClock || clockInvalidated) return;
+        clockInvalidated = true;
+        clockSnapshot = clockSnapshot with { State = reason, SampleOffset = null };
     }
 
     private async Task<MartletError?> ObserveDeviceAsync(Task worker)
@@ -363,6 +434,7 @@ public sealed class PlaybackRun
                 error = PlaybackErrors.Create(ErrorCode.StreamTruncated);
             }
             terminal = true;
+            InvalidateClock(PlaybackClockState.Stopped);
             queue.Clear();
             history.Clear();
             ready.TrySetResult(null);

@@ -3,7 +3,8 @@ Martlet internal Windows dependency inventory
 Martlet user code/assets: no project license grant. Internal development only.
 
 Bundled runtime: .NET 10.0.12 win-x64; SDK 10.0.401 is a build tool, not shipped.
-Desktop and Doctor each retain their own complete ordinary self-contained files.
+Desktop, Doctor and the private Desktop\AvatarRenderer host each retain their
+own complete ordinary self-contained files.
 CoreCLR/hostfxr/hostpolicy and WindowsDesktop native binaries (including WPF
 graphics, Direct3D compiler and vcruntime*_cor3) come from the pinned Microsoft
 runtime NuGet packages, not from the developer's Windows installation.
@@ -11,6 +12,7 @@ Windows OS APIs/drivers remain OS prerequisites, not redistributed libraries.
 
 Desktop\LICENSE.txt and THIRD-PARTY-NOTICES.txt: unmodified Microsoft.NETCore.App.
 Doctor\LICENSE.txt and THIRD-PARTY-NOTICES.txt: the same runtime notices.
+Desktop\AvatarRenderer\LICENSE.txt and THIRD-PARTY-NOTICES.txt: the same notices.
 notices\Microsoft.WindowsDesktop.App\LICENSE.txt: runtime package's license.
 notices\WPF-THIRD-PARTY-NOTICES.txt and WinForms-THIRD-PARTY-NOTICES.txt:
 upstream notices from the matching v10.0.12 source tags, checksum pinned.
@@ -67,3 +69,32 @@ New production packages/native dependencies require reviewed notices and pin
 updates; test-only xUnit/TestPlatform and unreferenced projects are not bundled.
 This inventory is not a release SBOM, vulnerability clearance or public release
 approval. Native Windows dependency/lifecycle qualification remains a VM gate.
+
+Optional-avatar Desktop adds authored Avatars, Avatar.Hosting and
+Avatar.Audio2Face. Only Desktop receives Google.Protobuf 3.36.2,
+Grpc.Core.Api/Grpc.Net.Client/Grpc.Net.Common 2.84.0, and
+Microsoft.Extensions.DependencyInjection.Abstractions/Logging.Abstractions 8.0.1.
+Complete protobuf BSD and grpc-dotnet Apache licenses come from the exact source
+commits declared by the pinned archives. The Microsoft.Extensions license and
+third-party notices come directly from each archive. Copied NVIDIA ACE proto
+Apache license and source notices are retained unmodified. Grpc.Tools 2.84.0 is
+verified restore-only compiler input, not shipped runtime software. Test-only
+Grpc.AspNetCore.Server is not included.
+
+The private renderer host adds Microsoft.Web.WebView2 SDK 1.0.4191.47. Its three
+injected managed reference identities are not separate NuGet packages. Their
+DLL/XML files and the two x64 WebView2Loader copies are verified against exact
+entries in the one SDK archive, with its complete LICENSE.txt and NOTICE.txt.
+The WebView2 runtime itself is an existing-machine prerequisite, never bundled,
+downloaded or installed by this package.
+
+The offline browser bundle includes three 0.180.0 and @pixiv/three-vrm 3.5.5
+with its actual locked transitive packages. Full package license files are
+retained in web\THIRD-PARTY-NOTICES.txt alongside authored Live2D adapter notices;
+app.js.LEGAL.txt retains esbuild's extracted legal comments. Both files are
+required. Node 20.11.1, npm 10.2.4 and esbuild 0.25.12 are observed build tools,
+not runtime prerequisites redistributed with the application.
+
+User-supplied Live2D Framework 5-r.4/Core 05.01.0000, VRM/Live2D model assets,
+NIM runtime/models and GPU drivers are not redistributed. No rights to those
+inputs or to Martlet's project/assets are granted by the generated SBOM.

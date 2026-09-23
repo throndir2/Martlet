@@ -373,7 +373,9 @@ Applications have different requirements. General small-user exemptions do
 not universally cover Expandable Applications; AI/chatbot/software cases are
 explicitly addressed. **Unresolved:** Martlet's user-supplied avatar importer
 needs classification/permission review, including Cubism Core/framework,
-distribution and asset terms. A01 blocks avatar distribution, not voice MVP.
+distribution and asset terms. The 2026-09-23 amendment authorizes Live2D
+development now; A03b owns the unresolved release classification/rights gate,
+not a prerequisite to A01/A02 independent development or voice MVP.
 
 An initially attempted SDK-manual URL returned 404; the official licensing
 page and FAQ above are the references used. No SDK or assets were downloaded.
@@ -545,6 +547,139 @@ users. Separate process health, trusted connectivity, artifact availability,
 warmup and actual role inference. Cheap health checks must not download/load
 models or perform recurring paid inference. Startup ordering alone does not
 establish ongoing recovery, model readiness or a successful conversation.
+
+## Avatar direction research refresh
+
+**Accessed 2026-09-23, America/Los_Angeles.** S42-S47 are direct primary-source
+reads supporting the [accepted avatar direction](AVATARS.md), not execution
+evidence. No models, SDK/Core binaries or artist assets were acquired; no
+license accepted, inference run or service installed. These mutable references
+must be pinned/rechecked by each implementation owner before support/release.
+
+### S42
+
+[Cubism SDK lip-sync](https://docs.live2d.com/en/cubism-sdk-manual/lipsync/),
+[SDK licensing](https://www.live2d.com/en/sdk/license/),
+[selected Web Framework source](https://github.com/Live2D/CubismWebFramework/tree/8df84780f2aa1298f3b30965cdae143e049f3c8e)
+
+**Verified upstream:** `.model3.json` lip-sync groups identify parameters;
+the SDK manual describes scaling live audio level to model mouth controls.
+The framework loads models in conjunction with separate Cubism Core.
+The licensing page distinguishes development subject to SDK agreements from
+release licensing, and calls out Expandable Applications for separate review.
+Small-user exemptions are not a blanket exemption for an avatar importer.
+
+**Accepted Martlet direction:** develop Live2D now, with explicit model-specific
+mapping and bounded local assets, without implying permission to acquire SDKs,
+accept terms or distribute them. First adapter targets Framework 5-r.4 at the
+source above; the renderer owner's inspected matching SDK Core is
+05.01.0000 (`0x05010000`). SDK/editor marketing versions are not Core versions.
+Newer MOC/5.3 blend/offscreen support is not claimed. Exact native parsing,
+rendering and licensing remain unqualified; framework availability alone
+does not supply Core or rights to user artwork.
+
+### S43
+
+[Cubism Editor Motion-sync](https://docs.live2d.com/en/cubism-editor-manual/motion-sync/),
+[official Unity MotionSync components](https://github.com/Live2D/CubismUnityMotionSyncComponents)
+
+**Verified upstream:** audio is converted into time-series visemes and mouth
+motion is produced by blending corresponding shapes predefined by the author.
+This is distinct from amplitude-only mouth opening; arbitrary models do not
+gain viseme shapes automatically. The official Unity plugin explicitly requires
+Cubism SDK for Unity and states that MotionSync Core is not included in its
+repository; its linked package is a separate acquisition.
+
+**Consequence:** MotionSync is a later Live2D analyzer candidate. Account for
+MotionSync Core separately from its GitHub framework, with exact runtime,
+license and platform qualification before integration. The editor manual
+does not prove a Martlet realtime streaming adapter or supply Core binaries.
+The verified Unity plugin does not establish a supported Web MotionSync
+runtime; that integration/availability remains an explicit candidate check.
+Do not infer framework licensing covers Core or reuse the editor preview as
+proof of actual Martlet playback synchronization.
+
+### S44
+
+[VRM 1.0 expressions specification](https://github.com/vrm-c/vrm-specification/blob/master/specification/VRMC_vrm-1.0/expressions.md),
+[VRM Animation](https://vrm.dev/en/vrma/),
+[VRMC_vrm_animation 1.0 specification](https://github.com/vrm-c/vrm-specification/blob/master/specification/VRMC_vrm_animation-1.0/README.md),
+[three-vrm](https://github.com/pixiv/three-vrm)
+
+**Verified upstream:** all VRM preset expressions are optional. Expressions
+can combine morph/material/texture bindings; `overrideMouth`, `overrideBlink`
+and `overrideLookAt` address procedural-expression conflicts. Custom expressions
+exist, but the specification does not guarantee an ARKit rig. VRM Animation
+describes humanoid bones, expressions and eye gaze with retargeting constraints;
+draft and released-version behavior can differ. `three-vrm` provides VRM
+support on Three.js with GLTFLoader.
+
+**Consequence:** require per-model capability inspection and authored detailed
+ARKit mapping. A basic vowel-only rig is reduced, not full face fidelity.
+VRMA body/gaze applies to a supported VRM implementation, not directly to
+Live2D. First Martlet VRM slice is facial only; VRMA playback is unsupported.
+Do not adopt upstream CDN examples into a no-remote-assets renderer or assume
+library code terms cover model/texture/motion assets.
+
+### S45
+
+[NVIDIA Audio2Face-3D SDK](https://github.com/NVIDIA/Audio2Face-3D-SDK),
+[SDK license](https://raw.githubusercontent.com/NVIDIA/Audio2Face-3D-SDK/main/LICENSE.txt),
+[Audio2Face-3D NIM overview](https://docs.nvidia.com/nim/digital-human/a2f-3d/latest/index.html),
+[NIM sample application](https://docs.nvidia.com/ace/audio2face-3d-microservice/latest/text/interacting/sample-app.html),
+[NIM gRPC contract](https://docs.nvidia.com/ace/audio2face-3d-microservice/latest/text/interacting/a2f-rpc.html)
+
+**Verified upstream:** SDK repository code is MIT and documents NVIDIA
+CUDA/TensorRT acceleration, external runtime dependencies and model acquisition,
+including separately gated Audio2Emotion access. NIM documents speech-to-facial
+ARKit output, not whole-body gestures. NIM v2 uses bidirectional
+`ProcessAudioStream`, requires explicit `EndOfAudio`, and retains the
+`nvidia_ace` 1.2 protocol module; old unidirectional endpoints are removed and
+v1.3 configuration is not directly interchangeable. The interaction pages
+redirected to NVIDIA's documentation archive at access.
+
+**Selected first implementation lane:** a client for an already-running,
+user-provisioned literal-loopback NIM v2 service, not native MIT SDK embedding.
+The adapter owner pins official Samples v2.0 proto source at
+`a2d0150043be7dc15db2fad8193a78b660e1100f`. Bounded authorized generated PCM
+and output time conversion retain the original sample clock; the selected
+adapter emits only the shared facial subset, not NIM head/extended tongue or
+emotion metadata. Actual service/GPU/model execution remains NOT RUN.
+
+**Rights and evidence limit:** SDK MIT does not license NIM distribution,
+weights, CUDA/TensorRT dependencies or avatar artwork. Record and approve each
+separately. Upstream performance/minimum-hardware recommendations are not
+measured Martlet requirements or latency results. No automatic provisioning,
+model download, service probe or fallback is authorized by this choice.
+
+### S46
+
+[wawa-lipsync](https://github.com/wass08/wawa-lipsync),
+[uLipSync](https://github.com/hecomi/uLipSync)
+
+**Verified upstream:** `wawa-lipsync` is a TypeScript/web-audio realtime
+lip-sync library with a viseme result and MIT repository license. Its examples
+connect an audio element to an analyzer; this does not demonstrate integration
+with Martlet's WASAPI clock. `uLipSync` is a Unity asset using Job System/Burst,
+per-character calibration, runtime analysis and prebake/Timeline options.
+
+**Consequence:** wawa is a later CPU/web candidate; qualify its actual host,
+audio bridge, mapping and cost rather than assuming low latency. uLipSync is
+conditional on Unity being independently chosen; do not introduce Unity just
+to list an analyzer. Neither is implemented by this documentation or a silent
+replacement for unavailable Audio2Face.
+
+### S47
+
+[Rhubarb Lip Sync](https://github.com/DanielSWolf/rhubarb-lip-sync),
+[upstream README](https://raw.githubusercontent.com/DanielSWolf/rhubarb-lip-sync/master/README.adoc)
+
+**Verified upstream:** Rhubarb analyzes recorded audio files and generates
+mouth animation cues, with CLI TSV/XML/JSON outputs. Optional dialog text can
+improve recognition. **Consequence:** later buffered/offline candidate, not a
+presumed realtime streaming replacement. Provider-supplied visemes are a
+different path and require an explicitly supported provider/model/timestamp
+contract; ordinary TTS audio support alone establishes none.
 
 ## S36-S40: multi-engine voice research, 2026-09-23
 

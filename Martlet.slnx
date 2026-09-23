@@ -1,6 +1,10 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Martlet.Audio/Martlet.Audio.csproj" />
+    <Project Path="src/Martlet.Avatars/Martlet.Avatars.csproj" />
+    <Project Path="src/Martlet.Avatar.Audio2Face/Martlet.Avatar.Audio2Face.csproj" />
+    <Project Path="src/Martlet.Avatar.Hosting/Martlet.Avatar.Hosting.csproj" />
+    <Project Path="src/Martlet.Avatar.RendererHost/Martlet.Avatar.RendererHost.csproj" />
     <Project Path="src/Martlet.Core/Martlet.Core.csproj" />
     <Project Path="src/Martlet.Conversation/Martlet.Conversation.csproj" />
     <Project Path="src/Martlet.Credentials.Windows/Martlet.Credentials.Windows.csproj" />
@@ -19,6 +23,8 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Martlet.Audio.Tests/Martlet.Audio.Tests.csproj" />
+    <Project Path="tests/Martlet.Avatars.Tests/Martlet.Avatars.Tests.csproj" />
+    <Project Path="tests/Martlet.Avatar.Audio2Face.Tests/Martlet.Avatar.Audio2Face.Tests.csproj" />
     <Project Path="tests/Martlet.Core.Tests/Martlet.Core.Tests.csproj" />
     <Project Path="tests/Martlet.Conversation.Tests/Martlet.Conversation.Tests.csproj" />
     <Project Path="tests/Martlet.Desktop.Tests/Martlet.Desktop.Tests.csproj" />

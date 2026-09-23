@@ -7,6 +7,7 @@ param(
     [string]$PublishDirectory,
     [string]$BuilderDirectory,
     [string]$DotnetPath = 'dotnet',
+    [string]$NodePath = 'node',
     [Parameter(Mandatory)][string]$CliHome
 )
 . "$PSScriptRoot\Installer.Common.ps1"
@@ -16,6 +17,7 @@ Assert-MSBuildPath (Split-Path (Split-Path $PSScriptRoot))
 Assert-MSBuildPath $WorkDirectory
 New-OutputDirectory $WorkDirectory
 $sdk = Initialize-PackagingSdk $DotnetPath $CliHome
+$node = (Get-Command $NodePath -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
 $manifest = Test-PayloadManifest $PayloadRoot
 $script:cases = 0
 function Assert-Fails([string]$Name, [scriptblock]$Action, [string]$MessagePattern, [string]$NativeErrorCode) {
@@ -31,6 +33,26 @@ function Assert-Fails([string]$Name, [scriptblock]$Action, [string]$MessagePatte
     if (-not $failed) { throw "Expected failure did not occur: $Name" }
     $script:cases++
 }
+
+& {
+    $calls = @{ browser = 0; build = 0 }
+    $browserValidator = ${function:Test-AvatarBrowserEvidence}
+    $buildValidator = ${function:Test-BuildArchiveEvidence}
+    function Test-AvatarBrowserEvidence($Root, $Browser, $Source) {
+        $calls.browser++
+        & $browserValidator $Root $Browser $Source
+    }
+    function Test-BuildArchiveEvidence($Provenance) {
+        $calls.build++
+        & $buildValidator $Provenance
+    }
+    if ($manifest.files.Count -le 1) { throw 'Whole-inventory regression requires a real multi-file payload.' }
+    Test-PackageProvenance $PayloadRoot $manifest.provenance
+    if ($calls.browser -ne 1 -or $calls.build -ne 1) {
+        throw 'Whole-inventory browser/build validation must run exactly once per provenance validation.'
+    }
+}
+$script:cases++
 
 $copy = Join-Path $WorkDirectory ("payload with spaces $([char]0x00E9)")
 Copy-Item -LiteralPath $PayloadRoot -Destination $copy -Recurse
@@ -187,7 +209,7 @@ foreach ($case in @('archive digest', 'resolved hash', 'missing origin', 'duplic
             'source mismatch' { $changed.sourceCommit = '0' * 40 }
             'legacy schema' { $changed.schemaVersion = 1 }
             'missing provenance' { $changed.Remove('provenance') }
-            'missing edge' { $changed.provenance.applications[0].libraries[0].dependencies = @() }
+            'missing edge' { @($changed.provenance.applications[0].libraries | Where-Object { $_.dependencies.Count -gt 0 })[0].dependencies = @() }
             'dangling edge' { $changed.provenance.restores[0].targets[0].rootDependencies += 'missing/1.0.0' }
             'wrong facade owner' {
                 $origin = @($changed.provenance.archives.origins | Where-Object path -CEQ 'Desktop\WindowsBase.dll')[0]
@@ -207,7 +229,7 @@ foreach ($case in @('archive digest', 'resolved hash', 'missing origin', 'duplic
             'missing origin' { '*Missing archive asset provenance*' }
             'duplicate library' { '*dependency graph differs*' }
             'source mismatch' { '*source metadata differs*' }
-            'legacy schema' { '*requires manifest schema v2*' }
+            'legacy schema' { '*requires manifest schema v3*' }
             'missing provenance' { '*exactly these properties*' }
             'missing edge' { '*dependency graph differs*' }
             'dangling edge' { '*Dangling or duplicate restored dependency edge*' }
@@ -222,6 +244,90 @@ foreach ($case in @('archive digest', 'resolved hash', 'missing origin', 'duplic
         [IO.File]::WriteAllBytes($manifestPath, $originalManifest)
         [IO.File]::WriteAllBytes((Join-Path $copy 'SHA256SUMS.txt'), $evidenceSums)
     }
+}
+
+$browserFixture = Join-Path $WorkDirectory 'browser-evidence.json'
+[IO.File]::WriteAllText($browserFixture, (ConvertTo-EvidenceJson $copied.provenance.browser))
+Test-AvatarBrowserEvidence $copy $copied.provenance.browser $copied.provenance.source
+$script:cases++
+foreach ($case in @('missing package', 'extra package', 'scope', 'identity', 'archive hash', 'missing dependency',
+        'notice coverage', 'source hash', 'package entry', 'recipe', 'tool version', 'output hash', 'output path',
+        'duplicate input', 'input role', 'static mismatch', 'lock hash', 'unknown field',
+        'missing build material', 'runtime build material', 'build material role', 'build fingerprint hash', 'build fingerprint bytes')) {
+    $browser = Read-PackagingJson $browserFixture -AsHashtable
+    switch ($case) {
+        'missing package' { $browser.packages = @($browser.packages | Select-Object -Skip 1) }
+        'extra package' { $browser.packages += $browser.packages[0] }
+        'scope' { $browser.packages[0].scope = 'runtime' }
+        'identity' { $browser.packages[0].version = '0.25.13' }
+        'archive hash' { $browser.packages[0].archiveSha512 = '0' * 128 }
+        'missing dependency' { @($browser.packages | Where-Object { $_.dependencies.Count -gt 0 })[0].dependencies = @() }
+        'notice coverage' { $browser.outputs[0].inputs = @($browser.outputs[0].inputs | Select-Object -Skip 1) }
+        'source hash' { @($browser.inputs | Where-Object { $null -eq $_.package })[0].sha256 = '0' * 64 }
+        'package entry' { @($browser.inputs | Where-Object { $null -ne $_.package })[0].entry = 'package/../outside' }
+        'recipe' { $browser.recipe.entryPoints = @('src\unexpected.js') }
+        'tool version' { $browser.tools[0].version = '0.0.0' }
+        'output hash' { $browser.outputs[1].sha256 = '0' * 64 }
+        'output path' { $browser.outputs[1].path = 'Desktop\AvatarRenderer\web\..\outside.js' }
+        'duplicate input' { $browser.inputs += $browser.inputs[0] }
+        'input role' { $browser.inputs[0].roles = @('unknown') }
+        'static mismatch' { $browser.outputs[3].inputs = @($browser.recipe.script) }
+        'lock hash' { $browser.lockFiles[0].sha256 = '0' * 64 }
+        'unknown field' { $browser.extra = $true }
+        'missing build material' { $browser.inputs = @($browser.inputs | Where-Object entry -CNE 'package/lib/main.js') }
+        'runtime build material' {
+            @($browser.inputs | Where-Object { $_.package -ceq 'node_modules/three' -and $_.roles -ccontains 'bundle-source' })[0].roles = @('build-script')
+        }
+        'build material role' { @($browser.inputs | Where-Object entry -CEQ 'package/lib/main.js')[0].roles = @('package-metadata') }
+        'build fingerprint hash' { $browser.tools[2].files[0].sha256 = '0' * 64 }
+        'build fingerprint bytes' { $browser.tools[2].files[0].bytes++ }
+    }
+    Assert-Fails "browser production validator: $case" {
+        Test-AvatarBrowserEvidence $copy $browser $copied.provenance.source
+    } '*'
+}
+foreach ($case in @('nonempty omissions', 'wrong private parent', 'wrong private path', 'missing build tool',
+        'wrong build use', 'wrong reference owner')) {
+    try {
+        $changed = Read-PackagingJson $manifestPath -AsHashtable
+        switch ($case) {
+            'nonempty omissions' { $changed.provenance.applications[0].buildOnlyLibraries = @('Martlet.Avatar.RendererHost/0.1.0') }
+            'wrong private parent' { $changed.provenance.applications[2].parent = 'Doctor' }
+            'wrong private path' { $changed.provenance.applications[2].directory = 'Desktop\AvatarRendererX' }
+            'missing build tool' { $changed.provenance.buildArchives = @() }
+            'wrong build use' { $changed.provenance.buildArchives[0].uses[0].project = 'Martlet.Doctor' }
+            'wrong reference owner' {
+                $archive = @($changed.provenance.archives | Where-Object id -CEQ 'Microsoft.Web.WebView2')[0]
+                @($archive.origins | Where-Object path -CEQ 'Desktop\AvatarRenderer\Microsoft.Web.WebView2.Core.xml')[0].component = 'Doctor|Microsoft.Web.WebView2.Core/1.0.4191.47'
+            }
+        }
+        Write-TestEnvelope $changed
+        Assert-Fails "rechecksummed avatar provenance: $case" { Test-PayloadManifest $copy } '*'
+    } finally {
+        [IO.File]::WriteAllBytes($manifestPath, $originalManifest)
+        [IO.File]::WriteAllBytes((Join-Path $copy 'SHA256SUMS.txt'), $evidenceSums)
+    }
+}
+foreach ($name in @('sdk.js', 'model.vrm', 'extra.xml')) {
+    $extra = Join-Path $copy "Desktop\AvatarRenderer\web\$name"
+    try {
+        [IO.File]::WriteAllText($extra, 'Unowned test data.')
+        Assert-Fails "unexpected browser asset $name" { Assert-AvatarWebInventory $copy } '*Unexpected browser output*'
+    } finally { [IO.File]::Delete($extra) }
+}
+$rendererDeps = Join-Path $copy 'Desktop\AvatarRenderer\Martlet.Avatar.RendererHost.deps.json'
+$rendererDepsBytes = [IO.File]::ReadAllBytes($rendererDeps)
+$unreviewedLoader = Join-Path $copy 'Desktop\AvatarRenderer\WebView2Loader-arm64.dll'
+try {
+    Copy-Item -LiteralPath (Join-Path $copy 'Desktop\AvatarRenderer\WebView2Loader.dll') -Destination $unreviewedLoader
+    $deps = Read-PackagingJson $rendererDeps -AsHashtable
+    $rootLibrary = @($deps.libraries.Keys | Where-Object { $_.StartsWith('Martlet.Avatar.RendererHost/', [StringComparison]::Ordinal) })[0]
+    $deps.targets[$deps.runtimeTarget.name][$rootLibrary].runtime['WebView2Loader-arm64.dll'] = [ordered]@{}
+    [IO.File]::WriteAllText($rendererDeps, (ConvertTo-EvidenceJson $deps))
+    Assert-Fails 'project cannot launder extra WebView2 runtime assets' { Get-PackageApplications $copy } '*Unreviewed project runtime assets*'
+} finally {
+    [IO.File]::WriteAllBytes($rendererDeps, $rendererDepsBytes)
+    [IO.File]::Delete($unreviewedLoader)
 }
 
 $readerFixture = Join-Path $WorkDirectory 'invalid-evidence.json'
@@ -300,7 +406,7 @@ if ($PublishDirectory) {
     $script:cases++
     $restoreCopy = Join-Path $WorkDirectory 'real-restore-inputs'
     [IO.Directory]::CreateDirectory($restoreCopy) | Out-Null
-    foreach ($entry in @('Desktop', 'Doctor')) {
+    foreach ($entry in (Get-PublishContexts).name) {
         Copy-Item -LiteralPath (Join-Path $PublishDirectory "$entry.restore-graph.json") -Destination $restoreCopy
     }
     foreach ($project in $copied.provenance.restores.project) {
@@ -309,6 +415,30 @@ if ($PublishDirectory) {
         Copy-Item -LiteralPath (Join-Path $PublishDirectory "build\obj\$project\project.assets.json") -Destination $destination
         Copy-Item -LiteralPath (Join-Path $PublishDirectory "build\obj\$project\$project.csproj.nuget.dgspec.json") -Destination $destination
     }
+    foreach ($name in @('avatar-bundle-receipt.json', 'avatar-esbuild-metafile.json')) {
+        $receipt = @(Get-ChildItem -LiteralPath (Join-Path $PublishDirectory 'build\obj\Martlet.Avatar.RendererHost') -Recurse -File -Filter $name)
+        if ($receipt.Count -ne 1) { throw 'Publish directory must retain one private-host browser receipt/metafile.' }
+        Copy-Item -LiteralPath $receipt[0].FullName -Destination (Join-Path $restoreCopy 'build\obj\Martlet.Avatar.RendererHost')
+    }
+    Copy-Item -LiteralPath (Join-Path $PublishDirectory 'npm-archives') -Destination $restoreCopy -Recurse
+    Copy-Item -LiteralPath (Join-Path $PublishDirectory 'browser-evidence.json') -Destination $restoreCopy
+    $cachedArchive = @(Get-ChildItem -LiteralPath (Join-Path $restoreCopy 'npm-archives') -File | Sort-Object Name)[0]
+    $archiveBytes = [IO.File]::ReadAllBytes($cachedArchive.FullName)
+    try {
+        $changedArchive = [byte[]]$archiveBytes.Clone()
+        $changedArchive[0] = $changedArchive[0] -bxor 1
+        [IO.File]::WriteAllBytes($cachedArchive.FullName, $changedArchive)
+        Assert-Fails 'npm archive bytes must match lock integrity' {
+            Get-AvatarBrowserEvidence $copy $restoreCopy $copied.provenance.source -NodePath $node
+        } '*Npm archive integrity failure*'
+        $savedPath = $env:PATH
+        try {
+            $env:PATH = [Environment]::SystemDirectory
+            Assert-Fails 'explicit Node path reaches archive assertion without PATH discovery' {
+                Get-AvatarBrowserEvidence $copy $restoreCopy $copied.provenance.source -NodePath $node
+            } '*Npm archive integrity failure*'
+        } finally { $env:PATH = $savedPath }
+    } finally { [IO.File]::WriteAllBytes($cachedArchive.FullName, $archiveBytes) }
     $assetsPath = Join-Path $restoreCopy 'build\obj\Martlet.Desktop\project.assets.json'
     $assetsBytes = [IO.File]::ReadAllBytes($assetsPath)
     try {
@@ -424,7 +554,7 @@ if ($PublishDirectory) {
             Copy-Item -LiteralPath (Join-Path $copy 'Doctor\Martlet.Core.dll') -Destination $plugin
             try {
                 Assert-Fails "production generator rejects $directory unowned .$extension" {
-                    Get-PackageProvenance $copy $restoreCopy $copied.provenance.source $copied.provenance.sdk
+                    Get-PackageProvenance $copy $restoreCopy $copied.provenance.source $copied.provenance.sdk -NodePath $node
                 } '*Unowned shipped binary*'
             } finally { [IO.File]::Delete($plugin) }
         }
@@ -439,11 +569,11 @@ if ($PublishDirectory) {
                 Copy-Item -LiteralPath (Join-Path $copy "$mixedCase\Martlet.Core.dll") -Destination $plugin
                 try {
                     Assert-Fails "production generator rejects $mixedCase unowned .$extension" {
-                        Get-PackageProvenance $copy $restoreCopy $copied.provenance.source $copied.provenance.sdk
+                        Get-PackageProvenance $copy $restoreCopy $copied.provenance.source $copied.provenance.sdk -NodePath $node
                     } '*Unowned shipped binary*'
                 } finally { [IO.File]::Delete($plugin) }
             }
-            $null = Get-PackageProvenance $copy $restoreCopy $copied.provenance.source $copied.provenance.sdk
+            $null = Get-PackageProvenance $copy $restoreCopy $copied.provenance.source $copied.provenance.sdk -NodePath $node
             $script:cases++
         } finally {
             [IO.Directory]::Move((Join-Path $copy $mixedCase), (Join-Path $copy 'renaming'))
@@ -495,9 +625,16 @@ $requiredFiles = @('sbom.cdx.json', 'Doctor\Martlet.Doctor.exe', 'Desktop\corecl
         'Desktop\NAudio.Wasapi.dll', 'Doctor\NAudio.Core.dll', 'Desktop\System.Numerics.Tensors.dll',
         'notices\NAudio-LICENSE.txt', 'notices\NAudio-THIRD-PARTY-NOTICES.txt',
         'notices\System.Numerics.Tensors-LICENSE.txt', 'notices\System.Numerics.Tensors-THIRD-PARTY-NOTICES.txt')
-foreach ($entry in @('Desktop', 'Doctor')) {
-    $requiredFiles += @(Get-PublishProjectNames $entry | ForEach-Object { "$entry\$_.dll" })
+foreach ($context in Get-PublishContexts) {
+    $requiredFiles += @(Get-PublishProjectNames $context.name | ForEach-Object { "$($context.directory)\$_.dll" })
 }
+$requiredFiles += @((Get-WebViewArchiveAssets).path)
+$requiredFiles += @('Desktop\AvatarRenderer\Martlet.Avatar.RendererHost.exe',
+    'Desktop\AvatarRenderer\web\app.js', 'Desktop\AvatarRenderer\web\app.js.LEGAL.txt',
+    'Desktop\AvatarRenderer\web\index.html', 'Desktop\AvatarRenderer\web\THIRD-PARTY-NOTICES.txt',
+    'notices\Audio2Face-Protos-LICENSE.txt', 'notices\Audio2Face-THIRD-PARTY-NOTICES.md')
+$requiredFiles += @((Get-PackagingPins).notices | ForEach-Object { "notices\$($_.file)" })
+$requiredFiles += @((Get-PackagingPins).managedPackages.notices | ForEach-Object { "notices\$($_.file)" })
 foreach ($relative in $requiredFiles | Select-Object -Unique) {
     $path = Join-Path $copy $relative
     $bytes = [IO.File]::ReadAllBytes($path)
@@ -660,7 +797,7 @@ foreach ($name in @('comma,name', 'semicolon;name', 'percent%2Cname', 'percent%3
 foreach ($name in @('source,comma', 'source;semicolon', 'source%2Cescape', 'source=equals')) {
     $scripts = Join-Path $WorkDirectory "$name\packaging\windows"
     [IO.Directory]::CreateDirectory($scripts) | Out-Null
-    foreach ($file in @('Publish-Windows.ps1', 'Packaging.Common.ps1', 'Provenance.Common.ps1')) {
+    foreach ($file in @('Publish-Windows.ps1', 'Packaging.Common.ps1', 'Provenance.Common.ps1', 'AvatarEvidence.Common.ps1')) {
         Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $scripts
     }
     $output = Join-Path $WorkDirectory 'rejected-source-output'
@@ -678,14 +815,14 @@ foreach ($file in @('Directory.Build.props', 'Directory.Packages.props', 'NuGet.
     Copy-Item -LiteralPath (Join-Path $repo $file) -Destination $source
 }
 foreach ($file in Get-ChildItem -LiteralPath (Join-Path $repo 'src') -Recurse -File |
-        Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' }) {
+        Where-Object { -not (Test-EvidenceOutputPath ([IO.Path]::GetRelativePath($repo, $_.FullName))) }) {
     $destination = Join-Path $source ([IO.Path]::GetRelativePath($repo, $file.FullName))
     [IO.Directory]::CreateDirectory((Split-Path $destination)) | Out-Null
     Copy-Item -LiteralPath $file.FullName -Destination $destination
 }
 $packaging = Join-Path $source 'packaging\windows'
 [IO.Directory]::CreateDirectory($packaging) | Out-Null
-foreach ($file in @('Packaging.targets', 'Packaging.Common.ps1', 'Provenance.Common.ps1', 'Update-PublishLocks.ps1', 'toolchain.json')) {
+foreach ($file in @('Packaging.targets', 'Packaging.Common.ps1', 'Provenance.Common.ps1', 'AvatarEvidence.Common.ps1', 'BrowserEvidence.mjs', 'Update-PublishLocks.ps1', 'toolchain.json')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $packaging
 }
 Copy-Item -LiteralPath "$PSScriptRoot\locks" -Destination $packaging -Recurse
@@ -696,7 +833,8 @@ $graph = Join-Path $WorkDirectory 'negative.restore-graph.json'
 $build = Join-Path $WorkDirectory 'negative-build'
 Invoke-Dotnet $sdk (@('msbuild', $project, '-t:GenerateRestoreGraphFile', "-p:RestoreGraphOutputPath=$graph",
     '-p:RuntimeIdentifier=win-x64', '-p:UseArtifactsOutput=true', "-p:ArtifactsPath=$build", '-verbosity:quiet') + $properties) -WorkingDirectory $source
-foreach ($projectName in @('Martlet.Conversation', 'Martlet.Memory', 'Martlet.Providers', 'Martlet.Participation', 'Martlet.Support')) {
+foreach ($projectName in @('Martlet.Conversation', 'Martlet.Memory', 'Martlet.Providers', 'Martlet.Participation', 'Martlet.Support',
+        'Martlet.Avatars', 'Martlet.Avatar.Hosting', 'Martlet.Avatar.Audio2Face', 'Martlet.Avatar.RendererHost')) {
     $projectLock = Join-Path $packaging "locks\$projectName.packages.lock.json"
     $projectLockBytes = [IO.File]::ReadAllBytes($projectLock)
     try {
