@@ -46,7 +46,9 @@ public sealed class WindowsCredentialStore(ICredentialNative native) : ICredenti
     }
 
     private static string Target(CredentialBinding binding) =>
-        $"Martlet/v2/{binding.ProfileId:N}/api.openai.com/{binding.ProviderAlias}/{binding.CredentialId:N}";
+        binding.RouteType == SetupRouteType.OpenAi
+            ? $"Martlet/v2/{binding.ProfileId:N}/api.openai.com/{binding.ProviderAlias}/{binding.CredentialId:N}"
+            : $"Martlet/v3/{binding.ProfileId:N}/gateway/{binding.RouteType}/{binding.ScopeDigest()}/{binding.CredentialId:N}";
 
     private static CredentialError Map(int error) => error switch
     {

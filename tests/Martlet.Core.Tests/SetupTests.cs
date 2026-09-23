@@ -127,7 +127,7 @@ public sealed class SetupTests : IDisposable
         Assert.Throws<ContractException>(() => SetupSettings.SelectRoute(settings, SetupRole.Llm, new string('a', 129), null));
         Assert.Throws<ContractException>(() => (settings.Setup with { Routes = [route, route] }).Validate());
         Assert.Throws<ContractException>(() => (settings.Setup with { Checkpoint = (SetupStep)4 }).Validate());
-        Assert.Throws<ContractException>(() => (settings.Setup with { SchemaVersion = 2 }).Validate());
+        Assert.Throws<ContractException>(() => (settings.Setup with { SchemaVersion = 3 }).Validate());
         Assert.Throws<ContractException>(() => (settings with { SchemaVersion = 1 }).Validate());
         Assert.Throws<ContractException>(() => (settings with { Setup = null }).Validate());
     }

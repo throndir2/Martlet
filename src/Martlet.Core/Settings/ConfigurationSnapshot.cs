@@ -197,7 +197,9 @@ public sealed class ConfigurationRestorePlan
             "ALL saved destination acknowledgments and audio checkpoints are invalidated. Capture and logging are NOT enabled.",
             "ALL imported credential IDs and imported cleanup markers remain historical only; no key is read, rebound or deleted.",
             "Version 3+ persona profiles and style weights are restored when present; older snapshots preserve the current companion profiles.",
-            "Memory facts, store files and exports are NOT backed up or restored. Memory is forced OFF; a version 4 storage policy is retained for explicit review and re-enablement.",
+            "Memory facts, store files and exports are NOT backed up or restored. Memory is forced OFF; a version 4+ storage policy is retained for explicit review and re-enablement.",
+            "Self-host routes are forced OFF; action permissions, probe, package and reference evidence are cleared. Only CURRENT exact host/pin/device/role credential associations survive. Snapshot credential references are never imported.",
+            "Saved pairing retained; a mismatched route is not connected. Explicitly reconnect the current exact binding. Restore never reads a vault, re-pairs a device or changes server device authority.",
             $"Current legacy references retained unchanged: {current.Profile.Credentials.Count}. Current owned cleanup references retained/queued: {restored.Setup!.PendingRemovals.Count}.",
             "Imported legacy references are NOT restored. Reconfigure keys and review destinations/devices explicitly.",
             "Support journal, secrets and voice/model databases are NOT restorable here. The separately owned memory fact store is excluded.",
@@ -205,7 +207,7 @@ public sealed class ConfigurationRestorePlan
         };
         foreach (var role in Enum.GetValues<SetupRole>())
             lines.Add($"{role}: {Describe(current.Setup?.Routes.SingleOrDefault(r => r.Role == role))} -> " +
-                $"{Describe(restored.Setup.Routes.SingleOrDefault(r => r.Role == role))}; key unbound; selection must be renewed.");
+                $"{Describe(restored.Setup.Routes.SingleOrDefault(r => r.Role == role))}; imported key unbound; only an exact current gateway pairing may remain; selection must be renewed.");
         lines.Add($"Input: {Describe(current.Audio?.Input)} -> {Describe(restored.Audio?.Input)}; unqualified.");
         lines.Add($"Output: {Describe(current.Audio?.Output)} -> {Describe(restored.Audio?.Output)}; unqualified.");
         Summary = string.Join(Environment.NewLine, lines);

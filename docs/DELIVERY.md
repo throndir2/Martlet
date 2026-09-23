@@ -27,6 +27,26 @@ rules remain unchanged.
 
 ### Current internal implementation
 
+**Self-host voice reuse is split into two dependent layers.** Layer 1 adapts
+the settings/credential/client delta of `37181f8d2261c8d97d71b9ca297ff3bc278b7074`
+onto the reviewed main ancestry: schema 5, explicit route discriminators,
+current-only retained permanent pairings, scoped vault ownership and an
+additive protocol-2 client. Ordinary Desktop/API behavior remains supported;
+self-host dispatch is explicitly unavailable in this layer. Exact historical
+schema-1 through schema-4 bytes/recorded reader semantics remain distinct from
+the current writer.
+
+Layer 2 is mandatory after layer 1 merges: accessible self-host Setup, explicit
+pair/probe/enable actions, typed/PTT/optional-TTS hybrid routing, eligible
+current LocalStt/F5 contracts, and complete transitive payload/manifests/SBOM/
+notices/RID locks with additional native self-host scenarios. Both layers
+retain mandatory existing General/CompanionOnly smoke assertions and
+180-second/per-action bounds. Layer 1 still requires affected app/Core/
+Credentials/Gateway/Updates/Launcher local regressions, current-graph clean
+publish/repeat packaging, actual Doctor/Desktop smokes and wrapper failure/
+timeout propagation against synthetic protected data. No source-era receipt,
+fixture worker or successful package import qualifies a real engine.
+
 **Avatar expansion, 2026-09-23:** A01a shared compatibility contracts, A01b
 Audio2Face NIM client with live streaming, A02a Live2D and A02b VRM are
 **implemented modules with an internal normal WPF integration**, not a
