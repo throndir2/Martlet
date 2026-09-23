@@ -222,7 +222,7 @@ public sealed class LocalSetupFileSystem : ISetupFileSystem
         }
     }
 
-    private static void ValidateWindowsPath(string path)
+    internal static void ValidateWindowsPath(string path)
     {
         if (path.StartsWith(@"\\", StringComparison.Ordinal) || path.StartsWith("//", StringComparison.Ordinal) ||
             path[2..].Contains(':'))

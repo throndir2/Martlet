@@ -383,6 +383,14 @@ Show **exact selected-artifact bytes** before consent, plus expanded image
 size, staging space, rollback retention, and user-data reserve. Metadata can
 inform planning but is not the checksum verification of a downloaded file.
 
+The focused [H05b acquisition library](../src/Martlet.Host.Setup/README.md)
+now separates durable local review from fresh exact-artifact acquisition consent.
+It supports pinned public GitHub release assets through a bounded reviewed CDN
+policy and owned, hash-verified local staging; it does not install or execute
+them. Hugging Face and OCI downloads remain explicitly unsupported in this
+slice, so this is not a completed model-provisioning or F5 installation journey.
+Catalog and host/runtime qualification remain unchanged.
+
 | Artifact | Observed upstream metadata / planning treatment |
 | --- | --- |
 | F5 v1 base `model_1250000.safetensors` | 1,348,435,761 bytes; separate vocabulary 13,800 bytes. CC-BY-NC-4.0 official weights; revision/rights must be approved |

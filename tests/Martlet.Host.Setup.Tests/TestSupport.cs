@@ -106,11 +106,14 @@ internal sealed class RecordingDirectoryCommitter : ISetupDirectoryCommitter
 {
     public List<string> Calls { get; } = [];
     public bool Fail { get; set; }
+    public int? FailOnCall { get; set; }
+    public Func<bool>? ShouldFail { get; set; }
 
     public void Commit(string absoluteDirectory)
     {
         Calls.Add(absoluteDirectory);
-        if (Fail) throw new SetupException(SetupFailure.JournalIoFailure);
+        if (Fail || FailOnCall == Calls.Count || ShouldFail?.Invoke() == true)
+            throw new SetupException(SetupFailure.JournalIoFailure);
     }
 }
 
