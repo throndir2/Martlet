@@ -25,7 +25,10 @@ certificate store and is disposed with the in-process listener.
 This is the standalone H03 source slice from
 `ec6db3979a1e2b8164176d455e4017475b9865ca`, reused by an attributed cherry-pick.
 It preserves the transport/authentication protocol and host identity expected
-by the earlier Gateway consumers. It does **not** import the later
+by the earlier Gateway consumers. A focused follow-up adds a 128-registration
+ceiling, inactive-state reclamation and shared observed-UTC rollback closure;
+identity encoding, credential bytes, roles, HMAC canonicalization and successful
+wire documents are unchanged. It does **not** import the later
 `d2a5db8` inference/routes slice or the final `1715d19` source-branch snapshot,
 their F5/Perception/Memory.Service dependencies, or Host.Doctor/Host.Setup.
 Core installation planning, settings, Desktop and HostArtifacts v2/catalog
@@ -45,7 +48,7 @@ This import neither adopts its storage format nor changes that hold.
 | Authorization | `voice`, `perception`, `memory`; per-request scoped HMAC, timestamp and nonce | Independent status/transcription/generation/synthesis/perception/memory-read/memory-write flags; point-in-time secret authorization, no signed-request replay contract |
 | Secret ownership | Base64url strings exposed explicitly by `Reveal`; SHA-256 verifier is an HMAC signing key | Disposable 32-byte buffers with explicit copy/import; SHA-256 verifier for equality checks |
 | Pairing and rotation | Eight local windows, five failed proofs/window; direct local rotation with up to ten-minute overlap | Sixteen pending approvals, authority-wide redemption limit; one-use locally approved renewal with two-minute overlap |
-| State/time | Volatile credential records and bounded per-credential nonce cache; UTC expiry | Volatile bounded live-device state; UTC and monotonic expiry with rollback closure |
+| State/time | At most 128 volatile credential records (including rotation overlap), bounded per-credential nonces; UTC expiry and shared observed-UTC rollback closure | Volatile bounded live-device state; UTC and monotonic expiry with rollback closure |
 
 There is no conversion, fallback, shared authority, secret cast, scope widening
 or credential interchange between these namespaces. Even though both use
@@ -54,10 +57,9 @@ SHA-256 over random device secrets, persisting a Gateway HMAC verifier requires
 
 Before choosing or adapting protected persistence, reconcile the exact identity,
 wire/version, role/scope, credential-ID, renewal and revocation contracts.
-The reused store has no durable import/export, restart recovery, total
-registration ceiling or expired-registration sweep; revoked/expired records
-remain in memory. It does not inherit Trust's monotonic rollback closure,
-disposable secrets, device ceiling or approval/handler capability split.
+The reused store has no durable import/export or restart recovery. It does not
+inherit Trust's monotonic elapsed-time expiry, disposable secrets, per-device
+admission policy or approval/handler capability split.
 Production composition must keep `GatewayServer` and its local management
 objects private to trusted host code, not expose them through remote DI.
 Persisting credentials alone would also lose replay history on restart:
@@ -166,6 +168,25 @@ Revocation clears its nonce cache. An expired, revoked or rotated-out
 credential never falls back to another credential and cannot be reconstructed
 from configuration.
 
+The store retains at most 128 registrations, including live rotation overlap.
+Issuance, listing and authentication sweep expired/revoked records, zero their
+verifiers and clear their nonces; revocation also zeros the verifier immediately.
+Later requests for swept IDs return `auth.invalid`, never restored authority.
+Listing reports currently active registrations, not a durable audit history.
+Capacity exhaustion returns `auth.capacity` without evicting active credentials
+or live replay history. A refused rotation leaves the original unchanged; a
+valid pairing proof refused for capacity remains usable until its original
+window expires or is otherwise consumed/closed.
+
+Pairing and credential operations share a serialized observed-UTC high-water
+mark. Any observed backwards movement permanently closes their shared authority,
+clears retained credential verifiers/nonces, and rejects every existing pairing
+card and subsequent approval with `auth.clock_invalid`. Correcting the clock
+does not reopen it: trusted host code must replace the volatile authority and
+explicitly re-pair. This is not monotonic elapsed-time expiry or protection
+against backwards movement entirely between samples; those remain consolidation
+gaps. Clock sampling occurs inside the store lock, not before admission.
+
 ## Signed request and replay contract
 
 Every authenticated request uses:
@@ -234,6 +255,8 @@ operator actions are:
 | `auth.missing`, `auth.invalid` | Use the credential for the verified paired host or revoke/re-pair if lost |
 | `auth.expired`, `auth.revoked` | Explicitly renew/re-pair; never resurrect the old credential |
 | `auth.clock`, `auth.replay` | Correct clocks and create a fresh nonce/signature; never replay |
+| `auth.clock_invalid` | Correct the host clock, replace the closed volatile authority and explicitly re-pair; never revive its cards/credentials |
+| `auth.capacity` | Locally revoke unused credentials or wait for expiry, then retry an unexpired pairing proof/local rotation; active registrations are never evicted |
 | `auth.rate` | Reduce authenticated polling and wait for the four-minute replay window to drain |
 | `auth.role` | Use a separately approved least-privilege role |
 | `worker.*` | Keep only the named private worker unavailable and repair its local adapter/status |

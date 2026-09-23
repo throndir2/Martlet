@@ -76,6 +76,7 @@ public sealed class GatewayCredentialStore
     public static readonly TimeSpan DefaultLifetime = TimeSpan.FromDays(90);
     public static readonly TimeSpan MaximumLifetime = TimeSpan.FromDays(90);
     public static readonly TimeSpan MaximumRotationOverlap = TimeSpan.FromMinutes(10);
+    public const int MaximumRegistrations = 128;
     internal static readonly TimeSpan RequestClockSkew = TimeSpan.FromMinutes(2);
     internal const int MaximumNoncesPerCredential = 1024;
 
@@ -85,6 +86,8 @@ public sealed class GatewayCredentialStore
     private readonly TimeProvider clock;
     private readonly IGatewayCrypto crypto;
     private readonly TimeSpan lifetime;
+    private DateTimeOffset? lastObservedTime;
+    private bool clockInvalid;
 
     public GatewayCredentialStore(
         GatewayHostIdentity identity,
@@ -103,18 +106,17 @@ public sealed class GatewayCredentialStore
 
     internal IssuedDeviceCredential Issue(string deviceId, string displayName, GatewayRole[] roles)
     {
-        var now = clock.GetUtcNow();
         lock (gate)
-            return IssueLocked(deviceId, displayName, roles, now);
+            return IssueLocked(deviceId, displayName, roles, ObserveTimeLocked(clock));
     }
 
     public IssuedDeviceCredential Rotate(string credentialId, TimeSpan overlap)
     {
         GatewayRules.Require(Base64Url.TryDecode(credentialId, 16, out _), "request.invalid");
         GatewayRules.Require(overlap >= TimeSpan.Zero && overlap <= MaximumRotationOverlap, "request.invalid");
-        var now = clock.GetUtcNow();
         lock (gate)
         {
+            var now = ObserveTimeLocked(clock);
             if (!credentials.TryGetValue(credentialId, out var current) ||
                 current.Revoked || current.ExpiresAt <= now)
                 throw new GatewayProtocolException("auth.invalid");
@@ -130,9 +132,11 @@ public sealed class GatewayCredentialStore
         GatewayRules.Require(Base64Url.TryDecode(credentialId, 16, out _), "request.invalid");
         lock (gate)
         {
+            ObserveTimeLocked(clock);
             if (!credentials.TryGetValue(credentialId, out var credential))
                 return false;
             credential.Revoked = true;
+            CryptographicOperations.ZeroMemory(credential.Verifier);
             credential.Nonces.Clear();
             return true;
         }
@@ -143,11 +147,13 @@ public sealed class GatewayCredentialStore
         GatewayRules.Identifier(deviceId);
         lock (gate)
         {
+            ObserveTimeLocked(clock);
             var count = 0;
             foreach (var credential in credentials.Values.Where(
                 candidate => candidate.DeviceId == deviceId && !candidate.Revoked))
             {
                 credential.Revoked = true;
+                CryptographicOperations.ZeroMemory(credential.Verifier);
                 credential.Nonces.Clear();
                 count++;
             }
@@ -159,6 +165,7 @@ public sealed class GatewayCredentialStore
     {
         lock (gate)
         {
+            SweepInactiveLocked(ObserveTimeLocked(clock));
             return new ReadOnlyCollection<GatewayDeviceRegistration>(credentials.Values
                 .OrderBy(value => value.DeviceId, StringComparer.Ordinal)
                 .ThenBy(value => value.CredentialId, StringComparer.Ordinal)
@@ -178,12 +185,14 @@ public sealed class GatewayCredentialStore
 
     internal GatewayPrincipal Authenticate(GatewaySignedRequest request)
     {
-        var now = clock.GetUtcNow();
         lock (gate)
         {
-            if (!credentials.TryGetValue(request.CredentialId, out var credential))
+            var now = ObserveTimeLocked(clock);
+            var found = credentials.TryGetValue(request.CredentialId, out var credential);
+            SweepInactiveLocked(now);
+            if (!found)
                 throw new GatewayProtocolException("auth.invalid");
-            if (credential.Revoked)
+            if (credential!.Revoked)
                 throw new GatewayProtocolException("auth.revoked");
             if (credential.ExpiresAt <= now)
                 throw new GatewayProtocolException("auth.expired");
@@ -224,6 +233,8 @@ public sealed class GatewayCredentialStore
         GatewayRole[] roles,
         DateTimeOffset now)
     {
+        SweepInactiveLocked(now);
+        GatewayRules.Require(credentials.Count < MaximumRegistrations, "auth.capacity");
         string? credentialId = null;
         for (var attempt = 0; attempt < 16; attempt++)
         {
@@ -259,6 +270,44 @@ public sealed class GatewayCredentialStore
             Secret = new(secretText),
             ExpiresAt = expiresAt
         };
+    }
+
+    internal DateTimeOffset ObserveTime(TimeProvider source)
+    {
+        lock (gate)
+            return ObserveTimeLocked(source);
+    }
+
+    private DateTimeOffset ObserveTimeLocked(TimeProvider source)
+    {
+        if (clockInvalid)
+            throw new GatewayProtocolException("auth.clock_invalid");
+        var now = source.GetUtcNow();
+        if (lastObservedTime is { } previous && now < previous)
+        {
+            clockInvalid = true;
+            foreach (var credential in credentials.Values)
+            {
+                CryptographicOperations.ZeroMemory(credential.Verifier);
+                credential.Nonces.Clear();
+            }
+            credentials.Clear();
+            throw new GatewayProtocolException("auth.clock_invalid");
+        }
+        lastObservedTime = now;
+        return now;
+    }
+
+    private void SweepInactiveLocked(DateTimeOffset now)
+    {
+        foreach (var id in credentials.Where(item => item.Value.Revoked ||
+            item.Value.ExpiresAt <= now).Select(item => item.Key).ToArray())
+        {
+            var credential = credentials[id];
+            CryptographicOperations.ZeroMemory(credential.Verifier);
+            credential.Nonces.Clear();
+            credentials.Remove(id);
+        }
     }
 
     private static DateTimeOffset Min(DateTimeOffset left, DateTimeOffset right) =>
@@ -321,9 +370,9 @@ public sealed class GatewayPairingService
     {
         ArgumentNullException.ThrowIfNull(approval);
         var roles = approval.ValidateAndCopy();
-        var now = clock.GetUtcNow();
         lock (gate)
         {
+            var now = credentials.ObserveTime(clock);
             foreach (var stale in windows.Where(item => item.Value.ExpiresAt <= now)
                 .Select(item => item.Key).ToArray())
                 windows.Remove(stale);
@@ -367,9 +416,9 @@ public sealed class GatewayPairingService
     internal IssuedDeviceCredential Exchange(GatewayPairingProof proof)
     {
         proof.Validate();
-        var now = clock.GetUtcNow();
         lock (gate)
         {
+            var now = credentials.ObserveTime(clock);
             if (!windows.TryGetValue(proof.PairingId, out var window))
                 throw new GatewayProtocolException("pairing.closed");
             if (window.ExpiresAt <= now)
@@ -394,8 +443,9 @@ public sealed class GatewayPairingService
                     proof.SpkiFingerprint != identity.SpkiFingerprint ? "host.pin_mismatch" : "pairing.invalid");
             }
 
+            var credential = credentials.Issue(window.DeviceId, window.DisplayName, window.Roles);
             windows.Remove(proof.PairingId);
-            return credentials.Issue(window.DeviceId, window.DisplayName, window.Roles);
+            return credential;
         }
     }
 
