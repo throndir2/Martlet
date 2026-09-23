@@ -2,5 +2,7 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <InternalsVisibleTo Include="Martlet.Gateway.Tests" />
+    <InternalsVisibleTo Include="Martlet.Gateway.Persistence" />
+    <InternalsVisibleTo Include="Martlet.Gateway.Persistence.Tests" />
   </ItemGroup>
 </Project>

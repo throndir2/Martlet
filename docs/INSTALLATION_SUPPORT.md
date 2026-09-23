@@ -136,6 +136,12 @@ The proposed guided flow is:
    starting capture. Present the host identity/fingerprint and short-lived
    pairing flow from Architecture. The coordinator receives scoped readiness,
    not a shell, Docker socket, administrator token or arbitrary install API.
+   Established device pairing is non-expiring and must survive routine
+   restart, reboot, updates and recoverable interruption. Do not present an
+   offline/clock/storage fault as unpaired or recommend reset-all-devices.
+   One-use invitation expiry and request freshness/replay remain independent.
+   Renew TLS certificates automatically with the same key/pin before serving;
+   no routine certificate expiry should require pairing again.
 6. **Check connection, then try a request.** Use the staged checks below for only
    the selected roles. A failed optional role must not erase successful checks.
    Offer an explicit feature change to continue in text-only mode if speech is
@@ -220,6 +226,27 @@ or start stopped workers. Compose health checks stay cheap/non-inference.
 `service_healthy` helps startup ordering but cannot prove a model or whole
 conversation works ([S35](RESEARCH.md#s35)). All validation is local or a
 separately authorized selected endpoint action, never remote CI.
+
+### Companion customization after setup
+
+The planned [Companion controls](COMPANION_REQUIREMENTS.md) must remain
+accessible after onboarding, without a reinstall or source-code change:
+
+| Surface | Planned controls and safe application |
+| --- | --- |
+| Companion | Named personas, multiline editor, explicit plain-text import/export, save/duplicate/select, and separate response-style weights; show unsaved/active revision |
+| Participation | Explicit typed/PTT default; opt-in conversational listening, rate/gap/cooldown/context retention and qualified speech interruption; show why unavailable or silent |
+| Models | Independent LLM and VLM adapter/destination/model choices, role limits and readiness; VLM selection never enables screen capture |
+| F5 voice | Reference audio and matching transcript, explicit reload after file replacement, named presets, validation and separately authorized preview; no automatic reference transcription |
+
+Apply at idle or after explicit Stop and owned cleanup, never midway through
+authorized work. Show an actionable error for invalid persona files, all-zero
+style weights, changed/missing reference audio, incompatible models and
+unqualified barge-in. Preserve prior saved choices without pretending a failed
+Apply succeeded or falling back silently. Save/resume preserves inert choices,
+not listening, spending, preview permission or model readiness. The current
+Desktop implements the companion editor and named OpenAI LLM catalog selection;
+the remaining surfaces are not yet integrated.
 
 ### Provider cost and mode controls
 
@@ -384,7 +411,9 @@ network egress denied after downloads. Unknown optional downloads block readines
 
 **Implemented internal V07a:** Desktop offers explicit LOCAL configuration
 snapshots and exact previewed restore into an existing valid same-profile
-v1/v2 store. It recovers inert preferences, not credentials/permissions/readiness.
+v1/v2/v3 store. Version 3 includes inert companion personas/styles; older
+sources preserve current personas. Recovery does not restore credentials,
+permissions, runtime persona use or readiness.
 It refuses missing/corrupt/future/foreign destinations and preserves exact
 pre-replacement originals. This is neither the diagnostic bundle nor the broader
 database/voice/host/binary lifecycle below. See the
@@ -538,7 +567,7 @@ trace IDs, not private audio/transcripts/secrets.
 | Host unreachable: `NET_UNREACHABLE` | Wrong address, host asleep, service stopped, VLAN isolation | DNS -> TCP selected port -> TLS -> gateway | Verify host-local readiness, correct host address/port, reconnect same intended LAN | Stage/timeouts and pseudonymized route |
 | IP works, name fails: `NET_DNS` | DNS/mDNS unavailable, stale lease, suffix mismatch | Resolve name vs saved host-ID address | Use verified current address then correct DHCP/DNS; do not re-trust a changed certificate | Resolver result and host identity comparison |
 | Connection refused/times out: `NET_PORT` | Port collision, wrong binding, firewall/router policy | Host listen/bind vs client TCP and unauthorized-client denial | Review exact selected-interface and client-source rule; no blanket firewall disable or public forwarding | Binding/rule summary, both-side probe result |
-| TLS/pairing fails: `PAIR_TRUST` | Wrong host, expired cert, clock skew, expired token, identity change | Time/identity/pin/token lifecycle probe | Check host clock, compare pairing fingerprint locally, generate new one-use token if needed | Error category; never token/private key |
+| TLS/pairing fails: `PAIR_TRUST` | Wrong host, certificate renewal failure, clock skew, expired invitation, identity change | Time/identity/pin/invitation lifecycle probe | Correct clock or same-key renewal/access problem while retaining pairing; replace only an expired invitation. A genuine changed identity requires deliberate verification, never automatic re-trust | Error category; never token/private key |
 | API key rejected: `AUTH_EXPIRED` | Revoked/expired key, wrong origin/project/scope | Non-billable auth metadata where supported; sanitized real failure otherwise | Re-enter authorized credentials for displayed origin; verify account/project access | Provider status/request ID; no key |
 | Limit reached: `QUOTA_EXCEEDED` | Provider billing/rate quota or local session ceiling | Typed provider error, Retry-After, usage/budget | Wait stated interval or review provider account/local limit; user alone approves changed spending | Quota class and timestamps |
 | `/v1` endpoint fails: `PROVIDER_CAPABILITY` | Partial OpenAI compatibility, wrong adapter, missing model/voice or schema | Named role contract probes, not just `/models` | Select correct adapter and supported model; configure missing STT/TTS independently | Adapter/model/version and failed contract case |

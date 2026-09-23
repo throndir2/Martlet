@@ -9,6 +9,33 @@ namespace Martlet.Gateway.Tests;
 public sealed class PairingAuthenticationTests
 {
     [Fact]
+    public void Legacy_pairing_version_does_not_silently_issue_permanent_trust()
+    {
+        var identity = new GatewayHostIdentity { HostId = "host", SpkiFingerprint = "sha256:" + new string('0', 64) };
+        var store = new GatewayCredentialStore(identity);
+        var pairing = new GatewayPairingService(identity, new("https://127.0.0.1:9443"), store);
+        var card = pairing.OpenWindow(new() { DeviceId = "device", DisplayName = "Device", Roles = [GatewayRole.Voice] });
+        var proof = new GatewayPairingProof
+        {
+            ProtocolVersion = new() { Major = 1, Minor = 0 }, PairingId = card.PairingId,
+            PairingToken = card.Token.Reveal(), HostId = card.HostId, SpkiFingerprint = card.SpkiFingerprint,
+            DeviceId = "device"
+        };
+        Assert.Equal("protocol.unsupported", Assert.Throws<GatewayProtocolException>(() => pairing.Exchange(proof)).Failure.Code);
+        Assert.Empty(store.ListRegistrations());
+        Assert.IsType<PairedDeviceLifetime>(pairing.Exchange(proof with { ProtocolVersion = GatewayProtocolVersion.Current }).Lifetime);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"expires_at\":\"2099-01-01T00:00:00Z\"}")]
+    [InlineData("{\"kind\":\"paired\",\"expires_at\":\"2099-01-01T00:00:00Z\"}")]
+    [InlineData("{\"kind\":\"timed\"}")]
+    public void Lifetime_requires_explicit_recognized_discriminator_without_expiry_sentinel(string json)
+    {
+        Assert.ThrowsAny<Exception>(() => JsonSerializer.Deserialize<GatewayCredentialLifetime>(json, GatewayTestHost.Json));
+    }
+    [Fact]
     public async Task Unpaired_client_sees_only_minimal_liveness_and_bounded_auth_error()
     {
         await using var host = await GatewayTestHost.StartAsync();
@@ -136,8 +163,7 @@ public sealed class PairingAuthenticationTests
     [Fact]
     public async Task Credential_expiry_rotation_overlap_and_revocation_are_enforced()
     {
-        await using var host = await GatewayTestHost.StartAsync(
-            credentialLifetime: TimeSpan.FromMinutes(10));
+        await using var host = await GatewayTestHost.StartAsync();
         var original = await host.PairAsync();
         var replacement = host.Server.Credentials.Rotate(
             original.CredentialId, TimeSpan.FromMinutes(1));
@@ -170,18 +196,20 @@ public sealed class PairingAuthenticationTests
     }
 
     [Fact]
-    public async Task Fully_expired_credential_requires_renewal_or_repairing()
+    public async Task Paired_credential_has_explicit_nonexpiring_lifetime()
     {
-        await using var host = await GatewayTestHost.StartAsync(
-            credentialLifetime: TimeSpan.FromMinutes(1));
+        await using var host = await GatewayTestHost.StartAsync();
         var credential = await host.PairAsync();
-        host.Clock.Advance(TimeSpan.FromMinutes(1));
+        host.Clock.Advance(TimeSpan.FromDays(180));
         var signer = new GatewayRequestSigner(host.Identity, credential, host.Clock);
         using var request = host.SignedGet(
             "/martlet/v1/version", GatewayRole.Voice, signer);
         using var response = await host.Client.SendAsync(request);
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-        Assert.Equal("auth.expired", await GatewayTestHost.FailureCode(response));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.IsType<PairedDeviceLifetime>(credential.Lifetime);
+        var text = await response.Content.ReadAsStringAsync();
+        Assert.Contains("\"credential_lifetime\":{\"kind\":\"paired\"}", text);
+        Assert.DoesNotContain("expires_at", text);
     }
 
     [Fact]

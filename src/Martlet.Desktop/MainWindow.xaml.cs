@@ -17,6 +17,7 @@ public partial class MainWindow : Window
     private TroubleshootingWindow? troubleshooting;
     private readonly SetupOperationRunner setupOperations = new();
     private readonly ISetupService? setupService;
+    private readonly ICompanionSettingsService? companionService;
     private readonly ConfigurationRecoveryController? recovery;
     private readonly AudioSetupService audioSetup;
     private readonly LiveConversationController? conversation;
@@ -47,6 +48,7 @@ public partial class MainWindow : Window
         audioSessionEvents.LockedChanged += audioSetup.SetSessionLocked;
         var vault = new WindowsCredentialStore();
         setupService = store is null ? null : new SetupService(store, vault);
+        companionService = store is null ? null : new CompanionSettingsService(store);
         recovery = store is null ? null : new(store, setupOperations, () => !support.HasResources);
         if (setupService is not null)
         {
@@ -72,7 +74,7 @@ public partial class MainWindow : Window
         else
         {
             PipelineText.Text = "Mic / VAD / STT / Policy / LLM / TTS / Playback: unavailable; not run. Correct the launch data directory first.";
-            DemoButton.IsEnabled = ToneButton.IsEnabled = ScenarioChoice.IsEnabled = SetupButton.IsEnabled = AudioSetupButton.IsEnabled = ConversationButton.IsEnabled = false;
+            DemoButton.IsEnabled = ToneButton.IsEnabled = ScenarioChoice.IsEnabled = SetupButton.IsEnabled = AudioSetupButton.IsEnabled = CompanionButton.IsEnabled = ConversationButton.IsEnabled = false;
         }
     }
 
@@ -108,6 +110,7 @@ public partial class MainWindow : Window
         CreateButton.IsEnabled = !saving && !runningFixture && !setupOperations.IsRunning && model.CanCreateProfile;
         SetupButton.IsEnabled = !saving && !runningFixture && !model.IsRunning;
         AudioSetupButton.IsEnabled = SetupButton.IsEnabled;
+        CompanionButton.IsEnabled = SetupButton.IsEnabled;
         ConversationButton.IsEnabled = SetupButton.IsEnabled;
         RefreshButton.IsEnabled = !saving && !runningFixture && model.CanRefresh;
         StopButton.IsEnabled = !saving && model.IsRunning;
@@ -237,6 +240,13 @@ public partial class MainWindow : Window
         new AudioSetupWindow(setupService!, setupOperations, audioSetup,
             observe: text => { if (!closing) AudioStatusText.Text = text; }, sessionEvents: audioSessionEvents)
             { Owner = this, Troubleshooting = OpenTroubleshooting }.ShowDialog();
+        await RefreshAsync();
+    }
+
+    private async void Companion_Click(object sender, RoutedEventArgs e)
+    {
+        if (companionService is null || closing || saving || runningFixture || model?.IsRunning == true) return;
+        new CompanionWindow(companionService, setupOperations) { Owner = this }.ShowDialog();
         await RefreshAsync();
     }
 

@@ -259,7 +259,7 @@ public sealed class RollbackRestoreInterruptionTests(SigningKeys keys) : IClassF
         Assert.Null(result.Selection);
         Assert.Equal(plan.CandidateDigest, result.ResultingSettingsRevision);
         Assert.Equal(plan.ProfileId, result.ProfileId);
-        Assert.Equal(2, result.SettingsSchemaVersion);
+        Assert.Equal(AppSettings.CurrentSchemaVersion, result.SettingsSchemaVersion);
         Assert.Equal(original, File.ReadAllBytes(result.OriginalSnapshot!));
         Assert.Equal(plan.CandidateJson, File.ReadAllText(f.Settings.FilePath));
         var retained = History(f);

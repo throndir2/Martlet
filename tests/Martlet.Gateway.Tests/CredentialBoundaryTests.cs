@@ -26,7 +26,7 @@ public sealed class CredentialBoundaryTests
         AssertCode("auth.capacity", () => store.Rotate(original.CredentialId, TimeSpan.Zero));
         var registration = store.ListRegistrations().Single(item =>
             item.CredentialId == original.CredentialId);
-        Assert.Equal(original.ExpiresAt, registration.ExpiresAt);
+        Assert.Equal(original.Lifetime, registration.Lifetime);
         Assert.Null(registration.RotatedToCredentialId);
         AssertCode("auth.replay", () => store.Authenticate(acceptedRequest));
         Assert.Equal(original.CredentialId,
@@ -35,11 +35,10 @@ public sealed class CredentialBoundaryTests
     }
 
     [Fact]
-    public void Repeated_expiry_and_revocation_reclaim_bounded_registration_slots()
+    public void Only_explicit_revocation_reclaims_permanent_registration_slots()
     {
         var clock = Clock();
-        var store = new GatewayCredentialStore(Identity, clock,
-            credentialLifetime: TimeSpan.FromMinutes(1));
+        var store = new GatewayCredentialStore(Identity, clock);
         for (var cycle = 0; cycle < 3; cycle++)
         {
             var credentials = Enumerable.Range(0, GatewayCredentialStore.MaximumRegistrations)
@@ -49,9 +48,7 @@ public sealed class CredentialBoundaryTests
                 Assert.True(store.RevokeCredential(credential.CredentialId));
             Assert.Empty(store.ListRegistrations());
 
-            for (var index = 0; index < GatewayCredentialStore.MaximumRegistrations; index++)
-                Issue(store);
-            clock.Advance(TimeSpan.FromMinutes(1));
+            clock.Advance(TimeSpan.FromDays(3650));
             var fresh = Issue(store);
             Assert.Single(store.ListRegistrations());
             AssertCode("auth.invalid", () => store.Authenticate(Signed(credentials[0], clock)));
@@ -102,20 +99,16 @@ public sealed class CredentialBoundaryTests
         Assert.Equal("pairing.closed", await GatewayTestHost.FailureCode(replay));
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Observed_expiry_or_rotation_cannot_be_reversed_by_clock_rollback(bool rotate)
+    [Fact]
+    public void Observed_rotation_cannot_be_reversed_by_clock_rollback()
     {
         var clock = Clock();
-        var store = new GatewayCredentialStore(Identity, clock,
-            credentialLifetime: TimeSpan.FromMinutes(10));
+        var store = new GatewayCredentialStore(Identity, clock);
         var original = Issue(store);
-        if (rotate)
-            store.Rotate(original.CredentialId, TimeSpan.FromMinutes(1));
-        clock.Advance(TimeSpan.FromMinutes(rotate ? 1 : 10));
+        store.Rotate(original.CredentialId, TimeSpan.FromMinutes(1));
+        clock.Advance(TimeSpan.FromMinutes(1));
         AssertCode("auth.expired", () => store.Authenticate(Signed(original, clock)));
-        clock.Advance(TimeSpan.FromMinutes(rotate ? -1 : -10));
+        clock.Advance(TimeSpan.FromMinutes(-1));
         AssertCode("auth.clock_invalid", () => store.Authenticate(Signed(original, clock)));
         clock.Advance(TimeSpan.FromHours(1));
         AssertCode("auth.clock_invalid", () => Issue(store));

@@ -42,7 +42,7 @@ internal sealed record SnapshotManifest : IContract
     public void Validate()
     {
         ContractRules.Require(FormatVersion == 1 && MinimumReaderFormat == 1 &&
-            Application == "Martlet.Configuration" && SettingsSchemaVersion is 1 or 2,
+            Application == "Martlet.Configuration" && SettingsSchemaVersion is >= 1 and <= AppSettings.CurrentSchemaVersion,
             "Unsupported configuration envelope.", ErrorCode.UnsupportedVersion);
         ContractRules.Require(ProducerVersion is { Length: > 0 and <= 64 } &&
             Version.TryParse(ProducerVersion, out _) && SnapshotId != Guid.Empty && ProfileId != Guid.Empty &&
@@ -72,7 +72,7 @@ internal sealed record SnapshotEnvelope : IContract
 
 public static class ConfigurationSnapshot
 {
-    public const int MaximumBytes = 131_072;
+    public const int MaximumBytes = 262_144;
     public const string Scope = "LOCAL configuration only; NOT encrypted or a sanitized support bundle. " +
         "Includes exact settings, profile/route/model/device preferences, opaque credential references and cleanup metadata. " +
         "Device identifiers and configuration may be personal. Excludes secret values/OS vault, environment, conversations, audio, " +
@@ -128,7 +128,8 @@ public static class ConfigurationSnapshot
         {
             ContractRules.Require(Manifest is not null, "Missing manifest.");
             ContractRules.Require(Manifest!.FormatVersion == 1 && Manifest.MinimumReaderFormat == 1 &&
-                Manifest.Application == "Martlet.Configuration" && Manifest.SettingsSchemaVersion is 1 or 2,
+                Manifest.Application == "Martlet.Configuration" &&
+                Manifest.SettingsSchemaVersion is >= 1 and <= AppSettings.CurrentSchemaVersion,
                 "Unsupported snapshot version.", ErrorCode.UnsupportedVersion);
         }
     }
@@ -187,7 +188,7 @@ public sealed class ConfigurationRestorePlan
         CandidateDigest = ConfigurationSnapshot.Hash(candidate);
         var lines = new List<string>
         {
-            $"Compatible Martlet configuration format 1; source settings v{snapshot.Manifest.SettingsSchemaVersion} -> current settings v2.",
+            $"Compatible Martlet configuration format 1; source settings v{snapshot.Manifest.SettingsSchemaVersion} -> current settings v{AppSettings.CurrentSchemaVersion}.",
             $"Snapshot: {snapshot.Manifest.SnapshotId}; created {snapshot.Manifest.CreatedUtc:O}; producer {snapshot.Manifest.ProducerVersion}.",
             $"Snapshot SHA-256: {SnapshotDigest}", $"Source file SHA-256: {SourceFileDigest}",
             $"Same profile only: {ProfileId}", $"Destination: {Destination}", $"Current revision: {ExpectedRevision}",
@@ -195,6 +196,7 @@ public sealed class ConfigurationRestorePlan
             $"Profile choice: {current.Profile.Kind} -> {restored.Profile.Kind}; setup checkpoint -> Destinations.",
             "ALL saved destination acknowledgments and audio checkpoints are invalidated. Capture and logging are NOT enabled.",
             "ALL imported credential IDs and imported cleanup markers remain historical only; no key is read, rebound or deleted.",
+            "Version 3 persona profiles and style weights are restored when present; older snapshots preserve the current companion profiles.",
             $"Current legacy references retained unchanged: {current.Profile.Credentials.Count}. Current owned cleanup references retained/queued: {restored.Setup!.PendingRemovals.Count}.",
             "Imported legacy references are NOT restored. Reconfigure keys and review destinations/devices explicitly.",
             "Support journal, secrets and nonexistent voice/model/memory databases are NOT restorable here.",
