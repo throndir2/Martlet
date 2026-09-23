@@ -1,4 +1,4 @@
-# Offline host artifact inspection (H02a)
+# Offline host artifact inspection (H02a/H02c/H02d metadata)
 
 **Standalone internal managed-code foundation, not a shipped installer feature.**
 The library and `Martlet.ArtifactDoctor` inspect one explicitly selected local
@@ -48,7 +48,8 @@ project override.
 
 The CLI also supports `--help`, `-h` and `--version`. Inspection requires
 `inspect --manifest ABSOLUTE_LOCAL_JSON_PATH`, optional `--role ROLE_ID`,
-optional `--target TARGET_ID`, and optional `--json`, each at most once.
+optional `--target TARGET_ID`, optional v2-only `--platform OS/ARCH[/VARIANT]`,
+and optional `--json`, each at most once.
 Omitted role selects all roles in this document; omitted target remains
 unknown. A selector such as `ubuntu-24.04-x64` is supplied intent, not evidence
 of the machine running the tool.
@@ -56,7 +57,7 @@ of the machine running the tool.
 | Exit | Meaning |
 | --- | --- |
 | 0 | Help/version only |
-| 1 | A valid inspected candidate's declared target differs from the requested target |
+| 1 | A valid inspected candidate's declared target or selected image platform differs from the requested selector |
 | 2 | Valid but disabled/incomplete candidate, or explicitly reported cancellation/read deadline |
 | 3 | Invalid invocation, unsupported/invalid/inconsistent/oversized document, inaccessible/disallowed input |
 
@@ -72,9 +73,16 @@ observations are `not_performed`, and runtime closure is `not_established`.
 `ArtifactManifestReader.Read(ReadOnlyMemory<byte>)` copies bounded input and
 returns an owned `ArtifactManifest`. Its wire models are internal; callers
 cannot mutate validated arrays. `ArtifactInspector.Inspect(manifest, roleId,
-target)` computes the actual direct/transitive closure and returns an immutable
+target, platform)` computes the actual direct/transitive closure and returns an immutable
 `InspectionReport`. `ToJson()` and `ToHuman()` format the same report;
 `ExitCode`, `KnownPayloadBytes` and `DocumentSha256` are directly available.
+`ArtifactInspector.InspectRoles(manifest, roleIds, target, platform)` selects an
+explicit set of one through four unique exact role IDs through that same
+inventory path. Missing, duplicate, empty or invalid IDs are rejected; optional
+unselected catalog roles are excluded before closure/unique-byte accounting.
+Selection order does not change output. Existing `Inspect` semantics (one role,
+or null for all) and the report wire format are unchanged. Neither entry point
+confers eligibility, authenticity, acquisition permission or rights approval.
 Invalid input raises a sanitized `ArtifactManifestException` containing a
 stable diagnostic code/remedy, never a supplied path or raw parser exception.
 
@@ -93,6 +101,27 @@ Different whitespace changes the exact document fingerprint. No source
 signature or API assertion is authenticated by offline parsing.
 
 ## Version 1 contract
+
+### Typed acquisition descriptions
+
+`ArtifactManifest.DescribeAcquisition(roleIds, target, platform)` projects the
+same validated exact-role selection and unique inventory as `InspectRoles`.
+Its immutable candidates bind source/content identity, applicable license claims
+and contributing selected roles. The compatibility `DescribeArtifact(id)` API
+describes one artifact in the full catalog. Neither method contacts a provider.
+The source candidate projection is reused from
+`81bf855b3b342563f2dbf2eb512672e717b41932` and adapted to current v1/v2 owners.
+
+GitHub candidates can describe an exact numeric release-asset API request under
+a versioned bounded provider policy. This is a request recipe, not authenticated
+upstream metadata or a direct-response qualification. `DirectTransportEligible`
+does not promote the committed catalogs; execution/preset eligibility remains
+false. Actual byte acquisition requires the Host.Setup coordinator's separately
+bound rights and fresh acquisition approval. No arbitrary URL setter or caller
+eligibility Boolean exists. Hugging Face and OCI remain unsupported for network
+acquisition in this slice. OCI image/index/platform/blob metadata and known versus
+unknown compressed/expanded/staging subtotals remain available without implying
+complete runtime closure, local payload verification or install size.
 
 The [candidate document](../../deploy/ubuntu/artifacts/host-artifacts.v1.json)
 is the concrete example and pin authority. All properties on the following
@@ -185,6 +214,117 @@ failures are sanitized. Hostile concurrent filesystem substitution, special
 mounts and native Linux execution are not qualified by these Windows-local
 checks; this utility is not a privileged file authority or bootstrap engine.
 
+## Version 2 container metadata (H02c)
+
+This supported schema evolution adds a **required** `container_images` array
+(possibly empty) to the v1 document shape. V1 rejects this field even when null;
+it never gains container semantics implicitly. The existing catalog is unchanged.
+The report uses format 1 for v1 input and format 2 for v2 input. V2 reports add
+`container_images`, optional `requested_platform`, and `disk.container_content`;
+old file metadata remains under `artifacts`. No deployable v2 catalog is shipped.
+The [H02d metadata catalog](../../deploy/ubuntu/artifacts/host-artifacts.v2.json)
+now supplies real public-upstream image candidates, still disabled. Its
+[capture evidence and gaps](../../deploy/ubuntu/artifacts/README.md) distinguish
+the completed metadata slice from remaining acquired-byte, rights, dependency,
+runtime/GPU and host qualification.
+
+| Object | Required fields, including explicit nullable values |
+| --- | --- |
+| Container image | `id`, `source_id`, `registry`, `repository`, `digest`, nullable `manifest_bytes`, nullable `index`, nullable `platform`, `evidence`, `evidence_url`, `blobs`, `blob_inventory_complete`, `license_ids`, `depends_on` |
+| Index declaration | `digest`, nullable `bytes` |
+| Platform declaration | `os`, `architecture`, nullable `variant` |
+| Blob declaration | `digest`, `kind` (`configuration`/`layer`), nullable `compressed_bytes`, nullable `expanded_bytes`, nullable `staging_bytes` |
+
+`registry` is a canonical lowercase DNS hostname (maximum 253 characters,
+bounded DNS labels, alphabetic final label); ports, IP literals, implicit
+registries, credentials and schemes are deliberately unsupported. `repository`
+is a lowercase OCI-style slash-separated repository name (maximum 255
+characters), not a tag or full reference. Every digest is a nonzero lowercase
+`sha256:` plus 64 hex characters. `main`, `latest`, tags, abbreviated hashes and
+case/encoding aliases are rejected, not normalized.
+
+`digest` identifies the **selected image manifest**. Optional `index.digest`
+identifies a distinct manifest list/index, never its selected platform image.
+The parser does not authenticate or verify their declared relationship, media
+types, manifest/config contents, recipe-to-build binding or actual layers.
+`source_id` refers to the proposed runtime's pinned GitHub recipe source,
+**not a build attestation**. The evidence URL must exactly equal
+`https://REGISTRY/v2/REPOSITORY/manifests/DIGEST`; it is inert and never resolved.
+Image `evidence` is `registry_metadata` (a supplied unauthenticated assertion)
+or `synthetic_fixture` (only in a `synthetic_fixture` document). There is no
+accepted `locally_verified` or approved-rights token.
+
+Platform tokens are bounded lowercase ASCII OS/architecture/optional-variant
+strings (32 characters each). Null `platform` is unknown; null `variant` means
+no variant declared, not a wildcard. `--platform linux/amd64` compares this
+tuple only, with exact equality and no architecture aliases. A mismatching
+tuple exits 1 (`declared_platform_mismatch`); an unknown tuple or omitted
+selector stays unknown/disabled (exit 2). `--target` still compares the opaque
+role target label; neither selector discovers the host or establishes runtime
+compatibility. V1 rejects `--platform`, rather than pretending to compare an
+image it cannot represent.
+
+V2 allows `container_image` **instead of** `runtime_archive` as a family's
+runtime component slot, including an explicitly missing null binding. All
+other family slots, root-closure equality, dependency edges, source ownership,
+cycle/reference/unused-record and rights rules still apply. Image and file
+IDs share one graph namespace. Images require separately scoped
+`container_image_components` licenses, `spdx: unknown`, `disposition: unreviewed`;
+source MIT does not license bundled image components. Known image digests remove
+only the applicable `runtime.image_unpinned` finding, never missing model,
+dependency, rights, host, GPU or disk findings. An empty dependency list or a
+claimed complete blob list is **not** a resolved runtime/package closure.
+
+### Shared content and byte accounting
+
+One selected image manifest digest must appear once in the document; roles
+reference its ID. Repeated layer occurrences within an image are preserved:
+the official F5 image repeats the same empty layer three times. Configuration
+records may not repeat. Within and across images, shared
+index/configuration/layer digests are counted once and **must**
+agree on kind and all size facts, including null versus known. Conflicts are
+invalid, not silently merged or selected by input order. Cross-kind digest
+aliases and aliases of v1 file payload hashes are rejected because their
+evidence/size semantics differ. Layer order is preserved in the report; other
+collections are sorted deterministically.
+
+The known payload subtotal includes unique selected-image manifest bytes,
+listed index bytes, and compressed blob bytes, plus existing file bytes.
+Unknown compressed sizes are counted explicitly, not treated as known zero.
+`container_content` reports known compressed bytes/unknown count, known expanded
+blob bytes/unknown count, known staging blob bytes/unknown count, unique content
+count, and incomplete image count. Empty incomplete inventories remain
+incomplete even with zero unknown *listed* sizes.
+
+Expanded blob bytes mean declared decompressed content, not installed
+filesystem usage. Staging blob bytes mean declared per-blob scratch/storage
+facts, not simultaneous peak space. Shared compressed identity does not prove
+shared unpacked snapshots: chain IDs, compression variants, filesystem
+overhead, copy-on-write snapshots, download scheduling, rollback, volumes,
+models and reserves remain outside these subtotals. Manifest/index expansion
+and staging are not estimated. **Complete download, expanded archive,
+installed/peak/free disk remain unknown**, even if every listed size is known.
+No staging or expansion figure is measured locally by this tool.
+
+All prior parser/output limits remain. V2 allows at most 4 image records within
+the combined 64 file/image nodes, 128 blobs per image and 256 blob occurrences
+overall. A claimed complete blob inventory requires exactly one configuration
+record; incomplete lists may omit it. Compressed/manifest/index sizes are
+positive or null; expanded/staging blob sizes are nonnegative or null. Each
+known size is at most 16 TiB; each unique known byte subtotal is at most 64 TiB,
+including files in the combined compressed subtotal. Repeated layers still
+consume the per-image and document occurrence limits. Graph edges retain the
+16-per-node/256-total bounds. The CLI now allows at most 10 arguments.
+
+The [v2 fixture](../../tests/Martlet.HostArtifacts.Tests/fixtures/container-images.v2.json)
+and [golden inventory](../../tests/Martlet.HostArtifacts.Tests/fixtures/container-inventory.golden.json)
+are **authored synthetic metadata**, including fake commits, versions, digests,
+sizes, index relationships and `.invalid` registry URLs. They are not upstream
+records, executable presets, payloads or runtime evidence. Tests exercise these
+through the production reader, validator, graph, inspector and CLI, alongside
+the frozen v1 catalog. H02d must research exact upstream runtime/image/model
+closure separately.
+
 ## Candidate facts and evidence limits
 
 Official metadata was read on 2026-09-15. No model weights, vocabulary payload,
@@ -234,8 +374,9 @@ invariant totals/fingerprints; source-evidence distinctions; mandatory gaps;
 and private-file preservation/cancellation/IO errors. Core and existing Doctor
 regressions run separately. Local fixtures never stand in for model execution.
 
-H02 still owns the LLM backend spike/selection, weights, immutable runtime
-images and complete native/transitive dependency/license inventories. H01
+H02d still owns exact upstream runtime/image/model selection and complete
+native/transitive dependency/license inventories; H02c only represents and
+inspects their future offline metadata. H01
 owns actual host observations; H04 owns F5 behavior/reference consent; H05 owns
 reviewed setup/download consent, redirect policy, actual content verification,
 disk reservations and lifecycle; H06 owns exact native/GPU/combined-role fit.

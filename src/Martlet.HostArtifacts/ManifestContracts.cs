@@ -6,9 +6,9 @@ namespace Martlet.HostArtifacts;
 internal enum MetadataProvenance { UpstreamMetadata, SyntheticFixture }
 internal enum SourceKind { Github, HuggingFace }
 internal enum RuntimeFamily { Ollama, F5Tts }
-internal enum ArtifactKind { RuntimeArchive, LlmWeights, TtsWeights, Vocabulary, VocoderWeights, VocoderConfiguration }
+internal enum ArtifactKind { RuntimeArchive, LlmWeights, TtsWeights, Vocabulary, VocoderWeights, VocoderConfiguration, ContainerImage }
 internal enum HashEvidence { GithubReleaseMetadata, HuggingFaceLfsMetadata, Unavailable }
-internal enum LicenseScope { SourceCode, ModelRepository, RuntimeArchiveComponents }
+internal enum LicenseScope { SourceCode, ModelRepository, RuntimeArchiveComponents, ContainerImageComponents }
 internal enum LicenseDisposition { Unreviewed }
 internal enum DependencyEcosystem { Python, PythonBuild, Native }
 internal enum DependencyCondition { Always, PythonAtMost310, NotDarwinAndNotArm64 }
@@ -28,8 +28,66 @@ internal sealed record ManifestDocument : IContract
     public required ArtifactDocument[] Artifacts { get; init; }
     public required LicenseDocument[] Licenses { get; init; }
     public required RoleDocument[] Roles { get; init; }
+    public ContainerImageDocument[]? ContainerImages { get; init; }
     public void Validate() => ArtifactManifestValidator.Validate(this);
 }
+
+internal enum ImageMetadataEvidence { RegistryMetadata, SyntheticFixture }
+internal enum ImageBlobKind { Configuration, Layer }
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+internal sealed record ContainerImageDocument
+{
+    public required string Id { get; init; }
+    public required string SourceId { get; init; }
+    public required string Registry { get; init; }
+    public required string Repository { get; init; }
+    public required string Digest { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public required long? ManifestBytes { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public required ImageIndexDocument? Index { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public required ImagePlatform? Platform { get; init; }
+    public required ImageMetadataEvidence Evidence { get; init; }
+    public required string EvidenceUrl { get; init; }
+    public required ImageBlobDocument[] Blobs { get; init; }
+    public required bool BlobInventoryComplete { get; init; }
+    public required string[] LicenseIds { get; init; }
+    public required string[] DependsOn { get; init; }
+}
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+internal sealed record ImageIndexDocument
+{
+    public required string Digest { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public required long? Bytes { get; init; }
+}
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+internal sealed record ImagePlatform
+{
+    public required string Os { get; init; }
+    public required string Architecture { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public required string? Variant { get; init; }
+}
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+internal sealed record ImageBlobDocument
+{
+    public required string Digest { get; init; }
+    public required ImageBlobKind Kind { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public required long? CompressedBytes { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public required long? ExpandedBytes { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public required long? StagingBytes { get; init; }
+}
+
+internal sealed record ArtifactNode(string Id, ArtifactKind Kind, string SourceId, string[] LicenseIds, string[] DependsOn);
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 internal sealed record SourceDocument

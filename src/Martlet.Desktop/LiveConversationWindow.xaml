@@ -50,11 +50,15 @@
                          AutomationProperties.AutomationId="LiveEnvelope" AutomationProperties.Name="Exact action bounds and data destinations" />
                 <CheckBox x:Name="AcceptAction" Content="I authorize my next Send / PTT action within this displayed envelope, including potential API charges and the selected generated-voice output." Margin="0,8"
                           Checked="Consent_Changed" Unchecked="Consent_Changed" AutomationProperties.AutomationId="LiveAcceptAction" />
+                <CheckBox x:Name="AcceptMemory" Margin="0,4"
+                          Content="Optional, next Send / PTT only: I separately authorize bounded lexical retrieval from my enabled local memory and disclosure of only fitting top facts (at most three) with provenance to the selected LLM. This is fresh permission, not provider permission, and is cleared after use."
+                          Checked="Consent_Changed" Unchecked="Consent_Changed" AutomationProperties.AutomationId="LiveAcceptMemory"
+                          AutomationProperties.HelpText="OFF for every action by default. Does not save this conversation or upload the complete memory store." />
                 <CheckBox x:Name="AcceptCapture" Content="For PTT only: I permit bounded LOCAL microphone capture, including other people only with their permission." Margin="0,4"
                           Checked="Consent_Changed" Unchecked="Consent_Changed" AutomationProperties.AutomationId="LiveAcceptCapture" />
                 <CheckBox x:Name="AcceptUpload" Content="For PTT only: I separately permit uploading this audio to the named STT destination with potential charges, even if policy later suppresses it." Margin="0,4"
                           Checked="Consent_Changed" Unchecked="Consent_Changed" AutomationProperties.AutomationId="LiveAcceptUpload" />
-                <Label Target="{Binding ElementName=InputText}" Content="_Typed text (no history sent, at most 4096 characters)" />
+                <Label Target="{Binding ElementName=InputText}" Content="_Typed text (bounded recent context, at most 4096 characters)" />
                 <TextBox x:Name="InputText" AcceptsReturn="True" TextWrapping="Wrap" MaxLength="4096" Height="80" VerticalScrollBarVisibility="Auto"
                          TextChanged="Input_Changed" AutomationProperties.AutomationId="LiveInput" />
                 <WrapPanel>

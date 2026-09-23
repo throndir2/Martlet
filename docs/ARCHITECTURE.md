@@ -15,6 +15,24 @@ origin, constructed `:local` request, exact-action trusted-caller permit and
 retained HTTP/lease ownership. It reuses Core text contracts without generalizing
 OpenAI conversation authority. No production issuer, gateway/Desktop route,
 immutable model binding or qualified runtime/host locality is established.
+The [companion requirements](COMPANION_REQUIREMENTS.md) add explicit persona,
+reference-voice, model-selection and listen-first/barge-in controls. These
+are partially implemented by the reused persona/settings, explicit-context and
+LLM-selection slices; reference voice, VLM, listening and barge-in remain future
+integration, not capabilities of the standalone post-capture VAD library.
+The separate [H03 gateway security foundation](../src/Martlet.Gateway/README.md)
+implements an isolated ASP.NET Core library boundary: explicit private/loopback
+TLS binding with a caller-supplied pinned identity, local-only pairing approval,
+signed scoped device requests with freshness/nonces/rotation/revocation, and
+role-filtered version/capability/status metadata behind worker interfaces. It
+does not join Desktop/Core settings or the root solution, expose an inference
+route/raw worker port, create a production key, change a firewall, or establish
+real LAN/Ubuntu/host qualification.
+The [P03a/P03b/P03c local memory integration](MEMORY.md) implements an
+OFF-by-default versioned fact store and lexical retrieval contract with
+schema-4 settings, explicit Desktop management and separately permitted per-turn
+retrieval in the existing input budget. It is not the proposed
+SQLite/gateway service, automatic conversation memory or a passed AC-16/G4 gate.
 Read [the development plan](../DEVELOPMENT_PLAN.md)
 for scope and approvals, [installation/support](INSTALLATION_SUPPORT.md) for
 lifecycle, and [delivery](DELIVERY.md) for task ownership. Source IDs refer to
@@ -33,6 +51,7 @@ and conformance fixtures before adapters are built independently.
 | Host gateway | ASP.NET Core in dedicated non-root Linux image, host team | Paired TLS/auth, capability/readiness reporting, authenticated job transport, bounded scheduling; no Docker socket or arbitrary commands |
 | Inference workers | One pinned image/runtime per engine, runtime team | Ollama candidate LLM; dedicated Python F5 worker; optional STT/VLM/OCR/detection/reranker; private container networks |
 | Host lifecycle tool | Reviewed packaged host utility, host/release team | Local preflight, installation journal, Compose reconciliation, backup/repair; explicit local administrative boundary |
+| Setup coordinator / host setup UI | Windows setup coordinator plus local Ubuntu host UI and headless CLI, client + host teams | One feature/role/destination plan; shared host planning/probe/journal engine, local privileged approval, clear managed versus external ownership; no remote shell or Docker administration through pairing |
 | Optional memory service | Single-owner SQLite database plus replaceable retrieval adapters, memory team | Consent, source provenance, retention, export/delete; embeddings/index are derived data, not a second authority |
 | Optional avatar process | Renderer selected in A01, avatar team | Local animation/playback events only; bounded IPC; crash does not interrupt voice or expose credentials |
 
@@ -79,6 +98,36 @@ P1 has no Ubuntu gateway. P3 co-locates selected roles behind one gateway.
 P4 gives the client separate host identities and route assignments; host 1
 need not call or wait for host 2. STT can remain on the client CPU; remote STT
 means microphone audio crosses the selected boundary.
+
+These are example layouts, not hard-coded machine roles or a two-host limit.
+The [feature-first installation flow](INSTALLATION_SUPPORT.md#feature-first-multi-machine-setup)
+separates enabled features, role requirements, destinations, hosts and lifecycle
+ownership. One computer can be client and host or supply several roles; each
+role can independently use a cloud API or a compatible hosted service. Disabled
+features create no provisioning/probe prerequisite. Required-role failure
+blocks only dependent experiences; loss of optional context must be disclosed
+without blocking a healthy voice/text route or silently choosing another provider.
+
+The Linux managed-host target uses Docker Engine/Compose whether Ubuntu has a
+desktop or is headless. Its local graphical setup is a proposed loopback-only
+browser UI over the same host setup engine, not a second WPF application or a
+public management website. A session-bound local authorization and request-origin/
+CSRF checks protect mutations; loopback alone is not authorization. Privileged
+steps stay in a narrowly scoped locally approved lifecycle boundary, never the
+inference gateway. Windows native Ollama and Docker Desktop/WSL2 are separate
+future qualification lanes, not implied by the portable core. H10 must package
+and qualify a native Windows gateway if that host serves another computer
+without Docker; a raw Ollama LAN port is not that gateway.
+
+Managed and external deployments share worker contracts, not administrative
+authority. Pin engine/context and owned resource identities explicitly; an
+ambient Docker context must not redirect setup to a different machine.
+Cross-container workers need a reviewed internal transport authority: the
+existing H02b adapter accepts only literal loopback, which inside a gateway
+container is that container, not an `ollama` sibling. Do not loosen that rule
+globally, use default host networking, or claim Compose supplies an app route.
+H03/H08 must define the production issuer and trusted worker identity before
+any internal service-name routing is enabled.
 
 Persist routing by role/provider/host ID, not a mutable hostname alone. A
 personality is data, not a plugin executing arbitrary code. Maintain the
@@ -140,20 +189,32 @@ Display cloud retention links; "not used for training by default" is not
    no token in URL/query/history, and no assumption that a short PIN alone
    authenticates a hostile LAN. Rate-limit pairing and require local approval.
 4. Exchange the token for a cryptographically random, scoped device credential;
-   store it in Windows Credential Manager and only a verifier on the host.
+   the client must use protected storage. The canonical HMAC host's SHA-256
+   verifier is itself a signing key and requires protected key custody.
    Bind to host ID and least-privilege roles: voice, perception, or memory.
    Pairing never grants host administration or shell execution.
-5. Host UI/CLI lists and revokes devices. Proposed default expiry is 90 days
-   with explicit renewal and advance warning; rotation has a brief bounded
-   overlap. Old tokens and revoked credentials fail. Lost credentials require
-   re-pairing; the old credential is not resurrected from a settings backup.
-6. Renew certificates with the pinned key only under a documented policy.
+5. **Paired devices never expire.** Pairing survives normal process restart,
+   OS reboot, updates and recoverable interruption until explicit unpair/revoke
+   or actual identity loss. Offline, clock and recovery errors mean unavailable,
+   not unpaired. Rotation retires only the old credential with bounded overlap;
+   the replacement pairing remains permanent. Invitations still expire and are
+   one-use. Revoked authority is never resurrected from a settings backup.
+6. Renew certificates automatically with the same pinned key, including after
+   expiry while the host was off, before starting TLS. Keep certificate
+   validity/SAN/pin checks; routine certificate lifetime never requires re-pair.
    Host key change requires re-pairing or an authenticated old-key-signed
-   transition; never silently trust a changed host. Expiry and clock skew
+   transition; never silently trust a changed host. Certificate errors and clock skew
    remain visible errors even with pinning. Do not install a global trusted CA.
 
 Use standard cryptographic/TLS libraries, not custom crypto. Threat-model and
-exercise bootstrap, expiry, revocation, replay, and key rotation in H03.
+exercise bootstrap, invitation expiry, durable revocation/replay recovery and
+key rotation in H03. The internal
+[durable canonical owner](../src/Martlet.Gateway.Persistence/README.md) implements
+explicit protocol-2 paired/retiring lifetimes and predecessor-bound crash redo.
+Earlier timed/prototype files are preserved as migration-needed, not silently
+made permanent; source clients must adopt the versioned semantics. The local
+Windows approval CLI is separate; Linux approval UI/service lifecycle and real
+deployment remain gated.
 Unpaired clients may access only a minimal liveness/pairing surface, not
 model inventories, system data, logs, or job results.
 
@@ -172,6 +233,24 @@ world-readable Compose environment files. Explain that an OS key store is not
 protection from malware already executing as that user. Bind provider credentials
 to approved origins; reject credential-bearing cross-origin redirects and
 never reuse a cloud key for a user-entered endpoint.
+
+### Linux gateway state custody candidate
+
+The durable owner now has an explicitly selected `LinuxServicePermissions`
+backend sharing the canonical authority/checkpoint/redo algorithm. Existing
+factories still select Windows DPAPI. Linux x86_64/glibc/local-ext4 storage uses
+service-UID-owned 0700/0600 permissions and is **plaintext at rest**, not
+DPAPI-equivalent encryption. Its separate envelope prevents silent cross-backend
+interpretation; its checksum detects damage, not hostile-writer tampering.
+Same-UID/root/offline-disk and whole-store rollback threats remain; optional
+operator-managed disk encryption is outside the application.
+
+Native handle/mount/UID checks, cooperative locking and file/directory-fsynced
+redo are implemented as an **unqualified candidate**. Native Ubuntu execution,
+service/container lifecycle, Linux approval UI/console and LAN qualification
+remain NOT RUN. No alternate TLS/device state, stored approval authority or
+qualified hosting preset is introduced. See the
+[storage contract and evidence boundaries](../src/Martlet.Gateway.Persistence/README.md#explicit-linux-service-permissions-candidate).
 
 ## 3. Capability negotiation and provider contract
 
@@ -225,6 +304,23 @@ or HTTP 200 is not readiness. Read-only health checks incur no inference
 charge; an actual provider self-test is separately labeled billable and
 requires approval. Cache capability probes with timestamps and refresh on
 configuration/model/version change.
+
+### User-controlled persona, voice and model revisions
+
+R19-R21 require settings-backed named persona profiles, validated F5
+reference-audio/transcript presets, and independent LLM/VLM selections. Keep
+persona/style data separate from routing and permissions. Import/export is
+data-only; model choices use named adapters and verified role capabilities,
+not a universal OpenAI-compatible assumption.
+
+Apply changes only when idle or after stopping and completing current owned
+cleanup. New requests snapshot persona/style, route/model and voice-reference
+revisions; reject stale intents/authorizations/results instead of mixing old
+and new selections within a response. File replacement at an unchanged F5
+reference path requires revalidation and cache invalidation. Selection/save
+does not authorize upload, playback, download, warmup or inference. Re-budget
+context and revalidate capabilities/consent after model changes. Exact UI and
+failure requirements are in [R19-R21](COMPANION_REQUIREMENTS.md).
 
 ### Common identifiers, events, and errors
 
@@ -305,6 +401,28 @@ local debug text. Tests cover name-in-quotation, similar names, multiple
 speakers, silence hallucination, continuous talk, wake during playback,
 and ignored input. Changing policy never silently activates continuous cloud STT.
 
+### Listen-first context and response styles
+
+[R22/R24](COMPANION_REQUIREMENTS.md) extend, rather than replace, the policy
+boundary. Caller-owned, consented observations may be retained as bounded
+session context without creating a reply per observation. Proposed limits are
+120 seconds, 32 observations and 16 KiB UTF-8 text, further bounded by model
+tokens; this is neither a pending-turn queue nor persistent memory. Expired
+intents cannot become dispatchable by retaining their text. Clear context on
+session end, pause/lock or consent revocation, and require explicit authorization
+before sending retained context to a changed route.
+
+New activity invalidates a proposed gap-based dispatch. Only a fresh eligible
+decision can lead to LLM/TTS; quiet accumulation uses no second inference
+model. Participation frequency/gap/cooldown and opt-in capture remain separate
+from per-persona helpful/sarcastic/silly/distracted/teasing weights. Select a
+style only after admission, using a testable weighted selector; persona/style
+never overrides truthfulness, explicit controls or permission. The current
+V05b adds fixed-revision persona and weighted style instructions to fresh
+explicit turns. The reused explicit-context slice adds at most eight completed
+exchanges from the last two minutes within the same input budget, with lifecycle
+clearing; it is not the proposed automatic observation collector.
+
 ## 5. Audio, streaming, cancellation, and budgets
 
 Capture at the device's supported shared-mode format (commonly 44.1/48 kHz),
@@ -369,9 +487,21 @@ gated during Martlet playback, with a short measured acoustic tail. Manual
 PTT/Stop can interrupt instantly and start a new utterance after playback is
 flushed. This is supported manual barge-in, not full-duplex acoustic AEC.
 
-Optional speech barge-in is gated on H07 evidence using a validated echo
-reference/AEC path. Do not claim VAD, transcript equality, or lowering speaker
-volume solves echo. Default system loopback capture stays disabled; future
+R23 makes automatic speech barge-in a required future companion capability,
+opt-in and gated on H07 evidence using qualified feedback protection and an
+echo reference/AEC path where needed. In that mode, local VAD must remain
+active during playback; confirmed external speech onset goes directly to
+Stop/epoch invalidation/PCM and unsaid-segment flush, without waiting for STT
+or a name match. Target p95 <=250 ms from confirmed onset event to last rendered
+sample; acoustic detection latency is separately measured. Request upstream
+abort where supported, but never equate local silence with freed GPU work.
+Further transcription/reply still needs permission and fresh admission after
+owned cleanup; interruption cannot resurrect the canceled answer.
+
+Until native privacy and the selected topology qualify, keep automatic barge-in
+unavailable and manual PTT/Stop usable. Do not claim the post-capture VAD library,
+transcript equality, or lowering speaker volume solves echo. Default system
+loopback capture stays disabled; future
 app-scoped remote-participant capture must exclude Martlet output or supply
 an appropriate echo reference, with each participant's consent.
 
@@ -408,6 +538,16 @@ to embeddings/caches, increments a memory revision to invalidate in-flight
 retrieval, and explains that previously exported/backed-up copies are outside
 immediate erasure. Export is readable, versioned, and contains no credentials.
 Do not transmit the complete memory store on every turn.
+
+**Implemented P03a/P03b/P03c local slice:** `Martlet.Memory` currently owns
+one explicitly selected local schema-1 JSON store rather than a host SQLite
+service. That narrower library supplies path-bound OFF-by-default activation,
+explicit fact save/inspect/edit/delete, typed provenance/retention, exact
+revisioned deletion from its source/index/cache, stale in-flight result
+invalidation, held-out lexical fixtures and frozen default-No local JSON
+export. It adds no transcript collector, app route, gateway endpoint, backup,
+embedding or network dependency. See [MEMORY](MEMORY.md) for exact limits,
+crash/cancellation semantics and the remaining app/gateway/real-user gates.
 
 A01-A03 choose a rights-cleared renderer after classifying Live2D SDK use.
 Only then accept user assets with limits on archive expansion, paths, file

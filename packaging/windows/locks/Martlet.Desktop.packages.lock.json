@@ -52,6 +52,9 @@
           "Martlet.Core": "[0.1.0, )"
         }
       },
+      "martlet.memory": {
+        "type": "Project"
+      },
       "martlet.participation": {
         "type": "Project"
       },

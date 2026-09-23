@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Martlet.Perception.Tests" />
+    <InternalsVisibleTo Include="Martlet.Perception.Qualification" />
+  </ItemGroup>
+</Project>

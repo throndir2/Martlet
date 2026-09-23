@@ -11,5 +11,8 @@
     <ProjectReference Include="..\..\src\Martlet.ArtifactDoctor\Martlet.ArtifactDoctor.csproj" />
     <Using Include="Xunit" />
     <None Include="..\..\deploy\ubuntu\artifacts\host-artifacts.v1.json" Link="host-artifacts.v1.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\deploy\ubuntu\artifacts\host-artifacts.v2.json" Link="host-artifacts.v2.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\deploy\ubuntu\artifacts\evidence\*.json" Link="evidence\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="fixtures\*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

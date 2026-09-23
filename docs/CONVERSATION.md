@@ -14,11 +14,14 @@ not a live connection test.
    supported model IDs, store each role's key in its scoped Windows vault target,
    then review that role's destination choice again (changing a key invalidates
    the choice). Save the checkpoint. Do not put keys in model fields or files.
-2. LLM currently supports `gpt-4.1-mini-2025-04-14`. STT supports `gpt-transcribe`,
+2. LLM currently supports `gpt-4.1-mini-2025-04-14` and
+   `gpt-4.1-2025-04-14`. STT supports `gpt-transcribe`,
    `gpt-4o-transcribe`, `gpt-4o-mini-transcribe`,
    `gpt-4o-mini-transcribe-2025-12-15`, or `whisper-1`.
    Optional TTS supports `gpt-4o-mini-tts-2025-12-15`, voice `alloy` or `coral`,
-   raw mono 24 kHz PCM16. These are adapter allowlists, **not verified account
+   raw mono 24 kHz PCM16. Setup copies exact entries from local adapter catalogs
+   and refuses unsupported IDs without replacing the prior route. These are
+   adapter allowlists, **not verified account
    access, quality recommendations or automatically chosen defaults**.
 3. For PTT or voice output, explicitly save the intended policies in **Audio
    setup (local only)**. Fixed input/output is recommended for predictable
@@ -44,9 +47,26 @@ not a live connection test.
    Progress reports actual runtime/PCM accounting, not an animated success.
 
 STT receives only the selected microphone's completed bounded utterance. LLM
-receives the typed text or that final transcript, with no stored conversation
-history or personality in this slice. TTS receives only eligible generated
-segments. All provider routes have the fixed HTTPS origin
+receives the typed text or that final transcript plus the fixed active persona
+revision and one weighted response style selected only after participation
+accepts the turn. Persona/style and user input share the existing byte/token
+reservation; an over-budget combination is rejected without truncation or a
+provider call. Valid legacy v1/v2 profiles upload no implicit persona/style
+instruction until settings v3 is explicitly
+saved. Up to eight completed explicit exchanges from the prior two minutes may
+be supplied from volatile memory; oldest pairs are omitted until the whole request fits
+the unchanged budget. Failed/refused/suppressed turns are excluded, and pause,
+lock, configuration load/change, Stop or conversation close clears the buffer.
+
+[Local memory](MEMORY.md) is separately OFF by default. Its next-action-only
+retrieval checkbox is independent of provider/cost, local capture and upload
+permission. After explicit typed/PTT participation accepts, it can retrieve
+at most three matching explicitly saved facts with revision/provenance/age
+labels inside the same input budget. No transcript is ingested; no full store,
+path or consent UUID is uploaded. Missing permission never opens the store;
+retrieval failure stops the turn rather than silently omitting requested facts.
+Nothing is persisted. TTS receives only eligible
+generated segments. All provider routes have the fixed HTTPS origin
 `https://api.openai.com`; there is no custom endpoint, model discovery,
 fallback provider, retry loop or hidden continuation.
 
@@ -63,7 +83,7 @@ game/call audio. Capturing other people requires their permission.
 | Overall permission | Original monotonic and absolute expiry within 150 seconds, including scheduling/capture/authorization; never restored or extended |
 | Capture | At most 25 seconds / 800,000 bytes, canonical mono 16 kHz PCM16; original capture permission at most 30 seconds including cleanup and transfer |
 | STT | At most one request, 800,044 WAV bytes, 30-second request, 4096 transcript characters |
-| LLM | At most one request, 4096 user characters / 16,384 UTF-8 bytes, 16,640 input-token reservation, 256 requested output tokens, 16,384 response characters, 45-second request |
+| LLM | At most one request, 4096 user characters; current user + persona + style + bounded explicit history at most 16,384 UTF-8 bytes and 16,640 input-token reservation, 256 requested output tokens, 16,384 response characters, 45-second request |
 | Conversation runtime | At most 90 seconds; existing bounded two-segment pending queue, one active TTS/playback segment |
 | TTS | At most eight requests, 1536 input UTF-8 bytes each / 12,288 total; 10 seconds / 240,000 samples reserved per request, 80 seconds / 1,920,000 samples total; at most 20 seconds per request |
 | Content and timeline | Current bounded input/transcript/answer/refusal in memory; 32 metadata timeline entries, existing bounded engine event rings; no audio/transcript files or ordinary content logs |
@@ -129,7 +149,7 @@ factory. Closing the main window exits the app, not a background tray listener.
 This is not a measured 250 ms physical-stop guarantee.
 
 The fixed **Stop / revoke (Esc)** control also clears accepted but unused
-action/capture/upload permissions. Escape works from the typed input, response
+action/memory/capture/upload permissions. Escape works from the typed input, response
 fields and held PTT control. Releasing Space after Escape cannot send that
 discarded recording or rearm PTT. Stop during settings loading or a slow worker
 requests cancellation without releasing the shared ownership slot early.

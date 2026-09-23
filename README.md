@@ -33,9 +33,24 @@ Later milestones cover Ubuntu self-hosting, two-host GPU deployments, opt-in
 screen understanding and memory, and optional user-supplied avatars. Reliable
 voice and installation take priority over avatars.
 
+The [planned installation flow](docs/INSTALLATION_SUPPORT.md#feature-first-multi-machine-setup)
+coordinates optional features and mixed API/self-hosted roles across machines.
+It targets guided Ubuntu Desktop/Server hosting with Docker Engine/Compose,
+advanced user-managed containers, and separately qualified native Windows
+Ollama / Windows Docker-WSL hosting lanes. Multiple roles may share a machine;
+Docker is not required for the Windows client. These remain design targets,
+not available host installers or enabled application routes.
+
+[P03a/P03b/P03c consented local memory](docs/MEMORY.md) provides OFF-by-default
+Desktop settings and explicit save/inspect/edit/delete/export over one local
+fact store. Optional next-turn retrieval sends only bounded matching facts
+with provenance to the already authorized LLM; it never ingests transcripts.
+There is no remote memory, embedding, vector database or automatic backup.
+
 | Document | Purpose |
 | --- | --- |
 | [Development plan](DEVELOPMENT_PLAN.md) | Scope, proposed decisions, priorities, risks, and reading order |
+| [Companion requirements](docs/COMPANION_REQUIREMENTS.md) | Planned persona editing, F5 reference voices, LLM/VLM selection, listen-first behavior, speech interruption and response-style controls; not current features |
 | [Architecture and provider contracts](docs/ARCHITECTURE.md) | Components, trust boundaries, conversation policy, streaming, and failure behavior |
 | [Installation and support design](docs/INSTALLATION_SUPPORT.md) | First run, host setup, lifecycle, doctor, and troubleshooting matrix |
 | [Delivery and release plan](docs/DELIVERY.md) | PR-sized backlog, dependencies, acceptance criteria, release gates, and traceability |
@@ -43,6 +58,7 @@ voice and installation take priority over avatars.
 | [Implemented foundation and decisions](docs/FOUNDATION.md) | Accepted/deferred decisions, exact APIs/bounds, current behavior and next ownership |
 | [Resumable setup and local audio](docs/SETUP.md) | V02a configuration/vault actions and V02b explicit local device tests, historical checkpoints, strict migration and remaining live gates |
 | [Explicit API conversation](docs/CONVERSATION.md) | V04b typed/PTT path, exact supported models and bounds, fresh authorization, Stop/cleanup, troubleshooting and separately authorized live-trial checklist |
+| [Consented local memory](docs/MEMORY.md) | OFF-by-default P03a/P03b/P03c Desktop fact management, per-turn retrieval, privacy/deletion/export and remaining qualification gates |
 
 The broader plan documents remain future specifications except for the current
 implementation/acceptance ledger in [DELIVERY](docs/DELIVERY.md) and the

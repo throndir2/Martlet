@@ -1,0 +1,54 @@
+{
+  "facts": [
+    {
+      "key": "server-region",
+      "content": "The preferred game server region is Oregon west for lower latency."
+    },
+    {
+      "key": "tea",
+      "content": "Tea is taken without sugar and with oat milk."
+    },
+    {
+      "key": "raid-time",
+      "content": "The weekly raid starts Friday at 19:00 UTC."
+    },
+    {
+      "key": "headset",
+      "content": "The backup headset is the wired USB model."
+    },
+    {
+      "key": "keyboard",
+      "content": "Keyboard lighting should use the violet profile."
+    },
+    {
+      "key": "basil",
+      "content": "The garden basil needs water every two days."
+    }
+  ],
+  "queries": [
+    {
+      "text": "game server region latency",
+      "expected_first": "server-region"
+    },
+    {
+      "text": "tea oat milk",
+      "expected_first": "tea"
+    },
+    {
+      "text": "Friday weekly raid",
+      "expected_first": "raid-time"
+    },
+    {
+      "text": "backup wired headset",
+      "expected_first": "headset"
+    },
+    {
+      "text": "keyboard violet lighting",
+      "expected_first": "keyboard"
+    },
+    {
+      "text": "basil water days",
+      "expected_first": "basil"
+    }
+  ]
+}

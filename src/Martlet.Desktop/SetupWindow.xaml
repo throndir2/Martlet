@@ -32,6 +32,10 @@
                             <Label Target="{Binding ElementName=RoleChoice}" Content="Configure _role"/>
                             <ComboBox x:Name="RoleChoice" SelectionChanged="Role_Changed" MinHeight="30" AutomationProperties.AutomationId="SetupRole"/>
                             <TextBlock x:Name="BoundaryText" TextWrapping="Wrap" Margin="0,8"/>
+                            <Label Target="{Binding ElementName=ModelCatalogChoice}" Content="Known compatible _models for this named adapter"/>
+                            <ComboBox x:Name="ModelCatalogChoice" MinHeight="30" AutomationProperties.AutomationId="SetupModelCatalog"/>
+                            <Button Content="_Use selected compatible model ID" Click="UseCatalogModel_Click" Padding="8" Margin="0,4"
+                                    AutomationProperties.AutomationId="SetupUseCatalogModel"/>
                             <Label Target="{Binding ElementName=ModelId}" Content="Actual _upstream model ID (not Martlet's internal alias; no default)"/>
                             <TextBox x:Name="ModelId" MaxLength="128" TextChanged="Route_Changed" AutomationProperties.AutomationId="SetupModel"/>
                             <Label Target="{Binding ElementName=VoiceId}" Content="Actual upstream _voice ID (TTS only; no default)"/>
@@ -40,7 +44,7 @@
                                 <TextBlock TextWrapping="Wrap" Text="I select this role, model, voice and OpenAI destination after reviewing its data/cost disclosure. This is NOT permission for capture or any paid request."/>
                             </CheckBox>
                             <Button Content="_Apply selected route and consent choice" Click="ApplyRoute_Click" Padding="8" AutomationProperties.AutomationId="SetupApplyRoute"/>
-                            <TextBlock TextWrapping="Wrap" Margin="0,8" Text="Apply before navigating or saving. Route/model/voice/key changes clear that role's consent. No model listing, key validity check or fallback is performed. Blank/unavailable roles stay not configured."/>
+                            <TextBlock TextWrapping="Wrap" Margin="0,8" Text="Apply before navigating or saving. Route/model/voice/key changes clear that role's consent. The local adapter catalog is not account availability or a network probe. Unsupported IDs do not replace the working draft. No fallback is performed."/>
                         </StackPanel>
                     </TabItem>
                     <TabItem Header="3. _Credentials">

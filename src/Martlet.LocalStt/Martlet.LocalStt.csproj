@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <EmbeddedResource Include="whisper-package.v1.json" />
+    <InternalsVisibleTo Include="Martlet.LocalStt.Tests" />
+  </ItemGroup>
+</Project>

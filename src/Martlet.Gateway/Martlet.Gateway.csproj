@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\Martlet.F5\Martlet.F5.csproj" />
+    <ProjectReference Include="..\Martlet.Perception\Martlet.Perception.csproj" />
+    <ProjectReference Include="..\Martlet.Providers\Martlet.Providers.csproj" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <InternalsVisibleTo Include="Martlet.Gateway.Tests" />
+    <InternalsVisibleTo Include="Martlet.Gateway.Persistence" />
+    <InternalsVisibleTo Include="Martlet.Gateway.Persistence.Tests" />
+    <InternalsVisibleTo Include="Martlet.Gateway.Persistence.Portable.Tests" />
+    <InternalsVisibleTo Include="Martlet.Gateway.Persistence.Linux.Tests" />
+  </ItemGroup>
+</Project>

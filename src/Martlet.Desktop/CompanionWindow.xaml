@@ -1,0 +1,81 @@
+<Window x:Class="Martlet.Desktop.CompanionWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Martlet - Companion" Width="850" Height="820" MinWidth="620" MinHeight="560"
+        WindowStartupLocation="CenterOwner" Loaded="Window_Loaded" Closing="Window_Closing"
+        AutomationProperties.AutomationId="CompanionWindow"
+        AutomationProperties.Name="Edit local companion personas and response style weights">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="20">
+            <TextBlock Text="Companion personas" FontSize="24" FontWeight="SemiBold"/>
+            <TextBlock TextWrapping="Wrap" Margin="0,8"
+                       Text="Edit local persona text and response-style weights. Opening, importing or saving does not start capture, contact a provider, run a model or authorize a request. Fresh explicit typed/PTT turns use the saved active revision; automatic listening is not enabled."/>
+            <StackPanel x:Name="EditorPanel">
+                <Label Target="{Binding ElementName=PersonaChoice}" Content="_Named persona"/>
+                <ComboBox x:Name="PersonaChoice" MinHeight="30" DisplayMemberPath="Name"
+                          SelectionChanged="Persona_Changed" AutomationProperties.AutomationId="CompanionPersona"/>
+                <WrapPanel Margin="0,8">
+                    <Button Content="_New" Click="New_Click" Padding="10,6" Margin="0,0,8,0"
+                            AutomationProperties.AutomationId="CompanionNew"/>
+                    <Button Content="_Duplicate" Click="Duplicate_Click" Padding="10,6" Margin="0,0,8,0"
+                            AutomationProperties.AutomationId="CompanionDuplicate"/>
+                    <Button Content="_Delete" Click="Delete_Click" Padding="10,6"
+                            AutomationProperties.AutomationId="CompanionDelete"/>
+                </WrapPanel>
+                <Label Target="{Binding ElementName=PersonaName}" Content="Persona _name"/>
+                <TextBox x:Name="PersonaName" MaxLength="64" TextChanged="Editor_Changed"
+                         AutomationProperties.AutomationId="CompanionName"/>
+                <Label Target="{Binding ElementName=PersonaText}" Content="Persona _instructions"/>
+                <TextBox x:Name="PersonaText" MaxLength="8192" AcceptsReturn="True" TextWrapping="Wrap"
+                         Height="220" VerticalScrollBarVisibility="Auto" TextChanged="Editor_Changed"
+                         AutomationProperties.AutomationId="CompanionText"/>
+                <WrapPanel Margin="0,8">
+                    <Button Content="_Import UTF-8 text..." Click="Import_Click" Padding="10,6" Margin="0,0,8,0"
+                            AutomationProperties.AutomationId="CompanionImport"/>
+                    <Button Content="_Export applied text to a new file..." Click="Export_Click" Padding="10,6"
+                            AutomationProperties.AutomationId="CompanionExport"/>
+                </WrapPanel>
+                <TextBlock Text="Response-style weights (relative long-run mix; these do not change permission or response frequency)" TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,10,0,4"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="130"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="48"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
+                    </Grid.RowDefinitions>
+                    <Label Grid.Row="0" Target="{Binding ElementName=HelpfulWeight}" Content="_Helpful"/>
+                    <Slider x:Name="HelpfulWeight" Grid.Row="0" Grid.Column="1" Minimum="0" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="Weight_Changed" AutomationProperties.AutomationId="CompanionHelpful"/>
+                    <TextBlock x:Name="HelpfulValue" Grid.Row="0" Grid.Column="2" VerticalAlignment="Center" TextAlignment="Right"/>
+                    <Label Grid.Row="1" Target="{Binding ElementName=SarcasticWeight}" Content="S_arcastic"/>
+                    <Slider x:Name="SarcasticWeight" Grid.Row="1" Grid.Column="1" Minimum="0" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="Weight_Changed" AutomationProperties.AutomationId="CompanionSarcastic"/>
+                    <TextBlock x:Name="SarcasticValue" Grid.Row="1" Grid.Column="2" VerticalAlignment="Center" TextAlignment="Right"/>
+                    <Label Grid.Row="2" Target="{Binding ElementName=SillyWeight}" Content="S_illy"/>
+                    <Slider x:Name="SillyWeight" Grid.Row="2" Grid.Column="1" Minimum="0" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="Weight_Changed" AutomationProperties.AutomationId="CompanionSilly"/>
+                    <TextBlock x:Name="SillyValue" Grid.Row="2" Grid.Column="2" VerticalAlignment="Center" TextAlignment="Right"/>
+                    <Label Grid.Row="3" Target="{Binding ElementName=DistractedWeight}" Content="_Distracted"/>
+                    <Slider x:Name="DistractedWeight" Grid.Row="3" Grid.Column="1" Minimum="0" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="Weight_Changed" AutomationProperties.AutomationId="CompanionDistracted"/>
+                    <TextBlock x:Name="DistractedValue" Grid.Row="3" Grid.Column="2" VerticalAlignment="Center" TextAlignment="Right"/>
+                    <Label Grid.Row="4" Target="{Binding ElementName=TeasingWeight}" Content="Playful _teasing"/>
+                    <Slider x:Name="TeasingWeight" Grid.Row="4" Grid.Column="1" Minimum="0" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="Weight_Changed" AutomationProperties.AutomationId="CompanionTeasing"/>
+                    <TextBlock x:Name="TeasingValue" Grid.Row="4" Grid.Column="2" VerticalAlignment="Center" TextAlignment="Right"/>
+                </Grid>
+                <Button Content="_Apply edits to draft" Click="Apply_Click" Padding="10,7" Margin="0,10,0,0"
+                        AutomationProperties.AutomationId="CompanionApply"/>
+                <WrapPanel Margin="0,10">
+                    <Button Content="_Save companion settings" Click="Save_Click" Padding="10,7" Margin="0,0,8,0"
+                            AutomationProperties.AutomationId="CompanionSave"/>
+                    <Button x:Name="ReloadButton" Content="_Reload saved settings" Click="Reload_Click" Padding="10,7" Margin="0,0,8,0"
+                            AutomationProperties.AutomationId="CompanionReload"/>
+                    <Button Content="_Close" Click="Close_Click" Padding="10,7"
+                            AutomationProperties.AutomationId="CompanionClose"/>
+                </WrapPanel>
+            </StackPanel>
+            <TextBox x:Name="ResultText" IsReadOnly="True" TextWrapping="Wrap" MinHeight="60" Margin="0,10"
+                     AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="CompanionResult"/>
+            <TextBlock x:Name="ActivityText" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
+                       AutomationProperties.AutomationId="CompanionActivity"/>
+        </StackPanel>
+    </ScrollViewer>
+</Window>
