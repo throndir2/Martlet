@@ -1,5 +1,7 @@
 using System.Windows;
 using System.ComponentModel;
+using System.IO;
+using System.Windows.Controls;
 using System.Windows.Threading;
 using Martlet.Core.Settings;
 using Martlet.Diagnostics;
@@ -46,6 +48,9 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         this.store = store;
+        ThemeChoice.SelectedIndex = Application.Current is App { SelectedTheme: PinkTheme.Dark } ? 1 : 0;
+        AppearanceStatus.Text = (Application.Current as App)?.AppearanceNotice
+            ?? "Pink light / rose dark. Your choice is saved locally; Windows high contrast takes priority.";
         this.support = support;
         audioSetup = new(setupOperations, new WindowsAudioDeviceCatalog(), new WasapiCaptureDeviceFactory(), new WasapiDeviceFactory());
         audioSessionEvents.LockedChanged += audioSetup.SetSessionLocked;
@@ -82,6 +87,27 @@ public partial class MainWindow : Window
             DemoButton.IsEnabled = ToneButton.IsEnabled = ScenarioChoice.IsEnabled =
                 SetupButton.IsEnabled = AudioSetupButton.IsEnabled = CompanionButton.IsEnabled =
                 MemoryButton.IsEnabled = ConversationButton.IsEnabled = VoiceLibraryButton.IsEnabled = false;
+        }
+    }
+
+    private void Theme_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (!IsLoaded || Application.Current is not App app) return;
+        var theme = ThemeChoice.SelectedIndex == 1 ? PinkTheme.Dark : PinkTheme.Light;
+        app.ApplyTheme(theme);
+        if (store is null)
+        {
+            AppearanceStatus.Text = "Theme applied for this session only. Correct the launch data directory to save your preference.";
+            return;
+        }
+        try
+        {
+            Appearance.Save(store.DataDirectory, theme);
+            AppearanceStatus.Text = $"{(theme == PinkTheme.Dark ? "Rose dark" : "Pink light")} saved locally. Windows high contrast takes priority.";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AppearanceStatus.Text = "Theme applied for this session, but appearance.txt could not be saved. Check access to your data directory and choose again. Profile settings were not changed.";
         }
     }
 
