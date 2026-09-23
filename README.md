@@ -49,6 +49,7 @@ There is no remote memory, embedding, vector database or automatic backup.
 
 | Document | Purpose |
 | --- | --- |
+| [Coding-agent instructions](AGENTS.md) | Task branches, autonomous local engineering loop, independent review, and normal merge into `main`; explicit holds and safety boundaries remain binding |
 | [Development plan](DEVELOPMENT_PLAN.md) | Scope, proposed decisions, priorities, risks, and reading order |
 | [Companion requirements](docs/COMPANION_REQUIREMENTS.md) | Planned persona editing, F5 reference voices, LLM/VLM selection, listen-first behavior, speech interruption and response-style controls; not current features |
 | [Architecture and provider contracts](docs/ARCHITECTURE.md) | Components, trust boundaries, conversation policy, streaming, and failure behavior |
