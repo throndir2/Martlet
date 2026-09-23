@@ -9,6 +9,8 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
+    <PackageReference Include="Grpc.AspNetCore.Server" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\..\src\Martlet.Desktop\Martlet.Desktop.csproj" />
     <Using Include="Xunit" />
     <Using Include="System.IO" />
@@ -20,5 +22,6 @@
     <Compile Include="..\Martlet.Audio.Tests\ControlledDevice.cs" Link="Fixtures\ControlledDevice.cs" />
     <Compile Include="..\Martlet.Audio.Tests\CaptureTestDevices.cs" Link="Fixtures\CaptureTestDevices.cs" />
     <Compile Include="..\Martlet.Conversation.Tests\ConversationFixtures.cs" Link="Fixtures\ConversationFixtures.cs" />
+    <Compile Include="..\Martlet.Avatar.Audio2Face.Tests\ProtocolFixture.cs" Link="Fixtures\ProtocolFixture.cs" />
   </ItemGroup>
 </Project>

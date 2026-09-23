@@ -67,6 +67,14 @@ public sealed class PlaybackRun
     internal bool WorkerReleased { get { lock (gate) return DeviceRelease.IsCompleted && deviceReleased; } }
     public PlaybackSnapshot Snapshot { get { lock (gate) return GetSnapshot(); } }
     public PlaybackClockSnapshot DeviceClock { get { lock (gate) return clockSnapshot; } }
+    public TimeSpan? DeviceClockAge
+    {
+        get
+        {
+            lock (gate) return clockSnapshot.State == PlaybackClockState.Available
+                ? time.GetElapsedTime(clockSnapshot.ObservedTimestamp) : null;
+        }
+    }
 
     public FrameAcceptance Submit(PcmFrame frame)
     {

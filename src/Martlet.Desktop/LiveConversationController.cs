@@ -106,6 +106,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private readonly ConversationContextBuffer context;
     private readonly TimeProvider clock;
     private readonly Func<int, int> nextStyle;
+    private readonly Action? revokeAvatar;
     private readonly TaskCompletionSource quarantine = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private LiveConversationOperation? active;
     private LiveConversationConfiguration? configuration;
@@ -121,7 +122,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         ICaptureDeviceFactory captureDevices, IPlaybackDeviceFactory playbackDevices, TimeProvider? clock = null,
         Func<IProviderCredentialSource, TimeProvider, ConversationRuntime>? runtimeFactory = null,
         Func<IProviderCredentialSource, TimeProvider, OpenAiTranscriptionAdapter>? transcriptionFactory = null,
-        Func<int, int>? nextStyle = null)
+        Func<int, int>? nextStyle = null, GeneratedSpeechObserver? generatedSpeech = null, Action? revokeAvatar = null)
     {
         this.operations = operations;
         this.settings = settings;
@@ -129,10 +130,11 @@ internal sealed class LiveConversationController : IAsyncDisposable
         this.captureDevices = captureDevices;
         this.clock = clock ?? TimeProvider.System;
         this.nextStyle = nextStyle ?? RandomNumberGenerator.GetInt32;
+        this.revokeAvatar = revokeAvatar;
         context = new(this.clock);
         var credentials = new ConversationCredentialSource(() => Volatile.Read(ref active)?.Authorization);
         runtime = runtimeFactory?.Invoke(credentials, this.clock) ??
-            ConversationRuntime.Create(credentials, playbackDevices, clock: this.clock);
+            ConversationRuntime.Create(credentials, playbackDevices, clock: this.clock, generatedSpeech: generatedSpeech);
         transcription = transcriptionFactory?.Invoke(credentials, this.clock) ??
             OpenAiTranscriptionAdapter.Create(credentials, this.clock);
         policy = new(runtime.SessionId, new ParticipationConfiguration(), new ParticipationState(), this.clock);
@@ -142,17 +144,21 @@ internal sealed class LiveConversationController : IAsyncDisposable
     {
         var next = LiveConversationConfiguration.From(loaded);
         LiveConversationOperation? stop;
+        bool changed;
         lock (gate)
         {
+            changed = configuration is not null && configuration.Revision != next?.Revision;
             context.Clear();
             configuration = next;
             stop = RevokeLocked();
         }
+        if (changed) revokeAvatar?.Invoke();
         stop?.Cancel("conversation.configuration_changed");
     }
 
     internal void SetControls(bool pause, bool mute, bool sessionLocked)
     {
+        if (pause || mute || sessionLocked) revokeAvatar?.Invoke();
         LiveConversationOperation? stop;
         lock (gate)
         {
@@ -168,6 +174,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
 
     internal void SetSessionLocked(bool value)
     {
+        if (value) revokeAvatar?.Invoke();
         LiveConversationOperation? stop;
         lock (gate)
         {
@@ -181,6 +188,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
 
     internal void Revoke(string code)
     {
+        revokeAvatar?.Invoke();
         LiveConversationOperation? stop;
         lock (gate)
         {

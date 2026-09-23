@@ -7,6 +7,7 @@ using Martlet.Audio;
 using Martlet.Audio.Windows;
 using Martlet.Sessions;
 using Martlet.Credentials.Windows;
+using Martlet.Avatar.Hosting;
 
 namespace Martlet.Desktop;
 
@@ -21,6 +22,7 @@ public partial class MainWindow : Window
     private readonly ConfigurationRecoveryController? recovery;
     private readonly AudioSetupService audioSetup;
     private readonly LiveConversationController? conversation;
+    private readonly AvatarController avatar = new();
     private readonly WindowsAudioSessionEvents audioSessionEvents = new();
     private readonly string? startupError;
     private readonly DiagnosticStatusModel? model;
@@ -52,9 +54,11 @@ public partial class MainWindow : Window
         recovery = store is null ? null : new(store, setupOperations, () => !support.HasResources);
         if (setupService is not null)
         {
-            conversation = new(setupOperations, setupService, vault, new WasapiCaptureDeviceFactory(), new WasapiDeviceFactory());
+            conversation = new(setupOperations, setupService, vault, new WasapiCaptureDeviceFactory(), new WasapiDeviceFactory(),
+                generatedSpeech: avatar.Observer, revokeAvatar: avatar.Revoke);
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
         }
+        audioSessionEvents.LockedChanged += AvatarSessionLocked;
         this.startupError = startupError;
         ScenarioChoice.ItemsSource = FixtureSession.Scenarios;
         ScenarioChoice.SelectedIndex = 0;
@@ -230,6 +234,7 @@ public partial class MainWindow : Window
     private async void Setup_Click(object sender, RoutedEventArgs e)
     {
         if (store is null || closing || saving || runningFixture || model?.IsRunning == true) return;
+        await avatar.StopAsync();
         new SetupWindow(setupService!, setupOperations) { Owner = this, Troubleshooting = OpenTroubleshooting, ConfigurationRecovery = OpenRecovery }.ShowDialog();
         await RefreshAsync();
     }
@@ -254,11 +259,27 @@ public partial class MainWindow : Window
     {
         if (conversation is null || closing || saving || runningFixture || model?.IsRunning == true) return;
         new LiveConversationWindow(setupService!, setupOperations, conversation, audioSessionEvents, audioSetup)
-            { Owner = this, Troubleshooting = OpenTroubleshooting, Support = support, ConfigurationRecovery = OpenRecovery }.ShowDialog();
+            { Owner = this, Troubleshooting = OpenTroubleshooting, Support = support, ConfigurationRecovery = OpenRecovery,
+                Avatar = OpenAvatar }.ShowDialog();
         await RefreshAsync();
     }
 
     private void Troubleshooting_Click(object sender, RoutedEventArgs e) => OpenTroubleshooting(this);
+    private void Avatar_Click(object sender, RoutedEventArgs e) => OpenAvatar(this);
+    private void OpenAvatar(Window owner)
+    {
+        if (store is null || setupService is null || closing) return;
+        new AvatarWindow(avatar, new AvatarProfileStore(store.DataDirectory), setupService, setupOperations)
+            { Owner = owner }.ShowDialog();
+    }
+    private async void AvatarSessionLocked(bool locked)
+    {
+        if (!locked) return;
+        avatar.Revoke();
+        try { await avatar.StopAsync(); }
+        catch (Exception error) when (error is System.IO.IOException or InvalidOperationException or TimeoutException)
+        { ActionText.Text = "Avatar cleanup failed; close the app after current voice resources release."; }
+    }
     private async void Recovery_Click(object sender, RoutedEventArgs e)
     {
         OpenRecovery(this);
@@ -267,6 +288,7 @@ public partial class MainWindow : Window
     private void OpenRecovery(Window owner)
     {
         if (recovery is null || closing || saving) return;
+        avatar.Revoke();
         new ConfigurationRecoveryWindow(recovery) { Owner = owner }.ShowDialog();
     }
     private void OpenTroubleshooting(Window owner)
@@ -307,6 +329,7 @@ public partial class MainWindow : Window
         ageTimer.Stop();
         fixtureTimer.Stop();
         audioSessionEvents.LockedChanged -= audioSetup.SetSessionLocked;
+        audioSessionEvents.LockedChanged -= AvatarSessionLocked;
         if (conversation is not null) audioSessionEvents.LockedChanged -= conversation.SetSessionLocked;
         audioSessionEvents.Dispose();
         lifetime.Cancel();
@@ -317,6 +340,7 @@ public partial class MainWindow : Window
             await model.CloseAsync();
         await Task.Run(async () => await fixture.DisposeAsync());
         if (conversation is not null) await Task.Run(async () => await conversation.DisposeAsync());
+        await avatar.DisposeAsync();
         // WPF OnMainWindowClose exits the process, including any non-cooperative in-process callback.
         // Even absent or synchronous cleanup must leave WPF's original Closing event before closing again.
         await Dispatcher.InvokeAsync(() =>

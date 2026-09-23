@@ -38,6 +38,8 @@
                     <Button x:Name="SetupButton" Content="Set_up / credentials" Click="Setup_Click" Padding="10,6" Margin="0,4,8,4"
                             AutomationProperties.AutomationId="LiveOpenSetup" />
                     <Button x:Name="AudioButton" Content="_Audio setup (local only)" Click="Audio_Click" Padding="10,6" Margin="0,4,8,4" />
+                    <Button Content="Avatar setup / STOP avatar" Click="Avatar_Click" Padding="10,6" Margin="0,4,8,4"
+                            AutomationProperties.AutomationId="ConversationAvatar" />
                     <Button Content="_Close conversation" Click="Close_Click" Padding="10,6" Margin="0,4,8,4" AutomationProperties.AutomationId="CloseLive" />
                 </WrapPanel>
                 <Label Target="{Binding ElementName=ConfigurationText}" Content="Selected _configuration and supported adapter IDs" />
