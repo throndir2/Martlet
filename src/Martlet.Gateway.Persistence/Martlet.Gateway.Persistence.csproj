@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\Martlet.Gateway\Martlet.Gateway.csproj" />
+    <InternalsVisibleTo Include="Martlet.Gateway.Persistence.Tests" />
+  </ItemGroup>
+</Project>

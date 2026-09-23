@@ -23,7 +23,7 @@ integration, not capabilities of the standalone post-capture VAD library.
 The separate [H03 gateway security foundation](../src/Martlet.Gateway/README.md)
 implements an isolated ASP.NET Core library boundary: explicit private/loopback
 TLS binding with a caller-supplied pinned identity, local-only pairing approval,
-signed scoped device requests with nonce/expiry/rotation/revocation, and
+signed scoped device requests with freshness/nonces/rotation/revocation, and
 role-filtered version/capability/status metadata behind worker interfaces. It
 does not join Desktop/Core settings or the root solution, expose an inference
 route/raw worker port, create a production key, change a firewall, or establish
@@ -188,20 +188,31 @@ Display cloud retention links; "not used for training by default" is not
    no token in URL/query/history, and no assumption that a short PIN alone
    authenticates a hostile LAN. Rate-limit pairing and require local approval.
 4. Exchange the token for a cryptographically random, scoped device credential;
-   store it in Windows Credential Manager and only a verifier on the host.
+   the client must use protected storage. The canonical HMAC host's SHA-256
+   verifier is itself a signing key and requires protected key custody.
    Bind to host ID and least-privilege roles: voice, perception, or memory.
    Pairing never grants host administration or shell execution.
-5. Host UI/CLI lists and revokes devices. Proposed default expiry is 90 days
-   with explicit renewal and advance warning; rotation has a brief bounded
-   overlap. Old tokens and revoked credentials fail. Lost credentials require
-   re-pairing; the old credential is not resurrected from a settings backup.
-6. Renew certificates with the pinned key only under a documented policy.
+5. **Paired devices never expire.** Pairing survives normal process restart,
+   OS reboot, updates and recoverable interruption until explicit unpair/revoke
+   or actual identity loss. Offline, clock and recovery errors mean unavailable,
+   not unpaired. Rotation retires only the old credential with bounded overlap;
+   the replacement pairing remains permanent. Invitations still expire and are
+   one-use. Revoked authority is never resurrected from a settings backup.
+6. Renew certificates automatically with the same pinned key, including after
+   expiry while the host was off, before starting TLS. Keep certificate
+   validity/SAN/pin checks; routine certificate lifetime never requires re-pair.
    Host key change requires re-pairing or an authenticated old-key-signed
-   transition; never silently trust a changed host. Expiry and clock skew
+   transition; never silently trust a changed host. Certificate errors and clock skew
    remain visible errors even with pinning. Do not install a global trusted CA.
 
 Use standard cryptographic/TLS libraries, not custom crypto. Threat-model and
-exercise bootstrap, expiry, revocation, replay, and key rotation in H03.
+exercise bootstrap, invitation expiry, durable revocation/replay recovery and
+key rotation in H03. The internal Windows-only
+[durable canonical owner](../src/Martlet.Gateway.Persistence/README.md) implements
+explicit protocol-2 paired/retiring lifetimes and predecessor-bound crash redo.
+Earlier timed/prototype files are preserved as migration-needed, not silently
+made permanent; source clients must adopt the versioned semantics. The local
+approval executable/UI, Ubuntu/service backend and real deployment remain gated.
 Unpaired clients may access only a minimal liveness/pairing surface, not
 model inventories, system data, logs, or job results.
 

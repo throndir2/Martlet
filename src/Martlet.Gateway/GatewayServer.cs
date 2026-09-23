@@ -44,8 +44,20 @@ public sealed class GatewayServer
         IGatewayAuditSink audit,
         TimeProvider? clock = null,
         IGatewayCrypto? crypto = null,
-        TimeSpan? credentialLifetime = null,
         TimeSpan? pairingWindow = null)
+        : this(identity, origin, workers, audit, clock, crypto, pairingWindow, null)
+    {
+    }
+
+    internal GatewayServer(
+        GatewayHostIdentity identity,
+        GatewayOrigin origin,
+        IEnumerable<IGatewayWorker> workers,
+        IGatewayAuditSink audit,
+        TimeProvider? clock,
+        IGatewayCrypto? crypto,
+        TimeSpan? pairingWindow,
+        GatewayCredentialStore? ownedCredentials)
     {
         ArgumentNullException.ThrowIfNull(identity);
         ArgumentNullException.ThrowIfNull(origin);
@@ -56,7 +68,7 @@ public sealed class GatewayServer
         this.origin = origin;
         var effectiveClock = clock ?? TimeProvider.System;
         var effectiveCrypto = crypto ?? new SystemGatewayCrypto();
-        Credentials = new(identity, effectiveClock, effectiveCrypto, credentialLifetime);
+        Credentials = ownedCredentials ?? new(identity, effectiveClock, effectiveCrypto);
         Pairing = new(identity, origin, Credentials, effectiveClock, effectiveCrypto, pairingWindow);
         application = new(identity, Pairing, Credentials, new(workers),
             effectiveClock, effectiveCrypto, audit);
@@ -115,6 +127,8 @@ public sealed class KestrelGatewayListenerFactory : IGatewayListenerFactory
                 listen.UseHttps(new HttpsConnectionAdapterOptions
                 {
                     ServerCertificate = binding.Certificate,
+                    ServerCertificateSelector = binding.CertificateSelector is { } select
+                        ? (_, _) => select() : null,
                     SslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
                     ClientCertificateMode = ClientCertificateMode.NoCertificate
                 });

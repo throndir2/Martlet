@@ -136,6 +136,12 @@ The proposed guided flow is:
    starting capture. Present the host identity/fingerprint and short-lived
    pairing flow from Architecture. The coordinator receives scoped readiness,
    not a shell, Docker socket, administrator token or arbitrary install API.
+   Established device pairing is non-expiring and must survive routine
+   restart, reboot, updates and recoverable interruption. Do not present an
+   offline/clock/storage fault as unpaired or recommend reset-all-devices.
+   One-use invitation expiry and request freshness/replay remain independent.
+   Renew TLS certificates automatically with the same key/pin before serving;
+   no routine certificate expiry should require pairing again.
 6. **Check connection, then try a request.** Use the staged checks below for only
    the selected roles. A failed optional role must not erase successful checks.
    Offer an explicit feature change to continue in text-only mode if speech is
@@ -561,7 +567,7 @@ trace IDs, not private audio/transcripts/secrets.
 | Host unreachable: `NET_UNREACHABLE` | Wrong address, host asleep, service stopped, VLAN isolation | DNS -> TCP selected port -> TLS -> gateway | Verify host-local readiness, correct host address/port, reconnect same intended LAN | Stage/timeouts and pseudonymized route |
 | IP works, name fails: `NET_DNS` | DNS/mDNS unavailable, stale lease, suffix mismatch | Resolve name vs saved host-ID address | Use verified current address then correct DHCP/DNS; do not re-trust a changed certificate | Resolver result and host identity comparison |
 | Connection refused/times out: `NET_PORT` | Port collision, wrong binding, firewall/router policy | Host listen/bind vs client TCP and unauthorized-client denial | Review exact selected-interface and client-source rule; no blanket firewall disable or public forwarding | Binding/rule summary, both-side probe result |
-| TLS/pairing fails: `PAIR_TRUST` | Wrong host, expired cert, clock skew, expired token, identity change | Time/identity/pin/token lifecycle probe | Check host clock, compare pairing fingerprint locally, generate new one-use token if needed | Error category; never token/private key |
+| TLS/pairing fails: `PAIR_TRUST` | Wrong host, certificate renewal failure, clock skew, expired invitation, identity change | Time/identity/pin/invitation lifecycle probe | Correct clock or same-key renewal/access problem while retaining pairing; replace only an expired invitation. A genuine changed identity requires deliberate verification, never automatic re-trust | Error category; never token/private key |
 | API key rejected: `AUTH_EXPIRED` | Revoked/expired key, wrong origin/project/scope | Non-billable auth metadata where supported; sanitized real failure otherwise | Re-enter authorized credentials for displayed origin; verify account/project access | Provider status/request ID; no key |
 | Limit reached: `QUOTA_EXCEEDED` | Provider billing/rate quota or local session ceiling | Typed provider error, Retry-After, usage/budget | Wait stated interval or review provider account/local limit; user alone approves changed spending | Quota class and timestamps |
 | `/v1` endpoint fails: `PROVIDER_CAPABILITY` | Partial OpenAI compatibility, wrong adapter, missing model/voice or schema | Named role contract probes, not just `/models` | Select correct adapter and supported model; configure missing STT/TTS independently | Adapter/model/version and failed contract case |

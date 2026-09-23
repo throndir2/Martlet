@@ -10,7 +10,7 @@ internal sealed class GatewayHttpApplication
     internal const int MaximumPairingRequestBytes = 8_192;
     private static readonly JsonSerializerOptions Json = CreateJson();
     private readonly GatewayHostIdentity identity;
-    private readonly GatewayPairingService pairing;
+    private readonly IGatewayPairingExchange pairing;
     private readonly GatewayRequestAuthenticator authenticator;
     private readonly GatewayWorkerRegistry workers;
     private readonly TimeProvider clock;
@@ -19,8 +19,8 @@ internal sealed class GatewayHttpApplication
 
     internal GatewayHttpApplication(
         GatewayHostIdentity identity,
-        GatewayPairingService pairing,
-        GatewayCredentialStore credentials,
+        IGatewayPairingExchange pairing,
+        IGatewayRequestCredentials credentials,
         GatewayWorkerRegistry workers,
         TimeProvider clock,
         IGatewayCrypto crypto,
@@ -52,7 +52,7 @@ internal sealed class GatewayHttpApplication
             if (context.Request.Method == HttpMethods.Post && rawTarget == "/martlet/v1/pair")
             {
                 var proof = await ReadPairingProofAsync(context.Request, context.RequestAborted).ConfigureAwait(false);
-                var credential = pairing.Exchange(proof);
+                var credential = pairing.Exchange(proof, context.RequestAborted);
                 await WriteJsonAsync(context, 201, new PairingResponseDocument
                 {
                     ProtocolVersion = GatewayProtocolVersion.Current,
@@ -61,7 +61,7 @@ internal sealed class GatewayHttpApplication
                     CredentialSecret = credential.Secret.Reveal(),
                     DeviceId = credential.DeviceId,
                     Roles = credential.Roles,
-                    ExpiresAt = credential.ExpiresAt
+                    Lifetime = credential.Lifetime
                 }).ConfigureAwait(false);
                 return;
             }
@@ -80,7 +80,7 @@ internal sealed class GatewayHttpApplication
                     GatewayVersion = "0.1.0",
                     HostId = identity.HostId,
                     AuthorizedRole = principal.Role,
-                    CredentialExpiresAt = principal.CredentialExpiresAt
+                    CredentialLifetime = principal.CredentialLifetime
                 }).ConfigureAwait(false);
                 return;
             }
@@ -279,7 +279,7 @@ internal sealed class GatewayHttpApplication
         public required string CredentialSecret { get; init; }
         public required string DeviceId { get; init; }
         public required IReadOnlyList<GatewayRole> Roles { get; init; }
-        public required DateTimeOffset ExpiresAt { get; init; }
+        public required GatewayCredentialLifetime Lifetime { get; init; }
     }
 
     private sealed record VersionDocument
@@ -288,7 +288,7 @@ internal sealed class GatewayHttpApplication
         public required string GatewayVersion { get; init; }
         public required string HostId { get; init; }
         public required GatewayRole AuthorizedRole { get; init; }
-        public required DateTimeOffset CredentialExpiresAt { get; init; }
+        public required GatewayCredentialLifetime CredentialLifetime { get; init; }
     }
 
     private sealed record CapabilitiesDocument

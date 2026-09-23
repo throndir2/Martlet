@@ -139,6 +139,7 @@ public sealed partial record GatewayHostIdentity
 
 public sealed class GatewayTlsBinding
 {
+    internal Func<X509Certificate2>? CertificateSelector { get; init; }
     public GatewayOrigin Origin { get; }
     public GatewayHostIdentity Identity { get; }
     public X509Certificate2 Certificate { get; }
@@ -295,8 +296,8 @@ internal static class GatewayFailures
             "Check the paired host and device credential; if it was lost or rotated, revoke it and pair again.",
             401),
         "auth.expired" => new(code,
-            "The device credential expired.",
-            "Renew or re-pair this device through the verified host before retrying.",
+            "The replaced credential's rotation overlap ended.",
+            "Use the replacement credential; the device pairing itself does not expire.",
             401),
         "auth.revoked" => new(code,
             "The device credential was revoked.",
@@ -308,11 +309,19 @@ internal static class GatewayFailures
             401),
         "auth.clock_invalid" => new(code,
             "The host authorization clock moved backwards and this authority is closed.",
-            "Correct the host clock, replace the closed in-memory authority and explicitly re-pair devices; old credentials and pairing cards cannot be restored.",
+            "Correct the host clock and reopen the existing protected authority. Pairing records remain preserved; do not reset paired devices.",
+            503),
+        "auth.closed" => new(code,
+            "The gateway authority is closed.",
+            "Reopen the existing host after resolving its local recovery status; pairing data remains preserved. Never restore stale backups.",
+            503),
+        "auth.storage" => new(code,
+            "The gateway could not durably commit authorization state.",
+            "Resolve protected-storage access and reopen the same store for authenticated transaction recovery. Pairing data is preserved; do not reset devices.",
             503),
         "auth.capacity" => new(code,
             "The host reached its bounded device credential capacity.",
-            "Locally revoke unused credentials or wait for expiry, then retry an unexpired pairing proof or local rotation; no active credential or pairing approval was evicted.",
+            "Locally revoke unused credentials or wait for old-key rotation overlap to end, then retry; permanent pairings and live replay records are never evicted.",
             429),
         "auth.replay" => new(code,
             "The signed request nonce was already used.",
