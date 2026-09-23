@@ -15,6 +15,7 @@ export interface RenderIdentity {
 export interface ComposedFrame {
   readonly identity: RenderIdentity;
   readonly sequence: number;
+  readonly configurationId: string;
   readonly channels: Readonly<Record<string, number>>;
 }
 
@@ -284,9 +285,6 @@ export class Live2DAdapter {
     requireCondition(this.#inputMode === "parameters", "INPUT_MODE_MISMATCH", "Explicitly configureTargets before applying final parameters.");
     const rejection = this.#rejectStale(frame);
     if (rejection) return rejection;
-    if (frame.configurationId !== this.#configurationId) return {
-      accepted: false, diagnostics: [{ code: "STALE_CONFIGURATION", message: "Model or mapping configuration has changed." }],
-    };
     const parameters = frame.parameters;
     requireCondition(parameters !== null && typeof parameters === "object" && !Array.isArray(parameters),
       "INVALID_PARAMETERS", "Final parameters must be a finite numeric record.");
@@ -418,7 +416,7 @@ export class Live2DAdapter {
     requireCondition(this.#resources?.model && !this.#loading, "MODEL_NOT_LOADED", "Load must finish before using the model.");
   }
 
-  #rejectStale(frame: { identity: RenderIdentity; sequence: number }): FrameResult | undefined {
+  #rejectStale(frame: { identity: RenderIdentity; sequence: number; configurationId: string }): FrameResult | undefined {
     requireCondition(frame !== null && typeof frame === "object", "INVALID_FRAME", "A composed frame is required.");
     validateIdentity(frame.identity);
     boundedInteger(frame.sequence, 2_147_483_647, "sequence");
@@ -427,6 +425,9 @@ export class Live2DAdapter {
     };
     if (frame.sequence <= this.#sequence) return {
       accepted: false, diagnostics: [{ code: "STALE_SEQUENCE", message: "Frame sequence is not newer than the active composed stream." }],
+    };
+    if (frame.configurationId !== this.#configurationId) return {
+      accepted: false, diagnostics: [{ code: "STALE_CONFIGURATION", message: "Model or mapping configuration has changed." }],
     };
     return undefined;
   }

@@ -104,7 +104,10 @@ It never uses `getParameterIndex` for absent IDs (the SDK can synthesize virtual
 entries there), assumes `ParamMouthOpenY`, or invents a default `0..1` output range.
 
 The standalone mapping path uses `configure(ChannelMapping[])` followed by
-`resetEpoch(identity)` and `applyFrame({identity, sequence, channels})`.
+`resetEpoch(identity)` and `applyFrame({identity, sequence, configurationId, channels})`.
+Capture `adapter.configurationId` when producing the frame, not when delivering
+previously queued output. Both input modes reject missing/old configuration IDs
+without changing active writes, sequence, frame age or clock state.
 Inputs are normalized `0..1`, named by the host/profile:
 
 ```json

@@ -7,8 +7,8 @@ const code = expected => error => error.code === expected;
 const create = env => new Live2DAdapter(env.canvas, {
   sdk: env.sdk, services: env.services, onDiagnostic: d => env.diagnostics.push(d),
 });
-const frame = (id = identity(), sequence = 0, value = 1) => ({
-  identity: id, sequence, channels: { "semantics.mouth_open": value },
+const frame = (adapter, id = identity(), sequence = 0, value = 1) => ({
+  identity: id, sequence, configurationId: adapter.configurationId, channels: { "semantics.mouth_open": value },
 });
 async function loaded(env, t) {
   const adapter = create(env);
@@ -94,7 +94,7 @@ test("real integration path orders consistency check, model/renderer creation, w
   assert.ok(env.calls.some(call => call[0] === "moc.create" && call[1] === true));
   assert.ok(env.calls.findIndex(c => c[0] === "renderer.initialize") < env.calls.findIndex(c => c[0] === "renderer.startUp"));
   env.calls.length = 0;
-  assert.equal(adapter.applyFrame(frame()).accepted, true);
+  assert.equal(adapter.applyFrame(frame(adapter)).accepted, true);
   adapter.update(0.01);
   assert.equal(env.values[0], 4);
   assert.ok(env.calls.findIndex(c => c[0] === "write") < env.calls.findIndex(c => c[0] === "model.update"));
@@ -105,22 +105,22 @@ test("real integration path orders consistency check, model/renderer creation, w
 test("A -> B reset, delayed A and old request/sequence never mutate B state or clock", async t => {
   const env = environment();
   const adapter = await loaded(env, t);
-  adapter.applyFrame(frame(identity(), 0, 0));
+  adapter.applyFrame(frame(adapter, identity(), 0, 0));
   adapter.update(0);
   const b = { ...identity(1), requestId: "dddddddd-dddd-dddd-dddd-dddddddddddd" };
   adapter.resetEpoch(b);
-  adapter.applyFrame(frame(b, 4, 1));
+  adapter.applyFrame(frame(adapter, b, 4, 1));
   adapter.startClock();
   adapter.update(0);
   const before = [...env.values];
   const scheduled = [...env.frames.keys()];
-  assert.equal(adapter.applyFrame(frame(identity(), 999, 0)).accepted, false);
-  assert.equal(adapter.applyFrame(frame({ ...b, requestId: identity().requestId }, 5, 0)).accepted, false);
-  assert.equal(adapter.applyFrame(frame({ ...b, sourceId: "wrong-provider" }, 5, 0)).accepted, false);
-  assert.equal(adapter.applyFrame(frame(b, 3, 0)).accepted, false);
+  assert.equal(adapter.applyFrame(frame(adapter, identity(), 999, 0)).accepted, false);
+  assert.equal(adapter.applyFrame(frame(adapter, { ...b, requestId: identity().requestId }, 5, 0)).accepted, false);
+  assert.equal(adapter.applyFrame(frame(adapter, { ...b, sourceId: "wrong-provider" }, 5, 0)).accepted, false);
+  assert.equal(adapter.applyFrame(frame(adapter, b, 3, 0)).accepted, false);
   assert.deepEqual([...env.frames.keys()], scheduled);
   assert.deepEqual(env.values, before);
-  assert.equal(adapter.applyFrame(frame(b, 5, 0.5)).accepted, true);
+  assert.equal(adapter.applyFrame(frame(adapter, b, 5, 0.5)).accepted, true);
   adapter.update(0);
   assert.equal(env.values[0], 1);
 });
@@ -128,22 +128,49 @@ test("A -> B reset, delayed A and old request/sequence never mutate B state or c
 test("malformed frame is atomic and cannot consume a valid sequence", async t => {
   const env = environment();
   const adapter = await loaded(env, t);
-  adapter.applyFrame(frame(identity(), 1, 1));
+  adapter.applyFrame(frame(adapter, identity(), 1, 1));
   adapter.update(0);
-  assert.throws(() => adapter.applyFrame(frame(identity(), 2, NaN)), code("INVALID_CHANNEL_VALUE"));
+  assert.throws(() => adapter.applyFrame(frame(adapter, identity(), 2, NaN)), code("INVALID_CHANNEL_VALUE"));
   adapter.update(0);
   assert.equal(env.values[0], 4);
-  assert.equal(adapter.applyFrame(frame(identity(), 2, 0)).accepted, true);
+  assert.equal(adapter.applyFrame(frame(adapter, identity(), 2, 0)).accepted, true);
   adapter.update(0);
   assert.equal(env.values[0], -2);
+});
+
+test("normalized frames cannot cross a reconfigured profile or omit its configuration ID", async t => {
+  const env = environment();
+  const adapter = await loaded(env, t);
+  const oldFrame = frame(adapter, identity(), 99, 1);
+  adapter.configure([{ ...mouthMapping, outputMinimum: 4, outputMaximum: -2 }]);
+  adapter.resetEpoch(identity());
+  const currentFrame = frame(adapter, identity(), 0, 0);
+  assert.equal(adapter.applyFrame(currentFrame).accepted, true);
+  adapter.startClock();
+  adapter.update(0.2);
+  assert.equal(env.values[0], 4);
+  const scheduled = [...env.frames.keys()];
+  const result = adapter.applyFrame(oldFrame);
+  adapter.update(0);
+  assert.equal(env.values[0], 4, "Old profile output must not overwrite the current profile.");
+  assert.equal(result.accepted, false);
+  assert.equal(result.diagnostics[0].code, "STALE_CONFIGURATION");
+  assert.deepEqual([...env.frames.keys()], scheduled);
+  assert.equal(adapter.applyFrame({ ...currentFrame, sequence: 1 }).accepted, true);
+  adapter.update(0.2);
+  const { configurationId, ...missingConfiguration } = { ...currentFrame, sequence: 100 };
+  assert.equal(adapter.applyFrame(missingConfiguration).accepted, false);
+  adapter.update(0.051);
+  assert.equal(env.values[0], -1, "Rejected output must not refresh the active frame age.");
+  assert.equal(env.diagnostics.at(-1).code, "FRAME_EXPIRED");
 });
 
 test("sparse frame neutralizes omitted owned controls; no arbitrary parameter channel accepted", async t => {
   const env = environment();
   const adapter = await loaded(env, t);
-  adapter.applyFrame(frame());
+  adapter.applyFrame(frame(adapter));
   adapter.update(0);
-  const result = adapter.applyFrame({ identity: identity(), sequence: 1, channels: { CustomMouth: 0.5 } });
+  const result = adapter.applyFrame({ ...frame(adapter, identity(), 1), channels: { CustomMouth: 0.5 } });
   assert.equal(result.diagnostics[0].code, "UNMAPPED_CHANNEL");
   adapter.update(0);
   assert.equal(env.values[0], -1);
@@ -152,7 +179,7 @@ test("sparse frame neutralizes omitted owned controls; no arbitrary parameter ch
 test("250ms boundary, expiration and queued callback cancellation use actual render time", async t => {
   const env = environment();
   const adapter = await loaded(env, t);
-  adapter.applyFrame(frame());
+  adapter.applyFrame(frame(adapter));
   adapter.update(0.25);
   assert.equal(env.values[0], 4);
   adapter.startClock();
@@ -169,7 +196,7 @@ test("250ms boundary, expiration and queued callback cancellation use actual ren
 test("delayed first RAF expires frame and reset cancels previously queued callback", async t => {
   const env = environment();
   const adapter = await loaded(env, t);
-  adapter.applyFrame(frame());
+  adapter.applyFrame(frame(adapter));
   adapter.startClock();
   const first = [...env.frames.entries()][0];
   env.frames.delete(first[0]);
@@ -177,7 +204,7 @@ test("delayed first RAF expires frame and reset cancels previously queued callba
   assert.equal(env.values[0], -1);
   assert.equal(env.diagnostics.at(-1).code, "FRAME_EXPIRED");
   adapter.resetEpoch(identity(2));
-  adapter.applyFrame(frame(identity(2)));
+  adapter.applyFrame(frame(adapter, identity(2)));
   adapter.startClock();
   const queued = [...env.frames.values()][0];
   adapter.resetEpoch(identity(3));
@@ -234,7 +261,7 @@ test("dispose during async texture decode closes late image and never draws disp
   await assert.rejects(pending, code("LOAD_CANCELLED"));
   assert.deepEqual(env.calls.slice(count), [["late.close"]]);
   assert.equal(env.calls.filter(c => c[0] === "model.delete").length, 1);
-  assert.throws(() => adapter.applyFrame(frame()), code("DISPOSED"));
+  assert.throws(() => adapter.applyFrame(frame(adapter)), code("DISPOSED"));
 });
 
 test("decoded dimension mismatch and decoder failure cannot leave an active runtime", async () => {
@@ -254,9 +281,9 @@ test("decoded dimension mismatch and decoder failure cannot leave an active runt
 test("reload and idempotent disposal release GPU, model, MOC then Framework without voice APIs", async t => {
   const env = environment();
   const adapter = await loaded(env, t);
-  adapter.applyFrame(frame());
+  adapter.applyFrame(frame(adapter));
   await adapter.load(bundle());
-  assert.equal(adapter.applyFrame(frame()).accepted, false);
+  assert.equal(adapter.applyFrame(frame(adapter)).accepted, false);
   assert.equal(env.calls.filter(c => c[0] === "model.delete").length, 1);
   env.calls.length = 0;
   adapter.dispose();
@@ -304,7 +331,7 @@ test("final host parameters are approved, model-bounded and never mapped a secon
   const adapter = await loaded(env, t);
   adapter.configureTargets(["CustomMouth"]);
   adapter.resetEpoch(identity());
-  assert.throws(() => adapter.applyFrame(frame()), code("INPUT_MODE_MISMATCH"));
+  assert.throws(() => adapter.applyFrame(frame(adapter)), code("INPUT_MODE_MISMATCH"));
   const final = value => ({
     identity: identity(), sequence: 0, configurationId: adapter.configurationId, parameters: { CustomMouth: value },
   });

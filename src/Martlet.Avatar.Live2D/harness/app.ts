@@ -59,7 +59,10 @@ action("#apply", () => {
   const parsed: unknown = JSON.parse(channels.value);
   requireCondition(parsed !== null && typeof parsed === "object" && !Array.isArray(parsed),
     "INVALID_CHANNELS", "Channels must be an object.");
-  const result = adapter.applyFrame({ identity, sequence: sequence++, channels: parsed as Record<string, number> });
+  const result = adapter.applyFrame({
+    identity, sequence: sequence++, configurationId: adapter.configurationId,
+    channels: parsed as Record<string, number>,
+  });
   show(result);
   adapter.update(0);
   adapter.startClock();
