@@ -26,6 +26,29 @@ namespace Martlet.Desktop.Tests;
 public sealed class LiveConversationTests
 {
     [Fact]
+    public async Task SchemaFiveDisabledOrSelfHostRouteCannotReachTheApiAdapter()
+    {
+        await using var fixture = await LiveFixture.Create();
+        var loaded = await fixture.Store.LoadAsync();
+        var settings = loaded.Settings!;
+        var route = settings.Setup!.Routes.Single(item => item.Role == SetupRole.Llm);
+        var disabled = SetupSettings.SetRouteEnabled(settings, SetupRole.Llm, false, true);
+        var configuration = LiveConversationConfiguration.From(loaded with { Settings = disabled })!;
+        Assert.Contains("enabled OpenAI routes only", configuration.Unavailable(false, false));
+        var selfHost = SetupSettings.ConfigureGatewayEndpoint(settings with
+        {
+            Setup = settings.Setup with { Routes = settings.Setup.Routes.Where(item => item.Role != SetupRole.Llm).ToArray() }
+        }, SetupRouteType.GatewayOllama, new()
+        {
+            SchemaVersion = 1, Origin = "https://127.0.0.1:7443", HostId = "fixture-host",
+            SpkiFingerprint = "sha256:" + new string('a', 64), DeviceRole = "voice"
+        }, route.ModelId);
+        configuration = LiveConversationConfiguration.From(loaded with { Settings = selfHost })!;
+        Assert.Contains("saved self-host choice is retained", configuration.Unavailable(false, false));
+        fixture.NoEffects();
+    }
+
+    [Fact]
     public Task OpeningConfiguredWindowHasNoDefaultEffectsAndConsentIsNotRestored() => DispatcherTest(async () =>
     {
         await using var fixture = await LiveFixture.Create();
@@ -1256,7 +1279,11 @@ internal sealed class LiveFixture : IAsyncDisposable
             settings = SetupSettings.ReplaceRoute(settings, route with { Consent = route.Selection() });
         }
         if (legacy)
-            settings = settings with { SchemaVersion = 2, Companion = null, Memory = null };
+            settings = settings with
+            {
+                SchemaVersion = 2, Companion = null, Memory = null,
+                Setup = settings.Setup!.DowngradeOpenAiForHistoricalSettings()
+            };
         await fixture.Save(settings);
         return fixture;
     }

@@ -3,12 +3,12 @@ using Martlet.Core.Contracts;
 
 namespace Martlet.Core.Settings;
 
-public enum ProfileKind { NotConfigured, Fixture, Api, ExistingEndpoints }
+public enum ProfileKind { NotConfigured, Fixture, Api, ExistingEndpoints, SelfHosted }
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record AppSettings : IContract
 {
-    public const int CurrentSchemaVersion = 4;
+    public const int CurrentSchemaVersion = 5;
     public const int MaxFileBytes = 131_072;
     public required int SchemaVersion { get; init; }
     public required ProfileSettings Profile { get; init; }
@@ -35,6 +35,12 @@ public sealed record AppSettings : IContract
         ContractRules.Require(SchemaVersion == 1 ? Setup is null : Setup is not null,
             "Version 1 cannot contain setup; later versions require a setup checkpoint.");
         Setup?.Validate();
+        ContractRules.Require(SchemaVersion < 5
+                ? Setup is null || Setup.SchemaVersion == 1
+                : Setup?.SchemaVersion == SetupSettings.CurrentSchemaVersion,
+            "Settings v5 requires versioned route discriminators; earlier settings retain the legacy setup contract.");
+        ContractRules.Require(SchemaVersion >= 5 || Profile.Kind != ProfileKind.SelfHosted,
+            "Self-hosted profiles require settings v5.");
         ContractRules.Require(SchemaVersion != 1 || Audio is null, "Version 1 cannot contain audio setup.");
         Audio?.Validate();
         ContractRules.Require(SchemaVersion < 3 ? Companion is null : Companion is not null,
@@ -47,7 +53,8 @@ public sealed record AppSettings : IContract
         {
             var legacy = Profile.Credentials.Select(item => item.CredentialId).ToHashSet();
             ContractRules.Require(Setup.Routes.All(route => route.CredentialId is not { } id || !legacy.Contains(id)) &&
-                Setup.PendingRemovals.All(item => !legacy.Contains(item.CredentialId)),
+                Setup.PendingRemovals.All(item => !legacy.Contains(item.CredentialId)) &&
+                (Setup.RetainedGatewayCredentials ?? []).All(item => !legacy.Contains(item.CredentialId)),
                 "Legacy credential references are preserved, never reused or deleted by setup.");
         }
     }
@@ -59,7 +66,13 @@ public sealed record AppSettings : IContract
         return settings with
         {
             SchemaVersion = CurrentSchemaVersion,
-            Setup = settings.Setup ?? new() { SchemaVersion = 1, Checkpoint = SetupStep.Choice, Routes = [], PendingRemovals = [] },
+            Setup = (settings.Setup ?? new()
+            {
+                SchemaVersion = 1,
+                Checkpoint = SetupStep.Choice,
+                Routes = [],
+                PendingRemovals = []
+            }).UpgradeToCurrent(),
             Companion = settings.Companion ?? CompanionSettings.Create(),
             Memory = settings.Memory ?? MemorySettings.Create()
         };

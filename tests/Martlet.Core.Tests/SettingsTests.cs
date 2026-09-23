@@ -50,7 +50,7 @@ public sealed class SettingsTests : IDisposable
     [Theory]
     [InlineData("{", ErrorCode.SettingsMalformed)]
     [InlineData("null", ErrorCode.SettingsMalformed)]
-    [InlineData("{\"schema_version\":5,\"new_setting\":true}", ErrorCode.UnsupportedVersion)]
+    [InlineData("{\"schema_version\":6,\"new_setting\":true}", ErrorCode.UnsupportedVersion)]
     [InlineData("{\"schema_version\":0}", ErrorCode.UnsupportedVersion)]
     [InlineData("{\"schema_version\":1,\"profile\":{\"schema_version\":2,\"new_setting\":true}}", ErrorCode.UnsupportedVersion)]
     [InlineData("{\"schema_version\":1,\"schema_version\":2}", ErrorCode.SettingsMalformed)]

@@ -22,7 +22,7 @@ public sealed class MemorySettingsTests : IDisposable
         {
             SchemaVersion = schema, Memory = null,
             Companion = schema >= 3 ? current.Companion : null,
-            Setup = schema >= 2 ? current.Setup : null
+            Setup = schema >= 2 ? current.Setup!.DowngradeOpenAiForHistoricalSettings() : null
         };
         historical.Validate();
         Assert.True((await Store.SaveAsync(historical, null)).Saved);
@@ -176,7 +176,7 @@ public sealed class MemorySettingsTests : IDisposable
             SettingsJson.Read(atLimit.Concat(new byte[] { 32 }).ToArray())).Code);
         var snapshot = ConfigurationSnapshot.Create(atLimit);
         Assert.InRange(snapshot.Length, AppSettings.MaxFileBytes + 1, ConfigurationSnapshot.MaximumBytes);
-        Assert.Equal(4, ConfigurationSnapshot.Inspect(snapshot).SettingsSchemaVersion);
+        Assert.Equal(AppSettings.CurrentSchemaVersion, ConfigurationSnapshot.Inspect(snapshot).SettingsSchemaVersion);
         var malformed = Encoding.UTF8.GetString(bytes).Replace("\"app_local_data\"", "\"BAD\"", StringComparison.Ordinal);
         var invalid = Encoding.UTF8.GetBytes(malformed);
         invalid[malformed.IndexOf("BAD", StringComparison.Ordinal)] = 0xff;

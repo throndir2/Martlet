@@ -373,7 +373,11 @@ try {
     }
     Close-Desktop
     $configured = Get-Content -LiteralPath $settings -Raw | ConvertFrom-Json
-    if ($configured.schema_version -ne 4 -or $configured.profile.id -ne $legacyId -or
+    if ($configured.schema_version -ne 5 -or $configured.profile.id -ne $legacyId -or
+        $configured.setup.schema_version -ne 2 -or
+        $configured.setup.routes[0].route_type -cne 'open_ai' -or
+        $configured.setup.routes[0].route_schema_version -ne 1 -or
+        $configured.setup.routes[0].enabled -ne $true -or
         $configured.companion.personas.Count -ne 1 -or
         $configured.companion.active_persona_id -ne $configured.companion.personas[0].id -or
         $configured.setup.routes[0].model_id -cne 'whisper-1' -or $null -ne $configured.setup.routes[0].consent -or

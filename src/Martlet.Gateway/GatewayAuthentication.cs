@@ -6,7 +6,7 @@ using Microsoft.Extensions.Primitives;
 
 namespace Martlet.Gateway;
 
-public sealed class GatewayRequestSigner
+public sealed class GatewayRequestSigner : IDisposable
 {
     internal const string AuthorizationScheme = "Martlet-HMAC";
     internal const string NonceHeader = "X-Martlet-Nonce";
@@ -19,6 +19,8 @@ public sealed class GatewayRequestSigner
     private readonly byte[] verifier;
     private readonly TimeProvider clock;
     private readonly IGatewayCrypto crypto;
+    private readonly object gate = new();
+    private bool disposed;
 
     public GatewayRequestSigner(
         GatewayHostIdentity identity,
@@ -40,6 +42,24 @@ public sealed class GatewayRequestSigner
         this.clock = clock ?? TimeProvider.System;
     }
 
+    internal GatewayRequestSigner(GatewayHostIdentity identity, string credentialId,
+        ReadOnlySpan<char> secret, TimeProvider? clock)
+    {
+        identity.Validate();
+        GatewayRules.Require(Base64Url.TryDecode(credentialId, 16, out _), "auth.invalid");
+        crypto = new SystemGatewayCrypto();
+        var valid = Base64Url.TryDecode(new string(secret), 32, out var bytes);
+        try
+        {
+            GatewayRules.Require(valid, "auth.invalid");
+            verifier = crypto.Sha256(bytes);
+        }
+        finally { System.Security.Cryptography.CryptographicOperations.ZeroMemory(bytes); }
+        this.identity = identity;
+        this.credentialId = credentialId;
+        this.clock = clock ?? TimeProvider.System;
+    }
+
     public void Sign(HttpRequestMessage request, GatewayRole role)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -57,31 +77,45 @@ public sealed class GatewayRequestSigner
 
     private void SignCore(HttpRequestMessage request, GatewayRole role, ReadOnlySpan<byte> bodyHash)
     {
-        GatewayRules.Defined(role);
-        GatewayRules.Require(request.RequestUri is { IsAbsoluteUri: true } &&
-            request.Headers.Authorization is null &&
-            !request.Headers.Contains(NonceHeader) &&
-            !request.Headers.Contains(TimestampHeader) &&
-            !request.Headers.Contains(RoleHeader), "request.invalid");
-        var nonce = Base64Url.Encode(crypto.RandomBytes(24));
-        var timestamp = clock.GetUtcNow().ToUnixTimeSeconds();
-        var roleText = RoleText(role);
-        var canonical = Canonical(
-            identity.HostId,
-            credentialId,
-            request.Method.Method,
-            request.RequestUri!.PathAndQuery,
-            roleText,
-            timestamp,
-            nonce,
-            bodyHash);
-        var signature = Base64Url.Encode(crypto.HmacSha256(verifier, canonical));
-        request.Headers.TryAddWithoutValidation("Authorization",
-            $"{AuthorizationScheme} {credentialId}.{signature}");
-        request.Headers.TryAddWithoutValidation(NonceHeader, nonce);
-        request.Headers.TryAddWithoutValidation(TimestampHeader,
-            timestamp.ToString(CultureInfo.InvariantCulture));
-        request.Headers.TryAddWithoutValidation(RoleHeader, roleText);
+        lock (gate)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            GatewayRules.Defined(role);
+            GatewayRules.Require(request.RequestUri is { IsAbsoluteUri: true } &&
+                request.Headers.Authorization is null &&
+                !request.Headers.Contains(NonceHeader) &&
+                !request.Headers.Contains(TimestampHeader) &&
+                !request.Headers.Contains(RoleHeader), "request.invalid");
+            var nonce = Base64Url.Encode(crypto.RandomBytes(24));
+            var timestamp = clock.GetUtcNow().ToUnixTimeSeconds();
+            var roleText = RoleText(role);
+            var canonical = Canonical(
+                identity.HostId,
+                credentialId,
+                request.Method.Method,
+                request.RequestUri!.PathAndQuery,
+                roleText,
+                timestamp,
+                nonce,
+                bodyHash);
+            var signature = Base64Url.Encode(crypto.HmacSha256(verifier, canonical));
+            request.Headers.TryAddWithoutValidation("Authorization",
+                $"{AuthorizationScheme} {credentialId}.{signature}");
+            request.Headers.TryAddWithoutValidation(NonceHeader, nonce);
+            request.Headers.TryAddWithoutValidation(TimestampHeader,
+                timestamp.ToString(CultureInfo.InvariantCulture));
+            request.Headers.TryAddWithoutValidation(RoleHeader, roleText);
+        }
+    }
+
+    public void Dispose()
+    {
+        lock (gate)
+        {
+            if (disposed) return;
+            disposed = true;
+            System.Security.Cryptography.CryptographicOperations.ZeroMemory(verifier);
+        }
     }
 
     internal static byte[] Canonical(

@@ -48,6 +48,34 @@ Memory.Service, Host.Doctor and Host.Setup are not imported.
 Core installation planning, settings, Desktop and HostArtifacts v2/catalog
 remain independent and unchanged.
 
+### Schema 5 client foundation
+
+The client-only portion of `37181f8d2261c8d97d71b9ca297ff3bc278b7074`
+is adapted to the current protocol-2 authority, not restored as an old
+pairing/security/server snapshot. `GatewayPairingClient` requires the exact
+pinned HTTPS origin and explicit pairing action; its response must contain
+protocol major 2 and an explicit `paired` lifetime. Timed-v1, missing/null
+lifetime and retiring credentials cannot become permanent client credentials.
+`ScopedGatewayCredential.Restore` reconstructs only a secret-bearing client
+bound to origin, host/SPKI, device and voice role. It is not a public
+server-authority import or registration API.
+
+`GatewayAuthenticatedClient` offers explicit bounded capability and Ollama/F5
+requests only. It performs no startup work, key discovery, automatic re-pair,
+probe, retry, model download or provider instantiation. Capability conversion
+is passive, not proof that native runtime, reference rights or model inventory
+is eligible. Outer gateway protocol 2 is separate from the F5 inner protocol 1.
+Each inference action still requires its caller's fresh exact data/cost/resource
+permission; pairing alone grants no action permission. Signed POST bytes,
+bounded strict JSON/NDJSON, original cancellation/deadlines and clean EOF before
+terminal publication are retained. Disposing the client clears its signer
+material without deleting server device trust.
+
+The shipped Desktop currently remains Fixture/OpenAI-only. The mandatory
+second integration layer owns actual self-host UI/dispatch and expanded
+transitive payload/notices/RID locks. This foundation does not qualify an AI
+engine, Ubuntu deployment, host installation or native model execution.
+
 The newer [Gateway.Trust foundation](../Martlet.Gateway.Trust/README.md) remains
 isolated and **uncomposed**. These are alternative implementation lineages, not
 two production authorities or interchangeable credentials. This reused Gateway

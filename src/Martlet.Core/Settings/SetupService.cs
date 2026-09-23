@@ -56,7 +56,7 @@ public sealed class SetupService(SettingsStore settingsStore, ICredentialStore c
         var route = RequireRoute(settings, role);
         if (route.CredentialId is not { } old)
             throw new ContractException(ErrorCode.InvalidContract, "No credential is selected for this role.");
-        var updated = QueueRemoval(SetupSettings.ReplaceRoute(settings, route.WithCredential(null)), role, old);
+        var updated = QueueRemoval(SetupSettings.ReplaceRoute(settings, route.WithCredential(null)), route, old);
         return await SaveAsync(updated, revision, token);
     }
 
@@ -86,9 +86,22 @@ public sealed class SetupService(SettingsStore settingsStore, ICredentialStore c
 
     private static AppSettings QueueRemoval(AppSettings settings, SetupRole role, Guid old)
     {
+        var route = RequireRoute(settings, role);
+        return QueueRemoval(settings, route, old);
+    }
+
+    private static AppSettings QueueRemoval(AppSettings settings, SetupRoute route, Guid old)
+    {
         var updated = settings with { Setup = settings.Setup! with
         {
-            PendingRemovals = settings.Setup!.PendingRemovals.Append(new() { Role = role, CredentialId = old }).ToArray()
+            PendingRemovals = settings.Setup!.PendingRemovals.Append(new()
+            {
+                Role = route.Role,
+                CredentialId = old,
+                Scope = route.RouteType is SetupRouteType.GatewayOllama or SetupRouteType.GatewayF5
+                    ? CredentialScopeSettings.From(route)
+                    : null
+            }).ToArray()
         } };
         updated.Validate();
         return updated;

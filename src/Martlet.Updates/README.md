@@ -69,7 +69,7 @@ settings or validate an installed executable on the caller's behalf.
 
 The only existing production dependency is Core, for
 `AppSettings.CurrentSchemaVersion`. Supported known settings schemas are the
-same v1/v2/v3/v4 accepted by `SettingsJson` and V07a recovery. The candidate's signed
+same v1/v2/v3/v4/v5 accepted by `SettingsJson` and V07a recovery. The candidate's signed
 `settingsMinimumReader`/`settingsMaximumReader` bounds must include the **actual
 persisted current schema**, not just the latest schema supported by Core.
 Unknown current schemas are refused. Only the existing payload RID `win-x64`

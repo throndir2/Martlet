@@ -34,6 +34,8 @@ public sealed class HistoricalSettingsSchemaTests(SigningKeys keys) : IClassFixt
     [InlineData(true, 2)]
     [InlineData(false, 3)]
     [InlineData(true, 3)]
+    [InlineData(false, 4)]
+    [InlineData(true, 4)]
     public async Task HistoricalRestoreHistoryRetainsItsRecordedMeaning(bool interrupted, int schema)
     {
         using var f = new SelectionFixture(keys);
@@ -118,7 +120,9 @@ public sealed class HistoricalSettingsSchemaTests(SigningKeys keys) : IClassFixt
         var loaded = f.Settings.LoadAsync().GetAwaiter().GetResult();
         File.WriteAllBytes(f.Settings.FilePath, ContractJson.Write(loaded.Settings! with
         {
-            SchemaVersion = schema, Companion = schema >= 3 ? loaded.Settings.Companion : null, Memory = null
+            SchemaVersion = schema, Companion = schema >= 3 ? loaded.Settings.Companion : null,
+            Memory = schema >= 4 ? loaded.Settings.Memory : null,
+            Setup = loaded.Settings.Setup!.DowngradeOpenAiForHistoricalSettings()
         }));
         f.RefreshFacts();
         f.Initialize();
