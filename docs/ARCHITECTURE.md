@@ -52,7 +52,8 @@ and conformance fixtures before adapters are built independently.
 | Host lifecycle tool | Reviewed packaged host utility, host/release team | Local preflight, installation journal, Compose reconciliation, backup/repair; explicit local administrative boundary |
 | Setup coordinator / host setup UI | Windows setup coordinator plus local Ubuntu host UI and headless CLI, client + host teams | One feature/role/destination plan; shared host planning/probe/journal engine, local privileged approval, clear managed versus external ownership; no remote shell or Docker administration through pairing |
 | Optional memory service | Single-owner SQLite database plus replaceable retrieval adapters, memory team | Consent, source provenance, retention, export/delete; embeddings/index are derived data, not a second authority |
-| Optional avatar process | Renderer selected in A01, avatar team | Local animation/playback events only; bounded IPC; crash does not interrupt voice or expose credentials |
+| Optional avatar process | Independent Live2D or VRM renderer, avatar team | Validated mapped animation/playback events only; bounded IPC; no credentials, scripts or remote assets; crash cannot interrupt voice |
+| Optional speech-animation adapter | Audio2Face first/preferred; amplitude baseline, avatar team | Explicitly authorized outgoing speech PCM to the selected analyzer, bounded timestamped facial frames; independent readiness and no silent fallback |
 
 ```mermaid
 flowchart LR
@@ -529,14 +530,60 @@ export. It adds no transcript collector, app route, gateway endpoint, backup,
 embedding or network dependency. See [MEMORY](MEMORY.md) for exact limits,
 crash/cancellation semantics and the remaining app/gateway/real-user gates.
 
-A01-A03 choose a rights-cleared renderer after classifying Live2D SDK use.
-Only then accept user assets with limits on archive expansion, paths, file
-types, and resources; no arbitrary scripts or network-loading assets.
-Start with amplitude-based lip sync driven by actual PCM, blinking, breathing,
-idle variation, and bounded gaze/speaking motions. Visemes/phoneme sync require
-provider support or a separately validated local analyzer. The avatar is off
-by default, has no provider credentials, and can be stopped/uninstalled without
-altering conversation history, provider setup, or voice reliability.
+### Avatar boundaries (accepted direction, 2026-09-23)
+
+A01-A03 now develop Live2D and VRM independently of G2; SDK release
+classification stays a distribution gate, not a blanket development hold.
+See [AVATARS](AVATARS.md) for model requirements, permutations and current
+in-progress versus planned scope. The avatar is OFF until explicitly enabled
+and can be stopped/uninstalled without changing voice/provider/persona setup.
+
+Separate speech analysis -> timestamped semantic channels -> calibrated
+model mapping/composition -> renderer. Audio2Face is implemented first and
+preferred when enabled; amplitude remains an explicitly selected baseline,
+not an automatic fallback. The initial Audio2Face lane targets a pre-existing
+user-provisioned loopback NIM v2 service via its official bidirectional gRPC
+contract, not native SDK embedding. Its external GPU/runtime/model/access
+prerequisites are unverified. A renderer receives no provider credentials;
+only the analyzer's separately authorized boundary receives outgoing speech PCM.
+No launch, passive settings view or disabled avatar may contact that service.
+
+Capability records bind renderer/adapter versions, model identity and mapping
+revision to mouth, non-mouth expression, gaze, head, body and secondary-motion
+support. A detailed VRM rig with authored ARKit mapping is the richest intended
+Audio2Face target; basic VRM expressions are optional, not guaranteed shapes.
+Live2D is an equal renderer target using approved reduced parameter mappings.
+Audio2Face facial output is not body gesture generation. VRMA targets VRM
+humanoid/expression/look-at channels, not Live2D directly.
+
+Composition uses one writer per conflicting channel/underlying parameter by
+default. Explicit supported masks and priorities may isolate A2F mouth from
+idle expression, gaze or body motion. Model expressions, Cubism motions and
+VRM overrides can touch several channels; validate actual writes, not just
+source labels. Reject accidental overlap. A resolver can disable a conflicting
+aspect or offer a known alternate source/mapping, but cannot override absent
+rig capability, invalid schema, unsafe assets, rights/access or runtime needs.
+Unknown, known unsupported and verified remain distinct; structural
+compatibility is separate from readiness and measured performance.
+
+Analysis may run ahead on bounded PCM, but display uses timestamped **actual
+device playback progress**, never TTS arrival, queued bytes or elapsed wall
+time. Preserve input sample-time through resampling and analyzer timestamps;
+bind every frame to session/turn/request/epoch, segment and configuration/model
+revision. Pause/underrun does not advance speech animation. Stop, replacement,
+device loss and disable invalidate old epochs, flush bounded queues and
+neutralize speech-owned channels; late callbacks cannot animate a new turn.
+Upstream compute cancellation is reported separately from local stale discard.
+
+Imports are bounded data only: validate schema, paths, archive expansion,
+file count/bytes, decoded textures, meshes/parameters and motion resources
+before activation; reject scripts, external network resources and path escapes.
+Pin renderer dependencies locally rather than adopting CDN examples.
+Renderer or analyzer failure leaves voice independent and visibly unavailable
+animation; restarting it must not replay canceled speech. A02c alone integrates
+configuration into the current settings owner after reconciliation, without
+forking a competing schema. A03 witnesses local real-model/renderer/GPU timing
+and crash behavior before support claims; rights and release remain separate.
 
 ## 7. Explicit degradation
 

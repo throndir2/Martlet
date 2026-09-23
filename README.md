@@ -30,8 +30,11 @@ planned API-backed route. API use may cost money and sends the selected data
 to the selected provider; a separate fixture demo will not perform AI inference.
 
 Later milestones cover Ubuntu self-hosting, two-host GPU deployments, opt-in
-screen understanding and memory, and optional user-supplied avatars. Reliable
-voice and installation take priority over avatars.
+screen understanding and memory. [Live2D and VRM avatar development](docs/AVATARS.md)
+is authorized in parallel now, with Audio2Face first/preferred and avatars OFF
+by default. The initial independent libraries/adapters are in progress, not a
+working end-user renderer. Voice reliability and release qualification remain
+separate requirements.
 
 The [planned installation flow](docs/INSTALLATION_SUPPORT.md#feature-first-multi-machine-setup)
 coordinates optional features and mixed API/self-hosted roles across machines.
@@ -51,6 +54,7 @@ transcripts, call providers, upload, embed or create backups.
 | --- | --- |
 | [Development plan](DEVELOPMENT_PLAN.md) | Scope, proposed decisions, priorities, risks, and reading order |
 | [Companion requirements](docs/COMPANION_REQUIREMENTS.md) | Planned persona editing, F5 reference voices, LLM/VLM selection, listen-first behavior, speech interruption and response-style controls; not current features |
+| [Avatar guide and compatibility](docs/AVATARS.md) | Accepted Live2D/VRM direction, Audio2Face-first analysis, per-model mappings, working/degraded/blocked permutations, parallel plan and remaining qualification |
 | [Architecture and provider contracts](docs/ARCHITECTURE.md) | Components, trust boundaries, conversation policy, streaming, and failure behavior |
 | [Installation and support design](docs/INSTALLATION_SUPPORT.md) | First run, host setup, lifecycle, doctor, and troubleshooting matrix |
 | [Delivery and release plan](docs/DELIVERY.md) | PR-sized backlog, dependencies, acceptance criteria, release gates, and traceability |
