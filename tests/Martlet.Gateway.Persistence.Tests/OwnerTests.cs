@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Http;
 
 namespace Martlet.Gateway.Persistence.Tests;
 
-public sealed class OwnerTests : NativeTest
+public sealed partial class OwnerTests : NativeTest
 {
     [Fact]
     public async Task Default_No_has_no_storage_key_or_listener_side_effects()
