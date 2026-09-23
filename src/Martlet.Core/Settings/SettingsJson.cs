@@ -18,6 +18,7 @@ public static class SettingsJson
         public SetupHeader? Setup { get; init; }
         public ProfileHeader? Audio { get; init; }
         public ProfileHeader? Companion { get; init; }
+        public ProfileHeader? Memory { get; init; }
         public void Validate()
         {
             ContractRules.Require(SchemaVersion is >= 1 and <= AppSettings.CurrentSchemaVersion, "Unsupported settings version.", ErrorCode.UnsupportedVersion);
@@ -25,6 +26,7 @@ public static class SettingsJson
             ContractRules.Require(Setup is null || Setup.SchemaVersion == 1, "Unsupported setup version.", ErrorCode.UnsupportedVersion);
             ContractRules.Require(Audio is null || Audio.SchemaVersion == 1, "Unsupported audio settings version.", ErrorCode.UnsupportedVersion);
             ContractRules.Require(Companion is null || Companion.SchemaVersion == 1, "Unsupported companion settings version.", ErrorCode.UnsupportedVersion);
+            ContractRules.Require(Memory is null || Memory.SchemaVersion == 1, "Unsupported memory settings version.", ErrorCode.UnsupportedVersion);
             if (Setup?.Routes is { } routes)
                 foreach (var route in routes)
                     ContractRules.Require(route?.Consent is null || route.Consent.SchemaVersion == 1,

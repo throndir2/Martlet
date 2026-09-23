@@ -204,6 +204,19 @@ public sealed record MemoryQuery
     public required string Text { get; init; }
     public int MaximumResults { get; init; } = 5;
 
+    public static MemoryQuery? TryFromBoundedSource(string source, int maximumResults = 5)
+    {
+        MemoryGuard.Require(maximumResults is >= 1 and <= MemoryLimits.MaximumResults);
+        var text = LexicalIndex.TryBoundedQueryText(source);
+        if (text is null)
+            return null;
+        return new()
+        {
+            Text = text,
+            MaximumResults = maximumResults
+        };
+    }
+
     public override string ToString() =>
         $"MemoryQuery {{ Text = [redacted], MaximumResults = {MaximumResults} }}";
 }
@@ -238,6 +251,9 @@ public sealed class MemoryStoreActivationPreview
 
     public static MemoryStoreActivationPreview Create(string absoluteDirectory) =>
         new(Guid.NewGuid(), MemoryPaths.NormalizeLocalPath(absoluteDirectory, directory: true, inspectFileSystem: false));
+
+    public void ValidateLocalScope() =>
+        MemoryPaths.NormalizeLocalPath(DirectoryPath, directory: true, inspectFileSystem: true);
 
     public MemoryStoreAuthorization Authorize(MemoryConsentDecision decision = MemoryConsentDecision.No)
     {

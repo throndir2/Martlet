@@ -1,28 +1,67 @@
-# Consented local memory foundation (P03a/P03b)
+# Consented local memory and Desktop integration (P03a/P03b/P03c)
 
-**Implemented as an isolated library and test project; not wired into Desktop,
-conversation, Doctor, a gateway, host 2, packaging or the root solution.** The
-foundation provides an OFF-by-default local fact store and bounded lexical
-retrieval. It performs no capture, transcript ingestion, provider call, upload,
-embedding, model execution, vector-database access, backup or background timer.
-Opening or using the application does not open this store.
+**Implemented internally in the local library, Core settings/recovery, Desktop
+management UI, explicit typed/PTT conversation, root solution and Windows
+package graph.** Memory remains OFF on new, v1-v3 migrated and restored profiles.
+Opening Martlet, Memory, Setup, Troubleshooting or a conversation does not open
+the fact store. Only an explicit enabled management action or a fresh
+per-turn retrieval approval can open it.
 
-Reused from integration commit `fc1fd57f59fed0899ccbd5991797f1699d4e9bfb`
-by an attributed cherry-pick onto current main, without its later Desktop,
-settings or service layers. The reuse review adds finalization-time expiry
-invalidation and consistent top-K ranking regressions. An installation plan
-does not enable memory, grant consent or confer ownership of an existing store.
+The implementation performs no capture, automatic transcript ingestion/fact
+extraction, provider call on management actions, store-wide upload, embedding,
+model execution, vector-database access, backup or background timer. This is
+internal P03a/P03b/P03c functional evidence, not completed remote P03, AC-16,
+P04 or G4 qualification. Gateway authentication/role enforcement, memory-store
+backup/restore, real-user usefulness/privacy comprehension, clean-machine and
+physical crash/power-loss evidence remain separate gates.
 
-This is internal P03a/P03b contract evidence, not completed P03, AC-16, P04 or
-G4 qualification. App consent UX, gateway authentication/role enforcement,
-host lifecycle/restore, real-user usefulness and physical crash/power-loss
-evidence remain separate gates.
+The foundation was reused from `fc1fd57f59fed0899ccbd5991797f1699d4e9bfb`
+in PR #39 with finalization-time expiry and consistent top-K ranking fixes.
+This slice adapts only the memory delta of
+`b80920ad2fde41fdb3456a992786f642a7e22887`, plus the named memory fixture argument
+from `68bd6c8264a7215dc24f8fb8115d903910925cfb`, onto PR #44's canonical
+schema-3 companion baseline. It preserves PR #39 fixes and PR #44 historical
+receipt/snapshot semantics. Source avatar/listen-first dependencies are excluded;
+no Gateway or installation schema/activation changes are included.
+AC-16 is unchanged. Source package hashes are historical, not new evidence.
+
+## Desktop enablement and explicit fact management
+
+**Local memory (OFF by default)** exposes an accessible management window. A
+settings-only load shows the current policy without touching the store. The
+default scope is the app-owned `memory` child of the selected Martlet local-data
+directory. A user may instead enter or browse to a custom absolute local
+directory. The shared foundation rejects roots, UNC/network/unknown-volume,
+alternate-stream and reparse/link scopes. Enabling requires a separate review
+checkbox; configuration validation reads path metadata but creates no directory,
+lock or store document.
+
+Strict settings schema 4 owns `enabled`, the app-local/custom policy, optional
+normalized custom path and a fresh configuration revision. v1-v3 migration is
+explicit and atomic and creates the existing exact original-file snapshot.
+Configuration backup includes only this enable/path policy, never facts/store/
+exports. Restore accepts compatible v1-v4 settings but always forces memory OFF:
+v4 sources retain their storage policy for review; older sources preserve the
+current policy. No restore action opens, copies or validates a fact store.
+Changing configuration invalidates an in-flight app retrieval.
+
+Every fact starts in the dedicated editor and is saved only by **Save new
+fact**. Conversation input/transcripts, answers, support metadata and persona
+text have no save callback. New/edit actions require an explicit
+`until_deleted` or 30/90/365-day expiry choice and record fresh `user_entry`
+provenance. Inspect shows fact/store revisions, creation and last-modified
+source/times/consent IDs and exact expiry. Delete uses an explicit Yes/No dialog
+whose default is No; purge expiry is also an explicit action. All work runs
+off the WPF dispatcher under the app-shared effect owner, so setup, audio,
+fixture, recovery, memory and conversation effects cannot overlap in-process.
 
 ## Explicit activation and actions
 
-There is no default directory or automatic `Open`. A caller first creates a
-pure path-bound preview. Its decision defaults to `No`; only an explicit
-`Allow` produces a one-use authorization:
+The library still has no default directory or automatic `Open`. The Desktop
+owner resolves its reviewed settings policy, then creates a pure path-bound
+preview. `ValidateLocalScope` checks the local path without creating anything.
+The activation decision defaults to `No`; only the explicit app action produces
+a one-use `Allow` authorization:
 
 ```csharp
 var activation = MemoryStoreActivationPreview.Create(selectedLocalDirectory);
@@ -135,6 +174,15 @@ process memory until reclaimed, and atomic replacement is not a secure disk
 wipe; the guarantee is exact logical source/index/cache removal and stale-result
 suppression.
 
+If a private store/export partial cannot be removed after a failed or canceled
+Desktop action, the original store and app effect slot remain owned. Memory
+shows the pending cleanup and **Retry owned cleanup** retries only the engine's
+recorded paths, even from a reopened Memory window. Cancellation and closing
+an observer never release this quarantine; no new app effect is admitted until
+cleanup and disposal finish. There is no automatic cleanup sweep or retry timer.
+Exiting the process can still leave private partial bytes; this is not secure
+erasure or crash recovery of an export.
+
 The held-out synthetic fixture at
 `tests\Martlet.Memory.Tests\Fixtures\retrieval-held-out.json` keeps its facts and
 queries outside the retrieval implementation. It checks bounded top-result
@@ -166,6 +214,45 @@ contain whatever the user chose to save; callers must preview it. The library
 has no logger and exception/authorization `ToString()` output omits fact content
 and destinations.
 
+Desktop displays the exact frozen JSON plus preview UUID, fact count, byte
+length, store revision and SHA-256 before destination selection. Its export
+checkbox is cleared for every preview and the export button requires that
+fresh checkbox. Export remains create-only and local; support has no upload or
+contact path and configuration recovery never includes the bytes.
+
+## Fresh per-turn retrieval and request budgeting
+
+The live typed/PTT surface has an **optional next action only** memory checkbox,
+separate from the existing provider/cost permission, capture permission and STT
+upload permission. It is unchecked on every load and after every action. When
+unchecked, even enabled memory is not opened or read. Automatic listening is
+not implemented by this slice and cannot authorize memory disclosure.
+
+After STT and participation accept the current explicit turn, an approved
+retrieval tokenizes only that current user input and asks the local lexical
+index for at most three results. Zero matches is a valid empty result. Each hit
+is formatted as a user message between
+`[MARTLET_LOCAL_MEMORY_FACT]` labels with fact/store revision, source kind,
+creation/last-modified observation times and expiry. A system instruction says
+these are user-saved reference data, never instructions, permissions, routing
+or tool directives. Consent UUIDs, paths and nonmatching/store-wide facts are
+not sent.
+
+The existing 16,384-byte, 16-message and 16,640 local input-token reservation is
+unchanged. Current input/persona/style are admitted first; oldest volatile
+conversation messages are omitted, then lowest-ranked memory hits are omitted
+until the request fits. Used/omitted fact counts and store revision are visible
+metadata, but fact content is excluded from the timeline, support journal and
+ordinary logs. Retrieval failure or invalidation fails the action before any
+LLM request; it never silently continues without requested memory.
+
+Delete, save/edit/purge, memory configuration, retrieval-consent revocation,
+pause, lock, Stop, output/configuration change, conversation close and app exit
+advance the app retrieval generation and cancel the old operation. The
+foundation store revision check separately invalidates a source/index/cache
+result changed in flight. A result is accepted only after both checks and a
+fresh settings comparison.
+
 ## Local validation
 
 Use the exact SDK in `global.json`, committed project locks, an isolated CLI
@@ -182,18 +269,16 @@ dotnet test tests\Martlet.Memory.Tests --no-build -c Release --artifacts-path $a
 ```
 
 The project uses only the runtime/BCL; the test project uses existing central
-test pins. Neither project is in `Martlet.slnx`, Desktop/Core settings, package
-payloads or a remote workflow. Validate it directly until an app integration
-owner deliberately takes those shared surfaces.
+test pins. Both now join `Martlet.slnx`; Desktop and package graphs reference
+the runtime assembly. Direct Memory tests remain useful for focused storage
+validation. Desktop/Core/Updates suites cover production-path WPF, settings
+migration/recovery, explicit retrieval/input encoding and lifecycle invalidation.
+All validation remains local; no remote workflow was added or run.
 
 ## Remaining gates
 
-- Design and qualify the Desktop UX for enabling a selected store, explicit
-  save/edit/delete, expiry choices and exact default-No export confirmation.
 - Define authenticated gateway/host-2 ownership, role scope, transport schema,
   service lifecycle, migration and compatibility before remote access.
-- Integrate retrieval into a fresh per-turn authorization/budget without
-  uploading the complete store or treating retrieved text as instructions.
 - Design explicit backup/restore semantics and prove compatible restore and
   deletion behavior; this foundation intentionally makes no backup.
 - Run physical interruption/filesystem/storage tests and clean-machine
@@ -201,4 +286,5 @@ owner deliberately takes those shared surfaces.
 - Evaluate usefulness, false retrievals and privacy comprehension with consented
   held-out real-user tasks and resource budgets before G4.
 - Reassess embeddings/reranking only after a labeled evaluation demonstrates
-  benefit and model/license/index deletion lifecycle is reviewed.
+  material benefit and model/license/index deletion lifecycle is reviewed.
+  No embedding/vector adapter is present in this slice.

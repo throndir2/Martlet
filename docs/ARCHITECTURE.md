@@ -28,9 +28,10 @@ role-filtered version/capability/status metadata behind worker interfaces. It
 does not join Desktop/Core settings or the root solution, expose an inference
 route/raw worker port, create a production key, change a firewall, or establish
 real LAN/Ubuntu/host qualification.
-The isolated [P03a/P03b local memory foundation](MEMORY.md) implements an
-OFF-by-default versioned fact store and lexical retrieval contract without
-Desktop/Core settings/root-solution integration. It is not the proposed
+The [P03a/P03b/P03c local memory integration](MEMORY.md) implements an
+OFF-by-default versioned fact store and lexical retrieval contract with
+schema-4 settings, explicit Desktop management and separately permitted per-turn
+retrieval in the existing input budget. It is not the proposed
 SQLite/gateway service, automatic conversation memory or a passed AC-16/G4 gate.
 Read [the development plan](../DEVELOPMENT_PLAN.md)
 for scope and approvals, [installation/support](INSTALLATION_SUPPORT.md) for
@@ -519,7 +520,7 @@ retrieval, and explains that previously exported/backed-up copies are outside
 immediate erasure. Export is readable, versioned, and contains no credentials.
 Do not transmit the complete memory store on every turn.
 
-**Implemented isolated P03a/P03b foundation:** `Martlet.Memory` currently owns
+**Implemented P03a/P03b/P03c local slice:** `Martlet.Memory` currently owns
 one explicitly selected local schema-1 JSON store rather than a host SQLite
 service. That narrower library supplies path-bound OFF-by-default activation,
 explicit fact save/inspect/edit/delete, typed provenance/retention, exact

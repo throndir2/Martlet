@@ -12,5 +12,6 @@
     <ProjectReference Include="..\Martlet.Diagnostics\Martlet.Diagnostics.csproj" />
     <ProjectReference Include="..\Martlet.Support\Martlet.Support.csproj" />
     <ProjectReference Include="..\Martlet.Audio\Martlet.Audio.csproj" />
+    <ProjectReference Include="..\Martlet.Memory\Martlet.Memory.csproj" />
   </ItemGroup>
 </Project>
