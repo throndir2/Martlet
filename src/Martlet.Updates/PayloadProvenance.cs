@@ -35,7 +35,7 @@ internal static class PayloadProvenance
     [
         "Martlet.Desktop", "Martlet.Doctor", "Martlet.Core", "Martlet.Diagnostics", "Martlet.Fixtures", "Martlet.Sessions",
         "Martlet.Audio", "Martlet.Credentials.Windows", "Martlet.Conversation", "Martlet.Providers", "Martlet.Participation",
-        "Martlet.Support", "Martlet.Avatars", "Martlet.Avatar.Hosting", "Martlet.Avatar.Audio2Face", "Martlet.Avatar.RendererHost"
+        "Martlet.Support", "Martlet.Memory", "Martlet.Avatars", "Martlet.Avatar.Hosting", "Martlet.Avatar.Audio2Face", "Martlet.Avatar.RendererHost"
     ];
     private static readonly string[] WebViewReferences =
     [

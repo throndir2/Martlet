@@ -6,6 +6,7 @@ function New-InertAvatarPayloads([string]$OutputDirectory, $Pins, $Encoding, [st
     $packageKey = "$($package.id)/$($package.version)"
     $webKey = 'Microsoft.Web.WebView2/1.0.4191.47'
     $audioKey = 'Martlet.Avatar.Audio2Face/0.1.0'
+    $memoryKey = 'Martlet.Memory/0.1.0'
     $contentHash = [Convert]::ToBase64String([byte[]]::new(64))
     $sourceFiles = [Collections.Generic.List[object]]::new()
     function Source([string]$Path, [string]$Text) {
@@ -14,7 +15,7 @@ function New-InertAvatarPayloads([string]$OutputDirectory, $Pins, $Encoding, [st
         $sourceFiles.Add($record)
         return $record
     }
-    $projects = @('Martlet.Desktop', 'Martlet.Doctor', 'Martlet.Avatar.RendererHost', 'Martlet.Avatar.Audio2Face')
+    $projects = @('Martlet.Desktop', 'Martlet.Doctor', 'Martlet.Avatar.RendererHost', 'Martlet.Avatar.Audio2Face', 'Martlet.Memory')
     foreach ($project in $projects) { $null = Source "packaging\windows\locks\$project.packages.lock.json" "inert $project lock" }
     $webSource = 'src\Martlet.Avatar.RendererHost\web'
     $browserInputs = [Collections.Generic.List[object]]::new()
@@ -157,6 +158,9 @@ function New-InertAvatarPayloads([string]$OutputDirectory, $Pins, $Encoding, [st
                     $rootDependencies += $audioKey
                     $audio = Leaf "$directory\Martlet.Avatar.Audio2Face.dll" 'INERT generated-project output'
                     $libraries += Library $audioKey 'project' @() @([ordered]@{ path = $audio.path; kind = 'runtime'; source = 'Martlet.Avatar.Audio2Face.dll' })
+                    $rootDependencies += $memoryKey
+                    $memoryFile = Leaf "$directory\Martlet.Memory.dll" 'INERT memory-project output'
+                    $libraries += Library $memoryKey 'project' @() @([ordered]@{ path = $memoryFile.path; kind = 'runtime'; source = 'Martlet.Memory.dll' })
                 }
             }
             $runtimeFile = Leaf "$directory\coreclr.dll" "INERT $directory runtime"
@@ -192,6 +196,15 @@ function New-InertAvatarPayloads([string]$OutputDirectory, $Pins, $Encoding, [st
                 name = 'net10.0/win-x64'; framework = 'net10.0'; rootDependencies = @('Grpc.Tools/2.84.0')
                 libraries = @([ordered]@{ key = 'Grpc.Tools/2.84.0'; type = 'package'; contentHash = $contentHash; dependencies = @() })
                 frameworkDownloads = @()
+            })
+        }
+        $memoryLock = 'packaging\windows\locks\Martlet.Memory.packages.lock.json'
+        $restores += [ordered]@{
+            project = 'Martlet.Memory'; path = 'src\Martlet.Memory\Martlet.Memory.csproj'; version = '0.1.0'
+            lockPath = $memoryLock; lockSha256 = $sourceMap[$memoryLock].sha256; sourceSetSha256 = 'e' * 64
+            targets = @([ordered]@{
+                name = 'net10.0/win-x64'; framework = 'net10.0'; rootDependencies = @()
+                libraries = @(); frameworkDownloads = @()
             })
         }
         $archives = @(

@@ -43,9 +43,22 @@ public sealed class GatewayRequestSigner
     public void Sign(HttpRequestMessage request, GatewayRole role)
     {
         ArgumentNullException.ThrowIfNull(request);
+        GatewayRules.Require(request.Content is null, "request.invalid");
+        SignCore(request, role, EmptyBodyHash);
+    }
+
+    public void Sign(HttpRequestMessage request, GatewayRole role, ReadOnlySpan<byte> body)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        GatewayRules.Require(request.Method == HttpMethod.Post && request.Content is not null &&
+            body.Length is > 0 and <= GatewayInferenceProtocol.MaximumRequestBytes, "request.invalid");
+        SignCore(request, role, System.Security.Cryptography.SHA256.HashData(body));
+    }
+
+    private void SignCore(HttpRequestMessage request, GatewayRole role, ReadOnlySpan<byte> bodyHash)
+    {
         GatewayRules.Defined(role);
         GatewayRules.Require(request.RequestUri is { IsAbsoluteUri: true } &&
-            request.Content is null &&
             request.Headers.Authorization is null &&
             !request.Headers.Contains(NonceHeader) &&
             !request.Headers.Contains(TimestampHeader) &&
@@ -61,7 +74,7 @@ public sealed class GatewayRequestSigner
             roleText,
             timestamp,
             nonce,
-            EmptyBodyHash);
+            bodyHash);
         var signature = Base64Url.Encode(crypto.HmacSha256(verifier, canonical));
         request.Headers.TryAddWithoutValidation("Authorization",
             $"{AuthorizationScheme} {credentialId}.{signature}");
@@ -81,7 +94,7 @@ public sealed class GatewayRequestSigner
         string nonce,
         ReadOnlySpan<byte> bodyHash)
     {
-        GatewayRules.Require(method is "GET" or "DELETE" &&
+        GatewayRules.Require(method is "GET" or "POST" or "DELETE" &&
             rawTarget is { Length: > 0 and <= 256 } &&
             rawTarget[0] == '/' &&
             rawTarget.All(char.IsAscii) &&
@@ -134,6 +147,9 @@ internal sealed class GatewayRequestAuthenticator(
     private static readonly byte[] EmptyBodyHash = System.Security.Cryptography.SHA256.HashData([]);
 
     internal GatewayPrincipal Authenticate(HttpRequest request)
+        => Authenticate(request, EmptyBodyHash);
+
+    internal GatewayPrincipal Authenticate(HttpRequest request, ReadOnlySpan<byte> bodyHash)
     {
         var authorization = SingleHeader(request, "Authorization", 160, "auth.missing");
         var nonce = SingleHeader(request, GatewayRequestSigner.NonceHeader, 32, "auth.missing");
@@ -171,7 +187,7 @@ internal sealed class GatewayRequestAuthenticator(
             roleText,
             timestamp,
             nonce,
-            EmptyBodyHash);
+            bodyHash);
         return credentials.Authenticate(new()
         {
             CredentialId = parts[0],

@@ -10,7 +10,7 @@ namespace Martlet.Gateway.Persistence;
 
 // Adapted from PR #37, 18daa4acfa90d7c7dff52861c93800a2f63b0823.
 [SupportedOSPlatform("windows")]
-internal sealed class WindowsOwnedDirectory : IDisposable
+internal sealed class WindowsOwnedDirectory : IOwnedAuthorityDirectory
 {
     private readonly SecurityIdentifier user;
     private readonly SafeFileHandle directoryHandle;
@@ -84,7 +84,7 @@ internal sealed class WindowsOwnedDirectory : IDisposable
 
     internal string FilePath(string name) => System.IO.Path.Combine(Path, name);
 
-    internal void ValidateFiles()
+    public void ValidateFiles()
     {
         CheckAcl(new DirectoryInfo(Path).GetAccessControl(AccessControlSections.Owner | AccessControlSections.Access), user, directory: true);
         foreach (var entry in Directory.EnumerateFileSystemEntries(Path))
@@ -97,14 +97,14 @@ internal sealed class WindowsOwnedDirectory : IDisposable
         }
     }
 
-    internal byte[] Read(string name, int maximum)
+    public byte[] Read(string name, int maximum)
     {
         var path = FilePath(name);
         CheckFile(path, user);
         using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
         CheckHandle(file.SafeFileHandle);
         CheckAcl(new FileInfo(path).GetAccessControl(AccessControlSections.Owner | AccessControlSections.Access), user, false);
-        if (file.Length is <= 0 || file.Length > maximum)
+        if (file.Length < 0 || file.Length > maximum)
             throw Error(GatewayPersistenceFailure.InvalidState);
         var bytes = new byte[(int)file.Length];
         file.ReadExactly(bytes);
@@ -113,7 +113,7 @@ internal sealed class WindowsOwnedDirectory : IDisposable
         return bytes;
     }
 
-    internal void WriteNew(string name, ReadOnlySpan<byte> bytes)
+    public void WriteNew(string name, ReadOnlySpan<byte> bytes)
     {
         using var file = new FileStream(FilePath(name), FileMode.CreateNew, FileAccess.Write, FileShare.None,
             4096, FileOptions.WriteThrough);
@@ -123,7 +123,35 @@ internal sealed class WindowsOwnedDirectory : IDisposable
         file.Flush(flushToDisk: true);
     }
 
-    internal void Validate(string name) => CheckFile(FilePath(name), user);
+    public void Validate(string name) => CheckFile(FilePath(name), user);
+
+    public bool Exists(string name)
+    {
+        try { _ = File.GetAttributes(FilePath(name)); return true; }
+        catch (FileNotFoundException) { return false; }
+    }
+
+    public void Prepare()
+    {
+        File.Move(FilePath("staging.bin"), FilePath("pending.bin"), overwrite: false);
+        using var file = new FileStream(FilePath("pending.bin"), FileMode.Open,
+            FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough);
+        file.Flush(flushToDisk: true);
+    }
+
+    public void Promote(bool replace, Action? replaced = null)
+    {
+        if (replace) File.Replace(FilePath("pending.bin"), FilePath("authority.bin"), null);
+        else File.Move(FilePath("pending.bin"), FilePath("authority.bin"), overwrite: false);
+        replaced?.Invoke();
+        Validate("authority.bin");
+        using var file = new FileStream(FilePath("authority.bin"), FileMode.Open,
+            FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough);
+        file.Flush(flushToDisk: true);
+    }
+
+    public void RemoveUnpreparedStage() => File.Delete(FilePath("staging.bin"));
+    public void RemoveRunning() => File.Delete(FilePath("running"));
 
     private static void ValidatePath(string path)
     {

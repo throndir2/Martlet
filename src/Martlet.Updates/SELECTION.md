@@ -7,8 +7,17 @@ vault, download anything, modify Windows registration or delete history.
 `selection.json` is an **approved candidate selection**, never a launcher pointer.
 `SelectionReceipt.IsRunnable` is always false; there is no readiness bool, setter,
 public receipt constructor or method that changes it to true.
+The separate [activation-record transaction](ACTIVATION.md) consumes the actual
+selection under ownership; it never promotes this receipt into launch permission.
 The separate rollback configuration-restoration operation described below is
 the only settings effect. Ordinary selection/recovery never restores settings.
+
+The launcher rollback coordinator may additionally prepare the active record's
+exact retained N-1 from immutable selection history when selection has advanced
+ahead of activation. That internal path retains the active current as previous,
+pins the historical rollback snapshot through commit, and uses the same
+separate restore/acknowledgment gates. It cannot select arbitrary deeper history,
+restore automatically, or alter permanent Gateway pairing.
 
 ## Explicit ownership and initialization
 
@@ -140,9 +149,9 @@ A fresh snapshot becomes that previous entry's snapshot only when the signed
 reader bounds include its schema; otherwise the prior compatible snapshot remains
 visible in `PreviousAfterSelection`. No incompatible snapshot is silently paired
 with an old reader. A new rollback also refuses a reader that cannot consume the
-current settings schema (v3), because V07a emits it even for historical envelopes.
+current settings writer schema (v4), because V07a emits it even for historical envelopes.
 Historical restore journals and acknowledgment records are different: their
-commit marker's exact recorded schema (v2 or v3) is validated against the selected
+commit marker's exact recorded schema (v2, v3 or v4) is validated against the selected
 signed reader, never reconstructed from the current writer constant. No journal
 format is changed and no old receipt is rewritten by this compatibility check.
 
@@ -517,7 +526,9 @@ staging lock and retains all their read handles until the selection/recovery
 callback returns. Public `Stage` and `InspectStaged` keep their original newer-
 version, schema, current-fact, exact-receipt and trust rejection behavior.
 
-Still NOT RUN / not implemented here: executable activation coordinator and
+Implemented separately: the [private activation-pointer transaction](ACTIVATION.md),
+with only an internal inert test probe and no executable launch authority.
+Still NOT RUN / not implemented here: production readiness and executable
 launcher, Desktop UI registration/wiring to its existing shared effect owner,
 manual ambiguous-restore reconciliation beyond the exact recorded-commit case, actual readiness/migration,
 executed N-1/N rollback, uninstall, physical disk-full/power-loss/clean-Windows VM

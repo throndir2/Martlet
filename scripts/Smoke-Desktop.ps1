@@ -176,6 +176,14 @@ try {
     if ($first -notlike '*not ready*') { throw 'First-run diagnostics must remain incomplete.' }
     if (Test-Path -LiteralPath $data) { throw 'Read-only launch unexpectedly created a data directory.' }
     if (-not $CompanionOnly) {
+        Invoke-Control 'OpenVoiceLibrary'
+        $null = Wait-Setup '*Saved assets have not been read*' 'VoiceResult'
+        if ((Find-Control 'VoiceCancel').Current.IsEnabled -or (Find-Control 'VoiceDelete').Current.IsEnabled) {
+            throw 'Voice Library must open without active IO or an inferred asset selection.'
+        }
+        if (Test-Path -LiteralPath $data) { throw 'Opening Voice Library unexpectedly created private data or loaded assets.' }
+        Invoke-Control 'VoiceClose'
+        $null = Wait-Status '*First run:*'
         Invoke-Control 'OpenTroubleshooting'
         $support = Wait-Setup '*Recording: OFF*worker: idle*' 'SupportStatus'
         if ((Find-Control 'SupportExport').Current.IsEnabled -or
@@ -251,7 +259,7 @@ try {
             $control = Find-Control $id
             if ($null -eq $control -or $control.Current.IsEnabled) { throw 'Unconfigured live actions must be explicitly gated.' }
         }
-        foreach ($id in @('LiveVoice', 'LiveAcceptAction', 'LiveAcceptCapture', 'LiveAcceptUpload')) {
+        foreach ($id in @('LiveVoice', 'LiveAcceptAction', 'LiveAcceptCapture', 'LiveAcceptUpload', 'LiveAcceptMemory')) {
             $control = Find-Control $id
             if ($null -eq $control -or $control.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne
                 [Windows.Automation.ToggleState]::Off) { throw 'Live output and permission must start OFF.' }
@@ -353,15 +361,34 @@ try {
         $null = Wait-Setup '*Companion settings saved*' 'CompanionResult'
         Invoke-Control 'CompanionClose'
         $null = Wait-Status '*Setup checkpoint: Destinations*consent missing or invalidated*'
+        $beforeMemory = [IO.File]::ReadAllBytes($settings)
+        Invoke-Control 'OpenMemory'
+        $null = Wait-Setup '*Memory settings loaded: OFF*fact store was not opened*' 'MemoryStatus'
+        foreach ($id in @('MemoryEnable', 'MemoryAcceptEnable', 'MemoryAcceptExport')) {
+            if ((Find-Control $id).GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne
+                [Windows.Automation.ToggleState]::Off) { throw 'Memory enablement and disclosure permissions must default OFF.' }
+        }
+        foreach ($id in @('MemoryRefreshFacts', 'MemorySaveFact', 'MemoryEditFact', 'MemoryDeleteFact',
+            'MemoryPurgeExpired', 'MemoryCreateExportPreview', 'MemoryExport')) {
+            if ((Find-Control $id).Current.IsEnabled) { throw 'Disabled memory must not permit fact actions or export.' }
+        }
+        Invoke-Control 'MemoryClose'
+        $null = Wait-Status '*Setup checkpoint: Destinations*consent missing or invalidated*'
+        if ((Test-Path -LiteralPath (Join-Path $data 'memory')) -or
+            [Convert]::ToHexString([IO.File]::ReadAllBytes($settings)) -cne [Convert]::ToHexString($beforeMemory)) {
+            throw 'Passive memory management opened a store or modified settings.'
+        }
     }
     Close-Desktop
     $configured = Get-Content -LiteralPath $settings -Raw | ConvertFrom-Json
-    if ($configured.schema_version -ne 3 -or $configured.profile.id -ne $legacyId -or
+    if ($configured.schema_version -ne 4 -or $configured.profile.id -ne $legacyId -or
         $configured.companion.personas.Count -ne 1 -or
         $configured.companion.active_persona_id -ne $configured.companion.personas[0].id -or
         $configured.setup.routes[0].model_id -cne 'whisper-1' -or $null -ne $configured.setup.routes[0].consent -or
-        $null -ne $configured.setup.routes[0].credential_id -or $configured.setup.pending_removals.Count -ne 0) {
-        throw 'Actual no-key setup/companion save did not preserve identity, persona, model edit and consent invalidation.'
+        $null -ne $configured.setup.routes[0].credential_id -or $configured.setup.pending_removals.Count -ne 0 -or
+        $configured.memory.schema_version -ne 1 -or $configured.memory.enabled -ne $false -or
+        $configured.memory.storage_policy -cne 'app_local_data' -or $null -ne $configured.memory.custom_directory) {
+        throw 'Actual no-key setup/companion save did not preserve identity, persona, model edit, consent invalidation and memory OFF.'
     }
     if ($CompanionOnly) {
         if ($configured.companion.personas[0].name -cne 'Smoke persona' -or
@@ -379,7 +406,7 @@ try {
         Invoke-Control 'CompanionClose'
         $null = Wait-Status '*Setup checkpoint: Destinations*consent missing or invalidated*'
         Close-Desktop
-        Write-Output 'PASS: independent native companion editor/save/restart; read-only open; exact persona/profile/route/consent preservation; v1 migration original preserved; no keys/network/audio.'
+        Write-Output 'PASS: independent native companion editor/save/restart; passive memory management and all memory permissions OFF; exact persona/profile/route/consent preservation; v1 migration original preserved; no keys/network/audio.'
         return
     }
 

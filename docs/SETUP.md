@@ -45,7 +45,8 @@ access are **unknown**, not free or verified. Official
 [data retention policy](https://platform.openai.com/docs/guides/your-data)
 are linked in the UI (copy reviewed 2026-09-13; no rates cached). Opening a link
 requires an explicit browser action. A ChatGPT subscription is not API quota.
-Screen and persistent memory remain OFF. No health test, account login,
+Screen remains OFF; [local memory](MEMORY.md) is separately OFF by default,
+never enabled by Setup or an installation plan. No health test, account login,
 provider listing or billable probe is run.
 
 Back/Next and the tabs navigate Choice, Destinations, Credentials and Review.
@@ -79,14 +80,16 @@ checkpoint remains the restart recovery boundary.
 
 ## Consent and schema
 
-`AppSettings` accepts the original strict v1 schema and the new strict v2
-schema. Profile schema stays v1. v2 adds versioned `SetupSettings`: a bounded
+`AppSettings` accepts strict schemas v1-v4. Profile schema stays v1.
+v3 adds companion personas/styles; v4 adds separately consented OFF-by-default
+local-memory enable/path policy, not facts. v2 adds versioned `SetupSettings`: a bounded
 checkpoint, up to three `SetupRoute` values and at most sixteen pending owned
 credential removals. Settings contain no secret or transcript. Unknown fields,
 invalid states, newer versions, malformed encodings and oversize files are
 rejected without rewriting their original bytes.
 
-`SetupSettings.Begin` only prepares an in-memory edit. Explicit v1-to-v2 save
+`SetupSettings.Begin` only prepares an in-memory edit at the current schema.
+Explicit migration from v1-v3 preserves the original bytes; a v1 save
 uses `File.Replace` to commit and snapshot the exact original as
 `settings.v1.<opaque-id>.bak` in the same directory. `SettingsSaveResult`
 explicitly reports `MigratedFromVersion1` and `SnapshotFileName`. Existing
@@ -168,7 +171,7 @@ envelope, not a ZIP/support bundle. Its deterministic manifest records
 `Martlet.Configuration`, producer assembly version, minimum reader format,
 settings schema, source profile UUID, snapshot UUID, UTC creation time and
 source SHA-256. `settings_bytes` is base64 of the **exact** <=128 KiB validated
-v1/v2/v3 settings file (base64 is not encryption). Envelope SHA-256 covers the
+v1-v4 settings file (base64 is not encryption). Envelope SHA-256 covers the
 canonical serialized manifest, including the payload; source SHA-256 covers
 the original bytes. A fixed manifest serializes deterministically, but new
 snapshots intentionally have new identifiers/times. Integrity detects damage,
@@ -183,10 +186,14 @@ walk directories or include the opt-in support journal. Route/device IDs and
 configuration are personal; these LOCAL backups are neither encrypted nor
 sanitized diagnostic exports. Version 3 includes named persona text and response-style weights; v1/v2
 snapshots contain no persona data. There is currently no persisted F5 voice,
-downloaded model or memory database to back up. Secrets, transient text/audio, environment,
+downloaded model to back up. Memory settings are included, but the separately
+owned fact store and its exports are never included. Secrets, transient text/audio, environment,
 arbitrary files and diagnostic logs are excluded.
 
-Restore requires an **existing valid same-profile** v1/v2/v3 destination. Missing,
+Restore requires an **existing valid same-profile** v1-v4 destination. Memory is
+always forced OFF with a fresh revision: v4 sources retain their path policy,
+older sources preserve the current path policy, and no fact store is opened.
+Missing,
 malformed, inaccessible or newer destination files are never overwritten as a
 repair shortcut. Foreign profile IDs are not remapped. Preview generates a
 private immutable candidate byte array and displays its entire JSON, SHA-256,
@@ -336,7 +343,7 @@ arbitrary native `AudioPlaybackFailed`/`DeadlineExceeded` errors are not
 successful-cleanup evidence and remain quarantined.
 
 Optional v2 `audio` contains versioned `AudioSettings`, two bounded
-`AudioChoice` values and optional `AudioCheckpoint` values. Existing v1/v2/v3 files
+`AudioChoice` values and optional `AudioCheckpoint` values. Existing v1-v4 files
 without audio still load unchanged. v1 explicit save retains the reviewed exact
 original snapshot; profile identity, legacy credentials, role routes/consents,
 pending removals and setup navigation survive. Unknown audio versions/fields,
@@ -392,3 +399,38 @@ novice/accessibility witness sessions, clean Windows/installer lifecycle,
 signing and G2. No OS-vault roundtrip, live provider/key/model request, cost or
 voice-quality test was run. Passing a controlled PCM meter test is not physical
 device qualification or learned VAD evidence.
+
+## Voice Library: local preparation (VS01)
+
+From the main window, open **Voice Library**. Choose any of the five engines
+to inspect its reference requirements, training availability and license
+caveats. No models or files are loaded merely by opening or changing engines.
+This does not replace the existing API setup described above.
+
+Use **Browse for WAV**, enter a name and matching reviewed transcript, choose
+reference or training-material purpose, select speaker rights and explicitly
+confirm local storage. **Import local copy** preserves the source and saves
+an immutable versioned bundle under `voice-library` in the app data directory.
+Accepted input is non-silent mono PCM16 WAV at 16/22.05/24/44.1/48 kHz, up to
+64 MiB: references are 1-30 seconds, training material 1-600 seconds. A format
+check does not establish speech, single-speaker content or voice quality.
+No decoder/model download, conversion, cropping or transcription is automatic.
+
+**Load / reload saved assets** explicitly reads and verifies local copies.
+Selecting a saved asset and another engine shows preparation guidance without
+changing either the asset or the active conversation. **Remove selected
+imported copy** requires confirmation and preserves the original file.
+Files are not encrypted by Martlet, not included in settings backup/support
+export, and are bounded to 64 assets / 512 MiB. Keep any desired originals.
+An interrupted `.pending` file blocks further imports/listing with a visible
+repair message; preserve saved `.voice` files and remove only the identified
+staging data after confirming no import is running.
+
+Close/Cancel requests cancellation without releasing the shared app worker
+early. Other setup/audio/conversation effects cannot overlap this IO.
+Normal app Exit also waits for outstanding voice IO/cleanup; after the
+operation finishes, Exit again. A crash or forced process termination can
+still leave staging data, handled as an explicit recovery condition.
+**Installation, worker upload, reference preprocessing, training, A/B speech
+previews and applying a self-hosted voice are not implemented by VS01.**
+See [VS02-VS06](VOICE_STUDIO.md#delivery-slices-and-acceptance).

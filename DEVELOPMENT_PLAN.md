@@ -113,6 +113,15 @@ Upstream findings are recorded in [S30-S35](docs/RESEARCH.md#s30); the
 [installation flow](docs/INSTALLATION_SUPPORT.md#feature-first-multi-machine-setup)
 and H08-H10/AC-18-AC-20 in [Delivery](docs/DELIVERY.md) define the remaining work.
 
+**Voice direction update, 2026-09-23:** the owner requested all five self-hosted
+voice engines: F5-TTS, Qwen3-TTS, Chatterbox, GPT-SoVITS and XTTS-v2.
+[Voice setup and comparison](docs/VOICE_STUDIO.md) records implementation
+research, guided isolated installation, local audio/reference/dataset import,
+engine-supported fine-tuning, loading progress and switchable A/B previews
+before applying a conversation voice. VS01-VS06 define staged acceptance.
+All five remain support targets, not qualified providers. F5-only deployment
+descriptions below are the historical first candidate, not an exclusivity rule.
+
 ## 2. Repository baseline
 
 Observed in the assigned isolated worktree at initial inspection:
@@ -187,9 +196,13 @@ microphone does not automatically give access to remote participants' audio.
 
 No autonomous game control, keyboard injection, anti-cheat hooks, general tool
 execution, public-hosted Martlet backend, account system, commercial voice
-cloning catalog, training/fine-tuning, universal inference compatibility,
+cloning catalog, universal inference compatibility,
 mandatory Docker on Windows, embedded Python/CUDA suite, always-on screenshots,
 automatic cloud rerouting, cross-platform desktop promise, or required avatar.
+
+Training/fine-tuning remains outside the API MVP but is now explicitly in
+scope for the optional self-hosted Voice Studio, where the chosen engine has
+a verified recipe. Reference-clip cloning does not require training.
 
 No wiring/electrical guidance or claim that GPU power limits establish circuit
 safety. No automatic installation of drivers, remote-desktop tools, models, or
@@ -298,7 +311,7 @@ review before release, not before independent authorized development.
 Audio2Face animates faces, not whole-body gestures; VRM preset expressions are
 optional, and detailed ARKit-compatible mapping requires a suitable authored
 rig. Live2D is a full renderer target, with model-specific reduced mappings
-rather than assumed ARKit shapes. See [S36-S41](docs/RESEARCH.md#s36) for
+rather than assumed ARKit shapes. See [S42-S47](docs/RESEARCH.md#s42) for
 primary-source constraints and later analyzer candidates.
 Ultralytics advertises AGPL-3.0 or Enterprise terms, not universal
 permissive use. Select actual implementation and model licenses before

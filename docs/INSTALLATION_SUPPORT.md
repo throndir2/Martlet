@@ -1,5 +1,13 @@
 # Installation and support design
 
+The [five-engine Voice Studio plan](VOICE_STUDIO.md) expands optional
+self-hosted speech beyond F5. Its guided experience isolates each engine's
+dependencies, distinguishes installation/loading/voice preparation, and allows
+reference or training-material import followed by A/B previews before Apply.
+VS01's local Voice Library is implemented preparation only; host installation,
+engine execution, training and previews remain later slices, not enabled
+services or qualified setup.
+
 The implemented [V06b Desktop troubleshooting path](TROUBLESHOOTING.md) now
 provides passive shared status/remedies, explicit local metadata recording and
 frozen preview/default-No consent/local ZIP export. There is no configured
@@ -318,6 +326,28 @@ are planned H10 expansion lanes, not categorically excluded product goals;
 native F5 is not promised. Only selected GPU roles require GPU prerequisites:
 an API-only client or qualified CPU role must not be blocked for lacking CUDA.
 
+### Linux gateway state backend boundary
+
+The canonical gateway includes an opt-in `LinuxServicePermissions` storage
+candidate for non-root Linux x86_64/glibc on local persistent ext4. Setup must
+not treat library availability or a modeled check as host qualification.
+Existing factory signatures remain Windows DPAPI; Linux selection is an
+explicit trusted local-owner call, not a stored wizard permission.
+
+Linux stores signing/private keys as service-permission-isolated **plaintext**:
+0700 directory, 0600 files, strict UID/ACL/link/mount checks and durable redo.
+This is not Windows DPAPI parity. Explain same-UID/root/offline-disk exposure
+and operator-managed disk encryption where needed. The library creates only an
+absent leaf under an existing safe private parent; it never provisions a UID,
+repairs ownership/modes, migrates Windows ciphertext or resets devices.
+Storage/clock failures mean access blocked, not unpaired.
+
+Linux local approval/disclosure, GUI/headless lifecycle, real native execution,
+reboot, service/container mounts and LAN qualification remain **NOT RUN**.
+The Windows Host CLI has not become portable. Preserve H01/#21 and managed
+preset holds; a future installer must use the same authority rather than fork
+pairing records. See [backend contract](../src/Martlet.Gateway.Persistence/README.md#explicit-linux-service-permissions-candidate).
+
 ### Read-only discovery and preflight
 
 The proposed packaged `martlet-host doctor` starts without changing the machine.
@@ -382,6 +412,14 @@ host-network, or desktop Docker socket mounts.
 Show **exact selected-artifact bytes** before consent, plus expanded image
 size, staging space, rollback retention, and user-data reserve. Metadata can
 inform planning but is not the checksum verification of a downloaded file.
+
+The focused [H05b acquisition library](../src/Martlet.Host.Setup/README.md)
+now separates durable local review from fresh exact-artifact acquisition consent.
+It supports pinned public GitHub release assets through a bounded reviewed CDN
+policy and owned, hash-verified local staging; it does not install or execute
+them. Hugging Face and OCI downloads remain explicitly unsupported in this
+slice, so this is not a completed model-provisioning or F5 installation journey.
+Catalog and host/runtime qualification remain unchanged.
 
 | Artifact | Observed upstream metadata / planning treatment |
 | --- | --- |

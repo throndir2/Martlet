@@ -12,6 +12,7 @@
     <PackageReference Include="Grpc.AspNetCore.Server" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\..\src\Martlet.Desktop\Martlet.Desktop.csproj" />
+    <ProjectReference Include="..\..\src\Martlet.Mcp.Protocol\Martlet.Mcp.Protocol.csproj" />
     <Using Include="Xunit" />
     <Using Include="System.IO" />
     <Using Include="System.Net.Http" />

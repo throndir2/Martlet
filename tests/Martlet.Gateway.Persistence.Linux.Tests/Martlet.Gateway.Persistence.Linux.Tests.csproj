@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <OutputType>Exe</OutputType>
+    <StartupObject>Martlet.Gateway.Persistence.Linux.Tests.Program</StartupObject>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\Martlet.Gateway.Persistence.Portable.Tests\OwnerScenario.cs" Link="OwnerScenario.cs" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
+    <ProjectReference Include="..\..\src\Martlet.Gateway.Persistence\Martlet.Gateway.Persistence.csproj" />
+    <Using Include="Xunit" />
+  </ItemGroup>
+</Project>

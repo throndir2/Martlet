@@ -64,9 +64,17 @@ reservation; an over-budget combination is rejected without truncation or a
 provider call. Valid legacy v1/v2 profiles upload no implicit persona/style
 instruction until settings v3 is explicitly
 saved. Up to eight completed explicit exchanges from the prior two minutes may
-be supplied from memory; oldest pairs are omitted until the whole request fits
+be supplied from volatile memory; oldest pairs are omitted until the whole request fits
 the unchanged budget. Failed/refused/suppressed turns are excluded, and pause,
 lock, configuration load/change, Stop or conversation close clears the buffer.
+
+[Local memory](MEMORY.md) is separately OFF by default. Its next-action-only
+retrieval checkbox is independent of provider/cost, local capture and upload
+permission. After explicit typed/PTT participation accepts, it can retrieve
+at most three matching explicitly saved facts with revision/provenance/age
+labels inside the same input budget. No transcript is ingested; no full store,
+path or consent UUID is uploaded. Missing permission never opens the store;
+retrieval failure stops the turn rather than silently omitting requested facts.
 Nothing is persisted. TTS receives only eligible
 generated segments. All provider routes have the fixed HTTPS origin
 `https://api.openai.com`; there is no custom endpoint, model discovery,
@@ -151,7 +159,7 @@ factory. Closing the main window exits the app, not a background tray listener.
 This is not a measured 250 ms physical-stop guarantee.
 
 The fixed **Stop / revoke (Esc)** control also clears accepted but unused
-action/capture/upload permissions. Escape works from the typed input, response
+action/memory/capture/upload permissions. Escape works from the typed input, response
 fields and held PTT control. Releasing Space after Escape cannot send that
 discarded recording or rearm PTT. Stop during settings loading or a slow worker
 requests cancellation without releasing the shared ownership slot early.

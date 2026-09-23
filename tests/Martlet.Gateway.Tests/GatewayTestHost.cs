@@ -10,7 +10,7 @@ using Martlet.Gateway;
 
 namespace Martlet.Gateway.Tests;
 
-internal sealed class ManualGatewayClock(DateTimeOffset utcNow) : TimeProvider
+internal class ManualGatewayClock(DateTimeOffset utcNow) : TimeProvider
 {
     private readonly object gate = new();
     private DateTimeOffset utcNow = utcNow;
@@ -25,6 +25,23 @@ internal sealed class ManualGatewayClock(DateTimeOffset utcNow) : TimeProvider
     {
         lock (gate)
             utcNow += duration;
+    }
+}
+
+internal sealed class SteppingGatewayClock(DateTimeOffset utcNow) : ManualGatewayClock(utcNow)
+{
+    private int readsUntilAdvance = -1;
+    private TimeSpan advance;
+    internal void AdvanceOnRead(int reads, TimeSpan duration)
+    {
+        readsUntilAdvance = reads;
+        advance = duration;
+    }
+    public override DateTimeOffset GetUtcNow()
+    {
+        if (Interlocked.Decrement(ref readsUntilAdvance) == 0)
+            Advance(advance);
+        return base.GetUtcNow();
     }
 }
 
@@ -67,20 +84,25 @@ internal sealed class GatewayTestHost : IAsyncDisposable
     internal PinnedGatewayClient Client { get; private set; } = null!;
 
     private GatewayTestHost(
-        IEnumerable<IGatewayWorker>? workers)
+        IEnumerable<IGatewayWorker>? workers,
+        IEnumerable<IGatewayInferenceWorker>? inferenceWorkers,
+        ManualGatewayClock? clock)
     {
-        Clock = new(new DateTimeOffset(2026, 9, 21, 20, 0, 0, TimeSpan.Zero));
+        Clock = clock ?? new(new DateTimeOffset(2026, 9, 21, 20, 0, 0, TimeSpan.Zero));
         Certificate = CreateCertificate(Clock.GetUtcNow());
         Origin = new($"https://127.0.0.1:{ReserveLoopbackPort()}");
         Identity = GatewayHostIdentity.FromCertificate("fixture-host", Certificate);
         Audit = new();
-        Server = new(Identity, Origin, workers ?? DefaultWorkers(Clock), Audit, Clock);
+        Server = new(Identity, Origin, workers ?? DefaultWorkers(Clock), Audit, Clock,
+            inferenceWorkers: inferenceWorkers);
     }
 
     internal static async ValueTask<GatewayTestHost> StartAsync(
-        IEnumerable<IGatewayWorker>? workers = null)
+        IEnumerable<IGatewayWorker>? workers = null,
+        IEnumerable<IGatewayInferenceWorker>? inferenceWorkers = null,
+        ManualGatewayClock? clock = null)
     {
-        var host = new GatewayTestHost(workers);
+        var host = new GatewayTestHost(workers, inferenceWorkers, clock);
         try
         {
             var binding = new GatewayTlsBinding(
@@ -113,7 +135,7 @@ internal sealed class GatewayTestHost : IAsyncDisposable
         string deviceId = "fixture-device")
     {
         var card = OpenPairing(role, deviceId);
-        using var response = await SendPairingAsync(card, card.SpkiFingerprint);
+        using var response = await SendPairingAsync(card, card.SpkiFingerprint, deviceId: deviceId);
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         using var document = await JsonDocument.ParseAsync(
             await response.Content.ReadAsStreamAsync());
@@ -135,7 +157,8 @@ internal sealed class GatewayTestHost : IAsyncDisposable
     internal ValueTask<HttpResponseMessage> SendPairingAsync(
         GatewayPairingCard card,
         string fingerprint,
-        string? token = null)
+        string? token = null,
+        string deviceId = "fixture-device")
     {
         var proof = new GatewayPairingProof
         {
@@ -144,7 +167,7 @@ internal sealed class GatewayTestHost : IAsyncDisposable
             PairingToken = token ?? card.Token.Reveal(),
             HostId = card.HostId,
             SpkiFingerprint = fingerprint,
-            DeviceId = "fixture-device"
+            DeviceId = deviceId
         };
         var request = new HttpRequestMessage(
             HttpMethod.Post, Origin.CanonicalOrigin + "/martlet/v1/pair")
@@ -164,6 +187,26 @@ internal sealed class GatewayTestHost : IAsyncDisposable
             HttpMethod.Get, Origin.CanonicalOrigin + path);
         signer.Sign(request, role);
         return request;
+    }
+
+    internal HttpRequestMessage SignedPost(
+        string path, GatewayRole role, GatewayRequestSigner signer, byte[] body)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, Origin.CanonicalOrigin + path)
+        {
+            Content = new ByteArrayContent(body)
+        };
+        request.Content.Headers.ContentType = new("application/json") { CharSet = "utf-8" };
+        signer.Sign(request, role, body);
+        return request;
+    }
+
+    internal static HttpRequestMessage ClonePost(HttpRequestMessage source, byte[] body)
+    {
+        var clone = Clone(source);
+        clone.Content = new ByteArrayContent(body);
+        clone.Content.Headers.ContentType = new("application/json") { CharSet = "utf-8" };
+        return clone;
     }
 
     internal static HttpRequestMessage Clone(HttpRequestMessage source)

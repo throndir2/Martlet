@@ -1,0 +1,41 @@
+Martlet F5 worker - third-party boundaries
+===========================================
+
+This directory does not bundle third-party code, wheels, runtime images,
+models, vocabulary, vocoder files, reference voices, or audio.
+
+Candidate production integration references, but does not redistribute:
+
+1. F5-TTS source
+   Project: SWivid/F5-TTS
+   Package version: 1.1.22
+   Source revision: 9c614e9657089213efc6a7421b30630be138a3f5
+   Declared source license: MIT
+   Source: https://github.com/SWivid/F5-TTS
+
+2. F5-TTS v1 model and vocabulary
+   Project/repository: SWivid/F5-TTS
+   Model revision: 84e5a410d9cead4de2f847e7c9369a6440bdfaca
+   Declared model-repository license: CC-BY-NC-4.0
+   Source: https://huggingface.co/SWivid/F5-TTS
+
+3. Vocos code/model
+   Python package candidate: vocos 0.1.0
+   Model repository: charactr/vocos-mel-24khz
+   Model revision: 0feb3fdd929bcd6649e0e7c5a688cf7dd012ef21
+   Declared model-repository license: MIT
+   Source: https://github.com/gemelo-ai/vocos
+   Model source: https://huggingface.co/charactr/vocos-mel-24khz
+
+4. PyTorch and torchaudio
+   Candidate versions: torch 2.6.0+cu124; torchaudio 2.6.0+cu124
+   Declared project license: BSD-style
+   Source: https://github.com/pytorch/pytorch
+   Source: https://github.com/pytorch/audio
+
+All declarations above require verification against the exact acquired
+payloads and complete transitive/runtime contents before distribution or use.
+They are not Martlet approval, a complete notice file, or legal advice.
+Source-code terms do not grant model-weight, runtime-image, reference-voice,
+publicity, privacy, or subject-consent rights. No third-party payload has been
+downloaded or inspected by this worker implementation or its tests.

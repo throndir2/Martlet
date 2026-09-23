@@ -57,11 +57,26 @@ installer, signed release or native qualification is claimed. See the
 exact lane choices, supported/degraded/blocked permutations and evidence limits.
 No current ledger entry below is promoted by this development authorization.
 
+**Canonical local-memory reuse:** the memory-only delta of `b80920a` and the
+memory named-argument correction from `68bd6c8` are adapted onto PR #44, not
+copied as old project snapshots. Schema 3 remains companion; schema 4 adds
+OFF-by-default local-memory policy and Desktop management/retrieval. PR #39
+finalization-time expiry/top-K regressions and PR #44 exact snapshot limits,
+legacy-v2 receipts, mandatory General/CompanionOnly native smokes and wrapper
+failure propagation remain required. No avatar/listen-first, Gateway,
+installation schema, remote-memory or host-action integration is imported.
+AC-16 and installation AC-18-AC-20 remain unchanged; source companion AC-18-23
+map to canonical AC-21-26 (source H07b barge-in remains canonical H07c).
+Historical package hashes elsewhere in this ledger are not evidence for this
+candidate. Its exact local commands, results and review are recorded in its PR.
+
 | Item | Actual status |
 | --- | --- |
+| VS01 | [Voice Library](VOICE_STUDIO.md): passive five-engine catalog and real local reference/training-material WAV import, transcript/rights checks, immutable versioned bundles, explicit reload/inspect/remove, shared effect ownership and engine-specific preparation guidance. No model runtime, upload, training, preview playback or conversation route; VS02-VS06 and actual device/model/novice qualification remain incomplete. |
 | D01 | Dispositions recorded in [FOUNDATION.md](FOUNDATION.md). .NET/WPF/core direction and pins chosen; license, distribution/signing, provider spending and optional model/SDK rights remain deferred gates. |
 | D02 | Versioned settings/profile/provider contracts, bounded PCM, production JSON and temporal text validators, explicit refusal, epochs/cancel/EOF/deadlines and golden traces exist. Role request bodies, remote schemas/SSE/binary wire framing remain; **AC-01 is partial, not frozen or fully passed**. |
 | F01 | Offline accessible text/status shell, explicit unconfigured-profile save, atomic validated settings and truthful shared-status CLI implemented. Local developer-host build/tests/CLI and bounded desktop-launch scope are documented; no clean consumer-OS claim. |
+| P03c local memory | [Consented local memory](MEMORY.md): strict schema-4 policy, explicit enable/save/inspect/edit/delete/purge/frozen export and next-turn-only bounded retrieval using the existing single-owner library. No transcript ingestion, remote memory, embedding or installation activation. v1-v3 migration keeps exact originals; v1-v4 recovery excludes facts and forces memory OFF. Desktop/root/package graph includes Memory with regenerated normal/RID locks. AC-16/G4, clean-machine, real-user usefulness and physical storage failure remain unqualified. |
 | F03a/F03b/F04 | Merged deterministic 30-script fixture engine, bounded real PCM sink/WASAPI adapter and local diagnostic registry/CLI/WPF shell. Headless evidence is not actual listening or install qualification. |
 | F03c | Shared `FixtureSession` now joins production cursor/validator, ordered synthetic text, optional actual sink, shared status and accessible Desktop/Doctor commands. Ten novice scenarios, per-action tone permission, Stop/fresh IDs/epochs, no default device/network/write effects. |
 | F05 integration | Normal solution includes fixture projects/tests and session tests; portable/Windows Doctor executable smokes remain required local checks with the pinned SDK. Packaging includes actual fixture/audio references, separate normal/RID locks, notices and audio-OFF native fixture smokes. |
@@ -189,6 +204,17 @@ locks. The verified Inno Setup 7.1.0 compiler produced an internal unsigned
 installer below the proposed 200 MiB compressed target. The installer was
 **not executed**. This is build/fixture evidence, not a passed clean-VM install,
 uninstall, signature, physical-audio, novice or G1 gate.
+
+### Voice expansion VS01-VS06 (2026-09-23)
+
+The accepted [five-engine Voice Studio plan](VOICE_STUDIO.md#delivery-slices-and-acceptance)
+extends H04's F5-only direction without removing H02/H03/H05/H08 gates.
+VS01 implements local preparation; VS02 owns isolated installation and exact
+artifact closure; VS03 owns named worker adapters; VS04 owns safe A/B preview
+switching; VS05 owns supported fine-tuning; VS06 owns conversation application
+and novice qualification. Engine availability and model training are not
+inferred from catalog entries or imported audio. Existing API behavior is
+preserved. All execution/qualification remains local and separately consented.
 
 ## 1. Execution rules
 
@@ -494,6 +520,23 @@ manufacture statuses or merge a held PR. Stop only dependent waves for a genuine
 blocker and continue independent work. Update this ledger with actual merged
 evidence; a queued session or code-only foundation is not a completed feature.
 
+#### H03b3: explicit Linux state backend candidate
+
+The canonical durable owner now shares one checkpoint/redo engine across its
+unchanged Windows-DPAPI default and an explicit `LinuxServicePermissions`
+candidate. Linux x86_64/glibc/local-ext4 state uses native FD/UID/mode/ACL/link/
+mount verification, cooperative lock and atomic rename plus directory fsync.
+Its distinct envelope is **permission-isolated plaintext**, not DPAPI parity;
+no silent migration/fallback or second paired-device authority exists.
+
+Permanent relationships, revocations/nonces, same-key renewal, default No and
+loopback-only behavior are retained. Windows regressions and the modeled
+production Linux boundary run locally; the separate native Linux test target
+is compile-only here. Actual Linux execution, reboot/service/container lifecycle,
+portable approval UI/console, private worker transport and LAN remain
+**NOT RUN / unqualified**. H01/#21 and hosting-preset holds remain unchanged.
+See [custody/recovery and evidence](../src/Martlet.Gateway.Persistence/README.md#explicit-linux-service-permissions-candidate).
+
 ## 3. Parallelization boundaries and first implementation batch
 
 Start from the reviewed plan. The shortest useful batch is:
@@ -708,10 +751,10 @@ version, stage/code and reproducible steps first, not a full raw recording.
 | R12: Opt-in perception and gaming resource budgets | P01-P02, P04 / M4 | AC-14/AC-15, G4 |
 | R13: Inspectable/deletable/exportable memory and provenance | P03-P04 / M4 | AC-10/AC-16, G4 |
 | R14: Unified status/doctor, fixtures, redaction and support | F03-F04, V06-V07 / M1-M2 | AC-03/AC-04/AC-10, G1-G2 |
-| R15: F5 licensing/streaming truth, separate upstream asset terms | D01, H02, H04, A01, A03b / M0-M5 | AC-01/AC-11/AC-17/AC-32; research S15-S18/S26-S28/S36-S41 |
+| R15: F5 licensing/streaming truth, separate upstream asset terms | D01, H02, H04, A01, A03b / M0-M5 | AC-01/AC-11/AC-17/AC-32; research S15-S18/S26-S28/S42-S47 |
 | R16: Hardware-dependent tuning/remote desktop remain optional | H06 / M3 | AC-14 only when enabled; no wiring/circuit-safety claim |
 | R17: Measured real-OS/GPU gates, local validation, signing and support readiness | F05, V07, H06, P04, A03 / M1-M5 | G1-G5, all relevant AC cases; never fixture-only hardware support |
-| R18: Optional Live2D/VRM avatars, Audio2Face-first analysis, selective composition/comparisons and no-avatar parity | A01a/A01b + A02a/A02b parallel now; A02c/A02d integration; A03 / M5 qualification | AC-17/AC-27-AC-32, G5; per-model matrix in AVATARS, S36-S41; initial facial libraries are not complete motion or end-user support |
+| R18: Optional Live2D/VRM avatars, Audio2Face-first analysis, selective composition/comparisons and no-avatar parity | A01a/A01b + A02a/A02b parallel now; A02c/A02d integration; A03 / M5 qualification | AC-17/AC-27-AC-32, G5; per-model matrix in AVATARS, S42-S47; initial facial libraries are not complete motion or end-user support |
 | R19: Easy persona text editing, named profiles and swappable text files | V05a-V05b, V02 / M2 | AC-21; persisted data and runtime use, not permission or multiple autonomous agents |
 | R20: User-changeable F5 reference audio/transcript and consented preview | H04a-H04b, H06 / M3 | AC-22, G3; actual reference replacement/voice evidence, separate model/voice rights |
 | R21: Independently change compatible LLM and VLM models without rebuilding | V02c, V03 / M2 LLM; P02 / M4 VLM | AC-23; capability/consent revalidation and atomic idle-boundary selection, no universal compatibility promise |

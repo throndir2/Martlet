@@ -666,7 +666,7 @@ finally { [IO.File]::WriteAllBytes($depsPath, $originalDeps) }
 
 $desktopDepsPath = Join-Path $copy 'Desktop\Martlet.Desktop.deps.json'
 $desktopDeps = [IO.File]::ReadAllBytes($desktopDepsPath)
-foreach ($project in @('Martlet.Conversation', 'Martlet.Providers', 'Martlet.Participation', 'Martlet.Support')) {
+foreach ($project in @('Martlet.Conversation', 'Martlet.Memory', 'Martlet.Providers', 'Martlet.Participation', 'Martlet.Support')) {
     try {
         $changedDeps = [Text.Encoding]::UTF8.GetString($desktopDeps) | ConvertFrom-Json
         $library = @($changedDeps.libraries.PSObject.Properties.Name | Where-Object { $_ -clike "$project/*" })
@@ -833,7 +833,7 @@ $graph = Join-Path $WorkDirectory 'negative.restore-graph.json'
 $build = Join-Path $WorkDirectory 'negative-build'
 Invoke-Dotnet $sdk (@('msbuild', $project, '-t:GenerateRestoreGraphFile', "-p:RestoreGraphOutputPath=$graph",
     '-p:RuntimeIdentifier=win-x64', '-p:UseArtifactsOutput=true', "-p:ArtifactsPath=$build", '-verbosity:quiet') + $properties) -WorkingDirectory $source
-foreach ($projectName in @('Martlet.Conversation', 'Martlet.Providers', 'Martlet.Participation', 'Martlet.Support',
+foreach ($projectName in @('Martlet.Conversation', 'Martlet.Memory', 'Martlet.Providers', 'Martlet.Participation', 'Martlet.Support',
         'Martlet.Avatars', 'Martlet.Avatar.Hosting', 'Martlet.Avatar.Audio2Face', 'Martlet.Avatar.RendererHost')) {
     $projectLock = Join-Path $packaging "locks\$projectName.packages.lock.json"
     $projectLockBytes = [IO.File]::ReadAllBytes($projectLock)

@@ -8,6 +8,7 @@ using Martlet.Audio.Windows;
 using Martlet.Sessions;
 using Martlet.Credentials.Windows;
 using Martlet.Avatar.Hosting;
+using Martlet.Core.Voices;
 
 namespace Martlet.Desktop;
 
@@ -19,6 +20,7 @@ public partial class MainWindow : Window
     private readonly SetupOperationRunner setupOperations = new();
     private readonly ISetupService? setupService;
     private readonly ICompanionSettingsService? companionService;
+    private readonly DesktopMemoryService? memory;
     private readonly ConfigurationRecoveryController? recovery;
     private readonly AudioSetupService audioSetup;
     private readonly LiveConversationController? conversation;
@@ -37,6 +39,7 @@ public partial class MainWindow : Window
     private bool closing;
     private bool mayClose;
     private SetupOperation? fixtureOperation;
+    private SetupOperation? voiceOperation;
     private readonly TaskCompletionSource fixtureQuarantine = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public MainWindow(SettingsStore? store, string? startupError) : this(store, startupError, new(store?.DataDirectory)) { }
@@ -51,11 +54,12 @@ public partial class MainWindow : Window
         var vault = new WindowsCredentialStore();
         setupService = store is null ? null : new SetupService(store, vault);
         companionService = store is null ? null : new CompanionSettingsService(store);
+        memory = store is null ? null : new DesktopMemoryService(store);
         recovery = store is null ? null : new(store, setupOperations, () => !support.HasResources);
         if (setupService is not null)
         {
             conversation = new(setupOperations, setupService, vault, new WasapiCaptureDeviceFactory(), new WasapiDeviceFactory(),
-                generatedSpeech: avatar.Observer, revokeAvatar: avatar.Revoke);
+                memory: memory, generatedSpeech: avatar.Observer, revokeAvatar: avatar.Revoke);
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
         }
         audioSessionEvents.LockedChanged += AvatarSessionLocked;
@@ -78,7 +82,9 @@ public partial class MainWindow : Window
         else
         {
             PipelineText.Text = "Mic / VAD / STT / Policy / LLM / TTS / Playback: unavailable; not run. Correct the launch data directory first.";
-            DemoButton.IsEnabled = ToneButton.IsEnabled = ScenarioChoice.IsEnabled = SetupButton.IsEnabled = AudioSetupButton.IsEnabled = CompanionButton.IsEnabled = ConversationButton.IsEnabled = false;
+            DemoButton.IsEnabled = ToneButton.IsEnabled = ScenarioChoice.IsEnabled =
+                SetupButton.IsEnabled = AudioSetupButton.IsEnabled = CompanionButton.IsEnabled =
+                MemoryButton.IsEnabled = ConversationButton.IsEnabled = VoiceLibraryButton.IsEnabled = false;
         }
     }
 
@@ -115,7 +121,9 @@ public partial class MainWindow : Window
         SetupButton.IsEnabled = !saving && !runningFixture && !model.IsRunning;
         AudioSetupButton.IsEnabled = SetupButton.IsEnabled;
         CompanionButton.IsEnabled = SetupButton.IsEnabled;
+        MemoryButton.IsEnabled = SetupButton.IsEnabled;
         ConversationButton.IsEnabled = SetupButton.IsEnabled;
+        VoiceLibraryButton.IsEnabled = SetupButton.IsEnabled;
         RefreshButton.IsEnabled = !saving && !runningFixture && model.CanRefresh;
         StopButton.IsEnabled = !saving && model.IsRunning;
         DemoButton.IsEnabled = ToneButton.IsEnabled = !saving && !runningFixture && !model.IsRunning && !setupOperations.IsRunning;
@@ -255,6 +263,13 @@ public partial class MainWindow : Window
         await RefreshAsync();
     }
 
+    private async void Memory_Click(object sender, RoutedEventArgs e)
+    {
+        if (memory is null || closing || saving || runningFixture || model?.IsRunning == true) return;
+        new MemoryWindow(memory, setupOperations) { Owner = this }.ShowDialog();
+        await RefreshAsync();
+    }
+
     private async void Conversation_Click(object sender, RoutedEventArgs e)
     {
         if (conversation is null || closing || saving || runningFixture || model?.IsRunning == true) return;
@@ -263,6 +278,15 @@ public partial class MainWindow : Window
                 Avatar = OpenAvatar }.ShowDialog();
         await RefreshAsync();
     }
+
+    private void VoiceLibrary_Click(object sender, RoutedEventArgs e)
+    {
+        if (store is null || closing || saving || runningFixture || model?.IsRunning == true) return;
+        new VoiceLibraryWindow(new VoiceLibrary(System.IO.Path.Combine(store.DataDirectory, "voice-library")), setupOperations)
+            { Owner = this, OperationStarted = ObserveVoiceOperation }.ShowDialog();
+    }
+
+    internal void ObserveVoiceOperation(SetupOperation operation) => voiceOperation = operation;
 
     private void Troubleshooting_Click(object sender, RoutedEventArgs e) => OpenTroubleshooting(this);
     private void Avatar_Click(object sender, RoutedEventArgs e) => OpenAvatar(this);
@@ -321,6 +345,12 @@ public partial class MainWindow : Window
         e.Cancel = true;
         if (closing)
             return;
+        if (voiceOperation is { Completion.IsCompleted: false } pendingVoice)
+        {
+            pendingVoice.RequestCancellation();
+            ActionText.Text = "Exit is waiting for Voice Library IO and owned staging cleanup. Keep Martlet open, then Exit again after the local operation finishes.";
+            return;
+        }
         if (recovery?.HasResources == true)
         {
             recovery.StopObserving();
@@ -355,6 +385,7 @@ public partial class MainWindow : Window
             return;
         }
         await avatar.DisposeAsync();
+        memory?.Dispose();
         // WPF OnMainWindowClose exits the process, including any non-cooperative in-process callback.
         // Even absent or synchronous cleanup must leave WPF's original Closing event before closing again.
         await Dispatcher.InvokeAsync(() =>

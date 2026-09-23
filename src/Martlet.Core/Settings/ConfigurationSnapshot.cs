@@ -74,9 +74,9 @@ public static class ConfigurationSnapshot
 {
     public const int MaximumBytes = 262_144;
     public const string Scope = "LOCAL configuration only; NOT encrypted or a sanitized support bundle. " +
-        "Includes exact settings, profile/route/model/device preferences, opaque credential references and cleanup metadata. " +
+        "Includes exact settings, profile/route/model/device preferences, memory enable/path policy, opaque credential references and cleanup metadata. " +
         "Device identifiers and configuration may be personal. Excludes secret values/OS vault, environment, conversations, audio, " +
-        "models, arbitrary files, crash dumps and optional support journal/logs. No upload or cloud storage.";
+        "memory facts/store/exports, models, arbitrary files, crash dumps and optional support journal/logs. No upload or cloud storage.";
 
     // Envelope consistency only: callers still own freshness, source lifetime and authorization.
     public static ConfigurationSnapshotInspection Inspect(ReadOnlyMemory<byte> bytes)
@@ -196,10 +196,11 @@ public sealed class ConfigurationRestorePlan
             $"Profile choice: {current.Profile.Kind} -> {restored.Profile.Kind}; setup checkpoint -> Destinations.",
             "ALL saved destination acknowledgments and audio checkpoints are invalidated. Capture and logging are NOT enabled.",
             "ALL imported credential IDs and imported cleanup markers remain historical only; no key is read, rebound or deleted.",
-            "Version 3 persona profiles and style weights are restored when present; older snapshots preserve the current companion profiles.",
+            "Version 3+ persona profiles and style weights are restored when present; older snapshots preserve the current companion profiles.",
+            "Memory facts, store files and exports are NOT backed up or restored. Memory is forced OFF; a version 4 storage policy is retained for explicit review and re-enablement.",
             $"Current legacy references retained unchanged: {current.Profile.Credentials.Count}. Current owned cleanup references retained/queued: {restored.Setup!.PendingRemovals.Count}.",
             "Imported legacy references are NOT restored. Reconfigure keys and review destinations/devices explicitly.",
-            "Support journal, secrets and nonexistent voice/model/memory databases are NOT restorable here.",
+            "Support journal, secrets and voice/model databases are NOT restorable here. The separately owned memory fact store is excluded.",
             "An exact pre-replacement raw settings snapshot is kept under a new settings.recovery.*.bak name. Historical v1 snapshots remain untouched."
         };
         foreach (var role in Enum.GetValues<SetupRole>())

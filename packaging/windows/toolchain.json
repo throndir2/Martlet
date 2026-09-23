@@ -5,7 +5,7 @@
   "rid": "win-x64",
   "applicationGraphs": {
     "Desktop": {
-      "projects": ["Martlet.Desktop", "Martlet.Core", "Martlet.Diagnostics", "Martlet.Fixtures", "Martlet.Sessions", "Martlet.Audio", "Martlet.Credentials.Windows", "Martlet.Conversation", "Martlet.Providers", "Martlet.Participation", "Martlet.Support", "Martlet.Avatars", "Martlet.Avatar.Hosting", "Martlet.Avatar.Audio2Face"],
+      "projects": ["Martlet.Desktop", "Martlet.Core", "Martlet.Diagnostics", "Martlet.Fixtures", "Martlet.Sessions", "Martlet.Audio", "Martlet.Credentials.Windows", "Martlet.Conversation", "Martlet.Memory", "Martlet.Providers", "Martlet.Participation", "Martlet.Support", "Martlet.Avatars", "Martlet.Avatar.Hosting", "Martlet.Avatar.Audio2Face"],
       "packages": ["NAudio.Wasapi", "NAudio.Core", "System.Numerics.Tensors", "Google.Protobuf", "Grpc.Core.Api", "Grpc.Net.Client", "Grpc.Net.Common", "Microsoft.Extensions.DependencyInjection.Abstractions", "Microsoft.Extensions.Logging.Abstractions"],
       "frameworks": ["Microsoft.NETCore.App", "Microsoft.WindowsDesktop.App"]
     },

@@ -101,6 +101,8 @@ public sealed partial class SettingsStore
             }
             if (existing.Settings?.Companion is { } priorCompanion && settings.Companion is { } nextCompanion)
                 ValidateCompanionTransition(priorCompanion, nextCompanion);
+            if (existing.Settings?.Memory is { } priorMemory && settings.Memory is { } nextMemory)
+                ValidateMemoryTransition(priorMemory, nextMemory);
             int? migratedFrom = existing.Settings is { } old && old.SchemaVersion < settings.SchemaVersion
                 ? old.SchemaVersion
                 : null;
@@ -191,6 +193,14 @@ public sealed partial class SettingsStore
                 ContractRules.Require(replacement.ConfigurationRevision != persona.ConfigurationRevision,
                     "Changed persona content or response styles require a fresh configuration revision.");
         }
+    }
+
+    private static void ValidateMemoryTransition(MemorySettings prior, MemorySettings next)
+    {
+        if (prior.Enabled != next.Enabled || prior.StoragePolicy != next.StoragePolicy ||
+            !string.Equals(prior.CustomDirectory, next.CustomDirectory, StringComparison.Ordinal))
+            ContractRules.Require(prior.ConfigurationRevision != next.ConfigurationRevision,
+                "Changed memory enablement or storage selection requires a fresh configuration revision.");
     }
 
     internal async Task<SetupSaveResult> RemoveDetachedCredentialAsync(AppSettings settings, string? expectedRevision,

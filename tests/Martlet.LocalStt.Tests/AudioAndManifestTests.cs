@@ -57,6 +57,13 @@ public sealed class AudioAndManifestTests
         Assert.Equal(LocalSttCandidateStatus.DisabledPendingQualification, manifest.Status);
         Assert.Equal("win-x64", manifest.Target);
         Assert.Equal(LocalSttNetworkPolicy.NoNetwork, manifest.NetworkPolicy);
+        Assert.Equal(LocalSttPackageAcquisitionMode.CallerSuppliedOfflineImportOnly,
+            manifest.AcquisitionMode);
+        Assert.False(manifest.AutomaticDownloadAllowed);
+        Assert.Equal(LocalSttSourceLocatorBehavior.Redirecting,
+            manifest.RuntimeLocatorBehavior);
+        Assert.Equal(LocalSttSourceLocatorBehavior.Redirecting,
+            manifest.ModelLocatorBehavior);
         Assert.Equal("en", manifest.Language);
         Assert.Equal(64, manifest.DocumentSha256.Length);
         Assert.Equal(64, manifest.ModelSha256.Length);

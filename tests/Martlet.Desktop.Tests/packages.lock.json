@@ -176,6 +176,7 @@
           "Martlet.Conversation": "[0.1.0, )",
           "Martlet.Credentials.Windows": "[0.1.0, )",
           "Martlet.Diagnostics": "[0.1.0, )",
+          "Martlet.Memory": "[0.1.0, )",
           "Martlet.Participation": "[0.1.0, )",
           "Martlet.Support": "[0.1.0, )"
         }
@@ -187,11 +188,27 @@
           "Martlet.Sessions": "[0.1.0, )"
         }
       },
+      "martlet.doctor": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Audio": "[0.1.0, )",
+          "Martlet.Diagnostics": "[0.1.0, )"
+        }
+      },
       "martlet.fixtures": {
         "type": "Project",
         "dependencies": {
           "Martlet.Core": "[0.1.0, )"
         }
+      },
+      "martlet.mcp.protocol": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Doctor": "[0.1.0, )"
+        }
+      },
+      "martlet.memory": {
+        "type": "Project"
       },
       "martlet.participation": {
         "type": "Project"

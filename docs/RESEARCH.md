@@ -550,13 +550,13 @@ establish ongoing recovery, model readiness or a successful conversation.
 
 ## Avatar direction research refresh
 
-**Accessed 2026-09-23, America/Los_Angeles.** S36-S41 are direct primary-source
+**Accessed 2026-09-23, America/Los_Angeles.** S42-S47 are direct primary-source
 reads supporting the [accepted avatar direction](AVATARS.md), not execution
 evidence. No models, SDK/Core binaries or artist assets were acquired; no
 license accepted, inference run or service installed. These mutable references
 must be pinned/rechecked by each implementation owner before support/release.
 
-### S36
+### S42
 
 [Cubism SDK lip-sync](https://docs.live2d.com/en/cubism-sdk-manual/lipsync/),
 [SDK licensing](https://www.live2d.com/en/sdk/license/),
@@ -578,7 +578,7 @@ Newer MOC/5.3 blend/offscreen support is not claimed. Exact native parsing,
 rendering and licensing remain unqualified; framework availability alone
 does not supply Core or rights to user artwork.
 
-### S37
+### S43
 
 [Cubism Editor Motion-sync](https://docs.live2d.com/en/cubism-editor-manual/motion-sync/),
 [official Unity MotionSync components](https://github.com/Live2D/CubismUnityMotionSyncComponents)
@@ -599,7 +599,7 @@ runtime; that integration/availability remains an explicit candidate check.
 Do not infer framework licensing covers Core or reuse the editor preview as
 proof of actual Martlet playback synchronization.
 
-### S38
+### S44
 
 [VRM 1.0 expressions specification](https://github.com/vrm-c/vrm-specification/blob/master/specification/VRMC_vrm-1.0/expressions.md),
 [VRM Animation](https://vrm.dev/en/vrma/),
@@ -621,7 +621,7 @@ Live2D. First Martlet VRM slice is facial only; VRMA playback is unsupported.
 Do not adopt upstream CDN examples into a no-remote-assets renderer or assume
 library code terms cover model/texture/motion assets.
 
-### S39
+### S45
 
 [NVIDIA Audio2Face-3D SDK](https://github.com/NVIDIA/Audio2Face-3D-SDK),
 [SDK license](https://raw.githubusercontent.com/NVIDIA/Audio2Face-3D-SDK/main/LICENSE.txt),
@@ -652,7 +652,7 @@ separately. Upstream performance/minimum-hardware recommendations are not
 measured Martlet requirements or latency results. No automatic provisioning,
 model download, service probe or fallback is authorized by this choice.
 
-### S40
+### S46
 
 [wawa-lipsync](https://github.com/wass08/wawa-lipsync),
 [uLipSync](https://github.com/hecomi/uLipSync)
@@ -669,7 +669,7 @@ conditional on Unity being independently chosen; do not introduce Unity just
 to list an analyzer. Neither is implemented by this documentation or a silent
 replacement for unavailable Audio2Face.
 
-### S41
+### S47
 
 [Rhubarb Lip Sync](https://github.com/DanielSWolf/rhubarb-lip-sync),
 [upstream README](https://raw.githubusercontent.com/DanielSWolf/rhubarb-lip-sync/master/README.adoc)
@@ -680,6 +680,47 @@ improve recognition. **Consequence:** later buffered/offline candidate, not a
 presumed realtime streaming replacement. Provider-supplied visemes are a
 different path and require an explicitly supported provider/model/timestamp
 contract; ordinary TTS audio support alone establishes none.
+
+## S36-S40: multi-engine voice research, 2026-09-23
+
+The owner expanded self-hosted voice scope to F5-TTS, Qwen3-TTS, Chatterbox,
+GPT-SoVITS and XTTS-v2. [Voice Studio research](VOICE_STUDIO.md#research-implementation-not-marketing-compatibility)
+and primary sources V1-V5 record the respective S36-S40 findings: actual
+Python/native API entry points, reference limits, training recipes, conflicting
+dependency versions, implicit downloads/preprocessing and license boundaries.
+These are upstream observations, not pinned/installed/qualified Martlet
+runtimes. In particular, XTTS CPML restricts model and output use to
+noncommercial purposes; Chatterbox managed training is unverified. Each engine
+requires isolated dependencies and its own artifact closure.
+
+## Linux service state custody and durable I/O (H03b3)
+
+**Accessed 2026-09-23.** Primary upstream contracts, not native Martlet evidence:
+[Secret Service introduction](https://specifications.freedesktop.org/secret-service/latest/ch01.html)
+describes a login-session service that may need unlocking.
+[systemd-creds 255](https://www.freedesktop.org/software/systemd/man/255/systemd-creds.html)
+describes host/TPM key custody; its `tpm2-absent` mode explicitly provides neither
+confidentiality nor authenticity. Credential delivery is not automatically a
+writable crash-safe checkpoint store. No such null-key mode is proposed.
+
+[openat2](https://man7.org/linux/man-pages/man2/openat2.2.html) supplies non-following,
+beneath and no-mount-crossing resolution;
+[statx](https://man7.org/linux/man-pages/man2/statx.2.html) requires checking
+returned metadata masks;
+[flock](https://man7.org/linux/man-pages/man2/flock.2.html) provides cooperative
+open-file-description locks;
+[renameat2](https://man7.org/linux/man-pages/man2/rename.2.html) provides atomic
+replacement/no-replace semantics. Crucially,
+[fsync](https://man7.org/linux/man-pages/man2/fsync.2.html) of a file does not
+persist its directory entry: directory fsync is also required.
+
+**Implemented candidate, not native-qualified:** explicitly selected
+`LinuxServicePermissions` under a stable non-root UID, local ext4, 0700/0600;
+plaintext at rest with damage checksum, not encrypted/authenticated against a
+state writer. Same-UID/root/offline-disk/rollback threats remain. Operator-managed
+disk encryption is separate; no machine policy is changed. Windows DPAPI is
+unchanged and never silently downgraded. Portable modeled checks and compilation
+do not establish real Ubuntu/UID/mount/fsync/reboot/container evidence.
 
 ## Provenance policy for future implementation
 

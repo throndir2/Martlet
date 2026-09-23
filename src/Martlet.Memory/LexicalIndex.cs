@@ -60,6 +60,41 @@ internal sealed class LexicalIndex
         return terms;
     }
 
+    internal static string? TryBoundedQueryText(string source)
+    {
+        MemoryGuard.Require(source is { Length: > 0 } &&
+            source.Length <= MemoryLimits.MaximumContentCharacters &&
+            !string.IsNullOrWhiteSpace(source) &&
+            !source.Contains('\0'));
+        string[] terms;
+        try
+        {
+            _ = new UTF8Encoding(false, true).GetByteCount(source);
+            terms = Tokenize(source, MemoryLimits.MaximumContentCharacters)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+        }
+        catch (EncoderFallbackException)
+        {
+            throw new MemoryException(MemoryFailure.InvalidData);
+        }
+
+        var selected = new List<string>(Math.Min(terms.Length, MemoryLimits.MaximumQueryTerms));
+        foreach (var term in terms)
+        {
+            if (selected.Count == MemoryLimits.MaximumQueryTerms)
+                break;
+            var candidate = selected.Count == 0
+                ? term
+                : string.Join(' ', selected) + " " + term;
+            if (candidate.Length > MemoryLimits.MaximumQueryCharacters ||
+                Encoding.UTF8.GetByteCount(candidate) > MemoryLimits.MaximumQueryUtf8Bytes)
+                continue;
+            selected.Add(term);
+        }
+        return selected.Count == 0 ? null : string.Join(' ', selected);
+    }
+
     internal LexicalMatch[] Search(string[] queryTerms, int maximumResults, CancellationToken token)
     {
         MemoryGuard.Require(maximumResults is >= 1 and <= MemoryLimits.MaximumResults);

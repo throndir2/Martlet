@@ -13,14 +13,14 @@ public sealed class CompanionSettingsTests : IDisposable
     public async Task VersionTwoMigratesAtomicallyAndPreservesExistingConfiguration()
     {
         var versionThree = SetupSettings.SelectRoute(SetupSettings.Begin(null), SetupRole.Llm, "model-1", null);
-        var versionTwo = versionThree with { SchemaVersion = 2, Companion = null };
+        var versionTwo = versionThree with { SchemaVersion = 2, Companion = null, Memory = null };
         versionTwo.Validate();
         var saved = await Store.SaveAsync(versionTwo, null);
         var original = await File.ReadAllBytesAsync(Store.FilePath);
 
         var loaded = await Store.LoadAsync();
         var draft = CompanionSettings.Begin(loaded.Settings);
-        Assert.Equal(3, draft.SchemaVersion);
+        Assert.Equal(AppSettings.CurrentSchemaVersion, draft.SchemaVersion);
         Assert.Equal(versionTwo.Profile.Id, draft.Profile.Id);
         Assert.Equal(versionTwo.Profile.Kind, draft.Profile.Kind);
         Assert.Equal(versionTwo.Profile.Credentials, draft.Profile.Credentials);
@@ -248,7 +248,7 @@ public sealed class CompanionSettingsTests : IDisposable
         Assert.Equal("Original persona", (await Store.LoadAsync()).Settings!.Companion!.ActivePersona.Text);
 
         var v3 = (await Store.LoadAsync()).Settings!;
-        var versionTwo = v3 with { SchemaVersion = 2, Companion = null };
+        var versionTwo = v3 with { SchemaVersion = 2, Companion = null, Memory = null };
         var versionTwoBytes = ContractJson.Write(versionTwo);
         var versionTwoBackup = Path.Combine(directory, "v2.martlet-config");
         await File.WriteAllBytesAsync(versionTwoBackup, ConfigurationSnapshot.Create(versionTwoBytes));

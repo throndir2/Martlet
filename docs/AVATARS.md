@@ -44,7 +44,7 @@ never silently select amplitude, another model or a paid/cloud service.
 | Amplitude | Planned baseline for mouth opening from outgoing PCM, **not an implemented Desktop analyzer**. Less articulation than phonemes/visemes; still requires an existing mapped mouth parameter. Future explicit selection only, never automatic fallback. |
 | Procedural/clip motion | Separate blink, idle, breathing, gaze, head, body and secondary-motion sources, subject to supported channels and model capability. Not inferred from Audio2Face availability. |
 
-Primary-source constraints are recorded in [Research S36-S41](RESEARCH.md#s36);
+Primary-source constraints are recorded in [Research S42-S47](RESEARCH.md#s42);
 [Architecture](ARCHITECTURE.md#avatar-boundaries-accepted-direction-2026-09-23)
 owns the system boundaries.
 
