@@ -108,7 +108,7 @@ selected-version\
   payload\
     manifest.json     exact existing internal unsigned payload manifest
     SHA256SUMS.txt     exact existing payload checksums
-    sbom.cdx.json      required for internal schema v2; absent from legacy v1
+    sbom.cdx.json      required for internal schema v2/v3; absent from legacy v1
     Desktop\...
     Doctor\...
     help\...
@@ -211,6 +211,48 @@ binary behavior or a functional installed layout. A signer could authorize a
 nonfunctional payload; staging must never be advertised as readiness/release
 qualification. The fixture executables are deliberately inert text.
 
+### Avatar payload schema 3
+
+Manifest 3 pairs only with provenance 2; manifest 2 still requires provenance 1.
+CycloneDX remains 1.6/document-v1. The new branch has exactly Desktop, Doctor and
+the private AvatarRenderer context (`Desktop\AvatarRenderer`, project
+`Martlet.Avatar.RendererHost`, parent Desktop). The parent cannot own files in
+the child's subtree. Root/generated identities, restore graphs and archive
+ownership are checked per context. Desktop's explicit build-only host closure
+is not an arbitrary restored/published mismatch allowance.
+
+WebView2 1.0.4191.47's three injected references are distinct from its real NuGet
+package: only the reviewed Core/WinForms/Wpf keys, DLL/XML archive entries and
+two equal x64 loader copies are admitted. No fake package identity/content hash
+is assigned to a reference. Grpc.Tools 2.84.0 is checked through Audio2Face
+restore-only `buildArchives` uses, not runtime components or shipped origins.
+The reader does not inspect PE headers or original package archives.
+
+Browser evidence binds the two module locks, authored inputs, Node/npm/esbuild
+fingerprints, reviewed 17-package npm identity/version/dependency graph, tar-entry
+declarations, SHA-512 SRI/archive-digest equality, input roles and complete notice
+relationships. Type-only runtime dependencies retain metadata/notices without
+being described as bundle contributors. Exactly four web outputs are allowed:
+app.js, app.js.LEGAL.txt, index.html and THIRD-PARTY-NOTICES.txt. Output hashes and
+lengths must match the signed payload, static output must match its source input,
+and every bundle input and applicable runtime notice has an explicit relationship.
+Unexpected binary/XML/web files cannot fall through to generic document ownership.
+
+The new SBOM owns each physical file once, links the private host through Desktop,
+and links the browser to actual runtime contributors, keeping build-only packages
+out of runtime roots. Browser/build-archive and derived input/use hashes are
+recomputed with the production PowerShell canonical byte contract, tested against
+the actual serializer. Legacy source/restore declaration semantics are unchanged.
+New graph references are bounded at 1,024 characters; legacy references stay 264.
+The 16 MiB metadata and depth-16 parser limits are unchanged.
+
+These are still authenticated declarations and consistency checks, not proof of
+original tarballs, compiler execution, license rights or publisher authorization.
+No model, Live2D Core/framework, NIM or runtime installer is added by this reader.
+Old readers reject manifest 3; retained v1/v2/v3 metadata is never rewritten.
+Selections and rollback remain non-runnable with all existing readiness and
+configuration-restore holds. Updater rollout is not qualified by these tests.
+
 ## Restricted ZIP and bounds
 
 Only single-disk classic ZIP, stored or deflate, DOS/Unix creator IDs and reader
@@ -234,7 +276,7 @@ absolute/drive/UNC path, colon/ADS, spaces, trailing dot, Unicode normalization
 ambiguity, Windows device name, file/directory prefix collision, duplicate or
 case-collision (including directory components). Payload files are limited to
 `Desktop`, `Doctor`, `help`, `notices` and the exact root names `manifest.json`,
-`SHA256SUMS.txt`, `sbom.cdx.json` (the last requires v2). Mutable
+`SHA256SUMS.txt`, `sbom.cdx.json` (the last requires v2/v3). Mutable
 settings, `.lock`, data, logs, models, profiles and recordings names are excluded.
 
 | Resource | Default and absolute maximum |
@@ -242,7 +284,7 @@ settings, `.lock`, data, logs, models, profiles and recordings names are exclude
 | External JSON envelope / receipt | 3 MiB each |
 | Decoded signed manifest | 2 MiB |
 | Legacy-v1 internal manifest / checksums | 2 MiB each |
-| V2 internal manifest / SBOM / checksums | 16 MiB each |
+| V2/v3 internal manifest / SBOM / checksums | 16 MiB each |
 | JSON depth, including provenance/SBOM | 16 |
 | Source evidence records / SDK fingerprints | 16,384 / exactly 3 |
 | Application contexts / libraries or edges per graph | exactly 2 / 2,048 |

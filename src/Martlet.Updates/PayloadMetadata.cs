@@ -53,11 +53,11 @@ internal static class PayloadMetadata
         var r = new EvidenceReader(token);
         var root = document.RootElement;
         var schema = r.Integer(r.Member(root, "schemaVersion"));
-        if (schema is not (1 or 2)) throw new StagingException(StagingFailure.IncompatibleFormat);
+        if (schema is not (1 or 2 or 3)) throw new StagingException(StagingFailure.IncompatibleFormat);
         if (schema == 1 && bytes.Length > Wire.MaximumManifestBytes)
             throw new StagingException(StagingFailure.CapacityExceeded);
         r.Keys(root, "schemaVersion channel applicationVersion rid sdkVersion runtimeVersion sourceCommit sourceDirty files" +
-            (schema == 2 ? " provenance" : ""));
+            (schema >= 2 ? " provenance" : ""));
         r.Equal(r.Text(root, "channel"), Channel);
         r.Equal(r.Text(root, "applicationVersion", 48), candidate.ApplicationVersion);
         r.Equal(r.Text(root, "rid", 48), candidate.Rid);
@@ -74,9 +74,9 @@ internal static class PayloadMetadata
             r.Require(file.Path == expected[index].Path && file.Bytes == expected[index].Bytes && file.Hash == expected[index].Sha256);
         }
         var sbom = expected.Any(f => f.Path == "sbom.cdx.json");
-        r.Require(sbom == (schema == 2));
-        var provenance = schema == 2
-            ? PayloadProvenance.Read(r.Member(root, "provenance"), source, dirty, sdk, runtime, expected, r)
+        r.Require(sbom == (schema >= 2));
+        var provenance = schema >= 2
+            ? PayloadProvenance.Read(r.Member(root, "provenance"), source, dirty, sdk, runtime, expected, r, (int)schema - 1)
             : null;
         return new((int)schema, Wire.Hash(bytes), provenance);
     }

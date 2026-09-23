@@ -155,7 +155,7 @@ public sealed class PayloadCompatibilityTests(SigningKeys keys, ProductionPayloa
         {
             switch (change)
             {
-                case "future-manifest": m["schemaVersion"] = 3; break;
+                case "future-manifest": m["schemaVersion"] = 4; break;
                 case "future-provenance": m["provenance"]!["schemaVersion"] = 2; break;
                 case "v2-relabeled-v1": m["schemaVersion"] = 1; break;
                 case "source-commit": m["provenance"]!["source"]!["commit"] = new string('d', 40); break;

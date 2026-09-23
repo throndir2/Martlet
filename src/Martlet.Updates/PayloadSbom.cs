@@ -33,9 +33,16 @@ internal static class PayloadSbom
             IEnumerable<string> paths = library.Type == "project"
                 ? library.Assets.Select(a => a.Path)
                 : origins.Values.Where(o => o.Component == library.Reference).Select(o => o.Path);
-            if (library.IsRoot) paths = paths.Concat(Generated(library.Context));
+            if (library.IsRoot) paths = paths.Concat(library.Generated);
             foreach (var path in paths) r.Require(owners.TryAdd(path, library.Reference));
         }
+        var browser = facts.Avatar?.Browser;
+        if (browser is not null)
+            foreach (var path in browser.Outputs.Keys) r.Require(owners.TryAdd(path, PayloadBrowser.Reference));
+        if (facts.Avatar is not null)
+            foreach (var path in payload.Keys)
+                if (new[] { ".dll", ".exe", ".xml" }.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase))
+                    r.Require(owners.ContainsKey(path));
         void File(JsonElement file, string? owner)
         {
             r.Keys(file, "type bom-ref name hashes properties");
@@ -63,33 +70,80 @@ internal static class PayloadSbom
                 props["martlet:origin:classification"] = ArchiveOrigin;
                 props["martlet:nuget:archive-entry"] = origin.Entry;
             }
-            else if (owner is not null && Generated(facts.Libraries[owner].Context).Contains(path, StringComparer.Ordinal))
+            else if (owner is not null && facts.Libraries.TryGetValue(owner, out var managed) && managed.IsRoot &&
+                managed.Generated.Contains(path, StringComparer.Ordinal))
                 props["martlet:origin:classification"] = GeneratedOrigin;
+            else if (browser is not null && browser.Outputs.TryGetValue(path, out var output))
+            {
+                props["martlet:origin:classification"] = output.Kind == "static" ? "Verified authored static input" :
+                    "Generated browser output; verified input graph, not unchanged archive bytes";
+                props["martlet:browser:inputs-sha256"] = output.InputsHash;
+            }
             Properties(r.Member(file, "properties"), props, r);
         }
-        foreach (var component in r.Items(r.Member(root, "components"), payload.Count + facts.Libraries.Count))
+        var softwareCount = facts.Libraries.Count + (browser is null ? 0 : 1 + browser.Packages.Count);
+        var componentOrder = new List<string>();
+        foreach (var component in r.Items(r.Member(root, "components"), payload.Count + softwareCount))
         {
-            if (r.Text(component, "type", 16) == "file") { File(component, null); continue; }
-            var reference = r.Text(component, "bom-ref", 264);
+            if (r.Text(component, "type", 16) == "file")
+            {
+                File(component, null);
+                componentOrder.Add(r.Text(component, "bom-ref", 1029));
+                continue;
+            }
+            var reference = r.Text(component, "bom-ref", browser is null ? 264 : 1024);
+            componentOrder.Add(reference);
+            if (browser is not null && reference == PayloadBrowser.Reference)
+            {
+                r.Require(software.Add(reference));
+                Browser(component, version, browser, r);
+                var nested = r.Items(r.Member(component, "components"), 4, 4).ToArray();
+                r.Require(nested.Select(e => r.Text(e, "name").Replace('/', '\\')).SequenceEqual(browser.Outputs.Keys));
+                foreach (var file in nested) File(file, reference);
+                continue;
+            }
+            if (browser is not null && reference.StartsWith("AvatarRenderer|npm:", StringComparison.Ordinal))
+            {
+                r.Require(browser.Packages.TryGetValue(reference["AvatarRenderer|npm:".Length..], out var package) &&
+                    software.Add(reference));
+                Npm(component, package!, r);
+                continue;
+            }
             r.Require(facts.Libraries.TryGetValue(reference, out var library) && software.Add(reference));
             Software(component, library!, facts, r);
-            var nested = r.Items(r.Member(component, "components"), payload.Count).ToArray();
-            foreach (var file in nested) File(file, reference);
+            var children = r.Items(r.Member(component, "components"), payload.Count).ToArray();
+            if (browser is not null)
+                r.Require(children.Select(e => r.Text(e, "name").Replace('/', '\\')).SequenceEqual(
+                    owners.Where(o => o.Value == reference).Select(o => o.Key).Order(StringComparer.Ordinal)));
+            foreach (var file in children) File(file, reference);
         }
-        r.Require(subjects.Count == payload.Count && software.Count == facts.Libraries.Count);
-        var references = facts.Libraries.Keys.Append(Root).ToHashSet(StringComparer.Ordinal);
+        r.Require(subjects.Count == payload.Count && software.Count == softwareCount);
+        if (browser is not null)
+            r.Require(componentOrder.SequenceEqual(facts.Libraries.Keys.Append(PayloadBrowser.Reference)
+                .Concat(browser.Packages.Values.Select(p => p.Reference))
+                .Concat(payload.Keys.Where(p => !owners.ContainsKey(p)).Order(StringComparer.Ordinal).Select(p => "file:" + p.Replace('\\', '/')))));
+        var references = software.Append(Root).ToHashSet(StringComparer.Ordinal);
         var dependencies = new HashSet<string>(StringComparer.Ordinal);
+        var dependencyOrder = new List<string>();
         foreach (var dependency in r.Items(r.Member(root, "dependencies"), references.Count, references.Count))
         {
             r.Keys(dependency, "ref dependsOn");
-            var reference = r.Text(dependency, "ref", 264);
+            var reference = r.Text(dependency, "ref", browser is null ? 264 : 1024);
             r.Require(references.Contains(reference) && dependencies.Add(reference));
-            var edges = r.Edges(r.Member(dependency, "dependsOn"), references);
-            var expected = reference == Root
+            dependencyOrder.Add(reference);
+            var edges = browser is null ? r.Edges(r.Member(dependency, "dependsOn"), references) :
+                PayloadBrowser.Strings(r.Member(dependency, "dependsOn"), 2048, r);
+            r.Require(edges.All(references.Contains));
+            IEnumerable<string> expected = reference == Root
                 ? new[] { "Desktop", "Doctor" }.Select(c => facts.Libraries.Values.Single(l => l.Context == c && l.IsRoot).Reference)
-                : facts.Libraries[reference].Dependencies.Select(d => facts.Libraries[reference].Context + "|" + d);
+                : browser is not null ? AvatarEdges(reference, facts) :
+                    facts.Libraries[reference].Dependencies.Select(d => facts.Libraries[reference].Context + "|" + d);
+            if (browser is not null && reference != Root) expected = expected.Order(StringComparer.Ordinal);
             r.Require(edges.SequenceEqual(expected));
         }
+        if (browser is not null)
+            r.Require(dependencyOrder.SequenceEqual(facts.Libraries.Keys.Prepend(Root).Append(PayloadBrowser.Reference)
+                .Concat(browser.Packages.Values.Select(p => p.Reference))));
         var composition = r.Items(r.Member(root, "compositions"), 1, 1).Single();
         r.Keys(composition, "aggregate assemblies dependencies");
         r.Equal(r.Text(composition, "aggregate"), "incomplete");
@@ -97,8 +151,21 @@ internal static class PayloadSbom
             r.Equal(r.Text(r.Items(r.Member(composition, name), 1, 1).Single()), Root);
     }
 
-    private static string[] Generated(string context) =>
-        [$"{context}\\Martlet.{context}.exe", $"{context}\\Martlet.{context}.deps.json", $"{context}\\Martlet.{context}.runtimeconfig.json"];
+    private static IEnumerable<string> AvatarEdges(string reference, PayloadProvenance.Facts facts)
+    {
+        var browser = facts.Avatar!.Browser;
+        if (reference == PayloadBrowser.Reference)
+            return browser.Packages.Values.Where(p => p.Scope == "runtime" &&
+                browser.Inputs.Values.Any(i => i.Package == p.Key && i.Roles.Contains("bundle-source"))).Select(p => p.Reference);
+        if (reference.StartsWith("AvatarRenderer|npm:", StringComparison.Ordinal))
+            return browser.Packages[reference["AvatarRenderer|npm:".Length..]].Dependencies.Select(k => "AvatarRenderer|npm:" + k);
+        var library = facts.Libraries[reference];
+        var edges = library.Dependencies.Select(d => library.Context + "|" + d);
+        if (library.IsRoot && library.Context == "Desktop")
+            edges = edges.Append(facts.Libraries.Values.Single(l => l.Context == "AvatarRenderer" && l.IsRoot).Reference);
+        if (library.IsRoot && library.Context == "AvatarRenderer") edges = edges.Append(PayloadBrowser.Reference);
+        return edges;
+    }
 
     private static void Metadata(JsonElement value, string version, PayloadProvenance.Facts facts, EvidenceReader r)
     {
@@ -120,10 +187,18 @@ internal static class PayloadSbom
             ["martlet:excluded-metadata"] = "sbom.cdx.json, manifest.json, SHA256SUMS.txt (avoids circular hashes)",
             ["martlet:reproducibility"] = "Canonical metadata only; no hermetic-build or reproducible-binary claim."
         };
+        if (facts.Avatar is { } avatar)
+        {
+            props["martlet:scope"] = "Actual packaged files, resolved .NET publish dependencies and observed offline JavaScript bundle inputs; upstream vendored/native internals and OS dependencies are not fully decomposed.";
+            props["martlet:browser-evidence:sha256"] = avatar.Browser.Hash;
+            props["martlet:build-archives:sha256"] = avatar.BuildArchivesHash;
+            props["martlet:payload-format"] = "3";
+        }
         Properties(r.Member(value, "properties"), props, r, declaredRestoreHash: true);
         var tools = r.Member(value, "tools");
         r.Keys(tools, "components");
-        var entries = r.Items(r.Member(tools, "components"), 2, 2).ToArray();
+        var toolCount = 2 + (facts.Avatar is null ? 0 : 3 + facts.Avatar.BuildArchives.Length);
+        var entries = r.Items(r.Member(tools, "components"), toolCount, toolCount).ToArray();
         r.Keys(entries[0], "type name version");
         r.Equal(r.Text(entries[0], "type"), "application");
         r.Equal(r.Text(entries[0], "name"), "Martlet Windows packaging");
@@ -135,6 +210,39 @@ internal static class PayloadSbom
         var sdk = facts.Tools.ToDictionary(f => "martlet:tool:sha256:" + f.Path, f => f.Hash!, StringComparer.Ordinal);
         sdk.Add("martlet:tool:observation", PayloadProvenance.Observation);
         Properties(r.Member(entries[1], "properties"), sdk, r);
+        if (facts.Avatar is { } evidence)
+        {
+            for (var i = 0; i < evidence.Browser.Tools.Length; i++)
+            {
+                var observed = evidence.Browser.Tools[i];
+                var entry = entries[2 + i];
+                r.Keys(entry, "type name version properties");
+                r.Equal(r.Text(entry, "type"), "application");
+                r.Equal(r.Text(entry, "name", 16), observed.Name);
+                r.Equal(r.Text(entry, "version", 48), observed.Version);
+                var properties = observed.Files.ToDictionary(f => "martlet:tool:sha256:" + f.Path, f => f.Hash!, StringComparer.Ordinal);
+                properties.Add("martlet:tool:observation", PayloadProvenance.Observation);
+                Properties(r.Member(entry, "properties"), properties, r);
+            }
+            for (var i = 0; i < evidence.BuildArchives.Length; i++)
+            {
+                var archive = evidence.BuildArchives[i];
+                var entry = entries[5 + i];
+                r.Keys(entry, "type name version purl properties");
+                r.Equal(r.Text(entry, "type"), "application");
+                r.Equal(r.Text(entry, "name"), archive.Id);
+                r.Equal(r.Text(entry, "version", 48), archive.Version);
+                r.Equal(r.Text(entry, "purl"), $"pkg:nuget/{archive.Id.ToLowerInvariant()}@{archive.Version}");
+                Properties(r.Member(entry, "properties"), new(StringComparer.Ordinal)
+                {
+                    ["martlet:nuget:archive-sha512"] = archive.Hash,
+                    ["martlet:nuget:nuspec-sha256"] = archive.Nuspec,
+                    ["martlet:build:uses-sha256"] = archive.UsesHash,
+                    ["martlet:tool:observation"] = "Verified restore-only package archive; not a shipped runtime component.",
+                    ["martlet:license:status"] = "UPSTREAM DECLARATION ONLY - rights not assessed"
+                }, r);
+            }
+        }
     }
 
     private static void Software(JsonElement value, PayloadProvenance.Library library, PayloadProvenance.Facts facts,
@@ -146,12 +254,13 @@ internal static class PayloadSbom
         if (library.Type == "project") props["martlet:license:status"] = "UNKNOWN - no project license granted";
         else
         {
-            var id = library.Type == "runtimepack" ? library.Id["runtimepack.".Length..] : library.Id;
+            var id = library.ArchiveId;
             archive = facts.Archives[id];
-            extra = " purl";
+            extra = library.Type == "reference" ? "" : " purl";
             props["martlet:nuget:archive-sha512"] = archive.Hash;
             props["martlet:nuget:nuspec-sha256"] = archive.Nuspec;
             props["martlet:license:status"] = "UPSTREAM DECLARATION ONLY - rights not assessed";
+            if (library.Type == "reference") props["martlet:nuget:source-package"] = archive.Id + "/" + archive.Version;
             if (library.ContentHash is { } hash) props["martlet:nuget:lock-content-hash"] = hash;
             if (!string.IsNullOrEmpty(archive.LicenseFile)) props["martlet:nuget:license-file"] = archive.LicenseFile;
             if (!string.IsNullOrEmpty(archive.LicenseExpression)) extra += " licenses";
@@ -161,7 +270,8 @@ internal static class PayloadSbom
                 if (!string.IsNullOrEmpty(archive.RepositoryCommit))
                     props["martlet:nuget:declared-repository-commit"] = archive.RepositoryCommit;
             }
-            r.Equal(r.Text(value, "purl", 280), $"pkg:nuget/{archive.Id.ToLowerInvariant()}@{archive.Version}");
+            if (library.Type != "reference")
+                r.Equal(r.Text(value, "purl", 280), $"pkg:nuget/{archive.Id.ToLowerInvariant()}@{archive.Version}");
         }
         r.Keys(value, "type bom-ref name version properties components" + extra);
         r.Equal(r.Text(value, "type", 16), library.IsRoot ? "application" : library.Type == "runtimepack" ? "framework" : "library");
@@ -182,6 +292,42 @@ internal static class PayloadSbom
             r.Equal(r.Text(reference, "type"), "vcs");
             r.Equal(r.Text(reference, "url"), archive.RepositoryUrl);
         }
+    }
+
+    private static void Browser(JsonElement value, string version, PayloadBrowser.Facts browser, EvidenceReader r)
+    {
+        r.Keys(value, "type bom-ref name version properties components");
+        r.Equal(r.Text(value, "type"), "application");
+        r.Equal(r.Text(value, "name"), "Martlet offline avatar browser");
+        r.Equal(r.Text(value, "version", 48), version);
+        Properties(r.Member(value, "properties"), new(StringComparer.Ordinal)
+        {
+            ["martlet:publish:context"] = "AvatarRenderer",
+            ["martlet:license:status"] = "UNKNOWN - no project license granted",
+            ["martlet:browser:recipe-sha256"] = browser.RecipeHash,
+            ["martlet:browser:metafile-sha256"] = browser.MetafileHash,
+            ["martlet:browser:receipt-sha256"] = browser.ReceiptHash
+        }, r);
+    }
+
+    private static void Npm(JsonElement value, PayloadBrowser.Package package, EvidenceReader r)
+    {
+        r.Keys(value, "type bom-ref name version purl properties");
+        r.Equal(r.Text(value, "type"), "library");
+        r.Equal(r.Text(value, "name", 256), package.Name);
+        r.Equal(r.Text(value, "version", 128), package.Version);
+        r.Equal(r.Text(value, "purl", 1024), package.Purl);
+        Properties(r.Member(value, "properties"), new(StringComparer.Ordinal)
+        {
+            ["martlet:publish:context"] = "AvatarRenderer",
+            ["martlet:npm:lock-key"] = package.Key,
+            ["martlet:npm:integrity"] = package.Integrity,
+            ["martlet:npm:archive-sha512"] = package.Hash,
+            ["martlet:npm:scope"] = package.Scope,
+            ["martlet:npm:inputs-sha256"] = package.InputsHash,
+            ["martlet:npm:notices-sha256"] = package.NoticesHash,
+            ["martlet:license:status"] = "UPSTREAM DECLARATION ONLY - rights not assessed"
+        }, r);
     }
 
     private static void Properties(JsonElement value, Dictionary<string, string> expected, EvidenceReader r,

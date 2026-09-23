@@ -3,6 +3,7 @@
 param(
     [Parameter(Mandatory)][string]$OutputDirectory,
     [string]$ReferenceMetadataRoot,
+    [ValidateSet(2, 3)][int]$FormatVersion = 2,
     [ValidateSet('Payload', 'Failure', 'OutputOverflow', 'Wait')][string]$Mode = 'Payload'
 )
 . "$PSScriptRoot\..\..\packaging\windows\Packaging.Common.ps1"
@@ -16,6 +17,14 @@ if ($Mode -ne 'Payload') {
         'OutputOverflow' { [Console]::Out.Write('x' * 65536); [Console]::Error.Write('y' * 65536); return }
         'Wait' { [Console]::Out.WriteLine('READY'); [Threading.Thread]::Sleep(60000); return }
     }
+}
+
+if ($FormatVersion -eq 3) {
+    if ($ReferenceMetadataRoot) { throw 'Historical byte reconstruction is legacy-only.' }
+    . "$PSScriptRoot\AvatarPayloadFixture.ps1"
+    New-InertAvatarPayloads $OutputDirectory $pins $encoding
+    Write-Output 'PASS: inert fixtures from explicit avatar production constructors; not qualified payloads.'
+    return
 }
 
 if ($ReferenceMetadataRoot) {
