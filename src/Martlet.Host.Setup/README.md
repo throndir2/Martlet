@@ -1,4 +1,103 @@
-# Host setup proposal and local review journal (H05a)
+# Host setup review and artifact acquisition (H05a/H05b)
+
+## Verified artifact acquisition (H05b)
+
+The bounded acquisition engine is reused from
+`81bf855b3b342563f2dbf2eb512672e717b41932` ("Add verified host artifact
+acquisition"), not from its integration ancestry. It references current H05a
+format-2 `LocalReview` history without changing it into external completion.
+The source dependencies were `0de03054768cd4122ff4af8d612fcc832b1fc324`,
+`288ef22a66f840434ff2e547d45c04dc63e4b9d9` and
+`29fbe43ba01c7bec72101b230068276f568606a0`; their current canonical owners,
+DOS-path safeguards, provenance behavior and `InspectRoles` remain authoritative.
+
+`ArtifactManifest.DescribeAcquisition` returns the exact selected-role union,
+source identities, pins, platform intent and shared inventory from HostArtifacts.
+An immutable provider recipe is derived from that validated identity, not from a
+caller URL or eligibility flag. `ArtifactRightsReview` requires a separate
+default-No declaration, exact evidence revision/hash, selection and artifact.
+Unknown component-license claims require explicit per-claim reviewed terms and
+evidence; an aggregate hash or generic approval does not resolve them. These are
+unverified local user declarations, not automatic legal clearance or replacement
+catalog facts. Private terms are not diagnostic output.
+
+Use the selection-bound overload, for example:
+
+```csharp
+var selection = manifest.DescribeAcquisition(
+    ["ollama-llm"], "ubuntu-24.04-x64", manifest.FormatVersion == 2 ? "linux/amd64" : null);
+var rights = new ArtifactRightsReview(selection, artifactId, reviewRevision,
+    reviewedEvidenceSha256, explicitlyReviewedClaims).Authorize(ArtifactRightsDecision.Approve);
+using var acquisition = new ArtifactAcquisitionCoordinator(reviewJournal,
+    new LocalArtifactAcquisitionStorage(explicitPrivateStagingDirectory));
+var preview = await acquisition.PreviewAsync(selection, artifactId, setupPlan, recordedReview, rights);
+// Only after the user separately approves this exact displayed acquisition:
+var approval = preview.Approve(ArtifactAcquisitionDecision.Approve, preview.Plan.RequiredConsentScopes);
+var result = await acquisition.RunAsync(preview.Plan, approval);
+```
+
+The variables above are explicit application/user inputs, not built-in approved
+catalog facts. Rights authorization expires after ten minutes; renew it and the
+local review as necessary. The approval fingerprint freezes the exact plan,
+including byte count/reserve and any proposed corrupt-owned-final recovery.
+
+The public `ArtifactAcquisitionCoordinator` owns the production transport and
+accepts an already-existing private local staging directory. Preview is passive:
+it reads the exact current LocalReview journal and local file/disk facts without
+network or payload writes. A fresh default-No one-use acquisition approval binds
+source, content hash/bytes, selected roles/platform, rights, staging destination,
+disk reserve, action and journal versions. It grants only acquisition of those
+bytes. Proposed Unix deployment paths are not automatically adopted as local
+staging destinations.
+
+Supported network acquisition is **public GitHub release assets**: an exact
+repository/numeric asset API identity, either a direct 200 or one manually
+validated 302 to `release-assets.githubusercontent.com`, followed by 200 or an
+exact 206 resume. This follows the
+[release asset API](https://docs.github.com/en/rest/releases/assets#get-a-release-asset)
+and GitHub's [documented release download domain](https://docs.github.com/en/actions/reference/runners/self-hosted-runners#accessible-domains-by-function).
+No wildcard CDN origins, arbitrary URLs, credentials, proxies, cookies, automatic
+redirects or retries are supported. Signed CDN query URLs are transient
+transport secrets, not journal/log/progress/receipt fields. Resume returns to the
+same logical API identity to obtain a fresh location and checks the stable content
+validator, exact range and total size; changing URL signatures do not change the
+artifact. Changed content never silently appends or restarts.
+
+**Hugging Face and OCI acquisition are unsupported before network.** HF's
+documented LFS/Xet bridge needs a separately reviewed origin policy; native Xet
+token/reconstruction behavior is outside this slice. OCI descriptions remain
+metadata-only, with distinct compressed/expanded/staging unknowns and owner-owned
+deduplication. No F5 model download, full runtime closure, extraction, registry
+pull, execution or installation is implied.
+
+Acquisition has its own strict format-2 `ArtifactAcquisition` journal. Legacy v1,
+wrong-purpose, corrupt and foreign files are preserved and refused. The state
+machine retains bounded streaming, explicit interruptions, fresh-consent resume,
+read-back SHA-256 and atomic non-overwrite finalization. Ownership, file identity
+and journal CAS govern cleanup. Corrupt owned finals require an explicitly
+reviewed quarantine/reacquisition action; foreign or replaced files are not
+overwritten. The private-directory contract still excludes malicious concurrent
+replacement of filesystem namespaces.
+Recovery hashes at most the declared payload plus configured reserve; a larger
+unexpected final is preserved as a conflict rather than scanned without bounds.
+One retained quarantine sibling is permitted. Repeated corruption while it is
+occupied requires operator review; acquisition never silently purges it.
+
+The source bounds remain 64 KiB streaming buffers, 8 MiB checkpoints, 16 KiB
+response headers, 30-second connection timeout, 30-minute default transfer
+deadline and 64 MiB default free-space reserve. Bytes are never decompressed.
+Acquired compressed/archive bytes are not expanded installation or peak disk.
+Payload verification and owned finalization do not set runtime-enabled,
+host-ready, GPU-fit or execution-authorized status. Permanent device pairing
+is unrelated to review/download expiry and remains unchanged.
+
+The focused regression suite uses authored inert bytes, controlled local HTTP
+and actual private journal/partial/final files. No test fetches model, runtime,
+driver, engine or registry payloads. Windows directory-commit injection is not
+evidence of Linux fsync, power-loss durability, Ubuntu/native behavior or actual
+provider qualification. Those gates and real hardware/inference remain unrun.
+
+## H05a local review scope
 
 **Inert planning and real, bounded journal IO, not an installer.** This is the
 canonical H05a reuse from `0de03054768cd4122ff4af8d612fcc832b1fc324` ("Add reviewed
