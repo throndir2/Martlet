@@ -8,6 +8,7 @@ namespace Martlet.HostArtifacts;
 public sealed class InspectionReport
 {
     private readonly ReportDocument document;
+    internal ReportDocument Document => document;
     internal InspectionReport(ReportDocument document) => this.document = document;
     public int ExitCode => document.ExitCode;
     public string? DocumentSha256 => document.DocumentSha256;

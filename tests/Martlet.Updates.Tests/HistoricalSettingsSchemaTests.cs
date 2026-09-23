@@ -30,12 +30,14 @@ public sealed class HistoricalSettingsSchemaTests(SigningKeys keys) : IClassFixt
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task SchemaTwoRestoreHistoryRetainsItsRecordedMeaning(bool interrupted)
+    [InlineData(false, 2)]
+    [InlineData(true, 2)]
+    [InlineData(false, 3)]
+    [InlineData(true, 3)]
+    public async Task HistoricalRestoreHistoryRetainsItsRecordedMeaning(bool interrupted, int schema)
     {
         using var f = new SelectionFixture(keys);
-        var restoreId = CreateSchemaTwoHistory(f, interrupted);
+        var restoreId = CreateSchemaTwoHistory(f, interrupted, schema);
         var history = RollbackRestoreTests.History(f);
         var data = Data(f);
         var engine = f.Engine();
@@ -49,8 +51,8 @@ public sealed class HistoricalSettingsSchemaTests(SigningKeys keys) : IClassFixt
         {
             var effects = new SetupOperationRunner();
             var plan = await engine.PreviewRollbackConfigurationAcknowledgment(receipt.Revision, effects).Completion;
-            Assert.Equal(2, plan.SettingsSchemaVersion);
-            Assert.Equal(2, plan.OriginalSchemaVersion);
+            Assert.Equal(schema, plan.SettingsSchemaVersion);
+            Assert.Equal(schema, plan.OriginalSchemaVersion);
             var result = await engine.AcknowledgeRollbackConfiguration(plan, ApproveAcknowledgment(plan), effects).Completion;
             Assert.Null(result.Failure);
             Assert.Equal(RollbackAcknowledgment.Recorded, result.Acknowledgment);
@@ -109,16 +111,19 @@ public sealed class HistoricalSettingsSchemaTests(SigningKeys keys) : IClassFixt
             f.Engine().PrepareRollback(receipt.Revision, f.Snapshot())).Failure);
     }
 
-    private static Guid CreateSchemaTwoHistory(SelectionFixture f, bool interrupted)
+    private static Guid CreateSchemaTwoHistory(SelectionFixture f, bool interrupted, int schema = 2)
     {
         // Authored legacy wire fixture: real signed/staged selections, followed by
         // the unchanged v2 selection and v3 restore formats emitted before personas.
         var loaded = f.Settings.LoadAsync().GetAwaiter().GetResult();
-        File.WriteAllBytes(f.Settings.FilePath, ContractJson.Write(loaded.Settings! with { SchemaVersion = 2, Companion = null }));
+        File.WriteAllBytes(f.Settings.FilePath, ContractJson.Write(loaded.Settings! with
+        {
+            SchemaVersion = schema, Companion = schema >= 3 ? loaded.Settings.Companion : null, Memory = null
+        }));
         f.RefreshFacts();
         f.Initialize();
-        f.Select(f.Stage(maximumReader: 2));
-        f.Select(f.Stage("0.3.0.0", maximumReader: 2));
+        f.Select(f.Stage(maximumReader: schema));
+        f.Select(f.Stage("0.3.0.0", maximumReader: schema));
         f.ChangeSettings();
         var selected = Wire.Read<ControlDocument>(File.ReadAllBytes(f.Control), 32768);
         var rollbackId = Guid.NewGuid();
@@ -164,7 +169,7 @@ public sealed class HistoricalSettingsSchemaTests(SigningKeys keys) : IClassFixt
             new('b', 64), rollback, restorePending, restored, binding));
         Write(directory, "pending-publication.json", restorePending);
         Write(directory, "restore-committed.json", new RestoreCommitDocument(1, restoreId, new('b', 64),
-            settings.Profile.Id, binding.CandidateDigest, 2, originalName, binding.ExpectedRevision));
+            settings.Profile.Id, binding.CandidateDigest, schema, originalName, binding.ExpectedRevision));
         if (!interrupted) Write(directory, "selected-publication.json", restored);
         File.WriteAllBytes(f.Control, Wire.Write(interrupted ? restorePending : restored));
         return restoreId;

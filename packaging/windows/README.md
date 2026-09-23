@@ -83,7 +83,8 @@ Interactive packaging requires both the original general Desktop scenario and
 an additional `Smoke-Desktop.ps1 -CompanionOnly` scenario, each in a fresh process
 with isolated data and the unchanged 180-second child deadline. The companion
 scenario repeats real no-key setup/migration/route checks and verifies editor
-save/restart and read-only opening. This avoids accumulating fixed Windows UIA
+save/restart and read-only opening, plus passive memory management with every
+fact/export permission OFF and no store creation. This avoids accumulating fixed Windows UIA
 RPC latency in the original general scenario; neither scenario's assertions or
 deadline is relaxed. Use `-Verbose` on the direct Desktop script for control-level
 timings.
@@ -119,7 +120,7 @@ application's `.deps.json` (including each project's runtime asset):
   `Martlet.Diagnostics`.
 - Desktop only: `Martlet.Desktop`, `Martlet.Credentials.Windows`,
   `Martlet.Conversation`, `Martlet.Providers`, `Martlet.Participation`,
-  `Martlet.Support`.
+  `Martlet.Support`, `Martlet.Memory`.
 - Doctor only: `Martlet.Doctor`. Doctor's graph and offline semantics are
   unchanged; no conversation, provider, participation or vault assembly is
   included there.

@@ -6,6 +6,7 @@ using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.Participation;
 using Martlet.Providers;
+using Martlet.Memory;
 
 namespace Martlet.Desktop;
 
@@ -37,6 +38,10 @@ internal sealed class LiveConversationOperation
     internal ResponseStyle? ResponseStyle { get; set; }
     internal int ContextMessages { get; set; }
     internal int ContextMessagesOmitted { get; set; }
+    internal bool MemoryRequested { get; set; }
+    internal int MemoryFactsUsed { get; set; }
+    internal int MemoryFactsOmitted { get; set; }
+    internal long? MemoryStoreRevision { get; set; }
     internal bool OwnershipReleased => Worker.Completion.IsCompleted;
     internal bool ExecutionFinished => Volatile.Read(ref executionFinished) != 0;
     internal void FinishExecution() => Interlocked.Exchange(ref executionFinished, 1);
@@ -106,6 +111,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private readonly ConversationContextBuffer context;
     private readonly TimeProvider clock;
     private readonly Func<int, int> nextStyle;
+    private readonly DesktopMemoryService? memory;
     private readonly TaskCompletionSource quarantine = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private LiveConversationOperation? active;
     private LiveConversationConfiguration? configuration;
@@ -121,7 +127,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
         ICaptureDeviceFactory captureDevices, IPlaybackDeviceFactory playbackDevices, TimeProvider? clock = null,
         Func<IProviderCredentialSource, TimeProvider, ConversationRuntime>? runtimeFactory = null,
         Func<IProviderCredentialSource, TimeProvider, OpenAiTranscriptionAdapter>? transcriptionFactory = null,
-        Func<int, int>? nextStyle = null)
+        Func<int, int>? nextStyle = null,
+        DesktopMemoryService? memory = null)
     {
         this.operations = operations;
         this.settings = settings;
@@ -129,6 +136,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         this.captureDevices = captureDevices;
         this.clock = clock ?? TimeProvider.System;
         this.nextStyle = nextStyle ?? RandomNumberGenerator.GetInt32;
+        this.memory = memory;
         context = new(this.clock);
         var credentials = new ConversationCredentialSource(() => Volatile.Read(ref active)?.Authorization);
         runtime = runtimeFactory?.Invoke(credentials, this.clock) ??
@@ -144,6 +152,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         LiveConversationOperation? stop;
         lock (gate)
         {
+            memory?.Invalidate();
             context.Clear();
             configuration = next;
             stop = RevokeLocked();
@@ -157,6 +166,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         lock (gate)
         {
             if (paused == pause && muted == mute && locked == sessionLocked) return;
+            memory?.Invalidate();
             context.Clear();
             paused = pause;
             muted = mute;
@@ -172,6 +182,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         lock (gate)
         {
             if (locked == value) return;
+            memory?.Invalidate();
             context.Clear();
             locked = value;
             stop = RevokeLocked();
@@ -184,6 +195,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         LiveConversationOperation? stop;
         lock (gate)
         {
+            memory?.Invalidate();
             context.Clear();
             stop = RevokeLocked();
         }
@@ -201,7 +213,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
     }
 
     internal LiveConversationOperation Start(string? text, bool voice, bool microphone, bool approved,
-        bool localCaptureApproved = false, bool uploadApproved = false, CancellationToken caller = default)
+        bool localCaptureApproved = false, bool uploadApproved = false, CancellationToken caller = default,
+        bool memoryApproved = false)
     {
         if (!approved || microphone && (!localCaptureApproved || !uploadApproved))
             throw new LiveActionException("conversation.permission_required");
@@ -216,10 +229,12 @@ internal sealed class LiveConversationController : IAsyncDisposable
             if (operations.IsRunning) throw new LiveActionException("conversation.ownership_busy");
             var selected = configuration ?? throw new LiveActionException("conversation.setup_required");
             if (selected.Unavailable(voice, microphone) is not null) throw new LiveActionException("conversation.configuration_unsupported");
+            if (memoryApproved && (memory is null || selected.Memory is not { Enabled: true }))
+                throw new LiveActionException("memory.disabled");
             long acceptedRevision = revision = checked(revision + 1);
             var authorization = new ConversationAuthorization(selected, voice, microphone, clock,
                 () => Volatile.Read(ref revision) == acceptedRevision, settings.LoadAsync, vault, caller);
-            operation = new(authorization, caller);
+            operation = new(authorization, caller) { MemoryRequested = memoryApproved };
             active = operation;
             var worker = operations.TryStart(async token =>
             {
@@ -249,6 +264,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         lock (gate)
         {
             if (!ReferenceEquals(operation, active)) return;
+            memory?.Invalidate();
             context.Clear();
             if (operation.OwnershipReleased || operation.ExecutionFinished) return;
             RevokeLocked();
@@ -326,6 +342,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
             }
             operation.Authorization.Check(worker);
             ConversationTurn turn;
+            PersonaProfile? persona;
+            ResponseStyle? style;
+            IReadOnlyList<TextHistoryMessage> history;
             lock (gate)
             {
                 operation.Authorization.Check(worker);
@@ -338,16 +357,37 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 operation.Publish(new("policy." + commit.Reason, Policy: commit.Reason, Finished: !commit.Accepted));
                 if (!commit.Accepted) return new(SetupWorkOutcome.Completed);
                 lease = commit.Lease;
-                var persona = operation.Authorization.Configuration.Persona;
-                ResponseStyle? style = persona is null ? null :
+                persona = operation.Authorization.Configuration.Persona;
+                style = persona is null ? null :
                     ResponseStyleSelector.Select(persona.Styles, nextStyle);
-                var history = context.Snapshot();
+                history = context.Snapshot();
+            }
+
+            DesktopMemoryRetrieval? memoryResult = null;
+            if (operation.MemoryRequested)
+            {
+                operation.Publish(new("memory.retrieving"));
+                memoryResult = await memory!.RetrieveAsync(
+                    operation.Authorization.Configuration.Memory!,
+                    input!.UserText,
+                    worker).ConfigureAwait(false);
+                operation.Authorization.Check(worker);
+                await operation.Authorization.ValidateSettingsAsync(worker).ConfigureAwait(false);
+                operation.MemoryStoreRevision = memoryResult.StoreRevision;
+            }
+
+            lock (gate)
+            {
+                operation.Authorization.Check(worker);
                 var request = operation.Authorization.Configuration.Request(
-                    input!, operation.Authorization.Voice, style, history, out var usedHistory);
+                    input!, operation.Authorization.Voice, style, history, memoryResult,
+                    out var usedHistory, out var usedMemory);
                 operation.PersonaRevision = persona?.ConfigurationRevision;
                 operation.ResponseStyle = style;
                 operation.ContextMessages = usedHistory;
                 operation.ContextMessagesOmitted = history.Count - usedHistory;
+                operation.MemoryFactsUsed = usedMemory;
+                operation.MemoryFactsOmitted = (memoryResult?.Hits.Count ?? 0) - usedMemory;
                 operation.Authorization.BindInput(request.Input);
                 // Exact-content commit, pause/consent state and immediate Start share this short, non-awaiting gate.
                 turn = runtime.Start(request, operation.Authorization, operation.OriginalCaller);
@@ -380,6 +420,16 @@ internal sealed class LiveConversationController : IAsyncDisposable
         catch (LiveActionException error)
         {
             operation.Publish(new(error.Code, Finished: true));
+            return new(SetupWorkOutcome.Failed);
+        }
+        catch (DesktopMemoryException error)
+        {
+            operation.Publish(new(error.Code, Finished: true));
+            return new(SetupWorkOutcome.Failed);
+        }
+        catch (MemoryException error)
+        {
+            operation.Publish(new($"memory.{error.Failure}", Finished: true));
             return new(SetupWorkOutcome.Failed);
         }
         catch (ContractException error)
@@ -465,7 +515,13 @@ internal sealed class LiveConversationController : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         LiveConversationOperation? owned;
-        lock (gate) { disposed = true; context.Clear(); owned = RevokeLocked(); }
+        lock (gate)
+        {
+            disposed = true;
+            memory?.Invalidate();
+            context.Clear();
+            owned = RevokeLocked();
+        }
         owned?.Cancel("conversation.closed");
         // Never wait for native cleanup on the dispatcher. The shared slot remains reserved until real exit.
         await runtime.DisposeAsync().ConfigureAwait(false);

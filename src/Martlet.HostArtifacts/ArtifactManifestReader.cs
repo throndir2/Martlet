@@ -7,11 +7,26 @@ public sealed class ArtifactManifest
 {
     internal ManifestDocument Document { get; }
     public string DocumentSha256 { get; }
+    public int FormatVersion => Document.FormatVersion;
 
     internal ArtifactManifest(ManifestDocument document, string sha256)
     {
         Document = document;
         DocumentSha256 = sha256;
+    }
+
+    public ArtifactAcquisitionSelection DescribeAcquisition(IEnumerable<string> roleIds,
+        string? target = null, string? platform = null) =>
+        new(this, ArtifactInspector.InspectRoles(this, roleIds, target, platform));
+
+    public ArtifactAcquisitionCandidate DescribeArtifact(string artifactId)
+    {
+        try { ArtifactSourceRules.Id(artifactId); }
+        catch (Exception error) when (error is ContractException or ArtifactManifestException)
+        { throw new ArtifactManifestException("inspection.invalid_invocation"); }
+        return DescribeAcquisition(Document.Roles.Select(role => role.Id)).Artifacts
+            .SingleOrDefault(artifact => artifact.ArtifactId == artifactId)
+            ?? throw new ArtifactManifestException("inspection.invalid_invocation");
     }
 }
 

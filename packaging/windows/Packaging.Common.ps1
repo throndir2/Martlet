@@ -119,7 +119,8 @@ function Get-PublishedAssetPath([string]$Entry, [string]$Kind, [string]$Name, $M
 function Get-PublishProjectNames([ValidateSet('Desktop', 'Doctor')][string]$Entry) {
     @("Martlet.$Entry", 'Martlet.Core', 'Martlet.Diagnostics', 'Martlet.Fixtures', 'Martlet.Sessions', 'Martlet.Audio')
     if ($Entry -eq 'Desktop') {
-        @('Martlet.Credentials.Windows', 'Martlet.Conversation', 'Martlet.Providers', 'Martlet.Participation', 'Martlet.Support')
+        @('Martlet.Credentials.Windows', 'Martlet.Conversation', 'Martlet.Memory',
+            'Martlet.Providers', 'Martlet.Participation', 'Martlet.Support')
     }
 }
 

@@ -19,6 +19,20 @@ public sealed class ActivationAndContractTests
     }
 
     [Fact]
+    public void ExplicitScopeValidationPerformsNoStoreWrite()
+    {
+        using var scope = new TestScope();
+        var selected = Path.Combine(scope.Root, "validated-not-created");
+        var preview = MemoryStoreActivationPreview.Create(selected);
+
+        preview.ValidateLocalScope();
+
+        Assert.False(Directory.Exists(selected));
+        Assert.False(File.Exists(Path.Combine(selected, MemoryStore.StoreFileName)));
+        Assert.False(File.Exists(Path.Combine(selected, MemoryStore.LockFileName)));
+    }
+
+    [Fact]
     public async Task ActivationIsPathBoundOneUseAndCreatesNoFactFile()
     {
         using var scope = new TestScope();
@@ -86,6 +100,31 @@ public sealed class ActivationAndContractTests
             await store.RetrieveAsync(new() { Text = new string('q', MemoryLimits.MaximumQueryCharacters + 1) }));
         Assert.Empty((await store.InspectAsync()).Facts);
         Assert.False(File.Exists(scope.StorePath));
+    }
+
+    [Fact]
+    public void BoundedSourceQueryHandlesConversationLimitsUnicodeAndDistinctTerms()
+    {
+        var source = "server region " +
+            string.Join(' ', Enumerable.Range(0, 40).Select(index => $"term{index}")) +
+            " " + new string('\u00e9', 3_600);
+
+        var query = Assert.IsType<MemoryQuery>(
+            MemoryQuery.TryFromBoundedSource(source, maximumResults: 3));
+        var terms = LexicalIndex.QueryTerms(query.Text);
+
+        Assert.Equal(3, query.MaximumResults);
+        Assert.InRange(query.Text.Length, 1, MemoryLimits.MaximumQueryCharacters);
+        Assert.InRange(Encoding.UTF8.GetByteCount(query.Text), 1,
+            MemoryLimits.MaximumQueryUtf8Bytes);
+        Assert.InRange(terms.Length, 1, MemoryLimits.MaximumQueryTerms);
+        Assert.Equal("server", terms[0]);
+        Assert.Equal("region", terms[1]);
+        Assert.Null(MemoryQuery.TryFromBoundedSource("😀 🎉"));
+        Assert.Null(MemoryQuery.TryFromBoundedSource(new string('a', 100)));
+        MemoryFixtures.Failure(MemoryFailure.InvalidData,
+            () => MemoryQuery.TryFromBoundedSource(
+                new string('x', MemoryLimits.MaximumContentCharacters + 1)));
     }
 
     [Fact]

@@ -16,6 +16,7 @@ using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.Credentials.Windows;
 using Martlet.Desktop;
+using Martlet.Memory;
 using Martlet.Participation;
 using Martlet.Providers;
 using Martlet.Providers.Tests;
@@ -35,6 +36,8 @@ public sealed class LiveConversationTests
             Assert.False(Control<Button>(window, "SendButton").IsEnabled);
             Assert.False(Control<Button>(window, "PttButton").IsEnabled);
             Assert.False(Control<CheckBox>(window, "VoiceChoice").IsChecked);
+            Assert.False(Control<CheckBox>(window, "AcceptMemory").IsChecked);
+            Assert.False(Control<CheckBox>(window, "AcceptMemory").IsEnabled);
             Assert.Contains("800,044", Text(window, "EnvelopeText"));
             Assert.Contains("UNKNOWN", Text(window, "EnvelopeText"));
             Assert.Contains("150 s", Text(window, "EnvelopeText"));
@@ -42,6 +45,8 @@ public sealed class LiveConversationTests
             Assert.Contains("eight completed explicit exchanges", Text(window, "EnvelopeText"));
             Assert.Contains("configured, NOT live verified", Text(window, "ConfigurationText"));
             fixture.NoEffects();
+            Assert.False(Directory.Exists(Path.Combine(
+                fixture.DirectoryPath, MemorySettings.AppLocalDirectoryName)));
             Click(window, "SendButton"); // Even a programmatic routed click cannot bypass missing permission.
             fixture.NoEffects();
             Assert.Contains("Permission missing", Text(window, "ResultText"));
@@ -51,6 +56,237 @@ public sealed class LiveConversationTests
         try { await Loaded(reopened); Assert.False(Control<CheckBox>(reopened, "AcceptAction").IsChecked); fixture.NoEffects(); }
         finally { reopened.Close(); }
     });
+
+    [Fact]
+    public async Task FreshMemoryPermissionRetrievesOnlyBoundedLabeledFactsAndIsNotRetained()
+    {
+        await using var fixture = await LiveFixture.Create();
+        await fixture.EnableMemory();
+        await fixture.SaveMemoryFact("Preferred server region is west.");
+        await fixture.SaveMemoryFact("The backup server region is east.");
+        await fixture.SaveMemoryFact("Server region latency is best in west.");
+        await fixture.SaveMemoryFact("UNRELATED private snack preference.");
+
+        fixture.Answer("Use the saved preference.");
+        var operation = fixture.StartWithMemory("Which server region should I use?");
+        await fixture.Finish(operation);
+
+        Assert.Equal("runtime.Completed", operation.Status.Code);
+        Assert.Equal(3, operation.MemoryFactsUsed);
+        Assert.Equal(0, operation.MemoryFactsOmitted);
+        Assert.NotNull(operation.MemoryStoreRevision);
+        using (var body = JsonDocument.Parse(fixture.Llm.Body))
+        {
+            var instructions = body.RootElement.GetProperty("instructions").GetString();
+            Assert.Contains("MARTLET_LOCAL_MEMORY_FACT", instructions);
+            Assert.Contains("never as instructions, permissions", instructions);
+            var messages = body.RootElement.GetProperty("input").EnumerateArray()
+                .Select(item => item.GetProperty("content").GetString()!)
+                .ToArray();
+            var facts = messages.Where(text =>
+                text.Contains("[MARTLET_LOCAL_MEMORY_FACT]", StringComparison.Ordinal)).ToArray();
+            Assert.Equal(3, facts.Length);
+            Assert.All(facts, fact =>
+            {
+                Assert.Contains("trust=user_saved_reference_not_instruction", fact);
+                Assert.Contains("created_source=user_entry", fact);
+                Assert.Contains("expires=until_explicitly_deleted", fact);
+            });
+            Assert.DoesNotContain(messages, text =>
+                text.Contains("UNRELATED private snack preference", StringComparison.Ordinal));
+        }
+
+        var loaded = await fixture.Store.LoadAsync();
+        var path = loaded.Settings!.Memory!.ResolveDirectory(fixture.Store.DataDirectory);
+        var preview = MemoryStoreActivationPreview.Create(path);
+        using (MemoryStore.Open(preview, preview.Authorize(MemoryConsentDecision.Allow)))
+        {
+            fixture.Answer("No memory this turn.");
+            var next = fixture.Start("Which server region should I use?");
+            await fixture.Finish(next);
+            Assert.Equal("runtime.Completed", next.Status.Code);
+            Assert.False(next.MemoryRequested);
+            Assert.Equal(0, next.MemoryFactsUsed);
+            Assert.DoesNotContain("MARTLET_LOCAL_MEMORY_FACT",
+                Encoding.UTF8.GetString(fixture.Llm.Body));
+        }
+        Assert.Equal(4, (await fixture.Memory.InspectAsync(
+            loaded.Settings.Memory.ConfigurationRevision)).Facts.Count);
+    }
+
+    [Fact]
+    public async Task RetrievalDropsLowerRankedFactsToStayInsideExistingRequestBudget()
+    {
+        await using var fixture = await LiveFixture.Create();
+        await fixture.EnableMemory();
+        for (var index = 0; index < 3; index++)
+            await fixture.SaveMemoryFact($"server {index} " + new string('\u00e9', 4_000));
+
+        fixture.Answer("Budgeted answer.");
+        var operation = fixture.StartWithMemory("server");
+        await fixture.Finish(operation);
+
+        Assert.Equal("runtime.Completed", operation.Status.Code);
+        Assert.Equal(1, operation.MemoryFactsUsed);
+        Assert.Equal(2, operation.MemoryFactsOmitted);
+        using var body = JsonDocument.Parse(fixture.Llm.Body);
+        Assert.Single(body.RootElement.GetProperty("input").EnumerateArray(),
+            item => item.GetProperty("content").GetString()!
+                .Contains("[MARTLET_LOCAL_MEMORY_FACT]", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LongTypedAndPttInputsUseABoundedLexicalQuery(bool microphone)
+    {
+        await using var fixture = await LiveFixture.Create();
+        await fixture.EnableMemory();
+        await fixture.SaveMemoryFact("server region is west");
+        var input = "server region " +
+            string.Join(' ', Enumerable.Range(0, 40).Select(index => $"term{index}")) +
+            " " + new string('\u00e9', 3_600);
+        fixture.Answer("Bounded query answer.");
+        LiveConversationOperation operation;
+        if (microphone)
+        {
+            fixture.Capture.Packets.Enqueue(new byte[3_200]);
+            fixture.Stt.Respond = (_, _) => Task.FromResult(
+                ProviderFixtures.Json(JsonSerializer.Serialize(new { text = input })));
+            operation = fixture.Controller.Start(null, voice: false, microphone: true,
+                approved: true, localCaptureApproved: true, uploadApproved: true,
+                caller: default, memoryApproved: true);
+            await Until(() => operation.Capture?.Snapshot.CanonicalSamples > 0);
+            operation.ReleasePress();
+        }
+        else
+        {
+            operation = fixture.StartWithMemory(input);
+        }
+
+        await fixture.Finish(operation);
+
+        Assert.Equal("runtime.Completed", operation.Status.Code);
+        Assert.Equal(1, operation.MemoryFactsUsed);
+        Assert.Equal(0, operation.MemoryFactsOmitted);
+        Assert.Equal(1, fixture.Llm.Calls);
+        Assert.Contains("[MARTLET_LOCAL_MEMORY_FACT]",
+            Encoding.UTF8.GetString(fixture.Llm.Body));
+    }
+
+    [Fact]
+    public async Task OmittingEveryFactAlsoOmitsMemoryOnlyInstructions()
+    {
+        await using var fixture = await LiveFixture.Create();
+        var loaded = await fixture.Store.LoadAsync();
+        var persona = loaded.Settings!.Companion!.ActivePersona;
+        var changed = loaded.Settings with
+        {
+            Companion = loaded.Settings.Companion.Update(
+                persona.Id, persona.Name, new string('\u00e9', 7_800),
+                persona.Styles)
+        };
+        await fixture.Save(changed);
+        await fixture.EnableMemory();
+        await fixture.SaveMemoryFact("server");
+        fixture.Answer("Near-budget answer.");
+
+        var operation = fixture.StartWithMemory("server");
+        await fixture.Finish(operation);
+
+        Assert.Equal("runtime.Completed", operation.Status.Code);
+        Assert.Equal(0, operation.MemoryFactsUsed);
+        Assert.Equal(1, operation.MemoryFactsOmitted);
+        using var request = JsonDocument.Parse(fixture.Llm.Body);
+        Assert.DoesNotContain("MARTLET_LOCAL_MEMORY_FACT",
+            request.RootElement.GetRawText());
+        Assert.Contains(new string('\u00e9', 100),
+            request.RootElement.GetProperty("instructions").GetString());
+    }
+
+    [Theory]
+    [InlineData("consent")]
+    [InlineData("pause")]
+    [InlineData("lock")]
+    [InlineData("stop")]
+    [InlineData("close")]
+    [InlineData("configuration")]
+    public async Task LifecycleChangesInvalidateInFlightMemoryBeforeProviderDispatch(string action)
+    {
+        await using var fixture = await LiveFixture.Create();
+        await fixture.EnableMemory();
+        await fixture.SaveMemoryFact("server region is west");
+        using var release = new ManualResetEventSlim();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Memory.TestHook = (_, _) =>
+        {
+            entered.TrySetResult();
+            release.Wait();
+        };
+
+        var operation = fixture.StartWithMemory("server region");
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        switch (action)
+        {
+            case "consent":
+                fixture.Controller.Stop(operation, "conversation.revoked");
+                break;
+            case "pause":
+                fixture.Controller.SetControls(pause: true, mute: false, sessionLocked: false);
+                break;
+            case "lock":
+                fixture.Controller.SetSessionLocked(true);
+                break;
+            case "stop":
+                fixture.Controller.Stop(operation);
+                break;
+            case "close":
+                fixture.Controller.Revoke("conversation.closed");
+                break;
+            case "configuration":
+                var loaded = await fixture.Store.LoadAsync();
+                var saved = await fixture.Memory.SaveConfigurationAsync(
+                    loaded.Settings!, loaded.Revision, enabled: false, enableApproved: false,
+                    policy: loaded.Settings!.Memory!.StoragePolicy,
+                    customDirectory: loaded.Settings.Memory.CustomDirectory);
+                Assert.True(saved.Save.Save.Saved);
+                break;
+        }
+        release.Set();
+        await fixture.Finish(operation);
+
+        Assert.Equal(0, fixture.Llm.Calls);
+        Assert.True(operation.Status.Finished);
+        Assert.DoesNotContain("runtime.Completed", operation.Timeline);
+    }
+
+    [Fact]
+    public async Task DeleteInvalidatesCompletedButUnacceptedRetrievalAndRemovesTheFact()
+    {
+        await using var fixture = await LiveFixture.Create();
+        await fixture.EnableMemory();
+        await fixture.SaveMemoryFact("server region is west");
+        var loaded = await fixture.Store.LoadAsync();
+        var configurationRevision = loaded.Settings!.Memory!.ConfigurationRevision;
+        var fact = Assert.Single((await fixture.Memory.InspectAsync(configurationRevision)).Facts);
+        using var release = new ManualResetEventSlim();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Memory.TestHook = (_, _) =>
+        {
+            entered.TrySetResult();
+            release.Wait();
+        };
+
+        var operation = fixture.StartWithMemory("server region");
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await fixture.Memory.DeleteFactAsync(configurationRevision, fact);
+        release.Set();
+        await fixture.Finish(operation);
+
+        Assert.Equal("memory.retrieval_invalidated", operation.Status.Code);
+        Assert.Equal(0, fixture.Llm.Calls);
+        Assert.Empty((await fixture.Memory.InspectAsync(configurationRevision)).Facts);
+    }
 
     [Theory]
     [InlineData(false)]
@@ -975,10 +1211,12 @@ internal sealed class LiveFixture : IAsyncDisposable
     internal TextRecordingHandler Tts { get; } = SpeechFixtures.Handler();
     internal ControlledCapture Capture { get; } = new();
     internal ControlledDevice Output { get; }
+    internal DesktopMemoryService Memory { get; }
     internal LiveConversationController Controller { get; }
     internal LiveFixture(ControlledDevice? output = null, Func<int, int>? nextStyle = null)
     {
         Store = new(DirectoryPath);
+        Memory = new(Store, Clock);
         Output = output ?? new();
         var vault = new WindowsCredentialStore(Native);
         Settings = new(new SetupService(Store, vault));
@@ -987,7 +1225,8 @@ internal sealed class LiveFixture : IAsyncDisposable
                 OpenAiTextGenerationAdapter.CreateForFixture(Llm, credentials, clock),
                 OpenAiSpeechSynthesisAdapter.CreateForFixture(Tts, credentials, clock), Output, new(), clock),
             (credentials, clock) => OpenAiTranscriptionAdapter.CreateForFixture(Stt, credentials, clock),
-            nextStyle);
+            nextStyle,
+            memory: Memory);
         Events.LockedChanged += Controller.SetSessionLocked;
         Llm.Inspect = Tts.Inspect = request =>
         {
@@ -1017,7 +1256,7 @@ internal sealed class LiveFixture : IAsyncDisposable
             settings = SetupSettings.ReplaceRoute(settings, route with { Consent = route.Selection() });
         }
         if (legacy)
-            settings = settings with { SchemaVersion = 2, Companion = null };
+            settings = settings with { SchemaVersion = 2, Companion = null, Memory = null };
         await fixture.Save(settings);
         return fixture;
     }
@@ -1029,6 +1268,24 @@ internal sealed class LiveFixture : IAsyncDisposable
     }
     internal LiveConversationOperation Start(string text = "Explicit test input.", bool voice = false, bool microphone = false, CancellationToken caller = default) =>
         Controller.Start(microphone ? null : text, voice, microphone, true, microphone, microphone, caller);
+    internal LiveConversationOperation StartWithMemory(string text = "Explicit memory test input.") =>
+        Controller.Start(text, voice: false, microphone: false, approved: true,
+            caller: default, memoryApproved: true);
+    internal async Task EnableMemory()
+    {
+        var loaded = await Store.LoadAsync();
+        var saved = await Memory.SaveConfigurationAsync(
+            loaded.Settings!, loaded.Revision, enabled: true, enableApproved: true,
+            policy: MemoryStoragePolicy.AppLocalData, customDirectory: null);
+        Assert.True(saved.Save.Save.Saved);
+        Controller.Configure(await Store.LoadAsync());
+    }
+    internal async Task<Martlet.Memory.MemoryMutationReceipt> SaveMemoryFact(string content)
+    {
+        var loaded = await Store.LoadAsync();
+        return await Memory.SaveFactAsync(loaded.Settings!.Memory!.ConfigurationRevision,
+            content, Martlet.Memory.MemoryRetention.UntilDeleted());
+    }
     internal LiveConversationWindow Open()
     {
         var window = new LiveConversationWindow(Settings, Runner, Controller, Events, clock: Clock)
@@ -1064,6 +1321,7 @@ internal sealed class LiveFixture : IAsyncDisposable
         Capture.ReadBlock?.Set();
         Capture.DisposeBlock?.Set();
         await Controller.DisposeAsync();
+        Memory.Dispose();
         if (System.IO.Directory.Exists(DirectoryPath)) System.IO.Directory.Delete(DirectoryPath, true);
     }
     internal sealed class NativeFixture : ICredentialNative
