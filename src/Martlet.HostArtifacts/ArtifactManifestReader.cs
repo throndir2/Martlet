@@ -26,7 +26,11 @@ public static class ArtifactManifestReader
         var owned = bytes.ToArray();
         try
         {
-            ContractJson.Read<VersionHeader>(owned);
+            var header = ContractJson.Read<VersionHeader>(owned);
+            // Keep v1's exact field vocabulary, including rejecting an explicit null v2 collection.
+            using var json = System.Text.Json.JsonDocument.Parse(owned);
+            ArtifactSourceRules.Require((header.FormatVersion == 2) ==
+                json.RootElement.TryGetProperty("container_images", out _), "manifest.invalid_json");
             var document = ContractJson.Read<ManifestDocument>(owned);
             return new(document, Convert.ToHexStringLower(SHA256.HashData(owned)));
         }
@@ -44,7 +48,7 @@ public static class ArtifactManifestReader
     private sealed record VersionHeader : IContract
     {
         public required int FormatVersion { get; init; }
-        public void Validate() => ContractRules.Require(FormatVersion == 1,
+        public void Validate() => ContractRules.Require(FormatVersion is 1 or 2,
             "Unsupported artifact manifest version.", ErrorCode.UnsupportedVersion);
     }
 }

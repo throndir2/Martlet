@@ -149,11 +149,14 @@ public sealed class ArtifactDoctorTests : IDisposable
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task ActualExecutableReportsExitAndStableJson(bool invalid)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task ActualExecutableReportsExitAndStableJson(bool invalid, bool container)
     {
         await CreateInput();
+        if (container) await File.WriteAllBytesAsync(Input,
+            await File.ReadAllBytesAsync(Path.Combine(AppContext.BaseDirectory, "fixtures", "container-images.v2.json")));
         if (invalid) await File.WriteAllTextAsync(Input, "{\"format_version\":99,\"secret\":\"PRIVATE-CANARY\"}");
         var start = new ProcessStartInfo
         {
@@ -177,6 +180,11 @@ public sealed class ArtifactDoctorTests : IDisposable
             using var json = JsonDocument.Parse(text);
             Assert.Equal(process.ExitCode, json.RootElement.GetProperty("exit_code").GetInt32());
             Assert.False(json.RootElement.GetProperty("host_qualified").GetBoolean());
+            if (container)
+            {
+                Assert.Equal(2, json.RootElement.GetProperty("format_version").GetInt32());
+                Assert.Equal(660, json.RootElement.GetProperty("disk").GetProperty("known_listed_payload_bytes").GetInt64());
+            }
             Assert.DoesNotContain("PRIVATE-CANARY", text);
             Assert.DoesNotContain(root, text);
         }
