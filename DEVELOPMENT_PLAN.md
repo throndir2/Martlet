@@ -11,7 +11,8 @@ explicit partial mappings and no silent fallback. See the
 [avatar guide and permutation matrix](docs/AVATARS.md) and Delivery
 A01-A03 / AC-27-AC-32. Development authorization does not grant SDK/model
 downloads, license acceptance, installation, GPU inference, paid use or release
-rights. The first wave is in progress, not an integrated end-user capability.
+rights. Standalone first-wave modules are locally integrated; normal Desktop
+integration and runtime qualification remain incomplete, not an end-user capability.
 
 **Implementation status update:** the subsequent D01/D02-first-slice/narrow-F01
 work is recorded in [Foundation decisions and boundaries](docs/FOUNDATION.md).

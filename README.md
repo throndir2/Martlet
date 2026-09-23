@@ -32,8 +32,9 @@ to the selected provider; a separate fixture demo will not perform AI inference.
 Later milestones cover Ubuntu self-hosting, two-host GPU deployments, opt-in
 screen understanding and memory. [Live2D and VRM avatar development](docs/AVATARS.md)
 is authorized in parallel now, with Audio2Face first/preferred and avatars OFF
-by default. The initial independent libraries/adapters are in progress, not a
-working end-user renderer. Voice reliability and release qualification remain
+by default. Standalone compatibility, analyzer and renderer implementations
+now exist; the normal Desktop route is still under development, not a working
+end-user avatar feature. Voice reliability and release qualification remain
 separate requirements.
 
 The [planned installation flow](docs/INSTALLATION_SUPPORT.md#feature-first-multi-machine-setup)

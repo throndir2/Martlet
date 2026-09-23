@@ -535,7 +535,7 @@ crash/cancellation semantics and the remaining app/gateway/real-user gates.
 A01-A03 now develop Live2D and VRM independently of G2; SDK release
 classification stays a distribution gate, not a blanket development hold.
 See [AVATARS](AVATARS.md) for model requirements, permutations and current
-in-progress versus planned scope. The avatar is OFF until explicitly enabled
+implemented standalone versus unfinished app/motion scope. The avatar is OFF until explicitly enabled
 and can be stopped/uninstalled without changing voice/provider/persona setup.
 
 Separate speech analysis -> timestamped semantic channels -> calibrated
@@ -575,14 +575,19 @@ device loss and disable invalidate old epochs, flush bounded queues and
 neutralize speech-owned channels; late callbacks cannot animate a new turn.
 Upstream compute cancellation is reported separately from local stale discard.
 
-**Current gap:** the existing sink reports `DeviceConsumedSamples` from
-committed samples minus padding, with `AudibleSamples=null`; its device
-interface does not expose `IAudioClock`. A02c must integrate and validate
-WASAPI `IAudioClock`, original-PCM mapping and discontinuity/reset semantics.
-Until then, synchronized speech animation is unavailable; queue consumption
-is not a qualified playback clock or evidence of physical audibility.
-The initial Audio2Face clip-only API is being corrected through an authorized
-live-streaming extension using a bounded nonblocking generated-PCM tee.
+**Current integration checkpoint:** standalone contracts, Audio2Face streaming
+and both renderer adapters are locally integrated and reviewed. Opt-in
+`IPlaybackClockDevice` and `PlaybackRun.DeviceClock` now expose WASAPI clock
+observations, clock state and a nullable original-PCM sample offset.
+Legacy `DeviceConsumedSamples` still means committed samples minus padding,
+and `AudibleSamples` remains null; neither is a qualified presentation clock.
+A concrete zero-padding/queued-refill invalidation correction is underway.
+Normal app wiring and actual device/physical synchronization remain incomplete;
+invalid/unavailable clock state disables synchronized animation, not voice.
+Audio2Face now has bounded nonblocking live `GeneratedSpeechStream` ingress;
+buffered clips remain a separate offline/comparison path. Actual HTTP/2
+fixtures exercise that adapter, and generated-PCM observation exists locally,
+but neither proves completed app-to-analyzer wiring or NVIDIA inference.
 Voice must never await that analysis, its backpressure or renderer readiness;
 late/over-budget animation is visibly discarded or disabled independently.
 
@@ -599,8 +604,8 @@ profile binding, resource identities and runtime references; no unsynchronized
 paths file or new global settings version. Its single owner validates revisions
 and defines recovery/delete semantics. Disable preserves the document, never
 activation permission. Existing global backup/restore excludes it with visible
-disclosure until qualified; actual persistence/lifecycle integration remains
-planned.
+disclosure until qualified; actual WPF host/configuration/publish and lifecycle
+integration remain in development, not a usable normal Desktop avatar surface.
 A03 witnesses local real-model/renderer/GPU timing
 and crash behavior before support claims; rights and release remain separate.
 

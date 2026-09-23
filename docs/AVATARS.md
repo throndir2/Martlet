@@ -1,11 +1,14 @@
 # Avatar guide: Live2D, VRM and speech animation
 
-**Accepted direction, 2026-09-23; implementation in progress, not end-user
-support.** Both Live2D and VRM are required renderer targets. Audio2Face is
+**Accepted direction, 2026-09-23; standalone implementations exist, Desktop
+integration in development, not end-user support.** Both Live2D and VRM are required renderer targets. Audio2Face is
 the first implementation priority and preferred speech-animation backend.
-Independent compatibility, Audio2Face, Live2D and VRM workstreams have started;
-launching those workstreams does not establish integrated rendering, playback
-or settings. This guide describes the intended experience and its remaining
+The coordinator has locally integrated the standalone compatibility, Audio2Face,
+Live2D and VRM modules plus initial clock/PCM-observation code. Local controlled
+checks do not establish a usable normal Desktop renderer or qualified physical
+synchronization; standalone module review findings are resolved, while clock
+hardening remains open.
+This guide describes the intended experience and its remaining
 gates, not instructions to turn on an available feature.
 
 Avatars remain **OFF until the user enables them**. No-avatar voice/text is a
@@ -46,16 +49,16 @@ owns the system boundaries.
 
 | Deliverable | Current scope / evidence limit |
 | --- | --- |
-| Shared contracts, A01a | In-progress standalone `Martlet.Avatars` library. Planned v1 facial frame uses Core correlation IDs, epoch/sequence and **original PCM** sample rate/offset; exact 52 ARKit names plus separate typed semantic vowels/blinks/emotions. `aa` is not an ARKit name. No skeleton or general pose/body wire payload. |
-| Audio2Face, A01b | In-progress real NIM gRPC client boundary with controlled fixtures; initial complete-clip API is being corrected for bounded live PCM streaming. This is not yet an integrated live animation path, and speech must never wait for analysis. Requires separately provisioned NIM service, permitted models and supported NVIDIA GPU/runtime. No app route, automatic probe, installation, model execution or measured GPU result. SDK MIT does not license NIM or weights. |
-| Live2D, A02a | In-progress bounded importer/mapping/renderer adapter, targeting official Cubism Web Framework 5-r.4 (`8df84780f2aa1298f3b30965cdae143e049f3c8e`) with matching host-supplied local Core **05.01.0000** (`0x05010000`, not editor/SDK marketing version). Embedded shaders avoid the newer asynchronous shader lifecycle; unsupported MOC/Core versions and Cubism 5.3 blend/offscreen features are rejected, not downgraded. Motions/expressions/physics are declared but not started; this slice accepts host-composed bounded parameter writes only. Neither proprietary runtime nor artist model is bundled/acquired. Native parsing/GPU rendering is NOT RUN. |
-| VRM, A02b | In-progress bounded importer/facial mapping/renderer adapter: Three.js 0.180.0 + three-vrm 3.5.5, conservative local self-contained VRM 1 subset. VRM 0, unsupported extensions, non-PNG textures, sparse accessors and embedded animations are rejected. Trusted local gaze/head controls are separate from A2F facial frames. Actual model/renderer qualification is separate. VRMA/body playback is **unsupported in the first slice**, not accepted data that does nothing. |
-| Composition/app integration, A02c | Planned next wave: normal WPF renderer host, configuration, playback synchronization, explicit failure/remedies and comparisons. Single-owner integration only after shared boundaries; no competing global settings migration during reconciliation. |
+| Shared contracts, A01a | Implemented standalone [Martlet.Avatars contracts](../contracts/avatars/README.md), locally integrated/reviewed with production-path checks. Strict v1 facial frames use Core correlation IDs, epoch/sequence and **original PCM** sample rate/offset; exact 52-name ARKit catalog plus separate typed semantic vowels/blinks/emotions. `aa` is not an ARKit name. No skeleton or general pose/body wire payload. |
+| Audio2Face, A01b | Implemented/reviewed standalone [NIM gRPC adapter](../src/Martlet.Avatar.Audio2Face/README.md), including bounded nonblocking live `GeneratedSpeechStream` ingress and separate buffered comparison/offline clips. Actual HTTP/2 fixtures exercise protocol behavior, not a normal Desktop animation route. Speech never waits for analysis. Requires separately provisioned NIM service, permitted models and supported NVIDIA GPU/runtime; no automatic probe, installation or measured GPU/model result. SDK MIT does not license NIM or weights. |
+| Live2D, A02a | Implemented/reviewed standalone [importer/mapping/renderer adapter](../src/Martlet.Avatar.Live2D/README.md), with local checks. Targets official Cubism Web Framework 5-r.4 (`8df84780f2aa1298f3b30965cdae143e049f3c8e`) and matching host-supplied Core **05.01.0000** (`0x05010000`, not editor/SDK marketing version). Embedded shaders avoid the newer asynchronous shader lifecycle; unsupported MOC/Core versions and Cubism 5.3 blend/offscreen features are rejected, not downgraded. Motions/expressions/physics remain inactive; host-composed bounded parameter writes apply without a second mapping. No proprietary runtime/artist model acquired; full SDK linking, native parsing/GPU rendering remain NOT RUN. |
+| VRM, A02b | Implemented/reviewed standalone [VRM importer/facial mapping/renderer adapter](../src/Martlet.Avatar.Vrm/README.md): Three.js 0.180.0 + three-vrm 3.5.5, conservative local self-contained VRM 1 subset. VRM 0, unsupported extensions, non-PNG textures, sparse accessors and embedded animations are rejected. Trusted local gaze/head controls are separate from A2F facial frames. Real-loader/control and bundle checks exist; review corrections are cleared. Actual graphics/artist-rig/device-sync qualification is NOT RUN. VRMA/body playback is **unsupported in the first slice**. |
+| Composition/app integration, A02c | In development: opt-in `IPlaybackClockDevice`, `PlaybackRun.DeviceClock` with nullable sample offset, and bounded generated-PCM observation exist locally. A zero-padding/queued-refill clock invalidation correction is under review; physical sync remains NOT RUN. Normal WPF UI/renderer host/configuration/publish integration is not complete or usable as a normal app surface. One owner, no competing global settings migration. |
 | Rich motion, A02d | Planned capability/wire extensions and procedural/clip integration for head, body, gaze and secondary motion. A facial gaze mapping may consume actual ARKit eye-look channels; that does not create general gaze/pose support. |
 | Qualification, A03 | Planned local real-model/renderer/GPU/device trials, performance and lifecycle evidence; separately reviewed rights/release. No end-to-end avatar acceptance is passed by this guide. |
 
-The contracts owner documents exact APIs/schema in `contracts/avatars/README.md`
-when integrated. This user guide does not invent competing payload fields,
+The [contracts guide](../contracts/avatars/README.md) owns exact APIs/schema.
+This user guide does not invent competing payload fields,
 numerical import limits or settings versions. The current foundation supports
 explicit per-aspect source selection and validated scalar mappings, **not**
 arbitrary blending. The broader composition requirements below remain work
@@ -154,20 +157,25 @@ PCM, TTS receipt and wall-clock time are not evidence of audible progress.
 Pause/underrun freezes speech progression; absent reliable progress is unknown,
 not permission to animate ahead.
 
-**Inspected integration gap, 2026-09-23:** the existing audio
+**Integration checkpoint, 2026-09-23:** opt-in `IPlaybackClockDevice` now exposes
+native WASAPI clock observations, and `PlaybackRun.DeviceClock` supplies clock
+state and a nullable original-PCM sample offset. The existing audio
 `PlaybackSnapshot.DeviceConsumedSamples` is derived from committed samples
-minus device padding; `AudibleSamples` remains null. `IPlaybackDevice` has
-no `IAudioClock` exposure. These counters are not a qualified presentation
-clock. A02c must add and validate WASAPI `IAudioClock` integration, its mapping
-to original PCM samples and reset/discontinuity behavior. Until available,
-synchronized speech animation must report unavailable rather than treating
-queue counters as clock evidence. A native clock still does not prove
-physical audibility; device/listening qualification remains separate.
+minus device padding; `AudibleSamples` remains null. These legacy counters
+are not the presentation clock. Initial clock/tee code is locally integrated
+with controlled checks, but a concrete zero-padding plus queued-refill
+invalidation correction is underway. Mapping/reset/discontinuity handling,
+normal app integration and actual device/physical synchronization are not
+qualified. Unavailable/invalidated clock state must disable synchronized
+animation, never substitute queue counters. A native clock still does not
+prove physical audibility; device/listening qualification remains separate.
 
-The Audio2Face adapter's initial clip-only API does not establish live
-streaming. The live extension is authorized for development now; its bounded
-nonblocking PCM tee must feed generated speech independently of
-voice playback. Speech never waits for analyzer initialization, buffering,
+The Audio2Face adapter now implements bounded nonblocking live ingress;
+buffered `GeneratedSpeechClip` remains a comparison/offline path, not the
+normal live path. Concurrent input/output is exercised with actual HTTP/2
+fixtures; that evidence is not integrated Desktop playback or NVIDIA inference.
+The generated-PCM observation tee also exists locally; its app-to-analyzer
+wiring remains in development. Speech never waits for analyzer initialization, buffering,
 completion, backpressure or renderer readiness. If animation cannot keep up,
 report/drop obsolete animation or stop that optional path within its bounds;
 do not delay speech, grow an unbounded buffer or replay late facial motion.
@@ -226,8 +234,8 @@ flowchart TD
 
 A01a/A01b start early; Live2D and VRM develop in parallel against coordinated
 interfaces. First-wave fixtures do not depend on licensed model/GPU access.
-A02c follows integrated contracts/adapters and must supply the missing
-`IAudioClock` playback boundary and nonblocking live PCM analysis handoff.
+A02c follows the locally integrated contracts/adapters and must finish hardening
+and wiring the opt-in clock/nonblocking PCM handoff into the normal app.
 A02d extends channels without claiming the v1 face frame carries
 poses. A03a qualifies each advertised subset; facial-only trials need not wait
 for body implementation, but full-motion claims do. Rights research may run
