@@ -121,6 +121,16 @@ retains complete runtime JS licenses/notices, and emits a deterministic
 `avatar-bundle-receipt.json` plus raw `avatar-esbuild-metafile.json` in its
 intermediate output. Source Core/Framework/models are never bundled.
 
+Run the actual browser-message/fatal-state bridge regression without starting a
+browser or GPU:
+
+```powershell
+node --experimental-vm-modules --test src\Martlet.Avatar.RendererHost\web\bridge.test.mjs
+```
+
+Node 20 requires `--experimental-vm-modules` for this test's isolated
+`vm.SourceTextModule` harness. Plain `node --test` is not an equivalent command.
+
 Normal Desktop output includes its independent `AvatarRenderer` executable,
 dependencies and `web` shell. Local normal win-x64 framework-dependent publish
 was exercised; this does not qualify an installer or authorize release publication.
