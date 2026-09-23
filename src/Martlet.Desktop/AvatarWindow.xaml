@@ -49,7 +49,8 @@
             <CheckBox x:Name="AnalysisPermission" Margin="0,8"
                 Content="Activate for this session: send generated speech only to the displayed existing local A2F service. GPU/service/terms prerequisites are my responsibility."/>
             <WrapPanel>
-                <Button Content="_Activate reviewed avatar" Click="Activate_Click" Padding="10,6" Margin="0,0,8,0"/>
+                <Button x:Name="ActivateButton" Content="_Activate reviewed avatar" Click="Activate_Click" Padding="10,6" Margin="0,0,8,0"
+                        AutomationProperties.AutomationId="ActivateAvatar"/>
             </WrapPanel>
             <TextBlock Margin="0,12" TextWrapping="Wrap"
                 Text="Avatar settings/assets are preserved when disabled. Activation is never saved. Existing application backup/restore does NOT include avatar.json. A different restored profile cannot reuse this document. Physical device synchronization and licensed/GPU runtime qualification remain NOT RUN until witnessed. Closing this settings window does not stop an explicitly activated avatar; STOP is always available."/>

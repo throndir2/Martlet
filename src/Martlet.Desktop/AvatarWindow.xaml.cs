@@ -22,6 +22,7 @@ public partial class AvatarWindow : Window
     private Guid profileId;
     private string? revision;
     private bool busy;
+    private bool renderingDraft = true;
 
     internal AvatarWindow(AvatarController controller, AvatarProfileStore profiles,
         ISetupService settings, SetupOperationRunner operations)
@@ -38,11 +39,17 @@ public partial class AvatarWindow : Window
         ShowConfiguration(AvatarConfiguration.Disabled);
         timer.Tick += (_, _) => StatusText.Text = controller.Status;
         timer.Start();
+        renderingDraft = false;
     }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e) => await ActionAsync(ReloadAsync);
     private async void Reload_Click(object sender, RoutedEventArgs e) => await ActionAsync(ReloadAsync);
-    private void Window_Closed(object? sender, EventArgs e) { timer.Stop(); lifetime.Cancel(); }
+    private void Window_Closed(object? sender, EventArgs e)
+    {
+        timer.Stop();
+        if (busy && !controller.IsActive) controller.Revoke();
+        lifetime.Cancel();
+    }
     private void ShowConfiguration(AvatarConfiguration configuration) =>
         ConfigurationText.Text = Encoding.UTF8.GetString(AvatarJson.WriteConfiguration(configuration));
     private AvatarConfiguration ReadConfiguration() =>
@@ -51,6 +58,7 @@ public partial class AvatarWindow : Window
     private void Selection_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e) => DraftChanged();
     private void DraftChanged()
     {
+        if (renderingDraft) return;
         controller?.Revoke();
         if (AnalysisPermission is not null) AnalysisPermission.IsChecked = false;
     }
@@ -60,16 +68,26 @@ public partial class AvatarWindow : Window
         var loaded = await settings.LoadAsync(lifetime.Token);
         if (loaded.Settings is null) throw new InvalidOperationException("Create/load a valid application profile first.");
         profileId = loaded.Settings.Profile.Id;
+        if (controller.IsActive && controller.InspectedProfile?.ProfileId != profileId) controller.Revoke();
         var saved = await profiles.LoadAsync(profileId, lifetime.Token);
+        if (controller.IsActive && controller.InspectedProfile is { } activeProfile &&
+            (saved.Profile is null || !ContractJson.Write(activeProfile, AvatarProfile.MaximumBytes)
+                .SequenceEqual(ContractJson.Write(saved.Profile, AvatarProfile.MaximumBytes))))
+            controller.Revoke();
         revision = saved.Revision;
-        if (saved.Profile is { } selected)
+        renderingDraft = true;
+        try
         {
-            RendererChoice.SelectedItem = selected.Renderer;
-            ModelPathText.Text = selected.ModelPath;
-            SdkPathText.Text = selected.SdkDirectory ?? "";
-            EndpointText.Text = selected.Endpoint;
-            ShowConfiguration(selected.Settings);
+            if (saved.Profile is { } selected)
+            {
+                RendererChoice.SelectedItem = selected.Renderer;
+                ModelPathText.Text = selected.ModelPath;
+                SdkPathText.Text = selected.SdkDirectory ?? "";
+                EndpointText.Text = selected.Endpoint;
+                ShowConfiguration(selected.Settings);
+            }
         }
+        finally { renderingDraft = false; }
         InspectPermission.IsChecked = AnalysisPermission.IsChecked = false;
         ResultText.Text = "Local choices loaded only; no renderer or analysis started.";
     }
@@ -189,7 +207,8 @@ public partial class AvatarWindow : Window
         if (saved.Profile is null || saved.Revision != revision ||
             !ContractJson.Write(saved.Profile, AvatarProfile.MaximumBytes).SequenceEqual(ContractJson.Write(selected, AvatarProfile.MaximumBytes)))
             throw new InvalidOperationException("Save these exact reviewed choices before activation.");
-        await controller.ActivateAsync(selected, AnalysisPermission.IsChecked == true, lifetime.Token);
+        lifetime.Token.ThrowIfCancellationRequested();
+        await controller.ActivateAsync(selected, AnalysisPermission.IsChecked == true, CancellationToken.None);
         AnalysisPermission.IsChecked = false;
     });
 
