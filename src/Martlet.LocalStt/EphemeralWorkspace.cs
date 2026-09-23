@@ -226,20 +226,8 @@ internal sealed class EphemeralLocalSttWorkspace : ILocalSttWorkspace
                 4096,
                 FileOptions.Asynchronous | FileOptions.SequentialScan);
             WindowsLocalPath.Validate(stream.SafeFileHandle, path, directory: false);
-            if (stream.Length > LocalSttPackageManifest.MaximumTranscriptBytes)
-                return new(WorkspaceStatus.OutputLimit);
-            var bytes = new byte[LocalSttPackageManifest.MaximumTranscriptBytes + 1];
-            var length = 0;
-            while (length < bytes.Length)
-            {
-                var read = await stream.ReadAsync(bytes.AsMemory(length), cancellationToken).ConfigureAwait(false);
-                if (read == 0)
-                    break;
-                length += read;
-            }
-            if (length > LocalSttPackageManifest.MaximumTranscriptBytes)
-                return new(WorkspaceStatus.OutputLimit);
-            return new(WorkspaceStatus.Ready, bytes[..length]);
+            return await ReadBoundedTranscriptAsync(stream,
+                new byte[LocalSttPackageManifest.MaximumTranscriptBytes + 1], cancellationToken).ConfigureAwait(false);
         }
         catch (FileNotFoundException)
         {
@@ -264,6 +252,33 @@ internal sealed class EphemeralLocalSttWorkspace : ILocalSttWorkspace
         catch (IOException)
         {
             return new(WorkspaceStatus.IoFailure);
+        }
+    }
+
+    internal static async Task<WorkspaceReadResult> ReadBoundedTranscriptAsync(
+        Stream stream, byte[] scratch, CancellationToken cancellationToken)
+    {
+        if (scratch.Length != LocalSttPackageManifest.MaximumTranscriptBytes + 1)
+            throw new ArgumentException("Invalid transcript scratch size.", nameof(scratch));
+        try
+        {
+            if (stream.Length > LocalSttPackageManifest.MaximumTranscriptBytes)
+                return new(WorkspaceStatus.OutputLimit);
+            var length = 0;
+            while (length < scratch.Length)
+            {
+                var read = await stream.ReadAsync(scratch.AsMemory(length), cancellationToken).ConfigureAwait(false);
+                if (read == 0)
+                    break;
+                length += read;
+            }
+            return length > LocalSttPackageManifest.MaximumTranscriptBytes
+                ? new(WorkspaceStatus.OutputLimit)
+                : new(WorkspaceStatus.Ready, scratch[..length]);
+        }
+        finally
+        {
+            System.Security.Cryptography.CryptographicOperations.ZeroMemory(scratch);
         }
     }
 

@@ -118,6 +118,54 @@ public sealed class PathOwnershipTests : IDisposable
     public void Root_aliases_with_trimmed_components_are_refused(string path) =>
         Assert.Throws<LocalPathException>(() => LocalPathRules.NormalizeRoot(path));
 
+    [Theory]
+    [InlineData("success")]
+    [InlineData("canceled")]
+    [InlineData("io")]
+    public async Task Physical_transcript_reader_clears_its_scratch_copy_on_every_exit(string outcome)
+    {
+        var path = Path.Combine(root, "private.txt");
+        await File.WriteAllTextAsync(path, "private fixture transcript");
+        using var cancellation = new CancellationTokenSource();
+        await using var stream = new InterruptedFileStream(path, outcome, cancellation);
+        var scratch = new byte[LocalSttPackageManifest.MaximumTranscriptBytes + 1];
+        if (outcome == "success")
+        {
+            var result = await EphemeralLocalSttWorkspace.ReadBoundedTranscriptAsync(stream, scratch, cancellation.Token);
+            Assert.Equal("private fixture transcript", Encoding.UTF8.GetString(result.Bytes!));
+            System.Security.Cryptography.CryptographicOperations.ZeroMemory(result.Bytes!);
+        }
+        else if (outcome == "canceled")
+        {
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                EphemeralLocalSttWorkspace.ReadBoundedTranscriptAsync(stream, scratch, cancellation.Token));
+        }
+        else
+        {
+            await Assert.ThrowsAsync<IOException>(() =>
+                EphemeralLocalSttWorkspace.ReadBoundedTranscriptAsync(stream, scratch, cancellation.Token));
+        }
+        Assert.True(stream.ReadCalls > 0);
+        Assert.All(scratch, value => Assert.Equal(0, value));
+    }
+
+    private sealed class InterruptedFileStream(
+        string path, string outcome, CancellationTokenSource cancellation)
+        : FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.Asynchronous)
+    {
+        internal int ReadCalls { get; private set; }
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            if (ReadCalls > 0 && outcome == "io")
+                throw new IOException("Injected partial physical transcript read failure.");
+            var count = await base.ReadAsync(buffer[..Math.Min(buffer.Length, 4)], cancellationToken);
+            ReadCalls++;
+            if (outcome == "canceled")
+                cancellation.Cancel();
+            return count;
+        }
+    }
+
     private static void CreateJunction(string path, string target)
     {
         Directory.CreateDirectory(path);

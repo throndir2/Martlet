@@ -302,6 +302,7 @@ internal sealed class FakeEgressSession : ILocalSttEgressAuditSession
     internal TaskCompletionSource? BindGate { get; set; }
     internal bool BoundToProcessTree { get; private set; }
     internal TaskCompletionSource? DisposeGate { get; set; }
+    internal bool FailDisposal { get; set; }
     internal Action? BeforeComplete { get; set; }
 
     public async ValueTask<bool> BindProcessTreeAsync(int processId, CancellationToken cancellationToken)
@@ -336,6 +337,8 @@ internal sealed class FakeEgressSession : ILocalSttEgressAuditSession
         DisposeCalls++;
         if (DisposeGate is not null)
             await DisposeGate.Task;
+        if (FailDisposal)
+            throw new IOException("Injected owned audit disposal failure.");
     }
 }
 

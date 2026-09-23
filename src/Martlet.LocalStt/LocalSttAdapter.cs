@@ -314,6 +314,7 @@ public sealed class LocalSttAdapter : IAsyncDisposable
                 catch (Exception error) when (error is IOException or InvalidOperationException or
                     UnauthorizedAccessException)
                 {
+                    Interlocked.Exchange(ref quarantined, 1);
                     if (!IsProcessCleanupFailure(result))
                         result = LocalSttResult.Failed(
                             request.OperationId,

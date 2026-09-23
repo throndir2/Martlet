@@ -119,6 +119,25 @@ public sealed class AdapterTests
     }
 
     [Fact]
+    public async Task Failed_audit_disposal_discards_success_and_quarantines_before_owner_reuse()
+    {
+        await using var harness = new AdapterHarness();
+        harness.Egress.Session.FailDisposal = true;
+        var firstRequest = harness.Request();
+        var first = await harness.Adapter.TranscribeAsync(
+            firstRequest, harness.Audio, harness.Authorization(firstRequest));
+        Assert.Equal(LocalSttFailureCode.EgressViolation, first.Failure!.Code);
+        Assert.Null(first.Text);
+        Assert.Equal(1, harness.Workspaces.Workspace.CleanupCalls);
+        var secondRequest = harness.Request();
+        var second = await harness.Adapter.TranscribeAsync(
+            secondRequest, harness.Audio, harness.Authorization(secondRequest));
+        Assert.Equal(LocalSttFailureCode.Quarantined, second.Failure!.Code);
+        Assert.Equal(1, harness.Egress.Calls);
+        Assert.Equal(1, harness.Processes.Calls);
+    }
+
+    [Fact]
     public async Task Dispose_cancels_admitted_work_and_waits_for_private_cleanup_before_returning()
     {
         await using var harness = new AdapterHarness();
