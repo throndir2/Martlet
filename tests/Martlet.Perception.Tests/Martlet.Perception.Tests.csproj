@@ -10,4 +10,8 @@
     <ProjectReference Include="..\..\src\Martlet.Perception\Martlet.Perception.csproj" />
     <Using Include="Xunit" />
   </ItemGroup>
+  <ItemGroup>
+    <Content Include="Fixtures\perception-held-out.json"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

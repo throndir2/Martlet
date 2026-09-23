@@ -1,4 +1,4 @@
-# Selected-window perception capture foundation (P01)
+# Selected-window perception foundations (P01/P02)
 
 **Experimental isolated software foundation; production Windows capture is
 unavailable.** `Martlet.Perception` defines selected-window discovery, capture,
@@ -52,7 +52,8 @@ Capture is OFF by default. Each stage has a distinct, one-use authorization:
    Permanent device pairing is not per-action capture or disclosure consent.
    Pairing cannot remove these one-use assertions, expiry, exact-source/frame
    binding or budgets. Any future inner Perception worker protocol 1 is separate
-   from Gateway authentication protocol 2; neither is implemented here.
+   from permanent Gateway authentication protocol 2. The inner worker contract
+   is defined below; no Gateway authentication client is implemented here.
 
 The authorization objects are trusted-caller assertions, not proof of human
 consent, a Windows permission grant, provider permission or a security sandbox
@@ -205,8 +206,163 @@ API/source-picker implementation and binaries. Evidence must show:
 - installer/package/signing and clean-machine behavior are qualified without
   enabling background startup or persisting permission.
 
-Transport authentication, upload cancellation, host-2 VLM/OCR usefulness and
-resource scheduling belong to P02/H03 and require fresh disclosure consent.
+Real transport authentication, upload cancellation, host-2 VLM/OCR usefulness and
+resource qualification belong to P02/H03 and require fresh disclosure consent.
 Real source/privacy/device/game evidence, useful labeled-task accuracy and
 combined-load measurements remain **NOT RUN**. Therefore AC-15, P01 overall and
 G4 are not passed by this foundation.
+
+## P02 isolated worker and scheduler reuse
+
+The additive worker foundation reuses canonical source
+`9e117c10ac000a0392b8d7fd5e20c0d66ba6b822` ("Add isolated P02 perception
+foundation") followed by
+`4ef7eac9e82c08fe452fd59fdc32456b7b7f4f7a` ("Separate perception failure
+domains"), without importing source ancestry. P01 implementation files and
+all reviewed P01 consent/ownership fixes remain unchanged.
+
+**This is not working AI or native capture.** The only supplied transport is
+`DeterministicPerceptionWorkerTransport`, explicitly marked
+`PerceptionEvidenceKind.SyntheticFixture`; it produces authored OCR/VLM-shaped
+responses, not inference. Nothing is referenced by Desktop, Core settings,
+Gateway, installation planning, the root solution, packaging or startup.
+An optional installation plan must never enable capture, enumerate sources,
+download/warm a model, or grant permissions automatically.
+
+### Contract and consent boundary
+
+`PerceptionProtocolVersion.Current` is inner worker **1.0**, contract
+`martlet.perception.worker`, not permanent Gateway authentication protocol 2.
+`PerceptionWorkerIdentity` pins OCR or visual-question-answering role, build
+and runtime revisions, OS version, model/adapter identity, model SHA-256,
+licensed artifact identities, declared limits, resource requirements and
+cancellation capability. Identity matching includes every field and artifact;
+there is no detector role, compatibility fallback or model substitution.
+Artifact enumeration reads at most 17 items to reject more than 16.
+
+`SelectedWindowFrame` binds an opaque selection, source and capture-permission
+revision, frame ID, increasing worker capture epoch, timestamp and content.
+Content is either an immutable copied PNG or an opaque ephemeral reference:
+
+| Worker boundary | Hard ceiling / behavior |
+| --- | --- |
+| Encoded image | 4 MiB, checked before copying |
+| Dimensions | 4,096 px per edge, 8,294,400 pixels total |
+| PNG | 8-bit RGB/RGBA, non-interlaced, exact rows, CRC/zlib validation, no unknown/trailing chunks |
+| Ephemeral reference | Opaque identifier, digest, size, dimensions and expiry; no URL/path |
+| VLM question | 512 characters / 1,024 UTF-8 bytes |
+| OCR result | 128 sequential bounded regions, immutable snapshot, normalized bounds |
+| Output text | 16 KiB UTF-8 or the smaller pinned worker limit, including OCR language |
+| Job / frame age | 15 seconds / 30 seconds maximum; callers select tighter bounds |
+| Cancellation observation | 500 ms per cancellation/retirement boundary |
+| Scheduler | One latest pending slot per role; at most two globally concurrent jobs |
+
+These are independent worker ceilings, **not an increase to P01 capture
+limits**. No conversion or bridge from a P01 lease is supplied. Future
+composition must copy only through P01's per-copy consent/freshness boundary,
+retain P01 provenance, and assign a strictly increasing worker frame epoch
+for each dispatched frame. Worker `CaptureEpoch` is not P01's session epoch:
+multiple P01 frame sequences in one capture session cannot reuse a worker
+epoch. A scheduler is scoped to one explicitly enabled perception session;
+epoch history is per role, not a cross-session/global sequence service.
+
+`PerceptionJobIntent` binds one exact request, destination, worker, frame,
+task/question, deadline and maximum age. Its default-No
+`PerceptionVisionAuthorization` is expiring, one-use, exact-object-bound and
+reserved before scheduler state mutation. It is a trusted-caller assertion,
+not a human-consent mechanism or an OS permission. It does not authorize
+capture or make an earlier disclosure legal. A new action always needs new
+permission; caller cancellation/Stop must be propagated for ongoing work.
+
+### Gateway and optional failure domains
+
+`PerceptionGatewayClientAdapter` depends only on an injected
+`IAuthenticatedPerceptionWorkerTransport`. Its binding asserts one destination,
+host, scoped perception role and disabled redirects. This assertion is not
+authentication evidence. No credential, network client, TLS/signing route,
+Gateway auth integration, Python worker or host action is included.
+
+The adapter validates exact request/action/epoch, complete worker identity,
+destination/host/role, bounded output and exact observation provenance.
+Observation expiry cannot exceed the original frame freshness or deadline.
+Freshness uses both UTC and the monotonic time elapsed since admission, so
+rollback cannot refund an already-old frame's remaining age. Dispatch rechecks
+permission and freshness after constructing the byte snapshot; publication
+rechecks cancellation, deadline and freshness after traversing worker output.
+Malformed/mutating output cannot expose unvalidated entries or raw exceptions.
+Content-bearing records redact their default string representations; explicit
+content properties remain private application data and must not be logged.
+
+`PerceptionFreshnessScheduler` enforces CPU, GPU-memory, global and exact-worker
+concurrency budgets. Newer epochs supersede older slots; repeated/late epochs,
+expired frames and non-fitting work are refused without a backlog. Optional
+role priority can preempt another role. A pending replacement retains the
+original running job's retirement barrier even if intermediate frames are
+superseded. Final latest/cancellation checks and result publication share the
+same scheduler lock.
+
+Worker calls and cancellation callbacks do not execute on the scheduler caller
+or under its state lock. Blocked/faulted execution or cancellation yields a
+bounded local failure, never a released-compute claim. Discard-only,
+request-abort, host loss, deadline or uncertain retirement keeps the numeric
+resource reservation quarantined for the scheduler lifetime. A late response
+cannot publish or silently reclaim that budget. Creating a replacement
+scheduler is not proof of host cleanup.
+The adapter's bounded task includes output snapshotting as well as dispatch;
+even a blocked worker collection getter cannot hold its caller indefinitely.
+A cooperative cancel acknowledgment cannot release local ownership until the
+dispatch/validation task and cancellation callbacks have also retired.
+Scheduler callback retirement and cancellation admission share an atomic
+handshake: already-started callbacks must retire, and no new callback can start
+after retirement is finalized but before resource release/publication.
+Pre-launch deadline expiry releases unused capacity rather than quarantining it.
+
+`PerceptionWorkerFailure`, `PerceptionWorkerFailureCatalog`,
+`PerceptionWorkerException` and `PerceptionWorkerGuard` are separate from P01's
+capture failure domain. Results expose typed stable remedies; arbitrary worker
+error text is not a safe user notification. Perception has no voice lock,
+queue, reference or callback. Future callers must continue voice when optional
+vision is unavailable, with no fabricated context or automatic retry/fallback.
+
+### Reuse evidence and remaining gates
+
+The unmodified additive port passed all 166 tests (81 current P01 plus 85
+canonical P02 cases). Ten new regression cases failed against that baseline
+before corrections: oversized allocation, unbounded artifact enumeration,
+content diagnostics, exact freshness expiry, direct/scheduled cancellation
+during output validation, UTC rollback, expiry during validation, mutable OCR
+counts and the three-frame retirement chain. Additional controlled blocked
+executor/cancellation cases exercise optional failure isolation. All inputs
+are authored synthetic frames/outputs; no real capture, labels, HWNDs,
+clipboard, devices, models, host or network actions are used.
+
+Independent actual-diff review identified three additional races: cancellation
+could acknowledge retirement before a delayed dispatch, output collection
+validation could outlive the adapter's cancellation bound, and expiry before
+executor launch could quarantine unused resources. Each has a failing-before,
+passing-after controlled regression. On 2026-09-23, SDK 10.0.401 locked
+restore and Release build completed with zero warnings/errors; all **184**
+tests (81 P01, 85 source P02, 18 reuse regressions) passed ten fresh test-host
+repetitions. This is managed synthetic evidence only, not live qualification.
+
+A subsequent independent final-fix review closed those three findings and
+identified a callback-admission/retirement race. A controlled release barrier
+reproduced it before correction. The scheduler now atomically closes callback
+admission while capturing already-started cancellation work, preserving
+quarantine until that work actually retires. The new regression increases the
+suite to 185 cases. The 32 affected scheduler/reuse lifecycle tests passed after
+this focused correction, with a Release build reporting zero warnings/errors;
+the unchanged full-suite evidence above was not repeated.
+
+Run the full direct Perception project with the locked Release commands above;
+do not add it to the root graph or hosted CI. Held-out fixtures assert shapes,
+limits and scheduling only, not OCR/VLM accuracy or human usefulness.
+
+Native privacy/rights/runtime gates remain explicit and unqualified. Real
+Windows capture and indicators, authenticated inference/TLS/cancellation,
+model/code licenses and exact binaries, consented accuracy tasks, calibrated
+uncertainty, concurrent voice/LLM/OCR/VLM load, GPU fit, game impact, retention,
+support-export privacy and application/installation integration remain
+**NOT RUN**. Source AC-15 and G4 are not passed. Installation AC18-20 are
+unmodified; historical companion criteria belong to the mapped AC21-26 range,
+not installation acceptance. No overall P01/P02 qualification is claimed.
