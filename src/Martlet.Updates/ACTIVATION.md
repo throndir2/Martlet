@@ -3,8 +3,10 @@
 `LocalActivationEngine` is a private-filesystem activation coordinator layered
 after signed staging, selection and any required V07a rollback configuration
 restore. It owns a **private activation transaction record** named `active.json`.
-There is no Desktop registration or launcher consumer in this slice, and the
-coordinator never executes a candidate. Staged and selection receipts remain
+There is no Desktop registration in this slice. The separate
+[launcher adapter](../Martlet.Launcher/README.md) supplies closed, explicitly
+authorized owned-process readiness; default construction never executes a
+candidate. Staged and selection receipts remain
 non-runnable. `ActivationStatus.PointerPublished` means that the coordinator
 reverified the exact transition, received its internal inert test result and
 atomically published the matching terminal record. It does not mean a candidate
@@ -81,8 +83,9 @@ private-activation-root\
    then publishes the pending pointer with write-ahead intent. A pending pointer
    is always non-runnable, including when it still names the formerly active
    version.
-7. The coordinator writes a bounded readiness intent and calls only its injected
-   internal test probe. Production construction has no probe and fails with
+7. The coordinator writes a bounded readiness intent and calls only its internal
+   inert test probe or closed launcher-owned readiness scope. Default
+   construction has no probe and fails with
    `ReadinessUnavailable` before creating a transaction. There is no command,
    process path, shell, executable callback or default candidate launch.
 8. The probe receives the pinned stage/executable path and exact digests, can
@@ -189,21 +192,23 @@ No Gateway or device-pairing state is read, expired, reset or converted.
 Imported configuration cannot convert timed prototype authentication into
 permanent pairing or establish device ownership.
 
-The production readiness dependency is intentionally absent. The internal test
+The default readiness dependency remains absent. The internal test
 probe exercises the exact filesystem transaction with inert payload bytes; it
 does not run `Martlet.Desktop.exe`, scripts, installers or migrations. A future
 reviewed host must supply a non-arbitrary readiness implementation, exclusive
 process/launcher ownership, process stop/start policy, actual migration/startup
 checks and UI offload without weakening these proofs.
 
-The later `833923e` launcher adapter is deliberately not imported. Its future
-port must keep the image/settings/current-trust rechecks, exact source and
-history pins, proof deadline through the final rename, original cancellation
-token, one-use consent and post-publication uncertainty distinctions. It must
-bind non-fabricatable real readiness to the exact process/image/settings and
-retain all leases through actual process/callback retirement. Neither the inert
-probe's deterministic result hash nor an old `active.json` may authorize launch
-or be automatically upgraded into that future proof.
+The `833923e` adapter is now ported separately, preserving image/settings/trust
+rechecks, source/history pins, deadlines through final rename, original
+cancellation, one-use consent and publication uncertainty. Its host-owned
+publisher execution scope is bound into new activation plan digests, without
+changing format-1 control/journal/readiness documents or reinterpreting old
+hashes. The launcher profile lease spans probe cleanup and publication; actual
+Desktop-launch leases span the entire process tree lifetime. Neither a probe's
+deterministic result hash nor an old `active.json` authorizes launch: all
+activation receipts remain `MissingReadiness`/non-runnable. A separate launch
+plan/approval, current publisher grant and fresh private handshake are required.
 
 Still deferred / **NOT RUN**: publisher authorization and key lifecycle,
 Authenticode and installer signing, protected signing access, actual executable

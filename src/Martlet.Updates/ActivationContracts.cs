@@ -5,7 +5,7 @@ public enum ActivationFailure
     Uninitialized, Conflict, Busy, InvalidControl, RecoveryRequired, PublicationAmbiguous,
     NoSelectedVersion, ConfigurationRestoreRequired, IncompatibleSettings, InvalidSelectedVersion,
     ReadinessUnavailable, ReadinessFailed, ReadinessTimedOut, CapacityExceeded, AccessDenied,
-    InsufficientDisk, Unavailable, Cancelled, PublishedOutcomeUncertain
+    InsufficientDisk, Unavailable, Cancelled, PublishedOutcomeUncertain, NoActiveVersion
 }
 
 public sealed class ActivationException : Exception
@@ -31,6 +31,8 @@ public sealed class ActivationException : Exception
             "Pointer replacement returned before a later operation failed. Inspect the retained authoritative history; do not report cancellation or retry the approval.",
         ActivationFailure.NoSelectedVersion =>
             "No verified selected candidate is available for activation.",
+        ActivationFailure.NoActiveVersion =>
+            "No verified active version is available for launch.",
         ActivationFailure.ConfigurationRestoreRequired =>
             "The selected rollback has not completed its required verified configuration restore and acknowledgment.",
         ActivationFailure.IncompatibleSettings =>
@@ -139,6 +141,7 @@ public sealed class ActivationPlan
     internal ActivationTargetBinding Target { get; }
     internal ActivationEntry Entry { get; }
     internal ActivationReadinessDocument PassedResult { get; }
+    internal string? ExecutionScope { get; }
     private int approved;
 
     public Guid TransactionId { get; } = Guid.NewGuid();
@@ -148,17 +151,23 @@ public sealed class ActivationPlan
     public string ExpectedSettingsRevision => Target.SettingsRevision;
     public int ExpectedSettingsSchemaVersion => Target.SettingsSchemaVersion;
     public string ReadinessProbeId { get; }
+    public string? PublisherExecutionScopeDigest => ExecutionScope;
     public ActivatedVersion Candidate { get; }
     public ActivatedVersion? PreviousAfterActivation { get; }
     public string PlanDigest { get; }
-    public string PlannedEffects => Kind == ActivationTransitionKind.Activation
+    public string PlannedEffects => ExecutionScope is not null
+        ? "Publish a pending non-runnable record, run the exact publisher-authorized candidate under the closed " +
+          "launcher/readiness owner, stop its tree, and atomically publish the verified transition. " +
+          "This record grants no subsequent launch authority."
+        : Kind == ActivationTransitionKind.Activation
         ? "Publish a pending non-runnable owned pointer, run only the configured bounded injected readiness probe, " +
           "then atomically publish this exact verified selected version while retaining one verified previous version."
         : "Require the recorded configuration restore, publish a pending non-runnable owned pointer, run only the " +
           "configured bounded injected readiness probe, then atomically swap to the one retained verified previous version.";
 
     internal ActivationPlan(object owner, long sequence, ActivationTransitionKind kind,
-        ActivationControlDocument before, ActivationTargetBinding target, string readinessProbeId)
+        ActivationControlDocument before, ActivationTargetBinding target, string readinessProbeId,
+        string? executionScope = null)
     {
         Owner = owner;
         Sequence = sequence;
@@ -166,6 +175,7 @@ public sealed class ActivationPlan
         Before = before;
         Target = target;
         ReadinessProbeId = readinessProbeId;
+        ExecutionScope = executionScope;
         var targetDigest = Wire.Hash(Wire.Write(target));
         PlanDigest = Wire.Hash(Wire.Write(new
         {
@@ -177,6 +187,8 @@ public sealed class ActivationPlan
             readinessProbeId,
             effects = PlannedEffects
         }));
+        if (executionScope is not null)
+            PlanDigest = Wire.Hash(Wire.Write(new { PlanDigest, executionScope }));
         PassedResult = new(1, TransactionId, PlanDigest, readinessProbeId, kind, targetDigest,
             ActivationReadinessOutcome.Passed);
         Entry = new(target, TransactionId, Wire.Hash(Wire.Write(PassedResult)));
