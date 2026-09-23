@@ -29,16 +29,22 @@ rules remain unchanged.
 
 **Avatar expansion, 2026-09-23:** A01a shared compatibility contracts, A01b
 Audio2Face NIM client with live streaming, A02a Live2D and A02b VRM are
-**implemented standalone modules, locally integrated and reviewed**, not
-usable normal Desktop avatar features or passed end-to-end acceptance.
-Controlled contract/protocol/importer checks do not qualify Core/WebGL/GPU/
-artist models. The first contract is facial only; general pose/body and VRMA
-playback remain unsupported in that slice. A02c now includes initial opt-in
-native clock/PCM-observation code. The zero-padding/queued-refill invalidation
-defect is corrected, locally regression-checked and reviewed; physical/device
-sync remains NOT RUN.
-Normal WPF UI/host/configuration/publish wiring remains in development;
-A02d extended motion remains planned. See [AVATARS](AVATARS.md) for
+**implemented modules with an internal normal WPF integration**, not a
+qualified end-user release or passed end-to-end avatar acceptance.
+A02c provides passive main/conversation entry points, profile-bound atomic
+`avatar.json`, explicit local inspection/private WPF-WebView2 host and explicit
+session activation of generated PCM -> A2F -> shared composition -> both
+renderers. Only mouth/expression is enabled in that path; amplitude/other
+analyzers and gaze/head/body/secondary-motion composition are not implemented.
+Configuration is inspected mapping/helper + JSON, not a full graphical autorig
+wizard. Controlled app/protocol/bridge checks and audio-OFF smoke evidence do
+not qualify Core/WebGL/GPU/artist models or actual physical/device sync.
+The corrected opt-in clock/PCM tee never gates voice; invalidation/underrun
+freezes segment animation until a fresh segment. The first contract remains
+facial only; general pose/body and VRMA playback are unsupported. A02d remains
+planned. Package producer/consumer integration is in progress, not completed
+payload or installer/release evidence. See [AVATARS](AVATARS.md) and the
+[internal hosting guide](../src/Martlet.Avatar.Hosting/README.md) for
 exact lane choices, supported/degraded/blocked permutations and evidence limits.
 No current ledger entry below is promoted by this development authorization.
 
@@ -308,7 +314,8 @@ task and consent review; it is not implied by P01 screenshot capture.
 
 **Accepted sequencing amendment, 2026-09-23:** Live2D and VRM development starts
 now. Audio2Face is the first/preferred speech-animation implementation, with
-amplitude as an explicit baseline and other analyzers as later candidates.
+amplitude as a planned explicit baseline and other analyzers as later candidates;
+the current Desktop live path implements only Audio2Face.
 M5 is a qualification milestone, not a prohibition on earlier parallel work.
 This supersedes A01's former G2 prerequisite and A02's blanket release-license
 prerequisite. Voice reliability, local validation and release rights stay intact.
@@ -322,10 +329,10 @@ prerequisite. Voice reliability, local validation and release rights stay intact
 | Slice | Deliverable and dependency | Current disposition |
 | --- | --- | --- |
 | A01a | Standalone strict facial frames, per-model capability/mapping records, compatibility/readiness and single-owner composer | Implemented, locally integrated/reviewed with controlled checks; no general pose/body payload or arbitrary blends |
-| A01b | Preferred Audio2Face client against official NIM v2 bidirectional gRPC; A01a facial boundary, original PCM clock and bounded stale discard | Implemented/reviewed live bounded nonblocking GeneratedSpeechStream plus separate offline/comparison clip path; actual HTTP/2 fixture evidence, not normal app/NIM/GPU qualification; pre-existing literal-loopback service and runtime/model/access remain external prerequisites, not native MIT SDK embedding |
+| A01b | Preferred Audio2Face client against official NIM v2 bidirectional gRPC; A01a facial boundary, original PCM clock and bounded stale discard | Implemented/reviewed live bounded nonblocking GeneratedSpeechStream wired to explicit internal Desktop activation, plus separate offline/comparison clip API; HTTP/2 and controlled app evidence, not live NIM/GPU qualification; pre-existing literal-loopback service/runtime/model/access remain external prerequisites, not native MIT SDK embedding |
 | A02a | Live2D importer/mapping/adapter against A01a; host-supplied local Cubism Web Framework 5-r.4 / matching Core 05.01.0000 (`0x05010000`) | Implemented standalone, locally checked/reviewed; unsupported newer features rejected; no Core/assets acquired, full SDK/native parsing/GPU rendering NOT RUN |
 | A02b | VRM importer/facial mapping/renderer against A01a | Implemented standalone, real-loader/control/bundle checks and review corrections cleared; basic expressions optional, detailed ARKit mapping authored; VRMA/body unsupported, actual graphics/artist/device qualification NOT RUN |
-| A02c | One app owner integrates normal WPF host/adapters, opt-in native clock mapping and bounded nonblocking PCM observation, OFF-by-default configuration, masks/remedies and comparisons | In development; IPlaybackClockDevice/PlaybackRun.DeviceClock exist locally; zero-padding/queued-refill invalidation defect corrected with local regression evidence and cleared review. Legacy DeviceConsumedSamples remains padding-derived and AudibleSamples null; actual sync NOT RUN. Approved atomic avatar-only envelope holds shared configuration/profile/resource/runtime identities, no competing global AppSettings. Single owner validates revisions/recovery/delete; disable preserves preferences, never activation permission; global backup/restore visibly excludes it until qualified |
+| A02c | Normal WPF host/adapters, opt-in native clock/nonblocking PCM, OFF-by-default configuration, composition/remedies and comparison boundaries | Internal integrated/reviewed setup/activation surface and private host for A2F mouth/expression on both renderers; no other analyzer/aspect runtime or complete comparison UX. Atomic profile-bound avatar.json and local export/restore retain .bak; global backup excludes it. Closing settings preserves explicit activation; Stop/edit/lock/exit revoke, never persisted. Nullable clock is separate from padding; corrected refill invalidation freezes segment animation without voice delay. Controlled evidence only; actual sync and wider acceptance NOT RUN, package producer/consumer work incomplete |
 | A02d | Extend reviewed capabilities/wire as needed for procedural/clip gaze/head/body/secondary motion, including optional VRMA on VRM; explicitly qualified blends only | Planned after shared boundary/app composition; no direct VRMA-on-Live2D claim |
 | A03a | Local exact-model/renderer/clock/Stop/crash/load/comparison qualification for each advertised subset after its integration | NOT RUN; missing native runtime/device/GPU access is a distinct blocker, not a fixture pass |
 | A03b | SDK/Core/framework, NIM/dependencies, model/asset/motion rights, Live2D classification, notices and release approval | Separate unpassed gate; research can run early, distribution only after rights and relevant A03a/voice/lifecycle evidence |
@@ -508,9 +515,10 @@ stable D02/F04; H04 owns only its Python worker; H05 owns host lifecycle, not
 provider internals. P03 memory can progress against fixture retrieval independently
 of P02 model work. The accepted avatar batch starts A01a/A01b early and
 A02a/A02b in parallel now; A02c follows their reviewed interfaces and extends
-V04 playback with opt-in clock qualification and normal-app wiring of the
-nonblocking streaming analysis handoff. Initial clock/observation code exists;
-actual device synchronization is unqualified. A02d/A03 qualify extended motion and each advertised
+V04 playback with the internally integrated opt-in clock and nonblocking
+streaming analysis handoff. Actual device synchronization, package lifecycle
+and broader composition/comparison acceptance remain unqualified.
+A02d/A03 qualify extended motion and each advertised
 runtime tuple later. Rights research proceeds independently; it does not turn
 unavailable SDK/model/GPU checks into passes or block fixture-only development.
 Never let simultaneous sessions edit one model lock or migration schema.

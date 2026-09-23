@@ -53,7 +53,7 @@ and conformance fixtures before adapters are built independently.
 | Setup coordinator / host setup UI | Windows setup coordinator plus local Ubuntu host UI and headless CLI, client + host teams | One feature/role/destination plan; shared host planning/probe/journal engine, local privileged approval, clear managed versus external ownership; no remote shell or Docker administration through pairing |
 | Optional memory service | Single-owner SQLite database plus replaceable retrieval adapters, memory team | Consent, source provenance, retention, export/delete; embeddings/index are derived data, not a second authority |
 | Optional avatar process | Independent Live2D or VRM renderer, avatar team | Validated mapped animation/playback events only; bounded IPC; no credentials, scripts or remote assets; crash cannot interrupt voice |
-| Optional speech-animation adapter | Audio2Face first/preferred; amplitude baseline, avatar team | Explicitly authorized outgoing speech PCM to the selected analyzer, bounded timestamped facial frames; independent readiness and no silent fallback |
+| Optional speech-animation adapter | Audio2Face first/preferred; amplitude baseline planned, avatar team | Explicitly authorized outgoing speech PCM to the selected analyzer, bounded timestamped facial frames; independent readiness and no silent fallback |
 
 ```mermaid
 flowchart LR
@@ -535,13 +535,13 @@ crash/cancellation semantics and the remaining app/gateway/real-user gates.
 A01-A03 now develop Live2D and VRM independently of G2; SDK release
 classification stays a distribution gate, not a blanket development hold.
 See [AVATARS](AVATARS.md) for model requirements, permutations and current
-implemented standalone versus unfinished app/motion scope. The avatar is OFF until explicitly enabled
+internal integrated versus future motion/qualification scope. The avatar is OFF until explicitly enabled
 and can be stopped/uninstalled without changing voice/provider/persona setup.
 
 Separate speech analysis -> timestamped semantic channels -> calibrated
 model mapping/composition -> renderer. Audio2Face is implemented first and
-preferred when enabled; amplitude remains an explicitly selected baseline,
-not an automatic fallback. The initial Audio2Face lane targets a pre-existing
+preferred when enabled; amplitude remains a planned baseline, not an implemented
+Desktop analyzer or automatic fallback. The initial Audio2Face lane targets a pre-existing
 user-provisioned loopback NIM v2 service via its official bidirectional gRPC
 contract, not native SDK embedding. Its external GPU/runtime/model/access
 prerequisites are unverified. A renderer receives no provider credentials;
@@ -584,12 +584,16 @@ and `AudibleSamples` remains null; neither is a qualified presentation clock.
 The known zero-padding/queued-refill defect is corrected with local regression
 evidence and cleared review: an emptied running endpoint invalidates the clock
 before refill, even when more PCM is queued.
-Normal app wiring and actual device/physical synchronization remain incomplete;
-invalid/unavailable clock state disables synchronized animation, not voice.
+Normal WPF app wiring now connects admitted generated PCM to explicitly
+activated A2F mouth/expression animation through the shared composer and both
+renderers; native device/physical synchronization remains unqualified.
+Invalid/unavailable clock state disables segment animation, not voice.
+Underrun freezes that segment permanently even when voice resumes; a fresh
+segment establishes a new clock/identity binding.
 Audio2Face now has bounded nonblocking live `GeneratedSpeechStream` ingress;
 buffered clips remain a separate offline/comparison path. Actual HTTP/2
-fixtures exercise that adapter, and generated-PCM observation exists locally,
-but neither proves completed app-to-analyzer wiring or NVIDIA inference.
+fixtures exercise that adapter; controlled app/bridge and audio-OFF smoke
+evidence cover internal integration, not NVIDIA inference or real rendering.
 Voice must never await that analysis, its backpressure or renderer readiness;
 late/over-budget animation is visibly discarded or disabled independently.
 
@@ -606,8 +610,22 @@ profile binding, resource identities and runtime references; no unsynchronized
 paths file or new global settings version. Its single owner validates revisions
 and defines recovery/delete semantics. Disable preserves the document, never
 activation permission. Existing global backup/restore excludes it with visible
-disclosure until qualified; actual WPF host/configuration/publish and lifecycle
-integration remain in development, not a usable normal Desktop avatar surface.
+disclosure until qualified. `AvatarProfileStore` now implements the atomic
+profile-bound `avatar.json`; feature-local export/explicit restore preserves
+prior bytes as a unique `.bak`, clears inspection binding and grants no activation.
+
+The [internal Desktop surface](../src/Martlet.Avatar.Hosting/README.md) opens
+passively from main/conversation. Explicit local inspection starts the separate
+WPF/WebView2 host using an already-installed runtime and approved local
+resources. Configuration uses inspection, a mapping helper and shared JSON,
+not a graphical automatic-rig wizard. Only A2F mouth/expression activates;
+other analyzers/aspects remain omitted/unsupported in this app path. Closing
+the settings window preserves explicit session activation; Stop/Escape,
+relevant edits, lock and exit revoke it. No activation survives restart.
+Inherited bounded pipes carry composed targets, never PCM/credentials; each
+target is mapped once. Process/crash isolation is not a general OS sandbox.
+Package producer/consumer integration remains in progress; no completed
+payload, installer or release qualification is claimed.
 A03 witnesses local real-model/renderer/GPU timing
 and crash behavior before support claims; rights and release remain separate.
 
