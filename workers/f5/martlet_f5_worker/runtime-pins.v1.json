@@ -1,0 +1,1 @@
+{"cuda_runtime_version":"12.4","f5_source_revision":"9c614e9657089213efc6a7421b30630be138a3f5","format_version":1,"kind":"martlet_f5_runtime_pins","packages":{"f5-tts":"1.1.22","torch":"2.6.0+cu124","torchaudio":"2.6.0+cu124","vocos":"0.1.0"},"python_version":"3.12.10"}
