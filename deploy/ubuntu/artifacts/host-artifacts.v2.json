@@ -1,0 +1,309 @@
+{
+  "format_version": 2,
+  "kind": "host_artifact_candidate_lock",
+  "id": "host-artifacts-h02d-metadata",
+  "provenance": "upstream_metadata",
+  "scope": "metadata_only",
+  "sources": [
+    {
+      "id": "ollama-source",
+      "kind": "github",
+      "repository": "ollama/ollama",
+      "revision": "d8ab4b4f0ca24b51d3a46b3bf4f462e58ce66b1f",
+      "commit_url": "https://github.com/ollama/ollama/commit/d8ab4b4f0ca24b51d3a46b3bf4f462e58ce66b1f"
+    },
+    {
+      "id": "f5-source",
+      "kind": "github",
+      "repository": "SWivid/F5-TTS",
+      "revision": "283252563dbf91be625e0c27926acfaac449186c",
+      "commit_url": "https://github.com/SWivid/F5-TTS/commit/283252563dbf91be625e0c27926acfaac449186c"
+    },
+    {
+      "id": "f5-models",
+      "kind": "hugging_face",
+      "repository": "SWivid/F5-TTS",
+      "revision": "84e5a410d9cead4de2f847e7c9369a6440bdfaca",
+      "commit_url": "https://huggingface.co/SWivid/F5-TTS/tree/84e5a410d9cead4de2f847e7c9369a6440bdfaca"
+    },
+    {
+      "id": "vocos-models",
+      "kind": "hugging_face",
+      "repository": "charactr/vocos-mel-24khz",
+      "revision": "0feb3fdd929bcd6649e0e7c5a688cf7dd012ef21",
+      "commit_url": "https://huggingface.co/charactr/vocos-mel-24khz/tree/0feb3fdd929bcd6649e0e7c5a688cf7dd012ef21"
+    }
+  ],
+  "runtimes": [
+    {
+      "id": "ollama-runtime",
+      "family": "ollama",
+      "role": "llm",
+      "source_id": "ollama-source",
+      "upstream_version": "0.34.0",
+      "target": "ubuntu-24.04-x64",
+      "license_id": "ollama-code",
+      "dependency_evidence_path": "Dockerfile",
+      "dependency_evidence_url": "https://raw.githubusercontent.com/ollama/ollama/d8ab4b4f0ca24b51d3a46b3bf4f462e58ce66b1f/Dockerfile",
+      "dependencies": [
+        { "name": "ca-certificates", "ecosystem": "native", "condition": "always", "constraints": [] },
+        { "name": "libopenblas0", "ecosystem": "native", "condition": "always", "constraints": [] },
+        { "name": "libvulkan1", "ecosystem": "native", "condition": "always", "constraints": [] }
+      ],
+      "unresolved": ["runtime_dependencies", "expanded_bytes"]
+    },
+    {
+      "id": "f5-runtime",
+      "family": "f5_tts",
+      "role": "tts",
+      "source_id": "f5-source",
+      "upstream_version": "1.1.22",
+      "target": "ubuntu-24.04-x64",
+      "license_id": "f5-code",
+      "dependency_evidence_path": "pyproject.toml",
+      "dependency_evidence_url": "https://raw.githubusercontent.com/SWivid/F5-TTS/283252563dbf91be625e0c27926acfaac449186c/pyproject.toml",
+      "dependencies": [
+        { "name": "accelerate", "ecosystem": "python", "condition": "always", "constraints": [{ "comparison": "at_least", "version": "0.33.0" }] },
+        { "name": "bitsandbytes", "ecosystem": "python", "condition": "not_darwin_and_not_arm64", "constraints": [{ "comparison": "greater_than", "version": "0.37.0" }] },
+        { "name": "cached-path", "ecosystem": "python", "condition": "always", "constraints": [] },
+        { "name": "click", "ecosystem": "python", "condition": "always", "constraints": [] },
+        { "name": "datasets", "ecosystem": "python", "condition": "always", "constraints": [] },
+        { "name": "ema-pytorch", "ecosystem": "python", "condition": "always", "constraints": [{ "comparison": "at_least", "version": "0.5.2" }] },
+        { "name": "gradio", "ecosystem": "python", "condition": "always", "constraints": [{ "comparison": "at_least", "version": "6.15.0" }] },
+        { "name": "hydra-core", "ecosystem": "python", "condition": "always", "constraints": [{ "comparison": "at_least", "version": "1.3.0" }] },
+        { "name": "librosa", "ecosystem": "python", "condition": "always", "constraints": [] },
+        { "name": "matplotlib", "ecosystem": "python", "condition": "always", "constraints": [] },
+        { "name": "numpy", "ecosystem": "python", "condition": "python_at_most310", "constraints": [{ "comparison": "at_most", "version": "1.26.4" }] },
+        { "name": "pydub", "ecosystem": "python", "condition": "always", "constraints": [] },
+        { "name": "pypinyin", "ecosystem": "python", "condition": "always", "constraints": [] },
+        { "name": "rjieba", "ecosystem": "python", "condition": "always", "constraints": [] },
+        { "name": "safetensors", "ecosystem": "python", "condition": "always", "constraints": [] },
+        { "name": "soundfile", "ecosystem": "python", "condition": "always", "constraints": [] },
+        { "name": "tomli", "ecosystem": "python", "condition": "always", "constraints": [] },
+        { "name": "torch", "ecosystem": "python", "condition": "always", "constraints": [{ "comparison": "at_least", "version": "2.0.0" }] },
+        { "name": "torchaudio", "ecosystem": "python", "condition": "always", "constraints": [{ "comparison": "at_least", "version": "2.0.0" }] },
+        { "name": "torchcodec", "ecosystem": "python", "condition": "always", "constraints": [] },
+        { "name": "torchdiffeq", "ecosystem": "python", "condition": "always", "constraints": [] },
+        { "name": "tqdm", "ecosystem": "python", "condition": "always", "constraints": [{ "comparison": "at_least", "version": "4.65.0" }] },
+        { "name": "transformers", "ecosystem": "python", "condition": "always", "constraints": [] },
+        { "name": "transformers-stream-generator", "ecosystem": "python", "condition": "always", "constraints": [] },
+        { "name": "unidecode", "ecosystem": "python", "condition": "always", "constraints": [] },
+        { "name": "vocos", "ecosystem": "python", "condition": "always", "constraints": [] },
+        { "name": "wandb", "ecosystem": "python", "condition": "always", "constraints": [] },
+        { "name": "x-transformers", "ecosystem": "python", "condition": "always", "constraints": [{ "comparison": "at_least", "version": "1.31.14" }] },
+        { "name": "setuptools", "ecosystem": "python_build", "condition": "always", "constraints": [{ "comparison": "at_least", "version": "61.0" }] },
+        { "name": "setuptools-scm", "ecosystem": "python_build", "condition": "always", "constraints": [{ "comparison": "at_least", "version": "8.0" }] }
+      ],
+      "unresolved": ["runtime_dependencies", "expanded_bytes"]
+    }
+  ],
+  "artifacts": [
+    {
+      "id": "f5-v1-weights",
+      "kind": "tts_weights",
+      "source_id": "f5-models",
+      "path": "F5TTS_v1_Base/model_1250000.safetensors",
+      "bytes": 1348435761,
+      "sha256": "670900fd14e6c458b95da6e9ed317cdb20dbaf7a1c02ac06a05475a9d32b6a38",
+      "sha256_evidence": "hugging_face_lfs_metadata",
+      "git_blob_sha1": "c8bc622144d98f868d3156d6af4e5ed345d6e287",
+      "source_url": "https://huggingface.co/SWivid/F5-TTS/resolve/84e5a410d9cead4de2f847e7c9369a6440bdfaca/F5TTS_v1_Base/model_1250000.safetensors",
+      "evidence_url": "https://huggingface.co/api/models/SWivid/F5-TTS/tree/84e5a410d9cead4de2f847e7c9369a6440bdfaca/F5TTS_v1_Base",
+      "release": null,
+      "license_ids": ["f5-model-license"],
+      "depends_on": ["f5-v1-vocabulary", "vocos-weights"]
+    },
+    {
+      "id": "f5-v1-vocabulary",
+      "kind": "vocabulary",
+      "source_id": "f5-models",
+      "path": "F5TTS_v1_Base/vocab.txt",
+      "bytes": 13800,
+      "sha256": null,
+      "sha256_evidence": "unavailable",
+      "git_blob_sha1": "cd934390e8f4b3ce98eb319ae618c084d01504b5",
+      "source_url": "https://huggingface.co/SWivid/F5-TTS/resolve/84e5a410d9cead4de2f847e7c9369a6440bdfaca/F5TTS_v1_Base/vocab.txt",
+      "evidence_url": "https://huggingface.co/api/models/SWivid/F5-TTS/tree/84e5a410d9cead4de2f847e7c9369a6440bdfaca/F5TTS_v1_Base",
+      "release": null,
+      "license_ids": ["f5-model-license"],
+      "depends_on": []
+    },
+    {
+      "id": "vocos-weights",
+      "kind": "vocoder_weights",
+      "source_id": "vocos-models",
+      "path": "pytorch_model.bin",
+      "bytes": 54365991,
+      "sha256": "97ec976ad1fd67a33ab2682d29c0ac7df85234fae875aefcc5fb215681a91b2a",
+      "sha256_evidence": "hugging_face_lfs_metadata",
+      "git_blob_sha1": "1e837026c9a3bb538af2c093041587f3d565f12a",
+      "source_url": "https://huggingface.co/charactr/vocos-mel-24khz/resolve/0feb3fdd929bcd6649e0e7c5a688cf7dd012ef21/pytorch_model.bin",
+      "evidence_url": "https://huggingface.co/api/models/charactr/vocos-mel-24khz/tree/0feb3fdd929bcd6649e0e7c5a688cf7dd012ef21",
+      "release": null,
+      "license_ids": ["vocos-model-license"],
+      "depends_on": ["vocos-config"]
+    },
+    {
+      "id": "vocos-config",
+      "kind": "vocoder_configuration",
+      "source_id": "vocos-models",
+      "path": "config.yaml",
+      "bytes": 461,
+      "sha256": null,
+      "sha256_evidence": "unavailable",
+      "git_blob_sha1": "538262138a8b43863802f279909f26ec31c766b3",
+      "source_url": "https://huggingface.co/charactr/vocos-mel-24khz/resolve/0feb3fdd929bcd6649e0e7c5a688cf7dd012ef21/config.yaml",
+      "evidence_url": "https://huggingface.co/api/models/charactr/vocos-mel-24khz/tree/0feb3fdd929bcd6649e0e7c5a688cf7dd012ef21",
+      "release": null,
+      "license_ids": ["vocos-model-license"],
+      "depends_on": []
+    }
+  ],
+  "container_images": [
+    {
+      "id": "ollama-image",
+      "source_id": "ollama-source",
+      "registry": "registry-1.docker.io",
+      "repository": "ollama/ollama",
+      "digest": "sha256:aa6f86f01fee264c81f1edd9083ebfb07c8116d95d8bedd1ad470874b66a40b4",
+      "manifest_bytes": 1065,
+      "index": {
+        "digest": "sha256:684d8674b4315fa18f4f0e973a118ec2652ed96f67563277839985175858e0ba",
+        "bytes": 647
+      },
+      "platform": { "os": "linux", "architecture": "amd64", "variant": null },
+      "evidence": "registry_metadata",
+      "evidence_url": "https://registry-1.docker.io/v2/ollama/ollama/manifests/sha256:aa6f86f01fee264c81f1edd9083ebfb07c8116d95d8bedd1ad470874b66a40b4",
+      "blobs": [
+        { "digest": "sha256:31aae755296d2792fe70020d9012e8f0c181375c926a32809ccd946b92cb4489", "kind": "configuration", "compressed_bytes": 19380, "expanded_bytes": null, "staging_bytes": null },
+        { "digest": "sha256:e51aee9c82ec5dd5ba2add49c45c6d85d460512757e2615b69bcdf9469c7cb58", "kind": "layer", "compressed_bytes": 29763253, "expanded_bytes": null, "staging_bytes": null },
+        { "digest": "sha256:10ea0137bdd777c829882818f6f27efaa67cc1016ce0660b28e950413d6f79f9", "kind": "layer", "compressed_bytes": 102356163, "expanded_bytes": null, "staging_bytes": null },
+        { "digest": "sha256:a4b75bf9f6f0e770f8f443ac674017b0817c44238d2a5a4ca52764c8684b42b4", "kind": "layer", "compressed_bytes": 14359727, "expanded_bytes": null, "staging_bytes": null },
+        { "digest": "sha256:01e79ac2a307e938732354065fd7fc22c59aa3dfafd772405493c6589ad0cca0", "kind": "layer", "compressed_bytes": 3556864081, "expanded_bytes": null, "staging_bytes": null }
+      ],
+      "blob_inventory_complete": true,
+      "license_ids": ["ollama-image-components"],
+      "depends_on": []
+    },
+    {
+      "id": "f5-image",
+      "source_id": "f5-source",
+      "registry": "ghcr.io",
+      "repository": "swivid/f5-tts",
+      "digest": "sha256:908c0a1e0b5e2279eb8dc24f68eaddbc2911c019631bfbf3580d353491730f3b",
+      "manifest_bytes": 4305,
+      "index": null,
+      "platform": { "os": "linux", "architecture": "amd64", "variant": null },
+      "evidence": "registry_metadata",
+      "evidence_url": "https://ghcr.io/v2/swivid/f5-tts/manifests/sha256:908c0a1e0b5e2279eb8dc24f68eaddbc2911c019631bfbf3580d353491730f3b",
+      "blobs": [
+        { "digest": "sha256:a85f6e64a9df3380162597c8d6957a0c1c2400d652cbb0109e67f9ca8d9b45ca", "kind": "configuration", "compressed_bytes": 23441, "expanded_bytes": null, "staging_bytes": null },
+        { "digest": "sha256:23828d760c7b04df02891af556c40ca44c2dd79d6837ea6f18fac24f4108448c", "kind": "layer", "compressed_bytes": 30451302, "expanded_bytes": null, "staging_bytes": null },
+        { "digest": "sha256:edd1dba56169c724e9377dafe9d6dd34c0ef9585109fa8366b4a3ee68e07fd25", "kind": "layer", "compressed_bytes": 4623325, "expanded_bytes": null, "staging_bytes": null },
+        { "digest": "sha256:e06eb1b5c4cc0283389710e45402738c973f9c27a4cbdf90d53751723279e001", "kind": "layer", "compressed_bytes": 57593394, "expanded_bytes": null, "staging_bytes": null },
+        { "digest": "sha256:7f308a7652768c0a964eb1720554421079b6a956110c7a12362380d2372fe82f", "kind": "layer", "compressed_bytes": 184, "expanded_bytes": null, "staging_bytes": null },
+        { "digest": "sha256:3af11d09e9cd1eb9c379f0a4071231e5a5642eb728b4b33bcb76be291f3c9488", "kind": "layer", "compressed_bytes": 6885, "expanded_bytes": null, "staging_bytes": null },
+        { "digest": "sha256:42896cdfd7b6a3e75be89e9fbc327a2dc8a1f56ab23a994553c28125ed85f528", "kind": "layer", "compressed_bytes": 1361384456, "expanded_bytes": null, "staging_bytes": null },
+        { "digest": "sha256:6005190795580507557f886a8cb09d07f48a293591caa5f686ae89e2f363a350", "kind": "layer", "compressed_bytes": 64063, "expanded_bytes": null, "staging_bytes": null },
+        { "digest": "sha256:0ae42424cadfa646dc06982b0ed3d08688b628c43fc379782b3b5d2d578eb041", "kind": "layer", "compressed_bytes": 1685, "expanded_bytes": null, "staging_bytes": null },
+        { "digest": "sha256:73b7968785dcb3e277c8de18c033614246b9419edb40941a0fc66aed6c831edb", "kind": "layer", "compressed_bytes": 1523, "expanded_bytes": null, "staging_bytes": null },
+        { "digest": "sha256:80150f70fb1e403d909539844a70fcb152ecfbd994a2c2c186dd71abb90be693", "kind": "layer", "compressed_bytes": 2627595459, "expanded_bytes": null, "staging_bytes": null },
+        { "digest": "sha256:3bd5db8307cf789162a5a096889ea97023d5795068bdd8f07a0b09b3615d17df", "kind": "layer", "compressed_bytes": 88902, "expanded_bytes": null, "staging_bytes": null },
+        { "digest": "sha256:20e116410dfd9bd3dcc22948aeb1e78cb8f6b14a1ce4d93fe1065919c73d8423", "kind": "layer", "compressed_bytes": 914999, "expanded_bytes": null, "staging_bytes": null },
+        { "digest": "sha256:5730b1a306ef7b2c8ee0d98bb931f2a68ff19caaf7e9da6f74c2e4f3d147f360", "kind": "layer", "compressed_bytes": 3891293451, "expanded_bytes": null, "staging_bytes": null },
+        { "digest": "sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1", "kind": "layer", "compressed_bytes": 32, "expanded_bytes": null, "staging_bytes": null },
+        { "digest": "sha256:d5abfd98c77890843a18f40abeb5c1daff88c4e3bbfdbf41de22b1ed82009935", "kind": "layer", "compressed_bytes": 99, "expanded_bytes": null, "staging_bytes": null },
+        { "digest": "sha256:a45e9b7e2d2073c25ef6d068a74a263ec869d6894047862023e518a2d4a2c9ac", "kind": "layer", "compressed_bytes": 260261437, "expanded_bytes": null, "staging_bytes": null },
+        { "digest": "sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1", "kind": "layer", "compressed_bytes": 32, "expanded_bytes": null, "staging_bytes": null },
+        { "digest": "sha256:32e864d6d25b5f548388da12c3615ca48bfb4ad49958076ebef6482f092327d5", "kind": "layer", "compressed_bytes": 3538522768, "expanded_bytes": null, "staging_bytes": null },
+        { "digest": "sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1", "kind": "layer", "compressed_bytes": 32, "expanded_bytes": null, "staging_bytes": null }
+      ],
+      "blob_inventory_complete": true,
+      "license_ids": ["f5-image-components"],
+      "depends_on": []
+    }
+  ],
+  "licenses": [
+    {
+      "id": "ollama-code",
+      "source_id": "ollama-source",
+      "scope": "source_code",
+      "spdx": "MIT",
+      "disposition": "unreviewed",
+      "evidence_path": "LICENSE",
+      "evidence_url": "https://raw.githubusercontent.com/ollama/ollama/d8ab4b4f0ca24b51d3a46b3bf4f462e58ce66b1f/LICENSE"
+    },
+    {
+      "id": "ollama-image-components",
+      "source_id": "ollama-source",
+      "scope": "container_image_components",
+      "spdx": "unknown",
+      "disposition": "unreviewed",
+      "evidence_path": null,
+      "evidence_url": null
+    },
+    {
+      "id": "f5-code",
+      "source_id": "f5-source",
+      "scope": "source_code",
+      "spdx": "MIT",
+      "disposition": "unreviewed",
+      "evidence_path": "LICENSE",
+      "evidence_url": "https://raw.githubusercontent.com/SWivid/F5-TTS/283252563dbf91be625e0c27926acfaac449186c/LICENSE"
+    },
+    {
+      "id": "f5-image-components",
+      "source_id": "f5-source",
+      "scope": "container_image_components",
+      "spdx": "unknown",
+      "disposition": "unreviewed",
+      "evidence_path": null,
+      "evidence_url": null
+    },
+    {
+      "id": "f5-model-license",
+      "source_id": "f5-models",
+      "scope": "model_repository",
+      "spdx": "CC-BY-NC-4.0",
+      "disposition": "unreviewed",
+      "evidence_path": "README.md",
+      "evidence_url": "https://huggingface.co/SWivid/F5-TTS/raw/84e5a410d9cead4de2f847e7c9369a6440bdfaca/README.md"
+    },
+    {
+      "id": "vocos-model-license",
+      "source_id": "vocos-models",
+      "scope": "model_repository",
+      "spdx": "MIT",
+      "disposition": "unreviewed",
+      "evidence_path": "README.md",
+      "evidence_url": "https://huggingface.co/charactr/vocos-mel-24khz/raw/0feb3fdd929bcd6649e0e7c5a688cf7dd012ef21/README.md"
+    }
+  ],
+  "roles": [
+    {
+      "id": "ollama-llm",
+      "role": "llm",
+      "runtime_id": "ollama-runtime",
+      "target": "ubuntu-24.04-x64",
+      "root_artifact_ids": ["ollama-image"],
+      "components": [
+        { "kind": "container_image", "artifact_id": "ollama-image" },
+        { "kind": "llm_weights", "artifact_id": null }
+      ]
+    },
+    {
+      "id": "f5-tts",
+      "role": "tts",
+      "runtime_id": "f5-runtime",
+      "target": "ubuntu-24.04-x64",
+      "root_artifact_ids": ["f5-image", "f5-v1-weights"],
+      "components": [
+        { "kind": "container_image", "artifact_id": "f5-image" },
+        { "kind": "tts_weights", "artifact_id": "f5-v1-weights" },
+        { "kind": "vocabulary", "artifact_id": "f5-v1-vocabulary" },
+        { "kind": "vocoder_weights", "artifact_id": "vocos-weights" },
+        { "kind": "vocoder_configuration", "artifact_id": "vocos-config" }
+      ]
+    }
+  ]
+}
