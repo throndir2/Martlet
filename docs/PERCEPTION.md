@@ -312,6 +312,9 @@ The adapter's bounded task includes output snapshotting as well as dispatch;
 even a blocked worker collection getter cannot hold its caller indefinitely.
 A cooperative cancel acknowledgment cannot release local ownership until the
 dispatch/validation task and cancellation callbacks have also retired.
+Scheduler callback retirement and cancellation admission share an atomic
+handshake: already-started callbacks must retire, and no new callback can start
+after retirement is finalized but before resource release/publication.
 Pre-launch deadline expiry releases unused capacity rather than quarantining it.
 
 `PerceptionWorkerFailure`, `PerceptionWorkerFailureCatalog`,
@@ -341,6 +344,15 @@ passing-after controlled regression. On 2026-09-23, SDK 10.0.401 locked
 restore and Release build completed with zero warnings/errors; all **184**
 tests (81 P01, 85 source P02, 18 reuse regressions) passed ten fresh test-host
 repetitions. This is managed synthetic evidence only, not live qualification.
+
+A subsequent independent final-fix review closed those three findings and
+identified a callback-admission/retirement race. A controlled release barrier
+reproduced it before correction. The scheduler now atomically closes callback
+admission while capturing already-started cancellation work, preserving
+quarantine until that work actually retires. The new regression increases the
+suite to 185 cases. The 32 affected scheduler/reuse lifecycle tests passed after
+this focused correction, with a Release build reporting zero warnings/errors;
+the unchanged full-suite evidence above was not repeated.
 
 Run the full direct Perception project with the locked Release commands above;
 do not add it to the root graph or hosted CI. Held-out fixtures assert shapes,

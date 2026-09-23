@@ -330,7 +330,7 @@ public sealed class PerceptionFreshnessScheduler : IAsyncDisposable
                         PerceptionProtocol.MaximumCancelDuration, clock)
                         .ConfigureAwait(false);
                 }
-                await state.CancellationCallbacks.WaitAsync(
+                await state.RetireCancellation().WaitAsync(
                     PerceptionProtocol.MaximumCancelDuration, clock).ConfigureAwait(false);
                 ArgumentNullException.ThrowIfNull(result);
                 PerceptionWorkerGuard.Require(result.Ids == state.Request.Ids &&
@@ -672,19 +672,24 @@ public sealed class PerceptionFreshnessScheduler : IAsyncDisposable
         private readonly object cancellationGate = new();
         private readonly CancellationTokenRegistration externalRegistration;
         private Task cancellationCallbacks = Task.CompletedTask;
+        private bool cancellationRetired;
         internal CancellationTokenSource Cancellation { get; } = new();
         internal CancellationTokenSource StopWaiting { get; } = new();
         internal CancellationToken ExternalCancellation { get; }
         internal PerceptionJobClock Clock { get; }
-        internal Task CancellationCallbacks
+        internal Task RetireCancellation()
         {
-            get { lock (cancellationGate) return cancellationCallbacks; }
+            lock (cancellationGate)
+            {
+                cancellationRetired = true;
+                return cancellationCallbacks;
+            }
         }
         internal void RequestCancellation()
         {
             lock (cancellationGate)
             {
-                if (!Cancellation.IsCancellationRequested)
+                if (!cancellationRetired && !Cancellation.IsCancellationRequested)
                 {
                     cancellationCallbacks = Cancellation.CancelAsync();
                     PerceptionGatewayClientAdapter.ObserveFault(cancellationCallbacks);
@@ -695,7 +700,7 @@ public sealed class PerceptionFreshnessScheduler : IAsyncDisposable
         internal void DisposeCancellation()
         {
             // Never wait for foreign cancellation callbacks under the scheduler lock.
-            _ = CancellationCallbacks.ContinueWith(_ =>
+            _ = RetireCancellation().ContinueWith(_ =>
             {
                 externalRegistration.Dispose();
                 Cancellation.Dispose();

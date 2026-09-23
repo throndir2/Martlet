@@ -364,6 +364,36 @@ public sealed class ReuseRegressionTests
         Assert.Equal(1, executor.Calls);
     }
 
+    [Fact]
+    public async Task Cancellation_after_retirement_cannot_start_new_callbacks_before_release()
+    {
+        using var executor = new RetirementGateExecutor();
+        await using var scheduler = Scheduler(executor);
+        using var stop = new CancellationTokenSource();
+        var request = PerceptionTestData.Intent(PerceptionRole.Ocr, worker: executor.Worker);
+        var running = scheduler.ScheduleAsync(request, PerceptionTestData.Authorize(request), stop.Token);
+        try
+        {
+            await executor.ReleaseEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await Task.Run(() => stop.Cancel()).WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(executor.WorkerToken.IsCancellationRequested);
+            executor.AllowRelease.Set();
+            var result = await running.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(PerceptionWorkerFailure.Canceled, result.Failure);
+            Assert.False(result.WorkerMayContinue);
+            Assert.Equal(0, Volatile.Read(ref executor.CallbackCalls));
+            var next = PerceptionTestData.Intent(PerceptionRole.Ocr, 2, executor.Worker);
+            var nextResult = await scheduler.ScheduleAsync(next, PerceptionTestData.Authorize(next));
+            Assert.Equal(PerceptionWorkerFailure.ModelNotReady, nextResult.Failure);
+        }
+        finally
+        {
+            executor.AllowRelease.Set();
+            executor.AllowCallback.Set();
+            await running.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+    }
+
     private static PerceptionGatewayClientAdapter Adapter(
         IAuthenticatedPerceptionWorkerTransport transport, PerceptionWorkerIdentity worker,
         TimeProvider? clock = null) => new(transport, PerceptionTestData.Destination,
@@ -600,6 +630,60 @@ public sealed class ReuseRegressionTests
                 Outcome = PerceptionJobOutcome.Failed, Failure = PerceptionWorkerFailure.ModelNotReady,
                 WorkerMayContinue = false, OutputDiscarded = true
             });
+        }
+    }
+
+    private sealed class RetirementGateExecutor : IPerceptionJobExecutor, IDisposable
+    {
+        private readonly PerceptionWorkerIdentity worker =
+            DeterministicPerceptionFixtureIdentity.Create(PerceptionRole.Ocr);
+        private int releaseArmed;
+        private CancellationTokenRegistration registration;
+        internal int CallbackCalls;
+        internal CancellationToken WorkerToken { get; private set; }
+        internal ManualResetEventSlim AllowRelease { get; } = new();
+        internal ManualResetEventSlim AllowCallback { get; } = new();
+        internal TaskCompletionSource ReleaseEntered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public PerceptionRole Role => PerceptionRole.Ocr;
+        public PerceptionWorkerIdentity Worker
+        {
+            get
+            {
+                if (Interlocked.Exchange(ref releaseArmed, 0) == 1)
+                {
+                    ReleaseEntered.TrySetResult();
+                    AllowRelease.Wait();
+                }
+                return worker;
+            }
+        }
+        public ValueTask<PerceptionJobResult> ExecuteAsync(
+            PerceptionJobIntent request, PerceptionVisionAuthorization authorization,
+            CancellationToken cancellationToken = default)
+        {
+            if (request.Epoch == 1)
+            {
+                WorkerToken = cancellationToken;
+                registration = cancellationToken.Register(() =>
+                {
+                    Interlocked.Increment(ref CallbackCalls);
+                    AllowCallback.Wait();
+                });
+                Interlocked.Exchange(ref releaseArmed, 1);
+            }
+            return ValueTask.FromResult(new PerceptionJobResult
+            {
+                Ids = request.Ids, ActionId = request.ActionId, Epoch = request.Epoch, Role = Role,
+                Outcome = PerceptionJobOutcome.Failed, Failure = PerceptionWorkerFailure.ModelNotReady,
+                WorkerMayContinue = false, OutputDiscarded = true
+            });
+        }
+        public void Dispose()
+        {
+            registration.Dispose();
+            AllowRelease.Dispose();
+            AllowCallback.Dispose();
         }
     }
 }
