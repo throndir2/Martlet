@@ -48,6 +48,14 @@ selected. Use `ui_snapshot` again to observe asynchronous effects. Modal
 actions may return `completed: false` while their dialog remains open; this
 means the invoke is still pending, not that the action finished.
 
+Window discovery uses visible top-level native handles filtered to the attached
+process, then verifies ownership around each UI Automation handle lookup.
+This avoids transient omissions from UI Automation's desktop-root enumeration
+when unrelated WPF windows close. The Martlet main-window automation ID is
+still required on every operation; hidden, closed or changed-owner windows
+fail rather than falling back to another process. Same-process dialogs remain
+available, and duplicate control IDs still fail as ambiguous.
+
 For broader **explicitly authorized** live UI testing, start the MCP server
 with `--allow-ui-effects`. This unlocks arbitrary ID-based `ui_click` and
 `ui_select`, plus `ui_set_text` and `ui_toggle`. It does **not** waive the

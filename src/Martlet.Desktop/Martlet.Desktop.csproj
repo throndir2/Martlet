@@ -3,8 +3,10 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <ApplicationIcon>Assets\Martlet.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <Resource Include="Assets\Martlet.ico" />
     <InternalsVisibleTo Include="Martlet.Desktop.Tests" />
     <ProjectReference Include="..\Martlet.Conversation\Martlet.Conversation.csproj" />
     <ProjectReference Include="..\Martlet.Participation\Martlet.Participation.csproj" />

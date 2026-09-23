@@ -12,6 +12,13 @@ rollback and signed distribution remain unimplemented.
 No project code/asset license is granted.
 The existing foundation/planning documents retain their broader future gates.
 
+The desktop executable, its Start menu shortcut and the installer use the original
+pink Martlet bird icon. The shared WPF window style also sets it explicitly, so
+development launches through `dotnet` do not show the generic runtime icon.
+Artwork and favicon-ready SVG/PNG/ICO assets live in
+`src\Martlet.Desktop\Assets`; regenerate the checked-in raster assets with
+`.\scripts\Generate-AppIcon.ps1` before building if the SVG changes.
+
 ## Developer commands
 
 All validation below runs locally under the
