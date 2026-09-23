@@ -7,6 +7,15 @@ Desktop settings, provider permits or host artifact schemas. It uses the .NET
 `TimeProvider`/cancellation conventions and disposable, redacted secret ownership
 used elsewhere in Martlet without reusing cloud-provider permission semantics.
 
+The separately [reused Gateway transport/authentication lineage](../Martlet.Gateway/README.md#reuse-lineage-and-authority-boundary)
+preserves the earlier consumers' pinned TLS and HMAC protocol. This Trust library
+remains isolated and uncomposed, not a second production authority. Its UUIDs,
+fingerprint encoding, granular scopes and secret/renewal contracts are not
+interchangeable with that protocol. No bridge or persistence integration is
+provided; protected Gateway.Persistence PR #37 remains held pending a deliberate
+consolidation/adaptation decision. The H03b responsibilities below describe
+this library's remaining gaps, not instructions to create another transport.
+
 ## Authority and approval boundary
 
 The future trusted host composition constructs and exclusively retains

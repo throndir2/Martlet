@@ -20,6 +20,51 @@ The runtime fixture certificate is loaded as a user-scoped key handle because
 Windows Schannel cannot serve an ephemeral key; it is never added to a
 certificate store and is disposed with the in-process listener.
 
+## Reuse lineage and authority boundary
+
+This is the standalone H03 source slice from
+`ec6db3979a1e2b8164176d455e4017475b9865ca`, reused by an attributed cherry-pick.
+It preserves the transport/authentication protocol and host identity expected
+by the earlier Gateway consumers. It does **not** import the later
+`d2a5db8` inference/routes slice or the final `1715d19` source-branch snapshot,
+their F5/Perception/Memory.Service dependencies, or Host.Doctor/Host.Setup.
+Core installation planning, settings, Desktop and HostArtifacts v2/catalog
+remain independent and unchanged.
+
+The newer [Gateway.Trust foundation](../Martlet.Gateway.Trust/README.md) remains
+isolated and **uncomposed**. These are alternative implementation lineages, not
+two production authorities or interchangeable credentials. This reused Gateway
+is the transport/authentication lineage for subsequent earlier-consumer reuse;
+neither library currently owns a deployed host. Protected Gateway.Persistence
+PR #37 remains **held** for a deliberate consolidation/adaptation decision.
+This import neither adopts its storage format nor changes that hold.
+
+| Boundary | Reused `Martlet.Gateway` | Isolated `Martlet.Gateway.Trust` |
+| --- | --- | --- |
+| Host/device identity | Bounded identifier strings; certificate-derived `sha256:` plus lowercase SPKI hex | Nonempty UUIDs; supplied uppercase SPKI hex without prefix; no TLS verification |
+| Authorization | `voice`, `perception`, `memory`; per-request scoped HMAC, timestamp and nonce | Independent status/transcription/generation/synthesis/perception/memory-read/memory-write flags; point-in-time secret authorization, no signed-request replay contract |
+| Secret ownership | Base64url strings exposed explicitly by `Reveal`; SHA-256 verifier is an HMAC signing key | Disposable 32-byte buffers with explicit copy/import; SHA-256 verifier for equality checks |
+| Pairing and rotation | Eight local windows, five failed proofs/window; direct local rotation with up to ten-minute overlap | Sixteen pending approvals, authority-wide redemption limit; one-use locally approved renewal with two-minute overlap |
+| State/time | Volatile credential records and bounded per-credential nonce cache; UTC expiry | Volatile bounded live-device state; UTC and monotonic expiry with rollback closure |
+
+There is no conversion, fallback, shared authority, secret cast, scope widening
+or credential interchange between these namespaces. Even though both use
+SHA-256 over random device secrets, persisting a Gateway HMAC verifier requires
+**signing-key protection**, not treating it as a harmless password hash.
+
+Before choosing or adapting protected persistence, reconcile the exact identity,
+wire/version, role/scope, credential-ID, renewal and revocation contracts.
+The reused store has no durable import/export, restart recovery, total
+registration ceiling or expired-registration sweep; revoked/expired records
+remain in memory. It does not inherit Trust's monotonic rollback closure,
+disposable secrets, device ceiling or approval/handler capability split.
+Production composition must keep `GatewayServer` and its local management
+objects private to trusted host code, not expose them through remote DI.
+Persisting credentials alone would also lose replay history on restart:
+an explicit fail-closed restart/re-pair or reviewed replay-restoration policy
+is required. Local approval UI, protected host keys, atomic durable
+rotation/revocation and native-host recovery remain unimplemented gates.
+
 ## Standalone local workflow
 
 Use the exact SDK **10.0.401** selected by `global.json`. Point `$sdk` at an
@@ -79,7 +124,8 @@ future host composition do not need to alter OS state.
 - disables certificate downloads/revocation-network probes, proxies, cookies,
   ambient credentials, decompression and automatic redirects;
 - sends only to the exact selected HTTPS IP/port;
-- uses a ten-second overall request deadline and five-second connect deadline;
+- uses a ten-second deadline through response headers and a five-second connect
+  deadline; response-body reading/cancellation remains the caller's responsibility;
 - returns bounded connection/deadline failures without a raw URI/exception;
 - disposes and rejects every 3xx response without following `Location`.
 
@@ -153,7 +199,7 @@ the same request returns `auth.replay`.
 | `POST /martlet/v1/pair` | Locally opened one-use proof | One scoped credential; 8 KiB strict JSON with required fields, duplicate/unknown rejection |
 | `GET /martlet/v1/version` | Signed scoped device request | Protocol `1.0`, gateway `0.1.0`, host ID, authorized role and credential expiry |
 | `GET /martlet/v1/capabilities` | Signed scoped device request | At most 16 configured worker capability records for only that role |
-| `GET /martlet/v1/status` | Signed scoped device request | Two-second bounded status reads for only that role |
+| `GET /martlet/v1/status` | Signed scoped device request | Two-second cooperative cancellation for status reads for only that role |
 
 Responses are snake-case JSON and at most 64 KiB. Authenticated operations
 require an exact route with no query. Unknown methods/routes do not redirect.
@@ -165,6 +211,8 @@ status method. There is no worker URL, raw HTTP client, model-management API,
 download API, arbitrary command or inference method. Synthetic tests use
 `ollama-private` and `f5-private` identities through this interface; the raw
 Ollama/F5 services remain outside the LAN gateway surface.
+Worker adapters must honor the supplied cancellation token; this foundation
+does not forcibly terminate an uncooperative status reader.
 
 ## Errors and audit boundary
 
