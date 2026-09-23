@@ -288,6 +288,16 @@ internal sealed class PackageFixture : IDisposable
             "maximum_staging_bytes": {{downloadBytes + expandedBytes}},
             "allowed_origins": [ "github.com", "huggingface.co" ]
           },
+          "acquisition": {
+            "mode": "caller_supplied_offline_import_only",
+            "automatic_download": false,
+            "runtime_locator": "redirecting",
+            "model_locator": "redirecting",
+            "runtime_archive_content_hash": "complete",
+            "model_content_hash": "complete",
+            "runtime_file_hashes": "caller_supplied_required",
+            "license_notices": "caller_supplied_required"
+          },
           "rights": {
             "runtime_spdx": "MIT",
             "model_spdx": "MIT",

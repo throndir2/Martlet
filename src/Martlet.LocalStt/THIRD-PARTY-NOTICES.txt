@@ -1,0 +1,41 @@
+Martlet.LocalStt candidate dependency and notice inventory
+=========================================================
+
+Scope
+-----
+This file records the H07a software candidate declarations. It is not a
+redistribution license bundle, legal advice, publisher attestation, or proof
+that any upstream binary or model was acquired, built, inspected, or run.
+Martlet itself has no project license grant in this file.
+
+whisper.cpp source/runtime candidate
+------------------------------------
+Repository: ggml-org/whisper.cpp
+Revision: 306c88f4d1286aec1bf96e544632897886af5501
+Declared source license: MIT
+Evidence:
+https://github.com/ggml-org/whisper.cpp/blob/306c88f4d1286aec1bf96e544632897886af5501/LICENSE
+
+The pinned release archive is expected to contain whisper/ggml runtime files
+and SDL2.dll. Source-license evidence is not a complete archive-component
+notice inventory. A real import must provide separately reviewed exact notice
+bytes and coverage for every installed executable, DLL, and model file.
+
+Whisper model candidate
+-----------------------
+Repository carrying converted model: ggerganov/whisper.cpp
+Revision: 80da2d8bfee42b0e836fc3a9890373e5defc00a6
+Model file: ggml-base.en.bin
+Declared upstream Whisper code/model evidence: MIT
+Evidence:
+https://github.com/openai/whisper/blob/86098128c0b4f24f0e2aa2994de830614b474227/LICENSE
+
+The model payload, training inputs, conversion chain, intended use, and
+redistribution rights require separate review. A hash and a notice file do not
+grant those rights.
+
+Importer output
+---------------
+The offline importer copies only caller-supplied exact notice files declared in
+its import evidence. Its CycloneDX 1.6 output records those declarations and
+payload hashes; it does not conclude license compatibility or clearance.

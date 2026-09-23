@@ -51,7 +51,8 @@ internal static class WindowsLocalPath
 {
     internal static SafeFileHandle Open(string path, bool directory, bool delete)
     {
-        var handle = CreateFileW(path, 0x80u | (delete ? 0x10000u : 0),
+        // LIST_DIRECTORY participates in sharing checks; attributes-only directory handles do not.
+        var handle = CreateFileW(path, 0x80u | (directory ? 1u : 0) | (delete ? 0x10000u : 0),
             3, IntPtr.Zero, 3, 0x00200000u | (directory ? 0x02000000u : 0), IntPtr.Zero);
         if (handle.IsInvalid)
         {

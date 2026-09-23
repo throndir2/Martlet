@@ -16,8 +16,11 @@ foundation", original author throndir), without its central documentation or
 frozen-branch ancestry. This optional CPU candidate requires **no Docker**.
 It does not change the installation plan or claim a working speech provider.
 
-Fresh review hardened the imported boundary. The later `abea6f6` acquisition
-slice must adapt to these changes rather than overwrite them:
+Fresh review hardened the imported boundary. The offline acquisition slice
+from `abea6f69d61ecf0549e9e5eb4b80f75b82dd867a` (original author throndir)
+is now ported as a delta onto `4d94a435bc4f5e1e8840fe2f0653883d7bc8eb1a`,
+without its source ancestry, old verifier/runner, or Desktop friend access.
+It preserves these boundaries:
 
 - The public adapter no longer accepts a process runner. Process launch
   requests/runners are internal; only the friend test assembly exercises their
@@ -37,6 +40,15 @@ slice must adapt to these changes rather than overwrite them:
   session. The adapter retains its owner until that call/session and private
   cleanup complete; disposal cancels and joins admitted work. A future trusted
   auditor must honor cancellation and complete cleanup, not detach live leases.
+
+One tightly coupled native fix strengthens the shared `WindowsDirectoryLease`:
+directory handles now request `FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES`
+while still denying delete sharing. An attributes-only handle did not block
+empty-root/ancestor rename on the validation host; earlier package tests held
+files as well and did not isolate that invariant. The new directory-only
+regression covers both root and ancestor renames, and the original verifier,
+workspace and adapter regressions still apply. There is no parallel weaker
+importer-only directory guard.
 
 ## Exact candidate identities
 
@@ -68,6 +80,88 @@ The bounded plan permits exactly 156,158,656 candidate download bytes, at most
 bytes. These are admission ceilings, not an implemented downloader or a disk
 forecast for rollback, crash recovery or another model. URLs are inert data;
 no code in this project resolves them.
+
+## Offline import and inspection
+
+[`Martlet.LocalStt.PackageTool`](../Martlet.LocalStt.PackageTool/README.md)
+is a separate explicit CLI, outside the root solution and shipped graphs.
+It accepts only caller-supplied absolute local archive, model, notice and
+evidence paths. There is no URL fetch, build execution or runtime launch.
+Filesystem operations require Windows x64; unsupported hosts fail explicitly.
+Help and command parsing do not touch the package filesystem.
+
+`PhysicalLocalSttPackageImporter.Preview` returns an immutable, generation-bound
+plan. `plan.Authorize(ApproveExactRuntimeModelAndNoticeRights)` creates a one-use
+authorization for that importer/plan only; the default decision is no.
+The CLI additionally requires `--approve-plan` with the exact preview fingerprint.
+File IDs, hashes, byte lengths and write times bind the supplied inputs; their
+validated read handles and ancestor-directory leases stay held through copying,
+read-back verification and finalization. Destination creation never overwrites.
+Windows cannot rename a directory with descendant file handles open, so the
+importer keeps the stage locked during source revalidation, retains exact file
+identities across the checked native rename, then pins and re-verifies the
+destination before returning success. A rename alone is not a verified receipt.
+Cancellation or interference before that final acceptance cleans the owned
+stage/destination or explicitly reports `CleanupPending` with the retained path
+and original failure. No canceled operation returns a success receipt.
+
+The installed envelope deliberately differs from the original source importer:
+
+```text
+destination/
+  package-owner.v1.json
+  payload/
+    downloads/
+    runtime/
+    models/
+  notices/
+  metadata/
+    whisper-package.v1.json
+    import-evidence.v1.json
+    sbom.cdx.json
+    package-receipt.v1.json
+```
+
+**Future H07 callers must pass `LocalSttPackageInspection.PayloadPath`, not
+`DestinationPath`, to `PhysicalLocalSttPackageVerifier`.** The unchanged verifier
+still demands exactly `downloads`, `runtime`, and `models`. Evidence notice
+coverage uses logical `runtime/...` and `models/...` paths; receipt/SBOM paths
+include the physical `payload/` prefix. Inspection reports `CanLaunch = false`,
+`RuntimeQualified = false`, `RightsQualified = false` and the disabled candidate
+status even when `PackageVerifierStatus` is `Verified`.
+
+The importer checks ZIP central/local headers before allocating entry objects,
+entry/path/expansion/compression-ratio bounds, duplicate/case/prefix collisions,
+special entries, PE32+ x64 section and RVA bounds, regular/delay import descriptors,
+thunks and names, and the selected files' declared dependency graph. Missing
+non-system DLL declarations and selected-file cycles are rejected. The explicit
+Windows system/API-set names are **declarations, not host availability evidence**.
+This is import-table inspection only: dynamic loads, forwarded exports,
+Authenticode, actual OS resolution and full runtime/transitive closure remain
+unqualified. Hashes and notice coverage are not legal clearance, egress
+evidence, CPU/GPU compatibility, accuracy or runtime qualification.
+
+The new acquisition provenance fields leave all runtime/model pins and disabled
+status unchanged. Legacy v1 documents without that block retain safe
+offline-only defaults and their exact original-byte hashes. Present blocks are
+strictly validated; import evidence and receipts must match the actual current
+manifest hash (the additional metadata changes that hash, not the model version).
+Receipt integrity hashes detect inconsistency; they are not signatures or proof
+of origin.
+
+Cleanup is bounded and restartable, not an implicit resume or overwrite.
+It accepts only exact staging names and matching canonical owner markers,
+including the declared notice names, preflights the bounded layout, pins
+directories and deletes through checked identity handles. A process-wide CAS
+and session-local Windows mutex prevent competing importer cleanup. A retained
+same-instance directory ID and notice inventory allow retry even if the first
+owner-marker write failed; replacement roots are never adopted. Unknown,
+malformed or foreign paths are preserved rather than recursively deleted.
+These markers are an ownership convention, not protection against a malicious
+same-user process that fabricates a whole matching package. Use a private
+caller-owned parent. Power loss before the first durable owner marker can leave
+an unrecognized empty/partial stage; unattended crash recovery and hostile
+same-user interference remain qualification gates.
 
 `PhysicalLocalSttPackageVerifier` accepts one canonical local package root with
 exact `downloads`, `runtime` and `models` contents. It rejects UNC/device/ADS,
@@ -158,6 +252,10 @@ fixture subprocesses:
 $env:CI = 'true'
 $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
 $env:DOTNET_GENERATE_ASPNET_CERTIFICATE = 'false'
+$env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = 'true'
+dotnet restore src\Martlet.LocalStt.PackageTool\Martlet.LocalStt.PackageTool.csproj --locked-mode --artifacts-path $artifacts
+dotnet build src\Martlet.LocalStt.PackageTool\Martlet.LocalStt.PackageTool.csproj -c Release --no-restore --artifacts-path $artifacts
+$env:MARTLET_PACKAGE_TOOL = Join-Path $artifacts 'bin\Martlet.LocalStt.PackageTool\release\martlet-local-stt-package.dll'
 dotnet restore tests\Martlet.LocalStt.Tests\Martlet.LocalStt.Tests.csproj --locked-mode --artifacts-path $artifacts
 dotnet build tests\Martlet.LocalStt.Tests\Martlet.LocalStt.Tests.csproj -c Release --no-restore --artifacts-path $artifacts
 dotnet test tests\Martlet.LocalStt.Tests\Martlet.LocalStt.Tests.csproj -c Release --no-build --no-restore --artifacts-path $artifacts
@@ -173,6 +271,15 @@ process-tree termination; real private junction/hard-link rejection, held
 directory identity, late egress-session cleanup and adapter disposal; disk/access
 and private-file cleanup quarantine. No root-solution/package smoke is
 applicable because this slice does not join either graph.
+
+Additional coverage uses only synthetic ZIP/model/PE/notice bytes: source
+identity substitution, hard links, reserved names, stale/reused approval,
+input leases, partial writes, cancellation, retained cleanup, finalization
+tampering, malformed PE import tables and immutable build-plan collections.
+Actual PackageTool subprocesses exercise help, readable errors, synthetic-pin
+rejection, inspection rejection and nonexecuting build-plan JSON. Synthetic
+successful imports use only the existing internal test seam; there is no public
+manifest override to make a synthetic package pass production pins.
 
 ## Remaining gates
 
