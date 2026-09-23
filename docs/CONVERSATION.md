@@ -149,7 +149,7 @@ factory. Closing the main window exits the app, not a background tray listener.
 This is not a measured 250 ms physical-stop guarantee.
 
 The fixed **Stop / revoke (Esc)** control also clears accepted but unused
-action/capture/upload permissions. Escape works from the typed input, response
+action/memory/capture/upload permissions. Escape works from the typed input, response
 fields and held PTT control. Releasing Space after Escape cannot send that
 discarded recording or rearm PTT. Stop during settings loading or a slow worker
 requests cancellation without releasing the shared ownership slot early.

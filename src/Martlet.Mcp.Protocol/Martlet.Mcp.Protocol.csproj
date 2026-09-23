@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Martlet.Mcp" />
+    <InternalsVisibleTo Include="Martlet.Desktop.Tests" />
+    <ProjectReference Include="..\Martlet.Doctor\Martlet.Doctor.csproj" />
+  </ItemGroup>
+</Project>

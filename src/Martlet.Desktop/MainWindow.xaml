@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Martlet - Diagnostics" Width="950" Height="800" MinWidth="520" MinHeight="420"
         WindowStartupLocation="CenterScreen"
+        AutomationProperties.AutomationId="MartletMainWindow"
         AutomationProperties.Name="Martlet foundation status"
         Loaded="Window_Loaded" Closing="Window_Closing">
     <ScrollViewer VerticalScrollBarVisibility="Auto">
