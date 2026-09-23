@@ -51,7 +51,7 @@ public static class ContractJson
         return bytes;
     }
 
-    private static void InspectJson(JsonElement element)
+    internal static void InspectJson(JsonElement element)
     {
         if (element.ValueKind == JsonValueKind.Object)
         {

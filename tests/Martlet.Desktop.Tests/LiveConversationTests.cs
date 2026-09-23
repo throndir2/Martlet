@@ -1047,16 +1047,21 @@ public sealed class LiveConversationTests
     });
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public Task StopOrEscapeRevokesUnusedPermissionsWithoutStartingWork(bool escape) => DispatcherTest(async () =>
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public Task StopOrEscapeRevokesUnusedPermissionsWithoutStartingWork(bool escape, bool memoryOnly) => DispatcherTest(async () =>
     {
         await using var fixture = await LiveFixture.Create();
+        await fixture.EnableMemory();
         var window = fixture.Open();
         try
         {
             await Loaded(window);
-            Permit(window, voice: true, microphone: true);
+            if (!memoryOnly) Permit(window, voice: true, microphone: true);
+            Assert.True(Control<CheckBox>(window, "AcceptMemory").IsEnabled);
+            Control<CheckBox>(window, "AcceptMemory").IsChecked = true;
             Assert.True(Control<Button>(window, "StopButton").IsEnabled);
             if (escape) Escape(window, "InputText");
             else Click(window, "StopButton");
@@ -1160,6 +1165,7 @@ public sealed class LiveConversationTests
     private static void AssertPermissionsCleared(Window window)
     {
         Assert.False(Control<CheckBox>(window, "AcceptAction").IsChecked);
+        Assert.False(Control<CheckBox>(window, "AcceptMemory").IsChecked);
         Assert.False(Control<CheckBox>(window, "AcceptCapture").IsChecked);
         Assert.False(Control<CheckBox>(window, "AcceptUpload").IsChecked);
         Assert.False(Control<Button>(window, "SendButton").IsEnabled);
