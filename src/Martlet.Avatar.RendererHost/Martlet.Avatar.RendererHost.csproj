@@ -3,6 +3,7 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <NodeExecutable Condition="'$(NodeExecutable)' == ''">node</NodeExecutable>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" />
@@ -13,6 +14,6 @@
     <Content Include="web\dist\THIRD-PARTY-NOTICES.txt" Link="web\THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <Target Name="BuildAvatarBrowser" BeforeTargets="PrepareForBuild">
-    <Exec Command="node &quot;$(MSBuildProjectDirectory)\web\build.mjs&quot; &quot;$(IntermediateOutputPath).&quot;" />
+    <Exec Command="&quot;$(NodeExecutable)&quot; &quot;$(MSBuildProjectDirectory)\web\build.mjs&quot; &quot;$(IntermediateOutputPath).&quot;" />
   </Target>
 </Project>
