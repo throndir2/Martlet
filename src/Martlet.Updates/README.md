@@ -1,7 +1,7 @@
-# V07b-a/b: local candidate verification, staging and selection
+# V07b-a/b/c: local verification, staging, selection and activation records
 
-**A staging library, not an updater, installer, signed release or supported
-upgrade.** No network, execution, activation, credential access,
+**A private lifecycle library, not an updater, installer, signed release or supported
+upgrade.** No network, candidate execution, credential access,
 model access, process termination, shortcuts, registry, services, old-version
 deletion or release publication. Existing unsigned packaging remains unchanged.
 The library is not registered in the application or shared solution.
@@ -24,6 +24,14 @@ writes settings or restores again, and records a NEW format-4 acknowledgment
 while retaining the old operation as historically unacknowledged. Staging
 and ordinary selection never implicitly restore settings. There is no Desktop
 wiring, launcher, execution or shipped rollback workflow.
+
+The separate [activation-pointer transaction](ACTIVATION.md) consumes that exact
+selection under retained ownership, rechecks current trust, installed-image
+facts, settings and signed files, and publishes its own pending/terminal record.
+Only internal inert test probes exercise terminal publication in this slice.
+`PointerPublished` describes that record, not launch permission:
+`Readiness` remains `MissingReadiness` and `IsRunnable` remains false.
+Production preparation fails with `ReadinessUnavailable` without a transaction.
 
 ## Caller boundary
 
@@ -57,7 +65,7 @@ settings or validate an installed executable on the caller's behalf.
 
 The only existing production dependency is Core, for
 `AppSettings.CurrentSchemaVersion`. Supported known settings schemas are the
-same v1/v2/v3 accepted by `SettingsJson` and V07a recovery. The candidate's signed
+same v1/v2/v3/v4 accepted by `SettingsJson` and V07a recovery. The candidate's signed
 `settingsMinimumReader`/`settingsMaximumReader` bounds must include the **actual
 persisted current schema**, not just the latest schema supported by Core.
 Unknown current schemas are refused. Only the existing payload RID `win-x64`
@@ -297,8 +305,8 @@ their ancestors; UNC and Windows network drives are refused. This is not a
 sandbox against an actor with the same filesystem authority. In particular,
 portable path checks cannot defeat arbitrary adversarial mount/reparse/hardlink
 insertion races. Cooperating owners must not mutate engine-owned pending or
-finalized stages. A future activation coordinator must reverify and pin its
-inputs under its own ownership through activation.
+finalized stages. The separate activation-record coordinator reverifies and pins
+its inputs through publication; its inert probe does not prove executable startup.
 
 All IO is deliberately **synchronous**. Stream reads, `Flush(true)`, OS directory
 rename and cleanup may block; cancellation cannot interrupt an OS call already
@@ -336,15 +344,17 @@ paths/keys. There is no logging sink. Preview paths and retained cleanup paths
 are explicit local UI information and must not be sent to generic logs or
 support bundles.
 
-Before any later activation, the coordinator must require a separate **valid,
-fresh pre-activation V07a configuration snapshot**, bound to current settings
-revision/profile and verified via the recovery boundary. Merely constructing
+Selection requires a separate **valid, fresh V07a configuration snapshot**, bound
+to current settings revision/profile and verified via the recovery boundary.
+Activation revalidates the retained snapshot and binds the actual current settings
+again; it never restores an old snapshot implicitly. Merely constructing
 the existing public `ConfigurationRecoveryReceipt` record is not evidence of
 verification. This stage neither creates nor accepts a snapshot receipt, and
 its `NextSteps` requirement cannot be cleared by caller JSON.
 
 The selection engine supplies snapshot-verification integration and separate
-selection approval, not activation approval. Still separate: exclusive app
+selection approval, not activation approval. The activation layer adds a distinct
+exact approval and recoverable owned record transaction. Still separate: exclusive app
 ownership, migration/readiness checks, executed N-1/N rollback, uninstall/data
 preservation, publisher revocation/freshness policy, Desktop UI/offload/retirement,
 and actual environment qualification.
