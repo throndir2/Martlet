@@ -333,12 +333,24 @@ try {
     $null = Wait-Setup '*Stt: route selected; consent missing or invalidated*'
     Invoke-Control 'SetupSaveExit'
     $null = Wait-Status '*Setup checkpoint: Destinations*consent missing or invalidated*'
+    Invoke-Control 'OpenCompanion'
+    $null = Wait-Setup '*Companion settings loaded*' 'CompanionResult'
+    (Find-Control 'CompanionName').GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).SetValue('Smoke persona')
+    (Find-Control 'CompanionText').GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).SetValue('Offline smoke persona; no provider action.')
+    Invoke-Control 'CompanionSave'
+    $null = Wait-Setup '*Companion settings saved*' 'CompanionResult'
+    Invoke-Control 'CompanionClose'
+    $null = Wait-Status '*Setup checkpoint: Destinations*consent missing or invalidated*'
     Close-Desktop
     $configured = Get-Content -LiteralPath $settings -Raw | ConvertFrom-Json
-    if ($configured.schema_version -ne 2 -or $configured.profile.id -ne $legacyId -or
+    if ($configured.schema_version -ne 3 -or $configured.profile.id -ne $legacyId -or
+        $configured.companion.personas.Count -ne 1 -or
+        $configured.companion.active_persona_id -ne $configured.companion.personas[0].id -or
+        $configured.companion.personas[0].name -cne 'Smoke persona' -or
+        $configured.companion.personas[0].text -cne 'Offline smoke persona; no provider action.' -or
         $configured.setup.routes[0].model_id -cne 'whisper-1' -or $null -ne $configured.setup.routes[0].consent -or
         $null -ne $configured.setup.routes[0].credential_id -or $configured.setup.pending_removals.Count -ne 0) {
-        throw 'Actual no-key setup did not preserve identity, model edit and consent invalidation.'
+        throw 'Actual no-key setup/companion save did not preserve identity, persona, model edit and consent invalidation.'
     }
 
     foreach ($case in @(

@@ -133,7 +133,7 @@ public sealed partial class LocalSelectionEngine
                 if (previous.Snapshot.ProfileId != current.Settings!.Profile.Id)
                     throw new SelectionException(SelectionFailure.InvalidSnapshot);
                 Compatible(previous.MinimumReader, previous.MaximumReader, previous.Snapshot.Schema);
-                // V07a restore currently emits schema 2, even for a v1 historical snapshot.
+                // New restores emit the current schema even for a historical snapshot.
                 Compatible(previous.MinimumReader, previous.MaximumReader, AppSettings.CurrentSchemaVersion);
                 entry = previous with { RestoreRequired = true };
             }

@@ -54,7 +54,7 @@
                           Checked="Consent_Changed" Unchecked="Consent_Changed" AutomationProperties.AutomationId="LiveAcceptCapture" />
                 <CheckBox x:Name="AcceptUpload" Content="For PTT only: I separately permit uploading this audio to the named STT destination with potential charges, even if policy later suppresses it." Margin="0,4"
                           Checked="Consent_Changed" Unchecked="Consent_Changed" AutomationProperties.AutomationId="LiveAcceptUpload" />
-                <Label Target="{Binding ElementName=InputText}" Content="_Typed text (no history sent, at most 4096 characters)" />
+                <Label Target="{Binding ElementName=InputText}" Content="_Typed text (bounded recent context, at most 4096 characters)" />
                 <TextBox x:Name="InputText" AcceptsReturn="True" TextWrapping="Wrap" MaxLength="4096" Height="80" VerticalScrollBarVisibility="Auto"
                          TextChanged="Input_Changed" AutomationProperties.AutomationId="LiveInput" />
                 <WrapPanel>

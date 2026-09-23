@@ -38,6 +38,8 @@ public sealed class LiveConversationTests
             Assert.Contains("800,044", Text(window, "EnvelopeText"));
             Assert.Contains("UNKNOWN", Text(window, "EnvelopeText"));
             Assert.Contains("150 s", Text(window, "EnvelopeText"));
+            Assert.Contains("<=256 tokens, <=16,384 response characters, <=45 s", Text(window, "EnvelopeText"));
+            Assert.Contains("eight completed explicit exchanges", Text(window, "EnvelopeText"));
             Assert.Contains("configured, NOT live verified", Text(window, "ConfigurationText"));
             fixture.NoEffects();
             Click(window, "SendButton"); // Even a programmatic routed click cannot bypass missing permission.

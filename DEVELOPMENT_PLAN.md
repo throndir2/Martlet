@@ -18,7 +18,7 @@ F5 reference-voice replacement, independent LLM/VLM selection, listen-first
 participation, speech-triggered interruption and adjustable response-style
 weights are now explicit product requirements. See
 [Companion controls and behavior](docs/COMPANION_REQUIREMENTS.md) for the user
-experience, current gaps and boundaries, and Delivery R19-R24 / AC-18-AC-23
+experience, current gaps and boundaries, and Delivery R19-R24 / AC-21-AC-26
 for acceptance. This adds requirements, not implemented controls or permission
 to enable listening, run models or spend money.
 
@@ -37,6 +37,23 @@ SBOM using its existing payload integrity boundary. This does not complete
 signed distribution, license clearance, lifecycle qualification or V07/G1/G2.
 
 ## 1. Executive recommendation
+
+**Reconciliation amendment, 2026-09-23:** the user chose to reconcile and reuse
+the earlier implementation through reviewed PRs, then finish missing installation
+features. The frozen canonical source is
+`1715d194c03e9b1399c93c4f496f382e7076afc5`; it is not merged wholesale.
+The [reuse ledger](docs/DELIVERY.md#prior-implementation-reuse-amendment-2026-09-23)
+records the five-commit persona/settings-v3 baseline, independent Gateway/F5/Memory
+imports, and subsequent single-owner v4 local memory -> v5 self-host voice ->
+v6 perception -> v7 barge-in -> v8 remote memory integration with prerequisite
+modules and fresh local gates. Installation persistence must use the next
+compatible schema after that lineage, not redefine v3. Existing installation
+research, pure planner, HostArtifacts and Gateway.Trust remain intact.
+H01 PR #21 / `22d76df` stays held; PR #37, new host-journal work and installation
+drafts remain on hold for reconciliation. No claim of all 69 commits integrated,
+no old candidate receipt as new-main evidence, and no release/host authorization.
+The imported companion cases use AC-21 through AC-26; AC-18 through AC-20 retain
+their current installation meanings.
 
 Build a companion that is easy to install, easy to understand when it is silent,
 and safe to stop. Prove one complete Windows voice experience without dedicated

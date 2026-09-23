@@ -239,7 +239,8 @@ style weights, changed/missing reference audio, incompatible models and
 unqualified barge-in. Preserve prior saved choices without pretending a failed
 Apply succeeded or falling back silently. Save/resume preserves inert choices,
 not listening, spending, preview permission or model readiness. The current
-setup UI does not yet implement these companion surfaces.
+Desktop implements the companion editor and named OpenAI LLM catalog selection;
+the remaining surfaces are not yet integrated.
 
 ### Provider cost and mode controls
 

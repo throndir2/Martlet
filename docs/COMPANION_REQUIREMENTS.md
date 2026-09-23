@@ -43,8 +43,9 @@ create-only and never overwrites an existing file.
 The follow-on V05b slice sends the fixed active persona revision and one
 weighted style only after an explicit typed/PTT action passes participation.
 The combined user/persona/style input must fit the existing byte/token
-reservation and is never silently truncated. It adds no history, automatic
-listening, provider permission, capture or preview action.
+reservation and is never silently truncated. The subsequent bounded explicit
+context slice includes recent completed exchanges within that same budget;
+neither slice enables automatic listening, provider permission, capture or preview.
 
 Provide a **Companion** settings page with a multiline persona text editor and
 named profiles. Create, duplicate, rename, select, save and delete profiles;
@@ -253,7 +254,7 @@ reference controls land with the self-hosted F5 adapter; VLM selection lands
 with opt-in vision. None requires an avatar or persistent memory first.
 
 [Delivery](DELIVERY.md#8-requirements-to-delivery-traceability) maps R19-R24 to
-owned work and AC-18 through AC-23. An earlier PTT-only release may ship without
+owned work and AC-21 through AC-26. An earlier PTT-only release may ship without
 automatic listening/barge-in, but must not advertise those capabilities.
 Future implementation must add production-backed local tests plus separately
 authorized real-device/model evidence; this requirements change supplies neither.

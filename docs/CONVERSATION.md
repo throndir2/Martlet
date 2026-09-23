@@ -51,8 +51,8 @@ receives the typed text or that final transcript plus the fixed active persona
 revision and one weighted response style selected only after participation
 accepts the turn. Persona/style and user input share the existing byte/token
 reservation; an over-budget combination is rejected without truncation or a
-provider call. Valid legacy v1/v2 profiles retain stateless text behavior and
-upload no implicit persona/style instruction until settings v3 is explicitly
+provider call. Valid legacy v1/v2 profiles upload no implicit persona/style
+instruction until settings v3 is explicitly
 saved. Up to eight completed explicit exchanges from the prior two minutes may
 be supplied from memory; oldest pairs are omitted until the whole request fits
 the unchanged budget. Failed/refused/suppressed turns are excluded, and pause,

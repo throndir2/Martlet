@@ -248,7 +248,6 @@ public sealed partial class LocalSelectionEngine
         if (state.FormatVersion is not (3 or 4) || state.Pending is null ||
             state.Current?.RestoreRequired != true || state.LastTransaction is null)
             throw new SelectionException(SelectionFailure.ConfigurationRestoreReconciliationRequired, state.Pending);
-        Compatible(state.Current.MinimumReader, state.Current.MaximumReader, AppSettings.CurrentSchemaVersion);
     }
 
     private RestoreAcknowledgmentBinding ReadAcknowledgmentSource(ControlDocument state, CancellationToken token)
@@ -265,7 +264,7 @@ public sealed partial class LocalSelectionEngine
             throw new SelectionException(SelectionFailure.InvalidControl);
         if (!LocalPaths.Exists(Path.Combine(directory, "restore-committed.json")))
             throw new SelectionException(SelectionFailure.ConfigurationRestoreReconciliationRequired, id);
-        ValidateRestoreCommit(journal, restore, token);
+        var committed = ValidateRestoreCommit(journal, restore, token);
         using var original = BoundedIo.OpenRead(OriginalPath(restore.OriginalFileName), 1);
         var bytes = BoundedIo.Read(original, AppSettings.MaxFileBytes, token);
         AppSettings prior;
@@ -274,9 +273,9 @@ public sealed partial class LocalSelectionEngine
         if (prior.Profile.Id != state.ProfileId || Convert.ToHexString(SHA256.HashData(bytes)) != restore.ExpectedRevision)
             throw new SelectionException(SelectionFailure.InvalidControl);
         return new(id, Wire.Hash(JournalBytes(journal, restore)), journal.PlanDigest,
-            Wire.Hash(Wire.Write(CommitDocument(journal, restore))), Wire.Hash(Wire.Write(state)), journal.After.Revision,
+            Wire.Hash(Wire.Write(committed)), Wire.Hash(Wire.Write(state)), journal.After.Revision,
             restore.Snapshot, restore.OriginalFileName, restore.ExpectedRevision, prior.SchemaVersion,
-            restore.CandidateDigest, AppSettings.CurrentSchemaVersion, staging.TrustPolicyDigest, "");
+            restore.CandidateDigest, committed.SchemaVersion, staging.TrustPolicyDigest, "");
     }
 
     private void RequireAcknowledgmentSource(RestoreAcknowledgmentBinding expected, ControlDocument before,

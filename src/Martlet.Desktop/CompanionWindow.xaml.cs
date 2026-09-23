@@ -50,7 +50,7 @@ public partial class CompanionWindow : Window
             ResultText.Text = loaded.Error?.Summary ?? loaded.Settings?.SchemaVersion switch
             {
                 1 or 2 => $"Settings version {loaded.Settings.SchemaVersion} loaded unchanged. Save will migrate it with an atomic original-file snapshot.",
-                _ => "Companion settings loaded. No model, provider, microphone or file was accessed."
+                _ => "Companion settings loaded. No model, provider or microphone was accessed."
             };
             RenderPersonas();
         });
@@ -99,7 +99,7 @@ public partial class CompanionWindow : Window
         ReloadButton.IsEnabled = !active;
         ActivityText.Text = active
             ? "Companion settings worker active. No overlapping app effect can start."
-            : "Idle. Changes are local drafts until Apply and Save; runtime persona use is not enabled yet.";
+            : "Idle. Changes are local drafts until Apply and Save; fresh explicit turns use the saved active persona.";
     }
 
     private void RenderPersonas(Guid? selected = null)

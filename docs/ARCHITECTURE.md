@@ -17,8 +17,9 @@ OpenAI conversation authority. No production issuer, gateway/Desktop route,
 immutable model binding or qualified runtime/host locality is established.
 The [companion requirements](COMPANION_REQUIREMENTS.md) add explicit persona,
 reference-voice, model-selection and listen-first/barge-in controls. These
-remain future work, not extensions already implemented by V04b or the
-standalone post-capture VAD library.
+are partially implemented by the reused persona/settings, explicit-context and
+LLM-selection slices; reference voice, VLM, listening and barge-in remain future
+integration, not capabilities of the standalone post-capture VAD library.
 Read [the development plan](../DEVELOPMENT_PLAN.md)
 for scope and approvals, [installation/support](INSTALLATION_SUPPORT.md) for
 lifecycle, and [delivery](DELIVERY.md) for task ownership. Source IDs refer to
@@ -375,8 +376,9 @@ from per-persona helpful/sarcastic/silly/distracted/teasing weights. Select a
 style only after admission, using a testable weighted selector; persona/style
 never overrides truthfulness, explicit controls or permission. The current
 V05b adds fixed-revision persona and weighted style instructions to fresh
-explicit turns. It still has no conversation-history injection or automatic
-observation collector.
+explicit turns. The reused explicit-context slice adds at most eight completed
+exchanges from the last two minutes within the same input budget, with lifecycle
+clearing; it is not the proposed automatic observation collector.
 
 ## 5. Audio, streaming, cancellation, and budgets
 
