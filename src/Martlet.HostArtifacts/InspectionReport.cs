@@ -45,6 +45,22 @@ public sealed class InspectionReport
             lines.Add(string.Create(CultureInfo.InvariantCulture,
                 $"{artifact.Id}: {artifact.Bytes} declared bytes; payload SHA-256 {artifact.Sha256 ?? "unknown"} ({artifact.Sha256Evidence}); repository Git blob SHA-1 {artifact.GitBlobSha1 ?? "not supplied"}."));
         }
+        foreach (var image in document.ContainerImages ?? [])
+        {
+            var metadata = image.Metadata;
+            var platform = metadata.Platform is { } p
+                ? $"{p.Os}/{p.Architecture}" + (p.Variant is null ? "" : "/" + p.Variant)
+                : "unknown";
+            lines.Add($"Image {metadata.Id}: {metadata.Registry}/{metadata.Repository}@{metadata.Digest}; " +
+                $"index {metadata.Index?.Digest ?? "not supplied"}; platform {platform} ({image.PlatformComparison}); " +
+                $"{metadata.Evidence}, not locally verified; dependencies and component rights unresolved.");
+        }
+        if (document.Disk?.ContainerContent is { } container)
+            lines.Add(string.Create(CultureInfo.InvariantCulture,
+                $"Unique container content: {container.KnownCompressedBytes} known compressed bytes ({container.UnknownCompressedCount} unknown sizes); " +
+                $"{container.KnownExpandedBlobBytes} known expanded blob bytes ({container.UnknownExpandedBlobCount} unknown); " +
+                $"{container.KnownStagingBlobBytes} known staging blob bytes ({container.UnknownStagingBlobCount} unknown). " +
+                $"Incomplete image inventories: {container.IncompleteImageCount}. These are not installed snapshots or peak disk."));
         if (document.Disk is { } disk)
             lines.Add(string.Create(CultureInfo.InvariantCulture,
                 $"Known listed payload subtotal: {disk.KnownListedPayloadBytes} bytes. Complete download, expanded/peak disk and free disk: unknown."));
@@ -69,7 +85,7 @@ public sealed class InspectionReport
 
 internal sealed record ReportDocument : IContract
 {
-    public int FormatVersion => 1;
+    public int FormatVersion { get; init; } = 1;
     public string Scope => "artifact_metadata_only";
     public required int ExitCode { get; init; }
     public required string Disposition { get; init; }
@@ -88,10 +104,12 @@ internal sealed record ReportDocument : IContract
     public string PrerequisiteObservations => "not_performed";
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public string? RequestedTarget { get; init; }
+    public string? RequestedPlatform { get; init; }
     public RoleInspection[] Roles { get; init; } = [];
     public SourceDocument[] Sources { get; init; } = [];
     public RuntimeDocument[] Runtimes { get; init; } = [];
     public ArtifactDocument[] Artifacts { get; init; } = [];
+    public ImageInspection[]? ContainerImages { get; init; }
     public LicenseDocument[] Licenses { get; init; } = [];
     public PrerequisiteInspection[] Prerequisites { get; init; } = [];
     public DiskInventory? Disk { get; init; }
@@ -135,6 +153,24 @@ internal sealed record DiskInventory(long KnownListedPayloadBytes)
     public long? PeakDiskBytes => null;
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public long? FreeDiskBytes => null;
+    public ImageByteInventory? ContainerContent { get; init; }
+}
+
+internal sealed record ImageInspection(ContainerImageDocument Metadata, string PlatformComparison)
+{
+    public bool PayloadVerified => false;
+    public string SourceBinding => "declared_recipe_not_build_attestation";
+    public string IndexSelection => Metadata.Index is null ? "not_supplied" : "declared_not_verified";
+    public string DependencyClosure => "not_established";
+    public string RightsApproval => "not_reviewed";
+}
+
+internal sealed record ImageByteInventory(long KnownCompressedBytes, int UnknownCompressedCount,
+    long KnownExpandedBlobBytes, int UnknownExpandedBlobCount, long KnownStagingBlobBytes, int UnknownStagingBlobCount,
+    int UniqueContentCount, int IncompleteImageCount)
+{
+    public string Scope => "unique_content_metadata_not_snapshot_or_peak_disk";
+    public string SizeEvidence => "supplied_metadata_not_locally_measured";
 }
 
 internal sealed record InspectionFinding(string Code, string Summary, string Remedy)
@@ -146,11 +182,11 @@ internal static class InspectionFindings
 {
     internal static InspectionFinding Get(string code) => code switch
     {
-        "manifest.too_large" => new(code, "The document exceeds 256 KiB.", "Select a smaller complete v1 document; no content was inspected."),
-        "manifest.unsupported_version" => new(code, "The artifact document version is unsupported.", "Use a reviewed format-version 1 document and a matching reader."),
-        "manifest.invalid_json" => new(code, "JSON is malformed or has missing, null or unsupported fields/values.", "Use the exact bounded v1 contract; keep the original document for local review."),
+        "manifest.too_large" => new(code, "The document exceeds 256 KiB.", "Select a smaller complete v1 or v2 document; no content was inspected."),
+        "manifest.unsupported_version" => new(code, "The artifact document version is unsupported.", "Use a reviewed format-version 1 or 2 document and a matching reader."),
+        "manifest.invalid_json" => new(code, "JSON is malformed or has missing, null or unsupported fields/values.", "Use the exact bounded versioned contract; keep the original document for local review."),
         "manifest.identifier_invalid" => new(code, "An identifier is noncanonical.", "Use bounded lowercase ASCII IDs; do not rely on normalization or case aliases."),
-        "manifest.bounds_invalid" => new(code, "The inventory exceeds its count or value bounds.", "Review the documented v1 limits and provide a bounded complete subset."),
+        "manifest.bounds_invalid" => new(code, "The inventory exceeds its count or value bounds.", "Review the documented versioned limits and provide a bounded complete subset."),
         "manifest.alias_invalid" => new(code, "Duplicate or ambiguous inventory identities were supplied.", "Represent a shared source or artifact once and reference its unique ID."),
         "manifest.reference_missing" => new(code, "A referenced source, license, runtime or artifact is missing.", "Supply the referenced record or an explicit missing component slot, not a dangling reference."),
         "manifest.role_invalid" => new(code, "Role, runtime, component slots or selected closure disagree.", "Use the required typed family slots and exact artifact kinds; aliases cannot replace role requirements."),
@@ -161,6 +197,16 @@ internal static class InspectionFindings
         "artifact.pin_invalid" => new(code, "Artifact identity, hash or exact byte count is invalid.", "Use immutable commits and exact positive metadata sizes; distinguish payload hashes from Git object IDs."),
         "artifact.path_invalid" => new(code, "An upstream relative path is unsafe or noncanonical.", "Use bounded ASCII relative paths without traversal, encoding aliases or device names."),
         "artifact.source_invalid" => new(code, "A source URL does not match the exact supported origin/repository/revision/path.", "Use the canonical pinned locator; credentials, queries, redirects and alternate origins are unsupported."),
+        "image.reference_invalid" => new(code, "An image registry, repository or digest is noncanonical or mutable.", "Use an explicit DNS registry, lowercase repository and nonzero sha256 digest; tags and implicit registries are unsupported."),
+        "image.platform_invalid" => new(code, "An image platform is malformed.", "Use canonical lowercase OS/architecture[/variant] tokens or explicit null for an unknown declaration."),
+        "image.evidence_invalid" => new(code, "Synthetic image facts were labeled as upstream inventory.", "Keep authored synthetic metadata in a synthetic_fixture document; it is not upstream evidence."),
+        "image.inventory_invalid" => new(code, "An image blob inventory has inconsistent configuration declarations.", "Supply at most one configuration blob, exactly one when claiming a complete listed blob inventory."),
+        "image.facts_conflict" => new(code, "Repeated content digests have conflicting kind or byte facts.", "Use identical facts for shared content, including explicit unknown sizes; do not choose one conflicting observation."),
+        "image.platform_unknown" => new(code, "The image platform or requested platform is unknown.", "Supply --platform and a reviewed selected-image platform; target labels alone do not establish OCI compatibility."),
+        "image.platform_mismatch" => new(code, "A selected image platform differs from the requested platform.", "Select matching immutable platform metadata; no host observation or override is performed."),
+        "image.metadata_unverified" => new(code, "Image digests and byte facts are supplied metadata, not verified content.", "Separately authorized acquisition must verify manifests, blobs and runtime closure; parsing authorizes nothing."),
+        "image.index_selection_unverified" => new(code, "The index-to-platform-image relationship is only declared.", "Verify the index descriptor and selected manifest separately; the index digest is not the platform-image digest."),
+        "image.inventory_incomplete" => new(code, "At least one image has an explicitly incomplete blob inventory.", "Resolve missing configuration/layer descriptors before any future download or disk plan."),
         "inspection.invalid_invocation" => new(code, "The command or selection is invalid.", "Use --help, one explicit absolute local JSON document, and optional exact role/target IDs."),
         "inspection.input_unreadable" => new(code, "The selected document could not be read.", "Select an accessible local regular JSON file; no path, file content or settings were logged or changed."),
         "inspection.input_disallowed" => new(code, "The selected input is not an allowed local regular document.", "Use a direct local JSON file, not a network/device/alternate-stream path or link/reparse ancestor."),
