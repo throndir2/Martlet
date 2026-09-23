@@ -386,11 +386,53 @@ public sealed class ContainerImageTests
         Assert.Contains("image.inventory_incomplete", Codes(Inspect(bad)));
         bad = Images();
         var blobs = At(bad, "container_images/0")["blobs"]!.AsArray();
-        blobs.Add(blobs[1]!.DeepClone());
+        blobs.Add(blobs[0]!.DeepClone());
         ManifestTests.Rejected(bad);
         bad = Images();
         bad["provenance"] = "upstream_metadata";
         ManifestTests.Rejected(bad);
+    }
+
+    [Fact]
+    public void RepeatedLayerOccurrencesPreserveOrderButCountIdenticalContentOnce()
+    {
+        var doc = Images();
+        var blobs = At(doc, "container_images/0")["blobs"]!.AsArray();
+        blobs.Insert(1, blobs[1]!.DeepClone());
+        blobs.Add(blobs[1]!.DeepClone());
+        var report = Inspect(doc);
+        Assert.Equal(660, report.GetProperty("disk").GetProperty("known_listed_payload_bytes").GetInt64());
+        var image = report.GetProperty("container_images").EnumerateArray()
+            .Single(i => i.GetProperty("metadata").GetProperty("id").GetString() == "ollama-image");
+        Assert.Equal(blobs.Select(b => b!["digest"]!.GetValue<string>()),
+            image.GetProperty("metadata").GetProperty("blobs").EnumerateArray().Select(b => b.GetProperty("digest").GetString()));
+        Assert.Equal(JsonValueKind.Null, report.GetProperty("disk").GetProperty("peak_disk_bytes").ValueKind);
+    }
+
+    [Theory]
+    [InlineData("compressed_bytes", 101L)]
+    [InlineData("expanded_bytes", 301L)]
+    [InlineData("staging_bytes", 101L)]
+    [InlineData("expanded_bytes", null)]
+    public void RepeatedLayersCannotContradictAnyFact(string field, long? value)
+    {
+        var doc = Images();
+        var blobs = At(doc, "container_images/0")["blobs"]!.AsArray();
+        var repeated = blobs[1]!.DeepClone();
+        repeated[field] = value;
+        blobs.Add(repeated);
+        Assert.Equal("image.facts_conflict", Assert.Throws<ArtifactManifestException>(() => Read(doc)).DiagnosticCode);
+    }
+
+    [Fact]
+    public void RepeatedLayersStillConsumeOccurrenceBounds()
+    {
+        var doc = Images();
+        var blobs = At(doc, "container_images/0")["blobs"]!.AsArray();
+        while (blobs.Count < 128) blobs.Add(blobs[1]!.DeepClone());
+        Assert.Equal(660, Inspect(doc).GetProperty("disk").GetProperty("known_listed_payload_bytes").GetInt64());
+        blobs.Add(blobs[1]!.DeepClone());
+        Assert.Equal("manifest.bounds_invalid", Assert.Throws<ArtifactManifestException>(() => Read(doc)).DiagnosticCode);
     }
 
     [Fact]

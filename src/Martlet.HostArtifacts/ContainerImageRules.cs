@@ -26,8 +26,6 @@ internal static partial class ContainerImageRules
             Require(image.Blobs.Length <= 128 && image.Blobs.All(b => b is not null), "manifest.bounds_invalid");
             blobCount += image.Blobs.Length;
             Require(blobCount <= 256, "manifest.bounds_invalid");
-            Require(image.Blobs.Select(b => b.Digest).Distinct(StringComparer.Ordinal).Count() == image.Blobs.Length,
-                "manifest.alias_invalid");
             var configurations = image.Blobs.Count(b => b.Kind == ImageBlobKind.Configuration);
             Require(configurations <= 1 && (!image.BlobInventoryComplete || configurations == 1),
                 "image.inventory_invalid");
