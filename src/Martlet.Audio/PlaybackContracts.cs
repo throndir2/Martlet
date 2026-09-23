@@ -19,6 +19,7 @@ public sealed record OutputSelection(OutputPolicy Policy, string? EndpointId = n
 public sealed record PlaybackRequest(
     CorrelationIds Ids, long Epoch, PcmFormat Format, OutputSelection Output, DateTimeOffset Deadline)
 {
+    public bool ObserveDeviceClock { get; init; }
     internal void Validate(DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(Ids);
@@ -31,7 +32,14 @@ public sealed record PlaybackRequest(
         ContractRules.Require(Deadline > now && Deadline <= now.AddSeconds(90),
             "Playback needs a future deadline no more than 90 seconds away.", ErrorCode.DeadlineExceeded);
     }
+
 }
+
+public enum PlaybackClockState { NotRequested, Waiting, Available, Unavailable, Regressed, Underrun, Stopped }
+
+public sealed record PlaybackClockSnapshot(
+    CorrelationIds Ids, long Epoch, int SampleRate, PlaybackClockState State,
+    long? SampleOffset, long ObservedTimestamp, PlaybackClockOrigin? Origin);
 
 public sealed record PlaybackOptions
 {

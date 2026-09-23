@@ -12,6 +12,7 @@ public sealed class ConversationRuntime : IAsyncDisposable
     internal PcmPlaybackSink? Sink { get; }
     internal PlaybackOptions PlaybackOptions { get; }
     internal TimeProvider Clock { get; }
+    internal GeneratedSpeechObserver? GeneratedSpeech { get; private init; }
     private ConversationTurn? active;
     private long epoch, playbackEpoch;
     private bool disposed;
@@ -33,20 +34,24 @@ public sealed class ConversationRuntime : IAsyncDisposable
 
     // Merely constructing adapters/sink is passive. No credential resolution, HTTP or device enumeration.
     public static ConversationRuntime Create(IProviderCredentialSource credentials,
-        IPlaybackDeviceFactory? devices = null, PlaybackOptions? playbackOptions = null, TimeProvider? clock = null)
+        IPlaybackDeviceFactory? devices = null, PlaybackOptions? playbackOptions = null, TimeProvider? clock = null,
+        GeneratedSpeechObserver? generatedSpeech = null)
     {
         ArgumentNullException.ThrowIfNull(credentials);
         var time = clock ?? TimeProvider.System;
         var options = playbackOptions ?? new();
         var sink = devices is null ? null : new PcmPlaybackSink(devices, options, time);
         return new(OpenAiTextGenerationAdapter.Create(credentials, time),
-            devices is null ? null : OpenAiSpeechSynthesisAdapter.Create(credentials, time), sink, options, time);
+            devices is null ? null : OpenAiSpeechSynthesisAdapter.Create(credentials, time), sink, options, time)
+            { GeneratedSpeech = generatedSpeech };
     }
 
     internal static ConversationRuntime ForFixture(OpenAiTextGenerationAdapter text,
-        OpenAiSpeechSynthesisAdapter? speech, IPlaybackDeviceFactory? devices, PlaybackOptions options, TimeProvider clock)
+        OpenAiSpeechSynthesisAdapter? speech, IPlaybackDeviceFactory? devices, PlaybackOptions options, TimeProvider clock,
+        GeneratedSpeechObserver? generatedSpeech = null)
     {
-        return new(text, speech, devices is null ? null : new(devices, options, clock), options, clock);
+        return new(text, speech, devices is null ? null : new(devices, options, clock), options, clock)
+            { GeneratedSpeech = generatedSpeech };
     }
 
     // This is the explicit new-turn operation. It neither interrupts nor queues behind existing ownership.
@@ -118,7 +123,8 @@ public sealed class ConversationRuntime : IAsyncDisposable
         {
             turn.CheckActive();
             ContractRules.Require(playbackEpoch < int.MaxValue, "The playback epoch range is exhausted.");
-            return Sink!.Start(new(ids, ++playbackEpoch, OpenAiSpeechSynthesisCatalog.PcmFormat, output, deadline), token);
+            return Sink!.Start(new(ids, ++playbackEpoch, OpenAiSpeechSynthesisCatalog.PcmFormat, output, deadline)
+                { ObserveDeviceClock = GeneratedSpeech?.IsEnabled == true }, token);
         }
     }
 
