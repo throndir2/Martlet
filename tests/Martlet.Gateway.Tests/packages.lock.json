@@ -87,8 +87,28 @@
           "xunit.extensibility.core": "[2.9.3]"
         }
       },
-      "martlet.gateway": {
+      "martlet.core": {
         "type": "Project"
+      },
+      "martlet.f5": {
+        "type": "Project"
+      },
+      "martlet.gateway": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.F5": "[0.1.0, )",
+          "Martlet.Perception": "[0.1.0, )",
+          "Martlet.Providers": "[0.1.0, )"
+        }
+      },
+      "martlet.perception": {
+        "type": "Project"
+      },
+      "martlet.providers": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Core": "[0.1.0, )"
+        }
       }
     }
   }

@@ -2,8 +2,12 @@
 
 **Windows-only internal library, default No; not an installed or qualified
 host.** This composes the canonical `Martlet.Gateway` authority and its existing
-Kestrel/TLS stack. No LAN listener, engine dispatch, service, firewall or
-AppSettings/Desktop/companion integration is added.
+Kestrel/TLS stack. Optional typed inference workers can now be supplied through
+the existing trusted owner; defaults and the CLI still supply none. No LAN
+listener, model activation, service, firewall or AppSettings/Desktop/companion
+integration is added. See [Gateway inference composition](../Martlet.Gateway/README.md)
+for mandatory per-action permissions, retained retirement ownership and protocol-2
+client migration.
 
 ## Pairing is not connectivity
 

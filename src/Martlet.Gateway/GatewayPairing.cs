@@ -329,8 +329,26 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials
                 CredentialId = credential.CredentialId,
                 DeviceId = credential.DeviceId,
                 Role = request.Role,
-                CredentialLifetime = credential.Lifetime
+                CredentialLifetime = credential.Lifetime,
+                Authority = this
             };
+        }
+    }
+
+    internal T WithAuthority<T>(GatewayPrincipal principal, Func<T> operation)
+    {
+        lock (gate)
+        {
+            var now = ObserveTimeLocked(clock);
+            GatewayRules.Require(ReferenceEquals(principal.Authority, this) &&
+                principal.HostId == identity.HostId, "auth.invalid");
+            GatewayRules.Require(credentials.TryGetValue(principal.CredentialId, out var credential),
+                "auth.invalid");
+            GatewayRules.Require(!credential!.Revoked, "auth.revoked");
+            GatewayRules.Require(!ExpiredLocked(credential, now), "auth.expired");
+            GatewayRules.Require(credential.DeviceId == principal.DeviceId &&
+                credential.Roles.Contains(principal.Role), "auth.role");
+            return operation();
         }
     }
 
@@ -801,6 +819,10 @@ internal sealed record GatewayPairingProof
 
 public sealed record GatewayPrincipal
 {
+    internal GatewayCredentialStore? Authority { get; init; }
+    internal T WithAuthority<T>(Func<T> operation) =>
+        (Authority ?? throw new GatewayProtocolException("auth.invalid")).WithAuthority(this, operation);
+
     public required string HostId { get; init; }
     public required string CredentialId { get; init; }
     public required string DeviceId { get; init; }

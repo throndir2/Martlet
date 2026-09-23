@@ -6,6 +6,9 @@
     <StartupObject>Martlet.Gateway.Persistence.Tests.Program</StartupObject>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\Martlet.Gateway.Tests\GatewayInferenceTestSupport.cs" Link="GatewayInferenceTestSupport.cs" />
+    <Compile Include="..\Martlet.Gateway.Tests\GatewayControlledInferenceWorker.cs" Link="GatewayControlledInferenceWorker.cs" />
+    <Compile Include="..\Martlet.Gateway.Tests\GatewayTestHost.cs" Link="GatewayTestHost.cs" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
