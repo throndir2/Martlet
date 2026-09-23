@@ -123,11 +123,12 @@ internal sealed record GatewaySignedRequest
     internal required DateTimeOffset Timestamp { get; init; }
     internal required GatewayRole Role { get; init; }
     internal required byte[] CanonicalBytes { get; init; }
+    internal CancellationToken CancellationToken { get; init; }
 }
 
 internal sealed class GatewayRequestAuthenticator(
     GatewayHostIdentity identity,
-    GatewayCredentialStore credentials)
+    IGatewayRequestCredentials credentials)
 {
     private static readonly byte[] EmptyBodyHash = System.Security.Cryptography.SHA256.HashData([]);
 
@@ -177,7 +178,8 @@ internal sealed class GatewayRequestAuthenticator(
             Nonce = nonce,
             Timestamp = timestampValue,
             Role = role,
-            CanonicalBytes = canonical
+            CanonicalBytes = canonical,
+            CancellationToken = request.HttpContext.RequestAborted
         });
     }
 

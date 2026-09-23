@@ -55,17 +55,25 @@ or credential interchange between these namespaces. Even though both use
 SHA-256 over random device secrets, persisting a Gateway HMAC verifier requires
 **signing-key protection**, not treating it as a harmless password hash.
 
-Before choosing or adapting protected persistence, reconcile the exact identity,
-wire/version, role/scope, credential-ID, renewal and revocation contracts.
-The reused store has no durable import/export or restart recovery. It does not
+The public volatile store has no durable import/export or restart recovery. It does not
 inherit Trust's monotonic elapsed-time expiry, disposable secrets, per-device
 admission policy or approval/handler capability split.
-Production composition must keep `GatewayServer` and its local management
-objects private to trusted host code, not expose them through remote DI.
-Persisting credentials alone would also lose replay history on restart:
-an explicit fail-closed restart/re-pair or reviewed replay-restoration policy
-is required. Local approval UI, protected host keys, atomic durable
-rotation/revocation and native-host recovery remain unimplemented gates.
+The optional [canonical durable owner](../Martlet.Gateway.Persistence/README.md)
+now supplies a Windows current-user DPAPI/private-NTFS backend and composes this
+same server privately. It preserves HMAC signing keys **and live replay history**
+across clean restarts, commits admission/rotation/revocation before success, and
+requires explicit all-device reset after uncertain/unclean failure. It never
+imports Trust records or restores a stale backup. Its protocol-distinct schema,
+boot-scoped monotonic time budgets, explicit OS-reboot recovery and native
+limitations are documented there.
+
+The existing public constructor remains the explicit volatile path, not a
+fallback when durable open fails. Production composition must keep
+`GatewayServer` and its local management objects private to trusted host code,
+not expose them through remote DI. Internal HTTP dependencies now receive only
+pairing-exchange and signed-request authentication capabilities. The durable
+owner is default-No and loopback-only; real local approval executable/UI,
+service/backend qualification and deployed-host recovery remain separate gates.
 
 ## Standalone local workflow
 
@@ -256,6 +264,7 @@ operator actions are:
 | `auth.expired`, `auth.revoked` | Explicitly renew/re-pair; never resurrect the old credential |
 | `auth.clock`, `auth.replay` | Correct clocks and create a fresh nonce/signature; never replay |
 | `auth.clock_invalid` | Correct the host clock, replace the closed volatile authority and explicitly re-pair; never revive its cards/credentials |
+| `auth.closed`, `auth.storage` | Stop the durable host and inspect local recovery status; uncertain state requires explicit device reset/re-pair, never backup restoration |
 | `auth.capacity` | Locally revoke unused credentials or wait for expiry, then retry an unexpired pairing proof/local rotation; active registrations are never evicted |
 | `auth.rate` | Reduce authenticated polling and wait for the four-minute replay window to drain |
 | `auth.role` | Use a separately approved least-privilege role |

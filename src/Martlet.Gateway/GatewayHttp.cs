@@ -10,7 +10,7 @@ internal sealed class GatewayHttpApplication
     internal const int MaximumPairingRequestBytes = 8_192;
     private static readonly JsonSerializerOptions Json = CreateJson();
     private readonly GatewayHostIdentity identity;
-    private readonly GatewayPairingService pairing;
+    private readonly IGatewayPairingExchange pairing;
     private readonly GatewayRequestAuthenticator authenticator;
     private readonly GatewayWorkerRegistry workers;
     private readonly TimeProvider clock;
@@ -19,8 +19,8 @@ internal sealed class GatewayHttpApplication
 
     internal GatewayHttpApplication(
         GatewayHostIdentity identity,
-        GatewayPairingService pairing,
-        GatewayCredentialStore credentials,
+        IGatewayPairingExchange pairing,
+        IGatewayRequestCredentials credentials,
         GatewayWorkerRegistry workers,
         TimeProvider clock,
         IGatewayCrypto crypto,
@@ -52,7 +52,7 @@ internal sealed class GatewayHttpApplication
             if (context.Request.Method == HttpMethods.Post && rawTarget == "/martlet/v1/pair")
             {
                 var proof = await ReadPairingProofAsync(context.Request, context.RequestAborted).ConfigureAwait(false);
-                var credential = pairing.Exchange(proof);
+                var credential = pairing.Exchange(proof, context.RequestAborted);
                 await WriteJsonAsync(context, 201, new PairingResponseDocument
                 {
                     ProtocolVersion = GatewayProtocolVersion.Current,

@@ -46,6 +46,20 @@ public sealed class GatewayServer
         IGatewayCrypto? crypto = null,
         TimeSpan? credentialLifetime = null,
         TimeSpan? pairingWindow = null)
+        : this(identity, origin, workers, audit, clock, crypto, credentialLifetime, pairingWindow, null)
+    {
+    }
+
+    internal GatewayServer(
+        GatewayHostIdentity identity,
+        GatewayOrigin origin,
+        IEnumerable<IGatewayWorker> workers,
+        IGatewayAuditSink audit,
+        TimeProvider? clock,
+        IGatewayCrypto? crypto,
+        TimeSpan? credentialLifetime,
+        TimeSpan? pairingWindow,
+        GatewayCredentialStore? ownedCredentials)
     {
         ArgumentNullException.ThrowIfNull(identity);
         ArgumentNullException.ThrowIfNull(origin);
@@ -56,7 +70,7 @@ public sealed class GatewayServer
         this.origin = origin;
         var effectiveClock = clock ?? TimeProvider.System;
         var effectiveCrypto = crypto ?? new SystemGatewayCrypto();
-        Credentials = new(identity, effectiveClock, effectiveCrypto, credentialLifetime);
+        Credentials = ownedCredentials ?? new(identity, effectiveClock, effectiveCrypto, credentialLifetime);
         Pairing = new(identity, origin, Credentials, effectiveClock, effectiveCrypto, pairingWindow);
         application = new(identity, Pairing, Credentials, new(workers),
             effectiveClock, effectiveCrypto, audit);
