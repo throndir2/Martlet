@@ -20,6 +20,25 @@ binding. Ask only for a consequential unresolved product/architecture decision,
 missing authority or a genuine blocker; resolve routine details using existing
 patterns and evidence.
 
+## Loop engineering
+
+- Treat implementation requests as outcomes to deliver, not invitations to stop
+  at a plan. Define observable acceptance from the request and current contracts
+  before editing, then verify the actual affected path and persistent result.
+- Investigate uncertainty in current code, documentation and local evidence.
+  Make routine, low-risk decisions using established repository patterns; ask
+  only when a consequential decision or authorization remains unresolved.
+- Repeat implementation, local validation, independent review and in-scope fixes
+  until acceptance is met. Fix root causes across affected callers, tests and
+  documentation; do not weaken checks or silently reduce scope to finish.
+- Continue through each next authorized step without routine approval prompts.
+  If blocked, try reasonable alternatives within scope and authorization, then
+  preserve the work and report the exact blocker, unrun gates and smallest
+  human action needed. Do not repeat unsuccessful attempts without new evidence.
+- Keep progress updates brief and meaningful. Report local work, open review
+  and verified integration distinctly; completion requires the requested result
+  to be verified and persistent, not merely proposed or queued.
+
 ## Branch and worktree ownership
 
 - Use one focused task branch per bounded change, based on freshly fetched
@@ -69,6 +88,11 @@ affected local checks and obtain review of any new changes. Merge eligible PRs
 one at a time through the normal protected GitHub path, bound to the exact
 reviewed head commit. Never bypass protections, dismiss required review,
 fabricate check statuses or merge a held PR.
+
+Automatic completion means the agent performs the normal eligible PR merge;
+it does not mean enabling repository-wide auto-merge, changing repository
+settings or adding background/remote automation. If GitHub queues a merge,
+the task remains pending until the merged result is verified.
 
 Verify the PR is merged and its result is present on freshly fetched
 `origin/main`; a successful push or pending auto-merge is not completion.
