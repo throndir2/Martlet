@@ -27,6 +27,26 @@ rules remain unchanged.
 
 ### Current internal implementation
 
+**Self-host voice reuse is split into two dependent layers.** Layer 1 adapts
+the settings/credential/client delta of `37181f8d2261c8d97d71b9ca297ff3bc278b7074`
+onto the reviewed main ancestry: schema 5, explicit route discriminators,
+current-only retained permanent pairings, scoped vault ownership and an
+additive protocol-2 client. Ordinary Desktop/API behavior remains supported;
+self-host dispatch is explicitly unavailable in this layer. Exact historical
+schema-1 through schema-4 bytes/recorded reader semantics remain distinct from
+the current writer.
+
+Layer 2 is mandatory after layer 1 merges: accessible self-host Setup, explicit
+pair/probe/enable actions, typed/PTT/optional-TTS hybrid routing, eligible
+current LocalStt/F5 contracts, and complete transitive payload/manifests/SBOM/
+notices/RID locks with additional native self-host scenarios. Both layers
+retain mandatory existing General/CompanionOnly smoke assertions and
+180-second/per-action bounds. Layer 1 still requires affected app/Core/
+Credentials/Gateway/Updates/Launcher local regressions, current-graph clean
+publish/repeat packaging, actual Doctor/Desktop smokes and wrapper failure/
+timeout propagation against synthetic protected data. No source-era receipt,
+fixture worker or successful package import qualifies a real engine.
+
 **Avatar expansion, 2026-09-23:** A01a shared compatibility contracts, A01b
 Audio2Face NIM client with live streaming, A02a Live2D and A02b VRM are
 **implemented modules with an internal normal WPF integration**, not a
@@ -421,6 +441,7 @@ slices may be explicitly disabled, not silently described as shipped.
 | H05a | Reviewed prerequisite plan and idempotent setup journal | H01/H02; dry-run mutates nothing, resume reconciles approved steps |
 | H05b | Artifact download consent/progress/resume/integrity | H05a; interrupted/corrupt/changed-ETag/disk-full fixtures; no heavy download without authorization |
 | H05c | Selected-role Compose generation and boot/readiness supervision | H05b/H03; H04 only for F5; explicit owned engine/context, disabled roles absent, shared dependencies retained; real Ubuntu fixture-role reboot/stop evidence, no GPU claim |
+| H05c-A software boundary | Deterministic selected-role fragments and owned local configuration publication are implemented in [Host.Setup](../src/Martlet.Host.Setup/README.md#selected-role-configuration-publication-h05c-a). Acquisition-owned byte observations, stable deployment identity, local-file-only consent and real CAS/lease/rename recovery are separate from runtime authority. | No complete runnable Compose or ready host: actual gateway/Ollama service recipes, selected model/provenance/rights, explicit image import and H05c-B native supervision remain required. Current upstream F5 is not a Martlet worker recipe; optional roles never gate LLM-only. Native Ubuntu/engine/model/boot qualification remains NOT RUN. |
 | H05d | Consistent backup and restore | H05c; separate-profile restore preserves data/schema and requires safe re-pairing |
 | H05e | Host upgrade staging and compatible rollback | H05d; failed warmup/migration restores documented prior state |
 | H05f | Targeted repair/reconfigure and data-preserving removal | H05c/H05d; no unrelated host package/volume deletion |

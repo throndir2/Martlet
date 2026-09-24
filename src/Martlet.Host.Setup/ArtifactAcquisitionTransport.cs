@@ -208,7 +208,7 @@ internal sealed class HttpsArtifactDownloadTransport : IArtifactDownloadTranspor
         value.Length is > 0 and <= 100 && value is not "." and not ".." &&
         value.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.');
 
-    private static bool HasExactOrigin(Uri uri, string origin)
+    internal static bool HasExactOrigin(Uri uri, string origin)
     {
         if (!uri.IsAbsoluteUri || uri.Scheme != Uri.UriSchemeHttps || uri.Port != 443 ||
             uri.UserInfo.Length != 0 || uri.HostNameType != UriHostNameType.Dns ||
@@ -241,7 +241,7 @@ internal sealed class HttpsArtifactDownloadTransport : IArtifactDownloadTranspor
         return new Uri(raw, new UriCreationOptions { DangerousDisablePathAndQueryCanonicalization = true });
     }
 
-    private static void CheckHeaderBudget(HttpResponseMessage response)
+    internal static void CheckHeaderBudget(HttpResponseMessage response)
     {
         long size = 0;
         foreach (var header in response.Headers.NonValidated.Concat(response.Content.Headers.NonValidated))
@@ -320,7 +320,7 @@ internal sealed class HttpsArtifactDownloadTransport : IArtifactDownloadTranspor
     // .NET 10 omits SocketsHttpHandler's DiagnosticsHandler when its propagator is null.
     // HttpClient AND HttpMessageInvoker add URI-bearing EventSource request events, so neither
     // may wrap the signed request. Forward directly through the protected handler API instead.
-    private sealed class DirectHandler(HttpMessageHandler inner) : DelegatingHandler(inner)
+    internal sealed class DirectHandler(HttpMessageHandler inner) : DelegatingHandler(inner)
     {
         internal Task<HttpResponseMessage> SendDirectAsync(
             HttpRequestMessage request, CancellationToken cancellationToken) =>

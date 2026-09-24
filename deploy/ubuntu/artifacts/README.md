@@ -177,9 +177,18 @@ GPU/driver/toolkit and native-host evidence remain unknown. Matching
 the target is selected intent, not a host probe or F5 base-OS claim.
 `linux/arm64` exits **1** for mismatch and does not auto-select another image.
 
-The completed slice is immutable metadata/inventory and production-reader/CLI
-regressions, with the v1 contract preserved. Remaining H02d gates include
-explicitly authorized acquisition and content verification, missing auxiliary
+The completed catalog slice is immutable metadata/inventory and production-reader/CLI
+regressions, with the v1 contract preserved. The separate
+[Host.Setup image acquisition API](../../../src/Martlet.Host.Setup/README.md#verified-selected-image-acquisition)
+can now acquire this exact selected-role image batch through the two named
+public registries, under fresh rights/download consent, with verified CAS bytes
+and atomic OCI layout publication. It does not alter this catalog or make its
+offline inspection report verified. Its tests use authored local TLS fixtures,
+not these actual image layers. Separate batches can repeat downloads/storage;
+deduplication applies only within the selected image batch.
+
+Remaining H02d gates include actually performing separately authorized acquisition
+and content verification for a deployment, missing auxiliary
 hashes, exact source/binary/package/model closure, component notices/rights,
 and a deliberately selected LLM. Runtime/denied-egress/GPU tests, H01 native
 evidence (PR #21 remains held), H04/H05 lifecycle and H06 combined fit are

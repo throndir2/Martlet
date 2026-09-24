@@ -5,7 +5,7 @@ namespace Martlet.Host.Setup;
 
 internal readonly record struct ArtifactAcquisitionFileMetadata(string Identity, long Bytes);
 
-internal static class ArtifactAcquisitionFileIdentity
+internal static partial class ArtifactAcquisitionFileIdentity
 {
     internal static FileStream OpenRead(string path)
     {

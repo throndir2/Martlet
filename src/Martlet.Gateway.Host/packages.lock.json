@@ -6,7 +6,10 @@
         "type": "Project"
       },
       "martlet.f5": {
-        "type": "Project"
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Core": "[0.1.0, )"
+        }
       },
       "martlet.gateway": {
         "type": "Project",

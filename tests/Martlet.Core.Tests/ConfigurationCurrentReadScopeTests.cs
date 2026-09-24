@@ -23,6 +23,7 @@ public sealed class ConfigurationCurrentReadScopeTests : IDisposable
         if (version == 2) settings = SetupSettings.Begin(settings) with
         {
             SchemaVersion = 2,
+            Setup = SetupSettings.Begin(settings).Setup!.DowngradeOpenAiForHistoricalSettings(),
             Companion = null,
             Memory = null
         };

@@ -133,4 +133,77 @@ public sealed class AcquisitionCandidateTests
         Assert.True(manifest.DescribeAcquisition(["ollama-llm"], "ubuntu-24.04-x64", "linux/arm64").DeclaredMismatch);
         Assert.False(both.DeclaredMismatch);
     }
+
+    [Fact]
+    public void Image_candidates_preserve_named_sources_rights_sizes_and_ordered_occurrences()
+    {
+        var manifest = ArtifactManifestReader.Read(File.ReadAllBytes(
+            Path.Combine(AppContext.BaseDirectory, "host-artifacts.v2.json")));
+        var selection = manifest.DescribeAcquisition(
+            ["ollama-llm", "f5-tts"], "ubuntu-24.04-x64", "linux/amd64");
+        Assert.Equal(2, selection.ImageCandidates.Length);
+        var ollama = Assert.Single(selection.ImageCandidates, image => image.ArtifactId == "ollama-image");
+        var f5 = Assert.Single(selection.ImageCandidates, image => image.ArtifactId == "f5-image");
+        Assert.Equal(ArtifactImageAcquisitionProvider.DockerHubPublic, ollama.Source.Provider);
+        Assert.Equal("https://auth.docker.io/token", ollama.Source.TokenRealm);
+        Assert.Equal("registry.docker.io", ollama.Source.TokenService);
+        Assert.Equal("repository:ollama/ollama:pull", ollama.Source.PullScope);
+        Assert.Equal("https://production.cloudfront.docker.com", ollama.Source.CdnOrigin);
+        Assert.Equal(647, ollama.IndexBytes);
+        Assert.Equal(1065, ollama.ManifestBytes);
+        Assert.Equal(19_380, ollama.Blobs[0].CompressedBytes);
+        Assert.Equal(ArtifactImageAcquisitionProvider.GithubContainerRegistryPublic, f5.Source.Provider);
+        Assert.Equal("https://ghcr.io/token", f5.Source.TokenRealm);
+        Assert.Equal("ghcr.io", f5.Source.TokenService);
+        Assert.Equal("repository:swivid/f5-tts:pull", f5.Source.PullScope);
+        Assert.Equal("https://pkg-containers.githubusercontent.com", f5.Source.CdnOrigin);
+        Assert.Null(f5.IndexDigest);
+        Assert.Null(f5.IndexBytes);
+        Assert.Equal(4305, f5.ManifestBytes);
+        Assert.Equal(20, f5.Blobs.Length);
+        Assert.Equal(3, f5.Blobs.Count(blob =>
+            blob.Digest == "sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1"));
+        Assert.All(selection.ImageCandidates, image =>
+        {
+            Assert.Equal(manifest.DocumentSha256, image.ManifestSha256);
+            Assert.Equal("linux/amd64", image.Platform);
+            Assert.True(image.BlobInventoryComplete);
+            Assert.Equal("registry_metadata", image.MetadataEvidence);
+            Assert.Single(image.RoleIds);
+            Assert.Equal("container_image_components", Assert.Single(image.Licenses).Scope);
+            Assert.Equal(64, image.IdentityFingerprint.Length);
+            Assert.Null(image.GetType().GetProperty(nameof(image.Digest))!.SetMethod);
+        });
+        Assert.Equal(selection.KnownImageCompressedBytes, selection.ImageContentInventory.KnownBytes);
+        Assert.Equal(15_476_196_026, selection.ImageContentInventory.KnownBytes);
+        Assert.Equal(26, selection.ImageContentInventory.Contents.Length);
+        Assert.Equal(0, selection.ImageContentInventory.UnknownBytesCount);
+        Assert.Single(selection.ImageContentInventory.Contents, content =>
+            content.Digest == "sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1");
+        Assert.Equal(selection.ImageContentInventory.KnownBytes,
+            selection.ImageContentInventory.Contents.Sum(content => content.ExpectedBytes!.Value));
+    }
+
+    [Fact]
+    public void Image_projection_is_additive_for_v1_and_reuses_shared_v2_inventory()
+    {
+        var v1 = ArtifactManifestReader.Read(CandidateBytes())
+            .DescribeAcquisition(["ollama-llm"], "ubuntu-24.04-x64");
+        Assert.Empty(v1.ImageCandidates);
+        Assert.Empty(v1.ImageContentInventory.Contents);
+        Assert.Equal(0, v1.ImageContentInventory.KnownBytes);
+        var manifest = ArtifactManifestReader.Read(File.ReadAllBytes(
+            Path.Combine(AppContext.BaseDirectory, "fixtures", "container-images.v2.json")));
+        var both = manifest.DescribeAcquisition(["ollama-llm", "f5-tts"], "ubuntu-24.04-x64", "linux/amd64");
+        var again = manifest.DescribeAcquisition(["f5-tts", "ollama-llm"], "ubuntu-24.04-x64", "linux/amd64");
+        Assert.Equal(both.ImageContentInventory.Fingerprint, again.ImageContentInventory.Fingerprint);
+        Assert.Equal(both.KnownImageCompressedBytes, both.ImageContentInventory.KnownBytes);
+        Assert.Contains(both.ImageContentInventory.Contents, content => content.ImageIds.Length == 2);
+        Assert.All(both.ImageContentInventory.Contents, content =>
+        {
+            Assert.Equal(content.ImageIds.Order(StringComparer.Ordinal), content.ImageIds);
+            Assert.Same(both.ImageCandidates.Single(image => image.ArtifactId == content.ImageIds[0]).Source,
+                content.Source);
+        });
+    }
 }

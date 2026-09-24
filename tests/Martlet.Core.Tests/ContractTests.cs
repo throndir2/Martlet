@@ -157,9 +157,12 @@ public sealed class ContractTests
     [InlineData(ProfileKind.Fixture)]
     [InlineData(ProfileKind.Api)]
     [InlineData(ProfileKind.ExistingEndpoints)]
+    [InlineData(ProfileKind.SelfHosted)]
     public void EveryDeclaredProfileKindRoundTrips(ProfileKind kind)
     {
-        var settings = AppSettings.CreateUnconfigured();
+        var settings = kind == ProfileKind.SelfHosted
+            ? SetupSettings.Begin(null)
+            : AppSettings.CreateUnconfigured();
         settings = settings with { Profile = settings.Profile with { Kind = kind } };
         Assert.Equal(kind, SettingsJson.Read(ContractJson.Write(settings)).Profile.Kind);
     }

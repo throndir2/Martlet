@@ -162,18 +162,59 @@ public sealed partial class SettingsStore
         {
             var replacement = next.Routes.SingleOrDefault(item => item.Role == route.Role);
             if (route.CredentialId is { } id)
-                ContractRules.Require(replacement?.CredentialId == id ||
-                    next.PendingRemovals.Any(item => item.Role == route.Role && item.CredentialId == id),
+                ContractRules.Require(
+                    replacement is { CredentialId: var replacementId } &&
+                        replacementId == id && SameCredentialScope(route, replacement) ||
+                    next.PendingRemovals.Any(item => RemovalMatches(route, item, id)) ||
+                    (next.RetainedGatewayCredentials ?? []).Any(item =>
+                        item.CredentialId == id && item.Role == route.Role &&
+                        item.Scope == CredentialScopeSettings.From(route)),
                     "Detach an active credential explicitly before removing its route; do not orphan an owned key.");
-            if (replacement is not null && (replacement.ModelId != route.ModelId || replacement.VoiceId != route.VoiceId ||
-                replacement.CredentialId != route.CredentialId || replacement.Origin != route.Origin || replacement.ProviderAlias != route.ProviderAlias))
+            var priorMaterial = route with { Consent = null, ConfigurationRevision = Guid.Empty };
+            var replacementMaterial = replacement is null
+                ? null
+                : replacement with { Consent = null, ConfigurationRevision = Guid.Empty };
+            var migratedLegacyMaterial = route.RouteType is null
+                ? route.UpgradeLegacy() with { Consent = null, ConfigurationRevision = Guid.Empty }
+                : null;
+            if (replacement is not null && replacementMaterial != priorMaterial &&
+                replacementMaterial != migratedLegacyMaterial)
                 ContractRules.Require(replacement.ConfigurationRevision != route.ConfigurationRevision,
                     "Route changes require a fresh configuration revision and renewed destination selection.");
         }
         foreach (var pending in prior.PendingRemovals)
             ContractRules.Require(pending.CredentialId == removed || next.PendingRemovals.Contains(pending) ||
-                next.Routes.Any(route => route.Role == pending.Role && route.CredentialId == pending.CredentialId),
+                next.Routes.Any(route => route.Role == pending.Role && route.CredentialId == pending.CredentialId &&
+                    RemovalMatches(route, pending, pending.CredentialId)),
                 "Use explicit credential cleanup to remove a pending owned reference.");
+        foreach (var retained in prior.RetainedGatewayCredentials ?? [])
+            ContractRules.Require((next.RetainedGatewayCredentials ?? []).Contains(retained) ||
+                next.Routes.Any(route => route.Role == retained.Role && route.CredentialId == retained.CredentialId &&
+                    CredentialScopeSettings.From(route) == retained.Scope) ||
+                next.PendingRemovals.Any(item => item.Role == retained.Role &&
+                    item.CredentialId == retained.CredentialId && item.Scope == retained.Scope),
+                "Retain the exact saved pairing or explicitly detach it; ordinary saves cannot forget trust.");
+        foreach (var retained in next.RetainedGatewayCredentials ?? [])
+            ContractRules.Require((prior.RetainedGatewayCredentials ?? []).Contains(retained) ||
+                prior.Routes.Any(route => route.Role == retained.Role && route.CredentialId == retained.CredentialId &&
+                    CredentialScopeSettings.From(route) == retained.Scope),
+                "Only a current owned pairing can become retained; imported pairings are not authority.");
+    }
+
+    private static bool SameCredentialScope(SetupRoute prior, SetupRoute replacement) =>
+        CredentialScopeSettings.From(prior) == CredentialScopeSettings.From(replacement);
+
+    private static bool RemovalMatches(
+        SetupRoute prior,
+        PendingCredentialRemoval removal,
+        Guid credentialId)
+    {
+        if (removal.Role != prior.Role || removal.CredentialId != credentialId)
+            return false;
+        var expected = CredentialScopeSettings.From(prior);
+        return removal.Scope is null
+            ? expected.RouteType == SetupRouteType.OpenAi
+            : removal.Scope == expected;
     }
 
     private static void ValidateAudioTransition(AudioChoice prior, AudioChoice next)
@@ -225,7 +266,7 @@ public sealed partial class SettingsStore
             ContractJson.Write(updated, AppSettings.MaxFileBytes);
             ValidateCredentialTransition(setup, updated.Setup!, removal.CredentialId);
             token.ThrowIfCancellationRequested();
-            var error = credentials.Delete(CredentialBinding.For(current.Settings, removal.Role, removal.CredentialId));
+            var error = credentials.Delete(CredentialBinding.For(current.Settings, removal));
             if (error is not (CredentialError.None or CredentialError.Missing))
                 return new(new(false, null, null), current.Settings, error);
             // Once deleted, finish metadata without cancellation. A failed commit retains the retry marker.

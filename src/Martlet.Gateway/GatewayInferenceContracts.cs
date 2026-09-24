@@ -38,7 +38,7 @@ public enum GatewayInferenceEventKind
     Failed
 }
 
-public sealed class GatewayInferenceRoute
+public sealed partial class GatewayInferenceRoute
 {
     private GatewayInferenceRoute(
         GatewayInferenceKind kind,
