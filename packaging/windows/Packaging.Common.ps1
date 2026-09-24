@@ -551,6 +551,17 @@ function Get-PackageApplications([string]$Root) {
                 if ($metadata.type -ceq 'project' -and
                     ($assets.Count -ne 1 -or $assets[0].kind -cne 'runtime' -or
                      $assets[0].source -cne "$($key.Split('/')[0]).dll")) { throw 'Unreviewed project runtime assets.' }
+                if ($key -clike 'runtimepack.Microsoft.Windows.SDK.NET.Ref/*') {
+                    $pin = (Get-PackagingPins).windowsSdkPackage
+                    $expected = @(Get-WindowsSdkArchiveAssets | ForEach-Object {
+                        [ordered]@{ path = $_.path; kind = 'runtime'; source = [IO.Path]::GetFileName($_.path) }
+                    })
+                    if ($application -cne 'AvatarRenderer' -or $key -cne "runtimepack.$($pin.id)/$($pin.version)" -or
+                        $metadata.type -cne 'runtimepack' -or $dependencies.Count -ne 0 -or
+                        (Get-EvidenceSha256 $assets) -cne (Get-EvidenceSha256 $expected)) {
+                        throw 'Unreviewed Windows SDK projection library.'
+                    }
+                }
                 [ordered]@{ key = $key; type = $metadata.type; contentHash = $contentHash; dependencies = $dependencies; assets = $assets }
             }
         )
@@ -591,8 +602,9 @@ function Get-FrameworkDownloadEvidence($Framework) {
     $downloads = @{}
     foreach ($item in $items) {
         Assert-EvidenceKeys $item @('name', 'version')
-        if ($item.name -isnot [string] -or $item.name -cnotmatch '^Microsoft\.(NETCore|WindowsDesktop|AspNetCore)\.App\.Runtime\.win-x64$' -or
-            $item.version -isnot [string] -or $item.version -cne "[$((Get-PackagingPins).runtimeVersion), $((Get-PackagingPins).runtimeVersion)]" -or
+        $renderer = $Framework.framework -ceq 'net10.0-windows10.0.19041'
+        if ($item.name -isnot [string] -or $item.version -isnot [string] -or
+            -not (Test-PinnedFrameworkDownload $item.name $item.version $renderer) -or
             $downloads.ContainsKey($item.name)) {
             throw 'Unpinned or duplicate framework download declaration.'
         }
@@ -756,7 +768,7 @@ function Get-PackageArchiveEvidence([string]$Root, [string]$AssetsPath, $Applica
         [ordered]@{ id = $_.id; version = $_.version; sha512 = $_.sha512 }
     }) + @($pins.runtimePackages | ForEach-Object {
         [ordered]@{ id = $_.id; version = $pins.runtimeVersion; sha512 = $_.sha512 }
-    })
+    }) + @($pins.windowsSdkPackage)
     if ($BuildOnly) { $packages = @($pins.buildPackages) }
     foreach ($id in Get-EvidenceOrdinalStrings @($packages.id)) {
         $package = @($packages | Where-Object id -CEQ $id)[0]
@@ -818,7 +830,14 @@ function Get-PackageArchiveEvidence([string]$Root, [string]$AssetsPath, $Applica
                     $components = @{}
                     foreach ($asset in $owner.assets) {
                         $archiveName = $asset.source
-                        if ($owner.type -ceq 'runtimepack') {
+                        if ($id -ceq $pins.windowsSdkPackage.id) {
+                            $sdkAsset = @(Get-WindowsSdkArchiveAssets | Where-Object path -CEQ $asset.path)
+                            if ($application.name -cne 'AvatarRenderer' -or $sdkAsset.Count -ne 1 -or
+                                $asset.kind -cne 'runtime' -or $asset.source -cne [IO.Path]::GetFileName($asset.path)) {
+                                throw 'Unreviewed Windows SDK projection asset.'
+                            }
+                            $archiveName = $sdkAsset[0].entry
+                        } elseif ($owner.type -ceq 'runtimepack') {
                             $prefix = if ($asset.kind -ceq 'native') { 'native' } else { 'lib/net10.0' }
                             $archiveName = "runtimes/$($pins.rid)/$prefix/$($asset.source)"
                         }
@@ -936,8 +955,13 @@ function Test-PackageProvenance([string]$Root, $Provenance) {
         $targetNames = @{}
         foreach ($target in $restore.targets) {
             Assert-EvidenceKeys $target @('name', 'framework', 'rootDependencies', 'libraries', 'frameworkDownloads')
-            if ($target.name -cnotin @('net10.0/win-x64', 'net10.0-windows/win-x64') -or $targetNames.ContainsKey($target.name) -or
-                $target.framework -cnotin @('net10.0', 'net10.0-windows7.0') -or
+            $renderer = $restore.project -ceq 'Martlet.Avatar.RendererHost'
+            $framework = switch -CaseSensitive ($target.name) {
+                'net10.0/win-x64' { 'net10.0' }
+                'net10.0-windows/win-x64' { 'net10.0-windows7.0' }
+                'net10.0-windows10.0.19041.0/win-x64' { if ($renderer) { 'net10.0-windows10.0.19041' } }
+            }
+            if (-not $framework -or $targetNames.ContainsKey($target.name) -or $target.framework -cne $framework -or
                 $target.libraries -isnot [array] -or $target.libraries.Count -gt 2048) {
                 throw 'Invalid or duplicate restore target evidence.'
             }
@@ -971,8 +995,8 @@ function Test-PackageProvenance([string]$Root, $Provenance) {
             $downloads = @{}
             foreach ($download in $target.frameworkDownloads) {
                 Assert-EvidenceKeys $download @('id', 'requested')
-                if ($download.id -cnotmatch '^Microsoft\.(NETCore|WindowsDesktop|AspNetCore)\.App\.Runtime\.win-x64$' -or
-                    $download.requested -cne "[$($pins.runtimeVersion), $($pins.runtimeVersion)]" -or $downloads.ContainsKey($download.id)) {
+                if (-not (Test-PinnedFrameworkDownload $download.id $download.requested ($renderer -and $framework -ceq 'net10.0-windows10.0.19041')) -or
+                    $downloads.ContainsKey($download.id)) {
                     throw 'Unpinned or duplicate framework download evidence.'
                 }
                 $downloads[$download.id] = $true
@@ -994,7 +1018,7 @@ function Test-PackageProvenance([string]$Root, $Provenance) {
     }
     foreach ($application in $applications) {
         $restore = $projects[$application.project]
-        $target = @($restore.targets | Where-Object name -CEQ "net10.0-windows/$($pins.rid)")
+        $target = @($restore.targets | Where-Object name -CEQ (Get-PublishRestoreTarget $application.name))
         if ($target.Count -ne 1) { throw 'Missing entry-point restore target evidence.' }
         $rootKey = "$($restore.project)/$($restore.version)"
         foreach ($runtime in @($application.libraries | Where-Object type -CEQ 'runtimepack')) {
@@ -1026,15 +1050,17 @@ function Test-PackageProvenance([string]$Root, $Provenance) {
     foreach ($file in Get-PayloadFiles $Root -ExcludeSbom) { $fileMap[$file.path] = $file }
     $origins = @{}
     $archiveIds = @{}
-    if ($Provenance.archives -isnot [array] -or $Provenance.archives.Count -ne $pins.managedPackages.Count + $pins.runtimePackages.Count) {
+    if ($Provenance.archives -isnot [array] -or $Provenance.archives.Count -ne $pins.managedPackages.Count + $pins.runtimePackages.Count + 1) {
         throw 'Missing or additional pinned package archive evidence.'
     }
     foreach ($archive in $Provenance.archives) {
         Assert-EvidenceKeys $archive @('id', 'version', 'archiveSha512', 'nuspecSha256', 'licenseExpression', 'licenseFile', 'repositoryUrl', 'repositoryCommit', 'origins')
         $pin = @($pins.managedPackages | Where-Object id -IEQ $archive.id)
         $runtime = $false
-        if (-not $pin.Count) { $pin = @($pins.runtimePackages | Where-Object id -IEQ $archive.id); $runtime = $true }
-        $version = if ($runtime) { $pins.runtimeVersion } elseif ($pin.Count -eq 1) { $pin[0].version } else { '' }
+        $sdkPack = $archive.id -ceq $pins.windowsSdkPackage.id
+        if ($sdkPack) { $pin = @($pins.windowsSdkPackage); $runtime = $true }
+        elseif (-not $pin.Count) { $pin = @($pins.runtimePackages | Where-Object id -IEQ $archive.id); $runtime = $true }
+        $version = if ($sdkPack) { $pins.windowsSdkPackage.version } elseif ($runtime) { $pins.runtimeVersion } elseif ($pin.Count -eq 1) { $pin[0].version } else { '' }
         if ($pin.Count -ne 1 -or $archiveIds.ContainsKey($archive.id) -or $archive.version -cne $version -or
             $archive.archiveSha512 -cne $pin[0].sha512 -or $archive.nuspecSha256 -cnotmatch '^[0-9a-f]{64}$') {
             throw 'Archive evidence differs from pinned identity/digest.'
@@ -1067,7 +1093,11 @@ function Test-PackageProvenance([string]$Root, $Provenance) {
                 throw 'Archive asset refers to an incorrect component.'
             }
             $asset = @($owner[0].assets | Where-Object path -CEQ $origin.path)
-            if ($webView.Count -eq 1) {
+            if ($sdkPack) {
+                $sdkAsset = @(Get-WindowsSdkArchiveAssets | Where-Object path -CEQ $origin.path)
+                if ($sdkAsset.Count -ne 1 -or $origin.component -cne $sdkAsset[0].component) { throw 'Unreviewed Windows SDK archive ownership.' }
+                $expected = $sdkAsset[0].entry
+            } elseif ($webView.Count -eq 1) {
                 if ($origin.component -cne $webView[0].component) { throw 'WebView2 archive component differs from fixed ownership.' }
                 $expected = $webView[0].entry
             } elseif ($asset.Count -eq 1) {
@@ -1111,6 +1141,9 @@ function Test-PackageProvenance([string]$Root, $Provenance) {
     }
     foreach ($asset in Get-WebViewArchiveAssets) {
         if (-not $origins.ContainsKey($asset.path) -or $origins[$asset.path] -cne $asset.component) { throw "Missing fixed WebView2 archive origin: $($asset.path)" }
+    }
+    foreach ($asset in Get-WindowsSdkArchiveAssets) {
+        if (-not $origins.ContainsKey($asset.path) -or $origins[$asset.path] -cne $asset.component) { throw "Missing Windows SDK archive origin: $($asset.path)" }
     }
     $webViewPaths = @((Get-WebViewArchiveAssets).path)
     foreach ($file in $fileMap.Values) {

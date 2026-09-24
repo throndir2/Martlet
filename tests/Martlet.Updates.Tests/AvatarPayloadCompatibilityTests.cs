@@ -12,9 +12,15 @@ public sealed class AvatarPayloadFixture : IDisposable
     public void Dispose() => Production.Dispose();
 }
 
+public sealed class WindowsSdkPayloadFixture : IDisposable
+{
+    internal ProductionPayloadFixture Production { get; } = new(3, "WindowsSdk");
+    public void Dispose() => Production.Dispose();
+}
+
 public sealed class AvatarPayloadCompatibilityTests(SigningKeys keys, AvatarPayloadFixture avatar,
-    ProductionPayloadFixture legacy) : IClassFixture<SigningKeys>, IClassFixture<AvatarPayloadFixture>,
-    IClassFixture<ProductionPayloadFixture>
+    ProductionPayloadFixture legacy, WindowsSdkPayloadFixture overlay) : IClassFixture<SigningKeys>, IClassFixture<AvatarPayloadFixture>,
+    IClassFixture<ProductionPayloadFixture>, IClassFixture<WindowsSdkPayloadFixture>
 {
     private SignedPackageFixture Fixture() => new(keys, production: avatar.Production);
 
@@ -61,6 +67,72 @@ public sealed class AvatarPayloadCompatibilityTests(SigningKeys keys, AvatarPayl
         foreach (var (name, bytes) in fixture.Files)
             Assert.Equal(bytes, File.ReadAllBytes(Path.Combine(fixture.Destination, "payload", name.Replace('/', '\\'))));
         fixture.AssertPrivateDataUnchanged();
+    }
+
+    [Fact]
+    public void VersionedRendererProjectionDocumentsStageAndReopenByteExactly()
+    {
+        using var fixture = new SignedPackageFixture(keys, production: overlay.Production);
+        var engine = fixture.Engine();
+        var plan = fixture.Preview(engine);
+        var receipt = engine.Stage(plan, Approve(plan));
+        Assert.Equal(receipt.ReceiptSha256, fixture.Engine().InspectStaged(fixture.Destination).ReceiptSha256);
+        foreach (var (name, bytes) in fixture.Files)
+            Assert.Equal(bytes, File.ReadAllBytes(Path.Combine(fixture.Destination, "payload", name.Replace('/', '\\'))));
+        fixture.AssertPrivateDataUnchanged();
+    }
+
+    [Theory]
+    [InlineData("framework")]
+    [InlineData("target")]
+    [InlineData("desktop-target")]
+    [InlineData("desktop-download")]
+    [InlineData("download-version")]
+    [InlineData("missing-download")]
+    [InlineData("duplicate-download")]
+    [InlineData("runtime-version")]
+    [InlineData("archive-digest")]
+    [InlineData("asset-source")]
+    [InlineData("asset-kind")]
+    [InlineData("archive-entry")]
+    [InlineData("archive-owner")]
+    [InlineData("missing-origin")]
+    public void WindowsSdkEvidenceMutationsFailClosed(string change)
+    {
+        using var fixture = new SignedPackageFixture(keys, production: overlay.Production);
+        Rewrite(fixture, m =>
+        {
+            var p = m["provenance"]!;
+            var host = p["applications"]![2]!;
+            var library = host["libraries"]!.AsArray().Single(l => l!["key"]!.GetValue<string>().StartsWith("runtimepack.Microsoft.Windows.SDK.NET.Ref/", StringComparison.Ordinal))!;
+            var archive = p["archives"]!.AsArray().Single(a => a!["id"]!.GetValue<string>() == "Microsoft.Windows.SDK.NET.Ref")!;
+            var restores = p["restores"]!.AsArray();
+            var target = restores.Single(a => a!["project"]!.GetValue<string>() == "Martlet.Avatar.RendererHost")!["targets"]![0]!;
+            var downloads = target["frameworkDownloads"]!.AsArray();
+            var download = downloads.Single(d => d!["id"]!.GetValue<string>() == "Microsoft.Windows.SDK.NET.Ref")!;
+            var desktop = restores.Single(a => a!["project"]!.GetValue<string>() == "Martlet.Desktop")!["targets"]![0]!;
+            switch (change)
+            {
+                case "framework": target["framework"] = "net10.0-windows10.0.22621"; break;
+                case "target": target["name"] = "net10.0-windows/win-x64"; break;
+                case "desktop-target":
+                    desktop["name"] = target["name"]!.DeepClone();
+                    desktop["framework"] = target["framework"]!.DeepClone();
+                    break;
+                case "desktop-download": desktop["frameworkDownloads"]!.AsArray().Add(download.DeepClone()); break;
+                case "download-version": download["requested"] = "[10.0.12, 10.0.12]"; break;
+                case "missing-download": downloads.Remove(download); break;
+                case "duplicate-download": downloads.Add(download.DeepClone()); break;
+                case "runtime-version": library["key"] = "runtimepack.Microsoft.Windows.SDK.NET.Ref/10.0.12"; break;
+                case "archive-digest": archive["archiveSha512"] = new string('0', 128); break;
+                case "asset-source": library["assets"]![0]!["source"] = "Microsoft.Windows.UI.Xaml.dll"; break;
+                case "asset-kind": library["assets"]![0]!["kind"] = "native"; break;
+                case "archive-entry": archive["origins"]![0]!["entry"] = "lib/net9.0/Microsoft.Windows.SDK.NET.dll"; break;
+                case "archive-owner": archive["origins"]![0]!["component"] = "Desktop|runtimepack.Microsoft.Windows.SDK.NET.Ref/10.0.19041.57"; break;
+                case "missing-origin": archive["origins"]!.AsArray().RemoveAt(0); break;
+            }
+        });
+        Refused(fixture);
     }
 
     [Theory]

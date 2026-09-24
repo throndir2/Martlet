@@ -16,6 +16,32 @@ function Get-PublishContext([string]$Name) {
     return $matches[0]
 }
 
+function Get-PublishRestoreTarget([string]$Name) {
+    $null = Get-PublishContext $Name
+    if ($Name -ceq 'AvatarRenderer') { return 'net10.0-windows10.0.19041.0/win-x64' }
+    return 'net10.0-windows/win-x64'
+}
+
+function Get-WindowsSdkArchiveAssets {
+    $pin = (Get-PackagingPins).windowsSdkPackage
+    foreach ($name in @('Microsoft.Windows.SDK.NET.dll', 'WinRT.Runtime.dll')) {
+        [ordered]@{
+            path = "Desktop\AvatarRenderer\$name"
+            component = "AvatarRenderer|runtimepack.$($pin.id)/$($pin.version)"
+            entry = "lib/net8.0/$name"
+        }
+    }
+}
+
+function Test-PinnedFrameworkDownload([string]$Id, [string]$Version, [bool]$Renderer = $false) {
+    $pins = Get-PackagingPins
+    if ($Renderer -and $Id -ceq $pins.windowsSdkPackage.id) {
+        return $Version -ceq "[$($pins.windowsSdkPackage.version), $($pins.windowsSdkPackage.version)]"
+    }
+    return $Id -cmatch '^Microsoft\.(NETCore|WindowsDesktop|AspNetCore)\.App\.Runtime\.win-x64$' -and
+        $Version -ceq "[$($pins.runtimeVersion), $($pins.runtimeVersion)]"
+}
+
 function Get-WebViewArchiveAssets {
     foreach ($name in @('Core', 'WinForms', 'Wpf')) {
         $prefix = if ($name -ceq 'Wpf') { 'lib_manual/net5.0-windows10.0.17763.0' } else { 'lib_manual/netcoreapp3.0' }
@@ -48,6 +74,7 @@ function Get-PackageOwnerAssets([string]$DesktopAssetsPath, [string]$Id) {
     $projects = @(Get-PublishContexts | Where-Object { $pins.applicationGraphs.($_.name).packages -ccontains $Id } |
         ForEach-Object { $_.project })
     if ($Id -ceq 'Grpc.Tools') { $projects = @('Martlet.Avatar.Audio2Face') }
+    if ($Id -ceq $pins.windowsSdkPackage.id) { $projects = @('Martlet.Avatar.RendererHost') }
     if ($projects.Count -eq 0) { throw "Package has no reviewed restore owner: $Id" }
     $directory = Split-Path (Split-Path $DesktopAssetsPath)
     return Read-PackagingJson (Join-Path $directory "$($projects[0])\project.assets.json")
@@ -59,7 +86,7 @@ function Set-PublishBuildOnlyLibraries($Applications, $Restores) {
     foreach ($application in $Applications) {
         $restore = @($Restores | Where-Object project -CEQ $application.project)
         if ($restore.Count -ne 1) { throw "Missing or duplicate entry-point restore: $($application.project)" }
-        $target = @($restore[0].targets | Where-Object name -CEQ 'net10.0-windows/win-x64')
+        $target = @($restore[0].targets | Where-Object name -CEQ (Get-PublishRestoreTarget $application.name))
         if ($target.Count -ne 1) { throw 'Missing entry-point RID target.' }
         $keys = @($application.libraries.key)
         $omitted = @($target[0].libraries.key | Where-Object { $keys -cnotcontains $_ })
