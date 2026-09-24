@@ -71,7 +71,7 @@ public sealed record GatewayDeviceRegistration
     public string? RotatedToCredentialId { get; init; }
 }
 
-public sealed class GatewayCredentialStore : IGatewayRequestCredentials
+public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewayAdmissionStatus
 {
     public static readonly TimeSpan MaximumRotationOverlap = TimeSpan.FromMinutes(10);
     public const int MaximumRegistrations = 128;
@@ -547,6 +547,27 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials
     {
         lock (gate)
             stopping = true;
+    }
+
+    bool IGatewayAdmissionStatus.AdmissionsOpen => AdmissionsOpen;
+
+    internal bool AdmissionsOpen
+    {
+        get
+        {
+            lock (gate)
+            {
+                if (closed || stopping || clockInvalid) return false;
+                var now = clock.GetUtcNow();
+                if (now.Offset != TimeSpan.Zero || now <= DateTimeOffset.MinValue ||
+                    now > DateTimeOffset.MaxValue - TimeSpan.FromDays(90) ||
+                    lastObservedTime is { } previous && now < previous)
+                    return false;
+                return persistence is null || clock.TimestampFrequency > 0 &&
+                    clock.TimestampFrequency == frequency &&
+                    (lastTimestamp is null || clock.GetTimestamp() >= lastTimestamp.Value);
+            }
+        }
     }
 
     internal void CommitMaintenance(Action<GatewayCheckpoint> commit)

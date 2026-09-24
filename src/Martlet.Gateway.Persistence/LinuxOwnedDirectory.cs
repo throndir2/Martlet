@@ -116,7 +116,7 @@ internal sealed class LinuxOwnedDirectory : IOwnedAuthorityDirectory
 
     private string leafName = "";
 
-    private static void CheckDirectory(ILinuxFileSystem fs, int descriptor, bool isPrivate)
+    internal static void CheckDirectory(ILinuxFileSystem fs, int descriptor, bool isPrivate)
     {
         var value = fs.Stat(descriptor);
         if ((value.Mode & 0xf000) != 0x4000 || (value.Mode & 0xe00) != 0 ||
@@ -126,7 +126,7 @@ internal sealed class LinuxOwnedDirectory : IOwnedAuthorityDirectory
             throw Error(GatewayPersistenceFailure.InsecureStorage);
     }
 
-    private static void CheckFile(ILinuxFileSystem fs, LinuxFileIdentity value, LinuxFileIdentity directory)
+    internal static void CheckFile(ILinuxFileSystem fs, LinuxFileIdentity value, LinuxFileIdentity directory)
     {
         if ((value.Mode & 0xffff) != (0x8000 | 0x180) || value.User != fs.UserId || value.Links != 1)
             throw Error(GatewayPersistenceFailure.InsecureStorage);

@@ -33,6 +33,7 @@ internal sealed class FakeLinuxFileSystem : ILinuxFileSystem, IDisposable
     internal bool SupportedFileSystem { get; set; } = true;
     internal Guid Boot { get; set; } = Guid.NewGuid();
     public uint UserId { get; set; } = 1000;
+    public uint GroupId { get; set; } = 1000;
     internal int OpenHandles => handles.Count;
     private readonly Node root;
     internal Node Parent => root.Children["srv"].Children["martlet"];

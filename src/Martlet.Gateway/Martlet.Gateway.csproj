@@ -9,5 +9,7 @@
     <InternalsVisibleTo Include="Martlet.Gateway.Persistence.Tests" />
     <InternalsVisibleTo Include="Martlet.Gateway.Persistence.Portable.Tests" />
     <InternalsVisibleTo Include="Martlet.Gateway.Persistence.Linux.Tests" />
+    <InternalsVisibleTo Include="Martlet.Gateway.Host.Linux.Tests" />
+    <InternalsVisibleTo Include="Martlet.Gateway.Host.Linux.Native.Tests" />
   </ItemGroup>
 </Project>

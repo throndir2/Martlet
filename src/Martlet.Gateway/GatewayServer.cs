@@ -75,7 +75,7 @@ public sealed class GatewayServer
         Credentials = ownedCredentials ?? new(identity, effectiveClock, effectiveCrypto);
         Pairing = new(identity, origin, Credentials, effectiveClock, effectiveCrypto, pairingWindow);
         inference = inferenceRegistry ?? new(inferenceWorkers ?? [], effectiveClock);
-        application = new(identity, Pairing, Credentials, new(workers),
+        application = new(identity, Pairing, Credentials, Credentials, new(workers),
             inference,
             effectiveClock, effectiveCrypto, audit);
     }

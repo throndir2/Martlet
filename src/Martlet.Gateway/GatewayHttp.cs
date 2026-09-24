@@ -12,6 +12,7 @@ internal sealed partial class GatewayHttpApplication
     private readonly GatewayHostIdentity identity;
     private readonly IGatewayPairingExchange pairing;
     private readonly GatewayRequestAuthenticator authenticator;
+    private readonly IGatewayAdmissionStatus admission;
     private readonly GatewayWorkerRegistry workers;
     private readonly GatewayInferenceRouteRegistry inference;
     private readonly TimeProvider clock;
@@ -22,6 +23,7 @@ internal sealed partial class GatewayHttpApplication
         GatewayHostIdentity identity,
         IGatewayPairingExchange pairing,
         IGatewayRequestCredentials credentials,
+        IGatewayAdmissionStatus admission,
         GatewayWorkerRegistry workers,
         GatewayInferenceRouteRegistry inference,
         TimeProvider clock,
@@ -30,6 +32,7 @@ internal sealed partial class GatewayHttpApplication
     {
         this.identity = identity;
         this.pairing = pairing;
+        this.admission = admission;
         authenticator = new(identity, credentials);
         this.workers = workers;
         this.inference = inference;
@@ -50,6 +53,20 @@ internal sealed partial class GatewayHttpApplication
             {
                 EnsureEmptyRequest(context.Request);
                 await WriteJsonAsync(context, 200, new LivenessDocument { Status = "live" }).ConfigureAwait(false);
+                return;
+            }
+            if (context.Request.Method == HttpMethods.Get && rawTarget == "/health/ready")
+            {
+                EnsureEmptyRequest(context.Request);
+                var open = admission.AdmissionsOpen;
+                await WriteJsonAsync(context, open ? 200 : 503, new
+                {
+                    schemaVersion = 1,
+                    scope = "listener-auth-admission",
+                    listener = "listening",
+                    authAdmission = open ? "open" : "closed",
+                    modelReadiness = "not-probed"
+                }).ConfigureAwait(false);
                 return;
             }
             if (context.Request.Method == HttpMethods.Post && rawTarget == "/martlet/v1/pair")
