@@ -195,10 +195,26 @@ foreach ($case in @('missing component', 'duplicate component', 'wrong standard'
 }
 foreach ($case in @('archive digest', 'resolved hash', 'missing origin', 'duplicate library', 'source mismatch',
         'legacy schema', 'missing provenance', 'missing edge', 'dangling edge', 'wrong facade owner', 'supporting version',
-        'file byte type', 'provenance schema type', 'missing runtime download')) {
+        'file byte type', 'provenance schema type', 'missing runtime download',
+        'SDK download version', 'SDK missing download', 'SDK sibling download', 'SDK framework',
+        'SDK archive digest', 'SDK archive entry', 'SDK missing origin')) {
     try {
         $changed = Read-PackagingJson $manifestPath -AsHashtable
+        $sdkTarget = @($changed.provenance.restores | Where-Object project -CEQ 'Martlet.Avatar.RendererHost')[0].targets[0]
+        $sdkArchive = @($changed.provenance.archives | Where-Object id -CEQ 'Microsoft.Windows.SDK.NET.Ref')[0]
         switch ($case) {
+            'SDK download version' {
+                @($sdkTarget.frameworkDownloads | Where-Object id -CEQ 'Microsoft.Windows.SDK.NET.Ref')[0].requested = '[10.0.12, 10.0.12]'
+            }
+            'SDK missing download' { $sdkTarget.frameworkDownloads = @($sdkTarget.frameworkDownloads | Where-Object id -CNE 'Microsoft.Windows.SDK.NET.Ref') }
+            'SDK sibling download' {
+                @($changed.provenance.restores | Where-Object project -CEQ 'Martlet.Desktop')[0].targets[0].frameworkDownloads +=
+                    @($sdkTarget.frameworkDownloads | Where-Object id -CEQ 'Microsoft.Windows.SDK.NET.Ref')[0]
+            }
+            'SDK framework' { $sdkTarget.framework = 'net10.0-windows10.0.22621' }
+            'SDK archive digest' { $sdkArchive.archiveSha512 = '0' * 128 }
+            'SDK archive entry' { $sdkArchive.origins[0].entry = 'lib/net9.0/Microsoft.Windows.SDK.NET.dll' }
+            'SDK missing origin' { $sdkArchive.origins = @($sdkArchive.origins | Select-Object -Skip 1) }
             'archive digest' { $changed.provenance.archives[0].archiveSha512 = '0' * 128 }
             'resolved hash' {
                 $target = @($changed.provenance.restores | Where-Object project -CEQ 'Martlet.Desktop')[0].targets[0]
@@ -224,6 +240,13 @@ foreach ($case in @('archive digest', 'resolved hash', 'missing origin', 'duplic
         }
         Write-TestEnvelope $changed -KeepInventory:($case -ceq 'file byte type')
         $pattern = switch ($case) {
+            'SDK download version' { '*Unpinned or duplicate framework download evidence*' }
+            'SDK missing download' { '*Published runtime pack is missing matching framework download evidence*' }
+            'SDK sibling download' { '*Unpinned or duplicate framework download evidence*' }
+            'SDK framework' { '*Invalid or duplicate restore target evidence*' }
+            'SDK archive digest' { '*Archive evidence differs*' }
+            'SDK archive entry' { '*Archive asset entry differs*' }
+            'SDK missing origin' { '*Missing archive asset provenance*' }
             'archive digest' { '*Archive evidence differs*' }
             'resolved hash' { '*Published dependency differs*' }
             'missing origin' { '*Missing archive asset provenance*' }

@@ -5,7 +5,7 @@ param(
     [string]$ReferenceMetadataRoot,
     [ValidateSet(2, 3)][int]$FormatVersion = 2,
     [ValidateSet('None', 'ProjectLoader', 'ProjectWebViewAlias', 'ProjectWebViewXml', 'ProjectRuntimeInstaller',
-        'ProjectSiblingLoader', 'OmittedRuntimeEdge')][string]$AvatarMutation = 'None',
+        'ProjectSiblingLoader', 'OmittedRuntimeEdge', 'WindowsSdk')][string]$AvatarMutation = 'None',
     [ValidateSet('Payload', 'Failure', 'OutputOverflow', 'Wait')][string]$Mode = 'Payload'
 )
 . "$PSScriptRoot\..\..\packaging\windows\Packaging.Common.ps1"

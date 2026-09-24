@@ -149,6 +149,18 @@ application's `.deps.json` (including each project's runtime asset):
   conversation, credential or Audio2Face reference. The parent application's
   ordinary publish target owns this subtree; packaging never substitutes a
   different application.
+- The composition renderer alone targets `net10.0-windows10.0.19041.0` and owns
+  `Microsoft.Windows.SDK.NET.dll` plus `WinRT.Runtime.dll` from the exact
+  `Microsoft.Windows.SDK.NET.Ref/10.0.19041.57` archive (`lib/net8.0`).
+  Restore evidence retains that precise SDK framework download independently of
+  .NET runtime 10.0.12. The runtime dependency target remains
+  `.NETCoreApp,Version=v10.0/win-x64`; Desktop/Doctor retain their original TFMs.
+  The packaging import scopes the renderer's runtime pins to framework items
+  instead of applying the .NET runtime version to SDK projection profiles.
+  The SDK archive contains no embedded license: the official nuspec license URL's
+  RTF redirect destination is separately pinned and copied unmodified.
+  Update readers retain legacy schema 1/2 and pre-composition schema 3 acceptance;
+  only this renderer may use the versioned restore target and SDK runtime pack.
 - Doctor only: `Martlet.Doctor`. Doctor's graph and offline semantics are
   unchanged; no conversation, provider, participation or vault assembly is
   included there.
@@ -205,10 +217,12 @@ WindowsDesktop can legitimately replace Core facade assemblies such as
 `WindowsBase.dll`; files are never accepted merely because two names match.
 
 The opt-in absolute `CustomBeforeMicrosoftCommonTargets` and
-`CustomBeforeMicrosoftCommonCrossTargetingTargets` imports set **only**
+`CustomBeforeMicrosoftCommonCrossTargetingTargets` imports set
 `NuGetLockFilePath` to `packaging\windows\locks\<project>.packages.lock.json` for
-every project in both graphs, including multi-target Audio/Doctor outer builds.
-Both applications publish explicitly with `--framework net10.0-windows`;
+every project in both graphs, including multi-target Audio/Doctor outer builds,
+and scope the renderer's .NET and Windows SDK runtime versions independently.
+Doctor publishes explicitly with `--framework net10.0-windows`; single-targeted
+Desktop uses its authored TFM so a global TFM cannot override its renderer child.
 portable Doctor remains an SDK text-only target, never a fake audio backend.
 RID restore needs a different target graph from
 the platform-neutral foundation, so there are two intentional lock sets.

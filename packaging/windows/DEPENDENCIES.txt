@@ -88,6 +88,18 @@ entries in the one SDK archive, with its complete LICENSE.txt and NOTICE.txt.
 The WebView2 runtime itself is an existing-machine prerequisite, never bundled,
 downloaded or installed by this package.
 
+The transparent composition renderer additionally ships Microsoft.Windows.SDK.NET.dll
+and WinRT.Runtime.dll from lib/net8.0 in Microsoft.Windows.SDK.NET.Ref
+10.0.19041.57. Both belong to that one checksum-pinned SDK projection archive;
+WinRT.Runtime is not a separately restored NuGet package. Only these two runtime
+assets are redistributed, not the targeting pack, winmd files or generators.
+The archive has no embedded license or notice file and its nuspec declares only
+https://aka.ms/WinSDKLicenseURL. The complete, unmodified official redirect
+destination is separately checksum-pinned and copied as
+notices\Microsoft.Windows.SDK.NET.Ref-LICENSE.rtf. Its license is the Windows SDK
+license, not the MIT license of the separately distributed C#/WinRT project.
+No archive-embedded license, SPDX expression or release-rights assessment is inferred.
+
 The offline browser bundle includes three 0.180.0 and @pixiv/three-vrm 3.5.5
 with its actual locked transitive packages. Full package license files are
 retained in web\THIRD-PARTY-NOTICES.txt alongside authored Live2D adapter notices;
