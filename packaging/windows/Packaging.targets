@@ -3,4 +3,19 @@
     <!-- Imported for both normal and cross-targeting outer builds; never rewrite normal locks. -->
     <NuGetLockFilePath>$(MSBuildThisFileDirectory)locks\$(MSBuildProjectName).packages.lock.json</NuGetLockFilePath>
   </PropertyGroup>
+  <Target Name="PinRendererWindowsSdkRuntime" BeforeTargets="ProcessFrameworkReferences"
+          Condition="'$(MSBuildProjectName)' == 'Martlet.Avatar.RendererHost'">
+    <!-- The app runtime pin is not the Windows SDK projection pack's version. -->
+    <PropertyGroup>
+      <!-- The SDK also resolves unreferenced profiles; a global runtime version corrupts those SDK pack requests. -->
+      <RuntimeFrameworkVersion></RuntimeFrameworkVersion>
+      <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
+    </PropertyGroup>
+    <ItemGroup>
+      <FrameworkReference Condition="'%(FrameworkReference.Identity)' == 'Microsoft.Windows.SDK.NET.Ref.Windows'"
+                          RuntimeFrameworkVersion="10.0.19041.57" />
+      <FrameworkReference Condition="'%(FrameworkReference.Identity)' == 'Microsoft.NETCore.App' Or '%(FrameworkReference.Identity)' == 'Microsoft.WindowsDesktop.App.WPF'"
+                          RuntimeFrameworkVersion="10.0.12" />
+    </ItemGroup>
+  </Target>
 </Project>

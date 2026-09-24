@@ -38,9 +38,10 @@ try {
     }
     foreach ($application in @('Desktop', 'Doctor')) {
         $project = Join-Path $root "src\Martlet.$application\Martlet.$application.csproj"
+        # Desktop is single-targeted; a global TFM would override its versioned renderer child.
+        $framework = if ($application -ceq 'Doctor') { @('--framework', 'net10.0-windows') } else { @() }
         Invoke-Dotnet $sdk (@('publish', $project, '--no-restore', '-c', 'Release', '-r', $RuntimeIdentifier,
-            '--framework', 'net10.0-windows',
-            '--artifacts-path', $build, '-o', (Join-Path $staging $application), '--verbosity', 'minimal') + $properties) -WorkingDirectory $root
+            '--artifacts-path', $build, '-o', (Join-Path $staging $application), '--verbosity', 'minimal') + $framework + $properties) -WorkingDirectory $root
     }
     [IO.Directory]::CreateDirectory((Join-Path $staging 'help')) | Out-Null
     [IO.Directory]::CreateDirectory((Join-Path $staging 'notices')) | Out-Null

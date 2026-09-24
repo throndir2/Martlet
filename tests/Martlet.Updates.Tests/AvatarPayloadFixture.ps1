@@ -123,6 +123,7 @@ function New-InertAvatarPayloads([string]$OutputDirectory, $Pins, $Encoding, [st
         $packageOrigins = @()
         $runtimeOrigins = @()
         $webOrigins = @()
+        $sdkOrigins = @()
         foreach ($context in Get-PublishContexts) {
             $directory = $context.directory
             $project = $context.project
@@ -132,6 +133,19 @@ function New-InertAvatarPayloads([string]$OutputDirectory, $Pins, $Encoding, [st
             $rootDependencies = @($runtimeKey)
             $libraries = @()
             if ($context.name -ceq 'AvatarRenderer') {
+                if ($Mutation -ceq 'WindowsSdk') {
+                    $sdkKey = "runtimepack.$($Pins.windowsSdkPackage.id)/$($Pins.windowsSdkPackage.version)"
+                    $rootDependencies += $sdkKey
+                    $sdkAssets = @(
+                        foreach ($asset in Get-WindowsSdkArchiveAssets) {
+                            $file = Leaf $asset.path 'INERT Windows SDK projection; NEVER EXECUTE'
+                            $sdkOrigins += [ordered]@{ path = $file.path; component = $asset.component; entry = $asset.entry; sha256 = $file.sha256 }
+                            [ordered]@{ path = $file.path; kind = 'runtime'; source = [IO.Path]::GetFileName($file.path) }
+                        }
+                    )
+                    $libraries += Library $sdkKey 'runtimepack' @() $sdkAssets
+                    $null = Leaf 'notices\Microsoft.Windows.SDK.NET.Ref-LICENSE.rtf' 'INERT synthetic license marker, not actual licensing evidence'
+                }
                 $rootDependencies += $webKey
                 $loader = Leaf "$directory\WebView2Loader.dll" 'INERT identical loader copies'
                 $null = Leaf "$directory\runtimes\win-x64\native\WebView2Loader.dll" 'INERT identical loader copies'
@@ -187,6 +201,15 @@ function New-InertAvatarPayloads([string]$OutputDirectory, $Pins, $Encoding, [st
                     frameworkDownloads = @([ordered]@{ id = $runtimeId; requested = "[$($Pins.runtimeVersion), $($Pins.runtimeVersion)]" })
                 })
             }
+            if ($context.name -ceq 'AvatarRenderer' -and $Mutation -ceq 'WindowsSdk') {
+                $target = $restores[-1].targets[0]
+                $target.name = 'net10.0-windows10.0.19041.0/win-x64'
+                $target.framework = 'net10.0-windows10.0.19041'
+                $target.frameworkDownloads += [ordered]@{
+                    id = $Pins.windowsSdkPackage.id
+                    requested = "[$($Pins.windowsSdkPackage.version), $($Pins.windowsSdkPackage.version)]"
+                }
+            }
         }
         $toolLock = 'packaging\windows\locks\Martlet.Avatar.Audio2Face.packages.lock.json'
         $restores += [ordered]@{
@@ -212,6 +235,14 @@ function New-InertAvatarPayloads([string]$OutputDirectory, $Pins, $Encoding, [st
             [ordered]@{ id = $runtime.id; version = $Pins.runtimeVersion; archiveSha512 = $runtime.sha512; nuspecSha256 = 'f' * 64; licenseExpression = $null; licenseFile = 'LICENSE.txt'; repositoryUrl = $null; repositoryCommit = $null; origins = $runtimeOrigins }
             [ordered]@{ id = 'Microsoft.Web.WebView2'; version = '1.0.4191.47'; archiveSha512 = '1' * 128; nuspecSha256 = 'f' * 64; licenseExpression = $null; licenseFile = 'LICENSE.txt'; repositoryUrl = $null; repositoryCommit = $null; origins = $webOrigins }
         )
+        if ($Mutation -ceq 'WindowsSdk') {
+            $archives += [ordered]@{
+                id = $Pins.windowsSdkPackage.id; version = $Pins.windowsSdkPackage.version
+                archiveSha512 = $Pins.windowsSdkPackage.sha512; nuspecSha256 = 'f' * 64
+                licenseExpression = $null; licenseFile = $null; repositoryUrl = $null; repositoryCommit = $null
+                origins = $sdkOrigins
+            }
+        }
         $buildArchives = @([ordered]@{
             id = 'Grpc.Tools'; version = '2.84.0'; archiveSha512 = '2' * 128; nuspecSha256 = 'f' * 64
             licenseExpression = 'Apache-2.0'; licenseFile = $null; repositoryUrl = $null; repositoryCommit = $null

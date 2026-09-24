@@ -42,6 +42,11 @@ internal static class PayloadProvenance
         "Microsoft.Web.WebView2.Core/1.0.4191.47", "Microsoft.Web.WebView2.WinForms/1.0.4191.47",
         "Microsoft.Web.WebView2.Wpf/1.0.4191.47"
     ];
+    private const string WindowsSdkId = "Microsoft.Windows.SDK.NET.Ref";
+    private const string WindowsSdkVersion = "10.0.19041.57";
+    private const string WindowsSdkKey = "runtimepack." + WindowsSdkId + "/" + WindowsSdkVersion;
+    private const string RendererTarget = "net10.0-windows10.0.19041.0/win-x64";
+    private const string RendererFramework = "net10.0-windows10.0.19041";
 
     internal static Facts Read(JsonElement value, string source, bool dirty, string sdk, string runtime,
         PayloadFile[] files, EvidenceReader r, int schema = 1)
@@ -91,6 +96,7 @@ internal static class PayloadProvenance
         if (contexts is not null)
         {
             VerifyWebView(libraries, archives, payload, r);
+            VerifyWindowsSdk(libraries, archives, payload, r);
             var build = r.Member(value, "buildArchives");
             avatar = new(contexts, BuildArchives(build, r.Member(value, "restores"), libraries, r),
                 PayloadEvidenceJson.Hash(build, r), PayloadBrowser.Read(r.Member(value, "browser"), sourceFiles, payload, r));
@@ -194,7 +200,9 @@ internal static class PayloadProvenance
                 if (type == "runtimepack")
                 {
                     r.Require(library.Id.StartsWith("runtimepack.", StringComparison.Ordinal));
-                    r.Equal(library.Version, runtime);
+                    if (library.Id == "runtimepack." + WindowsSdkId)
+                        r.Require(applications is not null && context == "AvatarRenderer" && key == WindowsSdkKey);
+                    else r.Equal(library.Version, runtime);
                 }
                 r.Require(result.TryAdd(library.Reference, library));
             }
@@ -228,13 +236,17 @@ internal static class PayloadProvenance
         }
         foreach (var restore in restores)
         {
+            var renderer = contexts is not null && r.Text(restore, "project", 256) == "Martlet.Avatar.RendererHost" &&
+                applications.ContainsKey("AvatarRenderer|" + WindowsSdkKey);
             var names = new HashSet<string>(StringComparer.Ordinal);
             foreach (var target in r.Items(r.Member(restore, "targets"), 8, 1))
             {
                 r.Keys(target, "name framework rootDependencies libraries frameworkDownloads");
                 var name = r.Text(target, "name");
-                r.Require(name is "net10.0/win-x64" or "net10.0-windows/win-x64" && names.Add(name));
-                r.Equal(r.Text(target, "framework"), name == "net10.0/win-x64" ? "net10.0" : "net10.0-windows7.0");
+                r.Require((name is "net10.0/win-x64" or "net10.0-windows/win-x64" ||
+                    renderer && name == RendererTarget) && names.Add(name));
+                r.Equal(r.Text(target, "framework"), name == RendererTarget ? RendererFramework :
+                    name == "net10.0/win-x64" ? "net10.0" : "net10.0-windows7.0");
                 var libraries = r.Items(r.Member(target, "libraries"), 2048).ToArray();
                 var keys = new HashSet<string>(StringComparer.Ordinal);
                 var unique = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -257,9 +269,11 @@ internal static class PayloadProvenance
                 {
                     r.Keys(download, "id requested");
                     var id = r.Text(download, "id");
-                    r.Require(id is "Microsoft.NETCore.App.Runtime.win-x64" or
-                        "Microsoft.WindowsDesktop.App.Runtime.win-x64" or "Microsoft.AspNetCore.App.Runtime.win-x64" && downloads.Add(id));
-                    r.Equal(r.Text(download, "requested"), $"[{runtime}, {runtime}]");
+                    var sdkPack = renderer && name == RendererTarget && id == WindowsSdkId;
+                    r.Require((sdkPack || id is "Microsoft.NETCore.App.Runtime.win-x64" or
+                        "Microsoft.WindowsDesktop.App.Runtime.win-x64" or "Microsoft.AspNetCore.App.Runtime.win-x64") && downloads.Add(id));
+                    var version = sdkPack ? WindowsSdkVersion : runtime;
+                    r.Equal(r.Text(download, "requested"), $"[{version}, {version}]");
                 }
             }
         }
@@ -268,8 +282,9 @@ internal static class PayloadProvenance
         foreach (var app in applications.Values.Where(l => l.IsRoot))
         {
             var restore = restores.Single(e => r.Text(e, "project", 256) == app.Id);
+            var rendererSdk = app.Context == "AvatarRenderer" && applications.ContainsKey("AvatarRenderer|" + WindowsSdkKey);
             var targets = r.Items(r.Member(restore, "targets"), 8).Where(e =>
-                r.Text(e, "name") == "net10.0-windows/win-x64").ToArray();
+                r.Text(e, "name") == (rendererSdk ? RendererTarget : "net10.0-windows/win-x64")).ToArray();
             r.Require(targets.Length == 1);
             var target = targets[0];
             var published = applications.Values.Where(l => l.Context == app.Context && !l.IsRoot && l.Type != "runtimepack" &&
@@ -380,6 +395,36 @@ internal static class PayloadProvenance
             r.Require(expected.TryGetValue(origin.Path, out var item) && item == (origin.Component, origin.Entry));
         r.Require(payload.TryGetValue(loader, out var first) && payload.TryGetValue(nested, out var second) &&
             first.Bytes == second.Bytes && first.Sha256 == second.Sha256);
+    }
+
+    private static void VerifyWindowsSdk(Dictionary<string, Library> libraries, Dictionary<string, Archive> archives,
+        Dictionary<string, PayloadFile> payload, EvidenceReader r)
+    {
+        if (!libraries.TryGetValue("AvatarRenderer|" + WindowsSdkKey, out var library))
+        {
+            r.Require(!payload.Keys.Any(IsProjection));
+            return;
+        }
+        var names = new[] { "Microsoft.Windows.SDK.NET.dll", "WinRT.Runtime.dll" };
+        var expected = names.Select(n => new Asset(PayloadBrowser.Host + "\\" + n, "runtime", n)).ToArray();
+        r.Require(library.Type == "runtimepack" && library.Dependencies.Length == 0 &&
+            library.Assets.SequenceEqual(expected) &&
+            libraries.Values.Single(l => l.Context == "AvatarRenderer" && l.IsRoot).Dependencies.Contains(WindowsSdkKey));
+        r.Require(payload.Keys.Where(IsProjection).Order(StringComparer.Ordinal)
+            .SequenceEqual(expected.Select(a => a.Path).Order(StringComparer.Ordinal)));
+        r.Require(archives.TryGetValue(WindowsSdkId, out var archive) && archive.Id == WindowsSdkId &&
+            archive.Version == WindowsSdkVersion &&
+            archive.Hash == "4c8f45aae91165215f499e9f2e1d1c8ced17d0e2009f9bd928653f88dcc836ddc865e2bba3d6350e6b69fb1c04bfaf7a5ced5c1cc07b694a938ea977fca63dc6" &&
+            archive.Origins.Length == expected.Length);
+        foreach (var asset in expected)
+            r.Require(archive!.Origins.Any(o => o.Path == asset.Path && o.Component == library.Reference &&
+                o.Entry == "lib/net8.0/" + asset.Source));
+        const string license = "notices\\Microsoft.Windows.SDK.NET.Ref-LICENSE.rtf";
+        r.Require(payload.TryGetValue(license, out var notice) && notice.Bytes > 0);
+
+        static bool IsProjection(string path) =>
+            new[] { "Microsoft.Windows.SDK.NET.dll", "WinRT.Runtime.dll" }
+                .Contains(Path.GetFileName(path), StringComparer.OrdinalIgnoreCase);
     }
 
     private static BuildArchive[] BuildArchives(JsonElement value, JsonElement restores,
