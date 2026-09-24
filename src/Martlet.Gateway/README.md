@@ -14,6 +14,24 @@ key/certificate, changes a trust store, opens a firewall, publishes a Docker
 port, runs an administrative command, downloads a model or activates inference.
 The CLI still supplies no workers and truthfully advertises no inference.
 
+The separate [Linux host executable candidate](../Martlet.Gateway.Host.Linux/README.md)
+now supplies explicit private-IP binding and locally approved unattended restart
+over the durable owner. Existing Windows CLI/default factories stay loopback-only;
+native Linux, two-host LAN and container qualification remain NOT RUN.
+
+`GET /health/live` remains exactly `{"status":"live"}`. The same TLS listener
+also exposes the nonsecret, credential-free `GET /health/ready` contract:
+`{"schema_version":1,"scope":"listener-auth-admission","listener":"listening","auth_admission":"open","model_readiness":"not-probed"}`.
+It returns 200 for currently open authority admission, or 503 with
+`auth_admission:"closed"` for known stopping/closure or clock/storage failure.
+It does not list identities/devices, issue credentials, admit nonces, checkpoint,
+call workers or prove model/future-storage readiness. The observation is a
+separate internal read-only capability; request credential access remains
+authenticate-only. New TLS handshakes can themselves fail after authority closure.
+Authenticated role-scoped `/martlet/v1/status` is unchanged. No admin route or
+extra port is introduced; see the executable guide for its exact bounded pinned
+health command and evidence limits.
+
 The dedicated tests use generated fixture certificates and controlled synthetic
 workers only (**NOT AI**). They do not contact Ollama, F5, a LAN host or a public service.
 The runtime fixture certificate is loaded as a user-scoped key handle because

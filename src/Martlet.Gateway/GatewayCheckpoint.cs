@@ -41,6 +41,11 @@ internal interface IGatewayRequestCredentials
     GatewayPrincipal Authenticate(GatewaySignedRequest request);
 }
 
+internal interface IGatewayAdmissionStatus
+{
+    bool AdmissionsOpen { get; }
+}
+
 internal interface IGatewayPairingExchange
 {
     IssuedDeviceCredential Exchange(GatewayPairingProof proof, CancellationToken cancellationToken);

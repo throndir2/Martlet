@@ -7,7 +7,7 @@ using static Martlet.Gateway.Persistence.PersistenceFailure;
 namespace Martlet.Gateway.Persistence;
 
 public enum LocalGatewayDecision { No, Enable }
-internal enum HostOpenMode { Create, Open, RenewCertificate }
+internal enum HostOpenMode { Create, Open, RenewCertificate, Rebind }
 
 // Local host-control capability. Never register this object in handler DI.
 public sealed class DurableGatewayHost : IAsyncDisposable
@@ -27,6 +27,41 @@ public sealed class DurableGatewayHost : IAsyncDisposable
     private bool closed;
     public GatewayHostIdentity? Identity { get; }
     public bool Enabled => server is not null;
+
+    public static DurableGatewayHost CreateNewForBinding(string directory, string hostId, GatewayHostBinding binding,
+        GatewayStorageBackend storageBackend, IEnumerable<IGatewayWorker> workers, IGatewayAuditSink audit,
+        LocalGatewayDecision decision = LocalGatewayDecision.No, CancellationToken cancellationToken = default) =>
+        decision == LocalGatewayDecision.No ? new() :
+        Open(directory, hostId, binding.Origin, workers, audit, decision, HostOpenMode.Create,
+            TimeProvider.System, cancellationToken: cancellationToken, storageBackend: storageBackend,
+            explicitBinding: true);
+
+    public static DurableGatewayHost OpenExistingForBinding(string directory, GatewayHostBinding binding,
+        GatewayStorageBackend storageBackend, GatewayHostIdentity expectedIdentity,
+        IEnumerable<IGatewayWorker> workers, IGatewayAuditSink audit,
+        LocalGatewayDecision decision = LocalGatewayDecision.No, CancellationToken cancellationToken = default) =>
+        decision == LocalGatewayDecision.No ? new() :
+        Open(directory, null, binding.Origin, workers, audit, decision, HostOpenMode.Open,
+            TimeProvider.System, cancellationToken: cancellationToken, storageBackend: storageBackend,
+            explicitBinding: true, expectedIdentity: expectedIdentity ?? throw new ArgumentNullException(nameof(expectedIdentity)));
+
+    public static DurableGatewayHost OpenForLocalAdministration(string directory, string expectedHostId,
+        GatewayHostBinding binding, GatewayStorageBackend storageBackend, IEnumerable<IGatewayWorker> workers,
+        IGatewayAuditSink audit, LocalGatewayDecision decision = LocalGatewayDecision.No,
+        CancellationToken cancellationToken = default) =>
+        decision == LocalGatewayDecision.No ? new() :
+        Open(directory, expectedHostId ?? throw new ArgumentNullException(nameof(expectedHostId)), binding.Origin, workers, audit, decision, HostOpenMode.Open,
+            TimeProvider.System, cancellationToken: cancellationToken, storageBackend: storageBackend,
+            explicitBinding: true);
+
+    public static DurableGatewayHost RebindForLocalHost(string directory, GatewayHostBinding binding,
+        GatewayStorageBackend storageBackend, GatewayHostIdentity expectedIdentity,
+        IEnumerable<IGatewayWorker> workers, IGatewayAuditSink audit,
+        LocalGatewayDecision decision = LocalGatewayDecision.No, CancellationToken cancellationToken = default) =>
+        decision == LocalGatewayDecision.No ? new() :
+        Open(directory, null, binding.Origin, workers, audit, decision, HostOpenMode.Rebind,
+            TimeProvider.System, cancellationToken: cancellationToken, storageBackend: storageBackend,
+            explicitBinding: true, expectedIdentity: expectedIdentity ?? throw new ArgumentNullException(nameof(expectedIdentity)));
 
     private DurableGatewayHost() => clock = TimeProvider.System;
 
@@ -91,7 +126,8 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         CancellationToken cancellationToken = default,
         IEnumerable<IGatewayInferenceWorker>? inferenceWorkers = null,
         GatewayStorageBackend storageBackend = GatewayStorageBackend.WindowsCurrentUserDpapi,
-        ILinuxFileSystem? linuxFileSystem = null)
+        ILinuxFileSystem? linuxFileSystem = null, bool explicitBinding = false,
+        GatewayHostIdentity? expectedIdentity = null)
     {
         if (decision == LocalGatewayDecision.No)
             return new();
@@ -106,14 +142,14 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(origin);
         ArgumentNullException.ThrowIfNull(workers);
         ArgumentNullException.ThrowIfNull(audit);
-        if (!IPAddress.IsLoopback(origin.Address))
+        if (!explicitBinding && !IPAddress.IsLoopback(origin.Address))
             throw Error(GatewayPersistenceFailure.InvalidState);
         if (mode == HostOpenMode.Create)
             GatewayRules.Identifier(hostId!);
         cancellationToken.ThrowIfCancellationRequested();
         var inferenceRegistry = new GatewayInferenceRouteRegistry(inferenceWorkers ?? [], clock);
         try { return OpenCore(directory, hostId, origin, workers, audit, mode, clock, fault,
-            cancellationToken, inferenceRegistry, storageBackend, linuxFileSystem); }
+            cancellationToken, inferenceRegistry, storageBackend, linuxFileSystem, expectedIdentity); }
         catch (IOException) { throw Error(GatewayPersistenceFailure.StorageFailed); }
         catch (UnauthorizedAccessException) { throw Error(GatewayPersistenceFailure.InsecureStorage); }
         catch (CryptographicException) { throw Error(GatewayPersistenceFailure.KeyProtectionFailed); }
@@ -125,7 +161,7 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         IEnumerable<IGatewayWorker> workers, IGatewayAuditSink audit, HostOpenMode mode,
         TimeProvider clock, Action<StoreStep>? fault, CancellationToken cancellationToken,
         GatewayInferenceRouteRegistry inferenceRegistry, GatewayStorageBackend storageBackend,
-        ILinuxFileSystem? linuxFileSystem)
+        ILinuxFileSystem? linuxFileSystem, GatewayHostIdentity? expectedIdentity)
     {
         AuthorityStore? store = null;
         X509Certificate2? certificate = null;
@@ -138,7 +174,8 @@ public sealed class DurableGatewayHost : IAsyncDisposable
                 throw Error(GatewayPersistenceFailure.InvalidState);
             if (mode == HostOpenMode.Create)
             {
-                using var generated = HostCertificate.Create(now);
+                using var generated = HostCertificate.Create(now, privateAddress:
+                    IPAddress.IsLoopback(origin.Address) ? null : origin.Address);
                 var bytes = generated.Export(X509ContentType.Pkcs12);
                 try { store = OpenStore(directory, hostId, bytes, now, mode, clock, fault, storageBackend, linuxFileSystem); }
                 finally { CryptographicOperations.ZeroMemory(bytes); }
@@ -150,12 +187,16 @@ public sealed class DurableGatewayHost : IAsyncDisposable
             finally { CryptographicOperations.ZeroMemory(encoded); }
             cancellationToken.ThrowIfCancellationRequested();
             var identity = GatewayHostIdentity.FromCertificate(store.HostId, certificate);
+            if (hostId is not null && identity.HostId != hostId ||
+                expectedIdentity is not null && identity != expectedIdentity)
+                throw Error(GatewayPersistenceFailure.InvalidState);
             credentials = new(identity, clock, store.Initial, store, store.InitialSameBoot);
             store.Initial.Dispose();
             var server = new GatewayServer(identity, origin, workers, audit, clock, null, null, credentials,
                 inferenceRegistry: inferenceRegistry);
             var host = new DurableGatewayHost(origin, identity, server, store, certificate, clock, store.ReplaceCertificate);
-            try { host.SelectCertificate(mode == HostOpenMode.RenewCertificate); }
+            try { host.SelectCertificate(mode is HostOpenMode.RenewCertificate or HostOpenMode.Rebind,
+                mode == HostOpenMode.Rebind); }
             catch
             {
                 host.DisposeCertificates();
@@ -236,20 +277,26 @@ public sealed class DurableGatewayHost : IAsyncDisposable
     public IReadOnlyList<GatewayDeviceRegistration> ListRegistrations(CancellationToken cancellationToken = default) =>
         Local(() => server!.Credentials.ListRegistrations(), cancellationToken);
 
-    private X509Certificate2 SelectCertificate(bool forceRenewal = false)
+    private X509Certificate2 SelectCertificate(bool forceRenewal = false, bool rebind = false)
     {
         lock (certificateGate)
         {
             if (closed || certificate is null)
                 throw Error(GatewayPersistenceFailure.Closed);
             server!.Credentials.ObserveTime(clock);
+            if (!rebind && !certificate.Extensions.OfType<X509SubjectAlternativeNameExtension>().Single()
+                .EnumerateIPAddresses().Contains(origin!.Address))
+                throw Error(GatewayPersistenceFailure.InvalidState);
             var now = clock.GetUtcNow();
             if (forceRenewal || now >= new DateTimeOffset(certificate.NotAfter.ToUniversalTime()).AddDays(-30))
             {
                 server.Credentials.CommitMaintenance(checkpoint =>
                 {
                     using var key = certificate.GetECDsaPrivateKey();
-                    using var generated = HostCertificate.Create(checkpoint.ObservedAt, key);
+                    var address = rebind
+                        ? IPAddress.IsLoopback(origin!.Address) ? null : origin.Address
+                        : HostCertificate.PrivateAddress(certificate);
+                    using var generated = HostCertificate.Create(checkpoint.ObservedAt, key, address);
                     var bytes = generated.Export(X509ContentType.Pkcs12);
                     X509Certificate2? next = null;
                     try

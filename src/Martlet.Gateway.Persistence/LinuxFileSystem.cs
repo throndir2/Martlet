@@ -17,6 +17,7 @@ internal readonly record struct LinuxFileIdentity(
 internal interface ILinuxFileSystem
 {
     uint UserId { get; }
+    uint GroupId { get; }
     int OpenRoot();
     int OpenAt(int directory, string name, int flags, uint mode, ulong resolve);
     void Close(int descriptor);
@@ -66,6 +67,7 @@ internal sealed class LinuxFileSystem : ILinuxFileSystem
     }
 
     public uint UserId { get; }
+    public uint GroupId => GetGroup();
 
     public int OpenRoot()
     {

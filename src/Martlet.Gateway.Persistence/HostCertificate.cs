@@ -8,7 +8,8 @@ namespace Martlet.Gateway.Persistence;
 // Certificate mechanics adapted from PR #37, 18daa4acfa90d7c7dff52861c93800a2f63b0823.
 internal static class HostCertificate
 {
-    internal static X509Certificate2 Create(DateTimeOffset now, ECDsa? retainedKey = null)
+    internal static X509Certificate2 Create(DateTimeOffset now, ECDsa? retainedKey = null,
+        IPAddress? privateAddress = null)
     {
         using var generated = retainedKey is null ? ECDsa.Create(ECCurve.NamedCurves.nistP256) : null;
         var key = retainedKey ?? generated!;
@@ -20,6 +21,13 @@ internal static class HostCertificate
         var sans = new SubjectAlternativeNameBuilder();
         sans.AddIpAddress(IPAddress.Loopback);
         sans.AddIpAddress(IPAddress.IPv6Loopback);
+        if (privateAddress is not null)
+        {
+            _ = GatewayHostBinding.ExactPrivateAddress(new GatewayOrigin(
+                privateAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6
+                    ? $"https://[{privateAddress}]:9443" : $"https://{privateAddress}:9443"));
+            sans.AddIpAddress(privateAddress);
+        }
         request.CertificateExtensions.Add(sans.Build());
         return request.CreateSelfSigned(now, now.AddDays(90));
     }
@@ -47,8 +55,7 @@ internal static class HostCertificate
                 certificate.Extensions.OfType<X509EnhancedKeyUsageExtension>().SingleOrDefault()?.EnhancedKeyUsages is not { Count: 1 } usages ||
                 usages[0].Value != "1.3.6.1.5.5.7.3.1" ||
                 certificate.Extensions.OfType<X509SubjectAlternativeNameExtension>().SingleOrDefault() is not { } san ||
-                !san.EnumerateIPAddresses().OrderBy(address => address.ToString()).SequenceEqual(
-                    new[] { IPAddress.Loopback, IPAddress.IPv6Loopback }.OrderBy(address => address.ToString())) ||
+                !ValidAddresses(san.EnumerateIPAddresses().ToArray()) ||
                 san.EnumerateDnsNames().Any())
                 throw Error(GatewayPersistenceFailure.InvalidState);
             using var chain = new X509Chain();
@@ -74,5 +81,27 @@ internal static class HostCertificate
             certificate?.Dispose();
             throw;
         }
+    }
+
+    internal static IPAddress? PrivateAddress(X509Certificate2 certificate) =>
+        certificate.Extensions.OfType<X509SubjectAlternativeNameExtension>().Single()
+            .EnumerateIPAddresses().SingleOrDefault(address => !IPAddress.IsLoopback(address));
+
+    private static bool ValidAddresses(IPAddress[] addresses)
+    {
+        if (addresses.Length is not (2 or 3) || addresses.Distinct().Count() != addresses.Length ||
+            !addresses.Contains(IPAddress.Loopback) || !addresses.Contains(IPAddress.IPv6Loopback))
+            return false;
+        var extra = addresses.SingleOrDefault(address => !IPAddress.IsLoopback(address));
+        if (addresses.Length == 2) return extra is null;
+        if (extra is null) return false;
+        try
+        {
+            _ = GatewayHostBinding.ExactPrivateAddress(new GatewayOrigin(
+                extra.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6
+                    ? $"https://[{extra}]:9443" : $"https://{extra}:9443"));
+            return true;
+        }
+        catch (GatewayProtocolException) { return false; }
     }
 }

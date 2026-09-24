@@ -4,9 +4,11 @@
 factories retain Windows current-user DPAPI. An explicitly selected
 `LinuxServicePermissions` backend is an **unqualified Linux candidate**, not
 DPAPI-equivalent encryption. This composes the canonical `Martlet.Gateway` authority and its existing
-Kestrel/TLS stack. Optional typed inference workers can now be supplied through
-the existing trusted owner; defaults and the CLI still supply none. No LAN
-listener, model activation, service, firewall or AppSettings/Desktop/companion
+Kestrel/TLS stack. The explicit [Linux executable/binding candidate](../Martlet.Gateway.Host.Linux/README.md)
+adds named private-address factories and bounded same-key SAN rebinding; existing
+factories remain loopback-only. Optional typed inference workers can now be supplied through
+the existing trusted owner; defaults and the CLI still supply none. No implicit LAN
+listener, model activation, service installation, firewall or AppSettings/Desktop/companion
 integration is added. See [Gateway inference composition](../Martlet.Gateway/README.md)
 for mandatory per-action permissions, retained retirement ownership and protocol-2
 client migration.
@@ -96,9 +98,9 @@ identity, reset all devices or silently claim a normal permanent-state update.
 ## Local ownership and certificate lifecycle
 
 Every factory defaults to `LocalGatewayDecision.No`, which returns an inert
-owner without touching storage, DPAPI, keys or sockets. Only an explicit Enable
-and canonical loopback origin can open the selected authority. Existing
-signatures still select Windows DPAPI; Linux requires the explicit overload
+owner without touching storage, DPAPI, keys or sockets. Existing factories require
+explicit Enable and a canonical loopback origin to open the selected authority. Existing
+signatures still select Windows DPAPI; Linux requires the explicit backend overload
 described below. Loading state and
 starting its listener are separate actions. Host-control objects, certificate
 keys and mutable authority are never exposed to request handlers or DI.
@@ -131,13 +133,39 @@ No implicit new-key generation repairs a corrupt existing identity. Deliberately
 creating a new identity at a **different** path produces a different pin and
 requires verified pairing to that identity; it does not erase the old store.
 
-The [local approval executable](../Martlet.Gateway.Host/README.md) remains a
-Windows-only console application. Linux approval/disclosure, graphical setup
-and headless service lifecycle remain separate work. API capability possession
+The original [local approval executable](../Martlet.Gateway.Host/README.md) remains a
+Windows-only console application. A separate [Linux host candidate](../Martlet.Gateway.Host.Linux/README.md)
+now composes explicit TTY approval/disclosure and approved foreground service
+restart; its native execution remains NOT RUN. Graphical setup, service
+installation and container qualification remain separate work. API capability possession
 is not proof of human consent. No installer, packaging, service or hosting
 preset is enabled here.
 
 ## Protected state and crash-safe commit
+
+### Explicit private binding
+
+The additive `GatewayHostBinding.Loopback` / `ExactPrivateAddress` descriptor
+and named `CreateNewForBinding`, `OpenExistingForBinding`,
+`OpenForLocalAdministration`, `RebindForLocalHost` factories are local owner
+capabilities. Named factories preserve source compatibility for existing
+default-No calls with null arguments. No returns an inert owner without
+dereferencing binding or selecting a backend. Enable uses the supplied backend;
+existing factory signatures still refuse private origins.
+
+The private form binds one exact canonical RFC1918/ULA literal origin, never
+wildcards/discovery/public addresses. Certificate loading accepts the legacy
+two-loopback SAN form or those two SANs plus exactly one private address.
+Normal open requires the selected SAN; renewal retains the existing SAN set
+and key/SPKI. A deliberate `RebindForLocalHost` checks the expected identity
+before replacing the optional private SAN and commits the same-key certificate
+with current credentials/revocations/replay state. It neither resets pairings
+nor accumulates addresses. There is still one listener, not one per SAN.
+The old strict reader does not accept the new private-SAN form: do not downgrade
+to an older binary while that form is stored. A deliberate same-key rebind to
+loopback removes the added SAN; no automatic compatibility migration is made.
+The Linux CLI binds this capability to TTY approval and separate receipt
+invalidation/reapproval; configuration alone cannot change service scope.
 
 The HMAC SHA-256 verifier is itself a **signing key**. Treat it like a credential,
 not a harmless password hash. **On the Windows backend**, current-user DPAPI protects all signing keys,
