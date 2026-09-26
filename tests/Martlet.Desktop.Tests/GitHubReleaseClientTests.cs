@@ -30,15 +30,16 @@ public sealed class GitHubReleaseClientTests
     }
 
     [Fact]
-    public async Task NewerStableReleaseOnlyOffersExactVersionedInstaller()
+    public async Task NewerPrototypePrereleaseIsOfferedWithExactVersionedInstaller()
     {
         var bytes = "installer fixture"u8.ToArray();
         using var http = new HttpClient(new ScriptedHandler(request =>
         {
             Assert.Equal("api.github.com", request.RequestUri!.Host);
-            Assert.Equal("/repos/throndir2/Martlet/releases/latest", request.RequestUri.AbsolutePath);
+            Assert.Equal("/repos/throndir2/Martlet/releases", request.RequestUri.AbsolutePath);
+            Assert.Equal("?per_page=20", request.RequestUri.Query);
             Assert.Null(request.Headers.Authorization);
-            return JsonResponse(Release("v0.2.0", "Martlet-0.2.0-win-x64.exe", bytes));
+            return JsonResponse(Release("v0.2.0", "Martlet-0.2.0-win-x64.exe", bytes, prerelease: true));
         }));
         var client = new GitHubReleaseClient(http);
         var update = await client.CheckAsync(new Version(0, 1, 0, 0), CancellationToken.None);
@@ -49,34 +50,60 @@ public sealed class GitHubReleaseClientTests
         Assert.Null(await client.CheckAsync(new Version(0, 2, 0, 0), CancellationToken.None));
     }
 
+    [Fact]
+    public async Task SelectsHighestNumberedNonDraftRelease()
+    {
+        var bytes = "installer fixture"u8.ToArray();
+        var json = JsonSerializer.Serialize(new[]
+        {
+            ReleaseObject("v0.3.0", "Martlet-0.3.0-win-x64.exe", bytes, draft: true),
+            ReleaseObject("nightly", "Martlet-nightly-win-x64.exe", bytes),
+            ReleaseObject("v0.1.5", "Martlet-0.1.5-win-x64.exe", bytes),
+            ReleaseObject("v0.2.0", "Martlet-0.2.0-win-x64.exe", bytes, prerelease: true)
+        });
+        using var http = new HttpClient(new ScriptedHandler(_ => JsonResponse(json)));
+        var update = await new GitHubReleaseClient(http).CheckAsync(new Version(0, 1, 0, 0), CancellationToken.None);
+        Assert.NotNull(update);
+        Assert.Equal("v0.2.0", update.Tag);
+    }
+
     [Theory]
     [InlineData("v0.2.0-beta", "Martlet-0.2.0-beta-win-x64.exe")]
     [InlineData("v0.02.0", "Martlet-0.02.0-win-x64.exe")]
-    [InlineData("v0.2.0", "Martlet-0.2.0-win-arm64.exe")]
-    public async Task RejectsUnsupportedTagsAndMissingInstaller(string tag, string asset)
+    public async Task IgnoresNonNumericReleaseTags(string tag, string asset)
     {
         using var http = new HttpClient(new ScriptedHandler(_ =>
             JsonResponse(Release(tag, asset, "installer"u8.ToArray()))));
+        Assert.Null(await new GitHubReleaseClient(http).CheckAsync(new Version(0, 1, 0, 0), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task RejectsNewestReleaseWithoutWindowsInstaller()
+    {
+        using var http = new HttpClient(new ScriptedHandler(_ =>
+            JsonResponse(Release("v0.2.0", "Martlet-0.2.0-win-arm64.exe", "installer"u8.ToArray()))));
         await Assert.ThrowsAsync<InvalidDataException>(() =>
             new GitHubReleaseClient(http).CheckAsync(new Version(0, 1, 0, 0), CancellationToken.None));
     }
 
     [Fact]
-    public async Task RejectsUnsignedOrUnpublishedMetadata()
+    public async Task RejectsUndigestedOrUnboundedMetadataAndNeverOffersDrafts()
     {
         var bytes = "installer"u8.ToArray();
         foreach (var json in new[]
         {
             Release("v0.2.0", "Martlet-0.2.0-win-x64.exe", bytes, digest: null),
-            Release("v0.2.0", "Martlet-0.2.0-win-x64.exe", bytes, prerelease: true),
-            Release("v0.2.0", "Martlet-0.2.0-win-x64.exe", bytes, draft: true),
-            Release("v0.2.0", "Martlet-0.2.0-win-x64.exe", bytes, size: 600L * 1024 * 1024)
+            Release("v0.2.0", "Martlet-0.2.0-win-x64.exe", bytes, size: 600L * 1024 * 1024),
+            JsonSerializer.Serialize(ReleaseObject("v0.2.0", "Martlet-0.2.0-win-x64.exe", bytes))
         })
         {
             using var http = new HttpClient(new ScriptedHandler(_ => JsonResponse(json)));
             await Assert.ThrowsAsync<InvalidDataException>(() =>
                 new GitHubReleaseClient(http).CheckAsync(new Version(0, 1, 0, 0), CancellationToken.None));
         }
+        using var drafts = new HttpClient(new ScriptedHandler(_ =>
+            JsonResponse(Release("v0.2.0", "Martlet-0.2.0-win-x64.exe", bytes, draft: true))));
+        Assert.Null(await new GitHubReleaseClient(drafts).CheckAsync(new Version(0, 1, 0, 0), CancellationToken.None));
     }
 
     [Fact]
@@ -192,7 +219,11 @@ public sealed class GitHubReleaseClientTests
 
     private static string Release(string tag, string name, byte[] bytes, string? digest = "valid",
         bool draft = false, bool prerelease = false, long? size = null) =>
-        JsonSerializer.Serialize(new
+        JsonSerializer.Serialize(new[] { ReleaseObject(tag, name, bytes, digest, draft, prerelease, size) });
+
+    private static object ReleaseObject(string tag, string name, byte[] bytes, string? digest = "valid",
+        bool draft = false, bool prerelease = false, long? size = null) =>
+        new
         {
             tag_name = tag,
             draft,
@@ -208,7 +239,7 @@ public sealed class GitHubReleaseClientTests
                     digest = digest is null ? null : "sha256:" + Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant()
                 }
             }
-        });
+        };
 
     private static HttpResponseMessage JsonResponse(string json) =>
         new(HttpStatusCode.OK) { Content = new StringContent(json) };

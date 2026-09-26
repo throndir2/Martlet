@@ -89,16 +89,16 @@ allowed. Third-party components retain their own terms and must be cleared
 for distribution separately.
 
 The Desktop now has a separate **OFF-by-default GitHub Release check**. Enabling
-it permits one anonymous stable-release metadata request on future launches;
+it permits one anonymous release-metadata request on future launches;
 **Check for app updates** makes an explicit request instead. If a newer
 versioned Windows installer is published, **Download update** requires a
 separate confirmation, limits the transfer to 512 MiB and verifies the exact
 bytes against GitHub's SHA-256 asset digest. The repository is public, so
-checks succeed anonymously once a stable Release is published. The opt-in is stored in
+checks succeed anonymously once a versioned release (including an unsigned prototype prerelease) is published. The opt-in is stored in
 `update-checks.txt` in the selected local data directory, separately from
 profile settings and configuration backup; unreadable preferences default to
 OFF with a visible error. The owner permits an
-**unsigned hobby release**, clearly labeled as such: a digest supplied by the
+**unsigned prototype prerelease**, clearly labeled as such: a digest supplied by the
 same source is not publisher authentication, and Windows may display security
 warnings. Martlet does **not** launch or install the downloaded executable;
 an in-app installation/rollback path is not implemented. Do not run an internal
@@ -123,16 +123,15 @@ directly helps finish or debug a change. Existing tests and scripts remain
 available for manual use. `CI=true` remains a local MSBuild setting for locked
 restore and deterministic build metadata; it does not require a remote runner.
 
-The only permitted remote workflow exception is an **explicitly requested,
-minimal manual release build/package**: restore necessary build dependencies
-and compile/package the requested deliverable. GitHub Actions minutes are
-reserved exclusively for that purpose. Run it, upload assets or publish a
-Release only when the owner explicitly asks for a release. No tests, lint,
-smoke, qualification, reproducibility checks, matrices or disguised validation
-belong in that workflow. Never add ordinary PR/push/scheduled automation or
-automatic release triggers.
-Official unsigned hobby releases must explicitly disclose unverified
-publisher identity and keep Windows protection warnings intact.
+The only permitted remote workflow is a **minimal build/package/release**:
+restore necessary build dependencies, compile/package the deliverable and
+publish it as a GitHub release. Agents may create, dispatch and publish these
+releases automatically without owner approval. No tests, lint, smoke,
+qualification, reproducibility checks, matrices or disguised validation belong
+in that workflow. Use only manual dispatch or tag/release triggers; never add
+PR/push/scheduled automation. Unsigned builds are published as unsigned
+prototype prereleases that disclose unverified publisher identity and keep
+Windows protection warnings intact.
 
 Before any push or PR creation/update, inspect the applicable workflow events,
 refs and resulting tree, including older branches that could restore deleted

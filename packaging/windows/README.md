@@ -56,8 +56,8 @@ $run = Join-Path $PWD ("artifacts\windows-public-" + [guid]::NewGuid().ToString(
 .\packaging\windows\Build-PublicRelease.ps1 -Version 0.1.0 -DotnetPath $sdk -OutputDirectory $run
 ```
 
-This builds `package\installer\Martlet-0.1.0-win-x64.exe`, an **UNSIGNED HOBBY
-RELEASE**, with a distinct public AppId, fixed `%LocalAppData%\Programs\Martlet`
+This builds `package\installer\Martlet-0.1.0-win-x64.exe`, an **UNSIGNED
+PROTOTYPE PRERELEASE**, with a distinct public AppId, fixed `%LocalAppData%\Programs\Martlet`
 installation directory, public help/terms, explicit public payload channel and
 separate SBOM/provenance identity. It is not a renamed internal installer.
 The package inventories and hashes `help\LICENSE.txt` and complete upstream
@@ -66,8 +66,9 @@ Release page links to the exact source-commit LICENSE and third-party dependency
 inventory, without claiming ownership of third-party components.
 The manifest's full assembly file version remains `0.1.0.0`; the public
 installer and tag use the selected three-part release version `0.1.0`.
-The stable `v0.1.0` release is explicitly marked Latest to match the updater's
-`/releases/latest` lookup. The GitHub asset digest is produced on upload;
+`v0.1.0` is published as a GitHub **prerelease**. The Desktop updater reads the
+release list (not `/releases/latest`, which omits prereleases) and offers the
+highest numbered non-draft version. The GitHub asset digest is produced on upload;
 `SHA256SUMS.txt` binds the local installer and receipt but is not publisher
 authentication.
 
@@ -111,10 +112,10 @@ separate local repeat-publish, test, smoke or clean-machine gates below. They do
 not upload or publish anything. Do not distribute the internal candidate.
 
 The internal AppId, name/channel and unsigned manifest remain unchanged.
-Never upload this internal build as the stable release artifact. Its file version
+Never upload this internal build as the public release artifact. Its file version
 is four-part, its application identity is separate, and its help explicitly
-labels it internal. The owner has permitted a clearly disclosed unsigned hobby
-release, not relabeling this development build.
+labels it internal. The owner has permitted a clearly disclosed unsigned
+prototype prerelease, not relabeling this development build.
 
 ## Developer commands
 
@@ -364,7 +365,7 @@ payloads lack this evidence and must be rebuilt; there is no allow-missing
 option. Each channel records an **unsigned build observation** with distinct
 channel/assurance/SBOM identity; neither is publisher attestation, a SLSA
 level, a release signature, license clearance or a vulnerability assessment.
-The owner has explicitly chosen an unsigned hobby release, not an unsigned
+The owner has explicitly chosen unsigned prototype prereleases, not an unsigned
 automatic installer or an authentication claim.
 
 The avatar producer explicitly selects manifest 3 / provenance 2. Its coordinated
@@ -620,15 +621,13 @@ over Martlet code.
 
 ## Evidence boundary and required VM follow-up
 
-Required for each changed app graph on the existing Windows developer host:
-two actual locked self-contained publishes, native CLI/WPF smoke,
-integrity/negative coverage, repeat-publish equality and real Inno compilation.
-Lock refresh or read-only compiler receipt verification alone does **not**
-complete those payload gates. The former dedicated hosted lane is removed;
-run the commands above locally, including the retained wrapper regression.
+Full payload gates (two locked self-contained publishes, native CLI/WPF smoke,
+integrity/negative coverage, repeat-publish equality and real Inno compilation)
+are available on the Windows developer host but are not required per change
+during the prototype phase. The former dedicated hosted lane is removed.
 These developer commands neither install Martlet nor upload releases/artifacts.
-The minimal remote build/release exception does not authorize moving these
-validation gates into an Action or creating a replacement workflow.
+A minimal remote build/release workflow may package and publish releases but
+must not absorb these validation gates.
 
 **Not run:** clean standard-user Windows with no SDK/preinstalled .NET; actual
 install/uninstall/reinstall/repair; Start menu/registered uninstall operation;

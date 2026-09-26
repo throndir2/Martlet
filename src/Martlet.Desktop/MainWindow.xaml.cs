@@ -161,7 +161,7 @@ public partial class MainWindow : ThemedWindow
             updateChecksEnabled = enabled;
             if (!enabled) updateCheckCancellation?.Cancel();
             UpdateStatusText.Text = enabled
-                ? "Automatic stable-release checks enabled for future launches. No download or install is authorized."
+                ? "Automatic release checks enabled for future launches. No download or install is authorized."
                 : "Automatic checks OFF. No update network request will run on launch.";
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -184,7 +184,7 @@ public partial class MainWindow : ThemedWindow
         CheckForUpdatesButton.IsEnabled = false;
         DownloadUpdateButton.Visibility = Visibility.Collapsed;
         ReviewUpdateButton.Visibility = Visibility.Collapsed;
-        UpdateStatusText.Text = "Checking public stable GitHub Releases; no download or installation has started.";
+        UpdateStatusText.Text = "Checking public GitHub Releases; no download or installation has started.";
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         updateCheckCancellation = cancellation;
         try
@@ -194,8 +194,8 @@ public partial class MainWindow : ThemedWindow
             if (closing || cancellation.IsCancellationRequested) return;
             availableUpdate = result;
             UpdateStatusText.Text = result is null
-                ? "No newer stable Martlet Release is available."
-                : $"Version {result.Version} is available ({result.Bytes / (1024d * 1024d):F1} MiB). Review {result.ReleasePage} before deciding to download. This unsigned hobby release has no verified publisher; in-app installation is not yet supported.";
+                ? "No newer Martlet release is available."
+                : $"Version {result.Version} is available ({result.Bytes / (1024d * 1024d):F1} MiB). Review {result.ReleasePage} before deciding to download. This unsigned prototype prerelease has no verified publisher; in-app installation is not yet supported.";
             DownloadUpdateButton.Visibility = result is null ? Visibility.Collapsed : Visibility.Visible;
             ReviewUpdateButton.Visibility = result is null ? Visibility.Collapsed : Visibility.Visible;
         }

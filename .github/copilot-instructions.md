@@ -18,15 +18,16 @@ For implementation work, reuse the assigned worktree branch, commit, publish a
 PR and merge into `main` without routine approval prompts. Explicit user holds,
 required protections and authorization boundaries still apply. Never trigger
 remote validation; check workflow triggers before publication and merge, and
-confirm the merged result on `origin/main`. Deliver actual production paths
+confirm the merged result on `origin/main`. Releases are pre-authorized:
+agents may build and publish them through a minimal build/release workflow
+without asking. Deliver actual production paths
 early, replace obsolete designs when warranted and minimize narration.
 Parallelize independent work with isolated ownership. Safety, consent and
 honest reporting remain mandatory.
 
-Never create GitHub CI pipelines: free Actions minutes are reserved solely
-for separately requested minimal manual release builds. No PR, push, schedule
-or automatic release triggers, hosted tests or disguised validation. Release
-uploads/publication need explicit owner authorization.
-The owner explicitly permits a clearly labeled unsigned hobby installer;
-do not require purchased code signing or misrepresent a GitHub digest as a
-publisher signature. Preserve user consent for downloads and installation.
+Never create GitHub CI pipelines: Actions are reserved for minimal
+build/package/release workflows (manual dispatch or tag/release triggers only;
+no PR, push or schedule triggers, hosted tests or disguised validation).
+Unsigned installers are labeled unsigned prototype prereleases; never
+misrepresent a GitHub digest as a publisher signature, and preserve user
+consent for downloads and installation.

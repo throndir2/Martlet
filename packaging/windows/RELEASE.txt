@@ -1,4 +1,4 @@
-MARTLET 0.1.0 - UNSIGNED HOBBY RELEASE
+MARTLET 0.1.0 - UNSIGNED PROTOTYPE PRERELEASE
 
 This installer is deliberately unsigned. A matching checksum from GitHub
 detects download corruption but does not authenticate the publisher. Windows

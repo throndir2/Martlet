@@ -14,8 +14,7 @@ speed, never remote validation. Earlier hosted-CI plans and the 2026-09-13
 local-gate requirement are superseded. Test, smoke, package-integrity and
 qualification gates below are future release gates, not required per change;
 unrun gates are reported as NOT RUN, never as passed.
-No replacement CI Action is permitted; the manual release workflow runs only
-when the owner explicitly asks for a release.
+Agents may publish minimal build/package releases automatically under that policy.
 
 **Requirements expansion, 2026-09-19:** [Companion controls and behavior](COMPANION_REQUIREMENTS.md)
 defines R19-R24 and AC-21-AC-26: editable personas, F5 reference-voice replacement,
@@ -744,19 +743,18 @@ and schema compatibility, expected downloads, test environment, cases and
 results, known limitations, and rollback instructions. Store private hardware
 identifiers/recordings outside public artifacts; publish sanitized evidence.
 
-The owner explicitly permits a clearly identified **unsigned hobby release**:
-Windows may warn that the publisher is unverified; do not suppress those
-warnings or claim a publisher signature. Do not buy a certificate merely to
-satisfy a checklist. Preserve provenance, notices, release version identity,
-separate download/install consent and locally witnessed install/rollback evidence.
-The older private V07 signed ZIP staging contract remains signed and is not
-the GitHub installer route. Internal unsigned artifacts retain their internal
-identity and must not be mislabeled official.
-Only an explicitly requested minimal remote build/package/release is permitted;
-it contains no tests, smoke, qualification or reproducibility checks, and uploads
-or release publication require separate authorization. Validate GitHub origin,
-asset integrity, rollback policy and provenance locally; a matching unsigned
-checksum alone does not establish publisher identity or make execution safe.
+Signing keys never enter source, ordinary logs, or untrusted PR jobs. Code
+signing is optional by owner direction; do not buy a certificate merely to
+satisfy a checklist. Unsigned builds are labeled unsigned prototype
+prereleases, never official signed releases; Windows may warn that the
+publisher is unverified, and those warnings are never suppressed. The older
+private V07 signed ZIP staging contract remains signed and is not the GitHub
+installer route; internal unsigned artifacts keep their internal identity.
+The only permitted remote workflow is a minimal build/package/release with no
+tests, smoke, qualification or reproducibility checks; agents may create it,
+dispatch it and publish releases without separate approval. A matching
+unsigned checksum alone does not establish publisher identity or make
+execution safe.
 
 Stable and beta are explicit channels with a supported current/previous
 compatible version policy. Document schema incompatibility, security patch

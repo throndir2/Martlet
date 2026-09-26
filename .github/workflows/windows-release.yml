@@ -138,12 +138,12 @@ jobs:
           if (($existing -join "`n") -notmatch 'HTTP 404') { throw "Cannot establish absence of release tag: $existing" }
           $licenseUrl = "https://github.com/$env:GITHUB_REPOSITORY/blob/$env:GITHUB_SHA/LICENSE"
           $noticeUrl = "https://github.com/$env:GITHUB_REPOSITORY/blob/$env:GITHUB_SHA/packaging/windows/DEPENDENCIES.txt"
-          $notes = "UNSIGNED hobby release for Windows 11 25H2 x64 (build 26200+). Windows may report an unverified publisher: there is no Authenticode publisher authentication. A GitHub SHA-256 digest verifies bytes, not publisher identity. The narrow personal, noncommercial binary-use grant is at $licenseUrl. Third-party components retain their own terms; their dependency inventory is at $noticeUrl and complete bundled notices are inside the installer. Local install/upgrade/rollback and device/provider qualification are not established by the build.`nInstaller SHA-256: $sha"
+          $notes = "UNSIGNED prototype prerelease for Windows 11 25H2 x64 (build 26200+). Windows may report an unverified publisher: there is no Authenticode publisher authentication. A GitHub SHA-256 digest verifies bytes, not publisher identity. The narrow personal, noncommercial binary-use grant is at $licenseUrl. Third-party components retain their own terms; their dependency inventory is at $noticeUrl and complete bundled notices are inside the installer. Local install/upgrade/rollback and device/provider qualification are not established by the build.`nInstaller SHA-256: $sha"
           & gh api -X POST "repos/$env:GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$tag" `
             -f "sha=$env:GITHUB_SHA" --silent
           if ($LASTEXITCODE -ne 0) { throw 'Could not atomically create the version tag at the reviewed build commit.' }
           & gh release create $tag $installer $receipt $sums --repo $env:GITHUB_REPOSITORY `
-            --verify-tag --title 'Martlet 0.1.0 - UNSIGNED hobby release' --notes $notes --draft
+            --verify-tag --title 'Martlet 0.1.0 - unsigned prototype prerelease' --notes $notes --draft --prerelease
           if ($LASTEXITCODE -ne 0) { throw 'Draft release/upload failed; investigate before any manual retry.' }
           # The get-by-tag endpoint returns only published releases; find the draft through the release list.
           $assetDigest = $null
@@ -168,5 +168,5 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or $visibility.Trim() -cne 'public') {
             throw 'The repository is no longer public; leaving the uploaded release as a draft.'
           }
-          & gh release edit $tag --repo $env:GITHUB_REPOSITORY --draft=false --latest
+          & gh release edit $tag --repo $env:GITHUB_REPOSITORY --draft=false --prerelease
           if ($LASTEXITCODE -ne 0) { throw 'The release remains a draft; publication failed.' }

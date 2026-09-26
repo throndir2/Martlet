@@ -17,8 +17,9 @@ internal sealed class UpdateCleanupException(string path, Exception inner)
 internal sealed class GitHubReleaseClient(HttpClient client)
 {
     private const long MaximumInstallerBytes = 512L * 1024 * 1024;
-    private const int MaximumMetadataBytes = 256 * 1024;
-    private static readonly Uri LatestRelease = new("https://api.github.com/repos/throndir2/Martlet/releases/latest");
+    private const int MaximumMetadataBytes = 1024 * 1024;
+    // Unsigned builds ship as prototype prereleases, which /releases/latest omits.
+    private static readonly Uri Releases = new("https://api.github.com/repos/throndir2/Martlet/releases?per_page=20");
 
     internal static HttpClient CreateHttpClient() => new(new SocketsHttpHandler
     {
@@ -33,12 +34,12 @@ internal sealed class GitHubReleaseClient(HttpClient client)
 
     internal async Task<GitHubUpdate?> CheckAsync(Version installed, CancellationToken token)
     {
-        using var request = Request(LatestRelease, "application/vnd.github+json");
+        using var request = Request(Releases, "application/vnd.github+json");
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
         timeout.CancelAfter(TimeSpan.FromSeconds(30));
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
         if (response.StatusCode == HttpStatusCode.NotFound)
-            throw new InvalidDataException("No public stable Martlet Release is available. The repository or release may still be private.");
+            throw new InvalidDataException("Martlet's GitHub Releases are unavailable. The repository may be private or moved.");
         response.EnsureSuccessStatusCode();
         if (response.Content.Headers.ContentLength is > MaximumMetadataBytes)
             throw new InvalidDataException("GitHub Release metadata exceeds the supported size.");
@@ -139,18 +140,29 @@ internal sealed class GitHubReleaseClient(HttpClient client)
 
     private static GitHubUpdate? Parse(JsonElement root, Version installed)
     {
-        if (root.ValueKind != JsonValueKind.Object ||
-            ReadBoolean(root, "draft") || ReadBoolean(root, "prerelease"))
-            throw new InvalidDataException("Only a published stable GitHub Release can be offered.");
-        var tag = ReadString(root, "tag_name");
-        if (!TryParseVersion(tag, out var releaseVersion))
-            throw new InvalidDataException("GitHub Release tag is not a supported numeric app version.");
+        if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() > 100)
+            throw new InvalidDataException("GitHub Release metadata has an invalid release list.");
         var current = new Version(installed.Major, installed.Minor,
             Math.Max(installed.Build, 0), Math.Max(installed.Revision, 0));
-        if (releaseVersion <= current) return null;
+        JsonElement? newest = null;
+        var newestVersion = current;
+        var newestTag = "";
+        foreach (var release in root.EnumerateArray())
+        {
+            // Drafts are never offered; tags that are not numeric app versions belong to other artifacts.
+            if (release.ValueKind != JsonValueKind.Object || ReadBoolean(release, "draft")) continue;
+            var candidateTag = ReadString(release, "tag_name");
+            if (!TryParseVersion(candidateTag, out var candidate) || candidate <= newestVersion) continue;
+            newest = release;
+            newestVersion = candidate;
+            newestTag = candidateTag;
+        }
+        if (newest is not { } selected) return null;
+        var tag = newestTag;
+        var releaseVersion = newestVersion;
 
         var expectedName = $"Martlet-{tag.TrimStart('v')}-win-x64.exe";
-        var assets = ReadProperty(root, "assets");
+        var assets = ReadProperty(selected, "assets");
         if (assets.ValueKind != JsonValueKind.Array || assets.GetArrayLength() > 64)
             throw new InvalidDataException("GitHub Release has an invalid asset list.");
         GitHubUpdate? found = null;
@@ -170,7 +182,7 @@ internal sealed class GitHubReleaseClient(HttpClient client)
             found = new(releaseVersion, tag, expectedName, id, size, digest[7..],
                 new Uri($"https://github.com/throndir2/Martlet/releases/tag/{tag}"));
         }
-        return found ?? throw new InvalidDataException("Newer stable Release has no matching win-x64 installer asset.");
+        return found ?? throw new InvalidDataException("The newest Martlet release has no matching win-x64 installer asset.");
     }
 
     private static bool TryParseVersion(string tag, out Version version)

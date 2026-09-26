@@ -19,9 +19,9 @@
 AppId={{7EA5CC4A-8BF4-4412-ABE1-90819303FEAB}
 AppName=Martlet
 AppVersion={#AppVersion}
-AppVerName=Martlet {#AppVersion} - UNSIGNED HOBBY RELEASE
+AppVerName=Martlet {#AppVersion} - UNSIGNED PROTOTYPE PRERELEASE
 AppPublisher=throndir2 (unsigned)
-VersionInfoDescription=Martlet - UNSIGNED HOBBY RELEASE
+VersionInfoDescription=Martlet - UNSIGNED PROTOTYPE PRERELEASE
 DefaultDirName={localappdata}\Programs\Martlet
 DefaultGroupName=Martlet
 #else
@@ -97,7 +97,7 @@ begin
   if CompareText(RemoveBackslashUnlessRoot(ExpandFileName(ExpandConstant('{app}'))),
 #ifdef PublicRelease
       RemoveBackslashUnlessRoot(ExpandFileName(ExpandConstant('{localappdata}\Programs\Martlet')))) <> 0 then
-    Result := 'This unsigned hobby release uses only the fixed per-user program directory. Remove /DIR overrides. User settings remain separate.';
+    Result := 'This unsigned prototype prerelease uses only the fixed per-user program directory. Remove /DIR overrides. User settings remain separate.';
 #else
       RemoveBackslashUnlessRoot(ExpandFileName(ExpandConstant('{localappdata}\Programs\Martlet Internal')))) <> 0 then
     Result := 'This internal build uses only the fixed per-user program directory. Remove /DIR overrides. User settings must remain separate.';

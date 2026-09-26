@@ -115,22 +115,20 @@ Report integrated delivery versus local/open/blocked work accurately.
 ## Authorization boundaries
 
 Autonomous delivery does not authorize spending, sensitive-data disclosure,
-production deployment, release publication, destructive actions, installing
-host services/drivers, or changing permissions, protections or billing.
-Never create, enable, expand, dispatch or retry GitHub CI pipelines (or other
-remote validation), including PR, push, scheduled and self-hosted jobs. Free
-GitHub Actions minutes are reserved exclusively for an explicitly requested,
-minimal **manual release build/package** on GitHub: only necessary restores,
-compilation and packaging. No tests, lint, scans, smoke checks, qualification
-or disguised validation in that workflow. Run the release workflow, upload
-artifacts to a public Release or publish a release only when the owner
-explicitly asks for a release; never add automatic release triggers.
+production deployment, destructive actions, installing host services/drivers,
+or changing permissions, protections or billing.
+Do not create, enable, expand, dispatch or retry remote validation CI.
 
-The owner has chosen an **unsigned, clearly disclosed hobby release**; do not
-make code signing a prerequisite for the official Windows installer or add a
-signing-cost dependency. Never mislabel an unsigned build as signed or suppress
-Windows security warnings. An unsigned GitHub asset digest checks integrity
-against the GitHub metadata, not independent publisher identity. Retain explicit
-user consent for download and installation, narrow official-binary use rights
-and third-party notices. Keep the private V07 signed-candidate library's trust
+**Releases are pre-authorized.** Agents may create and maintain a minimal
+build/package/release workflow (manual dispatch or tag/release trigger only),
+dispatch it and publish GitHub releases without asking. It contains no tests or
+validation, and releases are never cut merely to obtain validation evidence.
+Label unsigned builds as unsigned prototype prereleases, not official signed
+releases. Buying a signing certificate is spending and still needs approval.
+
+Code signing is not required for these hobby prereleases. Never mislabel an
+unsigned build as signed or suppress Windows security warnings; a GitHub asset
+digest checks integrity, not publisher identity. Retain explicit user consent
+for download and installation, the narrow official-binary use rights and
+third-party notices. Keep the private V07 signed-candidate library's trust
 contract separate from this GitHub installer delivery route.

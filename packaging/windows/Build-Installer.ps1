@@ -48,7 +48,7 @@ $provenance = [ordered]@{
     sourceCommit = $manifest.sourceCommit
     sourceDirty = $manifest.sourceDirty
     cleanWindowsLifecycle = 'NOT RUN - requires isolated Windows 11 25H2 x64 VM'
-    signing = if ($PublicRelease) { 'UNSIGNED HOBBY RELEASE - no Authenticode publisher authentication' }
+    signing = if ($PublicRelease) { 'UNSIGNED PROTOTYPE PRERELEASE - no Authenticode publisher authentication' }
         else { 'NOT RUN - unsigned internal skeleton, no public distribution authorized' }
 }
 [IO.File]::WriteAllText((Join-Path $staging 'installer-manifest.json'), ($provenance | ConvertTo-Json -Depth 8) + "`n")
