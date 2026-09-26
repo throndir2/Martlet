@@ -16,18 +16,24 @@ each step.
 
 An explicit review-only, planning, local-only, no-push, draft, approval-hold or
 no-merge request overrides this default. Existing task-specific holds remain
-binding. Ask only for a consequential unresolved product/architecture decision,
-missing authority or a genuine blocker; resolve routine details using existing
-patterns and evidence.
+binding. Make routine decisions directly using best practices and repository
+evidence. Ask only when missing authority or a consequential unresolved decision
+cannot responsibly be resolved from the user's goal and available evidence.
 
-## Loop engineering
+## Decisive autonomous loop engineering
 
-- Treat implementation requests as outcomes to deliver, not invitations to stop
-  at a plan. Define observable acceptance from the request and current contracts
-  before editing, then verify the actual affected path and persistent result.
+- Be aggressive about completing the requested outcome, not defensive about
+  preserving obsolete designs. Replace them when warranted, updating affected
+  callers, contracts, migration paths and documentation together. Keep scope
+  focused; decisiveness is not permission for unrelated rewrites or unsafe work.
+- Deliver working production paths early, not endless disabled foundations,
+  stubs or configuration-only milestones. Wire the actual supported route
+  through its callers and verify observable end-to-end acceptance. Preserve
+  required consent, opt-in defaults and qualification gates; report remaining
+  prerequisites honestly rather than enabling an unqualified feature.
 - Investigate uncertainty in current code, documentation and local evidence.
-  Make routine, low-risk decisions using established repository patterns; ask
-  only when a consequential decision or authorization remains unresolved.
+  Define acceptance before editing, choose the simplest complete solution, and
+  act without routine questionnaires, speculative scaffolding or repeated plans.
 - Repeat implementation, local validation, independent review and in-scope fixes
   until acceptance is met. Fix root causes across affected callers, tests and
   documentation; do not weaken checks or silently reduce scope to finish.
@@ -35,9 +41,10 @@ patterns and evidence.
   If blocked, try reasonable alternatives within scope and authorization, then
   preserve the work and report the exact blocker, unrun gates and smallest
   human action needed. Do not repeat unsuccessful attempts without new evidence.
-- Keep progress updates brief and meaningful. Report local work, open review
-  and verified integration distinctly; completion requires the requested result
-  to be verified and persistent, not merely proposed or queued.
+- Minimize narration and token use: batch relevant reads, avoid duplicate
+  investigation and report only meaningful decisions, blockers and outcomes.
+  Distinguish local work, open review and verified integration; completion
+  requires a working persistent result, not a proposal or queued merge.
 
 ## Branch and worktree ownership
 
@@ -54,6 +61,13 @@ patterns and evidence.
 - Start independent tasks from current `main`. Stack on an unmerged task branch
   only when explicitly requested or when the work genuinely depends on it;
   merge prerequisites first and target the final integration to `main`.
+- Run independent reads, checks and bounded workstreams in parallel when safe.
+  Use isolated sessions/worktrees for substantial independent implementation;
+  do small tasks directly rather than multiplying agents or coordination.
+- Agree shared-file and contract ownership before parallel edits; assign one
+  integration owner for overlaps. Exchange exact commits and evidence, not
+  competing snapshots. Serialize merges and refresh/revalidate against each
+  preceding merge; parallel implementation never permits concurrent integration.
 - Do not force-push, rewrite shared history, amend without permission, or delete
   branches/worktrees containing unmerged or unrelated work.
 
