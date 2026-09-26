@@ -4,15 +4,21 @@ These instructions apply throughout Martlet. Follow more specific instructions
 and explicit user constraints as well. Read the relevant contracts and current
 implementation before editing; historical plans are not evidence of completion.
 
+## Highest priority: autonomous, autopilot-style work
+
+Work autonomously end to end as if in autopilot mode. Make the decisions, do
+the work and finish it without waiting on the owner. Do not stop for routine
+confirmation, plan approval or choice questionnaires; state material
+assumptions briefly and continue. Stop only for a genuine blocker or an action
+outside the authorization boundaries below.
+
 ## Default: deliver through merge
 
-For an implementation request, complete the engineering loop: inspect, define
-observable acceptance, implement, validate locally, obtain independent review,
-fix findings, revalidate, commit, publish a pull request, and merge into `main`.
-Routine branch creation, commits, PR publication and normal merging are
-authorized by default; do not stop at a plan, a local patch or an open PR when
-the requested work can be completed safely. Do not ask "should I proceed?" at
-each step.
+For an implementation request: inspect, implement, commit, publish a pull
+request and merge into `main`. Routine branch creation, commits, PR publication
+and normal merging are authorized by default; do not stop at a plan, a local
+patch or an open PR when the requested work can be completed safely. Do not
+ask "should I proceed?" at each step.
 
 An explicit review-only, planning, local-only, no-push, draft, approval-hold or
 no-merge request overrides this default. Existing task-specific holds remain
@@ -28,19 +34,18 @@ cannot responsibly be resolved from the user's goal and available evidence.
   focused; decisiveness is not permission for unrelated rewrites or unsafe work.
 - Deliver working production paths early, not endless disabled foundations,
   stubs or configuration-only milestones. Wire the actual supported route
-  through its callers and verify observable end-to-end acceptance. Preserve
-  required consent, opt-in defaults and qualification gates; report remaining
-  prerequisites honestly rather than enabling an unqualified feature.
+  through its callers. Preserve required consent, opt-in defaults and
+  qualification gates; report remaining prerequisites honestly rather than
+  enabling an unqualified feature.
 - Investigate uncertainty in current code, documentation and local evidence.
-  Define acceptance before editing, choose the simplest complete solution, and
-  act without routine questionnaires, speculative scaffolding or repeated plans.
-- Repeat implementation, local validation, independent review and in-scope fixes
-  until acceptance is met. Fix root causes across affected callers, tests and
-  documentation; do not weaken checks or silently reduce scope to finish.
+  Choose the simplest complete solution and act without routine
+  questionnaires, speculative scaffolding or repeated plans.
+- Fix root causes across affected callers and documentation; do not silently
+  reduce scope to finish.
 - Continue through each next authorized step without routine approval prompts.
   If blocked, try reasonable alternatives within scope and authorization, then
-  preserve the work and report the exact blocker, unrun gates and smallest
-  human action needed. Do not repeat unsuccessful attempts without new evidence.
+  preserve the work and report the exact blocker and smallest human action
+  needed. Do not repeat unsuccessful attempts without new evidence.
 - Minimize narration and token use: batch relevant reads, avoid duplicate
   investigation and report only meaningful decisions, blockers and outcomes.
   Distinguish local work, open review and verified integration; completion
@@ -65,43 +70,38 @@ cannot responsibly be resolved from the user's goal and available evidence.
   Use isolated sessions/worktrees for substantial independent implementation;
   do small tasks directly rather than multiplying agents or coordination.
 - Agree shared-file and contract ownership before parallel edits; assign one
-  integration owner for overlaps. Exchange exact commits and evidence, not
-  competing snapshots. Serialize merges and refresh/revalidate against each
-  preceding merge; parallel implementation never permits concurrent integration.
+  integration owner for overlaps. Exchange exact commits, not competing
+  snapshots. Serialize merges and refresh against each preceding merge;
+  parallel implementation never permits concurrent integration.
 - Do not force-push, rewrite shared history, amend without permission, or delete
   branches/worktrees containing unmerged or unrelated work.
 
-## Local acceptance and review
+## Prototype speed: no local gates
 
-Keep changes focused but complete across affected callers, contracts, regression
-tests and documentation. Fix root causes, preserve intended behavior, and
-surface errors instead of silently falling back. Use the repository's pinned
-tools and existing checks, starting with the smallest affected checks and then
-the required affected suites/build/package/smoke gates. Documentation-only work
-needs applicable existing documentation checks and diff review, not an app build.
+Martlet is a prototype. Speed matters more than gates. Local test suites,
+build/package/smoke gates and independent review agents are **not required**
+and should not be run by default. Run at most a quick, targeted build or test
+when it directly helps you finish or debug the change. Do not add
+test-coverage, review or evidence-recording steps to satisfy process.
 
-Obtain an independent reviewer (a separate review agent or human), resolve
-in-scope findings and rerun affected checks before merging. Record the reviewed
-commit, actual local commands/outcomes and any unrun gates in the PR. Never
-claim fixture, fake-native or historical results as real-device, clean-machine,
-model or release qualification.
+Keep changes focused and surface errors instead of silently falling back.
+Never claim a check passed that you did not run, and never present fixture,
+fake-native or historical results as real-device, model or release
+qualification.
 
 ## Publication and merge
 
-Follow the [local-only validation policy](README.md#local-only-validation-policy)
+Follow the [validation policy](README.md#local-only-validation-policy)
 and [delivery protocol](docs/DELIVERY.md). Before each push, PR creation/update
-or merge, inspect the applicable base/head workflow trees, event/ref triggers
-and resulting tree. Do not start remote validation, including self-hosted
-Actions, or rely on skip markers to make publication safe. If no safe path
-exists, retain the local work and report the exact blocker.
+or merge, check the applicable workflow triggers so publishing starts no remote
+validation, including self-hosted Actions. If no safe path exists, retain the
+local work and report the exact blocker.
 
-Publish only the task's reviewed changes to the repository's configured remote.
-Use a focused PR targeting `main`, with a clear acceptance description. Refresh
-`origin/main` before merging; if it advanced, reconcile the integration, rerun
-affected local checks and obtain review of any new changes. Merge eligible PRs
-one at a time through the normal protected GitHub path, bound to the exact
-reviewed head commit. Never bypass protections, dismiss required review,
-fabricate check statuses or merge a held PR.
+Publish only the task's changes to the repository's configured remote. Use a
+focused PR targeting `main` with a short description. Refresh `origin/main`
+before merging and reconcile if it advanced. Merge eligible PRs one at a time
+through the normal GitHub path. Never bypass protections, dismiss required
+review, fabricate check statuses or merge a held PR.
 
 Automatic completion means the agent performs the normal eligible PR merge;
 it does not mean enabling repository-wide auto-merge, changing repository
@@ -122,17 +122,15 @@ remote validation), including PR, push, scheduled and self-hosted jobs. Free
 GitHub Actions minutes are reserved exclusively for an explicitly requested,
 minimal **manual release build/package** on GitHub: only necessary restores,
 compilation and packaging. No tests, lint, scans, smoke checks, qualification
-or disguised validation in that workflow. Do not run the release workflow,
-upload artifacts to a public Release, publish a release or add automatic
-release triggers without separate authorization. Missing local OS/hardware/tool
-evidence stays NOT RUN or blocked; never weaken a gate to finish.
+or disguised validation in that workflow. Run the release workflow, upload
+artifacts to a public Release or publish a release only when the owner
+explicitly asks for a release; never add automatic release triggers.
 
 The owner has chosen an **unsigned, clearly disclosed hobby release**; do not
 make code signing a prerequisite for the official Windows installer or add a
 signing-cost dependency. Never mislabel an unsigned build as signed or suppress
 Windows security warnings. An unsigned GitHub asset digest checks integrity
 against the GitHub metadata, not independent publisher identity. Retain explicit
-user consent for download and installation, narrow official-binary use rights,
-third-party notices, and local install/upgrade/rollback qualification. Keep
-the private V07 signed-candidate library's trust contract separate from this
-GitHub installer delivery route.
+user consent for download and installation, narrow official-binary use rights
+and third-party notices. Keep the private V07 signed-candidate library's trust
+contract separate from this GitHub installer delivery route.

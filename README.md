@@ -63,7 +63,7 @@ There is no remote memory, embedding, vector database or automatic backup.
 
 | Document | Purpose |
 | --- | --- |
-| [Coding-agent instructions](AGENTS.md) | Task branches, autonomous local engineering loop, independent review, and normal merge into `main`; explicit holds and safety boundaries remain binding |
+| [Coding-agent instructions](AGENTS.md) | Autonomous autopilot-style work, task branches, prototype-speed policy (no required local gates), and normal merge into `main`; explicit holds and safety boundaries remain binding |
 | [Development plan](DEVELOPMENT_PLAN.md) | Scope, proposed decisions, priorities, risks, and reading order |
 | [Companion requirements](docs/COMPANION_REQUIREMENTS.md) | Planned persona editing, F5 reference voices, LLM/VLM selection, listen-first behavior, speech interruption and response-style controls; not current features |
 | [Avatar guide and compatibility](docs/AVATARS.md) | Accepted Live2D/VRM direction, Audio2Face-first analysis, per-model mappings, working/degraded/blocked permutations, parallel plan and remaining qualification |
@@ -93,66 +93,57 @@ it permits one anonymous stable-release metadata request on future launches;
 **Check for app updates** makes an explicit request instead. If a newer
 versioned Windows installer is published, **Download update** requires a
 separate confirmation, limits the transfer to 512 MiB and verifies the exact
-bytes against GitHub's SHA-256 asset digest. The repository is currently
-private, so anonymous checks cannot succeed yet. The opt-in is stored in
+bytes against GitHub's SHA-256 asset digest. The repository is public, so
+checks succeed anonymously once a stable Release is published. The opt-in is stored in
 `update-checks.txt` in the selected local data directory, separately from
 profile settings and configuration backup; unreadable preferences default to
 OFF with a visible error. The owner permits an
 **unsigned hobby release**, clearly labeled as such: a digest supplied by the
 same source is not publisher authentication, and Windows may display security
-warnings. Martlet does **not** launch or install the downloaded executable.
-Local install/upgrade and rollback qualification remain required before a
-user-approved installation path can ship; do not run an internal build as an
-update. The [Windows packaging guide](packaging/windows/README.md) distinguishes
+warnings. Martlet does **not** launch or install the downloaded executable;
+an in-app installation/rollback path is not implemented. Do not run an internal
+build as an update. The [Windows packaging guide](packaging/windows/README.md) distinguishes
 local internal builds from the manually dispatched `v0.1.0` release workflow.
-The workflow has no push, PR, tag or scheduled trigger and has not run; its
-explicit owner confirmations do not replace local qualification or included-
-component rights review.
+The workflow has no push, PR, tag or scheduled trigger; it runs only when the
+owner explicitly dispatches a release.
 
 ## Local-only validation policy
 
-**Current owner policy, 2026-09-13: local gates, never remote validation.**
-This supersedes earlier plans for hosted CI. Do not create, enable, dispatch or
-retry remote test/validation pipelines, including GitHub Actions with
-self-hosted runners. Do not restore Actions billing, increase spending limits
-or use another hosted service to obtain validation evidence.
+**Current owner policy, 2026-09-26: prototype speed, never remote validation.**
+This supersedes earlier plans for hosted CI and the 2026-09-13 local-gate
+requirement. Do not create, enable, dispatch or retry remote test/validation
+pipelines, including GitHub Actions with self-hosted runners. Do not restore
+Actions billing, increase spending limits or use another hosted service to
+obtain validation evidence.
 
-Retain pinned dependencies, locked restores, production-backed tests, package
-assertions, smoke/trace scripts and independent review. Run targeted local
-checks first, then the full affected suites and local build/package/smoke gates
-required by the change; fix findings, rerun affected checks and meet normal
-repository merge requirements before merging. Documentation-only changes need
-only applicable existing local documentation checks and diff review, not an
-application rebuild. `CI=true` remains a local MSBuild setting for locked restore
-and deterministic build metadata; it does not require a remote runner.
+Martlet is a prototype. Local test suites, build/package/smoke gates and
+independent review are **not required** before commit, PR or merge and should
+not be run by default. Run at most a quick targeted build or test when it
+directly helps finish or debug a change. Existing tests and scripts remain
+available for manual use. `CI=true` remains a local MSBuild setting for locked
+restore and deterministic build metadata; it does not require a remote runner.
 
 The only permitted remote workflow exception is an **explicitly requested,
 minimal manual release build/package**: restore necessary build dependencies
 and compile/package the requested deliverable. GitHub Actions minutes are
-reserved exclusively for that purpose. Upload or Release publication needs
-separate authorization. No tests, lint, smoke, qualification, reproducibility
-checks, matrices or disguised validation belong in that workflow. Never add
-ordinary PR/push/scheduled automation or automatic release triggers. Preparing
-a manually dispatched release build does not authorize running it or publishing
-an unqualified installer.
+reserved exclusively for that purpose. Run it, upload assets or publish a
+Release only when the owner explicitly asks for a release. No tests, lint,
+smoke, qualification, reproducibility checks, matrices or disguised validation
+belong in that workflow. Never add ordinary PR/push/scheduled automation or
+automatic release triggers.
 Official unsigned hobby releases must explicitly disclose unverified
-publisher identity, keep Windows protection warnings intact and meet
-independent local rights and install/upgrade checks.
-The configured initial-version workflow is manual-only; owner publication
-requires a fresh explicit dispatch after those local gates, never a CI run.
+publisher identity and keep Windows protection warnings intact.
 
 Before any push or PR creation/update, inspect the applicable workflow events,
 refs and resulting tree, including older branches that could restore deleted
 workflows. Establish a publication path that starts no remote validation.
 Report impossible required checks instead of bypassing/changing protections,
-inventing successful statuses or relying on skip markers. A publication hold
-does not prevent independent local implementation and review.
+inventing successful statuses or relying on skip markers.
 
 Historical failed or blocked hosted results remain historical, not local passes.
 Real Windows/Linux, native-device, model/GPU and clean-machine qualifications
-still require actual execution in a suitable, separately authorized local
-environment. Missing access remains **NOT RUN / blocked**, not permission to
-substitute fixtures or install a VM, WSL, Docker, drivers or services.
+still require actual execution before being claimed. Unrun qualification is
+reported as **NOT RUN**, never as passed; it does not block prototype work.
 
 ## Developer quick start
 

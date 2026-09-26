@@ -29,12 +29,10 @@ local, using the command below. The single Windows runner is reserved for an
 actual GitHub Release and runs no test, lint, scan, smoke, repeat-publish or
 qualification job. Do not dispatch it for validation.
 
-Select `0.1.0` on `main` only when a fresh `throndir2` dispatch is authorized
-for publication from a public repository. The workflow requires an exact
-`PUBLISH v0.1.0` authorization and an exact `RIGHTS REVIEWED v0.1.0` owner
-confirmation after reviewing every included third-party term, plus an honest
-`LOCAL GATES PASSED v0.1.0` confirmation based on real local release
-qualification. Incorrect inputs skip the runner; live repository visibility,
+Select `0.1.0` on `main` only when the owner explicitly asks for a release from
+a public repository. The workflow requires an exact `PUBLISH v0.1.0`
+authorization and an exact `RIGHTS REVIEWED v0.1.0` owner confirmation after
+reviewing every included third-party term. Incorrect inputs skip the runner; live repository visibility,
 `main`/tag state and the binary-use grant are checked before restoring
 dependencies. Then the same runner uses the exact SDK, Node/npm lock and
 reviewed Inno compiler to restore, compile and package once, checks the clean
@@ -43,11 +41,11 @@ creates `v0.1.0` at the exact still-current `main` commit, uploads assets to a
 **draft** GitHub Release and publishes it only if all uploads succeed, GitHub
 reports the expected asset SHA-256, and `main`/the tag/visibility still match.
 If a step fails after tag creation, leave the tag/draft for owner inspection;
-never retry or move a tag automatically. No workflow has been dispatched,
-no installer uploaded to a Release and no rights or installation
-qualification is claimed here. Publication checks the repository's live
-visibility immediately before upload and again before making the draft public;
-anonymous update checks require a public repository.
+never retry or move a tag automatically. Publication checks the repository's
+live visibility immediately before upload and again before making the draft
+public; anonymous update checks require a public repository. A release build
+does not establish clean-machine install/upgrade/rollback, device or provider
+qualification.
 
 To exercise the public packaging path **locally** without uploading, run from
 the repository root on Windows x64 with PowerShell 7:
@@ -74,25 +72,19 @@ The stable `v0.1.0` release is explicitly marked Latest to match the updater's
 authentication.
 
 **Before manually publishing:** review the owner's narrow binary-use grant in
-`LICENSE`, every third-party redistribution condition (notably the Windows SDK
-projection package's separately obtained license), clean Windows install and
-upgrade behavior and the known limitations for the exact source commit.
+`LICENSE` and every third-party redistribution condition (notably the Windows
+SDK projection package's separately obtained license).
 The `RIGHTS REVIEWED` confirmation is an operator attestation, not automated
 legal clearance. There is no Authenticode signature; Windows may warn.
 The GitHub updater downloads only after user consent and verifies a same-origin
 digest; it does not install or authenticate a publisher. The existing Updates
 library's separate signed ZIP/envelope remains unsupported by this unsigned
-installer, and rollback qualification has not been performed. Do not publish
-until the actual rights and release decisions are resolved.
+installer, and rollback qualification has not been performed.
 
-**Local qualification remains separate:** this host previously saw a pinned
-`esbuild.exe` crash (`0xc0000005`); a later locked reinstall and build completed
-the real renderer and Desktop tests. Evidence from an earlier source snapshot
-does not qualify a later commit. Build/package the exact frozen revision
-locally, then obtain actual clean-Windows installation, upgrade/rollback,
-rights and support evidence before entering `LOCAL GATES PASSED`. Do not skip
-the renderer or use the hosted release workflow to replace missing local
-qualification.
+**Local qualification is optional for this prototype** (owner policy,
+2026-09-26). This host once saw a pinned `esbuild.exe` crash (`0xc0000005`);
+a locked reinstall resolved it. Never skip the real renderer build, and report
+unrun clean-Windows install/upgrade/rollback checks as NOT RUN.
 
 ## Local internal development build
 

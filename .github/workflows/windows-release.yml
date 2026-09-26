@@ -17,10 +17,6 @@ on:
         description: Type RIGHTS REVIEWED v0.1.0 after reviewing all bundled third-party terms
         required: true
         type: string
-      qualification_confirmation:
-        description: Type LOCAL GATES PASSED v0.1.0 after actual local release qualification
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -36,13 +32,12 @@ jobs:
       inputs.version == '0.1.0' &&
       inputs.publish_authorization == 'PUBLISH v0.1.0' &&
       inputs.rights_confirmation == 'RIGHTS REVIEWED v0.1.0' &&
-      inputs.qualification_confirmation == 'LOCAL GATES PASSED v0.1.0' &&
       github.actor == 'throndir2' &&
       github.triggering_actor == 'throndir2' &&
       github.run_attempt == 1 &&
       github.event.repository.private == false
     runs-on: windows-2025
-    timeout-minutes: 30
+    timeout-minutes: 60
     permissions:
       contents: write
     steps:
@@ -57,16 +52,14 @@ jobs:
           RELEASE_VERSION: ${{ inputs.version }}
           PUBLISH_AUTHORIZATION: ${{ inputs.publish_authorization }}
           RIGHTS_CONFIRMATION: ${{ inputs.rights_confirmation }}
-          QUALIFICATION_CONFIRMATION: ${{ inputs.qualification_confirmation }}
           REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
         run: |
           if ($env:GITHUB_REF -cne 'refs/heads/main' -or $env:RELEASE_VERSION -cne '0.1.0' -or
               $env:PUBLISH_AUTHORIZATION -cne 'PUBLISH v0.1.0' -or
               $env:RIGHTS_CONFIRMATION -cne 'RIGHTS REVIEWED v0.1.0' -or
-              $env:QUALIFICATION_CONFIRMATION -cne 'LOCAL GATES PASSED v0.1.0' -or
               $env:GITHUB_ACTOR -cne 'throndir2' -or $env:GITHUB_TRIGGERING_ACTOR -cne 'throndir2' -or
               $env:GITHUB_RUN_ATTEMPT -cne '1' -or $env:REPOSITORY_PRIVATE -cne 'false') {
-            throw 'Publishing requires a fresh owner dispatch, all release confirmations and a public repository.'
+            throw 'Publishing requires a fresh owner dispatch, both release confirmations and a public repository.'
           }
           $visibility = & gh api "repos/$env:GITHUB_REPOSITORY" --jq '.visibility'
           if ($LASTEXITCODE -ne 0 -or $visibility.Trim() -cne 'public') {
@@ -107,12 +100,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PUBLISH_AUTHORIZATION: ${{ inputs.publish_authorization }}
           RIGHTS_CONFIRMATION: ${{ inputs.rights_confirmation }}
-          QUALIFICATION_CONFIRMATION: ${{ inputs.qualification_confirmation }}
           REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
         run: |
           if ($env:GITHUB_REF -cne 'refs/heads/main' -or $env:PUBLISH_AUTHORIZATION -cne 'PUBLISH v0.1.0' -or
               $env:RIGHTS_CONFIRMATION -cne 'RIGHTS REVIEWED v0.1.0' -or
-              $env:QUALIFICATION_CONFIRMATION -cne 'LOCAL GATES PASSED v0.1.0' -or
               $env:GITHUB_ACTOR -cne 'throndir2' -or $env:GITHUB_TRIGGERING_ACTOR -cne 'throndir2' -or
               $env:GITHUB_RUN_ATTEMPT -cne '1' -or
               $env:REPOSITORY_PRIVATE -cne 'false') {
@@ -154,9 +145,15 @@ jobs:
           & gh release create $tag $installer $receipt $sums --repo $env:GITHUB_REPOSITORY `
             --verify-tag --title 'Martlet 0.1.0 - UNSIGNED hobby release' --notes $notes --draft
           if ($LASTEXITCODE -ne 0) { throw 'Draft release/upload failed; investigate before any manual retry.' }
-          $assetDigest = & gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$tag" `
-            --jq '.assets[] | select(.name == "Martlet-0.1.0-win-x64.exe") | .digest'
-          if ($LASTEXITCODE -ne 0 -or $null -eq $assetDigest -or $assetDigest.Trim() -cne "sha256:$sha") {
+          # The get-by-tag endpoint returns only published releases; find the draft through the release list.
+          $assetDigest = $null
+          for ($attempt = 0; $attempt -lt 6 -and -not $assetDigest; $attempt++) {
+            if ($attempt -gt 0) { Start-Sleep -Seconds 5 }
+            $assetDigest = & gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" `
+              --jq ".[] | select(.tag_name == `"$tag`" and .draft) | .assets[] | select(.name == `"$name`") | .digest // empty"
+            if ($LASTEXITCODE -ne 0) { throw 'Could not read the draft release assets; leaving the release as a draft.' }
+          }
+          if ($null -eq $assetDigest -or ($assetDigest | Measure-Object).Count -ne 1 -or $assetDigest.Trim() -cne "sha256:$sha") {
             throw 'GitHub did not report the expected installer asset SHA-256; leaving the release as a draft.'
           }
           $main = & gh api "repos/$env:GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha'

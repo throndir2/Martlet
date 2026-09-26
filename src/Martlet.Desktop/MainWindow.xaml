@@ -100,7 +100,7 @@
                         AutomationProperties.AutomationId="OpenAvatar" AutomationProperties.Name="Open passive avatar configuration, no render or analysis started" />
             </WrapPanel>
             <TextBlock Text="App updates" Style="{DynamicResource SectionHeading}" Margin="0,14,0,0"/>
-            <TextBlock Text="GitHub Releases are checked only when you ask, or after you opt in to checks at launch. Downloading requires a separate confirmation. Official hobby releases may be unsigned; installation is unavailable until safe upgrade/rollback are qualified."
+            <TextBlock Text="GitHub Releases are checked only when you ask, or after you opt in to checks at launch. Downloading requires a separate confirmation. Official hobby releases are unsigned; Martlet saves the installer but does not install it for you."
                        TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}"/>
             <CheckBox x:Name="AutomaticUpdateCheck" Content="Check for stable app updates on launch (contacts GitHub)"
                       Margin="0,8,0,8" Checked="UpdateCheckSetting_Changed" Unchecked="UpdateCheckSetting_Changed"

@@ -514,14 +514,13 @@ user's local backup/privacy policy.
 The Desktop now supports OFF-by-default, opt-in launch checks or an explicit
 manual check against the public stable GitHub Release API. A newer versioned
 win-x64 installer can be downloaded only after confirmation and an exact
-GitHub asset size/SHA-256 check. The repository is still private and has no
-qualified published release, so this route is not usable for public updates
-yet. That digest is not publisher trust: the app neither executes the download
+GitHub asset size/SHA-256 check. The repository is public; the route works
+once a stable versioned Release is published. That digest is not publisher
+trust: the app neither executes the download
 nor claims an installed upgrade. The owner permits a clearly marked unsigned
 hobby installer with a narrow personal/noncommercial binary-use grant, not
-code-signing by default. Local installation/upgrade/rollback qualification,
-included-component rights and a public Release remain required for a
-user-approved in-app install step. Windows may display publisher warnings;
+code-signing by default. A user-approved in-app install step (with upgrade and
+rollback handling) is not implemented. Windows may display publisher warnings;
 never suppress or bypass them. No surprise model updates or
 unreviewed `latest` image tags. Beta remains an unimplemented opt-in channel,
 not an automatic fallback. Self-contained .NET runtime security patches
