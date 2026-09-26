@@ -1,20 +1,10 @@
-name: Windows 0.1.0 release (manual only)
+name: Windows release (manual)
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: Initial public release version
-        required: true
-        type: choice
-        options:
-          - 0.1.0
-      publish_authorization:
-        description: Type PUBLISH v0.1.0 to authorize the Release
-        required: true
-        type: string
-      rights_confirmation:
-        description: Type RIGHTS REVIEWED v0.1.0 after reviewing all bundled third-party terms
+        description: Release version; must equal <Version> in Directory.Build.props (for example 0.1.0)
         required: true
         type: string
 
@@ -22,58 +12,46 @@ permissions:
   contents: read
 
 concurrency:
-  group: martlet-release-v0.1.0
+  group: martlet-windows-release
   cancel-in-progress: false
 
 jobs:
   release:
-    if: >-
-      github.ref == 'refs/heads/main' &&
-      inputs.version == '0.1.0' &&
-      inputs.publish_authorization == 'PUBLISH v0.1.0' &&
-      inputs.rights_confirmation == 'RIGHTS REVIEWED v0.1.0' &&
-      github.actor == 'throndir2' &&
-      github.triggering_actor == 'throndir2' &&
-      github.run_attempt == 1 &&
-      github.event.repository.private == false
+    if: github.ref == 'refs/heads/main' && github.run_attempt == 1 && github.event.repository.private == false
     runs-on: windows-2025
     timeout-minutes: 60
     permissions:
       contents: write
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
 
-      - name: Check manual request before restoring dependencies
+      - name: Check release request before restoring dependencies
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_VERSION: ${{ inputs.version }}
-          PUBLISH_AUTHORIZATION: ${{ inputs.publish_authorization }}
-          RIGHTS_CONFIRMATION: ${{ inputs.rights_confirmation }}
-          REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
         run: |
-          if ($env:GITHUB_REF -cne 'refs/heads/main' -or $env:RELEASE_VERSION -cne '0.1.0' -or
-              $env:PUBLISH_AUTHORIZATION -cne 'PUBLISH v0.1.0' -or
-              $env:RIGHTS_CONFIRMATION -cne 'RIGHTS REVIEWED v0.1.0' -or
-              $env:GITHUB_ACTOR -cne 'throndir2' -or $env:GITHUB_TRIGGERING_ACTOR -cne 'throndir2' -or
-              $env:GITHUB_RUN_ATTEMPT -cne '1' -or $env:REPOSITORY_PRIVATE -cne 'false') {
-            throw 'Publishing requires a fresh owner dispatch, both release confirmations and a public repository.'
+          if ($env:RELEASE_VERSION -cnotmatch '\A(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\z') {
+            throw 'Use a three-part numeric release version such as 0.1.0.'
           }
-          $visibility = & gh api "repos/$env:GITHUB_REPOSITORY" --jq '.visibility'
-          if ($LASTEXITCODE -ne 0 -or $visibility.Trim() -cne 'public') {
-            throw 'The repository is not publicly accessible; refusing to spend release-build minutes.'
+          [xml]$properties = Get-Content -LiteralPath 'Directory.Build.props' -Raw
+          if (([version]$properties.Project.PropertyGroup.Version).ToString(3) -cne $env:RELEASE_VERSION) {
+            throw 'The requested version differs from <Version> in Directory.Build.props on main. Bump it first.'
           }
           $main = & gh api "repos/$env:GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha'
           if ($LASTEXITCODE -ne 0 -or $main.Trim() -cne $env:GITHUB_SHA) {
-            throw 'Main changed since dispatch; build from a fresh exact main commit.'
+            throw 'Main changed since dispatch; dispatch again from the current main commit.'
           }
-          $existing = & gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/v0.1.0" --silent 2>&1
-          if ($LASTEXITCODE -eq 0) { throw 'Release tag already exists; refusing to spend release-build minutes.' }
-          if (($existing -join "`n") -notmatch 'HTTP 404') { throw "Cannot establish absence of release tag: $existing" }
+          $existing = & gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/v$env:RELEASE_VERSION" --silent 2>&1
+          if ($LASTEXITCODE -eq 0) { throw "Tag v$env:RELEASE_VERSION already exists; bump the version." }
+          if (($existing -join "`n") -notmatch 'HTTP 404') { throw "Cannot establish absence of the release tag: $existing" }
           . .\packaging\windows\Packaging.Common.ps1
           Assert-PublicReleaseRights
+          # GitHub's pwsh wrapper exits with the last native exit code; the expected tag 404 is not a failure.
+          exit 0
 
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
@@ -83,34 +61,26 @@ jobs:
         with:
           node-version: 20.11.1
 
-      - name: Restore, compile and package 0.1.0
+      - name: Restore, compile and package
         shell: pwsh
         run: |
-          .\packaging\windows\Build-PublicRelease.ps1 -Version 0.1.0 -DotnetPath (Get-Command dotnet).Source `
+          .\packaging\windows\Build-PublicRelease.ps1 -Version $env:RELEASE_VERSION -DotnetPath (Get-Command dotnet).Source `
             -NodePath (Get-Command node).Source -OutputDirectory (Join-Path $env:GITHUB_WORKSPACE 'artifacts\windows-release')
           $payload = Get-Content -LiteralPath 'artifacts\windows-release\publish\payload\manifest.json' -Raw | ConvertFrom-Json
           if ($payload.sourceDirty -or $payload.sourceCommit -cne $env:GITHUB_SHA -or
               $payload.channel -cne 'PUBLIC RELEASE - UNSIGNED') {
-            throw 'The package must originate from the clean, exact requested main commit.'
+            throw 'The package must originate from the clean, exact dispatched main commit.'
           }
+          exit 0
 
-      - name: Publish only the authorized 0.1.0 installer
+      - name: Publish the GitHub release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          PUBLISH_AUTHORIZATION: ${{ inputs.publish_authorization }}
-          RIGHTS_CONFIRMATION: ${{ inputs.rights_confirmation }}
-          REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
         run: |
-          if ($env:GITHUB_REF -cne 'refs/heads/main' -or $env:PUBLISH_AUTHORIZATION -cne 'PUBLISH v0.1.0' -or
-              $env:RIGHTS_CONFIRMATION -cne 'RIGHTS REVIEWED v0.1.0' -or
-              $env:GITHUB_ACTOR -cne 'throndir2' -or $env:GITHUB_TRIGGERING_ACTOR -cne 'throndir2' -or
-              $env:GITHUB_RUN_ATTEMPT -cne '1' -or
-              $env:REPOSITORY_PRIVATE -cne 'false') {
-            throw 'Unauthorized or private-repository release publication is refused.'
-          }
           $root = 'artifacts\windows-release\package\installer'
-          $name = 'Martlet-0.1.0-win-x64.exe'
+          $tag = "v$env:RELEASE_VERSION"
+          $name = "Martlet-$env:RELEASE_VERSION-win-x64.exe"
           $installer = Join-Path $root $name
           $receipt = Join-Path $root 'installer-manifest.json'
           $sums = Join-Path $root 'SHA256SUMS.txt'
@@ -122,29 +92,23 @@ jobs:
               $metadata.sourceCommit -cne $env:GITHUB_SHA -or $metadata.installer -cne $name -or
               $metadata.sha256 -cne $sha -or
               [IO.File]::ReadAllText((Resolve-Path -LiteralPath $sums).ProviderPath) -cne $expectedSums) {
-            throw 'Unsigned release artifact does not match the exact build receipt and source commit.'
-          }
-          $visibility = & gh api "repos/$env:GITHUB_REPOSITORY" --jq '.visibility'
-          if ($LASTEXITCODE -ne 0 -or $visibility.Trim() -cne 'public') {
-            throw 'The repository is no longer publicly accessible; refusing anonymous update publication.'
+            throw 'The installer does not match its build receipt and source commit.'
           }
           $main = & gh api "repos/$env:GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha'
           if ($LASTEXITCODE -ne 0 -or $main.Trim() -cne $env:GITHUB_SHA) {
-            throw 'Main advanced since dispatch; build from a fresh exact main commit.'
+            throw 'Main advanced during the build; dispatch again from the current main commit.'
           }
-          $tag = 'v0.1.0'
           $existing = & gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$tag" --silent 2>&1
-          if ($LASTEXITCODE -eq 0) { throw 'Release tag already exists; refusing to move or reuse it.' }
-          if (($existing -join "`n") -notmatch 'HTTP 404') { throw "Cannot establish absence of release tag: $existing" }
+          if ($LASTEXITCODE -eq 0) { throw "Tag $tag already exists; refusing to move or reuse it." }
+          if (($existing -join "`n") -notmatch 'HTTP 404') { throw "Cannot establish absence of the release tag: $existing" }
           $licenseUrl = "https://github.com/$env:GITHUB_REPOSITORY/blob/$env:GITHUB_SHA/LICENSE"
           $noticeUrl = "https://github.com/$env:GITHUB_REPOSITORY/blob/$env:GITHUB_SHA/packaging/windows/DEPENDENCIES.txt"
-          $notes = "UNSIGNED prototype prerelease for Windows 11 25H2 x64 (build 26200+). Windows may report an unverified publisher: there is no Authenticode publisher authentication. A GitHub SHA-256 digest verifies bytes, not publisher identity. The narrow personal, noncommercial binary-use grant is at $licenseUrl. Third-party components retain their own terms; their dependency inventory is at $noticeUrl and complete bundled notices are inside the installer. Local install/upgrade/rollback and device/provider qualification are not established by the build.`nInstaller SHA-256: $sha"
-          & gh api -X POST "repos/$env:GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$tag" `
-            -f "sha=$env:GITHUB_SHA" --silent
-          if ($LASTEXITCODE -ne 0) { throw 'Could not atomically create the version tag at the reviewed build commit.' }
+          $notes = "Martlet $env:RELEASE_VERSION for Windows 11 x64. Download and run $name.`n`nThe installer is not code-signed, so Windows SmartScreen may show an unknown-publisher warning.`n`nLicense: $licenseUrl (personal, noncommercial use of these official binaries). Third-party components keep their own terms: $noticeUrl; full notices are included in the installer.`n`nInstaller SHA-256: $sha"
+          & gh api -X POST "repos/$env:GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$tag" -f "sha=$env:GITHUB_SHA" --silent
+          if ($LASTEXITCODE -ne 0) { throw 'Could not create the version tag at the built commit.' }
           & gh release create $tag $installer $receipt $sums --repo $env:GITHUB_REPOSITORY `
-            --verify-tag --title 'Martlet 0.1.0 - unsigned prototype prerelease' --notes $notes --draft --prerelease
-          if ($LASTEXITCODE -ne 0) { throw 'Draft release/upload failed; investigate before any manual retry.' }
+            --verify-tag --title "Martlet $env:RELEASE_VERSION" --notes $notes --draft
+          if ($LASTEXITCODE -ne 0) { throw 'Draft release/upload failed; inspect the tag and draft before retrying.' }
           # The get-by-tag endpoint returns only published releases; find the draft through the release list.
           $assetDigest = $null
           for ($attempt = 0; $attempt -lt 6 -and -not $assetDigest; $attempt++) {
@@ -154,19 +118,12 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'Could not read the draft release assets; leaving the release as a draft.' }
           }
           if ($null -eq $assetDigest -or ($assetDigest | Measure-Object).Count -ne 1 -or $assetDigest.Trim() -cne "sha256:$sha") {
-            throw 'GitHub did not report the expected installer asset SHA-256; leaving the release as a draft.'
-          }
-          $main = & gh api "repos/$env:GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha'
-          if ($LASTEXITCODE -ne 0 -or $main.Trim() -cne $env:GITHUB_SHA) {
-            throw 'Main changed during upload; leaving the release as a draft.'
+            throw 'GitHub did not report the expected installer SHA-256; leaving the release as a draft.'
           }
           $publishedTag = & gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$tag" --jq '.object.sha'
           if ($LASTEXITCODE -ne 0 -or $publishedTag.Trim() -cne $env:GITHUB_SHA) {
-            throw 'The release tag no longer points at the built source commit; leaving the release as a draft.'
+            throw 'The release tag no longer points at the built commit; leaving the release as a draft.'
           }
-          $visibility = & gh api "repos/$env:GITHUB_REPOSITORY" --jq '.visibility'
-          if ($LASTEXITCODE -ne 0 -or $visibility.Trim() -cne 'public') {
-            throw 'The repository is no longer public; leaving the uploaded release as a draft.'
-          }
-          & gh release edit $tag --repo $env:GITHUB_REPOSITORY --draft=false --prerelease
+          & gh release edit $tag --repo $env:GITHUB_REPOSITORY --draft=false --latest
           if ($LASTEXITCODE -ne 0) { throw 'The release remains a draft; publication failed.' }
+          exit 0

@@ -20,32 +20,34 @@ Artwork and favicon-ready SVG/PNG/ICO assets live in
 `src\Martlet.Desktop\Assets`; regenerate the checked-in raster assets with
 `.\scripts\Generate-AppIcon.ps1` before building if the SVG changes.
 
-## Manual 0.1.0 public release build
+## Public release build (manual dispatch)
 
 `.github\workflows\windows-release.yml` has **only** `workflow_dispatch`; it
 cannot run on a push, PR, tag or schedule. There is **no hosted build-only
 mode**, Actions artifact or upload/download handoff. Build-only work stays
-local, using the command below. The single Windows runner is reserved for an
-actual GitHub Release and runs no test, lint, scan, smoke, repeat-publish or
-qualification job. Do not dispatch it for validation.
+local, using the command below. The single Windows runner runs no test, lint,
+scan, smoke, repeat-publish or qualification job.
 
-Select `0.1.0` on `main` only when the owner explicitly asks for a release from
-a public repository. The workflow requires an exact `PUBLISH v0.1.0`
-authorization and an exact `RIGHTS REVIEWED v0.1.0` owner confirmation after
-reviewing every included third-party term. Incorrect inputs skip the runner; live repository visibility,
-`main`/tag state and the binary-use grant are checked before restoring
-dependencies. Then the same runner uses the exact SDK, Node/npm lock and
-reviewed Inno compiler to restore, compile and package once, checks the clean
-public-channel installer receipt and SHA-256, rejects an existing tag and
-creates `v0.1.0` at the exact still-current `main` commit, uploads assets to a
-**draft** GitHub Release and publishes it only if all uploads succeed, GitHub
-reports the expected asset SHA-256, and `main`/the tag/visibility still match.
-If a step fails after tag creation, leave the tag/draft for owner inspection;
-never retry or move a tag automatically. Publication checks the repository's
-live visibility immediately before upload and again before making the draft
-public; anonymous update checks require a public repository. A release build
-does not establish clean-machine install/upgrade/rollback, device or provider
-qualification.
+Agents and the owner may dispatch a release without further approval:
+
+```powershell
+gh workflow run windows-release.yml --repo throndir2/Martlet --ref main -f version=0.1.0
+```
+
+The `version` input must equal `<Version>` in `Directory.Build.props` on `main`
+and must not already have a `v<version>` tag; bump the version in a normal PR
+before each new release. The job runs only from `main` of the public repository
+and on the first attempt. Before restoring dependencies it checks the version,
+the dispatched `main` commit, tag absence and the binary-use grant. The runner
+then uses the exact SDK, Node/npm lock and reviewed Inno compiler to restore,
+compile and package once, checks the clean installer receipt and SHA-256,
+creates `v<version>` at the still-current `main` commit, uploads assets to a
+**draft** GitHub release and publishes it as the latest normal release, titled
+`Martlet <version>`, only if the uploads succeed, GitHub reports the expected
+asset SHA-256, and the tag still points at the built commit. If a step fails
+after tag creation, inspect and delete the tag/draft before dispatching again;
+never move a tag. A release build does not establish clean-machine
+install/upgrade/rollback, device or provider qualification.
 
 To exercise the public packaging path **locally** without uploading, run from
 the repository root on Windows x64 with PowerShell 7:
@@ -56,31 +58,26 @@ $run = Join-Path $PWD ("artifacts\windows-public-" + [guid]::NewGuid().ToString(
 .\packaging\windows\Build-PublicRelease.ps1 -Version 0.1.0 -DotnetPath $sdk -OutputDirectory $run
 ```
 
-This builds `package\installer\Martlet-0.1.0-win-x64.exe`, an **UNSIGNED
-PROTOTYPE PRERELEASE**, with a distinct public AppId, fixed `%LocalAppData%\Programs\Martlet`
-installation directory, public help/terms, explicit public payload channel and
-separate SBOM/provenance identity. It is not a renamed internal installer.
+This builds `package\installer\Martlet-<version>-win-x64.exe` with a distinct
+public AppId, fixed `%LocalAppData%\Programs\Martlet` installation directory,
+public help/terms, explicit public payload channel and separate SBOM/provenance
+identity. It is not a renamed internal installer. The installer is not
+code-signed; signing is not a release requirement for this personal project.
 The package inventories and hashes `help\LICENSE.txt` and complete upstream
 notices; Inno shows the owner's binary-use terms before installation. The
-Release page links to the exact source-commit LICENSE and third-party dependency
+release page links to the exact source-commit LICENSE and third-party dependency
 inventory, without claiming ownership of third-party components.
-The manifest's full assembly file version remains `0.1.0.0`; the public
-installer and tag use the selected three-part release version `0.1.0`.
-`v0.1.0` is published as a GitHub **prerelease**. The Desktop updater reads the
-release list (not `/releases/latest`, which omits prereleases) and offers the
-highest numbered non-draft version. The GitHub asset digest is produced on upload;
-`SHA256SUMS.txt` binds the local installer and receipt but is not publisher
-authentication.
+The manifest's full assembly file version is four-part (`0.1.0.0`); the public
+installer and tag use the three-part release version (`0.1.0`). The Desktop
+updater reads the release list and offers the highest numbered normal
+(non-draft, non-prerelease) version. The GitHub asset digest is produced on
+upload; `SHA256SUMS.txt` binds the local installer and receipt but is not
+publisher authentication.
 
-**Before manually publishing:** review the owner's narrow binary-use grant in
-`LICENSE` and every third-party redistribution condition (notably the Windows
-SDK projection package's separately obtained license).
-The `RIGHTS REVIEWED` confirmation is an operator attestation, not automated
-legal clearance. There is no Authenticode signature; Windows may warn.
 The GitHub updater downloads only after user consent and verifies a same-origin
-digest; it does not install or authenticate a publisher. The existing Updates
-library's separate signed ZIP/envelope remains unsupported by this unsigned
-installer, and rollback qualification has not been performed.
+digest; it does not install the download. Windows may warn about an unknown
+publisher. The existing Updates library's separate signed ZIP/envelope remains
+unsupported by this installer, and rollback qualification has not been performed.
 
 **Local qualification is optional for this prototype** (owner policy,
 2026-09-26). This host once saw a pinned `esbuild.exe` crash (`0xc0000005`);
@@ -114,8 +111,8 @@ not upload or publish anything. Do not distribute the internal candidate.
 The internal AppId, name/channel and unsigned manifest remain unchanged.
 Never upload this internal build as the public release artifact. Its file version
 is four-part, its application identity is separate, and its help explicitly
-labels it internal. The owner has permitted a clearly disclosed unsigned
-prototype prerelease, not relabeling this development build.
+labels it internal. Public releases use the separate release lane above, not
+a relabeled development build.
 
 ## Developer commands
 
@@ -365,8 +362,8 @@ payloads lack this evidence and must be rebuilt; there is no allow-missing
 option. Each channel records an **unsigned build observation** with distinct
 channel/assurance/SBOM identity; neither is publisher attestation, a SLSA
 level, a release signature, license clearance or a vulnerability assessment.
-The owner has explicitly chosen unsigned prototype prereleases, not an unsigned
-automatic installer or an authentication claim.
+Code signing is not a release requirement for this personal project; public
+releases ship an unsigned installer without any authentication claim.
 
 The avatar producer explicitly selects manifest 3 / provenance 2. Its coordinated
 [signed-candidate metadata reader](../../src/Martlet.Updates/README.md) must support

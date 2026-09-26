@@ -13,7 +13,9 @@ $channel = if ($PublicRelease) { Get-PackagingChannel PublicUnsigned } else { Ge
 if ($manifest.channel -cne $channel.name) { throw "Installer channel differs from the verified payload: $($manifest.channel)." }
 if ($PublicRelease) {
     Assert-PublicReleaseRights
-    if ($manifest.applicationVersion -cne '0.1.0.0') { throw 'Only initial public version 0.1.0 is supported.' }
+    $parsed = [version]$manifest.applicationVersion
+    if ($parsed.Revision -ne 0) { throw 'Public releases use a three-part version; set <Version> to major.minor.patch.' }
+    $releaseVersion = $parsed.ToString(3)
 }
 $compiler = Get-VerifiedInnoCompiler $BuilderDirectory
 New-OutputDirectory $OutputDirectory
@@ -23,7 +25,7 @@ $staging = Join-Path $OutputDirectory 'staging'
 [IO.Directory]::CreateDirectory($staging) | Out-Null
 $arguments = @('--quiet', '--no-ide-signtools',
     "--define=PayloadRoot=$PayloadRoot", "--define=PayloadFiles=$fileList",
-    "--define=AppVersion=$(if ($PublicRelease) { '0.1.0' } else { $manifest.applicationVersion })", "--define=BuildOutput=$staging",
+    "--define=AppVersion=$(if ($PublicRelease) { $releaseVersion } else { $manifest.applicationVersion })", "--define=BuildOutput=$staging",
     (Join-Path $PSScriptRoot 'Martlet.iss'))
 if ($PublicRelease) { $arguments = @('--define=PublicRelease=1') + $arguments }
 $result = Invoke-BoundedProcess $compiler $arguments 180
@@ -31,7 +33,7 @@ $result = Invoke-BoundedProcess $compiler $arguments 180
 if ($result.ExitCode -ne 0) {
     throw "Installer compilation failed (exit $($result.ExitCode)): $($result.Stderr). Inspect $OutputDirectory\compiler.log."
 }
-$name = if ($PublicRelease) { 'Martlet-0.1.0-win-x64.exe' }
+$name = if ($PublicRelease) { "Martlet-$releaseVersion-win-x64.exe" }
     else { "Martlet-$($manifest.applicationVersion)-win-x64-INTERNAL-UNSIGNED.exe" }
 $installer = (Get-RequiredFile (Join-Path $staging $name)).FullName
 Assert-X64Pe $installer
@@ -48,7 +50,7 @@ $provenance = [ordered]@{
     sourceCommit = $manifest.sourceCommit
     sourceDirty = $manifest.sourceDirty
     cleanWindowsLifecycle = 'NOT RUN - requires isolated Windows 11 25H2 x64 VM'
-    signing = if ($PublicRelease) { 'UNSIGNED PROTOTYPE PRERELEASE - no Authenticode publisher authentication' }
+    signing = if ($PublicRelease) { 'NOT CODE-SIGNED - no Authenticode signature' }
         else { 'NOT RUN - unsigned internal skeleton, no public distribution authorized' }
 }
 [IO.File]::WriteAllText((Join-Path $staging 'installer-manifest.json'), ($provenance | ConvertTo-Json -Depth 8) + "`n")
