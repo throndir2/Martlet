@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -7,6 +8,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using Martlet.Avatar.Hosting;
+using Martlet.Presentation;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
 
@@ -25,6 +27,10 @@ internal sealed class RendererWindow : Window
         Focusable = false
     };
     private readonly Grid viewport = new() { Background = Brushes.Transparent, Cursor = Cursors.SizeAll };
+    private ResourceDictionary? palette;
+    private bool darkTheme;
+    private bool highContrast;
+    private bool closed;
     private TaskCompletionSource<JsonElement>? response;
     private Guid activation;
     private readonly RendererFailureLatch failure = new();
@@ -34,6 +40,17 @@ internal sealed class RendererWindow : Window
     {
         this.input = input;
         this.output = output;
+        Resources.MergedDictionaries.Add(new ResourceDictionary
+        {
+            Source = new Uri("pack://application:,,,/Martlet.Avatar.RendererHost;component/Themes/Controls.xaml")
+        });
+        ApplyOverlayTheme(false);
+        Loaded += (_, _) =>
+        {
+            if (highContrast != SystemParameters.HighContrast) ApplyOverlayTheme(darkTheme);
+            SystemParameters.StaticPropertyChanged += SystemAppearanceChanged;
+        };
+        Dispatcher.ShutdownStarted += (_, _) => SystemParameters.StaticPropertyChanged -= SystemAppearanceChanged;
         Title = "Martlet character overlay";
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
@@ -83,16 +100,43 @@ internal sealed class RendererWindow : Window
         layout.Children.Add(controls);
         layout.Children.Add(viewport);
         viewport.Children.Add(browser);
-        viewport.Children.Add(new TextBlock
+        var loading = new TextBlock
         {
-            Text = "Loading character...", Background = SystemColors.WindowBrush, Foreground = SystemColors.WindowTextBrush,
+            Text = "Loading character...",
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top, Padding = new Thickness(8)
-        });
+        };
+        loading.SetResourceReference(TextBlock.BackgroundProperty, "SurfaceBrush");
+        loading.SetResourceReference(TextBlock.ForegroundProperty, "TextBrush");
+        viewport.Children.Add(loading);
         viewport.MouseLeftButtonDown += DragCharacter;
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) { e.Handled = true; Close(); } };
         Content = layout;
         Loaded += async (_, _) => await RunAsync();
-        Closed += (_, _) => { lifetime.Cancel(); input.Dispose(); output.Dispose(); browser.Dispose(); };
+        Closed += (_, _) =>
+        {
+            closed = true;
+            SystemParameters.StaticPropertyChanged -= SystemAppearanceChanged;
+            lifetime.Cancel();
+            input.Dispose();
+            output.Dispose();
+            browser.Dispose();
+        };
+    }
+
+    internal void ApplyOverlayTheme(bool dark)
+    {
+        darkTheme = dark;
+        highContrast = SystemParameters.HighContrast;
+        if (palette is not null) Resources.MergedDictionaries.Remove(palette);
+        palette = AppearancePalette.Create(dark, highContrast);
+        Resources.MergedDictionaries.Add(palette);
+    }
+
+    private void SystemAppearanceChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(SystemParameters.HighContrast) &&
+            !closed && !Dispatcher.HasShutdownStarted && !Dispatcher.HasShutdownFinished)
+            Dispatcher.InvokeAsync(() => { if (!closed) ApplyOverlayTheme(darkTheme); });
     }
 
     private void PlaceOnDesktop()
@@ -122,6 +166,7 @@ internal sealed class RendererWindow : Window
             if (message.Kind != "load") throw new InvalidDataException("Private renderer initialization required.");
             activation = message.Activation;
             var load = RendererProtocol.Data<RendererLoad>(message);
+            ApplyOverlayTheme(load.DarkTheme);
             var assets = await LocalAvatarFiles.SnapshotAsync(load.Profile, handshake.Token);
             if (assets.Revision != load.ResourceRevision) throw new InvalidDataException("Selected resources changed.");
             foreach (var asset in assets.Assets) resources.Add(RendererResourcePolicy.CanonicalName("asset/" + asset.Name), asset);
@@ -187,8 +232,14 @@ internal sealed class RendererWindow : Window
             while (!lifetime.IsCancellationRequested)
             {
                 message = await RendererProtocol.ReadAsync(input, lifetime.Token);
-                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop"))
+                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme"))
                     throw new InvalidDataException("Renderer command is invalid.");
+                if (message.Kind == "theme")
+                {
+                    ApplyOverlayTheme(RendererProtocol.Data<RendererTheme>(message).Dark);
+                    await ReplyAsync("ok", new { });
+                    continue;
+                }
                 var result = await BrowserAsync(message.Kind, message.Data);
                 await ReplyAsync("ok", result);
             }

@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using Martlet.Avatar.Hosting;
 using Martlet.Avatar.RendererHost;
 using Microsoft.Web.WebView2.Wpf;
 
@@ -36,6 +37,20 @@ public sealed class AvatarOverlayTests
             Assert.Equal(Colors.Transparent, ((SolidColorBrush)viewport.Background).Color);
             window.Show();
             await Dispatcher.Yield();
+            var move = Control(window, "MoveAvatar");
+            var close = Control(window, "CloseAvatar");
+            Assert.Same(window.TryFindResource("SoftBrush"), move.Background);
+            Assert.Same(window.TryFindResource("TextBrush"), close.Foreground);
+            var loading = Assert.IsType<TextBlock>(viewport.Children[1]);
+            Assert.Same(window.TryFindResource("SurfaceBrush"), loading.Background);
+            window.ApplyOverlayTheme(dark: true);
+            window.UpdateLayout();
+            Assert.Same(window.TryFindResource("SoftBrush"), move.Background);
+            Assert.Same(window.TryFindResource("TextBrush"), close.Foreground);
+            Assert.Same(window.TryFindResource("SurfaceBrush"), loading.Background);
+            Assert.Equal(((SolidColorBrush)Appearance.Palette(PinkTheme.Dark, SystemParameters.HighContrast)["SoftBrush"]).Color,
+                ((SolidColorBrush)move.Background).Color);
+            Assert.Equal(Colors.Transparent, ((SolidColorBrush)window.Background).Color);
             Assert.True(input.Waiting);
             Assert.Null(browser.CoreWebView2);
             Assert.Empty(output.ToArray());
@@ -44,6 +59,13 @@ public sealed class AvatarOverlayTests
         }
         finally { window.Close(); }
     });
+
+    [Fact]
+    public void ThemeMessagePreservesExplicitDarkChoice()
+    {
+        var message = RendererProtocol.Message("theme", Guid.NewGuid(), new RendererTheme(true));
+        Assert.True(RendererProtocol.Data<RendererTheme>(message).Dark);
+    }
 
     [Fact]
     public Task Move_handle_supports_keyboard_positioning_recovery_and_escape_close() => OnDispatcher(async () =>

@@ -21,6 +21,8 @@ public sealed class AvatarWindowTests
         var renderer = new ControlledRenderer();
         await using var controller = new AvatarController(createRenderer: () => renderer);
         await controller.InspectAsync(scope.Profile(), default);
+        await controller.UpdateThemeAsync(default);
+        Assert.False(renderer.LastTheme!.Dark);
         await SaveMappingAsync(store, controller);
         AvatarWindow Open() => new(controller, store, new SetupService(settings, new ForbiddenVault()), new SetupOperationRunner())
             { ShowActivated = false, ShowInTaskbar = false };
@@ -29,6 +31,9 @@ public sealed class AvatarWindowTests
         try
         {
             await Until(() => ((TextBlock)window.FindName("ResultText")).Text.Contains("loaded", StringComparison.Ordinal));
+            Assert.Same(window.TryFindResource("CanvasBrush"), window.Background);
+            Assert.Same(window.TryFindResource("SurfaceBrush"),
+                ((TextBox)window.FindName("ModelPathText")).Background);
             ((CheckBox)window.FindName("AnalysisPermission")).IsChecked = true;
             ((Button)window.FindName("ActivateButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await Until(() => controller.IsActive);
@@ -136,6 +141,7 @@ public sealed class AvatarWindowTests
         public Task Exited => exited.Task;
         internal TaskCompletionSource? ConfigureRelease { get; init; }
         internal TaskCompletionSource ConfigureEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal RendererTheme? LastTheme { get; private set; }
         public Task StartAsync(AvatarProfile profile, string revision, CancellationToken token)
         {
             Capabilities = new(revision.ToLowerInvariant(), [new("Jaw", 0, 1, 0, ["Mouth"])]);
@@ -144,6 +150,7 @@ public sealed class AvatarWindowTests
         public async Task<RendererMessage> SendAsync<T>(string kind, T data, CancellationToken token, TimeSpan? timeout = null)
         {
             token.ThrowIfCancellationRequested();
+            if (kind == "theme") LastTheme = Assert.IsType<RendererTheme>(data);
             if (kind == "configure")
             {
                 ConfigureEntered.TrySetResult();

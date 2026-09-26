@@ -11,7 +11,7 @@ using Microsoft.Win32;
 
 namespace Martlet.Desktop;
 
-public partial class AvatarWindow : Window
+public partial class AvatarWindow : ThemedWindow
 {
     private readonly AvatarController controller;
     private readonly AvatarProfileStore profiles;
@@ -222,8 +222,9 @@ public partial class AvatarWindow : Window
         if (candidate.ProfileId != profileId) throw new InvalidOperationException("This avatar document belongs to a different application profile.");
         var prior = File.Exists(profiles.FilePath)
             ? await LocalAvatarFiles.ReadBoundedAsync(profiles.FilePath, AvatarProfile.MaximumBytes, lifetime.Token) : null;
-        if (MessageBox.Show(this, "Restore these avatar-only choices? Existing bytes are retained as a local backup. Activation stays OFF and resources need fresh inspection.",
-            "Explicit avatar recovery", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+        if (!ConfirmationDialog.Confirm(this,
+            "Restore these avatar-only choices? Existing bytes are retained as a local backup. Activation stays OFF and resources need fresh inspection.",
+            "Explicit avatar recovery")) return;
         await controller.StopAsync();
         await profiles.RestoreAsync(candidate, prior is null ? null : Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(prior)), lifetime.Token);
         await ReloadAsync();

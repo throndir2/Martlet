@@ -6,6 +6,8 @@
     <NodeExecutable Condition="'$(NodeExecutable)' == ''">node</NodeExecutable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\Martlet.Desktop\AppearancePalette.cs" Link="AppearancePalette.cs" />
+    <Page Include="..\Martlet.Desktop\Themes\Controls.xaml" Link="Themes\Controls.xaml" />
     <InternalsVisibleTo Include="Martlet.Desktop.Tests" />
     <PackageReference Include="Microsoft.Web.WebView2" />
     <ProjectReference Include="..\Martlet.Avatar.Hosting\Martlet.Avatar.Hosting.csproj" />
