@@ -34,7 +34,7 @@
                         <TextBlock Text="A conversation, a little company, a moment for you." TextWrapping="Wrap"
                                    Foreground="{DynamicResource MutedBrush}" Margin="0,8,0,16"/>
                         <TextBlock Text="You're in control" FontWeight="SemiBold"/>
-                        <TextBlock Text="Nothing listens or connects on launch. Real conversations need your configured routes and explicit permission for each action."
+                        <TextBlock Text="Nothing listens on launch. Network remains idle unless you opted in to app update checks; real conversations need your configured routes and explicit permission for each action."
                                    TextWrapping="Wrap" Margin="0,4,0,16"/>
                         <WrapPanel>
                             <Button x:Name="ConversationButton" Content="Open _real API conversation" Click="Conversation_Click"
@@ -98,6 +98,25 @@
                 <Button Content="Optional _Avatar (OFF until activation)" Click="Avatar_Click" Padding="12,8" Margin="0,4,12,4"
                         AutomationProperties.AutomationId="OpenAvatar" AutomationProperties.Name="Open passive avatar configuration, no render or analysis started" />
             </WrapPanel>
+            <TextBlock Text="App updates" Style="{DynamicResource SectionHeading}" Margin="0,14,0,0"/>
+            <TextBlock Text="GitHub Releases are checked only when you ask, or after you opt in to checks at launch. Downloading requires a separate confirmation. Official hobby releases may be unsigned; installation is unavailable until safe upgrade/rollback are qualified."
+                       TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}"/>
+            <CheckBox x:Name="AutomaticUpdateCheck" Content="Check for stable app updates on launch (contacts GitHub)"
+                      Margin="0,8,0,8" Checked="UpdateCheckSetting_Changed" Unchecked="UpdateCheckSetting_Changed"
+                      AutomationProperties.AutomationId="AutomaticUpdateCheck" />
+            <WrapPanel>
+                <Button x:Name="CheckForUpdatesButton" Content="Check _for app updates" Click="CheckForUpdates_Click"
+                        Padding="12,8" Margin="0,4,12,4" AutomationProperties.AutomationId="CheckForAppUpdates"/>
+                <Button x:Name="DownloadUpdateButton" Content="_Download update (review first)" Click="DownloadUpdate_Click"
+                        Padding="12,8" Margin="0,4,0,4" Visibility="Collapsed"
+                        AutomationProperties.AutomationId="DownloadAppUpdate"/>
+                <Button x:Name="ReviewUpdateButton" Content="_View release details" Click="ReviewUpdate_Click"
+                        Padding="12,8" Margin="0,4,0,4" Visibility="Collapsed"
+                        AutomationProperties.AutomationId="ViewAppRelease"/>
+            </WrapPanel>
+            <TextBlock x:Name="UpdateStatusText" TextWrapping="Wrap" Margin="0,4,0,0"
+                       Foreground="{DynamicResource MutedBrush}" AutomationProperties.LiveSetting="Polite"
+                       AutomationProperties.AutomationId="AppUpdateStatus"/>
                 </StackPanel>
             </Border>
             <Border Style="{DynamicResource CardStyle}">

@@ -783,8 +783,29 @@ foreach ($required in @('PrivilegesRequired=lowest', 'UsePreviousAppDir=no', 'Ar
         'AppId={{CDFDFAB4-DAF1-4A6D-8823-A55E0A12CD86}')) {
     if (-not $authoring.Contains($required)) { throw "Installer safety invariant missing: $required" }
 }
+foreach ($required in @('#ifdef PublicRelease', 'DefaultDirName={localappdata}\Programs\Martlet',
+        'OutputBaseFilename=Martlet-{#AppVersion}-win-x64',
+        'InfoBeforeFile={#PayloadRoot}\help\RELEASE.txt',
+        'LicenseFile={#PayloadRoot}\help\LICENSE.txt',
+        'AppId={{7EA5CC4A-8BF4-4412-ABE1-90819303FEAB}')) {
+    if (-not $authoring.Contains($required)) { throw "Public installer invariant missing: $required" }
+}
 if ($authoring -match '(?im)^\[(Run|UninstallRun|Registry|InstallDelete|UninstallDelete|Tasks)\]|DelTree|DeleteFile|RegWrite|Exec\(') {
     throw 'Installer contains an unexpected mutation/deletion/autorun surface.'
+}
+$script:cases++
+Assert-Fails 'internal payload refused by public installer' {
+    & "$PSScriptRoot\Build-Installer.ps1" -PublicRelease -PayloadRoot $copy `
+        -BuilderDirectory $BuilderDirectory -OutputDirectory (Join-Path $WorkDirectory 'not-a-public-package')
+} '*Installer channel differs*'
+$publicProvenance = New-PackageProvenanceDocument $manifest.provenance.source $manifest.provenance.sdk `
+    $manifest.provenance.applications $manifest.provenance.restores $manifest.provenance.archives $manifest.rid `
+    -SchemaVersion 2 -Browser $manifest.provenance.browser -BuildArchives $manifest.provenance.buildArchives -Channel PublicUnsigned
+if ($publicProvenance.assurance -cne (Get-PackagingChannel PublicUnsigned).assurance -or
+    (New-PayloadManifestDocument $manifest.applicationVersion $manifest.sourceCommit $manifest.sourceDirty `
+        $publicProvenance $manifest.files (Get-PackagingPins) -FormatVersion 3 -Channel PublicUnsigned).channel -cne
+    (Get-PackagingChannel PublicUnsigned).name) {
+    throw 'Public provenance or manifest constructor silently retained the internal channel.'
 }
 $script:cases++
 Assert-Fails 'no output overwrite' { New-OutputDirectory $copy } '*Output already exists*'

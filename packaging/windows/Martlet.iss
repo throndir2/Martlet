@@ -15,6 +15,16 @@
 #endif
 
 [Setup]
+#ifdef PublicRelease
+AppId={{7EA5CC4A-8BF4-4412-ABE1-90819303FEAB}
+AppName=Martlet
+AppVersion={#AppVersion}
+AppVerName=Martlet {#AppVersion} - UNSIGNED HOBBY RELEASE
+AppPublisher=throndir2 (unsigned)
+VersionInfoDescription=Martlet - UNSIGNED HOBBY RELEASE
+DefaultDirName={localappdata}\Programs\Martlet
+DefaultGroupName=Martlet
+#else
 AppId={{CDFDFAB4-DAF1-4A6D-8823-A55E0A12CD86}
 AppName=Martlet (Internal)
 AppVersion={#AppVersion}
@@ -23,6 +33,7 @@ AppPublisher=Martlet development project (unsigned)
 VersionInfoDescription=Martlet - INTERNAL DEVELOPMENT ONLY - UNSIGNED
 DefaultDirName={localappdata}\Programs\Martlet Internal
 DefaultGroupName=Martlet (Internal)
+#endif
 DisableDirPage=yes
 DisableProgramGroupPage=yes
 UsePreviousAppDir=no
@@ -33,13 +44,23 @@ ArchitecturesInstallIn64BitMode=x64os
 SetupArchitecture=x64
 MinVersion=10.0.26200
 Uninstallable=yes
+#ifdef PublicRelease
+UninstallDisplayName=Martlet
+#else
 UninstallDisplayName=Martlet (Internal)
+#endif
 UninstallDisplayIcon={app}\Desktop\Martlet.Desktop.exe
 SetupIconFile=..\..\src\Martlet.Desktop\Assets\Martlet.ico
 UninstallFilesDir={app}\uninstall
 OutputDir={#BuildOutput}
+#ifdef PublicRelease
+OutputBaseFilename=Martlet-{#AppVersion}-win-x64
+InfoBeforeFile={#PayloadRoot}\help\RELEASE.txt
+LicenseFile={#PayloadRoot}\help\LICENSE.txt
+#else
 OutputBaseFilename=Martlet-{#AppVersion}-win-x64-INTERNAL-UNSIGNED
 InfoBeforeFile={#PayloadRoot}\help\INTERNAL.txt
+#endif
 WizardStyle=modern
 Compression=lzma2
 SolidCompression=yes
@@ -56,10 +77,17 @@ TouchTime=00:00
 #include PayloadFiles
 
 [Icons]
+#ifdef PublicRelease
+Name: "{group}\Martlet"; Filename: "{app}\Desktop\Martlet.Desktop.exe"; WorkingDir: "{app}\Desktop"
+Name: "{group}\Martlet Doctor"; Filename: "{cmd}"; Parameters: "/D /K """"{app}\Doctor\Martlet.Doctor.exe"" status"""; WorkingDir: "{app}\Doctor"; IconFilename: "{app}\Doctor\Martlet.Doctor.exe"
+Name: "{group}\Read me - Unsigned release"; Filename: "{app}\help\RELEASE.txt"
+Name: "{group}\Uninstall Martlet"; Filename: "{uninstallexe}"
+#else
 Name: "{group}\Martlet (Internal)"; Filename: "{app}\Desktop\Martlet.Desktop.exe"; WorkingDir: "{app}\Desktop"
 Name: "{group}\Martlet Doctor (Internal)"; Filename: "{cmd}"; Parameters: "/D /K """"{app}\Doctor\Martlet.Doctor.exe"" status"""; WorkingDir: "{app}\Doctor"; IconFilename: "{app}\Doctor\Martlet.Doctor.exe"
 Name: "{group}\Read me - Internal build"; Filename: "{app}\help\INTERNAL.txt"
 Name: "{group}\Uninstall Martlet (Internal)"; Filename: "{uninstallexe}"
+#endif
 
 [Code]
 function PrepareToInstall(var NeedsRestart: Boolean): String;
@@ -67,8 +95,13 @@ begin
   Result := '';
   // Keep /DIR overrides and old installer registry values away from user data.
   if CompareText(RemoveBackslashUnlessRoot(ExpandFileName(ExpandConstant('{app}'))),
+#ifdef PublicRelease
+      RemoveBackslashUnlessRoot(ExpandFileName(ExpandConstant('{localappdata}\Programs\Martlet')))) <> 0 then
+    Result := 'This unsigned hobby release uses only the fixed per-user program directory. Remove /DIR overrides. User settings remain separate.';
+#else
       RemoveBackslashUnlessRoot(ExpandFileName(ExpandConstant('{localappdata}\Programs\Martlet Internal')))) <> 0 then
     Result := 'This internal build uses only the fixed per-user program directory. Remove /DIR overrides. User settings must remain separate.';
+#endif
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

@@ -3,11 +3,18 @@
 param(
     [Parameter(Mandatory)][string]$PayloadRoot,
     [Parameter(Mandatory)][string]$BuilderDirectory,
-    [Parameter(Mandatory)][string]$OutputDirectory
+    [Parameter(Mandatory)][string]$OutputDirectory,
+    [switch]$PublicRelease
 )
 . "$PSScriptRoot\Installer.Common.ps1"
 Assert-PackagingHost
-$null = Test-PayloadManifest $PayloadRoot -RequireCurrentSource
+$manifest = Test-PayloadManifest $PayloadRoot -RequireCurrentSource
+$channel = if ($PublicRelease) { Get-PackagingChannel PublicUnsigned } else { Get-PackagingChannel Internal }
+if ($manifest.channel -cne $channel.name) { throw "Installer channel differs from the verified payload: $($manifest.channel)." }
+if ($PublicRelease) {
+    Assert-PublicReleaseRights
+    if ($manifest.applicationVersion -cne '0.1.0.0') { throw 'Only initial public version 0.1.0 is supported.' }
+}
 $compiler = Get-VerifiedInnoCompiler $BuilderDirectory
 New-OutputDirectory $OutputDirectory
 $fileList = Join-Path $OutputDirectory 'payload-files.iss'
@@ -16,21 +23,23 @@ $staging = Join-Path $OutputDirectory 'staging'
 [IO.Directory]::CreateDirectory($staging) | Out-Null
 $arguments = @('--quiet', '--no-ide-signtools',
     "--define=PayloadRoot=$PayloadRoot", "--define=PayloadFiles=$fileList",
-    "--define=AppVersion=$($manifest.applicationVersion)", "--define=BuildOutput=$staging",
+    "--define=AppVersion=$(if ($PublicRelease) { '0.1.0' } else { $manifest.applicationVersion })", "--define=BuildOutput=$staging",
     (Join-Path $PSScriptRoot 'Martlet.iss'))
+if ($PublicRelease) { $arguments = @('--define=PublicRelease=1') + $arguments }
 $result = Invoke-BoundedProcess $compiler $arguments 180
 [IO.File]::WriteAllText((Join-Path $OutputDirectory 'compiler.log'), $result.Stdout + $result.Stderr)
 if ($result.ExitCode -ne 0) {
     throw "Installer compilation failed (exit $($result.ExitCode)): $($result.Stderr). Inspect $OutputDirectory\compiler.log."
 }
-$name = "Martlet-$($manifest.applicationVersion)-win-x64-INTERNAL-UNSIGNED.exe"
+$name = if ($PublicRelease) { 'Martlet-0.1.0-win-x64.exe' }
+    else { "Martlet-$($manifest.applicationVersion)-win-x64-INTERNAL-UNSIGNED.exe" }
 $installer = (Get-RequiredFile (Join-Path $staging $name)).FullName
 Assert-X64Pe $installer
 if ((Get-Item -LiteralPath $installer).Length -gt 200MB) { throw 'Installer exceeds the 200 MiB planning budget; review before widening it.' }
 $null = Test-PayloadManifest $PayloadRoot -RequireCurrentSource
 $provenance = [ordered]@{
     schemaVersion = 1
-    channel = 'INTERNAL DEVELOPMENT ONLY - UNSIGNED'
+    channel = $channel.name
     installer = $name
     bytes = (Get-Item -LiteralPath $installer).Length
     sha256 = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -39,10 +48,11 @@ $provenance = [ordered]@{
     sourceCommit = $manifest.sourceCommit
     sourceDirty = $manifest.sourceDirty
     cleanWindowsLifecycle = 'NOT RUN - requires isolated Windows 11 25H2 x64 VM'
-    signing = 'NOT RUN - unsigned internal skeleton, no public distribution authorized'
+    signing = if ($PublicRelease) { 'UNSIGNED HOBBY RELEASE - no Authenticode publisher authentication' }
+        else { 'NOT RUN - unsigned internal skeleton, no public distribution authorized' }
 }
 [IO.File]::WriteAllText((Join-Path $staging 'installer-manifest.json'), ($provenance | ConvertTo-Json -Depth 8) + "`n")
 $manifestHash = (Get-FileHash -LiteralPath (Join-Path $staging 'installer-manifest.json') -Algorithm SHA256).Hash.ToLowerInvariant()
 [IO.File]::WriteAllText((Join-Path $staging 'SHA256SUMS.txt'), "$($provenance.sha256)  $name`n$manifestHash  installer-manifest.json`n")
 [IO.Directory]::Move($staging, (Join-Path $OutputDirectory 'installer'))
-Write-Output "INTERNAL ONLY: compiled $name ($($provenance.bytes) bytes). No install/uninstall/signing qualification was performed."
+Write-Output "$($channel.name): compiled $name ($($provenance.bytes) bytes). No install/uninstall qualification was performed."

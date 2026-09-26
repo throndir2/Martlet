@@ -61,17 +61,19 @@ is serviced; it is close to Home/Pro end-of-servicing at the research date
 ([S03](RESEARCH.md#s03)). ARM64, Windows 10, Linux/macOS desktop, and enterprise
 deployment tooling are not initial support claims.
 
-**Packaging proposal:** signed per-user Inno Setup EXE, normal install/uninstall
+**Packaging proposal:** clearly disclosed unsigned per-user Inno Setup EXE
+per owner direction, normal install/uninstall
 registration, Start menu shortcut, local help, and bundled diagnostic CLI.
 Install to the user's application directory without an elevation prompt in the
 golden path. Keep code and mutable data separate. Default install must not add
 firewall exceptions, install services, modify drivers, start at login, fetch
 large models, or require a browser login.
 
-Publish a checksum and signed provenance for the exact installer later.
-Signature verification and SmartScreen/policy issues are support cases:
-do not tell users to disable antivirus or click through an unknown publisher.
-Unsigned artifacts are internal development artifacts, not the novice route.
+Publish GitHub asset SHA-256, provenance and notices for the exact versioned
+installer. A GitHub-supplied checksum is not an independent publisher signature.
+SmartScreen/policy issues are support cases: do not tell users to disable
+antivirus or bypass Windows protection. Internal-unsigned artifacts must not
+be mislabeled as official unsigned Releases; they have distinct identities.
 
 A self-contained ZIP is a developer/support diagnostic artifact only in M1-M2,
 not a promised fully portable mode. If supported later, specify what remains in
@@ -82,7 +84,7 @@ and version coexistence. Do not silently store credentials next to a portable EX
 
 | Step | User experience | Persisted checkpoint / probe |
 | --- | --- | --- |
-| 1. Download/install | Official future release page states supported OS, publisher, size, no-GPU API option, and planned costs | Verify signature, OS/architecture, free disk, standard-user writeability; display install failure code and log location |
+| 1. Download/install | Official release page states supported OS, unsigned/unverified publisher, size, no-GPU API option, and planned costs | Verify official GitHub origin, exact version and asset SHA-256, OS/architecture, free disk, standard-user writeability; preserve Windows warnings and display install failure code/log location |
 | 2. Welcome | Choose **Try fixture demo**, **Use an API provider**, or **Connect existing endpoints**; "No avatar" is normal | Profile and onboarding schema version; no credential or network call needed for demo |
 | 3. Explain data | Show mic -> STT destination, text -> LLM, response -> TTS; screen and memory off; generated voice disclosure | Explicit consent per role/destination; not one blanket analytics checkbox |
 | 4. Configure provider | Select known preset or named endpoint adapter; show HTTPS origin, model and current pricing/retention links | Save role routes; validate URL without sending secrets to arbitrary redirects |
@@ -487,7 +489,7 @@ executable.
 | Runtime supervision | Container restart policy covers process exit, not proof of functional health. An unhealthy-running process requires a bounded, explicit recovery policy; avoid infinite restart/OOM loops |
 | Readiness | `stopped`, `starting`, `downloading`, `loading`, `warming`, `ready`, `busy`, `degraded`, `failed`; include last change, progress, probe age and reason |
 | Graceful stop | Stop accepting turns, cancel/flush playback/jobs, drain bounded worker work, flush databases; configured timeout before targeted termination; no global process-name kills |
-| Upgrade | Verify signature/digest and schema/protocol compatibility; preview changes/disk and obtain download/model consent; snapshot configuration/database; stage new version; health-gate activation |
+| Upgrade | Verify GitHub origin/digest (and signature only for separately signed candidates) and schema/protocol compatibility; preview changes/disk and obtain download/install/model consent; snapshot configuration/database; stage new version; health-gate activation |
 | Rollback | Retain previous executable/image/model manifest and matching data snapshot; restore only a compatible schema; never open new-schema data with an older binary blindly |
 | Backup/restore | Consistent database snapshot, config/profile/voice metadata, optional voice assets with consent; omit secrets by default and re-pair; test restore on a separate profile/host |
 | Repair | Read-only doctor first; restart only selected adapter/service, re-verify/re-download corrupt artifacts with consent, or reset a selected setting; preserve user data and explain scope |
@@ -509,11 +511,21 @@ revocation later; report that limitation. Removing Martlet never uninstalls
 shared Docker/driver packages by default. Retained data remains subject to the
 user's local backup/privacy policy.
 
-Updates: manual check/download/install in MVP, stable and beta channels isolated
-by explicit selection. No surprise model updates or unreviewed `latest` image
-tags. An automated updater is not required for MVP; signed manifest validation,
-rollback, and clear patch instructions are. Self-contained .NET runtime
-security patches require new Martlet packages.
+The Desktop now supports OFF-by-default, opt-in launch checks or an explicit
+manual check against the public stable GitHub Release API. A newer versioned
+win-x64 installer can be downloaded only after confirmation and an exact
+GitHub asset size/SHA-256 check. The repository is still private and has no
+qualified published release, so this route is not usable for public updates
+yet. That digest is not publisher trust: the app neither executes the download
+nor claims an installed upgrade. The owner permits a clearly marked unsigned
+hobby installer with a narrow personal/noncommercial binary-use grant, not
+code-signing by default. Local installation/upgrade/rollback qualification,
+included-component rights and a public Release remain required for a
+user-approved in-app install step. Windows may display publisher warnings;
+never suppress or bypass them. No surprise model updates or
+unreviewed `latest` image tags. Beta remains an unimplemented opt-in channel,
+not an automatic fallback. Self-contained .NET runtime security patches
+require new Martlet packages.
 
 ### Optional advanced host administration
 
@@ -609,7 +621,7 @@ trace IDs, not private audio/transcripts/secrets.
 
 | Symptom / stable code | Likely causes | Automated probe | Exact next step for user | Escalation evidence |
 | --- | --- | --- | --- | --- |
-| Installer will not open: `INSTALL_SIGNATURE` | Damaged download, unsigned build, blocked publisher/policy | Signature/hash and file version | Re-download official signed artifact; if enterprise policy blocks it, contact administrator; do not disable protection | Installer hash, signer, OS/policy error |
+| Installer will not open: `INSTALL_SIGNATURE` | Damaged download, unsigned publisher warning or blocked OS policy | Official Release origin, asset SHA-256, file version and OS warning | Re-download the exact official asset if its digest failed; if Windows or enterprise policy blocks an unsigned build, contact the administrator; do not disable protection | Installer hash, unsigned status, OS/policy error |
 | Install cannot complete: `INSTALL_PREREQ` | Wrong architecture, unsupported OS, low disk, unwritable directory | OS/RID/disk/permission probe | Choose matching supported installer or free indicated space; retain existing version | Install step/code and disk summary |
 | Host setup stops: `HOST_PREREQ` | Missing engine/plugin/toolkit, conflicting packages, pending reboot | Version and desired-state diff | Review specific official prerequisite remedy, approve only needed change, reboot if required, rerun preflight | Sanitized host matrix and failed step |
 | GPU absent: `GPU_UNAVAILABLE` | Driver/module/Secure Boot issue, wrong GPU assignment, toolkit not configured | Host GPU -> container GPU -> framework chain | Follow detected driver/toolkit remedy; reselect actual UUID; verify after reboot; do not disable Secure Boot as a generic fix | Which boundary failed, driver/kernel/image IDs |

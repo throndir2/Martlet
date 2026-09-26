@@ -117,8 +117,22 @@ Report integrated delivery versus local/open/blocked work accurately.
 Autonomous delivery does not authorize spending, sensitive-data disclosure,
 production deployment, release publication, destructive actions, installing
 host services/drivers, or changing permissions, protections or billing.
-Do not create, enable, expand, dispatch or retry remote CI. Only a separately
-requested minimal build/package/release may use the documented remote
-exception; upload/publication needs separate authorization and no validation
-may be disguised as a build. Missing local OS/hardware/tool evidence stays
-NOT RUN or blocked; never weaken a gate to finish.
+Never create, enable, expand, dispatch or retry GitHub CI pipelines (or other
+remote validation), including PR, push, scheduled and self-hosted jobs. Free
+GitHub Actions minutes are reserved exclusively for an explicitly requested,
+minimal **manual release build/package** on GitHub: only necessary restores,
+compilation and packaging. No tests, lint, scans, smoke checks, qualification
+or disguised validation in that workflow. Do not run the release workflow,
+upload artifacts to a public Release, publish a release or add automatic
+release triggers without separate authorization. Missing local OS/hardware/tool
+evidence stays NOT RUN or blocked; never weaken a gate to finish.
+
+The owner has chosen an **unsigned, clearly disclosed hobby release**; do not
+make code signing a prerequisite for the official Windows installer or add a
+signing-cost dependency. Never mislabel an unsigned build as signed or suppress
+Windows security warnings. An unsigned GitHub asset digest checks integrity
+against the GitHub metadata, not independent publisher identity. Retain explicit
+user consent for download and installation, narrow official-binary use rights,
+third-party notices, and local install/upgrade/rollback qualification. Keep
+the private V07 signed-candidate library's trust contract separate from this
+GitHub installer delivery route.
