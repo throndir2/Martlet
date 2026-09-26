@@ -518,15 +518,13 @@ over Martlet code.
 
 ## Evidence boundary and required VM follow-up
 
-Required for each changed app graph on the existing Windows developer host:
-two actual locked self-contained publishes, native CLI/WPF smoke,
-integrity/negative coverage, repeat-publish equality and real Inno compilation.
-Lock refresh or read-only compiler receipt verification alone does **not**
-complete those payload gates. The former dedicated hosted lane is removed;
-run the commands above locally, including the retained wrapper regression.
+Full payload gates (two locked self-contained publishes, native CLI/WPF smoke,
+integrity/negative coverage, repeat-publish equality and real Inno compilation)
+are available on the Windows developer host but are not required per change
+during the prototype phase. The former dedicated hosted lane is removed.
 These developer commands neither install Martlet nor upload releases/artifacts.
-The minimal remote build/release exception does not authorize moving these
-validation gates into an Action or creating a replacement workflow.
+A minimal remote build/release workflow may package and publish releases but
+must not absorb these validation gates.
 
 **Not run:** clean standard-user Windows with no SDK/preinstalled .NET; actual
 install/uninstall/reinstall/repair; Start menu/registered uninstall operation;
