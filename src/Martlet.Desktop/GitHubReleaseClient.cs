@@ -18,7 +18,7 @@ internal sealed class GitHubReleaseClient(HttpClient client)
 {
     private const long MaximumInstallerBytes = 512L * 1024 * 1024;
     private const int MaximumMetadataBytes = 1024 * 1024;
-    // Unsigned builds ship as prototype prereleases, which /releases/latest omits.
+    // Offered releases are normal (non-draft, non-prerelease) versions, chosen by highest number.
     private static readonly Uri Releases = new("https://api.github.com/repos/throndir2/Martlet/releases?per_page=20");
 
     internal static HttpClient CreateHttpClient() => new(new SocketsHttpHandler
@@ -149,8 +149,9 @@ internal sealed class GitHubReleaseClient(HttpClient client)
         var newestTag = "";
         foreach (var release in root.EnumerateArray())
         {
-            // Drafts are never offered; tags that are not numeric app versions belong to other artifacts.
-            if (release.ValueKind != JsonValueKind.Object || ReadBoolean(release, "draft")) continue;
+            // Drafts and opt-in prereleases are never offered; non-numeric tags belong to other artifacts.
+            if (release.ValueKind != JsonValueKind.Object || ReadBoolean(release, "draft") ||
+                ReadBoolean(release, "prerelease")) continue;
             var candidateTag = ReadString(release, "tag_name");
             if (!TryParseVersion(candidateTag, out var candidate) || candidate <= newestVersion) continue;
             newest = release;

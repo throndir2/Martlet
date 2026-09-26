@@ -1,7 +1,7 @@
 #Requires -Version 7.0
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][ValidateSet('0.1.0')][string]$Version,
+    [Parameter(Mandatory)][ValidatePattern('\A(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\z')][string]$Version,
     [Parameter(Mandatory)][string]$OutputDirectory,
     [string]$DotnetPath = 'dotnet',
     [string]$NodePath = 'node'
@@ -32,9 +32,9 @@ try {
     $payload = Join-Path $publish 'payload'
     $manifest = Test-PayloadManifest $payload -RequireCurrentSource
     if ($manifest.channel -cne (Get-PackagingChannel PublicUnsigned).name -or
-        $manifest.applicationVersion -cne '0.1.0.0') { throw 'Public payload version/channel differs from the requested release.' }
+        $manifest.applicationVersion -cne "$Version.0") { throw 'Public payload version/channel differs from the requested release.' }
     & "$PSScriptRoot\Get-InnoSetup.ps1" -Destination $builder
     & "$PSScriptRoot\Build-Installer.ps1" -PublicRelease -PayloadRoot $payload -BuilderDirectory $builder -OutputDirectory $package
-    Write-Output "UNSIGNED public release candidate: $(Join-Path $package 'installer\Martlet-0.1.0-win-x64.exe')."
+    Write-Output "Release installer: $(Join-Path $package "installer\Martlet-$Version-win-x64.exe")."
 }
 finally { Pop-Location }

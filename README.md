@@ -94,18 +94,17 @@ it permits one anonymous release-metadata request on future launches;
 versioned Windows installer is published, **Download update** requires a
 separate confirmation, limits the transfer to 512 MiB and verifies the exact
 bytes against GitHub's SHA-256 asset digest. The repository is public, so
-checks succeed anonymously once a versioned release (including an unsigned prototype prerelease) is published. The opt-in is stored in
+checks succeed anonymously once a versioned release is published. The opt-in is stored in
 `update-checks.txt` in the selected local data directory, separately from
 profile settings and configuration backup; unreadable preferences default to
-OFF with a visible error. The owner permits an
-**unsigned prototype prerelease**, clearly labeled as such: a digest supplied by the
-same source is not publisher authentication, and Windows may display security
-warnings. Martlet does **not** launch or install the downloaded executable;
-an in-app installation/rollback path is not implemented. Do not run an internal
-build as an update. The [Windows packaging guide](packaging/windows/README.md) distinguishes
-local internal builds from the manually dispatched `v0.1.0` release workflow.
-The workflow has no push, PR, tag or scheduled trigger; it runs only when the
-owner explicitly dispatches a release.
+OFF with a visible error. Releases are normal GitHub releases; code signing is
+not a requirement for this personal project, so the installer is unsigned and
+Windows may show an unknown-publisher warning. Martlet does **not** launch or
+install the downloaded executable; an in-app installation/rollback path is not
+implemented. Do not run an internal build as an update. The
+[Windows packaging guide](packaging/windows/README.md) distinguishes local
+internal builds from the manually dispatched release workflow, which has no
+push, PR, tag or scheduled trigger.
 
 ## Local-only validation policy
 
@@ -129,9 +128,8 @@ publish it as a GitHub release. Agents may create, dispatch and publish these
 releases automatically without owner approval. No tests, lint, smoke,
 qualification, reproducibility checks, matrices or disguised validation belong
 in that workflow. Use only manual dispatch or tag/release triggers; never add
-PR/push/scheduled automation. Unsigned builds are published as unsigned
-prototype prereleases that disclose unverified publisher identity and keep
-Windows protection warnings intact.
+PR/push/scheduled automation. Releases are normal GitHub releases; the
+unsigned installer never suppresses Windows protection warnings.
 
 Before any push or PR creation/update, inspect the applicable workflow events,
 refs and resulting tree, including older branches that could restore deleted

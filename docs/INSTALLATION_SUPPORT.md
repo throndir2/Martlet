@@ -61,8 +61,8 @@ is serviced; it is close to Home/Pro end-of-servicing at the research date
 ([S03](RESEARCH.md#s03)). ARM64, Windows 10, Linux/macOS desktop, and enterprise
 deployment tooling are not initial support claims.
 
-**Packaging proposal:** clearly disclosed unsigned per-user Inno Setup EXE
-per owner direction, normal install/uninstall
+**Packaging:** unsigned per-user Inno Setup EXE (code signing is not required
+for this personal project), normal install/uninstall
 registration, Start menu shortcut, local help, and bundled diagnostic CLI.
 Install to the user's application directory without an elevation prompt in the
 golden path. Keep code and mutable data separate. Default install must not add
@@ -73,7 +73,7 @@ Publish GitHub asset SHA-256, provenance and notices for the exact versioned
 installer. A GitHub-supplied checksum is not an independent publisher signature.
 SmartScreen/policy issues are support cases: do not tell users to disable
 antivirus or bypass Windows protection. Internal-unsigned artifacts must not
-be mislabeled as official unsigned Releases; they have distinct identities.
+be mislabeled as public releases; they have distinct identities.
 
 A self-contained ZIP is a developer/support diagnostic artifact only in M1-M2,
 not a promised fully portable mode. If supported later, specify what remains in
@@ -84,7 +84,7 @@ and version coexistence. Do not silently store credentials next to a portable EX
 
 | Step | User experience | Persisted checkpoint / probe |
 | --- | --- | --- |
-| 1. Download/install | Official release page states supported OS, unsigned/unverified publisher, size, no-GPU API option, and planned costs | Verify official GitHub origin, exact version and asset SHA-256, OS/architecture, free disk, standard-user writeability; preserve Windows warnings and display install failure code/log location |
+| 1. Download/install | Release page states supported OS, that the installer is not code-signed, size, no-GPU API option, and planned costs | Verify official GitHub origin, exact version and asset SHA-256, OS/architecture, free disk, standard-user writeability; preserve Windows warnings and display install failure code/log location |
 | 2. Welcome | Choose **Try fixture demo**, **Use an API provider**, or **Connect existing endpoints**; "No avatar" is normal | Profile and onboarding schema version; no credential or network call needed for demo |
 | 3. Explain data | Show mic -> STT destination, text -> LLM, response -> TTS; screen and memory off; generated voice disclosure | Explicit consent per role/destination; not one blanket analytics checkbox |
 | 4. Configure provider | Select known preset or named endpoint adapter; show HTTPS origin, model and current pricing/retention links | Save role routes; validate URL without sending secrets to arbitrary redirects |
@@ -512,14 +512,13 @@ shared Docker/driver packages by default. Retained data remains subject to the
 user's local backup/privacy policy.
 
 The Desktop now supports OFF-by-default, opt-in launch checks or an explicit
-manual check against the public stable GitHub Release API. A newer versioned
-win-x64 installer can be downloaded only after confirmation and an exact
-GitHub asset size/SHA-256 check. The repository is public; the route works
-once a stable versioned Release is published. That digest is not publisher
-trust: the app neither executes the download
-nor claims an installed upgrade. The owner permits a clearly marked unsigned
-hobby installer with a narrow personal/noncommercial binary-use grant, not
-code-signing by default. A user-approved in-app install step (with upgrade and
+manual check against the public GitHub releases list. A newer versioned
+win-x64 installer from a normal (non-draft, non-prerelease) release can be
+downloaded only after confirmation and an exact GitHub asset size/SHA-256
+check. That digest is not publisher trust: the app neither executes the
+download nor claims an installed upgrade. Releases ship an unsigned installer
+with a narrow personal/noncommercial binary-use grant; code signing is not a
+requirement for this personal project. A user-approved in-app install step (with upgrade and
 rollback handling) is not implemented. Windows may display publisher warnings;
 never suppress or bypass them. No surprise model updates or
 unreviewed `latest` image tags. Beta remains an unimplemented opt-in channel,

@@ -195,7 +195,7 @@ public partial class MainWindow : ThemedWindow
             availableUpdate = result;
             UpdateStatusText.Text = result is null
                 ? "No newer Martlet release is available."
-                : $"Version {result.Version} is available ({result.Bytes / (1024d * 1024d):F1} MiB). Review {result.ReleasePage} before deciding to download. This unsigned prototype prerelease has no verified publisher; in-app installation is not yet supported.";
+                : $"Version {result.Version} is available ({result.Bytes / (1024d * 1024d):F1} MiB). Review {result.ReleasePage} before deciding to download. The installer is not code-signed; in-app installation is not yet supported.";
             DownloadUpdateButton.Visibility = result is null ? Visibility.Collapsed : Visibility.Visible;
             ReviewUpdateButton.Visibility = result is null ? Visibility.Collapsed : Visibility.Visible;
         }

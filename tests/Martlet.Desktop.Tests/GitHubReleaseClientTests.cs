@@ -30,7 +30,7 @@ public sealed class GitHubReleaseClientTests
     }
 
     [Fact]
-    public async Task NewerPrototypePrereleaseIsOfferedWithExactVersionedInstaller()
+    public async Task NewerNormalReleaseIsOfferedWithExactVersionedInstaller()
     {
         var bytes = "installer fixture"u8.ToArray();
         using var http = new HttpClient(new ScriptedHandler(request =>
@@ -39,7 +39,7 @@ public sealed class GitHubReleaseClientTests
             Assert.Equal("/repos/throndir2/Martlet/releases", request.RequestUri.AbsolutePath);
             Assert.Equal("?per_page=20", request.RequestUri.Query);
             Assert.Null(request.Headers.Authorization);
-            return JsonResponse(Release("v0.2.0", "Martlet-0.2.0-win-x64.exe", bytes, prerelease: true));
+            return JsonResponse(Release("v0.2.0", "Martlet-0.2.0-win-x64.exe", bytes));
         }));
         var client = new GitHubReleaseClient(http);
         var update = await client.CheckAsync(new Version(0, 1, 0, 0), CancellationToken.None);
@@ -51,15 +51,16 @@ public sealed class GitHubReleaseClientTests
     }
 
     [Fact]
-    public async Task SelectsHighestNumberedNonDraftRelease()
+    public async Task SelectsHighestNumberedNormalRelease()
     {
         var bytes = "installer fixture"u8.ToArray();
         var json = JsonSerializer.Serialize(new[]
         {
+            ReleaseObject("v0.4.0", "Martlet-0.4.0-win-x64.exe", bytes, prerelease: true),
             ReleaseObject("v0.3.0", "Martlet-0.3.0-win-x64.exe", bytes, draft: true),
             ReleaseObject("nightly", "Martlet-nightly-win-x64.exe", bytes),
             ReleaseObject("v0.1.5", "Martlet-0.1.5-win-x64.exe", bytes),
-            ReleaseObject("v0.2.0", "Martlet-0.2.0-win-x64.exe", bytes, prerelease: true)
+            ReleaseObject("v0.2.0", "Martlet-0.2.0-win-x64.exe", bytes)
         });
         using var http = new HttpClient(new ScriptedHandler(_ => JsonResponse(json)));
         var update = await new GitHubReleaseClient(http).CheckAsync(new Version(0, 1, 0, 0), CancellationToken.None);
@@ -87,7 +88,7 @@ public sealed class GitHubReleaseClientTests
     }
 
     [Fact]
-    public async Task RejectsUndigestedOrUnboundedMetadataAndNeverOffersDrafts()
+    public async Task RejectsUndigestedOrUnboundedMetadataAndNeverOffersDraftsOrPrereleases()
     {
         var bytes = "installer"u8.ToArray();
         foreach (var json in new[]
@@ -104,6 +105,9 @@ public sealed class GitHubReleaseClientTests
         using var drafts = new HttpClient(new ScriptedHandler(_ =>
             JsonResponse(Release("v0.2.0", "Martlet-0.2.0-win-x64.exe", bytes, draft: true))));
         Assert.Null(await new GitHubReleaseClient(drafts).CheckAsync(new Version(0, 1, 0, 0), CancellationToken.None));
+        using var prereleases = new HttpClient(new ScriptedHandler(_ =>
+            JsonResponse(Release("v0.2.0", "Martlet-0.2.0-win-x64.exe", bytes, prerelease: true))));
+        Assert.Null(await new GitHubReleaseClient(prereleases).CheckAsync(new Version(0, 1, 0, 0), CancellationToken.None));
     }
 
     [Fact]

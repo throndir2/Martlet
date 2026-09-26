@@ -1,13 +1,10 @@
-MARTLET 0.1.0 - UNSIGNED PROTOTYPE PRERELEASE
+MARTLET FOR WINDOWS
 
-This installer is deliberately unsigned. A matching checksum from GitHub
-detects download corruption but does not authenticate the publisher. Windows
-may report an unverified publisher or show security warnings. Confirm the
-release source and decide whether to trust this software; do not disable
-system security protections to install it.
+The installer is not code-signed, so Windows may show an unknown-publisher
+warning. A checksum from the GitHub release page detects download corruption.
+Do not disable system security protections to install Martlet.
 
-Targeted installer platform (not clean-machine qualification):
-Windows 11 25H2 x64 (build 26200 or newer).
+Supported platform: Windows 11 25H2 x64 (build 26200 or newer).
 This per-user installer provides a self-contained Desktop app, a Doctor CLI,
 dependency notices, and an uninstaller. The WebView2 runtime and optional
 avatar/model services are not bundled or silently installed. No API calls,
@@ -16,11 +13,8 @@ occurs merely by launching Martlet. If you opt in, app update checks may
 contact GitHub at launch; real provider use requires explicit configuration
 and per-action consent and may incur charges.
 
-The offline fixture is scripted (FIXTURE - NOT AI). The actual Windows
-installation/upgrade/rollback, native audio, provider, device, GPU and avatar
-qualifications are not established by a package build. An update download does
-not launch or install itself; close Martlet and review your data before making
-any deliberate manual installation decision.
+The offline fixture is scripted (FIXTURE - NOT AI). An update download does
+not launch or install itself; close Martlet before running a newer installer.
 
 LICENSE.txt grants only narrow personal, noncommercial use of unmodified
 official Release binaries. It does not grant source reuse or redistribution.

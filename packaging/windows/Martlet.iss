@@ -19,9 +19,9 @@
 AppId={{7EA5CC4A-8BF4-4412-ABE1-90819303FEAB}
 AppName=Martlet
 AppVersion={#AppVersion}
-AppVerName=Martlet {#AppVersion} - UNSIGNED PROTOTYPE PRERELEASE
-AppPublisher=throndir2 (unsigned)
-VersionInfoDescription=Martlet - UNSIGNED PROTOTYPE PRERELEASE
+AppVerName=Martlet {#AppVersion}
+AppPublisher=throndir2
+VersionInfoDescription=Martlet
 DefaultDirName={localappdata}\Programs\Martlet
 DefaultGroupName=Martlet
 #else
@@ -80,7 +80,7 @@ TouchTime=00:00
 #ifdef PublicRelease
 Name: "{group}\Martlet"; Filename: "{app}\Desktop\Martlet.Desktop.exe"; WorkingDir: "{app}\Desktop"
 Name: "{group}\Martlet Doctor"; Filename: "{cmd}"; Parameters: "/D /K """"{app}\Doctor\Martlet.Doctor.exe"" status"""; WorkingDir: "{app}\Doctor"; IconFilename: "{app}\Doctor\Martlet.Doctor.exe"
-Name: "{group}\Read me - Unsigned release"; Filename: "{app}\help\RELEASE.txt"
+Name: "{group}\Read me"; Filename: "{app}\help\RELEASE.txt"
 Name: "{group}\Uninstall Martlet"; Filename: "{uninstallexe}"
 #else
 Name: "{group}\Martlet (Internal)"; Filename: "{app}\Desktop\Martlet.Desktop.exe"; WorkingDir: "{app}\Desktop"
@@ -97,7 +97,7 @@ begin
   if CompareText(RemoveBackslashUnlessRoot(ExpandFileName(ExpandConstant('{app}'))),
 #ifdef PublicRelease
       RemoveBackslashUnlessRoot(ExpandFileName(ExpandConstant('{localappdata}\Programs\Martlet')))) <> 0 then
-    Result := 'This unsigned prototype prerelease uses only the fixed per-user program directory. Remove /DIR overrides. User settings remain separate.';
+    Result := 'Martlet installs only to its fixed per-user program directory. Remove /DIR overrides. User settings remain separate.';
 #else
       RemoveBackslashUnlessRoot(ExpandFileName(ExpandConstant('{localappdata}\Programs\Martlet Internal')))) <> 0 then
     Result := 'This internal build uses only the fixed per-user program directory. Remove /DIR overrides. User settings must remain separate.';
