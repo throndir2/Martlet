@@ -1,4 +1,5 @@
-<Window x:Class="Martlet.Desktop.AudioSetupWindow"
+<local:ThemedWindow x:Class="Martlet.Desktop.AudioSetupWindow"
+        xmlns:local="clr-namespace:Martlet.Desktop"
         Style="{DynamicResource AppWindowStyle}"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -24,9 +25,11 @@
                            Text="Default follows only on the NEXT authorized test. A default/input/format change during capture stops and discards; it never reopens. Fixed selection never falls back." />
                 <Button x:Name="MicButton" Content="_Test microphone (confirm up to 5 seconds)" Click="Mic_Click" HorizontalAlignment="Left" Padding="10,6"
                         AutomationProperties.AutomationId="AudioTestMic" />
-                <Label Content="Actual input _level (amplitude only, NOT speech detection)" Target="{Binding ElementName=LevelText}" />
+                <Label Content="Actual input _level (whole-test 1% RMS plus frame/level coverage advisory; NOT speech detection)" Target="{Binding ElementName=LevelText}" />
                 <TextBox x:Name="LevelText" IsReadOnly="True" Text="No PCM received." AutomationProperties.AutomationId="AudioLevel"
-                         AutomationProperties.Name="Actual selected input peak RMS and sample count" />
+                         AutomationProperties.Name="Actual selected input whole-test peak RMS and sample count" />
+                <TextBlock TextWrapping="Wrap" Margin="0,4,0,8"
+                           Text="This is only a LOCAL historical level advisory, not an OS permission, speech/VAD or hardware verdict. A quiet or brief valid phrase may fall below it; this test does not gate typed or push-to-talk use." />
                 <Label Content="_Output" Target="{Binding ElementName=OutputChoice}" />
                 <ComboBox x:Name="OutputChoice" MinHeight="30" SelectionChanged="Choice_Changed"
                           AutomationProperties.AutomationId="AudioOutput" AutomationProperties.Name="Output fixed endpoint or default bound once at start" />
@@ -59,4 +62,4 @@
                      AutomationProperties.AutomationId="AudioResult" AutomationProperties.Name="Audio action result and remedy" />
         </StackPanel>
     </ScrollViewer>
-</Window>
+</local:ThemedWindow>

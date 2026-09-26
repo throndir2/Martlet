@@ -127,7 +127,8 @@ public sealed class ConfigurationRecoveryDispatcherTests
             Assert.False(Directory.Exists(scope.Data));
             Assert.False(runner.IsRunning);
             Assert.False(Field<Button>(window, "RestoreButton").IsEnabled);
-            Assert.Equal(MessageBoxResult.No, ConfigurationRecoveryWindow.ConfirmationDefault);
+            var confirmation = new ConfirmationDialog("Review local configuration action", "Confirm?");
+            Assert.True(Field<Button>(confirmation, "NoButton").IsDefault);
             Field<TextBox>(window, "BackupPath").Text = scope.Backup;
             Click(window, "RecoveryBackup");
             await Heartbeat();

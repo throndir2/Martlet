@@ -7,7 +7,7 @@ using Microsoft.Win32;
 
 namespace Martlet.Desktop;
 
-public partial class ConfigurationRecoveryWindow : Window
+public partial class ConfigurationRecoveryWindow : ThemedWindow
 {
     private readonly ConfigurationRecoveryController controller;
     private readonly Func<string, bool>? confirm;
@@ -18,7 +18,6 @@ public partial class ConfigurationRecoveryWindow : Window
     private bool closed, observing;
     private string? observationMessage;
     private ConfigurationRestorePlan? rendered;
-    internal static MessageBoxResult ConfirmationDefault => MessageBoxResult.No;
 
     internal ConfigurationRecoveryWindow(ConfigurationRecoveryController controller, Func<string, bool>? confirm = null,
         TimeProvider? clock = null, TimeSpan? observationTimeout = null)
@@ -67,8 +66,8 @@ public partial class ConfigurationRecoveryWindow : Window
         return false;
     }
 
-    private bool Confirm(string text) => confirm?.Invoke(text) ?? MessageBox.Show(this, text,
-        "Review local configuration action", MessageBoxButton.YesNo, MessageBoxImage.Warning, ConfirmationDefault) == MessageBoxResult.Yes;
+    private bool Confirm(string text) => confirm?.Invoke(text) ??
+        ConfirmationDialog.Confirm(this, text, "Review local configuration action");
 
     private async Task Observe(SetupOperation? operation)
     {

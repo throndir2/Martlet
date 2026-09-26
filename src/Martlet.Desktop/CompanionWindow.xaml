@@ -1,4 +1,5 @@
-<Window x:Class="Martlet.Desktop.CompanionWindow"
+<local:ThemedWindow x:Class="Martlet.Desktop.CompanionWindow"
+        xmlns:local="clr-namespace:Martlet.Desktop"
         Style="{DynamicResource AppWindowStyle}"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -79,4 +80,4 @@
                        AutomationProperties.AutomationId="CompanionActivity"/>
         </StackPanel>
     </ScrollViewer>
-</Window>
+</local:ThemedWindow>

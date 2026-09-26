@@ -198,10 +198,13 @@ dotnet run --project src\Martlet.Doctor -f net10.0-windows --no-build -c Release
 
 The desktop's **Your palette** selector switches between **Pink light** (blush,
 cream and berry) and **Rose dark** (deep plum and soft rose). Rounded controls,
-matching form fields and the companion home screen share the palette across
-conversation, setup, companion, memory, audio, troubleshooting and recovery windows. Windows high
-contrast overrides the decorative colors; native Windows confirmation and file
-dialogs retain their system appearance.
+matching form fields, confirmation prompts and the companion home screen share the palette across
+conversation, setup, companion, voice library, avatar, memory, audio, troubleshooting and recovery windows.
+The transparent avatar overlay keeps its canvas clear while its move/close controls
+follow the current palette and Windows high contrast.
+The same styles appear when a window is opened independently by local UI tests.
+Windows high contrast overrides the decorative colors; Windows file and folder
+pickers retain their system appearance.
 
 Pink light is the first-launch default. Changing the selector saves only
 `appearance.txt` in the selected data directory, separately from profile settings,

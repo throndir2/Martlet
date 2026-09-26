@@ -10,7 +10,7 @@ using Microsoft.Win32;
 
 namespace Martlet.Desktop;
 
-public partial class MemoryWindow : Window
+public partial class MemoryWindow : ThemedWindow
 {
     private sealed record RetentionOption(string Label, TimeSpan? Duration, bool KeepCurrent = false)
     {
@@ -571,8 +571,7 @@ public partial class MemoryWindow : Window
             : $"expires at {retention.ExpiresAtUtc:O}";
 
     private static bool Confirm(Window owner, string text, string title) =>
-        MessageBox.Show(owner, text, title, MessageBoxButton.YesNo,
-            MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes;
+        ConfirmationDialog.Confirm(owner, text, title);
 
     private static string? PickDirectory()
     {

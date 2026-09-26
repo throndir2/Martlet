@@ -9,7 +9,7 @@ using Martlet.Providers;
 
 namespace Martlet.Desktop;
 
-public partial class LiveConversationWindow : Window
+public partial class LiveConversationWindow : ThemedWindow
 {
     internal Action<Window>? Troubleshooting { get; init; }
     internal Action<Window>? ConfigurationRecovery { get; init; }

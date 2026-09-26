@@ -1,0 +1,28 @@
+<local:ThemedWindow x:Class="Martlet.Desktop.ConfirmationDialog"
+        xmlns:local="clr-namespace:Martlet.Desktop"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Style="{DynamicResource AppWindowStyle}"
+        Width="620" MinWidth="420" MaxHeight="680" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize" ShowInTaskbar="False"
+        AutomationProperties.AutomationId="MartletConfirmation">
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <TextBlock Text="Review this action" Style="{DynamicResource SectionHeading}"/>
+        <ScrollViewer Grid.Row="1" MaxHeight="460" VerticalScrollBarVisibility="Auto">
+            <TextBlock x:Name="QuestionText" TextWrapping="Wrap" Margin="0,4,8,12"/>
+        </ScrollViewer>
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="NoButton" Content="_No" IsDefault="True" IsCancel="True"
+                    Click="No_Click" MinWidth="90" Margin="0,0,12,0"
+                    AutomationProperties.AutomationId="ConfirmationNo"/>
+            <Button x:Name="YesButton" Content="_Yes" Click="Yes_Click" MinWidth="90"
+                    Style="{DynamicResource PrimaryButton}"
+                    AutomationProperties.AutomationId="ConfirmationYes"/>
+        </StackPanel>
+    </Grid>
+</local:ThemedWindow>

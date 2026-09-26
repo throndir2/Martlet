@@ -10,7 +10,7 @@ using Microsoft.Win32;
 
 namespace Martlet.Desktop;
 
-public partial class TroubleshootingWindow : Window
+public partial class TroubleshootingWindow : ThemedWindow
 {
     private readonly SupportController support;
     private readonly Func<Task>? refresh;
@@ -170,8 +170,8 @@ public partial class TroubleshootingWindow : Window
         bool approved;
         try
         {
-            approved = confirm?.Invoke(text) ?? MessageBox.Show(this, text, "Confirm exact local support export",
-                MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes;
+            approved = confirm?.Invoke(text) ??
+                ConfirmationDialog.Confirm(this, text, "Confirm exact local support export");
         }
         finally { confirming = false; }
         if (closed) return;

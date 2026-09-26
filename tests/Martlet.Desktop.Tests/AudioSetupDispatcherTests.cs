@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.IO;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -33,6 +34,7 @@ public sealed class AudioSetupDispatcherTests
             Assert.Equal(0, fixture.Catalog.Calls);
             Assert.Equal(0, fixture.Capture.Opens);
             Assert.Equal(0, fixture.Output.Opens);
+            Assert.Equal(2, fixture.Confirmations);
             Click(window, "SaveButton");
             await Wait(() => Text(window, "ResultText").Contains("Setup saved", StringComparison.Ordinal));
             window.Close();
@@ -86,8 +88,11 @@ public sealed class AudioSetupDispatcherTests
             Click(window, "OutputButton");
             Assert.Equal(0, fixture.Output.Opens);
             Assert.Equal(InputPolicy.FollowDefaultOnNextPress, fixture.Capture.Selected!.Policy);
-            fixture.Clock.Advance(TimeSpan.FromSeconds(5));
+            fixture.Capture.Packet(count: 49);
             await Wait(() => Text(window, "ResultText").Contains("Samples received and discarded", StringComparison.Ordinal));
+            Assert.Contains("Whole-test selected PCM: peak 0.500000; RMS 0.500000; canonical samples 80000", Text(window, "LevelText"));
+            Assert.Contains("Samples at/above 1% full-scale: 80000", Text(window, "LevelText"));
+            Assert.Contains("1% full-scale", Text(window, "LevelText"));
             Click(window, "SaveButton");
             await Wait(() => Text(window, "ResultText").Contains("Setup saved", StringComparison.Ordinal));
             var saved = (await fixture.Store.LoadAsync()).Settings!.Audio!;
@@ -105,24 +110,255 @@ public sealed class AudioSetupDispatcherTests
     public async Task ServiceDisposesAllTransferredOrUnclaimedCapturePcm()
     {
         using var fixture = new Fixture();
-        fixture.Capture.Packet();
+        fixture.Capture.ObservePcmZeroing = true;
+        fixture.Capture.Packet(count: 50);
         var operation = fixture.Audio.Start(AudioSetupAction.Microphone, AudioChoice.Default(true), true)!;
-        await Wait(() => operation.Status.Samples > 0);
-        fixture.Clock.Advance(TimeSpan.FromSeconds(5));
         await operation.Worker.Completion.WaitAsync(TimeSpan.FromSeconds(3));
         Assert.True(operation.Status.Succeeded);
+        Assert.Equal(AudioInputSignal.DetectableAmplitude, operation.Status.Signal);
+        Assert.Equal(0.5, operation.Status.Peak);
+        Assert.Equal(0.5, operation.Status.Rms);
         Assert.Equal(0, operation.CaptureSnapshot!.RetainedPcmBytes);
-        Assert.Equal(1600, operation.CaptureSnapshot.CanonicalSamples);
+        Assert.Equal(80000, operation.CaptureSnapshot.CanonicalSamples);
+        Assert.Equal(80000L, operation.Status.SamplesAtOrAboveThreshold);
+        Assert.True(fixture.Capture.SawNonzeroPcm);
+        Assert.All(Assert.IsType<byte[]>(fixture.Capture.ObservedPcm), value => Assert.Equal((byte)0, value));
         fixture.Capture.Packet();
         var next = fixture.Audio.Start(AudioSetupAction.Microphone, AudioChoice.Default(true), true)!;
         await Wait(() => next.Status.Samples > 0);
         next.Stop();
         await next.Worker.Completion.WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.Null(next.Status.Signal);
+        Assert.Null(next.Status.Peak);
+        Assert.Null(next.Status.Checkpoint);
         Assert.Equal(0, next.CaptureSnapshot!.RetainedPcmBytes);
         Assert.False(next.Status.Succeeded);
         Assert.True(next.CaptureSnapshot.Epoch > operation.CaptureSnapshot.Epoch);
         Assert.NotEqual(next.CaptureSnapshot.Ids, operation.CaptureSnapshot.Ids);
     }
+
+    [Theory]
+    [InlineData((short)0)]
+    [InlineData((short)128)]
+    [InlineData((short)327)]
+    public Task SilentOrNearSilentInputShowsWholeTestRemedyAndCannotSaveCheckpoint(short amplitude) => OnDispatcher(async () =>
+    {
+        using var fixture = new Fixture();
+        fixture.Capture.Packet(amplitude, count: 50);
+        var window = fixture.Open();
+        try
+        {
+            await Ready(window);
+            Click(window, "MicButton");
+            await Wait(() => Text(window, "ResultText").Contains("below 1% full-scale", StringComparison.Ordinal));
+            Assert.Contains("hardware mute", Text(window, "ResultText"));
+            Assert.Contains("privacy", Text(window, "ResultText"));
+            Assert.Contains("Whole-test selected PCM", Text(window, "LevelText"));
+            Assert.Contains("no checkpoint", Text(window, "LevelText"));
+            Assert.DoesNotContain("SamplesReceived", Text(window, "StatusText"));
+            Click(window, "SaveButton");
+            await Wait(() => Text(window, "ResultText").Contains("Setup saved", StringComparison.Ordinal));
+            Assert.Null((await fixture.Store.LoadAsync()).Settings!.Audio!.Input.Checkpoint);
+            Assert.Equal(1, fixture.Capture.Opens);
+            Assert.Equal(0, fixture.Output.Opens);
+            Assert.DoesNotContain("PRIVATE", Text(window, "ResultText") + Text(window, "LevelText") + Text(window, "StatusText"));
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
+    public Task NoInputFramesHasSpecificRemedyAndNeverBecomesSavedEvidence() => OnDispatcher(async () =>
+    {
+        using var fixture = new Fixture();
+        var window = fixture.Open();
+        try
+        {
+            await Ready(window);
+            Click(window, "MicButton");
+            await Wait(() => fixture.Capture.Reads > 0);
+            fixture.Clock.Advance(TimeSpan.FromSeconds(5));
+            await Wait(() => Text(window, "ResultText").Contains("No microphone PCM frames", StringComparison.Ordinal));
+            Assert.Contains("selected microphone or changed default", Text(window, "ResultText"));
+            Assert.Contains("No PCM frames received in this test", Text(window, "LevelText"));
+            Click(window, "SaveButton");
+            await Wait(() => Text(window, "ResultText").Contains("Setup saved", StringComparison.Ordinal));
+            Assert.Null((await fixture.Store.LoadAsync()).Settings!.Audio!.Input.Checkpoint);
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
+    public Task SilentRetestClearsPriorHistoricalCheckpointOnlyOnExplicitSave() => OnDispatcher(async () =>
+    {
+        using var fixture = new Fixture();
+        fixture.Capture.Packet();
+        var window = fixture.Open();
+        try
+        {
+            await Ready(window);
+            Click(window, "MicButton");
+            await Wait(() => Text(window, "LevelText").Contains("Live selected PCM: peak 0.5000", StringComparison.Ordinal));
+            fixture.Capture.Packet(count: 49);
+            await Wait(() => Text(window, "ResultText").Contains("Samples received and discarded", StringComparison.Ordinal));
+            Click(window, "SaveButton");
+            await Wait(() => Text(window, "ResultText").Contains("Setup saved", StringComparison.Ordinal));
+            Assert.Equal(LocalAudioOutcome.SamplesReceived, (await fixture.Store.LoadAsync()).Settings!.Audio!.Input.Checkpoint!.Outcome);
+
+            fixture.Capture.Packet(0, count: 50);
+            Click(window, "MicButton");
+            await Wait(() => Text(window, "ResultText").Contains("below 1% full-scale", StringComparison.Ordinal));
+            Assert.DoesNotContain("SamplesReceived", Text(window, "StatusText"));
+            Click(window, "SaveButton");
+            await Wait(() => Text(window, "ResultText").Contains("Setup saved", StringComparison.Ordinal));
+            Assert.Null((await fixture.Store.LoadAsync()).Settings!.Audio!.Input.Checkpoint);
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
+    public async Task AdvisoryThresholdSeparatesNearSilentFromDetectablePcm()
+    {
+        using var fixture = new Fixture();
+        fixture.Capture.Packet(327, count: 50);
+        var low = fixture.Audio.Start(AudioSetupAction.Microphone, AudioChoice.Default(true), true)!;
+        await low.Worker.Completion.WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.Equal(AudioInputSignal.BelowAdvisoryThreshold, low.Status.Signal);
+        Assert.False(low.Status.Succeeded);
+        Assert.Null(low.Status.Checkpoint);
+        Assert.Equal(327 / 32768.0, low.Status.Rms);
+        Assert.Equal(0, low.CaptureSnapshot!.RetainedPcmBytes);
+
+        fixture.Capture.Packet(328, count: 50);
+        var detectable = fixture.Audio.Start(AudioSetupAction.Microphone, AudioChoice.Default(true), true)!;
+        await detectable.Worker.Completion.WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.Equal(AudioInputSignal.DetectableAmplitude, detectable.Status.Signal);
+        Assert.True(detectable.Status.Succeeded);
+        Assert.Equal(LocalAudioOutcome.SamplesReceived, detectable.Status.Checkpoint!.Outcome);
+        Assert.Equal(0, detectable.CaptureSnapshot!.RetainedPcmBytes);
+        Assert.NotEqual(low.CaptureSnapshot.Ids, detectable.CaptureSnapshot.Ids);
+    }
+
+    [Theory]
+    [InlineData(1, AudioInputSignal.InsufficientFrames)]
+    [InlineData(39, AudioInputSignal.InsufficientFrames)]
+    [InlineData(40, AudioInputSignal.DetectableAmplitude)]
+    public async Task FrameCoverageRequiresFourSecondsOfFiveSecondInput(int packets, AudioInputSignal expected)
+    {
+        using var fixture = new Fixture();
+        fixture.Capture.Packet(count: packets);
+        var operation = fixture.Audio.Start(AudioSetupAction.Microphone, AudioChoice.Default(true), true)!;
+        await Wait(() => operation.Status.Samples == packets * 1600);
+        fixture.Clock.Advance(TimeSpan.FromSeconds(5));
+        await operation.Worker.Completion.WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.Equal(expected, operation.Status.Signal);
+        Assert.Equal(0.5, operation.Status.Rms);
+        Assert.Equal(packets * 1600L, operation.Status.SamplesAtOrAboveThreshold);
+        Assert.Equal(expected == AudioInputSignal.DetectableAmplitude, operation.Status.Succeeded);
+        Assert.Equal(expected == AudioInputSignal.DetectableAmplitude, operation.Status.Checkpoint is not null);
+        Assert.Equal(0, operation.CaptureSnapshot!.RetainedPcmBytes);
+    }
+
+    [Theory]
+    [InlineData(1, AudioInputSignal.IntermittentAmplitude)]
+    [InlineData(10, AudioInputSignal.IntermittentAmplitude)]
+    [InlineData(12, AudioInputSignal.IntermittentAmplitude)]
+    [InlineData(13, AudioInputSignal.DetectableAmplitude)]
+    [InlineData(20, AudioInputSignal.DetectableAmplitude)]
+    public Task ShortClickAndIntermittentLevelsDoNotMasqueradeAsSustainedInput(
+        int loudPackets, AudioInputSignal expected) => OnDispatcher(async () =>
+    {
+        using var fixture = new Fixture();
+        var window = fixture.Open();
+        try
+        {
+            await Ready(window);
+            for (var i = 0; i < 50; i++)
+                fixture.Capture.Packet(i % (50 / loudPackets) == 0 && i / (50 / loudPackets) < loudPackets
+                    ? (short)16384 : (short)0);
+            Click(window, "MicButton");
+            await Wait(() => Text(window, "ResultText").Contains("level too intermittent", StringComparison.Ordinal) ||
+                Text(window, "ResultText").Contains("Samples received and discarded", StringComparison.Ordinal));
+            var lowCoverage = expected == AudioInputSignal.IntermittentAmplitude;
+            Assert.Contains(lowCoverage ? "brief click" : "Samples received and discarded", Text(window, "ResultText"), StringComparison.OrdinalIgnoreCase);
+            Assert.Contains($"Samples at/above 1% full-scale: {loudPackets * 1600}", Text(window, "LevelText"));
+            Assert.Contains("canonical samples 80000", Text(window, "LevelText"));
+            Click(window, "SaveButton");
+            await Wait(() => Text(window, "ResultText").Contains("Setup saved", StringComparison.Ordinal));
+            var checkpoint = (await fixture.Store.LoadAsync()).Settings!.Audio!.Input.Checkpoint;
+            if (lowCoverage) Assert.Null(checkpoint);
+            else Assert.Equal(LocalAudioOutcome.SamplesReceived, checkpoint!.Outcome);
+            Assert.DoesNotContain("PRIVATE", Text(window, "ResultText") + Text(window, "LevelText") + Text(window, "StatusText"));
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
+    public Task FailedCaptureAfterPositiveMeterClearsLevelAndFreshSilentTestCannotReplay() => OnDispatcher(async () =>
+    {
+        using var fixture = new Fixture();
+        fixture.Capture.Packet();
+        fixture.Capture.Block = "CaptureReadAfterPacket";
+        fixture.Capture.Failure = ErrorCode.AudioDeviceChanged;
+        fixture.Capture.FailureAfterPacket = true;
+        var window = fixture.Open();
+        try
+        {
+            await Ready(window);
+            Click(window, "MicButton");
+            await fixture.Entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            await Wait(() => Text(window, "LevelText").Contains("Live selected PCM: peak 0.5000", StringComparison.Ordinal));
+            fixture.Release.Set();
+            await Wait(() => Text(window, "ResultText").Contains("Local action failed", StringComparison.Ordinal));
+            Assert.Contains("No replacement", Text(window, "ResultText"));
+            Assert.Contains("earlier live level is not a valid test result", Text(window, "LevelText"));
+            Assert.DoesNotContain("0.5000", Text(window, "LevelText"));
+            Assert.Equal(1, fixture.Capture.Opens);
+            Assert.Equal(0, fixture.Capture.PacketCount);
+            fixture.Capture.Block = null;
+            fixture.Capture.Failure = null;
+            fixture.Capture.FailureAfterPacket = false;
+            fixture.Capture.Packet(0, count: 50);
+            Click(window, "MicButton");
+            await Wait(() => Text(window, "ResultText").Contains("below 1% full-scale", StringComparison.Ordinal));
+            Assert.Contains("Whole-test selected PCM: peak 0.000000; RMS 0.000000", Text(window, "LevelText"));
+            Assert.Equal(2, fixture.Capture.Opens);
+            Assert.DoesNotContain("PRIVATE", Text(window, "StatusText") + Text(window, "ResultText"));
+            Click(window, "SaveButton");
+            await Wait(() => Text(window, "ResultText").Contains("Setup saved", StringComparison.Ordinal));
+            Assert.Null((await fixture.Store.LoadAsync()).Settings!.Audio!.Input.Checkpoint);
+        }
+        finally { fixture.Release.Set(); window.Close(); }
+    });
+
+    [Fact]
+    public Task StopAfterPositiveMeterDiscardsItAndRequiresFreshMicPermission() => OnDispatcher(async () =>
+    {
+        using var fixture = new Fixture();
+        fixture.Capture.Packet();
+        var window = fixture.Open();
+        try
+        {
+            await Ready(window);
+            Click(window, "MicButton");
+            await Wait(() => Text(window, "LevelText").Contains("Live selected PCM: peak 0.5000", StringComparison.Ordinal));
+            Click(window, "StopButton");
+            await Wait(() => Text(window, "ResultText").Contains("Observation stopped", StringComparison.Ordinal));
+            await Wait(() => !fixture.Runner.IsRunning);
+            Assert.True(Text(window, "LevelText").Contains("no longer live", StringComparison.Ordinal) ||
+                Text(window, "LevelText").Contains("not a valid test result", StringComparison.Ordinal));
+            Assert.DoesNotContain("0.500000", Text(window, "LevelText"));
+            Assert.DoesNotContain("SamplesReceived", Text(window, "StatusText"));
+            fixture.Capture.Packet(0, count: 50);
+            Click(window, "MicButton");
+            await Wait(() => Text(window, "ResultText").Contains("below 1% full-scale", StringComparison.Ordinal));
+            Assert.Equal(2, fixture.Capture.Opens);
+            Assert.Equal(2, fixture.Confirmations);
+            Click(window, "SaveButton");
+            await Wait(() => Text(window, "ResultText").Contains("Setup saved", StringComparison.Ordinal));
+            Assert.Null((await fixture.Store.LoadAsync()).Settings!.Audio!.Input.Checkpoint);
+        }
+        finally { window.Close(); }
+    });
 
     [Fact]
     public Task OutputIsExactToneAndHeardRequiresThisSuccessfulUnchangedSelection() => OnDispatcher(async () =>
@@ -306,6 +542,9 @@ public sealed class AudioSetupDispatcherTests
         fixture.Clock.Advance(TimeSpan.FromSeconds(5));
         await first.Worker.Completion.WaitAsync(TimeSpan.FromSeconds(3));
         Assert.False(first.Status.Succeeded);
+        Assert.Equal(AudioInputSignal.NoFrames, first.Status.Signal);
+        Assert.Equal(0, first.Status.Samples);
+        Assert.Null(first.Status.Rms);
         Assert.Null(first.Status.Checkpoint);
         fixture.Capture.Packet();
         var next = fixture.Audio.Start(AudioSetupAction.Microphone, AudioChoice.Default(true), true)!;
@@ -509,6 +748,7 @@ public sealed class AudioSetupDispatcherTests
     [InlineData(ErrorCode.AudioAccessDenied, "Privacy")]
     [InlineData(ErrorCode.AudioDeviceBusy, "competing")]
     [InlineData(ErrorCode.AudioDeviceUnavailable, "Reconnect")]
+    [InlineData(ErrorCode.AudioDeviceLost, "Reconnect")]
     [InlineData(ErrorCode.AudioDeviceChanged, "No replacement")]
     [InlineData(ErrorCode.AudioFormatUnsupported, "format")]
     public Task InputFailureHasSpecificRemedyAndNeverRearms(ErrorCode code, string remedy) => OnDispatcher(async () =>
@@ -525,6 +765,8 @@ public sealed class AudioSetupDispatcherTests
             Assert.False(Control<Button>(window, "HeardButton").IsEnabled);
             Assert.Equal(1, fixture.Capture.Opens);
             Assert.Equal(0, fixture.Output.Opens);
+            Assert.Contains("Capture failed or canceled", Text(window, "LevelText"));
+            Assert.DoesNotContain("SamplesReceived", Text(window, "StatusText"));
             Assert.DoesNotContain("PRIVATE", Text(window, "StatusText"));
         }
         finally { window.Close(); }
@@ -609,6 +851,7 @@ public sealed class AudioSetupDispatcherTests
         public Output Output { get; }
         public SessionEvents Events { get; } = new();
         public AudioSetupService Audio { get; }
+        public int Confirmations { get; private set; }
         public Fixture()
         {
             Store = new(Directory);
@@ -619,7 +862,11 @@ public sealed class AudioSetupDispatcherTests
         }
         public AudioSetupWindow Open(bool approve = true)
         {
-            var window = new AudioSetupWindow(new SetupService(Store, new NoVault()), Runner, Audio, _ => approve, Clock,
+            var window = new AudioSetupWindow(new SetupService(Store, new NoVault()), Runner, Audio, _ =>
+            {
+                Confirmations++;
+                return approve;
+            }, Clock,
                 sessionEvents: Events) { ShowActivated = false, ShowInTaskbar = false };
             window.Show();
             return window;
@@ -655,22 +902,37 @@ public sealed class AudioSetupDispatcherTests
     {
         public string? Block;
         public ErrorCode? Failure;
+        public bool FailureAfterPacket;
+        public bool ObservePcmZeroing;
+        public byte[]? ObservedPcm { get; private set; }
+        public bool SawNonzeroPcm { get; private set; }
         public int Opens, Starts, Disposals, Reads;
+        public int PacketCount => packets.Count;
+        private CaptureRun? observedRun;
         public InputSelection? Selected;
         private CancellationTokenRegistration callback;
         private readonly ConcurrentQueue<byte[]> packets = new();
         public CaptureSourceFormat Format => new(16000, 1, 16, DeviceSampleEncoding.IntegerPcm);
-        public void Packet()
+        public void Packet(short amplitude = 16384, int count = 1)
         {
-            var bytes = new byte[3200];
-            for (var i = 0; i < bytes.Length; i += 2) BinaryPrimitives.WriteInt16LittleEndian(bytes.AsSpan(i), 16384);
-            packets.Enqueue(bytes);
+            for (var packet = 0; packet < count; packet++)
+            {
+                var bytes = new byte[3200];
+                for (var i = 0; i < bytes.Length; i += 2) BinaryPrimitives.WriteInt16LittleEndian(bytes.AsSpan(i), amplitude);
+                packets.Enqueue(bytes);
+            }
         }
         public ICaptureDevice Open(CaptureDeviceAccess access, CancellationToken token)
         {
             access.CheckAuthorization();
             Interlocked.Increment(ref Opens);
             Selected = access.Input;
+            if (ObservePcmZeroing)
+            {
+                var check = Assert.IsType<Action>(typeof(CaptureDeviceAccess)
+                    .GetField("check", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(access));
+                observedRun = Assert.IsType<CaptureRun>(check.Target);
+            }
             if (Block == "CaptureOpen") { entered.TrySetResult(); release.Wait(); }
             if (Block == "CaptureCallback")
                 callback = token.Register(() => { entered.TrySetResult(); release.Wait(); });
@@ -681,8 +943,15 @@ public sealed class AudioSetupDispatcherTests
         public CapturePacket Read(Span<byte> destination, CancellationToken token)
         {
             Interlocked.Increment(ref Reads);
+            if (observedRun is not null)
+            {
+                ObservedPcm ??= Assert.IsType<byte[]>(typeof(CaptureRun)
+                    .GetField("pcm", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(observedRun));
+                if (!SawNonzeroPcm) SawNonzeroPcm = ObservedPcm.Any(value => value != 0);
+            }
             if (Block == "CaptureRead") { entered.TrySetResult(); release.Wait(); }
-            if (Failure is { } code) throw new CaptureDeviceException(code);
+            if (Block == "CaptureReadAfterPacket" && packets.IsEmpty) { entered.TrySetResult(); release.Wait(); }
+            if (Failure is { } code && (!FailureAfterPacket || packets.IsEmpty)) throw new CaptureDeviceException(code);
             if (!packets.TryDequeue(out var bytes)) return new(0);
             bytes.CopyTo(destination);
             return new(bytes.Length);

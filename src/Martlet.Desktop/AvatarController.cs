@@ -1,5 +1,6 @@
 using System.IO;
 using System.Security.Cryptography;
+using System.Windows;
 using Martlet.Audio;
 using Martlet.Avatar.Audio2Face;
 using Martlet.Avatar.Hosting;
@@ -36,6 +37,18 @@ internal sealed class AvatarController : IAsyncDisposable
         this.allowControlledClock = allowControlledClock;
     }
     private void Publish(string value) => Volatile.Write(ref status, value);
+
+    internal async Task UpdateThemeAsync(CancellationToken token)
+    {
+        await changes.WaitAsync(token);
+        try
+        {
+            if (renderer is { HasExited: false } current)
+                await current.SendAsync("theme", new RendererTheme(
+                    Application.Current is App { SelectedTheme: PinkTheme.Dark }), token);
+        }
+        finally { changes.Release(); }
+    }
 
     internal async Task InspectAsync(AvatarProfile selected, CancellationToken token)
     {

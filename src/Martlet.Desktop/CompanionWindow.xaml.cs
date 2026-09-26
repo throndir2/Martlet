@@ -8,7 +8,7 @@ using Microsoft.Win32;
 
 namespace Martlet.Desktop;
 
-public partial class CompanionWindow : Window
+public partial class CompanionWindow : ThemedWindow
 {
     private readonly ICompanionSettingsService service;
     private readonly SetupOperationRunner operations;
