@@ -221,9 +221,9 @@ public partial class MainWindow : ThemedWindow
     private async void DownloadUpdate_Click(object sender, RoutedEventArgs e)
     {
         if (closing || updateBusy || availableUpdate is not { } update) return;
-        if (MessageBox.Show(this,
+        if (!ConfirmationDialog.Confirm(this,
             $"Download {update.AssetName} ({update.Bytes / (1024d * 1024d):F1} MiB) from the public Martlet GitHub Release?\n\n{update.ReleasePage}\n\nThe SHA-256 digest will be checked, but a digest from the same source is not a publisher signature. The installer will NOT be launched or installed by Martlet.",
-            "Confirm app update download", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes)
+            "Confirm app update download"))
             return;
         var picker = new SaveFileDialog
         {

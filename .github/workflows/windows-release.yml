@@ -25,6 +25,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: martlet-release-v0.1.0
+  cancel-in-progress: false
+
 jobs:
   release:
     if: >-

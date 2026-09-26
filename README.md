@@ -132,8 +132,9 @@ and compile/package the requested deliverable. GitHub Actions minutes are
 reserved exclusively for that purpose. Upload or Release publication needs
 separate authorization. No tests, lint, smoke, qualification, reproducibility
 checks, matrices or disguised validation belong in that workflow. Never add
-ordinary PR/push/scheduled automation or automatic release triggers. Preparing a manually dispatched release build
-does not authorize running it or publishing an unqualified installer.
+ordinary PR/push/scheduled automation or automatic release triggers. Preparing
+a manually dispatched release build does not authorize running it or publishing
+an unqualified installer.
 Official unsigned hobby releases must explicitly disclose unverified
 publisher identity, keep Windows protection warnings intact and meet
 independent local rights and install/upgrade checks.

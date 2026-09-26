@@ -11,8 +11,9 @@ Windows 11 25H2 x64 (build 26200 or newer).
 This per-user installer provides a self-contained Desktop app, a Doctor CLI,
 dependency notices, and an uninstaller. The WebView2 runtime and optional
 avatar/model services are not bundled or silently installed. No API calls,
-microphone capture, model download, startup task, or automatic update occurs
-merely by launching Martlet. Real provider use requires explicit configuration
+microphone capture, model download, startup task, or automatic installation
+occurs merely by launching Martlet. If you opt in, app update checks may
+contact GitHub at launch; real provider use requires explicit configuration
 and per-action consent and may incur charges.
 
 The offline fixture is scripted (FIXTURE - NOT AI). The actual Windows

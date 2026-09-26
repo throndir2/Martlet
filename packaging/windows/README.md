@@ -85,13 +85,14 @@ library's separate signed ZIP/envelope remains unsupported by this unsigned
 installer, and rollback qualification has not been performed. Do not publish
 until the actual rights and release decisions are resolved.
 
-**Current local validation blocker (reported 2026-09-25):** on this host the
-pinned native `esbuild.exe` crashes with `0xc0000005` during the real renderer
-build even after `npm ci` (Windows Application event). Desktop reference/markup/
-compile checks and updater tests do not qualify the complete Desktop/package.
-Do not skip the renderer, claim the current package passed, or use a hosted
-workflow to replace missing local evidence. Obtain the actual local
-package/installation qualification before entering `LOCAL GATES PASSED`.
+**Local qualification remains separate:** this host previously saw a pinned
+`esbuild.exe` crash (`0xc0000005`); a later locked reinstall and build completed
+the real renderer and Desktop tests. Evidence from an earlier source snapshot
+does not qualify a later commit. Build/package the exact frozen revision
+locally, then obtain actual clean-Windows installation, upgrade/rollback,
+rights and support evidence before entering `LOCAL GATES PASSED`. Do not skip
+the renderer or use the hosted release workflow to replace missing local
+qualification.
 
 ## Local internal development build
 
