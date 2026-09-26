@@ -1,4 +1,65 @@
-# Named OpenAI provider adapters: V03a, V03b and V03c
+# Text and speech provider adapters
+
+## Configurable Chat Completions
+
+`ChatCompletionsTextGenerationAdapter.Create(baseUrl, credentials?, timeProvider?)`
+is a separate production route, not a relaxation of the named OpenAI or gateway
+namespaces. `Stream` returns the existing single-enumeration `TextGenerationStream`
+and preserves original IDs/epoch, bounded explicit persona/memory/history input,
+one-use `TextDisclosureAuthorization`, deadlines, Stop, sanitized failures and
+terminal events. The existing OpenAI `/v1/responses` adapter is unchanged in
+protocol and model policy.
+
+`ChatCompletionsSetup.SelectRoute(settings, baseUrl, modelId)` persists the exact
+canonical API base URL and user-selected model. For example, use
+`https://host/v1` or `http://127.0.0.1:8080/v1`, without a trailing slash;
+the adapter appends `/chat/completions`. Remote HTTP, DNS-named HTTP (including
+`localhost`), userinfo, query, fragment, escaped paths and ambiguous URL spellings
+are rejected. HTTP is allowed only for a literal loopback IP, including `::1`.
+HTTPS uses ordinary platform certificate validation; this adapter does not use
+proxies, cookies, redirects, implicit credentials, automatic retries or discovery.
+Model IDs support bounded ASCII identifiers including slash and colon, independently
+of OpenAI's fixed catalog.
+
+The request contains `model`, `stream: true`, `max_tokens`, and ordered `messages`
+(optional system persona/memory, explicit user/assistant history, current user).
+It requests text only: no tools, images, audio, provider conversation/thread state
+or automatic history. A provider that requires a different dialect such as
+`max_completion_tokens` instead of `max_tokens` is not supported by this subset;
+errors remain explicit, with no fallback/retry.
+
+Null credential source explicitly means no Authorization header. A configured
+source that fails or returns null fails closed, never retries anonymously.
+Authorization and resolved credentials bind the complete base URI (including its
+path), LLM role and exact requested model. OS-vault references have a distinct
+Chat Completions namespace; model changes invalidate consent and endpoint changes
+cannot carry the old key. Detach/remove owned keys before switching destination.
+Restore queues owned custom keys for exact-scope cleanup and disables restored
+custom/local routes; no keys are exported.
+
+The bounded SSE reader accepts one choice at index zero, assistant text or refusal
+deltas, stable response identity/model metadata and optional token usage. Server
+model metadata may be a canonical alias but must remain stable. Completion requires
+a supported `finish_reason`, `[DONE]`, and clean body EOF. Missing/truncated endings,
+extra post-terminal data, unsupported tool/multimodal deltas, output limits and
+content filtering cannot become success. Idle/first-delta/total deadlines and
+consumer cancellation apply through terminal EOF; cancellation is request abort,
+not proof that a remote provider stopped computation or billing.
+
+Controlled tests exercise the public production factory against a real local HTTP
+listener with synthetic text and synthetic optional credentials, including redirect
+non-forwarding; fixture tests exercise malformed streams and lifecycle boundaries.
+These are local protocol regression evidence, **not** a live external account/model
+trial, real-user chat quality, speech-device, clean-machine or release qualification.
+Desktop composition and combined package/native acceptance are owned by the parallel
+hybrid UI integration, not claimed by this provider/settings slice.
+
+Shared setup additionally exposes `WindowsSpeechSetup.SelectStt(settings, recognizerId)`
+and `SelectTts(settings, voiceId)` for exact installed Windows identifiers. These
+distinct local routes have no provider credentials/network/cost consent and retain
+fresh per-action capture/output authorization requirements. Saving/discovery does
+not activate speech. The existing `LocalWhisper` package/denied-egress contract is
+not changed.
 
 Provider library: bounded-file transcription (V03a), bounded text Responses
 streaming (V03b), and bounded PCM speech transport (V03c).

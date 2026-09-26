@@ -8,7 +8,7 @@ namespace Martlet.Core.Settings;
 
 public enum SetupRole { Stt, Llm, Tts }
 public enum SetupStep { Choice, Destinations, Credentials, Review }
-public enum SetupRouteType { OpenAi, GatewayOllama, GatewayF5, LocalWhisper }
+public enum SetupRouteType { OpenAi, GatewayOllama, GatewayF5, LocalWhisper, ChatCompletions, LocalWindowsStt, LocalWindowsTts }
 public enum GatewayCancellationMode { DiscardOnly, RequestAbort, CooperativeComputeCancel }
 
 public static class OpenAiSetup
@@ -333,9 +333,14 @@ public sealed record DestinationConsent : IContract
         ContractRules.Defined(Role);
         ContractRules.Require(UserSelected && ConfigurationRevision != Guid.Empty,
             "Destination consent requires an explicit user selection and configuration revision.");
-        OpenAiSetup.UpstreamId(ModelId);
+        if (RouteType == SetupRouteType.ChatCompletions) ChatCompletionsSetup.ModelId(ModelId);
+        else if (RouteType == SetupRouteType.LocalWindowsStt) WindowsSpeechSetup.InstalledId(ModelId);
+        else OpenAiSetup.UpstreamId(ModelId);
         if (VoiceId is not null)
-            OpenAiSetup.UpstreamId(VoiceId);
+        {
+            if (RouteType == SetupRouteType.LocalWindowsTts) WindowsSpeechSetup.InstalledId(VoiceId);
+            else OpenAiSetup.UpstreamId(VoiceId);
+        }
         ContractRules.Require(CredentialId != Guid.Empty, "A credential reference must be a nonempty UUID.");
         if (SchemaVersion == 1)
         {
@@ -415,10 +420,10 @@ public sealed record SetupRoute : IContract
             RouteSchemaVersion = RouteSchemaVersion,
             Enabled = Enabled,
             SelectionSha256 = SelectionDigest(),
-            AllowNetworkDisclosure = routeType is SetupRouteType.OpenAi or SetupRouteType.GatewayOllama or SetupRouteType.GatewayF5,
-            AllowLocalProcess = routeType == SetupRouteType.LocalWhisper,
+            AllowNetworkDisclosure = routeType is SetupRouteType.OpenAi or SetupRouteType.GatewayOllama or SetupRouteType.GatewayF5 or SetupRouteType.ChatCompletions,
+            AllowLocalProcess = routeType is SetupRouteType.LocalWhisper or SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWindowsTts,
             AllowReferenceAudio = routeType == SetupRouteType.GatewayF5,
-            AllowPotentialCost = true
+            AllowPotentialCost = routeType is not (SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWindowsTts)
         };
     }
 
@@ -456,11 +461,34 @@ public sealed record SetupRoute : IContract
         ContractRules.Defined(routeType);
         ContractRules.Require(RouteSchemaVersion == 1 && Enabled is not null,
             "A current route requires its exact route discriminator and enablement state.");
-        OpenAiSetup.UpstreamId(ModelId);
+        if (routeType == SetupRouteType.ChatCompletions) ChatCompletionsSetup.ModelId(ModelId);
+        else if (routeType == SetupRouteType.LocalWindowsStt) WindowsSpeechSetup.InstalledId(ModelId);
+        else OpenAiSetup.UpstreamId(ModelId);
         if (VoiceId is not null)
-            OpenAiSetup.UpstreamId(VoiceId);
+        {
+            if (routeType == SetupRouteType.LocalWindowsTts) WindowsSpeechSetup.InstalledId(VoiceId);
+            else OpenAiSetup.UpstreamId(VoiceId);
+        }
         switch (routeType)
         {
+            case SetupRouteType.LocalWindowsStt:
+            case SetupRouteType.LocalWindowsTts:
+                var stt = routeType == SetupRouteType.LocalWindowsStt;
+                ContractRules.Require(Role == (stt ? SetupRole.Stt : SetupRole.Tts) &&
+                    ProviderAlias == (stt ? WindowsSpeechSetup.SttAlias : WindowsSpeechSetup.TtsAlias) &&
+                    Origin == SelfHostSetup.LocalOrigin && CredentialId is null &&
+                    Gateway is null && GatewayDeviceId is null && GatewaySnapshot is null &&
+                    Reference is null && LocalStt is null &&
+                    (stt ? VoiceId is null : VoiceId is not null && ModelId == WindowsSpeechSetup.TtsModelId),
+                    "Installed Windows speech requires its exact local role and selection, never a cloud credential or gateway route.");
+                break;
+            case SetupRouteType.ChatCompletions:
+                _ = ChatCompletionsSetup.BaseUri(Origin);
+                ContractRules.Require(Role == SetupRole.Llm && ProviderAlias == ChatCompletionsSetup.Alias &&
+                    VoiceId is null && Gateway is null && GatewayDeviceId is null &&
+                    GatewaySnapshot is null && Reference is null && LocalStt is null,
+                    "The Chat Completions route must have its own endpoint, model and optional scoped credential.");
+                break;
             case SetupRouteType.OpenAi:
                 ContractRules.Require(ProviderAlias == OpenAiSetup.Alias(Role) && Origin == OpenAiSetup.Origin &&
                     Gateway is null && GatewayDeviceId is null && GatewaySnapshot is null && Reference is null && LocalStt is null &&
@@ -497,7 +525,7 @@ public sealed record SetupRoute : IContract
         {
             ContractRules.Require(routeType switch
             {
-                SetupRouteType.OpenAi => true,
+                SetupRouteType.OpenAi or SetupRouteType.ChatCompletions or SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWindowsTts => true,
                 SetupRouteType.GatewayOllama => GatewaySnapshot is not null && CredentialId is not null,
                 SetupRouteType.GatewayF5 => GatewaySnapshot is not null && CredentialId is not null && Reference is not null,
                 SetupRouteType.LocalWhisper => LocalStt is not null,
@@ -522,8 +550,8 @@ public sealed record SetupRoute : IContract
 
     public SetupRoute WithCredential(Guid? id)
     {
-        ContractRules.Require(RouteType != SetupRouteType.LocalWhisper,
-            "Local STT has no provider credential.");
+        ContractRules.Require(RouteType is not (SetupRouteType.LocalWhisper or SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWindowsTts),
+            "Local speech has no provider credential.");
         return this with
         {
             CredentialId = id,
@@ -531,7 +559,7 @@ public sealed record SetupRoute : IContract
             Enabled = RouteType switch
             {
                 null => null,
-                SetupRouteType.OpenAi => Enabled,
+                SetupRouteType.OpenAi or SetupRouteType.ChatCompletions => Enabled,
                 _ => false
             },
             ConfigurationRevision = Guid.NewGuid()
@@ -574,6 +602,7 @@ public sealed record SetupRoute : IContract
     internal string CredentialScope() => RouteType switch
     {
         null or SetupRouteType.OpenAi => $"openai:{Role}",
+        SetupRouteType.ChatCompletions => $"chat-completions:{Origin}",
         SetupRouteType.GatewayOllama or SetupRouteType.GatewayF5 =>
             $"gateway:{RouteType}:{Gateway!.Origin}:{Gateway.HostId}:{Gateway.SpkiFingerprint}:{Gateway.DeviceRole}",
         _ => $"none:{RouteType}"
@@ -602,6 +631,14 @@ public sealed record CredentialScopeSettings : IContract
     {
         ContractRules.Require(SchemaVersion == 1, "Unsupported credential scope version.", ErrorCode.UnsupportedVersion);
         ContractRules.Defined(RouteType);
+        if (RouteType == SetupRouteType.ChatCompletions)
+        {
+            _ = ChatCompletionsSetup.BaseUri(Origin);
+            ContractRules.Require(ProviderAlias == ChatCompletionsSetup.Alias && HostId is null &&
+                SpkiFingerprint is null && DeviceRole is null && DeviceId is null,
+                "The Chat Completions credential cleanup scope is invalid.");
+            return;
+        }
         if (RouteType == SetupRouteType.OpenAi)
         {
             ContractRules.Require(Origin == OpenAiSetup.Origin && HostId is null &&
@@ -629,8 +666,8 @@ public sealed record CredentialScopeSettings : IContract
     internal static CredentialScopeSettings From(SetupRoute route)
     {
         var routeType = route.RouteType ?? SetupRouteType.OpenAi;
-        ContractRules.Require(routeType != SetupRouteType.LocalWhisper,
-            "Local STT has no provider credential.");
+        ContractRules.Require(routeType is not (SetupRouteType.LocalWhisper or SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWindowsTts),
+            "Local speech has no provider credential.");
         return new()
         {
             SchemaVersion = 1,
@@ -727,6 +764,7 @@ public sealed record SetupSettings : IContract
                 (removal.Scope.RouteType switch
                 {
                     SetupRouteType.OpenAi => removal.Scope.ProviderAlias == OpenAiSetup.Alias(removal.Role),
+                    SetupRouteType.ChatCompletions => removal.Role == SetupRole.Llm,
                     SetupRouteType.GatewayOllama => removal.Role == SetupRole.Llm,
                     SetupRouteType.GatewayF5 => removal.Role == SetupRole.Tts,
                     _ => false
@@ -1038,8 +1076,8 @@ public sealed record SetupSettings : IContract
                         ? "saved pairing retained; route not connected/mismatched"
                         : "gateway credential not paired"
                     : "permanent role-scoped gateway pairing referenced; vault presence and revocation status unknown"
-                : route.RouteType == SetupRouteType.OpenAi
-                    ? route.CredentialId is null ? "credential not configured" : "credential reference saved; API validity unknown"
+                : route.RouteType == SetupRouteType.ChatCompletions
+                    ? route.CredentialId is null ? "explicit keyless endpoint" : "endpoint-scoped credential reference saved; API validity unknown"
                     : "no provider credential";
             var evidence = route.RouteType switch
             {

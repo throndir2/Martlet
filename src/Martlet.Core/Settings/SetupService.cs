@@ -75,7 +75,9 @@ public sealed class SetupService(SettingsStore settingsStore, ICredentialStore c
     {
         settings.Validate();
         var route = RequireRoute(settings, role);
-        if (route.CredentialId is not { } id) return CredentialError.Missing;
+        if (route.CredentialId is not { } id)
+            return route.RouteType is SetupRouteType.ChatCompletions or SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWindowsTts
+                ? CredentialError.None : CredentialError.Missing;
         using var result = credentials.Read(CredentialBinding.For(settings, role, id));
         return result.Error;
     }
@@ -98,7 +100,7 @@ public sealed class SetupService(SettingsStore settingsStore, ICredentialStore c
             {
                 Role = route.Role,
                 CredentialId = old,
-                Scope = route.RouteType is SetupRouteType.GatewayOllama or SetupRouteType.GatewayF5
+                Scope = route.RouteType is SetupRouteType.GatewayOllama or SetupRouteType.GatewayF5 or SetupRouteType.ChatCompletions
                     ? CredentialScopeSettings.From(route)
                     : null
             }).ToArray()

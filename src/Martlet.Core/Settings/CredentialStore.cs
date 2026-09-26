@@ -37,6 +37,14 @@ public sealed record CredentialBinding(
         ContractRules.Require(ProfileId != Guid.Empty && CredentialId != Guid.Empty, "A credential requires an owned profile and fresh reference.");
         ContractRules.Defined(Role);
         ContractRules.Defined(RouteType);
+        if (RouteType == SetupRouteType.ChatCompletions)
+        {
+            _ = ChatCompletionsSetup.BaseUri(Origin);
+            ContractRules.Require(Role == SetupRole.Llm && ProviderAlias == ChatCompletionsSetup.Alias &&
+                HostId is null && SpkiFingerprint is null && DeviceRole is null && DeviceId is null,
+                "Chat Completions credentials are limited to their exact API base URL and LLM role.");
+            return;
+        }
         if (RouteType == SetupRouteType.OpenAi)
         {
             ContractRules.Require(ProviderAlias == OpenAiSetup.Alias(Role) && Origin == OpenAiSetup.Origin &&
