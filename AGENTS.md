@@ -78,7 +78,8 @@ cannot responsibly be resolved from the user's goal and available evidence.
 
 ## Prototype speed: no local gates
 
-Martlet is a prototype. Speed matters more than gates. Local test suites,
+Martlet is developed at prototype speed (a development pace, not a release
+label). Speed matters more than gates. Local test suites,
 build/package/smoke gates and independent review agents are **not required**
 and should not be run by default. Run at most a quick, targeted build or test
 when it directly helps you finish or debug the change. Do not add
@@ -123,12 +124,12 @@ Do not create, enable, expand, dispatch or retry remote validation CI.
 build/package/release workflow (manual dispatch or tag/release trigger only),
 dispatch it and publish GitHub releases without asking. It contains no tests or
 validation, and releases are never cut merely to obtain validation evidence.
-Label unsigned builds as unsigned prototype prereleases, not official signed
-releases. Buying a signing certificate is spending and still needs approval.
 
-Code signing is not required for these hobby prereleases. Never mislabel an
-unsigned build as signed or suppress Windows security warnings; a GitHub asset
-digest checks integrity, not publisher identity. Retain explicit user consent
-for download and installation, the narrow official-binary use rights and
-third-party notices. Keep the private V07 signed-candidate library's trust
-contract separate from this GitHub installer delivery route.
+Code signing is not required. Martlet is a personal project and publishes
+unsigned installers as actual, normal releases; do not label them prototype
+builds or prereleases, and do not buy or require a signing certificate. Never
+claim an unsigned build is signed or suppress Windows security warnings; a
+GitHub asset digest checks integrity, not publisher identity. Retain explicit
+user consent for download and installation, the narrow official-binary use
+rights and third-party notices. Keep the private V07 signed-candidate library's
+trust contract separate from this GitHub installer delivery route.
