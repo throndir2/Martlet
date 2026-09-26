@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using Martlet.Core.Audio;
 using Martlet.Core.Contracts;
 
@@ -93,6 +94,8 @@ public sealed record CaptureEvent(long Sequence, TimeSpan Elapsed, CaptureEventK
 
 public sealed record CaptureDeviceRelease(bool Released, MartletError? Error);
 
+public readonly record struct PcmAmplitude(double Peak, double Rms, long SamplesAtOrAboveThreshold);
+
 public static class CaptureErrors
 {
     public static MartletError Create(ErrorCode code) => new()
@@ -172,6 +175,28 @@ public sealed class CapturedUtterance : IDisposable
         {
             ObjectDisposedException.ThrowIf(pcm is null, this);
             pcm.AsSpan(0, ByteCount).CopyTo(destination);
+        }
+    }
+
+    // Only metadata leaves the owned canonical PCM lease; no additional audio buffer is allocated.
+    public PcmAmplitude MeasureAmplitude(double threshold)
+    {
+        if (!double.IsFinite(threshold) || threshold is <= 0 or > 1)
+            throw new ArgumentOutOfRangeException(nameof(threshold));
+        lock (gate)
+        {
+            ObjectDisposedException.ThrowIf(pcm is null, this);
+            double peak = 0, squares = 0;
+            long aboveThreshold = 0;
+            for (var i = 0; i < SampleCount; i++)
+            {
+                var sample = BinaryPrimitives.ReadInt16LittleEndian(pcm.AsSpan(i * 2, 2)) / 32768.0;
+                var level = Math.Abs(sample);
+                peak = Math.Max(peak, level);
+                squares += sample * sample;
+                if (level >= threshold) aboveThreshold++;
+            }
+            return new(peak, SampleCount == 0 ? 0 : Math.Sqrt(squares / SampleCount), aboveThreshold);
         }
     }
 

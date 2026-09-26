@@ -111,6 +111,30 @@ public sealed class CaptureTests
         Assert.Equal(CaptureState.Completed, (await silence.ReleaseAsync()).State);
         using var utterance = silence.TakeUtterance();
         Assert.Equal(320, utterance!.SampleCount);
+        Assert.Equal(new PcmAmplitude(0, 0, 0), utterance.MeasureAmplitude(0.01));
+    }
+
+    [Theory]
+    [InlineData((short)128)]
+    [InlineData((short)328)]
+    [InlineData(short.MinValue)]
+    public async Task CompletedLeaseMeasuresWholeCanonicalPcmWithoutAnAdditionalBuffer(short level)
+    {
+        var device = new ControlledCapture();
+        await using var capture = new MicrophoneCapture(Session, device);
+        var run = Press(capture, Request());
+        await run.Ready.WaitAsync(WaitLimit);
+        device.Packets.Enqueue(Pcm(Enumerable.Repeat(level, 320).ToArray()));
+        await Until(() => run.Snapshot.CanonicalSamples == 320);
+        Assert.Equal(CaptureState.Completed, (await run.ReleaseAsync()).State);
+        var utterance = run.TakeUtterance()!;
+        var expected = Math.Abs(level / 32768.0);
+        Assert.Throws<ArgumentOutOfRangeException>(() => utterance.MeasureAmplitude(double.NaN));
+        Assert.Throws<ArgumentOutOfRangeException>(() => utterance.MeasureAmplitude(0));
+        Assert.Equal(new PcmAmplitude(expected, expected, level == 128 ? 0 : 320), utterance.MeasureAmplitude(0.01));
+        Assert.Equal(0, run.Snapshot.RetainedPcmBytes);
+        utterance.Dispose();
+        Assert.Throws<ObjectDisposedException>(() => utterance.MeasureAmplitude(0.01));
     }
 
     [Theory]
