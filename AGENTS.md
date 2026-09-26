@@ -125,3 +125,10 @@ dispatch it and publish GitHub releases without asking. It contains no tests or
 validation, and releases are never cut merely to obtain validation evidence.
 Label unsigned builds as unsigned prototype prereleases, not official signed
 releases. Buying a signing certificate is spending and still needs approval.
+
+Code signing is not required for these hobby prereleases. Never mislabel an
+unsigned build as signed or suppress Windows security warnings; a GitHub asset
+digest checks integrity, not publisher identity. Retain explicit user consent
+for download and installation, the narrow official-binary use rights and
+third-party notices. Keep the private V07 signed-candidate library's trust
+contract separate from this GitHub installer delivery route.

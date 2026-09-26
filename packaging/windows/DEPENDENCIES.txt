@@ -1,6 +1,7 @@
-Martlet internal Windows dependency inventory
+Martlet Windows dependency inventory
 
-Martlet user code/assets: no project license grant. Internal development only.
+Martlet original code/assets: see the bundled LICENSE for the release-specific
+binary-use terms. Third-party dependencies retain their own licenses.
 
 Bundled runtime: .NET 10.0.12 win-x64; SDK 10.0.401 is a build tool, not shipped.
 Desktop, Doctor and the private Desktop\AvatarRenderer host each retain their

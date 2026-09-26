@@ -350,7 +350,8 @@ function Get-AvatarBrowserEvidence([string]$Root, [string]$PublishDirectory, $So
     return $browser
 }
 
-function Add-AvatarSbomComponents($Provenance, [string]$Version, $Files, $Components, $Dependencies) {
+function Add-AvatarSbomComponents($Provenance, [string]$Version, $Files, $Components, $Dependencies,
+    [string]$ProjectRights = 'UNKNOWN - no project license granted') {
     $browser = $Provenance.browser
     $script = @($browser.inputs | Where-Object path -CEQ $browser.recipe.script)
     if ($script.Count -ne 1) { throw 'Browser recipe must have exactly one observed input.' }
@@ -358,7 +359,7 @@ function Add-AvatarSbomComponents($Provenance, [string]$Version, $Files, $Compon
         type = 'application'; 'bom-ref' = 'AvatarRenderer|browser'; name = 'Martlet offline avatar browser'; version = $Version
         properties = @(
             [ordered]@{ name = 'martlet:publish:context'; value = 'AvatarRenderer' }
-            [ordered]@{ name = 'martlet:license:status'; value = 'UNKNOWN - no project license granted' }
+            [ordered]@{ name = 'martlet:license:status'; value = $ProjectRights }
             [ordered]@{ name = 'martlet:browser:recipe-sha256'; value = $script[0].sha256 }
             [ordered]@{ name = 'martlet:browser:metafile-sha256'; value = $browser.recipe.metafileSha256 }
             [ordered]@{ name = 'martlet:browser:receipt-sha256'; value = $browser.recipe.receiptSha256 }

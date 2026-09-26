@@ -4,8 +4,8 @@
 Desktop now has a separate [real API conversation](docs/CONVERSATION.md) surface:
 explicit typed input or bounded push-to-talk through configured OpenAI STT,
 participation policy, streaming LLM and optional generated voice/playback.
-Each new action requires a bounded data/cost/output authorization; no credentials,
-network or audio are accessed on launch. Text-only never requests TTS or opens output.
+Each new action requires a bounded data/cost/output authorization; no credentials or audio are accessed on launch; network remains idle unless
+opt-in update checks are enabled. Text-only never requests TTS or opens output.
 Actual account/device/first-conversation qualification remains **NOT RUN**.
 
 Martlet also retains an accessible Windows desktop demo and Doctor self-test, using the
@@ -19,8 +19,8 @@ verified connections or spending permission. **Audio setup (local only)** offers
 output selection and separately confirmed bounded local capture/tone tests.
 Opening it does not enumerate or open devices. Historical local checkpoints
 are not device readiness or permission to listen later. Learned VAD, acoustic
-wake words, automatic name/group listening, signed installation and supported
-end-user deployment are not available. A PC microphone does not automatically
+wake words, automatic name/group listening and supported end-user deployment
+are not available. A PC microphone does not automatically
 capture remote participants.
 
 The intended first experience is a Windows installer, microphone and speaker
@@ -81,9 +81,31 @@ There is no remote memory, embedding, vector database or automatic backup.
 The broader plan documents remain future specifications except for the current
 implementation/acceptance ledger in [DELIVERY](docs/DELIVERY.md) and the
 [fixture experience](docs/DIAGNOSTICS.md#offline-fixture-experience-f03c).
-The repository
-does not have a project license; selecting one is an owner decision before
-distributing software. No code license grant is implied.
+Martlet's original source, artwork, and documentation are
+[all rights reserved](LICENSE), even if the repository becomes public. Only
+unmodified official Release binaries receive a narrow personal,
+noncommercial download/install/use grant; no redistribution or source reuse is
+allowed. Third-party components retain their own terms and must be cleared
+for distribution separately.
+
+The Desktop now has a separate **OFF-by-default GitHub Release check**. Enabling
+it permits one anonymous release-metadata request on future launches;
+**Check for app updates** makes an explicit request instead. If a newer
+versioned Windows installer is published, **Download update** requires a
+separate confirmation, limits the transfer to 512 MiB and verifies the exact
+bytes against GitHub's SHA-256 asset digest. The repository is public, so
+checks succeed anonymously once a versioned release (including an unsigned prototype prerelease) is published. The opt-in is stored in
+`update-checks.txt` in the selected local data directory, separately from
+profile settings and configuration backup; unreadable preferences default to
+OFF with a visible error. The owner permits an
+**unsigned prototype prerelease**, clearly labeled as such: a digest supplied by the
+same source is not publisher authentication, and Windows may display security
+warnings. Martlet does **not** launch or install the downloaded executable;
+an in-app installation/rollback path is not implemented. Do not run an internal
+build as an update. The [Windows packaging guide](packaging/windows/README.md) distinguishes
+local internal builds from the manually dispatched `v0.1.0` release workflow.
+The workflow has no push, PR, tag or scheduled trigger; it runs only when the
+owner explicitly dispatches a release.
 
 ## Local-only validation policy
 
@@ -107,7 +129,9 @@ publish it as a GitHub release. Agents may create, dispatch and publish these
 releases automatically without owner approval. No tests, lint, smoke,
 qualification, reproducibility checks, matrices or disguised validation belong
 in that workflow. Use only manual dispatch or tag/release triggers; never add
-PR/push/scheduled automation.
+PR/push/scheduled automation. Unsigned builds are published as unsigned
+prototype prereleases that disclose unverified publisher identity and keep
+Windows protection warnings intact.
 
 Before any push or PR creation/update, inspect the applicable workflow events,
 refs and resulting tree, including older branches that could restore deleted

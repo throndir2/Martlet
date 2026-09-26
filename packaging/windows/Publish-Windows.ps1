@@ -5,10 +5,13 @@ param(
     [string]$DotnetPath = 'dotnet',
     [string]$NodePath = 'node',
     [Parameter(Mandatory)][string]$CliHome,
-    [ValidateSet('win-x64')][string]$RuntimeIdentifier = 'win-x64'
+    [ValidateSet('win-x64')][string]$RuntimeIdentifier = 'win-x64',
+    [switch]$PublicRelease
 )
 . "$PSScriptRoot\Packaging.Common.ps1"
 $root = Split-Path (Split-Path $PSScriptRoot)
+$channel = if ($PublicRelease) { 'PublicUnsigned' } else { 'Internal' }
+if ($PublicRelease) { Assert-PublicReleaseRights $root }
 Assert-MSBuildPath $root
 Assert-MSBuildPath $OutputDirectory
 Push-Location $root
@@ -45,21 +48,23 @@ try {
     }
     [IO.Directory]::CreateDirectory((Join-Path $staging 'help')) | Out-Null
     [IO.Directory]::CreateDirectory((Join-Path $staging 'notices')) | Out-Null
-    Copy-Item -LiteralPath "$PSScriptRoot\INTERNAL.txt" -Destination (Join-Path $staging 'help\INTERNAL.txt')
+    $help = if ($PublicRelease) { 'RELEASE.txt' } else { 'INTERNAL.txt' }
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot $help) -Destination (Join-Path $staging "help\$help")
+    if ($PublicRelease) { Copy-Item -LiteralPath (Join-Path $root 'LICENSE') -Destination (Join-Path $staging 'help\LICENSE.txt') }
     Copy-Item -LiteralPath (Join-Path $root 'docs\TROUBLESHOOTING.md') -Destination (Join-Path $staging 'help\TROUBLESHOOTING.md')
     Copy-Item -LiteralPath "$PSScriptRoot\DEPENDENCIES.txt" -Destination (Join-Path $staging 'notices\DEPENDENCIES.txt')
     Copy-Item -LiteralPath "$PSScriptRoot\NAudio-THIRD-PARTY-NOTICES.txt" -Destination (Join-Path $staging 'notices\NAudio-THIRD-PARTY-NOTICES.txt')
     Copy-Item -LiteralPath (Join-Path $root 'src\Martlet.Avatar.Audio2Face\THIRD-PARTY-NOTICES.md') -Destination (Join-Path $staging 'notices\Audio2Face-THIRD-PARTY-NOTICES.md')
     Copy-Item -LiteralPath (Join-Path $root 'src\Martlet.Avatar.Audio2Face\Protos\LICENSE-2.0.txt') -Destination (Join-Path $staging 'notices\Audio2Face-Protos-LICENSE.txt')
     Copy-RuntimeNotices $staging (Join-Path $build 'obj\Martlet.Desktop\project.assets.json')
-    $provenance = Get-PackageProvenance $staging $OutputDirectory $source $sdkReceipt -NodePath $node
+    $provenance = Get-PackageProvenance $staging $OutputDirectory $source $sdkReceipt -NodePath $node -Channel $channel
     Assert-PackagingSourceReceipt $source $root
     Assert-PackagingSdkReceipt $sdkReceipt $sdk
-    Write-PackageSbom $staging $provenance
-    Write-PayloadManifest $staging $source.commit $source.dirty $provenance
+    Write-PackageSbom $staging $provenance -Channel $channel
+    Write-PayloadManifest $staging $source.commit $source.dirty $provenance -Channel $channel
     $manifest = Test-PayloadManifest $staging
     Assert-PackagingSourceReceipt $source $root
     [IO.Directory]::Move($staging, (Join-Path $OutputDirectory 'payload'))
-    Write-Output "INTERNAL ONLY: complete $($manifest.rid) payload at $OutputDirectory\payload ($($manifest.files.Count) files)."
+    Write-Output "$($manifest.channel): complete $($manifest.rid) payload at $OutputDirectory\payload ($($manifest.files.Count) files)."
 }
 finally { Pop-Location }

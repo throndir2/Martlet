@@ -24,3 +24,10 @@ without asking. Deliver actual production paths
 early, replace obsolete designs when warranted and minimize narration.
 Parallelize independent work with isolated ownership. Safety, consent and
 honest reporting remain mandatory.
+
+Never create GitHub CI pipelines: Actions are reserved for minimal
+build/package/release workflows (manual dispatch or tag/release triggers only;
+no PR, push or schedule triggers, hosted tests or disguised validation).
+Unsigned installers are labeled unsigned prototype prereleases; never
+misrepresent a GitHub digest as a publisher signature, and preserve user
+consent for downloads and installation.

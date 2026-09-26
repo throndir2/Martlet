@@ -1,6 +1,6 @@
-# Internal Windows packaging (F02 skeleton, optional-avatar evidence)
+# Windows packaging (internal and unsigned public-release lanes)
 
-**INTERNAL DEVELOPMENT ONLY - UNSIGNED. Not a supported installer or a completed
+**Internal lane: INTERNAL DEVELOPMENT ONLY - UNSIGNED. Not a supported installer or a completed
 F02/AC-02/G1 gate.** This packages V04b real explicit typed / push-to-talk app
 integration alongside the offline WPF fixture/status experience and Doctor
 self-test, including the bounded optional synthetic-tone sink. Opening the app
@@ -9,7 +9,8 @@ access. Saved configuration is not live API/account/model readiness.
 Desktop V07a adds explicit same-profile configuration backup/previewed restore,
 not a diagnostic ZIP or installer updater. Transactional binary upgrades,
 rollback and signed distribution remain unimplemented.
-No project code/asset license is granted.
+Internal builds have no end-user license grant; the narrow grant for official
+Release binaries is separate.
 The existing foundation/planning documents retain their broader future gates.
 
 The desktop executable, its Start menu shortcut and the installer use the original
@@ -18,6 +19,103 @@ development launches through `dotnet` do not show the generic runtime icon.
 Artwork and favicon-ready SVG/PNG/ICO assets live in
 `src\Martlet.Desktop\Assets`; regenerate the checked-in raster assets with
 `.\scripts\Generate-AppIcon.ps1` before building if the SVG changes.
+
+## Manual 0.1.0 public release build
+
+`.github\workflows\windows-release.yml` has **only** `workflow_dispatch`; it
+cannot run on a push, PR, tag or schedule. There is **no hosted build-only
+mode**, Actions artifact or upload/download handoff. Build-only work stays
+local, using the command below. The single Windows runner is reserved for an
+actual GitHub Release and runs no test, lint, scan, smoke, repeat-publish or
+qualification job. Do not dispatch it for validation.
+
+Select `0.1.0` on `main` only when the owner explicitly asks for a release from
+a public repository. The workflow requires an exact `PUBLISH v0.1.0`
+authorization and an exact `RIGHTS REVIEWED v0.1.0` owner confirmation after
+reviewing every included third-party term. Incorrect inputs skip the runner; live repository visibility,
+`main`/tag state and the binary-use grant are checked before restoring
+dependencies. Then the same runner uses the exact SDK, Node/npm lock and
+reviewed Inno compiler to restore, compile and package once, checks the clean
+public-channel installer receipt and SHA-256, rejects an existing tag and
+creates `v0.1.0` at the exact still-current `main` commit, uploads assets to a
+**draft** GitHub Release and publishes it only if all uploads succeed, GitHub
+reports the expected asset SHA-256, and `main`/the tag/visibility still match.
+If a step fails after tag creation, leave the tag/draft for owner inspection;
+never retry or move a tag automatically. Publication checks the repository's
+live visibility immediately before upload and again before making the draft
+public; anonymous update checks require a public repository. A release build
+does not establish clean-machine install/upgrade/rollback, device or provider
+qualification.
+
+To exercise the public packaging path **locally** without uploading, run from
+the repository root on Windows x64 with PowerShell 7:
+
+```powershell
+$sdk = Join-Path $env:USERPROFILE '.dotnet\dotnet.exe' # Exact 10.0.401 SDK.
+$run = Join-Path $PWD ("artifacts\windows-public-" + [guid]::NewGuid().ToString('N'))
+.\packaging\windows\Build-PublicRelease.ps1 -Version 0.1.0 -DotnetPath $sdk -OutputDirectory $run
+```
+
+This builds `package\installer\Martlet-0.1.0-win-x64.exe`, an **UNSIGNED
+PROTOTYPE PRERELEASE**, with a distinct public AppId, fixed `%LocalAppData%\Programs\Martlet`
+installation directory, public help/terms, explicit public payload channel and
+separate SBOM/provenance identity. It is not a renamed internal installer.
+The package inventories and hashes `help\LICENSE.txt` and complete upstream
+notices; Inno shows the owner's binary-use terms before installation. The
+Release page links to the exact source-commit LICENSE and third-party dependency
+inventory, without claiming ownership of third-party components.
+The manifest's full assembly file version remains `0.1.0.0`; the public
+installer and tag use the selected three-part release version `0.1.0`.
+`v0.1.0` is published as a GitHub **prerelease**. The Desktop updater reads the
+release list (not `/releases/latest`, which omits prereleases) and offers the
+highest numbered non-draft version. The GitHub asset digest is produced on upload;
+`SHA256SUMS.txt` binds the local installer and receipt but is not publisher
+authentication.
+
+**Before manually publishing:** review the owner's narrow binary-use grant in
+`LICENSE` and every third-party redistribution condition (notably the Windows
+SDK projection package's separately obtained license).
+The `RIGHTS REVIEWED` confirmation is an operator attestation, not automated
+legal clearance. There is no Authenticode signature; Windows may warn.
+The GitHub updater downloads only after user consent and verifies a same-origin
+digest; it does not install or authenticate a publisher. The existing Updates
+library's separate signed ZIP/envelope remains unsupported by this unsigned
+installer, and rollback qualification has not been performed.
+
+**Local qualification is optional for this prototype** (owner policy,
+2026-09-26). This host once saw a pinned `esbuild.exe` crash (`0xc0000005`);
+a locked reinstall resolved it. Never skip the real renderer build, and report
+unrun clean-Windows install/upgrade/rollback checks as NOT RUN.
+
+## Local internal development build
+
+Keep an internal candidate separate from the public release lane. On an
+authorized local Windows x64 host with PowerShell 7, SDK 10.0.401,
+Node 20.11.1 and npm 10.2.4:
+
+```powershell
+$sdk = Join-Path $env:USERPROFILE '.dotnet\dotnet.exe' # Or another verified 10.0.401 SDK.
+$node = (Get-Command node).Source
+$run = Join-Path $PWD ("artifacts\windows-internal-" + [guid]::NewGuid().ToString('N'))
+npm ci --prefix src\Martlet.Avatar.Vrm --ignore-scripts --no-audit --no-fund
+if ($LASTEXITCODE -ne 0) { throw "npm ci failed ($LASTEXITCODE)." }
+.\packaging\windows\Publish-Windows.ps1 -DotnetPath $sdk -NodePath $node -CliHome (Join-Path $run 'cli-home') -OutputDirectory (Join-Path $run 'publish')
+.\packaging\windows\Get-InnoSetup.ps1 -Destination (Join-Path $run 'inno')
+.\packaging\windows\Build-Installer.ps1 -PayloadRoot (Join-Path $run 'publish\payload') -BuilderDirectory (Join-Path $run 'inno') -OutputDirectory (Join-Path $run 'package')
+```
+
+The local `package\installer` directory persists with
+`Martlet-<four-part-version>-win-x64-INTERNAL-UNSIGNED.exe` (initially
+`Martlet-0.1.0.0-win-x64-INTERNAL-UNSIGNED.exe`), `installer-manifest.json` and
+`SHA256SUMS.txt`. These commands build/package only: they do not run the
+separate local repeat-publish, test, smoke or clean-machine gates below. They do
+not upload or publish anything. Do not distribute the internal candidate.
+
+The internal AppId, name/channel and unsigned manifest remain unchanged.
+Never upload this internal build as the public release artifact. Its file version
+is four-part, its application identity is separate, and its help explicitly
+labels it internal. The owner has permitted a clearly disclosed unsigned
+prototype prerelease, not relabeling this development build.
 
 ## Developer commands
 
@@ -178,8 +276,10 @@ unexpected Martlet assemblies fail packaging even before checksum validation.
 The internal installer uses stable AppId
 `{CDFDFAB4-DAF1-4A6D-8823-A55E0A12CD86}` and fixed
 `%LocalAppData%\Programs\Martlet Internal`. This identity is reserved for the
-internal channel; deciding a future public channel/identity remains release
-work. No registration is created by merely compiling the installer.
+internal channel. The distinct unsigned public channel uses AppId
+`{7EA5CC4A-8BF4-4412-ABE1-90819303FEAB}` and fixed
+`%LocalAppData%\Programs\Martlet`. No registration is created by merely
+compiling either installer.
 
 Only native x64 Windows, build 26200 (Windows 11 25H2) or later, is allowed by
 authoring. That minimum is a target/preflight, **not** an assurance about future
@@ -262,9 +362,11 @@ machines/times are established by deterministic metadata.
 Every new payload requires `sbom.cdx.json`, a **CycloneDX 1.6 JSON** software
 bill of materials, plus the manifest's `provenance` object. Legacy schema-v1
 payloads lack this evidence and must be rebuilt; there is no allow-missing
-option. This is an **unsigned internal observation**, not publisher
-attestation, a SLSA level, a release signature, license clearance or a
-vulnerability assessment. Signing and distribution decisions remain deferred.
+option. Each channel records an **unsigned build observation** with distinct
+channel/assurance/SBOM identity; neither is publisher attestation, a SLSA
+level, a release signature, license clearance or a vulnerability assessment.
+The owner has explicitly chosen unsigned prototype prereleases, not an unsigned
+automatic installer or an authentication claim.
 
 The avatar producer explicitly selects manifest 3 / provenance 2. Its coordinated
 [signed-candidate metadata reader](../../src/Martlet.Updates/README.md) must support
@@ -457,8 +559,9 @@ the version in the actual dependency graph. No root package/SDK/source upgrade
 is involved. Raw signed-archive SHA-512 is intentionally distinct from NuGet's
 normal lock `contentHash`. The NAudio root MIT notice, bundled Core/Wasapi
 third-party attributions, and complete Tensors 9.0.0 license/notices accompany
-the runtime's own notices. No project license grant or distribution approval
-is implied. Missing new assemblies/notices, wrong dependency versions and
+the runtime's own notices. The published binary-use grant is in `LICENSE`;
+these upstream notices do not assess third-party redistribution rights.
+Missing new assemblies/notices, wrong dependency versions and
 corrupt archives have production-path negative coverage.
 
 The real app path is explicitly separate from **FIXTURE - NOT AI**. Setup saves

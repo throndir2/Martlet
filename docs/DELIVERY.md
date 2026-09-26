@@ -26,6 +26,19 @@ rules remain unchanged.
 
 ### Current internal implementation
 
+**Release/update preparation, 2026-09-26:** the root `LICENSE` reserves
+Martlet's source/artwork rights while granting personal, noncommercial use
+of unmodified official binaries; the owner attested review of included-component
+rights. The local internal Windows build retains its distinct unsigned development
+installer. A manual-only `v0.1.0` build/publication workflow requires explicit
+owner publication and rights confirmations from the public repository.
+Desktop has OFF-by-default opt-in stable GitHub
+Release discovery and a separately confirmed, bounded SHA-256-checked
+installer download. It does not execute/install a candidate or establish
+publisher authenticity. The owner permits a clearly marked unsigned hobby
+release, not a silently trusted updater. Automatic installation,
+rollback and clean-machine qualification remain NOT RUN / not implemented.
+
 **Self-host voice reuse is split into two dependent layers.** Layer 1 adapts
 the settings/credential/client delta of `37181f8d2261c8d97d71b9ca297ff3bc278b7074`
 onto the reviewed main ancestry: schema 5, explicit route discriminators,
@@ -96,7 +109,7 @@ candidate. Its exact local commands, results and review are recorded in its PR.
 | Item | Actual status |
 | --- | --- |
 | VS01 | [Voice Library](VOICE_STUDIO.md): passive five-engine catalog and real local reference/training-material WAV import, transcript/rights checks, immutable versioned bundles, explicit reload/inspect/remove, shared effect ownership and engine-specific preparation guidance. No model runtime, upload, training, preview playback or conversation route; VS02-VS06 and actual device/model/novice qualification remain incomplete. |
-| D01 | Dispositions recorded in [FOUNDATION.md](FOUNDATION.md). .NET/WPF/core direction and pins chosen; license, distribution/signing, provider spending and optional model/SDK rights remain deferred gates. |
+| D01 | Dispositions recorded in [FOUNDATION.md](FOUNDATION.md). .NET/WPF/core direction and pins chosen; owner later chose reserved-rights source, personal/noncommercial official-binary use and explicitly unsigned hobby installer. Included-component rights, provider spending and optional model/SDK rights remain gates. |
 | D02 | Versioned settings/profile/provider contracts, bounded PCM, production JSON and temporal text validators, explicit refusal, epochs/cancel/EOF/deadlines and golden traces exist. Role request bodies, remote schemas/SSE/binary wire framing remain; **AC-01 is partial, not frozen or fully passed**. |
 | F01 | Offline accessible text/status shell, explicit unconfigured-profile save, atomic validated settings and truthful shared-status CLI implemented. Local developer-host build/tests/CLI and bounded desktop-launch scope are documented; no clean consumer-OS claim. |
 | P03c local memory | [Consented local memory](MEMORY.md): strict schema-4 policy, explicit enable/save/inspect/edit/delete/purge/frozen export and next-turn-only bounded retrieval using the existing single-owner library. No transcript ingestion, remote memory, embedding or installation activation. v1-v3 migration keeps exact originals; v1-v4 recovery excludes facts and forces memory OFF. Desktop/root/package graph includes Memory with regenerated normal/RID locks. AC-16/G4, clean-machine, real-user usefulness and physical storage failure remain unqualified. |
@@ -131,7 +144,7 @@ candidate. Its exact local commands, results and review are recorded in its PR.
 | R05/R14 / permission and diagnosis | Per-action default-No desktop confirmation or Windows CLI `--play-tone`; no consent persistence; no read-only probe effects. Fixture and live status kept separate and age honestly. | Capture/device onboarding and persistent destination consent belong to V01/V02. |
 | R08/R14 / AC-04/AC-10 | Exact report/exits/remedies; no startup writes; corrupt/newer/inaccessible originals preserved. V06b adds explicit local metadata journal and frozen preview/consented export with engine retention and cleanup. | Full real-environment troubleshooting matrix, support-service readiness and release gates remain unqualified. |
 | R17 / F05 | Locked solution/build/tests plus real portable/Windows CLI and bounded interactive WPF smoke, using isolated data paths and audio OFF. No runner/pin/gate workaround. | Package payload/compiler and clean-VM/lifecycle/signature gates recorded separately; never equated with G1. |
-| R08/R17 / F02-F05 packaging | Both native Windows targets include actual Core/Fixtures/Sessions/Diagnostics/Audio and pinned runtime/NAudio/Tensors assets/notices. Multi-target RID lock routing cannot rewrite normal locks; package/installer omission and integrity assertions remain enforced. | Compiling an unsigned installer does not install it or pass AC-02, AC-11 or G1. |
+| R08/R17 / F02-F05 packaging | Both native Windows targets include actual Core/Fixtures/Sessions/Diagnostics/Audio and pinned runtime/NAudio/Tensors assets/notices. Multi-target RID lock routing cannot rewrite normal locks; package/installer omission and integrity assertions remain enforced. | Compiling an internal unsigned installer does not install it or pass AC-02, AC-11 or G1; official unsigned status is a separately approved release identity, not qualification. |
 
 Local evidence uses official SDK 10.0.401 and `CI=true`: locked restore, Release
 build and full affected solution tests with one session-local `C:` output via
@@ -189,7 +202,8 @@ credentials, staged/flush/replace/cleanup faults, exact retained originals and
 real WPF timeout/close/reopen/callback ownership, including paused blocked live
 vault work. This is internal filesystem/fixture evidence, not physical disk
 failure, power-loss, clean-VM N-1/N, real vault/account/device or novice evidence.
-V07b activation/rollback/uninstall and signing/rights/G2 remain separate gates.
+V07b activation/rollback/uninstall and release rights/integrity/G2 remain
+separate gates; code signing is not required for the owner's hobby release.
 
 The exact committed `d471e6ab12eb763caa4b26d1758360ee0df50b77` checkpoint
 subsequently passed 1,922 integrated cases, both native Doctor targets and
@@ -263,7 +277,8 @@ change; tests, package/smoke gates and independent review are optional and not
 run by default. Never fabricate check statuses or claim unrun gates passed.
 
 The product owner's distribution/cloud choices and restricted-model/SDK rights
-remain real decisions. Signing credentials, a spending budget, deployment,
+remain real decisions. The owner chose an unsigned hobby release; a spending
+budget, deployment,
 host services/drivers, hardware changes, and heavyweight model downloads need
 separate authorization. Routine implementation does not grant these permissions.
 Code can merge behind unavailable/experimental features without falsely claiming
@@ -310,12 +325,13 @@ F02/F04 are required early; neither may be postponed until after voice features.
 | V04 | End-to-end streaming orchestration, text segmentation, epochs/cancel, bounded queues and partial states / core | V01, V02, V03, F03 | AC-03/AC-08: real consented mic-to-voice; stop suppresses late audio; network/slow-consumer/duplicate events never replay stale speech or leak memory | H |
 | V05 | Separate talk-decision policy, editable named personas, weighted response styles, bounded recent context and listen-first group behavior / core + client | D02, F03, V04 | AC-09/AC-21/AC-24/AC-26: explicit controls work; silence has reasons; persona import/edit/restart and deterministic style selection; consented context accumulation without per-input replies, backlog or hidden listening | H |
 | V06 | Redacted structured logs, status remedies, local support bundle preview/consent and retention / diagnostics | F04, V02, V04, V05 | AC-04/AC-10: new failures have stable codes, golden remedies and canary leak tests; no transcript/audio/screen/secret collection by default | H |
-| V07 | Application-aware upgrade/rollback/uninstall, signed candidate pipeline, onboarding/usability/support docs / release | F05, V02, V04, V05, V06 | AC-02/AC-06/AC-11 on clean target OS; publisher signature/provenance verified; novice trials meet gate; no real-GPU claim | H |
+| V07 | Application-aware upgrade/rollback/uninstall, separate signed local candidate library and unsigned GitHub installer route, onboarding/usability/support docs / release | F05, V02, V04, V05, V06 | AC-02/AC-06/AC-11 on clean target OS; GitHub origin/digest and provenance checked, unsigned publisher warning disclosed, separate candidate signatures verified if used; novice trials meet gate; no real-GPU claim | H |
 
 **Exit G2:** supported API MVP only after the approved provider live lane,
-actual Windows install/audio/lifecycle evidence, independent review, signing,
-license notices, support readiness, and explicit cost/data copy all pass.
-If signing/budget access is unavailable, keep an internal pre-release status.
+actual Windows install/audio/lifecycle evidence, independent review, included
+component rights and notices, support readiness, and explicit cost/data copy all pass.
+Code signing is optional by owner direction; an unsigned release must clearly
+disclose unverified publisher identity and preserve Windows warnings.
 
 ### M3: Ubuntu self-host beta
 
@@ -427,7 +443,7 @@ slices may be explicitly disabled, not silently described as shipped.
 | V05c | Bounded observation context and opt-in listen-first participation | V05b/V01 qualified live capture/VAD integration; AC-09/AC-24, metadata reasons, no ignored-input LLM/TTS or stale backlog; managed fixtures do not enable native production listening |
 | V07a | Implemented internal settings/configuration snapshot and previewed restore transaction; see [scope and limits](SETUP.md#local-configuration-recovery-transaction-v07a) | Existing valid same-profile v1/v2/v3 only; v3 persona data restored and older sources preserve current personas; controlled interruption retains original; physical crash/power-loss and actual upgrade qualification remain NOT RUN |
 | V07b | Version staging, activation, rollback and uninstall preservation | V07a; compatible restore and N-1/N failure cases |
-| V07c | Signed build/manifest, provenance, SBOM and notices | Build foundation may proceed in parallel; protected signing access required before release, never mocked as valid |
+| V07c | Exact-version release build/integrity manifest, provenance, SBOM and notices | Build foundation may proceed in parallel; a public unsigned installer must say so, with GitHub asset digest and no claimed publisher signature; private signed-candidate staging keeps its separate trust policy |
 | V07d | Clean Windows and novice walkthrough/support release record | V07b/V07c; AC-02/AC-06/AC-11 real-environment exit |
 | H04a | Version-qualified F5 worker/gateway synthesis, formats, bounds and cancellation | H02/H03/V04; explicit valid reference/audio permission, truthful chunked transport and compute-cancel limits; no model execution/download without authorization |
 | H04b | Reference-voice picker, transcript, named presets, revision/cache lifecycle and preview | H04a/V02; AC-22 actual adapter-path A/B/same-path replacement/error tests; real voice difference and GPU evidence recorded separately in H06 |
@@ -505,7 +521,7 @@ hosting preset. Foundation slices are explicitly internal until integrated.
 | 3: First usable guided path | H08b/H08c Windows feature-first setup and bounded checks; H05a/H05b host desired-state journal and authorized download engine; H10a native Windows connect-only integration | UI follows H08d and reviewed providers/gateway. Host lifecycle follows H01/H02 and consumes the shared plan, never a second competing planner. Windows local Ollama can proceed independently of Ubuntu qualification but cannot use an untrusted issuer or raw remote LAN port. |
 | 4: Managed Ubuntu services | H05c selected-role Compose reconciliation; H04 F5 worker; H07a native CPU STT / H07b hosted STT | First real managed preset is LLM-only; F5 and STT are conditional additions, not prerequisites for typed text. Workers can be implemented in parallel once contracts are frozen. Integrate per-role artifacts, rights, budgets, cancellation and private transport. |
 | 5: Installers and platform UX | H09 graphical Ubuntu host setup + CLI parity; H10a approved native Windows lifecycle; H10b advanced Windows Docker/WSL2; H05d/H05e/H05f backup/update/rollback/removal | Consume the same tested host plan/journal and role contracts. Separate per-OS/per-runtime qualification. Windows Docker does not require native Windows F5. No desktop-client Docker dependency. |
-| 6: End-to-end qualification | H06 Ubuntu combined load/reboot/multi-host; AC-18/AC-19 novice/hybrid/quick checks; AC-20 Windows lanes | Real declared machines, local-only execution, explicitly authorized samples and installed software. Qualify each exact selected experience, not every optional feature at once. Missing hardware/rights/signing remains blocked; never relabel it as a pass. |
+| 6: End-to-end qualification | H06 Ubuntu combined load/reboot/multi-host; AC-18/AC-19 novice/hybrid/quick checks; AC-20 Windows lanes | Real declared machines, local-only execution, explicitly authorized samples and installed software. Qualify each exact selected experience, not every optional feature at once. Missing hardware/rights evidence remains blocked; optional code signing does not replace it. |
 
 H03a owns bounded one-use pairing and scoped device authorization, expiry/
 revocation and clock/cancellation behavior with production-backed local tests.
@@ -585,7 +601,7 @@ Do not ask separate sessions to implement full companions, select different UI
 frameworks, or share a worktree. Assign one owner per changed schema/settings/
 solution/validation file; interface changes require coordination and contract review.
 Feature branches depend on merged prerequisites or explicitly stacked PRs.
-Hardware tests, signing, and external paid calls are scheduled gates, not tasks
+Hardware tests, release rights/integrity, and external paid calls are scheduled gates, not tasks
 silently delegated to agents without access.
 
 Independent later scopes: H01 read-only preflight and H03 gateway can start from
@@ -619,7 +635,7 @@ what remains a real-device/manual gate.
 | AC-08: Streaming/interruption | At least 100 deterministic stop/replace/disconnect permutations yield zero stale/duplicate audible segments; real audio Stop meets latency target; exact network failure shows partial state; unsupported compute cancellation labeled honestly |
 | AC-09: Participation | Labeled direct-address, PTT, unaddressed, quoted name, cooldown, busy, silence, self-audio, and unknown-confidence corpus produces expected reason codes; opt-out suppresses all unsolicited turns |
 | AC-10: Privacy/support | Canary keys, transcripts, raw audio/screens and paths never enter default logs/bundles; consent preview accurately enumerates files; retention limits expire data; pause/lock/exit stops capture; memory disabled means no persistent conversation store |
-| AC-11: Release trust | Signed binaries/installer/update manifest, hash/provenance/SBOM/notices, scanned dependencies and reviewed high-risk findings; verify clean download and older version rollback; bad signature never executes |
+| AC-11: Release trust | Clearly disclosed unsigned GitHub installer, exact-version origin/size/SHA-256, provenance/SBOM/notices, included-component rights and reviewed high-risk findings; verify clean download, explicit install consent, Windows warnings and older-version rollback; digest mismatch never executes; signed local staging retains its signature check if used |
 | AC-12: Ubuntu lifecycle | Real supported OS: discovery/dry-run, approved provisioning, interrupted download/setup resume, pinned runtime/model warmup, reboot without login, graceful stop, failed-worker repair, upgrade/rollback/backup restore and data-preserving uninstall |
 | AC-13: LAN isolation | One/two-host paths reject unauthorized/wrong-scope/expired/revoked clients, wrong pins, replay and unsafe redirects; port/binding/firewall checked from unauthorized LAN source; DNS/IP changes do not change trusted identity |
 | AC-14: Hardware/load | Witnessed selected GPU/driver/image/model tuples fit and execute under combined roles; bounded OOM/slow/reboot recovery, host-2 loss, game frame time, sustained streaming, and optional admin policies measured on actual hardware |
@@ -692,7 +708,7 @@ measurement conditions hidden from the user.
 | Local fixture integration | Real core and diagnostic CLI with synthetic providers/audio | End-to-end state/probe/privacy plumbing with no paid requests; not model quality |
 | Local packaging smoke | Windows build/install artifacts on authorized local hosts; Ubuntu CPU image/config checks on an actual suitable local Linux environment | Build/package layout and declared dependencies; developer hosts are not clean consumer PCs and Windows inspection is not Linux execution |
 | Manual opt-in API | Separately authorized low-budget account/data/credentials, driven locally; never ordinary validation or untrusted code | Actual selected STT/LLM/TTS tuple/date only; tracks quota/cost and drift |
-| Real Windows gate | Clean Windows 11 25H2 x64 Home/Pro VM plus physical audio PC; standard/admin accounts | Install, permissions, signatures, device churn, no-dev-tool prerequisites, usability |
+| Real Windows gate | Clean Windows 11 25H2 x64 Home/Pro VM plus physical audio PC; standard/admin accounts | Install, permissions, unsigned publisher warning/policy, device churn, no-dev-tool prerequisites, usability |
 | Real Ubuntu gate | Clean 24.04 x86_64, then qualified NVIDIA hardware | System services, driver/runtime/model fit, reboot/start/stop; CPU containers alone cannot pass GPU cells |
 | Witnessed two-host gate | Actual Windows + both Ubuntu PCs, known LAN, selected role manifests | Authentication/firewalls, combined roles, failures, streaming, performance; host-2 fixture gate cannot certify real perception |
 
@@ -720,22 +736,25 @@ Required cross-cutting scenarios for relevant lanes:
 
 ## 7. Release, provenance, and support gates
 
-Every release candidate has a record of commit, artifacts/signatures/digests,
+Every release candidate has a record of commit, artifacts/digests (and signatures
+only when actually used),
 dependency lock/SBOM and notices, model/voice provenance (if included), protocol
 and schema compatibility, expected downloads, test environment, cases and
 results, known limitations, and rollback instructions. Store private hardware
 identifiers/recordings outside public artifacts; publish sanitized evidence.
 
-Signing keys never enter source, ordinary logs, or untrusted PR jobs. Choose a
-publisher/signing mechanism with owner approval and budget before G2; do not
-buy a certificate merely to satisfy a checklist. Unsigned builds are labeled
-unsigned prototype prereleases, never official signed releases.
+Signing keys never enter source, ordinary logs, or untrusted PR jobs. Code
+signing is optional by owner direction; do not buy a certificate merely to
+satisfy a checklist. Unsigned builds are labeled unsigned prototype
+prereleases, never official signed releases; Windows may warn that the
+publisher is unverified, and those warnings are never suppressed. The older
+private V07 signed ZIP staging contract remains signed and is not the GitHub
+installer route; internal unsigned artifacts keep their internal identity.
 The only permitted remote workflow is a minimal build/package/release with no
 tests, smoke, qualification or reproducibility checks; agents may create it,
-dispatch it and publish releases without separate approval. Validate update
-signatures, trusted origin, rollback policy,
-and provenance locally; a matching unsigned checksum alone does not establish
-publisher identity.
+dispatch it and publish releases without separate approval. A matching
+unsigned checksum alone does not establish publisher identity or make
+execution safe.
 
 Stable and beta are explicit channels with a supported current/previous
 compatible version policy. Document schema incompatibility, security patch
@@ -746,7 +765,8 @@ activation. Never use rollback to bypass required security policy unnoticed.
 Release blockers: unresolved critical/high-risk findings, leaking default logs,
 missing essential permission/cost disclosure, unauthenticated LAN routes,
 unbounded capture/queues, stale/duplicate audible turns, lost user data on
-upgrade/removal, invalid signature, absent rights for included assets/models,
+upgrade/removal, mismatched release digest (or invalid signed-candidate signature
+when that path is used), absent rights for included assets/models,
 or missing evidence for an advertised deployment. Performance misses must be
 disclosed and resolved or the supported scope narrowed explicitly.
 
@@ -779,7 +799,7 @@ version, stage/code and reproducible steps first, not a full raw recording.
 | R14: Unified status/doctor, fixtures, redaction and support | F03-F04, V06-V07 / M1-M2 | AC-03/AC-04/AC-10, G1-G2 |
 | R15: F5 licensing/streaming truth, separate upstream asset terms | D01, H02, H04, A01, A03b / M0-M5 | AC-01/AC-11/AC-17/AC-32; research S15-S18/S26-S28/S42-S47 |
 | R16: Hardware-dependent tuning/remote desktop remain optional | H06 / M3 | AC-14 only when enabled; no wiring/circuit-safety claim |
-| R17: Measured real-OS/GPU gates, local validation, signing and support readiness | F05, V07, H06, P04, A03 / M1-M5 | G1-G5, all relevant AC cases; never fixture-only hardware support |
+| R17: Measured real-OS/GPU gates, local validation, unsigned-release trust and support readiness | F05, V07, H06, P04, A03 / M1-M5 | G1-G5, all relevant AC cases; never fixture-only hardware support |
 | R18: Optional Live2D/VRM avatars, Audio2Face-first analysis, selective composition/comparisons and no-avatar parity | A01a/A01b + A02a/A02b parallel now; A02c/A02d integration; A03 / M5 qualification | AC-17/AC-27-AC-32, G5; per-model matrix in AVATARS, S42-S47; initial facial libraries are not complete motion or end-user support |
 | R19: Easy persona text editing, named profiles and swappable text files | V05a-V05b, V02 / M2 | AC-21; persisted data and runtime use, not permission or multiple autonomous agents |
 | R20: User-changeable F5 reference audio/transcript and consented preview | H04a-H04b, H06 / M3 | AC-22, G3; actual reference replacement/voice evidence, separate model/voice rights |
@@ -795,10 +815,10 @@ above, preserve the no-GPU development lane, and maintain a gate ledger with
 not-run/blocked/failed/passed states. Evidence records are created by future
 work, not supplied by this plan.
 
-Outstanding inputs: owner distribution/code-license preference; first API
+Outstanding inputs: included-component redistribution rights; first API
 preset/model/budget selection; actual GPU/OS/RAM/disk/LAN inventory
-and a witnessed test arrangement; F5 intended-use/voice rights; publisher and
-signing access/budget; exact "Project Airy" URL if reuse is desired; Live2D
+and a witnessed test arrangement; F5 intended-use/voice rights; exact
+"Project Airy" URL if reuse is desired; Live2D
 classification before avatar release. Recommended choices and material
 tradeoffs are in the main plan. The coordinator has accepted the Windows-only
 .NET/WPF direction and UI-independent core; do not block foundation work on

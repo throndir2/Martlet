@@ -6,6 +6,34 @@ function Get-PackagingPins {
     Read-PackagingJson (Join-Path $PSScriptRoot 'toolchain.json')
 }
 
+function Get-PackagingChannel([ValidateSet('Internal', 'PublicUnsigned')][string]$Channel = 'Internal') {
+    if ($Channel -ceq 'PublicUnsigned') {
+        return [ordered]@{
+            name = 'PUBLIC RELEASE - UNSIGNED'
+            assurance = 'UNSIGNED BUILD OBSERVATION - NOT PUBLISHER ATTESTATION'
+            help = 'help\RELEASE.txt'
+            sbomRef = 'martlet-public-payload'
+            sbomName = 'Martlet PUBLIC UNSIGNED payload'
+            projectRights = 'OWNER-DECLARED BINARY-USE TERMS - NOT ASSESSED BY SBOM'
+        }
+    }
+    return [ordered]@{
+        name = 'INTERNAL DEVELOPMENT ONLY - UNSIGNED'
+        assurance = 'UNSIGNED INTERNAL OBSERVATION - NOT PUBLISHER ATTESTATION'
+        help = 'help\INTERNAL.txt'
+        sbomRef = 'martlet-internal-payload'
+        sbomName = 'Martlet INTERNAL UNSIGNED payload'
+        projectRights = 'UNKNOWN - no project license granted'
+    }
+}
+
+function Assert-PublicReleaseRights([string]$RepositoryRoot = (Split-Path (Split-Path $PSScriptRoot))) {
+    $license = [IO.File]::ReadAllText((Get-RequiredFile (Join-Path $RepositoryRoot 'LICENSE')).FullName)
+    if ($license -notmatch '(?s)Permission is granted to individuals to download, install, and run unmodified\s+Martlet binaries officially published by throndir2.*?solely for personal,\s*noncommercial use\.') {
+        throw 'Public binary-use grant is missing from LICENSE. Do not build or upload a public release.'
+    }
+}
+
 function Assert-PackagingHost {
     if (-not $IsWindows -or [Runtime.InteropServices.RuntimeInformation]::OSArchitecture -ne 'X64') {
         throw 'Packaging requires Windows x64 with PowerShell 7; ARM64/emulated builds are not qualified.'
@@ -121,7 +149,7 @@ function Get-PublishProjectNames([ValidateSet('Desktop', 'Doctor', 'AvatarRender
     (Get-PackagingPins).applicationGraphs.$Entry.projects
 }
 
-function Assert-PublishLayout([string]$Root) {
+function Assert-PublishLayout([string]$Root, [ValidateSet('Internal', 'PublicUnsigned')][string]$Channel = 'Internal') {
     $pins = Get-PackagingPins
     $versions = @()
     foreach ($context in Get-PublishContexts) {
@@ -216,13 +244,14 @@ function Assert-PublishLayout([string]$Root) {
     foreach ($asset in Get-WebViewArchiveAssets) { $null = Get-RequiredFile (Join-Path $Root $asset.path) }
     Assert-X64Pe (Join-Path $Root 'Desktop\AvatarRenderer\runtimes\win-x64\native\WebView2Loader.dll')
     Assert-AvatarWebInventory $Root
-    foreach ($file in @('help\INTERNAL.txt', 'help\TROUBLESHOOTING.md', 'notices\DEPENDENCIES.txt',
+    foreach ($file in @((Get-PackagingChannel $Channel).help, 'help\TROUBLESHOOTING.md', 'notices\DEPENDENCIES.txt',
             'notices\NAudio-THIRD-PARTY-NOTICES.txt',
             'notices\Audio2Face-Protos-LICENSE.txt', 'notices\Audio2Face-THIRD-PARTY-NOTICES.md',
             'notices\Microsoft.WindowsDesktop.App\LICENSE.txt', 'notices\WPF-THIRD-PARTY-NOTICES.txt',
             'notices\WinForms-THIRD-PARTY-NOTICES.txt', 'notices\Inno-Setup-LICENSE.txt')) {
         $null = Get-RequiredFile (Join-Path $Root $file)
     }
+    if ($Channel -ceq 'PublicUnsigned') { $null = Get-RequiredFile (Join-Path $Root 'help\LICENSE.txt') }
     foreach ($notice in $pins.notices) {
         $null = Get-RequiredFile (Join-Path $Root "notices\$($notice.file)")
         Assert-Sha256 (Join-Path $Root "notices\$($notice.file)") $notice.sha256
@@ -242,16 +271,17 @@ function Get-ChecksumText([object[]]$Files, [string]$ManifestHash) {
     return ($lines -join "`n") + "`n"
 }
 
-function Write-PayloadManifest([string]$Root, [string]$SourceCommit, [bool]$SourceDirty, $Provenance) {
+function Write-PayloadManifest([string]$Root, [string]$SourceCommit, [bool]$SourceDirty, $Provenance,
+    [ValidateSet('Internal', 'PublicUnsigned')][string]$Channel = 'Internal') {
     $pins = Get-PackagingPins
-    $version = Assert-PublishLayout $Root
+    $version = Assert-PublishLayout $Root -Channel $Channel
     $files = @(Get-PayloadFiles $Root)
-    Test-PackageProvenance $Root $Provenance
+    Test-PackageProvenance $Root $Provenance -Channel $Channel
     if ($Provenance.source.commit -cne $SourceCommit -or $Provenance.source.dirty -ne $SourceDirty) {
         throw 'Payload source metadata differs from provenance.'
     }
-    Test-PackageSbom $Root $Provenance
-    $manifest = New-PayloadManifestDocument $version $SourceCommit $SourceDirty $Provenance $files $pins -FormatVersion 3
+    Test-PackageSbom $Root $Provenance -Channel $Channel
+    $manifest = New-PayloadManifestDocument $version $SourceCommit $SourceDirty $Provenance $files $pins -FormatVersion 3 -Channel $Channel
     $path = Join-Path $Root 'manifest.json'
     $text = ConvertTo-EvidenceJson $manifest
     if ([Text.Encoding]::UTF8.GetByteCount($text) -gt 16MB) { throw 'Manifest exceeds the 16 MiB evidence bound.' }
@@ -261,11 +291,12 @@ function Write-PayloadManifest([string]$Root, [string]$SourceCommit, [bool]$Sour
 }
 
 function New-PayloadManifestDocument([string]$ApplicationVersion, [string]$SourceCommit,
-    [bool]$SourceDirty, $Provenance, [object[]]$Files, $Pins, [ValidateSet(2, 3)][int]$FormatVersion = 2) {
+    [bool]$SourceDirty, $Provenance, [object[]]$Files, $Pins, [ValidateSet(2, 3)][int]$FormatVersion = 2,
+    [ValidateSet('Internal', 'PublicUnsigned')][string]$Channel = 'Internal') {
     if ($Provenance.schemaVersion -ne ($FormatVersion - 1)) { throw 'Manifest and provenance format selections disagree.' }
     return [ordered]@{
         schemaVersion = $FormatVersion
-        channel = 'INTERNAL DEVELOPMENT ONLY - UNSIGNED'
+        channel = (Get-PackagingChannel $Channel).name
         applicationVersion = $ApplicationVersion
         rid = $Pins.rid
         sdkVersion = $Pins.sdkVersion
@@ -279,17 +310,25 @@ function New-PayloadManifestDocument([string]$ApplicationVersion, [string]$Sourc
 
 function Test-PayloadManifest([string]$Root, [switch]$RequireCurrentSource) {
     $pins = Get-PackagingPins
-    $version = Assert-PublishLayout $Root
     $manifestPath = (Get-RequiredFile (Join-Path $Root 'manifest.json')).FullName
     $manifest = Read-PackagingJson $manifestPath -AsHashtable
+    $channel = if ($manifest.channel -ceq (Get-PackagingChannel PublicUnsigned).name) { 'PublicUnsigned' } else { 'Internal' }
+    $version = Assert-PublishLayout $Root -Channel $channel
     if ($manifest.schemaVersion -ne 3) { throw 'Payload evidence requires manifest schema v3. Rebuild the complete payload.' }
     Assert-EvidenceKeys $manifest @('schemaVersion', 'channel', 'applicationVersion', 'rid', 'sdkVersion',
         'runtimeVersion', 'sourceCommit', 'sourceDirty', 'provenance', 'files')
-    if ($manifest.schemaVersion -isnot [long] -or $manifest.channel -cne 'INTERNAL DEVELOPMENT ONLY - UNSIGNED' -or
+    if ($manifest.schemaVersion -isnot [long] -or $manifest.channel -cne (Get-PackagingChannel $channel).name -or
         $manifest.rid -cne $pins.rid -or $manifest.sdkVersion -cne $pins.sdkVersion -or
         $manifest.runtimeVersion -cne $pins.runtimeVersion -or $manifest.applicationVersion -cne $version -or
         $manifest.sourceCommit -cnotmatch '^[0-9a-f]{40}$' -or $manifest.sourceDirty -isnot [bool]) {
         throw 'Payload manifest metadata is invalid or differs from the pinned build.'
+    }
+    if ($channel -ceq 'PublicUnsigned') {
+        $licenses = @($manifest.provenance.source.files | Where-Object path -CEQ 'LICENSE')
+        if ($licenses.Count -ne 1 -or $licenses[0].sha256 -cne
+            (Get-FileHash -LiteralPath (Join-Path $Root 'help\LICENSE.txt') -Algorithm SHA256).Hash.ToLowerInvariant()) {
+            throw 'Public release LICENSE differs from its source receipt. Rebuild from approved rights.'
+        }
     }
     $null = Get-RequiredFile (Join-Path $Root 'sbom.cdx.json')
     $actual = @(Get-PayloadFiles $Root)
@@ -306,12 +345,12 @@ function Test-PayloadManifest([string]$Root, [switch]$RequireCurrentSource) {
     if ((Get-Item -LiteralPath $sumsPath).Length -gt 16MB) { throw 'Checksums exceed the 16 MiB evidence bound.' }
     $expectedText = Get-ChecksumText $actual (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash
     if ([IO.File]::ReadAllText($sumsPath) -cne $expectedText) { throw 'SHA256SUMS.txt does not match the payload and manifest.' }
-    Test-PackageProvenance $Root $manifest.provenance
+    Test-PackageProvenance $Root $manifest.provenance -Channel $channel
     if ($manifest.sourceCommit -cne $manifest.provenance.source.commit -or
         $manifest.sourceDirty -ne $manifest.provenance.source.dirty) {
         throw 'Payload source metadata differs from provenance.'
     }
-    Test-PackageSbom $Root $manifest.provenance
+    Test-PackageSbom $Root $manifest.provenance -Channel $channel
     if ($RequireCurrentSource) { Assert-PackagingSourceReceipt $manifest.provenance.source }
     return $manifest
 }
@@ -890,7 +929,8 @@ function Get-PackageArchiveEvidence([string]$Root, [string]$AssetsPath, $Applica
     }
 }
 
-function Get-PackageProvenance([string]$Root, [string]$PublishDirectory, $Source, $SdkReceipt, [string]$NodePath = 'node') {
+function Get-PackageProvenance([string]$Root, [string]$PublishDirectory, $Source, $SdkReceipt, [string]$NodePath = 'node',
+    [ValidateSet('Internal', 'PublicUnsigned')][string]$Channel = 'Internal') {
     Test-PackagingSourceReceipt $Source
     Test-PackagingSdkReceipt $SdkReceipt
     $applications = @(Get-PackageApplications $Root)
@@ -899,20 +939,21 @@ function Get-PackageProvenance([string]$Root, [string]$PublishDirectory, $Source
     $archives = @(Get-PackageArchiveEvidence $Root (Join-Path $PublishDirectory 'build\obj\Martlet.Desktop\project.assets.json') $applications)
     $buildArchives = @(Get-PackageArchiveEvidence $Root (Join-Path $PublishDirectory 'build\obj\Martlet.Desktop\project.assets.json') $applications -BuildOnly -Restores $restores)
     $browser = Get-AvatarBrowserEvidence $Root $PublishDirectory $Source -NodePath $NodePath
-    $result = New-PackageProvenanceDocument $Source $SdkReceipt $applications $restores $archives (Get-PackagingPins).rid -SchemaVersion 2 -Browser $browser -BuildArchives $buildArchives
-    Test-PackageProvenance $Root $result
+    $result = New-PackageProvenanceDocument $Source $SdkReceipt $applications $restores $archives (Get-PackagingPins).rid -SchemaVersion 2 -Browser $browser -BuildArchives $buildArchives -Channel $Channel
+    Test-PackageProvenance $Root $result -Channel $Channel
     return $result
 }
 
 function New-PackageProvenanceDocument($Source, $SdkReceipt, $Applications, $Restores, $Archives, [string]$RuntimeIdentifier,
-    [ValidateSet(1, 2)][int]$SchemaVersion = 1, $Browser, [object[]]$BuildArchives) {
+    [ValidateSet(1, 2)][int]$SchemaVersion = 1, $Browser, [object[]]$BuildArchives,
+    [ValidateSet('Internal', 'PublicUnsigned')][string]$Channel = 'Internal') {
     if (($SchemaVersion -eq 1 -and ($PSBoundParameters.ContainsKey('Browser') -or $PSBoundParameters.ContainsKey('BuildArchives'))) -or
         ($SchemaVersion -eq 2 -and ($null -eq $Browser -or $null -eq $BuildArchives))) {
         throw 'Browser and build-archive evidence must be selected explicitly with provenance schema 2.'
     }
     $document = [ordered]@{
         schemaVersion = $SchemaVersion
-        assurance = 'UNSIGNED INTERNAL OBSERVATION - NOT PUBLISHER ATTESTATION'
+        assurance = (Get-PackagingChannel $Channel).assurance
         source = $Source; sdk = $SdkReceipt
         publish = [ordered]@{ configuration = 'Release'; framework = 'net10.0-windows'; rid = $RuntimeIdentifier; selfContained = $true; trimmed = $false; singleFile = $false; readyToRun = $false }
         applications = $Applications; restores = $Restores; archives = $Archives
@@ -921,11 +962,12 @@ function New-PackageProvenanceDocument($Source, $SdkReceipt, $Applications, $Res
     return $document
 }
 
-function Test-PackageProvenance([string]$Root, $Provenance) {
+function Test-PackageProvenance([string]$Root, $Provenance,
+    [ValidateSet('Internal', 'PublicUnsigned')][string]$Channel = 'Internal') {
     if ($null -eq $Provenance) { throw 'Required provenance missing. Rebuild the complete payload.' }
     Assert-EvidenceKeys $Provenance @('schemaVersion', 'assurance', 'source', 'sdk', 'publish', 'applications', 'restores', 'archives', 'browser', 'buildArchives')
     if (($Provenance.schemaVersion -isnot [int] -and $Provenance.schemaVersion -isnot [long]) -or
-        $Provenance.schemaVersion -ne 2 -or $Provenance.assurance -cne 'UNSIGNED INTERNAL OBSERVATION - NOT PUBLISHER ATTESTATION') {
+        $Provenance.schemaVersion -ne 2 -or $Provenance.assurance -cne (Get-PackagingChannel $Channel).assurance) {
         throw 'Unsupported unsigned provenance metadata.'
     }
     Test-PackagingSourceReceipt $Provenance.source
@@ -1163,13 +1205,16 @@ function Test-PackageProvenance([string]$Root, $Provenance) {
     }
 }
 
-function Get-PackageSbom([string]$Root, $Provenance) {
+function Get-PackageSbom([string]$Root, $Provenance,
+    [ValidateSet('Internal', 'PublicUnsigned')][string]$Channel = 'Internal') {
     $files = @(Get-PayloadFiles $Root -ExcludeSbom)
-    return New-PackageSbomDocument $files (Assert-PublishLayout $Root) $Provenance
+    return New-PackageSbomDocument $files (Assert-PublishLayout $Root -Channel $Channel) $Provenance -Channel $Channel
 }
 
-function New-PackageSbomDocument([object[]]$Files, [string]$ApplicationVersion, $Provenance) {
+function New-PackageSbomDocument([object[]]$Files, [string]$ApplicationVersion, $Provenance,
+    [ValidateSet('Internal', 'PublicUnsigned')][string]$Channel = 'Internal') {
     if ($Provenance.schemaVersion -notin @(1, 2)) { throw 'Unsupported SBOM provenance format.' }
+    $identity = Get-PackagingChannel $Channel
     $avatar = $Provenance.schemaVersion -eq 2
     $fileComponents = @{}
     $components = [Collections.Generic.List[object]]::new()
@@ -1229,7 +1274,7 @@ function New-PackageSbomDocument([object[]]$Files, [string]$ApplicationVersion, 
                     $fileComponents[$origin.path].properties += [ordered]@{ name = 'martlet:nuget:archive-entry'; value = $origin.entry }
                 }
             } else {
-                $component.properties += [ordered]@{ name = 'martlet:license:status'; value = 'UNKNOWN - no project license granted' }
+                $component.properties += [ordered]@{ name = 'martlet:license:status'; value = $identity.projectRights }
                 foreach ($path in $ownedPaths) { $fileComponents[$path].properties[3].value = 'Project build output; not a copy of source bytes' }
                 if ($isRoot) {
                     $generated = @("$directory\$project.exe", "$directory\$project.deps.json", "$directory\$project.runtimeconfig.json")
@@ -1257,9 +1302,9 @@ function New-PackageSbomDocument([object[]]$Files, [string]$ApplicationVersion, 
             $dependencies.Add([ordered]@{ ref = $reference; dependsOn = $edges })
         }
     }
-    if ($avatar) { Add-AvatarSbomComponents $Provenance $ApplicationVersion $fileComponents $components $dependencies }
+    if ($avatar) { Add-AvatarSbomComponents $Provenance $ApplicationVersion $fileComponents $components $dependencies -ProjectRights $identity.projectRights }
     foreach ($path in Get-EvidenceOrdinalStrings @($fileComponents.Keys)) { $components.Add($fileComponents[$path]) }
-    $dependencies.Insert(0, [ordered]@{ ref = 'martlet-internal-payload'; dependsOn = $rootRefs })
+    $dependencies.Insert(0, [ordered]@{ ref = $identity.sbomRef; dependsOn = $rootRefs })
     $document = [ordered]@{
         bomFormat = 'CycloneDX'; specVersion = '1.6'; version = 1
         metadata = [ordered]@{
@@ -1270,7 +1315,7 @@ function New-PackageSbomDocument([object[]]$Files, [string]$ApplicationVersion, 
                     foreach ($file in $Provenance.sdk.files) { [ordered]@{ name = "martlet:tool:sha256:$($file.path)"; value = $file.sha256 } }
                 ) }
             ) }
-            component = [ordered]@{ type = 'application'; 'bom-ref' = 'martlet-internal-payload'; name = 'Martlet INTERNAL UNSIGNED payload'; version = $ApplicationVersion }
+            component = [ordered]@{ type = 'application'; 'bom-ref' = $identity.sbomRef; name = $identity.sbomName; version = $ApplicationVersion }
             properties = @(
                 [ordered]@{ name = 'martlet:assurance'; value = $Provenance.assurance }
                 [ordered]@{ name = 'martlet:source:commit'; value = $Provenance.source.commit }
@@ -1284,28 +1329,30 @@ function New-PackageSbomDocument([object[]]$Files, [string]$ApplicationVersion, 
             )
         }
         components = @($components.ToArray()); dependencies = @($dependencies.ToArray())
-        compositions = @([ordered]@{ aggregate = 'incomplete'; assemblies = @('martlet-internal-payload'); dependencies = @('martlet-internal-payload') })
+        compositions = @([ordered]@{ aggregate = 'incomplete'; assemblies = @($identity.sbomRef); dependencies = @($identity.sbomRef) })
     }
     if ($avatar) { Add-AvatarSbomMetadata $document $Provenance }
     return $document
 }
 
-function Write-PackageSbom([string]$Root, $Provenance) {
+function Write-PackageSbom([string]$Root, $Provenance,
+    [ValidateSet('Internal', 'PublicUnsigned')][string]$Channel = 'Internal') {
     foreach ($name in @('sbom.cdx.json', 'manifest.json', 'SHA256SUMS.txt')) {
         if (Test-Path -LiteralPath (Join-Path $Root $name)) { throw "Generated evidence collision: $name. Use fresh staging." }
     }
-    Test-PackageProvenance $Root $Provenance
-    $text = ConvertTo-EvidenceJson (Get-PackageSbom $Root $Provenance)
+    Test-PackageProvenance $Root $Provenance -Channel $Channel
+    $text = ConvertTo-EvidenceJson (Get-PackageSbom $Root $Provenance -Channel $Channel)
     $bytes = [Text.UTF8Encoding]::new($false).GetBytes($text)
     if ($bytes.Length -gt 16MB) { throw 'SBOM exceeds the 16 MiB evidence bound.' }
     $stream = [IO.File]::Open((Join-Path $Root 'sbom.cdx.json'), [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
     try { $stream.Write($bytes) } finally { $stream.Dispose() }
 }
 
-function Test-PackageSbom([string]$Root, $Provenance) {
+function Test-PackageSbom([string]$Root, $Provenance,
+    [ValidateSet('Internal', 'PublicUnsigned')][string]$Channel = 'Internal') {
     $path = Join-Path $Root 'sbom.cdx.json'
     $null = Read-PackagingJson $path
-    $expected = Get-EvidenceSha256 (Get-PackageSbom $Root $Provenance)
+    $expected = Get-EvidenceSha256 (Get-PackageSbom $Root $Provenance -Channel $Channel)
     if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() -cne $expected) {
         throw 'SBOM differs from actual payload and resolved provenance. Rebuild the complete payload.'
     }
