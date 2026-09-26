@@ -63,7 +63,7 @@ There is no remote memory, embedding, vector database or automatic backup.
 
 | Document | Purpose |
 | --- | --- |
-| [Coding-agent instructions](AGENTS.md) | Task branches, autonomous local engineering loop, independent review, and normal merge into `main`; explicit holds and safety boundaries remain binding |
+| [Coding-agent instructions](AGENTS.md) | Autonomous autopilot-style work, task branches, prototype-speed policy (no required local gates), and normal merge into `main`; explicit holds and safety boundaries remain binding |
 | [Development plan](DEVELOPMENT_PLAN.md) | Scope, proposed decisions, priorities, risks, and reading order |
 | [Companion requirements](docs/COMPANION_REQUIREMENTS.md) | Planned persona editing, F5 reference voices, LLM/VLM selection, listen-first behavior, speech interruption and response-style controls; not current features |
 | [Avatar guide and compatibility](docs/AVATARS.md) | Accepted Live2D/VRM direction, Audio2Face-first analysis, per-model mappings, working/degraded/blocked permutations, parallel plan and remaining qualification |
@@ -87,20 +87,19 @@ distributing software. No code license grant is implied.
 
 ## Local-only validation policy
 
-**Current owner policy, 2026-09-13: local gates, never remote validation.**
-This supersedes earlier plans for hosted CI. Do not create, enable, dispatch or
-retry remote test/validation pipelines, including GitHub Actions with
-self-hosted runners. Do not restore Actions billing, increase spending limits
-or use another hosted service to obtain validation evidence.
+**Current owner policy, 2026-09-26: prototype speed, never remote validation.**
+This supersedes earlier plans for hosted CI and the 2026-09-13 local-gate
+requirement. Do not create, enable, dispatch or retry remote test/validation
+pipelines, including GitHub Actions with self-hosted runners. Do not restore
+Actions billing, increase spending limits or use another hosted service to
+obtain validation evidence.
 
-Retain pinned dependencies, locked restores, production-backed tests, package
-assertions, smoke/trace scripts and independent review. Run targeted local
-checks first, then the full affected suites and local build/package/smoke gates
-required by the change; fix findings, rerun affected checks and meet normal
-repository merge requirements before merging. Documentation-only changes need
-only applicable existing local documentation checks and diff review, not an
-application rebuild. `CI=true` remains a local MSBuild setting for locked restore
-and deterministic build metadata; it does not require a remote runner.
+Martlet is a prototype. Local test suites, build/package/smoke gates and
+independent review are **not required** before commit, PR or merge and should
+not be run by default. Run at most a quick targeted build or test when it
+directly helps finish or debug a change. Existing tests and scripts remain
+available for manual use. `CI=true` remains a local MSBuild setting for locked
+restore and deterministic build metadata; it does not require a remote runner.
 
 The only permitted remote workflow exception is an **explicitly requested,
 minimal build/package/release**: restore necessary build dependencies and
@@ -115,14 +114,12 @@ Before any push or PR creation/update, inspect the applicable workflow events,
 refs and resulting tree, including older branches that could restore deleted
 workflows. Establish a publication path that starts no remote validation.
 Report impossible required checks instead of bypassing/changing protections,
-inventing successful statuses or relying on skip markers. A publication hold
-does not prevent independent local implementation and review.
+inventing successful statuses or relying on skip markers.
 
 Historical failed or blocked hosted results remain historical, not local passes.
 Real Windows/Linux, native-device, model/GPU and clean-machine qualifications
-still require actual execution in a suitable, separately authorized local
-environment. Missing access remains **NOT RUN / blocked**, not permission to
-substitute fixtures or install a VM, WSL, Docker, drivers or services.
+still require actual execution before being claimed. Unrun qualification is
+reported as **NOT RUN**, never as passed; it does not block prototype work.
 
 ## Developer quick start
 

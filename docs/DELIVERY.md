@@ -8,13 +8,12 @@ Read [scope and decisions](../DEVELOPMENT_PLAN.md), [contracts](ARCHITECTURE.md)
 The original empty baseline is historical. Current implementation and evidence
 must not be confused with the broader planned milestones below.
 
-**Current validation policy, 2026-09-13:** follow the
-[local-only repository policy](../README.md#local-only-validation-policy).
-Earlier hosted-CI plans are superseded, not evidence of local success. All
-test, smoke, package-integrity and qualification gates below run locally in
-suitable authorized environments, with independent review and normal merge
-requirements. Missing native/OS/model/hardware evidence remains NOT RUN or
-blocked for that qualification; independent local development can continue.
+**Current validation policy, 2026-09-26:** follow the
+[repository policy](../README.md#local-only-validation-policy): prototype
+speed, never remote validation. Earlier hosted-CI plans and the 2026-09-13
+local-gate requirement are superseded. Test, smoke, package-integrity and
+qualification gates below are future release gates, not required per change;
+unrun gates are reported as NOT RUN, never as passed.
 No replacement Action or release is requested by this plan.
 
 **Requirements expansion, 2026-09-19:** [Companion controls and behavior](COMPANION_REQUIREMENTS.md)
@@ -242,11 +241,11 @@ preserved. All execution/qualification remains local and separately consented.
 
 ## 1. Execution rules
 
-Follow [the repository agent instructions](../AGENTS.md) for the autonomous
-engineering loop, task branch/worktree ownership and publication/merge protocol.
-Implementation requests normally proceed through local acceptance, independent
-review and verified merge into `main` without routine approval prompts.
-Explicit user holds, required reviews/protections and authorization boundaries
+Follow [the repository agent instructions](../AGENTS.md) for autonomous
+autopilot-style work, task branch/worktree ownership and publication/merge
+protocol. Implementation requests normally proceed straight to a verified
+merge into `main` without routine approval prompts or required local gates.
+Explicit user holds, required protections and authorization boundaries
 remain binding; queued auto-merge is not verified integration.
 
 Each row below is an owned work item; small items can be one PR, while the
@@ -257,16 +256,11 @@ network security, model selection, and avatar work in one change.
 
 Before implementation, confirm the affected architecture/contract decisions
 against current repository instructions and coordinate ownership of shared
-files. Use established decisions for routine work; obtain approval for
-consequential unresolved decisions rather than reopening accepted choices.
-A PR needs production-path tests where feasible, a reproducible
-acceptance description, documentation/remedies for new behavior, independent
-review, and fixes/local revalidation before merge. Run targeted checks first
-and the full affected suites before acceptance; retain actual local package
-and smoke gates when the app graph changes. No weakened assertions, bypassed
-required checks or fixture substitution for missing hardware evidence. If a
-pre-existing required hosted check cannot be produced under the policy, report
-the exact requirement rather than change protections or fabricate a pass.
+files. Use established decisions for routine work; decide consequential unresolved
+questions autonomously where evidence allows rather than reopening accepted
+choices. During the prototype phase a PR needs only a short description of the
+change; tests, package/smoke gates and independent review are optional and not
+run by default. Never fabricate check statuses or claim unrun gates passed.
 
 The product owner's distribution/cloud choices and restricted-model/SDK rights
 remain real decisions. Signing credentials, a spending budget, deployment,
@@ -543,16 +537,14 @@ credential ownership and the current OpenAI conversation behavior. Only this
 owner changes the shared settings schema; H08c consumes it after merge.
 Disabled role configuration can be retained without authorizing its execution.
 
-**Per-PR completion and merge protocol:** keep one bounded change per branch,
-test the production path locally, record exact commit/commands/outcomes and
-unrun gates, obtain independent review, fix findings and rerun affected checks.
-Inspect base/head workflow trees and triggering events before every push/PR/
-merge so publishing cannot start remote validation. Merge one eligible PR at
-a time against the reviewed head; if main advanced, reconcile and revalidate
-the affected integration before merging. Do not force-push, bypass protections,
-manufacture statuses or merge a held PR. Stop only dependent waves for a genuine
-blocker and continue independent work. Update this ledger with actual merged
-evidence; a queued session or code-only foundation is not a completed feature.
+**Per-PR completion and merge protocol:** keep one bounded change per branch.
+Local tests and independent review are not required during the prototype
+phase. Check workflow triggers before every push/PR/merge so publishing cannot
+start remote validation. Merge one eligible PR at a time; if main advanced,
+reconcile before merging. Do not force-push, bypass protections, manufacture
+statuses or merge a held PR. Stop only dependent waves for a genuine blocker
+and continue independent work. A queued session or code-only foundation is not
+a completed feature.
 
 #### H03b3: explicit Linux state backend candidate
 
