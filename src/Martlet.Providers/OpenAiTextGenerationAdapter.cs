@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Martlet.Core.Contracts;
+using Martlet.Core.Settings;
 
 namespace Martlet.Providers;
 
@@ -65,7 +66,8 @@ public sealed class OpenAiTextGenerationAdapter : IDisposable
 public sealed class TextGenerationStream : IAsyncEnumerable<ProviderEvent>
 {
     private readonly HttpClient client;
-    private readonly IProviderCredentialSource credentials;
+    private readonly IProviderCredentialSource? credentials;
+    private readonly Uri? chatBaseUri;
     private readonly TimeProvider clock;
     private readonly EvidenceProvenance provenance;
     private readonly CancellationToken shutdown;
@@ -81,12 +83,14 @@ public sealed class TextGenerationStream : IAsyncEnumerable<ProviderEvent>
     public TextGenerationResult? Result { get; private set; }
     public ProviderCapabilities Capabilities { get; }
 
-    internal TextGenerationStream(HttpClient client, IProviderCredentialSource credentials, TimeProvider clock,
+    internal TextGenerationStream(HttpClient client, IProviderCredentialSource? credentials, TimeProvider clock,
         EvidenceProvenance provenance, CancellationToken shutdown, ProviderRequestContext context, TextModelSelection model,
-        BoundedTextInput input, TextGenerationLimits limits, TextDisclosureAuthorization? authorization, CancellationToken callerToken)
+        BoundedTextInput input, TextGenerationLimits limits, TextDisclosureAuthorization? authorization, CancellationToken callerToken,
+        Uri? chatBaseUri = null)
     {
         this.client = client;
         this.credentials = credentials;
+        this.chatBaseUri = chatBaseUri;
         this.clock = clock;
         this.provenance = provenance;
         this.shutdown = shutdown;
@@ -99,6 +103,8 @@ public sealed class TextGenerationStream : IAsyncEnumerable<ProviderEvent>
         startedAt = clock.GetTimestamp();
         startedUtc = clock.GetUtcNow();
         Capabilities = OpenAiTextGenerationCatalog.AttemptCapabilities(model.ModelAlias, provenance);
+        if (chatBaseUri is not null)
+            Capabilities = Capabilities with { ProviderId = ChatCompletionsSetup.Alias };
     }
 
     public IAsyncEnumerator<ProviderEvent> GetAsyncEnumerator(CancellationToken cancellationToken = default)
@@ -112,7 +118,7 @@ public sealed class TextGenerationStream : IAsyncEnumerable<ProviderEvent>
     {
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(callerToken, enumerationToken, shutdown);
         using var operation = new TextGenerationOperation(client, credentials, clock, context, model, input,
-            limits, authorization, startedAt, startedUtc, stop.Token, callerToken, enumerationToken, shutdown);
+            limits, authorization, startedAt, startedUtc, stop.Token, callerToken, enumerationToken, shutdown, chatBaseUri);
         long sequence = 0;
         try
         {
@@ -146,7 +152,7 @@ public sealed class TextGenerationStream : IAsyncEnumerable<ProviderEvent>
     private ProviderEvent Event(ProviderEventKind kind, long sequence, string? text = null, MartletError? error = null) => new()
     {
         Version = ContractVersion.Current, Ids = context.Ids, Epoch = context.Epoch, Sequence = sequence,
-        ProviderId = OpenAiTextGenerationCatalog.ProviderId, Provenance = provenance, Kind = kind, Text = text, Error = error
+        ProviderId = Capabilities.ProviderId, Provenance = provenance, Kind = kind, Text = text, Error = error
     };
 
     public override string ToString() => nameof(TextGenerationStream);
@@ -159,10 +165,10 @@ internal sealed record TextStreamStep(string? Text = null, TextGenerationOutcome
 }
 
 internal sealed class TextGenerationOperation(
-    HttpClient client, IProviderCredentialSource credentials, TimeProvider clock,
+    HttpClient client, IProviderCredentialSource? credentials, TimeProvider clock,
     ProviderRequestContext context, TextModelSelection model, BoundedTextInput input, TextGenerationLimits limits,
     TextDisclosureAuthorization? authorization, long startedAt, DateTimeOffset startedUtc, CancellationToken stop,
-    CancellationToken caller, CancellationToken enumerator, CancellationToken shutdown) : IDisposable
+    CancellationToken caller, CancellationToken enumerator, CancellationToken shutdown, Uri? chatBaseUri = null) : IDisposable
 {
     private ProviderRequestWindow? window;
     private CancellationTokenSource? progress;
@@ -172,6 +178,7 @@ internal sealed class TextGenerationOperation(
     private Stream? body;
     private ResponsesSseReader? reader;
     private ResponsesTextNormalizer? normalizer;
+    private ChatCompletionsTextNormalizer? chatNormalizer;
     private long? lastEventAt;
     private bool firstDelta;
     private bool initialized;
@@ -199,12 +206,18 @@ internal sealed class TextGenerationOperation(
                 EnsureActive();
                 if (item is null)
                     throw new ResponseProtocolException(ProviderFailureCode.ResponseTruncated);
-                var step = normalizer!.Accept(item);
+                var step = chatNormalizer is null ? normalizer!.Accept(item) : chatNormalizer.Accept(item);
                 if (step?.Outcome is not null)
-                    await reader.VerifyDeclaredEndAsync(Token).ConfigureAwait(false);
+                {
+                    if (chatNormalizer is null)
+                        await reader.VerifyDeclaredEndAsync(Token).ConfigureAwait(false);
+                    else if (await reader.ReadAsync(Token).ConfigureAwait(false) is not null)
+                        throw new ResponseProtocolException(ProviderFailureCode.ResponseSchema);
+                }
                 // Comments/unknown events/duplicates cannot extend progress deadlines.
-                lastEventAt = clock.GetTimestamp();
-                if (normalizer.HasContentDelta)
+                if (chatNormalizer is null || chatNormalizer.MadeProgress)
+                    lastEventAt = clock.GetTimestamp();
+                if (chatNormalizer?.HasContentDelta ?? normalizer!.HasContentDelta)
                     firstDelta = true;
                 ArmProgress();
                 EnsureActive();
@@ -239,12 +252,14 @@ internal sealed class TextGenerationOperation(
     {
         if (context.Deadline <= startedUtc)
             return Fail(ProviderFailureCode.DeadlineExceeded);
-        if (!OpenAiTextGenerationCatalog.SupportsModel(model.UpstreamModelId))
+        if (chatBaseUri is null && !OpenAiTextGenerationCatalog.SupportsModel(model.UpstreamModelId))
             return Fail(ProviderFailureCode.ModelUnsupported);
-        var binding = new ProviderCredentialBinding(OpenAiTransport.Origin, ProviderRole.Llm, model.UpstreamModelId);
+        var binding = new ProviderCredentialBinding(chatBaseUri ?? OpenAiTransport.Origin, ProviderRole.Llm, model.UpstreamModelId);
         if (authorization is null || !authorization.AllowTextDisclosure || !authorization.AllowPotentialCharges)
             return Fail(ProviderFailureCode.ConsentMissing);
-        if (authorization.Binding is null || !OpenAiTransport.IsApprovedOrigin(authorization.Binding.Origin))
+        if (authorization.Binding is null || (chatBaseUri is null
+            ? !OpenAiTransport.IsApprovedOrigin(authorization.Binding.Origin)
+            : !MatchesChatBase(authorization.Binding.Origin)))
             return Fail(ProviderFailureCode.OriginRejected);
         if (authorization.Binding != binding || authorization.Model != model ||
             authorization.Ids != context.Ids || authorization.Epoch != context.Epoch || authorization.Limits != limits)
@@ -260,19 +275,22 @@ internal sealed class TextGenerationOperation(
         linked = CancellationTokenSource.CreateLinkedTokenSource(window.Token, progress.Token);
         ArmProgress();
         EnsureActive();
-        using var credential = await credentials.ResolveAsync(binding, Token).ConfigureAwait(false);
+        using var credential = credentials is null ? null : await credentials.ResolveAsync(binding, Token).ConfigureAwait(false);
         EnsureActive();
-        if (credential is null)
+        if (credential is null && (chatBaseUri is null || credentials is not null))
             return Fail(ProviderFailureCode.CredentialUnavailable);
-        if (credential.Binding != binding || !OpenAiTransport.IsApprovedOrigin(credential.Binding.Origin))
+        if (credential is not null && (credential.Binding != binding ||
+            (chatBaseUri is null ? !OpenAiTransport.IsApprovedOrigin(credential.Binding.Origin) :
+                !MatchesChatBase(credential.Binding.Origin))))
             return Fail(ProviderFailureCode.CredentialBindingMismatch);
 
-        request = new(HttpMethod.Post, OpenAiTextGenerationCatalog.Endpoint)
+        request = new(HttpMethod.Post, chatBaseUri is null ? OpenAiTextGenerationCatalog.Endpoint :
+            new Uri(chatBaseUri.AbsoluteUri.TrimEnd('/') + "/chat/completions"))
         {
             Version = HttpVersion.Version11, VersionPolicy = HttpVersionPolicy.RequestVersionExact
         };
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
-        request.Headers.Authorization = credential.CreateAuthorization();
+        request.Headers.Authorization = credential?.CreateAuthorization();
         EnsureActive();
         request.Content = new SingleSendContent(CreateJson(), EnsureActive);
         EnsureActive();
@@ -301,13 +319,19 @@ internal sealed class TextGenerationOperation(
         abortBody = Token.Register(body.Dispose);
         EnsureActive();
         reader = new(body, limits, EnsureActive, response.Content.Headers.ContentLength);
-        normalizer = new(limits, model.UpstreamModelId);
+        if (chatBaseUri is null) normalizer = new(limits, model.UpstreamModelId);
+        else chatNormalizer = new(limits);
         return null;
     }
+
+    private bool MatchesChatBase(Uri? origin) => origin is { IsAbsoluteUri: true } &&
+        string.Equals(origin.AbsoluteUri, chatBaseUri!.AbsoluteUri, StringComparison.Ordinal);
 
     private HttpContent CreateJson()
     {
         EnsureActive();
+        if (chatBaseUri is not null)
+            return CreateChatJson();
         using var bytes = new MemoryStream();
         using (var writer = new Utf8JsonWriter(bytes))
         {
@@ -330,6 +354,28 @@ internal sealed class TextGenerationOperation(
             if (input.Personality is not null)
                 writer.WriteString("instructions", input.Personality);
             writer.WriteStartArray("input");
+            foreach (var message in input.History)
+                WriteMessage(writer, message.Role == TextHistoryRole.User ? "user" : "assistant", message.Text);
+            WriteMessage(writer, "user", input.UserText);
+            writer.WriteEndArray();
+            writer.WriteEndObject();
+        }
+        var content = new ByteArrayContent(bytes.ToArray());
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/json") { CharSet = "utf-8" };
+        return content;
+    }
+
+    private HttpContent CreateChatJson()
+    {
+        using var bytes = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(bytes))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("model", model.UpstreamModelId);
+            writer.WriteBoolean("stream", true);
+            writer.WriteNumber("max_tokens", limits.MaxOutputTokens);
+            writer.WriteStartArray("messages");
+            if (input.Personality is not null) WriteMessage(writer, "system", input.Personality);
             foreach (var message in input.History)
                 WriteMessage(writer, message.Role == TextHistoryRole.User ? "user" : "assistant", message.Text);
             WriteMessage(writer, "user", input.UserText);

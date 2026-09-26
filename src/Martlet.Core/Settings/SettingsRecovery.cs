@@ -168,8 +168,12 @@ public sealed partial class SettingsStore
             throw new RecoveryException(RecoveryFailure.CleanupCapacity);
         var pending = (current.Setup?.PendingRemovals ?? []).Concat(
             (current.Setup?.Routes ?? []).Where(route => route.CredentialId is not null &&
-                route.RouteType is null or SetupRouteType.OpenAi)
-            .Select(route => new PendingCredentialRemoval { Role = route.Role, CredentialId = route.CredentialId!.Value })).ToArray();
+                route.RouteType is null or SetupRouteType.OpenAi or SetupRouteType.ChatCompletions)
+            .Select(route => new PendingCredentialRemoval
+            {
+                Role = route.Role, CredentialId = route.CredentialId!.Value,
+                Scope = route.RouteType == SetupRouteType.ChatCompletions ? CredentialScopeSettings.From(route) : null
+            })).ToArray();
         if (pending.Length > 16)
             throw new RecoveryException(RecoveryFailure.CleanupCapacity);
         restored = restored with
@@ -331,11 +335,13 @@ public sealed partial class SettingsStore
                 route.RouteType is SetupRouteType.GatewayOllama or SetupRouteType.GatewayF5)
             .Select(RetainedGatewayCredential.From)).ToArray();
         foreach (var route in settings.Setup!.Routes.Where(route =>
-            route.RouteType is SetupRouteType.GatewayOllama or SetupRouteType.GatewayF5 or SetupRouteType.LocalWhisper))
+            route.RouteType is SetupRouteType.GatewayOllama or SetupRouteType.GatewayF5 or SetupRouteType.LocalWhisper or
+                SetupRouteType.ChatCompletions or SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWindowsTts))
         {
             if (route.Enabled != false || route.Consent is not null || route.GatewaySnapshot is not null ||
                 route.Reference is not null || route.LocalStt is not null ||
-                route.CredentialId is not null && !owned.Contains(RetainedGatewayCredential.From(route)))
+                route.CredentialId is not null && (route.RouteType == SetupRouteType.ChatCompletions ||
+                    !owned.Contains(RetainedGatewayCredential.From(route))))
                 throw new RecoveryException(RecoveryFailure.Conflict);
         }
         if ((settings.Setup.RetainedGatewayCredentials ?? []).Any(item => !owned.Contains(item)))
