@@ -195,6 +195,11 @@ public partial class AudioSetupWindow : ThemedWindow
                 ResultText.Text = operation.Status.Stage + ". Save explicitly to keep this historical checkpoint.";
             }
         }
+        else if (action == AudioSetupAction.Microphone &&
+            operation.Status.Signal is AudioInputSignal.NoFrames or AudioInputSignal.BelowAdvisoryThreshold
+                or AudioInputSignal.InsufficientFrames or AudioInputSignal.IntermittentAmplitude)
+            ResultText.Text = $"Local microphone test did not meet the level advisory: {operation.Status.Stage}. " +
+                InputSignalRemedy(operation.Status.Signal.Value);
         else ResultText.Text = "Local action failed or canceled: " + operation.Status.Stage + ". " + AudioSetupDiagnostics.Remedy(operation.Status.Error);
         ownedAudio = null;
         RenderStatus();
@@ -243,12 +248,16 @@ public partial class AudioSetupWindow : ThemedWindow
 
     private void RenderProgress()
     {
-        if (closed || ownedAudio is not { } operation || operation.Status == lastStatus) return;
+        if (closed || observation?.IsCancellationRequested == true ||
+            ownedAudio is not { } operation || operation.Status == lastStatus) return;
         var status = operation.Status;
         lastStatus = status;
+        var remedy = status.Signal is AudioInputSignal.NoFrames or AudioInputSignal.BelowAdvisoryThreshold
+            or AudioInputSignal.InsufficientFrames or AudioInputSignal.IntermittentAmplitude
+            ? InputSignalRemedy(status.Signal.Value) : AudioSetupDiagnostics.Remedy(status.Error);
         var stage = $"LOCAL {status.Action}: {status.Stage}; samples {status.Samples}; " +
             $"finished {status.Finished}; actual release {status.Released}; error {status.Error?.ToString() ?? "none"}. " +
-            AudioSetupDiagnostics.Remedy(status.Error);
+            remedy;
         switch (status.Action)
         {
             case AudioSetupAction.Discovery: discoveryStage = stage; break;
@@ -256,10 +265,35 @@ public partial class AudioSetupWindow : ThemedWindow
             case AudioSetupAction.Output: outputStage = stage; break;
         }
         stages = string.Join(Environment.NewLine, discoveryStage, microphoneStage, outputStage);
-        if (status.Peak is { } peak && status.Rms is { } rms)
-            LevelText.Text = $"Actual selected PCM: peak {peak:F4}; RMS {rms:F4}; canonical samples {status.Samples}. Amplitude only, NOT VAD.";
+        if (status.Action == AudioSetupAction.Microphone)
+        {
+            if (status.Signal == AudioInputSignal.NoFrames)
+                LevelText.Text = "No PCM frames received in this test. No amplitude result or checkpoint.";
+            else if (status.Peak is { } peak && status.Rms is { } rms)
+                LevelText.Text = $"{(status.Finished ? "Whole-test" : "Live")} selected PCM: peak {peak:F6}; RMS {rms:F6}; canonical samples {status.Samples}. " +
+                    (status.Signal == AudioInputSignal.BelowAdvisoryThreshold ? "Below 1% full-scale RMS advisory threshold; no checkpoint. " :
+                    status.Signal is AudioInputSignal.InsufficientFrames or AudioInputSignal.IntermittentAmplitude ? "Insufficient frame or level coverage; no checkpoint. " :
+                    status.Signal == AudioInputSignal.DetectableAmplitude ? "Met 1% RMS, 4 seconds PCM and 1.25 seconds above-threshold level advisory. " : "") +
+                    (status.SamplesAtOrAboveThreshold is { } count ? $"Samples at/above 1% full-scale: {count}. " : "") +
+                    "Amplitude only, NOT VAD, speech detection or audio quality.";
+            else if (status.Finished)
+                LevelText.Text = "Capture failed or canceled; earlier live level is not a valid test result. No checkpoint.";
+        }
         RenderStatus();
     }
+
+    private static string InputSignalRemedy(AudioInputSignal signal) => signal switch
+    {
+        AudioInputSignal.NoFrames =>
+            "Check the selected microphone or changed default, its connection and Windows microphone privacy/desktop-app access. Find devices, then authorize a fresh test; no automatic fallback.",
+        AudioInputSignal.BelowAdvisoryThreshold =>
+            "A quiet or brief valid phrase can fall below this local advisory; low PCM does not prove mute or absent speech. Check the intended microphone, hardware mute, Windows input level and microphone privacy/desktop-app access; authorize a fresh test.",
+        AudioInputSignal.InsufficientFrames =>
+            "The selected input did not supply enough frames. Check its connection, changed default/endpoint and Windows microphone privacy/desktop-app access; Find devices and authorize a fresh test, with no fallback.",
+        AudioInputSignal.IntermittentAmplitude =>
+            "A brief click is not a reliable level check. Check the intended input, hardware mute and Windows input level; try a sustained test sound, then authorize a fresh test. This does not detect speech.",
+        _ => throw new ArgumentOutOfRangeException(nameof(signal))
+    };
 
     private void RenderStatus()
     {

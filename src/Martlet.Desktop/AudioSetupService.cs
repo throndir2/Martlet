@@ -6,10 +6,12 @@ using Martlet.Core.Settings;
 namespace Martlet.Desktop;
 
 public enum AudioSetupAction { Discovery, Microphone, Output }
+public enum AudioInputSignal { NoFrames, BelowAdvisoryThreshold, InsufficientFrames, IntermittentAmplitude, DetectableAmplitude }
 
 public sealed record AudioTestStatus(AudioSetupAction Action, string Stage, bool Finished = false,
     bool Succeeded = false, bool Released = false, double? Peak = null, double? Rms = null,
-    long Samples = 0, ErrorCode? Error = null, AudioCheckpoint? Checkpoint = null);
+    long Samples = 0, ErrorCode? Error = null, AudioCheckpoint? Checkpoint = null,
+    AudioInputSignal? Signal = null, long? SamplesAtOrAboveThreshold = null);
 
 public sealed class AudioSetupOperation
 {
@@ -26,6 +28,9 @@ public sealed class AudioSetupOperation
 // All windows and the fixture use the existing app-shared worker owner. A closed observer is not a released device.
 public sealed class AudioSetupService
 {
+    private const double DetectableRms = 0.01; // Level advisory, not speech detection.
+    private static readonly int MinimumInputSamples = CapturedUtterance.Format.SampleRate * 4;
+    private static readonly int MinimumLevelSamples = CapturedUtterance.Format.SampleRate * 5 / 4;
     private readonly IAudioDeviceCatalog catalog;
     private readonly ICaptureDeviceFactory captureDevices;
     private readonly IPlaybackDeviceFactory playbackDevices;
@@ -142,16 +147,51 @@ public sealed class AudioSetupService
             var terminal = await run.Completion.ConfigureAwait(false);
             // Take enforces the capture library's ORIGINAL caller token, absolute UTC and monotonic lifetime.
             // Never copy raw PCM out of its lease. Dispose even when cancellation races transfer.
-            using var utterance = run.TakeUtterance();
-            var succeeded = terminal.State == CaptureState.Completed && utterance is { SampleCount: > 0 } && !original.IsCancellationRequested;
-            utterance?.Dispose();
+            PcmAmplitude? amplitude;
+            using (var utterance = run.TakeUtterance())
+                amplitude = terminal.State == CaptureState.Completed && utterance is { SampleCount: > 0 }
+                    ? utterance.MeasureAmplitude(DetectableRms) : null;
             view.Publish(new(AudioSetupAction.Microphone, "Capture ended; waiting for actual native/callback release",
                 Samples: terminal.CanonicalSamples, Error: terminal.Error?.Code));
             var released = await run.DeviceRelease.ConfigureAwait(false);
-            succeeded &= released.Released && released.Error is null && !original.IsCancellationRequested;
+            var withinLifetime = HasTimeRemaining(authorizedAt, timestamp, TimeSpan.FromSeconds(20));
+            var valid = withinLifetime && released.Released && released.Error is null &&
+                terminal.Error is null && !original.IsCancellationRequested;
+            var signal = valid ? terminal.State switch
+            {
+                CaptureState.NoFrames => AudioInputSignal.NoFrames,
+                CaptureState.Completed when terminal.CanonicalSamples < MinimumInputSamples => AudioInputSignal.InsufficientFrames,
+                CaptureState.Completed when amplitude is { Rms: < DetectableRms } => AudioInputSignal.BelowAdvisoryThreshold,
+                CaptureState.Completed when amplitude is { SamplesAtOrAboveThreshold: var count } &&
+                    count < MinimumLevelSamples => AudioInputSignal.IntermittentAmplitude,
+                CaptureState.Completed when amplitude is not null => AudioInputSignal.DetectableAmplitude,
+                _ => (AudioInputSignal?)null
+            } : null;
+            var succeeded = signal == AudioInputSignal.DetectableAmplitude;
+            var nativeFailure = released.Error?.Code ?? terminal.Error?.Code;
+            ErrorCode? failure = nativeFailure;
+            if (failure is null && !withinLifetime) failure = ErrorCode.DeadlineExceeded;
+            if (failure is null && !released.Released) failure = ErrorCode.AudioCaptureFailed;
             view.Publish(new(AudioSetupAction.Microphone,
-                succeeded ? "Samples received and discarded; speech/quality NOT evaluated" : terminal.State.ToString(),
-                true, succeeded, released.Released, Samples: terminal.CanonicalSamples, Error: released.Error?.Code ?? terminal.Error?.Code,
+                nativeFailure is not null ? "Microphone capture or release failed; no checkpoint" :
+                !withinLifetime ? "Microphone test authorization expired; no checkpoint" :
+                original.IsCancellationRequested ? "Canceled; no checkpoint" :
+                failure is not null ? "Microphone capture or release failed; no checkpoint" : signal switch
+                {
+                    AudioInputSignal.DetectableAmplitude => "Samples received and discarded; detectable amplitude in the up-to-5-second test (1% full-scale RMS, at least 4 seconds of PCM and 1.25 seconds above threshold), NOT speech/VAD, quality or readiness",
+                    AudioInputSignal.BelowAdvisoryThreshold => "PCM received below 1% full-scale RMS advisory threshold; no checkpoint",
+                    AudioInputSignal.InsufficientFrames => "Fewer than 4 seconds of PCM frames received in the 5-second test; no checkpoint",
+                    AudioInputSignal.IntermittentAmplitude => "PCM level too intermittent for the 5-second advisory (fewer than 1.25 seconds above 1% full-scale); no checkpoint",
+                    AudioInputSignal.NoFrames => "No microphone PCM frames received; no checkpoint",
+                    _ => terminal.State.ToString()
+                },
+                true, succeeded, released.Released,
+                Peak: signal is null or AudioInputSignal.NoFrames ? null : amplitude?.Peak,
+                Rms: signal is null or AudioInputSignal.NoFrames ? null : amplitude?.Rms,
+                Samples: terminal.CanonicalSamples,
+                Error: failure,
+                Signal: signal, SamplesAtOrAboveThreshold: signal is null or AudioInputSignal.NoFrames
+                    ? null : amplitude?.SamplesAtOrAboveThreshold,
                 Checkpoint: succeeded ? new() { ConfigurationRevision = choice.ConfigurationRevision, TestedAt = clock.GetUtcNow(), Outcome = LocalAudioOutcome.SamplesReceived } : null));
         }
         finally
@@ -230,9 +270,12 @@ public sealed class AudioSetupService
     private void CheckPermission(CancellationToken original, DateTimeOffset authorizedAt, long timestamp, TimeSpan lifetime)
     {
         original.ThrowIfCancellationRequested();
-        if (clock.GetUtcNow() >= authorizedAt + lifetime || clock.GetElapsedTime(timestamp) >= lifetime)
+        if (!HasTimeRemaining(authorizedAt, timestamp, lifetime))
             throw new ContractException(ErrorCode.DeadlineExceeded, "Local test authorization expired. Request a fresh test.");
     }
+
+    private bool HasTimeRemaining(DateTimeOffset authorizedAt, long timestamp, TimeSpan lifetime) =>
+        clock.GetUtcNow() < authorizedAt + lifetime && clock.GetElapsedTime(timestamp) < lifetime;
 
     private sealed class AuthorizedOutputFactory(IPlaybackDeviceFactory devices, Action guard, CancellationToken original) : IPlaybackDeviceFactory
     {

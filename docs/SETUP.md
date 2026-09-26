@@ -330,15 +330,34 @@ Status and the audio-OFF fixture remain usable without audio hardware.
 | **Find devices** | Explicit off-dispatcher Windows capture/render enumeration, at most 128 of each. Uses the existing capture discovery factory and pinned NAudio render API. Lists are local snapshots, not privacy permission, working capture, or audible playback. Refresh only by pressing Find again; no automatic discovery loop. |
 | Microphone choice | Fixed opaque endpoint identity, or deliberate `FollowDefaultOnNextPress`. Default is resolved on each newly authorized test; a mid-capture default/input/property/format change stops and discards rather than reopening. |
 | Output choice | Fixed identity, or `DefaultAtStart`. The actual output binds once; active playback never follows a changed default or falls back. |
-| **Test microphone** | Default-No confirmation names the selected configuration and local-only boundary. Fresh IDs/epoch; actual `MicrophoneCapture`, at most 5 seconds with at most 20 seconds of consent including cleanup/transfer. Peak/RMS and counts come only from its real PCM events. Silence with samples is not VAD/no-speech; no samples or device failure is not a pass. |
+| **Test microphone** | Default-No confirmation names the selected configuration and local-only boundary. Fresh IDs/epoch; actual `MicrophoneCapture`, at most 5 seconds with at most 20 seconds of consent including cleanup/transfer. The live meter shows transient PCM levels; the final result measures peak, RMS and level coverage over the completed normalized PCM lease without copying it. No frames, insufficient frames, low or intermittent level, device failure and cancellation are distinct non-pass results. This is a local level advisory, not speech/VAD, permission, audio quality or device readiness. |
 | **Test output** | Separate default-No confirmation for the existing `SyntheticTone`: 200 ms faded 440 Hz, low amplitude, not speech/TTS. Actual `PcmPlaybackSink`, five-second deadline, exact sample count, selected output only. No system/app volume or default changes. |
 | **I heard it** | Enabled only for this window's successfully drained current output test, never from a loaded checkpoint. Explicit human confirmation is separate from device consumption. Choice changes, interruption, deactivation and reopening invalidate confirmability. |
 | **Save audio choices and historical checkpoints** | Explicit atomic settings save with the loaded optimistic revision. It does not authorize a later test. Reload is required after conflicting/interrupted saves; files are never reset to make setup succeed. |
 | **Stop / Pause / Close / deactivation / session lock** | Cancel only the currently owned test handle, clear unclaimed capture, and stop observation. Unlock/reopen never rearms. No simultaneous input/output and no silent contention with the fixture tone. |
 
+For a local **historical** `SamplesReceived` checkpoint, a completed and released
+microphone test must have at least four seconds of canonical PCM, whole-test
+RMS at least 1% of full-scale and at least 1.25 seconds of samples at or above
+that level within the at-most-five-second capture. This conservative advisory
+avoids mistaking a click followed by silence for sustained input; a quiet or
+brief valid phrase can fall below it. It does **not** gate typed or push-to-talk
+use or establish future Windows permission, audible output, speech, VAD or
+physical microphone quality. Zero-valued PCM is different from receiving no
+frames, but neither creates a checkpoint. For low level, review the intended
+input, hardware mute, Windows input level and microphone privacy/desktop-app
+access; for no or too few frames, check the connection or changed default,
+explicitly Find devices and select the intended endpoint. Lost, unavailable,
+busy, denied and changed devices retain their specific error remedies; there
+is no automatic endpoint fallback or retry. Each retest needs fresh permission.
+If input remains unavailable, typed conversation can still be used without
+microphone access. These local tests never upload audio.
+
 Capture PCM is never copied to a recording, file, transcript, provider, or
-export. The one completed lease is taken solely to verify nonempty samples and
-immediately disposed/zeroed; cancellation/failure also discards unclaimed PCM.
+export. The one completed lease is taken only to measure metadata on its owned
+normalized PCM, then immediately disposed/zeroed; cancellation/failure also
+discards unclaimed PCM. Live meter progress from an interrupted or failed
+action cannot become a final level result or checkpoint.
 Capture retains its original caller-token, absolute UTC and original monotonic
 consent safeguards through transfer. The UI service additionally accounts for
 the action's elapsed time before dispatch. Output's adapter wrapper links
