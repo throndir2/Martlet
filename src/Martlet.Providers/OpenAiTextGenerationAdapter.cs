@@ -306,7 +306,9 @@ internal sealed class TextGenerationOperation(
             catch (HttpRequestException) { }
             catch (IOException) { }
             EnsureActive();
-            var code = OpenAiResponseParser.Classify(response.StatusCode, bytes);
+            var code = chatBaseUri is not null && response.StatusCode == HttpStatusCode.PaymentRequired
+                ? ProviderFailureCode.QuotaExceeded
+                : OpenAiResponseParser.Classify(response.StatusCode, bytes);
             return Fail(code == ProviderFailureCode.FormatRejected ? ProviderFailureCode.RequestRejected : code,
                 OpenAiTransport.RetryAdvice(response, clock));
         }
@@ -374,6 +376,13 @@ internal sealed class TextGenerationOperation(
             writer.WriteString("model", model.UpstreamModelId);
             writer.WriteBoolean("stream", true);
             writer.WriteNumber("max_tokens", limits.MaxOutputTokens);
+            if (string.Equals(chatBaseUri!.AbsoluteUri, ChatCompletionsEndpointCatalog.OpenRouterBaseUrl,
+                StringComparison.Ordinal))
+            {
+                writer.WriteStartObject("provider");
+                writer.WriteBoolean("allow_fallbacks", false);
+                writer.WriteEndObject();
+            }
             writer.WriteStartArray("messages");
             if (input.Personality is not null) WriteMessage(writer, "system", input.Personality);
             foreach (var message in input.History)

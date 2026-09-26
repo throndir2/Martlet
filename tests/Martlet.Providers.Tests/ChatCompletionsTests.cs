@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using Martlet.Core.Contracts;
+using Martlet.Core.Settings;
 
 namespace Martlet.Providers.Tests;
 
@@ -75,6 +76,176 @@ public sealed class ChatCompletionsTests
         Assert.Equal(ProviderFailureCode.RedirectRejected, result.Result.Failure!.Code);
         await server.Request;
         Assert.False(destination.Pending());
+    }
+
+    [Theory]
+    [InlineData(ChatCompletionsEndpointCatalog.OpenRouterBaseUrl, true)]
+    [InlineData(ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, false)]
+    [InlineData(BaseUrl, false)]
+    public async Task Named_and_custom_bases_share_scoped_wire_path_but_only_openrouter_disables_upstream_fallback(
+        string baseUrl, bool openRouter)
+    {
+        var context = ProviderFixtures.Context();
+        var limits = new TextGenerationLimits();
+        var credentials = new FixtureCredentials();
+        Uri? requestUri = null;
+        string? authorization = null;
+        bool hasCookie = false;
+        var handler = new TextRecordingHandler
+        {
+            Inspect = request =>
+            {
+                requestUri = request.RequestUri;
+                authorization = request.Headers.Authorization?.ToString();
+                hasCookie = request.Headers.Contains("Cookie");
+            },
+            Respond = (_, _) => Task.FromResult(TextRecordingHandler.Sse(Trace))
+        };
+        using var adapter = ChatCompletionsTextGenerationAdapter.CreateForFixture(baseUrl, handler,
+            credentials, new FixtureClock());
+        var result = await TextFixtures.Collect(adapter.Stream(context, Model, new("Private context"), limits,
+            Authorize(context, limits, baseUrl)));
+        Assert.Equal(TextGenerationOutcome.Completed, result.Result.Outcome);
+        Assert.Equal(1, credentials.Calls);
+        Assert.Equal(1, handler.Calls);
+        Assert.Equal(baseUrl + "/chat/completions", requestUri!.AbsoluteUri);
+        Assert.Equal("Bearer " + ProviderFixtures.Secret, authorization);
+        Assert.False(hasCookie);
+        using var json = JsonDocument.Parse(handler.Body);
+        var root = json.RootElement;
+        string[] expectedFields = openRouter
+            ? ["max_tokens", "messages", "model", "provider", "stream"]
+            : ["max_tokens", "messages", "model", "stream"];
+        Assert.Equal(expectedFields,
+            root.EnumerateObject().Select(property => property.Name).Order());
+        Assert.Equal(Model.UpstreamModelId, root.GetProperty("model").GetString());
+        Assert.Equal(limits.MaxOutputTokens, root.GetProperty("max_tokens").GetInt32());
+        Assert.True(root.GetProperty("stream").GetBoolean());
+        if (openRouter)
+        {
+            var provider = root.GetProperty("provider");
+            Assert.Equal(new[] { "allow_fallbacks" }, provider.EnumerateObject().Select(property => property.Name));
+            Assert.False(provider.GetProperty("allow_fallbacks").GetBoolean());
+        }
+        Assert.Equal("Private context", root.GetProperty("messages")[0].GetProperty("content").GetString());
+    }
+
+    [Fact]
+    public async Task Openrouter_repeated_terminal_usage_frame_is_accounting_not_a_second_finish()
+    {
+        var accounting = "data: " + JsonSerializer.Serialize(new
+        {
+            id = "chat-fixture", @object = "chat.completion.chunk", model = "canonical-server-model",
+            choices = new[] { new
+            {
+                index = 0, delta = new { role = "assistant", content = "" },
+                finish_reason = "stop", native_finish_reason = "stop"
+            } },
+            usage = new { prompt_tokens = 3, completion_tokens = 2, total_tokens = 5 }
+        }) + "\n\n";
+        var trace = Chunk("hello", "stop") + accounting + "data: [DONE]\n\n";
+        var result = await RunFixture(trace, baseUrl: ChatCompletionsEndpointCatalog.OpenRouterBaseUrl);
+        Assert.Equal(TextGenerationOutcome.Completed, result.Result.Outcome);
+        Assert.Equal(new TextGenerationUsage(3, 2, 5), result.Result.Usage);
+        Assert.Equal(new[] { "hello" }, result.Events.Where(item => item.Kind == ProviderEventKind.TextDelta)
+            .Select(item => item.Text));
+    }
+
+    [Theory]
+    [InlineData("no-usage")]
+    [InlineData("extra-content")]
+    [InlineData("changed-finish")]
+    [InlineData("duplicate-usage")]
+    public async Task Repeated_terminal_chunk_cannot_extend_content_or_duplicate_accounting(string variant)
+    {
+        var content = variant == "extra-content" ? "late" : "";
+        var reason = variant == "changed-finish" ? "length" : "stop";
+        var accounting = "data: " + JsonSerializer.Serialize(new
+        {
+            id = "chat-fixture", @object = "chat.completion.chunk", model = "canonical-server-model",
+            choices = new[] { new
+            {
+                index = 0, delta = new { role = "assistant", content }, finish_reason = reason
+            } },
+            usage = variant == "no-usage" ? null : (object)new { prompt_tokens = 3, completion_tokens = 2, total_tokens = 5 }
+        }) + "\n\n";
+        var trace = Chunk("hello", "stop") + accounting +
+            (variant == "duplicate-usage" ? accounting : "") + "data: [DONE]\n\n";
+        var result = await RunFixture(trace, baseUrl: ChatCompletionsEndpointCatalog.OpenRouterBaseUrl);
+        Assert.Equal(ProviderFailureCode.ResponseSchema, result.Result.Failure!.Code);
+        Assert.NotEqual(TextGenerationOutcome.Completed, result.Result.Outcome);
+    }
+
+    [Theory]
+    [InlineData(ChatCompletionsEndpointCatalog.OpenRouterBaseUrl, 401, ProviderFailureCode.Authentication)]
+    [InlineData(ChatCompletionsEndpointCatalog.OpenRouterBaseUrl, 402, ProviderFailureCode.QuotaExceeded)]
+    [InlineData(ChatCompletionsEndpointCatalog.OpenRouterBaseUrl, 429, ProviderFailureCode.RateLimited)]
+    [InlineData(ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, 402, ProviderFailureCode.QuotaExceeded)]
+    [InlineData(ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, 422, ProviderFailureCode.RequestRejected)]
+    [InlineData(BaseUrl, 402, ProviderFailureCode.QuotaExceeded)]
+    public async Task Named_endpoint_failures_are_actionable_and_do_not_include_provider_body(
+        string baseUrl, int status, ProviderFailureCode expected)
+    {
+        const string privateError = "synthetic-private-provider-error";
+        var context = ProviderFixtures.Context();
+        var limits = new TextGenerationLimits();
+        var handler = new TextRecordingHandler
+        {
+            Respond = (_, _) => Task.FromResult(new HttpResponseMessage((HttpStatusCode)status)
+            {
+                Content = new StringContent($"{{\"error\":{{\"message\":\"{privateError}\"}}}}")
+            })
+        };
+        using var adapter = ChatCompletionsTextGenerationAdapter.CreateForFixture(baseUrl, handler,
+            new FixtureCredentials(), new FixtureClock());
+        var result = await TextFixtures.Collect(adapter.Stream(context, Model, new("Private context"),
+            limits, Authorize(context, limits, baseUrl)));
+        Assert.Equal(expected, result.Result.Failure!.Code);
+        Assert.DoesNotContain(privateError, result.Result.Failure.Error.Summary);
+        Assert.Equal(1, handler.Calls);
+    }
+
+    [Fact]
+    public async Task Openrouter_midstream_error_fails_without_disclosing_provider_message()
+    {
+        const string privateError = "synthetic-private-provider-error";
+        var trace = Chunk("partial") +
+            $"data: {{\"error\":{{\"code\":\"server_error\",\"message\":\"{privateError}\"}}}}\n\n";
+        var result = await RunFixture(trace, baseUrl: ChatCompletionsEndpointCatalog.OpenRouterBaseUrl);
+        Assert.Equal(ProviderFailureCode.RequestRejected, result.Result.Failure!.Code);
+        Assert.DoesNotContain(privateError, result.Result.Failure.Error.Summary);
+        Assert.NotEqual(TextGenerationOutcome.Completed, result.Result.Outcome);
+    }
+
+    [Theory]
+    [InlineData("endpoint", ProviderFailureCode.OriginRejected)]
+    [InlineData("model", ProviderFailureCode.ConsentMismatch)]
+    [InlineData("credential", ProviderFailureCode.CredentialBindingMismatch)]
+    public async Task Named_destination_rejects_stale_consent_or_cross_origin_credential_before_send(
+        string scenario, ProviderFailureCode expected)
+    {
+        var context = ProviderFixtures.Context();
+        var limits = new TextGenerationLimits();
+        var baseUrl = ChatCompletionsEndpointCatalog.OpenRouterBaseUrl;
+        var other = ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl;
+        var binding = new ProviderCredentialBinding(
+            new(scenario == "endpoint" ? other : baseUrl), ProviderRole.Llm,
+            scenario == "model" ? "synthetic/other-model" : Model.UpstreamModelId);
+        var authorization = new TextDisclosureAuthorization(binding, Model, context.Ids, context.Epoch,
+            limits, context.Deadline, true, true);
+        var credentials = new FixtureCredentials
+        {
+            Resolve = (scope, _) => ValueTask.FromResult<BoundProviderCredential?>(
+                new(scope with { Origin = new(other) }, ProviderFixtures.Secret))
+        };
+        var handler = new TextRecordingHandler();
+        using var adapter = ChatCompletionsTextGenerationAdapter.CreateForFixture(baseUrl, handler,
+            credentials, new FixtureClock());
+        var result = await TextFixtures.Collect(adapter.Stream(context, Model, new("Private context"),
+            limits, authorization));
+        Assert.Equal(expected, result.Result.Failure!.Code);
+        Assert.Equal(0, handler.Calls);
+        Assert.Equal(scenario == "credential" ? 1 : 0, credentials.Calls);
     }
 
     [Theory]
@@ -215,7 +386,8 @@ public sealed class ChatCompletionsTests
         Assert.True(body.Disposed);
     }
 
-    private static async Task<(List<ProviderEvent> Events, TextGenerationResult Result)> RunFixture(string trace, TextGenerationLimits? limits = null)
+    private static async Task<(List<ProviderEvent> Events, TextGenerationResult Result)> RunFixture(
+        string trace, TextGenerationLimits? limits = null, string baseUrl = BaseUrl)
     {
         var context = ProviderFixtures.Context();
         limits ??= new();
@@ -223,8 +395,8 @@ public sealed class ChatCompletionsTests
         {
             Respond = (_, _) => Task.FromResult(TextRecordingHandler.Sse(trace, fragment: 1))
         };
-        using var adapter = ChatCompletionsTextGenerationAdapter.CreateForFixture(BaseUrl, handler, clock: new FixtureClock());
-        return await TextFixtures.Collect(adapter.Stream(context, Model, new("message"), limits, Authorize(context, limits)));
+        using var adapter = ChatCompletionsTextGenerationAdapter.CreateForFixture(baseUrl, handler, clock: new FixtureClock());
+        return await TextFixtures.Collect(adapter.Stream(context, Model, new("message"), limits, Authorize(context, limits, baseUrl)));
     }
 
     private sealed class LoopbackServer : IAsyncDisposable

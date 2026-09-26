@@ -21,6 +21,40 @@ proxies, cookies, redirects, implicit credentials, automatic retries or discover
 Model IDs support bounded ASCII identifiers including slash and colon, independently
 of OpenAI's fixed catalog.
 
+`ChatCompletionsEndpointCatalog.NamedEndpoints` offers explicit display names and
+canonical base URLs for **OpenRouter** (`https://openrouter.ai/api/v1`) and
+**NVIDIA Build** (`https://integrate.api.nvidia.com/v1`). The calling UI must
+separately offer the existing custom HTTPS/literal-loopback base URL option.
+The catalog supplies no model, key, consent, inferred plan or free-tier
+selection. Require the user to type the exact supported text model ID and
+review potential charges and data disclosure before calling `SelectRoute`;
+the same Chat Completions route and adapter then bind the full saved base URL,
+model and scoped credential. On a destination switch the old credential
+reference and consent are cleared; a model change retains only the endpoint-
+scoped credential and invalidates consent. Restart uses the saved exact route
+and requires fresh per-action authorization, not an automatic key or request.
+These are **named destinations**, not an approved model list or a live service
+availability claim.
+
+Provider-owned references checked 2026-09-25:
+[OpenRouter chat API](https://openrouter.ai/docs/api/api-reference/chat/create-a-chat-completion),
+[streaming/terminal usage](https://openrouter.ai/docs/api_reference/streaming),
+[upstream provider routing](https://openrouter.ai/docs/guides/routing/provider-selection),
+and [NVIDIA Build NIM API](https://docs.api.nvidia.com/nim/reference/llm-apis)
+with a [model-specific streaming Chat Completions schema](https://docs.api.nvidia.com/nim/reference/google-codegemma-7b-infer).
+The common documented subset is a bearer-authenticated
+`POST /chat/completions` with explicit `model`, text `messages`,
+`max_tokens`, `stream: true` and SSE deltas ending in `[DONE]`.
+Actual model/account access, costs, model-specific parameter support, upstream
+processing location and retention are **unknown** until separately reviewed.
+OpenRouter can initially choose an upstream provider for the selected model,
+with different upstream privacy and pricing policies. The exact OpenRouter
+base URL request sets its documented `provider.allow_fallbacks: false` so a
+failed initial upstream is not silently retried through a backup; this does
+not pin the initial upstream, guarantee a free request or forbid provider-side
+processing. No such provider-specific option is sent to NVIDIA Build or
+custom bases. Review current upstream terms and account budget before use.
+
 The request contains `model`, `stream: true`, `max_tokens`, and ordered `messages`
 (optional system persona/memory, explicit user/assistant history, current user).
 It requests text only: no tools, images, audio, provider conversation/thread state
@@ -45,10 +79,19 @@ extra post-terminal data, unsupported tool/multimodal deltas, output limits and
 content filtering cannot become success. Idle/first-delta/total deadlines and
 consumer cancellation apply through terminal EOF; cancellation is request abort,
 not proof that a remote provider stopped computation or billing.
+OpenRouter's documented final accounting frame may repeat the same finish reason
+with empty content and usage. It is accepted only once as accounting, not as a
+second text delta or completion. Provider HTTP 402 maps to a redacted
+billing/quota action; provider error bodies are never returned as user-facing
+error text. No retry, redirect, cookie, proxy or fallback is enabled by these
+named options.
 
 Controlled tests exercise the public production factory against a real local HTTP
 listener with synthetic text and synthetic optional credentials, including redirect
-non-forwarding; fixture tests exercise malformed streams and lifecycle boundaries.
+non-forwarding; in-process tests exercise the production stream implementation
+with synthetic named-endpoint HTTP handlers/model IDs, exact request shapes,
+invalidations, documented terminal usage and redacted failures. Other fixture
+tests exercise malformed streams and lifecycle boundaries.
 These are local protocol regression evidence, **not** a live external account/model
 trial, real-user chat quality, speech-device, clean-machine or release qualification.
 Desktop composition and combined package/native acceptance are owned by the parallel
