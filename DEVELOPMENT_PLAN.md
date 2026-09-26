@@ -34,14 +34,14 @@ experience, current gaps and boundaries, and Delivery R19-R24 / AC-21-AC-26
 for acceptance. This adds requirements, not implemented controls or permission
 to enable listening, run models or spend money.
 
-**Validation policy update, 2026-09-13:** the owner's
-[local-only validation policy](README.md#local-only-validation-policy)
-supersedes all earlier hosted-CI plans. Keep strong local tests/builds,
-production-path evidence, independent review and normal merge requirements.
-Do not create replacement remote validation; the explicitly requested minimal
-build/package/release exception is not authorization to create or publish one.
-Unavailable real-OS/hardware qualification remains NOT RUN, not a reason to
-stop independent local development or to substitute hosted validation.
+**Validation policy update, 2026-09-26:** the owner's
+[validation policy](README.md#local-only-validation-policy) supersedes all
+earlier hosted-CI plans and the 2026-09-13 local-gate requirement. Martlet is a
+prototype: local tests, package/smoke gates and independent review are not
+required per change. Do not create replacement remote validation; the
+explicitly requested minimal build/package/release exception is not
+authorization to create or publish one. Unrun qualification is NOT RUN, never
+passed.
 
 **V07c build foundation:** the [internal Windows packaging pipeline](packaging/windows/README.md#offline-provenance-and-cyclonedx-sbom-v07c-foundation)
 records unsigned source/tool/dependency provenance and an offline CycloneDX 1.6

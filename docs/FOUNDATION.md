@@ -9,12 +9,12 @@ about then-unimplemented projects or commands describe that earlier scope.
 Schema ownership stays with the core owner; coordinate shared edits through
 the implementation coordinator.
 
-**Current policy, 2026-09-13:** the
-[local-only validation policy](../README.md#local-only-validation-policy)
-supersedes this first slice's hosted-CI configuration and F05 handoff. Preserve
-local locked restore/build/test/smoke commands, assertions and independent
-review. Historical workflow descriptions below do not request hosted execution
-or reclassify past runs as local passes.
+**Current policy, 2026-09-26:** the
+[validation policy](../README.md#local-only-validation-policy) supersedes this
+first slice's hosted-CI configuration and F05 handoff. Local restore/build/test/
+smoke commands remain available but are not required gates during the
+prototype phase. Historical workflow descriptions below do not request hosted
+execution or reclassify past runs as local passes.
 
 **V02a update:** [Resumable setup](SETUP.md) added strict settings v2 with
 explicit atomic v1 migration/snapshot, role-scoped destination choices, and
