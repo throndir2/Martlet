@@ -1,4 +1,5 @@
-<Window x:Class="Martlet.Desktop.MainWindow"
+<local:ThemedWindow x:Class="Martlet.Desktop.MainWindow"
+        xmlns:local="clr-namespace:Martlet.Desktop"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Martlet - Your companion corner" Width="1000" Height="860" MinWidth="520" MinHeight="420"
@@ -146,4 +147,4 @@
                        Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,12" TextWrapping="Wrap"/>
         </StackPanel>
     </ScrollViewer>
-</Window>
+</local:ThemedWindow>

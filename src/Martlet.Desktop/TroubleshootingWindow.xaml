@@ -1,4 +1,5 @@
-<Window x:Class="Martlet.Desktop.TroubleshootingWindow"
+<local:ThemedWindow x:Class="Martlet.Desktop.TroubleshootingWindow"
+        xmlns:local="clr-namespace:Martlet.Desktop"
         Style="{DynamicResource AppWindowStyle}"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -58,4 +59,4 @@
                      AutomationProperties.AutomationId="SupportResult" AutomationProperties.Name="Local export outcome, not an upload receipt" />
         </StackPanel>
     </ScrollViewer>
-</Window>
+</local:ThemedWindow>

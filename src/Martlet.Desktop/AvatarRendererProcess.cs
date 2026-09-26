@@ -4,6 +4,7 @@ using System.IO;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Windows;
 using Martlet.Avatar.Hosting;
 using Microsoft.Win32.SafeHandles;
 
@@ -59,7 +60,8 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
         if (!AssignProcessToJobObject(job, process.Handle))
             throw new Win32Exception(Marshal.GetLastWin32Error());
         // No browser is initialized until this handshake; the child is already job-owned.
-        var response = await SendAsync("load", new RendererLoad(profile, revision), token, TimeSpan.FromSeconds(45));
+        var response = await SendAsync("load", new RendererLoad(profile, revision,
+            Application.Current is App { SelectedTheme: PinkTheme.Dark }), token, TimeSpan.FromSeconds(45));
         if (response.Kind != "capabilities") throw new InvalidDataException("Renderer capability response missing.");
         Capabilities = RendererProtocol.Data<RendererCapabilities>(response);
         if (Capabilities.Parameters.Length > 512 || Capabilities.Parameters.Any(p =>

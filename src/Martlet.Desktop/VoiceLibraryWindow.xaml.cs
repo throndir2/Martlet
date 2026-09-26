@@ -9,7 +9,7 @@ using Microsoft.Win32;
 
 namespace Martlet.Desktop;
 
-public partial class VoiceLibraryWindow : Window
+public partial class VoiceLibraryWindow : ThemedWindow
 {
     private readonly VoiceLibrary library;
     private readonly SetupOperationRunner operations;
@@ -111,10 +111,9 @@ public partial class VoiceLibraryWindow : Window
     private async void Delete_Click(object sender, RoutedEventArgs e)
     {
         if (busy || closed || AssetChoice.SelectedItem is not VoiceAsset selected) return;
-        if (MessageBox.Show(this,
+        if (!ConfirmationDialog.Confirm(this,
             "Remove the selected imported audio and transcript from this library? The original file is preserved. This removes only the local copy, not any future worker copies or checkpoints.",
-            "Remove imported voice copy", MessageBoxButton.YesNo, MessageBoxImage.Warning,
-            MessageBoxResult.No) != MessageBoxResult.Yes) return;
+            "Remove imported voice copy")) return;
         await RunAsync(token => library.DeleteAsync(selected, token), () =>
         {
             AssetChoice.ItemsSource = null;

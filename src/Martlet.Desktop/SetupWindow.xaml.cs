@@ -12,7 +12,7 @@ using Martlet.Providers;
 
 namespace Martlet.Desktop;
 
-public partial class SetupWindow : Window
+public partial class SetupWindow : ThemedWindow
 {
     internal Action<Window>? Troubleshooting { get; init; }
     internal Action<Window>? ConfigurationRecovery { get; init; }
@@ -328,8 +328,8 @@ public partial class SetupWindow : Window
         catch (ContractException ex) { if (!closed) ResultText.Text = ex.Message; }
     }
 
-    private bool Confirm(string text) => confirm?.Invoke(text) ?? MessageBox.Show(this, text, "Explicit scoped action",
-        MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes;
+    private bool Confirm(string text) => confirm?.Invoke(text) ??
+        ConfirmationDialog.Confirm(this, text, "Explicit scoped action");
 
     private async void StoreKey_Click(object sender, RoutedEventArgs e)
     {

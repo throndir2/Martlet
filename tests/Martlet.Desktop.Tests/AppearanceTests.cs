@@ -117,18 +117,14 @@ public sealed class AppearanceTests
         var tabs = new TabControl { Items = { new TabItem { Header = "_Setup", Content = tabText } } };
         foreach (var control in new Control[] { button, input, password, choice, check, radio, tabs, facts })
             panel.Children.Add(control);
-        var window = new Window { Content = panel, Width = 500, Height = 550, ShowActivated = false, ShowInTaskbar = false };
-        window.Resources.MergedDictionaries.Add(new ResourceDictionary
-        {
-            Source = new Uri("pack://application:,,,/Martlet.Desktop;component/Themes/Controls.xaml")
-        });
-        var light = Appearance.Palette(PinkTheme.Light, false);
-        window.Resources.MergedDictionaries.Add(light);
+        var window = new ThemedWindow { Content = panel, Width = 500, Height = 550, ShowActivated = false, ShowInTaskbar = false };
+        var light = window.Resources.MergedDictionaries.Last();
         window.SetResourceReference(FrameworkElement.StyleProperty, "AppWindowStyle");
         try
         {
             window.Show();
             window.UpdateLayout();
+            Assert.Same(light["CanvasBrush"], window.Background);
             var icon = Assert.IsAssignableFrom<BitmapSource>(window.Icon);
             Assert.True(icon.PixelWidth >= 16);
             Assert.NotNull(input.Template.FindName("PART_ContentHost", input));
@@ -166,6 +162,48 @@ public sealed class AppearanceTests
             Assert.Same(dark["SoftBrush"], input.Background);
         }
         finally { choice.IsDropDownOpen = false; window.Close(); }
+    });
+
+    [Fact]
+    public void EveryDesktopWindowInheritsSharedTheme()
+    {
+        var windows = typeof(MainWindow).Assembly.GetTypes()
+            .Where(type => type.IsClass && !type.IsAbstract && type != typeof(ThemedWindow) &&
+                typeof(Window).IsAssignableFrom(type));
+        Assert.All(windows, type => Assert.True(type.IsSubclassOf(typeof(ThemedWindow)), type.FullName));
+    }
+
+    [Theory]
+    [InlineData("yes", true)]
+    [InlineData("no", false)]
+    [InlineData("close", false)]
+    public Task ConfirmationIsThemedAndDefaultsToNo(string action, bool approved) => OnDispatcher(() =>
+    {
+        var owner = new ThemedWindow { Width = 200, Height = 100, ShowActivated = false, ShowInTaskbar = false };
+        owner.SetResourceReference(FrameworkElement.StyleProperty, "AppWindowStyle");
+        owner.Show();
+        try
+        {
+            var dialog = new ConfirmationDialog("Explicit local action", "Review this exact request.") { Owner = owner };
+            dialog.Loaded += (_, _) =>
+            {
+                Assert.Same(owner, dialog.Owner);
+                Assert.Same(dialog.TryFindResource("CanvasBrush"), dialog.Background);
+                var no = Assert.IsType<Button>(dialog.FindName("NoButton"));
+                var yes = Assert.IsType<Button>(dialog.FindName("YesButton"));
+                Assert.True(no.IsDefault);
+                Assert.True(no.IsCancel);
+                Assert.False(yes.IsDefault);
+                Assert.Same(dialog.TryFindResource("AccentBrush"), yes.Background);
+                dialog.Dispatcher.BeginInvoke(() =>
+                {
+                    if (action == "close") dialog.Close();
+                    else (action == "yes" ? yes : no).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                });
+            };
+            Assert.Equal(approved, dialog.ShowDialog() == true);
+        }
+        finally { owner.Close(); }
     });
 
     private static double Contrast(ResourceDictionary palette, string foreground, string background)

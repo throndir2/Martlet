@@ -7,7 +7,7 @@ using Martlet.Diagnostics;
 
 namespace Martlet.Desktop;
 
-public partial class AudioSetupWindow : Window
+public partial class AudioSetupWindow : ThemedWindow
 {
     internal Action<Window>? Troubleshooting { get; init; }
     private void Troubleshooting_Click(object sender, RoutedEventArgs e) => Troubleshooting?.Invoke(this);
@@ -142,8 +142,7 @@ public partial class AudioSetupWindow : Window
         confirming = true;
         try
         {
-            return confirm?.Invoke(message) ?? MessageBox.Show(this, message, "One local action only",
-                MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes;
+            return confirm?.Invoke(message) ?? ConfirmationDialog.Confirm(this, message, "One local action only");
         }
         finally { confirming = false; }
     }

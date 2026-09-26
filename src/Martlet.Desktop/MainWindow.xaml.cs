@@ -14,7 +14,7 @@ using Martlet.Core.Voices;
 
 namespace Martlet.Desktop;
 
-public partial class MainWindow : Window
+public partial class MainWindow : ThemedWindow
 {
     private readonly SettingsStore? store;
     private readonly SupportController support;
@@ -93,7 +93,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void Theme_Changed(object sender, SelectionChangedEventArgs e)
+    private async void Theme_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (!IsLoaded || Application.Current is not App app) return;
         var theme = ThemeChoice.SelectedIndex == 1 ? PinkTheme.Dark : PinkTheme.Light;
@@ -111,6 +111,12 @@ public partial class MainWindow : Window
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             AppearanceStatus.Text = "Theme applied for this session, but appearance.txt could not be saved. Check access to your data directory and choose again. Profile settings were not changed.";
+        }
+        try { await avatar.UpdateThemeAsync(lifetime.Token); }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or OperationCanceledException or TimeoutException)
+        {
+            if (!closing)
+                AppearanceStatus.Text += " The avatar overlay could not update its palette. Stop it and inspect again to use this theme.";
         }
     }
 
@@ -174,9 +180,9 @@ public partial class MainWindow : Window
 
     private async void Tone_Click(object sender, RoutedEventArgs e)
     {
-        if (MessageBox.Show(this,
+        if (ConfirmationDialog.Confirm(this,
             "Play a 200 ms synthetic tone, NOT speech, after a completed offline fixture? Check the current Windows output, volume and audience first. The default is fixed at start, with no fallback. This permission applies only to this action and is not saved.",
-            "Explicit output permission", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes)
+            "Explicit output permission"))
             await RunFixtureAsync("complete", tone: true);
     }
 
