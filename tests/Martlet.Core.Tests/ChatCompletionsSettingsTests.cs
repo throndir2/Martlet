@@ -70,6 +70,71 @@ public sealed class ChatCompletionsSettingsTests : IDisposable
     }
 
     [Fact]
+    public void Named_endpoints_are_explicit_and_keep_generic_route_contract()
+    {
+        Assert.Equal(new[] { "OpenRouter", "NVIDIA Build" },
+            ChatCompletionsEndpointCatalog.NamedEndpoints.Select(endpoint => endpoint.Name));
+        Assert.Equal(new[] { ChatCompletionsEndpointCatalog.OpenRouterBaseUrl,
+                ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl },
+            ChatCompletionsEndpointCatalog.NamedEndpoints.Select(endpoint => endpoint.BaseUrl));
+        foreach (var endpoint in ChatCompletionsEndpointCatalog.NamedEndpoints)
+        {
+            var selected = ChatCompletionsSetup.SelectRoute(Settings, endpoint.BaseUrl, "synthetic/model:v1");
+            var route = selected.Setup!.Routes.Single();
+            Assert.Equal(endpoint.BaseUrl, route.Origin);
+            Assert.Equal("synthetic/model:v1", route.ModelId);
+            Assert.Null(route.CredentialId);
+            Assert.Null(route.Consent);
+            Assert.Equal(SetupRouteType.ChatCompletions, route.RouteType);
+            Assert.Equal(route, SettingsJson.Read(ContractJson.Write(selected)).Setup!.Routes.Single());
+            Assert.Throws<ContractException>(() => ChatCompletionsSetup.SelectRoute(Settings, endpoint.BaseUrl, ""));
+        }
+    }
+
+    [Fact]
+    public void Named_endpoint_switch_clears_key_and_consent_but_exact_model_change_keeps_scoped_key()
+    {
+        var selected = ChatCompletionsSetup.SelectRoute(Settings,
+            ChatCompletionsEndpointCatalog.OpenRouterBaseUrl, "synthetic/model:v1");
+        var keyed = selected.Setup!.Routes.Single() with { CredentialId = Guid.NewGuid() };
+        keyed = keyed with { Consent = keyed.Selection() };
+        selected = SetupSettings.ReplaceRoute(selected, keyed);
+        Assert.Equal(keyed.Selection(), selected.Setup!.Routes.Single().Consent);
+        Assert.Same(selected, ChatCompletionsSetup.SelectRoute(selected, keyed.Origin, keyed.ModelId));
+        var modelChanged = ChatCompletionsSetup.SelectRoute(selected, keyed.Origin, "synthetic/model:v2");
+        Assert.Equal(keyed.CredentialId, modelChanged.Setup!.Routes.Single().CredentialId);
+        Assert.Null(modelChanged.Setup.Routes.Single().Consent);
+        var endpointChanged = ChatCompletionsSetup.SelectRoute(selected,
+            ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, keyed.ModelId);
+        var route = endpointChanged.Setup!.Routes.Single();
+        Assert.Null(route.CredentialId);
+        Assert.Null(route.Consent);
+        Assert.NotEqual(keyed.ConfigurationRevision, route.ConfigurationRevision);
+        Assert.Throws<ContractException>(() => (route with { Consent = keyed.Consent }).Validate());
+        Assert.Equal(ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl,
+            CredentialBinding.For(endpointChanged, SetupRole.Llm, Guid.NewGuid()).Origin);
+    }
+
+    [Fact]
+    public async Task Named_route_restart_preserves_only_approved_endpoint_model_and_credential_reference()
+    {
+        var selected = ChatCompletionsSetup.SelectRoute(Settings,
+            ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, "synthetic/model:v1");
+        var keyed = selected.Setup!.Routes.Single() with { CredentialId = Guid.NewGuid() };
+        selected = SetupSettings.ReplaceRoute(selected, keyed with { Consent = keyed.Selection() });
+        Assert.True((await Store.SaveAsync(selected, null)).Saved);
+        var loaded = (await Store.LoadAsync()).Settings!;
+        Assert.Equal(selected.Setup!.Routes.Single(), loaded.Setup!.Routes.Single());
+        Assert.Equal(loaded.Setup.Routes.Single().Selection(), loaded.Setup.Routes.Single().Consent);
+        var binding = CredentialBinding.For(loaded, SetupRole.Llm, keyed.CredentialId!.Value);
+        Assert.Equal(SetupRouteType.ChatCompletions, binding.RouteType);
+        Assert.Equal(ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, binding.Origin);
+        Assert.Equal(keyed.CredentialId, loaded.Setup.Routes.Single().CredentialId);
+        Assert.Throws<ContractException>(() =>
+            (loaded.Setup.Routes.Single() with { ModelId = "synthetic/changed-model" }).Validate());
+    }
+
+    [Fact]
     public async Task Credential_rotation_detach_cleanup_and_recovery_keep_exact_custom_namespace()
     {
         using var native = new FakeCredentialNative();

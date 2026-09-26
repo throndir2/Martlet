@@ -44,7 +44,8 @@ internal sealed class ChatCompletionsTextNormalizer(TextGenerationLimits limits)
         id = nextId;
         model = nextModel;
         var counts = root.Usage;
-        if (counts.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null))
+        bool accountingFrame = counts.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null);
+        if (accountingFrame)
         {
             Require(!usageSeen && counts.ValueKind == JsonValueKind.Object);
             usageSeen = true;
@@ -62,11 +63,22 @@ internal sealed class ChatCompletionsTextNormalizer(TextGenerationLimits limits)
             Require(finish is not null && usageSeen);
             return null;
         }
-        Require(finish is null && choices.GetArrayLength() == 1);
+        Require(choices.GetArrayLength() == 1);
         var choice = choices[0];
         Require(choice.ValueKind == JsonValueKind.Object && choice.TryGetProperty("index", out var index) &&
             index.ValueKind == JsonValueKind.Number && index.TryGetInt32(out var number) && number == 0);
         Require(choice.TryGetProperty("delta", out var delta) && delta.ValueKind == JsonValueKind.Object);
+        if (finish is not null)
+        {
+            Require(accountingFrame && delta.EnumerateObject().All(property =>
+                property.Name is "role" or "content" or "refusal") &&
+                (!delta.TryGetProperty("role", out var accountingRole) ||
+                    accountingRole.ValueKind == JsonValueKind.String && accountingRole.GetString() == "assistant") &&
+                string.IsNullOrEmpty(OptionalString(delta, "content")) &&
+                string.IsNullOrEmpty(OptionalString(delta, "refusal")) &&
+                OptionalString(choice, "finish_reason") == finish);
+            return null;
+        }
         foreach (var property in delta.EnumerateObject())
         {
             if (property.Name is "content" or "refusal" or "role") continue;
