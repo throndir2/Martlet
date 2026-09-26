@@ -55,6 +55,12 @@ public sealed class CanonicalWaveAudio : IDisposable
         return new(owned);
     }
 
+    public byte[] CopyWave()
+    {
+        lock (gate)
+            return GetBytes().ToArray();
+    }
+
     internal async ValueTask WriteToAsync(Stream destination, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(destination);

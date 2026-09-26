@@ -1,5 +1,9 @@
 # Optional local whisper.cpp STT foundation (H07a)
 
+For the separate installed-Windows offline recognition route, see
+[`Martlet.Stt.Windows`](../Martlet.Stt.Windows/README.md). It does not use,
+enable, download or qualify this whisper.cpp candidate.
+
 **Standalone disabled candidate, not a shipped or qualified local-STT route.**
 `Martlet.LocalStt` and its direct test project intentionally remain outside
 `Martlet.slnx`, Desktop, Core settings, conversation composition and Windows
