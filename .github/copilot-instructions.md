@@ -18,7 +18,9 @@ For implementation work, reuse the assigned worktree branch, commit, publish a
 PR and merge into `main` without routine approval prompts. Explicit user holds,
 required protections and authorization boundaries still apply. Never trigger
 remote validation; check workflow triggers before publication and merge, and
-confirm the merged result on `origin/main`. Deliver actual production paths
+confirm the merged result on `origin/main`. Releases are pre-authorized:
+agents may build and publish them through a minimal build/release workflow
+without asking. Deliver actual production paths
 early, replace obsolete designs when warranted and minimize narration.
 Parallelize independent work with isolated ownership. Safety, consent and
 honest reporting remain mandatory.

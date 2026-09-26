@@ -115,9 +115,13 @@ Report integrated delivery versus local/open/blocked work accurately.
 ## Authorization boundaries
 
 Autonomous delivery does not authorize spending, sensitive-data disclosure,
-production deployment, release publication, destructive actions, installing
-host services/drivers, or changing permissions, protections or billing.
-Do not create, enable, expand, dispatch or retry remote CI. Only a separately
-requested minimal build/package/release may use the documented remote
-exception; upload/publication needs separate authorization and no validation
-may be disguised as a build.
+production deployment, destructive actions, installing host services/drivers,
+or changing permissions, protections or billing.
+Do not create, enable, expand, dispatch or retry remote validation CI.
+
+**Releases are pre-authorized.** Agents may create and maintain a minimal
+build/package/release workflow (manual dispatch or tag/release trigger only),
+dispatch it and publish GitHub releases without asking. It contains no tests or
+validation, and releases are never cut merely to obtain validation evidence.
+Label unsigned builds as unsigned prototype prereleases, not official signed
+releases. Buying a signing certificate is spending and still needs approval.
