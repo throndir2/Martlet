@@ -125,6 +125,12 @@ build/package/release workflow (manual dispatch or tag/release trigger only),
 dispatch it and publish GitHub releases without asking. It contains no tests or
 validation, and releases are never cut merely to obtain validation evidence.
 
+To release: bump `<Version>` in `Directory.Build.props` through a normal merged
+PR, then run
+`gh workflow run windows-release.yml --ref main -f version=<that version>`
+and confirm the release is published as Latest on GitHub. If the build fails,
+fix the cause before dispatching again.
+
 Code signing is not required. Martlet is a personal project and publishes
 unsigned installers as actual, normal releases; do not label them prototype
 builds or prereleases, and do not buy or require a signing certificate. Never
