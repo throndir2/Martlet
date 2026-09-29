@@ -11,13 +11,13 @@
       "martlet.avatar.hosting": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Avatars": "[0.2.0, )"
+          "Martlet.Avatars": "[0.3.0, )"
         }
       },
       "martlet.avatars": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.2.0, )"
+          "Martlet.Core": "[0.3.0, )"
         }
       },
       "martlet.core": {

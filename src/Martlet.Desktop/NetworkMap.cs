@@ -10,7 +10,7 @@ internal enum NodeHealth { Ready, Unknown, Off, Attention }
 internal enum NodeAction
 {
     Setup, AudioSetup, Character, ToggleCharacter, Prerequisites, HostThisPc, AddComputer, ManageHost, CheckHost, HostDashboard, Advisor,
-    UseForLipSync, LipSyncThisPc, InstallRole, RemoveRole, HostStatus, ForgetHost,
+    UseForLipSync, LipSyncThisPc, InstallRole, RemoveRole, HostStatus, UpdateHost, ForgetHost,
     PrepareHost, RebootHost, ShutdownHost, WakeHost, PrepareComputer
 }
 
@@ -21,8 +21,10 @@ internal sealed record HostedRole(string Chip, string Name, string Detail);
 internal sealed record NodeFact(string Label, string Value);
 /// <summary>A node command; <paramref name="Argument"/> names the paired host or role it applies to.</summary>
 internal sealed record NodeCommand(NodeAction Action, string Label, bool Primary = false, string? Argument = null);
-/// <summary>The last explicit connection check of a paired host; <paramref name="Offers"/> maps each role kind it runs to its model.</summary>
-internal sealed record HostCheck(bool? Reachable, string Text, IReadOnlyDictionary<string, string>? Offers = null);
+/// <summary>The last explicit connection check of a paired host; <paramref name="Offers"/> maps each role kind it runs to its model
+/// and <paramref name="MartletVersion"/> is the release its gateway reported (null when it is 0.2.0 or older).</summary>
+internal sealed record HostCheck(bool? Reachable, string Text, IReadOnlyDictionary<string, string>? Offers = null,
+    string? MartletVersion = null);
 
 internal sealed record NetworkNode(string Id, NodeKind Kind, string Title, string Subtitle, string Glyph, NodeHealth Health,
     string HealthText, IReadOnlyList<HostedRole> Roles, IReadOnlyList<NodeFact> Facts, IReadOnlyList<NodeCommand> Commands,
@@ -30,7 +32,7 @@ internal sealed record NetworkNode(string Id, NodeKind Kind, string Title, strin
 
 internal sealed record NetworkInputs(MachineInfo Machine, DeviceRole Role, AppSettings? Settings, AvatarProfile? Avatar,
     bool CharacterShowing, IReadOnlyDictionary<string, HostCheck> HostChecks, IReadOnlyList<HostHardware>? HostHardware = null,
-    IReadOnlyList<PairedHost>? Hosts = null);
+    IReadOnlyList<PairedHost>? Hosts = null, IReadOnlyDictionary<string, string>? HostUpdates = null);
 
 /// <summary>Turns saved settings, the avatar pairing and local hardware into the Devices map: every computer and
 /// cloud service, what it runs and what can be configured there. Reads nothing itself.</summary>
@@ -265,8 +267,21 @@ internal static class NetworkMap
             }
 
             var id = paired.HostId;
+            var app = AppVersions.Current;
+            var saved = inputs.HostHardware?.FirstOrDefault(h => h.HostId == id)?.MartletVersion;
+            var reported = check?.Reachable == true ? check.MartletVersion ?? saved : saved;
+            var known = check?.Reachable == true || reported is not null;
+            var outdated = known && AppVersions.IsOlder(reported, app);
+            target.Facts.Add(new(local ? "Host service" : "Martlet", !known ? "Version not reported yet. Use Check connection."
+                : reported is null ? $"0.2.0 or older; this PC runs {app}. Update it."
+                : outdated ? $"{reported}; this PC runs {app}. Update it."
+                : reported == app ? $"{reported}, same as this PC" : $"{reported}, newer than this PC ({app}). Update this PC."));
+            if (outdated && !local) target.Worsen(NodeHealth.Attention, "Update available");
+            if (inputs.HostUpdates?.GetValueOrDefault(id) is { } update) target.Notes.Insert(0, update);
             var offersFace = check?.Offers?.ContainsKey(HostRoles.Audio2Face) == true;
             target.Commands.Insert(0, new(NodeAction.CheckHost, "Check connection", !local && check?.Reachable != true, id));
+            target.Commands.Add(new(NodeAction.UpdateHost, local ? "Update this PC's host service" : outdated ? $"Update it to Martlet {app}" : "Update host",
+                outdated && check?.Reachable == true, id));
             if (companion && !inCharge)
                 target.Commands.Add(new(NodeAction.UseForLipSync, local ? "Hand lip-sync to this PC's host service" : "Hand lip-sync to this computer",
                     offersFace, id));

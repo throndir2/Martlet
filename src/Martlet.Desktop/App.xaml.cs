@@ -10,6 +10,8 @@ public partial class App : Application
     private ResourceDictionary? palette;
     internal PinkTheme SelectedTheme { get; private set; }
     internal string? AppearanceNotice { get; private set; }
+    /// <summary>The --data-directory Martlet was started with, so an update restarts it with the same one.</summary>
+    internal string? DataDirectoryArgument { get; private set; }
 
     internal void ApplyTheme(PinkTheme theme)
     {
@@ -31,15 +33,19 @@ public partial class App : Application
         base.OnStartup(e);
         SettingsStore? store = null;
         string? error = null;
+        // An automatic update restarts Martlet minimized and without taking focus from whatever you are doing.
+        var afterUpdate = e.Args is [.., "--after-update"];
+        var args = afterUpdate ? e.Args[..^1] : e.Args;
         try
         {
-            var directory = e.Args switch
+            var directory = args switch
             {
                 [] => SettingsStore.DefaultDataDirectory(),
                 ["--data-directory", var path] => path,
                 _ => throw new ArgumentException("Invalid launch arguments.")
             };
             store = new SettingsStore(directory);
+            if (args.Length == 2) DataDirectoryArgument = directory;
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException or InvalidOperationException)
         {
@@ -50,6 +56,11 @@ public partial class App : Application
         ApplyTheme(SelectedTheme);
         SystemParameters.StaticPropertyChanged += SystemAppearanceChanged;
         MainWindow = new MainWindow(store, error);
+        if (afterUpdate)
+        {
+            MainWindow.ShowActivated = false;
+            MainWindow.WindowState = WindowState.Minimized;
+        }
         MainWindow.Show();
     }
 

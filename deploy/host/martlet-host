@@ -8,6 +8,7 @@
 #   martlet-host pair           pair a Martlet desktop (shows a one-use pairing code)
 #   martlet-host status         show the gateway and every installed role
 #   martlet-host machine        report this machine's hardware (GPUs, CPU, memory) to paired desktops
+#   martlet-host update         update the gateway to this engine's Martlet version (keeps identity, pairings and roles)
 #   martlet-host config         print the gateway configuration
 #
 # Methods (same commands, same roles; see README.md):
@@ -660,6 +661,42 @@ cmd_machine() {
   if approval_matches; then service_start; else note "The gateway needs approval first; run: martlet-host setup"; fi
 }
 
+# Replaces the gateway with this engine's Martlet version (the image this session runs from, or this checkout natively),
+# keeping the host identity, pairings, roles and their data. It asks nothing unless the new version changes host.json,
+# which renews the service approval in the gateway console like any other configuration change. Without a terminal
+# (Martlet's automatic host updates) that case stops before changing anything so the owner can run it in a console.
+cmd_update() {
+  require_setup
+  if [[ "$(render_config)" != "$(cat "${GW_CONFIG}" 2>/dev/null)" ]] || ! approval_matches; then
+    [[ -t 0 && -t 1 ]] || fail "This update changes the gateway configuration, which must be approved on this host. Run 'martlet-host update' in a console (Martlet: Update host on its Devices card)."
+  fi
+  if [[ "${MODE}" == native ]]; then
+    [[ -f "${REPO}/src/Martlet.Gateway.Host.Linux/Martlet.Gateway.Host.Linux.csproj" ]] || fail "Run from a Martlet source checkout."
+    say "Updating the gateway from ${REPO} ($(git -C "${REPO}" describe --tags --always 2>/dev/null || printf 'source checkout'))"
+    require_dotnet
+    rm -rf "${GW_APP}.next"
+    DOTNET_ROOT="${HOME}/.dotnet" DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 \
+      "${DOTNET}" publish "${REPO}/src/Martlet.Gateway.Host.Linux/Martlet.Gateway.Host.Linux.csproj" \
+      -c Release -o "${GW_APP}.next" -p:UseAppHost=false
+    service_stop
+    rm -rf "${GW_APP}.previous"
+    mv "${GW_APP}" "${GW_APP}.previous"
+    mv "${GW_APP}.next" "${GW_APP}"
+  else
+    say "Updating the gateway to image ${IMAGE}"
+  fi
+  collect_machine
+  apply_config
+  if [[ "${MODE}" == docker ]]; then
+    # Older martlet-host images still in use (for example by the network holder) are kept.
+    docker image ls martlet-host --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | grep -vxF "${IMAGE}" |
+      xargs -r docker image rm >/dev/null 2>&1 || true
+  else
+    rm -rf "${GW_APP}.previous"
+  fi
+  say "Host updated. Paired desktops see its new version on Check connection."
+}
+
 cmd_status() {
   require_setup
   say "Gateway ($(settings_value host_id) at https://$(settings_value lan_ip):$(settings_value port), ${MODE} method)"
@@ -680,7 +717,7 @@ cmd_status() {
 
 if [[ "${MODE}" == docker && "${MARTLET_ENGINE:-launcher}" != inner ]]; then
   case "${1:-help}" in
-    setup|roles|add|remove|pair|status|config|machine) docker_launch "$@" ;;
+    setup|roles|add|remove|pair|status|config|machine|update) docker_launch "$@" ;;
   esac
 fi
 
@@ -692,6 +729,7 @@ case "${1:-help}" in
   pair) cmd_pair ;;
   status) cmd_status ;;
   machine) cmd_machine ;;
+  update) cmd_update ;;
   config) require_setup; render_config ;;
   hold) cmd_hold ;;
   serve) cmd_serve ;;

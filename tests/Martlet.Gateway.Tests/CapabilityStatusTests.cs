@@ -62,6 +62,7 @@ public sealed class CapabilityStatusTests
         using var response = await host.Client.SendAsync(request);
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Matches(@"^\d+\.\d+\.\d+$", document.RootElement.GetProperty("martlet_version").GetString());
         var machine = document.RootElement.GetProperty("machine");
         Assert.Equal("Ubuntu 24.04.1 LTS", machine.GetProperty("operating_system").GetString());
         Assert.Equal(24564, machine.GetProperty("gpus")[0].GetProperty("memory_mb").GetInt32());

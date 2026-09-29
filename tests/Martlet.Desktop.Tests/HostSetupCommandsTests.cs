@@ -41,6 +41,58 @@ public sealed class HostSetupCommandsTests
             HostSetupCommands.Script(Target(HostSetupMethod.SshDocker, ssh, address), HostAction.Setup));
 
     [Fact]
+    public void Updates_rebuild_this_version_and_unattended_runs_never_prompt()
+    {
+        var native = HostSetupCommands.NativeShell(Target(HostSetupMethod.SshNative), HostAction.Update);
+        Assert.Contains("git -C ~/Martlet fetch -q --depth 1 origin tag v1.2.3 && git -C ~/Martlet -c advice.detachedHead=false checkout -q v1.2.3", native);
+        Assert.EndsWith("~/Martlet/deploy/host/martlet-host update", native);
+        var remote = HostSetupCommands.UnattendedScript(Target(HostSetupMethod.SshDocker), HostAction.Update)
+            .Split("\r\n").Single(l => l.StartsWith("ssh ", StringComparison.Ordinal));
+        Assert.StartsWith("ssh -T -o BatchMode=yes -o ConnectTimeout=15 me@192.168.1.20 \"", remote);
+        Assert.Contains("D='sudo -n docker'", remote);
+        Assert.EndsWith("$D run --rm -u 0 -v /var/run/docker.sock:/var/run/docker.sock martlet-host:1.2.3 update\"", remote);
+        Assert.Equal(2, remote.Count(c => c == '"'));
+        var local = HostSetupCommands.UnattendedScript(Target(HostSetupMethod.ThisPcDocker), HostAction.Update);
+        Assert.Contains("docker run --rm -u 0 -v /var/run/docker.sock:/var/run/docker.sock martlet-host:1.2.3 update", local);
+        Assert.Contains("docker run --rm -it -u 0", HostSetupCommands.Script(Target(HostSetupMethod.ThisPcDocker), HostAction.Update));
+        Assert.Throws<InvalidOperationException>(() => HostSetupCommands.UnattendedScript(Target(HostSetupMethod.OnHost), HostAction.Update));
+    }
+
+    [Fact]
+    public void Update_preferences_and_host_versions()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "Martlet.Updates." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Assert.Equal(new UpdatePreferences(), UpdatePreferences.Load(root));
+            var chosen = new UpdatePreferences { IntervalMinutes = 15, AutoInstall = true, AutoUpdateHosts = true };
+            UpdatePreferences.Save(root, chosen);
+            Assert.Equal(chosen, UpdatePreferences.Load(root));
+            File.WriteAllText(Path.Combine(root, UpdatePreferences.FileName), "{\"intervalMinutes\":7}");
+            Assert.Equal(60, UpdatePreferences.Load(root).IntervalMinutes);
+            File.WriteAllText(Path.Combine(root, UpdatePreferences.FileName), "not json");
+            Assert.Throws<InvalidDataException>(() => UpdatePreferences.Load(root));
+
+            var updates = Directory.CreateDirectory(AppUpdateInstaller.UpdatesDirectory(root)).FullName;
+            File.WriteAllText(Path.Combine(updates, "last-install.txt"), "0 1.2.3\r\n");
+            Assert.Equal(("Martlet updated to 1.2.3.", (string?)null), AppUpdateInstaller.TakeLastResult(root, "1.2.3"));
+            Assert.Null(AppUpdateInstaller.TakeLastResult(root, "1.2.3"));
+            File.WriteAllText(Path.Combine(updates, "last-install.txt"), "2 1.3.0\r\n");
+            Assert.Equal("1.3.0", AppUpdateInstaller.TakeLastResult(root, "1.2.3")?.Failed);
+            File.WriteAllText(Path.Combine(updates, "Martlet-1.2.3-win-x64.exe"), "old");
+            File.WriteAllText(Path.Combine(updates, "Martlet-1.3.0-win-x64.exe"), "next");
+            AppUpdateInstaller.CleanUp(root, "1.2.3");
+            Assert.Equal(["Martlet-1.3.0-win-x64.exe"], Directory.GetFiles(updates, "*.exe").Select(Path.GetFileName));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+
+        Assert.True(AppVersions.IsOlder(null, "0.3.0"));
+        Assert.True(AppVersions.IsOlder("0.2.0", "0.3.0"));
+        Assert.False(AppVersions.IsOlder("0.3.0", "0.3.0"));
+        Assert.False(AppVersions.IsOlder("0.4.0", "0.3.0"));
+    }
+
+    [Fact]
     public void Suggested_ids_are_valid_gateway_identifiers()
     {
         Assert.Equal("gaming-pc-host", HostSetupCommands.SuggestedHostId("GAMING-PC"));

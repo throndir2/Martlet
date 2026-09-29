@@ -23,7 +23,7 @@ public partial class MainWindow
     private sealed record StepCommand(string Label, Action Run, bool Primary = false);
     private sealed record MapElement(NetworkNode Node, Button Card, Line? Track, Line? Flow, Ellipse? Ring);
 
-    private static readonly string Version = typeof(App).Assembly.GetName().Version is { } v ? v.ToString(3) : "0.0.0";
+    private static readonly string Version = AppVersions.Current;
     private DeviceRole? deviceRole;
     private MachineInfo machine = MachineInfo.Unknown;
     private AppSettings? homeSettings;
@@ -454,7 +454,15 @@ public partial class MainWindow
                 false, false, [new("Open pairing console", () => LaunchHost(HostAction.Pair), true)]),
             new("roles", "Add roles",
                 "Audio2Face lip-sync needs an NVIDIA GPU (4 GB+) and a free NVIDIA NGC API key. " + nvidia,
-                false, true, [new("Add Audio2Face", () => LaunchHost(HostAction.AddAudio2Face), true), new("Remove", () => LaunchHost(HostAction.RemoveAudio2Face))])
+                false, true, [new("Add Audio2Face", () => LaunchHost(HostAction.AddAudio2Face), true), new("Remove", () => LaunchHost(HostAction.RemoveAudio2Face))]),
+            new("update", "Keep it up to date",
+                thisPcHostVersion is null
+                    ? $"Rebuilds the host service from Martlet {Version} and restarts it; pairings and roles stay. Turn on host updates in Settings to do this by itself."
+                    : AppVersions.IsOlder(thisPcHostVersion, Version)
+                        ? $"The host service runs Martlet {thisPcHostVersion}; this app is {Version}. Update it; pairings and roles stay."
+                        : $"The host service runs Martlet {thisPcHostVersion}, the same as this app.",
+                thisPcHostVersion is not null && !AppVersions.IsOlder(thisPcHostVersion, Version), true,
+                [new("Update host service", () => LaunchHost(HostAction.Update))])
         };
         RenderSteps(HostStepsPanel, steps, numbered: true);
     }
@@ -469,6 +477,7 @@ public partial class MainWindow
                 HostAction.Setup => "Host setup opened in a console window. Answer its questions there, then check the host service.",
                 HostAction.Pair => "The pairing console opened. Type start, then pair with your main PC's device ID and role voice; it shows a one-use code.",
                 HostAction.Status => "Host status opened in a console window.",
+                HostAction.Update => $"Host service update opened in a console window. It rebuilds from Martlet {Version} and restarts the gateway; pairings and roles stay.",
                 _ => "Opened in a console window. Confirm each change there."
             };
         }
@@ -544,6 +553,7 @@ public partial class MainWindow
             hostBusy = false;
             if (!closing) CheckHostServiceButton.IsEnabled = true;
         }
+        if (hostServiceReachable == true) thisPcHostVersion = await HostSetupCommands.ThisPcGatewayVersionAsync(lifetime.Token);
         await ReadMachineAsync();
         if (!closing)
             ActionText.Text = hostServiceReachable == true
@@ -556,7 +566,7 @@ public partial class MainWindow
     private HostHardwareStore? HardwareStore => store is null ? null : new(store.DataDirectory);
 
     private NetworkInputs Inputs() => new(machine, Role, homeSettings, homeAvatar, avatar.IsShowing, hostChecks,
-        HardwareStore?.Load() ?? [], homeHosts);
+        HardwareStore?.Load() ?? [], homeHosts, hostUpdateNotes);
 
     private void RefreshDevices_Click(object sender, RoutedEventArgs e)
     {
@@ -1080,6 +1090,8 @@ public partial class MainWindow
                 HostAction.AddAudio2Face => $"Installing Audio2Face on {host.HostId} in a console window ({host.Reach}). Confirm each step there; " +
                     "this PC picks the role up by itself once it is running.",
                 HostAction.RemoveAudio2Face => $"Removing Audio2Face from {host.HostId} in a console window ({host.Reach}). Confirm there.",
+                HostAction.Update => $"Updating {host.HostId} to Martlet {Version} in a console window ({host.Reach}). Its pairings and roles stay; " +
+                    "press Check connection afterwards.",
                 _ => $"Opened on {host.HostId} in a console window ({host.Reach})."
             };
         }
@@ -1170,6 +1182,13 @@ public partial class MainWindow
             case NodeAction.InstallRole: RunHostRole(argument, add: true); break;
             case NodeAction.RemoveRole: RunHostRole(argument, add: false); break;
             case NodeAction.HostStatus: if (FindHost(argument) is { } host) LaunchOnHost(host, HostAction.Status); break;
+            case NodeAction.UpdateHost:
+                if (FindHost(argument) is { } outdated)
+                {
+                    hostUpdateNotes.Remove(outdated.HostId);
+                    LaunchOnHost(outdated, HostAction.Update);
+                }
+                break;
             case NodeAction.ForgetHost: _ = ForgetHostAsync(argument); break;
             case NodeAction.PrepareHost: if (FindHost(argument) is { } prepare) OpenPrepare(prepare, PrepareStart.Status); break;
             case NodeAction.RebootHost: if (FindHost(argument) is { } reboot) OpenPrepare(reboot, PrepareStart.Reboot); break;

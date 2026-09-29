@@ -38,8 +38,33 @@ roles               what this host can run
 add <role>          install a role, e.g. add audio2face (same flow for every role)
 remove <role>       stop a role and unpublish it (keeps its data)
 machine             report this machine's hardware to paired desktops (also done by setup, pair, add and remove)
+update              update the gateway to this engine's Martlet version (identity, pairings, roles and data stay)
 status | config     show the gateway and roles | print the generated host.json
 ```
+
+### Updating a host
+
+Hosts follow the desktop's Martlet version. The gateway reports the release it
+was built from (`martlet_version` on `GET /martlet/v1/machine`), and the
+desktop's Devices map shows *Update available* when a host is older than the
+desktop. **Update host** runs `update` through the same route as every other
+command:
+
+- **Docker**: builds `martlet-host:<desktop version>` from the `v<version>` tag
+  (falling back to `main`) when it is not there yet, then runs `update` from it.
+  The gateway container is recreated from the new image; older unused
+  `martlet-host` images are removed (the network holder keeps its own).
+- **Native**: fetches and checks out the `v<version>` tag in `~/Martlet`
+  (falling back to `main`), publishes the gateway beside the running one, then
+  swaps it in and restarts the service.
+
+`update` asks nothing unless the new version changes `host.json`; that renews
+the service approval in the gateway console, like any configuration change.
+With *Keep my Martlet hosts on this PC's version* (Settings > App updates) the
+desktop runs `update` in the background for older hosts every check interval,
+without a console: SSH with `BatchMode` (keys only), `sudo -n`, no TTY. A host
+that needs a password, sudo or an approval fails that run without changing
+anything and keeps *Update host*, which runs the same update in a console.
 
 ### What the host tells Martlet
 
@@ -257,6 +282,9 @@ ssh -t me@gpu-pc bash martlet-prepare gpu-power --power 0=250 tools --tools pyth
 - **Windows Firewall step**: the non-admin probe and the rule script (as `-WhatIf`)
   were run; the elevated change itself has not been applied on a test machine.
 - Not yet run: a real NVIDIA GPU with the Audio2Face NIM.
+- **Update**: the engine script passes `bash -n` and the desktop's update
+  commands are covered by unit tests. `update` itself has not yet been run
+  against a real Docker or native host.
 - **Machine report**: the collector was run natively in an Ubuntu 24.04 container
   and in Docker mode against Docker Desktop without GPU support (`gpus: []`,
   `nvidia_containers: "no"`); `nvidia-smi` output parsing was checked with sample
