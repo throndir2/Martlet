@@ -92,12 +92,12 @@ internal sealed class AvatarController : IAsyncDisposable
                 Publish(selected.LipSync == AvatarLipSync.Auto
                     ? "Character showing. This model has no mouth control Audio2Face can drive; mouth follows Martlet's voice loudness."
                     : "Character showing. Idle animation on; mouth follows Martlet's voice (local loudness lip-sync).");
+            else if (hostLink is { } assigned && await assigned.ReadyAsync(token))
+                Publish($"Character showing. Audio2Face on Martlet host {assigned.Authority}; lip-sync uses it, falling back to voice loudness.");
             else if (await Audio2FaceProbe.IsListeningAsync(automatic.Options, TimeSpan.FromMilliseconds(300), token))
                 Publish($"Character showing. Audio2Face service detected at {automatic.Options.Endpoint.Authority}; lip-sync uses it, falling back to voice loudness.");
             else if (hostLink is { } host)
-                Publish(await host.ReadyAsync(token)
-                    ? $"Character showing. Audio2Face on Martlet host {host.Authority}; lip-sync uses it, falling back to voice loudness."
-                    : $"Character showing. Martlet host {host.Authority} is not offering Audio2Face right now; lip-sync uses voice loudness and checks again later.");
+                Publish($"Character showing. Martlet host {host.Authority} is not offering Audio2Face right now; lip-sync uses voice loudness and checks again later.");
             else if (selected.RemoteHost is not null)
                 Publish("Character showing. The paired Martlet host's credential is missing; pair again in Character settings. Lip-sync uses voice loudness.");
             else
@@ -220,10 +220,11 @@ internal sealed class AvatarController : IAsyncDisposable
         GeneratedSpeechStream? stream = null;
         PcmAccumulator? relay = null;
         var host = Volatile.Read(ref hostLink);
-        if (mono && await Audio2FaceProbe.IsListeningAsync(automatic!.Options, TimeSpan.FromMilliseconds(250), token))
-            stream = new GeneratedSpeechStream(snapshot.Ids, snapshot.Epoch, segment.Format, 0, 0, segment.Format.SampleRate * 90L, 128);
-        else if (mono && host is not null && await host.ReadyAsync(token))
+        // The host assigned to lip-sync goes first; this PC's own Audio2Face service is the fallback.
+        if (mono && host is not null && await host.ReadyAsync(token))
             relay = new PcmAccumulator();
+        else if (mono && await Audio2FaceProbe.IsListeningAsync(automatic!.Options, TimeSpan.FromMilliseconds(250), token))
+            stream = new GeneratedSpeechStream(snapshot.Ids, snapshot.Epoch, segment.Format, 0, 0, segment.Format.SampleRate * 90L, 128);
         try
         {
             var tee = TeeAsync(segment, meter, stream, relay, token);
@@ -735,6 +736,32 @@ internal sealed class AvatarController : IAsyncDisposable
             Revoke();
             await CleanupAsync();
             Publish("Avatar OFF. Configuration and user assets preserved; voice unaffected.");
+        }
+        finally { changes.Release(); }
+    }
+
+    /// <summary>Hands lip-sync to another paired host (or back to this PC with null) while the character keeps showing;
+    /// the next sentence uses the new host. A sentence already relaying to the old host falls back to voice loudness.</summary>
+    internal async Task UseHostAsync(AvatarRemoteHost? remote, CancellationToken token)
+    {
+        await changes.WaitAsync(token);
+        try
+        {
+            IAvatarHostLink? next = null;
+            if (remote is not null && IsShowing)
+                try { next = openHost(remote); }
+                catch (Exception error) when (error is Audio2FaceHostException or ContractException) { }
+            Interlocked.Exchange(ref hostLink, next)?.Dispose();
+            if (profile is not null) profile = profile with { RemoteHost = remote };
+            if (!IsShowing) return;
+            if (next is not null)
+                Publish(await next.ReadyAsync(token)
+                    ? $"Lip-sync handed to Martlet host {next.Authority} (Audio2Face); voice loudness stays as the fallback."
+                    : $"Lip-sync handed to Martlet host {next.Authority}. It is not offering Audio2Face yet; voice loudness until it does (checked every 30 s).");
+            else if (remote is not null)
+                Publish("The paired Martlet host's credential is missing; pair it again. Lip-sync uses this PC's Audio2Face or voice loudness.");
+            else
+                Publish("Lip-sync handed to this PC: its own Audio2Face service when running, otherwise voice loudness.");
         }
         finally { changes.Release(); }
     }

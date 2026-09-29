@@ -184,7 +184,9 @@ public sealed class AvatarIntegrationTests
     private sealed class FakeHostLink : IAvatarHostLink
     {
         internal ConcurrentQueue<(long Samples, CorrelationIds Ids)> Requests { get; } = new();
-        public string Authority => "192.168.1.20:9443";
+        internal string Name { get; init; } = "192.168.1.20:9443";
+        internal bool Disposed { get; private set; }
+        public string Authority => Name;
         public Task<bool> ReadyAsync(CancellationToken token) => Task.FromResult(true);
         public async IAsyncEnumerable<Martlet.Avatar.Audio2Face.Remote.RemoteFaceFrame> AnimateAsync(CorrelationIds ids, long epoch,
             int sampleRate, ReadOnlyMemory<byte> pcm, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken token)
@@ -195,7 +197,45 @@ public sealed class AvatarIntegrationTests
             yield return new(480, new Dictionary<string, double> { ["jawOpen"] = 0.3 });
         }
         public void Invalidate() { }
-        public void Dispose() { }
+        public void Dispose() => Disposed = true;
+    }
+
+    [Fact]
+    public async Task Lip_sync_moves_to_another_host_while_the_character_keeps_showing()
+    {
+        var closed = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        closed.Start();
+        var port = ((System.Net.IPEndPoint)closed.LocalEndpoint).Port;
+        closed.Stop();
+        using var scope = new AvatarHostingTests.Scope();
+        var renderer = new Renderer { Parameters = [new("aa", 0, 1, 0, ["Mouth"])] };
+        var first = new FakeHostLink();
+        var second = new FakeHostLink { Name = "192.168.1.30:9443" };
+        AvatarRemoteHost Remote(string id, string ip) => new()
+        {
+            Origin = $"https://{ip}:9443", HostId = id, SpkiFingerprint = "sha256:" + new string('a', 64),
+            DeviceId = "desktop-test", CredentialId = new string('B', 22)
+        };
+        await using var controller = new AvatarController(createRenderer: () => renderer, allowControlledClock: true,
+            openHost: host => host.HostId == "gpu-a" ? first : second);
+        await controller.ShowAsync(scope.Profile($"http://127.0.0.1:{port}/") with { RemoteHost = Remote("gpu-a", "192.168.1.20") }, default);
+        await controller.UseHostAsync(Remote("gpu-b", "192.168.1.30"), default);
+        Assert.True(first.Disposed);
+        Assert.Contains("192.168.1.30:9443", controller.Status, StringComparison.Ordinal);
+        Assert.Equal("gpu-b", controller.InspectedProfile!.RemoteHost!.HostId);
+        var device = new ControlledDevice { AutoConsume = false };
+        await using var harness = new Harness(device, generatedSpeech: controller.Observer);
+        harness.Answer("Actual generated PCM test.");
+        var turn = harness.Start();
+        await Harness.Until(() => renderer.Messages.Any(m => m.Kind == "apply"));
+        Assert.Empty(first.Requests);
+        Assert.NotEmpty(second.Requests);
+        device.AutoConsume = true;
+        Assert.Equal(ConversationState.Completed, (await Harness.Finish(turn)).State);
+        await controller.UseHostAsync(null, default);
+        Assert.True(second.Disposed);
+        Assert.Contains("this PC", controller.Status, StringComparison.Ordinal);
+        await controller.StopAsync();
     }
 
     [Fact]

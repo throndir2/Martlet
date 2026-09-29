@@ -93,7 +93,20 @@ This page answers "what do I have, and what is each machine doing?"
 - **Nodes** are *This PC* (center), each paired Martlet host or self-hosted
   gateway, each cloud destination grouped by origin, and a ghost *Add a
   computer* node. When no conversation model is chosen, a ghost *Conversation
-  model* node points to Setup.
+  model* node points to Setup. Every paired host appears, whether or not it has
+  a job yet.
+- **Who does what** (above the map, companion mode) has one tile per job:
+  *Thinking*, *Listening*, *Speaking* and *Lip-sync (Audio2Face)*. Each tile
+  names the computer or service in charge (select it to show that node).
+  Thinking, listening and speaking change in Setup, because each needs a model
+  and consent. **Lip-sync switches on the spot** from a drop-down: *This PC*,
+  any paired host, or *Nobody (mouth follows voice loudness)*. A showing
+  character keeps showing; the next sentence uses the new computer.
+  Handing lip-sync to a host first checks it over its pinned pairing. If it
+  does not run Audio2Face yet, Martlet offers to install it there in the same
+  step and keeps the mouth on voice loudness until the host is ready. The host
+  in charge goes first; this PC's own Audio2Face service and voice loudness
+  are the fallbacks. *Check hosts* reads every host's roles (explicit only).
 - **Cards** show an icon, name, address, up to three role chips ("Thinks",
   "Listens", "Speaks", "Lip-sync", "Character") and a status dot. Ready nodes
   pulse, and animated dashes on the connections show which way data flows.
@@ -107,8 +120,16 @@ This page answers "what do I have, and what is each machine doing?"
     for example "NVIDIA 4 GB+: can run Audio2Face lip-sync". Remote hosts do not
     report hardware yet, and the panel says so.
   - *Connection* for remote hosts: address, pinned TLS identity, this PC's
-    device ID, and a *Check connection* button that uses the existing pinned
-    pairing.
+    device ID, how Martlet reaches it, and a *Check connection* button that
+    uses the existing pinned pairing and shows which roles it runs.
+  - *Roles on a host*: *Hand lip-sync to this computer*, *Install Audio2Face
+    there* and *Remove Audio2Face from it*, its status console, *Pair again*
+    and *Forget this host*. Install, remove and status run the same
+    `martlet-host` engine on that computer the way Martlet reaches it (SSH with
+    Docker, SSH native Ubuntu, or this PC's Docker Desktop), in a console where
+    the host owner confirms each change; the desktop never gets a shell,
+    Docker socket or admin rights on the host. *How Martlet reaches it* sets
+    that route; without one, Martlet copies the command to run on the host.
   - *Cloud*: address, key storage, data sent and a "may cost money" note.
   - *Actions* for the node: Audio setup, Character, Prerequisites, *Host
     services on this PC*, *Change in Setup*, *Manage host* and similar.
@@ -145,6 +166,10 @@ The long form became a four-step wizard with a step rail:
    command in a *Show the command* expander.
 3. **Pair**: three numbered mini-steps, the device ID with *Copy*, *Open
    pairing console*, the pasted code and *Pair*, plus *Check* and *Forget*.
+   Pairing adds the host to `hosts.json` (every paired host and how Martlet
+   reaches it; nonsecret, secrets stay in Windows Credential Manager). The
+   first host paired takes over lip-sync; later hosts stand by until you hand
+   them a job under *Who does what*.
 4. **Roles**: role cards (Audio2Face today; planned roles shown as coming soon),
    with *Add*, *Remove* and *Host status*.
 

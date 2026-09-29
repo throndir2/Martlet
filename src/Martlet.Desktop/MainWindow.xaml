@@ -197,7 +197,7 @@
             <!-- Devices: the map of computers and services -->
             <ScrollViewer x:Name="DevicesPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" SizeChanged="DevicesPage_SizeChanged">
                 <Grid Margin="36,30,36,20">
-                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition x:Name="DetailColumn" Width="320"/></Grid.ColumnDefinitions>
                     <DockPanel Grid.ColumnSpan="2" Margin="0,0,0,16">
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
@@ -211,13 +211,28 @@
                                        Text="Every computer and service Martlet uses, and what each one runs. Select one to see its details and configure it."/>
                         </StackPanel>
                     </DockPanel>
-                    <Border x:Name="MapHost" Grid.Row="1" CornerRadius="24" Background="{DynamicResource SoftBrush}" Margin="0,0,16,0" Height="460"
+                    <Border x:Name="RolesCard" Grid.Row="1" Grid.ColumnSpan="2" Style="{DynamicResource CardStyle}" Margin="0,0,0,16"
+                            SizeChanged="DevicesPage_SizeChanged" AutomationProperties.Name="Who does what">
+                        <StackPanel>
+                            <DockPanel>
+                                <Button x:Name="CheckHostsButton" DockPanel.Dock="Right" Content="Check hosts" Click="CheckHosts_Click" VerticalAlignment="Top"
+                                        AutomationProperties.AutomationId="CheckHosts"/>
+                                <StackPanel Margin="0,0,12,0">
+                                    <TextBlock Text="Who does what" FontSize="17" FontWeight="SemiBold"/>
+                                    <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0"
+                                               Text="Hand each job to any of your computers. Lip-sync switches right away, even while the character is talking."/>
+                                </StackPanel>
+                            </DockPanel>
+                            <WrapPanel x:Name="RolesBoard" Margin="0,12,0,0" AutomationProperties.AutomationId="RolesBoard"/>
+                        </StackPanel>
+                    </Border>
+                    <Border x:Name="MapHost" Grid.Row="2" CornerRadius="24" Background="{DynamicResource SoftBrush}" Margin="0,0,16,0" Height="460"
                             SizeChanged="MapHost_SizeChanged" ClipToBounds="True">
                         <Viewbox Stretch="Uniform" StretchDirection="DownOnly" Margin="8">
                             <Canvas x:Name="MapCanvas" Width="600" Height="440" AutomationProperties.Name="Device map"/>
                         </Viewbox>
                     </Border>
-                    <Border x:Name="DetailCard" Grid.Row="1" Grid.Column="1" Style="{DynamicResource CardStyle}" Margin="0" Padding="0" Height="460">
+                    <Border x:Name="DetailCard" Grid.Row="2" Grid.Column="1" Style="{DynamicResource CardStyle}" Margin="0" Padding="0" Height="460">
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
                             <StackPanel x:Name="DetailContent" Margin="22" AutomationProperties.AutomationId="DeviceDetails"
                                         AutomationProperties.LiveSetting="Polite"/>
