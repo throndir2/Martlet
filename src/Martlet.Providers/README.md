@@ -23,8 +23,10 @@ of OpenAI's fixed catalog.
 
 `ChatCompletionsEndpointCatalog.NamedEndpoints` offers explicit display names and
 canonical base URLs for **OpenRouter** (`https://openrouter.ai/api/v1`) and
-**NVIDIA Build** (`https://integrate.api.nvidia.com/v1`). The calling UI must
-separately offer the existing custom HTTPS/literal-loopback base URL option.
+**NVIDIA Build** (`https://integrate.api.nvidia.com/v1`). The Desktop Setup
+window offers these plus a custom HTTPS/literal-loopback base URL option under
+**LLM provider / endpoint**, and the live conversation dispatches the saved
+Chat Completions route for the LLM stage (keyless only for custom endpoints).
 The catalog supplies no model, key, consent, inferred plan or free-tier
 selection. Require the user to type the exact supported text model ID and
 review potential charges and data disclosure before calling `SelectRoute`;
@@ -53,7 +55,9 @@ base URL request sets its documented `provider.allow_fallbacks: false` so a
 failed initial upstream is not silently retried through a backup; this does
 not pin the initial upstream, guarantee a free request or forbid provider-side
 processing. No such provider-specific option is sent to NVIDIA Build or
-custom bases. Review current upstream terms and account budget before use.
+custom bases. OpenRouter requests also carry its documented optional
+`HTTP-Referer`/`X-Title` app attribution headers. Review current upstream
+terms and account budget before use.
 
 The request contains `model`, `stream: true`, `max_tokens`, and ordered `messages`
 (optional system persona/memory, explicit user/assistant history, current user).
@@ -76,7 +80,13 @@ deltas, stable response identity/model metadata and optional token usage. Server
 model metadata may be a canonical alias but must remain stable. Completion requires
 a supported `finish_reason`, `[DONE]`, and clean body EOF. Missing/truncated endings,
 extra post-terminal data, unsupported tool/multimodal deltas, output limits and
-content filtering cannot become success. Idle/first-delta/total deadlines and
+content filtering cannot become success. Reasoning/thinking deltas
+(`reasoning_content` from NVIDIA NIM/vLLM, `reasoning`/`reasoning_details` from
+OpenRouter or Ollama) are never emitted as text; they only count as model
+activity for the first-delta and idle deadlines, and still consume the output
+token budget. An explicit `"role": null` continuation delta (seen on some NIM
+backends) and empty extra delta fields such as `"tool_calls": []` are ignored.
+Idle/first-delta/total deadlines and
 consumer cancellation apply through terminal EOF; cancellation is request abort,
 not proof that a remote provider stopped computation or billing.
 OpenRouter's documented final accounting frame may repeat the same finish reason
@@ -94,8 +104,9 @@ invalidations, documented terminal usage and redacted failures. Other fixture
 tests exercise malformed streams and lifecycle boundaries.
 These are local protocol regression evidence, **not** a live external account/model
 trial, real-user chat quality, speech-device, clean-machine or release qualification.
-Desktop composition and combined package/native acceptance are owned by the parallel
-hybrid UI integration, not claimed by this provider/settings slice.
+Desktop fixture tests drive the Setup window provider choice and a full typed
+conversation turn through OpenRouter, NVIDIA Build, a custom HTTPS base and a
+keyless loopback base with synthetic handlers; no live provider account was used.
 
 Shared setup additionally exposes `WindowsSpeechSetup.SelectStt(settings, recognizerId)`
 and `SelectTts(settings, voiceId)` for exact installed Windows identifiers. These

@@ -193,7 +193,7 @@ public sealed class ConversationTurn
             Check(window);
             // Clamp to remaining ORIGINAL stage/turn budgets after a potentially slow authorization callback.
             context = context with { Deadline = Deadline(window) };
-            var stream = Owner.Text.Stream(context, request.Model, request.Input, request.TextLimits, consent, originalCaller);
+            var stream = Owner.StreamText(context, request, consent, originalCaller);
             using var validator = new ProviderSequenceValidator(new()
             {
                 Ids = TextIds, Epoch = Epoch, Capabilities = stream.Capabilities

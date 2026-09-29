@@ -217,7 +217,8 @@ internal sealed class TextGenerationOperation(
                 // Comments/unknown events/duplicates cannot extend progress deadlines.
                 if (chatNormalizer is null || chatNormalizer.MadeProgress)
                     lastEventAt = clock.GetTimestamp();
-                if (chatNormalizer?.HasContentDelta ?? normalizer!.HasContentDelta)
+                if (chatNormalizer is null ? normalizer!.HasContentDelta :
+                    chatNormalizer.HasContentDelta || chatNormalizer.HasReasoningDelta)
                     firstDelta = true;
                 ArmProgress();
                 EnsureActive();
@@ -291,6 +292,13 @@ internal sealed class TextGenerationOperation(
         };
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
         request.Headers.Authorization = credential?.CreateAuthorization();
+        if (chatBaseUri is not null && string.Equals(chatBaseUri.AbsoluteUri,
+            ChatCompletionsEndpointCatalog.OpenRouterBaseUrl, StringComparison.Ordinal))
+        {
+            // OpenRouter's documented optional app attribution headers.
+            request.Headers.TryAddWithoutValidation("HTTP-Referer", ChatCompletionsEndpointCatalog.OpenRouterAppUrl);
+            request.Headers.TryAddWithoutValidation("X-Title", ChatCompletionsEndpointCatalog.OpenRouterAppTitle);
+        }
         EnsureActive();
         request.Content = new SingleSendContent(CreateJson(), EnsureActive);
         EnsureActive();

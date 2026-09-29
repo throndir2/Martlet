@@ -47,9 +47,9 @@ lip-sync replaces it on any PC.
 ### Offload the LLM first
 
 The LLM uses the most VRAM and is the easiest role to move off your GPU.
-Martlet's Chat Completions route accepts any OpenAI-compatible HTTPS base URL.
-It is being connected to the conversation in a separate change
-([status](#7-what-works-today)). Two endpoints are named in Martlet:
+Martlet's Chat Completions route accepts any OpenAI-compatible HTTPS base URL
+(choose it under **Setup > Destinations > LLM provider / endpoint**; see
+[Setup](SETUP.md)). Two endpoints are named in Martlet:
 **OpenRouter** (`https://openrouter.ai/api/v1`, with models from many vendors
 under one key) and **NVIDIA Build** (`https://integrate.api.nvidia.com/v1`,
 any chat model in its catalog). Both host open-weight models much larger than
@@ -235,22 +235,20 @@ host or a hosted vision model. Rules that still apply:
 | Route | Status in the current Desktop |
 | --- | --- |
 | OpenAI STT, LLM, TTS | **Working** conversation route |
+| OpenAI-compatible Chat Completions LLM (OpenRouter, NVIDIA Build, any HTTPS `/v1` API, loopback Ollama/LM Studio/llama.cpp/vLLM) | **Working** conversation route for the LLM; STT/TTS still use OpenAI |
 | Live2D/VRM avatar and loudness lip-sync | **Working** on this PC |
 | Audio2Face on this PC or a paired Martlet host | **Working path**; Docker method verified with a stand-in role, **not yet run on a real GPU** |
 | Local memory, personas | **Working**, local only |
-| Chat Completions LLM endpoints: OpenRouter, any NVIDIA Build chat model, other HTTPS providers, loopback Ollama/LM Studio/llama.cpp | Settings, named endpoints and adapter exist; conversation wiring is **in progress in a separate change**, not dispatched yet |
 | Windows offline STT and Windows voices TTS | Libraries and setup exist; **not yet dispatched** |
 | Host LLM (Ollama), F5 TTS, STT, vision | Worker/adapter foundations; **no host role or gateway relay yet** |
 | whisper.cpp local STT, VAD/barge-in, Voice Studio synthesis/training | Disabled candidates or preparation only |
 
-Today, a single GPU PC can run Martlet with OpenAI STT/LLM/TTS plus a local
-avatar and Audio2Face. The recommended layouts need these pieces, smallest
-first:
+Today, a single GPU PC can run Martlet with API STT/TTS, an LLM on OpenAI,
+OpenRouter, NVIDIA Build or a local loopback LLM server, plus a local avatar
+and Audio2Face. The recommended layouts need these pieces, smallest first:
 
-1. Dispatch the Chat Completions LLM route (in progress separately). This
-   moves the LLM to OpenRouter, NVIDIA Build or a local loopback LLM server.
-2. Dispatch the Windows offline STT/TTS routes for free, offline CPU speech.
-3. Add gateway relay workers and `martlet-host` roles for F5 TTS, STT and the LLM,
+1. Dispatch the Windows offline STT/TTS routes for free, offline CPU speech.
+2. Add gateway relay workers and `martlet-host` roles for F5 TTS, STT and the LLM,
    so GPU speech and LLM can run on this PC or a host.
 
 See [installation design](INSTALLATION_SUPPORT.md#feature-first-multi-machine-setup),

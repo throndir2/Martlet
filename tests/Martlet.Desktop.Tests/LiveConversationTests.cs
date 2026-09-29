@@ -423,6 +423,68 @@ public sealed class LiveConversationTests
         Assert.Contains("/openai-llm/", Assert.Single(fixture.Native.Targets));
     }
 
+    [Theory]
+    [InlineData(ChatCompletionsEndpointCatalog.OpenRouterBaseUrl, "meta-llama/llama-3.3-70b-instruct:free", true)]
+    [InlineData(ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, "meta/llama-3.3-70b-instruct", true)]
+    [InlineData("https://api.groq.com/openai/v1", "llama-3.3-70b-versatile", true)]
+    [InlineData("http://127.0.0.1:1234/v1", "local-model", false)]
+    public async Task ChatCompletionsLlmRouteReachesItsExactEndpointWithScopedKey(string baseUrl, string model, bool keyed)
+    {
+        await using var fixture = await LiveFixture.Create();
+        const string answer = "Chat Completions fixture response.";
+        string? authorization = null;
+        Uri? target = null;
+        fixture.Chat.Inspect = request =>
+        {
+            authorization = request.Headers.Authorization?.ToString();
+            target = request.RequestUri;
+        };
+        fixture.Chat.Respond = (_, _) => Task.FromResult(TextRecordingHandler.Sse(
+            "data: {\"id\":\"chat-fixture\",\"object\":\"chat.completion.chunk\",\"model\":\"server-model\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"" +
+            answer + "\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"));
+        var loaded = await fixture.Store.LoadAsync();
+        var old = loaded.Settings!.Setup!.Routes.Single(item => item.Role == SetupRole.Llm);
+        var changed = SetupSettings.QueueReplacedCredential(
+            ChatCompletionsSetup.SelectRoute(loaded.Settings!, baseUrl, model), old);
+        Assert.Contains(changed.Setup!.PendingRemovals, item => item.CredentialId == old.CredentialId);
+        var route = changed.Setup.Routes.Single(item => item.Role == SetupRole.Llm);
+        if (keyed) route = route.WithCredential(Guid.NewGuid());
+        changed = SetupSettings.ReplaceRoute(changed, route with { Consent = route.Selection() });
+        await fixture.Save(changed);
+        Assert.Null(fixture.Controller.Configuration!.Unavailable(false, false));
+        Assert.Contains(baseUrl, fixture.Controller.Configuration.Disclosure(false));
+
+        var operation = fixture.Start();
+        await fixture.Finish(operation);
+
+        Assert.Equal("runtime.Completed", operation.Status.Code);
+        Assert.Equal(answer, operation.Turn!.Content.Text);
+        Assert.Equal(0, fixture.Llm.Calls);
+        Assert.Equal(1, fixture.Chat.Calls);
+        Assert.Equal(baseUrl + "/chat/completions", target!.AbsoluteUri);
+        Assert.Equal(keyed ? "Bearer " + LiveFixture.Secret : null, authorization);
+        if (keyed) Assert.Contains("/chat-completions/", Assert.Single(fixture.Native.Targets));
+        else Assert.Empty(fixture.Native.Targets);
+        using var body = JsonDocument.Parse(fixture.Chat.Body);
+        Assert.Equal(model, body.RootElement.GetProperty("model").GetString());
+        Assert.Equal("system", body.RootElement.GetProperty("messages")[0].GetProperty("role").GetString());
+    }
+
+    [Fact]
+    public async Task NamedChatCompletionsEndpointRequiresAKey()
+    {
+        await using var fixture = await LiveFixture.Create();
+        var loaded = await fixture.Store.LoadAsync();
+        var old = loaded.Settings!.Setup!.Routes.Single(item => item.Role == SetupRole.Llm);
+        var changed = SetupSettings.QueueReplacedCredential(ChatCompletionsSetup.SelectRoute(
+            loaded.Settings!, ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, "meta/llama-3.3-70b-instruct"), old);
+        var route = changed.Setup!.Routes.Single(item => item.Role == SetupRole.Llm);
+        changed = SetupSettings.ReplaceRoute(changed, route with { Consent = route.Selection() });
+        await fixture.Save(changed);
+        Assert.Contains("NVIDIA Build API key", fixture.Controller.Configuration!.Unavailable(false, false));
+        fixture.NoEffects();
+    }
+
     [Fact]
     public async Task CompletedExplicitTurnsSupplyBoundedHistoryAndPauseClearsIt()
     {
@@ -1237,6 +1299,7 @@ internal sealed class LiveFixture : IAsyncDisposable
     internal SessionFixture Events { get; } = new();
     internal RecordingHandler Stt { get; } = new();
     internal TextRecordingHandler Llm { get; } = new();
+    internal TextRecordingHandler Chat { get; } = new();
     internal TextRecordingHandler Tts { get; } = SpeechFixtures.Handler();
     internal ControlledCapture Capture { get; } = new();
     internal ControlledDevice Output { get; }
@@ -1252,7 +1315,9 @@ internal sealed class LiveFixture : IAsyncDisposable
         Controller = new(Runner, Settings, vault, Capture, Output, Clock,
             (credentials, clock) => ConversationRuntime.ForFixture(
                 OpenAiTextGenerationAdapter.CreateForFixture(Llm, credentials, clock),
-                OpenAiSpeechSynthesisAdapter.CreateForFixture(Tts, credentials, clock), Output, new(), clock),
+                OpenAiSpeechSynthesisAdapter.CreateForFixture(Tts, credentials, clock), Output, new(), clock,
+                chat: target => ChatCompletionsTextGenerationAdapter.CreateForFixture(target.BaseUrl, Chat,
+                    target.Keyless ? null : credentials, clock)),
             (credentials, clock) => OpenAiTranscriptionAdapter.CreateForFixture(Stt, credentials, clock),
             nextStyle,
             memory: Memory);

@@ -50,6 +50,22 @@ public partial class SetupWindow : ThemedWindow
     private bool routeDirty;
     private SetupRole Role => RoleChoice.SelectedItem is SetupRole role ? role : SetupRole.Stt;
 
+    private sealed record LlmProvider(string Name, string? BaseUrl, bool Chat)
+    {
+        public override string ToString() => Name;
+    }
+    private static readonly LlmProvider OpenAiProvider = new("OpenAI (https://api.openai.com, Responses API)", null, false);
+    private static readonly LlmProvider CustomProvider = new("Custom OpenAI-compatible endpoint (Chat Completions)", null, true);
+    private static readonly IReadOnlyList<LlmProvider> LlmProviders =
+    [
+        OpenAiProvider,
+        .. ChatCompletionsEndpointCatalog.NamedEndpoints.Select(endpoint =>
+            new LlmProvider($"{endpoint.Name} ({endpoint.BaseUrl}, Chat Completions)", endpoint.BaseUrl, true)),
+        CustomProvider
+    ];
+    private LlmProvider Provider => Role == SetupRole.Llm && ProviderChoice.SelectedItem is LlmProvider provider
+        ? provider : OpenAiProvider;
+
     public SetupWindow(ISetupService service, SetupOperationRunner operations,
         Func<string, bool>? confirm = null, TimeProvider? clock = null, TimeSpan? observationTimeout = null)
     {
@@ -64,6 +80,8 @@ public partial class SetupWindow : ThemedWindow
         rendering = true;
         RoleChoice.ItemsSource = Enum.GetValues<SetupRole>();
         RoleChoice.SelectedIndex = 0;
+        ProviderChoice.ItemsSource = LlmProviders;
+        ProviderChoice.SelectedItem = OpenAiProvider;
         DisclosureText.Text = OpenAiSetup.Disclosure;
         rendering = false;
         operationTimer.Tick += (_, _) => RenderOperationState();
@@ -170,7 +188,10 @@ public partial class SetupWindow : ThemedWindow
     private void RenderStatus()
     {
         SetupStatus.Text = draft is null ? "Setup blocked. Original settings preserved; see the remedy below." : SetupSettings.Describe(draft);
-        CredentialScope.Text = $"Selected role: {Role}; internal alias: {OpenAiSetup.Alias(Role)}; origin: {OpenAiSetup.Origin}. Select another role on Destinations.";
+        var saved = draft?.Setup?.Routes.SingleOrDefault(r => r.Role == Role);
+        CredentialScope.Text = saved?.RouteType == SetupRouteType.ChatCompletions
+            ? $"Selected role: {Role}; internal alias: {saved.ProviderAlias}; destination: {LiveConversationConfiguration.LlmDestinationName(saved)}. The key is bound to this exact base URL and is optional for local servers. Select another role on Destinations."
+            : $"Selected role: {Role}; internal alias: {OpenAiSetup.Alias(Role)}; origin: {OpenAiSetup.Origin}. Select another role on Destinations.";
         RemovalChoice.ItemsSource = draft?.Setup?.PendingRemovals;
         RemovalChoice.SelectedIndex = 0;
     }
@@ -179,9 +200,13 @@ public partial class SetupWindow : ThemedWindow
     {
         rendering = true;
         var route = draft?.Setup?.Routes.SingleOrDefault(r => r.Role == Role);
-        BoundaryText.Text = $"{OpenAiSetup.Boundary(Role)} Internal alias: {OpenAiSetup.Alias(Role)}. Destination: {OpenAiSetup.Origin}.";
-        var catalog = Catalog(Role);
-        ModelCatalogChoice.ItemsSource = catalog;
+        var chat = Role == SetupRole.Llm && route?.RouteType == SetupRouteType.ChatCompletions;
+        ProviderChoice.IsEnabled = Role == SetupRole.Llm;
+        ProviderChoice.SelectedItem = !chat ? OpenAiProvider
+            : LlmProviders.FirstOrDefault(provider => provider.BaseUrl == route!.Origin) ?? CustomProvider;
+        BaseUrl.Text = chat ? route!.Origin : "";
+        RenderProvider();
+        var catalog = chat ? Array.Empty<string>() : Catalog(Role);
         ModelCatalogChoice.SelectedItem = route is not null && catalog.Contains(route.ModelId, StringComparer.Ordinal)
             ? route.ModelId : null;
         ModelId.Text = route?.ModelId ?? "";
@@ -192,6 +217,44 @@ public partial class SetupWindow : ThemedWindow
         routeDirty = false;
         rendering = false;
         RenderStatus();
+    }
+
+    // Only presentation; the caller owns dirtiness and the rendering guard.
+    private void RenderProvider()
+    {
+        var provider = Provider;
+        BaseUrl.IsEnabled = provider.Chat;
+        BaseUrl.IsReadOnly = provider.BaseUrl is not null;
+        if (provider.BaseUrl is not null) BaseUrl.Text = provider.BaseUrl;
+        else if (!provider.Chat) BaseUrl.Text = "";
+        var catalog = provider.Chat ? Array.Empty<string>() : Catalog(Role);
+        ModelCatalogChoice.ItemsSource = catalog;
+        ModelCatalogChoice.IsEnabled = catalog.Count > 0;
+        const string reasoning = " Prefer instruct/chat models: each reply is capped at 256 tokens and reasoning/thinking models spend part of that on hidden thinking.";
+        ProviderHint.Text = Role != SetupRole.Llm
+            ? $"{Role} uses the named OpenAI adapter; choose one of the known compatible models below."
+            : provider.BaseUrl == ChatCompletionsEndpointCatalog.OpenRouterBaseUrl
+                ? "Enter the exact OpenRouter model ID, for example meta-llama/llama-3.3-70b-instruct or openai/gpt-4o-mini (':free' variants use OpenRouter's free tier). Store your OpenRouter API key on Credentials. OpenRouter chooses the upstream provider; fallback to other providers is disabled." + reasoning
+                : provider.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl
+                    ? "Enter the exact model ID shown on build.nvidia.com, for example meta/llama-3.3-70b-instruct. Store your NVIDIA API key (nvapi-...) on Credentials." + reasoning
+                    : provider.Chat
+                        ? "Enter the API base URL without /chat/completions, for example https://api.groq.com/openai/v1, https://api.together.xyz/v1, or a local server such as http://127.0.0.1:1234/v1 (LM Studio), http://127.0.0.1:8080/v1 (llama.cpp) or http://127.0.0.1:11434/v1 (Ollama). HTTP is allowed only for a literal loopback IP. A key is optional; store one on Credentials if the server requires it." + reasoning
+                        : "Named OpenAI Responses adapter; choose one of the known compatible models below.";
+        BoundaryText.Text = provider.Chat
+            ? $"{OpenAiSetup.Boundary(Role)} Internal alias: {ChatCompletionsSetup.Alias}. Destination: {(provider.BaseUrl ?? "the exact base URL entered below")}."
+            : $"{OpenAiSetup.Boundary(Role)} Internal alias: {OpenAiSetup.Alias(Role)}. Destination: {OpenAiSetup.Origin}.";
+    }
+
+    private void Provider_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (rendering || draft is null) return;
+        rendering = true;
+        if (Provider == CustomProvider && ChatCompletionsEndpointCatalog.Named(BaseUrl.Text) is not null) BaseUrl.Text = "";
+        RenderProvider();
+        ConsentChoice.IsChecked = false;
+        rendering = false;
+        routeDirty = true;
+        ResultText.Text = "LLM provider changed. Enter the exact model ID, apply the route and explicitly review its destination consent again before saving.";
     }
 
     private void Choice_Changed(object sender, RoutedEventArgs e)
@@ -237,17 +300,37 @@ public partial class SetupWindow : ThemedWindow
         if (draft is null) return;
         try
         {
-            if (!Catalog(Role).Contains(ModelId.Text, StringComparer.Ordinal))
-                throw new ContractException(ErrorCode.ProviderCapability,
-                    "This named OpenAI adapter does not support that model ID. Select an exact compatible catalog entry; the prior route was not replaced.");
-            if (Role == SetupRole.Tts && !OpenAiSpeechSynthesisCatalog.SupportsVoice(VoiceId.Text))
-                throw new ContractException(ErrorCode.ProviderCapability,
-                    "This named OpenAI TTS adapter does not support that voice ID. Review the displayed compatible voices; the prior route was not replaced.");
-            var updated = SetupSettings.SelectRoute(draft, Role, ModelId.Text, Role == SetupRole.Tts ? VoiceId.Text : null);
+            var old = draft.Setup?.Routes.SingleOrDefault(r => r.Role == Role);
+            var provider = Provider;
+            var baseUrl = BaseUrl.Text.Trim();
+            var modelId = ModelId.Text.Trim();
+            var sameDestination = old is null || (provider.Chat
+                ? old.RouteType == SetupRouteType.ChatCompletions && old.Origin == baseUrl
+                : old.RouteType is null or SetupRouteType.OpenAi);
+            if (!sameDestination && draft.Setup!.PendingRemovals.Any(removal => removal.Role == Role))
+                throw new ContractException(ErrorCode.InvalidContract,
+                    "Remove this role's detached key on Credentials before switching its destination again; the prior route was not replaced.");
+            AppSettings updated;
+            if (provider.Chat)
+                updated = ChatCompletionsSetup.SelectRoute(draft, baseUrl, modelId);
+            else
+            {
+                if (!Catalog(Role).Contains(modelId, StringComparer.Ordinal))
+                    throw new ContractException(ErrorCode.ProviderCapability,
+                        "This named OpenAI adapter does not support that model ID. Select an exact compatible catalog entry; the prior route was not replaced.");
+                if (Role == SetupRole.Tts && !OpenAiSpeechSynthesisCatalog.SupportsVoice(VoiceId.Text))
+                    throw new ContractException(ErrorCode.ProviderCapability,
+                        "This named OpenAI TTS adapter does not support that voice ID. Review the displayed compatible voices; the prior route was not replaced.");
+                updated = SetupSettings.SelectRoute(draft, Role, modelId, Role == SetupRole.Tts ? VoiceId.Text : null);
+            }
+            var pending = updated.Setup!.PendingRemovals.Count;
+            updated = SetupSettings.QueueReplacedCredential(updated, old);
+            var detached = updated.Setup!.PendingRemovals.Count != pending;
             var route = updated.Setup!.Routes.Single(r => r.Role == Role);
             draft = SetupSettings.ReplaceRoute(updated, route with { Consent = ConsentChoice.IsChecked == true ? route.Selection() : null });
             routeDirty = false;
-            ResultText.Text = "Route applied to the working checkpoint. Save to persist it. Model availability, credential validity, cost and quota remain unknown.";
+            ResultText.Text = "Route applied to the working checkpoint. Save to persist it. Model availability, credential validity, cost and quota remain unknown." +
+                (detached ? " The previous destination's key was detached and listed for explicit removal on Credentials; store a key for the new destination if it needs one." : "");
             RenderStatus();
         }
         catch (ContractException ex) { ResultText.Text = ex.Message; }
@@ -333,7 +416,9 @@ public partial class SetupWindow : ThemedWindow
 
     private async void StoreKey_Click(object sender, RoutedEventArgs e)
     {
-        if (!MayStart() || !Confirm($"Store a new key for this profile's {Role} route at {OpenAiSetup.Origin} and save this checkpoint? This invalidates that role's consent. Any previous key is detached, not deleted; remove it explicitly below. No provider access will be tested.")) return;
+        var saved = draft?.Setup?.Routes.SingleOrDefault(r => r.Role == Role);
+        var destination = saved?.RouteType == SetupRouteType.ChatCompletions ? saved.Origin : OpenAiSetup.Origin;
+        if (!MayStart() || !Confirm($"Store a new key for this profile's {Role} route at {destination} and save this checkpoint? This invalidates that role's consent. Any previous key is detached, not deleted; remove it explicitly below. No provider access will be tested.")) return;
         try
         {
             var snapshot = Checkpoint();
