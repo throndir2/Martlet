@@ -159,6 +159,7 @@ public partial class HostsWindow : ThemedWindow
             {
                 HostVerb.Setup => "Setup opened in a console window. Answer its questions there; afterwards pair this PC.",
                 HostVerb.Pair => "The host console opened. Follow its instructions, then paste the pairing code here and press Pair with host.",
+                HostVerb.Update => "The update opened in a console window. It rebuilds the host's gateway from this Martlet version; pairings and roles stay.",
                 _ => "Opened in a console window."
             };
         }
@@ -257,6 +258,7 @@ public partial class HostsWindow : ThemedWindow
         }
     }
     private void PairConsole_Click(object sender, RoutedEventArgs e) => Run(HostAction.Pair);
+    private void UpdateHost_Click(object sender, RoutedEventArgs e) => Run(HostAction.Update);
 
     private void InstallDocker_Click(object sender, RoutedEventArgs e)
     {
@@ -340,18 +342,20 @@ public partial class HostsWindow : ThemedWindow
         return check.Text;
     }
 
-    internal static async Task<string> ReadHardwareAsync(Audio2FaceHostConnection connection, HostHardwareStore? store, CancellationToken token)
+    internal static async Task<(string Text, string? MartletVersion)> ReadHardwareAsync(Audio2FaceHostConnection connection,
+        HostHardwareStore? store, CancellationToken token)
     {
         HostHardware? report;
-        try { report = await connection.ReadMachineAsync(token); }
+        string? version;
+        try { (report, version) = await connection.ReadMachineReportAsync(token); }
         catch (Audio2FaceHostException error) when (error.Code == "request.invalid")
         {
-            return "Its hardware is not reported: update the host (rebuild it from Martlet hosts > Set up host).";
+            return ("Its hardware is not reported: update the host (Update host on its card on the Devices map).", null);
         }
-        if (report is null) return "Its hardware is not reported yet: run 'martlet-host machine' on the host.";
+        if (report is null) return ("Its hardware is not reported yet: run 'martlet-host machine' on the host.", version);
         try { store?.Save(report); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
-        return "Hardware: " + DescribeHardware(report) + ".";
+        return ("Hardware: " + DescribeHardware(report) + ".", version);
     }
 
     internal static string DescribeHardware(HostHardware report)

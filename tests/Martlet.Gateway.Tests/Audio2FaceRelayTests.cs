@@ -111,6 +111,8 @@ public sealed class Audio2FaceRelayTests
             card.SpkiFingerprint, "desktop-test", card.PairingId, card.Token.Reveal());
         using var connection = new Audio2FaceHostConnection(pairing, secret, host.Clock);
         Assert.Null(await connection.ReadMachineAsync());
+        var (_, version) = await connection.ReadMachineReportAsync();
+        Assert.Equal(typeof(GatewayMachineReport).Assembly.GetName().Version!.ToString(3), version);
 
         host.Server.Machine = GatewayMachineReport.Parse(System.Text.Encoding.UTF8.GetBytes(
             "{\"collected_at\":\"2026-09-29T18:00:00Z\",\"method\":\"docker\",\"operating_system\":\"Docker Desktop\"," +
@@ -126,5 +128,6 @@ public sealed class Audio2FaceRelayTests
         Assert.Equal("NVIDIA GeForce RTX 4080", report.BestGpu!.Name);
         Assert.Equal(Martlet.Core.Installation.AdvisorGpu.Nvidia16, report.AdvisorGpu);
         Assert.Equal(new DateTimeOffset(2026, 9, 29, 18, 0, 0, TimeSpan.Zero), report.CollectedAt);
+        Assert.Equal(version, report.MartletVersion);
     }
 }

@@ -385,7 +385,12 @@ public sealed partial class Audio2FaceHostConnection : IDisposable
 
     /// <summary>Reads what the host reported about its hardware (GPUs, CPU, memory, OS), or null when the host has not
     /// collected it yet. Hosts older than this endpoint throw <see cref="Audio2FaceHostException"/>.</summary>
-    public async Task<HostHardware?> ReadMachineAsync(CancellationToken cancellationToken = default)
+    public async Task<HostHardware?> ReadMachineAsync(CancellationToken cancellationToken = default) =>
+        (await ReadMachineReportAsync(cancellationToken).ConfigureAwait(false)).Hardware;
+
+    /// <summary>Reads the host's hardware report (null when not collected yet) and the Martlet release its gateway runs
+    /// (null for hosts from 0.2.0 and earlier, which do not report it).</summary>
+    public async Task<(HostHardware? Hardware, string? MartletVersion)> ReadMachineReportAsync(CancellationToken cancellationToken = default)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, pairing.Origin + "/martlet/v1/machine");
         Sign(request, []);
@@ -399,7 +404,9 @@ public sealed partial class Audio2FaceHostConnection : IDisposable
             var root = document.RootElement;
             if (root.GetProperty("host_id").GetString() != pairing.HostId)
                 throw new Audio2FaceHostException("response.invalid", "The host identity changed; pair again.");
-            if (!root.TryGetProperty("machine", out var machine) || machine.ValueKind == JsonValueKind.Null) return null;
+            var version = root.TryGetProperty("martlet_version", out var reported) && reported.ValueKind == JsonValueKind.String &&
+                Version.TryParse(reported.GetString(), out var parsed) ? parsed.ToString(3) : null;
+            if (!root.TryGetProperty("machine", out var machine) || machine.ValueKind == JsonValueKind.Null) return (null, version);
             string? Text(JsonElement element, string name) =>
                 element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
                     ? Clean(value.GetString()) : null;
@@ -409,11 +416,11 @@ public sealed partial class Audio2FaceHostConnection : IDisposable
             var gpus = machine.GetProperty("gpus").EnumerateArray().Take(16)
                 .Select(gpu => new HostGpu(Text(gpu, "name") ?? "GPU", Text(gpu, "vendor") ?? "other", Integer(gpu, "memory_mb"), Text(gpu, "driver")))
                 .ToArray();
-            return new HostHardware(pairing.HostId, pairing.Origin, machine.GetProperty("collected_at").GetDateTimeOffset(),
+            return (new HostHardware(pairing.HostId, pairing.Origin, machine.GetProperty("collected_at").GetDateTimeOffset(),
                 clock.GetUtcNow(), Text(machine, "method") ?? "unknown", Text(machine, "operating_system") ?? "Unknown",
                 Text(machine, "kernel"), Text(machine, "processor"), Integer(machine, "processor_threads"),
                 machine.TryGetProperty("memory_gb", out var memory) && memory.ValueKind == JsonValueKind.Number ? memory.GetDouble() : null,
-                Text(machine, "container_runtime"), Text(machine, "nvidia_containers"), gpus);
+                Text(machine, "container_runtime"), Text(machine, "nvidia_containers"), gpus) { MartletVersion = version }, version);
         }
         catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException)
         {

@@ -254,11 +254,17 @@ internal static class HostControl
             var text = offers.Count == 0 ? "Reachable. Runs no Martlet role yet."
                 : "Reachable. Runs " + string.Join(", ", HostRoles.All.Where(r => offers.ContainsKey(r.Kind))
                     .Select(r => $"{r.Name} (model {offers[r.Kind]})")) + ".";
-            try { text += " " + await HostsWindow.ReadHardwareAsync(connection, hardware, token); }
+            string? version = null;
+            try
+            {
+                var (hardwareText, reported) = await HostsWindow.ReadHardwareAsync(connection, hardware, token);
+                text += " " + hardwareText;
+                version = reported;
+            }
             catch (OperationCanceledException) when (!token.IsCancellationRequested) { }
             catch (Exception error) when (error is Audio2FaceHostException or IOException or JsonException or TimeoutException or
                 HttpRequestException or InvalidOperationException) { }
-            return new(true, text, offers, routes);
+            return new(true, text, offers, version, routes);
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested) { return new(false, "Did not answer in time."); }
         catch (Exception error) when (error is Audio2FaceHostException or IOException or UnauthorizedAccessException or ContractException or

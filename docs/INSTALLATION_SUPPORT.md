@@ -531,15 +531,23 @@ revocation later; report that limitation. Removing Martlet never uninstalls
 shared Docker/driver packages by default. Retained data remains subject to the
 user's local backup/privacy policy.
 
-The Desktop now supports OFF-by-default, opt-in launch checks or an explicit
-manual check against the public GitHub releases list. A newer versioned
-win-x64 installer from a normal (non-draft, non-prerelease) release can be
-downloaded only after confirmation and an exact GitHub asset size/SHA-256
-check. That digest is not publisher trust: the app neither executes the
-download nor claims an installed upgrade. Releases ship an unsigned installer
-with a narrow personal/noncommercial binary-use grant; code signing is not a
-requirement for this personal project. A user-approved in-app install step (with upgrade and
-rollback handling) is not implemented. Windows may display publisher warnings;
+The Desktop supports OFF-by-default automatic checks (on enabling, then every
+15 minutes to 24 hours while it runs) or an explicit manual check against the
+public GitHub releases list. A newer versioned win-x64 installer from a normal
+(non-draft, non-prerelease) release is downloaded into the local `updates\`
+folder only after an exact GitHub asset size/SHA-256 check. *Install* (or the
+opt-in automatic install, which waits until the character, conversations and
+Martlet windows are closed, or until exit) closes Martlet, runs the installer
+silently with its progress window and no optional prerequisite tasks, records
+the exit code and restarts Martlet. That digest is not publisher trust.
+Releases ship an unsigned installer with a narrow personal/noncommercial
+binary-use grant; code signing is not a requirement for this personal project.
+Rollback is reinstalling an older release; there is no automatic downgrade.
+Paired hosts report their Martlet version, and `martlet-host update` rebuilds
+a host's gateway from the desktop's version in place (identity, pairings,
+roles and data kept); the desktop runs it in a console per host or, when
+opted in, in the background over SSH keys or Docker Desktop.
+Windows may display publisher warnings;
 never suppress or bypass them. No surprise model updates or
 unreviewed `latest` image tags. Beta remains an unimplemented opt-in channel,
 not an automatic fallback. Self-contained .NET runtime security patches
