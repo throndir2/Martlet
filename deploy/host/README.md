@@ -414,6 +414,18 @@ stop any Ollama already installed there first; `stt` uses 127.0.0.1:8178.
   transcribed that sample through the pinned gateway and `Martlet.Gateway.Stt` (2.2 s on the
   CPU). Not yet run: `martlet-host add stt` end to end, a Linux host, the CUDA build on an
   NVIDIA GPU, or a live conversation turn against a real host.
+- **F5 voice role** (`f5`): on Windows with Docker Desktop (CPU, no GPU), the role's
+  `compose.yaml` built its image from `workers/f5` (hash-locked install, runtime inventory
+  generated at build time) and ran as its unprivileged user; `martlet-f5 provision`
+  downloaded all four pinned model files and verified their SHA-256; the worker's own
+  runtime-inventory, artifact and imported-origin checks passed and the pinned F5/Torch/Vocos
+  imports raised no audit-hook denial; the worker's production engine loaded
+  `F5TTS_v1_Base` and synthesized 3.2 s of 24 kHz PCM on the CPU (a direct engine call, since
+  the worker config only allows `cuda:N`, so `warm` itself stops at the missing GPU). With the
+  deterministic fixture engine (FIXTURE - NOT AI), a desktop client spoke through the pinned
+  gateway, `Martlet.Gateway.F5`, `martlet_f5_host.py` and the real worker. Not yet run:
+  `martlet-host add f5` end to end, a Linux host, an NVIDIA GPU (warmup, latency, VRAM),
+  real voice quality, or a live conversation turn against a real host.
 - **Update**: the engine script passes `bash -n` and the desktop's update
   commands are covered by unit tests. `update` itself has not yet been run
   against a real Docker or native host.
