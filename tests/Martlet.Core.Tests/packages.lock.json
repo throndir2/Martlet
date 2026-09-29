@@ -90,7 +90,7 @@
       "martlet.audio": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.1.0, )"
+          "Martlet.Core": "[0.2.0, )"
         }
       },
       "martlet.core": {
@@ -99,27 +99,27 @@
       "martlet.credentials.windows": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.1.0, )"
+          "Martlet.Core": "[0.2.0, )"
         }
       },
       "martlet.diagnostics": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.1.0, )",
-          "Martlet.Sessions": "[0.1.0, )"
+          "Martlet.Core": "[0.2.0, )",
+          "Martlet.Sessions": "[0.2.0, )"
         }
       },
       "martlet.fixtures": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.1.0, )"
+          "Martlet.Core": "[0.2.0, )"
         }
       },
       "martlet.sessions": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Audio": "[0.1.0, )",
-          "Martlet.Fixtures": "[0.1.0, )"
+          "Martlet.Audio": "[0.2.0, )",
+          "Martlet.Fixtures": "[0.2.0, )"
         }
       }
     }

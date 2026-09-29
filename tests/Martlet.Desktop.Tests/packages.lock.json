@@ -125,7 +125,7 @@
       "martlet.audio": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.1.0, )",
+          "Martlet.Core": "[0.2.0, )",
           "NAudio.Wasapi": "[3.1.0, )"
         }
       },
@@ -134,35 +134,35 @@
         "dependencies": {
           "Google.Protobuf": "[3.36.2, )",
           "Grpc.Net.Client": "[2.84.0, )",
-          "Martlet.Avatars": "[0.1.0, )",
-          "Martlet.Core": "[0.1.0, )"
+          "Martlet.Avatars": "[0.2.0, )",
+          "Martlet.Core": "[0.2.0, )"
         }
       },
       "martlet.avatar.hosting": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Avatars": "[0.1.0, )"
+          "Martlet.Avatars": "[0.2.0, )"
         }
       },
       "martlet.avatar.rendererhost": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Avatar.Hosting": "[0.1.0, )",
+          "Martlet.Avatar.Hosting": "[0.2.0, )",
           "Microsoft.Web.WebView2": "[1.0.4191.47, )"
         }
       },
       "martlet.avatars": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.1.0, )"
+          "Martlet.Core": "[0.2.0, )"
         }
       },
       "martlet.conversation": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Audio": "[0.1.0, )",
-          "Martlet.Core": "[0.1.0, )",
-          "Martlet.Providers": "[0.1.0, )"
+          "Martlet.Audio": "[0.2.0, )",
+          "Martlet.Core": "[0.2.0, )",
+          "Martlet.Providers": "[0.2.0, )"
         }
       },
       "martlet.core": {
@@ -171,47 +171,47 @@
       "martlet.credentials.windows": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.1.0, )"
+          "Martlet.Core": "[0.2.0, )"
         }
       },
       "martlet.desktop": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Audio": "[0.1.0, )",
-          "Martlet.Avatar.Audio2Face": "[0.1.0, )",
-          "Martlet.Avatar.Hosting": "[0.1.0, )",
-          "Martlet.Conversation": "[0.1.0, )",
-          "Martlet.Credentials.Windows": "[0.1.0, )",
-          "Martlet.Diagnostics": "[0.1.0, )",
-          "Martlet.Memory": "[0.1.0, )",
-          "Martlet.Participation": "[0.1.0, )",
-          "Martlet.Support": "[0.1.0, )"
+          "Martlet.Audio": "[0.2.0, )",
+          "Martlet.Avatar.Audio2Face": "[0.2.0, )",
+          "Martlet.Avatar.Hosting": "[0.2.0, )",
+          "Martlet.Conversation": "[0.2.0, )",
+          "Martlet.Credentials.Windows": "[0.2.0, )",
+          "Martlet.Diagnostics": "[0.2.0, )",
+          "Martlet.Memory": "[0.2.0, )",
+          "Martlet.Participation": "[0.2.0, )",
+          "Martlet.Support": "[0.2.0, )"
         }
       },
       "martlet.diagnostics": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.1.0, )",
-          "Martlet.Sessions": "[0.1.0, )"
+          "Martlet.Core": "[0.2.0, )",
+          "Martlet.Sessions": "[0.2.0, )"
         }
       },
       "martlet.doctor": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Audio": "[0.1.0, )",
-          "Martlet.Diagnostics": "[0.1.0, )"
+          "Martlet.Audio": "[0.2.0, )",
+          "Martlet.Diagnostics": "[0.2.0, )"
         }
       },
       "martlet.fixtures": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.1.0, )"
+          "Martlet.Core": "[0.2.0, )"
         }
       },
       "martlet.mcp.protocol": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Doctor": "[0.1.0, )"
+          "Martlet.Doctor": "[0.2.0, )"
         }
       },
       "martlet.memory": {
@@ -223,20 +223,20 @@
       "martlet.providers": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.1.0, )"
+          "Martlet.Core": "[0.2.0, )"
         }
       },
       "martlet.sessions": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Audio": "[0.1.0, )",
-          "Martlet.Fixtures": "[0.1.0, )"
+          "Martlet.Audio": "[0.2.0, )",
+          "Martlet.Fixtures": "[0.2.0, )"
         }
       },
       "martlet.support": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Diagnostics": "[0.1.0, )"
+          "Martlet.Diagnostics": "[0.2.0, )"
         }
       },
       "Google.Protobuf": {
