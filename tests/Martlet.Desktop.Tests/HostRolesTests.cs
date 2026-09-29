@@ -24,7 +24,7 @@ public sealed class HostRolesTests
         Assert.Equal(a, loaded[0]);
         Assert.Equal(HostSetupMethod.ThisPcDocker, loaded[2].Method);
         Assert.True(loaded[1].CanLaunch);
-        Assert.Contains("ssh -t me@gpu-b", HostSetupCommands.Script(loaded[1].Target("0.2.0"), HostAction.AddAudio2Face), StringComparison.Ordinal);
+        Assert.Contains("ssh -t me@gpu-b", HostSetupCommands.Script(loaded[1].Target("0.2.0"), HostAction.Add(HostRoles.Audio2Face)), StringComparison.Ordinal);
         File.WriteAllText(Path.Combine(scope.DirectoryPath, HostRegistry.FileName), "{not json");
         Assert.Throws<InvalidDataException>(() => HostRegistry.Load(scope.DirectoryPath));
     }
@@ -40,7 +40,8 @@ public sealed class HostRolesTests
         };
         var checks = new Dictionary<string, HostCheck>
         {
-            ["gpu-a"] = new(true, "Reachable. Runs Audio2Face (model claire).", new Dictionary<string, string> { ["audio2face"] = "claire" }),
+            ["gpu-a"] = new(true, "Reachable. Runs Audio2Face (model claire).",
+                new Dictionary<string, string> { ["audio2face"] = "claire", ["ollama"] = "llama3.2-3b" }),
             ["gpu-b"] = new(true, "Reachable. Not running Audio2Face.", new Dictionary<string, string>())
         };
         var avatar = scope.Profile() with { RemoteHost = hosts[1].Pairing };
@@ -51,6 +52,9 @@ public sealed class HostRolesTests
         Assert.Contains(a.Roles, r => r.Chip == "Lip-sync" && r.Detail.Contains("standing by", StringComparison.Ordinal));
         Assert.Contains(a.Commands, c => c.Action == NodeAction.UseForLipSync && c.Argument == "gpu-a" && c.Primary);
         Assert.Contains(a.Commands, c => c.Action == NodeAction.RemoveRole && c.Argument == "gpu-a/audio2face");
+        Assert.Contains(a.Roles, r => r.Chip == "Thinks" && r.Detail.Contains("llama3.2-3b", StringComparison.Ordinal));
+        Assert.Contains(a.Commands, c => c.Action == NodeAction.UseForThinking && c.Argument == "gpu-a" && c.Primary);
+        Assert.Contains(b.Commands, c => c.Action == NodeAction.InstallRole && c.Argument == "gpu-b/ollama");
         Assert.Contains(b.Roles, r => r.Chip == "Lip-sync" && r.Detail.StartsWith("In charge", StringComparison.Ordinal));
         Assert.DoesNotContain(b.Commands, c => c.Action == NodeAction.UseForLipSync);
         Assert.Contains(b.Commands, c => c.Action == NodeAction.InstallRole && c.Argument == "gpu-b/audio2face");

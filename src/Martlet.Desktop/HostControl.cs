@@ -42,21 +42,36 @@ internal sealed record PairedHost
     };
 }
 
-/// <summary>A role a Martlet host can run for this desktop, installed with the same martlet-host flow as every role.</summary>
-internal sealed record HostRoleInfo(string Kind, string Chip, string Name, string Needs, HostAction Add, HostAction Remove);
+/// <summary>A role a Martlet host can run for this desktop, installed with the same martlet-host flow as every role.
+/// <paramref name="RouteId"/> is the gateway route the host advertises once the role runs.</summary>
+internal sealed record HostRoleInfo(string Kind, string Chip, string Name, string Needs, string RouteId, string Job, string Description)
+{
+    internal HostAction Add => HostAction.Add(Kind);
+    internal HostAction Remove => HostAction.Remove(Kind);
+}
 
+/// <summary>The role catalog. A new role needs its deploy/host/roles files, a gateway relay worker and one entry here.</summary>
 internal static class HostRoles
 {
     internal const string Audio2Face = "audio2face";
+    internal const string Ollama = "ollama";
 
     internal static readonly IReadOnlyList<HostRoleInfo> All =
     [
         new(Audio2Face, "Lip-sync", "Lip-sync (Audio2Face)", "an NVIDIA GPU with 4 GB+ and a free NVIDIA NGC API key",
-            HostAction.AddAudio2Face, HostAction.RemoveAudio2Face)
+            Audio2FaceHostClient.RouteId, "lip-sync",
+            "Moves the character's face in time with Martlet's generated voice. Needs an NVIDIA GPU with 4 GB+ and a free " +
+            "NVIDIA NGC API key on the host. Only the generated voice is sent, over pinned TLS."),
+        new(Ollama, "Thinks", "Thinking (Ollama)", "Docker; an NVIDIA GPU makes replies fast (small models also run on the CPU)",
+            HostRoute.OllamaChatRouteId, "thinking",
+            "Runs the conversation model (the bot's thinking) on the host instead of a cloud provider. An NVIDIA GPU makes " +
+            "replies fast; small models also run on the CPU. Your messages and recent conversation go only to that host, over pinned TLS.")
     ];
 
     internal static HostRoleInfo Get(string kind) => All.FirstOrDefault(r => r.Kind == kind) ??
         throw new InvalidOperationException($"Unknown host role '{kind}'.");
+
+    internal static HostRoleInfo? ForRoute(string routeId) => All.FirstOrDefault(r => r.RouteId == routeId);
 }
 
 /// <summary>Every Martlet host this desktop is paired with, in hosts.json next to the other local preferences. Which host
@@ -232,15 +247,18 @@ internal static class HostControl
         try
         {
             read.Secret.Use(secret => connection = new Audio2FaceHostConnection(GatewayAvatarHostLink.Pairing(host), secret));
-            var route = await connection!.ReadRouteAsync(token);
+            var routes = await connection!.ReadRoutesAsync(token);
             var offers = new Dictionary<string, string>(StringComparer.Ordinal);
-            if (route is not null) offers[HostRoles.Audio2Face] = route.ModelId;
-            var text = route is null ? "Reachable. Not running Audio2Face." : $"Reachable. Runs Audio2Face (model {route.ModelId}).";
+            foreach (var route in routes)
+                if (HostRoles.ForRoute(route.RouteId) is { } role) offers[role.Kind] = route.ModelId;
+            var text = offers.Count == 0 ? "Reachable. Runs no Martlet role yet."
+                : "Reachable. Runs " + string.Join(", ", HostRoles.All.Where(r => offers.ContainsKey(r.Kind))
+                    .Select(r => $"{r.Name} (model {offers[r.Kind]})")) + ".";
             try { text += " " + await HostsWindow.ReadHardwareAsync(connection, hardware, token); }
             catch (OperationCanceledException) when (!token.IsCancellationRequested) { }
             catch (Exception error) when (error is Audio2FaceHostException or IOException or JsonException or TimeoutException or
                 HttpRequestException or InvalidOperationException) { }
-            return new(true, text, offers);
+            return new(true, text, offers, routes);
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested) { return new(false, "Did not answer in time."); }
         catch (Exception error) when (error is Audio2FaceHostException or IOException or UnauthorizedAccessException or ContractException or

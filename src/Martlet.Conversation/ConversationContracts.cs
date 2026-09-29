@@ -45,9 +45,10 @@ public sealed record ChatCompletionsTarget(string BaseUrl, bool Keyless = false)
 }
 
 // A new instance is explicit input, not a stored provider thread or automatic conversation history.
+// Host selects a paired Martlet host's own conversation model (Ollama) instead of a cloud destination.
 public sealed class ConversationRequest(
     BoundedTextInput input, TextModelSelection model, TextGenerationLimits textLimits,
-    ConversationLimits limits, SpeechOutput? speech = null, ChatCompletionsTarget? chat = null)
+    ConversationLimits limits, SpeechOutput? speech = null, ChatCompletionsTarget? chat = null, HostTextTarget? host = null)
 {
     [JsonIgnore] public BoundedTextInput Input { get; } = input;
     public TextModelSelection Model { get; } = model;
@@ -55,6 +56,7 @@ public sealed class ConversationRequest(
     public ConversationLimits Limits { get; } = limits;
     public SpeechOutput? Speech { get; } = speech;
     public ChatCompletionsTarget? Chat { get; } = chat;
+    [JsonIgnore] public HostTextTarget? Host { get; } = host;
 
     internal void Validate()
     {
@@ -65,7 +67,16 @@ public sealed class ConversationRequest(
         TextLimits.Validate();
         Limits.Validate();
         ContractRules.Identifier(Model.ModelAlias);
-        if (Chat is { } chat)
+        if (Host is { } host)
+        {
+            ContractRules.Require(Chat is null && Model.ModelAlias == SelfHostSetup.GatewayOllamaAlias &&
+                Uri.TryCreate(host.Origin, UriKind.Absolute, out var origin) && origin.Scheme == Uri.UriSchemeHttps &&
+                host.CredentialId != Guid.Empty,
+                "A Martlet host destination requires its own model alias, pinned HTTPS origin and paired credential.",
+                ErrorCode.ProviderCapability);
+            ContractRules.Identifier(Model.UpstreamModelId);
+        }
+        else if (Chat is { } chat)
         {
             _ = ChatCompletionsSetup.BaseUri(chat.BaseUrl);
             ChatCompletionsSetup.ModelId(Model.UpstreamModelId);

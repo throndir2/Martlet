@@ -11,7 +11,17 @@ namespace Martlet.Desktop;
 /// <summary>How the desktop reaches the machine that becomes a Martlet host. Every method runs the same martlet-host engine.</summary>
 internal enum HostSetupMethod { ThisPcDocker, SshDocker, SshNative, OnHost }
 
-internal enum HostAction { Setup, Pair, AddAudio2Face, Status, RemoveAudio2Face }
+internal enum HostVerb { Setup, Pair, Add, Status, Remove }
+
+/// <summary>A martlet-host command. Add and Remove name the role (see <see cref="HostRoles"/>); every role uses the same flow.</summary>
+internal sealed record HostAction(HostVerb Verb, string? Role = null)
+{
+    internal static readonly HostAction Setup = new(HostVerb.Setup);
+    internal static readonly HostAction Pair = new(HostVerb.Pair);
+    internal static readonly HostAction Status = new(HostVerb.Status);
+    internal static HostAction Add(string role) => new(HostVerb.Add, role);
+    internal static HostAction Remove(string role) => new(HostVerb.Remove, role);
+}
 
 internal sealed record HostSetupTarget(HostSetupMethod Method, string SshTarget, string Address, string? HostId, string Version);
 
@@ -27,18 +37,22 @@ internal static partial class HostSetupCommands
     [GeneratedRegex(@"\A[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}\z")]
     private static partial Regex VersionPattern();
 
-    internal static string Engine(HostAction action) => action switch
+    [GeneratedRegex(@"\A[a-z0-9][a-z0-9-]{0,31}\z")]
+    private static partial Regex RolePattern();
+
+    internal static string Engine(HostAction action) => action.Verb switch
     {
-        HostAction.Setup => "setup",
-        HostAction.Pair => "pair",
-        HostAction.AddAudio2Face => "add audio2face",
-        HostAction.Status => "status",
-        HostAction.RemoveAudio2Face => "remove audio2face",
+        HostVerb.Setup => "setup",
+        HostVerb.Pair => "pair",
+        HostVerb.Add when action.Role is { } role && RolePattern().IsMatch(role) => $"add {role}",
+        HostVerb.Status => "status",
+        HostVerb.Remove when action.Role is { } role && RolePattern().IsMatch(role) => $"remove {role}",
         _ => throw new ArgumentOutOfRangeException(nameof(action))
     };
 
     internal static void Validate(HostSetupTarget target, HostAction action)
     {
+        _ = Engine(action);
         if (!VersionPattern().IsMatch(target.Version)) throw new InvalidOperationException("Unexpected Martlet version.");
         if (target.Method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative && !SshTargetPattern().IsMatch(target.SshTarget))
             throw new InvalidOperationException("Enter the SSH target as user@computer (for example me@192.168.1.20 or me@gpu-pc).");

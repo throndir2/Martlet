@@ -309,8 +309,9 @@ public static class Audio2FaceHostClient
     }
 }
 
-/// <summary>A paired connection that relays generated-speech chunks to the host's Audio2Face service.</summary>
-public sealed class Audio2FaceHostConnection : IDisposable
+/// <summary>A paired connection to a Martlet host's gateway: lists the roles it offers and relays requests to them
+/// (Audio2Face lip-sync here, the Ollama conversation model in HostChat.cs).</summary>
+public sealed partial class Audio2FaceHostConnection : IDisposable
 {
     private const string Role = "voice";
     private readonly Audio2FaceHostPairing pairing;
@@ -337,6 +338,18 @@ public sealed class Audio2FaceHostConnection : IDisposable
     /// <summary>Reads the host's advertised Audio2Face relay route, or null when the host has none.</summary>
     public async Task<Audio2FaceHostRoute?> ReadRouteAsync(CancellationToken cancellationToken = default)
     {
+        var route = (await ReadRoutesAsync(cancellationToken).ConfigureAwait(false))
+            .FirstOrDefault(r => r.RouteId == Audio2FaceHostClient.RouteId);
+        if (route is null || route.Path != "/martlet/v1/inference/audio2face" || route.ContractId != Audio2FaceHostClient.ContractId)
+            return null;
+        return new(route.Path, route.RouteId, route.ContractId, route.ContractVersion, route.DestinationId, route.WorkerId,
+            route.AdapterVersion, route.ModelId, route.ModelRevision, route.ModelSha256, route.ArtifactIdentitySha256,
+            route.MaximumInputBytes, route.MaximumEventBytes, route.MaximumStreamBytes, route.MaximumDuration);
+    }
+
+    /// <summary>Reads every route the host offers this PC (one per installed role), from its signed capabilities.</summary>
+    public async Task<IReadOnlyList<HostRoute>> ReadRoutesAsync(CancellationToken cancellationToken = default)
+    {
         using var request = new HttpRequestMessage(HttpMethod.Get, pairing.Origin + "/martlet/v1/capabilities");
         Sign(request, []);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -349,20 +362,20 @@ public sealed class Audio2FaceHostConnection : IDisposable
             var root = document.RootElement;
             if (root.GetProperty("host_id").GetString() != pairing.HostId)
                 throw new Audio2FaceHostException("response.invalid", "The host identity changed; pair again.");
-            foreach (var route in root.GetProperty("routes").EnumerateArray())
+            var routes = new List<HostRoute>();
+            foreach (var route in root.GetProperty("routes").EnumerateArray().Take(8))
             {
-                if (route.GetProperty("route_id").GetString() != Audio2FaceHostClient.RouteId) continue;
                 string Text(string name) => route.GetProperty(name).GetString()!;
-                var path = Text("path");
-                if (path != "/martlet/v1/inference/audio2face" || Text("contract_id") != Audio2FaceHostClient.ContractId)
-                    return null;
-                return new(path, Text("route_id"), Text("contract_id"), Text("contract_version"), Text("destination_id"),
-                    Text("worker_id"), Text("adapter_version"), Text("model_id"), Text("model_revision"), Text("model_sha256"),
-                    Text("artifact_identity_sha256"), route.GetProperty("maximum_input_bytes").GetInt32(),
-                    route.GetProperty("maximum_event_bytes").GetInt32(), route.GetProperty("maximum_stream_bytes").GetInt32(),
-                    TimeSpan.FromMilliseconds(route.GetProperty("maximum_duration_milliseconds").GetInt64()));
+                int Number(string name) => route.GetProperty(name).GetInt32();
+                routes.Add(new(Text("route_id"), Text("path"), Text("contract_id"), Text("contract_version"),
+                    Text("destination_id"), Text("worker_id"), Text("adapter_version"), Text("model_id"),
+                    Text("model_revision"), Text("model_sha256"), Text("artifact_identity_sha256"),
+                    Number("maximum_request_bytes"), Number("maximum_input_bytes"), Number("maximum_output_bytes"),
+                    Number("maximum_event_bytes"), Number("maximum_events"), Number("maximum_stream_bytes"),
+                    TimeSpan.FromMilliseconds(route.GetProperty("maximum_duration_milliseconds").GetInt64()),
+                    Text("cancellation")));
             }
-            return null;
+            return routes;
         }
         catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException)
         {

@@ -220,7 +220,6 @@ public sealed class GatewayAuthenticatedClient : IDisposable
         limits.Validate();
         var route = GatewayInferenceRoute.FromCapability(capability);
         GatewayRules.Require(route.Kind == GatewayInferenceKind.OllamaChat &&
-            input.Personality is null && input.History.Count == 0 &&
             input.Utf8Bytes <= route.MaximumInputBytes &&
             double.IsFinite(temperature) && temperature is >= 0 and <= 2,
             "request.invalid");
@@ -236,7 +235,9 @@ public sealed class GatewayAuthenticatedClient : IDisposable
                 input.UserText,
                 temperature,
                 limits.MaxOutputTokens,
-                limits.MaxContextTokens)), cancellationToken);
+                limits.MaxContextTokens,
+                input.Personality,
+                input.History)), cancellationToken);
     }
 
     public IAsyncEnumerable<GatewayInferenceEvent> StreamF5Async(
@@ -560,17 +561,31 @@ internal static class GatewayClientJson
         return content;
     }
 
+    // Optional persona and history are omitted when empty so single-message requests keep their original shape.
+    private static Dictionary<string, object> OllamaPayload(GatewayOllamaChatPayload ollama)
+    {
+        var payload = new Dictionary<string, object>
+        {
+            ["input"] = ollama.Input,
+            ["temperature"] = ollama.Temperature,
+            ["maximum_output_tokens"] = ollama.MaximumOutputTokens,
+            ["maximum_context_tokens"] = ollama.MaximumContextTokens
+        };
+        if (ollama.System is { } system) payload["system"] = system;
+        if (ollama.History.Count > 0)
+            payload["history"] = ollama.History.Select(message => new Dictionary<string, string>
+            {
+                ["role"] = message.Role == TextHistoryRole.User ? "user" : "assistant",
+                ["text"] = message.Text
+            }).ToArray();
+        return payload;
+    }
+
     internal static byte[] Request(GatewayInferenceRequest request)
     {
         object payload = request.Payload switch
         {
-            GatewayOllamaChatPayload ollama => new
-            {
-                input = ollama.Input,
-                temperature = ollama.Temperature,
-                maximum_output_tokens = ollama.MaximumOutputTokens,
-                maximum_context_tokens = ollama.MaximumContextTokens
-            },
+            GatewayOllamaChatPayload ollama => OllamaPayload(ollama),
             GatewayF5SynthesisPayload f5 => new
             {
                 preset_id = f5.PresetId,

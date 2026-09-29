@@ -11,6 +11,7 @@
     <PackageReference Include="Grpc.AspNetCore.Server" />
     <ProjectReference Include="..\..\src\Martlet.Gateway\Martlet.Gateway.csproj" />
     <ProjectReference Include="..\..\src\Martlet.Gateway.Audio2Face\Martlet.Gateway.Audio2Face.csproj" />
+    <ProjectReference Include="..\..\src\Martlet.Gateway.Ollama\Martlet.Gateway.Ollama.csproj" />
     <Compile Include="..\Martlet.Avatar.Audio2Face.Tests\ProtocolFixture.cs" Link="Fixtures\ProtocolFixture.cs" />
     <Using Include="Xunit" />
   </ItemGroup>

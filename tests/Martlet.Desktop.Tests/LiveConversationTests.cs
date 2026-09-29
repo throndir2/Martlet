@@ -45,6 +45,26 @@ public sealed class LiveConversationTests
         }, route.ModelId);
         configuration = LiveConversationConfiguration.From(loaded with { Settings = selfHost })!;
         Assert.Contains("saved self-host choice is retained", configuration.Unavailable(false, false));
+
+        // Handed to a paired host on the Devices page: pairing reference, route snapshot and recorded selection.
+        var pairingCredential = HostPairingCredential.FromGuid(Guid.NewGuid());
+        var paired = SetupSettings.ReplaceRoute(selfHost, selfHost.Setup!.Routes.Single(item => item.Role == SetupRole.Llm) with
+        {
+            CredentialId = HostPairingCredential.ToGuid(pairingCredential), GatewayDeviceId = "desktop-test"
+        });
+        paired = SetupSettings.ApplyGatewaySnapshot(paired, SetupRole.Llm, MainWindow.Snapshot(new(
+            "martlet.gateway.ollama-chat.v1", "/martlet/v1/inference/ollama-chat", "ollama-native-chat-v034-text", "1.0",
+            "ollama-host", "ollama-relay", "0.1.0", "llama3.2-3b", "ollama", new string('c', 64), "sha256:" + new string('d', 64),
+            98_304, 16_384, 65_536, 65_536, 4_096, 4_194_304, TimeSpan.FromSeconds(60), "request_abort")));
+        paired = SetupSettings.SetRouteEnabled(paired, SetupRole.Llm, true, true);
+        configuration = LiveConversationConfiguration.From(loaded with { Settings = paired })!;
+        Assert.Null(configuration.Unavailable(false, false));
+        Assert.Contains("Your own Martlet host runs this model", configuration.Disclosure(false));
+        var request = configuration.Request(new("Hello host"), false, ResponseStyle.Helpful, [], null, out _, out _);
+        Assert.Equal(SelfHostSetup.GatewayOllamaAlias, request.Model.ModelAlias);
+        Assert.Equal("llama3.2-3b", request.Model.UpstreamModelId);
+        Assert.Equal(("fixture-host", "https://127.0.0.1:7443", pairingCredential),
+            (request.Host!.HostId, request.Host.Origin, HostPairingCredential.FromGuid(request.Host.CredentialId)));
         fixture.NoEffects();
     }
 
