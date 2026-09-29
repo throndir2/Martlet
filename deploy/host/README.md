@@ -142,17 +142,31 @@ the service. **Check host** shows whether the host offers Audio2Face.
 2. Add the gateway relay worker for its `gateway_kind` (see
    `Martlet.Gateway.Audio2Face`) and register the kind in
    `Martlet.Gateway.Host.Linux` (`HostConfiguration.RoleKinds`, `NativeHostPlatform.RoleWorker`).
-3. Teach the desktop to use that route when a paired host advertises it.
+3. Teach the desktop to use that route when a paired host advertises it, and add
+   the role to `HostRoles` in `src/Martlet.Desktop/HostControl.cs` so the Devices
+   map can install, remove and hand it to any paired host.
 
 No new install script and no new method work: every method runs the same engine.
 Roles without a gateway relay worker yet (Ollama LLM, F5 voice, screen
 understanding, speech-to-text) are not listed.
 
+## Switching which computer does what
+
+A desktop can pair with any number of hosts. On its **Devices** page, *Who does
+what* shows which computer handles each job, and lip-sync moves between *This
+PC*, any paired host and *nobody* (voice loudness) instantly, without restarting
+the character. From each host's details the desktop runs `add <role>`,
+`remove <role>` and `status` on that host through the route it was paired with
+(SSH with Docker, SSH native, or this PC's Docker Desktop), so moving
+Audio2Face from one GPU PC to another is: hand lip-sync to the new host (Martlet
+offers to install it there), then *Remove Audio2Face* from the old one. Every
+change on a host is still confirmed with `yes` in that host's console.
+
 ## Roles
 
 | Role | Needs | Desktop use |
 | --- | --- | --- |
-| `audio2face` | NVIDIA GPU (4 GB+), free NVIDIA account with an [NGC API key](https://org.ngc.nvidia.com/setup/api-key); NIM `nvcr.io/nim/nvidia/audio2face-3d:1.3`, models `claire`/`mark`/`james` | Automatic lip-sync uses it when this PC has no local Audio2Face |
+| `audio2face` | NVIDIA GPU (4 GB+), free NVIDIA account with an [NGC API key](https://org.ngc.nvidia.com/setup/api-key); NIM `nvcr.io/nim/nvidia/audio2face-3d:1.3`, models `claire`/`mark`/`james` | Automatic lip-sync uses it when the desktop hands lip-sync to this host (Devices > Who does what) |
 
 ## Status
 

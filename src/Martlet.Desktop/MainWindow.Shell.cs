@@ -27,6 +27,9 @@ public partial class MainWindow
     private MachineInfo machine = MachineInfo.Unknown;
     private AppSettings? homeSettings;
     private AvatarProfile? homeAvatar;
+    private IReadOnlyList<PairedHost> homeHosts = [];
+    private bool renderingBoard;
+    private bool assigningRole;
     private readonly Dictionary<string, HostCheck> hostChecks = new(StringComparer.Ordinal);
     private readonly List<MapElement> mapElements = [];
     private Ellipse? mapGlow;
@@ -231,6 +234,12 @@ public partial class MainWindow
             ContractException or JsonException or OperationCanceledException) { }
         finally { refreshingHome = false; }
         if (closing) return;
+        try { homeHosts = HostRegistry.Load(store.DataDirectory, homeAvatar?.RemoteHost, machine.LanAddress ?? HostSetupCommands.ThisPcAddress()); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            homeHosts = [];
+            ActionText.Text = error.Message;
+        }
         RenderHome();
         if (DevicesPage.IsVisible) RenderMap();
     }
@@ -257,7 +266,8 @@ public partial class MainWindow
         var audioTested = audio is { Input.Checkpoint: not null, Output.Checkpoint: not null };
         var characterName = homeAvatar is { } saved && BundledLive2D.IsBuiltIn(saved.ModelPath)
             ? saved.ModelPath[BundledLive2D.Prefix.Length..] : homeAvatar is null ? "Hiyori" : "Your character";
-        var hosts = homeAvatar?.RemoteHost is not null || routes.Any(r => r.Gateway is not null);
+        var paired = NetworkMap.Hosts(Inputs()).Count;
+        var hosts = paired > 0 || routes.Any(r => r.Gateway is not null);
 
         var steps = new List<HomeStep>
         {
@@ -279,7 +289,8 @@ public partial class MainWindow
                 [new(avatar.IsShowing ? "Hide" : "Show", () => RunNodeAction(NodeAction.ToggleCharacter)),
                  new("Customize", () => RunNodeAction(NodeAction.Character))]),
             new("hosts", "More computers",
-                hosts ? "A Martlet host is paired. See it on the Devices map." : "Lend a GPU PC to Martlet for lip-sync and more.",
+                paired > 1 ? $"{paired} Martlet hosts are paired. Hand them jobs on the Devices map."
+                    : hosts ? "A Martlet host is paired. See it on the Devices map." : "Lend a GPU PC to Martlet for lip-sync and more.",
                 hosts, true, [new(hosts ? "Open map" : "Add", () => { if (hosts) Navigate(NavDevices); else RunNodeAction(NodeAction.AddComputer); })])
         };
 
@@ -541,7 +552,7 @@ public partial class MainWindow
 
     // ---------- devices map ----------
 
-    private NetworkInputs Inputs() => new(machine, Role, homeSettings, homeAvatar, avatar.IsShowing, hostChecks);
+    private NetworkInputs Inputs() => new(machine, Role, homeSettings, homeAvatar, avatar.IsShowing, hostChecks, homeHosts);
 
     private void RefreshDevices_Click(object sender, RoutedEventArgs e)
     {
@@ -560,8 +571,8 @@ public partial class MainWindow
     private void DevicesPage_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         var narrow = DevicesPage.ActualWidth < 880;
-        var height = Math.Max(420, DevicesPage.ActualHeight - 150);
-        Grid.SetRow(DetailCard, narrow ? 2 : 1);
+        var height = Math.Max(420, DevicesPage.ActualHeight - 150 - (RolesCard.IsVisible ? RolesCard.ActualHeight + 16 : 0));
+        Grid.SetRow(DetailCard, narrow ? 3 : 2);
         Grid.SetColumn(DetailCard, narrow ? 0 : 1);
         Grid.SetColumnSpan(DetailCard, narrow ? 2 : 1);
         Grid.SetColumnSpan(MapHost, narrow ? 2 : 1);
@@ -574,6 +585,7 @@ public partial class MainWindow
     private void RenderMap()
     {
         var nodes = NetworkMap.Build(Inputs());
+        RenderRolesBoard(nodes);
         if (nodes.All(n => n.Id != selectedNode)) selectedNode = "this-pc";
         MapCanvas.Children.Clear();
         mapElements.Clear();
@@ -787,6 +799,9 @@ public partial class MainWindow
             }
         }
 
+        if (node.PairedHostId is { } pairedId && node.Kind == NodeKind.Host && FindHost(pairedId) is { } paired)
+            RenderReachEditor(paired);
+
         if (node.Commands.Count > 0)
         {
             DetailContent.Children.Add(DetailHeading("Configure"));
@@ -796,9 +811,329 @@ public partial class MainWindow
                 if (command.Primary) button.SetResourceReference(StyleProperty, "PrimaryButton");
                 AutomationProperties.SetAutomationId(button, $"NodeAction-{command.Action}");
                 var action = command.Action;
-                button.Click += (_, _) => RunNodeAction(action);
+                var argument = command.Argument;
+                button.Click += (_, _) => RunNodeAction(action, argument);
                 DetailContent.Children.Add(button);
             }
+        }
+    }
+
+    /// <summary>How this desktop reaches a host to install or remove its roles: SSH (Docker or native Ubuntu), this PC's
+    /// Docker Desktop, or by hand on the host.</summary>
+    private void RenderReachEditor(PairedHost host)
+    {
+        DetailContent.Children.Add(DetailHeading("How Martlet reaches it"));
+        var method = new ComboBox { Margin = new Thickness(0, 0, 0, 8) };
+        AutomationProperties.SetName(method, "How Martlet reaches this host");
+        AutomationProperties.SetAutomationId(method, "HostReachMethod");
+        foreach (var (value, text) in new[]
+        {
+            (HostSetupMethod.SshDocker, "SSH, with Docker there"), (HostSetupMethod.SshNative, "SSH, native Ubuntu"),
+            (HostSetupMethod.ThisPcDocker, "This PC, with Docker Desktop"), (HostSetupMethod.OnHost, "I run its commands on it myself")
+        })
+        {
+            var item = new ComboBoxItem { Content = text, Tag = value };
+            method.Items.Add(item);
+            if (value == host.Method) method.SelectedItem = item;
+        }
+        var label = new TextBlock { Text = "SSH target, for example me@192.168.1.20", Margin = new Thickness(0, 0, 0, 4) };
+        label.SetResourceReference(StyleProperty, "Muted");
+        var ssh = new TextBox { Text = host.SshTarget ?? "", Margin = new Thickness(0, 0, 0, 8) };
+        AutomationProperties.SetName(ssh, "SSH target (user@computer)");
+        AutomationProperties.SetAutomationId(ssh, "HostReachSsh");
+        void Toggle()
+        {
+            var usesSsh = method.SelectedItem is ComboBoxItem { Tag: HostSetupMethod.SshDocker or HostSetupMethod.SshNative };
+            ssh.IsEnabled = label.IsEnabled = usesSsh;
+            if (usesSsh && ssh.Text.Length == 0) ssh.Text = host.Address;
+        }
+        method.SelectionChanged += (_, _) => Toggle();
+        Toggle();
+        var save = new Button { Content = "Save how to reach it", HorizontalAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(0, 0, 0, 8) };
+        AutomationProperties.SetAutomationId(save, "HostReachSave");
+        save.Click += async (_, _) =>
+        {
+            if (method.SelectedItem is not ComboBoxItem { Tag: HostSetupMethod chosen }) return;
+            await HostTaskAsync(async token =>
+            {
+                var updated = await Pairings().SetReachAsync(host.HostId, chosen, ssh.Text, Version, token);
+                homeHosts = HostRegistry.Upsert(homeHosts, updated);
+                ActionText.Text = $"Saved. Martlet reaches {updated.HostId} via: {updated.Reach}.";
+            });
+        };
+        DetailContent.Children.Add(method);
+        DetailContent.Children.Add(label);
+        DetailContent.Children.Add(ssh);
+        DetailContent.Children.Add(save);
+    }
+
+    // ---------- who does what ----------
+
+    private HostPairings Pairings() => new(store!.DataDirectory, new AvatarProfileStore(store.DataDirectory), setupService!);
+
+    private PairedHost? FindHost(string? hostId) => hostId is null ? null
+        : NetworkMap.Hosts(Inputs()).FirstOrDefault(h => h.HostId == hostId);
+
+    private void RenderRolesBoard(IReadOnlyList<NetworkNode> nodes)
+    {
+        var companion = Role == DeviceRole.Companion;
+        RolesCard.Visibility = companion ? Visibility.Visible : Visibility.Collapsed;
+        if (!companion) return;
+        renderingBoard = true;
+        try
+        {
+            RolesBoard.Children.Clear();
+            foreach (var role in new[] { SetupRole.Llm, SetupRole.Stt, SetupRole.Tts })
+            {
+                var name = NetworkMap.RoleName(role);
+                var owner = nodes.FirstOrDefault(n => n.Kind != NodeKind.Missing && n.Roles.Any(r => r.Name == name));
+                var change = new Button { Content = owner is null ? "Choose in Setup" : "Change in Setup", HorizontalAlignment = HorizontalAlignment.Left };
+                AutomationProperties.SetAutomationId(change, "RoleChange-" + role);
+                change.Click += (_, _) => RunNodeAction(NodeAction.Setup);
+                RolesBoard.Children.Add(RoleTile(name, owner?.Title ?? "Not chosen yet",
+                    owner?.Roles.First(r => r.Name == name).Detail ?? "Pick a cloud model or one of your computers in Setup.", change, owner?.Id));
+            }
+
+            var hosts = NetworkMap.Hosts(Inputs());
+            var handler = NetworkMap.LipSync(homeAvatar);
+            var current = handler switch
+            {
+                LipSyncHandler.Loudness => "off",
+                LipSyncHandler.Host => "host:" + homeAvatar!.RemoteHost!.HostId,
+                _ => "this-pc"
+            };
+            var choice = new ComboBox { MinWidth = 200, HorizontalAlignment = HorizontalAlignment.Stretch };
+            AutomationProperties.SetName(choice, "Who handles lip-sync");
+            AutomationProperties.SetAutomationId(choice, "LipSyncOwner");
+            void Option(string key, string text)
+            {
+                var item = new ComboBoxItem { Content = text, Tag = key };
+                choice.Items.Add(item);
+                if (key == current) choice.SelectedItem = item;
+            }
+            Option("this-pc", "This PC");
+            foreach (var host in hosts)
+            {
+                var check = hostChecks.GetValueOrDefault(host.HostId);
+                Option("host:" + host.HostId, host.HostId + (check?.Offers?.ContainsKey(HostRoles.Audio2Face) == true ? " (runs Audio2Face)"
+                    : check?.Reachable == true ? " (Audio2Face not installed)" : check?.Reachable == false ? " (not reachable)" : ""));
+            }
+            Option("off", "Nobody (mouth follows voice loudness)");
+            choice.SelectionChanged += (_, _) =>
+            {
+                if (!renderingBoard && choice.SelectedItem is ComboBoxItem { Tag: string key } && key != current) _ = AssignLipSyncAsync(key);
+            };
+            var (who, detail, nodeId) = handler switch
+            {
+                LipSyncHandler.Loudness => ("Nobody", "The mouth follows the voice's loudness on this PC.", (string?)"this-pc"),
+                LipSyncHandler.Host => (homeAvatar!.RemoteHost!.HostId,
+                    hostChecks.GetValueOrDefault(homeAvatar.RemoteHost.HostId)?.Text ?? "Audio2Face over pinned TLS; voice loudness if it is unavailable.",
+                    nodes.FirstOrDefault(n => n.PairedHostId == homeAvatar.RemoteHost.HostId)?.Id),
+                _ => ("This PC", hosts.Count == 0
+                    ? "Its own Audio2Face service when running, otherwise voice loudness. Add a computer to hand lip-sync to a GPU PC."
+                    : "Its own Audio2Face service when running, otherwise voice loudness.", "this-pc")
+            };
+            RolesBoard.Children.Add(RoleTile("Lip-sync (Audio2Face)", who, detail, choice, nodeId));
+        }
+        finally { renderingBoard = false; }
+    }
+
+    private Border RoleTile(string title, string owner, string detail, FrameworkElement control, string? nodeId)
+    {
+        var tile = new Border { Width = 236, Padding = new Thickness(14, 12, 14, 12), CornerRadius = new CornerRadius(16), Margin = new Thickness(0, 0, 12, 12) };
+        tile.SetResourceReference(Border.BackgroundProperty, "SoftBrush");
+        var stack = new StackPanel();
+        var heading = new TextBlock { Text = title, FontSize = 12 };
+        heading.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+        stack.Children.Add(heading);
+        if (nodeId is not null)
+        {
+            var link = new Button { Content = owner, HorizontalAlignment = HorizontalAlignment.Left, FontSize = 15, FontWeight = FontWeights.SemiBold };
+            link.SetResourceReference(StyleProperty, "LinkButton");
+            AutomationProperties.SetName(link, $"{title}: {owner}. Show on the map");
+            link.Click += (_, _) => SelectNode(nodeId, animate: true);
+            stack.Children.Add(link);
+        }
+        else stack.Children.Add(new TextBlock { Text = owner, FontSize = 15, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
+        var text = new TextBlock { Text = detail, MaxHeight = 38, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 2, 0, 8), ToolTip = detail };
+        text.SetResourceReference(StyleProperty, "Muted");
+        stack.Children.Add(text);
+        stack.Children.Add(control);
+        tile.Child = stack;
+        AutomationProperties.SetName(tile, $"{title}: handled by {owner}. {detail}");
+        return tile;
+    }
+
+    /// <summary>Hands lip-sync to a paired host ("host:ID"), this PC ("this-pc") or nobody ("off"). A host that does not run
+    /// Audio2Face yet can install it in the same step; the showing character switches without restarting.</summary>
+    private async Task AssignLipSyncAsync(string key)
+    {
+        if (store is null || setupService is null || closing) return;
+        if (assigningRole) { ActionText.Text = "Another role change is still finishing."; RenderMap(); return; }
+        assigningRole = true;
+        try
+        {
+            PairedHost? host = null;
+            var install = false;
+            if (key.StartsWith("host:", StringComparison.Ordinal))
+            {
+                host = FindHost(key[5..]) ?? throw new InvalidOperationException("That host is no longer paired.");
+                ActionText.Text = $"Checking {host.HostId}...";
+                var check = await HostControl.CheckAsync(host.Pairing, lifetime.Token);
+                hostChecks[host.HostId] = check;
+                if (check.Reachable != true)
+                {
+                    ActionText.Text = $"Lip-sync stays where it is: {host.HostId} did not answer ({check.Text})";
+                    return;
+                }
+                if (check.Offers?.ContainsKey(HostRoles.Audio2Face) != true)
+                {
+                    var role = HostRoles.Get(HostRoles.Audio2Face);
+                    if (!ConfirmationDialog.Confirm(this,
+                            $"{host.HostId} does not run Audio2Face yet. Hand lip-sync to it and install Audio2Face there now? " +
+                            (host.CanLaunch ? $"A console opens ({host.Reach}) where you confirm each step. " : "Martlet copies the command to run on it. ") +
+                            $"It needs {role.Needs}. Until it is ready, the mouth follows the voice's loudness; then it switches over by itself.",
+                            "Install and hand over"))
+                        return;
+                    install = true;
+                }
+            }
+            var (before, after) = await Pairings().AssignLipSyncAsync(host, key == "off", lifetime.Token);
+            homeAvatar = after;
+            if (avatar.IsShowing)
+            {
+                if (before.LipSync != after.LipSync)
+                {
+                    if (await StopAvatarSafelyAsync()) await ShowSavedCharacterAsync(onlyIfAutoShow: false);
+                }
+                else await avatar.UseHostAsync(after.RemoteHost, lifetime.Token);
+            }
+            var who = key == "off" ? "nobody (the mouth follows the voice's loudness)" : host?.HostId ?? "this PC";
+            var message = $"Lip-sync is now handled by {who}.";
+            if (install) LaunchOnHost(host!, HostRoles.Get(HostRoles.Audio2Face).Add);
+            ActionText.Text = install ? message + " " + ActionText.Text : avatar.IsShowing ? message + " " + avatar.Status : message;
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or
+            JsonException or ArgumentException or Audio2FaceHostException)
+        {
+            ActionText.Text = error.Message;
+        }
+        finally
+        {
+            assigningRole = false;
+            if (!closing)
+            {
+                UpdateCharacterButton();
+                RenderHome();
+                if (DevicesPage.IsVisible) RenderMap();
+            }
+        }
+    }
+
+    private void CheckHosts_Click(object sender, RoutedEventArgs e) => _ = CheckHostsAsync(NetworkMap.Hosts(Inputs()));
+
+    private async Task CheckHostsAsync(IReadOnlyList<PairedHost> hosts)
+    {
+        if (hosts.Count == 0)
+        {
+            ActionText.Text = "No Martlet host is paired yet. Add a computer first.";
+            return;
+        }
+        foreach (var host in hosts) hostChecks[host.HostId] = new(null, "Checking...");
+        if (DevicesPage.IsVisible) RenderMap();
+        (string Id, HostCheck Check)[] results;
+        try { results = await Task.WhenAll(hosts.Select(async h => (h.HostId, await HostControl.CheckAsync(h.Pairing, lifetime.Token)))); }
+        catch (OperationCanceledException) { return; }
+        foreach (var (id, check) in results) hostChecks[id] = check;
+        if (closing) return;
+        ActionText.Text = results.Length == 1 ? $"{results[0].Id}: {results[0].Check.Text}"
+            : $"Checked {results.Length} hosts: {results.Count(r => r.Check.Reachable == true)} reachable, " +
+              $"{results.Count(r => r.Check.Offers?.ContainsKey(HostRoles.Audio2Face) == true)} running Audio2Face.";
+        RenderHome();
+        if (DevicesPage.IsVisible) RenderMap();
+    }
+
+    /// <summary>Runs a martlet-host command on a paired host the way this PC reaches it (SSH or this PC's Docker Desktop);
+    /// the host owner confirms each change in that console. Without a known route it copies the command instead.</summary>
+    private void LaunchOnHost(PairedHost host, HostAction action)
+    {
+        try
+        {
+            if (!host.CanLaunch)
+            {
+                var command = HostSetupCommands.Preview(host.Target(Version) with { Method = HostSetupMethod.OnHost }, action);
+                try { Clipboard.SetText(command); }
+                catch (System.Runtime.InteropServices.ExternalException) { }
+                ActionText.Text = $"Martlet does not know how to reach {host.HostId} yet, so the command to run on it was copied. " +
+                    "Or choose how Martlet reaches it in its details on the Devices map.";
+                return;
+            }
+            HostSetupCommands.Launch(host.Target(Version), action);
+            ActionText.Text = action switch
+            {
+                HostAction.Status => $"{host.HostId}'s status opened in a console window ({host.Reach}).",
+                HostAction.AddAudio2Face => $"Installing Audio2Face on {host.HostId} in a console window ({host.Reach}). Confirm each step there; " +
+                    "this PC picks the role up by itself once it is running.",
+                HostAction.RemoveAudio2Face => $"Removing Audio2Face from {host.HostId} in a console window ({host.Reach}). Confirm there.",
+                _ => $"Opened on {host.HostId} in a console window ({host.Reach})."
+            };
+        }
+        catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException or
+            System.ComponentModel.Win32Exception)
+        {
+            ActionText.Text = error.Message;
+        }
+    }
+
+    private void RunHostRole(string? argument, bool add)
+    {
+        var parts = argument?.Split('/') ?? [];
+        if (parts.Length != 2 || FindHost(parts[0]) is not { } host) return;
+        var role = HostRoles.Get(parts[1]);
+        if (!add && hostChecks.GetValueOrDefault(host.HostId)?.Offers?.ContainsKey(role.Kind) == true &&
+            homeAvatar?.RemoteHost?.HostId == host.HostId && role.Kind == HostRoles.Audio2Face &&
+            !ConfirmationDialog.Confirm(this, $"{host.HostId} handles lip-sync right now. Remove Audio2Face from it anyway? " +
+                "The mouth follows the voice's loudness until you hand lip-sync to another computer.", "Remove role"))
+            return;
+        LaunchOnHost(host, add ? role.Add : role.Remove);
+    }
+
+    private async Task ForgetHostAsync(string? hostId)
+    {
+        if (FindHost(hostId) is not { } host) return;
+        var inCharge = homeAvatar?.RemoteHost?.HostId == host.HostId;
+        if (!ConfirmationDialog.Confirm(this,
+                $"Forget {host.HostId} on this PC? Martlet stops using it{(inCharge ? " and lip-sync goes back to this PC" : "")}, and this PC's " +
+                $"pairing secret is deleted. To remove this PC from the host too, revoke {host.Pairing.DeviceId} in its pairing console.",
+                "Forget host"))
+            return;
+        await HostTaskAsync(async token =>
+        {
+            await Pairings().ForgetAsync(host.HostId, token);
+            hostChecks.Remove(host.HostId);
+            if (inCharge && avatar.IsShowing) await avatar.UseHostAsync(null, token);
+            ActionText.Text = $"Forgot {host.HostId}. Revoke {host.Pairing.DeviceId} in its pairing console to finish.";
+        });
+        await RefreshHomeAsync();
+    }
+
+    private async Task HostTaskAsync(Func<CancellationToken, Task> action)
+    {
+        if (store is null || setupService is null || closing) return;
+        if (assigningRole) { ActionText.Text = "Another role change is still finishing."; return; }
+        assigningRole = true;
+        try { await action(lifetime.Token); }
+        catch (OperationCanceledException) { }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or
+            JsonException or ArgumentException)
+        {
+            ActionText.Text = error.Message;
+        }
+        finally
+        {
+            assigningRole = false;
+            if (!closing && DevicesPage.IsVisible) RenderMap();
         }
     }
 
@@ -807,7 +1142,7 @@ public partial class MainWindow
         Text = text, FontSize = 15, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 14, 0, 8)
     };
 
-    private void RunNodeAction(NodeAction action)
+    private void RunNodeAction(NodeAction action, string? argument = null)
     {
         var args = new RoutedEventArgs();
         switch (action)
@@ -819,34 +1154,26 @@ public partial class MainWindow
             case NodeAction.Prerequisites: Prerequisites_Click(this, args); break;
             case NodeAction.HostThisPc: OpenHosts(HostSetupMethod.ThisPcDocker, 1); break;
             case NodeAction.AddComputer: OpenHosts(null, 0); break;
-            case NodeAction.ManageHost: OpenHosts(null, 2); break;
-            case NodeAction.CheckHost: _ = CheckPairedHostAsync(); break;
+            case NodeAction.ManageHost: OpenHosts(null, 2, FindHost(argument)); break;
+            case NodeAction.CheckHost:
+                var hosts = NetworkMap.Hosts(Inputs());
+                _ = CheckHostsAsync(argument is null ? hosts : hosts.Where(h => h.HostId == argument).ToArray());
+                break;
             case NodeAction.HostDashboard: Navigate(NavHome); break;
             case NodeAction.Advisor: Advisor_Click(this, args); break;
+            case NodeAction.UseForLipSync: _ = AssignLipSyncAsync("host:" + argument); break;
+            case NodeAction.LipSyncThisPc: _ = AssignLipSyncAsync("this-pc"); break;
+            case NodeAction.InstallRole: RunHostRole(argument, add: true); break;
+            case NodeAction.RemoveRole: RunHostRole(argument, add: false); break;
+            case NodeAction.HostStatus: if (FindHost(argument) is { } host) LaunchOnHost(host, HostAction.Status); break;
+            case NodeAction.ForgetHost: _ = ForgetHostAsync(argument); break;
         }
     }
 
-    private async Task CheckPairedHostAsync()
-    {
-        if (homeAvatar?.RemoteHost is not { } host) return;
-        hostChecks[host.HostId] = new(null, "Checking...");
-        if (DevicesPage.IsVisible) RenderMap();
-        try { hostChecks[host.HostId] = new(true, await HostsWindow.CheckAsync(host, text => { }, lifetime.Token)); }
-        catch (OperationCanceledException) { return; }
-        catch (Exception error) when (error is Audio2FaceHostException or IOException or UnauthorizedAccessException or ContractException or
-            InvalidOperationException or ArgumentException or JsonException or TimeoutException or System.Net.Http.HttpRequestException)
-        {
-            hostChecks[host.HostId] = new(false, error.Message);
-        }
-        if (closing) return;
-        RenderHome();
-        if (DevicesPage.IsVisible) RenderMap();
-    }
-
-    private void OpenHosts(HostSetupMethod? method, int step)
+    private void OpenHosts(HostSetupMethod? method, int step, PairedHost? manage = null)
     {
         if (store is null || setupService is null || closing) return;
-        new HostsWindow(new AvatarProfileStore(store.DataDirectory), setupService, method, step) { Owner = this }.ShowDialog();
+        new HostsWindow(new AvatarProfileStore(store.DataDirectory), setupService, method, step, manage) { Owner = this }.ShowDialog();
         _ = RefreshHomeAsync();
     }
 

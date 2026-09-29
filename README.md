@@ -10,7 +10,9 @@ Actual account/device/first-conversation qualification remains **NOT RUN**.
 
 The desktop starts with a short welcome tour, then a Home page with one next
 step at a time (setup checklist, then **Start talking**), a **Devices** map of
-every computer and cloud service with its hardware and roles, a host dashboard
+every computer and cloud service with its hardware and roles, where **Who does
+what** hands jobs such as Audio2Face lip-sync to any paired host on the spot and
+installs or removes host roles remotely, a host dashboard
 for PCs that lend their GPU, and Companion and Settings pages for everything
 else. See the [desktop UI design](docs/UI_DESIGN.md).
 

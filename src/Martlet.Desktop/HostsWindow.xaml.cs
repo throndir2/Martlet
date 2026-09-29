@@ -14,20 +14,21 @@ namespace Martlet.Desktop;
 /// Docker or native Ubuntu, or by hand on the host), install it, pair this desktop with its one-use code and add roles.</summary>
 public partial class HostsWindow : ThemedWindow
 {
-    private readonly AvatarProfileStore profiles;
-    private readonly ISetupService settings;
+    private readonly HostPairings pairings;
     private readonly CancellationTokenSource lifetime = new();
     private readonly string version = typeof(App).Assembly.GetName().Version is { } v ? v.ToString(3) : "0.0.0";
-    private AvatarRemoteHost? paired;
+    private PairedHost? paired;
     private bool busy;
     private int step;
 
-    internal HostsWindow(AvatarProfileStore profiles, ISetupService settings, HostSetupMethod? method = null, int startStep = 0)
+    internal HostsWindow(AvatarProfileStore profiles, ISetupService settings, HostSetupMethod? method = null, int startStep = 0,
+        PairedHost? manage = null)
     {
         InitializeComponent();
-        this.profiles = profiles;
-        this.settings = settings;
-        DeviceIdText.Text = HostSetupCommands.SuggestedDeviceId();
+        pairings = new(Path.GetDirectoryName(profiles.FilePath)!, profiles, settings);
+        paired = manage;
+        DeviceIdText.Text = manage?.Pairing.DeviceId ?? HostSetupCommands.SuggestedDeviceId();
+        method ??= manage?.Method;
         (method switch
         {
             HostSetupMethod.SshDocker => SshDockerMethod,
@@ -35,6 +36,11 @@ public partial class HostsWindow : ThemedWindow
             HostSetupMethod.OnHost => OnHostMethod,
             _ => ThisPcMethod
         }).IsChecked = true;
+        if (manage is not null)
+        {
+            SshTargetText.Text = manage.SshTarget ?? "";
+            AddressText.Text = manage.Address;
+        }
         ShowStep(Math.Clamp(startStep, 0, 3), animate: false);
     }
 
@@ -57,9 +63,11 @@ public partial class HostsWindow : ThemedWindow
 
     private async void Window_Loaded(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
     {
-        paired = (await LoadProfileAsync()).Profile.RemoteHost;
-        if (paired is not null) DeviceIdText.Text = paired.DeviceId;
-        ShowPaired();
+        var (hosts, profile) = await pairings.LoadAsync(lifetime.Token);
+        paired = paired is { } manage ? hosts.FirstOrDefault(h => h.HostId == manage.HostId) ?? manage
+            : hosts.FirstOrDefault(h => h.HostId == profile.RemoteHost?.HostId) ?? hosts.LastOrDefault();
+        if (paired is not null) DeviceIdText.Text = paired.Pairing.DeviceId;
+        ShowPaired(hosts.Count);
     });
 
     private void Window_Closed(object? sender, EventArgs e) => lifetime.Cancel();
@@ -241,21 +249,13 @@ public partial class HostsWindow : ThemedWindow
         catch (System.Runtime.InteropServices.ExternalException) { StatusText.Text = "Could not copy; select the device ID and copy it."; }
     }
 
-    private async Task<(AvatarProfile Profile, string? Revision)> LoadProfileAsync()
+    private void ShowPaired(int count)
     {
-        var loaded = await settings.LoadAsync(lifetime.Token);
-        if (loaded.Settings is null) throw new InvalidOperationException("Complete Setup once so a host pairing can be saved.");
-        var id = loaded.Settings.Profile.Id;
-        var saved = await profiles.LoadAsync(id, lifetime.Token);
-        return (saved.Profile ?? AvatarProfile.BuiltIn(id), saved.Revision);
-    }
-
-    private void ShowPaired()
-    {
+        var others = count > 1 ? $" {count} hosts are paired in all; hand each one its jobs on the Devices map." : "";
         PairedText.Text = paired is { } host
-            ? $"Paired with {host.HostId} at {host.Origin} as {host.DeviceId}. Automatic lip-sync uses its Audio2Face role when this PC has none."
+            ? $"{host.HostId} at {host.Pairing.Origin}, paired as {host.Pairing.DeviceId}. Reached via: {host.Reach}.{others}"
             : "No Martlet host paired yet.";
-        StatusText.Text = paired is null ? "No Martlet host paired." : $"Paired with {paired.HostId}.";
+        StatusText.Text = paired is null ? "No Martlet host paired." : $"Showing {paired.HostId}.";
     }
 
     private async void Pair_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
@@ -263,7 +263,7 @@ public partial class HostsWindow : ThemedWindow
         var code = HostPairingCode.Parse(PairingCodeBox.Password);
         var device = DeviceIdText.Text.Trim();
         StatusText.Text = $"Pairing with {code.HostId} at {code.Origin}...";
-        var (profile, revision) = await LoadProfileAsync();
+        await pairings.LoadProfileAsync(lifetime.Token);
         var (pairing, secret) = await code.PairAsync(device, lifetime.Token);
         PairingCodeBox.Clear();
         var store = new WindowsCredentialStore();
@@ -272,52 +272,45 @@ public partial class HostsWindow : ThemedWindow
             var stored = store.WriteAvatarHostSecret(pairing.HostId, pairing.CredentialId, lease);
             if (stored != CredentialError.None) throw new InvalidOperationException(CredentialMessages.Describe(stored));
         }
-        var previous = profile.RemoteHost;
-        paired = new AvatarRemoteHost
+        var remote = new AvatarRemoteHost
         {
             Origin = pairing.Origin, HostId = pairing.HostId, SpkiFingerprint = pairing.SpkiFingerprint,
             DeviceId = pairing.DeviceId, CredentialId = pairing.CredentialId
         };
-        await profiles.SaveAsync(profile with { RemoteHost = paired }, revision, lifetime.Token);
-        if (previous is not null && previous.CredentialId != paired.CredentialId)
-            store.DeleteAvatarHostSecret(previous.HostId, previous.CredentialId);
-        ShowPaired();
-        StatusText.Text += " Paired. In the host console press a key, then type stop and confirm. Show the character again to use it.";
+        var ssh = Method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative ? SshTargetText.Text.Trim() : null;
+        var (host, lipSync) = await pairings.AddAsync(remote, Method, ssh, lifetime.Token);
+        paired = host;
+        ShowPaired((await pairings.LoadAsync(lifetime.Token)).Hosts.Count);
+        StatusText.Text = $"Paired with {host.HostId}. " + (lipSync
+            ? "It handles lip-sync when it runs Audio2Face. "
+            : "It stands by; hand it jobs under Who does what on the Devices map. ") +
+            "In the host console press a key, then type stop and confirm.";
     });
 
-    /// <summary>Checks a paired host over its pinned pairing and reports whether it offers Audio2Face.</summary>
+    /// <summary>Checks a paired host over its pinned pairing and reports which roles it offers.</summary>
     internal static async Task<string> CheckAsync(AvatarRemoteHost host, Action<string> progress, CancellationToken token)
     {
-        using var read = new WindowsCredentialStore().ReadAvatarHostSecret(host.HostId, host.CredentialId);
-        if (read.Error != CredentialError.None || read.Secret is null)
-            throw new InvalidOperationException("This PC's pairing secret is missing; pair again.");
-        Audio2FaceHostConnection? connection = null;
-        read.Secret.Use(secret => connection = new Audio2FaceHostConnection(GatewayAvatarHostLink.Pairing(host), secret));
-        using (connection)
-        {
-            progress($"Checking {host.HostId} at {host.Origin}...");
-            var route = await connection!.ReadRouteAsync(token);
-            return route is null
-                ? "Reachable and paired, but no Audio2Face role yet (add it under Roles)."
-                : $"Reachable. Offers Audio2Face (model {route.ModelId}).";
-        }
+        progress($"Checking {host.HostId} at {host.Origin}...");
+        var check = await HostControl.CheckAsync(host, token);
+        if (check.Reachable != true) throw new InvalidOperationException(check.Text);
+        return check.Offers?.ContainsKey(HostRoles.Audio2Face) == true ? check.Text
+            : "Reachable and paired, but no Audio2Face role yet (add it under Roles).";
     }
 
     private async void Check_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
     {
-        if (paired is not { } host) { ShowPaired(); return; }
-        StatusText.Text = $"Host {host.HostId}: " + await CheckAsync(host, text => StatusText.Text = text, lifetime.Token);
+        if (paired is not { } host) { ShowPaired(0); return; }
+        StatusText.Text = $"Host {host.HostId}: " + await CheckAsync(host.Pairing, text => StatusText.Text = text, lifetime.Token);
     });
 
     private async void Forget_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
     {
-        if (paired is not { } host) { ShowPaired(); return; }
-        var (profile, revision) = await LoadProfileAsync();
-        await profiles.SaveAsync(profile with { RemoteHost = null }, revision, lifetime.Token);
-        new WindowsCredentialStore().DeleteAvatarHostSecret(host.HostId, host.CredentialId);
-        paired = null;
-        ShowPaired();
-        StatusText.Text += $" Forgotten here; also revoke {host.DeviceId} on the host (pairing console: revoke).";
+        if (paired is not { } host) { ShowPaired(0); return; }
+        await pairings.ForgetAsync(host.HostId, lifetime.Token);
+        var (hosts, profile) = await pairings.LoadAsync(lifetime.Token);
+        paired = hosts.FirstOrDefault(h => h.HostId == profile.RemoteHost?.HostId) ?? hosts.LastOrDefault();
+        ShowPaired(hosts.Count);
+        StatusText.Text = $"Forgot {host.HostId} here; also revoke {host.Pairing.DeviceId} on the host (pairing console: revoke).";
     });
 
     private async Task ActionAsync(Func<Task> action)

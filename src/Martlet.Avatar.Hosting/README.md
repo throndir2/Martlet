@@ -49,8 +49,11 @@ commands on the host yourself. It starts the NIM on the host's loopback and
 publishes the gateway's Audio2Face relay route. Pair this PC by pasting the
 one-use `martlet-pair-v1...` code the host's `pair` console shows. The device
 secret is stored in Windows Credential Manager; `avatar.json` keeps only the
-nonsecret `RemoteHost` identity.
-Automatic lip-sync then prefers a local service, then the paired host, then
+nonsecret `RemoteHost` identity of the host that handles lip-sync, and
+`hosts.json` lists every paired host. Hand lip-sync to another host, back to
+this PC or to nobody under Devices > **Who does what**; a showing character
+switches without restarting.
+Automatic lip-sync then prefers the host in charge, then a local service, then
 loudness. Sentences are relayed in 0.5 s / 1 s chunks with 0.5 s of context so
 animation starts while Martlet is still speaking; late frames are skipped.
 

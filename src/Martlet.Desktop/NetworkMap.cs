@@ -6,19 +6,28 @@ namespace Martlet.Desktop;
 
 internal enum NodeKind { ThisPc, Host, Cloud, Missing, Add }
 internal enum NodeHealth { Ready, Unknown, Off, Attention }
-internal enum NodeAction { Setup, AudioSetup, Character, ToggleCharacter, Prerequisites, HostThisPc, AddComputer, ManageHost, CheckHost, HostDashboard, Advisor }
+internal enum NodeAction
+{
+    Setup, AudioSetup, Character, ToggleCharacter, Prerequisites, HostThisPc, AddComputer, ManageHost, CheckHost, HostDashboard, Advisor,
+    UseForLipSync, LipSyncThisPc, InstallRole, RemoveRole, HostStatus, ForgetHost
+}
+
+/// <summary>Who handles lip-sync: a paired host, this PC's own Audio2Face service, or nobody (voice loudness).</summary>
+internal enum LipSyncHandler { ThisPc, Host, Loudness }
 
 internal sealed record HostedRole(string Chip, string Name, string Detail);
 internal sealed record NodeFact(string Label, string Value);
-internal sealed record NodeCommand(NodeAction Action, string Label, bool Primary = false);
-internal sealed record HostCheck(bool? Reachable, string Text);
+/// <summary>A node command; <paramref name="Argument"/> names the paired host or role it applies to.</summary>
+internal sealed record NodeCommand(NodeAction Action, string Label, bool Primary = false, string? Argument = null);
+/// <summary>The last explicit connection check of a paired host; <paramref name="Offers"/> maps each role kind it runs to its model.</summary>
+internal sealed record HostCheck(bool? Reachable, string Text, IReadOnlyDictionary<string, string>? Offers = null);
 
 internal sealed record NetworkNode(string Id, NodeKind Kind, string Title, string Subtitle, string Glyph, NodeHealth Health,
     string HealthText, IReadOnlyList<HostedRole> Roles, IReadOnlyList<NodeFact> Facts, IReadOnlyList<NodeCommand> Commands,
-    IReadOnlyList<string> Notes);
+    IReadOnlyList<string> Notes, string? PairedHostId = null);
 
 internal sealed record NetworkInputs(MachineInfo Machine, DeviceRole Role, AppSettings? Settings, AvatarProfile? Avatar,
-    bool CharacterShowing, IReadOnlyDictionary<string, HostCheck> HostChecks);
+    bool CharacterShowing, IReadOnlyDictionary<string, HostCheck> HostChecks, IReadOnlyList<PairedHost>? Hosts = null);
 
 /// <summary>Turns saved settings, the avatar pairing and local hardware into the Devices map: every computer and
 /// cloud service, what it runs and what can be configured there. Reads nothing itself.</summary>
@@ -42,6 +51,7 @@ internal static class NetworkMap
         internal List<NodeFact> Facts { get; } = [];
         internal List<NodeCommand> Commands { get; } = [];
         internal List<string> Notes { get; } = [];
+        internal string? PairedHostId { get; set; }
 
         internal void Worsen(NodeHealth health, string text)
         {
@@ -50,7 +60,21 @@ internal static class NetworkMap
             HealthText = text;
         }
 
-        internal NetworkNode Build() => new(Id, Kind, Title, Subtitle, Glyph, Health, HealthText, Roles, Facts, Commands, Notes);
+        internal NetworkNode Build() => new(Id, Kind, Title, Subtitle, Glyph, Health, HealthText, Roles, Facts, Commands, Notes, PairedHostId);
+    }
+
+    internal static LipSyncHandler LipSync(AvatarProfile? avatar) =>
+        avatar?.LipSync == AvatarLipSync.Loudness ? LipSyncHandler.Loudness
+        : avatar?.RemoteHost is not null && avatar.LipSync == AvatarLipSync.Auto ? LipSyncHandler.Host
+        : LipSyncHandler.ThisPc;
+
+    /// <summary>All paired hosts, including a lip-sync pairing saved only in the avatar profile.</summary>
+    internal static IReadOnlyList<PairedHost> Hosts(NetworkInputs inputs)
+    {
+        var hosts = (inputs.Hosts ?? []).ToList();
+        if (inputs.Avatar?.RemoteHost is { } assigned && hosts.All(h => h.HostId != assigned.HostId))
+            hosts.Add(new() { Pairing = assigned });
+        return hosts;
     }
 
     internal static string RoleName(SetupRole role) => role switch
@@ -197,35 +221,86 @@ internal static class NetworkMap
             missing.Commands.Add(new(NodeAction.Advisor, "Get a recommendation"));
         }
 
-        if (inputs.Avatar?.RemoteHost is { } paired)
+        var lipSync = LipSync(inputs.Avatar);
+        var companion = inputs.Role == DeviceRole.Companion;
+        foreach (var paired in Hosts(inputs))
         {
-            var host = new Uri(paired.Origin).Host;
+            var host = paired.Address;
             var local = host == machine.LanAddress || IsLoopback(host);
             var target = local ? thisPc : Node("host:" + paired.HostId, NodeKind.Host, paired.HostId, host, ComputerGlyph);
+            target.PairedHostId = paired.HostId;
             var check = inputs.HostChecks.GetValueOrDefault(paired.HostId);
-            target.Roles.Add(new("Lip-sync", "Lip-sync (Audio2Face)", check?.Text ?? "Paired. Use Check connection to see its roles."));
-            if (!local)
+            var inCharge = lipSync == LipSyncHandler.Host && inputs.Avatar!.RemoteHost!.HostId == paired.HostId;
+            var before = target.Roles.Count;
+            foreach (var role in HostRoles.All)
             {
-                target.Facts.Insert(0, new("Address", paired.Origin));
-                target.Facts.Add(new("Identity", "Pinned TLS " + Short(paired.SpkiFingerprint)));
-                target.Facts.Add(new("This PC as", paired.DeviceId));
-                target.Facts.Add(new("Hardware", "Not reported to desktops yet. Run Host status on that computer."));
+                var model = check?.Offers?.GetValueOrDefault(role.Kind);
+                if (role.Kind == HostRoles.Audio2Face && inCharge)
+                    target.Roles.Add(new(role.Chip, role.Name, "In charge of lip-sync. " +
+                        (check?.Text ?? "Use Check connection to see whether it runs Audio2Face.")));
+                else if (model is not null)
+                    target.Roles.Add(new(role.Chip, role.Name, $"Installed (model {model}), standing by. Hand it lip-sync to use it."));
+            }
+            if (local) thisPc.Roles.Add(new("Host", "Martlet host service (Docker)", $"Paired as {paired.HostId} on {paired.Pairing.Origin}"));
+            else
+            {
+                if (target.Roles.Count == before)
+                    target.Roles.Add(new("Host", "Martlet host", check?.Text ?? "Paired. Nothing is handed to it yet; use Check connection to see what it runs."));
+                if (target.Facts.All(f => f.Label != "Address"))
+                {
+                    target.Facts.Insert(0, new("Address", paired.Pairing.Origin));
+                    target.Facts.Add(new("Identity", "Pinned TLS " + Short(paired.Pairing.SpkiFingerprint)));
+                }
+                target.Facts.Add(new("This PC as", paired.Pairing.DeviceId));
+                target.Facts.Add(new("Reached via", paired.Reach));
+                target.Facts.Add(new("Hardware", "Not reported to desktops yet. Run its status console."));
                 if (check is null) target.Worsen(NodeHealth.Unknown, "Paired, not checked yet");
                 else if (check.Reachable == false) target.Worsen(NodeHealth.Attention, "Not reachable");
                 else if (check.Reachable is null) target.Worsen(NodeHealth.Unknown, "Checking...");
-                else if (target.Health == NodeHealth.Ready) target.HealthText = "Connected";
+                else if (target.Health == NodeHealth.Ready) target.HealthText = inCharge ? "Connected, in charge of lip-sync" : "Connected";
             }
-            else thisPc.Roles.Add(new("Host", "Martlet host service (Docker)", $"Paired as {paired.HostId} on {paired.Origin}"));
-            target.Commands.Insert(0, new(NodeAction.CheckHost, "Check connection", !local));
-            target.Commands.Add(new(NodeAction.ManageHost, "Manage this host"));
+
+            var id = paired.HostId;
+            var offersFace = check?.Offers?.ContainsKey(HostRoles.Audio2Face) == true;
+            target.Commands.Insert(0, new(NodeAction.CheckHost, "Check connection", !local && check?.Reachable != true, id));
+            if (companion && !inCharge)
+                target.Commands.Add(new(NodeAction.UseForLipSync, local ? "Hand lip-sync to this PC's host service" : "Hand lip-sync to this computer",
+                    offersFace, id));
+            if (!offersFace)
+                target.Commands.Add(new(NodeAction.InstallRole, local ? "Install Audio2Face in this PC's host service" : "Install Audio2Face there",
+                    Argument: id + "/" + HostRoles.Audio2Face));
+            if (check is null || offersFace)
+                target.Commands.Add(new(NodeAction.RemoveRole, local ? "Remove Audio2Face from this PC's host service" : "Remove Audio2Face from it",
+                    Argument: id + "/" + HostRoles.Audio2Face));
+            target.Commands.Add(new(NodeAction.HostStatus, "Open its status console", Argument: id));
+            target.Commands.Add(new(NodeAction.ManageHost, "Pair again or change its setup", Argument: id));
+            target.Commands.Add(new(NodeAction.ForgetHost, "Forget this host", Argument: id));
+            if (!paired.CanLaunch && !local)
+                target.Notes.Add("Tell Martlet how to reach it (below) to install or remove roles from here; otherwise it shows the command to run there.");
         }
 
-        if (inputs.Role == DeviceRole.Companion)
+        if (companion)
         {
             var character = inputs.Avatar is { } avatar
                 ? BundledLive2DName(avatar.ModelPath) ?? System.IO.Path.GetFileNameWithoutExtension(avatar.ModelPath)
                 : "Hiyori (built-in)";
             thisPc.Roles.Add(new("Character", "Character", $"{character}, {(inputs.CharacterShowing ? "on your desktop now" : "hidden")}"));
+            var endpoint = new Uri(inputs.Avatar?.Endpoint ?? AvatarProfile.DefaultEndpoint).Authority;
+            switch (lipSync)
+            {
+                case LipSyncHandler.ThisPc:
+                    thisPc.Roles.Add(new("Lip-sync", "Lip-sync", inputs.Avatar?.LipSync == AvatarLipSync.Audio2Face
+                        ? "In charge: explicit Audio2Face activation from Character settings"
+                        : $"In charge: this PC's Audio2Face service at {endpoint} when it runs, otherwise voice loudness"));
+                    break;
+                case LipSyncHandler.Loudness:
+                    thisPc.Roles.Add(new("Lip-sync", "Lip-sync", "In charge: the mouth follows the voice's loudness (Audio2Face is off)"));
+                    thisPc.Commands.Add(new(NodeAction.LipSyncThisPc, "Turn on Audio2Face lip-sync here"));
+                    break;
+                default:
+                    thisPc.Commands.Add(new(NodeAction.LipSyncThisPc, "Take lip-sync back to this PC"));
+                    break;
+            }
             var audio = inputs.Settings?.Audio is { } devices
                 ? devices.Input.Checkpoint is not null && devices.Output.Checkpoint is not null ? "Tested" : "Chosen, not tested yet"
                 : "Windows defaults, not tested";
