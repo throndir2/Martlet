@@ -176,6 +176,50 @@ either original cancellation flag. LLM/TTS keep their reviewed original
 caller/enumerator guards; no application bridge substitutes linked-only
 permission for those original sources.
 
+## Hands-free voice activity and Voice ID
+
+**How you talk** in the live window offers **Push-to-talk** (default) or
+**Voice activity**, a hands-free mode. The choice, sensitivity, pause length and
+Voice ID toggle are remembered in `talk-preferences.json` in the data folder;
+choosing voice activity never starts listening by itself.
+
+- **Start listening** (with the same action, capture and upload approvals as PTT)
+  opens the microphone. An adaptive energy detector (`EnergyVoiceActivityDetector`,
+  20 ms frames read from the capture's own buffer through `TryCopyMonoFrame`)
+  waits for speech, then releases the capture after your chosen pause
+  (0.5/0.8/1.2 s). Only the detected speech plus 300 ms pre-roll and 200 ms tail
+  is uploaded, not the idle wait before it. Sounds shorter than 450 ms (coughs,
+  clicks) are ignored. **Sensitivity** trades missed quiet speech against false
+  triggers from noise.
+- Each utterance is its own action: a fresh authorization, capture epoch, STT
+  request and policy intent (`InputSource.HandsFreeListening`, reason
+  `ExplicitHandsFree`). Listening re-arms only after the reply, including speech
+  playback, has finished, so Martlet does not hear itself. Idle listening restarts
+  the bounded capture every 12 seconds; nothing is uploaded when nobody spoke.
+- Listening continues while the window is in the background. **Stop listening**,
+  Stop/Esc, pause, mute, session lock, unchecking an approval, changing talk mode
+  or output, and Close end it. Provider, device or cleanup failures stop listening
+  instead of retrying.
+
+**Voice ID** (**Set up Voice ID**) recognizes the enrolled user locally:
+
+- Enrollment records three read-aloud phrases with a separate local-only
+  permission. A bundled speaker encoder (a managed port of Resemblyzer's GE2E
+  LSTM, Apache-2.0; see `packaging\windows\DEPENDENCIES.txt`) turns speech into a
+  256-number voiceprint. Recordings stay in memory and are zeroed; only the
+  voiceprint, threshold and consistency score are saved in `voice-id.json`.
+  **Test** reports the score, the threshold slider tunes strictness, and
+  **Delete voiceprint** removes the file.
+- With **Only respond to my voice** checked (PTT or hands-free), each utterance
+  is compared with the voiceprint on this PC *before* upload. Another voice, TV
+  audio or too little speech (<0.8 s) is discarded and never sent to STT. Each
+  ~1.6 s part is also scored, so a turn that is mostly you but includes another
+  voice is flagged ("another voice may also be in this recording").
+- Voice ID is a convenience filter, not authentication: recordings of you or a
+  similar voice can pass, and a cold or a new microphone can lower your score.
+  Same-person clean speech typically scores 0.80-0.95 and other people
+  0.45-0.75; enrollment suggests a threshold from how consistent your phrases were.
+
 ## Troubleshooting
 
 | Visible condition | Meaning and next action |
@@ -184,6 +228,8 @@ permission for those original sources.
 | Configuration changed | Loaded revision/role/key/output no longer matches this action. Stop, Reload and explicitly approve the new selection. External profile editing/copying while running is unsupported. |
 | Credential missing / access denied | Review the signed-in Windows user and selected role reference. Explicit setup retrieval can check local readability only. Do not elevate or disable protection. |
 | STT no speech | No LLM/TTS followed. Review intended input and local microphone test; start a fresh PTT action or type instead. Silence samples are not VAD evidence. |
+| Hands-free never hears me / triggers on noise | Raise or lower **Sensitivity**; watch the level bar while speaking. Choose a longer pause if it cuts you off mid-sentence. |
+| Voice ID ignores me | Run **Test** in Set up Voice ID. Lower the threshold slightly or re-enroll with your usual microphone and distance. Turn Voice ID off to talk meanwhile. |
 | Mic access/busy/lost/default-change/format | Use Audio setup's specific privacy/device remedy. No automatic recapture, loopback or device fallback. Typed input remains available. |
 | Provider auth/model/quota/rate/network failure | Inspect the stable provider code; review account/model availability and current limits outside Martlet. A failed request is not a safe automatic retry. |
 | Refused / partial answer | Refusal is separate from answer text. Partial answer remains visible; unfinished/unsupported speech is discarded, not replayed. |

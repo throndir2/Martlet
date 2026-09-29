@@ -2,8 +2,10 @@
 
 **Status: internal explicit API conversation integration; not a qualified release.**
 Desktop now has a separate [real API conversation](docs/CONVERSATION.md) surface:
-explicit typed input or bounded push-to-talk through configured OpenAI STT,
-participation policy, streaming LLM and optional generated voice/playback.
+explicit typed input, bounded push-to-talk or hands-free voice activity through
+configured OpenAI STT, participation policy, streaming LLM and optional generated
+voice/playback. Optional local **Voice ID** recognizes your enrolled voice and
+ignores other people before anything is uploaded.
 Each new action requires a bounded data/cost/output authorization; no credentials or audio are accessed on launch; network remains idle unless
 opt-in update checks are enabled. Text-only never requests TTS or opens output.
 Actual account/device/first-conversation qualification remains **NOT RUN**.
@@ -26,8 +28,9 @@ through **Setup / resume**; see [SETUP](docs/SETUP.md). Saved API routes are not
 verified connections or spending permission. **Audio setup (local only)** offers explicit microphone/
 output selection and separately confirmed bounded local capture/tone tests.
 Opening it does not enumerate or open devices. Historical local checkpoints
-are not device readiness or permission to listen later. Learned VAD, acoustic
-wake words, automatic name/group listening and supported end-user deployment
+are not device readiness or permission to listen later. Hands-free voice
+activity listens only while you keep **Start listening** on; acoustic wake words,
+automatic name/group listening and supported end-user deployment
 are not available. A PC microphone does not automatically
 capture remote participants.
 
@@ -85,7 +88,7 @@ There is no remote memory, embedding, vector database or automatic backup.
 | [Local MCP control](docs/MCP.md) | Stdio tools for headless diagnostics/fixtures and interactive desktop UI Automation |
 | [Implemented foundation and decisions](docs/FOUNDATION.md) | Accepted/deferred decisions, exact APIs/bounds, current behavior and next ownership |
 | [Resumable setup and local audio](docs/SETUP.md) | V02a configuration/vault actions and V02b explicit local device tests, historical checkpoints, strict migration and remaining live gates |
-| [Explicit API conversation](docs/CONVERSATION.md) | V04b typed/PTT path, exact supported models and bounds, fresh authorization, Stop/cleanup, troubleshooting and separately authorized live-trial checklist |
+| [Explicit API conversation](docs/CONVERSATION.md) | V04b typed/PTT path, hands-free voice activity, local Voice ID, exact supported models and bounds, fresh authorization, Stop/cleanup, troubleshooting and separately authorized live-trial checklist |
 | [Voice Studio research and setup](docs/VOICE_STUDIO.md) | Five-engine implementation research, guided setup, audio imports, A/B previews, training and staged acceptance |
 | [Consented local memory](docs/MEMORY.md) | OFF-by-default P03a/P03b/P03c Desktop fact management, per-turn retrieval, privacy/deletion/export and remaining qualification gates |
 

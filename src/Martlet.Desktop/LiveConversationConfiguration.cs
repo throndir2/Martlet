@@ -151,8 +151,8 @@ internal sealed class LiveConversationConfiguration
             "LLM output: <=256 tokens, <=16,384 response characters, <=45 s.\n" +
             "Runtime <=90 s. Voice: <=8 requests/segments, <=1536 UTF-8 bytes each / 12,288 total, <=10 s / 240,000 samples per segment, <=80 s / 1,920,000 reserved samples total, <=20 s per request. Refusal/unsupported markup is not ordinary speech.\n" +
             "Prices, quota, account/model access and invoice cost are UNKNOWN, not zero or a guaranteed hard currency cap. Failed/canceled requests can still cost money; earlier speech may already have played. No automatic retry.\n" +
-            "PTT/explicit typed only; unsolicited listening, learned VAD, acoustic wake words, remote participant capture and screen capture are OFF. Local memory retrieval requires the separate fresh checkbox described above." +
-            " Content stays bounded in memory, not logs/files. Stop, pause, mute, window deactivation, lock or Close revokes this action.";
+            "PTT, explicit typed input, or hands-free voice activity only while you keep Start listening on (each detected utterance is one action within this envelope; listening re-arms only after the reply finishes). Wake words, name/group listening, remote participant capture and screen capture are OFF. Optional Voice ID compares speech with your saved voiceprint on this PC before upload; non-matching audio is discarded, never uploaded. Local memory retrieval requires the separate fresh checkbox described above." +
+            " Content stays bounded in memory, not logs/files. Stop, pause, mute, lock or Close revokes this action; window deactivation also does unless hands-free listening is on.";
     }
 
     internal ConversationRequest Request(BoundedTextInput input, bool voice, ResponseStyle? style,

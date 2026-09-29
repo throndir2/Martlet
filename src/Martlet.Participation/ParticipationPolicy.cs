@@ -167,7 +167,7 @@ public sealed class ParticipationPolicy
         var transcript = input.Transcript;
         var age = now - intent.CreatedAt;
         var gap = now - lastSpeechActivity;
-        var manual = input.Source == InputSource.PushToTalkControl ||
+        var manual = input.Source is InputSource.PushToTalkControl or InputSource.HandsFreeListening ||
             input.Source == InputSource.TypedControl && input.TrustedTypedAddress;
         ParticipationDecision Result(PolicyReason reason, DecisionKind kind = DecisionKind.Suppress,
             PolicyAction action = PolicyAction.None, bool unsolicited = false, TimeSpan? retry = null) =>
@@ -209,8 +209,12 @@ public sealed class ParticipationPolicy
                 : Result(PolicyReason.Busy);
         if (intent.CreatedWhileBusy) return Result(PolicyReason.FreshIntentRequired);
         if (manual)
-            return Result(input.Source == InputSource.PushToTalkControl ? PolicyReason.ExplicitPushToTalk :
-                PolicyReason.ExplicitTypedAddress, DecisionKind.Allow, PolicyAction.CommitBeforeDispatch);
+            return Result(input.Source switch
+            {
+                InputSource.PushToTalkControl => PolicyReason.ExplicitPushToTalk,
+                InputSource.HandsFreeListening => PolicyReason.ExplicitHandsFree,
+                _ => PolicyReason.ExplicitTypedAddress
+            }, DecisionKind.Allow, PolicyAction.CommitBeforeDispatch);
         if (input.Source != InputSource.TypedControl && input.AudioOrigin != AudioOrigin.External)
             return Result(PolicyReason.AudioOriginUnknown);
         if (transcript.Confidence is null) return Result(PolicyReason.ConfidenceUnknown);

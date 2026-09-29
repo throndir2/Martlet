@@ -183,6 +183,11 @@
       "file": "Inno-Setup-LICENSE.txt",
       "url": "https://raw.githubusercontent.com/jrsoftware/issrc/is-7_1_0/license.txt",
       "sha256": "2e5346868c2a18434489824e11d65c3031620f792fefc415d05f19cd441abf5c"
+    },
+    {
+      "file": "Resemblyzer-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/resemble-ai/Resemblyzer/15d828edebe06bc72b9cabc8ef8ca5ab2cb457ce/LICENSE",
+      "sha256": "ec4426669c4e3e73157121200b772a68ff9c4c7af3feb298ea99b6411a119e05"
     }
   ],
   "inno": {

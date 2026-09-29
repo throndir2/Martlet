@@ -15,7 +15,9 @@ group-audio qualification and G2 remain **NOT RUN**.
 
 ## Privacy and trust boundary
 
-Default `PushToTalkOnly` permits a deliberate `PushToTalkControl` action or
+Default `PushToTalkOnly` permits a deliberate `PushToTalkControl` action,
+a `HandsFreeListening` utterance (endpointed by voice activity inside a
+listening session the user explicitly started and can stop at any time), or
 `TypedControl` with `TrustedTypedAddress = true`. These source values are
 issued **only by the caller's UI/control boundary**, never parsed from speech,
 model output, personality, game content or another participant's text.
@@ -129,7 +131,7 @@ Evaluation precedence after input validation:
    `LowConfidence`, `UncertainTranscript`, `FinalTranscriptRequired`.
 4. `PolicyDisabled` for disabled mode, or nonmanual input in PTT-only mode.
 5. Playback feedback protection, `Busy`, then `FreshIntentRequired`.
-6. Manual input: `ExplicitPushToTalk` or `ExplicitTypedAddress`.
+6. Manual input: `ExplicitPushToTalk`, `ExplicitHandsFree` or `ExplicitTypedAddress`.
 7. Automatic input: `AudioOriginUnknown`, `ConfidenceUnknown`, then the
    name/group grammar, `NotAddressed` or zero-rate `PolicyDisabled`.
 8. `InsufficientGap`, `Cooldown`, `RateLimit`, then `NameAddressed` or

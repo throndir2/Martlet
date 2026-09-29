@@ -4,7 +4,8 @@ namespace Martlet.Participation;
 
 public enum ParticipationMode { PushToTalkOnly, NameAddressed, Conversational, Disabled }
 public enum PolicyLanguage { English }
-public enum InputSource { AmbientSpeech, PushToTalkControl, TypedControl }
+// HandsFreeListening: an utterance endpointed by voice activity inside a listening session the user explicitly started.
+public enum InputSource { AmbientSpeech, PushToTalkControl, TypedControl, HandsFreeListening }
 public enum AudioOrigin { Unknown, External, OwnPlayback, KnownLoopback }
 public enum SpeechEvidence { Unknown, Speech, NoSpeech }
 public enum ResponseActivity { Idle, Responding, Playing }
@@ -27,7 +28,7 @@ public enum PolicyReason
     ExplicitPushToTalk, ExplicitTypedAddress, NameAddressed, GroupInvitation,
     PolicyDisabled, NotAddressed, InsufficientGap, Cooldown, RateLimit, Busy,
     FreshIntentRequired, IntentExpired, StaleEpoch, StaleDecision, AlreadyDispatched,
-    SupersededIntent, DecisionNotAllowed, DispatchAccepted
+    SupersededIntent, DecisionNotAllowed, DispatchAccepted, ExplicitHandsFree
 }
 
 public enum PolicyValidationCode
