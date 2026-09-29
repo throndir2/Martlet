@@ -89,7 +89,12 @@ internal static partial class HostSetupCommands
                 var build = $"docker build -t {image} -f deploy/host/Dockerfile {Repository}#";
                 lines.Append("echo Martlet host on this PC (Docker Desktop): ").Append(Engine(action)).Append("\r\n");
                 lines.Append("where docker >NUL 2>&1 || (echo Docker Desktop is not installed. Use Install Docker Desktop in Martlet hosts. & goto :eof)\r\n");
-                lines.Append("docker info >NUL 2>&1 || (echo Start Docker Desktop and wait until it is running, then try again. & goto :eof)\r\n");
+                lines.Append("docker info >NUL 2>&1 && goto :ready\r\n");
+                lines.Append("echo Starting Docker Desktop. The first start can take a few minutes; accept Docker's terms if it asks.\r\n");
+                lines.Append(DockerDesktopStart);
+                lines.Append("for /l %%i in (1,1,100) do (\r\n  docker info >NUL 2>&1 && goto :ready\r\n  ping -n 4 127.0.0.1 >NUL\r\n)\r\n");
+                lines.Append("echo Docker Desktop is not running yet. When it shows it is running, press the same button again. & goto :eof\r\n");
+                lines.Append(":ready\r\n");
                 lines.Append($"docker image inspect {image} >NUL 2>&1 || {build}v{target.Version} || {build}main\r\n");
                 lines.Append($"docker run --rm -it -u 0 -v {DockerSocket}{Environment(target, action)} {image} {Engine(action)}\r\n");
                 break;
@@ -116,10 +121,16 @@ internal static partial class HostSetupCommands
             DockerShell(target, action) + "\r\n\r\nOn Ubuntu without Docker for the gateway (native):\r\n  " +
             NativeShell(target, action),
         _ => string.Join("\r\n", Script(target, action).Split("\r\n")
-            .Where(line => line.Length > 0 && !line.StartsWith('@') && !line.StartsWith("title ", StringComparison.Ordinal) &&
-                !line.StartsWith("echo", StringComparison.Ordinal) && !line.StartsWith("where ", StringComparison.Ordinal) &&
-                !line.StartsWith("docker info", StringComparison.Ordinal)))
+            .Where(line => line.StartsWith("docker image ", StringComparison.Ordinal) ||
+                line.StartsWith("docker run ", StringComparison.Ordinal) || line.StartsWith("ssh ", StringComparison.Ordinal)))
     };
+
+    private const string DockerDesktopStart =
+        "if exist \"%ProgramFiles%\\Docker\\Docker\\Docker Desktop.exe\" start \"\" \"%ProgramFiles%\\Docker\\Docker\\Docker Desktop.exe\"\r\n";
+
+    /// <summary>Installs WSL-based Docker Desktop with winget; the user already agreed to the listed terms in Martlet.</summary>
+    internal const string DockerDesktopInstall =
+        "winget install -e --id Docker.DockerDesktop --accept-package-agreements --accept-source-agreements";
 
     internal static void Launch(HostSetupTarget target, HostAction action)
     {
@@ -130,10 +141,21 @@ internal static partial class HostSetupCommands
         Process.Start(new ProcessStartInfo("cmd.exe", $"/k \"{path}\"") { UseShellExecute = true })?.Dispose();
     }
 
-    internal static void InstallDockerDesktop() =>
-        Process.Start(new ProcessStartInfo("cmd.exe",
-            "/k echo Installing Docker Desktop with winget (free for personal use; review its terms). & winget install -e --id Docker.DockerDesktop")
-        { UseShellExecute = true })?.Dispose();
+    internal static void InstallDockerDesktop()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "install-docker-desktop.cmd");
+        File.WriteAllText(path,
+            "@echo off\r\ntitle Install Docker Desktop\r\n" +
+            "echo Installing Docker Desktop with winget. Windows asks for administrator approval; a restart or sign-out may follow.\r\n" +
+            DockerDesktopInstall + "\r\n" +
+            "if errorlevel 1 (echo. & echo Docker Desktop was not installed. See the messages above. & goto :eof)\r\n" +
+            "echo.\r\necho Starting Docker Desktop. Accept Docker's terms if it asks; if it asks you to restart or sign out, do that first.\r\n" +
+            DockerDesktopStart +
+            "echo Then return to Martlet hosts and press Set up host.\r\n", Encoding.ASCII);
+        Process.Start(new ProcessStartInfo("cmd.exe", $"/k \"{path}\"") { UseShellExecute = true })?.Dispose();
+    }
 
     internal static bool IsPrivate(string? text) =>
         IPAddress.TryParse(text, out var address) && address.AddressFamily == AddressFamily.InterNetwork &&
