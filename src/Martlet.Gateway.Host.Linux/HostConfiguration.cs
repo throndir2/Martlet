@@ -9,20 +9,26 @@ internal sealed class HostApprovalException : Exception;
 internal sealed class HostTerminalException : Exception;
 internal sealed class HostEofException : Exception;
 
+/// <summary>A host role service the gateway relays to: a loopback service on this machine, installed by martlet-host.</summary>
+internal sealed record HostRole(string Kind, Uri Endpoint, string Model);
+
 internal sealed record HostConfiguration(string HostId, string StateDirectory,
     GatewayHostBinding Binding, uint ServiceUid, uint ServiceGid, string Digest,
-    Uri? Audio2FaceEndpoint = null, string? Audio2FaceModel = null)
+    IReadOnlyList<HostRole> Roles)
 {
     internal const int MaximumBytes = 8192;
+    internal const int MaximumRoles = 8;
     internal const string Backend = "linuxServicePermissions";
+    /// <summary>Role kinds with a gateway relay worker. Every role is declared the same way in host.json.</summary>
+    internal static readonly IReadOnlySet<string> RoleKinds = new HashSet<string>(StringComparer.Ordinal) { "audio2face" };
 
     internal static HostConfiguration Parse(byte[] bytes)
     {
         using var document = StrictJson.Parse(bytes);
         var root = document.RootElement;
-        var relay = root.ValueKind == JsonValueKind.Object && root.TryGetProperty("audio2face", out _);
-        StrictJson.Properties(root, relay
-            ? ["schemaVersion", "hostId", "stateDirectory", "storageBackend", "binding", "serviceUid", "serviceGid", "audio2face"]
+        var hasRoles = root.ValueKind == JsonValueKind.Object && root.TryGetProperty("roles", out _);
+        StrictJson.Properties(root, hasRoles
+            ? ["schemaVersion", "hostId", "stateDirectory", "storageBackend", "binding", "serviceUid", "serviceGid", "roles"]
             : ["schemaVersion", "hostId", "stateDirectory", "storageBackend", "binding", "serviceUid", "serviceGid"]);
         if (StrictJson.Number(root, "schemaVersion") != 1 || StrictJson.Text(root, "storageBackend") != Backend)
             throw new HostInputException();
@@ -48,21 +54,34 @@ internal sealed record HostConfiguration(string HostId, string StateDirectory,
         }
         catch (GatewayProtocolException) { throw new HostInputException(); }
         catch (GatewayPersistenceException) { throw new HostInputException(); }
-        Uri? endpoint = null;
-        string? model = null;
-        if (relay)
+        var roles = new List<HostRole>();
+        if (hasRoles)
         {
-            // Optional Audio2Face relay: the host's own loopback NIM, never a LAN or remote address.
-            var section = root.GetProperty("audio2face");
-            StrictJson.Properties(section, "endpoint", "model");
-            model = StrictJson.Text(section, "model");
-            if (!Identifier(model) || !Uri.TryCreate(StrictJson.Text(section, "endpoint"), UriKind.Absolute, out endpoint))
-                throw new HostInputException();
-            try { new Martlet.Avatar.Audio2Face.Audio2FaceOptions { Endpoint = endpoint }.Validate(); }
-            catch (ArgumentException) { throw new HostInputException(); }
+            var list = root.GetProperty("roles");
+            if (list.ValueKind != JsonValueKind.Array || list.GetArrayLength() > MaximumRoles) throw new HostInputException();
+            foreach (var item in list.EnumerateArray())
+            {
+                StrictJson.Properties(item, "kind", "endpoint", "model");
+                var kind = StrictJson.Text(item, "kind");
+                var model = StrictJson.Text(item, "model");
+                if (!RoleKinds.Contains(kind) || roles.Any(role => role.Kind == kind) || !ModelToken(model) ||
+                    !Uri.TryCreate(StrictJson.Text(item, "endpoint"), UriKind.Absolute, out var endpoint) ||
+                    !LoopbackRoot(endpoint))
+                    throw new HostInputException();
+                roles.Add(new(kind, endpoint, model));
+            }
         }
-        return new(id, state, selected, uid, gid, Convert.ToHexStringLower(SHA256.HashData(bytes)), endpoint, model);
+        return new(id, state, selected, uid, gid, Convert.ToHexStringLower(SHA256.HashData(bytes)), roles);
     }
+
+    // Role services listen only on this host's numeric loopback; the gateway is the single LAN entry point.
+    private static bool LoopbackRoot(Uri endpoint) =>
+        endpoint.Scheme == Uri.UriSchemeHttp && System.Net.IPAddress.TryParse(endpoint.Host.Trim('[', ']'), out var address) &&
+        System.Net.IPAddress.IsLoopback(address) && endpoint.AbsolutePath == "/" && endpoint.Query.Length == 0 &&
+        endpoint.Fragment.Length == 0 && endpoint.UserInfo.Length == 0 && endpoint.OriginalString.EndsWith('/');
+
+    internal static bool ModelToken(string text) => text is { Length: > 0 and <= 128 } &&
+        char.IsAsciiLetterOrDigit(text[0]) && text.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-' or ':' or '/');
 
     internal static bool Identifier(string text) => text is { Length: > 0 and <= 64 } &&
         char.IsAsciiLetterOrDigit(text[0]) && text.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-');

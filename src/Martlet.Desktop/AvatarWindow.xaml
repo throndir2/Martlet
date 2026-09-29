@@ -39,7 +39,7 @@
                       AutomationProperties.AutomationId="RemoteHostSection">
                 <StackPanel Margin="0,8,0,0">
                     <TextBlock TextWrapping="Wrap"
-                        Text="Run Audio2Face on a separate PC with an NVIDIA GPU using Martlet's Ubuntu host installer (deploy/ubuntu/audio2face). On that host run the gateway 'pair' command with the device ID below, then copy the values it shows. Automatic lip-sync then uses the host whenever this PC has no local Audio2Face. Only Martlet's generated voice is sent, over pinned TLS to the exact paired host."/>
+                        Text="Run Audio2Face on a separate Ubuntu PC with an NVIDIA GPU: there, run 'martlet-host setup', 'martlet-host add audio2face' and 'martlet-host pair' (Martlet's host tool, deploy/ubuntu/host), enter the device ID below when pairing, then copy the values it shows. Automatic lip-sync then uses the host whenever this PC has no local Audio2Face. Only Martlet's generated voice is sent, over pinned TLS to the exact paired host."/>
                     <Label Target="{Binding ElementName=HostOriginText}" Content="Host _address (https://IP:port)"/>
                     <TextBox x:Name="HostOriginText" MinHeight="28" AutomationProperties.AutomationId="HostOrigin"/>
                     <Label Target="{Binding ElementName=HostIdText}" Content="Host _ID"/>
