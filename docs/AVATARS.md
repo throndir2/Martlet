@@ -3,11 +3,11 @@
 **Default character shipped, 2026-09-28.** Official builds bundle the Live2D
 Cubism runtime and the Hiyori sample model. **Show character** on the main window
 opens her as a transparent desktop overlay: authored idle motions, eye blink,
-breathing, physics, cursor look-at and local loudness lip-sync from Martlet's own
-voice, with no GPU service, microphone or upload. Users can switch to their own
-Live2D `.model3.json` or VRM `.vrm` model in **Character settings** and optionally
-show the character automatically at launch. Audio2Face remains the richer,
-advanced lip-sync lane for users with their own NIM service. See the
+breathing, physics, cursor look-at and lip-sync. Automatic lip-sync uses a local
+Audio2Face service when one is running on the PC (NVIDIA GPU) and the loudness of
+Martlet's own voice otherwise; no microphone or upload is used. Users can switch
+to their own Live2D `.model3.json` or VRM `.vrm` model in **Character settings**
+and optionally show the character automatically at launch. See the
 [Desktop integration guide](../src/Martlet.Avatar.Hosting/README.md) and the
 [Live2D module](../src/Martlet.Avatar.Live2D/README.md#bundled-runtime-and-default-character).
 The local package producer and current reader are implemented with manifest 3 /
@@ -25,20 +25,22 @@ A renderer draws a model. An analyzer derives animation from speech. A mapping
 converts that output into parameters the particular model actually has.
 Motion sources supply other behavior. Selecting one does not select all four.
 
-**Default preset:** the bundled Hiyori Live2D character with local loudness
-lip-sync works on every machine. **Richest preset:** Audio2Face speech animation
-plus a detailed VRM face with an authored, calibrated ARKit mapping. Neither an
-arbitrary `.vrm` nor a Cubism model is guaranteed to have ARKit shapes.
-Audio2Face produces facial animation, not whole-body gestures. If the selected
-backend is unavailable, report why and keep voice usable; never silently switch
-to another model or a paid/cloud service.
+**Default preset:** the bundled Hiyori Live2D character with **Automatic**
+lip-sync: a local Audio2Face service is used whenever one is running (NVIDIA GPU),
+and voice loudness otherwise, so it works on every machine. **Richest preset:**
+Audio2Face plus a detailed VRM face with an authored, calibrated ARKit mapping.
+Neither an arbitrary `.vrm` nor a Cubism model is guaranteed to have ARKit shapes.
+Audio2Face produces facial animation, not whole-body gestures. The status line
+reports which lip-sync source is active and why Audio2Face is unavailable; voice
+never waits for animation and Martlet never switches to another model or a
+paid/cloud service.
 
 | Choice | Role and constraints |
 | --- | --- |
 | Live2D | Cubism model parameters, motions and physics. Lip-sync groups identify parameters, not a universal viseme rig. Model-specific ranges and mouth/expression mapping are required. |
 | VRM | Humanoid model, expressions, look-at and spring-bone capabilities depend on the actual model/version. Basic `aa`, `ih`, `ou`, `ee`, `oh`, blink/emotion expressions are all optional. Detailed ARKit shapes/custom expressions must be authored and mapped. |
 | Audio2Face | Preferred speech-to-face source. First lane: explicitly user-provisioned, already-running literal-loopback Audio2Face-3D NIM v2 service and official bidirectional `ProcessAudioStream` gRPC contract (v2 reuses `nvidia_ace` v1.2). Not a native SDK bridge or bundled NIM installation. |
-| Amplitude | **Implemented Desktop default** (`AvatarLipSync.Loudness`): mouth opening from the RMS of outgoing generated PCM in 20 ms windows, presented on the playback device clock. Less articulation than phonemes/visemes; drives the model's `LipSync` group (Live2D) or `aa` expression (VRM). Local only; survives pause/mute revocations. |
+| Amplitude | **Implemented** loudness lip-sync: mouth opening from the RMS of outgoing generated PCM in 20 ms windows, presented on the playback device clock. Less articulation than phonemes/visemes; drives the model's `LipSync` group (Live2D) or `aa` expression (VRM). Local only; the Automatic mode's fallback and the explicit `Loudness` mode. |
 | Procedural/clip motion | Live2D: authored idle motions, eye blink, breathing, physics, pose and cursor look-at through the official Framework. VRM: relaxed arms, breathing, blink, head look-at and spring bones. Not inferred from Audio2Face availability. |
 
 Primary-source constraints are recorded in [Research S42-S47](RESEARCH.md#s42);
@@ -50,10 +52,10 @@ owns the system boundaries.
 | Deliverable | Current scope / evidence limit |
 | --- | --- |
 | Shared contracts, A01a | Implemented standalone [Martlet.Avatars contracts](../contracts/avatars/README.md), locally integrated/reviewed with production-path checks. Strict v1 facial frames use Core correlation IDs, epoch/sequence and **original PCM** sample rate/offset; exact 52-name ARKit catalog plus separate typed semantic vowels/blinks/emotions. `aa` is not an ARKit name. No skeleton or general pose/body wire payload. |
-| Audio2Face, A01b | Implemented/reviewed [NIM gRPC adapter](../src/Martlet.Avatar.Audio2Face/README.md), wired to explicit Desktop session activation through bounded nonblocking live `GeneratedSpeechStream`; buffered clips remain a comparison/offline API. Actual HTTP/2 fixtures establish protocol behavior, not live NVIDIA inference. Speech never waits for analysis. Requires separately provisioned NIM service, permitted models and supported NVIDIA GPU/runtime; no automatic probe, installation or measured GPU/model result. SDK MIT does not license NIM or weights. |
+| Audio2Face, A01b | Implemented [NIM gRPC adapter](../src/Martlet.Avatar.Audio2Face/README.md) through bounded nonblocking live `GeneratedSpeechStream`. **Automatic (default)**: Desktop TCP-probes the configured loopback endpoint before each sentence and uses a detected service with the saved or built-in mouth mapping, falling back to loudness. Actual HTTP/2 fixtures establish protocol behavior, not live NVIDIA inference. Speech never waits for analysis. Requires a user-run NIM service, permitted models and a supported NVIDIA GPU; Martlet installs nothing. SDK MIT does not license NIM or weights. |
 | Live2D, A02a | Implemented [renderer adapter and animator](../src/Martlet.Avatar.Live2D/README.md) on official Cubism Web Framework 5-r.4 and Core **05.01.0000**, downloaded at build time from Live2D (SHA-256 pinned) and bundled with the Hiyori sample. Idle motions, eye blink, breathing, physics, pose, look-at and loudness lip-sync run; composed A2F writes apply before physics. Real Core/GPU rendering of Hiyori verified locally in browser and WebView2 overlay. Cubism 5.3 blend/offscreen features and unsupported MOC versions are rejected. |
 | VRM, A02b | Implemented/reviewed standalone [VRM importer/facial mapping/renderer adapter](../src/Martlet.Avatar.Vrm/README.md): Three.js 0.180.0 + three-vrm 3.5.5, conservative local self-contained VRM 1 subset. VRM 0, unsupported extensions, non-PNG textures, sparse accessors and embedded animations are rejected. Trusted local gaze/head controls are separate from A2F facial frames. Real-loader/control and bundle checks exist; review corrections are cleared. Actual graphics/artist-rig/device-sync qualification is NOT RUN. VRMA/body playback is **unsupported in the first slice**. |
-| Composition/app integration, A02c | Main-window **Show character**, simple character settings (built-in/custom model, lip-sync source, auto-show), atomic avatar-only sidecar and private WPF/WebView2 renderer host. Loudness lip-sync consumes admitted generated PCM and the opt-in device clock; explicit A2F mouth/expression activation replaces it for the session. Local package producer/current-reader integration is implemented. |
+| Composition/app integration, A02c | Main-window **Show character**, simple character settings (built-in/custom model, lip-sync mode, auto-show), atomic avatar-only sidecar and private WPF/WebView2 renderer host. Automatic lip-sync tees admitted generated PCM into loudness levels and, when detected, Audio2Face; explicit Audio2Face-only activation replaces both for the session. Local package producer/current-reader integration is implemented. |
 | Rich motion, A02d | Planned capability/wire extensions and procedural/clip integration for head, body, gaze and secondary motion. A facial gaze mapping may consume actual ARKit eye-look channels; that does not create general gaze/pose support. |
 | Qualification, A03 | Planned local real-model/renderer/GPU/device trials, performance and lifecycle evidence; separately reviewed rights/release. No end-to-end avatar acceptance is passed by this guide. |
 
@@ -69,20 +71,21 @@ to deliver, not permission to silently reduce the product scope.
 **Show character** / **Hide character** on the main window toggles the saved
 character (Hiyori when nothing is configured; no Setup profile is required).
 **Character settings** chooses the built-in character or a local model file,
-the lip-sync source (voice loudness or Audio2Face) and whether the character
-shows automatically at launch. Settings are saved in the avatar-only sidecar;
-opening Setup temporarily hides the character and restores it afterwards.
+the lip-sync mode (Automatic, voice loudness only, or Audio2Face only) and
+whether the character shows automatically at launch. Settings are saved in the
+avatar-only sidecar; opening Setup temporarily hides the character and restores
+it afterwards.
 
-The **Advanced** section keeps the Audio2Face lane: inspect actual targets, use
-the mapping helper and editable shared-configuration JSON, validate
-compatibility and save. It is **not a graphical automatic-rig wizard**. Only
-Audio2Face mouth and expression aspects can activate; gaze/head/body A2F
-composition and arbitrary blends are unsupported. Activation separately
-authorizes generated-speech analysis against the user-provisioned NIM endpoint
-and replaces loudness lip-sync for the session. **Armed, awaiting generated
-speech** is not a verified runtime. **STOP**/Escape, relevant edits, session
-lock and app exit revoke A2F; restarting never restores it. Hiding the character
-does not stop voice.
+The **Advanced** section holds the Audio2Face endpoint used by Automatic mode and
+the Audio2Face-only lane: inspect actual targets, use the mapping helper and
+editable shared-configuration JSON, validate compatibility and save (Automatic
+mode also uses a saved mapping for the same model). It is **not a graphical
+automatic-rig wizard**. Only Audio2Face mouth and expression aspects can
+activate; gaze/head/body A2F composition and arbitrary blends are unsupported.
+Audio2Face-only activation replaces loudness lip-sync for the session. **Armed,
+awaiting generated speech** is not a verified runtime. **STOP**/Escape, relevant
+edits, session lock and app exit revoke it; restarting never restores it. Hiding
+the character does not stop voice.
 
 ## 3. Per-model capability and mapping checklist
 
@@ -147,12 +150,12 @@ from `RuntimeReadiness`. Record readiness and performance independently.
 | Audio2Face + VRM with basic vowel expressions only | Requires mapping / degraded | Explicitly map a limited mouth subset, report omitted face detail; choose a richer authored rig for full output. Missing vowels remain unsupported. |
 | Audio2Face + Live2D with approved mouth/face parameters | Requires mapping / degraded | Approve per-model reduction and masks; retain only expressible channels. Do not claim generic Cubism ARKit support. |
 | Amplitude + existing Live2D mouth or VRM mouth expression | Implemented default (loudness lip-sync) | Uses the model's `LipSync` group / `ParamMouthOpenY` (Live2D) or `aa` (VRM); no viseme or detailed-emotion quality claim. |
-| Audio2Face + amplitude both owning mouth | Prevented | A2F activation stops loudness lip-sync for the session; the renderer also suppresses loudness while composed frames are fresh. |
+| Audio2Face + amplitude both owning mouth | Arbitrated | Automatic mode sends both; renderers apply loudness only while no Audio2Face frame arrived in the last 250 ms. Explicit Audio2Face-only activation stops loudness. |
 | Audio2Face mouth + idle non-mouth/pose | Compatible in principle only with disjoint actual targets | Mask clip/expression mouth writes and respect rig overrides. First-slice facial parts only; pose/body integration remains planned. |
 | VRMA + capable VRM | Format-compatible; first-slice playback unsupported | Implement A02d/version-aware retargeting, masks and local motion qualification before enabling. |
 | VRMA directly + Live2D | Unsupported | Use an authored Cubism motion or implement and qualify an explicit conversion/mapping; selecting a resolver cannot make skeletal data into Live2D motion. |
 | Full A2F face requested on model lacking shapes | Unsupported for missing aspects | Author rig/mapping, select a suitable model, or explicitly omit those aspects and label reduced output. |
-| Compatible A2F rig, missing NIM/GPU/model/access | Structurally compatible but readiness blocked/unknown | User separately provisions/authorizes exact prerequisites; otherwise disable speech animation or deliberately choose a supported alternate. Never silent fallback. |
+| Compatible A2F rig, missing NIM/GPU/model/access | Structurally compatible but readiness blocked/unknown | Automatic mode reports "No Audio2Face service" and uses loudness; the user may provision a service (see the Desktop guide). Audio2Face-only mode shows the segment as unavailable. |
 | Arbitrary model/version/backend or untested combination | Unknown / unqualified | Inspect capability/schema and run exact permitted local checks; label verified/unsupported only when evidence supports it. |
 | Scripted/remote-reference/oversized asset or invalid frame schema | Blocked safety/schema failure | Obtain a valid bounded local asset/frame; no advanced override. |
 | Disabled/missing/crashed avatar | No-avatar voice remains independent | Show animation unavailable/off, preserve conversation settings; independent restart never replays canceled speech. |

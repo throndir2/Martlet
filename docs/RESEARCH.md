@@ -645,6 +645,9 @@ The adapter owner pins official Samples v2.0 proto source at
 and output time conversion retain the original sample clock; the selected
 adapter emits only the shared facial subset, not NIM head/extended tongue or
 emotion metadata. Actual service/GPU/model execution remains NOT RUN.
+**Update 2026-09-28:** the owner authorized Desktop's Automatic lip-sync to TCP-probe
+the configured loopback endpoint before each generated-speech sentence and fall
+back to local loudness lip-sync; provisioning remains the user's.
 
 **Rights and evidence limit:** SDK MIT does not license NIM distribution,
 weights, CUDA/TensorRT dependencies or avatar artwork. Record and approve each

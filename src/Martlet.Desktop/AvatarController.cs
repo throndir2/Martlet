@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Security.Cryptography;
 using System.Windows;
@@ -54,7 +55,7 @@ internal sealed class AvatarController : IAsyncDisposable
         finally { changes.Release(); }
     }
 
-    /// <summary>Opens the character with idle animation and, by default, local loudness lip-sync.</summary>
+    /// <summary>Opens the character with idle animation and the profile's lip-sync mode.</summary>
     internal async Task ShowAsync(AvatarProfile selected, CancellationToken token)
     {
         await InspectAsync(selected, token);
@@ -63,24 +64,71 @@ internal sealed class AvatarController : IAsyncDisposable
         {
             if (renderer is not { HasExited: false } current || profile is null)
                 throw new InvalidOperationException("The character window closed before it finished loading.");
-            if (selected.LipSync == AvatarLipSync.Loudness)
+            if (selected.LipSync == AvatarLipSync.Audio2Face)
             {
-                StartLoudness(current);
-                Publish("Character showing. Idle animation on; mouth follows Martlet's voice (local loudness lip-sync).");
+                Publish("Character showing with idle animation. Audio2Face-only lip-sync needs a reviewed mapping and explicit activation below.");
+                return;
             }
-            else Publish("Character showing with idle animation. Audio2Face lip-sync needs a reviewed mapping and explicit activation below.");
+            AutoAudio2Face? automatic = null;
+            if (selected.LipSync == AvatarLipSync.Auto)
+            {
+                automatic = AutoConfiguration(profile);
+                if (automatic is not null) await current.SendAsync("configure", automatic.Config, token);
+            }
+            StartCharacter(current, automatic);
+            if (automatic is null)
+                Publish(selected.LipSync == AvatarLipSync.Auto
+                    ? "Character showing. This model has no mouth control Audio2Face can drive; mouth follows Martlet's voice loudness."
+                    : "Character showing. Idle animation on; mouth follows Martlet's voice (local loudness lip-sync).");
+            else
+            {
+                var found = await Audio2FaceProbe.IsListeningAsync(automatic.Options, TimeSpan.FromMilliseconds(300), token);
+                Publish(found
+                    ? $"Character showing. Audio2Face service detected at {automatic.Options.Endpoint.Authority}; lip-sync uses it, falling back to voice loudness."
+                    : $"Character showing. No Audio2Face service at {automatic.Options.Endpoint.Authority}; lip-sync uses voice loudness and checks again whenever Martlet speaks.");
+            }
         }
         finally { changes.Release(); }
     }
 
-    private void StartLoudness(IAvatarRenderer target)
+    private sealed record AutoAudio2Face(AvatarConfiguration Settings, IReadOnlyList<ModelParameter> Targets,
+        RendererConfiguration Config, Audio2FaceOptions Options);
+
+    /// <summary>A reviewed saved mapping for this exact model, otherwise the built-in mouth mapping.</summary>
+    private AutoAudio2Face? AutoConfiguration(AvatarProfile inspected)
+    {
+        var capabilities = renderer!.Capabilities!;
+        var saved = inspected.Settings with { Enabled = true };
+        var candidates = new List<AvatarConfiguration>();
+        if (saved.Assignments.Count > 0 && saved.Assignments.All(a => a.SourceId == SourceId) &&
+            saved.MappingProfiles.All(p => p.ModelId == capabilities.ModelId) &&
+            saved.RequestedAspects.Except(saved.OmittedAspects).All(a => a is AvatarAspect.Mouth or AvatarAspect.Expression))
+            candidates.Add(saved);
+        if (Audio2FaceAutoMapping.Create(capabilities, inspected.Renderer, SourceId) is { } fallback) candidates.Add(fallback);
+        foreach (var settings in candidates)
+        {
+            try
+            {
+                var targets = Targets(settings);
+                if (targets.Count == 0) continue;
+                var mappingRevision = Convert.ToHexString(SHA256.HashData(AvatarJson.WriteConfiguration(settings)));
+                var config = new RendererConfiguration(SourceId, inspected.ResourceRevision!, mappingRevision,
+                    targets.Select(t => new RendererMapping(t.Id, t.Aspect.ToString())).ToArray());
+                return new(settings, targets, config, new Audio2FaceOptions { Endpoint = new(inspected.Endpoint) });
+            }
+            catch (Exception error) when (error is InvalidOperationException or ContractException) { }
+        }
+        return null;
+    }
+
+    private void StartCharacter(IAvatarRenderer target, AutoAudio2Face? automatic)
     {
         lock (stateGate)
         {
             var lifetime = new CancellationTokenSource();
             loudness = lifetime;
             observer.Enable();
-            loudnessWorker = RunLoudnessAsync(target, lifetime.Token);
+            loudnessWorker = RunCharacterAsync(target, automatic, lifetime.Token);
         }
     }
 
@@ -104,7 +152,7 @@ internal sealed class AvatarController : IAsyncDisposable
         if (running is null || running.IsCompleted) lifetime.Dispose();
     }
 
-    private async Task RunLoudnessAsync(IAvatarRenderer target, CancellationToken token)
+    private async Task RunCharacterAsync(IAvatarRenderer target, AutoAudio2Face? automatic, CancellationToken token)
     {
         CancellationTokenSource? speaking = null;
         Task? current = null;
@@ -121,7 +169,7 @@ internal sealed class AvatarController : IAsyncDisposable
                     if (current is not null) await Settle(current);
                     speaking?.Dispose();
                     speaking = CancellationTokenSource.CreateLinkedTokenSource(token);
-                    current = LoudnessLipSync.RunAsync(segment, level => target.SendAsync("mouth", new { level }, token), speaking.Token);
+                    current = SpeakAsync(segment, target, automatic, speaking.Token);
                 }
             }
         }
@@ -137,6 +185,144 @@ internal sealed class AvatarController : IAsyncDisposable
         {
             try { await task; }
             catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or TimeoutException) { }
+        }
+    }
+
+    private long lastAudio2FaceApply;
+    private bool Audio2FaceAnimating =>
+        Stopwatch.GetElapsedTime(Volatile.Read(ref lastAudio2FaceApply)) < TimeSpan.FromMilliseconds(250);
+
+    /// <summary>Loudness lip-sync for one sentence, with Audio2Face taking over whenever a local service delivers frames.</summary>
+    private async Task SpeakAsync(GeneratedSpeechObservation segment, IAvatarRenderer target, AutoAudio2Face? automatic,
+        CancellationToken token)
+    {
+        var meter = new LoudnessMeter(segment.Format);
+        var snapshot = segment.Playback.Snapshot;
+        GeneratedSpeechStream? stream = automatic is not null && segment.Format.Channels == 1
+            ? new GeneratedSpeechStream(snapshot.Ids, snapshot.Epoch, segment.Format, 0, 0, segment.Format.SampleRate * 90L, 128)
+            : null;
+        try
+        {
+            var tee = TeeAsync(segment, meter, stream, token);
+            var present = LoudnessLipSync.PresentAsync(segment, meter,
+                level => target.SendAsync("mouth", new { level }, token), () => Audio2FaceAnimating, token);
+            if (stream is not null && automatic is not null)
+            {
+                if (await Audio2FaceProbe.IsListeningAsync(automatic.Options, TimeSpan.FromMilliseconds(250), token))
+                {
+                    try { await AnimateAutomaticAsync(segment, stream, automatic, target, token); }
+                    catch (Exception error) when (!token.IsCancellationRequested && error is Audio2FaceException or
+                        ContractException or IOException or InvalidOperationException or OperationCanceledException or TimeoutException)
+                    {
+                        Publish($"Audio2Face unavailable for this sentence ({(error is Audio2FaceException a ? a.Failure.ToString() :
+                            error is AvatarOperationException reason ? reason.Message : "service or mapping failure")}); mouth follows voice loudness.");
+                    }
+                }
+                else stream.Dispose();
+            }
+            await Task.WhenAll(tee, present);
+        }
+        finally { stream?.Dispose(); }
+    }
+
+    private static async Task TeeAsync(GeneratedSpeechObservation segment, LoudnessMeter meter,
+        GeneratedSpeechStream? stream, CancellationToken token)
+    {
+        var feeding = stream is not null;
+        try
+        {
+            await foreach (var frame in segment.Frames.ReadAllAsync(token))
+            {
+                meter.Add(frame);
+                if (feeding && stream!.TrySubmit(frame) != SpeechIngressResult.Accepted) feeding = false;
+            }
+            if (feeding && (!segment.InputCompleted ||
+                stream!.CompleteInput(segment.SampleCount) != SpeechIngressResult.Completed)) feeding = false;
+        }
+        finally { if (!feeding) stream?.Dispose(); }
+    }
+
+    private async Task AnimateAutomaticAsync(GeneratedSpeechObservation segment, GeneratedSpeechStream stream,
+        AutoAudio2Face automatic, IAvatarRenderer target, CancellationToken token)
+    {
+        var snapshot = segment.Playback.Snapshot;
+        var ids = snapshot.Ids;
+        var identity = new RendererIdentity(ids.SessionId, ids.TurnId, ids.RequestId, SourceId, snapshot.Epoch, segment.Format.SampleRate);
+        var gate = new PlaybackFrameGate(new PlaybackBinding
+            { Ids = ids, Epoch = snapshot.Epoch, SourceId = SourceId, SampleRate = segment.Format.SampleRate });
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        using var permission = new Audio2FaceAuthorization(stream, automatic.Options, DateTimeOffset.UtcNow.AddSeconds(90), true);
+        var adapter = new Audio2FaceAdapter(automatic.Options);
+        var halt = StopSegmentAsync(segment, stop, target.Exited);
+        AvatarComposition? composition = null;
+        var started = false;
+        try
+        {
+            await foreach (var frame in adapter.AnimateAsync(stream, permission, stop.Token))
+            {
+                if (frame.SourceId != SourceId) throw new InvalidOperationException("Unexpected analyzer source identity.");
+                if (composition is null)
+                {
+                    var channels = frame.Blendshapes.Keys.ToHashSet(StringComparer.Ordinal);
+                    // Use only mapped channels this service actually returns; unmapped targets stay neutral.
+                    var settings = automatic.Settings with
+                    {
+                        MappingProfiles = automatic.Settings.MappingProfiles.Select(p => p with
+                        {
+                            Mappings = p.Mappings.Where(m => m.Source.Blendshape is { } name && channels.Contains(name)).ToArray()
+                        }).ToArray()
+                    };
+                    var model = new ModelCapabilities { ModelId = target.Capabilities!.ModelId, Renderer = profile!.Renderer,
+                        MetadataKnown = true, Readiness = RuntimeReadiness.Available, Parameters = automatic.Targets };
+                    var source = new SourceCapabilities { SourceId = SourceId, Backend = AvatarBackend.Audio2Face,
+                        ChannelsKnown = true, Readiness = RuntimeReadiness.Available,
+                        Channels = channels.Select(name => new ChannelReference { Blendshape = name }).ToArray() };
+                    var result = AvatarComposer.Create(settings, model, [source]);
+                    composition = result.Composition ?? throw new AvatarOperationException(
+                        string.Join(" ", result.Issues.Select(i => i.Summary)));
+                }
+                if (!started)
+                {
+                    await target.SendAsync("reset", identity, token);
+                    started = true;
+                }
+                PlaybackPosition? position;
+                while (true)
+                {
+                    stop.Token.ThrowIfCancellationRequested();
+                    position = Position(segment);
+                    if (position is null)
+                    {
+                        if (segment.Playback.DeviceClock.State != PlaybackClockState.Waiting)
+                            throw new AvatarOperationException("playback clock unavailable");
+                    }
+                    else if (frame.SampleOffset <= position.SampleOffset) break;
+                    else if (frame.SampleOffset - position.SampleOffset > segment.Format.SampleRate)
+                        throw new AvatarOperationException("animation ran too far ahead of playback");
+                    await Task.Delay(10, stop.Token);
+                }
+                var composed = composition.Compose(frame, gate, position);
+                if (composed.Disposition == FrameDisposition.TooLate) continue;
+                if (composed.Disposition != FrameDisposition.Accepted)
+                    throw new AvatarOperationException("frame cannot be synchronized: " + composed.Disposition);
+                var parameters = automatic.Targets.ToDictionary(t => t.Id,
+                    t => composed.Parameters.TryGetValue(t.Id, out var value) ? value : t.Neutral, StringComparer.Ordinal);
+                await target.SendAsync("apply", new RendererParameters(identity, frame.Sequence, frame.SampleOffset,
+                    position.SampleOffset, automatic.Config.ModelRevision, automatic.Config.MappingRevision, parameters), stop.Token);
+                if (Volatile.Read(ref lastAudio2FaceApply) == 0 || !Audio2FaceAnimating)
+                    Publish($"Lip-sync: Audio2Face at {automatic.Options.Endpoint.Authority} (voice loudness fallback ready).");
+                Volatile.Write(ref lastAudio2FaceApply, Stopwatch.GetTimestamp());
+            }
+        }
+        finally
+        {
+            gate.Stop();
+            await stop.CancelAsync();
+            try { await halt; }
+            catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+            if (started && !target.HasExited && !token.IsCancellationRequested)
+                try { await target.SendAsync("stop", new { }, token); }
+                catch (Exception error) when (error is IOException or InvalidOperationException or OperationCanceledException or TimeoutException) { }
         }
     }
 

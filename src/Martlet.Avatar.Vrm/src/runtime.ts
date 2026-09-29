@@ -218,6 +218,7 @@ export class VrmRuntime {
   private blinkTime = -1;
   private lookTarget = { x: 0, y: 0 };
   private look = { x: 0, y: 0 };
+  private composedAge = Number.POSITIVE_INFINITY;
 
   get capabilities(): VrmCapabilities | undefined { return this.inspected; }
   get scene(): THREE.Group | undefined { return this.model?.scene; }
@@ -255,12 +256,15 @@ export class VrmRuntime {
       bone("head")?.rotation.set(-this.look.y * 0.2, this.look.x * 0.3, 0);
     }
     const expressions = model.expressionManager;
-    if (!expressions || this.selection) return;
+    if (!expressions) return;
     this.speechAge += deltaSeconds;
     const target = this.speechAge > 0.3 ? 0 : this.speechTarget;
     this.speech += (target - this.speech) * Math.min(1, deltaSeconds * (target > this.speech ? 30 : 14));
-    if (expressions.getExpression("aa")) expressions.setValue("aa", this.speech);
-    if (!expressions.getExpression("blink")) return;
+    // Fresh composed (Audio2Face) frames own the mouth; loudness resumes when they stop.
+    const composing = this.identity !== undefined && this.composedAge < 0.25;
+    if (!composing && expressions.getExpression("aa")) expressions.setValue("aa", this.speech);
+    const blinkOwned = this.identity !== undefined && (this.selection?.mappings.some(m => m.aspect === "blink") ?? false);
+    if (blinkOwned || !expressions.getExpression("blink")) return;
     if (this.blinkTime < 0 && (this.nextBlink -= deltaSeconds) <= 0) this.blinkTime = 0;
     if (this.blinkTime >= 0) {
       this.blinkTime += deltaSeconds;
@@ -406,6 +410,7 @@ export class VrmRuntime {
     this.sequence = input.sequence;
     this.sampleOffset = input.sampleOffset;
     this.playbackOffset = actualPlaybackSampleOffset;
+    this.composedAge = 0;
   }
 
   /** Local procedural controls only; not an A2F/AvatarFrame pose protocol. */
@@ -428,6 +433,7 @@ export class VrmRuntime {
   update(deltaSeconds: number): void {
     const model = this.loaded();
     finite(deltaSeconds, 0, 0.1, "deltaSeconds");
+    this.composedAge += deltaSeconds;
     if (this.identity && this.selection?.head) {
       model.humanoid.getNormalizedBoneNode("head")!.quaternion.fromArray(this.pose.head ?? [0, 0, 0, 1]);
     }
@@ -479,6 +485,7 @@ export class VrmRuntime {
   private loaded(): VRM { this.alive(); requireValid(this.model, "Load a VRM before using the runtime."); return this.model; }
   private clearControls(): void {
     this.identity = undefined; this.sequence = -1; this.sampleOffset = -1; this.playbackOffset = -1; this.pose = {};
+    this.composedAge = Number.POSITIVE_INFINITY;
     if (this.model) {
       this.model.humanoid.resetNormalizedPose();
       this.model.humanoid.update();

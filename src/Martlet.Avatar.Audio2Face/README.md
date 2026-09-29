@@ -3,10 +3,12 @@
 This is Martlet's first rich speech-to-face backend: a real protobuf/gRPC client
 for an **already provisioned NVIDIA Audio2Face-3D NIM v2 service** on an explicitly
 configured numeric loopback address. It is not a native Audio2Face SDK bridge.
-It does not install, launch, discover, health-probe, download, authenticate to, or
-silently replace a service. Construction and `InspectPrerequisites()` are passive.
-Normal Desktop/Conversation/renderer wiring is a later integration step; this
-module does not change application defaults or activate itself.
+It does not install, launch, download, authenticate to, or replace a service.
+Construction and `InspectPrerequisites()` are passive. `Audio2FaceProbe.IsListeningAsync`
+is a separate, explicit TCP connect check against the configured loopback
+endpoint only; a successful connect does not prove a working service. Desktop's
+Automatic lip-sync uses it before each generated-speech sentence and falls back
+to voice-loudness lip-sync when the probe or animation fails.
 
 ## Runtime prerequisites and evidence
 

@@ -102,7 +102,10 @@ public partial class AvatarWindow : ThemedWindow
                 CharacterChoice.SelectedIndex = builtIn ? 0 : 1;
                 CustomModelPanel.IsEnabled = !builtIn;
                 ModelPathText.Text = builtIn ? "" : selected.ModelPath;
-                LipSyncChoice.SelectedIndex = selected.LipSync == AvatarLipSync.Audio2Face ? 1 : 0;
+                LipSyncChoice.SelectedIndex = selected.LipSync switch
+                {
+                    AvatarLipSync.Loudness => 1, AvatarLipSync.Audio2Face => 2, _ => 0
+                };
                 AutoShowChoice.IsChecked = selected.AutoShow;
                 SdkPathText.Text = selected.SdkDirectory ?? "";
                 EndpointText.Text = selected.Endpoint;
@@ -125,7 +128,10 @@ public partial class AvatarWindow : ThemedWindow
         Endpoint = EndpointText.Text, Configuration = AvatarProfile.ConfigurationElement(ReadConfiguration()),
         ResourceRevision = controller.InspectedProfile?.ResourceRevision,
         AutoShow = AutoShowChoice.IsChecked == true,
-        LipSync = LipSyncChoice.SelectedIndex == 1 ? AvatarLipSync.Audio2Face : AvatarLipSync.Loudness
+        LipSync = LipSyncChoice.SelectedIndex switch
+        {
+            1 => AvatarLipSync.Loudness, 2 => AvatarLipSync.Audio2Face, _ => AvatarLipSync.Auto
+        }
     };
 
     private void BrowseModel_Click(object sender, RoutedEventArgs e)
