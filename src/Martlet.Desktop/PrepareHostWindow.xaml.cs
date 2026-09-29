@@ -89,7 +89,7 @@ public partial class PrepareHostWindow : ThemedWindow
     private string Target()
     {
         var target = TargetText.Text.Trim();
-        ConsoleSshShell.Validate(target, []);
+        SshHostShell.Validate(target, []);
         if (!target.Contains('@') || target.StartsWith("user@", StringComparison.Ordinal))
             throw new InvalidOperationException("Enter the SSH target as user@computer, with your Linux user name (for example me@192.168.1.20).");
         return target;

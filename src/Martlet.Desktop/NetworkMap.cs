@@ -306,7 +306,7 @@ internal static class NetworkMap
                     target.Commands.Add(new(NodeAction.RemoveRole, local ? $"Remove {role.Name} from this PC's host service" : $"Remove {role.Name} from it",
                         Argument: id + "/" + role.Kind));
             }
-            target.Commands.Add(new(NodeAction.HostStatus, "Open its status console", Argument: id));
+            target.Commands.Add(new(NodeAction.HostStatus, "Show its status", Argument: id));
             if (!local && paired.Method != HostSetupMethod.ThisPcDocker)
             {
                 // Linux computers: set them up and power them from here (martlet-prepare over SSH, Wake-on-LAN).

@@ -24,7 +24,7 @@ public sealed class HostRolesTests
         Assert.Equal(a, loaded[0]);
         Assert.Equal(HostSetupMethod.ThisPcDocker, loaded[2].Method);
         Assert.True(loaded[1].CanLaunch);
-        Assert.Contains("ssh -t me@gpu-b", HostSetupCommands.Script(loaded[1].Target("0.2.0"), HostAction.Add(HostRoles.Audio2Face)), StringComparison.Ordinal);
+        Assert.Contains("martlet-host --yes add audio2face", HostSetupCommands.RemoteShell(loaded[1].Target("0.2.0"), HostSetupCommands.Engine(HostAction.Add(HostRoles.Audio2Face)), false), StringComparison.Ordinal);
         File.WriteAllText(Path.Combine(scope.DirectoryPath, HostRegistry.FileName), "{not json");
         Assert.Throws<InvalidDataException>(() => HostRegistry.Load(scope.DirectoryPath));
     }

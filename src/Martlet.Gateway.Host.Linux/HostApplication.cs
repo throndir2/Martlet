@@ -9,6 +9,8 @@ internal interface IHostPlatform
     IHostTerminal OpenTerminal();
     DurableGatewayHost OpenHost(string command, HostConfiguration config, ServiceApproval? approval,
         CancellationToken cancellation);
+    /// <summary>Standard input for owner commands (owner-pair watches it for a "cancel" line).</summary>
+    TextReader Input => Console.In;
 }
 
 internal sealed class NativeHostPlatform : IHostPlatform
@@ -115,6 +117,29 @@ internal static class HostApplication
                 CheckApproval(directory, config, approval);
                 output.WriteLine("serving: approved gateway listener; empty worker registry; no model readiness claim.");
                 await Task.Delay(Timeout.InfiniteTimeSpan, cancellation);
+            }
+            else if (options.Command.StartsWith("owner-", StringComparison.Ordinal))
+            {
+                // The host's own account running this command (martlet-host --yes, typically driven by the owner's
+                // authenticated SSH session from Martlet desktop) is the owner's confirmation; no console is used.
+                var init = options.Command == "owner-init";
+                approval?.Check(config, directory, requireDigest: init);
+                output.WriteLine($"Owner operation {options.Command} for host {config.HostId} at {config.Binding.Origin.CanonicalOrigin} (service UID/GID {config.ServiceUid}/{config.ServiceGid}).");
+                config.Recheck(directory);
+                if (approval is not null)
+                    CheckApproval(directory, config, approval, requireDigest: init);
+                owner = platform.OpenHost(init ? "init" : "admin", config, approval, cancellation);
+                config.Recheck(directory);
+                PublishMachine(owner, directory, output);
+                output.WriteLine($"Opened host: {owner.Identity!.HostId}\nSPKI pin: {owner.Identity.SpkiFingerprint}");
+                if (options.Command == "owner-pair")
+                    exit = await PairOnceAsync(owner, config, directory, options, platform.Input, output, cancellation);
+                else
+                {
+                    directory.WriteApproval(ServiceApproval.Create(config, owner.Identity!));
+                    config.Recheck(directory);
+                    output.WriteLine("Service-start approval committed for this exact configuration and identity.");
+                }
             }
             else
             {
@@ -257,6 +282,58 @@ internal static class HostApplication
     {
         approval.Check(config, directory, requireDigest);
         if (ReadApproval(directory) != approval) throw new HostApprovalException();
+    }
+
+    /// <summary>One-shot pairing for owner-pair: start the listener, print the invitation as one machine-readable line,
+    /// wait until the named device registers (or the five-minute invitation expires, or a "cancel" line arrives on
+    /// stdin), then return so the caller can restart the service.</summary>
+    private static async Task<int> PairOnceAsync(DurableGatewayHost owner, HostConfiguration config,
+        LinuxControlDirectory directory, HostOptions options, TextReader input, TextWriter output, CancellationToken cancellation)
+    {
+        var device = options.DeviceId!;
+        var roles = Roles(options.Roles);
+        var known = owner.ListRegistrations(cancellation).Select(r => r.CredentialId).ToHashSet(StringComparer.Ordinal);
+        config.Recheck(directory);
+        await owner.StartAsync(cancellation);
+        config.Recheck(directory);
+        var card = owner.OpenPairing(new() { DeviceId = device, DisplayName = options.Name!, Roles = roles }, cancellation);
+        output.WriteLine($"Listener started. One-use invitation for device {device} ({string.Join(',', roles)}), host pin {owner.Identity!.SpkiFingerprint}, expires {card.ExpiresAt:O}.");
+        output.WriteLine("pairing-code: " + PairingCode.Format(card));
+        output.Flush();
+        // Console.In reads synchronously, so the watcher runs on its own thread; it is abandoned when pairing ends.
+        var canceled = Task.Run(() => WatchForCancel(input), CancellationToken.None);
+        while (true)
+        {
+            var registered = owner.ListRegistrations(cancellation)
+                .FirstOrDefault(r => r.DeviceId == device && !r.Revoked && !known.Contains(r.CredentialId));
+            if (registered is not null)
+            {
+                output.WriteLine($"Paired: {Display(registered.DeviceId)} ({Display(registered.DisplayName)}), roles {string.Join(',', registered.Roles)}. Permanent until revoked.");
+                return 0;
+            }
+            if (canceled.IsCompletedSuccessfully && canceled.Result)
+            {
+                output.WriteLine("pairing.canceled: the invitation was withdrawn before a desktop redeemed it.");
+                return 3;
+            }
+            if (DateTimeOffset.UtcNow >= card.ExpiresAt)
+            {
+                output.WriteLine("pairing.expired: no desktop redeemed the invitation within five minutes.");
+                return 3;
+            }
+            await Task.Delay(500, cancellation);
+        }
+    }
+
+    private static bool WatchForCancel(TextReader input)
+    {
+        try
+        {
+            while (input.ReadLine() is { } line)
+                if (line.Trim() == "cancel") return true;
+        }
+        catch (Exception error) when (error is IOException or ObjectDisposedException) { }
+        return false;
     }
 
     private static async Task<int> AdminAsync(DurableGatewayHost owner, HostConfiguration config,

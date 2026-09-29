@@ -19,28 +19,41 @@ Windows desktop (Martlet) --pinned TLS, paired once--> host: Martlet gateway :94
 | Method | Host needs | How to run it | Gateway runs as |
 | --- | --- | --- | --- |
 | **Desktop: this PC with Docker Desktop** | Windows + Docker Desktop (WSL 2) | Martlet > **Martlet hosts** > *This PC* | containers `martlet-host-net` + `martlet-host-gateway` |
-| **Desktop: another computer over SSH, Docker** | SSH server + Docker (Linux or macOS; for another Windows PC install Martlet there and use *This PC*) | Martlet hosts > *over SSH, using Docker* | same containers on that host |
-| **Desktop: another computer over SSH, native** | Ubuntu 24.04 x86_64 with SSH | Martlet hosts > *over SSH, native Ubuntu* | systemd user service `martlet-host-gateway` |
+| **Desktop: another computer over SSH, Docker** | SSH server + Docker (the one prerequisite; Linux x86_64; for another Windows PC install Martlet there and use *This PC*) | Martlet hosts > *over SSH, using Docker* > **Add this computer** (runs in Martlet) | same containers on that host |
+| **Desktop: another computer over SSH, native** | Ubuntu 24.04 x86_64 with SSH | Martlet hosts > *over SSH, native Ubuntu* > **Add this computer** (runs in Martlet) | systemd user service `martlet-host-gateway` |
 | **On the host, Docker** | any Docker host | `docker run ... martlet-host <command>` (below) | containers |
 | **On the host, native** | Ubuntu 24.04 x86_64 | `./deploy/host/martlet-host <command>` (below) | systemd user service |
 
-The desktop never receives a shell, Docker socket or admin rights on a host. Its
-launchers open a console window running exactly the command shown in Martlet
-hosts (SSH asks for your password or key as usual), and every system change and
-gateway approval is confirmed with an explicit `yes` in that console.
+For SSH hosts the desktop does everything itself (see [Driving Linux hosts from
+Windows](#driving-linux-hosts-from-windows-over-ssh)): you enter `user@computer`
+and the password once, and never need to log in to that computer. The owner's
+click in Martlet, over the owner's own SSH session, is the confirmation for each
+change. For *This PC* a console window runs the command shown in Martlet hosts,
+and on the host itself every change is confirmed by typing `yes`.
 
 Commands are the same everywhere:
 
 ```text
 setup               gateway, identity and start at boot (once per host)
-pair                pair a desktop; shows a one-use pairing code (repeat per desktop)
+pair                pair a desktop in the gateway console; shows a one-use pairing code (repeat per desktop)
+pair --device-id <id> --name <name>
+                    pair that desktop without a console: prints one "pairing-code: martlet-pair-v1..." line,
+                    waits up to five minutes for it to be redeemed, then restarts the gateway
 roles               what this host can run
+describe <role>     a role's terms, secrets (stored or missing, never values), choices and GPU/CPU option, machine-readable
 add <role>          install a role, e.g. add ollama or add audio2face (same flow for every role)
 remove <role>       stop a role and unpublish it (keeps its data)
 machine             report this machine's hardware to paired desktops (also done by setup, pair, add and remove)
 update              update the gateway to this engine's Martlet version (identity, pairings, roles and data stay)
 status | config     show the gateway and roles | print the generated host.json
 ```
+
+`--yes` before any command (or `MARTLET_ASSUME_YES=1`) runs it without questions:
+confirmations are taken as given, the gateway identity and service approval are
+handled by the gateway's owner commands, and answers come from stdin as
+`KEY=VALUE` lines ended by `end` (`secret.<name>=...`, `choice.<VAR>=...`), never
+from arguments or the environment. Martlet desktop always uses it for SSH hosts;
+a human on the host normally does not.
 
 ### Updating a host
 
@@ -59,12 +72,16 @@ command:
   swaps it in and restarts the service.
 
 `update` asks nothing unless the new version changes `host.json`; that renews
-the service approval in the gateway console, like any configuration change.
+the service approval (in the gateway console, or with `--yes` through
+`owner-approve`), like any configuration change. For SSH hosts **Update host**
+runs `--yes update` in Martlet, so the click is that approval.
 With *Keep my Martlet hosts on this PC's version* (Settings > App updates) the
 desktop runs `update` in the background for older hosts every check interval,
-without a console: SSH with `BatchMode` (keys only), `sudo -n`, no TTY. A host
-that needs a password, sudo or an approval fails that run without changing
-anything and keeps *Update host*, which runs the same update in a console.
+without asking anything: for SSH hosts through Martlet's SSH runner (its own key,
+the pinned host key and a sudo password only if you chose to remember one; no
+`--yes`), for this PC in Docker Desktop. A host that needs a password, a new host
+key, sudo or an approval fails that run without changing anything and keeps
+*Update host*.
 
 ### What the host tells Martlet
 
@@ -149,13 +166,69 @@ a `yes`.
 
 ## Pairing
 
-In Martlet > **Martlet hosts**, copy *This PC's device ID* and press **Pair this
-PC**. In the host console confirm opening with `yes`, type `start` (`yes`), then
-`pair` with that device ID, a name and role `voice` (`yes`). The host shows a
-pairing code `martlet-pair-v1....` (origin, host ID, TLS pin, one-use pairing ID
-and token). Paste it into Martlet hosts and press **Pair with host** while the
-console is open; then press a key, `list` confirms, and `stop` (`yes`) restarts
-the service. **Check host** shows which roles the host offers and the hardware it reported.
+**SSH hosts** pair by themselves: **Add this computer** (or **Pair automatically
+over SSH** on the Pair step) runs `martlet-host --yes pair --device-id <this PC>
+--name <this PC>` there. The gateway starts its listener, prints the one-use
+code on one line and waits; Martlet reads the code from the output (it is never
+shown or logged; Docker runs the engine with `--log-driver none`), redeems it with
+the same pairing client as the **Pair with host** button and stores the device
+secret in Windows Credential Manager, and the host restarts its gateway. If
+redeeming fails, Martlet sends `cancel` so the host stops waiting at once.
+
+**This PC or by hand:** in Martlet > **Martlet hosts**, copy *This PC's device
+ID* and press **Open pairing console**. In the host console confirm opening with
+`yes`, type `start` (`yes`), then `pair` with that device ID, a name and role
+`voice` (`yes`). The host shows a pairing code `martlet-pair-v1....` (origin,
+host ID, TLS pin, one-use pairing ID and token). Paste it into Martlet hosts and
+press **Pair with host** while the console is open; then press a key, `list`
+confirms, and `stop` (`yes`) restarts the service. On a host you can also run
+`martlet-host pair --device-id <id> --name <name>` and paste the printed code.
+**Check host** shows which roles the host offers and the hardware it reported.
+
+## Driving Linux hosts from Windows over SSH
+
+The goal: put Docker on a Linux computer, give Martlet its SSH login, and do the
+rest from Windows. **Add this computer** in Martlet hosts:
+
+1. Connects with Martlet's own SSH key. The first time it asks for the account
+   password once (masked, never stored), appends Martlet's public key to
+   `~/.ssh/authorized_keys`, and from then on signs in with the key only.
+2. Shows the computer's SSH host key fingerprint on first contact and pins it;
+   any later change is refused (**Reset SSH trust** forgets it after a reinstall).
+3. Checks the computer: Docker present (the one prerequisite; if it is missing
+   Martlet says so and stops), whether this account can use Docker directly,
+   sudo, OS, architecture and its LAN address.
+4. Runs `setup` and `pair`, then reads the machine report, streaming every line
+   into a run window with **Cancel**. The host then appears on the Devices map.
+
+Afterwards the map's per-host actions (add or remove a role, show status) run the
+same way. Adding a role first runs `describe <role>` there and shows its
+requirements, terms, secrets and choices in Martlet; the **Install** click is the
+confirmation, and the secrets (for example the NGC API key) go to the host over
+stdin and are stored there in the host's private config (0600).
+
+Trust model:
+
+- Martlet's key is `ssh\martlet_ecdsa` (ECDSA P-256) in Martlet's data directory
+  (`%LOCALAPPDATA%\Martlet`), created with an ACL granting only your Windows user.
+  Pinned host keys are in `ssh\known_hosts.json` there and with each paired host
+  in `hosts.json`.
+- Runs use no terminal (so nothing on the host can prompt), `sh -c` as that
+  account, and `martlet-host --yes`. Your authenticated SSH session, started by
+  your click in Martlet, is the owner's local channel: it replaces typing `yes`
+  in a host console, including the gateway's identity creation, service approval
+  and pairing (`owner-init`, `owner-approve`, `owner-pair` in the
+  [Linux gateway](../../src/Martlet.Gateway.Host.Linux/README.md)).
+- When a step needs sudo (Docker for an account outside the `docker` group,
+  native package installs, lingering), Martlet asks for the sudo password in a
+  masked dialog, checks it with `sudo -S`, and passes it on the SSH channel's
+  stdin to a private one-run askpass helper (a 0600 file in a 0700 temporary
+  directory, removed when the run ends), so plain `sudo` works non-interactively.
+  It never appears in arguments, the environment or output. You can let Martlet
+  remember it per computer in Windows Credential Manager.
+- The transport is reusable: `HostShell.RunAsync(target, command, output, token)`
+  in `src/Martlet.Desktop/HostShell.cs` (stdin input, optional sudo, pinned host
+  key) and `HostRunWindow` to show a run with Cancel.
 
 ## The uniform role flow
 
@@ -165,17 +238,17 @@ the service. **Check host** shows which roles the host offers and the hardware i
 | Step | `role.conf` key | What happens |
 | --- | --- | --- |
 | Requirements | `requires` | Shared checks/installs: `gpu` (NVIDIA driver), `docker` (Engine + Compose), `nvidia-toolkit` (native method) |
-| Terms | `terms` | Shown; continue only on `yes` |
-| GPU or CPU | `gpu=optional\|<overlay>.yaml` | Detects NVIDIA GPU memory usable by containers and asks `gpu` or `cpu` (default: GPU when present). `gpu` adds the role's Compose overlay (and the NVIDIA requirements); `cpu` runs without it |
-| Secrets | `secret=name\|prompt` | Asked once, stored in the host config `secrets/<name>` (0600), passed to Compose as environment secret `<NAME>` |
-| Choices | `choice=VAR\|label\|options\|default`, `choice_by_vram=VAR\|<MiB>@<value> ...` | Asked each time, written to the role's `.env`; `choice_by_vram` suggests the default by GPU memory (ascending thresholds, `0` = CPU) |
+| Terms | `terms` | Shown; continue only on `yes` (or shown in Martlet, whose Install click confirms) |
+| GPU or CPU | `gpu=optional\|<overlay>.yaml` | Detects NVIDIA GPU memory usable by containers and asks `gpu` or `cpu` (default: GPU when present; Martlet sends `choice.accelerator` or lets the host decide). `gpu` adds the role's Compose overlay (and the NVIDIA requirements); `cpu` runs without it |
+| Secrets | `secret=name\|prompt` | Asked once (or sent by Martlet on stdin), stored in the host config `secrets/<name>` (0600), passed to Compose as environment secret `<NAME>` |
+| Choices | `choice=VAR\|label\|options\|default`, `choice_by_vram=VAR\|<MiB>@<value> ...` | Asked each time (or chosen in Martlet, where *Automatic* keeps the suggestion), written to the role's `.env`; `choice_by_vram` suggests the default by GPU memory (ascending thresholds, `0` = CPU) |
 | Registry | `registry=host\|user\|secret` | `docker login` with the stored secret |
 | Assets | `asset=url\|path` | Pinned HTTPS downloads (`{VAR}` uses a choice), copied into the role's `martlet-<role>-configs` volume |
 | Loopback | `rewrite=path\|sed`, `expect=path\|text` | Rewrite configs to 127.0.0.1 and verify it |
 | Service | `compose.yaml` | `docker compose up -d` with `network_mode: ${MARTLET_ROLE_NETWORK}` (host natively, the gateway's namespace in Docker) |
 | Readiness | `port`, `ready_timeout_minutes` | Wait until 127.0.0.1:`port` accepts connections |
-| Post-start | `post_start=<service>\|<command>` | Runs each command inside that service in order (`docker compose exec`; `{VAR}` uses a choice; plain words only), for example downloading a model |
-| Publish | `gateway_kind`, `model_from` | Add `{kind, endpoint, model}` to the gateway's `host.json` `roles` list; renew the service approval in the gateway console; restart |
+| Post-start | `post_start=<service>\|<command>` | Runs each command inside that service in order (`docker compose exec`; `{VAR}` uses a choice; plain words only), for example downloading a model; its progress streams to Martlet's run window |
+| Publish | `gateway_kind`, `model_from` | Add `{kind, endpoint, model}` to the gateway's `host.json` `roles` list; renew the service approval (gateway console, or `owner-approve` with `--yes`); restart |
 
 ## Adding a new role
 
@@ -214,8 +287,8 @@ From each host's details the desktop runs `add <role>`, `remove <role>` and
 `status` on that host through the route it was paired with (SSH with Docker, SSH
 native, or this PC's Docker Desktop), so moving a job from one GPU PC to another
 is: hand it to the new host (Martlet offers to install the role there), then
-remove the role from the old one. Every change on a host is still confirmed with
-`yes` in that host's console.
+remove the role from the old one. SSH hosts run these in Martlet (the click
+confirms); this PC's Docker Desktop opens a console where you confirm each step.
 
 ## Preparing a computer
 
@@ -264,11 +337,12 @@ Wake-on-LAN magic packet from Windows to the MAC the computer reported, which
 Martlet saves with the host in `hosts.json` (the map then offers *Wake it up*
 as well). Wake-on-LAN also has to be allowed in the computer's BIOS/UEFI.
 
-How it connects: until Martlet's in-app SSH runner lands, runs use Windows'
-OpenSSH client. Reading status and, with passwordless sudo, running items
-happen quietly in the background when key sign-in works; otherwise Martlet
-opens an SSH window that is only used to type the SSH and sudo passwords while
-the output streams into Martlet. By hand, on or against the computer:
+How it connects: through Martlet's in-app SSH runner, like every other SSH
+action (see [Driving Linux hosts from Windows](#driving-linux-hosts-from-windows-over-ssh)).
+The script goes to `bash -s` on stdin; the first connection asks for the
+account password once to install Martlet's key and shows the host key to pin,
+and runs that need sudo ask for the sudo password in Martlet (masked, optionally
+remembered). No console or SSH window opens. By hand, on or against the computer:
 
 ```sh
 ssh me@gpu-pc 'bash -s -- status' < deploy/host/martlet-prepare
@@ -294,8 +368,16 @@ stop any Ollama already installed there first.
   stand-in role and the desktop seeing its Audio2Face route, a simulated reboot
   (network holder restart) and `remove`.
 - **Native method**: exercised in a Linux container with stubbed system commands.
-- **SSH launchers**: run against a local SSH test server (Docker and native bootstrap);
-  not yet against a real remote machine.
+- **In-app SSH runner** (`HostShell`): run against a local OpenSSH server container
+  (Alpine, an account without Docker access, sudo with a password) backed by
+  Docker Desktop's engine: first-contact password and key install, host key
+  pinning and mismatch refusal, stdin input, streaming, Cancel, sudo through the
+  askpass helper, `--yes setup` (owner-init), automatic `pair` (code read from the
+  output, redeemed, gateway restarted), the machine report, `describe`, `status`,
+  and `add`/`remove` of a GPU-free stand-in role with a secret and a choice over
+  stdin (owner-approve re-approval, route visible to the desktop). The native
+  Ubuntu method over SSH (systemd user service, apt, lingering) and a real remote
+  Linux machine are not yet run.
 - **Windows Firewall step**: the non-admin probe and the rule script (as `-WhatIf`)
   were run; the elevated change itself has not been applied on a test machine.
 - Not yet run: a real NVIDIA GPU with the Audio2Face NIM.
@@ -319,10 +401,9 @@ stop any Ollama already installed there first.
   modes), the dummy `virtual-display` and its removal, `tools` (Python, Node.js
   LTS, git, build-essential, htop, nvtop, curl, tmux), `reboot`, and `gpu-power`
   (limits, validation, boot service, reset) against a stand-in `nvidia-smi`.
-  The ssh.exe invocations the desktop builds (the quiet path with the script on
-  stdin, and the SSH-window path with a terminal and the script inside the
-  command) were run by hand against a local SSH server with a key; the desktop's
-  runner class and window were built but not driven end to end. Not yet run: a
-  real NVIDIA GPU (driver install, container toolkit, NVIDIA virtual display,
-  CUDA toolkit), a real Wake-on-LAN card and wake-up, a reboot of a real
-  computer, and typing passwords into the SSH window.
+  The desktop's runner (`SshHostShell`, the in-app SSH runner behind
+  `IHostShell`) ran `status --json` with the script on stdin against the local
+  OpenSSH test container; the prepare window itself was built but not driven end
+  to end. Not yet run: a real NVIDIA GPU (driver install, container toolkit,
+  NVIDIA virtual display, CUDA toolkit), a real Wake-on-LAN card and wake-up, and
+  a reboot of a real computer.

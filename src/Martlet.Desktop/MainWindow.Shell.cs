@@ -1015,7 +1015,9 @@ public partial class MainWindow
                     var role = HostRoles.Get(HostRoles.Audio2Face);
                     if (!ConfirmationDialog.Confirm(this,
                             $"{host.HostId} does not run Audio2Face yet. Hand lip-sync to it and install Audio2Face there now? " +
-                            (host.CanLaunch ? $"A console opens ({host.Reach}) where you confirm each step. " : "Martlet copies the command to run on it. ") +
+                            (host.Method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative
+                                ? $"Martlet installs it over SSH ({host.Reach}) and shows its progress. "
+                                : host.CanLaunch ? $"A console opens ({host.Reach}) where you confirm each step. " : "Martlet copies the command to run on it. ") +
                             $"It needs {role.Needs}. Until it is ready, the mouth follows the voice's loudness; then it switches over by itself.",
                             "Install and hand over"))
                         return;
@@ -1079,8 +1081,9 @@ public partial class MainWindow
         if (DevicesPage.IsVisible) RenderMap();
     }
 
-    /// <summary>Runs a martlet-host command on a paired host the way this PC reaches it (SSH or this PC's Docker Desktop);
-    /// the host owner confirms each change in that console. Without a known route it copies the command instead.</summary>
+    /// <summary>Runs a martlet-host command on a paired host the way this PC reaches it: in Martlet over SSH (output and
+    /// Cancel in a run window; the click is the confirmation) or in a console on this PC's Docker Desktop. Without a known
+    /// route it copies the command instead.</summary>
     private void LaunchOnHost(PairedHost host, HostAction action)
     {
         try
@@ -1092,6 +1095,12 @@ public partial class MainWindow
                 catch (System.Runtime.InteropServices.ExternalException) { }
                 ActionText.Text = $"Martlet does not know how to reach {host.HostId} yet, so the command to run on it was copied. " +
                     "Or choose how Martlet reaches it in its details on the Devices map.";
+                return;
+            }
+            if (host.Method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative && store is not null)
+            {
+                ActionText.Text = $"Running {HostSetupCommands.Engine(action)} on {host.HostId} over SSH; its progress shows in a separate window.";
+                _ = RunOverSshAsync(host, action);
                 return;
             }
             HostSetupCommands.Launch(host.Target(Version), action);
@@ -1112,6 +1121,14 @@ public partial class MainWindow
         {
             ActionText.Text = error.Message;
         }
+    }
+
+    private async Task RunOverSshAsync(PairedHost host, HostAction action)
+    {
+        var done = await HostSshActions.RunAsync(this, store!.DataDirectory, host.Target(Version), host.SshHostKey, action);
+        if (closing) return;
+        ActionText.Text = done is null ? $"{HostSetupCommands.Engine(action)} on {host.HostId} stopped; its window shows why." : $"{host.HostId}: {done}";
+        if (done is not null && action != HostAction.Status) _ = CheckHostsAsync([host]);
     }
 
     private void RunHostRole(string? argument, bool add)

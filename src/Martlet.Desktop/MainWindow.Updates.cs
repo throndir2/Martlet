@@ -380,7 +380,7 @@ public partial class MainWindow
                     failed++;
                     continue;
                 }
-                if (await UpdateHostQuietlyAsync(host.HostId, host.Target(Version), host.Reach))
+                if (await UpdateHostQuietlyAsync(host.HostId, host.Target(Version), host.Reach, host.SshHostKey))
                 {
                     updated++;
                     hostChecks[host.HostId] = await HostControl.CheckAsync(host.Pairing, HardwareStore, lifetime.Token);
@@ -423,22 +423,22 @@ public partial class MainWindow
         if (automatic || failed > 0) ActionText.Text = summary;
     }
 
-    private async Task<bool> UpdateHostQuietlyAsync(string id, HostSetupTarget target, string reach)
+    private async Task<bool> UpdateHostQuietlyAsync(string id, HostSetupTarget target, string reach, string? sshHostKey = null)
     {
         hostUpdateNotes[id] = $"Updating to Martlet {Version} in the background ({reach})...";
         if (DevicesPage.IsVisible) RenderMap();
         try
         {
-            var (code, log) = await HostSetupCommands.RunUnattendedAsync(target, HostAction.Update, lifetime.Token);
+            var (code, log) = await HostSetupCommands.RunUnattendedAsync(target, HostAction.Update, lifetime.Token, store?.DataDirectory, sshHostKey);
             hostUpdateNotes[id] = code == 0
                 ? $"Updated to Martlet {Version} at {DateTime.Now:t}."
                 : $"The background update did not finish (exit code {code}). It may need your SSH password, sudo or an approval on " +
-                  $"the host: press Update host to finish it in a console. Log: {log}";
+                  $"the host: press Update host to finish it (Martlet asks for what it needs). Log: {log}";
             return code == 0;
         }
         catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException or Win32Exception)
         {
-            hostUpdateNotes[id] = $"Could not start its update ({error.Message}). Press Update host to run it in a console.";
+            hostUpdateNotes[id] = $"Could not start its update ({error.Message}). Press Update host to run it from Martlet.";
             return false;
         }
     }

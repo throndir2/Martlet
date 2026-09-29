@@ -11,7 +11,7 @@
   "applicationGraphs": {
     "Desktop": {
       "projects": ["Martlet.Desktop", "Martlet.Core", "Martlet.Diagnostics", "Martlet.Fixtures", "Martlet.Sessions", "Martlet.Audio", "Martlet.Credentials.Windows", "Martlet.Conversation", "Martlet.Memory", "Martlet.Providers", "Martlet.Participation", "Martlet.Support", "Martlet.Avatars", "Martlet.Avatar.Hosting", "Martlet.Avatar.Audio2Face"],
-      "packages": ["NAudio.Wasapi", "NAudio.Core", "System.Numerics.Tensors", "Google.Protobuf", "Grpc.Core.Api", "Grpc.Net.Client", "Grpc.Net.Common", "Microsoft.Extensions.DependencyInjection.Abstractions", "Microsoft.Extensions.Logging.Abstractions"],
+      "packages": ["NAudio.Wasapi", "NAudio.Core", "System.Numerics.Tensors", "Google.Protobuf", "Grpc.Core.Api", "Grpc.Net.Client", "Grpc.Net.Common", "Microsoft.Extensions.DependencyInjection.Abstractions", "Microsoft.Extensions.Logging.Abstractions", "SSH.NET"],
       "frameworks": ["Microsoft.NETCore.App", "Microsoft.WindowsDesktop.App"]
     },
     "Doctor": {
@@ -138,6 +138,13 @@
       ]
     },
     {
+      "id": "SSH.NET",
+      "version": "2024.1.0",
+      "sha512": "a3e105aea1476e7bc6d95ce1dc27c3448b7f2621de4bbd7d010ea886fee01ba9ba3ee55a800969bd33191199d60ca9c2326d2f1f59e734d17bd6b5db2390d197",
+      "runtimeAsset": "lib/net8.0/Renci.SshNet.dll",
+      "notices": []
+    },
+    {
       "id": "Microsoft.Web.WebView2",
       "version": "1.0.4191.47",
       "sha512": "adf91bda1a71d860c098cd0e426b5a238e187ea73c694832f8fde36809a9165fda8844fc9c2b9fc8a870b0da53cd9eb97ec140d9a2f104a228301ffae841db8c",
@@ -183,6 +190,11 @@
       "file": "Inno-Setup-LICENSE.txt",
       "url": "https://raw.githubusercontent.com/jrsoftware/issrc/is-7_1_0/license.txt",
       "sha256": "2e5346868c2a18434489824e11d65c3031620f792fefc415d05f19cd441abf5c"
+    },
+    {
+      "file": "SSH.NET-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/sshnet/SSH.NET/a5531521952b2814ef5ee11361e078ea3d92eb08/LICENSE",
+      "sha256": "84c79a38515de2833a7c353395e04056c0cbd77545d450fe216d569e1570b78e"
     },
     {
       "file": "Resemblyzer-LICENSE.txt",

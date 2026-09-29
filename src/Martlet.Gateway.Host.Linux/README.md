@@ -22,7 +22,7 @@ generates this list; changing it requires `approve-service` again.
 Otherwise capabilities contain empty worker/route lists.
 Neither a running process nor health means installed models, available
 inference, per-action permission or end-to-end installation readiness.
-There is no service installer, GUI, remote administration, privileged IPC,
+There is no service installer, GUI, network administration API, privileged IPC,
 Docker socket, model download, arbitrary executable path or firewall change.
 
 ## Actual output and prerequisites
@@ -135,11 +135,25 @@ Operator-managed disk encryption is separate and is neither detected nor set up.
 | `rebind` | Foreground TTY; require the protected prior service receipt as an expected host/pin witness, review the new exact origin and confirm same-key rebind. The old receipt does not approve the new config. |
 | `serve` | Read and recheck protected approval; open only the existing matching identity, start the exact approved listener and wait for cancellation. No stdin or password prompt; no state creation or model authority. |
 | `health` | Explicit bounded pinned HTTPS observation using the approved nonsecret pin; not a passive command. |
+| `owner-init` | Owner command, no console: create the selected absent state leaf (as `init`) and approve unattended serve of exactly this configuration and identity (as `approve-service`), then close. |
+| `owner-approve` | Owner command, no console: open the existing identity (as `admin`, which also accepts an approval for an earlier config of the same host, UID/GID and pin) and approve unattended serve of exactly this configuration, then close. |
+| `owner-pair` | Owner command, no console: `owner-pair --config <path> --device-id <id> --name <display name> [--roles voice]`. Open the existing identity, start the listener, create one five-minute invitation for exactly that device, print it as one `pairing-code: martlet-pair-v1...` line, wait until that device registers a new credential (exit 0), the invitation expires or a `cancel` line arrives on stdin (exit 3), then close cleanly. The daemon must be stopped, as for `admin`. |
 
 Administration commands are `start`, `pair`, `list`, `revoke`,
 `approve-service`, `disable-service`, `stop`, `help`. Authority-changing actions
 each require exactly lower-case `yes`; Enter/other bounded input means No.
-Ctrl-D/EOF at any prompt closes the session. No confirmation can be piped.
+Ctrl-D/EOF at any prompt closes the session. No console confirmation can be piped.
+
+**Owner commands.** At the owner's explicit request, the host's own account can
+also run the owner operations without a console: `owner-init`, `owner-approve`
+and `owner-pair`. They exist for `martlet-host --yes`, which Martlet desktop runs
+over the owner's authenticated SSH session after the owner clicks the action in
+Martlet; that session is the trusted local owner channel and the click is the
+confirmation. Running them requires the same UID, native custody and stopped
+daemon as `admin`, so they grant nothing that same-UID code could not already do
+with plaintext-at-rest state. `owner-pair` writes the one-use invitation to
+stdout (for the desktop to read and redeem at once), not to the owned terminal's
+alternate screen: treat that stdout as secret for its five-minute life.
 
 `start` separately approves the selected listener. `pair` requires it already
 started, reviews the exact device/name/roles and obtains a fresh approval before
@@ -285,7 +299,8 @@ Windows and unchanged Windows Host suites locally with locked dependencies.
 New tests exercise production parser/custody/lifecycle through internal-only
 native models, plus actual pinned loopback Kestrel on Windows. They cover
 default-No, exact private SAN/renewal/rebind, permanent pairing/redemption/
-replay/revocation across admin-to-daemon restart, empty registries, approval
+replay/revocation across admin-to-daemon restart, owner-init/owner-approve/
+owner-pair (redeemed and canceled invitations), empty registries, approval
 byte/identity binding, invalid custody, health distinctions and cleanup failures.
 They are not Linux filesystem, terminal, LAN or model qualification.
 

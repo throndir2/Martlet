@@ -40,6 +40,13 @@ Their raw NuGet archives and published managed DLL bytes are checked against
 toolchain.json. Raw signed-archive SHA-512 differs from NuGet's lock contentHash;
 both are preserved for their respective purposes.
 
+Desktop also includes SSH.NET 2024.1.0 (Renci.SshNet.dll, lib/net8.0, no NuGet
+dependencies), the SSH client for Martlet hosts' in-app SSH runner (HostShell). Its archive
+and published DLL bytes are pinned in toolchain.json; notices\SSH.NET-LICENSE.txt is the
+complete MIT license from the package's declared source commit
+a5531521952b2814ef5ee11361e078ea3d92eb08. Its two NuGet advisories (GHSA-q939-rpr3-3284,
+GHSA-mggc-4xg6-vcxf) affect only ScpClient, which Martlet never uses.
+
 Desktop also includes Martlet.Credentials.Windows, authored BCL/PInvoke code
 for explicitly scoped Windows Credential Manager actions. No additional NuGet
 package or native binary is redistributed; advapi32 remains a Windows OS API.

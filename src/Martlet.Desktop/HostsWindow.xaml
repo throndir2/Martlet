@@ -43,7 +43,7 @@
                 <StackPanel x:Name="MethodStep">
                     <TextBlock Text="Where will the host run?" Style="{DynamicResource PageTitle}"/>
                     <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,18"
-                               Text="Every host is set up by the same martlet-host tool with the same steps; only the way Martlet reaches it differs. Hosts listen only on your private network, and every change on a host is confirmed in its own console."/>
+                               Text="Every host is set up by the same martlet-host tool with the same steps; only the way Martlet reaches it differs. Hosts listen only on your private network. Over SSH, Martlet does everything from here: you confirm each change in Martlet and never need to log in to that computer."/>
                     <RadioButton x:Name="ThisPcMethod" GroupName="Method" Style="{DynamicResource ChoiceCard}" Tag="&#xE770;" Checked="Method_Changed"
                                  AutomationProperties.AutomationId="HostMethodThisPc" AutomationProperties.Name="This PC, with Docker Desktop">
                         <StackPanel>
@@ -56,14 +56,14 @@
                                  AutomationProperties.AutomationId="HostMethodSshDocker" AutomationProperties.Name="Another computer over SSH, using Docker there">
                         <StackPanel>
                             <TextBlock Text="Another computer over SSH, using Docker" FontSize="16" FontWeight="SemiBold"/>
-                            <TextBlock Style="{DynamicResource Muted}" Text="Linux or macOS with Docker. SSH asks for your password or key as usual."/>
+                            <TextBlock Style="{DynamicResource Muted}" Text="Linux with Docker (the one prerequisite). Martlet asks for the password once, adds its own SSH key and does the rest."/>
                         </StackPanel>
                     </RadioButton>
                     <RadioButton x:Name="SshNativeMethod" GroupName="Method" Style="{DynamicResource ChoiceCard}" Tag="&#xE7F4;" Checked="Method_Changed"
                                  AutomationProperties.AutomationId="HostMethodSshNative" AutomationProperties.Name="Another computer over SSH, native Ubuntu install">
                         <StackPanel>
                             <TextBlock Text="Another computer over SSH, native Ubuntu" FontSize="16" FontWeight="SemiBold"/>
-                            <TextBlock Style="{DynamicResource Muted}" Text="Ubuntu 24.04 without Docker for the gateway. Installs a systemd user service."/>
+                            <TextBlock Style="{DynamicResource Muted}" Text="Ubuntu 24.04 without Docker for the gateway. Installs a systemd user service, driven from here over SSH."/>
                         </StackPanel>
                     </RadioButton>
                     <RadioButton x:Name="OnHostMethod" GroupName="Method" Style="{DynamicResource ChoiceCard}" Tag="&#xE756;" Checked="Method_Changed"
@@ -90,15 +90,20 @@
                     </Border>
                     <StackPanel x:Name="SshPanel">
                         <Label Target="{Binding ElementName=SshTargetText}" Content="SSH _target (user@computer)"/>
-                        <TextBox x:Name="SshTargetText" LostFocus="SshTarget_LostFocus" TextChanged="Target_Changed"
-                                 AutomationProperties.AutomationId="SshTarget"/>
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Content="Reset SSH _trust" Click="ResetSshTrust_Click" Margin="8,0,0,0"
+                                    ToolTip="Forget the SSH host key Martlet pinned for this computer (after reinstalling it)"
+                                    AutomationProperties.AutomationId="ResetSshTrust"/>
+                            <TextBox x:Name="SshTargetText" LostFocus="SshTarget_LostFocus" TextChanged="Target_Changed"
+                                     AutomationProperties.AutomationId="SshTarget"/>
+                        </DockPanel>
                     </StackPanel>
                     <Label Target="{Binding ElementName=AddressText}" Content="Host's private _LAN address (desktops connect to https://address:9443)"/>
                     <TextBox x:Name="AddressText" TextChanged="Target_Changed" AutomationProperties.AutomationId="HostAddress"/>
                     <TextBlock Style="{DynamicResource Muted}" Margin="0,8,0,14"
-                               Text="Set up host opens a console window running the command below. Docker methods build the martlet-host image from this Martlet version's source the first time (a few minutes)."/>
+                               Text="Over SSH, Martlet runs the command below itself and shows its output with Cancel; on this PC a console window opens. Docker methods build the martlet-host image from this Martlet version's source the first time (a few minutes)."/>
                     <WrapPanel>
-                        <Button Content="Set _up host" Click="Setup_Click" Style="{DynamicResource PrimaryButton}" Padding="20,10" Margin="0,0,10,8"
+                        <Button x:Name="SetupButton" Content="Set _up host" Click="Setup_Click" Style="{DynamicResource PrimaryButton}" Padding="20,10" Margin="0,0,10,8"
                                 AutomationProperties.AutomationId="SetupHost"/>
                         <Button Content="Host _status" Click="Status_Click" Margin="0,0,10,8" AutomationProperties.AutomationId="HostStatusCommand"/>
                     </WrapPanel>
@@ -123,16 +128,15 @@
                     </Border>
                     <Border Style="{DynamicResource CardStyle}">
                         <StackPanel>
-                            <TextBlock Text="2. Open the host's pairing console" FontWeight="SemiBold" FontSize="15"/>
-                            <TextBlock Style="{DynamicResource Muted}" Margin="0,4,0,10"
-                                       Text="Confirm opening it, type start, then pair with the device ID above and role voice. It shows a code starting with martlet-pair-v1."/>
-                            <Button Content="_Open pairing console" Click="PairConsole_Click" HorizontalAlignment="Left"
+                            <TextBlock Text="2. Get a pairing code from the host" FontWeight="SemiBold" FontSize="15"/>
+                            <TextBlock x:Name="PairConsoleText" Style="{DynamicResource Muted}" Margin="0,4,0,10" TextWrapping="Wrap"/>
+                            <Button x:Name="PairConsoleButton" Content="_Open pairing console" Click="PairConsole_Click" HorizontalAlignment="Left"
                                     AutomationProperties.AutomationId="PairConsole"/>
                         </StackPanel>
                     </Border>
                     <Border Style="{DynamicResource CardStyle}">
                         <StackPanel>
-                            <TextBlock Text="3. Paste the code here while that console stays open" FontWeight="SemiBold" FontSize="15"/>
+                            <TextBlock Text="3. Or paste a code here while the host's console stays open" FontWeight="SemiBold" FontSize="15"/>
                             <PasswordBox x:Name="PairingCodeBox" Margin="0,8,0,10" AutomationProperties.AutomationId="PairingCode"
                                          AutomationProperties.Name="Pairing code from the host"/>
                             <Button Content="Pair with _host" Click="Pair_Click" Style="{DynamicResource PrimaryButton}" HorizontalAlignment="Left"

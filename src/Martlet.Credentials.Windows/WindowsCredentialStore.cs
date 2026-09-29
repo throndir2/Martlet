@@ -87,4 +87,32 @@ public sealed class WindowsCredentialStore(ICredentialNative native) : ICredenti
 
     private static string AvatarHostTarget(string hostId, string credentialId) =>
         $"Martlet/v3/avatar-host/{hostId}/{credentialId}";
+
+    // sudo password for an SSH account on a Martlet host (user@computer:port), remembered only when the owner asks.
+    public CredentialError WriteSshSudoSecret(string account, SecretLease secret)
+    {
+        if (!SshAccount(account)) return CredentialError.InvalidInput;
+        if (!native.IsSupported) return CredentialError.UnsupportedPlatform;
+        var error = CredentialError.InvalidInput;
+        secret.Use(value => error = Map(native.Write(SshSudoTarget(account), value)));
+        return error;
+    }
+
+    public CredentialReadResult ReadSshSudoSecret(string account)
+    {
+        if (!SshAccount(account)) return new(CredentialError.InvalidInput, null);
+        if (!native.IsSupported) return new(CredentialError.UnsupportedPlatform, null);
+        var result = Map(native.Read(SshSudoTarget(account), out var secret));
+        if (result != CredentialError.None) { secret?.Dispose(); return new(result, null); }
+        return secret is null ? new(CredentialError.Unavailable, null) : new(result, secret);
+    }
+
+    public CredentialError DeleteSshSudoSecret(string account) =>
+        !SshAccount(account) ? CredentialError.InvalidInput
+            : native.IsSupported ? Map(native.Delete(SshSudoTarget(account))) : CredentialError.UnsupportedPlatform;
+
+    private static bool SshAccount(string account) =>
+        account is { Length: > 0 and <= 330 } && account.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-' or '@' or ':');
+
+    private static string SshSudoTarget(string account) => $"Martlet/v3/ssh-sudo/{account}";
 }

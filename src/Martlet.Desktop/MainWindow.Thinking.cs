@@ -76,7 +76,9 @@ public partial class MainWindow
                 var role = HostRoles.Get(HostRoles.Ollama);
                 if (!ConfirmationDialog.Confirm(this,
                         $"{host.HostId} does not run Ollama yet. Install it there and hand thinking to it once it is ready? " +
-                        (host.CanLaunch ? $"A console opens ({host.Reach}) where you confirm each step and pick the model. " : "Martlet copies the command to run on it. ") +
+                        (host.Method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative
+                            ? $"Martlet installs it over SSH ({host.Reach}), asks which model and shows its progress. "
+                            : host.CanLaunch ? $"A console opens ({host.Reach}) where you confirm each step and pick the model. " : "Martlet copies the command to run on it. ") +
                         $"It needs {role.Needs}. Until the model is downloaded Martlet keeps thinking where it does now, then switches over by itself. " +
                         disclosure, "Install and hand over"))
                     return;

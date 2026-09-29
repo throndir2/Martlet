@@ -24,32 +24,22 @@ internal interface IHostShell
 
 internal static class HostShells
 {
-    /// <summary>The runner the desktop uses. The in-app SSH runner (Martlet-owned key, pinned host key, sudo prompt)
-    /// replaces the console fallback here once it lands.</summary>
-    internal static IHostShell Current { get; set; } = new ConsoleSshShell();
+    /// <summary>The runner the desktop uses: Martlet's in-app SSH runner (<see cref="HostShell"/>). App startup points it
+    /// at the data directory Martlet was started with.</summary>
+    internal static IHostShell Current { get; set; } = new SshHostShell(null);
 }
 
-/// <summary>Runs scripts with Windows' own OpenSSH client. Without a password it runs quietly in the background (key
-/// sign-in, and for sudo runs passwordless sudo); otherwise it opens an SSH window that is only used to type the SSH and
-/// sudo passwords, while everything the script prints still streams into Martlet.</summary>
-internal sealed partial class ConsoleSshShell : IHostShell
+/// <summary><see cref="IHostShell"/> over Martlet's one SSH stack, <see cref="HostShell"/>: Martlet's own key (the account
+/// password is asked once to install it), the pinned host key, and for sudo runs a masked sudo password prompt whose
+/// answer reaches the script's sudo through a private askpass helper. The script goes to <c>bash -s</c> on stdin.
+/// Questions are asked over the window the owner is using.</summary>
+internal sealed partial class SshHostShell(string? dataDirectory) : IHostShell
 {
-    [GeneratedRegex(@"\A(?:[A-Za-z0-9._-]{1,64}@)?[A-Za-z0-9][A-Za-z0-9.-]{0,252}\z")]
+    [GeneratedRegex(@"\A(?:[A-Za-z0-9._-]{1,64}@)?[A-Za-z0-9][A-Za-z0-9.-]{0,252}(?::[0-9]{1,5})?\z")]
     private static partial Regex TargetPattern();
 
     [GeneratedRegex(@"\A[A-Za-z0-9-][A-Za-z0-9=,._:-]{0,127}\z")]
     private static partial Regex ArgumentPattern();
-
-    /// <summary>Shown when a run needs the SSH window.</summary>
-    internal const string WindowHint =
-        "Martlet opened an SSH window for this. If it asks for a password (SSH, then sudo), type it in that window; " +
-        "the output appears here.\n";
-
-    internal static string SshPath()
-    {
-        var system = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "OpenSSH", "ssh.exe");
-        return File.Exists(system) ? system : "ssh.exe";
-    }
 
     internal static void Validate(string sshTarget, IReadOnlyList<string> arguments)
     {
@@ -63,150 +53,44 @@ internal sealed partial class ConsoleSshShell : IHostShell
         Action<string> output, CancellationToken token)
     {
         Validate(sshTarget, arguments);
-        var quiet = !sudo || await CanSudoQuietlyAsync(sshTarget, token);
-        if (quiet)
+        var target = HostShellTarget.Parse(sshTarget);
+        var text = new StringBuilder();
+        var sink = new LineSink(line =>
         {
-            var run = await RunQuietAsync(sshTarget, script, arguments, output, token);
-            if (run is not null) return run;
-        }
-        output(WindowHint);
-        return await RunInWindowAsync(sshTarget, script, arguments, output, token);
-    }
-
-    private static ProcessStartInfo Ssh(bool window, IEnumerable<string> arguments)
-    {
-        var start = new ProcessStartInfo(SshPath())
-        {
-            UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true,
-            RedirectStandardInput = !window, CreateNoWindow = !window,
-            StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8
-        };
-        foreach (var argument in arguments) start.ArgumentList.Add(argument);
-        return start;
-    }
-
-    private static string[] Quiet(string sshTarget) =>
-        ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=15", "-T", sshTarget];
-
-    /// <summary>Key sign-in and passwordless sudo both work, so a sudo run needs no window.</summary>
-    private static async Task<bool> CanSudoQuietlyAsync(string sshTarget, CancellationToken token)
-    {
+            lock (text) text.Append(line).Append('\n');
+            output(line + "\n");
+        });
+        var shell = new HostShell(dataDirectory ?? Martlet.Core.Settings.SettingsStore.DefaultDataDirectory(), new ActiveWindowPrompts());
         try
         {
-            using var process = Process.Start(Ssh(false, [.. Quiet(sshTarget), "sudo -n true"])) ??
-                throw new InvalidOperationException("ssh.exe did not start.");
-            process.StandardInput.Close();
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
-            timeout.CancelAfter(TimeSpan.FromSeconds(20));
-            try { await process.WaitForExitAsync(timeout.Token); }
-            catch (OperationCanceledException) { Kill(process); throw; }
-            return process.ExitCode == 0;
-        }
-        catch (OperationCanceledException) when (!token.IsCancellationRequested) { return false; }
-        catch (System.ComponentModel.Win32Exception) { throw Missing(); }
-    }
-
-    /// <summary>Streams the script over stdin with key sign-in only. Returns null when SSH needs a password or a new host
-    /// key confirmed, so the caller falls back to the SSH window.</summary>
-    private static async Task<ShellRun?> RunQuietAsync(string sshTarget, string script, IReadOnlyList<string> arguments,
-        Action<string> output, CancellationToken token)
-    {
-        Process process;
-        try
-        {
-            process = Process.Start(Ssh(false, [.. Quiet(sshTarget), "bash -s -- " + string.Join(' ', arguments)])) ??
-                throw new InvalidOperationException("ssh.exe did not start.");
-        }
-        catch (System.ComponentModel.Win32Exception) { throw Missing(); }
-        using (process)
-        {
-            var text = new StringBuilder();
-            var errors = new StringBuilder();
-            void Stdout(string chunk) { lock (text) text.Append(chunk); output(chunk); }
-            void Stderr(string chunk) { lock (errors) errors.Append(chunk); }
-            var reading = Task.WhenAll(Pump(process.StandardOutput, Stdout), Pump(process.StandardError, Stderr));
-            try
+            var result = await shell.RunAsync(target, new()
             {
-                await process.StandardInput.BaseStream.WriteAsync(Encoding.UTF8.GetBytes(script), token);
-                process.StandardInput.Close();
-            }
-            catch (IOException) { }
-            try
-            {
-                await process.WaitForExitAsync(token);
-                await reading;
-            }
-            catch (OperationCanceledException) { Kill(process); throw; }
-            var stderr = errors.ToString();
-            if (process.ExitCode == 255 && NeedsWindow(stderr)) return null;
-            if (stderr.Length > 0) output(stderr);
-            return new(process.ExitCode, text + stderr);
+                Command = "bash -s -- " + string.Join(' ', arguments), Input = script, Sudo = sudo
+            }, sink, token);
+            lock (text) return new(result.ExitCode, text.ToString());
         }
-    }
-
-    private static bool NeedsWindow(string stderr) =>
-        stderr.Contains("Permission denied", StringComparison.OrdinalIgnoreCase) ||
-        stderr.Contains("Host key verification failed", StringComparison.OrdinalIgnoreCase) ||
-        stderr.Contains("No more authentication methods", StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>Opens ssh.exe in its own console with a terminal (so SSH and sudo can ask for passwords there) and sends the
-    /// script inside the command, compressed, because stdin is that console.</summary>
-    private static async Task<ShellRun> RunInWindowAsync(string sshTarget, string script, IReadOnlyList<string> arguments,
-        Action<string> output, CancellationToken token)
-    {
-        var remote = $"f=$(mktemp) && echo {Packed(script)} | base64 -d | gzip -dc > \"$f\" && bash \"$f\" {string.Join(' ', arguments)}; " +
-            "r=$?; rm -f \"$f\"; exit $r";
-        Process process;
-        try
+        catch (Exception error) when (error is HostShellException or Renci.SshNet.Common.SshException or
+            System.Net.Sockets.SocketException)
         {
-            process = Process.Start(Ssh(true, ["-t", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=15", sshTarget, remote])) ??
-                throw new InvalidOperationException("ssh.exe did not start.");
+            throw new InvalidOperationException(error.Message, error);
         }
-        catch (System.ComponentModel.Win32Exception) { throw Missing(); }
-        using (process)
+    }
+
+    /// <summary>Asks over whichever Martlet window is active (the prepare window while it runs).</summary>
+    private sealed class ActiveWindowPrompts : IHostShellPrompts
+    {
+        private static IHostShellPrompts Current()
         {
-            var text = new StringBuilder();
-            void Both(string chunk)
-            {
-                chunk = chunk.Replace("\r\n", "\n", StringComparison.Ordinal);
-                lock (text) text.Append(chunk);
-                output(chunk);
-            }
-            var reading = Task.WhenAll(Pump(process.StandardOutput, Both), Pump(process.StandardError, Both));
-            try
-            {
-                await process.WaitForExitAsync(token);
-                await reading;
-            }
-            catch (OperationCanceledException) { Kill(process); throw; }
-            return new(process.ExitCode, text.ToString());
+            var app = System.Windows.Application.Current;
+            var window = app?.Dispatcher.Invoke(() =>
+                app.Windows.OfType<System.Windows.Window>().FirstOrDefault(w => w.IsActive) ?? app.MainWindow);
+            return window is null ? NoHostShellPrompts.Instance : new HostShellDialogs(window);
         }
-    }
 
-    internal static string Packed(string script)
-    {
-        using var buffer = new MemoryStream();
-        using (var gzip = new GZipStream(buffer, CompressionLevel.SmallestSize, leaveOpen: true))
-            gzip.Write(Encoding.UTF8.GetBytes(script));
-        return Convert.ToBase64String(buffer.ToArray());
+        public bool TrustHostKey(HostShellTarget target, string hostKey) => Current().TrustHostKey(target, hostKey);
+        public string? LoginPassword(HostShellTarget target, bool retry) => Current().LoginPassword(target, retry);
+        public HostShellSudo? SudoPassword(HostShellTarget target, bool retry) => Current().SudoPassword(target, retry);
     }
-
-    private static async Task Pump(StreamReader reader, Action<string> chunk)
-    {
-        var buffer = new char[4096];
-        int read;
-        while ((read = await reader.ReadAsync(buffer)) > 0) chunk(new string(buffer, 0, read));
-    }
-
-    private static void Kill(Process process)
-    {
-        try { process.Kill(entireProcessTree: true); }
-        catch (InvalidOperationException) { }
-        catch (System.ComponentModel.Win32Exception) { }
-    }
-
-    private static InvalidOperationException Missing() =>
-        new("Windows' OpenSSH client (ssh.exe) is missing. Add it in Settings > System > Optional features > OpenSSH Client.");
 }
 
 /// <summary>The martlet-prepare script (deploy/host/martlet-prepare, embedded) and the arguments for what the owner ticked.</summary>

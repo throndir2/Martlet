@@ -167,10 +167,13 @@ The long form became a four-step wizard with a step rail:
 1. **Where it runs**: large cards for *This PC (Docker Desktop)*, *Another
    computer over SSH (Docker)*, *Another computer over SSH (Ubuntu, native)*
    and *I'll type the commands myself*.
-2. **Install**: only the fields that method needs, *Set up host*, and the exact
-   command in a *Show the command* expander.
+2. **Install**: only the fields that method needs, *Set up host* (*Add this
+   computer* for SSH: connect, check Docker, set up, pair and read the machine
+   report in a run window with live output and *Cancel*), and the exact command
+   in a *Show the command* expander.
 3. **Pair**: three numbered mini-steps, the device ID with *Copy*, *Open
-   pairing console*, the pasted code and *Pair*, plus *Check* and *Forget*.
+   pairing console* (*Pair automatically over SSH* for SSH hosts), the pasted
+   code and *Pair*, plus *Check* and *Forget*.
    Pairing adds the host to `hosts.json` (every paired host and how Martlet
    reaches it; nonsecret, secrets stay in Windows Credential Manager). The
    first host paired takes over lip-sync; later hosts stand by until you hand
