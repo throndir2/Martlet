@@ -142,6 +142,7 @@ public partial class SetupAdvisorWindow : ThemedWindow
             card.Children.Add(Line("Why", role.Why));
             card.Children.Add(Line("Your data", role.Data));
             if (role.UntilThen is not null) card.Children.Add(Line("For now", role.UntilThen));
+            if (role.HowTo is not null) card.Children.Add(Line("How to set it up", role.HowTo));
             var border = new Border { Child = card };
             border.SetResourceReference(StyleProperty, "CardStyle");
             AutomationProperties.SetName(border, $"{role.Role}: {role.Choice}, {role.Where}, {role.Status}");
@@ -236,6 +237,7 @@ public partial class SetupAdvisorWindow : ThemedWindow
                 .AppendLine($"  Runs on: {role.Where} ({role.Status})")
                 .AppendLine($"  Your data: {role.Data}");
             if (role.UntilThen is not null) text.AppendLine($"  For now: {role.UntilThen}");
+            if (role.HowTo is not null) text.AppendLine($"  How to set it up: {role.HowTo}");
         }
         text.AppendLine();
         foreach (var machine in plan.Machines) text.AppendLine($"{machine.Name}: {string.Join("; ", machine.Runs)}");

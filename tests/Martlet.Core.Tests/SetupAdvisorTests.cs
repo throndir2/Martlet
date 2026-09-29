@@ -12,7 +12,8 @@ public sealed class SetupAdvisorTests
         var advice = SetupAdvisor.Recommend(new() { ThisPcGpu = AdvisorGpu.Nvidia16, GamesOnThisPc = true, Character = true });
 
         Assert.Equal("Online", Role(advice, "Conversation").Where);
-        Assert.Equal(AdvisorAvailability.BeingBuilt, Role(advice, "Conversation").Availability);
+        Assert.Equal(AdvisorAvailability.Available, Role(advice, "Conversation").Availability);
+        Assert.NotNull(Role(advice, "Conversation").HowTo);
         Assert.Equal("This PC (CPU)", Role(advice, "Speech-to-text").Where);
         Assert.Equal("Online", Role(advice, "Voice").Where);
         Assert.Equal("Loudness lip-sync", Role(advice, "Lip-sync").Choice);
@@ -25,6 +26,7 @@ public sealed class SetupAdvisorTests
         var advice = SetupAdvisor.Recommend(new() { Goal = AdvisorGoal.Fastest, ThisPcGpu = AdvisorGpu.Nvidia24, Character = true });
 
         Assert.Equal("This PC (GPU)", Role(advice, "Conversation").Where);
+        Assert.Equal(AdvisorAvailability.Available, Role(advice, "Conversation").Availability);
         Assert.Contains("12-14B Q4", Role(advice, "Conversation").Choice, StringComparison.Ordinal);
         Assert.Equal("Windows installed voices", Role(advice, "Voice").Choice);
         Assert.Equal("Loudness lip-sync", Role(advice, "Lip-sync").Choice);

@@ -10,8 +10,8 @@ VRAM headroom and measure your own machine.
 **In the app:** **Which setup is right for me?** on the home screen asks for
 your goal (balanced, smartest, fastest or private), features and computers. It
 then shows this guidance for each role: where the role runs, what it does, why,
-what data leaves your PC, and what to use until planned parts arrive. It saves,
-installs and contacts nothing. The recommendations and availability labels live in
+what data leaves your PC, how to set it up, and what to use until planned parts
+arrive. It saves, installs and contacts nothing. The recommendations and availability labels live in
 [`SetupAdvisor.cs`](../src/Martlet.Core/Installation/SetupAdvisor.cs); update
 them when a route ships.
 
