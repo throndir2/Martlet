@@ -8,6 +8,36 @@ namespace Martlet.Avatar.Hosting;
 public sealed record AvatarAsset(string Name, byte[] Bytes, string ContentType);
 public sealed record AvatarAssetSnapshot(string ModelFile, string Revision, IReadOnlyList<AvatarAsset> Assets);
 
+/// <summary>Live2D runtime and default character shipped under the renderer's <c>live2d</c> folder.</summary>
+public static class BundledLive2D
+{
+    public const string Prefix = "builtin:";
+    public const string DefaultCharacter = "Hiyori";
+    public static IReadOnlyList<string> Characters { get; } = [DefaultCharacter];
+
+    public static bool IsBuiltIn(string? path) => path?.StartsWith(Prefix, StringComparison.Ordinal) == true;
+
+    /// <summary>Desktop resolves <c>AvatarRenderer\live2d</c>; the renderer process resolves its own <c>live2d</c>.</summary>
+    public static string? Root =>
+        new[] { Path.Combine(AppContext.BaseDirectory, "live2d"), Path.Combine(AppContext.BaseDirectory, "AvatarRenderer", "live2d") }
+            .FirstOrDefault(candidate => File.Exists(Path.Combine(candidate, "sdk", "core.js")) &&
+                File.Exists(Path.Combine(candidate, "sdk", "sdk.js")));
+
+    public static bool Available => Root is not null;
+
+    public static string SdkDirectory => Path.Combine(RequireRoot(), "sdk");
+
+    public static string ModelPath(string builtIn)
+    {
+        ContractRules.Require(IsBuiltIn(builtIn) && Characters.Contains(builtIn[Prefix.Length..]), "Unknown bundled character.");
+        var name = builtIn[Prefix.Length..];
+        return Path.Combine(RequireRoot(), "models", name, name + ".model3.json");
+    }
+
+    private static string RequireRoot() => Root ?? throw new ContractException(ErrorCode.InvalidContract,
+        "This Martlet build does not include the Live2D runtime. Rebuild with network access or install an official release.");
+}
+
 public static class LocalAvatarFiles
 {
     public static void ValidatePath(string path)
@@ -49,18 +79,19 @@ public static class LocalAvatarFiles
     {
         profile.Validate();
         var assets = new List<AvatarAsset>();
-        var modelFile = Path.GetFileName(profile.ModelPath);
+        var modelPath = BundledLive2D.IsBuiltIn(profile.ModelPath) ? BundledLive2D.ModelPath(profile.ModelPath) : profile.ModelPath;
+        var modelFile = Path.GetFileName(modelPath);
         if (profile.Renderer == AvatarRenderer.Vrm)
         {
-            ContractRules.Require(Path.GetExtension(profile.ModelPath).Equals(".vrm", StringComparison.OrdinalIgnoreCase),
+            ContractRules.Require(Path.GetExtension(modelPath).Equals(".vrm", StringComparison.OrdinalIgnoreCase),
                 "Select a local VRM1 .vrm model.");
-            assets.Add(new("model.vrm", await ReadBoundedAsync(profile.ModelPath, 32 * 1024 * 1024, token), "application/octet-stream"));
+            assets.Add(new("model.vrm", await ReadBoundedAsync(modelPath, 32 * 1024 * 1024, token), "application/octet-stream"));
             modelFile = "model.vrm";
         }
         else
         {
             ContractRules.Require(modelFile.EndsWith(".model3.json", StringComparison.Ordinal), "Select a model3.json model.");
-            var root = Path.GetDirectoryName(profile.ModelPath)!;
+            var root = Path.GetDirectoryName(modelPath)!;
             var pending = new Queue<string>();
             var directories = 0;
             pending.Enqueue(root);
@@ -89,9 +120,9 @@ public static class LocalAvatarFiles
                     ContractRules.Require(assets.Sum(a => (long)a.Bytes.Length) <= 64 * 1024 * 1024, "Model bundle exceeds its byte limit.");
                 }
             }
-            ContractRules.Require(profile.SdkDirectory is not null, "Live2D needs explicitly prepared local SDK/Core resources.");
+            var sdk = profile.SdkDirectory ?? BundledLive2D.SdkDirectory;
             foreach (var name in new[] { "core.js", "sdk.js" })
-                assets.Add(new(name, await ReadBoundedAsync(Path.Combine(profile.SdkDirectory!, name), 16 * 1024 * 1024, token),
+                assets.Add(new(name, await ReadBoundedAsync(Path.Combine(sdk, name), 16 * 1024 * 1024, token),
                     "text/javascript"));
         }
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);

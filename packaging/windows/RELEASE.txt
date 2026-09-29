@@ -22,3 +22,13 @@ Third-party rights and notices remain with their original owners; see the
 notices directory. Settings and other user data are stored separately in
 %LocalAppData%\Martlet and are not removed by uninstalling the application.
 For installed behavior and troubleshooting, read TROUBLESHOOTING.md.
+
+LIVE2D: The optional desktop character uses Live2D Cubism Core and the Hiyori
+sample model by Live2D Inc. This content uses sample data owned and copyrighted
+by Live2D Inc. The sample data are utilized in accordance with terms and
+conditions set by Live2D Inc. This content itself is created at the author's
+sole discretion. By installing Martlet you agree not to modify, reverse
+engineer, extract or separately redistribute Live2D Cubism Core, consistent
+with the Live2D Proprietary Software License Agreement
+(https://www.live2d.com/eula/live2d-proprietary-software-license-agreement_en.html).
+Details: Desktop\AvatarRenderer\live2d\LIVE2D-NOTICES.txt.

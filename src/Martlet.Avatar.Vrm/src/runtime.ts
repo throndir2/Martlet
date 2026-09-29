@@ -209,10 +209,66 @@ export class VrmRuntime {
   private pending = false;
   private pose: LocalPose = {};
   private readonly gazeTarget = new THREE.Object3D();
+  private idle = false;
+  private idleTime = 0;
+  private speech = 0;
+  private speechTarget = 0;
+  private speechAge = Number.POSITIVE_INFINITY;
+  private nextBlink = 2 + Math.random() * 3;
+  private blinkTime = -1;
+  private lookTarget = { x: 0, y: 0 };
+  private look = { x: 0, y: 0 };
 
   get capabilities(): VrmCapabilities | undefined { return this.inspected; }
   get scene(): THREE.Group | undefined { return this.model?.scene; }
   get isLoaded(): boolean { return this.model !== undefined; }
+
+  /** Relaxed arms, breathing, blinking, cursor-follow and loudness lip-sync while no mapped A2F turn is active. */
+  startIdle(): void { this.loaded(); this.idle = true; }
+
+  setLipSync(level: number): void {
+    this.loaded();
+    finite(level, 0, 1, "lip-sync level");
+    this.speechTarget = level;
+    this.speechAge = 0;
+  }
+
+  setLook(x: number, y: number): void {
+    this.loaded();
+    finite(x, -1, 1, "look x"); finite(y, -1, 1, "look y");
+    this.lookTarget = { x, y };
+  }
+
+  private animateIdle(model: VRM, deltaSeconds: number): void {
+    this.idleTime += deltaSeconds;
+    const follow = Math.min(1, deltaSeconds * 5);
+    this.look = { x: this.look.x + (this.lookTarget.x - this.look.x) * follow, y: this.look.y + (this.lookTarget.y - this.look.y) * follow };
+    const bone = (name: Parameters<VRM["humanoid"]["getNormalizedBoneNode"]>[0]) => model.humanoid.getNormalizedBoneNode(name);
+    const breath = Math.sin(this.idleTime * Math.PI * 2 / 4);
+    bone("leftUpperArm")?.rotation.set(0, 0, -1.2 + breath * 0.02);
+    bone("rightUpperArm")?.rotation.set(0, 0, 1.2 - breath * 0.02);
+    bone("leftLowerArm")?.rotation.set(0, -0.15, 0);
+    bone("rightLowerArm")?.rotation.set(0, 0.15, 0);
+    bone("chest")?.rotation.set(breath * 0.015, 0, 0);
+    if (!this.selection?.head) {
+      bone("neck")?.rotation.set(-this.look.y * 0.15, this.look.x * 0.2, Math.sin(this.idleTime * 0.7) * 0.02);
+      bone("head")?.rotation.set(-this.look.y * 0.2, this.look.x * 0.3, 0);
+    }
+    const expressions = model.expressionManager;
+    if (!expressions || this.selection) return;
+    this.speechAge += deltaSeconds;
+    const target = this.speechAge > 0.3 ? 0 : this.speechTarget;
+    this.speech += (target - this.speech) * Math.min(1, deltaSeconds * (target > this.speech ? 30 : 14));
+    if (expressions.getExpression("aa")) expressions.setValue("aa", this.speech);
+    if (!expressions.getExpression("blink")) return;
+    if (this.blinkTime < 0 && (this.nextBlink -= deltaSeconds) <= 0) this.blinkTime = 0;
+    if (this.blinkTime >= 0) {
+      this.blinkTime += deltaSeconds;
+      const phase = this.blinkTime / 0.2;
+      expressions.setValue("blink", phase < 0.5 ? phase * 2 : Math.max(0, 2 - phase * 2));
+      if (phase >= 1) { this.blinkTime = -1; this.nextBlink = 2 + Math.random() * 4; }
+    }
+  }
 
   async load(buffer: ArrayBuffer): Promise<VrmCapabilities> {
     this.alive();
@@ -375,6 +431,7 @@ export class VrmRuntime {
     if (this.identity && this.selection?.head) {
       model.humanoid.getNormalizedBoneNode("head")!.quaternion.fromArray(this.pose.head ?? [0, 0, 0, 1]);
     }
+    if (this.idle) this.animateIdle(model, deltaSeconds);
     model.humanoid.update();
     const neutralEyes: { node: THREE.Object3D; rotation: THREE.Quaternion }[] = [];
     if (model.lookAt && this.identity && this.selection?.gaze) {
@@ -403,7 +460,7 @@ export class VrmRuntime {
         eye.node.quaternion.slerpQuaternions(eye.rotation, eye.node.quaternion.clone(), Math.max(0, multiplier));
     }
     model.nodeConstraintManager?.update();
-    if (this.identity && this.selection?.secondaryMotion && deltaSeconds > 0) model.springBoneManager?.update(deltaSeconds);
+    if ((this.idle || this.identity && this.selection?.secondaryMotion) && deltaSeconds > 0) model.springBoneManager?.update(deltaSeconds);
     for (const material of model.materials ?? []) {
       if ("update" in material && typeof material.update === "function") material.update(deltaSeconds);
     }

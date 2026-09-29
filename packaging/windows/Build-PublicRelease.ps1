@@ -23,6 +23,10 @@ Push-Location $root
 try {
     & npm ci --prefix src\Martlet.Avatar.Vrm --ignore-scripts --no-audit --no-fund
     if ($LASTEXITCODE -ne 0) { throw "Locked browser dependency restore failed (exit $LASTEXITCODE)." }
+    # Official Live2D Cubism SDK (runtime + Hiyori), pinned by SHA-256; the release must bundle it.
+    & $NodePath (Join-Path $root 'src\Martlet.Avatar.Live2D\scripts\sdk.mjs')
+    if ($LASTEXITCODE -ne 0) { throw "Live2D SDK download or verification failed (exit $LASTEXITCODE)." }
+    $env:MARTLET_REQUIRE_LIVE2D = '1'
     New-OutputDirectory $OutputDirectory
     $publish = Join-Path $OutputDirectory 'publish'
     $builder = Join-Path $OutputDirectory 'inno'
@@ -37,4 +41,7 @@ try {
     & "$PSScriptRoot\Build-Installer.ps1" -PublicRelease -PayloadRoot $payload -BuilderDirectory $builder -OutputDirectory $package
     Write-Output "Release installer: $(Join-Path $package "installer\Martlet-$Version-win-x64.exe")."
 }
-finally { Pop-Location }
+finally {
+    Remove-Item Env:\MARTLET_REQUIRE_LIVE2D -ErrorAction SilentlyContinue
+    Pop-Location
+}

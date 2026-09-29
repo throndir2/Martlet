@@ -94,6 +94,7 @@ public partial class MainWindow : ThemedWindow
         ScenarioChoice.SelectedIndex = 0;
         FixtureText.Text = "FIXTURE - NOT AI. Choose a scenario; no fixture or audio has run.";
         fixtureTimer.Tick += (_, _) => ObserveFixture();
+        fixtureTimer.Tick += (_, _) => UpdateCharacterButton();
         fixtureTimer.Start();
         DataPathText.Text = "Local settings only. Reports never include the data directory, credentials or settings contents.";
         StatusText.Text = "Foundation: loading local status. No audio or network services are active.";
@@ -146,6 +147,7 @@ public partial class MainWindow : ThemedWindow
     {
         var checkAtLaunch = updateChecksEnabled;
         await RefreshAsync();
+        await ShowSavedCharacterAsync(onlyIfAutoShow: true);
         if (checkAtLaunch && updateChecksEnabled && !closing)
             await CheckForUpdatesAsync();
     }
@@ -435,9 +437,11 @@ public partial class MainWindow : ThemedWindow
     private async void Setup_Click(object sender, RoutedEventArgs e)
     {
         if (store is null || closing || saving || runningFixture || model?.IsRunning == true) return;
+        var characterWasShowing = avatar.IsShowing;
         if (!await StopAvatarSafelyAsync()) return;
         new SetupWindow(setupService!, setupOperations) { Owner = this, Troubleshooting = OpenTroubleshooting, ConfigurationRecovery = OpenRecovery }.ShowDialog();
         await RefreshAsync();
+        if (characterWasShowing) await ShowSavedCharacterAsync(onlyIfAutoShow: false);
     }
 
     private async void AudioSetup_Click(object sender, RoutedEventArgs e)
@@ -483,17 +487,62 @@ public partial class MainWindow : ThemedWindow
 
     private void Troubleshooting_Click(object sender, RoutedEventArgs e) => OpenTroubleshooting(this);
     private void Avatar_Click(object sender, RoutedEventArgs e) => OpenAvatar(this);
+    private bool togglingCharacter;
+    private async void Character_Click(object sender, RoutedEventArgs e)
+    {
+        if (togglingCharacter) return;
+        togglingCharacter = true;
+        try
+        {
+            if (avatar.IsShowing)
+            {
+                if (await StopAvatarSafelyAsync()) ActionText.Text = "Character hidden. Voice is unaffected.";
+            }
+            else await ShowSavedCharacterAsync(onlyIfAutoShow: false);
+        }
+        finally
+        {
+            togglingCharacter = false;
+            UpdateCharacterButton();
+        }
+    }
+    private void UpdateCharacterButton() =>
+        CharacterButton.Content = avatar.IsShowing ? "Hide _character" : "Show _character";
+    /// <summary>Shows the saved character, or the bundled default when none is configured.</summary>
+    private async Task ShowSavedCharacterAsync(bool onlyIfAutoShow)
+    {
+        if (store is null || setupService is null || closing || avatar.IsShowing) return;
+        try
+        {
+            var loaded = await setupService.LoadAsync(lifetime.Token);
+            AvatarProfile? saved = null;
+            if (loaded.Settings is { } settings)
+                saved = (await new AvatarProfileStore(store.DataDirectory).LoadAsync(settings.Profile.Id, lifetime.Token)).Profile;
+            if (onlyIfAutoShow && saved?.AutoShow != true) return;
+            // Without a completed Setup profile the bundled character still shows; its choices are simply not saved.
+            var profile = saved ?? AvatarProfile.BuiltIn(loaded.Settings?.Profile.Id ?? Guid.NewGuid());
+            await avatar.ShowAsync(profile with { ResourceRevision = null }, lifetime.Token);
+            ActionText.Text = avatar.Status;
+        }
+        catch (Exception error) when (error is System.IO.IOException or InvalidOperationException or TimeoutException or
+            UnauthorizedAccessException or System.ComponentModel.Win32Exception or Martlet.Core.Contracts.ContractException or
+            OperationCanceledException)
+        {
+            if (!closing) ActionText.Text = $"Character could not start: {error.Message} Voice is unaffected.";
+        }
+        finally { UpdateCharacterButton(); }
+    }
     private void OpenAvatar(Window owner)
     {
         if (store is null || setupService is null || closing) return;
         new AvatarWindow(avatar, new AvatarProfileStore(store.DataDirectory), setupService, setupOperations)
             { Owner = owner }.ShowDialog();
+        UpdateCharacterButton();
     }
-    private async void AvatarSessionLocked(bool locked)
+    private void AvatarSessionLocked(bool locked)
     {
-        if (!locked) return;
-        avatar.Revoke();
-        await Dispatcher.InvokeAsync(StopAvatarSafelyAsync).Task.Unwrap();
+        // Revocation ends privileged Audio2Face analysis; the character itself and local lip-sync stay available.
+        if (locked) avatar.Revoke();
     }
     private async Task<bool> StopAvatarSafelyAsync()
     {

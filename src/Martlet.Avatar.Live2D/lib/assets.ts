@@ -15,11 +15,21 @@ export const LIMITS = Object.freeze({
   canvasDimension: 2048,
 });
 
+export interface MotionReference {
+  readonly file: string;
+  readonly fadeIn?: number;
+  readonly fadeOut?: number;
+}
+
 export interface ModelDescription {
   readonly modelFile: string;
   readonly moc: string;
   readonly textures: readonly string[];
   readonly groups: Readonly<{ lipSync: readonly string[]; eyeBlink: readonly string[] }>;
+  readonly motions: Readonly<Record<string, readonly MotionReference[]>>;
+  readonly expressions: readonly { readonly name: string; readonly file: string }[];
+  readonly physics?: string;
+  readonly pose?: string;
   readonly diagnostics: readonly Diagnostic[];
 }
 
@@ -125,40 +135,50 @@ export class LocalModelBundle {
       boundedInteger(pixels, LIMITS.texturePixels, "total texture pixels");
     }
     const diagnostics: Diagnostic[] = [];
+    const optional: Record<string, string> = {};
     for (const field of ["Physics", "Pose", "UserData", "DisplayInfo"]) {
       if (refs[field] !== undefined) {
-        resolve(refs[field], ".json");
-        diagnostics.push({ code: "INACTIVE_METADATA", message: `${field} is declared but not executed.` });
+        optional[field] = resolve(refs[field], ".json");
+        if (field === "UserData" || field === "DisplayInfo")
+          diagnostics.push({ code: "INACTIVE_METADATA", message: `${field} is declared but not executed.` });
       }
     }
+    const expressions: { name: string; file: string }[] = [];
     if (refs.Expressions !== undefined) {
       for (const value of array(refs.Expressions, 128, "Expressions")) {
         const entry = object(value, "expression");
         keys(entry, ["Name", "File"], "expression");
-        identifier(entry.Name);
-        resolve(entry.File, ".exp3.json");
+        expressions.push({ name: identifier(entry.Name), file: resolve(entry.File, ".exp3.json") });
       }
-      diagnostics.push({ code: "INACTIVE_EXPRESSIONS", message: "SDK expression motions are not started." });
     }
+    const motionGroups: Record<string, readonly MotionReference[]> = {};
     if (refs.Motions !== undefined) {
       const motions = object(refs.Motions, "Motions");
       boundedInteger(Object.keys(motions).length, 32, "motion groups");
       let count = 0;
-      for (const values of Object.values(motions)) {
+      for (const [group, values] of Object.entries(motions)) {
+        const entries: MotionReference[] = [];
         for (const value of array(values, 128, "motions")) {
           boundedInteger(++count, 128, "motions");
           const entry = object(value, "motion");
           keys(entry, ["File", "Sound", "FadeInTime", "FadeOutTime"], "motion");
-          resolve(entry.File, ".motion3.json");
+          const file = resolve(entry.File, ".motion3.json");
           if (entry.Sound !== undefined) resolve(entry.Sound, ".wav");
           for (const key of ["FadeInTime", "FadeOutTime"]) {
             if (entry[key] !== undefined) requireCondition(typeof entry[key] === "number" &&
               Number.isFinite(entry[key]) && entry[key] >= 0 && entry[key] <= 60,
             "INVALID_MODEL_JSON", `${key} must be in 0..60 seconds.`);
           }
+          entries.push(Object.freeze({
+            file,
+            ...(typeof entry.FadeInTime === "number" ? { fadeIn: entry.FadeInTime } : {}),
+            ...(typeof entry.FadeOutTime === "number" ? { fadeOut: entry.FadeOutTime } : {}),
+          }));
         }
+        requireCondition(group.length <= 256, "INVALID_MODEL_JSON", "Motion group name is too long.");
+        motionGroups[group] = Object.freeze(entries);
       }
-      diagnostics.push({ code: "INACTIVE_MOTIONS", message: "SDK motions and their audio are never started." });
+      diagnostics.push({ code: "MOTION_AUDIO_IGNORED", message: "Motion sounds are never played; Martlet's voice drives lip-sync." });
     }
     const groups = { lipSync: [] as string[], eyeBlink: [] as string[] };
     const seen = new Set<string>();
@@ -194,6 +214,10 @@ export class LocalModelBundle {
     this.description = Object.freeze({
       modelFile, moc, textures: Object.freeze(textures),
       groups: Object.freeze({ lipSync: Object.freeze(groups.lipSync), eyeBlink: Object.freeze(groups.eyeBlink) }),
+      motions: Object.freeze(motionGroups),
+      expressions: Object.freeze(expressions.map(e => Object.freeze(e))),
+      ...(optional.Physics ? { physics: optional.Physics } : {}),
+      ...(optional.Pose ? { pose: optional.Pose } : {}),
       diagnostics: Object.freeze(diagnostics.map(d => Object.freeze(d))),
     });
   }

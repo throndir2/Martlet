@@ -29,7 +29,7 @@ test("model inspection is detached from caller buffers and reports authored grou
   assert.ok(Object.isFrozen(inspected.description.groups.lipSync));
 });
 
-test("all optional asset references are local, present and inactive", () => {
+test("optional asset references are local, present and described for the animator", () => {
   for (const value of ["https://example.com/physics.json", "../physics.json"]) {
     const input = files({ FileReferences: { Moc: "avatar.moc3", Textures: ["texture.png"], Physics: value } });
     assert.throws(() => new LocalModelBundle(input, "avatar.model3.json"), code("UNSAFE_PATH"));
@@ -37,7 +37,7 @@ test("all optional asset references are local, present and inactive", () => {
   const input = files({
     FileReferences: {
       Moc: "avatar.moc3", Textures: ["texture.png"], Physics: "physics.json",
-      Motions: { Idle: [{ File: "idle.motion3.json", Sound: "voice.wav" }] },
+      Motions: { Idle: [{ File: "idle.motion3.json", Sound: "voice.wav", FadeInTime: 0.5 }] },
     },
   });
   input.set("physics.json", new TextEncoder().encode("123"));
@@ -45,7 +45,9 @@ test("all optional asset references are local, present and inactive", () => {
   assert.throws(() => new LocalModelBundle(input, "avatar.model3.json"), code("MISSING_ASSET"));
   input.set("voice.wav", new Uint8Array(0));
   const inspected = new LocalModelBundle(input, "avatar.model3.json");
-  assert.deepEqual(inspected.description.diagnostics.map(d => d.code), ["INACTIVE_METADATA", "INACTIVE_MOTIONS"]);
+  assert.deepEqual(inspected.description.diagnostics.map(d => d.code), ["MOTION_AUDIO_IGNORED"]);
+  assert.equal(inspected.description.physics, "physics.json");
+  assert.deepEqual(inspected.description.motions, { Idle: [{ file: "idle.motion3.json", fadeIn: 0.5 }] });
 });
 
 test("strict metadata rejects unknown/plugin fields and malformed groups", () => {

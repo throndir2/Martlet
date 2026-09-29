@@ -108,6 +108,17 @@ app.js.LEGAL.txt retains esbuild's extracted legal comments. Both files are
 required. Node 20.11.1, npm 10.2.4 and esbuild 0.25.12 are observed build tools,
 not runtime prerequisites redistributed with the application.
 
-User-supplied Live2D Framework 5-r.4/Core 05.01.0000, VRM/Live2D model assets,
-NIM runtime/models and GPU drivers are not redistributed. No rights to those
-inputs or to Martlet's project/assets are granted by the generated SBOM.
+Bundled Live2D (Desktop\AvatarRenderer\live2d): the official Cubism SDK for Web
+5-r.4 archive (https://cubism.live2d.com/sdk-web/bin/CubismSdkForWeb-5-r.4.zip,
+SHA-256 d78904d908bd232b800219e01732e4ea2f0562b5e9f35a2670742a1c16d22942) is
+downloaded at build time and never committed. sdk\core.js is the unmodified
+redistributable live2dcubismcore.min.js (Core 05.01.0000, Live2D Proprietary
+Software License). sdk\sdk.js compiles the Cubism Web Framework (Live2D Open
+Software License) with Martlet's animator. models\Hiyori is the unmodified
+Hiyori Momose sample (Live2D Original Character, Free Material License and
+Sample Data Terms). live2d\LIVE2D-NOTICES.txt carries the required copyright
+notice and license references. Publication as an Expandable Application is
+subject to Live2D's separate review and Publication License Agreement.
+User-supplied Live2D/VRM model assets, NIM runtime/models and GPU drivers are
+not redistributed. No rights to those inputs or to Martlet's project/assets are
+granted by the generated SBOM.

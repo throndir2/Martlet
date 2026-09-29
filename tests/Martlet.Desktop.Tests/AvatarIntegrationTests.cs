@@ -114,6 +114,33 @@ public sealed class AvatarIntegrationTests
         Assert.False(controller.Observer.IsEnabled);
     }
 
+    private sealed record MouthLevel(double Level);
+
+    [Fact]
+    public async Task Shown_character_moves_its_mouth_with_generated_speech_loudness_without_audio2face()
+    {
+        using var scope = new AvatarHostingTests.Scope();
+        var renderer = new Renderer();
+        await using var controller = new AvatarController(createRenderer: () => renderer, allowControlledClock: true);
+        await controller.ShowAsync(scope.Profile(), default);
+        Assert.True(controller.IsShowing);
+        Assert.True(controller.Observer.IsEnabled);
+        controller.Revoke();
+        Assert.True(controller.Observer.IsEnabled);
+        var device = new ControlledDevice { AutoConsume = false };
+        await using var harness = new Harness(device, generatedSpeech: controller.Observer);
+        harness.Answer("Actual generated PCM test.");
+        var turn = harness.Start();
+        await Harness.Until(() => renderer.Messages.Any(m => m.Kind == "mouth" && RendererProtocol.Data<MouthLevel>(m).Level > 0));
+        Assert.DoesNotContain(renderer.Messages, m => m.Kind is "configure" or "apply");
+        device.AutoConsume = true;
+        Assert.Equal(ConversationState.Completed, (await Harness.Finish(turn)).State);
+        Assert.Equal(SpeechFixtures.Audio(), device.Bytes);
+        await controller.StopAsync();
+        Assert.False(controller.Observer.IsEnabled);
+        Assert.False(controller.IsShowing);
+    }
+
     [Fact]
     public async Task Hundred_activation_stop_schedules_never_reuse_old_renderer_identity_or_authorization()
     {

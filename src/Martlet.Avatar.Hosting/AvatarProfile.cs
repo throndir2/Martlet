@@ -7,28 +7,46 @@ using Martlet.Core.Contracts;
 
 namespace Martlet.Avatar.Hosting;
 
+public enum AvatarLipSync { Loudness, Audio2Face }
+
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record AvatarProfile : IContract
 {
     public const int MaximumBytes = 131_072;
+    public const string DefaultEndpoint = "http://127.0.0.1:52000/";
     public required int Version { get; init; }
     public required Guid ProfileId { get; init; }
     public required AvatarRenderer Renderer { get; init; }
+    /// <summary>Absolute local model path, or <c>builtin:Hiyori</c> for the bundled Live2D character.</summary>
     public required string ModelPath { get; init; }
     public string? SdkDirectory { get; init; }
     public required string Endpoint { get; init; }
     public required JsonElement Configuration { get; init; }
     public string? ResourceRevision { get; init; }
+    /// <summary>Show the character when Martlet starts.</summary>
+    public bool AutoShow { get; init; }
+    public AvatarLipSync LipSync { get; init; } = AvatarLipSync.Loudness;
 
     [JsonIgnore] public AvatarConfiguration Settings =>
         AvatarJson.ReadConfiguration(Encoding.UTF8.GetBytes(Configuration.GetRawText()));
+
+    public static AvatarProfile BuiltIn(Guid profileId, string character = BundledLive2D.DefaultCharacter) => new()
+    {
+        Version = 1, ProfileId = profileId, Renderer = AvatarRenderer.Live2D,
+        ModelPath = BundledLive2D.Prefix + character, Endpoint = DefaultEndpoint,
+        Configuration = ConfigurationElement(AvatarConfiguration.Disabled)
+    };
 
     public void Validate()
     {
         ContractRules.Require(Version == 1, "Unsupported avatar profile version.");
         ContractRules.Require(ProfileId != Guid.Empty, "Avatar configuration needs an existing profile.");
         ContractRules.Defined(Renderer);
-        LocalAvatarFiles.ValidatePath(ModelPath);
+        ContractRules.Defined(LipSync);
+        if (BundledLive2D.IsBuiltIn(ModelPath))
+            ContractRules.Require(Renderer == AvatarRenderer.Live2D && BundledLive2D.Characters.Contains(ModelPath[BundledLive2D.Prefix.Length..]),
+                "Choose a bundled Live2D character.");
+        else LocalAvatarFiles.ValidatePath(ModelPath);
         if (SdkDirectory is not null) LocalAvatarFiles.ValidatePath(SdkDirectory);
         ContractRules.Require(Uri.TryCreate(Endpoint, UriKind.Absolute, out var endpoint) &&
             endpoint.Scheme == "http" && System.Net.IPAddress.TryParse(endpoint.Host.Trim('[', ']'), out var address) &&

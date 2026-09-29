@@ -1,7 +1,7 @@
 import { LIMITS, LocalModelBundle, pngDimensions } from "./assets.js";
 import { boundedInteger, Diagnostic, finite, Live2DError, requireCondition } from "./diagnostics.js";
 import { Capabilities, ChannelMapping, inspectParameters, MappingPlan, Parameter } from "./mapping.js";
-import { checkRuntime, CubismMoc, CubismModel, CubismRenderer, SdkModules } from "./sdk.js";
+import { checkRuntime, type Animator, type AnimatorAssets, CubismMoc, CubismModel, CubismRenderer, SdkModules } from "./sdk.js";
 
 export interface RenderIdentity {
   readonly sessionId: string;
@@ -75,6 +75,7 @@ interface Resources {
   moc?: CubismMoc;
   model?: CubismModel;
   renderer?: CubismRenderer;
+  animator?: Animator;
 }
 
 let activeAdapter: Live2DAdapter | undefined;
@@ -122,6 +123,11 @@ export class Live2DAdapter {
   #lastTimestamp: number | undefined;
   #age = 0;
   #hasFrame = false;
+  #lipSyncTarget = 0;
+  #lipSync = 0;
+  #lipSyncAge = Number.POSITIVE_INFINITY;
+  #lookTarget = { x: 0, y: 0 };
+  #look = { x: 0, y: 0 };
 
   constructor(canvas: HTMLCanvasElement, options: {
     sdk?: SdkModules;
@@ -137,6 +143,36 @@ export class Live2DAdapter {
 
   get capabilities(): Capabilities | undefined { return this.#plan?.capabilities; }
   get configurationId(): string { return this.#configurationId; }
+  /** True when the Framework animator drives idle motions, blinking, breathing, physics and pose. */
+  get animated(): boolean { return this.#resources?.animator !== undefined; }
+  get motionGroups(): readonly string[] { return this.#resources?.animator?.motionGroups ?? []; }
+  get expressions(): readonly string[] { return this.#resources?.animator?.expressions ?? []; }
+
+  /** Speech loudness 0..1; decays to closed when not refreshed for 300ms. */
+  setLipSync(level: number): void {
+    this.#ready();
+    finite(level, "lip-sync level");
+    this.#lipSyncTarget = Math.max(0, Math.min(1, level));
+    this.#lipSyncAge = 0;
+  }
+
+  /** Normalized -1..1 look direction (x right, y up). */
+  setLook(x: number, y: number): void {
+    this.#ready();
+    finite(x, "look x");
+    finite(y, "look y");
+    this.#lookTarget = { x: Math.max(-1, Math.min(1, x)), y: Math.max(-1, Math.min(1, y)) };
+  }
+
+  playMotion(group: string): boolean {
+    this.#ready();
+    return this.#resources?.animator?.playMotion(group) ?? false;
+  }
+
+  setExpression(name: string | null): boolean {
+    this.#ready();
+    return this.#resources?.animator?.setExpression(name) ?? false;
+  }
 
   async load(bundle: LocalModelBundle): Promise<Capabilities> {
     this.#ensureAlive();
@@ -209,6 +245,14 @@ export class Live2DAdapter {
         }
       }
       gl.bindTexture(gl.TEXTURE_2D, null);
+      if (sdk.createAnimator) {
+        try {
+          resources.animator = sdk.createAnimator(model, this.#animatorAssets(bundle));
+        } catch (error) {
+          this.#report({ code: "ANIMATION_UNAVAILABLE",
+            message: `Idle animation disabled: ${error instanceof Error ? error.message : String(error)}` });
+        }
+      }
       this.#bundle = bundle;
       this.#plan = new MappingPlan(this.#parameters, bundle.description, []);
       this.#loading = false;
@@ -319,11 +363,24 @@ export class Live2DAdapter {
     }
     const resources = this.#resources;
     requireCondition(resources?.model && resources.renderer, "MODEL_NOT_LOADED", "Load a local model first.");
-    const { gl, model, renderer, sdk } = resources;
+    const { gl, model, renderer, sdk, animator } = resources;
     requireCondition(!gl.isContextLost(), "CONTEXT_LOST", "Recreate the renderer after WebGL context loss.");
     this.#validateCanvas();
-    for (const write of this.#writes) model.setParameterValueByIndex(write.index, write.value, 1);
-    // No SDK motion/expression/physics writer runs after these composed parameter writes.
+    const writes = this.#writes;
+    const apply = () => { for (const write of writes) model.setParameterValueByIndex(write.index, write.value, 1); };
+    if (animator) {
+      this.#lipSyncAge += deltaSeconds;
+      const target = this.#lipSyncAge > 0.3 ? 0 : this.#lipSyncTarget;
+      this.#lipSync += (target - this.#lipSync) * Math.min(1, deltaSeconds * (target > this.#lipSync ? 30 : 14));
+      const follow = Math.min(1, deltaSeconds * 5);
+      this.#look = { x: this.#look.x + (this.#lookTarget.x - this.#look.x) * follow,
+        y: this.#look.y + (this.#lookTarget.y - this.#look.y) * follow };
+      animator.update(deltaSeconds, { lookX: this.#look.x, lookY: this.#look.y,
+        lipSync: this.#hasFrame ? 0 : this.#lipSync, overrides: apply });
+    } else {
+      // No SDK motion/expression/physics writer runs after these composed parameter writes.
+      apply();
+    }
     model.update();
     const width = model.getCanvasWidth();
     const height = model.getCanvasHeight();
@@ -402,9 +459,29 @@ export class Live2DAdapter {
   };
 
   #neutral(): void {
-    this.#writes = this.#parameters.map(p => ({ index: p.index, value: p.neutral }));
+    // The animator restores its own saved state each frame; only static models need explicit neutral writes.
+    this.#writes = this.#resources?.animator ? [] : this.#parameters.map(p => ({ index: p.index, value: p.neutral }));
     this.#hasFrame = false;
     this.#age = 0;
+  }
+
+  #animatorAssets(bundle: LocalModelBundle): AnimatorAssets {
+    const description = bundle.description;
+    const buffer = (name: string): ArrayBuffer => bundle.read(name).buffer;
+    return {
+      parameterIds: this.#parameters.map(p => p.id),
+      motions: Object.fromEntries(Object.entries(description.motions).map(([group, entries]) => [group,
+        entries.map(entry => ({
+          bytes: buffer(entry.file),
+          ...(entry.fadeIn !== undefined ? { fadeIn: entry.fadeIn } : {}),
+          ...(entry.fadeOut !== undefined ? { fadeOut: entry.fadeOut } : {}),
+        }))])),
+      expressions: description.expressions.map(entry => ({ name: entry.name, bytes: buffer(entry.file) })),
+      ...(description.physics ? { physics: buffer(description.physics) } : {}),
+      ...(description.pose ? { pose: buffer(description.pose) } : {}),
+      eyeBlinkIds: description.groups.eyeBlink,
+      lipSyncIds: description.groups.lipSync,
+    };
   }
 
   #ensureAlive(): void {
@@ -485,12 +562,18 @@ export class Live2DAdapter {
     this.#hasFrame = false;
     this.#age = 0;
     this.#loading = false;
+    this.#lipSyncTarget = 0;
+    this.#lipSync = 0;
+    this.#lipSyncAge = Number.POSITIVE_INFINITY;
+    this.#lookTarget = { x: 0, y: 0 };
+    this.#look = { x: 0, y: 0 };
     if (!resources) return;
     const errors: unknown[] = [];
     const release = (action: () => void) => {
       try { action(); } catch (error) { errors.push(error); }
     };
     release(() => resources.abort.abort());
+    release(() => resources.animator?.release());
     release(() => resources.renderer?.release());
     for (const texture of resources.textures) release(() => resources.gl.deleteTexture(texture));
     release(() => {

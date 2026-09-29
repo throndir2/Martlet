@@ -43,8 +43,45 @@ export interface CubismRenderer {
   release(): void;
 }
 
+export interface AnimatorMotion {
+  readonly bytes: ArrayBuffer;
+  readonly fadeIn?: number;
+  readonly fadeOut?: number;
+}
+
+/** Authored model assets handed to the official Framework motion/effect classes. */
+export interface AnimatorAssets {
+  readonly parameterIds: readonly string[];
+  readonly motions: Readonly<Record<string, readonly AnimatorMotion[]>>;
+  readonly expressions: readonly { readonly name: string; readonly bytes: ArrayBuffer }[];
+  readonly physics?: ArrayBuffer;
+  readonly pose?: ArrayBuffer;
+  readonly eyeBlinkIds: readonly string[];
+  readonly lipSyncIds: readonly string[];
+}
+
+export interface AnimatorInput {
+  readonly lookX: number;
+  readonly lookY: number;
+  /** 0..1 mouth opening from speech loudness. */
+  readonly lipSync: number;
+  /** Host-composed parameter writes, applied after motion/breath and before physics/pose. */
+  readonly overrides: () => void;
+}
+
+/** Idle motions, eye blink, breathing, look-at, physics, pose and lip-sync on one model. */
+export interface Animator {
+  update(deltaSeconds: number, input: AnimatorInput): void;
+  playMotion(group: string): boolean;
+  setExpression(name: string | null): boolean;
+  readonly motionGroups: readonly string[];
+  readonly expressions: readonly string[];
+  release(): void;
+}
+
 export interface SdkModules {
   readonly revision: typeof FRAMEWORK_REVISION;
+  readonly createAnimator?: (model: CubismModel, assets: AnimatorAssets) => Animator;
   readonly CubismFramework: {
     isStarted(): boolean;
     isInitialized(): boolean;

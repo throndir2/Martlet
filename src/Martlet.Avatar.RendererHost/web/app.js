@@ -11,6 +11,11 @@ const resource = name => fetch(`asset/${name}`).then(response => {
 const mouth = new Set(["aa", "ih", "ou", "ee", "oh"]);
 const blink = new Set(["blink", "blinkLeft", "blinkRight"]);
 window.chrome.webview.addEventListener("message", async ({ data: message }) => {
+  if (message.kind === "look") {
+    // Fire-and-forget cursor follow from the host window; never replies and never fails the renderer.
+    try { if (active && !failed) adapter?.setLook?.(message.data.x, message.data.y); } catch { }
+    return;
+  }
   try {
     if (failed) throw new Error("Renderer is terminally failed; inspect again.");
     const data = message.data;
@@ -37,6 +42,7 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
       } else if (renderer === "Vrm") {
         adapter = new VrmAvatarAdapter(canvas);
         const capabilities = await adapter.load(await resource(data.modelFile));
+        adapter.startIdle?.();
         post({ modelId: data.resourceRevision.toLowerCase(), parameters: capabilities.expressions.filter(p => p.usable &&
           !p.name.startsWith("look")).map(p => ({ id: p.name, minimum: 0, maximum: 1, neutral: 0,
           aspects: [mouth.has(p.name) ? "Mouth" : "Expression"] })) });
@@ -71,6 +77,14 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
       }
       post({});
     } else if (message.kind === "stop") { adapter.stop(); post({}); }
+    else if (message.kind === "mouth") {
+      const level = Number(data.level);
+      if (!Number.isFinite(level) || level < 0 || level > 1) throw new Error("Invalid mouth level.");
+      adapter.setLipSync(level);
+      post({});
+    } else if (message.kind === "motion") {
+      post({ started: renderer === "Live2D" ? adapter.playMotion(String(data.group)) : false });
+    }
     else throw new Error("Unsupported command.");
   } catch {
     active = false; failed = true;
