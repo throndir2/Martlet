@@ -17,16 +17,38 @@ choice simply is not saved.
 
 The character idles with her authored motions, blinks, breathes, sways with
 physics, turns her head/eyes toward the mouse cursor and moves her mouth while
-Martlet speaks. `AvatarLipSync.Loudness` (the default) derives a 0..1 mouth level
-from the RMS of Martlet's own generated TTS PCM in 20 ms windows and presents it
-against the playback device clock (falling back to consumed samples). It runs
-locally, sends nothing anywhere and survives pause/mute/configuration
-revocations; hiding the character stops it. **Show the character automatically
-when Martlet starts** saves `AutoShow` in `avatar.json`. Custom Live2D
-`.model3.json` folders and VRM1 `.vrm` models get the same idle and loudness
-behavior (VRM: relaxed arms, breathing, blink and `aa`).
+Martlet speaks. **Show the character automatically when Martlet starts** saves
+`AutoShow` in `avatar.json`. Custom Live2D `.model3.json` folders and VRM1 `.vrm`
+models get the same idle behavior (VRM: relaxed arms, breathing, blink).
 
-## Audio2Face (advanced) setup
+Lip-sync modes (`AvatarLipSync`):
+
+| Mode | Behavior |
+| --- | --- |
+| `Auto` (default) | Before each generated-speech sentence, TCP-probe the configured loopback Audio2Face endpoint (default `127.0.0.1:52000`). If something is listening, stream that sentence's generated PCM to it and apply its frames on the playback clock through the model's reviewed saved mapping or the built-in mouth mapping (Live2D: `jawOpen` -> LipSync group/`ParamMouthOpenY`, `mouthSmileLeft` -> `ParamMouthForm`; VRM: `jawOpen` -> `aa`, `mouthFunnel` -> `oh`, `mouthPucker` -> `ou`). Loudness levels are computed for every sentence and take over whenever Audio2Face is absent, fails, lags or stops (renderers ignore loudness while Audio2Face frames are fresh). |
+| `Loudness` | Never contacts Audio2Face. |
+| `Audio2Face` | Manual mapping and explicit per-session activation below; no loudness. |
+
+Loudness derives a 0..1 mouth level from the RMS of Martlet's own generated TTS
+PCM in 20 ms windows and presents it against the playback device clock (falling
+back to consumed samples). Auto and Loudness survive pause/mute/configuration
+revocations; hiding the character stops them. Only Martlet's generated voice is
+sent, and only to a numeric loopback address; the microphone is never used.
+Martlet does not install or start Docker, WSL or the Audio2Face NIM.
+
+### Running an Audio2Face service yourself (NVIDIA GPU)
+
+Not verified on a Martlet machine. The NIM is a Linux container: on Windows use
+Docker Desktop with the WSL2 backend and a current NVIDIA driver, sign in to the
+NVIDIA NGC registry with your own API key (NVIDIA account; review the NIM and
+model terms), then start NVIDIA's
+[Audio2Face-3D samples quick start](https://github.com/NVIDIA/Audio2Face-3D-Samples/tree/main/quick-start)
+(`A2F_3D_MODEL_NAME=claire docker compose up`) so its gRPC port 52000 is
+reachable at `127.0.0.1:52000`. The first start builds TensorRT engines and takes
+minutes. Martlet picks it up at the next sentence; set another loopback port in
+**Character settings > Advanced** if needed.
+
+## Audio2Face-only (advanced) setup
 
 1. Create/load an ordinary Martlet profile. Select the bundled character, a
    lawful local VRM1 `.vrm` or a Live2D `.model3.json` folder containing only

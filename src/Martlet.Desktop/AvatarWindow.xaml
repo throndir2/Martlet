@@ -12,7 +12,7 @@
         <StackPanel Margin="20">
             <TextBlock Text="Character" FontSize="24" FontWeight="SemiBold"/>
             <TextBlock TextWrapping="Wrap" Margin="0,8"
-                Text="Martlet includes Hiyori, a Live2D sample character by Live2D Inc. She idles, blinks, breathes, sways with physics, follows your mouse cursor and moves her mouth while Martlet speaks. Lip-sync runs locally from the loudness of Martlet's own voice; no microphone, upload or GPU service is used. You can also use your own Live2D (.model3.json) or VRM (.vrm) model."/>
+                Text="Martlet includes Hiyori, a Live2D sample character by Live2D Inc. She idles, blinks, breathes, sways with physics, follows your mouse cursor and moves her mouth while Martlet speaks. With Automatic lip-sync, Martlet uses an Audio2Face service running on this PC (needs an NVIDIA GPU) whenever it finds one, sending it only Martlet's own generated voice; otherwise the mouth follows the loudness of that voice. No microphone or upload is used. You can also use your own Live2D (.model3.json) or VRM (.vrm) model."/>
             <TextBlock x:Name="StatusText" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
                        AutomationProperties.AutomationId="AvatarStatus" Margin="0,8"/>
             <Label Target="{Binding ElementName=CharacterChoice}" Content="_Character"/>
@@ -29,8 +29,9 @@
             <Label Target="{Binding ElementName=LipSyncChoice}" Content="_Lip-sync"/>
             <ComboBox x:Name="LipSyncChoice" MinHeight="28" SelectionChanged="Selection_Changed"
                       AutomationProperties.AutomationId="LipSyncChoice">
-                <ComboBoxItem Content="Voice loudness (local, works everywhere)"/>
-                <ComboBoxItem Content="Audio2Face (your own NVIDIA NIM service; configure below)"/>
+                <ComboBoxItem Content="Automatic: Audio2Face when a local service is running, otherwise voice loudness"/>
+                <ComboBoxItem Content="Voice loudness only (never contacts Audio2Face)"/>
+                <ComboBoxItem Content="Audio2Face only (manual mapping and activation under Advanced)"/>
             </ComboBox>
             <CheckBox x:Name="AutoShowChoice" Content="Show the character automatically when Martlet starts" Margin="0,10"
                       AutomationProperties.AutomationId="AutoShowCharacter"/>
@@ -52,7 +53,7 @@
                     <ComboBox x:Name="RendererChoice" MinHeight="28" SelectionChanged="Selection_Changed"/>
                     <Label Target="{Binding ElementName=SdkPathText}" Content="Live2D SDK override directory (core.js and sdk.js; blank uses the bundled runtime)"/>
                     <TextBox x:Name="SdkPathText" MinHeight="28" TextChanged="Configuration_Changed"/>
-                    <Label Target="{Binding ElementName=EndpointText}" Content="Existing local Audio2Face NIM _endpoint"/>
+                    <Label Target="{Binding ElementName=EndpointText}" Content="Local Audio2Face service _endpoint (checked by Automatic lip-sync)"/>
                     <TextBox x:Name="EndpointText" Text="http://127.0.0.1:52000/" MinHeight="28" TextChanged="Configuration_Changed"/>
                     <CheckBox x:Name="InspectPermission" Content="I authorize local GPU model inspection using my installed runtime and selected assets." Margin="0,10"/>
                     <WrapPanel>

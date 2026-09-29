@@ -30,11 +30,12 @@ public sealed class AvatarIntegrationTests
         internal TaskCompletionSource? StartRelease { get; set; }
         internal TaskCompletionSource EnteredStart { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly Guid activation = Guid.NewGuid();
+        internal RendererParameter[] Parameters { get; init; } = [new("Jaw", -10, 10, 0, ["Mouth"])];
         public async Task StartAsync(AvatarProfile profile, string revision, CancellationToken token)
         {
             EnteredStart.TrySetResult();
             if (StartRelease is { } held) await held.Task;
-            Capabilities = new(revision.ToLowerInvariant(), [new("Jaw", -10, 10, 0, ["Mouth"])]);
+            Capabilities = new(revision.ToLowerInvariant(), Parameters);
         }
         public async Task<RendererMessage> SendAsync<T>(string kind, T data, CancellationToken token, TimeSpan? timeout = null)
         {
@@ -122,7 +123,7 @@ public sealed class AvatarIntegrationTests
         using var scope = new AvatarHostingTests.Scope();
         var renderer = new Renderer();
         await using var controller = new AvatarController(createRenderer: () => renderer, allowControlledClock: true);
-        await controller.ShowAsync(scope.Profile(), default);
+        await controller.ShowAsync(scope.Profile() with { LipSync = AvatarLipSync.Loudness }, default);
         Assert.True(controller.IsShowing);
         Assert.True(controller.Observer.IsEnabled);
         controller.Revoke();
@@ -139,6 +140,68 @@ public sealed class AvatarIntegrationTests
         await controller.StopAsync();
         Assert.False(controller.Observer.IsEnabled);
         Assert.False(controller.IsShowing);
+    }
+
+    [Fact]
+    public async Task Automatic_lip_sync_uses_a_detected_audio2face_service_with_the_built_in_mouth_mapping()
+    {
+        await using var backend = await ProtocolFixture.StartAsync(async (writer, context) =>
+        {
+            await writer.WriteAsync(new Output { AnimationDataStreamHeader = new()
+            {
+                SkelAnimationHeader = new() { BlendShapes = { "JawOpen" } }
+            } });
+            await writer.WriteAsync(new Output { AnimationData = new()
+            {
+                SkelAnimation = new() { BlendShapeWeights = { new FloatArrayWithTimeCode
+                    { TimeCode = 0, Values = { 0.75f } } } }
+            } });
+            await writer.WriteAsync(new Output { Status = new() { Code = Status.Types.Code.Success } });
+        });
+        using var scope = new AvatarHostingTests.Scope();
+        var renderer = new Renderer { Parameters = [new("aa", 0, 1, 0, ["Mouth"]), new("blink", 0, 1, 0, ["Expression"])] };
+        await using var controller = new AvatarController(createRenderer: () => renderer, allowControlledClock: true);
+        await controller.ShowAsync(scope.Profile(backend.Endpoint.AbsoluteUri), default);
+        Assert.Contains("detected", controller.Status, StringComparison.Ordinal);
+        var configured = RendererProtocol.Data<RendererConfiguration>(renderer.Messages.Single(m => m.Kind == "configure"));
+        Assert.Equal("aa", Assert.Single(configured.Targets).Target);
+        var device = new ControlledDevice { AutoConsume = false };
+        await using var harness = new Harness(device, generatedSpeech: controller.Observer);
+        harness.Answer("Actual generated PCM test.");
+        var turn = harness.Start();
+        await Harness.Until(() => renderer.Messages.Any(m => m.Kind == "apply"));
+        var applied = RendererProtocol.Data<RendererParameters>(renderer.Messages.First(m => m.Kind == "apply"));
+        Assert.Equal(0.75, applied.Parameters["aa"], 3);
+        Assert.Equal(turn.TurnId, applied.Identity.TurnId);
+        Assert.NotEmpty(backend.Requests);
+        device.AutoConsume = true;
+        Assert.Equal(ConversationState.Completed, (await Harness.Finish(turn)).State);
+        Assert.Equal(SpeechFixtures.Audio(), device.Bytes);
+        await controller.StopAsync();
+        Assert.False(controller.IsShowing);
+    }
+
+    [Fact]
+    public async Task Automatic_lip_sync_falls_back_to_loudness_when_no_audio2face_service_is_listening()
+    {
+        var closed = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        closed.Start();
+        var port = ((System.Net.IPEndPoint)closed.LocalEndpoint).Port;
+        closed.Stop();
+        using var scope = new AvatarHostingTests.Scope();
+        var renderer = new Renderer { Parameters = [new("aa", 0, 1, 0, ["Mouth"])] };
+        await using var controller = new AvatarController(createRenderer: () => renderer, allowControlledClock: true);
+        await controller.ShowAsync(scope.Profile($"http://127.0.0.1:{port}/"), default);
+        Assert.Contains("No Audio2Face service", controller.Status, StringComparison.Ordinal);
+        var device = new ControlledDevice { AutoConsume = false };
+        await using var harness = new Harness(device, generatedSpeech: controller.Observer);
+        harness.Answer("Actual generated PCM test.");
+        var turn = harness.Start();
+        await Harness.Until(() => renderer.Messages.Any(m => m.Kind == "mouth" && RendererProtocol.Data<MouthLevel>(m).Level > 0));
+        Assert.DoesNotContain(renderer.Messages, m => m.Kind is "reset" or "apply");
+        device.AutoConsume = true;
+        Assert.Equal(ConversationState.Completed, (await Harness.Finish(turn)).State);
+        await controller.StopAsync();
     }
 
     [Fact]

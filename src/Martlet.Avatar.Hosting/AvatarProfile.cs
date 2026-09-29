@@ -7,7 +7,7 @@ using Martlet.Core.Contracts;
 
 namespace Martlet.Avatar.Hosting;
 
-public enum AvatarLipSync { Loudness, Audio2Face }
+public enum AvatarLipSync { Auto, Loudness, Audio2Face }
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record AvatarProfile : IContract
@@ -25,7 +25,8 @@ public sealed record AvatarProfile : IContract
     public string? ResourceRevision { get; init; }
     /// <summary>Show the character when Martlet starts.</summary>
     public bool AutoShow { get; init; }
-    public AvatarLipSync LipSync { get; init; } = AvatarLipSync.Loudness;
+    /// <summary>Auto uses a detected local Audio2Face service per sentence and voice loudness otherwise.</summary>
+    public AvatarLipSync LipSync { get; init; } = AvatarLipSync.Auto;
 
     [JsonIgnore] public AvatarConfiguration Settings =>
         AvatarJson.ReadConfiguration(Encoding.UTF8.GetBytes(Configuration.GetRawText()));
