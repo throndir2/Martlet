@@ -5,7 +5,7 @@
       "martlet.audio": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.3.0, )"
+          "Martlet.Core": "[0.4.0, )"
         }
       },
       "martlet.core": {
@@ -14,14 +14,14 @@
       "martlet.fixtures": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.3.0, )"
+          "Martlet.Core": "[0.4.0, )"
         }
       },
       "martlet.sessions": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Audio": "[0.3.0, )",
-          "Martlet.Fixtures": "[0.3.0, )"
+          "Martlet.Audio": "[0.4.0, )",
+          "Martlet.Fixtures": "[0.4.0, )"
         }
       }
     },
