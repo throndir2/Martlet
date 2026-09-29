@@ -69,8 +69,9 @@ golden path. Keep code and mutable data separate. Default install must not add
 firewall exceptions, install services, modify drivers, start at login, fetch
 large models, or require a browser login. Optional
 [prerequisites](PREREQUISITES.md) (Windows speech, Ollama, WSL 2 + Docker
-Desktop) are unticked installer tasks; only a missing WebView2 runtime and a
-blocked microphone setting are ticked by default.
+Desktop) are unticked installer tasks unless the installer's **Recommended
+setup** page (number of computers, graphics card, goal) recommends them; only a
+missing WebView2 runtime and a blocked microphone setting are always ticked by default.
 
 Publish GitHub asset SHA-256, provenance and notices for the exact versioned
 installer. A GitHub-supplied checksum is not an independent publisher signature.
