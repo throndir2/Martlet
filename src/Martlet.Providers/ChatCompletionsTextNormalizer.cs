@@ -15,6 +15,7 @@ internal sealed class ChatCompletionsTextNormalizer(TextGenerationLimits limits)
     private TextGenerationUsage usage = TextGenerationUsage.Unknown;
     private bool usageSeen;
     public bool HasContentDelta { get; private set; }
+    public bool HasReasoningDelta { get; private set; }
     public bool MadeProgress { get; private set; }
 
     public TextStreamStep? Accept(ResponsesSseEvent value)
@@ -71,9 +72,8 @@ internal sealed class ChatCompletionsTextNormalizer(TextGenerationLimits limits)
         if (finish is not null)
         {
             Require(accountingFrame && delta.EnumerateObject().All(property =>
-                property.Name is "role" or "content" or "refusal") &&
-                (!delta.TryGetProperty("role", out var accountingRole) ||
-                    accountingRole.ValueKind == JsonValueKind.String && accountingRole.GetString() == "assistant") &&
+                property.Name is "role" or "content" or "refusal" || IsEmpty(property.Value)) &&
+                AssistantRole(delta) &&
                 string.IsNullOrEmpty(OptionalString(delta, "content")) &&
                 string.IsNullOrEmpty(OptionalString(delta, "refusal")) &&
                 OptionalString(choice, "finish_reason") == finish);
@@ -82,11 +82,21 @@ internal sealed class ChatCompletionsTextNormalizer(TextGenerationLimits limits)
         foreach (var property in delta.EnumerateObject())
         {
             if (property.Name is "content" or "refusal" or "role") continue;
-            if (property.Value.ValueKind != JsonValueKind.Null)
+            // Reasoning/thinking traces (NVIDIA NIM reasoning_content, OpenRouter reasoning/reasoning_details)
+            // are never spoken or shown; they only prove the model is still working.
+            if (property.Name is "reasoning" or "reasoning_content" or "reasoning_details")
+            {
+                if (!IsEmpty(property.Value))
+                {
+                    HasReasoningDelta = true;
+                    MadeProgress = true;
+                }
+                continue;
+            }
+            if (!IsEmpty(property.Value))
                 throw new ResponseProtocolException(ProviderFailureCode.UnsupportedOutput);
         }
-        if (delta.TryGetProperty("role", out var role))
-            Require(role.ValueKind == JsonValueKind.String && role.GetString() == "assistant");
+        Require(AssistantRole(delta));
         var text = OptionalString(delta, "content");
         var denied = OptionalString(delta, "refusal");
         if (!string.IsNullOrEmpty(text))
@@ -120,6 +130,19 @@ internal sealed class ChatCompletionsTextNormalizer(TextGenerationLimits limits)
 
     private TextStreamStep Fail(ProviderFailureCode code, TextGenerationOutcome outcome) =>
         new(Outcome: outcome, Usage: usage, Failure: new(code, stage: Stage.Generation));
+
+    // Some servers (for example NVIDIA NIM backends) send an explicit null role on continuation chunks.
+    private static bool AssistantRole(JsonElement delta) =>
+        !delta.TryGetProperty("role", out var role) || role.ValueKind == JsonValueKind.Null ||
+        role.ValueKind == JsonValueKind.String && role.GetString() == "assistant";
+
+    private static bool IsEmpty(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.Null => true,
+        JsonValueKind.String => value.GetString()!.Length == 0,
+        JsonValueKind.Array => value.GetArrayLength() == 0,
+        _ => false
+    };
 
     private static string? OptionalString(JsonElement parent, string name)
     {

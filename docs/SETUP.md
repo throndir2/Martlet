@@ -23,20 +23,39 @@ fixture, refusal, Stop and status actions are unchanged. Opening setup and
 ordinary Desktop/Doctor status are read-only: no credential lookup, device
 enumeration, capture, provider discovery or network requests.
 
-Choose **Named OpenAI API profile** to save role-specific routes without making
-an inference request. The only approved origin is `https://api.openai.com`;
-there is no editable endpoint or generic `/v1` compatibility mode. Enter the
+Choose **Cloud API profile** to save role-specific routes without making
+an inference request. STT and TTS use the named OpenAI origin
+`https://api.openai.com`. Internal aliases `openai-stt`, `openai-llm`, and
+`openai-tts` are Martlet policy identifiers, not upstream model names. Enter the
 actual upstream model ID, and an upstream voice ID for TTS, explicitly.
-Internal aliases `openai-stt`, `openai-llm`, and `openai-tts` are Martlet policy
-identifiers, not upstream model names. No model/voice is silently selected or
-discovered, and saving does not prove that an entered ID exists or is accessible.
+
+For the LLM role, **LLM provider / endpoint** selects one of:
+
+| Provider | API base URL | Key |
+| --- | --- | --- |
+| OpenAI (Responses API) | `https://api.openai.com` | Required |
+| OpenRouter | `https://openrouter.ai/api/v1` | Required (OpenRouter key) |
+| NVIDIA Build | `https://integrate.api.nvidia.com/v1` | Required (`nvapi-...` key from build.nvidia.com) |
+| Custom OpenAI-compatible endpoint | Any canonical HTTPS base such as `https://api.groq.com/openai/v1`, or a loopback server such as `http://127.0.0.1:1234/v1` (LM Studio), `http://127.0.0.1:8080/v1` (llama.cpp) or `http://127.0.0.1:11434/v1` (Ollama) | Optional |
+
+The Chat Completions providers take the exact model ID you type (for example
+`meta-llama/llama-3.3-70b-instruct:free` on OpenRouter or
+`meta/llama-3.3-70b-instruct` on NVIDIA Build); there is no model catalog or
+discovery. Martlet appends `/chat/completions`. HTTP is allowed only for a
+literal loopback IP (`localhost` is rejected). Keys are bound to the exact base
+URL. Switching the LLM to another destination detaches the previous key and
+lists it for explicit removal on **Credentials**. Each reply is capped at 256
+tokens; reasoning/thinking models spend part of that on hidden thinking (never
+spoken or shown), so prefer instruct/chat models.
+No model/voice is silently selected or discovered, and saving does not prove
+that an entered ID exists or is accessible.
 
 For each role, review the displayed boundary and apply the route:
 
 | Role | Disclosed data destination |
 | --- | --- |
 | STT | Microphone audio to OpenAI; even an utterance later suppressed can already have been disclosed and charged. |
-| LLM | Transcript and conversation text to OpenAI. |
+| LLM | Transcript and conversation text to the selected LLM provider (OpenRouter additionally forwards it to an upstream provider it chooses). |
 | TTS | Response text to OpenAI; the returned voice is generated, not a human recording. |
 
 Cloud use can cost money. Current price, quota, API-key validity and model

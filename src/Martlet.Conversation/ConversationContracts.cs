@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using Martlet.Audio;
 using Martlet.Core.Contracts;
+using Martlet.Core.Settings;
 using Martlet.Providers;
 
 namespace Martlet.Conversation;
@@ -36,16 +37,24 @@ public sealed class SpeechOutput(SpeechSynthesisSelection selection, OutputSelec
     public override string ToString() => nameof(SpeechOutput);
 }
 
+// An explicit OpenAI-compatible Chat Completions destination for the LLM stage. Null keeps the named OpenAI route.
+// Keyless sends no Authorization header (for example a local LM Studio, llama.cpp, vLLM or Ollama server).
+public sealed record ChatCompletionsTarget(string BaseUrl, bool Keyless = false)
+{
+    public override string ToString() => nameof(ChatCompletionsTarget);
+}
+
 // A new instance is explicit input, not a stored provider thread or automatic conversation history.
 public sealed class ConversationRequest(
     BoundedTextInput input, TextModelSelection model, TextGenerationLimits textLimits,
-    ConversationLimits limits, SpeechOutput? speech = null)
+    ConversationLimits limits, SpeechOutput? speech = null, ChatCompletionsTarget? chat = null)
 {
     [JsonIgnore] public BoundedTextInput Input { get; } = input;
     public TextModelSelection Model { get; } = model;
     public TextGenerationLimits TextLimits { get; } = textLimits;
     public ConversationLimits Limits { get; } = limits;
     public SpeechOutput? Speech { get; } = speech;
+    public ChatCompletionsTarget? Chat { get; } = chat;
 
     internal void Validate()
     {
@@ -56,8 +65,16 @@ public sealed class ConversationRequest(
         TextLimits.Validate();
         Limits.Validate();
         ContractRules.Identifier(Model.ModelAlias);
-        ContractRules.Require(OpenAiTextGenerationCatalog.SupportsModel(Model.UpstreamModelId),
-            "Select a supported text model.", ErrorCode.ProviderCapability);
+        if (Chat is { } chat)
+        {
+            _ = ChatCompletionsSetup.BaseUri(chat.BaseUrl);
+            ChatCompletionsSetup.ModelId(Model.UpstreamModelId);
+            ContractRules.Require(Model.ModelAlias == ChatCompletionsSetup.Alias,
+                "A Chat Completions destination requires its own model alias.", ErrorCode.ProviderCapability);
+        }
+        else
+            ContractRules.Require(OpenAiTextGenerationCatalog.SupportsModel(Model.UpstreamModelId),
+                "Select a supported text model.", ErrorCode.ProviderCapability);
         ContractRules.Require(Input.Utf8Bytes <= TextLimits.MaxInputBytes &&
             Input.InputTokenReservation <= TextLimits.MaxInputTokens, "Text input exceeds the selected limits.");
         if (Speech is { } voice)

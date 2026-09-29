@@ -386,6 +386,29 @@ public sealed class ChatCompletionsTests
         Assert.True(body.Disposed);
     }
 
+    [Theory]
+    [InlineData(ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl)]
+    [InlineData(ChatCompletionsEndpointCatalog.OpenRouterBaseUrl)]
+    public async Task Provider_reasoning_traces_and_null_roles_are_not_spoken(string baseUrl)
+    {
+        static string Raw(string delta, string? finish = null, string usage = "null") =>
+            "data: {\"id\":\"chat-fixture\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"canonical-server-model\"," +
+            $"\"choices\":[{{\"index\":0,\"delta\":{delta},\"logprobs\":null,\"finish_reason\":{(finish is null ? "null" : $"\"{finish}\"")}}}],\"usage\":{usage}}}\n\n";
+        var trace = Raw("{\"role\":\"assistant\",\"content\":\"\",\"reasoning_content\":null}") +
+            Raw("{\"role\":null,\"content\":null,\"reasoning_content\":\"Thinking privately.\"}") +
+            Raw("{\"content\":\"\",\"reasoning\":\"More thought.\",\"reasoning_details\":[{\"type\":\"reasoning.text\",\"text\":\"More thought.\"}]}") +
+            Raw("{\"role\":null,\"content\":\"Hello \",\"tool_calls\":[],\"reasoning\":null,\"reasoning_details\":[]}") +
+            Raw("{\"role\":null,\"content\":\"world.\"}", "stop") +
+            Raw("{\"role\":\"assistant\",\"content\":\"\",\"reasoning\":null}", "stop",
+                "{\"prompt_tokens\":4,\"completion_tokens\":9,\"total_tokens\":13}") +
+            "data: [DONE]\n\n";
+        var result = await RunFixture(trace, baseUrl: baseUrl);
+        Assert.Equal(TextGenerationOutcome.Completed, result.Result.Outcome);
+        Assert.Equal(new TextGenerationUsage(4, 9, 13), result.Result.Usage);
+        Assert.Equal(new[] { "Hello ", "world." }, result.Events.Where(item => item.Kind == ProviderEventKind.TextDelta)
+            .Select(item => item.Text));
+    }
+
     private static async Task<(List<ProviderEvent> Events, TextGenerationResult Result)> RunFixture(
         string trace, TextGenerationLimits? limits = null, string baseUrl = BaseUrl)
     {

@@ -20,12 +20,15 @@ other aspects require explicit omission, not automatic fallback.
 
 ## First configured action
 
-1. In **Setup / resume**, choose the named OpenAI API profile. Apply explicit
+1. In **Setup / resume**, choose the cloud API profile. Apply explicit
    supported model IDs, store each role's key in its scoped Windows vault target,
    then review that role's destination choice again (changing a key invalidates
    the choice). Save the checkpoint. Do not put keys in model fields or files.
-2. LLM currently supports `gpt-4.1-mini-2025-04-14` and
-   `gpt-4.1-2025-04-14`. STT supports `gpt-transcribe`,
+2. The OpenAI LLM route supports `gpt-4.1-mini-2025-04-14` and
+   `gpt-4.1-2025-04-14`. Alternatively the LLM can use OpenRouter, NVIDIA Build
+   or any OpenAI-compatible Chat Completions endpoint with the exact model ID
+   you enter (see [Setup](SETUP.md)); a local loopback server may be keyless.
+   STT supports `gpt-transcribe`,
    `gpt-4o-transcribe`, `gpt-4o-mini-transcribe`,
    `gpt-4o-mini-transcribe-2025-12-15`, or `whisper-1`.
    Optional TTS supports `gpt-4o-mini-tts-2025-12-15`, voice `alloy` or `coral`,

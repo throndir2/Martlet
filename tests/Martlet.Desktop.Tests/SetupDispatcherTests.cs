@@ -299,6 +299,56 @@ public sealed class SetupDispatcherTests(ITestOutputHelper output)
         finally { window.Close(); }
     });
 
+    [Fact]
+    public Task LlmProviderChoiceSavesOpenRouterNvidiaAndCustomChatCompletionsRoutes() => OnDispatcher(async () =>
+    {
+        using var fixture = new SetupFixture();
+        var runner = new SetupOperationRunner();
+        var window = fixture.Open(runner);
+        try
+        {
+            await WaitUntil(() => Control<StackPanel>(window, "EditorPanel").IsEnabled);
+            Control<RadioButton>(window, "ApiChoice").IsChecked = true;
+            Control<TabControl>(window, "Steps").SelectedIndex = (int)SetupStep.Destinations;
+            Control<ComboBox>(window, "RoleChoice").SelectedItem = SetupRole.Stt;
+            Assert.False(Control<ComboBox>(window, "ProviderChoice").IsEnabled);
+            Control<ComboBox>(window, "RoleChoice").SelectedItem = SetupRole.Llm;
+            var providers = Control<ComboBox>(window, "ProviderChoice");
+            Assert.True(providers.IsEnabled);
+            var names = providers.Items.Cast<object>().Select(item => item.ToString()!).ToArray();
+            Assert.Equal(4, names.Length);
+            foreach (var (name, baseUrl, model) in new[]
+            {
+                ("OpenRouter", ChatCompletionsEndpointCatalog.OpenRouterBaseUrl, "meta-llama/llama-3.3-70b-instruct:free"),
+                ("NVIDIA Build", ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, "meta/llama-3.3-70b-instruct"),
+                ("Custom", "http://127.0.0.1:1234/v1", "local-model")
+            })
+            {
+                providers.SelectedItem = providers.Items.Cast<object>().Single(item => item.ToString()!.StartsWith(name, StringComparison.Ordinal));
+                var url = Control<TextBox>(window, "BaseUrl");
+                Assert.True(url.IsEnabled);
+                if (name == "Custom") url.Text = baseUrl;
+                else Assert.Equal(baseUrl, url.Text);
+                Assert.False(Control<ComboBox>(window, "ModelCatalogChoice").IsEnabled);
+                Control<TextBox>(window, "ModelId").Text = model;
+                Control<CheckBox>(window, "ConsentChoice").IsChecked = true;
+                Click(window, "SetupApplyRoute");
+                Assert.Contains("Route applied", Control<TextBox>(window, "ResultText").Text);
+                Click(window, "SetupSave");
+                await WaitUntil(() => Control<TextBox>(window, "ResultText").Text.Contains("saved", StringComparison.OrdinalIgnoreCase));
+                var saved = await Task.Run(() => fixture.Store.LoadAsync());
+                var route = saved.Settings!.Setup!.Routes.Single(item => item.Role == SetupRole.Llm);
+                Assert.Equal(SetupRouteType.ChatCompletions, route.RouteType);
+                Assert.Equal(baseUrl, route.Origin);
+                Assert.Equal(model, route.ModelId);
+                Assert.Equal(route.Selection(), route.Consent);
+                await WaitUntil(() => Control<StackPanel>(window, "EditorPanel").IsEnabled);
+                Assert.Same(providers.SelectedItem, providers.Items.Cast<object>().Single(item => item.ToString()!.StartsWith(name, StringComparison.Ordinal)));
+            }
+        }
+        finally { window.Close(); }
+    });
+
     private static string ActionId(string action) => action switch
     {
         "Write" => "SetupStoreKey", "Read" => "SetupReadKey", _ => "SetupRemoveKey"

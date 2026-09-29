@@ -13,6 +13,9 @@ public sealed class ConversationRuntime : IAsyncDisposable
     internal PlaybackOptions PlaybackOptions { get; }
     internal TimeProvider Clock { get; }
     internal GeneratedSpeechObserver? GeneratedSpeech { get; private init; }
+    private readonly Func<ChatCompletionsTarget, ChatCompletionsTextGenerationAdapter>? chatFactory;
+    private readonly Dictionary<ChatCompletionsTarget, ChatCompletionsTextGenerationAdapter> chatAdapters = [];
+    private bool chatClosed;
     private ConversationTurn? active;
     private long epoch, playbackEpoch;
     private bool disposed;
@@ -23,13 +26,15 @@ public sealed class ConversationRuntime : IAsyncDisposable
     public ConversationState State { get { lock (Sync) return active?.Snapshot.State ?? ConversationState.Idle; } }
 
     private ConversationRuntime(OpenAiTextGenerationAdapter text, OpenAiSpeechSynthesisAdapter? speech,
-        PcmPlaybackSink? sink, PlaybackOptions options, TimeProvider clock)
+        PcmPlaybackSink? sink, PlaybackOptions options, TimeProvider clock,
+        Func<ChatCompletionsTarget, ChatCompletionsTextGenerationAdapter>? chatFactory)
     {
         Text = text;
         Speech = speech;
         PlaybackOptions = options;
         Clock = clock;
         Sink = sink;
+        this.chatFactory = chatFactory;
     }
 
     // Merely constructing adapters/sink is passive. No credential resolution, HTTP or device enumeration.
@@ -42,16 +47,38 @@ public sealed class ConversationRuntime : IAsyncDisposable
         var options = playbackOptions ?? new();
         var sink = devices is null ? null : new PcmPlaybackSink(devices, options, time);
         return new(OpenAiTextGenerationAdapter.Create(credentials, time),
-            devices is null ? null : OpenAiSpeechSynthesisAdapter.Create(credentials, time), sink, options, time)
+            devices is null ? null : OpenAiSpeechSynthesisAdapter.Create(credentials, time), sink, options, time,
+            target => ChatCompletionsTextGenerationAdapter.Create(target.BaseUrl, target.Keyless ? null : credentials, time))
             { GeneratedSpeech = generatedSpeech };
     }
 
     internal static ConversationRuntime ForFixture(OpenAiTextGenerationAdapter text,
         OpenAiSpeechSynthesisAdapter? speech, IPlaybackDeviceFactory? devices, PlaybackOptions options, TimeProvider clock,
-        GeneratedSpeechObserver? generatedSpeech = null)
+        GeneratedSpeechObserver? generatedSpeech = null,
+        Func<ChatCompletionsTarget, ChatCompletionsTextGenerationAdapter>? chat = null)
     {
-        return new(text, speech, devices is null ? null : new(devices, options, clock), options, clock)
+        return new(text, speech, devices is null ? null : new(devices, options, clock), options, clock, chat)
             { GeneratedSpeech = generatedSpeech };
+    }
+
+    // One passive adapter per exact destination; the turn's authorization still binds base URL, model and key.
+    internal TextGenerationStream StreamText(ProviderRequestContext context, ConversationRequest request,
+        TextDisclosureAuthorization consent, CancellationToken caller)
+    {
+        if (request.Chat is not { } target)
+            return Text.Stream(context, request.Model, request.Input, request.TextLimits, consent, caller);
+        ChatCompletionsTextGenerationAdapter? adapter;
+        lock (Sync)
+        {
+            ObjectDisposedException.ThrowIf(chatClosed, this);
+            if (!chatAdapters.TryGetValue(target, out adapter))
+            {
+                adapter = (chatFactory ?? throw new InvalidOperationException(
+                    "This runtime was not composed with a Chat Completions adapter."))(target);
+                chatAdapters[target] = adapter;
+            }
+        }
+        return adapter.Stream(context, request.Model, request.Input, request.TextLimits, consent, caller);
     }
 
     // This is the explicit new-turn operation. It neither interrupts nor queues behind existing ownership.
@@ -146,6 +173,14 @@ public sealed class ConversationRuntime : IAsyncDisposable
     {
         if (captured is not null) await captured.OwnershipRelease.ConfigureAwait(false);
         Text.Dispose();
+        ChatCompletionsTextGenerationAdapter[] chat;
+        lock (Sync)
+        {
+            chatClosed = true;
+            chat = [.. chatAdapters.Values];
+            chatAdapters.Clear();
+        }
+        foreach (var adapter in chat) adapter.Dispose();
         Speech?.Dispose();
         if (Sink is not null) await Sink.DisposeAsync().ConfigureAwait(false);
     }

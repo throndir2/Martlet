@@ -1042,6 +1042,35 @@ public sealed record SetupSettings : IContract
         return updated;
     }
 
+    // A destination switch must not orphan the previous owned key; list it for explicit removal instead.
+    public static AppSettings QueueReplacedCredential(AppSettings settings, SetupRoute? previous)
+    {
+        settings.Validate();
+        if (previous?.CredentialId is not { } id ||
+            previous.RouteType is not (null or SetupRouteType.OpenAi or SetupRouteType.ChatCompletions))
+            return settings;
+        var setup = settings.Setup!;
+        if (setup.Routes.Any(route => route.CredentialId == id) ||
+            setup.PendingRemovals.Any(removal => removal.CredentialId == id))
+            return settings;
+        var updated = settings with
+        {
+            Setup = setup with
+            {
+                PendingRemovals = setup.PendingRemovals.Append(new()
+                {
+                    Role = previous.Role,
+                    CredentialId = id,
+                    Scope = previous.RouteType == SetupRouteType.ChatCompletions
+                        ? CredentialScopeSettings.From(previous)
+                        : null
+                }).ToArray()
+            }
+        };
+        updated.Validate();
+        return updated;
+    }
+
     public static string Describe(AppSettings? settings)
     {
         if (settings?.Setup is not { } setup)
