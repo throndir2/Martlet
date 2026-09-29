@@ -62,8 +62,15 @@ public sealed class OpenAiTextGenerationAdapter : IDisposable
     }
 }
 
+// A text reply stream the conversation runtime consumes: a cloud adapter's or a paired Martlet host's.
+public interface ITextGenerationStream : IAsyncEnumerable<ProviderEvent>
+{
+    TextGenerationResult? Result { get; }
+    ProviderCapabilities Capabilities { get; }
+}
+
 // One enumeration owns one attempted disclosure; user-visible content lives in events, not metadata.
-public sealed class TextGenerationStream : IAsyncEnumerable<ProviderEvent>
+public sealed class TextGenerationStream : ITextGenerationStream
 {
     private readonly HttpClient client;
     private readonly IProviderCredentialSource? credentials;

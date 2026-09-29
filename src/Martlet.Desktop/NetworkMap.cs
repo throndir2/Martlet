@@ -11,7 +11,7 @@ internal enum NodeAction
 {
     Setup, AudioSetup, Character, ToggleCharacter, Prerequisites, HostThisPc, AddComputer, ManageHost, CheckHost, HostDashboard, Advisor,
     UseForLipSync, LipSyncThisPc, InstallRole, RemoveRole, HostStatus, UpdateHost, ForgetHost,
-    PrepareHost, RebootHost, ShutdownHost, WakeHost, PrepareComputer
+    PrepareHost, RebootHost, ShutdownHost, WakeHost, PrepareComputer, UseForThinking
 }
 
 /// <summary>Who handles lip-sync: a paired host, this PC's own Audio2Face service, or nobody (voice loudness).</summary>
@@ -21,10 +21,11 @@ internal sealed record HostedRole(string Chip, string Name, string Detail);
 internal sealed record NodeFact(string Label, string Value);
 /// <summary>A node command; <paramref name="Argument"/> names the paired host or role it applies to.</summary>
 internal sealed record NodeCommand(NodeAction Action, string Label, bool Primary = false, string? Argument = null);
-/// <summary>The last explicit connection check of a paired host; <paramref name="Offers"/> maps each role kind it runs to its model
-/// and <paramref name="MartletVersion"/> is the release its gateway reported (null when it is 0.2.0 or older).</summary>
+/// <summary>The last explicit connection check of a paired host; <paramref name="Offers"/> maps each role kind it runs to its model,
+/// <paramref name="MartletVersion"/> is the release its gateway reported (null when it is 0.2.0 or older) and
+/// <paramref name="Routes"/> holds the routes it advertised.</summary>
 internal sealed record HostCheck(bool? Reachable, string Text, IReadOnlyDictionary<string, string>? Offers = null,
-    string? MartletVersion = null);
+    string? MartletVersion = null, IReadOnlyList<Martlet.Avatar.Audio2Face.Remote.HostRoute>? Routes = null);
 
 internal sealed record NetworkNode(string Id, NodeKind Kind, string Title, string Subtitle, string Glyph, NodeHealth Health,
     string HealthText, IReadOnlyList<HostedRole> Roles, IReadOnlyList<NodeFact> Facts, IReadOnlyList<NodeCommand> Commands,
@@ -72,6 +73,11 @@ internal static class NetworkMap
         avatar?.LipSync == AvatarLipSync.Loudness ? LipSyncHandler.Loudness
         : avatar?.RemoteHost is not null && avatar.LipSync == AvatarLipSync.Auto ? LipSyncHandler.Host
         : LipSyncHandler.ThisPc;
+
+    /// <summary>The paired host whose Ollama answers conversations (the LLM route is a gateway Ollama route), or null.</summary>
+    internal static string? ThinkingHost(AppSettings? settings) =>
+        settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm) is { RouteType: SetupRouteType.GatewayOllama, Gateway: { } gateway }
+            ? gateway.HostId : null;
 
     /// <summary>All paired hosts, including a lip-sync pairing saved only in the avatar profile.</summary>
     internal static IReadOnlyList<PairedHost> Hosts(NetworkInputs inputs)
@@ -237,6 +243,7 @@ internal static class NetworkMap
             target.PairedHostId = paired.HostId;
             var check = inputs.HostChecks.GetValueOrDefault(paired.HostId);
             var inCharge = lipSync == LipSyncHandler.Host && inputs.Avatar!.RemoteHost!.HostId == paired.HostId;
+            var thinks = ThinkingHost(inputs.Settings) == paired.HostId;
             var before = target.Roles.Count;
             foreach (var role in HostRoles.All)
             {
@@ -244,8 +251,8 @@ internal static class NetworkMap
                 if (role.Kind == HostRoles.Audio2Face && inCharge)
                     target.Roles.Add(new(role.Chip, role.Name, "In charge of lip-sync. " +
                         (check?.Text ?? "Use Check connection to see whether it runs Audio2Face.")));
-                else if (model is not null)
-                    target.Roles.Add(new(role.Chip, role.Name, $"Installed (model {model}), standing by. Hand it lip-sync to use it."));
+                else if (model is not null && !(role.Kind == HostRoles.Ollama && thinks)) // thinking is listed with its route
+                    target.Roles.Add(new(role.Chip, role.Name, $"Installed (model {model}), standing by. Hand it {role.Job} to use it."));
             }
             if (local) thisPc.Roles.Add(new("Host", "Martlet host service (Docker)", $"Paired as {paired.HostId} on {paired.Pairing.Origin}"));
             else
@@ -279,18 +286,26 @@ internal static class NetworkMap
             if (outdated && !local) target.Worsen(NodeHealth.Attention, "Update available");
             if (inputs.HostUpdates?.GetValueOrDefault(id) is { } update) target.Notes.Insert(0, update);
             var offersFace = check?.Offers?.ContainsKey(HostRoles.Audio2Face) == true;
+            var offersThinking = check?.Offers?.ContainsKey(HostRoles.Ollama) == true;
             target.Commands.Insert(0, new(NodeAction.CheckHost, "Check connection", !local && check?.Reachable != true, id));
             target.Commands.Add(new(NodeAction.UpdateHost, local ? "Update this PC's host service" : outdated ? $"Update it to Martlet {app}" : "Update host",
                 outdated && check?.Reachable == true, id));
             if (companion && !inCharge)
                 target.Commands.Add(new(NodeAction.UseForLipSync, local ? "Hand lip-sync to this PC's host service" : "Hand lip-sync to this computer",
                     offersFace, id));
-            if (!offersFace)
-                target.Commands.Add(new(NodeAction.InstallRole, local ? "Install Audio2Face in this PC's host service" : "Install Audio2Face there",
-                    Argument: id + "/" + HostRoles.Audio2Face));
-            if (check is null || offersFace)
-                target.Commands.Add(new(NodeAction.RemoveRole, local ? "Remove Audio2Face from this PC's host service" : "Remove Audio2Face from it",
-                    Argument: id + "/" + HostRoles.Audio2Face));
+            if (companion && !thinks)
+                target.Commands.Add(new(NodeAction.UseForThinking, local ? "Hand thinking to this PC's host service" : "Hand thinking to this computer",
+                    offersThinking, id));
+            foreach (var role in HostRoles.All)
+            {
+                var offered = check?.Offers?.ContainsKey(role.Kind) == true;
+                if (!offered)
+                    target.Commands.Add(new(NodeAction.InstallRole, local ? $"Install {role.Name} in this PC's host service" : $"Install {role.Name} there",
+                        Argument: id + "/" + role.Kind));
+                if (check is null || offered)
+                    target.Commands.Add(new(NodeAction.RemoveRole, local ? $"Remove {role.Name} from this PC's host service" : $"Remove {role.Name} from it",
+                        Argument: id + "/" + role.Kind));
+            }
             target.Commands.Add(new(NodeAction.HostStatus, "Show its status", Argument: id));
             if (!local && paired.Method != HostSetupMethod.ThisPcDocker)
             {
@@ -365,7 +380,7 @@ internal static class NetworkMap
         }
 
         var add = new Draft("add", NodeKind.Add, "Add a computer", "Lend a GPU PC to Martlet", AddGlyph) { Health = NodeHealth.Unknown, HealthText = "" };
-        add.Roles.Add(new("Host", "Martlet host", "A spare or gaming PC runs heavy parts, such as lip-sync, for this PC."));
+        add.Roles.Add(new("Host", "Martlet host", "A spare or gaming PC runs heavy parts, such as thinking or lip-sync, for this PC."));
         add.Notes.Add("Hosts listen only on your private network and are paired once with a one-use code.");
         add.Commands.Add(new(NodeAction.AddComputer, "Add a computer", true));
         add.Commands.Add(new(NodeAction.HostThisPc, "Or run host services on this PC"));

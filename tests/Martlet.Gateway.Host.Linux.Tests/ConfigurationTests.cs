@@ -125,6 +125,10 @@ public sealed class ConfigurationTests
         var role = Assert.Single(config.Roles);
         Assert.Equal(("audio2face", new Uri("http://127.0.0.1:52000/"), "claire"), (role.Kind, role.Endpoint, role.Model));
         Assert.IsType<Martlet.Gateway.Audio2Face.Audio2FaceRelayWorker>(NativeHostPlatform.RoleWorker(role));
+        var ollama = Assert.Single(HostConfiguration.Parse(RoleConfig(
+            "[{\"kind\":\"ollama\",\"endpoint\":\"http://127.0.0.1:11434/\",\"model\":\"llama3.2:3b\"}]")).Roles);
+        Assert.IsType<Martlet.Gateway.Ollama.OllamaRelayWorker>(NativeHostPlatform.RoleWorker(ollama));
+        Assert.Throws<HostInputException>(() => NativeHostPlatform.RoleWorker(ollama with { Model = "Not/A:Valid:Tag" }));
         Assert.Empty(HostConfiguration.Parse(Config()).Roles);
         Assert.Empty(HostConfiguration.Parse(RoleConfig("[]")).Roles);
         foreach (var endpoint in new[] { "http://192.168.1.5:52000/", "http://localhost:52000/", "https://127.0.0.1:52000/",

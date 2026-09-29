@@ -142,9 +142,16 @@ internal sealed class HostInputDialog : ThemedWindow
         foreach (var secret in inputs.Secrets)
             dialog.AddSecret("secret." + secret.Name, secret.Prompt,
                 secret.Stored ? "Already saved on the host; leave empty to keep it." : null, optional: secret.Stored);
+        if (inputs.GpuOrCpu)
+            dialog.AddChoice("choice.accelerator", "Run it on (Automatic: the NVIDIA GPU when the host can use one, otherwise the CPU)",
+                [Automatic, "gpu", "cpu"], Automatic);
         foreach (var choice in inputs.Choices)
-            dialog.AddChoice("choice." + choice.Variable, choice.Label, choice.Options, choice.Default);
+            dialog.AddChoice("choice." + choice.Variable, choice.Suggested ? choice.Label + " (Automatic: suggested by the host's GPU memory)" : choice.Label,
+                choice.Suggested ? [Automatic, .. choice.Options] : choice.Options, choice.Suggested ? Automatic : choice.Default);
         var values = dialog.Ask(owner);
-        return values?.Where(pair => pair.Value.Length > 0).ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        return values?.Where(pair => pair.Value.Length > 0 && pair.Value != Automatic)
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
     }
+
+    private const string Automatic = "automatic";
 }

@@ -37,11 +37,22 @@ internal sealed class NativeHostPlatform : IHostPlatform
     }
 
     // One relay worker per installed host role; each kind maps to exactly one gateway route.
-    internal static IGatewayInferenceWorker RoleWorker(HostRole role) => role.Kind switch
+    internal static IGatewayInferenceWorker RoleWorker(HostRole role)
     {
-        "audio2face" => new Martlet.Gateway.Audio2Face.Audio2FaceRelayWorker(role.Endpoint, role.Model, "nim"),
-        _ => throw new HostInputException()
-    };
+        try
+        {
+            return role.Kind switch
+            {
+                "audio2face" => new Martlet.Gateway.Audio2Face.Audio2FaceRelayWorker(role.Endpoint, role.Model, "nim"),
+                "ollama" => new Martlet.Gateway.Ollama.OllamaRelayWorker(role.Endpoint, role.Model),
+                _ => throw new HostInputException()
+            };
+        }
+        catch (Exception error) when (error is Martlet.Core.Contracts.ContractException or ArgumentException or GatewayProtocolException)
+        {
+            throw new HostInputException();
+        }
+    }
 }
 
 internal sealed class QuietAudit : IGatewayAuditSink

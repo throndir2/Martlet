@@ -118,14 +118,14 @@
         "dependencies": {
           "Google.Protobuf": "[3.36.2, )",
           "Grpc.Net.Client": "[2.84.0, )",
-          "Martlet.Avatars": "[0.1.0, )",
-          "Martlet.Core": "[0.1.0, )"
+          "Martlet.Avatars": "[0.3.0, )",
+          "Martlet.Core": "[0.3.0, )"
         }
       },
       "martlet.avatars": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.1.0, )"
+          "Martlet.Core": "[0.3.0, )"
         }
       },
       "martlet.core": {
@@ -134,35 +134,42 @@
       "martlet.f5": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.1.0, )"
+          "Martlet.Core": "[0.3.0, )"
         }
       },
       "martlet.gateway": {
         "type": "Project",
         "dependencies": {
-          "Martlet.F5": "[0.1.0, )",
-          "Martlet.Perception": "[0.1.0, )",
-          "Martlet.Providers": "[0.1.0, )"
+          "Martlet.F5": "[0.3.0, )",
+          "Martlet.Perception": "[0.3.0, )",
+          "Martlet.Providers": "[0.3.0, )"
         }
       },
       "martlet.gateway.audio2face": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Avatar.Audio2Face": "[0.1.0, )",
-          "Martlet.Gateway": "[0.1.0, )"
+          "Martlet.Avatar.Audio2Face": "[0.3.0, )",
+          "Martlet.Gateway": "[0.3.0, )"
         }
       },
       "martlet.gateway.host.linux": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Gateway.Audio2Face": "[0.1.0, )",
-          "Martlet.Gateway.Persistence": "[0.1.0, )"
+          "Martlet.Gateway.Audio2Face": "[0.3.0, )",
+          "Martlet.Gateway.Ollama": "[0.3.0, )",
+          "Martlet.Gateway.Persistence": "[0.3.0, )"
+        }
+      },
+      "martlet.gateway.ollama": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Gateway": "[0.3.0, )"
         }
       },
       "martlet.gateway.persistence": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Gateway": "[0.1.0, )"
+          "Martlet.Gateway": "[0.3.0, )"
         }
       },
       "martlet.perception": {
@@ -171,7 +178,7 @@
       "martlet.providers": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.1.0, )"
+          "Martlet.Core": "[0.3.0, )"
         }
       },
       "Google.Protobuf": {

@@ -12,11 +12,12 @@ internal sealed record HostProbe(bool Docker, bool DockerAccess, string Sudo, st
 
 /// <summary>A role's inputs as the host's role.conf declares them (martlet-host describe).</summary>
 internal sealed record HostRoleInputs(string Title, string Requires, string Terms, bool Installed,
-    IReadOnlyList<HostRoleSecret> Secrets, IReadOnlyList<HostRoleChoice> Choices);
+    IReadOnlyList<HostRoleSecret> Secrets, IReadOnlyList<HostRoleChoice> Choices, bool GpuOrCpu = false);
 
 internal sealed record HostRoleSecret(string Name, string Prompt, bool Stored);
 
-internal sealed record HostRoleChoice(string Variable, string Label, IReadOnlyList<string> Options, string Default);
+/// <summary>A role choice; <paramref name="Suggested"/> when the host suggests the default by its GPU memory.</summary>
+internal sealed record HostRoleChoice(string Variable, string Label, IReadOnlyList<string> Options, string Default, bool Suggested = false);
 
 /// <summary>Drives martlet-host on SSH hosts through <see cref="HostShell"/>: probe, setup, pair, roles and status, all
 /// unattended (--yes). The owner's click in Martlet is the confirmation; secrets and choices go over stdin.</summary>
@@ -165,6 +166,8 @@ internal sealed partial class HostRemote(HostShell shell)
     {
         string title = "", requires = "", terms = "";
         var installed = false;
+        var gpuOrCpu = false;
+        var suggested = new HashSet<string>(StringComparer.Ordinal);
         var secrets = new List<HostRoleSecret>();
         var choices = new List<HostRoleChoice>();
         foreach (var line in lines)
@@ -178,6 +181,8 @@ internal sealed partial class HostRemote(HostShell shell)
                 case "role.requires": requires = value; break;
                 case "role.terms": terms = value; break;
                 case "role.installed": installed = value == "yes"; break;
+                case "role.accelerator": gpuOrCpu = true; break;
+                case "role.suggested": suggested.Add(value); break;
                 case "role.secret" when value.Split('|') is [var name, .. var middle, var state] && middle.Length > 0:
                     secrets.Add(new(name, string.Join('|', middle), state == "stored"));
                     break;
@@ -186,7 +191,8 @@ internal sealed partial class HostRemote(HostShell shell)
                     break;
             }
         }
-        return new(title, requires, terms, installed, secrets, choices);
+        return new(title, requires, terms, installed, secrets,
+            choices.Select(c => c with { Suggested = suggested.Contains(c.Variable) }).ToList(), gpuOrCpu);
     }
 }
 

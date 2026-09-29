@@ -18,7 +18,7 @@ public sealed class HostSetupCommandsTests
     [Fact]
     public void Ssh_methods_run_the_same_engine_unattended_through_the_in_app_runner()
     {
-        var docker = HostSetupCommands.DockerShell(Target(HostSetupMethod.SshDocker), HostAction.AddAudio2Face);
+        var docker = HostSetupCommands.DockerShell(Target(HostSetupMethod.SshDocker), HostAction.Add(HostRoles.Audio2Face));
         Assert.EndsWith("$D run --rm -it -u 0 -v /var/run/docker.sock:/var/run/docker.sock martlet-host:1.2.3 add audio2face", docker);
         var native = HostSetupCommands.NativeShell(Target(HostSetupMethod.SshNative), HostAction.Setup);
         Assert.EndsWith("MARTLET_HOST_ADDRESS=192.168.1.20 ~/Martlet/deploy/host/martlet-host setup", native);
@@ -29,6 +29,8 @@ public sealed class HostSetupCommandsTests
         var remoteNative = HostSetupCommands.RemoteShell(Target(HostSetupMethod.SshNative), "setup", true);
         Assert.EndsWith("MARTLET_HOST_ADDRESS=192.168.1.20 ~/Martlet/deploy/host/martlet-host --yes setup", remoteNative);
         Assert.Contains("git clone --depth 1 https://github.com/throndir2/Martlet.git ~/Martlet) </dev/null", remoteNative);
+        Assert.EndsWith("martlet-host remove ollama", HostSetupCommands.NativeShell(Target(HostSetupMethod.SshNative), HostAction.Remove(HostRoles.Ollama)));
+        Assert.Throws<ArgumentOutOfRangeException>(() => HostSetupCommands.Engine(HostAction.Add("x; rm -rf ~")));
         foreach (var method in new[] { HostSetupMethod.SshDocker, HostSetupMethod.SshNative })
             Assert.Throws<InvalidOperationException>(() => HostSetupCommands.Script(Target(method), HostAction.Pair));
         Assert.Throws<InvalidOperationException>(() => HostSetupCommands.RemoteShell(Target(HostSetupMethod.ThisPcDocker), "status", false));
@@ -70,6 +72,9 @@ public sealed class HostSetupCommandsTests
         var choice = Assert.Single(role.Choices);
         Assert.Equal(("A2F_3D_MODEL_NAME", "claire"), (choice.Variable, choice.Default));
         Assert.Equal(["claire", "mark", "james"], choice.Options);
+        Assert.False(choice.Suggested || role.GpuOrCpu);
+        var ollama = HostRemote.ParseRole(["role.choice=OLLAMA_MODEL|Model|llama3.2:3b qwen2.5:7b|llama3.2:3b", "role.suggested=OLLAMA_MODEL", "role.accelerator=gpu cpu"]);
+        Assert.True(Assert.Single(ollama.Choices).Suggested && ollama.GpuOrCpu);
         var probe = new HostProbe(false, false, "password", "Ubuntu 24.04.1 LTS", "x86_64", "192.168.1.20", "gpu");
         Assert.Contains("Docker is the one thing", HostRemote.Blocker(HostSetupMethod.SshDocker, probe, "me@gpu"));
         Assert.Null(HostRemote.Blocker(HostSetupMethod.SshNative, probe, "me@gpu"));

@@ -169,7 +169,8 @@ public sealed partial class GatewayInferenceRoute
                 selection.RequestModel,
                 modelRevision,
                 modelSha256),
-            maximumRequestBytes: 32 * 1024,
+            // Room for JSON escaping of the bounded persona, history and user text.
+            maximumRequestBytes: 96 * 1024,
             maximumInputBytes: capabilities.MaxInputBytes,
             maximumOutputBytes: 64 * 1024,
             maximumEventBytes: 64 * 1024,
@@ -474,18 +475,26 @@ public sealed class GatewayOllamaChatPayload : GatewayInferencePayload
         string input,
         double temperature,
         int maximumOutputTokens,
-        int maximumContextTokens)
+        int maximumContextTokens,
+        string? system = null,
+        IReadOnlyList<Martlet.Providers.TextHistoryMessage>? history = null)
     {
         Input = input;
         Temperature = temperature;
         MaximumOutputTokens = maximumOutputTokens;
         MaximumContextTokens = maximumContextTokens;
+        System = system;
+        History = history ?? [];
     }
 
     public string Input { get; }
     public double Temperature { get; }
     public int MaximumOutputTokens { get; }
     public int MaximumContextTokens { get; }
+    /// <summary>Optional persona/instructions, sent to the model as its system message.</summary>
+    public string? System { get; }
+    /// <summary>Earlier exchanges of this conversation, oldest first; the current user input follows them.</summary>
+    public IReadOnlyList<Martlet.Providers.TextHistoryMessage> History { get; }
     internal override void Clear() { }
 }
 

@@ -160,23 +160,8 @@
                 <StackPanel x:Name="RolesStep" Visibility="Collapsed">
                     <TextBlock Text="Choose what it runs" Style="{DynamicResource PageTitle}"/>
                     <TextBlock x:Name="RolesSummaryText" Style="{DynamicResource Muted}" Margin="0,6,0,18"/>
-                    <Border Style="{DynamicResource CardStyle}">
-                        <StackPanel>
-                            <DockPanel>
-                                <Border DockPanel.Dock="Right" Style="{DynamicResource Chip}" VerticalAlignment="Top">
-                                    <TextBlock Text="Available" Style="{DynamicResource ChipText}" Foreground="{DynamicResource SuccessBrush}" FontWeight="SemiBold"/>
-                                </Border>
-                                <TextBlock Text="Audio2Face lip-sync" FontSize="17" FontWeight="SemiBold"/>
-                            </DockPanel>
-                            <TextBlock Style="{DynamicResource Muted}" Margin="0,4,0,12"
-                                       Text="Moves the character's face in time with Martlet's generated voice. Needs an NVIDIA GPU with 4 GB+ and a free NVIDIA NGC API key on the host. Only the generated voice is sent, over pinned TLS."/>
-                            <WrapPanel>
-                                <Button Content="Add _Audio2Face role" Click="AddAudio2Face_Click" Style="{DynamicResource PrimaryButton}" Margin="0,0,10,0"
-                                        AutomationProperties.AutomationId="AddAudio2Face"/>
-                                <Button Content="_Remove Audio2Face role" Click="RemoveAudio2Face_Click" AutomationProperties.AutomationId="RemoveAudio2Face"/>
-                            </WrapPanel>
-                        </StackPanel>
-                    </Border>
+                    <!-- One card per role in HostRoles.All, built in code. -->
+                    <StackPanel x:Name="RoleCards"/>
                     <Border Style="{DynamicResource CardStyle}" Opacity="0.75">
                         <StackPanel>
                             <DockPanel>
@@ -186,7 +171,7 @@
                                 <TextBlock Text="More roles" FontSize="17" FontWeight="SemiBold"/>
                             </DockPanel>
                             <TextBlock Style="{DynamicResource Muted}" Margin="0,4,0,0"
-                                       Text="A local conversation model (Ollama), custom voices (F5) and speech-to-text will plug into the same flow once their gateway relays exist."/>
+                                       Text="Custom voices (F5), speech-to-text (whisper) and screen understanding plug into the same flow next, each with its own gateway relay."/>
                         </StackPanel>
                     </Border>
                 </StackPanel>

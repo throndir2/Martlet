@@ -59,11 +59,13 @@ internal sealed class LiveConversationConfiguration
     internal SetupRoute Route(SetupRole role) => Routes.Single(r => r.Role == role);
 
     private static bool IsChat(SetupRoute? route) => route?.RouteType == SetupRouteType.ChatCompletions;
+    private static bool IsHost(SetupRoute? route) => route?.RouteType == SetupRouteType.GatewayOllama;
 
     internal TextModelSelection TextSelection()
     {
         var route = Route(SetupRole.Llm);
-        return new(IsChat(route) ? ChatCompletionsSetup.Alias : OpenAiSetup.Alias(SetupRole.Llm), route.ModelId);
+        return new(IsChat(route) ? ChatCompletionsSetup.Alias : IsHost(route) ? SelfHostSetup.GatewayOllamaAlias
+            : OpenAiSetup.Alias(SetupRole.Llm), route.ModelId);
     }
 
     internal ChatCompletionsTarget? ChatTarget()
@@ -72,7 +74,17 @@ internal sealed class LiveConversationConfiguration
         return IsChat(route) ? new(route.Origin, route.CredentialId is null) : null;
     }
 
-    internal static string LlmDestinationName(SetupRoute route) => !IsChat(route) ? OpenAiSetup.Origin :
+    /// <summary>The paired Martlet host whose Ollama answers, when Thinking was handed to a host on the Devices page.</summary>
+    internal HostTextTarget? HostTarget()
+    {
+        var route = Route(SetupRole.Llm);
+        return IsHost(route) && route.Gateway is { } gateway && route.GatewayDeviceId is { } device && route.CredentialId is { } credential
+            ? new(gateway.Origin, gateway.HostId, gateway.SpkiFingerprint, device, credential) : null;
+    }
+
+    internal static string LlmDestinationName(SetupRoute route) =>
+        IsHost(route) && route.Gateway is { } gateway ? $"your Martlet host {gateway.HostId} ({gateway.Origin}, Ollama, pinned TLS)"
+        : !IsChat(route) ? OpenAiSetup.Origin :
         ChatCompletionsEndpointCatalog.Named(route.Origin) is { } named
             ? $"{named.Name} ({route.Origin}, Chat Completions)"
             : $"{route.Origin} (OpenAI-compatible Chat Completions{(route.CredentialId is null ? ", no API key" : "")})";
@@ -84,6 +96,13 @@ internal sealed class LiveConversationConfiguration
             if (role == SetupRole.Stt && !microphone || role == SetupRole.Tts && !voice) continue;
             var route = Routes.SingleOrDefault(r => r.Role == role);
             if (route is null) return $"{role}: missing route. Open Setup / resume.";
+            if (role == SetupRole.Llm && IsHost(route) && route.Enabled == true)
+            {
+                if (route.Consent != route.Selection()) return $"{role}: destination choice missing or changed. Hand thinking to your host again on the Devices page.";
+                if (HostTarget() is null || route.GatewaySnapshot is null)
+                    return $"{role}: the Martlet host pairing or its Ollama route is incomplete. Hand thinking to your host again on the Devices page.";
+                continue;
+            }
             if (role == SetupRole.Llm && IsChat(route) && route.Enabled == true)
             {
                 if (route.Consent != route.Selection()) return $"{role}: destination choice missing or changed. Review it in Setup.";
@@ -93,7 +112,7 @@ internal sealed class LiveConversationConfiguration
             }
             if (route.RouteType is not (null or SetupRouteType.OpenAi) || route.Enabled == false)
                 return $"{role}: this Desktop build supports enabled OpenAI routes only" +
-                    (role == SetupRole.Llm ? " (or an enabled OpenRouter, NVIDIA Build or OpenAI-compatible Chat Completions LLM route)" : "") +
+                    (role == SetupRole.Llm ? " (or an enabled OpenRouter, NVIDIA Build or OpenAI-compatible Chat Completions LLM route, or Ollama on a paired Martlet host)" : "") +
                     "; the saved self-host choice is retained, not dispatched.";
             if (route.Consent != route.Selection()) return $"{role}: destination choice missing or changed. Review it in Setup.";
             if (route.CredentialId is null) return $"{role}: missing credential reference. Store a key explicitly in Setup.";
@@ -115,8 +134,8 @@ internal sealed class LiveConversationConfiguration
         string Selection(SetupRole role)
         {
             var route = Routes.SingleOrDefault(r => r.Role == role);
-            // Chat Completions model IDs are validated ASCII identifiers; OpenAI ones must be catalog-approved.
-            if (role == SetupRole.Llm && IsChat(route)) return route!.ModelId;
+            // Chat Completions and Martlet host model IDs are validated ASCII identifiers; OpenAI ones must be catalog-approved.
+            if (role == SetupRole.Llm && (IsChat(route) || IsHost(route))) return route!.ModelId;
             // Only catalog-approved identifiers may appear here, never arbitrary entered model/voice strings.
             bool supported = role switch
             {
@@ -131,6 +150,9 @@ internal sealed class LiveConversationConfiguration
         var llm = Routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
         var chat = IsChat(llm);
         return $"Text -> LLM: {(llm is null ? OpenAiSetup.Origin : LlmDestinationName(llm))}, {Selection(SetupRole.Llm)}.\n" +
+            (IsHost(llm)
+                ? "Your own Martlet host runs this model: the text goes only to that paired computer over its pinned TLS gateway, no cloud provider receives it and there is no per-request charge. The host's owner controls its logs.\n"
+                : "") +
             (!chat ? "" : (llm!.Origin == ChatCompletionsEndpointCatalog.OpenRouterBaseUrl
                 ? "OpenRouter forwards the text to an upstream provider it selects for this model (fallback to other providers is disabled); upstream privacy, retention and pricing vary by provider. "
                 : llm.Origin == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl
@@ -199,7 +221,7 @@ internal sealed class LiveConversationConfiguration
                     voice ? new(new(OpenAiSetup.Alias(SetupRole.Tts), Route(SetupRole.Tts).ModelId, Route(SetupRole.Tts).VoiceId!,
                         SpeechOutputFormat.Pcm24KhzMono16Le),
                         new(Audio!.Output.EndpointId is null ? OutputPolicy.DefaultAtStart : OutputPolicy.FixedEndpoint, Audio.Output.EndpointId),
-                        SpeechLimits) : null, ChatTarget());
+                        SpeechLimits) : null, ChatTarget(), HostTarget());
             }
         }
         throw new LiveActionException("conversation.input_limit");

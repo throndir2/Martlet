@@ -172,9 +172,29 @@ internal static class GatewayInferenceJson
         var fields = Object(
             element,
             ["input", "temperature", "maximum_output_tokens", "maximum_context_tokens"],
-            []);
-        var input = Text(fields, "input", BoundedTextInput.HardMaxUtf8Bytes);
-        var bounded = new BoundedTextInput(input);
+            ["system", "history"]);
+        var input = Text(fields, "input", BoundedTextInput.HardMaxUtf8Bytes, allowNewLines: true);
+        string? system = fields.TryGetValue("system", out var systemElement)
+            ? Text(systemElement, BoundedTextInput.HardMaxUtf8Bytes, allowNewLines: true)
+            : null;
+        var history = new List<TextHistoryMessage>();
+        if (fields.TryGetValue("history", out var historyElement))
+        {
+            GatewayRules.Require(historyElement.ValueKind == JsonValueKind.Array &&
+                historyElement.GetArrayLength() <= BoundedTextInput.HardMaxHistoryMessages, "request.invalid");
+            foreach (var item in historyElement.EnumerateArray())
+            {
+                var message = Object(item, ["role", "text"], []);
+                var role = Text(message, "role", 16) switch
+                {
+                    "user" => TextHistoryRole.User,
+                    "assistant" => TextHistoryRole.Assistant,
+                    _ => throw new GatewayProtocolException("request.invalid")
+                };
+                history.Add(new(role, Text(message, "text", BoundedTextInput.HardMaxUtf8Bytes, allowNewLines: true)));
+            }
+        }
+        var bounded = new BoundedTextInput(input, system, history);
         GatewayRules.Require(bounded.Utf8Bytes <= route.MaximumInputBytes,
             "request.too_large");
         var temperature = Number(fields, "temperature");
@@ -185,7 +205,7 @@ internal static class GatewayInferenceJson
         var contextTokens = checked((int)Integer(
             fields, "maximum_context_tokens", 1, 32_768));
         GatewayRules.Require(outputTokens <= contextTokens, "request.invalid");
-        return new(input, temperature, outputTokens, contextTokens);
+        return new(input, temperature, outputTokens, contextTokens, system, history);
     }
 
     private static GatewayF5SynthesisPayload ParseF5(

@@ -427,12 +427,17 @@ internal sealed partial class HostShell(string dataDirectory, IHostShellPrompts 
         foreach (var reader in streams) reader.Flush(output);
     }
 
+    // Lines end at "\n"; a bare "\r" (progress bars such as a model download) replaces the line, and such updates are
+    // shown at most every two seconds so progress streams without flooding the output.
     private sealed class LineReader(Stream stream)
     {
         private readonly Decoder decoder = new UTF8Encoding(false).GetDecoder();
         private readonly StringBuilder line = new();
         private readonly byte[] buffer = new byte[4096];
         private readonly char[] chars = new char[4097];
+        private bool carriage;
+        private long shown, partial;
+        private StringBuilder? escape;
 
         internal bool Drain(IProgress<string>? output)
         {
@@ -447,9 +452,41 @@ internal sealed partial class HostShell(string dataDirectory, IHostShellPrompts 
                     var decoded = decoder.GetChars(buffer, 0, count, chars, 0);
                     for (var i = 0; i < decoded; i++)
                     {
-                        if (chars[i] == '\n') Emit(output);
-                        else if (line.Length < 8192) line.Append(chars[i]);
+                        var c = chars[i];
+                        if (escape is not null)
+                        {
+                            // Terminal control sequence: dropped; "cursor to column" (ESC[nG) rewrites the line like "\r".
+                            escape.Append(c);
+                            if (escape.Length == 1 && c != '[' || escape.Length > 1 && c is >= '@' and <= '~' || escape.Length > 32)
+                            {
+                                if (escape.Length > 1 && c == 'G') carriage = true;
+                                escape = null;
+                            }
+                            continue;
+                        }
+                        if (c == '\x1b') { escape = new(); continue; }
+                        if (carriage && c != '\n')
+                        {
+                            if (System.Diagnostics.Stopwatch.GetElapsedTime(shown) >= TimeSpan.FromSeconds(2) && line.Length > 0)
+                            {
+                                Emit(output);
+                                shown = System.Diagnostics.Stopwatch.GetTimestamp();
+                            }
+                            else line.Clear();
+                        }
+                        carriage = c == '\r';
+                        if (carriage) continue;
+                        if (c == '\n') Emit(output);
+                        else if (line.Length < 8192) line.Append(c);
                     }
+                    partial = System.Diagnostics.Stopwatch.GetTimestamp();
+                }
+                // A line that stays unfinished (a progress display without newlines) still shows every few seconds.
+                if (line.Length > 0 && System.Diagnostics.Stopwatch.GetElapsedTime(partial) >= TimeSpan.FromSeconds(3) &&
+                    System.Diagnostics.Stopwatch.GetElapsedTime(shown) >= TimeSpan.FromSeconds(3))
+                {
+                    Emit(output);
+                    shown = System.Diagnostics.Stopwatch.GetTimestamp();
                 }
             }
             catch (Exception error) when (error is ObjectDisposedException or IOException or NotSupportedException) { }
