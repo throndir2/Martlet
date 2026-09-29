@@ -128,22 +128,21 @@ hosts, so desktops sharing a host take turns.
 | Route | Status in the current Desktop |
 | --- | --- |
 | OpenAI STT, LLM, TTS | **Working** conversation route |
+| OpenAI-compatible Chat Completions LLM (OpenRouter, NVIDIA Build, any HTTPS `/v1` API, loopback Ollama/LM Studio/llama.cpp/vLLM) | **Working** conversation route for the LLM; STT/TTS still use OpenAI |
 | Live2D/VRM avatar and loudness lip-sync | **Working** on this PC |
 | Audio2Face on this PC or a paired Martlet host | **Working path**; Docker method verified with a stand-in role, **not yet run on a real GPU** |
 | Local memory, personas | **Working**, local only |
-| OpenAI-compatible LLM endpoints (OpenRouter, NVIDIA Build, loopback Ollama/LM Studio/llama.cpp) | Adapter and setup exist; **not yet dispatched** by the conversation |
 | Windows offline STT and Windows voices TTS | Libraries and setup exist; **not yet dispatched** |
 | Host LLM (Ollama), F5 TTS, STT, vision | Worker/adapter foundations; **no host role or gateway relay yet** |
 | whisper.cpp local STT, VAD/barge-in, Voice Studio synthesis/training | Disabled candidates or preparation only |
 
 Today, a single GPU PC can run Martlet with API STT/LLM/TTS plus local
-avatar and Audio2Face. Fully local routes need these missing pieces, smallest
-first:
+avatar and Audio2Face, and the LLM can already be a local server on loopback
+or any OpenAI-compatible API. Fully local routes need these missing pieces,
+smallest first:
 
-1. Dispatch the Chat Completions LLM route. This enables a local LLM server on
-   loopback, or another OpenAI-compatible API.
-2. Dispatch the Windows offline STT/TTS routes for free, offline CPU speech.
-3. Add gateway relay workers and `martlet-host` roles for F5 TTS, STT and the LLM,
+1. Dispatch the Windows offline STT/TTS routes for free, offline CPU speech.
+2. Add gateway relay workers and `martlet-host` roles for F5 TTS, STT and the LLM,
    so GPU speech and LLM can run on this PC or a host.
 
 See [installation design](INSTALLATION_SUPPORT.md#feature-first-multi-machine-setup),

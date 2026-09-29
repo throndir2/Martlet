@@ -100,9 +100,10 @@ public partial class LiveConversationWindow : ThemedWindow
     {
         var selected = controller.Configuration;
         bool voice = VoiceChoice.IsChecked == true;
-        ConfigurationText.Text = (selected is null ? "Select and save a Named OpenAI API profile in Setup / resume. Live actions unavailable."
+        ConfigurationText.Text = (selected is null ? "Select and save a cloud API profile in Setup / resume. Live actions unavailable."
             : $"Typed: {selected.Unavailable(voice, false) ?? "configured, NOT live verified"}\nPTT: {selected.Unavailable(voice, true) ?? "configured, NOT live verified"}") +
-            "\nSupported LLM: " + string.Join(", ", OpenAiTextGenerationCatalog.SupportedModelIds) +
+            "\nSupported LLM: OpenAI " + string.Join(", ", OpenAiTextGenerationCatalog.SupportedModelIds) +
+            "; or OpenRouter, NVIDIA Build or any OpenAI-compatible Chat Completions endpoint with your exact model ID" +
             "\nSupported STT: " + string.Join(", ", OpenAiTranscriptionCatalog.SupportedModelIds) +
             "\nSupported TTS: " + string.Join(", ", OpenAiSpeechSynthesisCatalog.SupportedModelIds) +
             "; voices: " + string.Join(", ", OpenAiSpeechSynthesisCatalog.SupportedVoices) + ". No model discovery or fallback.";
@@ -335,7 +336,9 @@ public partial class LiveConversationWindow : ThemedWindow
         ProviderFailureCode.Network or ProviderFailureCode.Server =>
             $"{code}: check your connection and provider status. No automatic retry. Partial response text remains visible; select text-only if voice is unavailable.",
         ProviderFailureCode.OriginRejected or ProviderFailureCode.CredentialBindingMismatch or ProviderFailureCode.RedirectRejected =>
-            $"{code}: the origin/credential boundary was rejected. Use only the named OpenAI route; never redirect a key or disable TLS/protection.",
+            $"{code}: the origin/credential boundary was rejected. Use only the configured route destination; never redirect a key or disable TLS/protection.",
+        ProviderFailureCode.OutputTokenLimit =>
+            "OutputTokenLimit: the model used the whole reply token budget. Reasoning/thinking models can spend it on hidden thinking; choose an instruct/chat model or ask for a shorter reply. No automatic retry.",
         _ => $"{code}: the provider result exceeded bounds or did not match the supported request/response contract. Preserve the stage code, review the selected route and use a fresh explicit action only after cleanup; no hidden continuation."
     };
 

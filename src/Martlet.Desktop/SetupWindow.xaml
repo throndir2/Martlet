@@ -17,14 +17,14 @@
                         <StackPanel Margin="12">
                             <RadioButton x:Name="FixtureChoice" Content="_Fixture (safe default; no account, key, cost or call)"
                                          IsChecked="True" Margin="0,8" Checked="Choice_Changed" AutomationProperties.AutomationId="SetupFixture"/>
-                            <RadioButton x:Name="ApiChoice" Content="_Named OpenAI API profile (configuration only)"
+                            <RadioButton x:Name="ApiChoice" Content="_Cloud API profile: OpenAI, OpenRouter, NVIDIA Build or an OpenAI-compatible endpoint (configuration only)"
                                          Margin="0,8" Checked="Choice_Changed" AutomationProperties.AutomationId="SetupApi"/>
-                            <TextBlock TextWrapping="Wrap" Text="Existing endpoint adapters are not supported here. No universal /v1 endpoint or automatic cloud fallback. Switching to fixture preserves saved routes and keys without using them."/>
+                            <TextBlock TextWrapping="Wrap" Text="The LLM role can use OpenAI, OpenRouter, NVIDIA Build or any OpenAI-compatible Chat Completions endpoint (including a local server such as LM Studio, llama.cpp, vLLM or Ollama on a loopback address). STT and TTS use OpenAI. No automatic cloud fallback. Switching to fixture preserves saved routes and keys without using them."/>
                         </StackPanel>
                     </TabItem>
                     <TabItem Header="2. _Destinations">
                         <StackPanel Margin="12">
-                            <TextBlock TextWrapping="Wrap" Text="Microphone audio -> STT cloud. Transcript/context -> LLM cloud. Response text -> TTS cloud (generated voice). Only https://api.openai.com is supported."/>
+                            <TextBlock TextWrapping="Wrap" Text="Microphone audio -> STT cloud (https://api.openai.com). Transcript/context -> LLM (OpenAI, OpenRouter, NVIDIA Build or the exact OpenAI-compatible base URL you enter). Response text -> TTS cloud (https://api.openai.com, generated voice)."/>
                             <TextBlock x:Name="DisclosureText" TextWrapping="Wrap" Margin="0,8"/>
                             <TextBlock TextWrapping="Wrap">
                                 <Hyperlink NavigateUri="https://openai.com/api/pricing/" RequestNavigate="Link_Click">Current official API pricing</Hyperlink>
@@ -34,6 +34,11 @@
                             <Label Target="{Binding ElementName=RoleChoice}" Content="Configure _role"/>
                             <ComboBox x:Name="RoleChoice" SelectionChanged="Role_Changed" MinHeight="30" AutomationProperties.AutomationId="SetupRole"/>
                             <TextBlock x:Name="BoundaryText" TextWrapping="Wrap" Margin="0,8"/>
+                            <Label Target="{Binding ElementName=ProviderChoice}" Content="LLM _provider / endpoint (LLM role only; STT and TTS use OpenAI)"/>
+                            <ComboBox x:Name="ProviderChoice" SelectionChanged="Provider_Changed" MinHeight="30" AutomationProperties.AutomationId="SetupProvider"/>
+                            <Label Target="{Binding ElementName=BaseUrl}" Content="API _base URL (Chat Completions; Martlet appends /chat/completions)"/>
+                            <TextBox x:Name="BaseUrl" MaxLength="2048" TextChanged="Route_Changed" AutomationProperties.AutomationId="SetupBaseUrl"/>
+                            <TextBlock x:Name="ProviderHint" TextWrapping="Wrap" Margin="0,4" AutomationProperties.AutomationId="SetupProviderHint"/>
                             <Label Target="{Binding ElementName=ModelCatalogChoice}" Content="Known compatible _models for this named adapter"/>
                             <ComboBox x:Name="ModelCatalogChoice" MinHeight="30" AutomationProperties.AutomationId="SetupModelCatalog"/>
                             <Button Content="_Use selected compatible model ID" Click="UseCatalogModel_Click" Padding="8" Margin="0,4"
@@ -43,7 +48,7 @@
                             <Label Target="{Binding ElementName=VoiceId}" Content="Actual upstream _voice ID (TTS only; no default)"/>
                             <TextBox x:Name="VoiceId" MaxLength="128" TextChanged="Route_Changed" AutomationProperties.AutomationId="SetupVoice"/>
                             <CheckBox x:Name="ConsentChoice" Margin="0,12" Checked="Consent_Changed" Unchecked="Consent_Changed" AutomationProperties.AutomationId="SetupConsent">
-                                <TextBlock TextWrapping="Wrap" Text="I select this role, model, voice and OpenAI destination after reviewing its data/cost disclosure. This is NOT permission for capture or any paid request."/>
+                                <TextBlock TextWrapping="Wrap" Text="I select this role, model, voice and destination after reviewing its data/cost disclosure. This is NOT permission for capture or any paid request."/>
                             </CheckBox>
                             <Button Content="_Apply selected route and consent choice" Click="ApplyRoute_Click" Padding="8" AutomationProperties.AutomationId="SetupApplyRoute"/>
                             <TextBlock TextWrapping="Wrap" Margin="0,8" Text="Apply before navigating or saving. Route/model/voice/key changes clear that role's consent. The local adapter catalog is not account availability or a network probe. Unsupported IDs do not replace the working draft. No fallback is performed."/>
@@ -52,7 +57,7 @@
                     <TabItem Header="3. _Credentials">
                         <StackPanel Margin="12">
                             <TextBlock x:Name="CredentialScope" TextWrapping="Wrap"/>
-                            <TextBlock TextWrapping="Wrap" Margin="0,8" Text="Windows Credential Manager stores secrets for this profile, role and OpenAI origin only. Settings contain opaque references, never keys. The vault is NOT protection from malware already running as your Windows user."/>
+                            <TextBlock TextWrapping="Wrap" Margin="0,8" Text="Windows Credential Manager stores secrets for this profile, role and exact destination only (the OpenAI origin, or the exact Chat Completions base URL for the LLM). Local OpenAI-compatible servers can run without a key. Settings contain opaque references, never keys. The vault is NOT protection from malware already running as your Windows user."/>
                             <Label Target="{Binding ElementName=KeyInput}" Content="_API key (masked; never copied automatically)"/>
                             <PasswordBox x:Name="KeyInput" MaxLength="1024" AutomationProperties.AutomationId="SetupKey"/>
                             <Button Content="_Store / replace key and save checkpoint..." Click="StoreKey_Click" Padding="8" Margin="0,8" AutomationProperties.AutomationId="SetupStoreKey"/>

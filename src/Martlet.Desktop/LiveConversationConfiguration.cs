@@ -58,6 +58,25 @@ internal sealed class LiveConversationConfiguration
 
     internal SetupRoute Route(SetupRole role) => Routes.Single(r => r.Role == role);
 
+    private static bool IsChat(SetupRoute? route) => route?.RouteType == SetupRouteType.ChatCompletions;
+
+    internal TextModelSelection TextSelection()
+    {
+        var route = Route(SetupRole.Llm);
+        return new(IsChat(route) ? ChatCompletionsSetup.Alias : OpenAiSetup.Alias(SetupRole.Llm), route.ModelId);
+    }
+
+    internal ChatCompletionsTarget? ChatTarget()
+    {
+        var route = Route(SetupRole.Llm);
+        return IsChat(route) ? new(route.Origin, route.CredentialId is null) : null;
+    }
+
+    internal static string LlmDestinationName(SetupRoute route) => !IsChat(route) ? OpenAiSetup.Origin :
+        ChatCompletionsEndpointCatalog.Named(route.Origin) is { } named
+            ? $"{named.Name} ({route.Origin}, Chat Completions)"
+            : $"{route.Origin} (OpenAI-compatible Chat Completions{(route.CredentialId is null ? ", no API key" : "")})";
+
     internal string? Unavailable(bool voice, bool microphone)
     {
         foreach (var role in new[] { SetupRole.Llm, SetupRole.Stt, SetupRole.Tts })
@@ -65,8 +84,17 @@ internal sealed class LiveConversationConfiguration
             if (role == SetupRole.Stt && !microphone || role == SetupRole.Tts && !voice) continue;
             var route = Routes.SingleOrDefault(r => r.Role == role);
             if (route is null) return $"{role}: missing route. Open Setup / resume.";
+            if (role == SetupRole.Llm && IsChat(route) && route.Enabled == true)
+            {
+                if (route.Consent != route.Selection()) return $"{role}: destination choice missing or changed. Review it in Setup.";
+                if (route.CredentialId is null && ChatCompletionsEndpointCatalog.Named(route.Origin) is { } named)
+                    return $"{role}: missing credential reference. Store your {named.Name} API key explicitly in Setup.";
+                continue;
+            }
             if (route.RouteType is not (null or SetupRouteType.OpenAi) || route.Enabled == false)
-                return $"{role}: this Desktop build supports enabled OpenAI routes only; the saved self-host choice is retained, not dispatched.";
+                return $"{role}: this Desktop build supports enabled OpenAI routes only" +
+                    (role == SetupRole.Llm ? " (or an enabled OpenRouter, NVIDIA Build or OpenAI-compatible Chat Completions LLM route)" : "") +
+                    "; the saved self-host choice is retained, not dispatched.";
             if (route.Consent != route.Selection()) return $"{role}: destination choice missing or changed. Review it in Setup.";
             if (route.CredentialId is null) return $"{role}: missing credential reference. Store a key explicitly in Setup.";
             var supported = role switch
@@ -87,6 +115,8 @@ internal sealed class LiveConversationConfiguration
         string Selection(SetupRole role)
         {
             var route = Routes.SingleOrDefault(r => r.Role == role);
+            // Chat Completions model IDs are validated ASCII identifiers; OpenAI ones must be catalog-approved.
+            if (role == SetupRole.Llm && IsChat(route)) return route!.ModelId;
             // Only catalog-approved identifiers may appear here, never arbitrary entered model/voice strings.
             bool supported = role switch
             {
@@ -98,7 +128,15 @@ internal sealed class LiveConversationConfiguration
             return supported ? $"{route!.ModelId}{(role == SetupRole.Tts ? " / voice " + route.VoiceId : "")}"
                 : "not configured / unsupported";
         }
-        return $"Text -> LLM: {OpenAiSetup.Origin}, {Selection(SetupRole.Llm)}.\n" +
+        var llm = Routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
+        var chat = IsChat(llm);
+        return $"Text -> LLM: {(llm is null ? OpenAiSetup.Origin : LlmDestinationName(llm))}, {Selection(SetupRole.Llm)}.\n" +
+            (!chat ? "" : (llm!.Origin == ChatCompletionsEndpointCatalog.OpenRouterBaseUrl
+                ? "OpenRouter forwards the text to an upstream provider it selects for this model (fallback to other providers is disabled); upstream privacy, retention and pricing vary by provider. "
+                : llm.Origin == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl
+                    ? "NVIDIA Build hosts the selected model; rate limits, credits and model availability are set by NVIDIA. "
+                    : "The endpoint's operator controls processing, retention and cost. ") +
+                "Reasoning/thinking traces are never spoken or shown, but count toward the reply token budget.\n") +
             $"PTT audio -> STT (only with separate local capture AND upload permission): {OpenAiSetup.Origin}, {Selection(SetupRole.Stt)}.\n" +
             (voice ? $"Response -> TTS: {OpenAiSetup.Origin}, {Selection(SetupRole.Tts)}. AI-generated voice, not a human. Output: {Audio?.Output.DisplayName ?? "not selected"}; fixed at start, no fallback.\n"
                 : "Text-only: NO TTS requests and NO output device. Voice is separately selected.\n") +
@@ -157,11 +195,11 @@ internal sealed class LiveConversationConfiguration
                 usedHistoryMessages = history.Count - start;
                 usedMemoryFacts = memoryCount;
                 return new(prompted,
-                    new(OpenAiSetup.Alias(SetupRole.Llm), Route(SetupRole.Llm).ModelId), TextLimits, TurnLimits,
+                    TextSelection(), TextLimits, TurnLimits,
                     voice ? new(new(OpenAiSetup.Alias(SetupRole.Tts), Route(SetupRole.Tts).ModelId, Route(SetupRole.Tts).VoiceId!,
                         SpeechOutputFormat.Pcm24KhzMono16Le),
                         new(Audio!.Output.EndpointId is null ? OutputPolicy.DefaultAtStart : OutputPolicy.FixedEndpoint, Audio.Output.EndpointId),
-                        SpeechLimits) : null);
+                        SpeechLimits) : null, ChatTarget());
             }
         }
         throw new LiveActionException("conversation.input_limit");

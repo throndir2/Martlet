@@ -109,7 +109,7 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
     public async ValueTask<AuthorizedTextOperation?> AuthorizeTextAsync(TextAuthorizationAction action, CancellationToken token)
     {
         await ValidateSettingsAsync(token).ConfigureAwait(false);
-        var selection = new TextModelSelection(OpenAiSetup.Alias(SetupRole.Llm), Configuration.Route(SetupRole.Llm).ModelId);
+        var selection = Configuration.TextSelection();
         var expected = new OperationBudget(action.Context.Ids, action.Context.Epoch, ProviderRole.Llm, 1,
             action.Input.Utf8Bytes, action.Input.InputTokenReservation, LiveConversationConfiguration.TextLimits.MaxOutputTokens, 0);
         var expiry = Min(action.Context.Deadline, Deadline(TimeSpan.FromSeconds(45)));
@@ -151,9 +151,15 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
             action.Limits, expiry, true, true, true), new(action.Budget, expiry));
     }
 
-    private ProviderCredentialBinding Binding(SetupRole role) =>
-        new(OpenAiTranscriptionCatalog.Origin, role switch { SetupRole.Stt => ProviderRole.Stt, SetupRole.Llm => ProviderRole.Llm, _ => ProviderRole.Tts },
-            Configuration.Route(role).ModelId);
+    private ProviderCredentialBinding Binding(SetupRole role)
+    {
+        var route = Configuration.Route(role);
+        // A Chat Completions key is bound to the exact saved API base URL, never to api.openai.com.
+        var origin = route.RouteType == SetupRouteType.ChatCompletions
+            ? ChatCompletionsSetup.BaseUri(route.Origin) : OpenAiTranscriptionCatalog.Origin;
+        return new(origin, role switch { SetupRole.Stt => ProviderRole.Stt, SetupRole.Llm => ProviderRole.Llm, _ => ProviderRole.Tts },
+            route.ModelId);
+    }
 
     private void Ticket(ProviderRole role) => credentialTickets[role] = credentialTickets.GetValueOrDefault(role) + 1;
     private static DateTimeOffset Min(DateTimeOffset a, DateTimeOffset b) => a < b ? a : b;
@@ -173,7 +179,8 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
         }
         await ValidateSettingsAsync(token).ConfigureAwait(false);
         var route = Configuration.Route(role);
-        var scope = new CredentialBinding(Configuration.Profile, route.CredentialId!.Value, role, route.ProviderAlias, route.Origin);
+        if (route.CredentialId is not { } credentialId) throw new CredentialUnavailableException();
+        var scope = CredentialBinding.For(Configuration.Profile, route, credentialId);
         scope.Validate();
         // Native work is owned here, not by a window or cancellation observer. Always clear its lease.
         using var result = vault.Read(scope);
