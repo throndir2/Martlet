@@ -1,0 +1,65 @@
+<local:ThemedWindow x:Class="Martlet.Desktop.PrepareHostWindow"
+        xmlns:local="clr-namespace:Martlet.Desktop"
+        Style="{DynamicResource AppWindowStyle}"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Martlet - Prepare this computer" Width="1200" Height="840" MinWidth="820" MinHeight="560"
+        WindowStartupLocation="CenterOwner" Closing="Window_Closing"
+        AutomationProperties.AutomationId="PrepareHostWindow" AutomationProperties.Name="Prepare a Linux computer over SSH">
+    <DockPanel>
+        <Border DockPanel.Dock="Bottom" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="20,12">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="_Close" Click="Close_Click" Padding="16,8" AutomationProperties.AutomationId="PrepareClose" />
+                <Button x:Name="StopButton" DockPanel.Dock="Right" Content="_Stop" Click="Stop_Click" Padding="16,8" Margin="0,0,10,0" IsEnabled="False"
+                        AutomationProperties.AutomationId="PrepareStop" />
+                <TextBlock x:Name="StatusText" TextWrapping="Wrap" VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite"
+                           AutomationProperties.AutomationId="PrepareStatus" />
+            </DockPanel>
+        </Border>
+        <StackPanel DockPanel.Dock="Top" Margin="22,18,22,8">
+            <TextBlock x:Name="HeadingText" Text="Prepare this computer" FontSize="24" FontWeight="SemiBold" />
+            <TextBlock Margin="0,6,0,0" TextWrapping="Wrap" Style="{DynamicResource Muted}"
+                       Text="Martlet sets up a Linux (Ubuntu 22.04 or 24.04) computer over SSH so you never have to sign in to it: drivers, Docker, running without a screen, GPU power and developer tools. It reads what is there first; nothing changes until you tick it and press Run selected. Changes use sudo on that computer." />
+            <DockPanel Margin="0,12,0,0">
+                <TextBlock Text="SSH target" VerticalAlignment="Center" Margin="0,0,10,0" />
+                <Button x:Name="ReadButton" DockPanel.Dock="Right" Content="_Read status" Click="Read_Click" Padding="14,6" Margin="10,0,0,0"
+                        AutomationProperties.AutomationId="PrepareRead" />
+                <TextBox x:Name="TargetText" VerticalContentAlignment="Center" AutomationProperties.Name="SSH target (user@computer)"
+                         AutomationProperties.AutomationId="PrepareTarget" />
+            </DockPanel>
+            <WrapPanel Margin="0,10,0,0">
+                <Button x:Name="RebootButton" Content="Re_start it" Click="Reboot_Click" Padding="14,6" Margin="0,0,10,0" AutomationProperties.AutomationId="PrepareReboot" />
+                <Button x:Name="ShutdownButton" Content="Shut it _down" Click="Shutdown_Click" Padding="14,6" Margin="0,0,10,0" AutomationProperties.AutomationId="PrepareShutdown" />
+                <Button x:Name="WakeButton" Content="_Wake it up" Click="Wake_Click" Padding="14,6" Margin="0,0,16,0" AutomationProperties.AutomationId="PrepareWake" />
+                <TextBlock x:Name="FactsText" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="760" AutomationProperties.AutomationId="PrepareFacts" />
+            </WrapPanel>
+            <Border x:Name="RebootBanner" Style="{DynamicResource Chip}" HorizontalAlignment="Stretch" Padding="12,8" Margin="0,10,0,0" Visibility="Collapsed">
+                <TextBlock x:Name="RebootText" TextWrapping="Wrap" FontWeight="SemiBold" AutomationProperties.AutomationId="PrepareRebootNeeded" />
+            </Border>
+        </StackPanel>
+        <Grid Margin="22,4,22,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.15*" />
+                <ColumnDefinition Width="16" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <DockPanel Grid.Column="0">
+                <WrapPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+                    <Button x:Name="RunButton" Content="_Run selected" Style="{DynamicResource PrimaryButton}" Click="Run_Click" Padding="16,8" Margin="0,0,10,0"
+                            AutomationProperties.AutomationId="PrepareRun" />
+                    <Button x:Name="MissingButton" Content="Tick what is _missing" Click="Missing_Click" Padding="14,8"
+                            AutomationProperties.AutomationId="PrepareTickMissing" />
+                </WrapPanel>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="Checklist" AutomationProperties.Name="What Martlet can set up on this computer" />
+                </ScrollViewer>
+            </DockPanel>
+            <DockPanel Grid.Column="2">
+                <TextBlock DockPanel.Dock="Top" Text="Output" FontWeight="SemiBold" Margin="0,0,0,6" />
+                <TextBox x:Name="OutputText" IsReadOnly="True" FontFamily="Consolas" FontSize="12" TextWrapping="NoWrap"
+                         HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" AcceptsReturn="True"
+                         AutomationProperties.Name="What the computer printed" AutomationProperties.AutomationId="PrepareOutput" />
+            </DockPanel>
+        </Grid>
+    </DockPanel>
+</local:ThemedWindow>

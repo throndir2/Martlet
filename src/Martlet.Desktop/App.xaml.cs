@@ -52,7 +52,10 @@ public partial class App : Application
             error = "Cannot open the data directory. Launch without arguments, or use --data-directory with an accessible absolute path. Do not run as administrator.";
         }
         if (store is not null)
+        {
             (SelectedTheme, AppearanceNotice) = Appearance.LoadForStartup(store.DataDirectory);
+            HostShells.Current = new SshHostShell(store.DataDirectory);
+        }
         ApplyTheme(SelectedTheme);
         SystemParameters.StaticPropertyChanged += SystemAppearanceChanged;
         MainWindow = new MainWindow(store, error);

@@ -87,8 +87,9 @@ key, sudo or an approval fails that run without changing anything and keeps
 
 `setup`, `pair`, `add`, `remove` and `machine` collect what the machine is like
 into `machine.json` beside `host.json`: OS and kernel, CPU and thread count,
-memory, container runtime, whether containers can use NVIDIA GPUs, and each GPU
-(name, vendor, memory, driver). Natively it reads `nvidia-smi`, `/proc` and
+memory, container runtime, whether containers can use NVIDIA GPUs, the newest
+CUDA version the NVIDIA driver supports, and each GPU (name, vendor, memory,
+driver, and for NVIDIA its power limit, default limit and persistence mode). Natively it reads `nvidia-smi`, `/proc` and
 sysfs (AMD GPUs with 2 GiB+ of VRAM); with Docker it asks the Docker host
 (`docker info`) and runs `nvidia-smi` in a throwaway `--gpus all` container, so
 Docker Desktop reports its WSL 2 VM's memory. The gateway serves it read-only
@@ -277,6 +278,66 @@ offers to install it there), then *Remove Audio2Face* from the old one. SSH host
 run these in Martlet (the click confirms); this PC's Docker Desktop opens a
 console where you confirm each step.
 
+## Preparing a computer
+
+The goal is that you never sign in to your Linux machines: Martlet prepares
+them from Windows. On the **Devices** map, a paired host's details offer
+**Prepare this computer** (the *Add a computer* card offers **Prepare a Linux
+computer over SSH** for one that is not paired yet). The window reads the
+computer's state, shows a checklist, and runs only what you tick; ticking an
+item and pressing **Run selected** (then confirming) is your consent for that
+change. **Tick what is missing** ticks everything not yet in place except the
+virtual display and GPU power, which are preferences.
+
+It uses [`martlet-prepare`](martlet-prepare), a standalone, idempotent bash
+script that runs directly on the computer as your SSH user with sudo (not
+inside the `martlet-host` container), so it works for Docker-method and native
+hosts alike, and before Martlet is installed there at all. The desktop sends the
+script over the SSH connection, so the computer needs no Martlet checkout.
+Ubuntu 22.04 and 24.04 on x86_64 are supported; other systems are refused with
+a clear reason.
+
+| Item | What it does |
+| --- | --- |
+| `updates` | `apt-get update` and `upgrade --with-new-pkgs`, noninteractive, keeping existing config files |
+| `docker` | Docker Engine and Compose (`docker.io`, `docker-compose-v2`; keeps an existing Docker CE), started at boot, you in the `docker` group |
+| `nvidia-driver` | Installs or updates the driver `ubuntu-drivers` recommends; flags that a restart is needed |
+| `nvidia-toolkit` | NVIDIA Container Toolkit from NVIDIA's repository, `nvidia-ctk runtime configure --runtime=docker`, Docker restart, then checks `docker run --rm --gpus all ubuntu:24.04 nvidia-smi` |
+| `headless` | SSH server on at boot; sleep, suspend, hibernate and hybrid sleep masked; optionally start in text mode (`multi-user.target`, frees GPU memory) or back to the desktop (`graphical.target`) |
+| `virtual-display` | A virtual monitor for a GPU with no screen: NVIDIA gets an Xorg config with `AllowEmptyInitialConfiguration`, a virtual resolution and `ConnectedMonitor`; other GPUs use `xserver-xorg-video-dummy`. Switches GDM to Xorg. `--virtual-display-off` removes it |
+| `gpu-power` | Persistence mode on, and per-GPU power limits in watts checked against each GPU's min/max, saved in `/etc/martlet/gpu-power.conf` and reapplied at every boot by `martlet-gpu-power.service`. `--power-reset` returns every GPU to its default |
+| `tools` | Any of: CUDA toolkit (NVIDIA's repository, matched to the driver, pinned so it never replaces the Ubuntu driver), Python 3 with pip and venv, Node.js LTS (NodeSource), git, build-essential, htop, nvtop, curl, tmux |
+| `wol` | Wake-on-LAN (magic packet) on the wired card with the default route, kept across restarts by `martlet-wol.service` (and NetworkManager when it manages the card); reports the MAC |
+| `reboot`, `shutdown` | Restart or power off a few seconds later |
+
+Output is plain progress (`==> item: ...`), one `MARTLET-ITEM <item> <ok|changed|skipped|failed> <message>`
+line per item, and a final `MARTLET-RESULT {json}` line. `status --json` prints
+one JSON line: OS and kernel, sudo, Docker and Compose versions and docker
+group, NVIDIA driver and recommended driver, CUDA, container toolkit, each
+GPU's persistence mode and power limit (current, default, min, max), sleep
+masking, boot target, virtual display, tool versions, Wake-on-LAN card and MAC,
+and what still needs a restart.
+
+When a restart is needed the window says why and offers **Restart it**: Martlet
+restarts the computer, waits until SSH stops and then answers again, and reads
+it again. **Shut it down** and **Wake it up** are there too; Wake sends a
+Wake-on-LAN magic packet from Windows to the MAC the computer reported, which
+Martlet saves with the host in `hosts.json` (the map then offers *Wake it up*
+as well). Wake-on-LAN also has to be allowed in the computer's BIOS/UEFI.
+
+How it connects: through Martlet's in-app SSH runner, like every other SSH
+action (see [Driving Linux hosts from Windows](#driving-linux-hosts-from-windows-over-ssh)).
+The script goes to `bash -s` on stdin; the first connection asks for the
+account password once to install Martlet's key and shows the host key to pin,
+and runs that need sudo ask for the sudo password in Martlet (masked, optionally
+remembered). No console or SSH window opens. By hand, on or against the computer:
+
+```sh
+ssh me@gpu-pc 'bash -s -- status' < deploy/host/martlet-prepare
+scp deploy/host/martlet-prepare me@gpu-pc: && ssh -t me@gpu-pc bash martlet-prepare docker nvidia-driver headless --boot text
+ssh -t me@gpu-pc bash martlet-prepare gpu-power --power 0=250 tools --tools python,node,nvtop
+```
+
 ## Roles
 
 | Role | Needs | Desktop use |
@@ -311,3 +372,14 @@ console where you confirm each step.
   and in Docker mode against Docker Desktop without GPU support (`gpus: []`,
   `nvidia_containers: "no"`); `nvidia-smi` output parsing was checked with sample
   lines. Not yet run against a host with a working NVIDIA or AMD GPU.
+- **Preparing a computer**: `martlet-prepare` was run in Ubuntu 24.04 containers
+  (one with systemd): `status`, `updates`, `docker`, `headless` (both boot
+  modes), the dummy `virtual-display` and its removal, `tools` (Python, Node.js
+  LTS, git, build-essential, htop, nvtop, curl, tmux), `reboot`, and `gpu-power`
+  (limits, validation, boot service, reset) against a stand-in `nvidia-smi`.
+  The desktop's runner (`SshHostShell`, the in-app SSH runner behind
+  `IHostShell`) ran `status --json` with the script on stdin against the local
+  OpenSSH test container; the prepare window itself was built but not driven end
+  to end. Not yet run: a real NVIDIA GPU (driver install, container toolkit,
+  NVIDIA virtual display, CUDA toolkit), a real Wake-on-LAN card and wake-up, and
+  a reboot of a real computer.

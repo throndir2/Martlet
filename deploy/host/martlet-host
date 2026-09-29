@@ -314,20 +314,23 @@ json_text() { printf '"%s"' "$(printf '%s' "$1" | tr -c 'A-Za-z0-9 ._()+/@:,#-' 
 json_opt() { if [[ -n "$1" ]]; then json_text "$1"; else printf 'null'; fi; }
 json_num() { if [[ "$1" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then printf '%s' "$1"; else printf 'null'; fi; }
 
-# Prints one JSON object per NVIDIA GPU from nvidia-smi CSV lines "name, memory MiB, driver".
+# Prints one JSON object per NVIDIA GPU from nvidia-smi CSV lines "name, memory MiB, driver, persistence, power limit W,
+# default power limit W" (the last three are what martlet-prepare's gpu-power sets).
 nvidia_gpus_json() {
-  local name memory driver
-  while IFS=, read -r name memory driver; do
+  local name memory driver persistence limit standard flag
+  while IFS=, read -r name memory driver persistence limit standard; do
     [[ -n "${name// /}" ]] || continue
-    memory="${memory// /}"; driver="${driver# }"
-    printf '{"name":%s,"vendor":"nvidia","memory_mb":%s,"driver":%s}\n' \
-      "$(json_text "${name}")" "$(json_num "${memory%%.*}")" "$(json_opt "${driver}")"
+    memory="${memory// /}"; driver="${driver# }"; persistence="${persistence// /}"; limit="${limit// /}"; standard="${standard// /}"
+    case "${persistence}" in Enabled) flag=true ;; Disabled) flag=false ;; *) flag=null ;; esac
+    printf '{"name":%s,"vendor":"nvidia","memory_mb":%s,"driver":%s,"persistence":%s,"power_limit_w":%s,"power_default_w":%s}\n' \
+      "$(json_text "${name}")" "$(json_num "${memory%%.*}")" "$(json_opt "${driver}")" "${flag}" "$(json_num "${limit}")" "$(json_num "${standard}")"
   done
 }
 
 collect_machine() {
-  local os="" kernel="" cpu="" threads="" memory="" runtime="" nvidia_containers="unknown" gpus=() line
-  local query=(--query-gpu=name,memory.total,driver_version --format=csv,noheader,nounits)
+  local os="" kernel="" cpu="" threads="" memory="" runtime="" nvidia_containers="unknown" cuda="" gpus=() line
+  local query=(--query-gpu=name,memory.total,driver_version,persistence_mode,power.limit,power.default_limit --format=csv,noheader,nounits)
+  local cuda_pattern='CUDA Version: *[0-9]+(\.[0-9]+)+'
   cpu="$(grep -m1 'model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2- || true)"
   if [[ "${MODE}" == docker ]]; then
     os="$(docker info --format '{{.OperatingSystem}}' 2>/dev/null || true)"
@@ -337,7 +340,10 @@ collect_machine() {
     runtime="Docker $(docker version --format '{{.Server.Version}}' 2>/dev/null || printf 'unknown')"
     # The NVIDIA runtime injects nvidia-smi into GPU containers, so this sees the Docker host's GPUs.
     mapfile -t gpus < <(timeout 120 docker run --rm --gpus all --entrypoint nvidia-smi "${IMAGE}" "${query[@]}" 2>/dev/null | nvidia_gpus_json || true)
-    if [[ ${#gpus[@]} -gt 0 ]]; then nvidia_containers="yes"; else nvidia_containers="no"; fi
+    if [[ ${#gpus[@]} -gt 0 ]]; then
+      nvidia_containers="yes"
+      cuda="$(timeout 60 docker run --rm --gpus all --entrypoint nvidia-smi "${IMAGE}" 2>/dev/null | grep -oE "${cuda_pattern}" | grep -oE '[0-9.]+$' | head -n1 || true)"
+    else nvidia_containers="no"; fi
   else
     os="$(. /etc/os-release 2>/dev/null && printf '%s' "${PRETTY_NAME:-Linux}" || printf 'Linux')"
     kernel="$(uname -r)"
@@ -349,6 +355,7 @@ collect_machine() {
     fi
     if command -v nvidia-smi >/dev/null 2>&1; then
       mapfile -t gpus < <(timeout 30 nvidia-smi "${query[@]}" 2>/dev/null | nvidia_gpus_json || true)
+      cuda="$(timeout 30 nvidia-smi 2>/dev/null | grep -oE "${cuda_pattern}" | grep -oE '[0-9.]+$' | head -n1 || true)"
     fi
     # AMD GPUs through sysfs (amdgpu reports dedicated VRAM; APUs with under 2 GiB are integrated and skipped).
     local card vendor bytes slot name nvidia_seen=${#gpus[@]}
@@ -370,9 +377,9 @@ collect_machine() {
   local joined; joined="$(IFS=,; printf '%s' "${gpus[*]:-}")"
   mkdir -p "${GW_CONF_DIR}"; chmod 700 "${GW_CONF_DIR}"
   ( umask 077
-    printf '{"collected_at":"%s","method":"%s","operating_system":%s,"kernel":%s,"processor":%s,"processor_threads":%s,"memory_gb":%s,"container_runtime":%s,"nvidia_containers":"%s","gpus":[%s]}\n' \
+    printf '{"collected_at":"%s","method":"%s","operating_system":%s,"kernel":%s,"processor":%s,"processor_threads":%s,"memory_gb":%s,"container_runtime":%s,"nvidia_containers":"%s","cuda":%s,"gpus":[%s]}\n' \
       "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${MODE}" "$(json_text "${os:-Linux}")" "$(json_opt "${kernel}")" "$(json_opt "${cpu}")" \
-      "$(json_num "${threads}")" "$(json_num "${memory}")" "$(json_opt "${runtime}")" "${nvidia_containers}" "${joined}" \
+      "$(json_num "${threads}")" "$(json_num "${memory}")" "$(json_opt "${runtime}")" "${nvidia_containers}" "$(json_opt "${cuda}")" "${joined}" \
       > "${MACHINE_FILE}.tmp" && mv -f "${MACHINE_FILE}.tmp" "${MACHINE_FILE}" )
 }
 

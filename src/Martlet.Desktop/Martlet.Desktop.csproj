@@ -9,6 +9,8 @@
     <Resource Include="Assets\Martlet.ico" />
     <!-- Resemblyzer GE2E voice encoder (Apache-2.0), converted by scripts\Convert-SpeakerEncoder.py for local Voice ID. -->
     <EmbeddedResource Include="Assets\SpeakerEncoder.bin" LogicalName="Martlet.Desktop.SpeakerEncoder.bin" />
+    <!-- Streamed over SSH by Prepare this computer; the Linux computer needs no Martlet checkout. -->
+    <EmbeddedResource Include="..\..\deploy\host\martlet-prepare" LogicalName="Martlet.Desktop.martlet-prepare" Link="Assets\martlet-prepare" />
     <InternalsVisibleTo Include="Martlet.Desktop.Tests" />
     <ProjectReference Include="..\Martlet.Conversation\Martlet.Conversation.csproj" />
     <ProjectReference Include="..\Martlet.Participation\Martlet.Participation.csproj" />
