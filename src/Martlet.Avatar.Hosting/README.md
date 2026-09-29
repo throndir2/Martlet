@@ -38,7 +38,18 @@ Martlet does not install or start Docker, WSL or the Audio2Face NIM.
 
 ### Running an Audio2Face service yourself (NVIDIA GPU)
 
-Not verified on a Martlet machine. The NIM is a Linux container: on Windows use
+**Another computer (recommended for a GPU PC/server):** use the guided
+[Ubuntu Audio2Face host installer](../../deploy/ubuntu/audio2face/README.md). It
+starts the NIM on the host's loopback and enables the Linux gateway's Audio2Face
+relay route. In **Character settings > Audio2Face on another computer**, pair
+this PC with the host (host address, ID, fingerprint, device ID, one-use pairing
+ID/token from the host's `pair` command). The device secret is stored in Windows
+Credential Manager; `avatar.json` keeps only the nonsecret `RemoteHost` identity.
+Automatic lip-sync then prefers a local service, then the paired host, then
+loudness. Sentences are relayed in 0.5 s / 1 s chunks with 0.5 s of context so
+animation starts while Martlet is still speaking; late frames are skipped.
+
+**This PC:** not verified on a Martlet machine. The NIM is a Linux container: on Windows use
 Docker Desktop with the WSL2 backend and a current NVIDIA driver, sign in to the
 NVIDIA NGC registry with your own API key (NVIDIA account; review the NIM and
 model terms), then start NVIDIA's

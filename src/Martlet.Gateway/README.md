@@ -301,6 +301,7 @@ the same request returns `auth.replay`.
 | `POST /martlet/v1/inference/f5-synthesis` | Signed `voice` body plus action permission | Exact F5/reference identity, WAV/transcript/chunk bounds and contiguous 24 kHz PCM |
 | `POST /martlet/v1/inference/perception/ocr` | Signed `perception` body plus action permission | Selected P02 OCR identity and bounded selected-window frame |
 | `POST /martlet/v1/inference/perception/vlm` | Signed `perception` body plus action permission | Selected P02 VLM identity, frame and bounded question |
+| `POST /martlet/v1/inference/audio2face` | Signed `voice` body plus the host-enabled relay lease | At most 4 s of mono 16-bit generated-speech PCM (`sample_rate`, `pcm_base64`) relayed to the host's loopback Audio2Face NIM; `face_frame` events carry ARKit blendshape JSON and chunk-relative `sample_offset` |
 | `POST /martlet/v1/inference/cancel` | Signed owning credential/host/device/role | Local discard acknowledgment, bounded compute-cancellation report; no compute-stop claim |
 
 Non-streaming responses are snake-case JSON and at most 64 KiB. Inference uses

@@ -181,6 +181,61 @@ public sealed class AvatarIntegrationTests
         Assert.False(controller.IsShowing);
     }
 
+    private sealed class FakeHostLink : IAvatarHostLink
+    {
+        internal ConcurrentQueue<(long Samples, CorrelationIds Ids)> Requests { get; } = new();
+        public string Authority => "192.168.1.20:9443";
+        public Task<bool> ReadyAsync(CancellationToken token) => Task.FromResult(true);
+        public async IAsyncEnumerable<Martlet.Avatar.Audio2Face.Remote.RemoteFaceFrame> AnimateAsync(CorrelationIds ids, long epoch,
+            int sampleRate, ReadOnlyMemory<byte> pcm, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken token)
+        {
+            Requests.Enqueue((pcm.Length / 2, ids));
+            await Task.Yield();
+            yield return new(0, new Dictionary<string, double> { ["jawOpen"] = 0.6, ["unknownShape"] = 0.9 });
+            yield return new(480, new Dictionary<string, double> { ["jawOpen"] = 0.3 });
+        }
+        public void Invalidate() { }
+        public void Dispose() { }
+    }
+
+    [Fact]
+    public async Task Automatic_lip_sync_uses_the_paired_martlet_host_when_this_pc_has_no_audio2face()
+    {
+        var closed = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        closed.Start();
+        var port = ((System.Net.IPEndPoint)closed.LocalEndpoint).Port;
+        closed.Stop();
+        using var scope = new AvatarHostingTests.Scope();
+        var renderer = new Renderer { Parameters = [new("aa", 0, 1, 0, ["Mouth"])] };
+        var link = new FakeHostLink();
+        AvatarRemoteHost? opened = null;
+        await using var controller = new AvatarController(createRenderer: () => renderer, allowControlledClock: true,
+            openHost: host => { opened = host; return link; });
+        var remote = new AvatarRemoteHost
+        {
+            Origin = "https://192.168.1.20:9443", HostId = "gpu-host", SpkiFingerprint = "sha256:" + new string('a', 64),
+            DeviceId = "desktop-test", CredentialId = new string('B', 22)
+        };
+        await controller.ShowAsync(scope.Profile($"http://127.0.0.1:{port}/") with { RemoteHost = remote }, default);
+        Assert.Same(remote, opened);
+        Assert.Contains("Martlet host 192.168.1.20:9443", controller.Status, StringComparison.Ordinal);
+        var device = new ControlledDevice { AutoConsume = false };
+        await using var harness = new Harness(device, generatedSpeech: controller.Observer);
+        harness.Answer("Actual generated PCM test.");
+        var turn = harness.Start();
+        await Harness.Until(() => renderer.Messages.Any(m => m.Kind == "apply"));
+        var applied = RendererProtocol.Data<RendererParameters>(renderer.Messages.First(m => m.Kind == "apply"));
+        Assert.Equal(0.6, applied.Parameters["aa"], 3);
+        Assert.Equal(turn.TurnId, applied.Identity.TurnId);
+        var request = Assert.Single(link.Requests);
+        Assert.Equal(SpeechFixtures.Audio().Length / 2, request.Samples);
+        Assert.Equal(turn.TurnId, request.Ids.TurnId);
+        device.AutoConsume = true;
+        Assert.Equal(ConversationState.Completed, (await Harness.Finish(turn)).State);
+        Assert.Equal(SpeechFixtures.Audio(), device.Bytes);
+        await controller.StopAsync();
+    }
+
     [Fact]
     public async Task Automatic_lip_sync_falls_back_to_loudness_when_no_audio2face_service_is_listening()
     {

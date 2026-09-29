@@ -9,6 +9,31 @@ namespace Martlet.Avatar.Hosting;
 
 public enum AvatarLipSync { Auto, Loudness, Audio2Face }
 
+/// <summary>Nonsecret identity of a paired Martlet host (gateway) that relays Audio2Face over pinned TLS.</summary>
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed record AvatarRemoteHost
+{
+    public required string Origin { get; init; }
+    public required string HostId { get; init; }
+    public required string SpkiFingerprint { get; init; }
+    public required string DeviceId { get; init; }
+    public required string CredentialId { get; init; }
+
+    public void Validate()
+    {
+        ContractRules.Require(Uri.TryCreate(Origin, UriKind.Absolute, out var origin) && origin.Scheme == "https" &&
+            System.Net.IPAddress.TryParse(origin.Host.Trim('[', ']'), out _) && origin.AbsolutePath == "/" &&
+            origin.Query.Length == 0 && origin.UserInfo.Length == 0, "The Martlet host address must be https://<IP>:<port>.");
+        foreach (var value in new[] { HostId, DeviceId })
+            ContractRules.Require(value is { Length: > 0 and <= 64 } && char.IsAsciiLetterOrDigit(value[0]) &&
+                value.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-'), "Invalid Martlet host or device ID.");
+        ContractRules.Require(SpkiFingerprint is { Length: 71 } && SpkiFingerprint.StartsWith("sha256:", StringComparison.Ordinal) &&
+            SpkiFingerprint[7..].All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f'), "Invalid Martlet host fingerprint.");
+        ContractRules.Require(CredentialId is { Length: 22 } && CredentialId.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_'),
+            "Invalid Martlet host credential reference.");
+    }
+}
+
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record AvatarProfile : IContract
 {
@@ -27,6 +52,8 @@ public sealed record AvatarProfile : IContract
     public bool AutoShow { get; init; }
     /// <summary>Auto uses a detected local Audio2Face service per sentence and voice loudness otherwise.</summary>
     public AvatarLipSync LipSync { get; init; } = AvatarLipSync.Auto;
+    /// <summary>Paired Martlet host that relays Audio2Face from another computer (secret kept in the OS vault).</summary>
+    public AvatarRemoteHost? RemoteHost { get; init; }
 
     [JsonIgnore] public AvatarConfiguration Settings =>
         AvatarJson.ReadConfiguration(Encoding.UTF8.GetBytes(Configuration.GetRawText()));
@@ -58,6 +85,7 @@ public sealed record AvatarProfile : IContract
         _ = Settings;
         ContractRules.Require(ResourceRevision is null || ResourceRevision.Length == 64 &&
             ResourceRevision.All(Uri.IsHexDigit), "Invalid resource revision.");
+        RemoteHost?.Validate();
     }
 
     public static JsonElement ConfigurationElement(AvatarConfiguration configuration)

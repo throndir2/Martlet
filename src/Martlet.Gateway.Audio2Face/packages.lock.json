@@ -60,19 +60,6 @@
           "Martlet.Providers": "[0.1.0, )"
         }
       },
-      "martlet.gateway.audio2face": {
-        "type": "Project",
-        "dependencies": {
-          "Martlet.Avatar.Audio2Face": "[0.1.0, )",
-          "Martlet.Gateway": "[0.1.0, )"
-        }
-      },
-      "martlet.gateway.persistence": {
-        "type": "Project",
-        "dependencies": {
-          "Martlet.Gateway": "[0.1.0, )"
-        }
-      },
       "martlet.perception": {
         "type": "Project"
       },

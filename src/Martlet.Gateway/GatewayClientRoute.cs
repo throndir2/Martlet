@@ -15,6 +15,8 @@ public sealed partial class GatewayInferenceRoute
                 "/martlet/v1/inference/ollama-chat", OllamaChatAdapter.Protocol, "1.0"),
             GatewayInferenceKind.F5Synthesis => ("martlet.gateway.f5-synthesis.v1",
                 "/martlet/v1/inference/f5-synthesis", F5WorkerProtocol.ContractId, F5ProtocolVersion.Current.ToString()),
+            GatewayInferenceKind.Audio2Face => (Audio2FaceRouteId, Audio2FacePath,
+                Audio2FaceContractId, Audio2FaceContractVersion),
             _ => throw new GatewayProtocolException("worker.invalid")
         };
         GatewayRules.Require(capability.RequiredRole == GatewayRole.Voice &&

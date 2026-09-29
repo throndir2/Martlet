@@ -30,29 +30,32 @@ public sealed class DurableGatewayHost : IAsyncDisposable
 
     public static DurableGatewayHost CreateNewForBinding(string directory, string hostId, GatewayHostBinding binding,
         GatewayStorageBackend storageBackend, IEnumerable<IGatewayWorker> workers, IGatewayAuditSink audit,
-        LocalGatewayDecision decision = LocalGatewayDecision.No, CancellationToken cancellationToken = default) =>
+        LocalGatewayDecision decision = LocalGatewayDecision.No, CancellationToken cancellationToken = default,
+        IEnumerable<IGatewayInferenceWorker>? inferenceWorkers = null) =>
         decision == LocalGatewayDecision.No ? new() :
         Open(directory, hostId, binding.Origin, workers, audit, decision, HostOpenMode.Create,
-            TimeProvider.System, cancellationToken: cancellationToken, storageBackend: storageBackend,
-            explicitBinding: true);
+            TimeProvider.System, cancellationToken: cancellationToken, inferenceWorkers: inferenceWorkers,
+            storageBackend: storageBackend, explicitBinding: true);
 
     public static DurableGatewayHost OpenExistingForBinding(string directory, GatewayHostBinding binding,
         GatewayStorageBackend storageBackend, GatewayHostIdentity expectedIdentity,
         IEnumerable<IGatewayWorker> workers, IGatewayAuditSink audit,
-        LocalGatewayDecision decision = LocalGatewayDecision.No, CancellationToken cancellationToken = default) =>
+        LocalGatewayDecision decision = LocalGatewayDecision.No, CancellationToken cancellationToken = default,
+        IEnumerable<IGatewayInferenceWorker>? inferenceWorkers = null) =>
         decision == LocalGatewayDecision.No ? new() :
         Open(directory, null, binding.Origin, workers, audit, decision, HostOpenMode.Open,
-            TimeProvider.System, cancellationToken: cancellationToken, storageBackend: storageBackend,
-            explicitBinding: true, expectedIdentity: expectedIdentity ?? throw new ArgumentNullException(nameof(expectedIdentity)));
+            TimeProvider.System, cancellationToken: cancellationToken, inferenceWorkers: inferenceWorkers,
+            storageBackend: storageBackend, explicitBinding: true,
+            expectedIdentity: expectedIdentity ?? throw new ArgumentNullException(nameof(expectedIdentity)));
 
     public static DurableGatewayHost OpenForLocalAdministration(string directory, string expectedHostId,
         GatewayHostBinding binding, GatewayStorageBackend storageBackend, IEnumerable<IGatewayWorker> workers,
         IGatewayAuditSink audit, LocalGatewayDecision decision = LocalGatewayDecision.No,
-        CancellationToken cancellationToken = default) =>
+        CancellationToken cancellationToken = default, IEnumerable<IGatewayInferenceWorker>? inferenceWorkers = null) =>
         decision == LocalGatewayDecision.No ? new() :
         Open(directory, expectedHostId ?? throw new ArgumentNullException(nameof(expectedHostId)), binding.Origin, workers, audit, decision, HostOpenMode.Open,
-            TimeProvider.System, cancellationToken: cancellationToken, storageBackend: storageBackend,
-            explicitBinding: true);
+            TimeProvider.System, cancellationToken: cancellationToken, inferenceWorkers: inferenceWorkers,
+            storageBackend: storageBackend, explicitBinding: true);
 
     public static DurableGatewayHost RebindForLocalHost(string directory, GatewayHostBinding binding,
         GatewayStorageBackend storageBackend, GatewayHostIdentity expectedIdentity,

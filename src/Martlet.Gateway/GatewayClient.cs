@@ -274,6 +274,32 @@ public sealed class GatewayAuthenticatedClient : IDisposable
             payload), cancellationToken);
     }
 
+    public IAsyncEnumerable<GatewayInferenceEvent> StreamAudio2FaceAsync(
+        GatewayInferenceRouteCapability capability,
+        CorrelationIds ids,
+        long epoch,
+        DateTimeOffset deadlineUtc,
+        int sampleRate,
+        ReadOnlyMemory<byte> pcm,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+        var route = GatewayInferenceRoute.FromCapability(capability);
+        GatewayRules.Require(route.Kind == GatewayInferenceKind.Audio2Face &&
+            sampleRate is 16_000 or 24_000 or 44_100 or 48_000 &&
+            pcm.Length is > 0 && pcm.Length % 2 == 0 && pcm.Length <= route.MaximumInputBytes,
+            "request.invalid");
+        return StreamAsync(new(
+            route,
+            ids.SessionId,
+            ids.TurnId,
+            ids.RequestId,
+            null,
+            epoch,
+            deadlineUtc,
+            new GatewayAudio2FacePayload(sampleRate, pcm.ToArray())), cancellationToken);
+    }
+
     internal async IAsyncEnumerable<GatewayInferenceEvent> StreamAsync(
         GatewayInferenceRequest request,
         [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -560,6 +586,11 @@ internal static class GatewayClientJson
                     text = chunk.Text
                 }).ToArray()
             },
+            GatewayAudio2FacePayload face => new
+            {
+                sample_rate = face.SampleRate,
+                pcm_base64 = Convert.ToBase64String(face.Pcm.Span)
+            },
             _ => throw new GatewayProtocolException("request.invalid")
         };
         var document = new Dictionary<string, object?>
@@ -619,6 +650,7 @@ internal static class GatewayClientJson
                     "stream.invalid");
                 break;
             case GatewayInferenceEventKind.Observation:
+            case GatewayInferenceEventKind.FaceFrame:
                 GatewayRules.Require(document.Text is null &&
                     document.DataBase64 is not null &&
                     document.DataMediaType == "application/json",

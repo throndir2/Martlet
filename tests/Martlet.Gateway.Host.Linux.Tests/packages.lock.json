@@ -29,10 +29,36 @@
         "resolved": "3.1.5",
         "contentHash": "tKi7dSTwP4m5m9eXPM2Ime4Kn7xNf4x4zT9sdLO/G4hZVnQCRiMTWoSZqI/pYTVeI27oPPqHBKYI/DjJ9GsYgA=="
       },
+      "Grpc.Core.Api": {
+        "type": "Transitive",
+        "resolved": "2.84.0",
+        "contentHash": "p2SOMl6q/GZ4/5MLkgboC/z55g4zKUEruRn/g46QgppjQBVnsLZVBU/9VO7n60ll38G3Eo8Zu9b7x+W01GKFVg=="
+      },
+      "Grpc.Net.Common": {
+        "type": "Transitive",
+        "resolved": "2.84.0",
+        "contentHash": "DPxm/H8G/lDRrz997wM0M2zN/PGqVeZKDakhBbtABEbv6WIW4HI9g3BvntBQT6ZUROuGacMzfyyF9e5kiTVFfQ==",
+        "dependencies": {
+          "Grpc.Core.Api": "2.84.0"
+        }
+      },
       "Microsoft.CodeCoverage": {
         "type": "Transitive",
         "resolved": "18.10.0",
         "contentHash": "zo1hqV+Nz6FlIwdc+aPfrvGzqfKAPPaZ6OPj1W8C0QQE2xH951AZwTUytL3K7XX8brVBUFd7MhrLDl3CtK3U/A=="
+      },
+      "Microsoft.Extensions.DependencyInjection.Abstractions": {
+        "type": "Transitive",
+        "resolved": "8.0.1",
+        "contentHash": "fGLiCRLMYd00JYpClraLjJTNKLmMJPnqxMaiRzEBIIvevlzxz33mXy39Lkd48hu1G+N21S7QpaO5ZzKsI6FRuA=="
+      },
+      "Microsoft.Extensions.Logging.Abstractions": {
+        "type": "Transitive",
+        "resolved": "8.0.1",
+        "contentHash": "RIFgaqoaINxkM2KTOw72dmilDmTrYA0ns2KW4lDz4gZ2+o6IQ894CzmdL3StM2oh7QQq44nCWiqKqc4qUI9Jmg==",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.1"
+        }
       },
       "Microsoft.TestPlatform.ObjectModel": {
         "type": "Transitive",
@@ -87,6 +113,21 @@
           "xunit.extensibility.core": "[2.9.3]"
         }
       },
+      "martlet.avatar.audio2face": {
+        "type": "Project",
+        "dependencies": {
+          "Google.Protobuf": "[3.36.2, )",
+          "Grpc.Net.Client": "[2.84.0, )",
+          "Martlet.Avatars": "[0.1.0, )",
+          "Martlet.Core": "[0.1.0, )"
+        }
+      },
+      "martlet.avatars": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Core": "[0.1.0, )"
+        }
+      },
       "martlet.core": {
         "type": "Project"
       },
@@ -104,9 +145,17 @@
           "Martlet.Providers": "[0.1.0, )"
         }
       },
+      "martlet.gateway.audio2face": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Avatar.Audio2Face": "[0.1.0, )",
+          "Martlet.Gateway": "[0.1.0, )"
+        }
+      },
       "martlet.gateway.host.linux": {
         "type": "Project",
         "dependencies": {
+          "Martlet.Gateway.Audio2Face": "[0.1.0, )",
           "Martlet.Gateway.Persistence": "[0.1.0, )"
         }
       },
@@ -123,6 +172,22 @@
         "type": "Project",
         "dependencies": {
           "Martlet.Core": "[0.1.0, )"
+        }
+      },
+      "Google.Protobuf": {
+        "type": "CentralTransitive",
+        "requested": "[3.36.2, )",
+        "resolved": "3.36.2",
+        "contentHash": "Ci1q1iJg74qAE5riTA2FbMS0wPbpruPQI/JQ9DrAsRo2VsSxgt1e/pmxGxgrci+pXJEgrSYg2vPl8rrStZkclQ=="
+      },
+      "Grpc.Net.Client": {
+        "type": "CentralTransitive",
+        "requested": "[2.84.0, )",
+        "resolved": "2.84.0",
+        "contentHash": "My6Fms2YCyAbihTBZZ3kLS39iTY2pkMAzGDBTC6XhPOujg70eB07AEJ7tPiW3tZ70bhFzHcc3+d4j3DaIPF3aA==",
+        "dependencies": {
+          "Grpc.Net.Common": "2.84.0",
+          "Microsoft.Extensions.Logging.Abstractions": "8.0.1"
         }
       }
     }

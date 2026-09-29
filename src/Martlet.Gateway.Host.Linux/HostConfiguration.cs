@@ -10,7 +10,8 @@ internal sealed class HostTerminalException : Exception;
 internal sealed class HostEofException : Exception;
 
 internal sealed record HostConfiguration(string HostId, string StateDirectory,
-    GatewayHostBinding Binding, uint ServiceUid, uint ServiceGid, string Digest)
+    GatewayHostBinding Binding, uint ServiceUid, uint ServiceGid, string Digest,
+    Uri? Audio2FaceEndpoint = null, string? Audio2FaceModel = null)
 {
     internal const int MaximumBytes = 8192;
     internal const string Backend = "linuxServicePermissions";
@@ -19,8 +20,10 @@ internal sealed record HostConfiguration(string HostId, string StateDirectory,
     {
         using var document = StrictJson.Parse(bytes);
         var root = document.RootElement;
-        StrictJson.Properties(root, "schemaVersion", "hostId", "stateDirectory", "storageBackend",
-            "binding", "serviceUid", "serviceGid");
+        var relay = root.ValueKind == JsonValueKind.Object && root.TryGetProperty("audio2face", out _);
+        StrictJson.Properties(root, relay
+            ? ["schemaVersion", "hostId", "stateDirectory", "storageBackend", "binding", "serviceUid", "serviceGid", "audio2face"]
+            : ["schemaVersion", "hostId", "stateDirectory", "storageBackend", "binding", "serviceUid", "serviceGid"]);
         if (StrictJson.Number(root, "schemaVersion") != 1 || StrictJson.Text(root, "storageBackend") != Backend)
             throw new HostInputException();
         var id = StrictJson.Text(root, "hostId");
@@ -45,7 +48,20 @@ internal sealed record HostConfiguration(string HostId, string StateDirectory,
         }
         catch (GatewayProtocolException) { throw new HostInputException(); }
         catch (GatewayPersistenceException) { throw new HostInputException(); }
-        return new(id, state, selected, uid, gid, Convert.ToHexStringLower(SHA256.HashData(bytes)));
+        Uri? endpoint = null;
+        string? model = null;
+        if (relay)
+        {
+            // Optional Audio2Face relay: the host's own loopback NIM, never a LAN or remote address.
+            var section = root.GetProperty("audio2face");
+            StrictJson.Properties(section, "endpoint", "model");
+            model = StrictJson.Text(section, "model");
+            if (!Identifier(model) || !Uri.TryCreate(StrictJson.Text(section, "endpoint"), UriKind.Absolute, out endpoint))
+                throw new HostInputException();
+            try { new Martlet.Avatar.Audio2Face.Audio2FaceOptions { Endpoint = endpoint }.Validate(); }
+            catch (ArgumentException) { throw new HostInputException(); }
+        }
+        return new(id, state, selected, uid, gid, Convert.ToHexStringLower(SHA256.HashData(bytes)), endpoint, model);
     }
 
     internal static bool Identifier(string text) => text is { Length: > 0 and <= 64 } &&

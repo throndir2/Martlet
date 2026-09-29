@@ -1,0 +1,58 @@
+# Martlet Audio2Face host service (NVIDIA Audio2Face-3D NIM), loopback-only behind the Martlet gateway.
+# Adapted from NVIDIA Audio2Face-3D-Samples quick-start/docker-compose.yml at commit
+# a2d0150043be7dc15db2fad8193a78b660e1100f (SPDX-License-Identifier: Apache-2.0, Copyright (c) 2024 NVIDIA
+# CORPORATION & AFFILIATES). Changes: NGC key from a private file secret, restart policy, Martlet naming.
+# install.sh copies this file with configs/ into the project directory and rewrites the deployment
+# config so the gRPC service listens only on 127.0.0.1:52000 (host network). Use of the NIM and its
+# models is subject to NVIDIA's terms, accepted by the operator with their own NGC account.
+
+name: martlet-audio2face
+
+services:
+  a2f-3d-init:
+    image: nvcr.io/nim/nvidia/audio2face-3d:1.3
+    secrets:
+      - ngc_api_key
+    working_dir: /opt/nvidia/a2f_pipeline
+    entrypoint: >
+      sh -c "./service/generate_trt_models.py --stylization-config /mnt/configs/${A2F_3D_MODEL_NAME:-claire}_stylization_config.yaml --advanced-config /mnt/configs/advanced_config.yaml"
+    volumes:
+      - ./a2f-3d-init-data:/tmp/a2x/
+      - ./configs/:/mnt/configs/:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+
+  a2f-3d-service:
+    image: nvcr.io/nim/nvidia/audio2face-3d:1.3
+    restart: unless-stopped
+    secrets:
+      - ngc_api_key
+    depends_on:
+      a2f-3d-init:
+        condition: service_completed_successfully
+    entrypoint: a2f_pipeline.run --stylization-config /mnt/configs/${A2F_3D_MODEL_NAME:-claire}_stylization_config.yaml --deployment-config /mnt/configs/deployment_config.yaml --advanced-config /mnt/configs/advanced_config.yaml
+    environment:
+      LD_LIBRARY_PATH: /usr/local/lib/:/root/.local/lib/
+      USE_NEW_NVSTREAMMUX: yes
+      NIM_DISABLE_MODEL_DOWNLOAD: true
+      NIM_SKIP_A2F_START: true
+    volumes:
+      - ./a2f-3d-init-data:/tmp/a2x/
+      - ./configs/:/mnt/configs/:ro
+    network_mode: "host"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+
+secrets:
+  ngc_api_key:
+    file: ${NGC_API_KEY_FILE:?install.sh sets the private NGC key file}
