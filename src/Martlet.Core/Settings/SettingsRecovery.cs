@@ -149,7 +149,7 @@ public sealed partial class SettingsStore
         var currentPairings = (current.Setup?.RetainedGatewayCredentials ?? []).Concat(
             (current.Setup?.Routes ?? []).Where(route =>
                 route.CredentialId is not null &&
-                route.RouteType is SetupRouteType.GatewayOllama or SetupRouteType.GatewayF5)
+                SelfHostSetup.IsGateway(route.RouteType))
             .Select(RetainedGatewayCredential.From)).ToArray();
         var routes = restored.Setup!.Routes.Select(route =>
         {
@@ -163,7 +163,9 @@ public sealed partial class SettingsStore
         }).ToArray();
         var attached = routes.Where(route => route.CredentialId is not null)
             .Select(route => route.CredentialId!.Value).ToHashSet();
-        var retained = currentPairings.Where(item => !attached.Contains(item.CredentialId)).ToArray();
+        // Roles on the same paired host share one device credential; retain it once.
+        var retained = currentPairings.Where(item => !attached.Contains(item.CredentialId))
+            .DistinctBy(item => item.CredentialId).ToArray();
         if (retained.Length > SetupSettings.MaximumRetainedGatewayCredentials)
             throw new RecoveryException(RecoveryFailure.CleanupCapacity);
         var pending = (current.Setup?.PendingRemovals ?? []).Concat(
@@ -332,10 +334,10 @@ public sealed partial class SettingsStore
             throw new RecoveryException(RecoveryFailure.Conflict);
         var owned = (current.Setup?.RetainedGatewayCredentials ?? []).Concat(
             (current.Setup?.Routes ?? []).Where(route => route.CredentialId is not null &&
-                route.RouteType is SetupRouteType.GatewayOllama or SetupRouteType.GatewayF5)
+                SelfHostSetup.IsGateway(route.RouteType))
             .Select(RetainedGatewayCredential.From)).ToArray();
         foreach (var route in settings.Setup!.Routes.Where(route =>
-            route.RouteType is SetupRouteType.GatewayOllama or SetupRouteType.GatewayF5 or SetupRouteType.LocalWhisper or
+            SelfHostSetup.IsGateway(route.RouteType) || route.RouteType is SetupRouteType.LocalWhisper or
                 SetupRouteType.ChatCompletions or SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWindowsTts))
         {
             if (route.Enabled != false || route.Consent is not null || route.GatewaySnapshot is not null ||

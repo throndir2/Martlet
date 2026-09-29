@@ -11,33 +11,24 @@ using Martlet.Providers;
 
 namespace Martlet.Desktop;
 
-/// <summary>A gateway route's credential reference for a paired host is its pairing credential ID (16 random bytes): the
-/// device secret stays where pairing saved it in Windows Credential Manager, never copied. The LLM route uses the ID's
-/// bytes as they are; other roles use a fixed per-role mask, so thinking and speaking handed to the same host keep
-/// distinct references (settings never share one credential across role policies) that map back to the same pairing.</summary>
+/// <summary>A host route's credential reference for a paired host is its pairing credential ID (16 random bytes), shared by
+/// every job handed to that host: the device secret stays where pairing saved it in Windows Credential Manager, never copied.</summary>
 internal static class HostPairingCredential
 {
-    internal static Guid ToGuid(string credentialId, SetupRole role = SetupRole.Llm)
+    internal static Guid ToGuid(string credentialId)
     {
         var bytes = new byte[16];
         try
         {
             if (credentialId.Length == 22 && Base64Url.DecodeFromChars(credentialId, bytes) == 16 &&
                 Base64Url.EncodeToString(bytes) == credentialId)
-                return new Guid(Mask(bytes, role));
+                return new Guid(bytes);
         }
         catch (FormatException) { }
         throw new InvalidOperationException("The saved host credential reference is invalid; pair again.");
     }
 
-    internal static string FromGuid(Guid id, SetupRole role = SetupRole.Llm) => Base64Url.EncodeToString(Mask(id.ToByteArray(), role));
-
-    private static byte[] Mask(byte[] bytes, SetupRole role)
-    {
-        var mask = role switch { SetupRole.Llm => (byte)0, SetupRole.Tts => (byte)0x5a, _ => (byte)0xa5 };
-        for (var i = 0; i < bytes.Length; i++) bytes[i] ^= mask;
-        return bytes;
-    }
+    internal static string FromGuid(Guid id) => Base64Url.EncodeToString(id.ToByteArray());
 }
 
 /// <summary>Streams replies from a paired host's Ollama through its pinned gateway, reading the pairing secret from
@@ -60,7 +51,7 @@ internal sealed class HostTextClient : IHostTextClient
             yield return deltas.Current;
     }
 
-    private static Audio2FaceHostConnection Connect(HostTextTarget target)
+    internal static Audio2FaceHostConnection Connect(HostTextTarget target)
     {
         var credentialId = HostPairingCredential.FromGuid(target.CredentialId);
         using var read = new WindowsCredentialStore().ReadAvatarHostSecret(target.HostId, credentialId);

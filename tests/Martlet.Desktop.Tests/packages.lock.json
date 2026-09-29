@@ -183,6 +183,7 @@
           "Martlet.Conversation": "[0.3.0, )",
           "Martlet.Credentials.Windows": "[0.3.0, )",
           "Martlet.Diagnostics": "[0.3.0, )",
+          "Martlet.F5": "[0.3.0, )",
           "Martlet.Memory": "[0.3.0, )",
           "Martlet.Participation": "[0.3.0, )",
           "Martlet.Support": "[0.3.0, )",
@@ -201,6 +202,12 @@
         "dependencies": {
           "Martlet.Audio": "[0.3.0, )",
           "Martlet.Diagnostics": "[0.3.0, )"
+        }
+      },
+      "martlet.f5": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Core": "[0.3.0, )"
         }
       },
       "martlet.fixtures": {

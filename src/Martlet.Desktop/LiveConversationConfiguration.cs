@@ -76,12 +76,17 @@ internal sealed class LiveConversationConfiguration
     }
 
     /// <summary>The paired Martlet host whose Ollama answers, when Thinking was handed to a host on the Devices page.</summary>
-    internal HostTextTarget? HostTarget()
-    {
-        var route = Route(SetupRole.Llm);
-        return IsHost(route) && route.Gateway is { } gateway && route.GatewayDeviceId is { } device && route.CredentialId is { } credential
+    internal HostTextTarget? HostTarget() => Target(Route(SetupRole.Llm), SetupRouteType.GatewayOllama);
+
+    /// <summary>The paired Martlet host whose whisper transcribes, when Listening was handed to a host on the Devices page.</summary>
+    internal HostTextTarget? SttHostTarget() => Target(Route(SetupRole.Stt), SetupRouteType.GatewayStt);
+
+    private static HostTextTarget? Target(SetupRoute route, SetupRouteType routeType) =>
+        route.RouteType == routeType && route.Gateway is { } gateway &&
+        route.GatewayDeviceId is { } device && route.CredentialId is { } credential
             ? new(gateway.Origin, gateway.HostId, gateway.SpkiFingerprint, device, credential) : null;
-    }
+
+    private static bool IsHostStt(SetupRoute? route) => route?.RouteType == SetupRouteType.GatewayStt;
 
     /// <summary>The paired Martlet host whose F5 voice speaks, when Speaking was handed to a host on the Devices page.</summary>
     internal HostSpeechTarget? HostSpeechTarget()
@@ -140,10 +145,18 @@ internal sealed class LiveConversationConfiguration
                     return $"{role}: missing credential reference. Store your {named.Name} API key explicitly in Setup.";
                 continue;
             }
+            if (role == SetupRole.Stt && IsHostStt(route) && route.Enabled == true)
+            {
+                if (route.Consent != route.Selection()) return $"{role}: destination choice missing or changed. Hand listening to your host again on the Devices page.";
+                if (SttHostTarget() is null || route.GatewaySnapshot is null)
+                    return $"{role}: the Martlet host pairing or its speech-to-text route is incomplete. Hand listening to your host again on the Devices page.";
+                continue;
+            }
             if (route.RouteType is not (null or SetupRouteType.OpenAi) || route.Enabled == false)
                 return $"{role}: this Desktop build supports enabled OpenAI routes only" +
-                    (role == SetupRole.Llm ? " (or an enabled OpenRouter, NVIDIA Build or OpenAI-compatible Chat Completions LLM route, or Ollama on a paired Martlet host)" : "") +
-                    (role == SetupRole.Tts ? " (or F5 on a paired Martlet host)" : "") +
+                    (role == SetupRole.Llm ? " (or an enabled OpenRouter, NVIDIA Build or OpenAI-compatible Chat Completions LLM route, or Ollama on a paired Martlet host)"
+                        : role == SetupRole.Stt ? " (or whisper on a paired Martlet host)"
+                        : role == SetupRole.Tts ? " (or F5 on a paired Martlet host)" : "") +
                     "; the saved self-host choice is retained, not dispatched.";
             if (route.Consent != route.Selection()) return $"{role}: destination choice missing or changed. Review it in Setup.";
             if (route.CredentialId is null) return $"{role}: missing credential reference. Store a key explicitly in Setup.";
@@ -166,7 +179,8 @@ internal sealed class LiveConversationConfiguration
         {
             var route = Routes.SingleOrDefault(r => r.Role == role);
             // Chat Completions and Martlet host model IDs are validated ASCII identifiers; OpenAI ones must be catalog-approved.
-            if (role == SetupRole.Llm && (IsChat(route) || IsHost(route))) return route!.ModelId;
+            if (role == SetupRole.Llm && (IsChat(route) || IsHost(route)) || role == SetupRole.Stt && IsHostStt(route))
+                return route!.ModelId;
             // Only catalog-approved identifiers may appear here, never arbitrary entered model/voice strings.
             bool supported = role switch
             {
@@ -180,6 +194,8 @@ internal sealed class LiveConversationConfiguration
         }
         var llm = Routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
         var chat = IsChat(llm);
+        var stt = Routes.SingleOrDefault(r => r.Role == SetupRole.Stt);
+        var sttHost = IsHostStt(stt) && stt!.Gateway is { } sttGateway ? sttGateway : null;
         string SpeechDisclosure()
         {
             var tts = Routes.SingleOrDefault(r => r.Role == SetupRole.Tts);
@@ -200,7 +216,10 @@ internal sealed class LiveConversationConfiguration
                     ? "NVIDIA Build hosts the selected model; rate limits, credits and model availability are set by NVIDIA. "
                     : "The endpoint's operator controls processing, retention and cost. ") +
                 "Reasoning/thinking traces are never spoken or shown, but count toward the reply token budget.\n") +
-            $"PTT audio -> STT (only with separate local capture AND upload permission): {OpenAiSetup.Origin}, {Selection(SetupRole.Stt)}.\n" +
+            (sttHost is null
+                ? $"PTT audio -> STT (only with separate local capture AND upload permission): {OpenAiSetup.Origin}, {Selection(SetupRole.Stt)}.\n"
+                : $"PTT and hands-free audio -> STT (only with separate local capture AND upload permission): your Martlet host {sttHost.HostId} ({sttHost.Origin}, whisper, pinned TLS), {Selection(SetupRole.Stt)}. " +
+                    "Your recorded speech goes only to that paired computer over its pinned TLS gateway and is transcribed in memory there, not stored; no cloud provider receives it and there is no per-request charge.\n") +
             (voice ? SpeechDisclosure() + $" AI-generated voice, not a human. Output: {Audio?.Output.DisplayName ?? "not selected"}; fixed at start, no fallback.\n"
                 : "Text-only: NO TTS requests and NO output device. Voice is separately selected.\n") +
             "One action expires within 150 s, including scheduling, recording and authorization. PTT: <=25 s, mono 16 kHz PCM16, <=800,000 PCM bytes; original local permission <=30 s including cleanup/transfer. STT: <=1 request, <=800,044 WAV bytes, <=30 s, <=4096 transcript characters.\n" +

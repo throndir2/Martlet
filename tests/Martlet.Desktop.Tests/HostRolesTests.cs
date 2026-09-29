@@ -41,7 +41,7 @@ public sealed class HostRolesTests
         var checks = new Dictionary<string, HostCheck>
         {
             ["gpu-a"] = new(true, "Reachable. Runs Audio2Face (model claire).",
-                new Dictionary<string, string> { ["audio2face"] = "claire", ["ollama"] = "llama3.2-3b" }),
+                new Dictionary<string, string> { ["audio2face"] = "claire", ["ollama"] = "llama3.2-3b", ["stt"] = "small" }),
             ["gpu-b"] = new(true, "Reachable. Not running Audio2Face.", new Dictionary<string, string>())
         };
         var avatar = scope.Profile() with { RemoteHost = hosts[1].Pairing };
@@ -54,6 +54,9 @@ public sealed class HostRolesTests
         Assert.Contains(a.Commands, c => c.Action == NodeAction.RemoveRole && c.Argument == "gpu-a/audio2face");
         Assert.Contains(a.Roles, r => r.Chip == "Thinks" && r.Detail.Contains("llama3.2-3b", StringComparison.Ordinal));
         Assert.Contains(a.Commands, c => c.Action == NodeAction.UseForThinking && c.Argument == "gpu-a" && c.Primary);
+        Assert.Contains(a.Roles, r => r.Chip == "Listens" && r.Detail.Contains("small", StringComparison.Ordinal));
+        Assert.Contains(a.Commands, c => c.Action == NodeAction.UseForListening && c.Argument == "gpu-a" && c.Primary);
+        Assert.Contains(b.Commands, c => c.Action == NodeAction.InstallRole && c.Argument == "gpu-b/stt");
         Assert.Contains(b.Commands, c => c.Action == NodeAction.InstallRole && c.Argument == "gpu-b/ollama");
         Assert.Contains(b.Roles, r => r.Chip == "Lip-sync" && r.Detail.StartsWith("In charge", StringComparison.Ordinal));
         Assert.DoesNotContain(b.Commands, c => c.Action == NodeAction.UseForLipSync);

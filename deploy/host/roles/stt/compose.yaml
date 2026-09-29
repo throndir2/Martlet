@@ -1,0 +1,44 @@
+# Martlet speech-to-text host service (the bot's hearing), loopback-only behind the Martlet gateway.
+# Official whisper.cpp server image (MIT), pinned to release v1.9.4 (this CPU build; compose.gpu.yaml switches to the
+# CUDA build of the same release). On its first start it downloads the chosen ggml model from Hugging Face at a pinned
+# revision into the Martlet-managed martlet-stt-models volume and checks its SHA-256 (kept on re-add), then serves only
+# on 127.0.0.1:8178 (host loopback natively, the gateway's network namespace in Docker mode); the Martlet gateway is the
+# single LAN entry point. Utterances are transcribed in memory; nothing is written to disk.
+
+services:
+  stt:
+    image: ghcr.io/ggml-org/whisper.cpp:main-927cfce34f31707e17f2bff35c349632fb9e2c3a
+    restart: unless-stopped
+    environment:
+      STT_MODEL: ${STT_MODEL:?set by martlet-host}
+    volumes:
+      - models:/models
+    network_mode: ${MARTLET_ROLE_NETWORK:?set by martlet-host}
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        set -euo pipefail
+        case "$$STT_MODEL" in
+          base) sum=60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe ;;
+          small) sum=1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b ;;
+          medium) sum=6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208 ;;
+          large-v3-turbo) sum=1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69 ;;
+          *) echo "Unknown speech-to-text model: $$STT_MODEL" >&2; exit 1 ;;
+        esac
+        model="/models/ggml-$$STT_MODEL.bin"
+        if [ "$$(cat "$$model.sha256" 2>/dev/null || true)" != "$$sum" ] || [ ! -s "$$model" ]; then
+          echo "Downloading the whisper $$STT_MODEL model (once)..."
+          curl -fL --retry 3 --no-progress-meter -o "$$model.part" \
+            "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-$$STT_MODEL.bin"
+          if ! echo "$$sum  $$model.part" | sha256sum -c --status; then
+            rm -f "$$model.part"; echo "The downloaded model does not match its pinned SHA-256." >&2; exit 1
+          fi
+          mv "$$model.part" "$$model"
+          echo "$$sum" > "$$model.sha256"
+        fi
+        threads=$$(nproc); if [ "$$threads" -gt 8 ]; then threads=8; fi
+        exec /app/build/bin/whisper-server --host 127.0.0.1 --port 8178 -m "$$model" -l auto -t "$$threads" --suppress-nst
+
+volumes:
+  models:
+    name: martlet-stt-models

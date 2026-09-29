@@ -426,16 +426,16 @@ internal static partial class HostPower
         return sent;
     }
 
-    internal static string HostOf(string sshTarget) => sshTarget[(sshTarget.IndexOf('@') + 1)..];
-
-    internal static async Task<bool> SshAnswersAsync(string host, CancellationToken token)
+    /// <summary>Whether the SSH server of <paramref name="sshTarget"/> (user@computer[:port]) accepts a TCP connection.</summary>
+    internal static async Task<bool> SshAnswersAsync(string sshTarget, CancellationToken token)
     {
+        var target = HostShellTarget.Parse(sshTarget);
         using var client = new TcpClient();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
         timeout.CancelAfter(TimeSpan.FromSeconds(3));
         try
         {
-            await client.ConnectAsync(host, 22, timeout.Token);
+            await client.ConnectAsync(target.Host, target.Port, timeout.Token);
             return true;
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested) { return false; }
@@ -443,24 +443,24 @@ internal static partial class HostPower
     }
 
     /// <summary>Waits until SSH stops answering (the computer went down), up to <paramref name="limit"/>.</summary>
-    internal static async Task<bool> WaitDownAsync(string host, TimeSpan limit, CancellationToken token)
+    internal static async Task<bool> WaitDownAsync(string sshTarget, TimeSpan limit, CancellationToken token)
     {
         var until = DateTime.UtcNow + limit;
         while (DateTime.UtcNow < until)
         {
-            if (!await SshAnswersAsync(host, token)) return true;
+            if (!await SshAnswersAsync(sshTarget, token)) return true;
             await Task.Delay(TimeSpan.FromSeconds(2), token);
         }
         return false;
     }
 
     /// <summary>Waits until SSH answers again, up to <paramref name="limit"/>.</summary>
-    internal static async Task<bool> WaitUpAsync(string host, TimeSpan limit, CancellationToken token)
+    internal static async Task<bool> WaitUpAsync(string sshTarget, TimeSpan limit, CancellationToken token)
     {
         var until = DateTime.UtcNow + limit;
         while (DateTime.UtcNow < until)
         {
-            if (await SshAnswersAsync(host, token)) return true;
+            if (await SshAnswersAsync(sshTarget, token)) return true;
             await Task.Delay(TimeSpan.FromSeconds(3), token);
         }
         return false;

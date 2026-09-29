@@ -106,13 +106,13 @@ internal sealed class Harness : IAsyncDisposable
     internal FixturePermissions Permissions { get; }
     internal ConversationRuntime Runtime { get; }
     internal Harness(ControlledDevice? device = null, PlaybackOptions? playback = null, bool textOnly = false,
-        GeneratedSpeechObserver? generatedSpeech = null)
+        GeneratedSpeechObserver? generatedSpeech = null, IHostSpeechClient? hostSpeech = null)
     {
         Device = device ?? new();
         Permissions = new(Clock);
         Runtime = ConversationRuntime.ForFixture(OpenAiTextGenerationAdapter.CreateForFixture(Llm, Credentials, Clock),
             textOnly ? null : OpenAiSpeechSynthesisAdapter.CreateForFixture(Tts, Credentials, Clock),
-            textOnly ? null : Device, playback ?? new(), Clock, generatedSpeech);
+            textOnly ? null : Device, playback ?? new(), Clock, generatedSpeech, hostSpeech: hostSpeech);
     }
     internal static SpeechSynthesisLimits SpeechLimits => new()
     {

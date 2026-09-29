@@ -76,5 +76,6 @@ public sealed class BoundedWaveAudio
     }
 
     internal HttpContent CreateContent() => new ByteArrayContent(wave);
+    internal ReadOnlyMemory<byte> Pcm => wave.AsMemory(44);
     public override string ToString() => nameof(BoundedWaveAudio);
 }

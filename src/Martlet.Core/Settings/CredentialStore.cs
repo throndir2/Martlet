@@ -52,11 +52,9 @@ public sealed record CredentialBinding(
                 "OpenAI credential use is limited to the selected origin and role.");
             return;
         }
-        ContractRules.Require(RouteType is SetupRouteType.GatewayOllama or SetupRouteType.GatewayF5 &&
-            ProviderAlias == (RouteType == SetupRouteType.GatewayOllama
-                ? SelfHostSetup.GatewayOllamaAlias
-                : SelfHostSetup.GatewayF5Alias) &&
-            Role == (RouteType == SetupRouteType.GatewayOllama ? SetupRole.Llm : SetupRole.Tts),
+        ContractRules.Require(SelfHostSetup.IsGateway(RouteType) &&
+            ProviderAlias == SelfHostSetup.Gateway(RouteType).Alias &&
+            Role == SelfHostSetup.Gateway(RouteType).Role,
             "A gateway credential is limited to its named inference route.");
         SelfHostSetup.Identifier(DeviceId, 64);
         new GatewayEndpointSettings

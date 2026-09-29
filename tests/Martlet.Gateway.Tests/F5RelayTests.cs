@@ -202,7 +202,9 @@ public sealed class F5RelayTests
     {
         if (Environment.GetEnvironmentVariable("MARTLET_F5_LIVE_ENDPOINT") is not { Length: > 0 } endpoint) return;
         await using var worker = new F5RelayWorker(new Uri(endpoint), FixtureModel, FixtureRevision, FixtureSha256);
-        await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [worker]);
+        // The real worker checks deadlines against the real clock.
+        await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [worker],
+            clock: new ManualGatewayClock(DateTimeOffset.UtcNow));
         var (connection, route) = await ConnectAsync(host);
         using var owned = connection;
         var samples = 0;

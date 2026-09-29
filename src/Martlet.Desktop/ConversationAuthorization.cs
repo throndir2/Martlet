@@ -156,6 +156,8 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
         // A paired Martlet host is bound to its exact pinned gateway origin and model.
         if (role == SetupRole.Llm && Configuration.HostTarget() is { } host)
             return HostTextGenerationStream.Binding(host, Configuration.TextSelection());
+        if (role == SetupRole.Stt && Configuration.SttHostTarget() is { } listener)
+            return HostTranscriptionAdapter.Binding(listener, route.ModelId);
         if (role == SetupRole.Tts && Configuration.HostSpeechTarget() is { } voiceHost)
             return HostSpeechSynthesisStream.Binding(voiceHost);
         // A Chat Completions key is bound to the exact saved API base URL, never to api.openai.com.

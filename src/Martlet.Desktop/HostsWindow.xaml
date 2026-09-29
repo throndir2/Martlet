@@ -171,7 +171,7 @@
                                 <TextBlock Text="More roles" FontSize="17" FontWeight="SemiBold"/>
                             </DockPanel>
                             <TextBlock Style="{DynamicResource Muted}" Margin="0,4,0,0"
-                                       Text="Speech-to-text (whisper) and screen understanding plug into the same flow next, each with its own gateway relay."/>
+                                       Text="Screen understanding plugs into the same flow next, with its own gateway relay."/>
                         </StackPanel>
                     </Border>
                 </StackPanel>

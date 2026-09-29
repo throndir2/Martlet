@@ -8,10 +8,11 @@ are reused. The Windows `Martlet.Gateway.Host` CLI is unchanged.
 
 **No workers are registered** unless `host.json` lists host **roles**. Every
 role is declared the same way and maps to one gateway relay worker for a service
-on this host's own numeric HTTP loopback (`ollama`, `f5` and `audio2face` exist today):
+on this host's own numeric HTTP loopback (`ollama`, `stt`, `f5` and `audio2face` exist today):
 
 ```json
 "roles": [ { "kind": "ollama", "endpoint": "http://127.0.0.1:11434/", "model": "llama3.2:3b" },
+           { "kind": "stt", "endpoint": "http://127.0.0.1:8178/", "model": "small" },
            { "kind": "f5", "endpoint": "http://127.0.0.1:50080/", "model": "f5tts-v1-base" },
            { "kind": "audio2face", "endpoint": "http://127.0.0.1:52000/", "model": "claire" } ]
 ```

@@ -89,6 +89,8 @@ internal static class GatewayInferenceJson
                     ParsePerception(fields["payload"], route, now),
                 GatewayInferenceKind.Audio2Face =>
                     ParseAudio2Face(fields["payload"], route),
+                GatewayInferenceKind.Transcription =>
+                    ParseTranscription(fields["payload"], route),
                 _ => throw new GatewayProtocolException("request.invalid")
             };
             return new(
@@ -463,6 +465,25 @@ internal static class GatewayInferenceJson
                 ? "request.too_large" : "request.invalid");
         }
         return new(sampleRate, pcm);
+    }
+
+    private static GatewayTranscriptionPayload ParseTranscription(
+        JsonElement element,
+        GatewayInferenceRoute route)
+    {
+        var fields = Object(element, ["sample_rate", "pcm_base64"], []);
+        GatewayRules.Require(Integer(fields, "sample_rate", 8_000, 48_000) ==
+            GatewayInferenceRoute.TranscriptionSampleRate, "request.invalid");
+        var encoded = Text(fields, "pcm_base64", ((route.MaximumInputBytes + 2) / 3) * 4);
+        var pcm = Convert.FromBase64String(encoded);
+        if (Convert.ToBase64String(pcm) != encoded || pcm.Length is 0 ||
+            pcm.Length % 2 != 0 || pcm.Length > route.MaximumInputBytes)
+        {
+            CryptographicOperations.ZeroMemory(pcm);
+            throw new GatewayProtocolException(pcm.Length > route.MaximumInputBytes
+                ? "request.too_large" : "request.invalid");
+        }
+        return new(GatewayInferenceRoute.TranscriptionSampleRate, pcm);
     }
 
     private static void ValidateF5Wave(ReadOnlySpan<byte> bytes)

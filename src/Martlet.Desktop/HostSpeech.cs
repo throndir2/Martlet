@@ -86,7 +86,7 @@ internal sealed class HostSpeechClient(string dataDirectory) : IHostSpeechClient
 
     private static Audio2FaceHostConnection Connect(HostSpeechTarget target)
     {
-        var credentialId = HostPairingCredential.FromGuid(target.CredentialId, SetupRole.Tts);
+        var credentialId = HostPairingCredential.FromGuid(target.CredentialId);
         using var read = new WindowsCredentialStore().ReadAvatarHostSecret(target.HostId, credentialId);
         if (read.Error != CredentialError.None || read.Secret is null)
             throw new HostTextException(ProviderFailureCode.CredentialUnavailable);

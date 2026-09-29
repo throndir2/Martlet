@@ -13,6 +13,7 @@
     <ProjectReference Include="..\..\src\Martlet.Gateway.Audio2Face\Martlet.Gateway.Audio2Face.csproj" />
     <ProjectReference Include="..\..\src\Martlet.Gateway.Ollama\Martlet.Gateway.Ollama.csproj" />
     <ProjectReference Include="..\..\src\Martlet.Gateway.F5\Martlet.Gateway.F5.csproj" />
+    <ProjectReference Include="..\..\src\Martlet.Gateway.Stt\Martlet.Gateway.Stt.csproj" />
     <Compile Include="..\Martlet.Avatar.Audio2Face.Tests\ProtocolFixture.cs" Link="Fixtures\ProtocolFixture.cs" />
     <Using Include="Xunit" />
   </ItemGroup>
