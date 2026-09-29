@@ -10,10 +10,17 @@
     <PackageVersion Include="Microsoft.ML.OnnxRuntime" Version="1.30.0" />
     <PackageVersion Include="Microsoft.ML.OnnxRuntime.Managed" Version="1.30.0" />
     <PackageVersion Include="NAudio.Wasapi" Version="3.1.0" />
+    <PackageVersion Include="SSH.NET" Version="2024.1.0" />
     <PackageVersion Include="System.Speech" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- SSH.NET 2024.1.0 (no dependencies) advisories that affect only ScpClient; Martlet's HostShell never uses SCP and passes
+         data on stdin instead. Review again before using ScpClient or upgrading. -->
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-q939-rpr3-3284" />
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-mggc-4xg6-vcxf" />
   </ItemGroup>
 </Project>

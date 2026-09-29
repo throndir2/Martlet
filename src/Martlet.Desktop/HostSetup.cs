@@ -21,7 +21,7 @@ internal static partial class HostSetupCommands
     internal const string Repository = "https://github.com/throndir2/Martlet.git";
     internal const string DockerSocket = "/var/run/docker.sock:/var/run/docker.sock";
 
-    [GeneratedRegex(@"\A(?:[A-Za-z0-9._-]{1,64}@)?[A-Za-z0-9][A-Za-z0-9.-]{0,252}\z")]
+    [GeneratedRegex(@"\A(?:[A-Za-z0-9._-]{1,64}@)?[A-Za-z0-9][A-Za-z0-9.-]{0,252}(?::[0-9]{1,5})?\z")]
     private static partial Regex SshTargetPattern();
 
     [GeneratedRegex(@"\A[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}\z")]
@@ -50,65 +50,77 @@ internal static partial class HostSetupCommands
 
     internal static string Image(HostSetupTarget target) => $"martlet-host:{target.Version}";
 
-    /// <summary>POSIX shell for a Docker host: build the image once from this version's source, then run the engine.</summary>
-    internal static string DockerShell(HostSetupTarget target, HostAction action)
+    /// <summary>POSIX shell for a Docker host: build the image once from this version's source, then run the engine
+    /// (interactively in a terminal; see <see cref="RemoteShell"/> for Martlet's unattended SSH runs).</summary>
+    internal static string DockerShell(HostSetupTarget target, HostAction action) =>
+        DockerShell(target, Engine(action), action == HostAction.Setup, unattended: false);
+
+    private static string DockerShell(HostSetupTarget target, string engine, bool setup, bool unattended)
     {
         var image = Image(target);
         var build = $"$D build -t {image} -f deploy/host/Dockerfile {Repository}#";
+        var run = unattended ? "-i --log-driver none" : "-it";
         return "D=docker; docker info >/dev/null 2>&1 || D='sudo docker'; " +
             $"($D image inspect {image} >/dev/null 2>&1 || {build}v{target.Version} || {build}main) && " +
-            $"$D run --rm -it -u 0 -v {DockerSocket}{Environment(target, action)} {image} {Engine(action)}";
+            $"$D run --rm {run} -u 0 -v {DockerSocket}{Environment(target, setup)} {image} {(unattended ? "--yes " : "")}{engine}";
     }
 
     /// <summary>POSIX shell for a native Ubuntu host: keep a Martlet checkout in ~/Martlet and run its engine.</summary>
-    internal static string NativeShell(HostSetupTarget target, HostAction action)
+    internal static string NativeShell(HostSetupTarget target, HostAction action) =>
+        NativeShell(target, Engine(action), action == HostAction.Setup, unattended: false);
+
+    private static string NativeShell(HostSetupTarget target, string engine, bool setup, bool unattended)
     {
-        var prefix = action == HostAction.Setup ? $"MARTLET_HOST_ADDRESS={target.Address} " : "";
-        return "command -v git >/dev/null 2>&1 || (sudo apt-get update -q && sudo apt-get install -y git); " +
-            $"test -d ~/Martlet/.git || git clone --depth 1 {Repository} ~/Martlet; git -C ~/Martlet pull --ff-only -q || true; " +
-            $"{prefix}~/Martlet/deploy/host/martlet-host {Engine(action)}";
+        var prefix = setup ? $"MARTLET_HOST_ADDRESS={target.Address} " : "";
+        var quiet = unattended ? " </dev/null" : "";
+        return $"(command -v git >/dev/null 2>&1 || (sudo apt-get update -q && sudo apt-get install -y git)){quiet}; " +
+            $"(test -d ~/Martlet/.git || git clone --depth 1 {Repository} ~/Martlet){quiet}; git -C ~/Martlet pull --ff-only -q{quiet} || true; " +
+            $"{prefix}~/Martlet/deploy/host/martlet-host {(unattended ? "--yes " : "")}{engine}";
     }
 
-    private static string Environment(HostSetupTarget target, HostAction action)
+    /// <summary>The POSIX shell Martlet's SSH runner (<see cref="HostShell"/>) executes for one martlet-host command
+    /// (for example "status", "add audio2face" or "pair --device-id ... --name ..."): unattended (--yes, no terminal),
+    /// with answers read from stdin. The owner's click in Martlet is the confirmation.</summary>
+    internal static string RemoteShell(HostSetupTarget target, string engine, bool setup)
     {
-        if (action != HostAction.Setup) return "";
+        Validate(target, setup ? HostAction.Setup : HostAction.Status);
+        return target.Method switch
+        {
+            HostSetupMethod.SshDocker => DockerShell(target, engine, setup, unattended: true),
+            HostSetupMethod.SshNative => NativeShell(target, engine, setup, unattended: true),
+            _ => throw new InvalidOperationException("Only SSH hosts run through Martlet's SSH runner.")
+        };
+    }
+
+    private static string Environment(HostSetupTarget target, bool setup)
+    {
+        if (!setup) return "";
         var text = $" -e MARTLET_HOST_ADDRESS={target.Address}";
         return target.HostId is { } id ? text + $" -e MARTLET_HOST_ID={id}" : text;
     }
 
-    /// <summary>The Windows command script a launcher opens in a console window.</summary>
+    /// <summary>The Windows command script a launcher opens in a console window (this PC with Docker Desktop only; SSH
+    /// hosts run in-app through <see cref="HostShell"/>).</summary>
     internal static string Script(HostSetupTarget target, HostAction action)
     {
         Validate(target, action);
+        if (target.Method != HostSetupMethod.ThisPcDocker)
+            throw new InvalidOperationException(target.Method == HostSetupMethod.OnHost
+                ? "Run the shown commands on the host itself." : "SSH hosts run inside Martlet, not in a console window.");
         var lines = new StringBuilder("@echo off\r\n");
         lines.Append($"title Martlet host - {Engine(action)}\r\n");
-        switch (target.Method)
-        {
-            case HostSetupMethod.ThisPcDocker:
-                var image = Image(target);
-                var build = $"docker build -t {image} -f deploy/host/Dockerfile {Repository}#";
-                lines.Append("echo Martlet host on this PC (Docker Desktop): ").Append(Engine(action)).Append("\r\n");
-                lines.Append("where docker >NUL 2>&1 || (echo Docker Desktop is not installed. Use Install Docker Desktop in Martlet hosts. & goto :eof)\r\n");
-                lines.Append("docker info >NUL 2>&1 && goto :ready\r\n");
-                lines.Append("echo Starting Docker Desktop. The first start can take a few minutes; accept Docker's terms if it asks.\r\n");
-                lines.Append(DockerDesktopStart);
-                lines.Append("for /l %%i in (1,1,100) do (\r\n  docker info >NUL 2>&1 && goto :ready\r\n  ping -n 4 127.0.0.1 >NUL\r\n)\r\n");
-                lines.Append("echo Docker Desktop is not running yet. When it shows it is running, press the same button again. & goto :eof\r\n");
-                lines.Append(":ready\r\n");
-                lines.Append($"docker image inspect {image} >NUL 2>&1 || {build}v{target.Version} || {build}main\r\n");
-                lines.Append($"docker run --rm -it -u 0 -v {DockerSocket}{Environment(target, action)} {image} {Engine(action)}\r\n");
-                break;
-            case HostSetupMethod.SshDocker:
-                lines.Append($"echo Martlet host {target.SshTarget} (Docker over SSH): {Engine(action)}\r\n");
-                lines.Append($"ssh -t {target.SshTarget} \"{DockerShell(target, action)}\"\r\n");
-                break;
-            case HostSetupMethod.SshNative:
-                lines.Append($"echo Martlet host {target.SshTarget} (Ubuntu over SSH): {Engine(action)}\r\n");
-                lines.Append($"ssh -t {target.SshTarget} \"{NativeShell(target, action)}\"\r\n");
-                break;
-            default:
-                throw new InvalidOperationException("Run the shown commands on the host itself.");
-        }
+        var image = Image(target);
+        var build = $"docker build -t {image} -f deploy/host/Dockerfile {Repository}#";
+        lines.Append("echo Martlet host on this PC (Docker Desktop): ").Append(Engine(action)).Append("\r\n");
+        lines.Append("where docker >NUL 2>&1 || (echo Docker Desktop is not installed. Use Install Docker Desktop in Martlet hosts. & goto :eof)\r\n");
+        lines.Append("docker info >NUL 2>&1 && goto :ready\r\n");
+        lines.Append("echo Starting Docker Desktop. The first start can take a few minutes; accept Docker's terms if it asks.\r\n");
+        lines.Append(DockerDesktopStart);
+        lines.Append("for /l %%i in (1,1,100) do (\r\n  docker info >NUL 2>&1 && goto :ready\r\n  ping -n 4 127.0.0.1 >NUL\r\n)\r\n");
+        lines.Append("echo Docker Desktop is not running yet. When it shows it is running, press the same button again. & goto :eof\r\n");
+        lines.Append(":ready\r\n");
+        lines.Append($"docker image inspect {image} >NUL 2>&1 || {build}v{target.Version} || {build}main\r\n");
+        lines.Append($"docker run --rm -it -u 0 -v {DockerSocket}{Environment(target, action == HostAction.Setup)} {image} {Engine(action)}\r\n");
         lines.Append("echo.\r\necho Finished. You can close this window.\r\n");
         return lines.ToString();
     }
@@ -120,9 +132,12 @@ internal static partial class HostSetupCommands
             "On a Docker host (Linux, or Windows/macOS with Docker Desktop):\r\n  " +
             DockerShell(target, action) + "\r\n\r\nOn Ubuntu without Docker for the gateway (native):\r\n  " +
             NativeShell(target, action),
+        HostSetupMethod.SshDocker or HostSetupMethod.SshNative =>
+            $"Martlet runs this on {target.SshTarget} over SSH (no console; you confirm here):\r\n  " +
+            RemoteShell(target, Engine(action), action == HostAction.Setup),
         _ => string.Join("\r\n", Script(target, action).Split("\r\n")
             .Where(line => line.StartsWith("docker image ", StringComparison.Ordinal) ||
-                line.StartsWith("docker run ", StringComparison.Ordinal) || line.StartsWith("ssh ", StringComparison.Ordinal)))
+                line.StartsWith("docker run ", StringComparison.Ordinal)))
     };
 
     private const string DockerDesktopStart =
@@ -187,7 +202,7 @@ internal static partial class HostSetupCommands
     /// <summary>The LAN address for an SSH target: the literal IP, or its first private IPv4 from DNS.</summary>
     internal static async Task<string?> ResolveAsync(string sshTarget, CancellationToken token)
     {
-        var host = sshTarget[(sshTarget.IndexOf('@') + 1)..];
+        var host = sshTarget[(sshTarget.IndexOf('@') + 1)..].Split(':')[0];
         if (IPAddress.TryParse(host, out var literal)) return IsPrivate(literal) ? literal.ToString() : null;
         try
         {

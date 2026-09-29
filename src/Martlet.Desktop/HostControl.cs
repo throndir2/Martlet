@@ -20,6 +20,8 @@ internal sealed record PairedHost
     public HostSetupMethod Method { get; init; } = HostSetupMethod.OnHost;
     /// <summary>user@computer for the SSH methods.</summary>
     public string? SshTarget { get; init; }
+    /// <summary>The SSH host key Martlet pinned for it ("ssh-ed25519 SHA256:..."); runs refuse a different key.</summary>
+    public string? SshHostKey { get; init; }
 
     [JsonIgnore] public string HostId => Pairing.HostId;
     [JsonIgnore] public string Address => new Uri(Pairing.Origin).Host;
@@ -157,18 +159,20 @@ internal sealed class HostPairings(string dataDirectory, AvatarProfileStore prof
     /// <summary>Saves a new pairing. The first host paired takes over lip-sync unless lip-sync is turned off; later hosts
     /// stand by until you hand them a role on the Devices page. Re-pairing a host keeps its role.</summary>
     internal async Task<(PairedHost Host, bool LipSync)> AddAsync(AvatarRemoteHost pairing, HostSetupMethod method, string? sshTarget,
-        CancellationToken token)
+        CancellationToken token, string? sshHostKey = null)
     {
         var (profile, revision) = await LoadProfileAsync(token);
         var hosts = HostRegistry.Load(dataDirectory, profile.RemoteHost, HostSetupCommands.ThisPcAddress());
         var previous = hosts.FirstOrDefault(h => h.HostId == pairing.HostId);
+        var ssh = method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative;
         var host = new PairedHost
         {
             Pairing = pairing, Method = method,
-            SshTarget = method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative ? sshTarget : null
+            SshTarget = ssh ? sshTarget : null,
+            SshHostKey = ssh ? sshHostKey ?? (previous?.SshTarget == sshTarget ? previous?.SshHostKey : null) : null
         };
         if (previous is not null && method == HostSetupMethod.OnHost)
-            host = host with { Method = previous.Method, SshTarget = previous.SshTarget };
+            host = host with { Method = previous.Method, SshTarget = previous.SshTarget, SshHostKey = previous.SshHostKey };
         HostRegistry.Save(dataDirectory, HostRegistry.Upsert(hosts, host));
         var lipSync = profile.RemoteHost?.HostId == pairing.HostId ||
             profile.RemoteHost is null && profile.LipSync != AvatarLipSync.Loudness && hosts.All(h => h.HostId == pairing.HostId);
@@ -201,10 +205,26 @@ internal sealed class HostPairings(string dataDirectory, AvatarProfileStore prof
         var (hosts, _) = await LoadAsync(token);
         var host = hosts.FirstOrDefault(h => h.HostId == hostId) ?? throw new InvalidOperationException("That host is no longer paired.");
         var ssh = method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative;
-        var updated = host with { Method = method, SshTarget = ssh ? sshTarget?.Trim() : null };
+        var target = ssh ? sshTarget?.Trim() : null;
+        var updated = host with { Method = method, SshTarget = target, SshHostKey = target == host.SshTarget ? host.SshHostKey : null };
         if (ssh) HostSetupCommands.Validate(updated.Target(version), HostAction.Status);
         HostRegistry.Save(dataDirectory, HostRegistry.Upsert(hosts, updated));
         return updated;
+    }
+
+    /// <summary>Forgets the SSH host key saved with every paired host on that computer (after a reinstall).</summary>
+    internal async Task ClearSshHostKeyAsync(HostShellTarget target, CancellationToken token)
+    {
+        var (hosts, _) = await LoadAsync(token);
+        var changed = hosts.Select(h => h.SshHostKey is not null && h.SshTarget is { } ssh &&
+                TryParse(ssh)?.Machine == target.Machine ? h with { SshHostKey = null } : h).ToList();
+        if (!changed.SequenceEqual(hosts)) HostRegistry.Save(dataDirectory, changed);
+
+        static HostShellTarget? TryParse(string text)
+        {
+            try { return HostShellTarget.Parse(text); }
+            catch (InvalidOperationException) { return null; }
+        }
     }
 
     /// <summary>Hands lip-sync to a paired host, to this PC's own Audio2Face service (null) or to nobody (voice loudness).</summary>

@@ -88,8 +88,18 @@ public partial class HostsWindow : ThemedWindow
         NextButton.Content = step == steps.Length - 1 ? "_Done" : "_Next";
         MethodSummaryText.Text = $"Installing on {MethodName(Method)}. " + (Method == HostSetupMethod.OnHost
             ? "Enter the host's address, then run the command shown below in a terminal on that computer."
-            : "Fill in the address, then press Set up host and answer the questions in the console window.");
-        RolesSummaryText.Text = $"Roles are added in the host's console, one at a time, with the same flow for every role. This host runs on {MethodName(Method)}.";
+            : Ssh
+                ? "Enter user@computer and press Add this computer. Martlet asks for that account's password once, adds its own SSH key, " +
+                  "checks Docker, sets the host up and pairs this PC by itself. You never need to log in there."
+                : "Fill in the address, then press Set up host and answer the questions in the console window.");
+        RolesSummaryText.Text = Ssh
+            ? $"Roles install from here over SSH; Martlet asks for what each role needs and shows the progress. This host runs on {MethodName(Method)}."
+            : $"Roles are added in the host's console, one at a time, with the same flow for every role. This host runs on {MethodName(Method)}.";
+        SetupButton.Content = Ssh ? "_Add this computer" : "Set _up host";
+        PairConsoleButton.Content = Ssh ? "_Pair automatically over SSH" : "_Open pairing console";
+        PairConsoleText.Text = Ssh
+            ? "Martlet asks the host for a one-use code over SSH and pairs this PC with it; nothing to type or paste."
+            : "Confirm opening it, type start, then pair with the device ID above and role voice. It shows a code starting with martlet-pair-v1.";
         Scroller.ScrollToTop();
         if (animate) Motion.Enter(steps[step], dx: 28, dy: 0, milliseconds: 280);
     }
@@ -113,7 +123,7 @@ public partial class HostsWindow : ThemedWindow
     private void Method_Changed(object sender, RoutedEventArgs e)
     {
         if (SshPanel is null || AddressText is null) return;
-        var ssh = Method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative;
+        var ssh = Ssh;
         SshPanel.Visibility = ssh ? Visibility.Visible : Visibility.Collapsed;
         DockerPanel.Visibility = Method == HostSetupMethod.ThisPcDocker ? Visibility.Visible : Visibility.Collapsed;
         DockerStateText.Text = MachineInfo.DockerDesktopRunning() ? "Running. You're ready to set up the host."
@@ -143,9 +153,19 @@ public partial class HostsWindow : ThemedWindow
         catch (InvalidOperationException error) { CommandText.Text = error.Message; }
     }
 
+    private bool Ssh => Method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative;
+
+    // The saved host key for this SSH target when it is the paired host being managed.
+    private string? PinnedHostKey => paired is { } host && host.SshTarget == SshTargetText.Text.Trim() ? host.SshHostKey : null;
+
     private void Run(HostAction action)
     {
         ShowCommand(action);
+        if (Ssh)
+        {
+            _ = RunOverSshAsync(action);
+            return;
+        }
         try
         {
             if (Method == HostSetupMethod.OnHost)
@@ -167,6 +187,87 @@ public partial class HostsWindow : ThemedWindow
             StatusText.Text = error.Message;
         }
     }
+
+    /// <summary>SSH hosts run in Martlet: setup and pairing as one flow, other actions in a run window.</summary>
+    private async Task RunOverSshAsync(HostAction action)
+    {
+        if (busy) { StatusText.Text = "Another host action is still finishing."; return; }
+        HostShellTarget ssh;
+        try { ssh = HostShellTarget.Parse(SshTargetText.Text); }
+        catch (InvalidOperationException error) { StatusText.Text = error.Message; return; }
+        busy = true;
+        try
+        {
+            if (action is HostAction.Setup or HostAction.Pair)
+            {
+                var summary = await HostRunWindow.RunAsync(this, action == HostAction.Setup ? $"Add {ssh} to Martlet" : $"Pair with {ssh}",
+                    run => AddLinuxAsync(run, ssh, Method, pair: true, setup: action == HostAction.Setup));
+                if (summary is not null)
+                {
+                    StatusText.Text = summary;
+                    if (action == HostAction.Setup) ShowStep(3);
+                }
+                else StatusText.Text = "Stopped. The run window shows why.";
+                return;
+            }
+            var target = Target() with { HostId = null };
+            var done = await HostSshActions.RunAsync(this, pairings.DataDirectory, target, PinnedHostKey, action);
+            StatusText.Text = done ?? "Stopped. The run window shows why.";
+        }
+        catch (InvalidOperationException error) { StatusText.Text = error.Message; }
+        finally { busy = false; }
+    }
+
+    /// <summary>Add a Linux computer: connect (password once, host key pinned), check Docker, run setup unattended,
+    /// pair automatically and read its machine report. With setup false it only pairs again.</summary>
+    private async Task<string> AddLinuxAsync(HostRunWindow run, HostShellTarget ssh, HostSetupMethod method, bool pair, bool setup)
+    {
+        var remote = new HostRemote(new HostShell(pairings.DataDirectory, run.Prompts));
+        run.Status($"Connecting to {ssh}...");
+        var (probe, hostKey) = await remote.ProbeAsync(ssh, PinnedHostKey, run.Token);
+        run.Output.Report($"{ssh}: {probe.OperatingSystem ?? "Linux"} ({probe.Architecture}), Docker " +
+            (probe.Docker ? probe.DockerAccess ? "ready" : "installed (this account uses it through sudo)" : "not installed") +
+            $", SSH host key {hostKey}.");
+        if (HostRemote.Blocker(method, probe, ssh.ToString()) is { } blocker) throw new InvalidOperationException(blocker);
+        var address = AddressText.Text.Trim();
+        if (!HostSetupCommands.IsPrivate(address))
+            address = probe.Address ?? await HostSetupCommands.ResolveAsync(ssh.ToString(), run.Token) ?? "";
+        if (setup && !HostSetupCommands.IsPrivate(address))
+            throw new InvalidOperationException("Enter the host's private LAN address (10.x, 172.16-31.x or 192.168.x) under Install.");
+        AddressText.Text = address;
+        var target = new HostSetupTarget(method, ssh.ToString(), address, null, version);
+        var sudo = HostRemote.NeedsSudo(method, probe);
+        if (setup)
+        {
+            run.Status($"Setting up the Martlet host on {ssh}. The first time it builds the host image there (a few minutes)...");
+            var result = await remote.RunAsync(target, "setup", true, sudo, null, hostKey, run.Output, run.Token);
+            if (result.ExitCode != 0)
+                throw new InvalidOperationException($"Setup stopped on {ssh} (exit {result.ExitCode}). The output shows why.");
+        }
+        if (!pair) return $"{ssh} is set up.";
+        run.Status($"Pairing this PC with {ssh}...");
+        var device = DeviceIdText.Text.Trim();
+        var (pairing, secret, key) = await remote.PairAsync(target, device, Environment.MachineName, sudo, hostKey, run.Output, run.Token);
+        var host = await SavePairingAsync(pairing, secret, method, ssh.ToString(), key);
+        run.Status($"Reading {host.HostId}'s hardware...");
+        string check;
+        try { check = await CheckAsync(host.Pairing, Hardware, run.Status, run.Token); }
+        catch (InvalidOperationException error) { check = "Its check did not answer yet: " + error.Message; }
+        return $"{host.HostId} is set up and paired. {check} It is on the Devices map; hand it jobs under Who does what.";
+    }
+
+    private async void ResetSshTrust_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
+    {
+        var ssh = HostShellTarget.Parse(SshTargetText.Text);
+        if (!ConfirmationDialog.Confirm(this, $"Forget the SSH host key Martlet pinned for {ssh.Host} and any remembered sudo password? " +
+                "Do this only if that computer was reinstalled; the next connection shows its new key to confirm.", "Reset SSH trust"))
+            return;
+        await new HostShell(pairings.DataDirectory, new HostShellDialogs(this)).ForgetHostKeyAsync(ssh, lifetime.Token);
+        await pairings.ClearSshHostKeyAsync(ssh, lifetime.Token);
+        HostShell.ForgetSudo(ssh);
+        if (paired?.SshTarget is { } current && current == ssh.ToString()) paired = paired with { SshHostKey = null };
+        StatusText.Text = $"Martlet no longer trusts {ssh.Host}'s old SSH host key.";
+    });
 
     private async void Setup_Click(object sender, RoutedEventArgs e)
     {
@@ -267,6 +368,19 @@ public partial class HostsWindow : ThemedWindow
         await pairings.LoadProfileAsync(lifetime.Token);
         var (pairing, secret) = await code.PairAsync(device, lifetime.Token);
         PairingCodeBox.Clear();
+        var host = await SavePairingAsync(pairing, secret, Method, Ssh ? SshTargetText.Text.Trim() : null, PinnedHostKey);
+        StatusText.Text += Ssh || Method == HostSetupMethod.OnHost ? "" : " In the host console press a key, then type stop and confirm.";
+        // The pairing listener is still open, so read what the host is like right away for the map and the advisor.
+        try { StatusText.Text += " " + await CheckAsync(host.Pairing, Hardware, _ => { }, lifetime.Token); }
+        catch (Exception error) when (error is InvalidOperationException or OperationCanceledException) { }
+    });
+
+    /// <summary>Keeps a new pairing: the secret in Windows Credential Manager, the host in hosts.json (with how Martlet
+    /// reaches it and its pinned SSH host key).</summary>
+    private async Task<PairedHost> SavePairingAsync(Audio2FaceHostPairing pairing, string secret, HostSetupMethod method, string? ssh,
+        string? sshHostKey)
+    {
+        await pairings.LoadProfileAsync(lifetime.Token);
         var store = new WindowsCredentialStore();
         using (var lease = new SecretLease(secret))
         {
@@ -278,18 +392,14 @@ public partial class HostsWindow : ThemedWindow
             Origin = pairing.Origin, HostId = pairing.HostId, SpkiFingerprint = pairing.SpkiFingerprint,
             DeviceId = pairing.DeviceId, CredentialId = pairing.CredentialId
         };
-        var ssh = Method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative ? SshTargetText.Text.Trim() : null;
-        var (host, lipSync) = await pairings.AddAsync(remote, Method, ssh, lifetime.Token);
+        var (host, lipSync) = await pairings.AddAsync(remote, method, ssh, lifetime.Token, sshHostKey);
         paired = host;
         ShowPaired((await pairings.LoadAsync(lifetime.Token)).Hosts.Count);
         StatusText.Text = $"Paired with {host.HostId}. " + (lipSync
-            ? "It handles lip-sync when it runs Audio2Face. "
-            : "It stands by; hand it jobs under Who does what on the Devices map. ") +
-            "In the host console press a key, then type stop and confirm.";
-        // The pairing listener is still open, so read what the host is like right away for the map and the advisor.
-        try { StatusText.Text += " " + await CheckAsync(remote, Hardware, _ => { }, lifetime.Token); }
-        catch (Exception error) when (error is InvalidOperationException or OperationCanceledException) { }
-    });
+            ? "It handles lip-sync when it runs Audio2Face."
+            : "It stands by; hand it jobs under Who does what on the Devices map.");
+        return host;
+    }
 
     /// <summary>Checks a paired host over its pinned pairing, reports which roles it offers and saves the hardware it
     /// reports (GPUs, CPU, memory) for the devices map and the setup advisor.</summary>

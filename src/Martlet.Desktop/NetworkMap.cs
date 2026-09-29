@@ -275,7 +275,7 @@ internal static class NetworkMap
             if (check is null || offersFace)
                 target.Commands.Add(new(NodeAction.RemoveRole, local ? "Remove Audio2Face from this PC's host service" : "Remove Audio2Face from it",
                     Argument: id + "/" + HostRoles.Audio2Face));
-            target.Commands.Add(new(NodeAction.HostStatus, "Open its status console", Argument: id));
+            target.Commands.Add(new(NodeAction.HostStatus, "Show its status", Argument: id));
             target.Commands.Add(new(NodeAction.ManageHost, "Pair again or change its setup", Argument: id));
             target.Commands.Add(new(NodeAction.ForgetHost, "Forget this host", Argument: id));
             if (!paired.CanLaunch && !local)

@@ -185,7 +185,8 @@
           "Martlet.Diagnostics": "[0.2.0, )",
           "Martlet.Memory": "[0.2.0, )",
           "Martlet.Participation": "[0.2.0, )",
-          "Martlet.Support": "[0.2.0, )"
+          "Martlet.Support": "[0.2.0, )",
+          "SSH.NET": "[2024.1.0, )"
         }
       },
       "martlet.diagnostics": {
@@ -268,6 +269,12 @@
         "dependencies": {
           "NAudio.Core": "3.1.0"
         }
+      },
+      "SSH.NET": {
+        "type": "CentralTransitive",
+        "requested": "[2024.1.0, )",
+        "resolved": "2024.1.0",
+        "contentHash": "pyOea9czgC+OwMoetuWtMuwRebOyskKkqTZtODgyEZ5K6JwV+Hh/GFiyYubl93YnEvmvNZeuyWyUDsb3LvBDYA=="
       }
     }
   }

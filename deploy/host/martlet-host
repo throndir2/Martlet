@@ -3,15 +3,25 @@
 #
 #   martlet-host setup          set up this host's Martlet gateway (the only network entry point)
 #   martlet-host roles          list the roles this host can run
+#   martlet-host describe <role> print a role's terms, secrets and choices (machine-readable, no secret values)
 #   martlet-host add <role>     install a role service and publish it through the gateway
 #   martlet-host remove <role>  stop a role and unpublish it (keeps its data)
-#   martlet-host pair           pair a Martlet desktop (shows a one-use pairing code)
+#   martlet-host pair           pair a Martlet desktop in the gateway console (shows a one-use pairing code)
+#   martlet-host pair --device-id <id> --name <name> [--roles voice]
+#                               pair that desktop without a console: prints one "pairing-code: martlet-pair-v1..."
+#                               line, waits up to five minutes for the desktop to redeem it, then restarts the gateway
 #   martlet-host status         show the gateway and every installed role
 #   martlet-host machine        report this machine's hardware (GPUs, CPU, memory) to paired desktops
 #   martlet-host config         print the gateway configuration
 #
+# --yes (or MARTLET_ASSUME_YES=1) before the command runs it without questions: the owner already confirmed it
+# (Martlet desktop shows what will happen and the owner's click, over the owner's own SSH session, is the
+# confirmation). Answers then come from stdin as KEY=VALUE lines ended by a line "end": secret.<name>=<value> for
+# role secrets and choice.<VAR>=<value> for role choices; values never appear in arguments, environment or logs.
+# Without --yes, a human on the host confirms each change by typing "yes".
+#
 # Methods (same commands, same roles; see README.md):
-#   native  Ubuntu: ./deploy/host/martlet-host <command> (locally or over "ssh -t")
+#   native  Ubuntu: ./deploy/host/martlet-host <command> (locally or over SSH)
 #   docker  any Docker host, including Windows (Docker Desktop) and remote Docker over SSH:
 #           docker run --rm -it -u 0 -v /var/run/docker.sock:/var/run/docker.sock \
 #             -e MARTLET_HOST_ADDRESS=<host LAN IPv4> martlet-host <command>
@@ -19,8 +29,10 @@
 #
 # Every role goes through the same steps, driven only by roles/<role>/role.conf and compose.yaml:
 # requirements -> terms -> secrets -> choices -> registry login -> pinned assets -> loopback-only
-# compose service -> readiness -> gateway route. Each system change asks for an explicit "yes".
+# compose service -> readiness -> gateway route. Each system change is confirmed first (typed "yes" or --yes).
 set -euo pipefail
+
+if [[ "${1:-}" == --yes ]]; then shift; export MARTLET_ASSUME_YES=1; fi
 
 HERE="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 ROLES_DIR="${MARTLET_HOST_ROLES_DIR:-${HERE}/roles}"
@@ -53,7 +65,29 @@ GW_CONFIG="${GW_CONF_DIR}/host.json"
 say()  { printf '\n\033[1m%s\033[0m\n' "$*"; }
 note() { printf '%s\n' "$*"; }
 fail() { printf '\n\033[31mStopped: %s\033[0m\n' "$*" >&2; exit 1; }
-ask()  { local answer; read -r -p "$1 Type yes to continue: " answer; [[ "${answer}" == "yes" ]]; }
+assume_yes() { [[ "${MARTLET_ASSUME_YES:-0}" == 1 ]]; }
+# Unattended: --yes with answers on stdin (Martlet desktop), not a human at a terminal.
+unattended() { assume_yes && [[ ! -t 0 ]]; }
+ask() {
+  if assume_yes; then note "$1 Confirmed in Martlet."; return 0; fi
+  local answer; read -r -p "$1 Type yes to continue: " answer; [[ "${answer}" == "yes" ]]
+}
+
+# Answers for --yes runs: KEY=VALUE lines on stdin up to a line "end" (read byte by byte, so later readers such as
+# the gateway still see what follows). Only secret.<name> and choice.<VAR> keys are kept.
+declare -A INPUT=()
+INPUT_LOADED=0
+load_input() {
+  [[ ${INPUT_LOADED} == 0 ]] && unattended || return 0
+  INPUT_LOADED=1
+  local line
+  while IFS= read -r line; do
+    line="${line%$'\r'}"
+    [[ "${line}" == end ]] && break
+    [[ "${line}" =~ ^(secret|choice)\.[A-Za-z0-9_]+= ]] && INPUT["${line%%=*}"]="${line#*=}"
+  done
+  return 0
+}
 
 # ------------------------------------------------------------------ role catalog (data only)
 role_dir() {
@@ -91,6 +125,28 @@ cmd_roles() {
     printf '  %-14s %-10s %s\n' "${name}" "${mark}" "$(conf_value "${dir}/role.conf" title)"
     printf '  %-14s %-10s requires: %s\n' "" "" "$(conf_value "${dir}/role.conf" requires)"
   done
+}
+
+# Machine-readable role inputs for Martlet desktop (never prints secret values, only whether one is stored).
+cmd_describe() {
+  local role="${1:-}"; [[ -n "${role}" ]] || fail "Usage: martlet-host describe <role>"
+  local dir conf line name state
+  dir="$(role_dir "${role}")"; conf="${dir}/role.conf"
+  printf 'role.title=%s\n' "$(conf_value "${conf}" title)"
+  printf 'role.requires=%s\n' "$(conf_value "${conf}" requires)"
+  printf 'role.terms=%s\n' "$(conf_value "${conf}" terms)"
+  state=no; [[ -f "$(installed_file "${role}")" ]] && state=yes
+  printf 'role.installed=%s\n' "${state}"
+  while IFS= read -r line; do
+    [[ -n "${line}" ]] || continue
+    name="${line%%|*}"
+    state=missing; [[ -s "${CONF}/secrets/${name}" ]] && state=stored
+    printf 'role.secret=%s|%s\n' "${line}" "${state}"
+  done < <(conf_values "${conf}" secret)
+  while IFS= read -r line; do
+    [[ -n "${line}" ]] && printf 'role.choice=%s\n' "${line}"
+  done < <(conf_values "${conf}" choice)
+  return 0
 }
 
 # ------------------------------------------------------------------ shared requirements
@@ -229,16 +285,21 @@ service_start() {
   else fail "The gateway is not healthy. Check: journalctl --user -u ${SERVICE}"; fi
 }
 
-# Changing host.json invalidates the unattended-start approval by design; the owner re-approves locally.
+# Changing host.json invalidates the unattended-start approval by design; the owner re-approves (console or --yes).
 reapprove() {
   service_stop
-  cat <<'TEXT'
+  if assume_yes; then
+    note "The gateway configuration changed; renewing its unattended-start approval for exactly this configuration."
+    gateway owner-approve --config "${GW_CONFIG}" || fail "The gateway approval was not renewed."
+  else
+    cat <<'TEXT'
 
 The gateway configuration changed, so its unattended-start approval must be renewed on this host.
 In the gateway console confirm opening with: yes
 Then type:  approve-service  (confirm: yes), then  stop  (confirm: yes)
 TEXT
-  gateway admin --config "${GW_CONFIG}"
+    gateway admin --config "${GW_CONFIG}"
+  fi
   service_start
 }
 
@@ -348,11 +409,16 @@ choose_address() {
     mapfile -t addresses < <(private_addresses)
     [[ ${#addresses[@]} -gt 0 ]] || fail "No private LAN IPv4 address found on this host."
     note "Private LAN addresses on this host:"; printf '  %s\n' "${addresses[@]}"
-    read -r -p "Address your desktops will use (default ${MARTLET_HOST_ADDRESS:-${addresses[0]}}): " lan
-    lan="${lan:-${MARTLET_HOST_ADDRESS:-${addresses[0]}}}"
+    if assume_yes; then
+      lan="${MARTLET_HOST_ADDRESS:-${addresses[0]}}"
+      port="${MARTLET_HOST_PORT:-9443}"
+    else
+      read -r -p "Address your desktops will use (default ${MARTLET_HOST_ADDRESS:-${addresses[0]}}): " lan
+      lan="${lan:-${MARTLET_HOST_ADDRESS:-${addresses[0]}}}"
+      read -r -p "Gateway port (default ${MARTLET_HOST_PORT:-9443}): " port
+      port="${port:-${MARTLET_HOST_PORT:-9443}}"
+    fi
     [[ " ${addresses[*]} " == *" ${lan} "* ]] || fail "${lan} is not a private address of this host."
-    read -r -p "Gateway port (default ${MARTLET_HOST_PORT:-9443}): " port
-    port="${port:-${MARTLET_HOST_PORT:-9443}}"
   fi
   [[ "${port}" =~ ^[0-9]{2,5}$ ]] || fail "Invalid port."
   # The host ID is permanent once the gateway identity exists.
@@ -393,10 +459,11 @@ docker_launch() {
   fi
   docker container inspect "${NET}" >/dev/null 2>&1 || fail "Run 'setup' first."
   local tty=(-i); [[ -t 0 && -t 1 ]] && tty=(-it)
-  exec docker run --rm "${tty[@]}" --user 1000:1000 --group-add "${socket_group}" --network "container:${NET}" \
+  # --log-driver none: engine output (which can include a one-use pairing code) is streamed, never logged by Docker.
+  exec docker run --rm "${tty[@]}" --log-driver none --user 1000:1000 --group-add "${socket_group}" --network "container:${NET}" \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v martlet-host-config:/var/lib/martlet/config -v martlet-host-private:/var/lib/martlet/private \
-    -e MARTLET_ENGINE=inner -e MARTLET_HOST_IMAGE="${IMAGE}" -e MARTLET_HOST_ID \
+    -e MARTLET_ENGINE=inner -e MARTLET_HOST_IMAGE="${IMAGE}" -e MARTLET_HOST_ID -e MARTLET_ASSUME_YES \
     -e MARTLET_HOST_ADDRESS -e MARTLET_HOST_PORT "${IMAGE}" "$@"
 }
 
@@ -454,11 +521,16 @@ cmd_setup() {
   say "3/4 Gateway identity"
   if [[ ! -d "${GW_STATE}" ]]; then
     service_stop
-    cat <<'TEXT'
+    if assume_yes; then
+      note "Creating this host's permanent gateway identity and approving its unattended start."
+      gateway owner-init --config "${GW_CONFIG}" || fail "The gateway identity was not created."
+    else
+      cat <<'TEXT'
 The gateway console opens to create this host's identity. Confirm creation with: yes
 Then type:  approve-service  (confirm: yes), then  stop  (confirm: yes)
 TEXT
-    gateway init --config "${GW_CONFIG}"
+      gateway init --config "${GW_CONFIG}"
+    fi
     CONFIG_CHANGED=0
   fi
 
@@ -496,8 +568,35 @@ UNIT
 }
 
 cmd_pair() {
+  local device="" name="" roles="voice"
+  while [[ $# -gt 0 ]]; do
+    [[ $# -ge 2 ]] || fail "Usage: martlet-host pair [--device-id <id> --name <display name> [--roles voice]]"
+    case "$1" in
+      --device-id) device="$2" ;;
+      --name) name="$2" ;;
+      --roles) roles="$2" ;;
+      *) fail "Usage: martlet-host pair [--device-id <id> --name <display name> [--roles voice]]" ;;
+    esac
+    shift 2
+  done
   require_setup
   collect_machine
+  if [[ -n "${device}" ]]; then
+    [[ -n "${name}" ]] || fail "Add --name <display name> for that desktop."
+    service_stop
+    # However pairing ends (including a dropped SSH connection), the gateway service comes back.
+    trap 'trap - EXIT; service_start >/dev/null 2>&1 || true' EXIT
+    trap '' PIPE
+    note "Pairing ${device} (${name}). Martlet reads the one-use code below by itself; by hand, paste it into Martlet hosts."
+    note "Type cancel (or close stdin in Martlet) to withdraw it; it expires after five minutes."
+    local status=0
+    gateway owner-pair --config "${GW_CONFIG}" --device-id "${device}" --name "${name}" --roles "${roles}" || status=$?
+    trap - EXIT
+    service_start
+    [[ ${status} == 0 ]] || fail "Pairing did not complete."
+    say "Paired. The gateway is serving again."
+    return 0
+  fi
   service_stop
   cat <<'TEXT'
 In Martlet on your desktop open Martlet hosts and note "This PC's device ID".
@@ -532,6 +631,7 @@ role_compose() {
 
 cmd_add() {
   local role="${1:-}"; [[ -n "${role}" ]] || fail "Usage: martlet-host add <role>"
+  load_input
   require_setup
   local dir conf project
   dir="$(role_dir "${role}")"; conf="${dir}/role.conf"; project="${PROJECTS}/${role}"
@@ -558,21 +658,31 @@ cmd_add() {
     [[ -n "${line}" ]] || continue
     name="${line%%|*}"; prompt="${line#*|}"
     [[ "${name}" =~ ^[a-z0-9_]+$ ]] || fail "Invalid secret name in role.conf."
-    if [[ ! -s "${CONF}/secrets/${name}" ]]; then
+    value="${INPUT[secret.${name}]:-}"
+    if [[ -z "${value}" && ! -s "${CONF}/secrets/${name}" ]]; then
+      unattended && fail "${prompt} is required; enter it in Martlet."
       read -r -s -p "${prompt} (input hidden): " value; echo
       [[ -n "${value}" ]] || fail "${name} is required."
-      ( umask 077; printf '%s' "${value}" > "${CONF}/secrets/${name}" )
-      unset value
     fi
+    if [[ -n "${value}" ]]; then
+      ( umask 077; printf '%s' "${value}" > "${CONF}/secrets/${name}" )
+      note "Saved ${name} on this host (0600)."
+    fi
+    unset value
   done 3< <(conf_values "${conf}" secret)
 
   declare -A chosen=()
   while IFS= read -r line <&3; do
     [[ -n "${line}" ]] || continue
     IFS='|' read -r var label options default <<< "${line}"
-    read -r -p "${label} [${options// //}] (default ${default}): " value
+    value="${INPUT[choice.${var}]:-}"
+    if [[ -z "${value}" ]]; then
+      if unattended; then value="${default}"
+      else read -r -p "${label} [${options// //}] (default ${default}): " value; fi
+    fi
     value="${value:-${default}}"
     [[ " ${options} " == *" ${value} "* ]] || fail "Choose one of: ${options}"
+    note "${label}: ${value}"
     chosen["${var}"]="${value}"
     env_lines+=("${var}=${value}")
   done 3< <(conf_values "${conf}" choice)
@@ -673,16 +783,17 @@ cmd_status() {
 
 if [[ "${MODE}" == docker && "${MARTLET_ENGINE:-launcher}" != inner ]]; then
   case "${1:-help}" in
-    setup|roles|add|remove|pair|status|config|machine) docker_launch "$@" ;;
+    setup|roles|describe|add|remove|pair|status|config|machine) docker_launch "$@" ;;
   esac
 fi
 
 case "${1:-help}" in
   setup) cmd_setup ;;
   roles) cmd_roles ;;
+  describe) shift; cmd_describe "$@" ;;
   add) shift; cmd_add "$@" ;;
   remove) shift; cmd_remove "$@" ;;
-  pair) cmd_pair ;;
+  pair) shift; cmd_pair "$@" ;;
   status) cmd_status ;;
   machine) cmd_machine ;;
   config) require_setup; render_config ;;

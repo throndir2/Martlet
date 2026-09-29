@@ -42,6 +42,7 @@ internal sealed class FixturePlatform : IHostPlatform, IDisposable
     internal Action<StoreStep>? Fault { get; set; }
     internal GatewayOrigin Origin = FreeOrigin();
     internal FixturePlatform() => ConfigurationTests.WriteConfig(Fs, ConfigurationTests.Config(Origin.CanonicalOrigin));
+    public TextReader Input { get; set; } = new StringReader("");
     public LinuxControlDirectory OpenControl(string path) => new(path, Fs);
     public IHostTerminal OpenTerminal() => Terminal;
     public DurableGatewayHost OpenHost(string command, HostConfiguration config, ServiceApproval? approval,
@@ -146,6 +147,59 @@ public sealed class LifecycleTests
         platform.Terminal = new("yes", "list");
         Assert.Equal(0, await platform.Run("admin", output));
         Assert.Contains("No registrations.", output.ToString());
+    }
+
+    [Fact]
+    public async Task Owner_commands_create_approve_and_pair_once_without_a_console()
+    {
+        using var platform = new FixturePlatform();
+        using var output = new StringWriter();
+        platform.Terminal = new() { Interactive = false };
+        Assert.Equal(0, await platform.Run("owner-init", output));
+        using (var status = new StringWriter())
+        {
+            Assert.Equal(0, await platform.Run("status", status));
+            Assert.Contains("\"matching\"", status.ToString());
+        }
+
+        string[] Pair(string device) =>
+            ["owner-pair", "--config", "/srv/martlet/host.json", "--device-id", device, "--name", "Fixture PC"];
+        using var pairing = new WatchingWriter("pairing-code: ");
+        var run = HostApplication.RunAsync(Pair("fixture-device"), pairing, default, platform);
+        await pairing.Seen.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        var line = pairing.ToString().Split('\n').Single(l => l.StartsWith("pairing-code: ", StringComparison.Ordinal)).Trim();
+        using var fields = JsonDocument.Parse(System.Buffers.Text.Base64Url.DecodeFromChars(
+            line.AsSpan("pairing-code: martlet-pair-v1.".Length)));
+        string Field(string name) => fields.RootElement.GetProperty(name).GetString()!;
+        var card = new GatewayPairingCard
+        {
+            PairingId = Field("i"), HostId = Field("h"), Origin = Field("o"), SpkiFingerprint = Field("s"),
+            Token = new(Field("t")), ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(5)
+        };
+        using (var client = PinnedGatewayClient.Create(platform.Origin, platform.Owner!.Identity!))
+            await PairCard(client, platform.Origin, card);
+        Assert.Equal(0, await run.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Contains("Paired: fixture-device", pairing.ToString());
+        Assert.Contains("Stopped and closed cleanly", pairing.ToString());
+
+        platform.Input = new StringReader("cancel\n");
+        using var canceled = new StringWriter();
+        Assert.Equal(3, await HostApplication.RunAsync(Pair("other-device"), canceled, default, platform).WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Contains("pairing.canceled", canceled.ToString());
+        Assert.Throws<HostInputException>(() => HostOptions.Parse(["owner-pair", "--config", "/srv/martlet/host.json", "--device-id", "x"]));
+        Assert.Throws<HostInputException>(() => HostOptions.Parse(["owner-init", "--config", "/srv/martlet/host.json", "--name", "x"]));
+
+        ConfigurationTests.WriteConfig(platform.Fs,
+            platform.Fs.Parent.Children["host.json"].Bytes.Concat(new byte[] { 32 }).ToArray());
+        Assert.Equal(3, await platform.Run("serve", output));
+        Assert.Equal(0, await platform.Run("owner-approve", output));
+        using var approved = new StringWriter();
+        Assert.Equal(0, await platform.Run("status", approved));
+        Assert.Contains("\"matching\"", approved.ToString());
+        platform.Terminal = new("yes", "list");
+        using var listed = new StringWriter();
+        Assert.Equal(0, await platform.Run("admin", listed));
+        Assert.Contains("Device: fixture-device", listed.ToString());
     }
 
     [Fact]
