@@ -19,8 +19,8 @@
 #           (this launcher starts the engine as the unprivileged martlet user inside the gateway's network)
 #
 # Every role goes through the same steps, driven only by roles/<role>/role.conf and compose.yaml:
-# requirements -> terms -> secrets -> choices -> registry login -> pinned assets -> loopback-only
-# compose service -> readiness -> gateway route. Each system change asks for an explicit "yes".
+# requirements -> terms -> GPU or CPU -> secrets -> choices -> registry login -> pinned assets -> loopback-only
+# compose service -> readiness -> post-start steps -> gateway route. Each system change asks for an explicit "yes".
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
@@ -160,6 +160,23 @@ require_nvidia_toolkit() {
   sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
   sudo nvidia-ctk runtime configure --runtime=docker
   sudo systemctl restart docker
+}
+
+# Largest NVIDIA GPU memory (MiB) that role containers can use here, or 0. Natively a working driver is enough (the
+# NVIDIA Container Toolkit is installed on demand); with Docker it asks the Docker host through a GPU container.
+NVIDIA_MB=0
+detect_nvidia() {
+  local query=(--query-gpu=memory.total --format=csv,noheader,nounits) lines=() line
+  if [[ "${MODE}" == docker ]]; then
+    mapfile -t lines < <(timeout 120 docker run --rm --gpus all --entrypoint nvidia-smi "${IMAGE}" "${query[@]}" 2>/dev/null || true)
+  elif command -v nvidia-smi >/dev/null 2>&1; then
+    mapfile -t lines < <(timeout 30 nvidia-smi "${query[@]}" 2>/dev/null || true)
+  fi
+  NVIDIA_MB=0
+  for line in "${lines[@]}"; do
+    line="${line//[^0-9.]/}"; line="${line%%.*}"
+    if [[ "${line}" =~ ^[0-9]+$ ]] && (( line > NVIDIA_MB )); then NVIDIA_MB=${line}; fi
+  done
 }
 
 require_dotnet() {
@@ -530,12 +547,14 @@ fill_volume() {
 
 role_compose() {
   local role="$1"; shift
-  local project="${PROJECTS}/${role}" secret_env=() name
+  local project="${PROJECTS}/${role}" secret_env=() name files=(-f compose.yaml)
   while IFS= read -r name <&3; do
     [[ -n "${name}" ]] || continue
     secret_env+=("${name^^}=$(cat "${CONF}/secrets/${name}")")
   done 3< <(conf_values "$(role_dir "${role}")/role.conf" secret | cut -d'|' -f1)
-  ( cd "${project}" && env "${secret_env[@]}" "${DOCKER[@]}" compose -p "martlet-${role}" --env-file .env -f compose.yaml "$@" )
+  # Present only when the role was added to run on the NVIDIA GPU (role.conf gpu=optional|<overlay>).
+  if [[ -f "${project}/compose.gpu.yaml" ]]; then files+=(-f compose.gpu.yaml); fi
+  ( cd "${project}" && env "${secret_env[@]}" "${DOCKER[@]}" compose -p "martlet-${role}" --env-file .env "${files[@]}" "$@" )
 }
 
 cmd_add() {
@@ -562,6 +581,44 @@ cmd_add() {
   if [[ "${MODE}" == docker ]]; then env_lines+=("MARTLET_ROLE_NETWORK=container:${NET}"); else env_lines+=("MARTLET_ROLE_NETWORK=host"); fi
   local line name prompt var label options default value
 
+  # GPU or CPU: roles with an optional GPU overlay run on the NVIDIA GPU when this host can use one.
+  local gpu_entry overlay="" accelerator="" vram=0
+  gpu_entry="$(conf_value "${conf}" gpu)"
+  if [[ -n "${gpu_entry}" ]]; then
+    overlay="${gpu_entry#*|}"
+    [[ "${gpu_entry%%|*}" == optional && "${overlay}" =~ ^[a-z0-9.-]+\.yaml$ && -f "${dir}/${overlay}" ]] ||
+      fail "Invalid gpu entry in role.conf."
+    say "GPU or CPU"
+    detect_nvidia
+    local suggested=cpu
+    if (( NVIDIA_MB > 0 )); then
+      suggested=gpu; note "NVIDIA GPU usable by containers: ${NVIDIA_MB} MiB of memory."
+    else
+      note "No NVIDIA GPU usable by containers was found; ${role} runs on the CPU (slower)."
+    fi
+    read -r -p "Run ${role} on [gpu/cpu] (default ${suggested}): " accelerator
+    accelerator="${accelerator:-${suggested}}"
+    [[ "${accelerator}" == gpu || "${accelerator}" == cpu ]] || fail "Choose gpu or cpu."
+    if [[ "${accelerator}" == gpu ]]; then
+      require gpu nvidia-toolkit
+      vram=${NVIDIA_MB}
+    fi
+    env_lines+=("MARTLET_ACCELERATOR=${accelerator}")
+  fi
+
+  # Suggested choice values by GPU memory: choice_by_vram=VAR|<MiB>@<value> ... (ascending, 0 = CPU).
+  declare -A suggested_choice=()
+  local entry pick
+  while IFS= read -r line <&3; do
+    [[ -n "${line}" ]] || continue
+    pick=""
+    for entry in ${line#*|}; do
+      [[ "${entry%%@*}" =~ ^[0-9]+$ ]] || fail "Invalid choice_by_vram entry in role.conf."
+      if (( vram >= ${entry%%@*} )); then pick="${entry#*@}"; fi
+    done
+    if [[ -n "${pick}" ]]; then suggested_choice["${line%%|*}"]="${pick}"; fi
+  done 3< <(conf_values "${conf}" choice_by_vram)
+
   while IFS= read -r line <&3; do
     [[ -n "${line}" ]] || continue
     name="${line%%|*}"; prompt="${line#*|}"
@@ -578,6 +635,10 @@ cmd_add() {
   while IFS= read -r line <&3; do
     [[ -n "${line}" ]] || continue
     IFS='|' read -r var label options default <<< "${line}"
+    if [[ -n "${suggested_choice[${var}]:-}" ]]; then
+      default="${suggested_choice[${var}]}"
+      if [[ "${accelerator}" == gpu ]]; then note "Suggested for ${vram} MiB of GPU memory: ${default}"; fi
+    fi
     read -r -p "${label} [${options// //}] (default ${default}): " value
     value="${value:-${default}}"
     [[ " ${options} " == *" ${value} "* ]] || fail "Choose one of: ${options}"
@@ -612,6 +673,8 @@ cmd_add() {
   done 3< <(conf_values "${conf}" expect | sed 's#^configs/##')
 
   cp "${dir}/compose.yaml" "${project}/compose.yaml"
+  rm -f "${project}/compose.gpu.yaml"
+  if [[ "${accelerator}" == gpu ]]; then cp "${dir}/${overlay}" "${project}/compose.gpu.yaml"; fi
   ( umask 077; printf '%s\n' "${env_lines[@]}" > "${project}/.env" )
   fill_volume "martlet-${role}-configs" "${project}/files"
 
@@ -627,6 +690,19 @@ cmd_add() {
     sleep 10
   done
   [[ ${ready} == 1 ]] || fail "${role} did not start. Inspect: martlet-host status (or docker compose -p martlet-${role} logs)"
+
+  # Post-start steps: post_start=<service>|<command> runs inside that service once it listens ({VAR} uses a choice).
+  local service step words safe='^[A-Za-z0-9 ._:/=-]+$'
+  while IFS= read -r line <&3; do
+    [[ -n "${line}" ]] || continue
+    service="${line%%|*}"; step="${line#*|}"
+    for key in "${!chosen[@]}"; do step="${step//\{${key}\}/${chosen[${key}]}}"; done
+    [[ "${service}" =~ ^[a-z0-9][a-z0-9_-]*$ && "${step}" =~ ${safe} ]] || fail "Unsafe post_start entry in role.conf."
+    read -r -a words <<< "${step}"
+    say "Running in ${service}: ${step}"
+    role_compose "${role}" exec -T "${service}" "${words[@]}" ||
+      fail "'${step}' failed in ${role}. Check the host's disk space and network, then run 'martlet-host add ${role}' again."
+  done 3< <(conf_values "${conf}" post_start)
 
   local kind model_from model="${role}"
   kind="$(conf_value "${conf}" gateway_kind)"; model_from="$(conf_value "${conf}" model_from)"

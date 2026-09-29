@@ -8,6 +8,7 @@ public sealed class ConversationRuntime : IAsyncDisposable
 {
     internal object Sync { get; } = new();
     internal OpenAiTextGenerationAdapter Text { get; }
+    internal IHostTextClient? HostText { get; private init; }
     internal OpenAiSpeechSynthesisAdapter? Speech { get; }
     internal PcmPlaybackSink? Sink { get; }
     internal PlaybackOptions PlaybackOptions { get; }
@@ -40,7 +41,7 @@ public sealed class ConversationRuntime : IAsyncDisposable
     // Merely constructing adapters/sink is passive. No credential resolution, HTTP or device enumeration.
     public static ConversationRuntime Create(IProviderCredentialSource credentials,
         IPlaybackDeviceFactory? devices = null, PlaybackOptions? playbackOptions = null, TimeProvider? clock = null,
-        GeneratedSpeechObserver? generatedSpeech = null)
+        GeneratedSpeechObserver? generatedSpeech = null, IHostTextClient? hostText = null)
     {
         ArgumentNullException.ThrowIfNull(credentials);
         var time = clock ?? TimeProvider.System;
@@ -49,22 +50,26 @@ public sealed class ConversationRuntime : IAsyncDisposable
         return new(OpenAiTextGenerationAdapter.Create(credentials, time),
             devices is null ? null : OpenAiSpeechSynthesisAdapter.Create(credentials, time), sink, options, time,
             target => ChatCompletionsTextGenerationAdapter.Create(target.BaseUrl, target.Keyless ? null : credentials, time))
-            { GeneratedSpeech = generatedSpeech };
+            { GeneratedSpeech = generatedSpeech, HostText = hostText };
     }
 
     internal static ConversationRuntime ForFixture(OpenAiTextGenerationAdapter text,
         OpenAiSpeechSynthesisAdapter? speech, IPlaybackDeviceFactory? devices, PlaybackOptions options, TimeProvider clock,
         GeneratedSpeechObserver? generatedSpeech = null,
-        Func<ChatCompletionsTarget, ChatCompletionsTextGenerationAdapter>? chat = null)
+        Func<ChatCompletionsTarget, ChatCompletionsTextGenerationAdapter>? chat = null, IHostTextClient? hostText = null)
     {
         return new(text, speech, devices is null ? null : new(devices, options, clock), options, clock, chat)
-            { GeneratedSpeech = generatedSpeech };
+            { GeneratedSpeech = generatedSpeech, HostText = hostText };
     }
 
     // One passive adapter per exact destination; the turn's authorization still binds base URL, model and key.
-    internal TextGenerationStream StreamText(ProviderRequestContext context, ConversationRequest request,
+    internal ITextGenerationStream StreamText(ProviderRequestContext context, ConversationRequest request,
         TextDisclosureAuthorization consent, CancellationToken caller)
     {
+        if (request.Host is { } host)
+            return new HostTextGenerationStream(HostText ?? throw new InvalidOperationException(
+                "This runtime was not composed with a Martlet host text client."), host, context, request.Model,
+                request.Input, request.TextLimits, consent, Clock, caller);
         if (request.Chat is not { } target)
             return Text.Stream(context, request.Model, request.Input, request.TextLimits, consent, caller);
         ChatCompletionsTextGenerationAdapter? adapter;

@@ -18,10 +18,12 @@ public sealed class HostSetupCommandsTests
     [Fact]
     public void Ssh_methods_run_the_same_engine_commands_remotely_without_double_quotes()
     {
-        var docker = HostSetupCommands.DockerShell(Target(HostSetupMethod.SshDocker), HostAction.AddAudio2Face);
+        var docker = HostSetupCommands.DockerShell(Target(HostSetupMethod.SshDocker), HostAction.Add(HostRoles.Audio2Face));
         Assert.EndsWith("$D run --rm -it -u 0 -v /var/run/docker.sock:/var/run/docker.sock martlet-host:1.2.3 add audio2face", docker);
         var native = HostSetupCommands.NativeShell(Target(HostSetupMethod.SshNative), HostAction.Setup);
         Assert.EndsWith("MARTLET_HOST_ADDRESS=192.168.1.20 ~/Martlet/deploy/host/martlet-host setup", native);
+        Assert.EndsWith("martlet-host remove ollama", HostSetupCommands.NativeShell(Target(HostSetupMethod.SshNative), HostAction.Remove(HostRoles.Ollama)));
+        Assert.Throws<ArgumentOutOfRangeException>(() => HostSetupCommands.Engine(HostAction.Add("x; rm -rf ~")));
         foreach (var method in new[] { HostSetupMethod.SshDocker, HostSetupMethod.SshNative })
         {
             var script = HostSetupCommands.Script(Target(method), HostAction.Pair);

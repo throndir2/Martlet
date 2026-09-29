@@ -26,6 +26,7 @@ public partial class HostsWindow : ThemedWindow
         PairedHost? manage = null)
     {
         InitializeComponent();
+        BuildRoleCards();
         pairings = new(Path.GetDirectoryName(profiles.FilePath)!, profiles, settings);
         paired = manage;
         DeviceIdText.Text = manage?.Pairing.DeviceId ?? HostSetupCommands.SuggestedDeviceId();
@@ -136,10 +137,10 @@ public partial class HostsWindow : ThemedWindow
 
     private void Target_Changed(object sender, TextChangedEventArgs e) => ShowCommand();
 
-    private void ShowCommand(HostAction action = HostAction.Setup)
+    private void ShowCommand(HostAction? action = null)
     {
         if (CommandText is null) return;
-        try { CommandText.Text = HostSetupCommands.Preview(Target(), action); }
+        try { CommandText.Text = HostSetupCommands.Preview(Target(), action ?? HostAction.Setup); }
         catch (InvalidOperationException error) { CommandText.Text = error.Message; }
     }
 
@@ -154,11 +155,11 @@ public partial class HostsWindow : ThemedWindow
                 return;
             }
             HostSetupCommands.Launch(Target(), action);
-            StatusText.Text = action switch
+            StatusText.Text = action.Verb switch
             {
-                HostAction.Setup => "Setup opened in a console window. Answer its questions there; afterwards pair this PC.",
-                HostAction.Pair => "The host console opened. Follow its instructions, then paste the pairing code here and press Pair with host.",
-                HostAction.Update => "The update opened in a console window. It rebuilds the host's gateway from this Martlet version; pairings and roles stay.",
+                HostVerb.Setup => "Setup opened in a console window. Answer its questions there; afterwards pair this PC.",
+                HostVerb.Pair => "The host console opened. Follow its instructions, then paste the pairing code here and press Pair with host.",
+                HostVerb.Update => "The update opened in a console window. It rebuilds the host's gateway from this Martlet version; pairings and roles stay.",
                 _ => "Opened in a console window."
             };
         }
@@ -216,9 +217,46 @@ public partial class HostsWindow : ThemedWindow
         };
     }
 
-    private void AddAudio2Face_Click(object sender, RoutedEventArgs e) => Run(HostAction.AddAudio2Face);
     private void Status_Click(object sender, RoutedEventArgs e) => Run(HostAction.Status);
-    private void RemoveAudio2Face_Click(object sender, RoutedEventArgs e) => Run(HostAction.RemoveAudio2Face);
+
+    /// <summary>One card per role in <see cref="HostRoles.All"/>, each with Add and Remove running the same martlet-host flow.</summary>
+    private void BuildRoleCards()
+    {
+        RoleCards.Children.Clear();
+        foreach (var role in HostRoles.All)
+        {
+            var card = new Border();
+            card.SetResourceReference(StyleProperty, "CardStyle");
+            var stack = new StackPanel();
+            var header = new DockPanel();
+            var chip = new Border { VerticalAlignment = VerticalAlignment.Top };
+            chip.SetResourceReference(StyleProperty, "Chip");
+            DockPanel.SetDock(chip, Dock.Right);
+            var chipText = new TextBlock { Text = "Available", FontWeight = FontWeights.SemiBold };
+            chipText.SetResourceReference(StyleProperty, "ChipText");
+            chipText.SetResourceReference(TextBlock.ForegroundProperty, "SuccessBrush");
+            chip.Child = chipText;
+            header.Children.Add(chip);
+            header.Children.Add(new TextBlock { Text = role.Name, FontSize = 17, FontWeight = FontWeights.SemiBold });
+            stack.Children.Add(header);
+            var about = new TextBlock { Text = role.Description, Margin = new Thickness(0, 4, 0, 12) };
+            about.SetResourceReference(StyleProperty, "Muted");
+            stack.Children.Add(about);
+            var buttons = new WrapPanel();
+            var add = new Button { Content = $"Add {role.Name}", Margin = new Thickness(0, 0, 10, 0) };
+            add.SetResourceReference(StyleProperty, "PrimaryButton");
+            System.Windows.Automation.AutomationProperties.SetAutomationId(add, "AddRole-" + role.Kind);
+            add.Click += (_, _) => Run(role.Add);
+            var remove = new Button { Content = $"Remove {role.Name}" };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(remove, "RemoveRole-" + role.Kind);
+            remove.Click += (_, _) => Run(role.Remove);
+            buttons.Children.Add(add);
+            buttons.Children.Add(remove);
+            stack.Children.Add(buttons);
+            card.Child = stack;
+            RoleCards.Children.Add(card);
+        }
+    }
     private void PairConsole_Click(object sender, RoutedEventArgs e) => Run(HostAction.Pair);
     private void UpdateHost_Click(object sender, RoutedEventArgs e) => Run(HostAction.Update);
 

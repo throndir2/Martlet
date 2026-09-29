@@ -158,7 +158,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
         context = new(this.clock);
         var credentials = new ConversationCredentialSource(() => Volatile.Read(ref active)?.Authorization);
         runtime = runtimeFactory?.Invoke(credentials, this.clock) ??
-            ConversationRuntime.Create(credentials, playbackDevices, clock: this.clock, generatedSpeech: generatedSpeech);
+            ConversationRuntime.Create(credentials, playbackDevices, clock: this.clock, generatedSpeech: generatedSpeech,
+                hostText: new HostTextClient());
         transcription = transcriptionFactory?.Invoke(credentials, this.clock) ??
             OpenAiTranscriptionAdapter.Create(credentials, this.clock);
         policy = new(runtime.SessionId, new ParticipationConfiguration(), new ParticipationState(), this.clock);

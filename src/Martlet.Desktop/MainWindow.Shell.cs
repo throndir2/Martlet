@@ -453,8 +453,12 @@ public partial class MainWindow
                 "Open the pairing console here; it shows a one-use code. On your main PC, go to Devices > Add a computer > Pair and paste it.",
                 false, false, [new("Open pairing console", () => LaunchHost(HostAction.Pair), true)]),
             new("roles", "Add roles",
-                "Audio2Face lip-sync needs an NVIDIA GPU (4 GB+) and a free NVIDIA NGC API key. " + nvidia,
-                false, true, [new("Add Audio2Face", () => LaunchHost(HostAction.AddAudio2Face), true), new("Remove", () => LaunchHost(HostAction.RemoveAudio2Face))]),
+                string.Join(" ", HostRoles.All.Select(r => $"{r.Name} needs {r.Needs}.")) + " " + nvidia,
+                false, true, [.. HostRoles.All.SelectMany(r => new[]
+                {
+                    new StepCommand($"Add {r.Name}", () => LaunchHost(r.Add), r == HostRoles.All[0]),
+                    new StepCommand($"Remove {r.Name}", () => LaunchHost(r.Remove))
+                })]),
             new("update", "Keep it up to date",
                 thisPcHostVersion is null
                     ? $"Rebuilds the host service from Martlet {Version} and restarts it; pairings and roles stay. Turn on host updates in Settings to do this by itself."
@@ -472,12 +476,12 @@ public partial class MainWindow
         try
         {
             HostSetupCommands.Launch(ThisPcTarget(), action);
-            ActionText.Text = action switch
+            ActionText.Text = action.Verb switch
             {
-                HostAction.Setup => "Host setup opened in a console window. Answer its questions there, then check the host service.",
-                HostAction.Pair => "The pairing console opened. Type start, then pair with your main PC's device ID and role voice; it shows a one-use code.",
-                HostAction.Status => "Host status opened in a console window.",
-                HostAction.Update => $"Host service update opened in a console window. It rebuilds from Martlet {Version} and restarts the gateway; pairings and roles stay.",
+                HostVerb.Setup => "Host setup opened in a console window. Answer its questions there, then check the host service.",
+                HostVerb.Pair => "The pairing console opened. Type start, then pair with your main PC's device ID and role voice; it shows a one-use code.",
+                HostVerb.Status => "Host status opened in a console window.",
+                HostVerb.Update => $"Host service update opened in a console window. It rebuilds from Martlet {Version} and restarts the gateway; pairings and roles stay.",
                 _ => "Opened in a console window. Confirm each change there."
             };
         }
@@ -904,8 +908,14 @@ public partial class MainWindow
                 var change = new Button { Content = owner is null ? "Choose in Setup" : "Change in Setup", HorizontalAlignment = HorizontalAlignment.Left };
                 AutomationProperties.SetAutomationId(change, "RoleChange-" + role);
                 change.Click += (_, _) => RunNodeAction(NodeAction.Setup);
+                FrameworkElement control = change;
+                if (role == SetupRole.Llm && NetworkMap.Hosts(Inputs()).Count > 0)
+                {
+                    change.Margin = new Thickness(0, 6, 0, 0);
+                    control = new StackPanel { Children = { ThinkingChoice(), change } };
+                }
                 RolesBoard.Children.Add(RoleTile(name, owner?.Title ?? "Not chosen yet",
-                    owner?.Roles.First(r => r.Name == name).Detail ?? "Pick a cloud model or one of your computers in Setup.", change, owner?.Id));
+                    owner?.Roles.First(r => r.Name == name).Detail ?? "Pick a cloud model or one of your computers in Setup.", control, owner?.Id));
             }
 
             var hosts = NetworkMap.Hosts(Inputs());
@@ -1063,7 +1073,8 @@ public partial class MainWindow
         if (closing) return;
         ActionText.Text = results.Length == 1 ? $"{results[0].Id}: {results[0].Check.Text}"
             : $"Checked {results.Length} hosts: {results.Count(r => r.Check.Reachable == true)} reachable, " +
-              $"{results.Count(r => r.Check.Offers?.ContainsKey(HostRoles.Audio2Face) == true)} running Audio2Face.";
+              string.Join(", ", HostRoles.All.Select(role =>
+                  $"{results.Count(r => r.Check.Offers?.ContainsKey(role.Kind) == true)} running {role.Name}")) + ".";
         RenderHome();
         if (DevicesPage.IsVisible) RenderMap();
     }
@@ -1084,13 +1095,14 @@ public partial class MainWindow
                 return;
             }
             HostSetupCommands.Launch(host.Target(Version), action);
-            ActionText.Text = action switch
+            var role = action.Role is { } kind ? HostRoles.Get(kind).Name : "";
+            ActionText.Text = action.Verb switch
             {
-                HostAction.Status => $"{host.HostId}'s status opened in a console window ({host.Reach}).",
-                HostAction.AddAudio2Face => $"Installing Audio2Face on {host.HostId} in a console window ({host.Reach}). Confirm each step there; " +
+                HostVerb.Status => $"{host.HostId}'s status opened in a console window ({host.Reach}).",
+                HostVerb.Add => $"Installing {role} on {host.HostId} in a console window ({host.Reach}). Confirm each step there; " +
                     "this PC picks the role up by itself once it is running.",
-                HostAction.RemoveAudio2Face => $"Removing Audio2Face from {host.HostId} in a console window ({host.Reach}). Confirm there.",
-                HostAction.Update => $"Updating {host.HostId} to Martlet {Version} in a console window ({host.Reach}). Its pairings and roles stay; " +
+                HostVerb.Remove => $"Removing {role} from {host.HostId} in a console window ({host.Reach}). Confirm there.",
+                HostVerb.Update => $"Updating {host.HostId} to Martlet {Version} in a console window ({host.Reach}). Its pairings and roles stay; " +
                     "press Check connection afterwards.",
                 _ => $"Opened on {host.HostId} in a console window ({host.Reach})."
             };
@@ -1107,10 +1119,14 @@ public partial class MainWindow
         var parts = argument?.Split('/') ?? [];
         if (parts.Length != 2 || FindHost(parts[0]) is not { } host) return;
         var role = HostRoles.Get(parts[1]);
-        if (!add && hostChecks.GetValueOrDefault(host.HostId)?.Offers?.ContainsKey(role.Kind) == true &&
-            homeAvatar?.RemoteHost?.HostId == host.HostId && role.Kind == HostRoles.Audio2Face &&
+        var offered = hostChecks.GetValueOrDefault(host.HostId)?.Offers?.ContainsKey(role.Kind) == true;
+        if (!add && offered && homeAvatar?.RemoteHost?.HostId == host.HostId && role.Kind == HostRoles.Audio2Face &&
             !ConfirmationDialog.Confirm(this, $"{host.HostId} handles lip-sync right now. Remove Audio2Face from it anyway? " +
                 "The mouth follows the voice's loudness until you hand lip-sync to another computer.", "Remove role"))
+            return;
+        if (!add && role.Kind == HostRoles.Ollama && NetworkMap.ThinkingHost(homeSettings) == host.HostId &&
+            !ConfirmationDialog.Confirm(this, $"{host.HostId} does the thinking right now. Remove Ollama from it anyway? " +
+                "Martlet cannot answer until you hand thinking to another computer or back to the cloud (Devices > Who does what).", "Remove role"))
             return;
         LaunchOnHost(host, add ? role.Add : role.Remove);
     }
@@ -1178,6 +1194,7 @@ public partial class MainWindow
             case NodeAction.HostDashboard: Navigate(NavHome); break;
             case NodeAction.Advisor: Advisor_Click(this, args); break;
             case NodeAction.UseForLipSync: _ = AssignLipSyncAsync("host:" + argument); break;
+            case NodeAction.UseForThinking: _ = AssignThinkingAsync("host:" + argument); break;
             case NodeAction.LipSyncThisPc: _ = AssignLipSyncAsync("this-pc"); break;
             case NodeAction.InstallRole: RunHostRole(argument, add: true); break;
             case NodeAction.RemoveRole: RunHostRole(argument, add: false); break;

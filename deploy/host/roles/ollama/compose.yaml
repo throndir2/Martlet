@@ -1,0 +1,20 @@
+# Martlet Ollama host service (the conversation model), loopback-only behind the Martlet gateway.
+# Official ollama/ollama image (MIT), pinned. Models live in the Martlet-managed martlet-ollama-models volume.
+# "martlet-host add ollama" adds compose.gpu.yaml when the role runs on this host's NVIDIA GPU, then pulls the
+# chosen model with "ollama pull". The server listens only on 127.0.0.1:11434 (host loopback natively, the
+# gateway's network namespace in Docker mode); the Martlet gateway is the single LAN entry point.
+
+services:
+  ollama:
+    image: ollama/ollama:0.34.4
+    restart: unless-stopped
+    environment:
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_KEEP_ALIVE: "-1"
+    volumes:
+      - models:/root/.ollama
+    network_mode: ${MARTLET_ROLE_NETWORK:?set by martlet-host}
+
+volumes:
+  models:
+    name: martlet-ollama-models

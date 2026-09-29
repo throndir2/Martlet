@@ -13,6 +13,7 @@
     <Project Path="src/Martlet.Doctor/Martlet.Doctor.csproj" />
     <Project Path="src/Martlet.Fixtures/Martlet.Fixtures.csproj" />
     <Project Path="src/Martlet.Gateway.Trust/Martlet.Gateway.Trust.csproj" />
+    <Project Path="src/Martlet.Gateway.Ollama/Martlet.Gateway.Ollama.csproj" />
     <Project Path="src/Martlet.Memory/Martlet.Memory.csproj" />
     <Project Path="src/Martlet.Mcp/Martlet.Mcp.csproj" />
     <Project Path="src/Martlet.Mcp.Protocol/Martlet.Mcp.Protocol.csproj" />
