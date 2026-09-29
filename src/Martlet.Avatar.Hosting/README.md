@@ -38,10 +38,10 @@ Martlet does not install or start Docker, WSL or the Audio2Face NIM.
 
 ### Running an Audio2Face service yourself (NVIDIA GPU)
 
-**Another computer (recommended for a GPU PC/server):** use the guided
-[Ubuntu Audio2Face host installer](../../deploy/ubuntu/audio2face/README.md). It
-starts the NIM on the host's loopback and enables the Linux gateway's Audio2Face
-relay route. In **Character settings > Audio2Face on another computer**, pair
+**Another computer (recommended for a GPU PC/server):** on the Ubuntu host run
+[`martlet-host setup`, `martlet-host pair` and `martlet-host add audio2face`](../../deploy/ubuntu/host/README.md),
+the same flow every host role uses. It starts the NIM on the host's loopback and
+publishes the gateway's Audio2Face relay route. In **Character settings > Audio2Face on another computer**, pair
 this PC with the host (host address, ID, fingerprint, device ID, one-use pairing
 ID/token from the host's `pair` command). The device secret is stored in Windows
 Credential Manager; `avatar.json` keeps only the nonsecret `RemoteHost` identity.

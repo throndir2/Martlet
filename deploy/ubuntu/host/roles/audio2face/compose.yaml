@@ -2,11 +2,10 @@
 # Adapted from NVIDIA Audio2Face-3D-Samples quick-start/docker-compose.yml at commit
 # a2d0150043be7dc15db2fad8193a78b660e1100f (SPDX-License-Identifier: Apache-2.0, Copyright (c) 2024 NVIDIA
 # CORPORATION & AFFILIATES). Changes: NGC key from a private file secret, restart policy, Martlet naming.
-# install.sh copies this file with configs/ into the project directory and rewrites the deployment
-# config so the gRPC service listens only on 127.0.0.1:52000 (host network). Use of the NIM and its
-# models is subject to NVIDIA's terms, accepted by the operator with their own NGC account.
+# "martlet-host add audio2face" copies this file into the role project directory, fetches the pinned
+# configs listed in role.conf and rewrites them so the gRPC service listens only on 127.0.0.1:52000
+# (host network). Use of the NIM and its models is subject to NVIDIA's terms, accepted by the operator.
 
-name: martlet-audio2face
 
 services:
   a2f-3d-init:
@@ -55,4 +54,4 @@ services:
 
 secrets:
   ngc_api_key:
-    file: ${NGC_API_KEY_FILE:?install.sh sets the private NGC key file}
+    file: ${NGC_API_KEY_FILE:?martlet-host sets the private NGC key file in .env}

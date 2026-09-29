@@ -18,9 +18,7 @@ internal sealed class NativeHostPlatform : IHostPlatform
     public DurableGatewayHost OpenHost(string command, HostConfiguration config, ServiceApproval? approval,
         CancellationToken cancellation)
     {
-        IGatewayInferenceWorker[] relay = config.Audio2FaceEndpoint is { } endpoint
-            ? [new Martlet.Gateway.Audio2Face.Audio2FaceRelayWorker(endpoint, config.Audio2FaceModel!, "nim")]
-            : [];
+        var relay = config.Roles.Select(RoleWorker).ToArray();
         return command switch
         {
             "init" => DurableGatewayHost.CreateNewForBinding(config.StateDirectory, config.HostId, config.Binding,
@@ -35,6 +33,13 @@ internal sealed class NativeHostPlatform : IHostPlatform
                 GatewayStorageBackend.LinuxServicePermissions, [], new QuietAudit(), LocalGatewayDecision.Enable, cancellation, relay)
         };
     }
+
+    // One relay worker per installed host role; each kind maps to exactly one gateway route.
+    internal static IGatewayInferenceWorker RoleWorker(HostRole role) => role.Kind switch
+    {
+        "audio2face" => new Martlet.Gateway.Audio2Face.Audio2FaceRelayWorker(role.Endpoint, role.Model, "nim"),
+        _ => throw new HostInputException()
+    };
 }
 
 internal sealed class QuietAudit : IGatewayAuditSink

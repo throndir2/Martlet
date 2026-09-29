@@ -57,22 +57,46 @@ public sealed class ConfigurationTests
     public void Private_origin_requires_explicit_mode(string origin) =>
         Assert.Equal(origin, HostConfiguration.Parse(Config(origin, "privateIp")).Binding.Origin.CanonicalOrigin);
 
-    private static byte[] RelayConfig(string endpoint, string model = "claire") =>
+    private static byte[] RoleConfig(string roles) =>
         Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(Config("https://192.168.1.2:9443", "privateIp"))
-            .Replace("\"serviceGid\":1000", $"\"serviceGid\":1000,\"audio2face\":{{\"endpoint\":\"{endpoint}\",\"model\":\"{model}\"}}",
-                StringComparison.Ordinal));
+            .Replace("\"serviceGid\":1000", $"\"serviceGid\":1000,\"roles\":{roles}", StringComparison.Ordinal));
+
+    private static byte[] Audio2FaceRole(string endpoint, string model = "claire") =>
+        RoleConfig($"[{{\"kind\":\"audio2face\",\"endpoint\":\"{endpoint}\",\"model\":\"{model}\"}}]");
 
     [Fact]
-    public void Optional_audio2face_relay_accepts_only_the_hosts_own_loopback_service()
+    public void Configuration_rendered_by_martlet_host_parses()
     {
-        var config = HostConfiguration.Parse(RelayConfig("http://127.0.0.1:52000/"));
-        Assert.Equal(new Uri("http://127.0.0.1:52000/"), config.Audio2FaceEndpoint);
-        Assert.Equal("claire", config.Audio2FaceModel);
-        Assert.Null(HostConfiguration.Parse(Config()).Audio2FaceEndpoint);
+        // Exact shape written by deploy/ubuntu/host/martlet-host render_config (checked in a local harness).
+        const string rendered = "{\"schemaVersion\":1,\"hostId\":\"gpu-host\",\"stateDirectory\":\"/home/u/.local/share/martlet/host/private/state\"," +
+            "\"storageBackend\":\"linuxServicePermissions\",\"binding\":{\"mode\":\"privateIp\",\"origin\":\"https://192.168.1.20:9443\"}," +
+            "\"serviceUid\":1000,\"serviceGid\":1000,\"roles\":[{\"kind\":\"audio2face\",\"endpoint\":\"http://127.0.0.1:52000/\",\"model\":\"mark\"}]}\n";
+        var config = HostConfiguration.Parse(Encoding.UTF8.GetBytes(rendered));
+        Assert.Equal("mark", Assert.Single(config.Roles).Model);
+        Assert.Empty(HostConfiguration.Parse(Encoding.UTF8.GetBytes(rendered.Replace(
+            "{\"kind\":\"audio2face\",\"endpoint\":\"http://127.0.0.1:52000/\",\"model\":\"mark\"}", "", StringComparison.Ordinal))).Roles);
+    }
+
+    [Fact]
+    public void Host_roles_are_declared_uniformly_and_only_reach_this_hosts_loopback_services()
+    {
+        var config = HostConfiguration.Parse(Audio2FaceRole("http://127.0.0.1:52000/"));
+        var role = Assert.Single(config.Roles);
+        Assert.Equal(("audio2face", new Uri("http://127.0.0.1:52000/"), "claire"), (role.Kind, role.Endpoint, role.Model));
+        Assert.IsType<Martlet.Gateway.Audio2Face.Audio2FaceRelayWorker>(NativeHostPlatform.RoleWorker(role));
+        Assert.Empty(HostConfiguration.Parse(Config()).Roles);
+        Assert.Empty(HostConfiguration.Parse(RoleConfig("[]")).Roles);
         foreach (var endpoint in new[] { "http://192.168.1.5:52000/", "http://localhost:52000/", "https://127.0.0.1:52000/",
-            "http://127.0.0.1:52000/path" })
-            Assert.Throws<HostInputException>(() => HostConfiguration.Parse(RelayConfig(endpoint)));
-        Assert.Throws<HostInputException>(() => HostConfiguration.Parse(RelayConfig("http://127.0.0.1:52000/", "bad model")));
+            "http://127.0.0.1:52000/path", "http://127.0.0.1:52000" })
+            Assert.Throws<HostInputException>(() => HostConfiguration.Parse(Audio2FaceRole(endpoint)));
+        Assert.Throws<HostInputException>(() => HostConfiguration.Parse(Audio2FaceRole("http://127.0.0.1:52000/", "bad model")));
+        Assert.Throws<HostInputException>(() => HostConfiguration.Parse(
+            RoleConfig("[{\"kind\":\"unknown\",\"endpoint\":\"http://127.0.0.1:52000/\",\"model\":\"m\"}]")));
+        Assert.Throws<HostInputException>(() => HostConfiguration.Parse(RoleConfig(
+            "[{\"kind\":\"audio2face\",\"endpoint\":\"http://127.0.0.1:52000/\",\"model\":\"a\"}," +
+            "{\"kind\":\"audio2face\",\"endpoint\":\"http://127.0.0.1:52001/\",\"model\":\"b\"}]")));
+        Assert.Throws<HostInputException>(() => HostConfiguration.Parse(
+            RoleConfig("[{\"kind\":\"audio2face\",\"endpoint\":\"http://127.0.0.1:52000/\",\"model\":\"a\",\"extra\":1}]")));
     }
 
     [Fact]

@@ -171,15 +171,6 @@ The proposed guided flow is:
 
 Most coordination occurs on one computer, but an untouched remote machine still
 needs its local setup/trust/privilege step. Headless Ubuntu uses the same
-
-**Implemented first managed host role (2026-09-28): Audio2Face.** The
-[Ubuntu Audio2Face host installer](../deploy/ubuntu/audio2face/README.md) is the
-first end-to-end runnable role: guided prerequisite installs with per-step
-consent, the NIM container on loopback, the Linux gateway with its Audio2Face relay
-route, local `init`/`pair`/`approve-service`, and a boot-time user service. The
-desktop pairs from Character settings and Automatic lip-sync uses the host.
-It is a script over the existing gateway, not yet the shared coordinator/journal
-flow described here, and it has not been run on a real Ubuntu GPU host by the project. Headless Ubuntu uses the same
 packaged host engine through a guided CLI; an administrator may access that CLI
 through an independently secured existing session. Martlet does not install
 SSH/remote desktop or retain remote admin credentials. The initial host GUI is
@@ -187,6 +178,16 @@ a loopback-only browser UI launched locally by the host bundle with local-sessio
 authorization, origin/CSRF protection and narrowly scoped privileged actions.
 It is not exposed on the LAN; the paired inference/status gateway is separate.
 Packaging and novice accessibility of this UI remain H09 work.
+
+**Implemented uniform host flow (2026-09-28).** [`martlet-host`](../deploy/ubuntu/host/README.md)
+is the single CLI for every managed host role: `setup` (gateway, identity, boot
+service), `pair`, `roles`, `add <role>`, `remove <role>`, `status`. Each role is
+data only (`role.conf` + `compose.yaml`) and goes through the same steps:
+requirements, terms, secrets, choices, registry login, pinned assets,
+loopback-only Compose service, readiness, and a gateway route listed in
+`host.json` `roles`. Audio2Face is the first role; other roles need their gateway
+relay worker before they are listed. It is not yet the graphical/journaled
+coordinator described above and has not been run on a real Ubuntu GPU host.
 
 ### Deployment choices and ownership
 

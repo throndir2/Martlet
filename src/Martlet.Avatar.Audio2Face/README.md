@@ -16,7 +16,7 @@ signing, capability discovery and chunked `POST /martlet/v1/inference/audio2face
 with NDJSON `face_frame` parsing. It reimplements only that client wire format
 (verified against the real `Martlet.Gateway` server in its tests) so Desktop does
 not take the ASP.NET-based gateway assembly. The host side is
-`Martlet.Gateway.Audio2Face` behind the [Ubuntu host installer](../../deploy/ubuntu/audio2face/README.md).
+`Martlet.Gateway.Audio2Face` behind the host's `audio2face` role ([`martlet-host add audio2face`](../../deploy/ubuntu/host/README.md)).
 
 ## Runtime prerequisites and evidence
 
