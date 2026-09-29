@@ -7,6 +7,7 @@
 #   martlet-host remove <role>  stop a role and unpublish it (keeps its data)
 #   martlet-host pair           pair a Martlet desktop (shows a one-use pairing code)
 #   martlet-host status         show the gateway and every installed role
+#   martlet-host machine        report this machine's hardware (GPUs, CPU, memory) to paired desktops
 #   martlet-host config         print the gateway configuration
 #
 # Methods (same commands, same roles; see README.md):
@@ -243,6 +244,82 @@ TEXT
 
 approval_matches() { [[ "$(gateway status --config "${GW_CONFIG}" 2>/dev/null || true)" == *'"serviceApproval":"matching"'* ]]; }
 
+# ------------------------------------------------------------------ machine report (what this host is like)
+# Written next to host.json (not inside it, so hardware changes never invalidate the service approval) and served
+# read-only to paired desktops at /martlet/v1/machine. Desktops use it to plan which computer runs which role.
+MACHINE_FILE="${GW_CONF_DIR}/machine.json"
+json_text() { printf '"%s"' "$(printf '%s' "$1" | tr -c 'A-Za-z0-9 ._()+/@:,#-' ' ' | tr -s ' ' | sed 's/^ //; s/ $//' | cut -c1-120)"; }
+json_opt() { if [[ -n "$1" ]]; then json_text "$1"; else printf 'null'; fi; }
+json_num() { if [[ "$1" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then printf '%s' "$1"; else printf 'null'; fi; }
+
+# Prints one JSON object per NVIDIA GPU from nvidia-smi CSV lines "name, memory MiB, driver".
+nvidia_gpus_json() {
+  local name memory driver
+  while IFS=, read -r name memory driver; do
+    [[ -n "${name// /}" ]] || continue
+    memory="${memory// /}"; driver="${driver# }"
+    printf '{"name":%s,"vendor":"nvidia","memory_mb":%s,"driver":%s}\n' \
+      "$(json_text "${name}")" "$(json_num "${memory%%.*}")" "$(json_opt "${driver}")"
+  done
+}
+
+collect_machine() {
+  local os="" kernel="" cpu="" threads="" memory="" runtime="" nvidia_containers="unknown" gpus=() line
+  local query=(--query-gpu=name,memory.total,driver_version --format=csv,noheader,nounits)
+  cpu="$(grep -m1 'model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2- || true)"
+  if [[ "${MODE}" == docker ]]; then
+    os="$(docker info --format '{{.OperatingSystem}}' 2>/dev/null || true)"
+    kernel="$(docker info --format '{{.KernelVersion}}' 2>/dev/null || true)"
+    threads="$(docker info --format '{{.NCPU}}' 2>/dev/null || true)"
+    memory="$(docker info --format '{{.MemTotal}}' 2>/dev/null | awk '{ if ($1 > 0) printf "%.1f", $1 / 1073741824 }' || true)"
+    runtime="Docker $(docker version --format '{{.Server.Version}}' 2>/dev/null || printf 'unknown')"
+    # The NVIDIA runtime injects nvidia-smi into GPU containers, so this sees the Docker host's GPUs.
+    mapfile -t gpus < <(timeout 120 docker run --rm --gpus all --entrypoint nvidia-smi "${IMAGE}" "${query[@]}" 2>/dev/null | nvidia_gpus_json || true)
+    if [[ ${#gpus[@]} -gt 0 ]]; then nvidia_containers="yes"; else nvidia_containers="no"; fi
+  else
+    os="$(. /etc/os-release 2>/dev/null && printf '%s' "${PRETTY_NAME:-Linux}" || printf 'Linux')"
+    kernel="$(uname -r)"
+    threads="$(nproc 2>/dev/null || true)"
+    memory="$(awk '/^MemTotal:/ { printf "%.1f", $2 / 1048576 }' /proc/meminfo 2>/dev/null || true)"
+    if command -v docker >/dev/null 2>&1; then
+      runtime="Docker $(docker version --format '{{.Server.Version}}' 2>/dev/null || printf '(not running)')"
+      if command -v nvidia-ctk >/dev/null 2>&1; then nvidia_containers="yes"; else nvidia_containers="no"; fi
+    fi
+    if command -v nvidia-smi >/dev/null 2>&1; then
+      mapfile -t gpus < <(timeout 30 nvidia-smi "${query[@]}" 2>/dev/null | nvidia_gpus_json || true)
+    fi
+    # AMD GPUs through sysfs (amdgpu reports dedicated VRAM; APUs with under 2 GiB are integrated and skipped).
+    local card vendor bytes slot name nvidia_seen=${#gpus[@]}
+    for card in /sys/class/drm/card[0-9]*; do
+      [[ -f "${card}/device/vendor" && ! "${card}" =~ - ]] || continue
+      vendor="$(cat "${card}/device/vendor" 2>/dev/null || true)"
+      if [[ "${vendor}" == 0x10de && ${nvidia_seen} -eq 0 ]]; then
+        nvidia_seen=1
+        gpus+=('{"name":"NVIDIA GPU (driver not working; nvidia-smi failed)","vendor":"nvidia","memory_mb":null,"driver":null}')
+      elif [[ "${vendor}" == 0x1002 ]]; then
+        bytes="$(cat "${card}/device/mem_info_vram_total" 2>/dev/null || printf '0')"
+        [[ "${bytes}" =~ ^[0-9]+$ && ${bytes} -ge 2147483648 ]] || continue
+        slot="$(basename "$(readlink -f "${card}/device")")"
+        name="$(lspci -s "${slot}" 2>/dev/null | cut -d: -f3- || true)"
+        gpus+=("{\"name\":$(json_text "${name:-AMD GPU}"),\"vendor\":\"amd\",\"memory_mb\":$(( bytes / 1048576 )),\"driver\":\"amdgpu\"}")
+      fi
+    done
+  fi
+  local joined; joined="$(IFS=,; printf '%s' "${gpus[*]:-}")"
+  mkdir -p "${GW_CONF_DIR}"; chmod 700 "${GW_CONF_DIR}"
+  ( umask 077
+    printf '{"collected_at":"%s","method":"%s","operating_system":%s,"kernel":%s,"processor":%s,"processor_threads":%s,"memory_gb":%s,"container_runtime":%s,"nvidia_containers":"%s","gpus":[%s]}\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${MODE}" "$(json_text "${os:-Linux}")" "$(json_opt "${kernel}")" "$(json_opt "${cpu}")" \
+      "$(json_num "${threads}")" "$(json_num "${memory}")" "$(json_opt "${runtime}")" "${nvidia_containers}" "${joined}" \
+      > "${MACHINE_FILE}.tmp" && mv -f "${MACHINE_FILE}.tmp" "${MACHINE_FILE}" )
+}
+
+show_machine() {
+  [[ -f "${MACHINE_FILE}" ]] || { note "No machine report yet. Run: martlet-host machine"; return 0; }
+  note "Reported to paired desktops ($(basename "${MACHINE_FILE}")):"
+  sed -e 's/,"/,\n  "/g' -e 's/^{/{\n  /' "${MACHINE_FILE}"
+}
+
 apply_config() {
   write_config
   if [[ ${CONFIG_CHANGED} == 1 ]] || ! approval_matches; then reapprove; else service_start; fi
@@ -411,12 +488,16 @@ UNIT
   else
     note "The gateway container restarts with Docker (restart policy unless-stopped)."
   fi
+  note "Collecting this machine's hardware for paired desktops..."
+  collect_machine
+  show_machine
   if [[ ${CONFIG_CHANGED} == 1 ]] || ! approval_matches; then reapprove; else service_start; fi
   say "Host ready. Next: 'pair' to connect a desktop, and 'add <role>' (see 'roles')."
 }
 
 cmd_pair() {
   require_setup
+  collect_machine
   service_stop
   cat <<'TEXT'
 In Martlet on your desktop open Martlet hosts and note "This PC's device ID".
@@ -544,6 +625,7 @@ cmd_add() {
   [[ -n "${kind}" ]] || fail "role.conf declares no gateway_kind."
   if [[ -n "${model_from}" ]]; then model="${chosen[${model_from}]:-${role}}"; fi
   ( umask 077; printf 'kind=%s\nendpoint=http://127.0.0.1:%s/\nmodel=%s\n' "${kind}" "${port}" "${model}" > "$(installed_file "${role}")" )
+  collect_machine
   apply_config
   say "Role ${role} is running and published through the gateway. Paired desktops pick it up automatically."
 }
@@ -557,8 +639,18 @@ cmd_remove() {
   require_docker
   role_compose "${role}" down || true
   rm -f "$(installed_file "${role}")"
+  collect_machine
   apply_config
   say "Role ${role} removed."
+}
+
+cmd_machine() {
+  require_setup
+  say "Collecting this machine's hardware for paired desktops"
+  collect_machine
+  show_machine
+  note "Restarting the gateway so paired desktops see it (Check connection in Martlet)."
+  if approval_matches; then service_start; else note "The gateway needs approval first; run: martlet-host setup"; fi
 }
 
 cmd_status() {
@@ -567,6 +659,7 @@ cmd_status() {
   if [[ "${MODE}" == docker ]]; then docker ps --filter "name=^${SERVICE}$" --filter "name=^${NET}$" --format '{{.Names}}: {{.Status}}' || true
   else systemctl --user is-active "${SERVICE}.service" || true; fi
   gateway health --config "${GW_CONFIG}" || true
+  show_machine
   local file role port
   for file in "${CONF}/roles"/*.role; do
     [[ -e "${file}" ]] || continue
@@ -580,7 +673,7 @@ cmd_status() {
 
 if [[ "${MODE}" == docker && "${MARTLET_ENGINE:-launcher}" != inner ]]; then
   case "${1:-help}" in
-    setup|roles|add|remove|pair|status|config) docker_launch "$@" ;;
+    setup|roles|add|remove|pair|status|config|machine) docker_launch "$@" ;;
   esac
 fi
 
@@ -591,6 +684,7 @@ case "${1:-help}" in
   remove) shift; cmd_remove "$@" ;;
   pair) cmd_pair ;;
   status) cmd_status ;;
+  machine) cmd_machine ;;
   config) require_setup; render_config ;;
   hold) cmd_hold ;;
   serve) cmd_serve ;;

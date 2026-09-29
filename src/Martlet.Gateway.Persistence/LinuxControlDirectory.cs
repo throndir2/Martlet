@@ -9,7 +9,7 @@ internal sealed class LinuxControlDirectory : IDisposable
     private readonly ILinuxFileSystem fs;
     private readonly List<(LinuxDescriptor Handle, LinuxFileIdentity Identity, string Name)> chain = [];
     private int DirectoryFd => chain[^1].Handle.Value;
-    internal const string Config = "host.json", Approval = "service-approval.json";
+    internal const string Config = "host.json", Approval = "service-approval.json", Machine = "machine.json";
     internal const string Staging = "service-approval.staging";
     internal uint UserId => fs.UserId;
     internal uint GroupId => fs.GroupId;
@@ -70,7 +70,7 @@ internal sealed class LinuxControlDirectory : IDisposable
 
     internal byte[]? Read(string name, int maximum)
     {
-        if (name is not (Config or Approval)) throw Error(GatewayPersistenceFailure.InvalidPath);
+        if (name is not (Config or Approval or Machine)) throw Error(GatewayPersistenceFailure.InvalidPath);
         Validate();
         var before = fs.StatAt(DirectoryFd, name);
         if (before is null) return null;

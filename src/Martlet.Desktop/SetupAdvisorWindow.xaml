@@ -89,10 +89,13 @@
 
                 <StackPanel x:Name="HardwareStep" Visibility="Collapsed">
                     <TextBlock Text="3. Your computers" Style="{DynamicResource SectionHeading}"/>
+                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,10"
+                        Text="Martlet recommends what each computer should do, based on its graphics card (GPU)."/>
                     <Label Target="{Binding ElementName=ThisPcGpuChoice}" Content="_Graphics card (GPU) in this PC"/>
                     <ComboBox x:Name="ThisPcGpuChoice" MinHeight="30" AutomationProperties.AutomationId="ThisPcGpu"
-                              AutomationProperties.Name="Graphics card in this PC"/>
-                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,10"
+                              SelectionChanged="ThisPcGpu_Changed" AutomationProperties.Name="Graphics card in this PC"/>
+                    <TextBlock x:Name="ThisPcGpuHint" TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,10"
+                        AutomationProperties.AutomationId="ThisPcGpuDetected"
                         Text="Find it in Task Manager > Performance > GPU, under Dedicated GPU memory."/>
                     <CheckBox x:Name="GamesChoice" Margin="0,4,0,0" AutomationProperties.AutomationId="GamesOnThisPc"
                               Content="I play games on this PC while Martlet is running"/>
@@ -101,11 +104,9 @@
                     <Label Target="{Binding ElementName=ExtraMachinesChoice}" Content="_Other computers I can dedicate to Martlet"/>
                     <ComboBox x:Name="ExtraMachinesChoice" MinHeight="30" SelectionChanged="ExtraMachines_Changed"
                               AutomationProperties.AutomationId="ExtraMachines" AutomationProperties.Name="Other computers I can dedicate to Martlet"/>
-                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,10"
-                        Text="Other computers on your home network run parts of Martlet through Martlet hosts. They can run Linux or Windows."/>
-                    <Label x:Name="ExtraGpuLabel" Target="{Binding ElementName=ExtraGpuChoice}" Content="_Their GPU (the smallest one, if they differ)"/>
-                    <ComboBox x:Name="ExtraGpuChoice" MinHeight="30" AutomationProperties.AutomationId="ExtraMachineGpu"
-                              AutomationProperties.Name="GPU in the other computers"/>
+                    <TextBlock x:Name="ExtraMachinesHint" TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,10"
+                        Text="Other computers on your home network run parts of Martlet through Martlet hosts. They can run Linux or Windows. Pick each one's GPU below; if you have more than five, list your five strongest."/>
+                    <StackPanel x:Name="OtherComputersPanel" AutomationProperties.AutomationId="OtherComputers"/>
                 </StackPanel>
 
                 <StackPanel x:Name="ResultStep" Visibility="Collapsed" AutomationProperties.AutomationId="AdvisorResult"/>

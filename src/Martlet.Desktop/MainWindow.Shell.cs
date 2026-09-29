@@ -11,6 +11,7 @@ using System.Windows.Shapes;
 using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Contracts;
+using Martlet.Core.Installation;
 using Martlet.Core.Settings;
 
 namespace Martlet.Desktop;
@@ -552,7 +553,10 @@ public partial class MainWindow
 
     // ---------- devices map ----------
 
-    private NetworkInputs Inputs() => new(machine, Role, homeSettings, homeAvatar, avatar.IsShowing, hostChecks, homeHosts);
+    private HostHardwareStore? HardwareStore => store is null ? null : new(store.DataDirectory);
+
+    private NetworkInputs Inputs() => new(machine, Role, homeSettings, homeAvatar, avatar.IsShowing, hostChecks,
+        HardwareStore?.Load() ?? [], homeHosts);
 
     private void RefreshDevices_Click(object sender, RoutedEventArgs e)
     {
@@ -979,7 +983,7 @@ public partial class MainWindow
             {
                 host = FindHost(key[5..]) ?? throw new InvalidOperationException("That host is no longer paired.");
                 ActionText.Text = $"Checking {host.HostId}...";
-                var check = await HostControl.CheckAsync(host.Pairing, lifetime.Token);
+                var check = await HostControl.CheckAsync(host.Pairing, HardwareStore, lifetime.Token);
                 hostChecks[host.HostId] = check;
                 if (check.Reachable != true)
                 {
@@ -1043,7 +1047,7 @@ public partial class MainWindow
         foreach (var host in hosts) hostChecks[host.HostId] = new(null, "Checking...");
         if (DevicesPage.IsVisible) RenderMap();
         (string Id, HostCheck Check)[] results;
-        try { results = await Task.WhenAll(hosts.Select(async h => (h.HostId, await HostControl.CheckAsync(h.Pairing, lifetime.Token)))); }
+        try { results = await Task.WhenAll(hosts.Select(async h => (h.HostId, await HostControl.CheckAsync(h.Pairing, HardwareStore, lifetime.Token)))); }
         catch (OperationCanceledException) { return; }
         foreach (var (id, check) in results) hostChecks[id] = check;
         if (closing) return;

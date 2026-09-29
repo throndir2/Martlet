@@ -18,7 +18,9 @@ internal sealed partial class GatewayHttpApplication
     private readonly TimeProvider clock;
     private readonly IGatewayCrypto crypto;
     private readonly IGatewayAuditSink audit;
+    private volatile GatewayMachineReport? machine;
 
+    internal GatewayMachineReport? Machine { get => machine; set => machine = value; }
     internal GatewayHttpApplication(
         GatewayHostIdentity identity,
         IGatewayPairingExchange pairing,
@@ -101,10 +103,21 @@ internal sealed partial class GatewayHttpApplication
 
             if (context.Request.Method != HttpMethods.Get ||
                 rawTarget is not ("/martlet/v1/version" or
-                    "/martlet/v1/capabilities" or "/martlet/v1/status"))
+                    "/martlet/v1/capabilities" or "/martlet/v1/status" or "/martlet/v1/machine"))
                 throw new GatewayProtocolException("request.invalid");
             EnsureEmptyRequest(context.Request);
             var principal = authenticator.Authenticate(context.Request);
+            if (rawTarget == "/martlet/v1/machine")
+            {
+                await WriteJsonAsync(context, 200, new MachineDocument
+                {
+                    ProtocolVersion = GatewayProtocolVersion.Current,
+                    HostId = identity.HostId,
+                    GeneratedAt = clock.GetUtcNow(),
+                    Machine = machine
+                }).ConfigureAwait(false);
+                return;
+            }
             if (rawTarget == "/martlet/v1/version")
             {
                 await WriteJsonAsync(context, 200, new VersionDocument
@@ -351,6 +364,14 @@ internal sealed partial class GatewayHttpApplication
         public required DateTimeOffset GeneratedAt { get; init; }
         public required GatewayRole AuthorizedRole { get; init; }
         public required GatewayWorkerStatusDocument[] Workers { get; init; }
+    }
+
+    private sealed record MachineDocument
+    {
+        public required GatewayProtocolVersion ProtocolVersion { get; init; }
+        public required string HostId { get; init; }
+        public required DateTimeOffset GeneratedAt { get; init; }
+        public GatewayMachineReport? Machine { get; init; }
     }
 
     private sealed record FailureDocument

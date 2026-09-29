@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Contracts;
+using Martlet.Core.Installation;
 using Martlet.Core.Settings;
 using Martlet.Credentials.Windows;
 
@@ -188,6 +189,8 @@ internal sealed class HostPairings(string dataDirectory, AvatarProfileStore prof
         HostRegistry.Save(dataDirectory, hosts.Where(h => h.HostId != hostId).ToList());
         if (profile.RemoteHost?.HostId == hostId) await profiles.SaveAsync(profile with { RemoteHost = null }, revision, token);
         new WindowsCredentialStore().DeleteAvatarHostSecret(host.Pairing.HostId, host.Pairing.CredentialId);
+        try { new HostHardwareStore(dataDirectory).Forget(hostId); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         return host;
     }
 
@@ -219,8 +222,8 @@ internal sealed class HostPairings(string dataDirectory, AvatarProfileStore prof
 /// <summary>Talks to a paired host over its pinned pairing. Only ever runs on an explicit action.</summary>
 internal static class HostControl
 {
-    /// <summary>Reads which roles a paired host currently offers this PC.</summary>
-    internal static async Task<HostCheck> CheckAsync(AvatarRemoteHost host, CancellationToken token)
+    /// <summary>Reads which roles a paired host currently offers this PC, and saves the hardware it reports.</summary>
+    internal static async Task<HostCheck> CheckAsync(AvatarRemoteHost host, HostHardwareStore? hardware, CancellationToken token)
     {
         using var read = new WindowsCredentialStore().ReadAvatarHostSecret(host.HostId, host.CredentialId);
         if (read.Error != CredentialError.None || read.Secret is null)
@@ -232,7 +235,12 @@ internal static class HostControl
             var route = await connection!.ReadRouteAsync(token);
             var offers = new Dictionary<string, string>(StringComparer.Ordinal);
             if (route is not null) offers[HostRoles.Audio2Face] = route.ModelId;
-            return new(true, route is null ? "Reachable. Not running Audio2Face." : $"Reachable. Runs Audio2Face (model {route.ModelId}).", offers);
+            var text = route is null ? "Reachable. Not running Audio2Face." : $"Reachable. Runs Audio2Face (model {route.ModelId}).";
+            try { text += " " + await HostsWindow.ReadHardwareAsync(connection, hardware, token); }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested) { }
+            catch (Exception error) when (error is Audio2FaceHostException or IOException or JsonException or TimeoutException or
+                HttpRequestException or InvalidOperationException) { }
+            return new(true, text, offers);
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested) { return new(false, "Did not answer in time."); }
         catch (Exception error) when (error is Audio2FaceHostException or IOException or UnauthorizedAccessException or ContractException or

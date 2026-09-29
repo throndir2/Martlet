@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Contracts;
+using Martlet.Core.Installation;
 using Martlet.Core.Settings;
 using Martlet.Credentials.Windows;
 
@@ -285,22 +286,53 @@ public partial class HostsWindow : ThemedWindow
             ? "It handles lip-sync when it runs Audio2Face. "
             : "It stands by; hand it jobs under Who does what on the Devices map. ") +
             "In the host console press a key, then type stop and confirm.";
+        // The pairing listener is still open, so read what the host is like right away for the map and the advisor.
+        try { StatusText.Text += " " + await CheckAsync(remote, Hardware, _ => { }, lifetime.Token); }
+        catch (Exception error) when (error is InvalidOperationException or OperationCanceledException) { }
     });
 
-    /// <summary>Checks a paired host over its pinned pairing and reports which roles it offers.</summary>
-    internal static async Task<string> CheckAsync(AvatarRemoteHost host, Action<string> progress, CancellationToken token)
+    /// <summary>Checks a paired host over its pinned pairing, reports which roles it offers and saves the hardware it
+    /// reports (GPUs, CPU, memory) for the devices map and the setup advisor.</summary>
+    internal static async Task<string> CheckAsync(AvatarRemoteHost host, HostHardwareStore? hardware, Action<string> progress,
+        CancellationToken token)
     {
         progress($"Checking {host.HostId} at {host.Origin}...");
-        var check = await HostControl.CheckAsync(host, token);
+        var check = await HostControl.CheckAsync(host, hardware, token);
         if (check.Reachable != true) throw new InvalidOperationException(check.Text);
-        return check.Offers?.ContainsKey(HostRoles.Audio2Face) == true ? check.Text
-            : "Reachable and paired, but no Audio2Face role yet (add it under Roles).";
+        return check.Text;
     }
+
+    internal static async Task<string> ReadHardwareAsync(Audio2FaceHostConnection connection, HostHardwareStore? store, CancellationToken token)
+    {
+        HostHardware? report;
+        try { report = await connection.ReadMachineAsync(token); }
+        catch (Audio2FaceHostException error) when (error.Code == "request.invalid")
+        {
+            return "Its hardware is not reported: update the host (rebuild it from Martlet hosts > Set up host).";
+        }
+        if (report is null) return "Its hardware is not reported yet: run 'martlet-host machine' on the host.";
+        try { store?.Save(report); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        return "Hardware: " + DescribeHardware(report) + ".";
+    }
+
+    internal static string DescribeHardware(HostHardware report)
+    {
+        var parts = new List<string>
+        {
+            report.Gpus.Count == 0 ? "no dedicated GPU" : string.Join(" + ", report.Gpus.Select(g => g.Describe()))
+        };
+        if (report.MemoryGb is { } memory) parts.Add($"{memory:0} GB memory");
+        parts.Add(report.OperatingSystem);
+        return string.Join(", ", parts);
+    }
+
+    private HostHardwareStore Hardware => new(pairings.DataDirectory);
 
     private async void Check_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
     {
         if (paired is not { } host) { ShowPaired(0); return; }
-        StatusText.Text = $"Host {host.HostId}: " + await CheckAsync(host.Pairing, text => StatusText.Text = text, lifetime.Token);
+        StatusText.Text = $"Host {host.HostId}: " + await CheckAsync(host.Pairing, Hardware, text => StatusText.Text = text, lifetime.Token);
     });
 
     private async void Forget_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>

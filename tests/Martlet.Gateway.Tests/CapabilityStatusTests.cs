@@ -37,6 +37,62 @@ public sealed class CapabilityStatusTests
     }
 
     [Fact]
+    public async Task Machine_report_is_served_to_paired_devices_only()
+    {
+        await using var host = await GatewayTestHost.StartAsync();
+        var credential = await host.PairAsync(GatewayRole.Voice);
+        var signer = new GatewayRequestSigner(host.Identity, credential, host.Clock);
+
+        using (var empty = host.SignedGet("/martlet/v1/machine", GatewayRole.Voice, signer))
+        using (var emptyResponse = await host.Client.SendAsync(empty))
+        {
+            Assert.Equal(HttpStatusCode.OK, emptyResponse.StatusCode);
+            Assert.DoesNotContain("\"machine\"", await emptyResponse.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        }
+
+        var report = GatewayMachineReport.Parse(Encoding.UTF8.GetBytes(
+            "{\"collected_at\":\"2026-09-29T18:00:00Z\",\"method\":\"native\",\"operating_system\":\"Ubuntu 24.04.1 LTS\"," +
+            "\"kernel\":\"6.8.0\",\"processor\":\"AMD Ryzen 9 5950X\",\"processor_threads\":32,\"memory_gb\":62.7," +
+            "\"container_runtime\":\"Docker 27.3.1\",\"nvidia_containers\":\"yes\"," +
+            "\"gpus\":[{\"name\":\"NVIDIA GeForce RTX 4090\",\"vendor\":\"nvidia\",\"memory_mb\":24564,\"driver\":\"560.35.03\"}]}"));
+        Assert.NotNull(report);
+        host.Server.Machine = report;
+
+        using var request = host.SignedGet("/martlet/v1/machine", GatewayRole.Voice, signer);
+        using var response = await host.Client.SendAsync(request);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var machine = document.RootElement.GetProperty("machine");
+        Assert.Equal("Ubuntu 24.04.1 LTS", machine.GetProperty("operating_system").GetString());
+        Assert.Equal(24564, machine.GetProperty("gpus")[0].GetProperty("memory_mb").GetInt32());
+
+        using var anonymous = new HttpRequestMessage(HttpMethod.Get, host.Origin.CanonicalOrigin + "/martlet/v1/machine");
+        using var rejected = await host.Client.SendAsync(anonymous);
+        Assert.NotEqual(HttpStatusCode.OK, rejected.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"collected_at\":\"2026-09-29T18:00:00Z\",\"method\":\"cloud\",\"operating_system\":\"x\",\"gpus\":[]}")]
+    [InlineData("{\"collected_at\":\"2026-09-29T18:00:00Z\",\"method\":\"native\",\"operating_system\":\"x\",\"gpus\":[{\"name\":\"a\\u0007\",\"vendor\":\"nvidia\"}]}")]
+    [InlineData("not json")]
+    public void Malformed_machine_reports_are_ignored(string json) =>
+        Assert.Null(GatewayMachineReport.Parse(Encoding.UTF8.GetBytes(json)));
+
+    [Fact]
+    public void Martlet_host_engine_output_parses()
+    {
+        // Captured from deploy/host/martlet-host collect_machine (Docker method on Docker Desktop, no GPU runtime).
+        var report = GatewayMachineReport.Parse(Encoding.UTF8.GetBytes(
+            "{\"collected_at\":\"2026-09-29T18:34:13Z\",\"method\":\"docker\",\"operating_system\":\"Docker Desktop\"," +
+            "\"kernel\":\"6.18.33.2-microsoft-standard-WSL2\",\"processor\":\"13th Gen Intel(R) Core(TM) i7-13700K\"," +
+            "\"processor_threads\":24,\"memory_gb\":15.5,\"container_runtime\":\"Docker 26.1.1\",\"nvidia_containers\":\"no\",\"gpus\":[]}\n"));
+        Assert.NotNull(report);
+        Assert.Equal(24, report!.ProcessorThreads);
+        Assert.Empty(report.Gpus);
+    }
+
+    [Fact]
     public async Task Private_worker_failure_is_redacted_with_an_exact_remedy()
     {
         var worker = new UnavailableWorker(GatewayTestHost.Capabilities(

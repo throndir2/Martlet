@@ -496,7 +496,7 @@ public partial class MainWindow : ThemedWindow
     private void Advisor_Click(object sender, RoutedEventArgs e)
     {
         if (closing) return;
-        var advisor = new SetupAdvisorWindow(advisorAnswers) { Owner = this };
+        var advisor = new SetupAdvisorWindow(advisorAnswers, DetectThisPcGpu(), PairedHostsForAdvisor()) { Owner = this };
         advisor.ShowDialog();
         advisorAnswers = advisor.Answers;
         switch (advisor.RequestedStep)
@@ -509,6 +509,31 @@ public partial class MainWindow : ThemedWindow
         }
     }
     private void Avatar_Click(object sender, RoutedEventArgs e) => OpenAvatar(this);
+
+    /// <summary>This PC's graphics card, read locally from Windows (no probing), as an advisor answer.</summary>
+    private (AdvisorGpu Gpu, string Text)? DetectThisPcGpu()
+    {
+        var info = machine;
+        if (ReferenceEquals(info, MachineInfo.Unknown))
+        {
+            try { info = MachineInfo.Read(); }
+            catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException or
+                System.ComponentModel.Win32Exception) { return null; }
+        }
+        if (info.BestGpu is not { } gpu) return (AdvisorGpu.None, "no dedicated graphics card found");
+        var answer = SetupAdvisor.Classify(gpu.Name, gpu.MemoryGb);
+        return (answer, answer == AdvisorGpu.None ? $"{gpu.Name} (integrated graphics, not a dedicated GPU)" : gpu.Describe());
+    }
+
+    /// <summary>Paired hosts (other than this PC) with the hardware they last reported.</summary>
+    private IReadOnlyList<AdvisorComputer> PairedHostsForAdvisor()
+    {
+        if (store is null) return [];
+        return new HostHardwareStore(store.DataDirectory).Load()
+            .Where(host => !Uri.TryCreate(host.Origin, UriKind.Absolute, out var origin) || origin.Host != machine.LanAddress)
+            .Select(host => new AdvisorComputer(host.AdvisorGpu, host.HostId, HostsWindow.DescribeHardware(host)))
+            .ToArray();
+    }
     private void Hosts_Click(object sender, RoutedEventArgs e) => OpenHosts(null, 0);
     /// <summary>Opens the installed prerequisites tool; it changes nothing until the user picks an item.</summary>
     private void Prerequisites_Click(object sender, RoutedEventArgs e)

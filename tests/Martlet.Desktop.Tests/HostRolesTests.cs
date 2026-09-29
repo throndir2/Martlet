@@ -44,7 +44,7 @@ public sealed class HostRolesTests
             ["gpu-b"] = new(true, "Reachable. Not running Audio2Face.", new Dictionary<string, string>())
         };
         var avatar = scope.Profile() with { RemoteHost = hosts[1].Pairing };
-        var nodes = NetworkMap.Build(new(MachineInfo.Unknown, DeviceRole.Companion, null, avatar, false, checks, hosts));
+        var nodes = NetworkMap.Build(new(MachineInfo.Unknown, DeviceRole.Companion, null, avatar, false, checks, Hosts: hosts));
         var a = nodes.Single(n => n.Id == "host:gpu-a");
         var b = nodes.Single(n => n.Id == "host:gpu-b");
         var pc = nodes.Single(n => n.Id == "this-pc");
