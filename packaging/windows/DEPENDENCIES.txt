@@ -114,7 +114,7 @@ SHA-256 d78904d908bd232b800219e01732e4ea2f0562b5e9f35a2670742a1c16d22942) is
 downloaded at build time and never committed. sdk\core.js is the unmodified
 redistributable live2dcubismcore.min.js (Core 05.01.0000, Live2D Proprietary
 Software License). sdk\sdk.js compiles the Cubism Web Framework (Live2D Open
-Software License) with Martlet's animator. models\Hiyori is the unmodified
+Software License) with Martlet's animator. characters\Hiyori is the unmodified
 Hiyori Momose sample (Live2D Original Character, Free Material License and
 Sample Data Terms). live2d\LIVE2D-NOTICES.txt carries the required copyright
 notice and license references. Publication as an Expandable Application is

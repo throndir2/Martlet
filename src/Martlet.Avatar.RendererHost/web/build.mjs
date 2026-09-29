@@ -66,7 +66,7 @@ if (sdkRoot) {
     outfile: path.join(live2dOutput, "sdk", "sdk.js"), bundle: true, format: "esm", platform: "browser",
     target: "es2022", minify: true, legalComments: "inline", logLevel: "warning" });
   await copyFile(path.join(sdkRoot, "Core", "live2dcubismcore.min.js"), path.join(live2dOutput, "sdk", "core.js"));
-  await cp(path.join(sdkRoot, "Samples", "Resources", "Hiyori"), path.join(live2dOutput, "models", "Hiyori"), { recursive: true });
+  await cp(path.join(sdkRoot, "Samples", "Resources", "Hiyori"), path.join(live2dOutput, "characters", "Hiyori"), { recursive: true });
   const framework = await readFile(path.join(sdkRoot, "Framework", "LICENSE.md"), "utf8");
   const core = await readFile(path.join(sdkRoot, "Core", "LICENSE.md"), "utf8");
   await writeFile(path.join(live2dOutput, "LIVE2D-NOTICES.txt"), [
@@ -80,7 +80,7 @@ if (sdkRoot) {
     "Cubism Web Framework (compiled into live2d/sdk/sdk.js): Copyright (c) Live2D Inc.,",
     "used under the Live2D Open Software License.",
     "",
-    "Hiyori Momose sample model (live2d/models/Hiyori): Live2D Original Character, used under the",
+    "Hiyori Momose sample model (live2d/characters/Hiyori): Live2D Original Character, used under the",
     "Live2D Free Material License Agreement and Terms of Use for Live2D Cubism Sample Data",
     "(https://www.live2d.com/eula/live2d-sample-model-terms_en.html). The character design is unmodified.",
     "This content uses sample data owned and copyrighted by Live2D Inc. The sample data are utilized in",

@@ -245,7 +245,7 @@ function Assert-PublishLayout([string]$Root, [ValidateSet('Internal', 'PublicUns
     Assert-X64Pe (Join-Path $Root 'Desktop\AvatarRenderer\runtimes\win-x64\native\WebView2Loader.dll')
     Assert-AvatarWebInventory $Root
     if ($Channel -ceq 'PublicUnsigned') {
-        foreach ($file in @('LIVE2D-NOTICES.txt', 'sdk\core.js', 'sdk\sdk.js', 'models\Hiyori\Hiyori.model3.json')) {
+        foreach ($file in @('LIVE2D-NOTICES.txt', 'sdk\core.js', 'sdk\sdk.js', 'characters\Hiyori\Hiyori.model3.json')) {
             $null = Get-RequiredFile (Join-Path $Root "Desktop\AvatarRenderer\live2d\$file")
         }
     }
@@ -1184,7 +1184,7 @@ function Test-PackageProvenance([string]$Root, $Provenance,
                 @('Desktop\AvatarRenderer\web\app.js', 'Desktop\AvatarRenderer\web\app.js.LEGAL.txt',
                     'Desktop\AvatarRenderer\web\index.html', 'Desktop\AvatarRenderer\web\THIRD-PARTY-NOTICES.txt')
             # Bundled Live2D runtime and Hiyori come from the pinned official SDK archive (see src\Martlet.Avatar.Live2D\scripts\sdk.mjs).
-            $live2d = $file.path -imatch '^Desktop\\AvatarRenderer\\live2d\\(LIVE2D-NOTICES\.txt|sdk\\(core|sdk)\.js|models\\Hiyori\\[A-Za-z0-9_.\\-]+\.(json|moc3|png))$'
+            $live2d = $file.path -imatch '^Desktop\\AvatarRenderer\\live2d\\(LIVE2D-NOTICES\.txt|sdk\\(core|sdk)\.js|characters\\Hiyori\\[A-Za-z0-9_.\\-]+\.(json|moc3|png))$'
             if (-not $live2d -and $allowed -inotcontains $file.path) { throw "Unowned published content: $($file.path)" }
         }
     }

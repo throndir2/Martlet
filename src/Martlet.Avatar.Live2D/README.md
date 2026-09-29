@@ -16,7 +16,7 @@ the SDK is committed. The renderer host build then produces:
 | --- | --- |
 | `sdk/core.js` | Unmodified redistributable `Core/live2dcubismcore.min.js` (Core 05.01.0000) |
 | `sdk/sdk.js` | `runtime/sdk-bundle.ts` compiled with the SDK's Framework source |
-| `models/Hiyori/` | Unmodified `Samples/Resources/Hiyori` (Live2D Original Character) |
+| `characters/Hiyori/` | Unmodified `Samples/Resources/Hiyori` (Live2D Original Character) |
 | `LIVE2D-NOTICES.txt` | Required copyright notice and license references |
 
 `runtime/sdk-bundle.ts` supplies `SdkModules.createAnimator`, which wires the

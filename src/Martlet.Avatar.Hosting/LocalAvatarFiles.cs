@@ -31,7 +31,7 @@ public static class BundledLive2D
     {
         ContractRules.Require(IsBuiltIn(builtIn) && Characters.Contains(builtIn[Prefix.Length..]), "Unknown bundled character.");
         var name = builtIn[Prefix.Length..];
-        return Path.Combine(RequireRoot(), "models", name, name + ".model3.json");
+        return Path.Combine(RequireRoot(), "characters", name, name + ".model3.json");
     }
 
     private static string RequireRoot() => Root ?? throw new ContractException(ErrorCode.InvalidContract,
