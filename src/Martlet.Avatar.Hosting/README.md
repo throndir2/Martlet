@@ -1,19 +1,37 @@
 # Optional Desktop avatar integration
 
-This is an opt-in development application surface, not a qualified GPU/model/
-hardware release. The main application remains .NET 10/WPF. Open **Optional
-Avatar** from the main window or **Avatar setup / STOP avatar** from an active
-conversation. Opening it only reads local choices. Renderer, inference,
-microphone, credentials and audio effects remain off.
+The main application remains .NET 10/WPF. Click **Show character** on the main
+window to open the bundled Live2D character (Hiyori), or open **Character
+settings** to choose a model, lip-sync source and auto-start. Nothing renders
+until you ask; microphone, credentials and provider audio stay untouched.
 
-## Explicit local setup
+## Default character: Hiyori with local lip-sync
 
-1. Create/load an ordinary Martlet profile. Select a lawful local VRM1 `.vrm` or
-   Live2D `.model3.json`. Live2D requires a dedicated folder containing only its
-   supported inert assets, plus a separately prepared local SDK resource folder
-   containing `core.js` and `sdk.js`. Follow the Live2D module's `build:dev`
-   instructions with your own Framework 5-r.4 and Core 05.01.0000. None is
-   downloaded, licensed on your behalf, or redistributed.
+Official builds bundle the Live2D Cubism SDK for Web 5-r.4 runtime and the
+Hiyori Momose sample model under `AvatarRenderer\live2d` (see
+[Live2D module](../Martlet.Avatar.Live2D/README.md#bundled-runtime-and-default-character)).
+`AvatarProfile.ModelPath` value `builtin:Hiyori` resolves to that folder in both
+the Desktop and renderer processes; `SdkDirectory` left empty uses the bundled
+`core.js`/`sdk.js`. **Show character** needs no setup profile: without one, the
+choice simply is not saved.
+
+The character idles with her authored motions, blinks, breathes, sways with
+physics, turns her head/eyes toward the mouse cursor and moves her mouth while
+Martlet speaks. `AvatarLipSync.Loudness` (the default) derives a 0..1 mouth level
+from the RMS of Martlet's own generated TTS PCM in 20 ms windows and presents it
+against the playback device clock (falling back to consumed samples). It runs
+locally, sends nothing anywhere and survives pause/mute/configuration
+revocations; hiding the character stops it. **Show the character automatically
+when Martlet starts** saves `AutoShow` in `avatar.json`. Custom Live2D
+`.model3.json` folders and VRM1 `.vrm` models get the same idle and loudness
+behavior (VRM: relaxed arms, breathing, blink and `aa`).
+
+## Audio2Face (advanced) setup
+
+1. Create/load an ordinary Martlet profile. Select the bundled character, a
+   lawful local VRM1 `.vrm` or a Live2D `.model3.json` folder containing only
+   supported inert assets. An optional SDK override folder containing `core.js`
+   and `sdk.js` replaces the bundled runtime.
 2. Check **local GPU model inspection** and click **Inspect model**. This launches
    a private WPF/WebView2 process with your already-installed WebView2 runtime.
    Actual model parsing supplies target IDs/bounds; missing runtime, unsupported
@@ -30,34 +48,33 @@ microphone, credentials and audio effects remain off.
    driver or service is installed or started by Martlet; review those terms and
    prerequisites separately.
 5. Check the separate generated-speech analysis permission and **Activate**.
-   The state is *armed, awaiting generated speech*, not verified/animated.
-   Start an explicitly authorized normal voice conversation. Only its accepted
-   generated PCM is delivered to the analyzer; microphone data and text are not.
+   Activation replaces loudness lip-sync for the session. The state is *armed,
+   awaiting generated speech*, not verified/animated. Start an explicitly
+   authorized normal voice conversation. Only its accepted generated PCM is
+   delivered to the analyzer; microphone data and text are not.
    The first valid A2F response establishes the actual returned channel subset.
    Missing mapped channels stop that segment's animation without delaying speech.
 
-Only the implemented A2F **mouth/expression** path can activate. Other analyzers
-(including amplitude), gaze/head/body/secondary-motion composition, arbitrary
-blending, motion playback and model-feature overrides are not implemented here.
-The two renderer adapters have their own documented conservative asset subsets.
-Changing a mapping cannot create an absent authored feature or waive asset/runtime
+Only the implemented A2F **mouth/expression** path can activate. Gaze/head/body
+A2F composition and arbitrary blending are not implemented here; composed A2F
+writes apply after idle motion/breathing and before physics/pose. Changing a
+mapping cannot create an absent authored feature or waive asset/runtime
 requirements.
 
-**STOP avatar** is pinned above the scrolling form; Escape does the same.
-Voice continues. Closing the configuration window does not revoke explicit
-session activation; app exit, session lock, relevant configuration/control
-changes and explicit Stop do. No activation is restored after restart.
+**Hide character / STOP avatar** is pinned above the scrolling form; Escape does
+the same. Voice continues. Closing the configuration window does not hide the
+character or revoke explicit A2F activation; app exit, relevant configuration/
+control changes, session lock (A2F only) and explicit Stop do. A2F activation is
+never restored after restart.
 
 ## Draggable desktop character
 
-After explicit **Inspect model**, both Live2D and VRM appear in a transparent,
-borderless, always-on-top desktop overlay, initially near the lower-right corner
-of the primary work area. The character stays visible over other ordinary
-windows while an activated, authorized voice conversation animates her through
-the existing generated-speech path. Inspection alone does not enable analysis.
+The character appears in a transparent, borderless, always-on-top desktop
+overlay, initially near the lower-right corner of the primary work area.
 
 Drag the character or **Move character** handle to reposition the overlay,
-including onto another monitor. With the move handle focused, use arrow keys
+including onto another monitor. The mouse wheel over the character resizes it.
+With the move handle focused, use arrow keys
 for 10-DIP steps (device-independent pixels), Shift+arrows for 1-DIP steps, or Home to return to the
 primary screen. The small move/close controls stay available; the model has no
 opaque panel or title bar. The overlay does not take keyboard focus on opening.
@@ -65,15 +82,13 @@ Position is session-only, and this is not a global click-through or game-injecte
 overlay. Exclusive-fullscreen applications may cover it.
 
 **Close**, Alt+F4, or Escape while the overlay has focus closes only the renderer;
-normal voice playback continues. Inspect again before reactivation. Closing
-the setup form alone still leaves the character visible; **STOP avatar** removes
-it. No new analysis, microphone, provider or startup permissions are introduced.
+normal voice playback continues. **Show character** opens it again.
 The host uses WPF composition WebView2 and transparent page/WebGL surfaces for
 both models, with Windows 10 2004+ graphics-composition bindings included in the
-renderer build. Local controlled shell checks and actual WebView2 rendering of
-the repository's synthetic VRM triangle establish the transparent host path,
-not artist-model/Live2D Core, mixed-DPI or physical speech-sync qualification;
-those checks remain **NOT RUN**.
+renderer build. The bundled Hiyori model has been rendered locally through the
+real Core/Framework in the actual WebView2 overlay (idle motion, blink, physics,
+lip-sync and cursor-follow checked); mixed-DPI and physical speech-sync timing
+remain unmeasured.
 
 ## Ownership and isolation
 
@@ -102,8 +117,8 @@ The renderer has no vault/provider/audio reference and receives no microphone,
 PCM, transcript, credentials or arbitrary command. Its fixed local application
 origin intercepts only allowlisted resources; external navigation, frames,
 downloads, permission prompts, host objects and page network requests are denied.
-Model files are data, not scripts. User-supplied official Core/Framework are
-separate trusted runtime prerequisites. This is process/crash isolation and page
+Model files are data, not scripts. The bundled (or user-overridden) official
+Core/Framework are trusted runtime resources. This is process/crash isolation and page
 resource restriction, not an OS sandbox against malicious same-user software or
 every browser-runtime background activity.
 
@@ -133,10 +148,10 @@ the inspected model and current configuration. Stop/replace invalidation precede
 asynchronous cleanup. Old frames and old configuration replies cannot revive
 stopped animation.
 
-No hardware/acoustic audibility is inferred. Licensed native Core rendering,
-real WebView/model/PNG/GPU paths, live NIM quality, witnessed synchronization and
-physical p95 clearing qualification are **NOT RUN** without separately authorized
-prerequisites. Controlled local protocol/clock/process tests do not replace them.
+No hardware/acoustic audibility is inferred. Live NIM quality, witnessed
+synchronization and physical p95 clearing qualification are **NOT RUN** without
+separately authorized prerequisites. Controlled local protocol/clock/process
+tests do not replace them.
 
 ## Local builds
 
@@ -146,7 +161,11 @@ Desktop normally with the repository SDK. No Node/npm/dev server is used at
 application runtime. The host build bundles both actual renderer modules,
 retains complete runtime JS licenses/notices, and emits a deterministic
 `avatar-bundle-receipt.json` plus raw `avatar-esbuild-metafile.json` in its
-intermediate output. Source Core/Framework/models are never bundled.
+intermediate output. It also downloads (once, SHA-256 pinned) the official Live2D
+SDK and writes `web\live2d-dist` (runtime, Hiyori, notices), copied to the
+renderer's `live2d` folder. Without network access the build continues without
+the bundled Live2D runtime; `MARTLET_REQUIRE_LIVE2D=1` (set by the public release
+build) makes it mandatory.
 
 Run the actual browser-message/fatal-state bridge regression without starting a
 browser or GPU:

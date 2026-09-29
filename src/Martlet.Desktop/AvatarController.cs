@@ -22,12 +22,16 @@ internal sealed class AvatarController : IAsyncDisposable
     private AvatarProfile? profile;
     private CancellationTokenSource? activation;
     private CancellationTokenSource? pending;
+    private CancellationTokenSource? loudness;
+    private Task? loudnessWorker;
     private Task? worker;
     private string status = "Avatar OFF. No renderer or analysis has run.";
     private long generation;
     internal GeneratedSpeechObserver Observer => observer;
     internal string Status => Volatile.Read(ref status);
     internal bool IsActive => activation is { IsCancellationRequested: false };
+    /// <summary>The character window is open (with or without lip-sync).</summary>
+    internal bool IsShowing => renderer is { HasExited: false } && profile is not null;
     internal RendererCapabilities? Capabilities => renderer?.Capabilities;
     internal AvatarProfile? InspectedProfile => profile;
 
@@ -48,6 +52,92 @@ internal sealed class AvatarController : IAsyncDisposable
                     Application.Current is App { SelectedTheme: PinkTheme.Dark }), token);
         }
         finally { changes.Release(); }
+    }
+
+    /// <summary>Opens the character with idle animation and, by default, local loudness lip-sync.</summary>
+    internal async Task ShowAsync(AvatarProfile selected, CancellationToken token)
+    {
+        await InspectAsync(selected, token);
+        await changes.WaitAsync(token);
+        try
+        {
+            if (renderer is not { HasExited: false } current || profile is null)
+                throw new InvalidOperationException("The character window closed before it finished loading.");
+            if (selected.LipSync == AvatarLipSync.Loudness)
+            {
+                StartLoudness(current);
+                Publish("Character showing. Idle animation on; mouth follows Martlet's voice (local loudness lip-sync).");
+            }
+            else Publish("Character showing with idle animation. Audio2Face lip-sync needs a reviewed mapping and explicit activation below.");
+        }
+        finally { changes.Release(); }
+    }
+
+    private void StartLoudness(IAvatarRenderer target)
+    {
+        lock (stateGate)
+        {
+            var lifetime = new CancellationTokenSource();
+            loudness = lifetime;
+            observer.Enable();
+            loudnessWorker = RunLoudnessAsync(target, lifetime.Token);
+        }
+    }
+
+    private async Task StopLoudnessAsync()
+    {
+        Task? running;
+        CancellationTokenSource? lifetime;
+        lock (stateGate)
+        {
+            if (loudness is null) return;
+            lifetime = loudness;
+            running = loudnessWorker;
+            loudness = null;
+            loudnessWorker = null;
+            lifetime.Cancel();
+            if (activation is null) observer.Disable();
+        }
+        if (running is not null)
+            try { await running.WaitAsync(TimeSpan.FromSeconds(3)); }
+            catch (Exception error) when (error is OperationCanceledException or TimeoutException or IOException or InvalidOperationException) { }
+        if (running is null || running.IsCompleted) lifetime.Dispose();
+    }
+
+    private async Task RunLoudnessAsync(IAvatarRenderer target, CancellationToken token)
+    {
+        CancellationTokenSource? speaking = null;
+        Task? current = null;
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                var available = observer.Segments.WaitToReadAsync(token).AsTask();
+                if (await Task.WhenAny(available, target.Exited) == target.Exited) break;
+                if (!await available) break;
+                while (observer.Segments.TryRead(out var segment))
+                {
+                    speaking?.Cancel();
+                    if (current is not null) await Settle(current);
+                    speaking?.Dispose();
+                    speaking = CancellationTokenSource.CreateLinkedTokenSource(token);
+                    current = LoudnessLipSync.RunAsync(segment, level => target.SendAsync("mouth", new { level }, token), speaking.Token);
+                }
+            }
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        finally
+        {
+            speaking?.Cancel();
+            if (current is not null) await Settle(current);
+            speaking?.Dispose();
+        }
+
+        static async Task Settle(Task task)
+        {
+            try { await task; }
+            catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or TimeoutException) { }
+        }
     }
 
     internal async Task InspectAsync(AvatarProfile selected, CancellationToken token)
@@ -119,6 +209,7 @@ internal sealed class AvatarController : IAsyncDisposable
             var config = new RendererConfiguration(SourceId, snapshot.Revision, mappingRevision,
                 targets.Select(t => new RendererMapping(t.Id, t.Aspect.ToString())).ToArray());
             await renderer.SendAsync("configure", config, attempt.Token);
+            await StopLoudnessAsync();
             lock (stateGate)
             {
                 CheckAttempt(attempt, version);
@@ -353,7 +444,8 @@ internal sealed class AvatarController : IAsyncDisposable
         lock (stateGate)
         {
             generation++;
-            observer.Disable();
+            // Local loudness lip-sync is not a privileged analysis session; it survives pause/mute/config revocations.
+            if (loudness is null) observer.Disable();
             if (pending is { } attempt) _ = attempt.CancelAsync();
             if (activation is { } current) _ = current.CancelAsync();
         }
@@ -374,6 +466,8 @@ internal sealed class AvatarController : IAsyncDisposable
 
     private async Task CleanupAsync()
     {
+        await StopLoudnessAsync();
+        observer.Disable();
         if (renderer is not null)
         {
             await renderer.DisposeAsync();

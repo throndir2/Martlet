@@ -244,6 +244,11 @@ function Assert-PublishLayout([string]$Root, [ValidateSet('Internal', 'PublicUns
     foreach ($asset in Get-WebViewArchiveAssets) { $null = Get-RequiredFile (Join-Path $Root $asset.path) }
     Assert-X64Pe (Join-Path $Root 'Desktop\AvatarRenderer\runtimes\win-x64\native\WebView2Loader.dll')
     Assert-AvatarWebInventory $Root
+    if ($Channel -ceq 'PublicUnsigned') {
+        foreach ($file in @('LIVE2D-NOTICES.txt', 'sdk\core.js', 'sdk\sdk.js', 'characters\Hiyori\Hiyori.model3.json')) {
+            $null = Get-RequiredFile (Join-Path $Root "Desktop\AvatarRenderer\live2d\$file")
+        }
+    }
     foreach ($file in @((Get-PackagingChannel $Channel).help, 'help\TROUBLESHOOTING.md', 'notices\DEPENDENCIES.txt',
             'notices\NAudio-THIRD-PARTY-NOTICES.txt',
             'notices\Audio2Face-Protos-LICENSE.txt', 'notices\Audio2Face-THIRD-PARTY-NOTICES.md',
@@ -1178,7 +1183,9 @@ function Test-PackageProvenance([string]$Root, $Provenance,
             $allowed = @((Get-PublishContexts).directory | ForEach-Object { "$_\LICENSE.txt"; "$_\THIRD-PARTY-NOTICES.txt" }) +
                 @('Desktop\AvatarRenderer\web\app.js', 'Desktop\AvatarRenderer\web\app.js.LEGAL.txt',
                     'Desktop\AvatarRenderer\web\index.html', 'Desktop\AvatarRenderer\web\THIRD-PARTY-NOTICES.txt')
-            if ($allowed -inotcontains $file.path) { throw "Unowned published content: $($file.path)" }
+            # Bundled Live2D runtime and Hiyori come from the pinned official SDK archive (see src\Martlet.Avatar.Live2D\scripts\sdk.mjs).
+            $live2d = $file.path -imatch '^Desktop\\AvatarRenderer\\live2d\\(LIVE2D-NOTICES\.txt|sdk\\(core|sdk)\.js|characters\\Hiyori\\[A-Za-z0-9_.\\-]+\.(json|moc3|png))$'
+            if (-not $live2d -and $allowed -inotcontains $file.path) { throw "Unowned published content: $($file.path)" }
         }
     }
     foreach ($asset in Get-WebViewArchiveAssets) {

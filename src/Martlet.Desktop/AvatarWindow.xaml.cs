@@ -33,7 +33,10 @@ public partial class AvatarWindow : ThemedWindow
         this.settings = settings;
         this.operations = operations;
         RendererChoice.ItemsSource = Enum.GetValues<AvatarRenderer>();
-        RendererChoice.SelectedItem = AvatarRenderer.Vrm;
+        RendererChoice.SelectedItem = AvatarRenderer.Live2D;
+        CharacterChoice.SelectedIndex = 0;
+        LipSyncChoice.SelectedIndex = 0;
+        CustomModelPanel.IsEnabled = false;
         SourceChoice.ItemsSource = AvatarChannels.BlendshapeNames.Order(StringComparer.Ordinal).ToArray();
         SourceChoice.SelectedItem = "jawOpen";
         ShowConfiguration(AvatarConfiguration.Disabled);
@@ -56,6 +59,15 @@ public partial class AvatarWindow : ThemedWindow
         AvatarJson.ReadConfiguration(Encoding.UTF8.GetBytes(ConfigurationText.Text));
     private void Configuration_Changed(object sender, System.Windows.Controls.TextChangedEventArgs e) => DraftChanged();
     private void Selection_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e) => DraftChanged();
+    private void CharacterChoice_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (CustomModelPanel is null) return;
+        var builtIn = CharacterChoice.SelectedIndex == 0;
+        CustomModelPanel.IsEnabled = !builtIn;
+        if (builtIn) RendererChoice.SelectedItem = AvatarRenderer.Live2D;
+        DraftChanged();
+    }
+    private bool BuiltInSelected => CharacterChoice.SelectedIndex == 0;
     private void DraftChanged()
     {
         if (renderingDraft) return;
@@ -66,7 +78,12 @@ public partial class AvatarWindow : ThemedWindow
     private async Task ReloadAsync()
     {
         var loaded = await settings.LoadAsync(lifetime.Token);
-        if (loaded.Settings is null) throw new InvalidOperationException("Create/load a valid application profile first.");
+        if (loaded.Settings is null)
+        {
+            profileId = Guid.Empty;
+            ResultText.Text = "Show character works now. Complete Setup once to save character choices.";
+            return;
+        }
         profileId = loaded.Settings.Profile.Id;
         if (controller.IsActive && controller.InspectedProfile?.ProfileId != profileId) controller.Revoke();
         var saved = await profiles.LoadAsync(profileId, lifetime.Token);
@@ -81,7 +98,12 @@ public partial class AvatarWindow : ThemedWindow
             if (saved.Profile is { } selected)
             {
                 RendererChoice.SelectedItem = selected.Renderer;
-                ModelPathText.Text = selected.ModelPath;
+                var builtIn = BundledLive2D.IsBuiltIn(selected.ModelPath);
+                CharacterChoice.SelectedIndex = builtIn ? 0 : 1;
+                CustomModelPanel.IsEnabled = !builtIn;
+                ModelPathText.Text = builtIn ? "" : selected.ModelPath;
+                LipSyncChoice.SelectedIndex = selected.LipSync == AvatarLipSync.Audio2Face ? 1 : 0;
+                AutoShowChoice.IsChecked = selected.AutoShow;
                 SdkPathText.Text = selected.SdkDirectory ?? "";
                 EndpointText.Text = selected.Endpoint;
                 ShowConfiguration(selected.Settings);
@@ -89,22 +111,49 @@ public partial class AvatarWindow : ThemedWindow
         }
         finally { renderingDraft = false; }
         InspectPermission.IsChecked = AnalysisPermission.IsChecked = false;
-        ResultText.Text = "Local choices loaded only; no renderer or analysis started.";
+        ResultText.Text = BundledLive2D.Available
+            ? "Choices loaded. Press Show character to open the character on your desktop."
+            : "Choices loaded. This build does not include the bundled Live2D runtime; choose a VRM model or an SDK override.";
     }
 
     private AvatarProfile Selected() => new()
     {
-        Version = 1, ProfileId = profileId, Renderer = (AvatarRenderer)RendererChoice.SelectedItem,
-        ModelPath = ModelPathText.Text, SdkDirectory = string.IsNullOrWhiteSpace(SdkPathText.Text) ? null : SdkPathText.Text,
+        Version = 1, ProfileId = profileId,
+        Renderer = BuiltInSelected ? AvatarRenderer.Live2D : (AvatarRenderer)RendererChoice.SelectedItem,
+        ModelPath = BuiltInSelected ? BundledLive2D.Prefix + BundledLive2D.DefaultCharacter : ModelPathText.Text,
+        SdkDirectory = string.IsNullOrWhiteSpace(SdkPathText.Text) ? null : SdkPathText.Text,
         Endpoint = EndpointText.Text, Configuration = AvatarProfile.ConfigurationElement(ReadConfiguration()),
-        ResourceRevision = controller.InspectedProfile?.ResourceRevision
+        ResourceRevision = controller.InspectedProfile?.ResourceRevision,
+        AutoShow = AutoShowChoice.IsChecked == true,
+        LipSync = LipSyncChoice.SelectedIndex == 1 ? AvatarLipSync.Audio2Face : AvatarLipSync.Loudness
     };
 
     private void BrowseModel_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new OpenFileDialog { Filter = "Avatar models|*.vrm;*.model3.json", CheckFileExists = true };
-        if (dialog.ShowDialog(this) == true) ModelPathText.Text = dialog.FileName;
+        if (dialog.ShowDialog(this) != true) return;
+        ModelPathText.Text = dialog.FileName;
+        RendererChoice.SelectedItem = dialog.FileName.EndsWith(".vrm", StringComparison.OrdinalIgnoreCase)
+            ? AvatarRenderer.Vrm : AvatarRenderer.Live2D;
     }
+
+    private async void Show_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
+    {
+        if (operations.IsRunning) throw new InvalidOperationException("Finish the current voice/setup action before changing the character.");
+        var selected = Selected() with { ResourceRevision = null };
+        if (profileId == Guid.Empty) selected = selected with { ProfileId = Guid.NewGuid() };
+        else revision = await profiles.SaveAsync(selected, revision, lifetime.Token);
+        ResultText.Text = "Opening the character...";
+        await controller.ShowAsync(selected, lifetime.Token);
+        ResultText.Text = controller.Status;
+        if (controller.Capabilities is { } capabilities)
+        {
+            TargetChoice.ItemsSource = capabilities.Parameters;
+            TargetChoice.SelectedIndex = 0;
+            CapabilityText.Text = string.Join(Environment.NewLine, capabilities.Parameters.Select(p =>
+                $"{p.Id}: {p.Minimum} .. {p.Maximum}; neutral {p.Neutral}; {string.Join(", ", p.Aspects)}"));
+        }
+    });
 
     private async void Inspect_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
     {

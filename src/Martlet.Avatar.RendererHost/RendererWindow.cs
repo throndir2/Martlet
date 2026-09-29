@@ -64,7 +64,7 @@ internal sealed class RendererWindow : Window
         var move = new Button
         {
             Content = "Move character", Cursor = Cursors.SizeAll, Padding = new Thickness(10, 5, 10, 5),
-            ToolTip = "Drag the character or this handle. Arrow keys move; Shift makes fine adjustments. Home returns to the primary screen."
+            ToolTip = "Drag the character or this handle. Mouse wheel resizes. Arrow keys move; Shift makes fine adjustments. Home returns to the primary screen."
         };
         AutomationProperties.SetAutomationId(move, "MoveAvatar");
         AutomationProperties.SetName(move, "Move character");
@@ -109,6 +109,20 @@ internal sealed class RendererWindow : Window
         loading.SetResourceReference(TextBlock.ForegroundProperty, "TextBrush");
         viewport.Children.Add(loading);
         viewport.MouseLeftButtonDown += DragCharacter;
+        viewport.MouseWheel += (_, e) =>
+        {
+            // Mouse wheel over the character resizes the overlay, keeping its bottom-center anchored.
+            e.Handled = true;
+            var area = SystemParameters.WorkArea;
+            var width = Math.Clamp(Width * (e.Delta > 0 ? 1.1 : 1 / 1.1), 180, Math.Min(area.Width, area.Height * 0.75));
+            var height = width * 4 / 3;
+            var centerX = Left + Width / 2;
+            var bottom = Top + Height;
+            Width = width;
+            Height = height;
+            Left = centerX - width / 2;
+            Top = bottom - height;
+        };
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) { e.Handled = true; Close(); } };
         Content = layout;
         Loaded += async (_, _) => await RunAsync();
@@ -229,10 +243,11 @@ internal sealed class RendererWindow : Window
                 modelFile = assets.ModelFile, resourceRevision = assets.Revision,
                 assets = assets.Assets.Select(a => a.Name).ToArray() });
             await ReplyAsync("capabilities", loaded);
+            StartLookTracking();
             while (!lifetime.IsCancellationRequested)
             {
                 message = await RendererProtocol.ReadAsync(input, lifetime.Token);
-                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme"))
+                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion"))
                     throw new InvalidDataException("Renderer command is invalid.");
                 if (message.Kind == "theme")
                 {
@@ -278,6 +293,42 @@ internal sealed class RendererWindow : Window
         response?.TrySetException(new InvalidDataException("Renderer failed; fresh inspection required."));
         lifetime.Cancel();
     }
+
+    // The character's head and eyes follow the mouse cursor; messages are fire-and-forget and never replied to.
+    private void StartLookTracking()
+    {
+        var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
+        double lastX = double.NaN, lastY = double.NaN;
+        timer.Tick += (_, _) =>
+        {
+            if (closed || failure.Failed || browser.CoreWebView2 is null) { timer.Stop(); return; }
+            if (!GetCursorPos(out var cursor)) return;
+            Point face;
+            try { face = viewport.PointToScreen(new Point(viewport.ActualWidth / 2, viewport.ActualHeight * 0.3)); }
+            catch (InvalidOperationException) { return; }
+            var x = Math.Clamp((cursor.X - face.X) / 700, -1, 1);
+            var y = Math.Clamp((face.Y - cursor.Y) / 700, -1, 1);
+            if (Math.Abs(x - lastX) < 0.01 && Math.Abs(y - lastY) < 0.01) return;
+            lastX = x;
+            lastY = y;
+            try
+            {
+                browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { kind = "look", data = new { x, y } },
+                    RendererProtocol.Json));
+            }
+            catch (Exception error) when (error is InvalidOperationException or System.Runtime.InteropServices.COMException)
+            { timer.Stop(); }
+        };
+        Closed += (_, _) => timer.Stop();
+        timer.Start();
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct CursorPoint { public int X, Y; }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool GetCursorPos(out CursorPoint point);
 
     private Task ReplyAsync<T>(string kind, T data) =>
         RendererProtocol.WriteAsync(output, RendererProtocol.Message(kind, activation, data), lifetime.Token);
