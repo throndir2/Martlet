@@ -20,6 +20,8 @@ internal sealed record PairedHost
     public HostSetupMethod Method { get; init; } = HostSetupMethod.OnHost;
     /// <summary>user@computer for the SSH methods.</summary>
     public string? SshTarget { get; init; }
+    /// <summary>The MAC address it reported for Wake-on-LAN (Prepare this computer), so Martlet can wake it.</summary>
+    public string? WakeMac { get; init; }
 
     [JsonIgnore] public string HostId => Pairing.HostId;
     [JsonIgnore] public string Address => new Uri(Pairing.Origin).Host;
@@ -169,6 +171,7 @@ internal sealed class HostPairings(string dataDirectory, AvatarProfileStore prof
         };
         if (previous is not null && method == HostSetupMethod.OnHost)
             host = host with { Method = previous.Method, SshTarget = previous.SshTarget };
+        if (previous is not null) host = host with { WakeMac = previous.WakeMac };
         HostRegistry.Save(dataDirectory, HostRegistry.Upsert(hosts, host));
         var lipSync = profile.RemoteHost?.HostId == pairing.HostId ||
             profile.RemoteHost is null && profile.LipSync != AvatarLipSync.Loudness && hosts.All(h => h.HostId == pairing.HostId);

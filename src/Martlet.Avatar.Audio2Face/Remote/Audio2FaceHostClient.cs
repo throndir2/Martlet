@@ -393,14 +393,19 @@ public sealed class Audio2FaceHostConnection : IDisposable
             int? Integer(JsonElement element, string name) =>
                 element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number)
                     ? number : null;
+            double? Number(JsonElement element, string name) =>
+                element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number ? value.GetDouble() : null;
+            bool? Flag(JsonElement element, string name) =>
+                element.TryGetProperty(name, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False ? value.GetBoolean() : null;
             var gpus = machine.GetProperty("gpus").EnumerateArray().Take(16)
-                .Select(gpu => new HostGpu(Text(gpu, "name") ?? "GPU", Text(gpu, "vendor") ?? "other", Integer(gpu, "memory_mb"), Text(gpu, "driver")))
+                .Select(gpu => new HostGpu(Text(gpu, "name") ?? "GPU", Text(gpu, "vendor") ?? "other", Integer(gpu, "memory_mb"), Text(gpu, "driver"),
+                    Number(gpu, "power_limit_w"), Number(gpu, "power_default_w"), Flag(gpu, "persistence")))
                 .ToArray();
             return new HostHardware(pairing.HostId, pairing.Origin, machine.GetProperty("collected_at").GetDateTimeOffset(),
                 clock.GetUtcNow(), Text(machine, "method") ?? "unknown", Text(machine, "operating_system") ?? "Unknown",
                 Text(machine, "kernel"), Text(machine, "processor"), Integer(machine, "processor_threads"),
                 machine.TryGetProperty("memory_gb", out var memory) && memory.ValueKind == JsonValueKind.Number ? memory.GetDouble() : null,
-                Text(machine, "container_runtime"), Text(machine, "nvidia_containers"), gpus);
+                Text(machine, "container_runtime"), Text(machine, "nvidia_containers"), gpus, Text(machine, "cuda"));
         }
         catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException)
         {

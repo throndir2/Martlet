@@ -4,11 +4,22 @@ using System.Text.Json.Serialization;
 
 namespace Martlet.Core.Installation;
 
-public sealed record HostGpu(string Name, string Vendor, int? MemoryMb, string? Driver)
+public sealed record HostGpu(string Name, string Vendor, int? MemoryMb, string? Driver, double? PowerLimitW = null,
+    double? PowerDefaultW = null, bool? Persistence = null)
 {
     [JsonIgnore] public double? MemoryGb => MemoryMb is { } mb ? Math.Round(mb / 1024d, 1) : null;
     [JsonIgnore] public bool IsNvidia => Vendor == "nvidia";
     public string Describe() => MemoryGb is { } gb ? $"{Name} ({gb.ToString("0.#", CultureInfo.InvariantCulture)} GB)" : Name;
+
+    /// <summary>Power limit and persistence mode as reported by nvidia-smi, or null when the host did not report them.</summary>
+    public string? DescribePower()
+    {
+        if (PowerLimitW is not { } limit) return Persistence is { } on ? $"persistence {(on ? "on" : "off")}" : null;
+        var text = $"power limit {limit.ToString("0", CultureInfo.InvariantCulture)} W";
+        if (PowerDefaultW is { } standard && Math.Abs(standard - limit) >= 1)
+            text += $" (default {standard.ToString("0", CultureInfo.InvariantCulture)} W)";
+        return Persistence is { } persistence ? $"{text}, persistence {(persistence ? "on" : "off")}" : text;
+    }
 }
 
 /// <summary>What a paired Martlet host reported about itself (collected by martlet-host on that machine and
@@ -16,7 +27,7 @@ public sealed record HostGpu(string Name, string Vendor, int? MemoryMb, string? 
 public sealed record HostHardware(
     string HostId, string Origin, DateTimeOffset CollectedAt, DateTimeOffset ReceivedAt, string Method,
     string OperatingSystem, string? Kernel, string? Processor, int? ProcessorThreads, double? MemoryGb,
-    string? ContainerRuntime, string? NvidiaContainers, IReadOnlyList<HostGpu> Gpus)
+    string? ContainerRuntime, string? NvidiaContainers, IReadOnlyList<HostGpu> Gpus, string? Cuda = null)
 {
     [JsonIgnore] public HostGpu? BestGpu => Gpus.OrderByDescending(g => g.IsNvidia).ThenByDescending(g => g.MemoryMb ?? 0).FirstOrDefault();
 
