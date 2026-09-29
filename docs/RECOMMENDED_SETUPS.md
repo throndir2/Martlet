@@ -16,6 +16,12 @@ arrive. It saves, installs and contacts nothing. The recommendations and availab
 [`SetupAdvisor.cs`](../src/Martlet.Core/Installation/SetupAdvisor.cs); update
 them when a route ships.
 
+**In the installer:** the **Recommended setup** page asks the same core
+questions (how many computers, this PC's graphics card, the goal) in short form.
+It shows where each part would run and ticks the optional prerequisites this PC
+needs for that layout. Its rules in `packaging/windows/Martlet.iss` follow this
+page; update both together. Everything it picks can be changed later.
+
 ## 1. What must stay on the PC you talk to
 
 These parts touch your devices, screen, keys or consent, so they always run in

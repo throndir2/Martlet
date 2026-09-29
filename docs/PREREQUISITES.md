@@ -16,11 +16,19 @@ of four ways:
 
 1. **During installation.** The installer checks this PC and shows a tick box for
    each missing prerequisite. *Missing on this PC* items (WebView2, microphone
-   access) are ticked by default; optional items (Windows speech, Ollama,
-   WSL 2 + Docker Desktop) are unticked. Ticked items run
+   access) are ticked by default. Before that, a **Recommended setup** page asks
+   how many computers Martlet can use (just this PC, one or more other GPU
+   computers, or this PC as a helper host), this PC's graphics card (NVIDIA is
+   preselected when detected) and what matters most (balanced, smartest,
+   fastest, private). It shows where each part would run and ticks only the
+   optional items (Windows speech, Ollama, WSL 2 + Docker Desktop) that suit the
+   answers; the rest stay unticked, and every tick can be changed. The page is
+   skipped when no optional item is missing, and silent installs keep the
+   `/TASKS` selection. Ticked items run
    `prerequisites\Install-Prerequisites.ps1` in a visible console after the files
    are copied. Items already present are not shown. Silent installs pass
-   `-NoPrompt`, so nothing waits for input.
+   `-NoPrompt`, so nothing waits for input. Nothing chosen here is final: see step 2,
+   and change where each role runs later in Martlet (Setup / resume, Devices).
 2. **Any time later.** Start menu > **Martlet prerequisites**, or
    **Prerequisites (check / install)** on the Martlet home screen, opens the same
    tool as an interactive checklist. It shows the status of every item and changes

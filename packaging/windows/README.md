@@ -88,7 +88,13 @@ Desktop home screen's **Prerequisites (check / install)** opens the same tool.
 The installer's *Select Additional Tasks* page shows only items missing on the
 PC, detected in `[Code]` without side effects: WebView2 runtime (ticked),
 microphone privacy access (ticked; opens Settings), Windows speech for the
-display language, Ollama and WSL 2 + Docker Desktop (unticked). One task-gated
+display language, Ollama and WSL 2 + Docker Desktop (unticked unless
+recommended). A preceding *Recommended setup* page asks how many computers
+Martlet can use, this PC's graphics card (NVIDIA preselected when the registry
+or `nvidia-smi.exe` shows one) and the goal, shows where each part runs, and
+ticks the optional items that suit the answers; the user can change every tick.
+It mirrors the Desktop setup advisor in a few rules, is skipped when no optional
+item is missing and does nothing in silent installs. One task-gated
 `[Run]` entry passes the ticked IDs to the tool in a visible console; silent
 installs add `-NoPrompt`. The installer itself stays `PrivilegesRequired=lowest`;
 only the speech and WSL steps ask for UAC, and winget's Docker installer asks on
