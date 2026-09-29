@@ -790,8 +790,13 @@ foreach ($required in @('#ifdef PublicRelease', 'DefaultDirName={localappdata}\P
         'AppId={{7EA5CC4A-8BF4-4412-ABE1-90819303FEAB}')) {
     if (-not $authoring.Contains($required)) { throw "Public installer invariant missing: $required" }
 }
-if ($authoring -match '(?im)^\[(Run|UninstallRun|Registry|InstallDelete|UninstallDelete|Tasks)\]|DelTree|DeleteFile|RegWrite|Exec\(') {
+if ($authoring -match '(?im)^\[(UninstallRun|Registry|InstallDelete|UninstallDelete)\]|DelTree|DeleteFile|RegWrite|Exec\(') {
     throw 'Installer contains an unexpected mutation/deletion/autorun surface.'
+}
+# Prerequisite installs run only for tasks the user ticked on the wizard's task page.
+$runSection = [regex]::Match($authoring, '(?ims)^\[Run\]\s*(.*?)(?=^\[|\z)').Groups[1].Value
+foreach ($entry in @($runSection -split "`r?`n" | Where-Object { $_.Trim() -and -not $_.TrimStart().StartsWith(';') })) {
+    if ($entry -notmatch '; Tasks: ') { throw "Installer [Run] entry is not gated by a user-selected task: $entry" }
 }
 $script:cases++
 Assert-Fails 'internal payload refused by public installer' {

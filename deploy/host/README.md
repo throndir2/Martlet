@@ -78,8 +78,9 @@ or over `ssh -t user@host`. How it fits together:
   it is not running and, when needed, asks Windows for administrator approval once
   (UAC) to add the inbound rule `Martlet-Host-Gateway`: TCP 9443, Private/Domain
   networks, local subnet only. If the PC's network is Public it offers to mark it
-  Private in the same step. The Martlet installer itself stays per-user and never
-  asks for admin. By hand, in an administrator PowerShell:
+  Private in the same step. The Martlet installer itself stays per-user; only
+  optional prerequisites you tick there (Windows speech, WSL 2 + Docker Desktop)
+  ask for approval. By hand, in an administrator PowerShell:
 
   ```powershell
   New-NetFirewallRule -Name Martlet-Host-Gateway -DisplayName 'Martlet host gateway (TCP 9443)' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 9443 -Profile Private,Domain -RemoteAddress LocalSubnet

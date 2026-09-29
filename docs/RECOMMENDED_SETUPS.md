@@ -50,7 +50,9 @@ default **Auto** mode, which is documented below.
 
 **Nothing requires a GPU.** The minimum working setup is the Windows app plus
 an API. Only Audio2Face lip-sync strictly needs an NVIDIA GPU, and loudness
-lip-sync replaces it on any PC.
+lip-sync replaces it on any PC. The installer and the **Martlet prerequisites**
+tool install what each layout needs on the Windows PC (Windows speech, Ollama,
+WSL 2 + Docker Desktop); see [Prerequisites](PREREQUISITES.md).
 
 ### Offload the LLM first
 

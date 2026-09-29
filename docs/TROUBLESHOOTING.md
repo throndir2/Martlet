@@ -1,5 +1,16 @@
 # Desktop troubleshooting and local support (V06b)
 
+## Missing prerequisites (character, microphone, Windows speech, local LLM, Docker)
+
+If the character does not appear, push-to-talk hears nothing, Windows speech
+finds no recognizer or voice, or Martlet hosts cannot find Docker Desktop, run
+Start > **Martlet prerequisites** (or **Prerequisites (check / install)** on the
+home screen). It lists the WebView2 runtime, microphone access for desktop apps,
+Windows speech for your language, Ollama, the NVIDIA driver and WSL 2 + Docker
+Desktop with their status, and installs or opens the setting for the item you
+choose. Nothing changes until you pick an item. `-Check` prints the same status
+from a command line.
+
 ## Local configuration backup / restore (V07a)
 
 **Configuration backups are NOT support bundles.** The support ZIP described

@@ -509,6 +509,24 @@ public partial class MainWindow : ThemedWindow
         if (store is null || setupService is null || closing) return;
         new HostsWindow(new AvatarProfileStore(store.DataDirectory), setupService) { Owner = this }.ShowDialog();
     }
+    /// <summary>Opens the installed prerequisites tool; it changes nothing until the user picks an item.</summary>
+    private void Prerequisites_Click(object sender, RoutedEventArgs e)
+    {
+        var script = System.IO.Path.GetFullPath(System.IO.Path.Combine(AppContext.BaseDirectory, "..", "prerequisites", "Install-Prerequisites.ps1"));
+        if (!File.Exists(script))
+        {
+            ActionText.Text = $"The prerequisites tool is installed with Martlet but was not found at {script}. From a source checkout, run packaging\\windows\\Install-Prerequisites.ps1.";
+            return;
+        }
+        try
+        {
+            var powershell = System.IO.Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe");
+            Process.Start(new ProcessStartInfo(powershell, $"-NoProfile -ExecutionPolicy Bypass -File \"{script}\"")
+                { UseShellExecute = true, WorkingDirectory = System.IO.Path.GetDirectoryName(script)! })?.Dispose();
+            ActionText.Text = "Prerequisites opened in a console window. Nothing is installed until you choose an item there.";
+        }
+        catch (Exception error) when (error is Win32Exception or IOException) { ActionText.Text = error.Message; }
+    }
     private bool togglingCharacter;
     private async void Character_Click(object sender, RoutedEventArgs e)
     {

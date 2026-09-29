@@ -52,6 +52,8 @@ try {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $help) -Destination (Join-Path $staging "help\$help")
     if ($PublicRelease) { Copy-Item -LiteralPath (Join-Path $root 'LICENSE') -Destination (Join-Path $staging 'help\LICENSE.txt') }
     Copy-Item -LiteralPath (Join-Path $root 'docs\TROUBLESHOOTING.md') -Destination (Join-Path $staging 'help\TROUBLESHOOTING.md')
+    [IO.Directory]::CreateDirectory((Join-Path $staging 'prerequisites')) | Out-Null
+    Copy-Item -LiteralPath "$PSScriptRoot\Install-Prerequisites.ps1" -Destination (Join-Path $staging 'prerequisites\Install-Prerequisites.ps1')
     Copy-Item -LiteralPath "$PSScriptRoot\DEPENDENCIES.txt" -Destination (Join-Path $staging 'notices\DEPENDENCIES.txt')
     Copy-Item -LiteralPath "$PSScriptRoot\NAudio-THIRD-PARTY-NOTICES.txt" -Destination (Join-Path $staging 'notices\NAudio-THIRD-PARTY-NOTICES.txt')
     Copy-Item -LiteralPath (Join-Path $root 'src\Martlet.Avatar.Audio2Face\THIRD-PARTY-NOTICES.md') -Destination (Join-Path $staging 'notices\Audio2Face-THIRD-PARTY-NOTICES.md')

@@ -49,7 +49,7 @@ public static class SetupAdvisor
     private const string FaceWhat = "Moves the character's mouth and face to match the voice.";
     private const string CharacterWhat = "Draws your Live2D or VRM companion on the desktop.";
     private const string Local = "Stays on your computers.";
-    private const string LocalLlmHow = "Install Ollama or LM Studio and download the model. In Setup / resume > Destinations, choose an OpenAI-compatible LLM endpoint at http://127.0.0.1:11434/v1 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) and enter the model ID. No API key is needed.";
+    private const string LocalLlmHow = "Install Ollama (Start > Martlet prerequisites installs it and offers a model sized to your GPU) or LM Studio, and download the model. In Setup / resume > Destinations, choose an OpenAI-compatible LLM endpoint at http://127.0.0.1:11434/v1 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) and enter the model ID. No API key is needed.";
     private const string HostedLlmHow = "In Setup / resume > Destinations, choose OpenRouter or NVIDIA Build as the LLM endpoint, enter a model ID from its catalog and store its API key.";
     private const string OpenAiHow = "In Setup / resume, choose OpenAI for this role and store your OpenAI API key.";
 

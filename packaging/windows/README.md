@@ -79,6 +79,23 @@ digest; it does not install the download. Windows may warn about an unknown
 publisher. The existing Updates library's separate signed ZIP/envelope remains
 unsupported by this installer, and rollback qualification has not been performed.
 
+## Prerequisites page and tool
+
+Both installer channels ship `prerequisites\Install-Prerequisites.ps1` (copied by
+`Publish-Windows.ps1`, inventoried like every payload file) and a Start menu
+shortcut, **Martlet prerequisites**, that runs it with Windows PowerShell. The
+Desktop home screen's **Prerequisites (check / install)** opens the same tool.
+The installer's *Select Additional Tasks* page shows only items missing on the
+PC, detected in `[Code]` without side effects: WebView2 runtime (ticked),
+microphone privacy access (ticked; opens Settings), Windows speech for the
+display language, Ollama and WSL 2 + Docker Desktop (unticked). One task-gated
+`[Run]` entry passes the ticked IDs to the tool in a visible console; silent
+installs add `-NoPrompt`. The installer itself stays `PrivilegesRequired=lowest`;
+only the speech and WSL steps ask for UAC, and winget's Docker installer asks on
+its own. `Test-Packaging.ps1` requires every `[Run]` entry to be gated by a task.
+The full list of what is bundled, offered or user-supplied is in
+[docs/PREREQUISITES.md](../../docs/PREREQUISITES.md).
+
 **Local qualification is optional for this prototype** (owner policy,
 2026-09-26). This host once saw a pinned `esbuild.exe` crash (`0xc0000005`);
 a locked reinstall resolved it. Never skip the real renderer build, and report
@@ -404,9 +421,11 @@ CycloneDX records actual npm identities and dependencies, source/notice hashes,
 the transformed bundle's hashes and contributor links without duplicating
 physical file ownership. Complete bundled JavaScript licenses and esbuild legal
 comments remain distributed; npm metadata alone is not notice coverage.
-Live2D Framework/Core, user models/avatar assets, NIM, GPU drivers and the
-WebView2 runtime remain external prerequisites and are never packaged or
-automatically installed. No license clearance is inferred.
+Live2D Framework/Core overrides, user models/avatar assets, NIM and GPU drivers
+remain external prerequisites and are never packaged. The WebView2 runtime is
+never packaged either; the installer's task page and the bundled prerequisites
+tool install it from Microsoft only when it is missing and ticked (see below).
+No license clearance is inferred.
 
 Retained npm archives and normalized build evidence reside outside the payload.
 Their reuse by local regression probes verifies identical bytes, never silently

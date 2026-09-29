@@ -439,7 +439,7 @@ internal sealed class AvatarController : IAsyncDisposable
         }
         catch
         {
-            Publish("Avatar inspection failed; check local model, prepared SDK/Core, and installed WebView2. Voice is unaffected.");
+            Publish("Avatar inspection failed; check local model, prepared SDK/Core, and installed WebView2 (Prerequisites on the home screen installs it). Voice is unaffected.");
             if (entered)
             {
                 if (renderer is { } failed) await failed.DisposeAsync();
