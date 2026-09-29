@@ -31,7 +31,7 @@ public sealed record SetupStatus : IContract
                 Enabled = route is not null && (route.RouteType is null || route.Enabled == true),
                 ConfigurationEvidence = route?.RouteType switch
                 {
-                    SetupRouteType.GatewayOllama => route?.GatewaySnapshot is not null,
+                    SetupRouteType.GatewayOllama or SetupRouteType.GatewayStt => route?.GatewaySnapshot is not null,
                     SetupRouteType.GatewayF5 => route?.GatewaySnapshot is not null && route?.Reference is not null,
                     SetupRouteType.LocalWhisper => route?.LocalStt is not null,
                     _ => route is not null

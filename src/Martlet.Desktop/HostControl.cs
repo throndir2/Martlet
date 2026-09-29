@@ -59,6 +59,7 @@ internal static class HostRoles
 {
     internal const string Audio2Face = "audio2face";
     internal const string Ollama = "ollama";
+    internal const string Stt = "stt";
 
     internal static readonly IReadOnlyList<HostRoleInfo> All =
     [
@@ -69,7 +70,11 @@ internal static class HostRoles
         new(Ollama, "Thinks", "Thinking (Ollama)", "Docker; an NVIDIA GPU makes replies fast (small models also run on the CPU)",
             HostRoute.OllamaChatRouteId, "thinking",
             "Runs the conversation model (the bot's thinking) on the host instead of a cloud provider. An NVIDIA GPU makes " +
-            "replies fast; small models also run on the CPU. Your messages and recent conversation go only to that host, over pinned TLS.")
+            "replies fast; small models also run on the CPU. Your messages and recent conversation go only to that host, over pinned TLS."),
+        new(Stt, "Listens", "Listening (whisper)", "Docker; an NVIDIA GPU makes it fast (whisper also runs well on the CPU)",
+            Audio2FaceHostConnection.TranscriptionRouteId, "listening",
+            "Turns what you say into text (the bot's hearing) with whisper.cpp on the host instead of a cloud provider. An NVIDIA " +
+            "GPU makes it fast; it also runs well on the CPU. Your recorded speech goes only to that host, over pinned TLS, and is not stored.")
     ];
 
     internal static HostRoleInfo Get(string kind) => All.FirstOrDefault(r => r.Kind == kind) ??

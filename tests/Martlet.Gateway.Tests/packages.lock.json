@@ -154,6 +154,12 @@
           "Martlet.Gateway": "[0.3.0, )"
         }
       },
+      "martlet.gateway.stt": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Gateway": "[0.3.0, )"
+        }
+      },
       "martlet.perception": {
         "type": "Project"
       },

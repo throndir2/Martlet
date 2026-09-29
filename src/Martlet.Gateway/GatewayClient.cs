@@ -301,6 +301,31 @@ public sealed class GatewayAuthenticatedClient : IDisposable
             new GatewayAudio2FacePayload(sampleRate, pcm.ToArray())), cancellationToken);
     }
 
+    /// <summary>Transcribes one 16 kHz mono PCM16 utterance on the host; text events carry the final transcript.</summary>
+    public IAsyncEnumerable<GatewayInferenceEvent> StreamTranscriptionAsync(
+        GatewayInferenceRouteCapability capability,
+        CorrelationIds ids,
+        long epoch,
+        DateTimeOffset deadlineUtc,
+        ReadOnlyMemory<byte> pcm,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+        var route = GatewayInferenceRoute.FromCapability(capability);
+        GatewayRules.Require(route.Kind == GatewayInferenceKind.Transcription &&
+            pcm.Length is > 0 && pcm.Length % 2 == 0 && pcm.Length <= route.MaximumInputBytes,
+            "request.invalid");
+        return StreamAsync(new(
+            route,
+            ids.SessionId,
+            ids.TurnId,
+            ids.RequestId,
+            null,
+            epoch,
+            deadlineUtc,
+            new GatewayTranscriptionPayload(GatewayInferenceRoute.TranscriptionSampleRate, pcm.ToArray())), cancellationToken);
+    }
+
     internal async IAsyncEnumerable<GatewayInferenceEvent> StreamAsync(
         GatewayInferenceRequest request,
         [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -605,6 +630,11 @@ internal static class GatewayClientJson
             {
                 sample_rate = face.SampleRate,
                 pcm_base64 = Convert.ToBase64String(face.Pcm.Span)
+            },
+            GatewayTranscriptionPayload speech => new
+            {
+                sample_rate = speech.SampleRate,
+                pcm_base64 = Convert.ToBase64String(speech.Pcm.Span)
             },
             _ => throw new GatewayProtocolException("request.invalid")
         };

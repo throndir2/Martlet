@@ -7,6 +7,7 @@
     <ProjectReference Include="..\Martlet.Gateway.Persistence\Martlet.Gateway.Persistence.csproj" />
     <ProjectReference Include="..\Martlet.Gateway.Audio2Face\Martlet.Gateway.Audio2Face.csproj" />
     <ProjectReference Include="..\Martlet.Gateway.Ollama\Martlet.Gateway.Ollama.csproj" />
+    <ProjectReference Include="..\Martlet.Gateway.Stt\Martlet.Gateway.Stt.csproj" />
     <InternalsVisibleTo Include="Martlet.Gateway.Host.Linux.Tests" />
     <InternalsVisibleTo Include="Martlet.Gateway.Host.Linux.Native.Tests" />
   </ItemGroup>

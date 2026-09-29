@@ -165,6 +165,11 @@ public sealed partial class SettingsStore
                 ContractRules.Require(
                     replacement is { CredentialId: var replacementId } &&
                         replacementId == id && SameCredentialScope(route, replacement) ||
+                    // A gateway route's credential is its host pairing's device credential, owned by that pairing
+                    // (kept until the host is forgotten); handing the role to another computer does not orphan it.
+                    // It never moves to a different host or device.
+                    SelfHostSetup.IsGateway(route.RouteType) &&
+                        next.Routes.All(item => item.CredentialId != id || SetupSettings.SamePairing(route, item)) ||
                     next.PendingRemovals.Any(item => RemovalMatches(route, item, id)) ||
                     (next.RetainedGatewayCredentials ?? []).Any(item =>
                         item.CredentialId == id && item.Role == route.Role &&

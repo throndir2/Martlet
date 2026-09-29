@@ -55,7 +55,7 @@ public sealed class LiveConversationTests
         paired = SetupSettings.ApplyGatewaySnapshot(paired, SetupRole.Llm, MainWindow.Snapshot(new(
             "martlet.gateway.ollama-chat.v1", "/martlet/v1/inference/ollama-chat", "ollama-native-chat-v034-text", "1.0",
             "ollama-host", "ollama-relay", "0.1.0", "llama3.2-3b", "ollama", new string('c', 64), "sha256:" + new string('d', 64),
-            98_304, 16_384, 65_536, 65_536, 4_096, 4_194_304, TimeSpan.FromSeconds(60), "request_abort")));
+            98_304, 16_384, 65_536, 65_536, 4_096, 4_194_304, TimeSpan.FromSeconds(60), "request_abort"), SetupRouteType.GatewayOllama));
         paired = SetupSettings.SetRouteEnabled(paired, SetupRole.Llm, true, true);
         configuration = LiveConversationConfiguration.From(loaded with { Settings = paired })!;
         Assert.Null(configuration.Unavailable(false, false));

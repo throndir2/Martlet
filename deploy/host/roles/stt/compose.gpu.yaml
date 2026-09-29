@@ -1,0 +1,12 @@
+# Added by martlet-host when the stt role runs on this host's NVIDIA GPU (needs Docker's NVIDIA support and an NVIDIA
+# driver for CUDA 13, 580 or newer): the CUDA build of the same pinned whisper.cpp release.
+services:
+  stt:
+    image: ghcr.io/ggml-org/whisper.cpp:main-cuda-927cfce34f31707e17f2bff35c349632fb9e2c3a
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [ gpu ]

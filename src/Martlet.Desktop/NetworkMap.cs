@@ -11,7 +11,7 @@ internal enum NodeAction
 {
     Setup, AudioSetup, Character, ToggleCharacter, Prerequisites, HostThisPc, AddComputer, ManageHost, CheckHost, HostDashboard, Advisor,
     UseForLipSync, LipSyncThisPc, InstallRole, RemoveRole, HostStatus, UpdateHost, ForgetHost,
-    PrepareHost, RebootHost, ShutdownHost, WakeHost, PrepareComputer, UseForThinking
+    PrepareHost, RebootHost, ShutdownHost, WakeHost, PrepareComputer, UseForThinking, UseForListening
 }
 
 /// <summary>Who handles lip-sync: a paired host, this PC's own Audio2Face service, or nobody (voice loudness).</summary>
@@ -75,9 +75,12 @@ internal static class NetworkMap
         : LipSyncHandler.ThisPc;
 
     /// <summary>The paired host whose Ollama answers conversations (the LLM route is a gateway Ollama route), or null.</summary>
-    internal static string? ThinkingHost(AppSettings? settings) =>
-        settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm) is { RouteType: SetupRouteType.GatewayOllama, Gateway: { } gateway }
-            ? gateway.HostId : null;
+    internal static string? ThinkingHost(AppSettings? settings) => JobHost(settings, SetupRole.Llm);
+
+    /// <summary>The paired host that does a job (the role's route is one of its gateway routes), or null.</summary>
+    internal static string? JobHost(AppSettings? settings, SetupRole role) =>
+        settings?.Setup?.Routes.FirstOrDefault(r => r.Role == role) is { Gateway: { } gateway } route &&
+        SelfHostSetup.IsGateway(route.RouteType) ? gateway.HostId : null;
 
     /// <summary>All paired hosts, including a lip-sync pairing saved only in the avatar profile.</summary>
     internal static IReadOnlyList<PairedHost> Hosts(NetworkInputs inputs)
@@ -125,6 +128,7 @@ internal static class NetworkMap
                 : "Your endpoint"),
         SetupRouteType.GatewayOllama => "Ollama on your Martlet host",
         SetupRouteType.GatewayF5 => "F5 on your Martlet host",
+        SetupRouteType.GatewayStt => "whisper on your Martlet host",
         SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWindowsTts => "Windows speech",
         SetupRouteType.LocalWhisper => "whisper.cpp on this PC",
         _ => "OpenAI"
@@ -169,12 +173,17 @@ internal static class NetworkMap
                     target = thisPc;
                     role = role with { Detail = "whisper.cpp on this PC: " + RouteDetail(route) };
                     break;
-                case SetupRouteType.GatewayOllama or SetupRouteType.GatewayF5 when route.Gateway is { } gateway:
+                case SetupRouteType.GatewayOllama or SetupRouteType.GatewayF5 or SetupRouteType.GatewayStt when route.Gateway is { } gateway:
                     var host = new Uri(gateway.Origin).Host;
                     target = host == machine.LanAddress || IsLoopback(host)
                         ? thisPc
                         : Node("host:" + gateway.HostId, NodeKind.Host, gateway.HostId, host, ComputerGlyph);
-                    role = role with { Detail = (route.RouteType == SetupRouteType.GatewayOllama ? "Ollama: " : "F5 voice: ") + RouteDetail(route) };
+                    role = role with { Detail = route.RouteType switch
+                    {
+                        SetupRouteType.GatewayOllama => "Ollama: ",
+                        SetupRouteType.GatewayStt => "whisper: ",
+                        _ => "F5 voice: "
+                    } + RouteDetail(route) };
                     if (target != thisPc && target.Facts.Count == 0)
                     {
                         target.Facts.Add(new("Address", gateway.Origin));
@@ -244,6 +253,7 @@ internal static class NetworkMap
             var check = inputs.HostChecks.GetValueOrDefault(paired.HostId);
             var inCharge = lipSync == LipSyncHandler.Host && inputs.Avatar!.RemoteHost!.HostId == paired.HostId;
             var thinks = ThinkingHost(inputs.Settings) == paired.HostId;
+            var listens = JobHost(inputs.Settings, SetupRole.Stt) == paired.HostId;
             var before = target.Roles.Count;
             foreach (var role in HostRoles.All)
             {
@@ -251,7 +261,8 @@ internal static class NetworkMap
                 if (role.Kind == HostRoles.Audio2Face && inCharge)
                     target.Roles.Add(new(role.Chip, role.Name, "In charge of lip-sync. " +
                         (check?.Text ?? "Use Check connection to see whether it runs Audio2Face.")));
-                else if (model is not null && !(role.Kind == HostRoles.Ollama && thinks)) // thinking is listed with its route
+                // Thinking and listening are listed with their routes when this host does them.
+                else if (model is not null && !(role.Kind == HostRoles.Ollama && thinks) && !(role.Kind == HostRoles.Stt && listens))
                     target.Roles.Add(new(role.Chip, role.Name, $"Installed (model {model}), standing by. Hand it {role.Job} to use it."));
             }
             if (local) thisPc.Roles.Add(new("Host", "Martlet host service (Docker)", $"Paired as {paired.HostId} on {paired.Pairing.Origin}"));
@@ -296,6 +307,9 @@ internal static class NetworkMap
             if (companion && !thinks)
                 target.Commands.Add(new(NodeAction.UseForThinking, local ? "Hand thinking to this PC's host service" : "Hand thinking to this computer",
                     offersThinking, id));
+            if (companion && !listens)
+                target.Commands.Add(new(NodeAction.UseForListening, local ? "Hand listening to this PC's host service" : "Hand listening to this computer",
+                    check?.Offers?.ContainsKey(HostRoles.Stt) == true, id));
             foreach (var role in HostRoles.All)
             {
                 var offered = check?.Offers?.ContainsKey(role.Kind) == true;
