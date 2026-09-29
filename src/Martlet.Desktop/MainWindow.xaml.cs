@@ -66,16 +66,7 @@ public partial class MainWindow : ThemedWindow
         ThemeChoice.SelectedIndex = Application.Current is App { SelectedTheme: PinkTheme.Dark } ? 1 : 0;
         AppearanceStatus.Text = (Application.Current as App)?.AppearanceNotice
             ?? "Pink light / rose dark. Your choice is saved locally; Windows high contrast takes priority.";
-        UpdateStatusText.Text = "Automatic checks OFF. No update network request has run.";
-        if (store is not null)
-        {
-            try { updateChecksEnabled = UpdateCheckPreferences.Load(store.DataDirectory); }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
-            {
-                UpdateStatusText.Text = "Could not read update-checks.txt. Automatic checks remain OFF. Check access or save a new preference.";
-            }
-            AutomaticUpdateCheck.IsChecked = updateChecksEnabled;
-        }
+        InitializeUpdates();
         this.support = support;
         audioSetup = new(setupOperations, new WindowsAudioDeviceCatalog(), new WasapiCaptureDeviceFactory(), new WasapiDeviceFactory());
         audioSessionEvents.LockedChanged += audioSetup.SetSessionLocked;
@@ -116,7 +107,8 @@ public partial class MainWindow : ThemedWindow
             DemoButton.IsEnabled = ToneButton.IsEnabled = ScenarioChoice.IsEnabled =
                 SetupButton.IsEnabled = AudioSetupButton.IsEnabled = CompanionButton.IsEnabled =
                 MemoryButton.IsEnabled = ConversationButton.IsEnabled = VoiceLibraryButton.IsEnabled =
-                AutomaticUpdateCheck.IsEnabled = CheckForUpdatesButton.IsEnabled = PrimaryStageButton.IsEnabled = false;
+                AutomaticUpdateCheck.IsEnabled = CheckForUpdatesButton.IsEnabled = PrimaryStageButton.IsEnabled =
+                AutomaticHostUpdate.IsEnabled = UpdateHostsButton.IsEnabled = false;
         }
         InitializeShell();
     }
@@ -150,148 +142,13 @@ public partial class MainWindow : ThemedWindow
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
-        var checkAtLaunch = updateChecksEnabled;
         StartAmbientMotion();
         _ = ReadMachineAsync();
         await RefreshAsync();
         await ShowSavedCharacterAsync(onlyIfAutoShow: true);
-        if (checkAtLaunch && updateChecksEnabled && !closing)
-            await CheckForUpdatesAsync();
+        if (!closing) await StartUpdatesAsync();
     }
     private async void Refresh_Click(object sender, RoutedEventArgs e) => await RefreshAsync();
-
-    private void UpdateCheckSetting_Changed(object sender, RoutedEventArgs e)
-    {
-        if (!IsLoaded || changingUpdateChoice || store is null) return;
-        var enabled = AutomaticUpdateCheck.IsChecked == true;
-        try
-        {
-            UpdateCheckPreferences.Save(store.DataDirectory, enabled);
-            updateChecksEnabled = enabled;
-            if (!enabled) updateCheckCancellation?.Cancel();
-            UpdateStatusText.Text = enabled
-                ? "Automatic release checks enabled for future launches. No download or install is authorized."
-                : "Automatic checks OFF. No update network request will run on launch.";
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            changingUpdateChoice = true;
-            AutomaticUpdateCheck.IsChecked = updateChecksEnabled;
-            changingUpdateChoice = false;
-            UpdateStatusText.Text = "Could not save update-checks.txt. The previous check preference remains in effect; check data-directory access.";
-        }
-    }
-
-    private async void CheckForUpdates_Click(object sender, RoutedEventArgs e) => await CheckForUpdatesAsync();
-
-    private async Task CheckForUpdatesAsync()
-    {
-        if (closing || updateBusy) return;
-        updateBusy = true;
-        updateDrain = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        availableUpdate = null;
-        CheckForUpdatesButton.IsEnabled = false;
-        DownloadUpdateButton.Visibility = Visibility.Collapsed;
-        ReviewUpdateButton.Visibility = Visibility.Collapsed;
-        UpdateStatusText.Text = "Checking public GitHub Releases; no download or installation has started.";
-        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
-        updateCheckCancellation = cancellation;
-        try
-        {
-            using var http = GitHubReleaseClient.CreateHttpClient();
-            var result = await new GitHubReleaseClient(http).CheckAsync(typeof(App).Assembly.GetName().Version!, cancellation.Token);
-            if (closing || cancellation.IsCancellationRequested) return;
-            availableUpdate = result;
-            UpdateStatusText.Text = result is null
-                ? "No newer Martlet release is available."
-                : $"Version {result.Version} is available ({result.Bytes / (1024d * 1024d):F1} MiB). Review {result.ReleasePage} before deciding to download. The installer is not code-signed; in-app installation is not yet supported.";
-            DownloadUpdateButton.Visibility = result is null ? Visibility.Collapsed : Visibility.Visible;
-            ReviewUpdateButton.Visibility = result is null ? Visibility.Collapsed : Visibility.Visible;
-        }
-        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
-        catch (OperationCanceledException)
-        {
-            if (!closing) UpdateStatusText.Text = "GitHub Release check timed out. Try again when the network is available.";
-        }
-        catch (Exception error) when (error is HttpRequestException or InvalidDataException or IOException)
-        {
-            if (!closing) UpdateStatusText.Text = $"GitHub Release check failed: {UpdateError(error)}";
-        }
-        finally
-        {
-            updateCheckCancellation = null;
-            updateBusy = false;
-            if (!closing) CheckForUpdatesButton.IsEnabled = true;
-            updateDrain.TrySetResult();
-            updateDrain = null;
-        }
-    }
-
-    private async void DownloadUpdate_Click(object sender, RoutedEventArgs e)
-    {
-        if (closing || updateBusy || availableUpdate is not { } update) return;
-        if (!ConfirmationDialog.Confirm(this,
-            $"Download {update.AssetName} ({update.Bytes / (1024d * 1024d):F1} MiB) from the public Martlet GitHub Release?\n\n{update.ReleasePage}\n\nThe SHA-256 digest will be checked, but a digest from the same source is not a publisher signature. The installer will NOT be launched or installed by Martlet.",
-            "Confirm app update download"))
-            return;
-        var picker = new SaveFileDialog
-        {
-            Title = "Choose where to save the Martlet update",
-            FileName = update.AssetName,
-            DefaultExt = ".exe",
-            AddExtension = false,
-            Filter = "Windows installer (*.exe)|*.exe",
-            OverwritePrompt = false
-        };
-        if (picker.ShowDialog(this) != true) return;
-        updateBusy = true;
-        updateDrain = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
-        updateDownloadCancellation = cancellation;
-        DownloadUpdateButton.IsEnabled = CheckForUpdatesButton.IsEnabled = false;
-        UpdateStatusText.Text = "Downloading the explicitly approved installer; checking size and SHA-256 before retaining it.";
-        try
-        {
-            using var http = GitHubReleaseClient.CreateHttpClient();
-            await new GitHubReleaseClient(http).DownloadAsync(update, picker.FileName, cancellation.Token);
-            if (!closing)
-                UpdateStatusText.Text = $"Downloaded to {picker.FileName}. SHA-256 matches GitHub metadata, not an independent publisher signature. Martlet has not installed the update; check the release notes and Windows publisher warnings. In-app installation and rollback remain unavailable.";
-        }
-        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
-        catch (Exception error) when (error is HttpRequestException or InvalidDataException or IOException or
-            UnauthorizedAccessException or ArgumentException)
-        {
-            if (error is UpdateCleanupException) interruptedUpdateCleanup = error.Message;
-            if (!closing) UpdateStatusText.Text = $"Update download failed: {UpdateError(error)}";
-        }
-        finally
-        {
-            updateDownloadCancellation = null;
-            updateBusy = false;
-            if (!closing) CheckForUpdatesButton.IsEnabled = DownloadUpdateButton.IsEnabled = true;
-            updateDrain.TrySetResult();
-            updateDrain = null;
-        }
-    }
-
-    private void ReviewUpdate_Click(object sender, RoutedEventArgs e)
-    {
-        if (availableUpdate is not { } update || closing) return;
-        try { Process.Start(new ProcessStartInfo(update.ReleasePage.AbsoluteUri) { UseShellExecute = true }); }
-        catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException)
-        {
-            UpdateStatusText.Text = $"Could not open the release page. Copy this URL into your browser instead: {update.ReleasePage}";
-        }
-    }
-
-    private static string UpdateError(Exception error) => error switch
-    {
-        InvalidDataException or ArgumentException => error.Message,
-        HttpRequestException => "GitHub could not be reached or refused the request. No installer was retained.",
-        UpdateCleanupException => error.Message,
-        UnauthorizedAccessException or IOException => "Cannot read or save the update at the selected location. Check access and free space; check for an incomplete .part file before retrying.",
-        _ => "The update could not be checked or downloaded."
-    };
 
     private async Task RefreshAsync()
     {
@@ -695,7 +552,7 @@ public partial class MainWindow : ThemedWindow
             if (interruptedUpdateCleanup is { } error)
             {
                 IsEnabled = true;
-                ActionText.Text = $"Update cleanup could not finish. Inspect the selected download directory before exiting: {error}";
+                ActionText.Text = $"Update cleanup could not finish. Inspect Martlet's updates folder before exiting: {error}";
                 return;
             }
         }
@@ -703,6 +560,7 @@ public partial class MainWindow : ThemedWindow
         ReleaseShell();
         ageTimer.Stop();
         fixtureTimer.Stop();
+        updateTimer.Stop();
         audioSessionEvents.LockedChanged -= audioSetup.SetSessionLocked;
         audioSessionEvents.LockedChanged -= AvatarSessionLocked;
         if (conversation is not null) audioSessionEvents.LockedChanged -= conversation.SetSessionLocked;
@@ -723,6 +581,7 @@ public partial class MainWindow : ThemedWindow
         }
         await avatar.DisposeAsync();
         memory?.Dispose();
+        LaunchPendingInstall();
         // WPF OnMainWindowClose exits the process, including any non-cooperative in-process callback.
         // Even absent or synchronous cleanup must leave WPF's original Closing event before closing again.
         await Dispatcher.InvokeAsync(() =>
