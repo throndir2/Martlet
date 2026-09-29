@@ -1056,7 +1056,7 @@ public sealed record SetupSettings : IContract
     {
         route.Validate();
         var old = settings.Setup!.Routes.SingleOrDefault(item => item.Role == route.Role);
-        if (old is not null && settings.Setup.PendingRemovals.Any(item => item.Role == route.Role))
+        if (old is not null && settings.Setup.PendingRemovals.Any(item => item.Role == route.Role && SelfHostSetup.IsGateway(item.Scope?.RouteType)))
             ContractRules.Require(old.CredentialScope() == route.CredentialScope(),
                 "Remove this role's detached gateway credential before changing its host, pin or route type.");
         var updated = settings with

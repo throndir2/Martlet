@@ -157,7 +157,8 @@
         "dependencies": {
           "Martlet.Gateway.Audio2Face": "[0.3.0, )",
           "Martlet.Gateway.Ollama": "[0.3.0, )",
-          "Martlet.Gateway.Persistence": "[0.3.0, )"
+          "Martlet.Gateway.Persistence": "[0.3.0, )",
+          "Martlet.Gateway.Stt": "[0.3.0, )"
         }
       },
       "martlet.gateway.ollama": {
@@ -167,6 +168,12 @@
         }
       },
       "martlet.gateway.persistence": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Gateway": "[0.3.0, )"
+        }
+      },
+      "martlet.gateway.stt": {
         "type": "Project",
         "dependencies": {
           "Martlet.Gateway": "[0.3.0, )"

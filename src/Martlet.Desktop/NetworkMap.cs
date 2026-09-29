@@ -394,7 +394,7 @@ internal static class NetworkMap
         }
 
         var add = new Draft("add", NodeKind.Add, "Add a computer", "Lend a GPU PC to Martlet", AddGlyph) { Health = NodeHealth.Unknown, HealthText = "" };
-        add.Roles.Add(new("Host", "Martlet host", "A spare or gaming PC runs heavy parts, such as thinking or lip-sync, for this PC."));
+        add.Roles.Add(new("Host", "Martlet host", "A spare or gaming PC runs heavy parts, such as thinking, listening or lip-sync, for this PC."));
         add.Notes.Add("Hosts listen only on your private network and are paired once with a one-use code.");
         add.Commands.Add(new(NodeAction.AddComputer, "Add a computer", true));
         add.Commands.Add(new(NodeAction.HostThisPc, "Or run host services on this PC"));

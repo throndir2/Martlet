@@ -98,8 +98,12 @@ This page answers "what do I have, and what is each machine doing?"
 - **Who does what** (above the map, companion mode) has one tile per job:
   *Thinking*, *Listening*, *Speaking* and *Lip-sync (Audio2Face)*. Each tile
   names the computer or service in charge (select it to show that node).
-  Thinking, listening and speaking change in Setup, because each needs a model
-  and consent. **Lip-sync switches on the spot** from a drop-down: *This PC*,
+  Thinking and listening also switch from a drop-down once a host is paired:
+  the Setup choice or any paired host (with its model, or "not installed");
+  handing the job to a host checks it, offers to install the role (Ollama or
+  whisper) there and switches over once it is ready, and the Setup choice comes
+  back without re-entering a key. Speaking changes in Setup, because it needs a
+  model and consent. **Lip-sync switches on the spot** from a drop-down: *This PC*,
   any paired host, or *Nobody (mouth follows voice loudness)*. A showing
   character keeps showing; the next sentence uses the new computer.
   Handing lip-sync to a host first checks it over its pinned pairing. If it

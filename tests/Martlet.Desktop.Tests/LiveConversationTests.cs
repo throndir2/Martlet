@@ -69,6 +69,62 @@ public sealed class LiveConversationTests
     }
 
     [Fact]
+    public async Task ListeningHandedToAPairedHostTranscribesThereAndSaysSo()
+    {
+        await using var fixture = await LiveFixture.Create();
+        var loaded = await fixture.Store.LoadAsync();
+        var pairing = Guid.NewGuid();
+        var settings = HostHandoff.ToHost(loaded.Settings!, SetupRouteType.GatewayStt, new()
+        {
+            SchemaVersion = 1, Origin = "https://192.168.1.20:9443", HostId = "gpu-host",
+            SpkiFingerprint = "sha256:" + new string('a', 64), DeviceRole = "voice"
+        }, pairing, "desktop-test", MainWindow.Snapshot(new(
+            Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostConnection.TranscriptionRouteId,
+            Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostConnection.TranscriptionPath, "martlet.transcription-relay", "1.0",
+            "stt-host", "whisper-relay", "1.0.0", "small", "whisper.cpp-1.9.4", new string('c', 64), "sha256:" + new string('d', 64),
+            1_400_000, 960_000, 16_384, 16_384, 16, 262_144, TimeSpan.FromSeconds(60), "request_abort"), SetupRouteType.GatewayStt));
+        var configuration = LiveConversationConfiguration.From(loaded with { Settings = settings })!;
+        Assert.Null(configuration.Unavailable(false, true));
+        Assert.Equal(("gpu-host", pairing), (configuration.SttHostTarget()!.HostId, configuration.SttHostTarget()!.CredentialId));
+        Assert.Contains("your Martlet host gpu-host", configuration.Disclosure(false));
+        Assert.Contains("not stored", configuration.Disclosure(false));
+
+        // The host adapter consumes the same one-use upload authorization, bound to the host's origin and model.
+        var host = configuration.SttHostTarget()!;
+        var context = new ProviderRequestContext
+        {
+            Ids = new() { SessionId = Guid.NewGuid(), TurnId = Guid.NewGuid(), RequestId = Guid.NewGuid() }, Epoch = 1,
+            Deadline = DateTimeOffset.UtcNow.AddSeconds(30)
+        };
+        var permission = new AudioUploadAuthorization(HostTranscriptionAdapter.Binding(host, "small"), context.Ids, 1,
+            LiveConversationConfiguration.TranscriptionLimits, DateTimeOffset.UtcNow.AddSeconds(30), true, true);
+        var listener = new FakeListener("  hello from the host ");
+        var adapter = new HostTranscriptionAdapter(listener);
+        var audio = BoundedWaveAudio.FromPcm(new() { SampleRate = 16_000, Channels = 1, Encoding = Martlet.Core.Audio.PcmEncoding.Signed16LittleEndian },
+            new byte[32_000]);
+        var result = await adapter.TranscribeAsync(context, host, "small", audio, LiveConversationConfiguration.TranscriptionLimits,
+            permission, CancellationToken.None);
+        Assert.Equal((TranscriptionOutcome.Completed, "hello from the host"), (result.Outcome, result.Text));
+        Assert.Equal(32_000, listener.Bytes);
+        var replay = await adapter.TranscribeAsync(context, host, "small", audio, LiveConversationConfiguration.TranscriptionLimits,
+            permission, CancellationToken.None);
+        Assert.Equal(ProviderFailureCode.ConsentConsumed, replay.Failure!.Code);
+        fixture.NoEffects();
+    }
+
+    private sealed class FakeListener(string text) : IHostTranscriptionClient
+    {
+        internal int Bytes { get; private set; }
+
+        public Task<string> TranscribeAsync(HostTextTarget target, string modelId, ReadOnlyMemory<byte> pcm16kMono,
+            CorrelationIds ids, long epoch, DateTimeOffset deadline, CancellationToken cancellationToken)
+        {
+            Bytes = pcm16kMono.Length;
+            return Task.FromResult(text);
+        }
+    }
+
+    [Fact]
     public Task OpeningConfiguredWindowHasNoDefaultEffectsAndConsentIsNotRestored() => DispatcherTest(async () =>
     {
         await using var fixture = await LiveFixture.Create();
