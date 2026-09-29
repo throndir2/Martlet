@@ -341,9 +341,8 @@ public partial class PrepareHostWindow : ThemedWindow
         if (outcome?.Restarting is null) return;
         pendingReasons.Clear();
         RenderBanner();
-        var address = HostPower.HostOf(target);
         StatusText.Text = reboot ? $"{target} is restarting. Waiting for it to go down..." : $"{target} is shutting down...";
-        var down = await HostPower.WaitDownAsync(address, TimeSpan.FromMinutes(3), token);
+        var down = await HostPower.WaitDownAsync(target, TimeSpan.FromMinutes(3), token);
         if (!reboot)
         {
             StatusText.Text = down ? $"{target} is off." + (Mac() is null ? "" : " Press Wake it up to start it again.")
@@ -351,7 +350,7 @@ public partial class PrepareHostWindow : ThemedWindow
             return;
         }
         StatusText.Text = $"Waiting for {target} to come back (up to 10 minutes)...";
-        if (!await HostPower.WaitUpAsync(address, TimeSpan.FromMinutes(10), token))
+        if (!await HostPower.WaitUpAsync(target, TimeSpan.FromMinutes(10), token))
         {
             StatusText.Text = $"{target} has not answered SSH for 10 minutes. Check it has power and network, then press Read status.";
             return;
@@ -371,7 +370,7 @@ public partial class PrepareHostWindow : ThemedWindow
         try { target = Target(); }
         catch (InvalidOperationException) { StatusText.Text = $"Sent a wake-up packet to {mac}."; return; }
         StatusText.Text = $"Sent a wake-up packet to {mac}. Waiting for {target} to answer (up to 5 minutes)...";
-        if (!await HostPower.WaitUpAsync(HostPower.HostOf(target), TimeSpan.FromMinutes(5), token))
+        if (!await HostPower.WaitUpAsync(target, TimeSpan.FromMinutes(5), token))
         {
             StatusText.Text = $"{target} did not answer within 5 minutes. Wake-on-LAN must be allowed in its BIOS/UEFI and on in Linux " +
                 "(tick Wake-on-LAN while it is on), and it must be on this network by cable.";
