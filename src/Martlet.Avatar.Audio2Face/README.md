@@ -10,6 +10,14 @@ endpoint only; a successful connect does not prove a working service. Desktop's
 Automatic lip-sync uses it before each generated-speech sentence and falls back
 to voice-loudness lip-sync when the probe or animation fails.
 
+`Remote/Audio2FaceHostClient.cs` is the desktop side of the Martlet host relay:
+one-use pairing (`POST /martlet/v1/pair`), SPKI-pinned TLS, protocol-2 HMAC
+signing, capability discovery and chunked `POST /martlet/v1/inference/audio2face`
+with NDJSON `face_frame` parsing. It reimplements only that client wire format
+(verified against the real `Martlet.Gateway` server in its tests) so Desktop does
+not take the ASP.NET-based gateway assembly. The host side is
+`Martlet.Gateway.Audio2Face` behind the [Ubuntu host installer](../../deploy/ubuntu/audio2face/README.md).
+
 ## Runtime prerequisites and evidence
 
 The operator must independently provision and verify the NIM release, its NVIDIA

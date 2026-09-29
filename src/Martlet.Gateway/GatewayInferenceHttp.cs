@@ -543,7 +543,7 @@ internal sealed partial class GatewayHttpApplication
             data = Convert.ToBase64String(value.Payload.Span);
             mediaType = "audio/L16;rate=24000;channels=1";
         }
-        else if (value.Kind == GatewayInferenceEventKind.Observation)
+        else if (value.Kind is GatewayInferenceEventKind.Observation or GatewayInferenceEventKind.FaceFrame)
         {
             data = Convert.ToBase64String(value.Payload.Span);
             mediaType = "application/json";

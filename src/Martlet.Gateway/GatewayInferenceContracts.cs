@@ -23,7 +23,8 @@ public enum GatewayInferenceKind
     OllamaChat,
     F5Synthesis,
     PerceptionOcr,
-    PerceptionVlm
+    PerceptionVlm,
+    Audio2Face
 }
 
 public enum GatewayInferenceEventKind
@@ -35,7 +36,8 @@ public enum GatewayInferenceEventKind
     Observation,
     Completed,
     Canceled,
-    Failed
+    Failed,
+    FaceFrame
 }
 
 public sealed partial class GatewayInferenceRoute
@@ -328,6 +330,51 @@ public sealed partial class GatewayInferenceRoute
     public override string ToString() =>
         $"Gateway inference route {{ RouteId = {RouteId}, Kind = {Kind}, content = omitted }}";
 
+    /// <summary>
+    /// Relays one bounded generated-speech PCM chunk to the host's own loopback Audio2Face service
+    /// and streams its facial frames back. The model identity is the host-selected NIM and model.
+    /// </summary>
+    public static GatewayInferenceRoute Audio2Face(
+        string destinationId,
+        string workerId,
+        string modelId,
+        string modelRevision)
+    {
+        GatewayRules.Token(modelId, 128);
+        GatewayRules.Token(modelRevision, 128);
+        var modelSha256 = Convert.ToHexStringLower(SHA256.HashData(
+            Encoding.UTF8.GetBytes(modelId + "\n" + modelRevision)));
+        return new(
+            GatewayInferenceKind.Audio2Face,
+            GatewayRole.Voice,
+            Audio2FaceRouteId,
+            Audio2FacePath,
+            Audio2FaceContractId,
+            Audio2FaceContractVersion,
+            destinationId,
+            workerId,
+            "1.0.0",
+            modelId,
+            modelRevision,
+            modelSha256,
+            IdentityDigest(Audio2FaceContractId, workerId, modelId, modelRevision),
+            maximumRequestBytes: 640 * 1024,
+            maximumInputBytes: Audio2FaceMaximumPcmBytes,
+            maximumOutputBytes: 4 * 1024 * 1024,
+            maximumEventBytes: 8 * 1024,
+            maximumEvents: 2_048,
+            maximumStreamBytes: 8 * 1024 * 1024,
+            maximumDuration: TimeSpan.FromSeconds(30),
+            GatewayCancellationCapability.RequestAbort);
+    }
+
+    public const string Audio2FaceRouteId = "martlet.gateway.audio2face.v1";
+    public const string Audio2FacePath = "/martlet/v1/inference/audio2face";
+    public const string Audio2FaceContractId = "martlet.audio2face-relay";
+    public const string Audio2FaceContractVersion = "1.0";
+    /// <summary>At most four seconds of 48 kHz mono signed 16-bit PCM per request.</summary>
+    public const int Audio2FaceMaximumPcmBytes = 48_000 * 2 * 4;
+
     private static GatewayCancellationCapability Map(F5CancellationCapability capability) =>
         capability switch
         {
@@ -499,6 +546,23 @@ public sealed class GatewayPerceptionPayload : GatewayInferencePayload
     public string? Question { get; }
     public TimeSpan MaximumFrameAge { get; }
     internal override void Clear() { }
+}
+
+/// <summary>Mono signed 16-bit little-endian generated-speech PCM; never microphone audio.</summary>
+public sealed class GatewayAudio2FacePayload : GatewayInferencePayload
+{
+    private readonly byte[] pcm;
+
+    internal GatewayAudio2FacePayload(int sampleRate, byte[] pcm)
+    {
+        SampleRate = sampleRate;
+        this.pcm = pcm;
+    }
+
+    public int SampleRate { get; }
+    public ReadOnlyMemory<byte> Pcm => pcm;
+    public int SampleCount => pcm.Length / 2;
+    internal override void Clear() => CryptographicOperations.ZeroMemory(pcm);
 }
 
 public sealed class GatewayInferenceRequest
@@ -750,6 +814,10 @@ public interface IPerceptionGatewayInferenceWorker : IGatewayInferenceWorker
 {
 }
 
+public interface IAudio2FaceGatewayInferenceWorker : IGatewayInferenceWorker
+{
+}
+
 internal static class GatewayInferenceEventValidator
 {
     internal static void Validate(
@@ -837,6 +905,19 @@ internal static class GatewayInferenceEventValidator
                     payloadLength > 0 &&
                     item.ErrorCode is null &&
                     HasNoF5Metadata(item) &&
+                    IsJsonObject(item.Payload),
+                    "stream.invalid");
+                break;
+            case GatewayInferenceEventKind.FaceFrame:
+                GatewayRules.Require(
+                    request.Route.Kind == GatewayInferenceKind.Audio2Face &&
+                    payloadLength > 0 &&
+                    item.ErrorCode is null &&
+                    item.FrameSequence is >= 0 &&
+                    item.SampleOffset is >= 0 &&
+                    item.ChunkIndex is null &&
+                    item.SampleCount is null &&
+                    item.FinalSampleCount is null &&
                     IsJsonObject(item.Payload),
                     "stream.invalid");
                 break;
@@ -953,6 +1034,18 @@ internal static class GatewayInferenceEventValidator
                     dataEvents++;
                     GatewayRules.Require(dataEvents == 1, "stream.invalid");
                     break;
+                case GatewayInferenceEventKind.FaceFrame:
+                    GatewayRules.Require(
+                        request.Payload is GatewayAudio2FacePayload face &&
+                        item.FrameSequence == expectedFrameSequence &&
+                        item.SampleOffset >= expectedSampleOffset &&
+                        item.SampleOffset <= face.SampleCount,
+                        "stream.invalid");
+                    AddOutputBytes(item.Payload.Length);
+                    expectedFrameSequence++;
+                    expectedSampleOffset = item.SampleOffset!.Value;
+                    dataEvents++;
+                    break;
                 case GatewayInferenceEventKind.Completed:
                     ValidateCompleted(item);
                     break;
@@ -996,6 +1089,9 @@ internal static class GatewayInferenceEventValidator
                 case GatewayInferenceKind.PerceptionOcr:
                 case GatewayInferenceKind.PerceptionVlm:
                     GatewayRules.Require(dataEvents == 1, "stream.invalid");
+                    break;
+                case GatewayInferenceKind.Audio2Face:
+                    GatewayRules.Require(dataEvents > 0, "stream.invalid");
                     break;
             }
         }

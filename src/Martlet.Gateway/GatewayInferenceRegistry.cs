@@ -208,6 +208,8 @@ public sealed class GatewayInferenceRouteRegistry
             GatewayInferenceKind.PerceptionOcr or
                 GatewayInferenceKind.PerceptionVlm =>
                 worker is IPerceptionGatewayInferenceWorker,
+            GatewayInferenceKind.Audio2Face =>
+                worker is IAudio2FaceGatewayInferenceWorker,
             _ => false
         }, "worker.invalid");
 

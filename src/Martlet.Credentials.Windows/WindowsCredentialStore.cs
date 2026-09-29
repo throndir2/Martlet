@@ -57,4 +57,34 @@ public sealed class WindowsCredentialStore(ICredentialNative native) : ICredenti
         0 => CredentialError.None, 1168 => CredentialError.Missing, 5 => CredentialError.AccessDenied,
         87 or 13 => CredentialError.InvalidInput, _ => CredentialError.Unavailable
     };
+
+    // Device secret for a paired Martlet host that relays Audio2Face; scoped to the exact host and credential.
+    public CredentialError WriteAvatarHostSecret(string hostId, string credentialId, SecretLease secret)
+    {
+        if (!AvatarHostScope(hostId, credentialId)) return CredentialError.InvalidInput;
+        if (!native.IsSupported) return CredentialError.UnsupportedPlatform;
+        var error = CredentialError.InvalidInput;
+        secret.Use(value => error = Map(native.Write(AvatarHostTarget(hostId, credentialId), value)));
+        return error;
+    }
+
+    public CredentialReadResult ReadAvatarHostSecret(string hostId, string credentialId)
+    {
+        if (!AvatarHostScope(hostId, credentialId)) return new(CredentialError.InvalidInput, null);
+        if (!native.IsSupported) return new(CredentialError.UnsupportedPlatform, null);
+        var result = Map(native.Read(AvatarHostTarget(hostId, credentialId), out var secret));
+        if (result != CredentialError.None) { secret?.Dispose(); return new(result, null); }
+        return secret is null ? new(CredentialError.Unavailable, null) : new(result, secret);
+    }
+
+    public CredentialError DeleteAvatarHostSecret(string hostId, string credentialId) =>
+        !AvatarHostScope(hostId, credentialId) ? CredentialError.InvalidInput
+            : native.IsSupported ? Map(native.Delete(AvatarHostTarget(hostId, credentialId))) : CredentialError.UnsupportedPlatform;
+
+    private static bool AvatarHostScope(string hostId, string credentialId) =>
+        hostId is { Length: > 0 and <= 64 } && hostId.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-') &&
+        credentialId is { Length: 22 } && credentialId.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_');
+
+    private static string AvatarHostTarget(string hostId, string credentialId) =>
+        $"Martlet/v3/avatar-host/{hostId}/{credentialId}";
 }

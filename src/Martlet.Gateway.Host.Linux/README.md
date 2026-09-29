@@ -6,7 +6,18 @@ completed Ubuntu/Docker installation. Permanent pairings, durable replay
 admission, same-key TLS renewal and the existing Kestrel/pinned-client stack
 are reused. The Windows `Martlet.Gateway.Host` CLI is unchanged.
 
-**No workers are registered.** Capabilities contain empty worker/route lists.
+**No workers are registered** unless `host.json` contains the optional
+`audio2face` section, which registers the Audio2Face relay route
+(`Martlet.Gateway.Audio2Face`) to the host's own loopback NIM:
+
+```json
+"audio2face": { "endpoint": "http://127.0.0.1:52000/", "model": "claire" }
+```
+
+The endpoint must be numeric HTTP loopback. Enabling it is the host owner's
+standing permission for paired `voice` devices to relay generated-speech chunks;
+see the [Audio2Face host installer](../../deploy/ubuntu/audio2face/README.md).
+Otherwise capabilities contain empty worker/route lists.
 Neither a running process nor health means installed models, available
 inference, per-action permission or end-to-end installation readiness.
 There is no service installer, GUI, remote administration, privileged IPC,

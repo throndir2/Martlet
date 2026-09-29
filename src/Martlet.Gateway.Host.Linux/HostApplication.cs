@@ -16,19 +16,25 @@ internal sealed class NativeHostPlatform : IHostPlatform
     public LinuxControlDirectory OpenControl(string path) => new(path, new LinuxFileSystem());
     public IHostTerminal OpenTerminal() => new LinuxTerminal();
     public DurableGatewayHost OpenHost(string command, HostConfiguration config, ServiceApproval? approval,
-        CancellationToken cancellation) => command switch
+        CancellationToken cancellation)
     {
-        "init" => DurableGatewayHost.CreateNewForBinding(config.StateDirectory, config.HostId, config.Binding,
-            GatewayStorageBackend.LinuxServicePermissions, [], new QuietAudit(), LocalGatewayDecision.Enable, cancellation),
-        "rebind" => DurableGatewayHost.RebindForLocalHost(config.StateDirectory, config.Binding,
-            GatewayStorageBackend.LinuxServicePermissions, approval!.Identity, [], new QuietAudit(),
-            LocalGatewayDecision.Enable, cancellation),
-        _ when approval is not null => DurableGatewayHost.OpenExistingForBinding(config.StateDirectory, config.Binding,
-            GatewayStorageBackend.LinuxServicePermissions, approval.Identity, [], new QuietAudit(),
-            LocalGatewayDecision.Enable, cancellation),
-        _ => DurableGatewayHost.OpenForLocalAdministration(config.StateDirectory, config.HostId, config.Binding,
-            GatewayStorageBackend.LinuxServicePermissions, [], new QuietAudit(), LocalGatewayDecision.Enable, cancellation)
-    };
+        IGatewayInferenceWorker[] relay = config.Audio2FaceEndpoint is { } endpoint
+            ? [new Martlet.Gateway.Audio2Face.Audio2FaceRelayWorker(endpoint, config.Audio2FaceModel!, "nim")]
+            : [];
+        return command switch
+        {
+            "init" => DurableGatewayHost.CreateNewForBinding(config.StateDirectory, config.HostId, config.Binding,
+                GatewayStorageBackend.LinuxServicePermissions, [], new QuietAudit(), LocalGatewayDecision.Enable, cancellation, relay),
+            "rebind" => DurableGatewayHost.RebindForLocalHost(config.StateDirectory, config.Binding,
+                GatewayStorageBackend.LinuxServicePermissions, approval!.Identity, [], new QuietAudit(),
+                LocalGatewayDecision.Enable, cancellation),
+            _ when approval is not null => DurableGatewayHost.OpenExistingForBinding(config.StateDirectory, config.Binding,
+                GatewayStorageBackend.LinuxServicePermissions, approval.Identity, [], new QuietAudit(),
+                LocalGatewayDecision.Enable, cancellation, relay),
+            _ => DurableGatewayHost.OpenForLocalAdministration(config.StateDirectory, config.HostId, config.Binding,
+                GatewayStorageBackend.LinuxServicePermissions, [], new QuietAudit(), LocalGatewayDecision.Enable, cancellation, relay)
+        };
+    }
 }
 
 internal sealed class QuietAudit : IGatewayAuditSink

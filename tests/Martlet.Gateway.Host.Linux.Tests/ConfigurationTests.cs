@@ -57,6 +57,24 @@ public sealed class ConfigurationTests
     public void Private_origin_requires_explicit_mode(string origin) =>
         Assert.Equal(origin, HostConfiguration.Parse(Config(origin, "privateIp")).Binding.Origin.CanonicalOrigin);
 
+    private static byte[] RelayConfig(string endpoint, string model = "claire") =>
+        Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(Config("https://192.168.1.2:9443", "privateIp"))
+            .Replace("\"serviceGid\":1000", $"\"serviceGid\":1000,\"audio2face\":{{\"endpoint\":\"{endpoint}\",\"model\":\"{model}\"}}",
+                StringComparison.Ordinal));
+
+    [Fact]
+    public void Optional_audio2face_relay_accepts_only_the_hosts_own_loopback_service()
+    {
+        var config = HostConfiguration.Parse(RelayConfig("http://127.0.0.1:52000/"));
+        Assert.Equal(new Uri("http://127.0.0.1:52000/"), config.Audio2FaceEndpoint);
+        Assert.Equal("claire", config.Audio2FaceModel);
+        Assert.Null(HostConfiguration.Parse(Config()).Audio2FaceEndpoint);
+        foreach (var endpoint in new[] { "http://192.168.1.5:52000/", "http://localhost:52000/", "https://127.0.0.1:52000/",
+            "http://127.0.0.1:52000/path" })
+            Assert.Throws<HostInputException>(() => HostConfiguration.Parse(RelayConfig(endpoint)));
+        Assert.Throws<HostInputException>(() => HostConfiguration.Parse(RelayConfig("http://127.0.0.1:52000/", "bad model")));
+    }
+
     [Fact]
     public void Default_No_binding_factories_are_inert_even_with_invalid_inputs()
     {
