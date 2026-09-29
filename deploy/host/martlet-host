@@ -1,0 +1,599 @@
+#!/usr/bin/env bash
+# martlet-host: the single engine for every Martlet host role, in every installation method.
+#
+#   martlet-host setup          set up this host's Martlet gateway (the only network entry point)
+#   martlet-host roles          list the roles this host can run
+#   martlet-host add <role>     install a role service and publish it through the gateway
+#   martlet-host remove <role>  stop a role and unpublish it (keeps its data)
+#   martlet-host pair           pair a Martlet desktop (shows a one-use pairing code)
+#   martlet-host status         show the gateway and every installed role
+#   martlet-host config         print the gateway configuration
+#
+# Methods (same commands, same roles; see README.md):
+#   native  Ubuntu: ./deploy/host/martlet-host <command> (locally or over "ssh -t")
+#   docker  any Docker host, including Windows (Docker Desktop) and remote Docker over SSH:
+#           docker run --rm -it -u 0 -v /var/run/docker.sock:/var/run/docker.sock \
+#             -e MARTLET_HOST_ADDRESS=<host LAN IPv4> martlet-host <command>
+#           (this launcher starts the engine as the unprivileged martlet user inside the gateway's network)
+#
+# Every role goes through the same steps, driven only by roles/<role>/role.conf and compose.yaml:
+# requirements -> terms -> secrets -> choices -> registry login -> pinned assets -> loopback-only
+# compose service -> readiness -> gateway route. Each system change asks for an explicit "yes".
+set -euo pipefail
+
+HERE="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+ROLES_DIR="${MARTLET_HOST_ROLES_DIR:-${HERE}/roles}"
+MODE="${MARTLET_HOST_MODE:-native}"
+SERVICE="martlet-host-gateway"
+NET="martlet-host-net"
+HELPER_IMAGE="busybox:1.36.1"
+DOTNET_SDK="10.0.401"
+
+if [[ "${MODE}" == docker ]]; then
+  CONF=/var/lib/martlet/config
+  GW_STATE=/var/lib/martlet/private/state
+  GW_APP=/opt/martlet/gateway
+  PROJECTS="${CONF}/projects"
+  IMAGE="${MARTLET_HOST_IMAGE:-martlet-host:latest}"
+  DOTNET=dotnet
+  REPO=""
+else
+  REPO="$(cd "${HERE}/../.." && pwd)"
+  DATA="${MARTLET_HOST_DATA:-${HOME}/.local/share/martlet/host}"
+  CONF="${MARTLET_HOST_CONFIG:-${HOME}/.config/martlet/host}"
+  GW_STATE="${DATA}/private/state"
+  GW_APP="${DATA}/gateway"
+  PROJECTS="${DATA}/roles"
+  DOTNET="${HOME}/.dotnet/dotnet"
+fi
+GW_CONF_DIR="${CONF}/gateway"
+GW_CONFIG="${GW_CONF_DIR}/host.json"
+
+say()  { printf '\n\033[1m%s\033[0m\n' "$*"; }
+note() { printf '%s\n' "$*"; }
+fail() { printf '\n\033[31mStopped: %s\033[0m\n' "$*" >&2; exit 1; }
+ask()  { local answer; read -r -p "$1 Type yes to continue: " answer; [[ "${answer}" == "yes" ]]; }
+
+# ------------------------------------------------------------------ role catalog (data only)
+role_dir() {
+  [[ "$1" =~ ^[a-z0-9][a-z0-9-]{0,31}$ && -f "${ROLES_DIR}/$1/role.conf" ]] || fail "Unknown role '$1'. See: martlet-host roles"
+  printf '%s' "${ROLES_DIR}/$1"
+}
+
+# Prints every value of KEY in a key=value file (comments and CR stripped); list keys may repeat.
+conf_values() {
+  local file="$1" key="$2" line
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    line="${line%$'\r'}"
+    [[ -z "${line}" || "${line}" == \#* ]] && continue
+    if [[ "${line%%=*}" == "${key}" ]]; then printf '%s\n' "${line#*=}"; fi
+  done < "${file}"
+  return 0
+}
+conf_value() {
+  local file="$1" key="$2" line
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    line="${line%$'\r'}"
+    if [[ "${line}" != \#* && "${line%%=*}" == "${key}" ]]; then printf '%s' "${line#*=}"; return 0; fi
+  done < "${file}"
+  return 0
+}
+
+installed_file() { printf '%s' "${CONF}/roles/$1.role"; }
+
+cmd_roles() {
+  local dir name mark
+  for dir in "${ROLES_DIR}"/*/; do
+    name="$(basename "${dir}")"
+    [[ -f "${dir}/role.conf" ]] || continue
+    mark="available"; [[ -f "$(installed_file "${name}")" ]] && mark="installed"
+    printf '  %-14s %-10s %s\n' "${name}" "${mark}" "$(conf_value "${dir}/role.conf" title)"
+    printf '  %-14s %-10s requires: %s\n' "" "" "$(conf_value "${dir}/role.conf" requires)"
+  done
+}
+
+# ------------------------------------------------------------------ shared requirements
+DOCKER=(docker)
+require() {
+  local item
+  for item in "$@"; do
+    case "${item}" in
+      gpu) require_gpu ;;
+      docker) require_docker ;;
+      nvidia-toolkit) require_nvidia_toolkit ;;
+      *) fail "Unknown requirement '${item}' in role.conf." ;;
+    esac
+  done
+}
+
+require_gpu() {
+  if [[ "${MODE}" == docker ]]; then
+    # The Docker host provides the GPU; verify it is visible to containers.
+    docker info --format '{{json .Runtimes}}' | grep -q nvidia ||
+      docker info 2>/dev/null | grep -qi 'nvidia' ||
+      note "Could not confirm an NVIDIA runtime on this Docker host (Docker Desktop reports GPUs per container). Continuing; the role fails to start without a GPU."
+    return
+  fi
+  if nvidia-smi >/dev/null 2>&1; then
+    nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+    return
+  fi
+  note "No working NVIDIA driver was found (nvidia-smi failed)."
+  if ask "Install the recommended Ubuntu NVIDIA driver with 'sudo ubuntu-drivers install'? A reboot is required afterwards."; then
+    sudo ubuntu-drivers install
+    fail "Driver installed. Reboot, then run the same martlet-host command again."
+  fi
+  fail "This role needs an NVIDIA GPU with a working driver."
+}
+
+require_docker() {
+  if [[ "${MODE}" == docker ]]; then
+    docker info >/dev/null 2>&1 || fail "The Docker socket is not available to this session."
+    return
+  fi
+  if ! command -v docker >/dev/null 2>&1 || ! docker compose version >/dev/null 2>&1; then
+    ask "Install Ubuntu's Docker Engine and Compose (sudo apt-get install docker.io docker-compose-v2)?" ||
+      fail "Docker Engine with the compose plugin is required."
+    sudo apt-get update && sudo apt-get install -y docker.io docker-compose-v2
+    sudo systemctl enable --now docker
+  fi
+  if docker info >/dev/null 2>&1; then DOCKER=(docker); return; fi
+  if ! id -nG "${USER}" | grep -qw docker &&
+     ask "Add ${USER} to the docker group so role services can be managed without sudo (takes effect after logging in again)?"; then
+    sudo usermod -aG docker "${USER}"
+  fi
+  DOCKER=(sudo -E docker)
+}
+
+require_nvidia_toolkit() {
+  [[ "${MODE}" == docker ]] && return
+  command -v nvidia-ctk >/dev/null 2>&1 && return
+  ask "Install the NVIDIA Container Toolkit from NVIDIA's apt repository and configure Docker for GPUs?" ||
+    fail "The NVIDIA Container Toolkit is required for GPU containers."
+  curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey |
+    sudo gpg --dearmor --yes -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+  curl -fsSL https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list |
+    sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' |
+    sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list >/dev/null
+  sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+  sudo nvidia-ctk runtime configure --runtime=docker
+  sudo systemctl restart docker
+}
+
+require_dotnet() {
+  if [[ -x "${DOTNET}" ]] && "${DOTNET}" --list-sdks | grep -q "^${DOTNET_SDK} "; then return; fi
+  ask "Install the .NET SDK ${DOTNET_SDK} into ~/.dotnet with Microsoft's dotnet-install script (no sudo)?" ||
+    fail "The .NET SDK is required to build the Martlet gateway."
+  curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/martlet-dotnet-install.sh
+  bash /tmp/martlet-dotnet-install.sh --version "${DOTNET_SDK}" --install-dir "${HOME}/.dotnet"
+}
+
+# ------------------------------------------------------------------ gateway and its service (per method)
+gateway() {
+  if [[ "${MODE}" == docker ]]; then dotnet "${GW_APP}/Martlet.Gateway.Host.Linux.dll" "$@"
+  else DOTNET_ROOT="${HOME}/.dotnet" "${DOTNET}" "${GW_APP}/Martlet.Gateway.Host.Linux.dll" "$@"; fi
+}
+
+settings_value() { conf_value "${CONF}/host.env" "$1"; }
+
+# host.json is generated from the host settings plus one fragment per installed role.
+render_config() {
+  local roles=() file kind endpoint model binding
+  for file in "${CONF}/roles"/*.role; do
+    [[ -e "${file}" ]] || continue
+    kind="$(conf_value "${file}" kind)"; endpoint="$(conf_value "${file}" endpoint)"; model="$(conf_value "${file}" model)"
+    [[ "${kind}" =~ ^[a-z0-9-]+$ && "${endpoint}" =~ ^http://127\.0\.0\.1:[0-9]{1,5}/$ && "${model}" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]*$ ]] ||
+      fail "Invalid role record ${file}."
+    roles+=("{\"kind\":\"${kind}\",\"endpoint\":\"${endpoint}\",\"model\":\"${model}\"}")
+  done
+  local joined; joined="$(IFS=,; printf '%s' "${roles[*]:-}")"
+  # In Docker the port is published into the container's namespace, so the gateway listens there.
+  binding="privateIp"; [[ "${MODE}" == docker ]] && binding="published"
+  printf '{"schemaVersion":1,"hostId":"%s","stateDirectory":"%s","storageBackend":"linuxServicePermissions","binding":{"mode":"%s","origin":"https://%s:%s"},"serviceUid":%s,"serviceGid":%s,"roles":[%s]}\n' \
+    "$(settings_value host_id)" "${GW_STATE}" "${binding}" "$(settings_value lan_ip)" "$(settings_value port)" "$(id -u)" "$(id -g)" "${joined}"
+}
+
+CONFIG_CHANGED=0
+write_config() {
+  mkdir -p "${GW_CONF_DIR}"; chmod 700 "${CONF}" "${GW_CONF_DIR}"
+  local next; next="$(render_config)"
+  CONFIG_CHANGED=0
+  if [[ -f "${GW_CONFIG}" && "$(cat "${GW_CONFIG}")" == "${next}" ]]; then return 0; fi
+  ( umask 077; printf '%s\n' "${next}" > "${GW_CONFIG}.tmp" && mv -f "${GW_CONFIG}.tmp" "${GW_CONFIG}" )
+  gateway validate --config "${GW_CONFIG}" || fail "The generated gateway configuration was rejected."
+  CONFIG_CHANGED=1
+}
+
+service_stop() {
+  if [[ "${MODE}" == docker ]]; then docker stop "${SERVICE}" >/dev/null 2>&1 || true
+  else systemctl --user stop "${SERVICE}.service" 2>/dev/null || true; fi
+}
+
+service_start() {
+  if [[ "${MODE}" == docker ]]; then
+    # Recreated each time so an updated image takes effect; state lives in the named volumes.
+    docker rm -f "${SERVICE}" >/dev/null 2>&1 || true
+    docker run -d --name "${SERVICE}" --restart unless-stopped --network "container:${NET}" --user 1000:1000 \
+      -v martlet-host-config:/var/lib/martlet/config -v martlet-host-private:/var/lib/martlet/private \
+      "${IMAGE}" serve >/dev/null
+  else
+    systemctl --user restart "${SERVICE}.service"
+  fi
+  local attempt
+  for attempt in 1 2 3 4 5 6; do
+    sleep 2
+    if gateway health --config "${GW_CONFIG}" >/dev/null 2>&1; then note "Gateway healthy."; return; fi
+  done
+  if [[ "${MODE}" == docker ]]; then fail "The gateway is not healthy. Check: docker logs ${SERVICE}"
+  else fail "The gateway is not healthy. Check: journalctl --user -u ${SERVICE}"; fi
+}
+
+# Changing host.json invalidates the unattended-start approval by design; the owner re-approves locally.
+reapprove() {
+  service_stop
+  cat <<'TEXT'
+
+The gateway configuration changed, so its unattended-start approval must be renewed on this host.
+In the gateway console confirm opening with: yes
+Then type:  approve-service  (confirm: yes), then  stop  (confirm: yes)
+TEXT
+  gateway admin --config "${GW_CONFIG}"
+  service_start
+}
+
+approval_matches() { [[ "$(gateway status --config "${GW_CONFIG}" 2>/dev/null || true)" == *'"serviceApproval":"matching"'* ]]; }
+
+apply_config() {
+  write_config
+  if [[ ${CONFIG_CHANGED} == 1 ]] || ! approval_matches; then reapprove; else service_start; fi
+}
+
+require_setup() {
+  [[ -f "${CONF}/host.env" && -d "${GW_STATE}" && -f "${GW_APP}/Martlet.Gateway.Host.Linux.dll" ]] ||
+    fail "Run 'martlet-host setup' first."
+}
+
+private_addresses() {
+  ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 |
+    grep -E '^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)' || true
+}
+
+choose_address() {
+  local lan port host_id
+  if [[ "${MODE}" == docker ]]; then
+    # Inside a container only the Docker host knows its LAN address; the launcher passes it in.
+    lan="${MARTLET_HOST_ADDRESS:-}"
+    [[ "${lan}" =~ ^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)[0-9.]+$ ]] ||
+      fail "Set MARTLET_HOST_ADDRESS to the Docker host's private LAN address (the Martlet desktop does this)."
+    port="${MARTLET_HOST_PORT:-9443}"
+  else
+    local addresses=()
+    mapfile -t addresses < <(private_addresses)
+    [[ ${#addresses[@]} -gt 0 ]] || fail "No private LAN IPv4 address found on this host."
+    note "Private LAN addresses on this host:"; printf '  %s\n' "${addresses[@]}"
+    read -r -p "Address your desktops will use (default ${MARTLET_HOST_ADDRESS:-${addresses[0]}}): " lan
+    lan="${lan:-${MARTLET_HOST_ADDRESS:-${addresses[0]}}}"
+    [[ " ${addresses[*]} " == *" ${lan} "* ]] || fail "${lan} is not a private address of this host."
+    read -r -p "Gateway port (default ${MARTLET_HOST_PORT:-9443}): " port
+    port="${port:-${MARTLET_HOST_PORT:-9443}}"
+  fi
+  [[ "${port}" =~ ^[0-9]{2,5}$ ]] || fail "Invalid port."
+  # The host ID is permanent once the gateway identity exists.
+  [[ -f "${CONF}/host.env" ]] && host_id="$(settings_value host_id)"
+  host_id="${host_id:-${MARTLET_HOST_ID:-$(hostname -s | tr -cd 'A-Za-z0-9._-' | cut -c1-48)-host}}"
+  [[ "${host_id}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || fail "Invalid host ID."
+  ( umask 077; printf 'host_id=%s\nlan_ip=%s\nport=%s\n' "${host_id}" "${lan}" "${port}" > "${CONF}/host.env" )
+}
+
+# ------------------------------------------------------------------ commands
+# Docker method launcher: runs with the Docker socket (docker run -u 0 -v /var/run/docker.sock:...).
+# "setup" first creates the network holder (martlet-host-net), which publishes the gateway port on the Docker
+# host's LAN address and owns the loopback shared by the gateway and every role container. Every command then
+# runs in a fresh engine container as the unprivileged martlet user inside that network.
+docker_launch() {
+  docker info >/dev/null 2>&1 ||
+    fail "The Docker socket is not available. Run: docker run --rm -it -u 0 -v /var/run/docker.sock:/var/run/docker.sock ... martlet-host $1"
+  local socket_group; socket_group="$(stat -c %g /var/run/docker.sock)"
+  IMAGE="${MARTLET_HOST_IMAGE:-$(docker container inspect -f '{{.Config.Image}}' "$(hostname)" 2>/dev/null || printf 'martlet-host:latest')}"
+  if [[ -z "${MARTLET_HOST_ID:-}" ]]; then
+    MARTLET_HOST_ID="$(docker info --format '{{.Name}}' | tr -cd 'A-Za-z0-9._-' | cut -c1-48)-host"
+    export MARTLET_HOST_ID
+  fi
+  if [[ "$1" == setup ]]; then
+    local lan="${MARTLET_HOST_ADDRESS:-}" port="${MARTLET_HOST_PORT:-9443}" current
+    [[ "${lan}" =~ ^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)[0-9.]+$ && "${port}" =~ ^[0-9]{2,5}$ ]] ||
+      fail "Add -e MARTLET_HOST_ADDRESS=<the Docker host's private LAN IPv4> (and optionally -e MARTLET_HOST_PORT=9443)."
+    current="$(docker container inspect -f '{{range $p, $b := .HostConfig.PortBindings}}{{range $b}}{{.HostIp}}:{{.HostPort}}{{end}}{{end}} {{.Config.Image}}' "${NET}" 2>/dev/null || true)"
+    if [[ "${current}" != "${lan}:${port} ${IMAGE}" ]]; then
+      [[ -n "${current}" ]] && docker rm -f "${NET}" >/dev/null
+      docker run -d --name "${NET}" --restart unless-stopped -p "${lan}:${port}:${port}" --user 1000:1000 \
+        --group-add "${socket_group}" -v /var/run/docker.sock:/var/run/docker.sock "${IMAGE}" hold >/dev/null
+      note "Gateway address ${lan}:${port} is published by ${NET}."
+      sleep 4
+    fi
+    docker volume create martlet-host-config >/dev/null
+    docker volume create martlet-host-private >/dev/null
+  fi
+  docker container inspect "${NET}" >/dev/null 2>&1 || fail "Run 'setup' first."
+  local tty=(-i); [[ -t 0 && -t 1 ]] && tty=(-it)
+  exec docker run --rm "${tty[@]}" --user 1000:1000 --group-add "${socket_group}" --network "container:${NET}" \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v martlet-host-config:/var/lib/martlet/config -v martlet-host-private:/var/lib/martlet/private \
+    -e MARTLET_ENGINE=inner -e MARTLET_HOST_IMAGE="${IMAGE}" -e MARTLET_HOST_ID \
+    -e MARTLET_HOST_ADDRESS -e MARTLET_HOST_PORT "${IMAGE}" "$@"
+}
+
+# The network holder's process. Containers that share a network namespace are not restarted in order after a
+# reboot, so whenever the holder starts it restarts the gateway and role containers that joined it.
+cmd_hold() {
+  [[ "${MODE}" == docker ]] || fail "hold is only used by the Docker method."
+  trap 'exit 0' TERM INT
+  sleep 3
+  local id="${HOSTNAME}" container mode
+  while IFS= read -r container; do
+    mode="$(docker container inspect -f '{{.HostConfig.NetworkMode}}' "${container}" 2>/dev/null || true)"
+    if [[ "${mode}" == "container:${NET}" || ( -n "${id}" && "${mode}" == "container:${id}"* ) ]]; then
+      docker restart "${container}" >/dev/null 2>&1 && note "Restarted ${container} in the gateway network." || true
+    fi
+  done < <(docker ps -aq 2>/dev/null || true)
+  while true; do sleep 3600 & wait $!; done
+}
+
+cmd_serve() {
+  [[ "${MODE}" == docker ]] || fail "serve is only used by the Docker method's gateway container."
+  exec dotnet "${GW_APP}/Martlet.Gateway.Host.Linux.dll" serve --config "${GW_CONFIG}"
+}
+
+cmd_setup() {
+  [[ $EUID -ne 0 ]] || fail "Run as your normal user; martlet-host asks before using sudo."
+  if [[ "${MODE}" == native ]]; then
+    [[ "$(uname -m)" == "x86_64" ]] || fail "Only x86_64 hosts are supported."
+    grep -q '^ID=ubuntu' /etc/os-release || fail "Only Ubuntu hosts are supported natively; use the Docker method elsewhere."
+    [[ -f "${REPO}/src/Martlet.Gateway.Host.Linux/Martlet.Gateway.Host.Linux.csproj" ]] || fail "Run from a Martlet source checkout."
+    say "1/4 Martlet gateway"
+    require_dotnet
+    DOTNET_ROOT="${HOME}/.dotnet" DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 \
+      "${DOTNET}" publish "${REPO}/src/Martlet.Gateway.Host.Linux/Martlet.Gateway.Host.Linux.csproj" \
+      -c Release -o "${GW_APP}" -p:UseAppHost=false
+    mkdir -p "${DATA}/private"; chmod 700 "${DATA}" "${DATA}/private"
+  else
+    say "1/4 Martlet gateway (container image ${IMAGE})"
+  fi
+
+  say "2/4 Network address"
+  mkdir -p "${CONF}/roles" "${PROJECTS}"; chmod 700 "${CONF}"
+  [[ -f "${CONF}/host.env" && -z "${MARTLET_HOST_ADDRESS:-}" ]] || choose_address
+  note "Desktops will connect to https://$(settings_value lan_ip):$(settings_value port)"
+  write_config
+  if [[ "${MODE}" == native ]]; then
+    if systemctl is-active --quiet ufw 2>/dev/null &&
+       ask "The ufw firewall is active. Allow TCP $(settings_value port) from your private LAN to the gateway?"; then
+      sudo ufw allow proto tcp from "$(settings_value lan_ip | cut -d. -f1-3).0/24" to any port "$(settings_value port)"
+    fi
+    mkdir -p "${HOME}/.local/bin"
+    ln -sf "${HERE}/martlet-host" "${HOME}/.local/bin/martlet-host"
+  fi
+
+  say "3/4 Gateway identity"
+  if [[ ! -d "${GW_STATE}" ]]; then
+    service_stop
+    cat <<'TEXT'
+The gateway console opens to create this host's identity. Confirm creation with: yes
+Then type:  approve-service  (confirm: yes), then  stop  (confirm: yes)
+TEXT
+    gateway init --config "${GW_CONFIG}"
+    CONFIG_CHANGED=0
+  fi
+
+  say "4/4 Start automatically"
+  if [[ "${MODE}" == native ]]; then
+    mkdir -p "${HOME}/.config/systemd/user"
+    cat > "${HOME}/.config/systemd/user/${SERVICE}.service" <<UNIT
+[Unit]
+Description=Martlet host gateway
+After=network-online.target
+
+[Service]
+Environment=DOTNET_ROOT=${HOME}/.dotnet
+ExecStart=${DOTNET} ${GW_APP}/Martlet.Gateway.Host.Linux.dll serve --config ${GW_CONFIG}
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
+UNIT
+    systemctl --user daemon-reload
+    systemctl --user enable "${SERVICE}.service" >/dev/null
+    if ! loginctl show-user "${USER}" -p Linger 2>/dev/null | grep -q 'yes' &&
+       ask "Keep the gateway running after reboot without logging in (sudo loginctl enable-linger ${USER})?"; then
+      sudo loginctl enable-linger "${USER}"
+    fi
+  else
+    note "The gateway container restarts with Docker (restart policy unless-stopped)."
+  fi
+  if [[ ${CONFIG_CHANGED} == 1 ]] || ! approval_matches; then reapprove; else service_start; fi
+  say "Host ready. Next: 'pair' to connect a desktop, and 'add <role>' (see 'roles')."
+}
+
+cmd_pair() {
+  require_setup
+  service_stop
+  cat <<'TEXT'
+In Martlet on your desktop open Martlet hosts and note "This PC's device ID".
+In the gateway console confirm opening with: yes, then type:
+  start   (confirm: yes)
+  pair    enter the desktop's device ID, a display name and role: voice (confirm: yes)
+          Copy the pairing code (martlet-pair-v1....) into Martlet hosts and press Pair
+          while this console stays open, then press a key here.
+  list    confirms the pairing
+  stop    (confirm: yes)
+TEXT
+  gateway admin --config "${GW_CONFIG}"
+  service_start
+}
+
+# Copies a role's prepared files into its Martlet-managed named volume (works for local and remote Docker).
+fill_volume() {
+  local volume="$1" source="$2"
+  "${DOCKER[@]}" volume create "${volume}" >/dev/null
+  tar -C "${source}" -cf - . | "${DOCKER[@]}" run --rm -i -v "${volume}:/dst" "${HELPER_IMAGE}" tar -xf - -C /dst
+}
+
+role_compose() {
+  local role="$1"; shift
+  local project="${PROJECTS}/${role}" secret_env=() name
+  while IFS= read -r name <&3; do
+    [[ -n "${name}" ]] || continue
+    secret_env+=("${name^^}=$(cat "${CONF}/secrets/${name}")")
+  done 3< <(conf_values "$(role_dir "${role}")/role.conf" secret | cut -d'|' -f1)
+  ( cd "${project}" && env "${secret_env[@]}" "${DOCKER[@]}" compose -p "martlet-${role}" --env-file .env -f compose.yaml "$@" )
+}
+
+cmd_add() {
+  local role="${1:-}"; [[ -n "${role}" ]] || fail "Usage: martlet-host add <role>"
+  require_setup
+  local dir conf project
+  dir="$(role_dir "${role}")"; conf="${dir}/role.conf"; project="${PROJECTS}/${role}"
+  say "Adding role ${role}: $(conf_value "${conf}" title)"
+
+  say "Requirements"
+  require_docker
+  # shellcheck disable=SC2046
+  require $(conf_value "${conf}" requires)
+
+  local terms; terms="$(conf_value "${conf}" terms)"
+  if [[ -n "${terms}" ]]; then
+    note "${terms}"
+    ask "Continue with these terms?" || fail "Role not installed."
+  fi
+
+  rm -rf "${project}/files"
+  mkdir -p "${project}/files" "${CONF}/secrets"; chmod 700 "${project}" "${CONF}/secrets"
+  local env_lines=("COMPOSE_PROJECT_NAME=martlet-${role}" "MARTLET_ROLE_CONFIGS_VOLUME=martlet-${role}-configs")
+  if [[ "${MODE}" == docker ]]; then env_lines+=("MARTLET_ROLE_NETWORK=container:${NET}"); else env_lines+=("MARTLET_ROLE_NETWORK=host"); fi
+  local line name prompt var label options default value
+
+  while IFS= read -r line <&3; do
+    [[ -n "${line}" ]] || continue
+    name="${line%%|*}"; prompt="${line#*|}"
+    [[ "${name}" =~ ^[a-z0-9_]+$ ]] || fail "Invalid secret name in role.conf."
+    if [[ ! -s "${CONF}/secrets/${name}" ]]; then
+      read -r -s -p "${prompt} (input hidden): " value; echo
+      [[ -n "${value}" ]] || fail "${name} is required."
+      ( umask 077; printf '%s' "${value}" > "${CONF}/secrets/${name}" )
+      unset value
+    fi
+  done 3< <(conf_values "${conf}" secret)
+
+  declare -A chosen=()
+  while IFS= read -r line <&3; do
+    [[ -n "${line}" ]] || continue
+    IFS='|' read -r var label options default <<< "${line}"
+    read -r -p "${label} [${options// //}] (default ${default}): " value
+    value="${value:-${default}}"
+    [[ " ${options} " == *" ${value} "* ]] || fail "Choose one of: ${options}"
+    chosen["${var}"]="${value}"
+    env_lines+=("${var}=${value}")
+  done 3< <(conf_values "${conf}" choice)
+
+  local registry user secret
+  while IFS= read -r line <&3; do
+    [[ -n "${line}" ]] || continue
+    IFS='|' read -r registry user secret <<< "${line}"
+    "${DOCKER[@]}" login "${registry}" --username "${user}" --password-stdin < "${CONF}/secrets/${secret}"
+  done 3< <(conf_values "${conf}" registry)
+
+  say "Fetching pinned role assets"
+  local url target key
+  while IFS= read -r line <&3; do
+    [[ -n "${line}" ]] || continue
+    url="${line%%|*}"; target="${line#*|}"
+    for key in "${!chosen[@]}"; do url="${url//\{${key}\}/${chosen[${key}]}}"; target="${target//\{${key}\}/${chosen[${key}]}}"; done
+    [[ "${url}" == https://* && "${target}" == configs/* && "${target}" != *..* ]] || fail "Unsafe asset entry in role.conf."
+    mkdir -p "${project}/files/$(dirname "${target#configs/}")"
+    curl -fsSL "${url}" -o "${project}/files/${target#configs/}"
+  done 3< <(conf_values "${conf}" asset)
+  while IFS= read -r line <&3; do
+    [[ -n "${line}" ]] || continue
+    sed -i "${line#*|}" "${project}/files/${line%%|*}"
+  done 3< <(conf_values "${conf}" rewrite | sed 's#^configs/##')
+  while IFS= read -r line <&3; do
+    [[ -n "${line}" ]] || continue
+    grep -qF "${line#*|}" "${project}/files/${line%%|*}" || fail "Role asset check failed: ${line%%|*} lacks '${line#*|}'."
+  done 3< <(conf_values "${conf}" expect | sed 's#^configs/##')
+
+  cp "${dir}/compose.yaml" "${project}/compose.yaml"
+  ( umask 077; printf '%s\n' "${env_lines[@]}" > "${project}/.env" )
+  fill_volume "martlet-${role}-configs" "${project}/files"
+
+  say "Starting ${role}"
+  role_compose "${role}" up -d
+  local port minutes
+  port="$(conf_value "${conf}" port)"; minutes="$(conf_value "${conf}" ready_timeout_minutes)"
+  [[ "${port}" =~ ^[0-9]{2,5}$ ]] || fail "Invalid port in role.conf."
+  note "Waiting for ${role} on 127.0.0.1:${port} (up to ${minutes:-10} minutes; first starts can be slow)..."
+  local ready=0 attempt
+  for attempt in $(seq 1 $(( ${minutes:-10} * 6 ))); do
+    if (exec 3<>"/dev/tcp/127.0.0.1/${port}") 2>/dev/null; then ready=1; break; fi
+    sleep 10
+  done
+  [[ ${ready} == 1 ]] || fail "${role} did not start. Inspect: martlet-host status (or docker compose -p martlet-${role} logs)"
+
+  local kind model_from model="${role}"
+  kind="$(conf_value "${conf}" gateway_kind)"; model_from="$(conf_value "${conf}" model_from)"
+  [[ -n "${kind}" ]] || fail "role.conf declares no gateway_kind."
+  if [[ -n "${model_from}" ]]; then model="${chosen[${model_from}]:-${role}}"; fi
+  ( umask 077; printf 'kind=%s\nendpoint=http://127.0.0.1:%s/\nmodel=%s\n' "${kind}" "${port}" "${model}" > "$(installed_file "${role}")" )
+  apply_config
+  say "Role ${role} is running and published through the gateway. Paired desktops pick it up automatically."
+}
+
+cmd_remove() {
+  local role="${1:-}"; [[ -n "${role}" ]] || fail "Usage: martlet-host remove <role>"
+  require_setup
+  role_dir "${role}" >/dev/null
+  [[ -f "$(installed_file "${role}")" ]] || fail "Role ${role} is not installed."
+  ask "Stop ${role} and remove it from the gateway (its data volumes are kept)?" || exit 0
+  require_docker
+  role_compose "${role}" down || true
+  rm -f "$(installed_file "${role}")"
+  apply_config
+  say "Role ${role} removed."
+}
+
+cmd_status() {
+  require_setup
+  say "Gateway ($(settings_value host_id) at https://$(settings_value lan_ip):$(settings_value port), ${MODE} method)"
+  if [[ "${MODE}" == docker ]]; then docker ps --filter "name=^${SERVICE}$" --filter "name=^${NET}$" --format '{{.Names}}: {{.Status}}' || true
+  else systemctl --user is-active "${SERVICE}.service" || true; fi
+  gateway health --config "${GW_CONFIG}" || true
+  local file role port
+  for file in "${CONF}/roles"/*.role; do
+    [[ -e "${file}" ]] || continue
+    role="$(basename "${file}" .role)"
+    port="$(conf_value "${file}" endpoint | sed -E 's#.*:([0-9]+)/$#\1#')"
+    say "Role ${role}"
+    if (exec 3<>"/dev/tcp/127.0.0.1/${port}") 2>/dev/null; then note "listening on 127.0.0.1:${port}"; else note "NOT listening on 127.0.0.1:${port}"; fi
+    role_compose "${role}" ps 2>/dev/null || true
+  done
+}
+
+if [[ "${MODE}" == docker && "${MARTLET_ENGINE:-launcher}" != inner ]]; then
+  case "${1:-help}" in
+    setup|roles|add|remove|pair|status|config) docker_launch "$@" ;;
+  esac
+fi
+
+case "${1:-help}" in
+  setup) cmd_setup ;;
+  roles) cmd_roles ;;
+  add) shift; cmd_add "$@" ;;
+  remove) shift; cmd_remove "$@" ;;
+  pair) cmd_pair ;;
+  status) cmd_status ;;
+  config) require_setup; render_config ;;
+  hold) cmd_hold ;;
+  serve) cmd_serve ;;
+  help|-h|--help) sed -n '2,/^set -euo/p' "${BASH_SOURCE[0]}" | sed '$d' | sed 's/^# \{0,1\}//' ;;
+  *) fail "Unknown command '$1'. Try: martlet-host help" ;;
+esac

@@ -260,8 +260,10 @@ internal sealed class LinuxFileSystem : ILinuxFileSystem
         using var proc = new LinuxDescriptor(this, OpenAt(root.Value, "proc", Directory | CloseOnExec | NoFollow, 0, NoLinks | Beneath));
         if (FileSystemType(proc.Value) != 0x9fa0 || Stat(proc.Value).User != 0)
             throw Error(GatewayPersistenceFailure.UnsupportedPlatform);
+        // Containers bind-mount /proc/sys read-only inside procfs, so mount crossings are allowed here;
+        // the file must still be a procfs regular file.
         using var file = new LinuxDescriptor(this, OpenAt(proc.Value, relative, CloseOnExec | NoFollow | NonBlocking, 0,
-            NoLinks | Beneath | NoMounts));
+            NoLinks | Beneath));
         if (FileSystemType(file.Value) != 0x9fa0 || (Stat(file.Value).Mode & 0xf000) != 0x8000)
             throw Error(GatewayPersistenceFailure.UnsupportedPlatform);
         var buffer = new byte[maximum + 1];

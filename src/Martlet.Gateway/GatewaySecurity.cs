@@ -143,6 +143,17 @@ public sealed class GatewayTlsBinding
     public GatewayOrigin Origin { get; }
     public GatewayHostIdentity Identity { get; }
     public X509Certificate2 Certificate { get; }
+    /// <summary>Wildcard listen address inside a container whose runtime publishes the origin; null listens on the origin.</summary>
+    public IPAddress? ListenAddress
+    {
+        get => listenAddress;
+        init
+        {
+            GatewayRules.Require(value is null || value.Equals(IPAddress.Any) || value.Equals(IPAddress.IPv6Any), "binding.unsafe");
+            listenAddress = value;
+        }
+    }
+    private readonly IPAddress? listenAddress;
 
     public GatewayTlsBinding(
         GatewayOrigin origin,

@@ -16,7 +16,7 @@ on this host's own numeric HTTP loopback (only `audio2face` exists today):
 
 Unknown kinds, duplicates, non-loopback endpoints and more than eight roles are
 rejected. Listing a role is the host owner's standing permission for paired
-`voice` devices to use it. [`martlet-host`](../../deploy/ubuntu/host/README.md)
+`voice` devices to use it. [`martlet-host`](../../deploy/host/README.md)
 generates this list; changing it requires `approve-service` again.
 Otherwise capabilities contain empty worker/route lists.
 Neither a running process nor health means installed models, available
@@ -97,6 +97,11 @@ and one canonical HTTPS RFC1918/ULA literal origin, for example
 `https://192.168.10.20:9443`. No public/wildcard/unspecified address, hostname,
 discovery, link-local scope, automatic interface selection or fallback exists.
 The selected address must actually exist on the host when starting.
+Inside a container (`/.dockerenv` or `/run/.containerenv` present) the
+`martlet-host` Docker method selects `"mode":"published"` instead: the same
+private origin names the Docker host's published address for the certificate and
+clients, while Kestrel listens on the container's wildcard address. `published`
+is refused outside a container.
 
 The existing config parent and selected state parent must be current-UID-owned
 0700 directories on admitted ext4; ancestors are root/current-UID-owned, not
@@ -158,6 +163,11 @@ frozen for that process; no live reload. `disable-service` removes unattended
 approval without changing pairings. Admin can reopen an unapproved existing
 identity by its expected host ID under native custody, then display/review its
 pin before granting new approval; this is not remote authentication.
+Admin also opens when an approval exists for an earlier config of the same host,
+UID/GID and pin (for example after a role was added), so `approve-service` can
+renew it; `serve` still requires the exact config. Each `pair` invitation also
+prints one `martlet-pair-v1.<base64url JSON>` code carrying the origin, host ID,
+pin, pairing ID and token for pasting into the desktop.
 
 ## Binding changes, certificates and recovery
 

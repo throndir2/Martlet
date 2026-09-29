@@ -179,15 +179,21 @@ authorization, origin/CSRF protection and narrowly scoped privileged actions.
 It is not exposed on the LAN; the paired inference/status gateway is separate.
 Packaging and novice accessibility of this UI remain H09 work.
 
-**Implemented uniform host flow (2026-09-28).** [`martlet-host`](../deploy/ubuntu/host/README.md)
+**Implemented uniform host flow (2026-09-28).** [`martlet-host`](../deploy/host/README.md)
 is the single CLI for every managed host role: `setup` (gateway, identity, boot
 service), `pair`, `roles`, `add <role>`, `remove <role>`, `status`. Each role is
 data only (`role.conf` + `compose.yaml`) and goes through the same steps:
 requirements, terms, secrets, choices, registry login, pinned assets,
 loopback-only Compose service, readiness, and a gateway route listed in
 `host.json` `roles`. Audio2Face is the first role; other roles need their gateway
-relay worker before they are listed. It is not yet the graphical/journaled
-coordinator described above and has not been run on a real Ubuntu GPU host.
+relay worker before they are listed. The same engine runs by several methods:
+natively on Ubuntu, or as the `martlet-host` container image on any Docker host
+(including Windows with Docker Desktop and remote Docker), launched on the host
+itself or from the desktop's **Martlet hosts** window (this PC via Docker Desktop,
+another computer over SSH with Docker or native Ubuntu). Pairing uses one
+`martlet-pair-v1` code. The Docker method was run end to end on Windows Docker
+Desktop with a stand-in role; it is not yet the graphical/journaled coordinator
+described above and has not been run on a real GPU with the Audio2Face NIM.
 
 ### Deployment choices and ownership
 

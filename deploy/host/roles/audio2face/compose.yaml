@@ -1,11 +1,11 @@
 # Martlet Audio2Face host service (NVIDIA Audio2Face-3D NIM), loopback-only behind the Martlet gateway.
 # Adapted from NVIDIA Audio2Face-3D-Samples quick-start/docker-compose.yml at commit
 # a2d0150043be7dc15db2fad8193a78b660e1100f (SPDX-License-Identifier: Apache-2.0, Copyright (c) 2024 NVIDIA
-# CORPORATION & AFFILIATES). Changes: NGC key from a private file secret, restart policy, Martlet naming.
-# "martlet-host add audio2face" copies this file into the role project directory, fetches the pinned
-# configs listed in role.conf and rewrites them so the gRPC service listens only on 127.0.0.1:52000
-# (host network). Use of the NIM and its models is subject to NVIDIA's terms, accepted by the operator.
-
+# CORPORATION & AFFILIATES). Changes: Martlet-managed named volumes, restart policy, network chosen by
+# martlet-host (host loopback natively, the gateway's network namespace in Docker mode).
+# "martlet-host add audio2face" fills the configs volume with the pinned configs listed in role.conf, rewritten
+# so the gRPC service listens only on 127.0.0.1:52000. Use of the NIM and its models is subject to NVIDIA's
+# terms, accepted by the operator.
 
 services:
   a2f-3d-init:
@@ -16,8 +16,8 @@ services:
     entrypoint: >
       sh -c "./service/generate_trt_models.py --stylization-config /mnt/configs/${A2F_3D_MODEL_NAME:-claire}_stylization_config.yaml --advanced-config /mnt/configs/advanced_config.yaml"
     volumes:
-      - ./a2f-3d-init-data:/tmp/a2x/
-      - ./configs/:/mnt/configs/:ro
+      - data:/tmp/a2x/
+      - configs:/mnt/configs/:ro
     deploy:
       resources:
         reservations:
@@ -41,9 +41,9 @@ services:
       NIM_DISABLE_MODEL_DOWNLOAD: true
       NIM_SKIP_A2F_START: true
     volumes:
-      - ./a2f-3d-init-data:/tmp/a2x/
-      - ./configs/:/mnt/configs/:ro
-    network_mode: "host"
+      - data:/tmp/a2x/
+      - configs:/mnt/configs/:ro
+    network_mode: ${MARTLET_ROLE_NETWORK:?set by martlet-host}
     deploy:
       resources:
         reservations:
@@ -52,6 +52,13 @@ services:
               count: 1
               capabilities: [ gpu ]
 
+volumes:
+  configs:
+    name: ${MARTLET_ROLE_CONFIGS_VOLUME:?set by martlet-host}
+    external: true
+  data:
+    name: martlet-audio2face-data
+
 secrets:
   ngc_api_key:
-    file: ${NGC_API_KEY_FILE:?martlet-host sets the private NGC key file in .env}
+    environment: NGC_API_KEY

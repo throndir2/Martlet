@@ -32,39 +32,47 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         GatewayStorageBackend storageBackend, IEnumerable<IGatewayWorker> workers, IGatewayAuditSink audit,
         LocalGatewayDecision decision = LocalGatewayDecision.No, CancellationToken cancellationToken = default,
         IEnumerable<IGatewayInferenceWorker>? inferenceWorkers = null) =>
-        decision == LocalGatewayDecision.No ? new() :
+        decision == LocalGatewayDecision.No ? new() : Listening(binding,
         Open(directory, hostId, binding.Origin, workers, audit, decision, HostOpenMode.Create,
             TimeProvider.System, cancellationToken: cancellationToken, inferenceWorkers: inferenceWorkers,
-            storageBackend: storageBackend, explicitBinding: true);
+            storageBackend: storageBackend, explicitBinding: true));
 
     public static DurableGatewayHost OpenExistingForBinding(string directory, GatewayHostBinding binding,
         GatewayStorageBackend storageBackend, GatewayHostIdentity expectedIdentity,
         IEnumerable<IGatewayWorker> workers, IGatewayAuditSink audit,
         LocalGatewayDecision decision = LocalGatewayDecision.No, CancellationToken cancellationToken = default,
         IEnumerable<IGatewayInferenceWorker>? inferenceWorkers = null) =>
-        decision == LocalGatewayDecision.No ? new() :
+        decision == LocalGatewayDecision.No ? new() : Listening(binding,
         Open(directory, null, binding.Origin, workers, audit, decision, HostOpenMode.Open,
             TimeProvider.System, cancellationToken: cancellationToken, inferenceWorkers: inferenceWorkers,
             storageBackend: storageBackend, explicitBinding: true,
-            expectedIdentity: expectedIdentity ?? throw new ArgumentNullException(nameof(expectedIdentity)));
+            expectedIdentity: expectedIdentity ?? throw new ArgumentNullException(nameof(expectedIdentity))));
 
     public static DurableGatewayHost OpenForLocalAdministration(string directory, string expectedHostId,
         GatewayHostBinding binding, GatewayStorageBackend storageBackend, IEnumerable<IGatewayWorker> workers,
         IGatewayAuditSink audit, LocalGatewayDecision decision = LocalGatewayDecision.No,
         CancellationToken cancellationToken = default, IEnumerable<IGatewayInferenceWorker>? inferenceWorkers = null) =>
-        decision == LocalGatewayDecision.No ? new() :
+        decision == LocalGatewayDecision.No ? new() : Listening(binding,
         Open(directory, expectedHostId ?? throw new ArgumentNullException(nameof(expectedHostId)), binding.Origin, workers, audit, decision, HostOpenMode.Open,
             TimeProvider.System, cancellationToken: cancellationToken, inferenceWorkers: inferenceWorkers,
-            storageBackend: storageBackend, explicitBinding: true);
+            storageBackend: storageBackend, explicitBinding: true));
 
     public static DurableGatewayHost RebindForLocalHost(string directory, GatewayHostBinding binding,
         GatewayStorageBackend storageBackend, GatewayHostIdentity expectedIdentity,
         IEnumerable<IGatewayWorker> workers, IGatewayAuditSink audit,
         LocalGatewayDecision decision = LocalGatewayDecision.No, CancellationToken cancellationToken = default) =>
-        decision == LocalGatewayDecision.No ? new() :
+        decision == LocalGatewayDecision.No ? new() : Listening(binding,
         Open(directory, null, binding.Origin, workers, audit, decision, HostOpenMode.Rebind,
             TimeProvider.System, cancellationToken: cancellationToken, storageBackend: storageBackend,
-            explicitBinding: true, expectedIdentity: expectedIdentity ?? throw new ArgumentNullException(nameof(expectedIdentity)));
+            explicitBinding: true, expectedIdentity: expectedIdentity ?? throw new ArgumentNullException(nameof(expectedIdentity))));
+
+    private IPAddress? listenAddress;
+
+    private static DurableGatewayHost Listening(GatewayHostBinding binding, DurableGatewayHost host)
+    {
+        host.listenAddress = binding.ListenAddress;
+        return host;
+    }
 
     private DurableGatewayHost() => clock = TimeProvider.System;
 
@@ -247,7 +255,8 @@ public sealed class DurableGatewayHost : IAsyncDisposable
             server!.Credentials.ObserveTime(clock);
             var binding = new GatewayTlsBinding(origin!, Identity!, SelectCertificate(), clock)
             {
-                CertificateSelector = () => SelectCertificate()
+                CertificateSelector = () => SelectCertificate(),
+                ListenAddress = listenAddress
             };
             listener = await server.StartAsync(binding, listenerFactory, cancellationToken)
                 .ConfigureAwait(false);

@@ -170,6 +170,23 @@ public sealed class LifecycleTests
     }
 
     [Fact]
+    public async Task Changed_config_is_reapproved_in_admin_before_serve()
+    {
+        using var platform = new FixturePlatform();
+        using var output = new StringWriter();
+        platform.Terminal = new("yes", "approve-service", "yes");
+        Assert.Equal(0, await platform.Run("init", output));
+        ConfigurationTests.WriteConfig(platform.Fs,
+            platform.Fs.Parent.Children["host.json"].Bytes.Concat(new byte[] { 32 }).ToArray());
+        Assert.Equal(3, await platform.Run("serve", output));
+        platform.Terminal = new("yes", "approve-service", "yes", "stop", "yes");
+        Assert.Equal(0, await platform.Run("admin", output));
+        using var status = new StringWriter();
+        Assert.Equal(0, await platform.Run("status", status));
+        Assert.Contains("\"matching\"", status.ToString());
+    }
+
+    [Fact]
     public async Task Cleanup_failure_is_not_clean_success_and_preserves_dirty_fence()
     {
         using var platform = new FixturePlatform();

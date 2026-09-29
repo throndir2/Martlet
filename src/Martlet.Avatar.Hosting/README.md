@@ -38,13 +38,16 @@ Martlet does not install or start Docker, WSL or the Audio2Face NIM.
 
 ### Running an Audio2Face service yourself (NVIDIA GPU)
 
-**Another computer (recommended for a GPU PC/server):** on the Ubuntu host run
-[`martlet-host setup`, `martlet-host pair` and `martlet-host add audio2face`](../../deploy/ubuntu/host/README.md),
-the same flow every host role uses. It starts the NIM on the host's loopback and
-publishes the gateway's Audio2Face relay route. In **Character settings > Audio2Face on another computer**, pair
-this PC with the host (host address, ID, fingerprint, device ID, one-use pairing
-ID/token from the host's `pair` command). The device secret is stored in Windows
-Credential Manager; `avatar.json` keeps only the nonsecret `RemoteHost` identity.
+**As a Martlet host (recommended; another computer or this PC):** in Martlet >
+**Martlet hosts** (also linked from Character settings), set up a host and add
+the `audio2face` role: this PC through Docker Desktop, another computer over SSH
+(Docker or native Ubuntu), or by running the same
+[`martlet-host setup`, `pair` and `add audio2face`](../../deploy/host/README.md)
+commands on the host yourself. It starts the NIM on the host's loopback and
+publishes the gateway's Audio2Face relay route. Pair this PC by pasting the
+one-use `martlet-pair-v1...` code the host's `pair` console shows. The device
+secret is stored in Windows Credential Manager; `avatar.json` keeps only the
+nonsecret `RemoteHost` identity.
 Automatic lip-sync then prefers a local service, then the paired host, then
 loudness. Sentences are relayed in 0.5 s / 1 s chunks with 0.5 s of context so
 animation starts while Martlet is still speaking; late frames are skipped.

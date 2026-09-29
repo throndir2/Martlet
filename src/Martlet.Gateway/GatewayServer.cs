@@ -141,7 +141,7 @@ public sealed class KestrelGatewayListenerFactory : IGatewayListenerFactory
             options.Limits.MaxRequestHeadersTotalSize = 16_384;
             options.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(5);
             options.Limits.KeepAliveTimeout = TimeSpan.FromSeconds(30);
-            options.Listen(binding.Origin.Address, binding.Origin.Port, listen =>
+            options.Listen(binding.ListenAddress ?? binding.Origin.Address, binding.Origin.Port, listen =>
             {
                 listen.Protocols = HttpProtocols.Http1;
                 listen.UseHttps(new HttpsConnectionAdapterOptions
@@ -161,8 +161,11 @@ public sealed class KestrelGatewayListenerFactory : IGatewayListenerFactory
             await app.StartAsync(cancellationToken).ConfigureAwait(false);
             var addresses = app.Services.GetRequiredService<IServer>()
                 .Features.Get<IServerAddressesFeature>()?.Addresses;
+            var expected = binding.ListenAddress is { } any
+                ? new UriBuilder("https", any.ToString(), binding.Origin.Port).Uri.GetLeftPart(UriPartial.Authority)
+                : binding.Origin.CanonicalOrigin;
             GatewayRules.Require(addresses is { Count: 1 } &&
-                addresses.Single() == binding.Origin.CanonicalOrigin, "binding.unsafe");
+                addresses.Single() == expected, "binding.unsafe");
             return new KestrelGatewayListenerHandle(binding.Origin, app);
         }
         catch

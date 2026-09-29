@@ -108,13 +108,16 @@ internal static class HostApplication
             {
                 terminal = platform.OpenTerminal();
                 terminal.Check();
+                // Local administration may open with an approval for an earlier config (for example after a
+                // role was added) so the owner can approve-service again; serve still requires the exact config.
+                var exactConfig = options.Command is not ("rebind" or "admin");
                 if (options.Command == "rebind")
                 {
                     if (approval is null) throw new HostApprovalException();
                     approval.Check(config, directory, requireDigest: false);
                 }
                 else
-                    approval?.Check(config, directory);
+                    approval?.Check(config, directory, exactConfig);
                 output.WriteLine($"Review state: {config.StateDirectory}\nHost: {config.HostId}\nOrigin: {config.Binding.Origin.CanonicalOrigin}\nService UID/GID: {config.ServiceUid}/{config.ServiceGid}");
                 output.WriteLine("LinuxServicePermissions is plaintext at rest. OS session is not proof of physical presence.");
                 if (!await Confirm(terminal, options.Command == "init"
@@ -125,7 +128,7 @@ internal static class HostApplication
                     return 3;
                 config.Recheck(directory);
                 if (approval is not null)
-                    CheckApproval(directory, config, approval, requireDigest: options.Command != "rebind");
+                    CheckApproval(directory, config, approval, requireDigest: exactConfig);
                 owner = platform.OpenHost(options.Command, config, approval, cancellation);
                 config.Recheck(directory);
                 output.WriteLine($"Opened host: {owner.Identity!.HostId}\nSPKI pin: {owner.Identity.SpkiFingerprint}\nListener stopped. No engines/models/inference available.");

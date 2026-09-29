@@ -178,7 +178,7 @@ internal sealed class LinuxTerminal : IHostTerminal
         try
         {
             Write("\x1b[?1049h\x1b[2J\x1b[H", cancellation);
-            Write($"PRIVATE ONE-USE INVITATION (protocol 2)\r\nHost: {card.HostId}\r\nOrigin: {card.Origin}\r\nSPKI pin: {card.SpkiFingerprint}\r\nPairing ID: {card.PairingId}\r\nToken: {card.Token.Reveal()}\r\nDeadline UTC: {card.ExpiresAt:O}\r\nPairing is permanent until revoked. No clipboard or log output.\r\nPress a key to erase. Never record/share this terminal.\r\n", cancellation);
+            Write($"PRIVATE ONE-USE INVITATION (protocol 2)\r\nHost: {card.HostId}\r\nOrigin: {card.Origin}\r\nSPKI pin: {card.SpkiFingerprint}\r\nPairing ID: {card.PairingId}\r\nToken: {card.Token.Reveal()}\r\nDeadline UTC: {card.ExpiresAt:O}\r\n\r\nPairing code (paste into Martlet > Martlet hosts):\r\n{PairingCode.Format(card)}\r\n\r\nPairing is permanent until revoked. No clipboard or log output.\r\nPress a key to erase. Never record/share this terminal.\r\n", cancellation);
             var remaining = card.ExpiresAt - DateTimeOffset.UtcNow;
             if (remaining > TimeSpan.Zero)
             {

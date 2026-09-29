@@ -487,6 +487,11 @@ public partial class MainWindow : ThemedWindow
 
     private void Troubleshooting_Click(object sender, RoutedEventArgs e) => OpenTroubleshooting(this);
     private void Avatar_Click(object sender, RoutedEventArgs e) => OpenAvatar(this);
+    private void Hosts_Click(object sender, RoutedEventArgs e)
+    {
+        if (store is null || setupService is null || closing) return;
+        new HostsWindow(new AvatarProfileStore(store.DataDirectory), setupService) { Owner = this }.ShowDialog();
+    }
     private bool togglingCharacter;
     private async void Character_Click(object sender, RoutedEventArgs e)
     {
