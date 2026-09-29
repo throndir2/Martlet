@@ -8,6 +8,12 @@ Each new action requires a bounded data/cost/output authorization; no credential
 opt-in update checks are enabled. Text-only never requests TTS or opens output.
 Actual account/device/first-conversation qualification remains **NOT RUN**.
 
+The desktop starts with a short welcome tour, then a Home page with one next
+step at a time (setup checklist, then **Start talking**), a **Devices** map of
+every computer and cloud service with its hardware and roles, a host dashboard
+for PCs that lend their GPU, and Companion and Settings pages for everything
+else. See the [desktop UI design](docs/UI_DESIGN.md).
+
 Martlet also retains an accessible Windows desktop demo and Doctor self-test, using the
 production text validator, bounded session state, diagnostics and optional PCM
 sink. All demo text is authored synthetic content, **FIXTURE - NOT AI**.
@@ -65,6 +71,7 @@ There is no remote memory, embedding, vector database or automatic backup.
 | --- | --- |
 | [Coding-agent instructions](AGENTS.md) | Autonomous autopilot-style work, task branches, prototype-speed policy (no required local gates), and normal merge into `main`; explicit holds and safety boundaries remain binding |
 | [Development plan](DEVELOPMENT_PLAN.md) | Scope, proposed decisions, priorities, risks, and reading order |
+| [Desktop UI design](docs/UI_DESIGN.md) | Per-stage design: welcome tour, companion home and setup checklist, host dashboard, Devices hardware map, add-a-computer wizard, chat-first conversation and motion system |
 | [Companion requirements](docs/COMPANION_REQUIREMENTS.md) | Planned persona editing, F5 reference voices, LLM/VLM selection, listen-first behavior, speech interruption and response-style controls; not current features |
 | [Avatar guide and compatibility](docs/AVATARS.md) | Accepted Live2D/VRM direction, Audio2Face-first analysis, per-model mappings, working/degraded/blocked permutations, parallel plan and remaining qualification |
 | [Architecture and provider contracts](docs/ARCHITECTURE.md) | Components, trust boundaries, conversation policy, streaming, and failure behavior |

@@ -7,7 +7,8 @@ Martlet measurements**; no GPU/driver/model tuple is qualified yet
 ([Ubuntu host matrix](INSTALLATION_SUPPORT.md#proposed-matrix)). Leave 10-15%
 VRAM headroom and measure your own machine.
 
-**In the app:** **Which setup is right for me?** on the home screen asks for
+**In the app:** the welcome tour's **Recommend a setup for me**, or **Not sure
+what you need? Get a recommendation** on Home, opens the setup advisor. It asks for
 your goal (balanced, smartest, fastest or private), features and computers. It
 then shows this guidance for each role: where the role runs, what it does, why,
 what data leaves your PC, how to set it up, and what to use until planned parts

@@ -269,6 +269,7 @@ public partial class SetupWindow : ThemedWindow
         if (rendering || draft is null || e.Source != Steps) return;
         draft = draft with { Setup = draft.Setup! with { Checkpoint = (SetupStep)Steps.SelectedIndex } };
         RenderStatus();
+        if (Steps.SelectedContent is UIElement page) Motion.Enter(page, dx: 24, dy: 0);
     }
 
     private void Role_Changed(object sender, SelectionChangedEventArgs e)

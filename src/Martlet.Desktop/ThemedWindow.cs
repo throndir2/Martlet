@@ -17,6 +17,10 @@ public class ThemedWindow : Window
         {
             Source = new Uri("pack://application:,,,/Martlet.Desktop;component/Themes/Controls.xaml")
         });
+        Resources.MergedDictionaries.Add(new ResourceDictionary
+        {
+            Source = new Uri("pack://application:,,,/Martlet.Desktop;component/Themes/Motion.xaml")
+        });
         RefreshFallbackPalette();
         Loaded += (_, _) =>
         {

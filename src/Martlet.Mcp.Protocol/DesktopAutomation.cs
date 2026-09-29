@@ -12,7 +12,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "OpenTroubleshooting", "OpenSetup", "OpenAudioSetup", "OpenLiveConversation",
         "OpenConfigurationRecovery", "RefreshDiagnostics", "StartFixture", "StopFixture",
         "SetupClose", "AudioClose", "CloseLive", "SupportClose",
-        "RecoveryClose", "SupportFreeze", "SupportClear"
+        "RecoveryClose", "SupportFreeze", "SupportClear",
+        "NavHome", "NavDevices", "NavCompanion", "NavSettings", "TourSkip", "DiagnosticsSection"
     };
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
@@ -67,6 +68,20 @@ internal sealed class DesktopAutomation(bool allowEffects)
             throw new InvalidOperationException("This control requires an operator to start MCP with --allow-ui-effects.");
         var element = Find(id);
         if (!element.Current.IsEnabled) throw new InvalidOperationException($"Control '{id}' is disabled.");
+        // Navigation items select a page and sections expand or collapse; neither starts work.
+        if (element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var selection))
+        {
+            ((SelectionItemPattern)selection).Select();
+            return new { clicked = id, completed = true };
+        }
+        if (element.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out var section) &&
+            !element.TryGetCurrentPattern(InvokePattern.Pattern, out _))
+        {
+            var expander = (ExpandCollapsePattern)section;
+            if (expander.Current.ExpandCollapseState == ExpandCollapseState.Collapsed) expander.Expand();
+            else expander.Collapse();
+            return new { clicked = id, completed = true, expanded = expander.Current.ExpandCollapseState != ExpandCollapseState.Collapsed };
+        }
         if (!element.TryGetCurrentPattern(InvokePattern.Pattern, out var pattern))
             throw new InvalidOperationException($"Control '{id}' does not support UI Automation Invoke.");
         var invocation = Task.Run(() => ((InvokePattern)pattern).Invoke());

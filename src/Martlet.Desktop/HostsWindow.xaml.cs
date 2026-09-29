@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Controls;
 using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Contracts;
@@ -9,8 +10,8 @@ using Martlet.Credentials.Windows;
 
 namespace Martlet.Desktop;
 
-/// <summary>Sets up Martlet hosts (this PC via Docker Desktop, another PC over SSH with Docker or native Ubuntu,
-/// or by hand on the host) and pairs this desktop with one using the host's one-use pairing code.</summary>
+/// <summary>Add-a-computer wizard: choose where a Martlet host runs (this PC via Docker Desktop, another PC over SSH with
+/// Docker or native Ubuntu, or by hand on the host), install it, pair this desktop with its one-use code and add roles.</summary>
 public partial class HostsWindow : ThemedWindow
 {
     private readonly AvatarProfileStore profiles;
@@ -19,17 +20,37 @@ public partial class HostsWindow : ThemedWindow
     private readonly string version = typeof(App).Assembly.GetName().Version is { } v ? v.ToString(3) : "0.0.0";
     private AvatarRemoteHost? paired;
     private bool busy;
+    private int step;
 
-    internal HostsWindow(AvatarProfileStore profiles, ISetupService settings)
+    internal HostsWindow(AvatarProfileStore profiles, ISetupService settings, HostSetupMethod? method = null, int startStep = 0)
     {
         InitializeComponent();
         this.profiles = profiles;
         this.settings = settings;
         DeviceIdText.Text = HostSetupCommands.SuggestedDeviceId();
-        MethodChoice.SelectedIndex = 0;
+        (method switch
+        {
+            HostSetupMethod.SshDocker => SshDockerMethod,
+            HostSetupMethod.SshNative => SshNativeMethod,
+            HostSetupMethod.OnHost => OnHostMethod,
+            _ => ThisPcMethod
+        }).IsChecked = true;
+        ShowStep(Math.Clamp(startStep, 0, 3), animate: false);
     }
 
-    private HostSetupMethod Method => (HostSetupMethod)Math.Max(0, MethodChoice.SelectedIndex);
+    private HostSetupMethod Method =>
+        SshDockerMethod.IsChecked == true ? HostSetupMethod.SshDocker
+        : SshNativeMethod.IsChecked == true ? HostSetupMethod.SshNative
+        : OnHostMethod.IsChecked == true ? HostSetupMethod.OnHost
+        : HostSetupMethod.ThisPcDocker;
+
+    private static string MethodName(HostSetupMethod method) => method switch
+    {
+        HostSetupMethod.SshDocker => "another computer over SSH, using Docker there",
+        HostSetupMethod.SshNative => "another computer over SSH, as a native Ubuntu install",
+        HostSetupMethod.OnHost => "another computer, where you type the commands yourself",
+        _ => "this PC, with Docker Desktop"
+    };
 
     private HostSetupTarget Target() => new(Method, SshTargetText.Text.Trim(), AddressText.Text.Trim(),
         Method == HostSetupMethod.ThisPcDocker ? HostSetupCommands.SuggestedHostId(Environment.MachineName) : null, version);
@@ -43,16 +64,59 @@ public partial class HostsWindow : ThemedWindow
 
     private void Window_Closed(object? sender, EventArgs e) => lifetime.Cancel();
 
-    private void Method_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    // ---------- wizard navigation ----------
+
+    private RadioButton[] Rail => [Rail0, Rail1, Rail2, Rail3];
+    private StackPanel[] Steps => [MethodStep, InstallStep, PairStep, RolesStep];
+
+    private void ShowStep(int value, bool animate = true)
     {
-        if (SshPanel is null) return;
+        step = value;
+        var steps = Steps;
+        for (var i = 0; i < steps.Length; i++) steps[i].Visibility = i == step ? Visibility.Visible : Visibility.Collapsed;
+        if (Rail[step].IsChecked != true) Rail[step].IsChecked = true;
+        BackButton.IsEnabled = step > 0;
+        NextButton.Content = step == steps.Length - 1 ? "_Done" : "_Next";
+        MethodSummaryText.Text = $"Installing on {MethodName(Method)}. " + (Method == HostSetupMethod.OnHost
+            ? "Enter the host's address, then run the command shown below in a terminal on that computer."
+            : "Fill in the address, then press Set up host and answer the questions in the console window.");
+        RolesSummaryText.Text = $"Roles are added in the host's console, one at a time, with the same flow for every role. This host runs on {MethodName(Method)}.";
+        Scroller.ScrollToTop();
+        if (animate) Motion.Enter(steps[step], dx: 28, dy: 0, milliseconds: 280);
+    }
+
+    private void Rail_Checked(object sender, RoutedEventArgs e)
+    {
+        if (MethodStep is null) return;
+        var index = Array.IndexOf(Rail, sender);
+        if (index >= 0 && index != step) ShowStep(index);
+    }
+
+    private void Next_Click(object sender, RoutedEventArgs e)
+    {
+        if (step == Steps.Length - 1) Close();
+        else ShowStep(step + 1);
+    }
+
+    private void Back_Click(object sender, RoutedEventArgs e) { if (step > 0) ShowStep(step - 1); }
+    private void Close_Click(object sender, RoutedEventArgs e) => Close();
+
+    private void Method_Changed(object sender, RoutedEventArgs e)
+    {
+        if (SshPanel is null || AddressText is null) return;
         var ssh = Method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative;
         SshPanel.Visibility = ssh ? Visibility.Visible : Visibility.Collapsed;
-        InstallDockerButton.Visibility = Method == HostSetupMethod.ThisPcDocker ? Visibility.Visible : Visibility.Collapsed;
+        DockerPanel.Visibility = Method == HostSetupMethod.ThisPcDocker ? Visibility.Visible : Visibility.Collapsed;
+        DockerStateText.Text = MachineInfo.DockerDesktopRunning() ? "Running. You're ready to set up the host."
+            : MachineInfo.DockerDesktopInstalled() ? "Installed. Set up host starts it if needed."
+            : "Not installed. Martlet can install it with winget; Windows asks for approval.";
         if (Method == HostSetupMethod.ThisPcDocker) AddressText.Text = HostSetupCommands.ThisPcAddress() ?? "";
         else if (AddressText.Text == HostSetupCommands.ThisPcAddress()) AddressText.Text = "";
         ShowCommand();
+        if (IsLoaded && step == 0) Dispatcher.BeginInvoke(() => ShowStep(1), System.Windows.Threading.DispatcherPriority.Background);
     }
+
+    // ---------- install ----------
 
     private async void SshTarget_LostFocus(object sender, RoutedEventArgs e)
     {
@@ -61,7 +125,7 @@ public partial class HostsWindow : ThemedWindow
         catch (OperationCanceledException) { }
     }
 
-    private void Target_Changed(object sender, System.Windows.Controls.TextChangedEventArgs e) => ShowCommand();
+    private void Target_Changed(object sender, TextChangedEventArgs e) => ShowCommand();
 
     private void ShowCommand(HostAction action = HostAction.Setup)
     {
@@ -77,7 +141,7 @@ public partial class HostsWindow : ThemedWindow
         {
             if (Method == HostSetupMethod.OnHost)
             {
-                StatusText.Text = "Run the command shown on the host itself (for example in a terminal there).";
+                StatusText.Text = "Run the command shown under Install on the host itself (for example in a terminal there).";
                 return;
             }
             HostSetupCommands.Launch(Target(), action);
@@ -101,7 +165,7 @@ public partial class HostsWindow : ThemedWindow
         {
             busy = true;
             string? firewall;
-            try { firewall = await OpenFirewallAsync(AddressText.Text.Trim()); }
+            try { firewall = await OpenFirewallAsync(this, AddressText.Text.Trim(), text => StatusText.Text = text, lifetime.Token); }
             catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
             { firewall = $"Windows Firewall was not changed ({error.Message}). Other PCs may not reach this host."; }
             catch (OperationCanceledException) { return; }
@@ -114,17 +178,17 @@ public partial class HostsWindow : ThemedWindow
     }
 
     /// <summary>Lets other PCs on the private network reach this PC's host port: one UAC prompt, only when needed.</summary>
-    private async Task<string?> OpenFirewallAsync(string address)
+    internal static async Task<string?> OpenFirewallAsync(Window owner, string address, Action<string> progress, CancellationToken token)
     {
-        StatusText.Text = "Checking Windows Firewall...";
-        var state = await WindowsFirewall.ProbeAsync(address, lifetime.Token);
+        progress("Checking Windows Firewall...");
+        var state = await WindowsFirewall.ProbeAsync(address, token);
         var blocked = state.DockerBlocked
             ? " Windows Firewall also has a rule blocking Docker Desktop Backend on private networks; allow it in Windows Security > Firewall > Allow an app."
             : "";
         int? makePrivate = null;
         if (state.Category == "Public")
         {
-            if (!ConfirmationDialog.Confirm(this,
+            if (!ConfirmationDialog.Confirm(owner,
                     "Windows treats this PC's network as Public, which blocks other PCs from reaching a Martlet host here. " +
                     $"Mark it as a Private (home or work) network and allow Martlet's host port {WindowsFirewall.Port} from your local network? " +
                     "Windows asks for administrator approval once.", "Allow other PCs to connect"))
@@ -132,8 +196,8 @@ public partial class HostsWindow : ThemedWindow
             makePrivate = state.InterfaceIndex;
         }
         else if (state.RuleExists) return blocked.Length == 0 ? null : blocked.Trim();
-        StatusText.Text = $"Windows asks for administrator approval to allow TCP {WindowsFirewall.Port} from your private network...";
-        return await WindowsFirewall.ApplyAsync(makePrivate, lifetime.Token) switch
+        progress($"Windows asks for administrator approval to allow TCP {WindowsFirewall.Port} from your private network...");
+        return await WindowsFirewall.ApplyAsync(makePrivate, token) switch
         {
             WindowsFirewall.Outcome.Applied => $"Windows Firewall now allows TCP {WindowsFirewall.Port} from your private network" +
                 (makePrivate is null ? "." : ", and the network is Private.") + blocked,
@@ -149,19 +213,27 @@ public partial class HostsWindow : ThemedWindow
 
     private void InstallDocker_Click(object sender, RoutedEventArgs e)
     {
-        if (!ConfirmationDialog.Confirm(this,
+        if (InstallDockerDesktop(this) is { } status) StatusText.Text = status;
+    }
+
+    /// <summary>Installs Docker Desktop with winget after the user accepts the listed terms; null when declined.</summary>
+    internal static string? InstallDockerDesktop(Window owner)
+    {
+        if (!ConfirmationDialog.Confirm(owner,
                 "Install Docker Desktop with winget? Docker Desktop is free for personal use under Docker's Subscription Service " +
                 "Agreement (docker.com/legal); continuing accepts the winget source and package agreements. It uses WSL 2. " +
                 "Windows asks for administrator approval, and a restart or sign-out may follow.", "Install Docker Desktop"))
-            return;
+            return null;
         try
         {
             HostSetupCommands.InstallDockerDesktop();
-            StatusText.Text = "Docker Desktop installation opened in a console window. When it is running, press Set up host (GPU roles also need a current NVIDIA driver).";
+            return "Docker Desktop installation opened in a console window. When it is running, set up the host (GPU roles also need a current NVIDIA driver).";
         }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or IOException or UnauthorizedAccessException)
-        { StatusText.Text = error.Message; }
+        { return error.Message; }
     }
+
+    // ---------- pairing ----------
 
     private void CopyDeviceId_Click(object sender, RoutedEventArgs e)
     {
@@ -178,9 +250,13 @@ public partial class HostsWindow : ThemedWindow
         return (saved.Profile ?? AvatarProfile.BuiltIn(id), saved.Revision);
     }
 
-    private void ShowPaired() => StatusText.Text = paired is { } host
-        ? $"Paired with Martlet host {host.HostId} at {host.Origin} as {host.DeviceId}. Automatic lip-sync uses its Audio2Face role when this PC has none."
-        : "No Martlet host paired.";
+    private void ShowPaired()
+    {
+        PairedText.Text = paired is { } host
+            ? $"Paired with {host.HostId} at {host.Origin} as {host.DeviceId}. Automatic lip-sync uses its Audio2Face role when this PC has none."
+            : "No Martlet host paired yet.";
+        StatusText.Text = paired is null ? "No Martlet host paired." : $"Paired with {paired.HostId}.";
+    }
 
     private async void Pair_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
     {
@@ -209,9 +285,9 @@ public partial class HostsWindow : ThemedWindow
         StatusText.Text += " Paired. In the host console press a key, then type stop and confirm. Show the character again to use it.";
     });
 
-    private async void Check_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
+    /// <summary>Checks a paired host over its pinned pairing and reports whether it offers Audio2Face.</summary>
+    internal static async Task<string> CheckAsync(AvatarRemoteHost host, Action<string> progress, CancellationToken token)
     {
-        if (paired is not { } host) { ShowPaired(); return; }
         using var read = new WindowsCredentialStore().ReadAvatarHostSecret(host.HostId, host.CredentialId);
         if (read.Error != CredentialError.None || read.Secret is null)
             throw new InvalidOperationException("This PC's pairing secret is missing; pair again.");
@@ -219,12 +295,18 @@ public partial class HostsWindow : ThemedWindow
         read.Secret.Use(secret => connection = new Audio2FaceHostConnection(GatewayAvatarHostLink.Pairing(host), secret));
         using (connection)
         {
-            StatusText.Text = $"Checking {host.HostId} at {host.Origin}...";
-            var route = await connection!.ReadRouteAsync(lifetime.Token);
-            StatusText.Text = route is null
-                ? $"Host {host.HostId} is reachable and this PC is paired, but it has no Audio2Face role yet (Add Audio2Face role)."
-                : $"Host {host.HostId} is reachable and offers Audio2Face (model {route.ModelId}).";
+            progress($"Checking {host.HostId} at {host.Origin}...");
+            var route = await connection!.ReadRouteAsync(token);
+            return route is null
+                ? "Reachable and paired, but no Audio2Face role yet (add it under Roles)."
+                : $"Reachable. Offers Audio2Face (model {route.ModelId}).";
         }
+    }
+
+    private async void Check_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
+    {
+        if (paired is not { } host) { ShowPaired(); return; }
+        StatusText.Text = $"Host {host.HostId}: " + await CheckAsync(host, text => StatusText.Text = text, lifetime.Token);
     });
 
     private async void Forget_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
@@ -235,7 +317,7 @@ public partial class HostsWindow : ThemedWindow
         new WindowsCredentialStore().DeleteAvatarHostSecret(host.HostId, host.CredentialId);
         paired = null;
         ShowPaired();
-        StatusText.Text += $" Forgotten here; also revoke {host.DeviceId} on the host (Pair this PC console: revoke).";
+        StatusText.Text += $" Forgotten here; also revoke {host.DeviceId} on the host (pairing console: revoke).";
     });
 
     private async Task ActionAsync(Func<Task> action)

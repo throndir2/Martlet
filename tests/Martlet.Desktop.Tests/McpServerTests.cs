@@ -59,6 +59,8 @@ public sealed class McpServerTests(ITestOutputHelper output)
         var churnTask = churn ? ChurnWindows() : Task.CompletedTask;
         try
         {
+            await Task.Run(() => automation.ClickAsync("NavSettings"));
+            await Task.Delay(300);
             await Task.Run(() => automation.ClickAsync("StartFixture"));
             var fixture = "";
             for (var attempt = 0; attempt < 50 && !fixture.Contains("Scenario: complete", StringComparison.Ordinal); attempt++)
@@ -94,6 +96,8 @@ public sealed class McpServerTests(ITestOutputHelper output)
             Assert.Throws<InvalidOperationException>(() => DesktopAutomation.WindowForProcess(Environment.ProcessId, mainHandle));
         });
 
+        await Task.Run(() => automation.ClickAsync("NavCompanion"));
+        await Task.Delay(300);
         await Task.Run(() => automation.ClickAsync("OpenSetup"));
         var snapshot = await WaitForWindowCount(automation, 2);
         Assert.Single(snapshot.GetProperty("controls").EnumerateArray(),

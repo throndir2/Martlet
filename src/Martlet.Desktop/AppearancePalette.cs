@@ -17,13 +17,18 @@ internal static class AppearancePalette
             ["BorderBrush"] = Color(dark ? "#AC829D" : "#9B6780"),
             ["AccentBrush"] = Color(dark ? "#F5A6CA" : "#A52D64"),
             ["OnAccentBrush"] = Color(dark ? "#321A29" : "#FFFFFF"),
-            ["FocusBrush"] = Color(dark ? "#FFD0E5" : "#8A2152")
+            ["FocusBrush"] = Color(dark ? "#FFD0E5" : "#8A2152"),
+            ["SuccessBrush"] = Color(dark ? "#8FD9A8" : "#25693F"),
+            ["WarningBrush"] = Color(dark ? "#FFC977" : "#8A4F00"),
+            ["GlowBrush"] = Color(dark ? "#6B3A5C" : "#F7C6DA")
         };
         if (highContrast)
         {
             colors["CanvasBrush"] = colors["SurfaceBrush"] = colors["SoftBrush"] = SystemColors.WindowColor;
             colors["TextBrush"] = colors["MutedBrush"] = SystemColors.WindowTextColor;
             colors["BorderBrush"] = colors["FocusBrush"] = SystemColors.WindowTextColor;
+            colors["SuccessBrush"] = colors["WarningBrush"] = SystemColors.WindowTextColor;
+            colors["GlowBrush"] = SystemColors.HighlightColor;
             colors["AccentBrush"] = SystemColors.HighlightColor;
             colors["OnAccentBrush"] = SystemColors.HighlightTextColor;
         }
