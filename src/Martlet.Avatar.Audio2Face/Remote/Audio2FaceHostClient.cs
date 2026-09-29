@@ -11,6 +11,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
 using Martlet.Core.Contracts;
+using Martlet.Core.Installation;
 
 namespace Martlet.Avatar.Audio2Face.Remote;
 
@@ -368,6 +369,47 @@ public sealed class Audio2FaceHostConnection : IDisposable
             throw new Audio2FaceHostException("response.invalid", "The host's capability response was invalid.");
         }
     }
+
+    /// <summary>Reads what the host reported about its hardware (GPUs, CPU, memory, OS), or null when the host has not
+    /// collected it yet. Hosts older than this endpoint throw <see cref="Audio2FaceHostException"/>.</summary>
+    public async Task<HostHardware?> ReadMachineAsync(CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, pairing.Origin + "/martlet/v1/machine");
+        Sign(request, []);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(5));
+        using var response = await Audio2FaceHostClient.Send(http, request, timeout.Token).ConfigureAwait(false);
+        using var document = await Audio2FaceHostClient.ReadJson(response, 64 * 1024, timeout.Token).ConfigureAwait(false);
+        if (response.StatusCode != HttpStatusCode.OK) throw Audio2FaceHostClient.Remote(document.RootElement);
+        try
+        {
+            var root = document.RootElement;
+            if (root.GetProperty("host_id").GetString() != pairing.HostId)
+                throw new Audio2FaceHostException("response.invalid", "The host identity changed; pair again.");
+            if (!root.TryGetProperty("machine", out var machine) || machine.ValueKind == JsonValueKind.Null) return null;
+            string? Text(JsonElement element, string name) =>
+                element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+                    ? Clean(value.GetString()) : null;
+            int? Integer(JsonElement element, string name) =>
+                element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number)
+                    ? number : null;
+            var gpus = machine.GetProperty("gpus").EnumerateArray().Take(16)
+                .Select(gpu => new HostGpu(Text(gpu, "name") ?? "GPU", Text(gpu, "vendor") ?? "other", Integer(gpu, "memory_mb"), Text(gpu, "driver")))
+                .ToArray();
+            return new HostHardware(pairing.HostId, pairing.Origin, machine.GetProperty("collected_at").GetDateTimeOffset(),
+                clock.GetUtcNow(), Text(machine, "method") ?? "unknown", Text(machine, "operating_system") ?? "Unknown",
+                Text(machine, "kernel"), Text(machine, "processor"), Integer(machine, "processor_threads"),
+                machine.TryGetProperty("memory_gb", out var memory) && memory.ValueKind == JsonValueKind.Number ? memory.GetDouble() : null,
+                Text(machine, "container_runtime"), Text(machine, "nvidia_containers"), gpus);
+        }
+        catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException)
+        {
+            throw new Audio2FaceHostException("response.invalid", "The host's machine report was invalid.");
+        }
+    }
+
+    private static string? Clean(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : new string(value.Trim().Take(128).Select(c => char.IsControl(c) ? ' ' : c).ToArray());
 
     /// <summary>Animates one chunk of mono signed 16-bit generated-speech PCM through the host relay.</summary>
     public async IAsyncEnumerable<RemoteFaceFrame> AnimateAsync(Audio2FaceHostRoute route, CorrelationIds ids, long epoch,

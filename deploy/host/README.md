@@ -37,8 +37,23 @@ pair                pair a desktop; shows a one-use pairing code (repeat per des
 roles               what this host can run
 add <role>          install a role, e.g. add audio2face (same flow for every role)
 remove <role>       stop a role and unpublish it (keeps its data)
+machine             report this machine's hardware to paired desktops (also done by setup, pair, add and remove)
 status | config     show the gateway and roles | print the generated host.json
 ```
+
+### What the host tells Martlet
+
+`setup`, `pair`, `add`, `remove` and `machine` collect what the machine is like
+into `machine.json` beside `host.json`: OS and kernel, CPU and thread count,
+memory, container runtime, whether containers can use NVIDIA GPUs, and each GPU
+(name, vendor, memory, driver). Natively it reads `nvidia-smi`, `/proc` and
+sysfs (AMD GPUs with 2 GiB+ of VRAM); with Docker it asks the Docker host
+(`docker info`) and runs `nvidia-smi` in a throwaway `--gpus all` container, so
+Docker Desktop reports its WSL 2 VM's memory. The gateway serves it read-only
+to paired desktops at `GET /martlet/v1/machine`. Martlet fetches it right after
+pairing and on **Check connection**, keeps it in `host-hardware.json`, shows it
+on the Devices map and fills the setup advisor's computers step with it. It is
+host-reported information, not a measurement, and it grants no authority.
 
 ### Docker (any Docker host, including Windows)
 
@@ -114,7 +129,8 @@ PC**. In the host console confirm opening with `yes`, type `start` (`yes`), then
 pairing code `martlet-pair-v1....` (origin, host ID, TLS pin, one-use pairing ID
 and token). Paste it into Martlet hosts and press **Pair with host** while the
 console is open; then press a key, `list` confirms, and `stop` (`yes`) restarts
-the service. **Check host** shows whether the host offers Audio2Face.
+the service. **Check host** shows whether the host offers Audio2Face and the
+hardware it reported.
 
 ## The uniform role flow
 
@@ -167,3 +183,7 @@ understanding, speech-to-text) are not listed.
 - **Windows Firewall step**: the non-admin probe and the rule script (as `-WhatIf`)
   were run; the elevated change itself has not been applied on a test machine.
 - Not yet run: a real NVIDIA GPU with the Audio2Face NIM.
+- **Machine report**: the collector was run natively in an Ubuntu 24.04 container
+  and in Docker mode against Docker Desktop without GPU support (`gpus: []`,
+  `nvidia_containers: "no"`); `nvidia-smi` output parsing was checked with sample
+  lines. Not yet run against a host with a working NVIDIA or AMD GPU.

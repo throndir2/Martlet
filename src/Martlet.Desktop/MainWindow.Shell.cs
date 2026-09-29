@@ -11,6 +11,7 @@ using System.Windows.Shapes;
 using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Contracts;
+using Martlet.Core.Installation;
 using Martlet.Core.Settings;
 
 namespace Martlet.Desktop;
@@ -541,7 +542,10 @@ public partial class MainWindow
 
     // ---------- devices map ----------
 
-    private NetworkInputs Inputs() => new(machine, Role, homeSettings, homeAvatar, avatar.IsShowing, hostChecks);
+    private HostHardwareStore? HardwareStore => store is null ? null : new(store.DataDirectory);
+
+    private NetworkInputs Inputs() => new(machine, Role, homeSettings, homeAvatar, avatar.IsShowing, hostChecks,
+        HardwareStore?.Load() ?? []);
 
     private void RefreshDevices_Click(object sender, RoutedEventArgs e)
     {
@@ -831,7 +835,7 @@ public partial class MainWindow
         if (homeAvatar?.RemoteHost is not { } host) return;
         hostChecks[host.HostId] = new(null, "Checking...");
         if (DevicesPage.IsVisible) RenderMap();
-        try { hostChecks[host.HostId] = new(true, await HostsWindow.CheckAsync(host, text => { }, lifetime.Token)); }
+        try { hostChecks[host.HostId] = new(true, await HostsWindow.CheckAsync(host, HardwareStore, text => { }, lifetime.Token)); }
         catch (OperationCanceledException) { return; }
         catch (Exception error) when (error is Audio2FaceHostException or IOException or UnauthorizedAccessException or ContractException or
             InvalidOperationException or ArgumentException or JsonException or TimeoutException or System.Net.Http.HttpRequestException)

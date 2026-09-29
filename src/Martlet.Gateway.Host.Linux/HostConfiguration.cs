@@ -101,7 +101,7 @@ internal sealed record HostConfiguration(string HostId, string StateDirectory,
     {
         var parent = configPath[..^"/host.json".Length];
         if (StateDirectory == parent || configPath.StartsWith(StateDirectory + "/", StringComparison.Ordinal) ||
-            new[] { LinuxControlDirectory.Config, LinuxControlDirectory.Approval, LinuxControlDirectory.Staging }
+            new[] { LinuxControlDirectory.Config, LinuxControlDirectory.Approval, LinuxControlDirectory.Staging, LinuxControlDirectory.Machine }
                 .Select(name => parent + "/" + name)
                 .Any(path => StateDirectory == path || StateDirectory.StartsWith(path + "/", StringComparison.Ordinal)))
             throw new HostInputException();

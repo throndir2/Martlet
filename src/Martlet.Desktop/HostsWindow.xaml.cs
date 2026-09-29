@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Contracts;
+using Martlet.Core.Installation;
 using Martlet.Core.Settings;
 using Martlet.Credentials.Windows;
 
@@ -283,10 +284,16 @@ public partial class HostsWindow : ThemedWindow
             store.DeleteAvatarHostSecret(previous.HostId, previous.CredentialId);
         ShowPaired();
         StatusText.Text += " Paired. In the host console press a key, then type stop and confirm. Show the character again to use it.";
+        // The pairing listener is still open, so read what the host is like right away for the map and the advisor.
+        try { StatusText.Text += " " + await CheckAsync(paired, Hardware, _ => { }, lifetime.Token); }
+        catch (Exception error) when (error is Audio2FaceHostException or InvalidOperationException or IOException or
+            UnauthorizedAccessException or TimeoutException or System.Net.Http.HttpRequestException or OperationCanceledException) { }
     });
 
-    /// <summary>Checks a paired host over its pinned pairing and reports whether it offers Audio2Face.</summary>
-    internal static async Task<string> CheckAsync(AvatarRemoteHost host, Action<string> progress, CancellationToken token)
+    /// <summary>Checks a paired host over its pinned pairing, reports whether it offers Audio2Face and saves the
+    /// hardware it reports (GPUs, CPU, memory) for the devices map and the setup advisor.</summary>
+    internal static async Task<string> CheckAsync(AvatarRemoteHost host, HostHardwareStore? hardware, Action<string> progress,
+        CancellationToken token)
     {
         using var read = new WindowsCredentialStore().ReadAvatarHostSecret(host.HostId, host.CredentialId);
         if (read.Error != CredentialError.None || read.Secret is null)
@@ -297,16 +304,44 @@ public partial class HostsWindow : ThemedWindow
         {
             progress($"Checking {host.HostId} at {host.Origin}...");
             var route = await connection!.ReadRouteAsync(token);
-            return route is null
+            var roles = route is null
                 ? "Reachable and paired, but no Audio2Face role yet (add it under Roles)."
                 : $"Reachable. Offers Audio2Face (model {route.ModelId}).";
+            return roles + " " + await ReadHardwareAsync(connection, hardware, token);
         }
     }
+
+    private static async Task<string> ReadHardwareAsync(Audio2FaceHostConnection connection, HostHardwareStore? store, CancellationToken token)
+    {
+        HostHardware? report;
+        try { report = await connection.ReadMachineAsync(token); }
+        catch (Audio2FaceHostException error) when (error.Code == "request.invalid")
+        {
+            return "Its hardware is not reported: update the host (rebuild it from Martlet hosts > Set up host).";
+        }
+        if (report is null) return "Its hardware is not reported yet: run 'martlet-host machine' on the host.";
+        try { store?.Save(report); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        return "Hardware: " + DescribeHardware(report) + ".";
+    }
+
+    internal static string DescribeHardware(HostHardware report)
+    {
+        var parts = new List<string>
+        {
+            report.Gpus.Count == 0 ? "no dedicated GPU" : string.Join(" + ", report.Gpus.Select(g => g.Describe()))
+        };
+        if (report.MemoryGb is { } memory) parts.Add($"{memory:0} GB memory");
+        parts.Add(report.OperatingSystem);
+        return string.Join(", ", parts);
+    }
+
+    private HostHardwareStore Hardware => new(Path.GetDirectoryName(profiles.FilePath)!);
 
     private async void Check_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
     {
         if (paired is not { } host) { ShowPaired(); return; }
-        StatusText.Text = $"Host {host.HostId}: " + await CheckAsync(host, text => StatusText.Text = text, lifetime.Token);
+        StatusText.Text = $"Host {host.HostId}: " + await CheckAsync(host, Hardware, text => StatusText.Text = text, lifetime.Token);
     });
 
     private async void Forget_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
@@ -315,6 +350,8 @@ public partial class HostsWindow : ThemedWindow
         var (profile, revision) = await LoadProfileAsync();
         await profiles.SaveAsync(profile with { RemoteHost = null }, revision, lifetime.Token);
         new WindowsCredentialStore().DeleteAvatarHostSecret(host.HostId, host.CredentialId);
+        try { Hardware.Forget(host.HostId); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         paired = null;
         ShowPaired();
         StatusText.Text += $" Forgotten here; also revoke {host.DeviceId} on the host (pairing console: revoke).";

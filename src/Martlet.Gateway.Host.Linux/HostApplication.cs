@@ -99,6 +99,7 @@ internal static class HostApplication
                 }
                 owner = platform.OpenHost("serve", config, approval, cancellation);
                 CheckApproval(directory, config, approval);
+                PublishMachine(owner, directory, output);
                 await owner.StartAsync(cancellation);
                 CheckApproval(directory, config, approval);
                 output.WriteLine("serving: approved gateway listener; empty worker registry; no model readiness claim.");
@@ -131,6 +132,7 @@ internal static class HostApplication
                     CheckApproval(directory, config, approval, requireDigest: exactConfig);
                 owner = platform.OpenHost(options.Command, config, approval, cancellation);
                 config.Recheck(directory);
+                PublishMachine(owner, directory, output);
                 output.WriteLine($"Opened host: {owner.Identity!.HostId}\nSPKI pin: {owner.Identity.SpkiFingerprint}\nListener stopped. No engines/models/inference available.");
                 if (options.Command == "rebind")
                 {
@@ -217,6 +219,27 @@ internal static class HostApplication
     private static ServiceApproval? ReadApproval(LinuxControlDirectory directory) =>
         directory.Read(LinuxControlDirectory.Approval, HostConfiguration.MaximumBytes) is { } bytes
             ? ServiceApproval.Parse(bytes) : null;
+
+    // machine.json is written by martlet-host (setup, add, remove, machine) next to host.json. It is informational
+    // only, so a missing, unreadable or malformed file just means paired desktops see "not reported".
+    private static void PublishMachine(DurableGatewayHost owner, LinuxControlDirectory directory, TextWriter output)
+    {
+        if (!owner.Enabled) return;
+        GatewayMachineReport? report = null;
+        try
+        {
+            if (directory.Read(LinuxControlDirectory.Machine, GatewayMachineReport.MaximumBytes) is { } bytes)
+            {
+                report = GatewayMachineReport.Parse(bytes);
+                if (report is null) Report(output, "machine.invalid: machine.json ignored; run martlet-host machine to collect it again.");
+            }
+        }
+        catch (GatewayPersistenceException)
+        {
+            Report(output, "machine.unreadable: machine.json must be a 0600 file owned by the service user; hardware not reported.");
+        }
+        owner.PublishMachine(report);
+    }
 
     private static void CheckApproval(LinuxControlDirectory directory, HostConfiguration config,
         ServiceApproval approval, bool requireDigest = true)

@@ -9,8 +9,13 @@ VRAM headroom and measure your own machine.
 
 **In the app:** the welcome tour's **Recommend a setup for me**, or **Not sure
 what you need? Get a recommendation** on Home, opens the setup advisor. It asks for
-your goal (balanced, smartest, fastest or private), features and computers. It
-then shows this guidance for each role: where the role runs, what it does, why,
+your goal (balanced, smartest, fastest or private), features and computers. For
+computers it reads this PC's graphics card from Windows and fills in each paired
+Martlet host with the GPU it reported (see
+[What the host tells Martlet](../deploy/host/README.md#what-the-host-tells-martlet));
+you pick the GPU of any other computer, one per computer, including "Has a GPU,
+not sure which" (planned as an 8 GB NVIDIA card). It
+then recommends what each computer should be used for and shows this guidance for each role: where the role runs, what it does, why,
 what data leaves your PC, how to set it up, and what to use until planned parts
 arrive. It saves, installs and contacts nothing. The recommendations and availability labels live in
 [`SetupAdvisor.cs`](../src/Martlet.Core/Installation/SetupAdvisor.cs); update
