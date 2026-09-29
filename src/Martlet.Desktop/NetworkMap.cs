@@ -11,7 +11,7 @@ internal enum NodeAction
 {
     Setup, AudioSetup, Character, ToggleCharacter, Prerequisites, HostThisPc, AddComputer, ManageHost, CheckHost, HostDashboard, Advisor,
     UseForLipSync, LipSyncThisPc, InstallRole, RemoveRole, HostStatus, UpdateHost, ForgetHost,
-    PrepareHost, RebootHost, ShutdownHost, WakeHost, PrepareComputer, UseForThinking, UseForListening
+    PrepareHost, RebootHost, ShutdownHost, WakeHost, PrepareComputer, UseForThinking, UseForListening, UseForSpeaking
 }
 
 /// <summary>Who handles lip-sync: a paired host, this PC's own Audio2Face service, or nobody (voice loudness).</summary>
@@ -108,7 +108,8 @@ internal static class NetworkMap
     private static string RouteDetail(SetupRoute route)
     {
         var text = route.VoiceId is { } voice && route.RouteType != SetupRouteType.LocalWindowsTts
-            ? $"{route.ModelId}, voice {voice}" : route.VoiceId ?? route.ModelId;
+            ? $"{route.ModelId}, voice {voice}"
+            : route.Reference is { } reference ? $"{route.ModelId}, voice {reference.PresetName}" : route.VoiceId ?? route.ModelId;
         if (route.Enabled == false) text += " (turned off)";
         else if (route.Consent is null) text += " (review in Setup)";
         return text;
@@ -254,6 +255,7 @@ internal static class NetworkMap
             var inCharge = lipSync == LipSyncHandler.Host && inputs.Avatar!.RemoteHost!.HostId == paired.HostId;
             var thinks = ThinkingHost(inputs.Settings) == paired.HostId;
             var listens = JobHost(inputs.Settings, SetupRole.Stt) == paired.HostId;
+            var speaks = JobHost(inputs.Settings, SetupRole.Tts) == paired.HostId;
             var before = target.Roles.Count;
             foreach (var role in HostRoles.All)
             {
@@ -261,8 +263,9 @@ internal static class NetworkMap
                 if (role.Kind == HostRoles.Audio2Face && inCharge)
                     target.Roles.Add(new(role.Chip, role.Name, "In charge of lip-sync. " +
                         (check?.Text ?? "Use Check connection to see whether it runs Audio2Face.")));
-                // Thinking and listening are listed with their routes when this host does them.
-                else if (model is not null && !(role.Kind == HostRoles.Ollama && thinks) && !(role.Kind == HostRoles.Stt && listens))
+                // Thinking, listening and speaking are listed with their routes when this host does them.
+                else if (model is not null && !(role.Kind == HostRoles.Ollama && thinks) && !(role.Kind == HostRoles.Stt && listens) &&
+                    !(role.Kind == HostRoles.F5 && speaks))
                     target.Roles.Add(new(role.Chip, role.Name, $"Installed (model {model}), standing by. Hand it {role.Job} to use it."));
             }
             if (local) thisPc.Roles.Add(new("Host", "Martlet host service (Docker)", $"Paired as {paired.HostId} on {paired.Pairing.Origin}"));
@@ -310,6 +313,9 @@ internal static class NetworkMap
             if (companion && !listens)
                 target.Commands.Add(new(NodeAction.UseForListening, local ? "Hand listening to this PC's host service" : "Hand listening to this computer",
                     check?.Offers?.ContainsKey(HostRoles.Stt) == true, id));
+            if (companion && !speaks)
+                target.Commands.Add(new(NodeAction.UseForSpeaking, local ? "Hand speaking to this PC's host service" : "Hand speaking to this computer",
+                    check?.Offers?.ContainsKey(HostRoles.F5) == true, id));
             foreach (var role in HostRoles.All)
             {
                 var offered = check?.Offers?.ContainsKey(role.Kind) == true;

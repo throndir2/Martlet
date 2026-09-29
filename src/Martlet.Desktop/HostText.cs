@@ -11,8 +11,8 @@ using Martlet.Providers;
 
 namespace Martlet.Desktop;
 
-/// <summary>The LLM route's credential reference for a paired host is its pairing credential ID (16 random bytes): the
-/// device secret stays where pairing saved it in Windows Credential Manager, never copied.</summary>
+/// <summary>A host route's credential reference for a paired host is its pairing credential ID (16 random bytes), shared by
+/// every job handed to that host: the device secret stays where pairing saved it in Windows Credential Manager, never copied.</summary>
 internal static class HostPairingCredential
 {
     internal static Guid ToGuid(string credentialId)

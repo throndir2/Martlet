@@ -1149,6 +1149,10 @@ public partial class MainWindow
             !ConfirmationDialog.Confirm(this, $"{host.HostId} does the listening right now. Remove whisper from it anyway? " +
                 "Martlet cannot hear you until you hand listening to another computer or back to your Setup choice (Devices > Who does what).", "Remove role"))
             return;
+        if (!add && role.Kind == HostRoles.F5 && NetworkMap.JobHost(homeSettings, SetupRole.Tts) == host.HostId &&
+            !ConfirmationDialog.Confirm(this, $"{host.HostId} does the speaking right now. Remove F5 from it anyway? " +
+                "Martlet cannot speak replies until you hand speaking to another computer or back to your Setup voice (Devices > Who does what).", "Remove role"))
+            return;
         LaunchOnHost(host, add ? role.Add : role.Remove);
     }
 
@@ -1217,6 +1221,7 @@ public partial class MainWindow
             case NodeAction.UseForLipSync: _ = AssignLipSyncAsync("host:" + argument); break;
             case NodeAction.UseForThinking: _ = AssignThinkingAsync("host:" + argument); break;
             case NodeAction.UseForListening: _ = AssignJobAsync(HostJob.Listening, "host:" + argument); break;
+            case NodeAction.UseForSpeaking: _ = AssignJobAsync(HostJob.Speaking, "host:" + argument); break;
             case NodeAction.LipSyncThisPc: _ = AssignLipSyncAsync("this-pc"); break;
             case NodeAction.InstallRole: RunHostRole(argument, add: true); break;
             case NodeAction.RemoveRole: RunHostRole(argument, add: false); break;

@@ -1,0 +1,24 @@
+# Martlet F5-TTS voice host service (the bot's speaking), loopback-only behind the Martlet gateway.
+# The image is built on this host from Martlet's workers/f5 sources (workers/f5/host/Dockerfile: hash-pinned
+# PyTorch 2.6.0 CUDA 12.4, f5-tts 1.1.22, vocos 0.1.0 and the bounded martlet_f5_worker). "martlet-host add f5"
+# adds compose.gpu.yaml (F5 needs the NVIDIA GPU), then runs "martlet-f5 provision" (downloads and verifies the pinned
+# model files into the martlet-f5-models volume) and "martlet-f5 warm". The service listens only on 127.0.0.1:50080
+# (host loopback natively, the gateway's network namespace in Docker); the Martlet gateway is the single LAN entry point.
+
+services:
+  f5:
+    build:
+      context: ${MARTLET_SOURCE:?set by martlet-host}/workers/f5
+      dockerfile: host/Dockerfile
+    image: martlet-f5:1
+    pull_policy: build
+    restart: unless-stopped
+    environment:
+      F5_MODEL: ${F5_MODEL:-f5tts-v1-base}
+    volumes:
+      - models:/opt/martlet-f5/models
+    network_mode: ${MARTLET_ROLE_NETWORK:?set by martlet-host}
+
+volumes:
+  models:
+    name: martlet-f5-models

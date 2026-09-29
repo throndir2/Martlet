@@ -5,3 +5,7 @@ TestResults/
 *.user
 *.suo
 artifacts/
+
+# Python bytecode caches (workers/f5)
+__pycache__/
+*.pyc

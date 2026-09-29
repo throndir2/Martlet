@@ -3,3 +3,5 @@
 *.toml text eol=lf
 *.txt text eol=lf
 **/*.py text eol=lf
+host/** text eol=lf
+.dockerignore text eol=lf

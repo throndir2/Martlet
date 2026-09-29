@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
+using Martlet.F5;
 
 namespace Martlet.Desktop;
 
@@ -26,7 +27,14 @@ internal sealed record HostJob(SetupRole Role, SetupRouteType RouteType, string 
         "Your recorded push-to-talk and hands-free speech then goes only to that computer, over its pinned TLS gateway, instead of " +
         "a cloud provider; it is transcribed in memory there and not stored. There is no per-request charge.");
 
-    internal static readonly IReadOnlyList<HostJob> All = [Thinking, Listening];
+    internal static readonly HostJob Speaking = new(SetupRole.Tts, SetupRouteType.GatewayF5, HostRoles.F5,
+        HostRoute.F5RouteId, "speaking", "F5", "speaks your replies", "speaking-previous.json",
+        "Reply text",
+        "Each reply's text and your chosen reference recording with its transcript then go only to that computer, over its " +
+        "pinned TLS gateway, instead of a cloud voice. There is no per-request charge. The F5 model is licensed for " +
+        "non-commercial use (CC-BY-NC-4.0).");
+
+    internal static readonly IReadOnlyList<HostJob> All = [Thinking, Listening, Speaking];
 
     internal static HostJob? For(SetupRole role) => All.FirstOrDefault(job => job.Role == role);
 
@@ -37,7 +45,11 @@ internal sealed record HostJob(SetupRole Role, SetupRouteType RouteType, string 
 /// The host route is saved with the existing gateway settings model, this PC's pairing and an explicit selection consent.</summary>
 public partial class MainWindow
 {
+    /// <summary>The processing destination the f5 host role advertises (Martlet.Gateway.F5.F5RelayWorker); voice-rights
+    /// confirmations name it, so a voice chosen before the role is installed stays valid once it runs.</summary>
+    private const string F5Destination = "f5-host";
     private readonly Dictionary<SetupRole, string> pendingJobHosts = [];
+    private readonly Dictionary<SetupRole, F5ReferenceSnapshot> pendingJobVoices = [];
 
     private Task AssignThinkingAsync(string key) => AssignJobAsync(HostJob.Thinking, key);
 
@@ -105,7 +117,14 @@ public partial class MainWindow
                 ActionText.Text = $"{job.Title} stays where it is: {host.HostId} did not answer ({check.Text})";
                 return;
             }
-            if (check.Routes?.FirstOrDefault(r => r.RouteId == job.RouteId) is not { } route)
+            var route = check.Routes?.FirstOrDefault(r => r.RouteId == job.RouteId);
+            // F5 clones a reference voice: the owner picks one (or adds a recording with its rights confirmation) first.
+            F5ReferenceSnapshot? voice = null;
+            if (job.RouteType == SetupRouteType.GatewayF5 &&
+                (voice = F5VoiceDialog.Choose(this, store.DataDirectory, host.HostId, route?.DestinationId ?? F5Destination)) is null)
+                return;
+            var withVoice = voice is null ? "" : $" in the voice '{voice.PresetName}'";
+            if (route is null)
             {
                 var role = HostRoles.Get(job.HostRoleKind);
                 if (!ConfirmationDialog.Confirm(this,
@@ -113,23 +132,25 @@ public partial class MainWindow
                         (host.Method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative
                             ? $"Martlet installs it over SSH ({host.Reach}), asks which model and shows its progress. "
                             : host.CanLaunch ? $"A console opens ({host.Reach}) where you confirm each step and pick the model. " : "Martlet copies the command to run on it. ") +
-                        $"It needs {role.Needs}. Until the model is downloaded Martlet keeps {job.Job} where it is now, then switches over by itself. " +
+                        $"It needs {role.Needs}. Until the model is downloaded Martlet keeps {job.Job} where it is now, then switches over{withVoice} by itself. " +
                         job.Disclosure, "Install and hand over"))
                     return;
                 pendingJobHosts[job.Role] = host.HostId;
+                if (voice is not null) pendingJobVoices[job.Role] = voice;
                 LaunchOnHost(host, role.Add);
                 _ = WatchJobHandoffAsync(job, host);
                 return;
             }
             if (!ConfirmationDialog.Confirm(this,
-                    $"Hand {job.Job} to {host.HostId}? Its {job.Engine} model {route.ModelId} {job.Use}. {job.Disclosure}",
+                    $"Hand {job.Job} to {host.HostId}? Its {job.Engine} model {route.ModelId} {job.Use}{withVoice}. {job.Disclosure}",
                     $"Hand over {job.Job}"))
                 return;
             pendingJobHosts.Remove(job.Role);
-            await SaveJobHostAsync(job, host, route);
-            ActionText.Text = $"{job.Title} is now handled by {host.HostId} ({job.Engine} {route.ModelId}). An open conversation window picks it up on Reload.";
+            await SaveJobHostAsync(job, host, route, voice);
+            ActionText.Text = $"{job.Title} is now handled by {host.HostId} ({job.Engine} {route.ModelId}{withVoice}). An open conversation window picks it up on Reload.";
         }
         catch (OperationCanceledException) { }
+        catch (F5Exception error) { ActionText.Text = F5Voices.Describe(error); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or
             JsonException or ArgumentException or Audio2FaceHostException)
         {
@@ -148,12 +169,21 @@ public partial class MainWindow
 
     /// <summary>Saves the job's route as the host's gateway route: pinned endpoint, this PC's pairing (whose secret stays
     /// where pairing saved it), the advertised route snapshot, enabled, with the selection recorded as the user's choice.
+    /// Speaking also applies the chosen reference voice in the F5 preset store and keeps it on the route.
     /// The previous route is kept aside so the job can go back to it without re-entering its key.</summary>
-    private async Task SaveJobHostAsync(HostJob job, PairedHost host, HostRoute route)
+    private async Task SaveJobHostAsync(HostJob job, PairedHost host, HostRoute route, F5ReferenceSnapshot? voice = null)
     {
         var loaded = await setupService!.LoadAsync(lifetime.Token);
         if (loaded.Settings is not { Setup: not null } settings)
             throw new InvalidOperationException($"Complete Setup once so Martlet can save who does the {job.Job}.");
+        F5ReferenceSettings? reference = null;
+        if (job.RouteType == SetupRouteType.GatewayF5)
+        {
+            if (voice is null) throw new InvalidOperationException("Choose the voice to speak with first.");
+            if (voice.Rights.ProcessingDestinationId != route.DestinationId)
+                throw new InvalidOperationException($"{host.HostId}'s F5 voice runs under a different destination; choose the voice again.");
+            reference = await F5Voices.ApplyAsync(store!.DataDirectory, voice, lifetime.Token);
+        }
         var previous = settings.Setup.Routes.FirstOrDefault(r => r.Role == job.Role);
         var endpoint = new GatewayEndpointSettings
         {
@@ -161,7 +191,7 @@ public partial class MainWindow
             SpkiFingerprint = host.Pairing.SpkiFingerprint, DeviceRole = SelfHostSetup.GatewayRole
         };
         var next = HostHandoff.ToHost(settings, job.RouteType, endpoint, HostPairingCredential.ToGuid(host.Pairing.CredentialId),
-            host.Pairing.DeviceId, Snapshot(route, job.RouteType));
+            host.Pairing.DeviceId, Snapshot(route, job.RouteType), reference);
         if (previous is not null && !SelfHostSetup.IsGateway(previous.RouteType))
             JobSavedRoute.Save(store!.DataDirectory, job.SavedFile, previous);
         var saved = await setupService.SaveAsync(next, loaded.Revision, lifetime.Token);
@@ -174,6 +204,7 @@ public partial class MainWindow
         var loaded = await setupService!.LoadAsync(lifetime.Token);
         if (loaded.Settings is not { Setup: not null } settings) throw new InvalidOperationException("Complete Setup once first.");
         pendingJobHosts.Remove(job.Role);
+        pendingJobVoices.Remove(job.Role);
         if (NetworkMap.JobHost(settings, job.Role) is null)
         {
             ActionText.Text = $"{job.Title} already uses the choice from Setup.";
@@ -219,15 +250,23 @@ public partial class MainWindow
             assigningRole = true;
             try
             {
-                await SaveJobHostAsync(job, host, route);
+                await SaveJobHostAsync(job, host, route, pendingJobVoices.GetValueOrDefault(job.Role));
                 pendingJobHosts.Remove(job.Role);
+                pendingJobVoices.Remove(job.Role);
                 ActionText.Text = $"{host.HostId} now runs {job.Engine} ({route.ModelId}) and handles {job.Job}.";
             }
             catch (OperationCanceledException) { return; }
+            catch (F5Exception error)
+            {
+                pendingJobHosts.Remove(job.Role);
+                pendingJobVoices.Remove(job.Role);
+                ActionText.Text = $"{host.HostId} runs {job.Engine} now, but {job.Job} could not be handed to it: {F5Voices.Describe(error)}";
+            }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or
                 ContractException or JsonException or ArgumentException)
             {
                 pendingJobHosts.Remove(job.Role);
+                pendingJobVoices.Remove(job.Role);
                 ActionText.Text = $"{host.HostId} runs {job.Engine} now, but {job.Job} could not be handed to it: {error.Message}";
             }
             finally
@@ -241,7 +280,11 @@ public partial class MainWindow
             }
             return;
         }
-        if (pendingJobHosts.GetValueOrDefault(job.Role) == host.HostId) pendingJobHosts.Remove(job.Role);
+        if (pendingJobHosts.GetValueOrDefault(job.Role) == host.HostId)
+        {
+            pendingJobHosts.Remove(job.Role);
+            pendingJobVoices.Remove(job.Role);
+        }
     }
 
     internal static GatewayRouteSnapshot Snapshot(HostRoute route, SetupRouteType routeType) => new()

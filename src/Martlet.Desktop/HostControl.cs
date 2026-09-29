@@ -60,6 +60,7 @@ internal static class HostRoles
     internal const string Audio2Face = "audio2face";
     internal const string Ollama = "ollama";
     internal const string Stt = "stt";
+    internal const string F5 = "f5";
 
     internal static readonly IReadOnlyList<HostRoleInfo> All =
     [
@@ -74,7 +75,12 @@ internal static class HostRoles
         new(Stt, "Listens", "Listening (whisper)", "Docker; an NVIDIA GPU makes it fast (whisper also runs well on the CPU)",
             Audio2FaceHostConnection.TranscriptionRouteId, "listening",
             "Turns what you say into text (the bot's hearing) with whisper.cpp on the host instead of a cloud provider. An NVIDIA " +
-            "GPU makes it fast; it also runs well on the CPU. Your recorded speech goes only to that host, over pinned TLS, and is not stored.")
+            "GPU makes it fast; it also runs well on the CPU. Your recorded speech goes only to that host, over pinned TLS, and is not stored."),
+        new(F5, "Speaks", "Speaking (F5 voice)", "an NVIDIA GPU with 6 GB+ (Docker and the NVIDIA Container Toolkit are set up too)",
+            HostRoute.F5RouteId, "speaking",
+            "Speaks Martlet's replies with F5-TTS on the host, in a voice cloned from a reference recording you choose " +
+            "(yours, or one you have permission to use). The model is non-commercial (CC-BY-NC-4.0). Reply text and the " +
+            "reference recording go only to that host, over pinned TLS.")
     ];
 
     internal static HostRoleInfo Get(string kind) => All.FirstOrDefault(r => r.Kind == kind) ??

@@ -60,6 +60,7 @@ internal sealed class LiveConversationConfiguration
 
     private static bool IsChat(SetupRoute? route) => route?.RouteType == SetupRouteType.ChatCompletions;
     private static bool IsHost(SetupRoute? route) => route?.RouteType == SetupRouteType.GatewayOllama;
+    private static bool IsHostVoice(SetupRoute? route) => route?.RouteType == SetupRouteType.GatewayF5;
 
     internal TextModelSelection TextSelection()
     {
@@ -87,6 +88,28 @@ internal sealed class LiveConversationConfiguration
 
     private static bool IsHostStt(SetupRoute? route) => route?.RouteType == SetupRouteType.GatewayStt;
 
+    /// <summary>The paired Martlet host whose F5 voice speaks, when Speaking was handed to a host on the Devices page.</summary>
+    internal HostSpeechTarget? HostSpeechTarget()
+    {
+        var route = Route(SetupRole.Tts);
+        return IsHostVoice(route) && route.Gateway is { } gateway && route.GatewayDeviceId is { } device &&
+            route.CredentialId is { } credential && route.Reference is { } reference
+            ? new(gateway.Origin, gateway.HostId, gateway.SpkiFingerprint, device, credential, route.ModelId,
+                reference.PresetId, reference.ReferenceRevision)
+            : null;
+    }
+
+    /// <summary>The speech selection a voice action authorizes: the OpenAI model and voice, or the host's F5 model and the
+    /// applied reference voice (its preset ID; the voice itself stays in the local F5 preset store).</summary>
+    internal SpeechSynthesisSelection SpeechSelection()
+    {
+        var route = Route(SetupRole.Tts);
+        return IsHostVoice(route)
+            ? new(SelfHostSetup.GatewayF5Alias, route.ModelId, route.Reference?.PresetId.ToString("N") ?? "none",
+                SpeechOutputFormat.Pcm24KhzMono16Le)
+            : new(OpenAiSetup.Alias(SetupRole.Tts), route.ModelId, route.VoiceId!, SpeechOutputFormat.Pcm24KhzMono16Le);
+    }
+
     internal static string LlmDestinationName(SetupRoute route) =>
         IsHost(route) && route.Gateway is { } gateway ? $"your Martlet host {gateway.HostId} ({gateway.Origin}, Ollama, pinned TLS)"
         : !IsChat(route) ? OpenAiSetup.Origin :
@@ -108,6 +131,13 @@ internal sealed class LiveConversationConfiguration
                     return $"{role}: the Martlet host pairing or its Ollama route is incomplete. Hand thinking to your host again on the Devices page.";
                 continue;
             }
+            if (role == SetupRole.Tts && IsHostVoice(route) && route.Enabled == true)
+            {
+                if (route.Consent != route.Selection()) return $"{role}: destination choice missing or changed. Hand speaking to your host again on the Devices page.";
+                if (HostSpeechTarget() is null || route.GatewaySnapshot is null)
+                    return $"{role}: the Martlet host pairing, its F5 route or the chosen voice is incomplete. Hand speaking to your host again on the Devices page.";
+                continue;
+            }
             if (role == SetupRole.Llm && IsChat(route) && route.Enabled == true)
             {
                 if (route.Consent != route.Selection()) return $"{role}: destination choice missing or changed. Review it in Setup.";
@@ -125,7 +155,8 @@ internal sealed class LiveConversationConfiguration
             if (route.RouteType is not (null or SetupRouteType.OpenAi) || route.Enabled == false)
                 return $"{role}: this Desktop build supports enabled OpenAI routes only" +
                     (role == SetupRole.Llm ? " (or an enabled OpenRouter, NVIDIA Build or OpenAI-compatible Chat Completions LLM route, or Ollama on a paired Martlet host)"
-                        : role == SetupRole.Stt ? " (or whisper on a paired Martlet host)" : "") +
+                        : role == SetupRole.Stt ? " (or whisper on a paired Martlet host)"
+                        : role == SetupRole.Tts ? " (or F5 on a paired Martlet host)" : "") +
                     "; the saved self-host choice is retained, not dispatched.";
             if (route.Consent != route.Selection()) return $"{role}: destination choice missing or changed. Review it in Setup.";
             if (route.CredentialId is null) return $"{role}: missing credential reference. Store a key explicitly in Setup.";
@@ -165,6 +196,16 @@ internal sealed class LiveConversationConfiguration
         var chat = IsChat(llm);
         var stt = Routes.SingleOrDefault(r => r.Role == SetupRole.Stt);
         var sttHost = IsHostStt(stt) && stt!.Gateway is { } sttGateway ? sttGateway : null;
+        string SpeechDisclosure()
+        {
+            var tts = Routes.SingleOrDefault(r => r.Role == SetupRole.Tts);
+            if (!IsHostVoice(tts) || tts!.Gateway is not { } gateway)
+                return $"Response -> TTS: {OpenAiSetup.Origin}, {Selection(SetupRole.Tts)}.";
+            return $"Response -> TTS: your Martlet host {gateway.HostId} ({gateway.Origin}, F5 {tts.ModelId}, pinned TLS), " +
+                $"voice '{tts.Reference?.PresetName ?? "not chosen"}'. Each reply segment's text and your chosen reference recording " +
+                "(with its transcript) go only to that paired computer; no cloud voice provider receives them and there is no per-request charge. " +
+                "The voice is cloned from that recording, which you confirmed you may use; the F5 model is licensed for non-commercial use.";
+        }
         return $"Text -> LLM: {(llm is null ? OpenAiSetup.Origin : LlmDestinationName(llm))}, {Selection(SetupRole.Llm)}.\n" +
             (IsHost(llm)
                 ? "Your own Martlet host runs this model: the text goes only to that paired computer over its pinned TLS gateway, no cloud provider receives it and there is no per-request charge. The host's owner controls its logs.\n"
@@ -179,7 +220,7 @@ internal sealed class LiveConversationConfiguration
                 ? $"PTT audio -> STT (only with separate local capture AND upload permission): {OpenAiSetup.Origin}, {Selection(SetupRole.Stt)}.\n"
                 : $"PTT and hands-free audio -> STT (only with separate local capture AND upload permission): your Martlet host {sttHost.HostId} ({sttHost.Origin}, whisper, pinned TLS), {Selection(SetupRole.Stt)}. " +
                     "Your recorded speech goes only to that paired computer over its pinned TLS gateway and is transcribed in memory there, not stored; no cloud provider receives it and there is no per-request charge.\n") +
-            (voice ? $"Response -> TTS: {OpenAiSetup.Origin}, {Selection(SetupRole.Tts)}. AI-generated voice, not a human. Output: {Audio?.Output.DisplayName ?? "not selected"}; fixed at start, no fallback.\n"
+            (voice ? SpeechDisclosure() + $" AI-generated voice, not a human. Output: {Audio?.Output.DisplayName ?? "not selected"}; fixed at start, no fallback.\n"
                 : "Text-only: NO TTS requests and NO output device. Voice is separately selected.\n") +
             "One action expires within 150 s, including scheduling, recording and authorization. PTT: <=25 s, mono 16 kHz PCM16, <=800,000 PCM bytes; original local permission <=30 s including cleanup/transfer. STT: <=1 request, <=800,044 WAV bytes, <=30 s, <=4096 transcript characters.\n" +
             (Persona is null
@@ -237,10 +278,9 @@ internal sealed class LiveConversationConfiguration
                 usedMemoryFacts = memoryCount;
                 return new(prompted,
                     TextSelection(), TextLimits, TurnLimits,
-                    voice ? new(new(OpenAiSetup.Alias(SetupRole.Tts), Route(SetupRole.Tts).ModelId, Route(SetupRole.Tts).VoiceId!,
-                        SpeechOutputFormat.Pcm24KhzMono16Le),
+                    voice ? new(SpeechSelection(),
                         new(Audio!.Output.EndpointId is null ? OutputPolicy.DefaultAtStart : OutputPolicy.FixedEndpoint, Audio.Output.EndpointId),
-                        SpeechLimits) : null, ChatTarget(), HostTarget());
+                        SpeechLimits) : null, ChatTarget(), HostTarget(), voice ? HostSpeechTarget() : null);
             }
         }
         throw new LiveActionException("conversation.input_limit");

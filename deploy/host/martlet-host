@@ -52,8 +52,10 @@ if [[ "${MODE}" == docker ]]; then
   IMAGE="${MARTLET_HOST_IMAGE:-martlet-host:latest}"
   DOTNET=dotnet
   REPO=""
+  SOURCE=/opt/martlet/source
 else
   REPO="$(cd "${HERE}/../.." && pwd)"
+  SOURCE="${REPO}"
   DATA="${MARTLET_HOST_DATA:-${HOME}/.local/share/martlet/host}"
   CONF="${MARTLET_HOST_CONFIG:-${HOME}/.config/martlet/host}"
   GW_STATE="${DATA}/private/state"
@@ -152,7 +154,7 @@ cmd_describe() {
   while IFS= read -r line; do
     [[ -n "${line}" ]] && printf 'role.suggested=%s\n' "${line%%|*}"
   done < <(conf_values "${conf}" choice_by_vram)
-  [[ -n "$(conf_value "${conf}" gpu)" ]] && printf 'role.accelerator=gpu cpu\n'
+  [[ "$(conf_value "${conf}" gpu)" == optional\|* ]] && printf 'role.accelerator=gpu cpu\n'
   return 0
 }
 
@@ -685,32 +687,42 @@ cmd_add() {
   mkdir -p "${project}/files" "${CONF}/secrets"; chmod 700 "${project}" "${CONF}/secrets"
   local env_lines=("COMPOSE_PROJECT_NAME=martlet-${role}" "MARTLET_ROLE_CONFIGS_VOLUME=martlet-${role}-configs")
   if [[ "${MODE}" == docker ]]; then env_lines+=("MARTLET_ROLE_NETWORK=container:${NET}"); else env_lines+=("MARTLET_ROLE_NETWORK=host"); fi
+  # Martlet sources a role may build its image from (compose build contexts under ${MARTLET_SOURCE}/workers).
+  env_lines+=("MARTLET_SOURCE=${SOURCE}")
   local line name prompt var label options default value
 
-  # GPU or CPU: roles with an optional GPU overlay run on the NVIDIA GPU when this host can use one.
-  local gpu_entry overlay="" accelerator="" vram=0
+  # GPU or CPU: roles with an optional GPU overlay run on the NVIDIA GPU when this host can use one; gpu=required
+  # roles always add their overlay (they cannot run on the CPU).
+  local gpu_entry gpu_mode overlay="" accelerator="" vram=0
   gpu_entry="$(conf_value "${conf}" gpu)"
   if [[ -n "${gpu_entry}" ]]; then
-    overlay="${gpu_entry#*|}"
-    [[ "${gpu_entry%%|*}" == optional && "${overlay}" =~ ^[a-z0-9.-]+\.yaml$ && -f "${dir}/${overlay}" ]] ||
+    gpu_mode="${gpu_entry%%|*}"; overlay="${gpu_entry#*|}"
+    [[ "${gpu_mode}" =~ ^(optional|required)$ && "${overlay}" =~ ^[a-z0-9.-]+\.yaml$ && -f "${dir}/${overlay}" ]] ||
       fail "Invalid gpu entry in role.conf."
     say "GPU or CPU"
     detect_nvidia
     local suggested=cpu
     if (( NVIDIA_MB > 0 )); then
       suggested=gpu; note "NVIDIA GPU usable by containers: ${NVIDIA_MB} MiB of memory."
+    elif [[ "${gpu_mode}" == required ]]; then
+      note "No NVIDIA GPU usable by containers was found yet; ${role} needs one (installing the NVIDIA requirements next)."
     else
       note "No NVIDIA GPU usable by containers was found; ${role} runs on the CPU (slower)."
     fi
-    accelerator="${INPUT[choice.accelerator]:-}"
-    if [[ -z "${accelerator}" ]] && ! unattended; then
-      read -r -p "Run ${role} on [gpu/cpu] (default ${suggested}): " accelerator
+    if [[ "${gpu_mode}" == required ]]; then
+      accelerator=gpu
+    else
+      accelerator="${INPUT[choice.accelerator]:-}"
+      if [[ -z "${accelerator}" ]] && ! unattended; then
+        read -r -p "Run ${role} on [gpu/cpu] (default ${suggested}): " accelerator
+      fi
     fi
     accelerator="${accelerator:-${suggested}}"
     note "Runs on: ${accelerator}"
     [[ "${accelerator}" == gpu || "${accelerator}" == cpu ]] || fail "Choose gpu or cpu."
     if [[ "${accelerator}" == gpu ]]; then
       require gpu nvidia-toolkit
+      (( NVIDIA_MB > 0 )) || detect_nvidia
       vram=${NVIDIA_MB}
     fi
     env_lines+=("MARTLET_ACCELERATOR=${accelerator}")

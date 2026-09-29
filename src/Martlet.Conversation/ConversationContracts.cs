@@ -45,10 +45,12 @@ public sealed record ChatCompletionsTarget(string BaseUrl, bool Keyless = false)
 }
 
 // A new instance is explicit input, not a stored provider thread or automatic conversation history.
-// Host selects a paired Martlet host's own conversation model (Ollama) instead of a cloud destination.
+// Host selects a paired Martlet host's own conversation model (Ollama) instead of a cloud destination;
+// HostSpeech selects a paired host's own F5 voice for the spoken reply.
 public sealed class ConversationRequest(
     BoundedTextInput input, TextModelSelection model, TextGenerationLimits textLimits,
-    ConversationLimits limits, SpeechOutput? speech = null, ChatCompletionsTarget? chat = null, HostTextTarget? host = null)
+    ConversationLimits limits, SpeechOutput? speech = null, ChatCompletionsTarget? chat = null, HostTextTarget? host = null,
+    HostSpeechTarget? hostSpeech = null)
 {
     [JsonIgnore] public BoundedTextInput Input { get; } = input;
     public TextModelSelection Model { get; } = model;
@@ -57,6 +59,7 @@ public sealed class ConversationRequest(
     public SpeechOutput? Speech { get; } = speech;
     public ChatCompletionsTarget? Chat { get; } = chat;
     [JsonIgnore] public HostTextTarget? Host { get; } = host;
+    [JsonIgnore] public HostSpeechTarget? HostSpeech { get; } = hostSpeech;
 
     internal void Validate()
     {
@@ -96,10 +99,19 @@ public sealed class ConversationRequest(
             voice.Output.Validate();
             voice.Limits.Validate();
             ContractRules.Identifier(voice.Selection.ModelAlias);
-            ContractRules.Require(OpenAiSpeechSynthesisCatalog.SupportsModel(voice.Selection.UpstreamModelId) &&
-                OpenAiSpeechSynthesisCatalog.SupportsVoice(voice.Selection.Voice) &&
-                OpenAiSpeechSynthesisCatalog.SupportsFormat(voice.Selection.OutputFormat),
-                "Select a supported speech model, voice and format.", ErrorCode.ProviderCapability);
+            if (HostSpeech is { } hostSpeech)
+                ContractRules.Require(voice.Selection.ModelAlias == SelfHostSetup.GatewayF5Alias &&
+                    voice.Selection.UpstreamModelId == hostSpeech.ModelId &&
+                    OpenAiSpeechSynthesisCatalog.SupportsFormat(voice.Selection.OutputFormat) &&
+                    Uri.TryCreate(hostSpeech.Origin, UriKind.Absolute, out var speechOrigin) &&
+                    speechOrigin.Scheme == Uri.UriSchemeHttps && hostSpeech.CredentialId != Guid.Empty,
+                    "A Martlet host voice requires its own alias, model, pinned HTTPS origin and paired credential.",
+                    ErrorCode.ProviderCapability);
+            else
+                ContractRules.Require(OpenAiSpeechSynthesisCatalog.SupportsModel(voice.Selection.UpstreamModelId) &&
+                    OpenAiSpeechSynthesisCatalog.SupportsVoice(voice.Selection.Voice) &&
+                    OpenAiSpeechSynthesisCatalog.SupportsFormat(voice.Selection.OutputFormat),
+                    "Select a supported speech model, voice and format.", ErrorCode.ProviderCapability);
         }
     }
 

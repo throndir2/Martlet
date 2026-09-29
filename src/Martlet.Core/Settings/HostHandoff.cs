@@ -7,9 +7,10 @@ namespace Martlet.Core.Settings;
 /// explicit removal), never orphaned, and handing the job back reattaches it.</summary>
 public static class HostHandoff
 {
-    /// <summary>The role's route becomes the host's enabled gateway route with the owner's recorded selection.</summary>
+    /// <summary>The role's route becomes the host's enabled gateway route with the owner's recorded selection. A GatewayF5
+    /// route also carries the applied reference voice (<paramref name="reference"/>), which it needs to be enabled.</summary>
     public static AppSettings ToHost(AppSettings settings, SetupRouteType routeType, GatewayEndpointSettings endpoint,
-        Guid credentialId, string deviceId, GatewayRouteSnapshot snapshot)
+        Guid credentialId, string deviceId, GatewayRouteSnapshot snapshot, F5ReferenceSettings? reference = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(endpoint);
@@ -22,7 +23,8 @@ public static class HostHandoff
         {
             RouteSchemaVersion = 1, RouteType = routeType, Enabled = true, Role = named.Role, ProviderAlias = named.Alias,
             Origin = endpoint.Origin, ModelId = snapshot.ModelId, CredentialId = credentialId,
-            ConfigurationRevision = Guid.NewGuid(), Gateway = endpoint, GatewayDeviceId = deviceId, GatewaySnapshot = snapshot
+            ConfigurationRevision = Guid.NewGuid(), Gateway = endpoint, GatewayDeviceId = deviceId, GatewaySnapshot = snapshot,
+            Reference = reference
         };
         route = route with { Consent = route.Selection() };
         return SetupSettings.QueueReplacedCredential(Replace(settings, route), previous);

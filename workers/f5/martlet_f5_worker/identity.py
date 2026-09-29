@@ -610,6 +610,11 @@ def verify_imported_module_origins(observation: RuntimeObservation) -> None:
             loaded_file = getattr(loaded, "__file__", None)
             if loaded_file is None:
                 continue
+            # File-less pseudo-modules (torch.ops, torch.classes) carry a bare-name __file__ and no import location;
+            # nothing was loaded from disk for them. Every module the import system loaded from a file is checked.
+            spec = getattr(loaded, "__spec__", None)
+            if not os.path.isabs(loaded_file) and not getattr(spec, "has_location", False):
+                continue
             require(
                 os.path.normcase(os.path.abspath(loaded_file)) in allowed,
                 "identity_mismatch",

@@ -34,6 +34,8 @@ RUN useradd --uid 1000 --user-group --create-home --shell /bin/bash martlet 2>/d
  && chmod 0700 /var/lib/martlet/config /var/lib/martlet/private
 COPY --from=build /out /opt/martlet/gateway
 COPY deploy/host /opt/martlet/host
+# Sources that host roles build their images from (the f5 role: workers/f5/host/Dockerfile).
+COPY workers/f5 /opt/martlet/source/workers/f5
 RUN chmod 0755 /opt/martlet/host/martlet-host && ln -s /opt/martlet/host/martlet-host /usr/local/bin/martlet-host
 ENV MARTLET_HOST_MODE=docker TERM=xterm-256color
 USER 1000:1000
