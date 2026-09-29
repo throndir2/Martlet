@@ -18,6 +18,9 @@ public sealed record HostHardware(
     string OperatingSystem, string? Kernel, string? Processor, int? ProcessorThreads, double? MemoryGb,
     string? ContainerRuntime, string? NvidiaContainers, IReadOnlyList<HostGpu> Gpus)
 {
+    /// <summary>The Martlet release the host's gateway runs; null for hosts from 0.2.0 and earlier.</summary>
+    public string? MartletVersion { get; init; }
+
     [JsonIgnore] public HostGpu? BestGpu => Gpus.OrderByDescending(g => g.IsNvidia).ThenByDescending(g => g.MemoryMb ?? 0).FirstOrDefault();
 
     [JsonIgnore] public AdvisorGpu AdvisorGpu => BestGpu is { } gpu ? SetupAdvisor.Classify(gpu.Vendor, gpu.MemoryGb) : AdvisorGpu.None;

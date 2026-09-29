@@ -7,7 +7,7 @@ configured OpenAI STT, participation policy, streaming LLM and optional generate
 voice/playback. Optional local **Voice ID** recognizes your enrolled voice and
 ignores other people before anything is uploaded.
 Each new action requires a bounded data/cost/output authorization; no credentials or audio are accessed on launch; network remains idle unless
-opt-in update checks are enabled. Text-only never requests TTS or opens output.
+opt-in update checks or host updates are enabled. Text-only never requests TTS or opens output.
 Actual account/device/first-conversation qualification remains **NOT RUN**.
 
 The desktop starts with a short welcome tour, then a Home page with one next
@@ -102,20 +102,34 @@ noncommercial download/install/use grant; no redistribution or source reuse is
 allowed. Third-party components retain their own terms and must be cleared
 for distribution separately.
 
-The Desktop now has a separate **OFF-by-default GitHub Release check**. Enabling
-it permits one anonymous release-metadata request on future launches;
-**Check for app updates** makes an explicit request instead. If a newer
-versioned Windows installer is published, **Download update** requires a
-separate confirmation, limits the transfer to 512 MiB and verifies the exact
-bytes against GitHub's SHA-256 asset digest. The repository is public, so
-checks succeed anonymously once a versioned release is published. The opt-in is stored in
-`update-checks.txt` in the selected local data directory, separately from
-profile settings and configuration backup; unreadable preferences default to
-OFF with a visible error. Releases are normal GitHub releases; code signing is
-not a requirement for this personal project, so the installer is unsigned and
-Windows may show an unknown-publisher warning. Martlet does **not** launch or
-install the downloaded executable; an in-app installation/rollback path is not
-implemented. Do not run an internal build as an update. The
+**App updates** come from Martlet's public GitHub Releases (Settings > App
+updates). Checks are **OFF by default**. Turning on *Check GitHub for new
+versions automatically* checks right away and then every 15 minutes to 24
+hours (default: every hour) while Martlet runs; **Check for updates now**
+makes an explicit request instead. Only normal (non-draft, non-prerelease)
+releases with the exact `Martlet-<version>-win-x64.exe` asset are offered.
+**Install** downloads it (at most 512 MiB) into `updates\` in the local data
+directory, verifies the exact bytes against GitHub's SHA-256 asset digest,
+closes Martlet, runs the installer with its progress window (`/SILENT`, no
+optional prerequisite tasks) and starts Martlet again; the next launch reports
+the result. With *Download and install updates automatically* this happens by
+itself, but only while the character is hidden, no conversation, demo or
+Martlet window is open and Martlet is not the active window (it restarts
+minimized); otherwise the downloaded update installs when you exit Martlet.
+Choices live in `update-checks.txt` and `updates.json`, separately from profile
+settings and configuration backup; unreadable preferences stay OFF with a
+visible error. Releases are normal GitHub releases; code signing is not a
+requirement for this personal project, so the installer is unsigned. The
+digest detects a damaged download; it does not prove who published it. Do not
+run an internal build as an update.
+
+Paired **Martlet hosts** follow the desktop's version: the gateway reports its
+release, the Devices map shows *Update available* for older hosts, and **Update
+host** rebuilds that host's gateway from this version in a console
+(`martlet-host update`; identity, pairings and roles stay). *Keep my Martlet
+hosts on this PC's version* does the same in the background every interval
+for hosts Martlet reaches over an SSH key or this PC's Docker Desktop; a host
+that needs a password, sudo or an approval keeps the console route. The
 [Windows packaging guide](packaging/windows/README.md) distinguishes local
 internal builds from the manually dispatched release workflow, which has no
 push, PR, tag or scheduled trigger.

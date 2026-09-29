@@ -331,20 +331,35 @@
                     <Border Style="{DynamicResource CardStyle}">
                         <StackPanel>
                             <TextBlock Text="App updates" Style="{DynamicResource SectionHeading}"/>
-                            <TextBlock Style="{DynamicResource Muted}"
-                                       Text="GitHub Releases are checked only when you ask, or after you opt in to checks at launch. Downloading requires a separate confirmation. Martlet saves the installer but does not install it for you; the installer is not code-signed."/>
-                            <CheckBox x:Name="AutomaticUpdateCheck" Content="Check for app updates on launch (contacts GitHub)"
-                                      Margin="0,10,0,8" Checked="UpdateCheckSetting_Changed" Unchecked="UpdateCheckSetting_Changed"
+                            <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap"
+                                       Text="Martlet updates from its public GitHub Releases. Checks run only when you turn them on or press Check now. Installers are not code-signed; each download is checked against GitHub's SHA-256 digest before it runs."/>
+                            <CheckBox x:Name="AutomaticUpdateCheck" Content="Check GitHub for new versions automatically"
+                                      Margin="0,10,0,6" Checked="UpdateCheckSetting_Changed" Unchecked="UpdateCheckSetting_Changed"
                                       AutomationProperties.AutomationId="AutomaticUpdateCheck" />
+                            <StackPanel Orientation="Horizontal" Margin="24,0,0,6">
+                                <Label Content="Check _every" Target="{Binding ElementName=UpdateIntervalChoice}" Padding="0,0,8,0" VerticalAlignment="Center"/>
+                                <ComboBox x:Name="UpdateIntervalChoice" Width="140" SelectionChanged="UpdatePreference_Changed"
+                                          AutomationProperties.AutomationId="UpdateCheckInterval" AutomationProperties.Name="How often to check for updates"/>
+                            </StackPanel>
+                            <CheckBox x:Name="AutomaticUpdateInstall" Margin="0,4,0,6" Checked="UpdatePreference_Changed" Unchecked="UpdatePreference_Changed"
+                                      AutomationProperties.AutomationId="AutomaticUpdateInstall">
+                                <TextBlock TextWrapping="Wrap" Text="Download and install updates automatically (while the character is hidden and no conversation or window is open, otherwise when you exit Martlet)"/>
+                            </CheckBox>
+                            <CheckBox x:Name="AutomaticHostUpdate" Margin="0,4,0,8" Checked="UpdatePreference_Changed" Unchecked="UpdatePreference_Changed"
+                                      AutomationProperties.AutomationId="AutomaticHostUpdate">
+                                <TextBlock TextWrapping="Wrap" Text="Keep my Martlet hosts on this PC's version (updates them in the background over their SSH key or Docker Desktop; others show Update host on the Devices map)"/>
+                            </CheckBox>
                             <WrapPanel>
-                                <Button x:Name="CheckForUpdatesButton" Content="Check _for app updates" Click="CheckForUpdates_Click"
+                                <Button x:Name="CheckForUpdatesButton" Content="Check _for updates now" Click="CheckForUpdates_Click"
                                         Margin="0,4,12,4" AutomationProperties.AutomationId="CheckForAppUpdates"/>
-                                <Button x:Name="DownloadUpdateButton" Content="_Download update (review first)" Click="DownloadUpdate_Click"
-                                        Margin="0,4,12,4" Visibility="Collapsed" AutomationProperties.AutomationId="DownloadAppUpdate"/>
+                                <Button x:Name="DownloadUpdateButton" Content="_Install update" Click="DownloadUpdate_Click" Style="{DynamicResource PrimaryButton}"
+                                        Margin="0,4,12,4" Visibility="Collapsed" AutomationProperties.AutomationId="InstallAppUpdate"/>
                                 <Button x:Name="ReviewUpdateButton" Content="_View release details" Click="ReviewUpdate_Click"
-                                        Margin="0,4,0,4" Visibility="Collapsed" AutomationProperties.AutomationId="ViewAppRelease"/>
+                                        Margin="0,4,12,4" Visibility="Collapsed" AutomationProperties.AutomationId="ViewAppRelease"/>
+                                <Button x:Name="UpdateHostsButton" Content="Update _hosts now" Click="UpdateHosts_Click"
+                                        Margin="0,4,0,4" AutomationProperties.AutomationId="UpdateHostsNow"/>
                             </WrapPanel>
-                            <TextBlock x:Name="UpdateStatusText" Style="{DynamicResource Muted}" Margin="0,4,0,0"
+                            <TextBlock x:Name="UpdateStatusText" Style="{DynamicResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap"
                                        AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="AppUpdateStatus"/>
                         </StackPanel>
                     </Border>
@@ -421,7 +436,7 @@
                     <DockPanel Margin="0,0,0,8">
                         <Button DockPanel.Dock="Right" Content="E_xit Martlet" Click="Exit_Click" AutomationProperties.Name="Exit Martlet"/>
                         <TextBlock Style="{DynamicResource Muted}" VerticalAlignment="Center"
-                                   Text="Nothing listens on launch. Network stays idle unless you opted in to update checks; real conversations need your configured routes and explicit permission for each action."/>
+                                   Text="Nothing listens on launch. Network stays idle unless you opted in to update checks or host updates; real conversations need your configured routes and explicit permission for each action."/>
                     </DockPanel>
                 </StackPanel>
             </ScrollViewer>
