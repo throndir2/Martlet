@@ -86,8 +86,10 @@ The private renderer host adds Microsoft.Web.WebView2 SDK 1.0.4191.47. Its three
 injected managed reference identities are not separate NuGet packages. Their
 DLL/XML files and the two x64 WebView2Loader copies are verified against exact
 entries in the one SDK archive, with its complete LICENSE.txt and NOTICE.txt.
-The WebView2 runtime itself is an existing-machine prerequisite, never bundled,
-downloaded or installed by this package.
+The WebView2 runtime itself is never bundled. When it is missing, the installer's
+task page (ticked by default) or prerequisites\Install-Prerequisites.ps1 runs
+Microsoft's Authenticode-checked Evergreen bootstrapper, which downloads it from
+Microsoft under Microsoft's terms.
 
 The transparent composition renderer additionally ships Microsoft.Windows.SDK.NET.dll
 and WinRT.Runtime.dll from lib/net8.0 in Microsoft.Windows.SDK.NET.Ref
@@ -122,3 +124,10 @@ subject to Live2D's separate review and Publication License Agreement.
 User-supplied Live2D/VRM model assets, NIM runtime/models and GPU drivers are
 not redistributed. No rights to those inputs or to Martlet's project/assets are
 granted by the generated SBOM.
+
+prerequisites\Install-Prerequisites.ps1 is authored Martlet script and
+redistributes no third-party bytes. Only for items the user ticks or chooses, it
+runs Microsoft's WebView2 bootstrapper, adds Windows speech capabilities from
+Windows Update, or runs winget for Ollama (Ollama.Ollama, MIT), WSL and Docker
+Desktop (Docker.DockerDesktop, Docker Subscription Service Agreement). Those
+products keep their own terms and are not part of this payload or its SBOM.

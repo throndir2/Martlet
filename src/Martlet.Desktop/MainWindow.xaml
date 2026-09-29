@@ -104,6 +104,8 @@
                         AutomationProperties.AutomationId="OpenAvatar" AutomationProperties.Name="Open character and avatar settings" />
                 <Button Content="Martlet _hosts" Click="Hosts_Click" Padding="12,8" Margin="0,4,12,4"
                         AutomationProperties.AutomationId="OpenHosts" AutomationProperties.Name="Set up and pair Martlet hosts on this PC or other computers" />
+                <Button Content="Prere_quisites (check / install)" Click="Prerequisites_Click" Padding="12,8" Margin="0,4,12,4"
+                        AutomationProperties.AutomationId="OpenPrerequisites" AutomationProperties.Name="Check and install Windows prerequisites such as WebView2, Windows speech, Ollama and Docker Desktop in a console window" />
             </WrapPanel>
             <TextBlock Text="App updates" Style="{DynamicResource SectionHeading}" Margin="0,14,0,0"/>
             <TextBlock Text="GitHub Releases are checked only when you ask, or after you opt in to checks at launch. Downloading requires a separate confirmation. Martlet saves the installer but does not install it for you; the installer is not code-signed."

@@ -67,7 +67,10 @@ registration, Start menu shortcut, local help, and bundled diagnostic CLI.
 Install to the user's application directory without an elevation prompt in the
 golden path. Keep code and mutable data separate. Default install must not add
 firewall exceptions, install services, modify drivers, start at login, fetch
-large models, or require a browser login.
+large models, or require a browser login. Optional
+[prerequisites](PREREQUISITES.md) (Windows speech, Ollama, WSL 2 + Docker
+Desktop) are unticked installer tasks; only a missing WebView2 runtime and a
+blocked microphone setting are ticked by default.
 
 Publish GitHub asset SHA-256, provenance and notices for the exact versioned
 installer. A GitHub-supplied checksum is not an independent publisher signature.

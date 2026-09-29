@@ -107,7 +107,7 @@ function Get-PayloadFiles([string]$Root, [switch]$ExcludeSbom) {
         if ($relative -ceq 'sbom.cdx.json') {
             if ($ExcludeSbom) { continue }
         }
-        elseif ($relative -notmatch '^(Desktop|Doctor|help|notices)\\' -or
+        elseif ($relative -notmatch '^(Desktop|Doctor|help|notices|prerequisites)\\' -or
             $relative -match '(^|\\)(settings[^\\]*\.json|[^\\]*\.lock|data|logs|models|recordings|profiles)(\\|$)') {
             throw "Unowned or mutable data cannot be packaged: $relative"
         }
@@ -250,7 +250,7 @@ function Assert-PublishLayout([string]$Root, [ValidateSet('Internal', 'PublicUns
         }
     }
     foreach ($file in @((Get-PackagingChannel $Channel).help, 'help\TROUBLESHOOTING.md', 'notices\DEPENDENCIES.txt',
-            'notices\NAudio-THIRD-PARTY-NOTICES.txt',
+            'prerequisites\Install-Prerequisites.ps1', 'notices\NAudio-THIRD-PARTY-NOTICES.txt',
             'notices\Audio2Face-Protos-LICENSE.txt', 'notices\Audio2Face-THIRD-PARTY-NOTICES.md',
             'notices\Microsoft.WindowsDesktop.App\LICENSE.txt', 'notices\WPF-THIRD-PARTY-NOTICES.txt',
             'notices\WinForms-THIRD-PARTY-NOTICES.txt', 'notices\Inno-Setup-LICENSE.txt')) {
