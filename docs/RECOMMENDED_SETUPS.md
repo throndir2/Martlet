@@ -14,16 +14,16 @@ computers it reads this PC's graphics card from Windows and fills in each paired
 Martlet host with the GPU it reported (see
 [What the host tells Martlet](../deploy/host/README.md#what-the-host-tells-martlet));
 you pick the GPU of any other computer, one per computer, including "Has a GPU,
-not sure which" (planned as an 8 GB NVIDIA card). It
-then recommends what each computer should be used for and shows this guidance for each role: where the role runs, what it does, why,
+not sure which" (planned as an 8 GB NVIDIA card). It then recommends what each
+computer should be used for and shows this guidance for each role: where the role runs, what it does, why,
 what data leaves your PC, how to set it up, and what to use until planned parts
 arrive. It saves, installs and contacts nothing. The recommendations and availability labels live in
 [`SetupAdvisor.cs`](../src/Martlet.Core/Installation/SetupAdvisor.cs); update
 them when a route ships.
 
 **In the installer:** the **Recommended setup** page asks the same core
-questions (how many computers, this PC's graphics card, the goal) in short form.
-It shows where each part would run and ticks the optional prerequisites this PC
+questions (how many computers, this PC's graphics card, the goal) in short form;
+the app's advisor asks for each computer's GPU. It shows where each part would run and ticks the optional prerequisites this PC
 needs for that layout. Its rules in `packaging/windows/Martlet.iss` follow this
 page; update both together. Everything it picks can be changed later.
 
