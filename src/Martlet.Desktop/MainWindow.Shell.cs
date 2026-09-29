@@ -1207,6 +1207,11 @@ public partial class MainWindow
                 }
                 break;
             case NodeAction.ForgetHost: _ = ForgetHostAsync(argument); break;
+            case NodeAction.PrepareHost: if (FindHost(argument) is { } prepare) OpenPrepare(prepare, PrepareStart.Status); break;
+            case NodeAction.RebootHost: if (FindHost(argument) is { } reboot) OpenPrepare(reboot, PrepareStart.Reboot); break;
+            case NodeAction.ShutdownHost: if (FindHost(argument) is { } shutdown) OpenPrepare(shutdown, PrepareStart.Shutdown); break;
+            case NodeAction.WakeHost: if (FindHost(argument) is { } wake) OpenPrepare(wake, PrepareStart.Wake); break;
+            case NodeAction.PrepareComputer: OpenPrepare(null, PrepareStart.Status); break;
         }
     }
 

@@ -10,7 +10,8 @@ internal enum NodeHealth { Ready, Unknown, Off, Attention }
 internal enum NodeAction
 {
     Setup, AudioSetup, Character, ToggleCharacter, Prerequisites, HostThisPc, AddComputer, ManageHost, CheckHost, HostDashboard, Advisor,
-    UseForLipSync, LipSyncThisPc, InstallRole, RemoveRole, HostStatus, UpdateHost, ForgetHost, UseForThinking
+    UseForLipSync, LipSyncThisPc, InstallRole, RemoveRole, HostStatus, UpdateHost, ForgetHost,
+    PrepareHost, RebootHost, ShutdownHost, WakeHost, PrepareComputer, UseForThinking
 }
 
 /// <summary>Who handles lip-sync: a paired host, this PC's own Audio2Face service, or nobody (voice loudness).</summary>
@@ -306,6 +307,21 @@ internal static class NetworkMap
                         Argument: id + "/" + role.Kind));
             }
             target.Commands.Add(new(NodeAction.HostStatus, "Open its status console", Argument: id));
+            if (!local && paired.Method != HostSetupMethod.ThisPcDocker)
+            {
+                // Linux computers: set them up and power them from here (martlet-prepare over SSH, Wake-on-LAN).
+                target.Commands.Add(new(NodeAction.PrepareHost, "Prepare this computer (drivers, Docker, GPU, tools)", Argument: id));
+                if (paired.WakeMac is { } mac)
+                {
+                    target.Commands.Add(new(NodeAction.WakeHost, "Wake it up", check?.Reachable == false, id));
+                    target.Facts.Add(new("Wake-on-LAN", mac));
+                }
+                if (paired.SshTarget is not null)
+                {
+                    target.Commands.Add(new(NodeAction.RebootHost, "Restart it", Argument: id));
+                    target.Commands.Add(new(NodeAction.ShutdownHost, "Shut it down", Argument: id));
+                }
+            }
             target.Commands.Add(new(NodeAction.ManageHost, "Pair again or change its setup", Argument: id));
             target.Commands.Add(new(NodeAction.ForgetHost, "Forget this host", Argument: id));
             if (!paired.CanLaunch && !local)
@@ -368,6 +384,7 @@ internal static class NetworkMap
         add.Notes.Add("Hosts listen only on your private network and are paired once with a one-use code.");
         add.Commands.Add(new(NodeAction.AddComputer, "Add a computer", true));
         add.Commands.Add(new(NodeAction.HostThisPc, "Or run host services on this PC"));
+        add.Commands.Add(new(NodeAction.PrepareComputer, "Prepare a Linux computer over SSH"));
         order.Add(add);
 
         return order.Select(draft => draft.Build()).ToArray();
@@ -384,7 +401,11 @@ internal static class NetworkMap
         }
         if (report.Gpus.Count == 0) target.Facts.Add(new("Graphics", "No dedicated GPU reported"));
         foreach (var gpu in report.Gpus)
-            target.Facts.Add(new("Graphics", gpu.Driver is { } driver ? $"{gpu.Describe()}, driver {driver}" : gpu.Describe()));
+        {
+            var text = gpu.Driver is { } driver ? $"{gpu.Describe()}, driver {driver}" : gpu.Describe();
+            target.Facts.Add(new("Graphics", gpu.DescribePower() is { } power ? $"{text}, {power}" : text));
+        }
+        if (report.Cuda is { } cuda) target.Facts.Add(new("CUDA", $"up to {cuda} (driver)"));
         if (report.Processor is { } cpu)
             target.Facts.Add(new("Processor", report.ProcessorThreads is { } threads ? $"{cpu} ({threads} threads)" : cpu));
         if (report.MemoryGb is { } memory) target.Facts.Add(new("Memory", $"{memory:0} GB"));
