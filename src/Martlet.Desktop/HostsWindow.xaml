@@ -15,10 +15,12 @@
             <Label Target="{Binding ElementName=MethodChoice}" Content="_Where the host runs"/>
             <ComboBox x:Name="MethodChoice" MinHeight="28" SelectionChanged="Method_Changed" AutomationProperties.AutomationId="HostMethod">
                 <ComboBoxItem Content="This PC, with Docker Desktop (Windows)"/>
-                <ComboBoxItem Content="Another computer over SSH, using Docker there (Linux, Windows or macOS with Docker)"/>
+                <ComboBoxItem Content="Another computer over SSH, using Docker there (Linux or macOS)"/>
                 <ComboBoxItem Content="Another computer over SSH, native Ubuntu install"/>
                 <ComboBoxItem Content="Another computer, I will type the commands there myself"/>
             </ComboBox>
+            <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,0"
+                Text="Another Windows PC: install Martlet on it and choose This PC there. Setting up This PC starts Docker Desktop if needed and, when other PCs could not reach the host port yet, asks Windows for administrator approval once to allow TCP 9443 from your private network (Windows Firewall)."/>
             <StackPanel x:Name="SshPanel">
                 <Label Target="{Binding ElementName=SshTargetText}" Content="SSH _target (user@computer)"/>
                 <TextBox x:Name="SshTargetText" MinHeight="28" LostFocus="SshTarget_LostFocus" TextChanged="Target_Changed"

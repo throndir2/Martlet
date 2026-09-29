@@ -47,4 +47,27 @@ public sealed class HostSetupCommandsTests
         Assert.Equal("martlet-host", HostSetupCommands.SuggestedHostId("---"));
         Assert.StartsWith("desktop-", HostSetupCommands.SuggestedDeviceId());
     }
+
+    [Fact]
+    public void This_pc_script_starts_docker_desktop_and_waits_before_running()
+    {
+        var script = HostSetupCommands.Script(Target(HostSetupMethod.ThisPcDocker), HostAction.Pair);
+        Assert.True(script.IndexOf("Docker Desktop.exe", StringComparison.Ordinal) < script.IndexOf("\r\n:ready\r\n", StringComparison.Ordinal));
+        Assert.True(script.IndexOf("\r\n:ready\r\n", StringComparison.Ordinal) < script.IndexOf("docker run", StringComparison.Ordinal));
+        Assert.Contains("for /l %%i in (1,1,100) do (", script);
+        Assert.Equal(2, HostSetupCommands.Preview(Target(HostSetupMethod.ThisPcDocker), HostAction.Pair).Split("\r\n").Length);
+    }
+
+    [Fact]
+    public void Firewall_rule_is_scoped_to_the_host_port_on_private_networks_and_local_subnet()
+    {
+        var script = WindowsFirewall.ApplyScript(null);
+        Assert.Contains("New-NetFirewallRule -Name 'Martlet-Host-Gateway'", script);
+        Assert.Contains("-Direction Inbound -Action Allow -Protocol TCP -LocalPort 9443 -Profile Private,Domain -RemoteAddress LocalSubnet", script);
+        Assert.DoesNotContain("Set-NetConnectionProfile", script);
+        Assert.Contains("Set-NetConnectionProfile -InterfaceIndex 14 -NetworkCategory Private;", WindowsFirewall.ApplyScript(14));
+        Assert.Throws<InvalidOperationException>(() => WindowsFirewall.ProbeScript("192.168.1.2'; calc; '"));
+        Assert.Equal(new WindowsFirewall.State(true, "Public", 7, false), WindowsFirewall.Parse("True|Public|7|False\r\n"));
+        Assert.Equal(new WindowsFirewall.State(false, null, null, false), WindowsFirewall.Parse("unexpected"));
+    }
 }

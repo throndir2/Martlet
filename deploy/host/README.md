@@ -19,7 +19,7 @@ Windows desktop (Martlet) --pinned TLS, paired once--> host: Martlet gateway :94
 | Method | Host needs | How to run it | Gateway runs as |
 | --- | --- | --- | --- |
 | **Desktop: this PC with Docker Desktop** | Windows + Docker Desktop (WSL 2) | Martlet > **Martlet hosts** > *This PC* | containers `martlet-host-net` + `martlet-host-gateway` |
-| **Desktop: another computer over SSH, Docker** | SSH server + Docker (any Linux; Windows/macOS with Docker Desktop) | Martlet hosts > *over SSH, using Docker* | same containers on that host |
+| **Desktop: another computer over SSH, Docker** | SSH server + Docker (Linux or macOS; for another Windows PC install Martlet there and use *This PC*) | Martlet hosts > *over SSH, using Docker* | same containers on that host |
 | **Desktop: another computer over SSH, native** | Ubuntu 24.04 x86_64 with SSH | Martlet hosts > *over SSH, native Ubuntu* | systemd user service `martlet-host-gateway` |
 | **On the host, Docker** | any Docker host | `docker run ... martlet-host <command>` (below) | containers |
 | **On the host, native** | Ubuntu 24.04 x86_64 | `./deploy/host/martlet-host <command>` (below) | systemd user service |
@@ -74,8 +74,17 @@ or over `ssh -t user@host`. How it fits together:
   per-role named volumes, so nothing is bind-mounted from the host filesystem.
 - GPU roles need Docker's NVIDIA support on that host (NVIDIA Container Toolkit
   on Linux, WSL 2 GPU support in Docker Desktop).
-- Docker Desktop on Windows: allow inbound TCP 9443 in Windows Firewall if other
-  PCs must reach it.
+- Docker Desktop on Windows: Martlet hosts > *This PC* starts Docker Desktop when
+  it is not running and, when needed, asks Windows for administrator approval once
+  (UAC) to add the inbound rule `Martlet-Host-Gateway`: TCP 9443, Private/Domain
+  networks, local subnet only. If the PC's network is Public it offers to mark it
+  Private in the same step. The Martlet installer itself stays per-user and never
+  asks for admin. By hand, in an administrator PowerShell:
+
+  ```powershell
+  New-NetFirewallRule -Name Martlet-Host-Gateway -DisplayName 'Martlet host gateway (TCP 9443)' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 9443 -Profile Private,Domain -RemoteAddress LocalSubnet
+  Remove-NetFirewallRule -Name Martlet-Host-Gateway   # to close it again
+  ```
 
 ### Native Ubuntu
 
@@ -152,5 +161,8 @@ understanding, speech-to-text) are not listed.
   stand-in role and the desktop seeing its Audio2Face route, a simulated reboot
   (network holder restart) and `remove`.
 - **Native method**: exercised in a Linux container with stubbed system commands.
-- **SSH launchers**: generate the same commands; not yet run against a real SSH host.
+- **SSH launchers**: run against a local SSH test server (Docker and native bootstrap);
+  not yet against a real remote machine.
+- **Windows Firewall step**: the non-admin probe and the rule script (as `-WhatIf`)
+  were run; the elevated change itself has not been applied on a test machine.
 - Not yet run: a real NVIDIA GPU with the Audio2Face NIM.

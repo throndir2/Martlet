@@ -95,7 +95,53 @@ public partial class HostsWindow : ThemedWindow
         }
     }
 
-    private void Setup_Click(object sender, RoutedEventArgs e) => Run(HostAction.Setup);
+    private async void Setup_Click(object sender, RoutedEventArgs e)
+    {
+        if (Method == HostSetupMethod.ThisPcDocker && !busy && HostSetupCommands.IsPrivate(AddressText.Text.Trim()))
+        {
+            busy = true;
+            string? firewall;
+            try { firewall = await OpenFirewallAsync(AddressText.Text.Trim()); }
+            catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
+            { firewall = $"Windows Firewall was not changed ({error.Message}). Other PCs may not reach this host."; }
+            catch (OperationCanceledException) { return; }
+            finally { busy = false; }
+            Run(HostAction.Setup);
+            if (firewall is not null) StatusText.Text = firewall + " " + StatusText.Text;
+            return;
+        }
+        Run(HostAction.Setup);
+    }
+
+    /// <summary>Lets other PCs on the private network reach this PC's host port: one UAC prompt, only when needed.</summary>
+    private async Task<string?> OpenFirewallAsync(string address)
+    {
+        StatusText.Text = "Checking Windows Firewall...";
+        var state = await WindowsFirewall.ProbeAsync(address, lifetime.Token);
+        var blocked = state.DockerBlocked
+            ? " Windows Firewall also has a rule blocking Docker Desktop Backend on private networks; allow it in Windows Security > Firewall > Allow an app."
+            : "";
+        int? makePrivate = null;
+        if (state.Category == "Public")
+        {
+            if (!ConfirmationDialog.Confirm(this,
+                    "Windows treats this PC's network as Public, which blocks other PCs from reaching a Martlet host here. " +
+                    $"Mark it as a Private (home or work) network and allow Martlet's host port {WindowsFirewall.Port} from your local network? " +
+                    "Windows asks for administrator approval once.", "Allow other PCs to connect"))
+                return "Firewall unchanged: this PC's network stays Public, so only this PC can use the host." + blocked;
+            makePrivate = state.InterfaceIndex;
+        }
+        else if (state.RuleExists) return blocked.Length == 0 ? null : blocked.Trim();
+        StatusText.Text = $"Windows asks for administrator approval to allow TCP {WindowsFirewall.Port} from your private network...";
+        return await WindowsFirewall.ApplyAsync(makePrivate, lifetime.Token) switch
+        {
+            WindowsFirewall.Outcome.Applied => $"Windows Firewall now allows TCP {WindowsFirewall.Port} from your private network" +
+                (makePrivate is null ? "." : ", and the network is Private.") + blocked,
+            WindowsFirewall.Outcome.Declined => "Firewall unchanged (administrator approval declined); other PCs may not reach this host." + blocked,
+            _ => "Windows Firewall could not be changed; other PCs may not reach this host." + blocked
+        };
+    }
+
     private void AddAudio2Face_Click(object sender, RoutedEventArgs e) => Run(HostAction.AddAudio2Face);
     private void Status_Click(object sender, RoutedEventArgs e) => Run(HostAction.Status);
     private void RemoveAudio2Face_Click(object sender, RoutedEventArgs e) => Run(HostAction.RemoveAudio2Face);
@@ -103,12 +149,18 @@ public partial class HostsWindow : ThemedWindow
 
     private void InstallDocker_Click(object sender, RoutedEventArgs e)
     {
+        if (!ConfirmationDialog.Confirm(this,
+                "Install Docker Desktop with winget? Docker Desktop is free for personal use under Docker's Subscription Service " +
+                "Agreement (docker.com/legal); continuing accepts the winget source and package agreements. It uses WSL 2. " +
+                "Windows asks for administrator approval, and a restart or sign-out may follow.", "Install Docker Desktop"))
+            return;
         try
         {
             HostSetupCommands.InstallDockerDesktop();
-            StatusText.Text = "Docker Desktop installation opened in a console window. Start Docker Desktop once it finishes (GPU roles also need WSL 2 and a current NVIDIA driver).";
+            StatusText.Text = "Docker Desktop installation opened in a console window. When it is running, press Set up host (GPU roles also need a current NVIDIA driver).";
         }
-        catch (System.ComponentModel.Win32Exception error) { StatusText.Text = error.Message; }
+        catch (Exception error) when (error is System.ComponentModel.Win32Exception or IOException or UnauthorizedAccessException)
+        { StatusText.Text = error.Message; }
     }
 
     private void CopyDeviceId_Click(object sender, RoutedEventArgs e)
