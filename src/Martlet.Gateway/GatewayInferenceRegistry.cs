@@ -210,6 +210,8 @@ public sealed class GatewayInferenceRouteRegistry
                 worker is IPerceptionGatewayInferenceWorker,
             GatewayInferenceKind.Audio2Face =>
                 worker is IAudio2FaceGatewayInferenceWorker,
+            GatewayInferenceKind.Transcription =>
+                worker is ITranscriptionGatewayInferenceWorker,
             _ => false
         }, "worker.invalid");
 

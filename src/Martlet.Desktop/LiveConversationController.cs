@@ -120,6 +120,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private readonly ICaptureDeviceFactory captureDevices;
     private readonly ConversationRuntime runtime;
     private readonly OpenAiTranscriptionAdapter transcription;
+    private readonly HostTranscriptionAdapter hostTranscription;
     private readonly ParticipationPolicy policy;
     private readonly ConversationContextBuffer context;
     private readonly TimeProvider clock;
@@ -144,7 +145,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
         Func<IProviderCredentialSource, TimeProvider, OpenAiTranscriptionAdapter>? transcriptionFactory = null,
         Func<int, int>? nextStyle = null,
         DesktopMemoryService? memory = null,
-        GeneratedSpeechObserver? generatedSpeech = null, Action? revokeAvatar = null, VoiceIdentity? voiceIdentity = null)
+        GeneratedSpeechObserver? generatedSpeech = null, Action? revokeAvatar = null, VoiceIdentity? voiceIdentity = null,
+        IHostTranscriptionClient? hostListener = null)
     {
         this.operations = operations;
         this.settings = settings;
@@ -162,6 +164,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 hostText: new HostTextClient());
         transcription = transcriptionFactory?.Invoke(credentials, this.clock) ??
             OpenAiTranscriptionAdapter.Create(credentials, this.clock);
+        hostTranscription = new(hostListener ?? new HostTranscriptionClient(), this.clock);
         policy = new(runtime.SessionId, new ParticipationConfiguration(), new ParticipationState(), this.clock);
     }
 
@@ -356,8 +359,13 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 TranscriptionResult result;
                 try
                 {
-                    result = await transcription.TranscribeAsync(context, operation.Authorization.Configuration.Route(SetupRole.Stt).ModelId,
-                        audio, LiveConversationConfiguration.TranscriptionLimits, permission, operation.OriginalCaller, worker).ConfigureAwait(false);
+                    var stt = operation.Authorization.Configuration.Route(SetupRole.Stt);
+                    // Listening handed to a paired host: the utterance goes only to its pinned gateway.
+                    result = operation.Authorization.Configuration.SttHostTarget() is { } listener
+                        ? await hostTranscription.TranscribeAsync(context, listener, stt.ModelId, audio,
+                            LiveConversationConfiguration.TranscriptionLimits, permission, operation.OriginalCaller, worker).ConfigureAwait(false)
+                        : await transcription.TranscribeAsync(context, stt.ModelId, audio,
+                            LiveConversationConfiguration.TranscriptionLimits, permission, operation.OriginalCaller, worker).ConfigureAwait(false);
                 }
                 finally { operation.EndTranscription(); }
                 operation.Authorization.Check(worker);

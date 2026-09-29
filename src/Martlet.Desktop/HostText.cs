@@ -51,7 +51,7 @@ internal sealed class HostTextClient : IHostTextClient
             yield return deltas.Current;
     }
 
-    private static Audio2FaceHostConnection Connect(HostTextTarget target)
+    internal static Audio2FaceHostConnection Connect(HostTextTarget target)
     {
         var credentialId = HostPairingCredential.FromGuid(target.CredentialId);
         using var read = new WindowsCredentialStore().ReadAvatarHostSecret(target.HostId, credentialId);

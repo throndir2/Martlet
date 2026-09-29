@@ -17,6 +17,8 @@ public sealed partial class GatewayInferenceRoute
                 "/martlet/v1/inference/f5-synthesis", F5WorkerProtocol.ContractId, F5ProtocolVersion.Current.ToString()),
             GatewayInferenceKind.Audio2Face => (Audio2FaceRouteId, Audio2FacePath,
                 Audio2FaceContractId, Audio2FaceContractVersion),
+            GatewayInferenceKind.Transcription => (TranscriptionRouteId, TranscriptionPath,
+                TranscriptionContractId, TranscriptionContractVersion),
             _ => throw new GatewayProtocolException("worker.invalid")
         };
         GatewayRules.Require(capability.RequiredRole == GatewayRole.Voice &&

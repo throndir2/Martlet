@@ -909,10 +909,10 @@ public partial class MainWindow
                 AutomationProperties.SetAutomationId(change, "RoleChange-" + role);
                 change.Click += (_, _) => RunNodeAction(NodeAction.Setup);
                 FrameworkElement control = change;
-                if (role == SetupRole.Llm && NetworkMap.Hosts(Inputs()).Count > 0)
+                if (HostJob.For(role) is { } job && NetworkMap.Hosts(Inputs()).Count > 0)
                 {
                     change.Margin = new Thickness(0, 6, 0, 0);
-                    control = new StackPanel { Children = { ThinkingChoice(), change } };
+                    control = new StackPanel { Children = { JobChoice(job), change } };
                 }
                 RolesBoard.Children.Add(RoleTile(name, owner?.Title ?? "Not chosen yet",
                     owner?.Roles.First(r => r.Name == name).Detail ?? "Pick a cloud model or one of your computers in Setup.", control, owner?.Id));
@@ -1145,6 +1145,10 @@ public partial class MainWindow
             !ConfirmationDialog.Confirm(this, $"{host.HostId} does the thinking right now. Remove Ollama from it anyway? " +
                 "Martlet cannot answer until you hand thinking to another computer or back to the cloud (Devices > Who does what).", "Remove role"))
             return;
+        if (!add && role.Kind == HostRoles.Stt && NetworkMap.JobHost(homeSettings, SetupRole.Stt) == host.HostId &&
+            !ConfirmationDialog.Confirm(this, $"{host.HostId} does the listening right now. Remove whisper from it anyway? " +
+                "Martlet cannot hear you until you hand listening to another computer or back to your Setup choice (Devices > Who does what).", "Remove role"))
+            return;
         LaunchOnHost(host, add ? role.Add : role.Remove);
     }
 
@@ -1212,6 +1216,7 @@ public partial class MainWindow
             case NodeAction.Advisor: Advisor_Click(this, args); break;
             case NodeAction.UseForLipSync: _ = AssignLipSyncAsync("host:" + argument); break;
             case NodeAction.UseForThinking: _ = AssignThinkingAsync("host:" + argument); break;
+            case NodeAction.UseForListening: _ = AssignJobAsync(HostJob.Listening, "host:" + argument); break;
             case NodeAction.LipSyncThisPc: _ = AssignLipSyncAsync("this-pc"); break;
             case NodeAction.InstallRole: RunHostRole(argument, add: true); break;
             case NodeAction.RemoveRole: RunHostRole(argument, add: false); break;

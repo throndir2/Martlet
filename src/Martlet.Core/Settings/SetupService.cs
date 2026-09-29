@@ -100,7 +100,7 @@ public sealed class SetupService(SettingsStore settingsStore, ICredentialStore c
             {
                 Role = route.Role,
                 CredentialId = old,
-                Scope = route.RouteType is SetupRouteType.GatewayOllama or SetupRouteType.GatewayF5 or SetupRouteType.ChatCompletions
+                Scope = SelfHostSetup.IsGateway(route.RouteType) || route.RouteType == SetupRouteType.ChatCompletions
                     ? CredentialScopeSettings.From(route)
                     : null
             }).ToArray()

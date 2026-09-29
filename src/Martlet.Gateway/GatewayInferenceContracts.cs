@@ -24,7 +24,8 @@ public enum GatewayInferenceKind
     F5Synthesis,
     PerceptionOcr,
     PerceptionVlm,
-    Audio2Face
+    Audio2Face,
+    Transcription
 }
 
 public enum GatewayInferenceEventKind
@@ -376,6 +377,55 @@ public sealed partial class GatewayInferenceRoute
     /// <summary>At most four seconds of 48 kHz mono signed 16-bit PCM per request.</summary>
     public const int Audio2FaceMaximumPcmBytes = 48_000 * 2 * 4;
 
+    /// <summary>
+    /// Relays one bounded utterance (16 kHz mono PCM16) to the host's own loopback speech-to-text
+    /// service and returns its final transcript as text events. The model identity is the host-selected model.
+    /// </summary>
+    public static GatewayInferenceRoute Transcription(
+        string destinationId,
+        string workerId,
+        string modelId,
+        string modelRevision)
+    {
+        GatewayRules.Token(modelId, 128);
+        GatewayRules.Token(modelRevision, 128);
+        var modelSha256 = Convert.ToHexStringLower(SHA256.HashData(
+            Encoding.UTF8.GetBytes(modelId + "\n" + modelRevision)));
+        return new(
+            GatewayInferenceKind.Transcription,
+            GatewayRole.Voice,
+            TranscriptionRouteId,
+            TranscriptionPath,
+            TranscriptionContractId,
+            TranscriptionContractVersion,
+            destinationId,
+            workerId,
+            "1.0.0",
+            modelId,
+            modelRevision,
+            modelSha256,
+            IdentityDigest(TranscriptionContractId, workerId, modelId, modelRevision),
+            // Base64 PCM plus the request envelope.
+            maximumRequestBytes: 1_400_000,
+            maximumInputBytes: TranscriptionMaximumPcmBytes,
+            maximumOutputBytes: TranscriptionMaximumTextBytes,
+            maximumEventBytes: TranscriptionMaximumTextBytes,
+            maximumEvents: 16,
+            maximumStreamBytes: 256 * 1024,
+            maximumDuration: TimeSpan.FromSeconds(60),
+            GatewayCancellationCapability.RequestAbort);
+    }
+
+    public const string TranscriptionRouteId = "martlet.gateway.transcription.v1";
+    public const string TranscriptionPath = "/martlet/v1/inference/transcription";
+    public const string TranscriptionContractId = "martlet.transcription-relay";
+    public const string TranscriptionContractVersion = "1.0";
+    public const int TranscriptionSampleRate = 16_000;
+    /// <summary>At most 30 seconds of 16 kHz mono signed 16-bit PCM per utterance.</summary>
+    public const int TranscriptionMaximumPcmBytes = TranscriptionSampleRate * 2 * 30;
+    /// <summary>Final transcript bound: 4,096 characters of up to four UTF-8 bytes each.</summary>
+    public const int TranscriptionMaximumTextBytes = 16 * 1024;
+
     private static GatewayCancellationCapability Map(F5CancellationCapability capability) =>
         capability switch
         {
@@ -571,6 +621,22 @@ public sealed class GatewayAudio2FacePayload : GatewayInferencePayload
     public int SampleRate { get; }
     public ReadOnlyMemory<byte> Pcm => pcm;
     public int SampleCount => pcm.Length / 2;
+    internal override void Clear() => CryptographicOperations.ZeroMemory(pcm);
+}
+
+/// <summary>One microphone utterance as 16 kHz mono signed 16-bit little-endian PCM, to be transcribed.</summary>
+public sealed class GatewayTranscriptionPayload : GatewayInferencePayload
+{
+    private readonly byte[] pcm;
+
+    internal GatewayTranscriptionPayload(int sampleRate, byte[] pcm)
+    {
+        SampleRate = sampleRate;
+        this.pcm = pcm;
+    }
+
+    public int SampleRate { get; }
+    public ReadOnlyMemory<byte> Pcm => pcm;
     internal override void Clear() => CryptographicOperations.ZeroMemory(pcm);
 }
 
@@ -827,6 +893,10 @@ public interface IAudio2FaceGatewayInferenceWorker : IGatewayInferenceWorker
 {
 }
 
+public interface ITranscriptionGatewayInferenceWorker : IGatewayInferenceWorker
+{
+}
+
 internal static class GatewayInferenceEventValidator
 {
     internal static void Validate(
@@ -873,7 +943,7 @@ internal static class GatewayInferenceEventValidator
                 break;
             case GatewayInferenceEventKind.TextDelta:
                 GatewayRules.Require(
-                    request.Route.Kind == GatewayInferenceKind.OllamaChat &&
+                    request.Route.Kind is GatewayInferenceKind.OllamaChat or GatewayInferenceKind.Transcription &&
                     payloadLength > 0 &&
                     item.ErrorCode is null &&
                     IsUtf8(item.Payload.Span) &&
@@ -1101,6 +1171,9 @@ internal static class GatewayInferenceEventValidator
                     break;
                 case GatewayInferenceKind.Audio2Face:
                     GatewayRules.Require(dataEvents > 0, "stream.invalid");
+                    break;
+                case GatewayInferenceKind.Transcription:
+                    // No text means no speech was recognized; that is a completed transcription.
                     break;
             }
         }
