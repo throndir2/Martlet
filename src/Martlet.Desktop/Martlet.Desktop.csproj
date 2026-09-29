@@ -7,6 +7,8 @@
   </PropertyGroup>
   <ItemGroup>
     <Resource Include="Assets\Martlet.ico" />
+    <!-- Resemblyzer GE2E voice encoder (Apache-2.0), converted by scripts\Convert-SpeakerEncoder.py for local Voice ID. -->
+    <EmbeddedResource Include="Assets\SpeakerEncoder.bin" LogicalName="Martlet.Desktop.SpeakerEncoder.bin" />
     <InternalsVisibleTo Include="Martlet.Desktop.Tests" />
     <ProjectReference Include="..\Martlet.Conversation\Martlet.Conversation.csproj" />
     <ProjectReference Include="..\Martlet.Participation\Martlet.Participation.csproj" />

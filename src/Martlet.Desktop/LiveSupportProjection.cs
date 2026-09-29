@@ -42,7 +42,9 @@ internal sealed class LiveSupportProjection
         var (code, stage, state) = status.Code switch
         {
             "conversation.authorizing" => ("conversation.running", Stage.Application, MetadataState.Running),
-            "mic.capturing" or "mic.transferred_and_cleared" => ("conversation.running", Stage.Capture, MetadataState.Running),
+            "mic.capturing" or "mic.transferred_and_cleared" or "mic.listening" or "mic.hearing_speech" or
+                "speaker.checking" or "speaker.verified" => ("conversation.running", Stage.Capture, MetadataState.Running),
+            "mic.no_speech" or "speaker.not_user" or "speaker.too_short" => ("conversation.suppressed", Stage.Capture, MetadataState.Suppressed),
             "stt.uploading" => ("conversation.running", Stage.Transcription, MetadataState.Running),
             "runtime.Idle" or "runtime.Authorizing" or "runtime.Generating" => ("conversation.running", Stage.Generation, MetadataState.Running),
             "runtime.Synthesizing" => ("conversation.running", Stage.Synthesis, MetadataState.Running),

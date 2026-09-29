@@ -824,6 +824,86 @@ public sealed class LiveConversationTests
     }
 
     [Fact]
+    public async Task HandsFreeListeningSendsOnlyTheEndpointedUtterance()
+    {
+        await using var fixture = await LiveFixture.Create();
+        EnqueueUtterance(fixture.Capture, quietBefore: 10, speech: 12, quietAfter: 15);
+        var operation = fixture.Controller.Start(null, voice: false, microphone: true, approved: true, true, true,
+            listening: new(HandsFree: true, new VoiceActivitySettings(), RequireVoiceId: false));
+        await fixture.Finish(operation);
+        Assert.Equal(CaptureEndReason.Released, operation.Capture!.Snapshot.EndReason);
+        Assert.Equal(1, fixture.Stt.Calls);
+        // Pre-roll + 1.2 s speech + tail, not the whole 3.7 s recording.
+        Assert.InRange(fixture.Stt.Body.Length, 38_400, 80_000);
+        Assert.Equal(1, fixture.Controller.PolicySnapshot.AcceptedThroughIntentId);
+        Assert.Equal(ConversationState.Completed, operation.Turn!.Snapshot.State);
+    }
+
+    [Fact]
+    public async Task HandsFreeSilenceRestartsWithoutUploading()
+    {
+        await using var fixture = await LiveFixture.Create();
+        EnqueueUtterance(fixture.Capture, quietBefore: 20, speech: 0, quietAfter: 0);
+        var operation = fixture.Controller.Start(null, voice: false, microphone: true, approved: true, true, true,
+            listening: new(HandsFree: true, new VoiceActivitySettings(), RequireVoiceId: false));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        while (!operation.Worker.Completion.IsCompleted)
+        {
+            fixture.Clock.Advance(TimeSpan.FromMilliseconds(100));
+            await Task.Delay(1, timeout.Token);
+        }
+        await operation.Worker.Completion;
+        Assert.Equal("mic.no_speech", operation.Status.Code);
+        Assert.Equal(0, fixture.Stt.Calls);
+        Assert.Equal(0, fixture.Llm.Calls);
+    }
+
+    [Fact]
+    public async Task VoiceIdDiscardsAnotherVoiceBeforeUpload()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet.VoiceId." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var identity = new VoiceIdentity(directory);
+            var print = new float[SpeakerEncoder.EmbeddingSize];
+            for (var i = 0; i < print.Length; i += 7) print[i] = 1;
+            identity.Save(new(SpeakerEncoder.Average([print]), 0.9f, 0.9f, DateTimeOffset.Now, 20));
+            await using var fixture = await LiveFixture.Create(voiceIdentity: identity);
+            EnqueueUtterance(fixture.Capture, quietBefore: 5, speech: 25, quietAfter: 15);
+            var operation = fixture.Controller.Start(null, voice: false, microphone: true, approved: true, true, true,
+                listening: new(HandsFree: true, new VoiceActivitySettings(), RequireVoiceId: true));
+            await fixture.Finish(operation);
+            Assert.Equal("speaker.not_user", operation.Status.Code);
+            Assert.Equal(SpeakerVerdict.OtherSpeaker, operation.SpeakerCheck!.Verdict);
+            Assert.Equal(0, fixture.Stt.Calls);
+            Assert.Equal(0, fixture.Llm.Calls);
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
+
+    private static void EnqueueUtterance(ControlledCapture capture, int quietBefore, int speech, int quietAfter)
+    {
+        var sample = 0;
+        void Packets(int count, double amplitude)
+        {
+            for (var p = 0; p < count; p++)
+            {
+                var packet = new byte[3200];
+                for (var i = 0; i < 1600; i++, sample++)
+                {
+                    var t = sample / 16000.0;
+                    var value = amplitude * Math.Sin(2 * Math.PI * 220 * t) * (0.7 + 0.3 * Math.Sin(2 * Math.PI * 4 * t));
+                    System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(packet.AsSpan(i * 2), (short)(value * 32767));
+                }
+                capture.Packets.Enqueue(packet);
+            }
+        }
+        Packets(quietBefore, 0.001);
+        Packets(speech, 0.25);
+        Packets(quietAfter, 0.001);
+    }
+
+    [Fact]
     public async Task StaleStopAndReleaseCannotCancelTheNextAction()
     {
         await using var fixture = await LiveFixture.Create();
@@ -1305,7 +1385,7 @@ internal sealed class LiveFixture : IAsyncDisposable
     internal ControlledDevice Output { get; }
     internal DesktopMemoryService Memory { get; }
     internal LiveConversationController Controller { get; }
-    internal LiveFixture(ControlledDevice? output = null, Func<int, int>? nextStyle = null)
+    internal LiveFixture(ControlledDevice? output = null, Func<int, int>? nextStyle = null, VoiceIdentity? voiceIdentity = null)
     {
         Store = new(DirectoryPath);
         Memory = new(Store, Clock);
@@ -1320,7 +1400,7 @@ internal sealed class LiveFixture : IAsyncDisposable
                     target.Keyless ? null : credentials, clock)),
             (credentials, clock) => OpenAiTranscriptionAdapter.CreateForFixture(Stt, credentials, clock),
             nextStyle,
-            memory: Memory);
+            memory: Memory, voiceIdentity: voiceIdentity);
         Events.LockedChanged += Controller.SetSessionLocked;
         Llm.Inspect = Tts.Inspect = request =>
         {
@@ -1329,9 +1409,9 @@ internal sealed class LiveFixture : IAsyncDisposable
         };
     }
     internal static async Task<LiveFixture> Create(ControlledDevice? output = null, Func<int, int>? nextStyle = null,
-        bool legacy = false)
+        bool legacy = false, VoiceIdentity? voiceIdentity = null)
     {
-        var fixture = new LiveFixture(output, nextStyle);
+        var fixture = new LiveFixture(output, nextStyle, voiceIdentity);
         var settings = SetupSettings.Begin(null);
         settings = settings with { Profile = settings.Profile with { Kind = ProfileKind.Api },
             Audio = AudioSettings.Create() };

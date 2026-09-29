@@ -25,7 +25,7 @@
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock Text="Talk with Martlet" FontSize="21" FontWeight="SemiBold"/>
                     <TextBlock Style="{DynamicResource Muted}" FontSize="12"
-                               Text="Real API conversation, not the offline demo. Nothing is sent until you approve a message; Stop or Esc discards it and revokes permission. Nothing resumes on its own."/>
+                               Text="Real API conversation, not the offline demo. Nothing is sent until you approve; hands-free listening continues only while you keep it on. Stop or Esc discards and revokes permission."/>
                 </StackPanel>
             </DockPanel>
         </Border>
@@ -111,9 +111,14 @@
                                         PreviewKeyDown="Ptt_KeyDown" PreviewKeyUp="Ptt_KeyUp" LostKeyboardFocus="Ptt_LostFocus"
                                         AutomationProperties.AutomationId="LivePtt" AutomationProperties.Name="Hold PTT (Space key), release to send"
                                         AutomationProperties.HelpText="Hold mouse or Space to record, release to send. Accessible Invoke starts a bounded recording; use Finish recording to send or Stop to discard. Never records automatically." />
+                                <Button x:Name="ListenButton" Content="Start _listening" Click="Listen_Click" IsEnabled="False" Padding="10,9" Visibility="Collapsed"
+                                        AutomationProperties.AutomationId="LiveListen" AutomationProperties.Name="Start or stop hands-free listening"
+                                        AutomationProperties.HelpText="Hands-free: keeps the microphone open and sends each utterance when you pause. Click again, Stop or Esc to end listening." />
                                 <Button x:Name="ReleaseButton" Grid.Column="2" Content="_Finish and send" Click="Release_Click" IsEnabled="False" Padding="10,9"
                                         AutomationProperties.AutomationId="LiveRelease" AutomationProperties.Name="Finish recording and send" />
                             </Grid>
+                            <ProgressBar x:Name="LevelMeter" Height="5" Minimum="0" Maximum="1" Margin="0,8,0,0" Visibility="Collapsed"
+                                         AutomationProperties.Name="Microphone level while listening" AutomationProperties.AutomationId="LiveLevel" />
                         </StackPanel>
                     </Border>
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -123,18 +128,53 @@
                                        Text="Review what is sent and approve it, then type or hold to talk below. Approvals clear after every action."/>
                             <CheckBox x:Name="VoiceChoice" Content="Speak the reply with the AI-generated _voice (OFF by default)" Checked="Output_Changed" Unchecked="Output_Changed" Margin="0,0,0,10"
                                       AutomationProperties.AutomationId="LiveVoice" />
+                            <Border Style="{DynamicResource Chip}" HorizontalAlignment="Stretch" Padding="12,10" Margin="0,0,0,12">
+                                <StackPanel>
+                                    <TextBlock Text="How you talk" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                    <RadioButton x:Name="PushToTalkMode" GroupName="TalkMode" IsChecked="True" Checked="Mode_Changed"
+                                                 Content="_Push-to-talk: hold Space or the button" AutomationProperties.AutomationId="LiveModePtt" />
+                                    <RadioButton x:Name="VoiceActivityMode" GroupName="TalkMode" Checked="Mode_Changed" Margin="0,4,0,0"
+                                                 Content="Voice activit_y: hands-free, replies when you pause" AutomationProperties.AutomationId="LiveModeVoiceActivity" />
+                                    <StackPanel x:Name="VoiceActivityPanel" Margin="20,8,0,0" Visibility="Collapsed">
+                                        <DockPanel>
+                                            <TextBlock Text="Sensitivity" Width="92" VerticalAlignment="Center" FontSize="12"/>
+                                            <TextBlock DockPanel.Dock="Right" Text="High" Style="{DynamicResource Muted}" FontSize="11" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                            <TextBlock DockPanel.Dock="Left" Text="Low" Style="{DynamicResource Muted}" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                            <Slider x:Name="SensitivitySlider" Minimum="0" Maximum="1" Value="0.5" SmallChange="0.05" LargeChange="0.1"
+                                                    ValueChanged="Activity_Changed" AutomationProperties.Name="Voice activity sensitivity" AutomationProperties.AutomationId="LiveSensitivity"/>
+                                        </DockPanel>
+                                        <DockPanel Margin="0,6,0,0">
+                                            <TextBlock Text="Reply after" Width="92" VerticalAlignment="Center" FontSize="12"/>
+                                            <ComboBox x:Name="PauseChoiceBox" SelectedIndex="1" SelectionChanged="Activity_Changed"
+                                                      AutomationProperties.Name="Pause length before replying" AutomationProperties.AutomationId="LivePauseLength">
+                                                <ComboBoxItem Content="a short pause (0.5 s)"/>
+                                                <ComboBoxItem Content="a normal pause (0.8 s)"/>
+                                                <ComboBoxItem Content="a long pause (1.2 s)"/>
+                                            </ComboBox>
+                                        </DockPanel>
+                                        <TextBlock Style="{DynamicResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"
+                                                   Text="Listening stays on (even in the background) until you click Stop listening, Stop, Esc, pause, mute, lock or close. It waits for each reply to finish before listening again. Each utterance is one action within the envelope below."/>
+                                    </StackPanel>
+                                    <CheckBox x:Name="VoiceIdChoice" Margin="0,10,0,0" Checked="VoiceId_Changed" Unchecked="VoiceId_Changed"
+                                              Content="O_nly respond to my voice (Voice ID)" AutomationProperties.AutomationId="LiveVoiceId"
+                                              AutomationProperties.HelpText="Recognizes your enrolled voice on this PC before anything is uploaded. Other voices, TV and too-short sounds are ignored." />
+                                    <TextBlock x:Name="VoiceIdStatus" Style="{DynamicResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="20,2,0,0" />
+                                    <Button Style="{DynamicResource LinkButton}" Content="Set up Voice _ID" Click="VoiceIdSetup_Click" HorizontalAlignment="Left"
+                                            Margin="16,2,0,0" AutomationProperties.AutomationId="LiveVoiceIdSetup" />
+                                </StackPanel>
+                            </Border>
                             <Label Target="{Binding ElementName=EnvelopeText}" Content="What it sends, where, and what it may _cost" Padding="0,0,0,4" FontSize="12"/>
                             <TextBox x:Name="EnvelopeText" IsReadOnly="True" TextWrapping="Wrap" Height="140" VerticalScrollBarVisibility="Auto" FontSize="12"
                                      AutomationProperties.AutomationId="LiveEnvelope" AutomationProperties.Name="Exact action bounds and data destinations" />
                             <CheckBox x:Name="AcceptAction" Margin="0,12,0,6" Checked="Consent_Changed" Unchecked="Consent_Changed" AutomationProperties.AutomationId="LiveAcceptAction"
-                                      Content="I authorize my next Send / PTT action within this displayed envelope, including potential API charges and the selected generated-voice output."/>
+                                      Content="I authorize my next Send / PTT action (or, while hands-free listening is on, each detected utterance) within this displayed envelope, including potential API charges and the selected generated-voice output."/>
                             <CheckBox x:Name="AcceptMemory" Margin="0,6"
                                       Content="Optional, next Send / PTT only: I separately authorize bounded lexical retrieval from my enabled local memory and disclosure of only fitting top facts (at most three) with provenance to the selected LLM. This is fresh permission, not provider permission, and is cleared after use."
                                       Checked="Consent_Changed" Unchecked="Consent_Changed" AutomationProperties.AutomationId="LiveAcceptMemory"
                                       AutomationProperties.HelpText="OFF for every action by default. Does not save this conversation or upload the complete memory store." />
-                            <CheckBox x:Name="AcceptCapture" Content="For PTT only: I permit bounded LOCAL microphone capture, including other people only with their permission." Margin="0,6"
+                            <CheckBox x:Name="AcceptCapture" Content="For microphone input: I permit bounded LOCAL microphone capture, including other people only with their permission." Margin="0,6"
                                       Checked="Consent_Changed" Unchecked="Consent_Changed" AutomationProperties.AutomationId="LiveAcceptCapture" />
-                            <CheckBox x:Name="AcceptUpload" Content="For PTT only: I separately permit uploading this audio to the named STT destination with potential charges, even if policy later suppresses it." Margin="0,6"
+                            <CheckBox x:Name="AcceptUpload" Content="For microphone input: I separately permit uploading this audio to the named STT destination with potential charges, even if policy later suppresses it." Margin="0,6"
                                       Checked="Consent_Changed" Unchecked="Consent_Changed" AutomationProperties.AutomationId="LiveAcceptUpload" />
                             <WrapPanel Margin="0,10,0,0">
                                 <CheckBox x:Name="PauseChoice" Content="Pause all live work" Checked="Controls_Changed" Unchecked="Controls_Changed" Margin="0,4,16,4" AutomationProperties.AutomationId="LivePause" />

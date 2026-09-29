@@ -1,0 +1,74 @@
+<local:ThemedWindow x:Class="Martlet.Desktop.VoiceIdWindow"
+        xmlns:local="clr-namespace:Martlet.Desktop"
+        Style="{DynamicResource AppWindowStyle}"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Martlet - Voice ID" Width="720" Height="760" MinWidth="520" MinHeight="460"
+        WindowStartupLocation="CenterOwner" Closing="Window_Closing"
+        AutomationProperties.AutomationId="VoiceIdWindow" AutomationProperties.Name="Voice ID enrollment, local only">
+    <DockPanel>
+        <Border DockPanel.Dock="Bottom" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="20,12">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="_Close" Click="Close_Click" Padding="16,8" AutomationProperties.AutomationId="VoiceIdClose" />
+                <TextBlock x:Name="StatusText" TextWrapping="Wrap" VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite"
+                           AutomationProperties.AutomationId="VoiceIdStatus" Text="Nothing recorded yet." />
+            </DockPanel>
+        </Border>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="22,18">
+                <TextBlock Text="Voice ID" FontSize="24" FontWeight="SemiBold" />
+                <TextBlock Margin="0,8,0,0" TextWrapping="Wrap"
+                           Text="Voice ID learns what your voice sounds like so Martlet can tell you apart from other people, a TV or a game, and ignore them before anything is uploaded. It also notices when another voice joins your turn." />
+                <TextBlock Margin="0,8,0,0" TextWrapping="Wrap" Style="{DynamicResource Muted}" FontSize="12"
+                           Text="Everything runs on this PC with a bundled speaker model (Resemblyzer GE2E, Apache-2.0). Recordings stay in memory and are discarded; only your voiceprint (256 numbers) is saved to voice-id.json in your Martlet data folder. It is a convenience filter, not a security lock: a recording of your voice or a similar voice may pass." />
+
+                <CheckBox x:Name="AcceptRecording" Margin="0,14,0,0" Checked="Consent_Changed" Unchecked="Consent_Changed"
+                          Content="I permit LOCAL microphone recording for Voice ID (up to 10 seconds per phrase). Nothing is uploaded."
+                          AutomationProperties.AutomationId="VoiceIdAcceptRecording" />
+
+                <Border Style="{DynamicResource Chip}" HorizontalAlignment="Stretch" Padding="14,12" Margin="0,14,0,0">
+                    <StackPanel>
+                        <TextBlock Text="1. Enroll: read three phrases" FontWeight="SemiBold" />
+                        <TextBlock Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,8"
+                                   Text="Use your usual microphone, distance and speaking voice. Recording stops by itself when you finish." />
+                        <TextBlock x:Name="PhraseText" FontSize="17" TextWrapping="Wrap" Margin="0,0,0,10" AutomationProperties.AutomationId="VoiceIdPhrase" />
+                        <WrapPanel>
+                            <Button x:Name="RecordButton" Content="_Record phrase 1 of 3" Click="Record_Click" Padding="14,8" Margin="0,0,10,0"
+                                    Style="{DynamicResource PrimaryButton}" AutomationProperties.AutomationId="VoiceIdRecord" />
+                            <Button x:Name="StopButton" Content="_Stop" Click="Stop_Click" Padding="14,8" Margin="0,0,10,0" IsEnabled="False"
+                                    AutomationProperties.AutomationId="VoiceIdStop" />
+                            <Button x:Name="RestartButton" Content="Start _over" Click="Restart_Click" Padding="14,8"
+                                    AutomationProperties.AutomationId="VoiceIdRestart" />
+                        </WrapPanel>
+                        <ProgressBar x:Name="LevelMeter" Height="6" Minimum="0" Maximum="1" Margin="0,10,0,0"
+                                     AutomationProperties.Name="Microphone level" AutomationProperties.AutomationId="VoiceIdLevel" />
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{DynamicResource Chip}" HorizontalAlignment="Stretch" Padding="14,12" Margin="0,12,0,0">
+                    <StackPanel>
+                        <TextBlock Text="2. Test and tune" FontWeight="SemiBold" />
+                        <TextBlock x:Name="VoiceprintText" TextWrapping="Wrap" Margin="0,4,0,8" AutomationProperties.AutomationId="VoiceIdVoiceprint" />
+                        <DockPanel Margin="0,0,0,8">
+                            <TextBlock Text="Match threshold" VerticalAlignment="Center" Width="120" />
+                            <TextBlock x:Name="ThresholdValue" DockPanel.Dock="Right" Width="44" VerticalAlignment="Center" TextAlignment="Right" />
+                            <Slider x:Name="ThresholdSlider" Minimum="0.5" Maximum="0.95" SmallChange="0.01" LargeChange="0.05" Value="0.75"
+                                    ValueChanged="Threshold_Changed" AutomationProperties.Name="Voice ID match threshold"
+                                    AutomationProperties.AutomationId="VoiceIdThreshold" />
+                        </DockPanel>
+                        <TextBlock Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,8"
+                                   Text="Higher is stricter (fewer other voices get through, but you may be missed on a bad mic day). Clean same-person speech usually scores 0.80-0.95; other people usually 0.45-0.75." />
+                        <WrapPanel>
+                            <Button x:Name="TestButton" Content="_Test: say anything" Click="Test_Click" Padding="14,8" Margin="0,0,10,0"
+                                    AutomationProperties.AutomationId="VoiceIdTest" />
+                            <Button x:Name="DeleteButton" Content="_Delete voiceprint" Click="Delete_Click" Padding="14,8"
+                                    AutomationProperties.AutomationId="VoiceIdDelete" />
+                        </WrapPanel>
+                        <TextBlock x:Name="TestResultText" TextWrapping="Wrap" Margin="0,10,0,0" AutomationProperties.LiveSetting="Polite"
+                                   AutomationProperties.AutomationId="VoiceIdTestResult" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</local:ThemedWindow>

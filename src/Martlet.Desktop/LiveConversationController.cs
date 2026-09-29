@@ -13,6 +13,13 @@ namespace Martlet.Desktop;
 internal sealed record LiveConversationStatus(string Code, bool Finished = false, bool Quarantined = false,
     PolicyReason? Policy = null, ProviderFailureCode? ProviderFailure = null, ErrorCode? AudioFailure = null);
 
+// HandsFree: voice activity endpoints each utterance. RequireVoiceId: only the enrolled voice is uploaded.
+internal sealed record ListeningOptions(bool HandsFree, VoiceActivitySettings Activity, bool RequireVoiceId)
+{
+    internal static TimeSpan IdleRestart => TimeSpan.FromSeconds(12);
+    internal static TimeSpan MinimumUtterance => TimeSpan.FromMilliseconds(450);
+}
+
 internal sealed class LiveConversationOperation
 {
     private readonly object gate = new();
@@ -42,6 +49,12 @@ internal sealed class LiveConversationOperation
     internal int MemoryFactsUsed { get; set; }
     internal int MemoryFactsOmitted { get; set; }
     internal long? MemoryStoreRevision { get; set; }
+    internal ListeningOptions? Listening { get; init; }
+    internal Voiceprint? Voiceprint { get; init; }
+    internal SpeakerCheck? SpeakerCheck { get; set; }
+    private double voiceLevel = -100;
+    internal double VoiceLevel { get => Volatile.Read(ref voiceLevel); set => Volatile.Write(ref voiceLevel, value); }
+    internal bool HandsFree => Listening?.HandsFree == true;
     internal bool OwnershipReleased => Worker.Completion.IsCompleted;
     internal bool ExecutionFinished => Volatile.Read(ref executionFinished) != 0;
     internal void FinishExecution() => Interlocked.Exchange(ref executionFinished, 1);
@@ -113,6 +126,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private readonly Func<int, int> nextStyle;
     private readonly Action? revokeAvatar;
     private readonly DesktopMemoryService? memory;
+    private readonly VoiceIdentity? voiceIdentity;
     private readonly TaskCompletionSource quarantine = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private LiveConversationOperation? active;
     private LiveConversationConfiguration? configuration;
@@ -130,7 +144,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         Func<IProviderCredentialSource, TimeProvider, OpenAiTranscriptionAdapter>? transcriptionFactory = null,
         Func<int, int>? nextStyle = null,
         DesktopMemoryService? memory = null,
-        GeneratedSpeechObserver? generatedSpeech = null, Action? revokeAvatar = null)
+        GeneratedSpeechObserver? generatedSpeech = null, Action? revokeAvatar = null, VoiceIdentity? voiceIdentity = null)
     {
         this.operations = operations;
         this.settings = settings;
@@ -140,6 +154,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         this.nextStyle = nextStyle ?? RandomNumberGenerator.GetInt32;
         this.revokeAvatar = revokeAvatar;
         this.memory = memory;
+        this.voiceIdentity = voiceIdentity;
         context = new(this.clock);
         var credentials = new ConversationCredentialSource(() => Volatile.Read(ref active)?.Authorization);
         runtime = runtimeFactory?.Invoke(credentials, this.clock) ??
@@ -223,10 +238,15 @@ internal sealed class LiveConversationController : IAsyncDisposable
 
     internal LiveConversationOperation Start(string? text, bool voice, bool microphone, bool approved,
         bool localCaptureApproved = false, bool uploadApproved = false, CancellationToken caller = default,
-        bool memoryApproved = false)
+        bool memoryApproved = false, ListeningOptions? listening = null)
     {
         if (!approved || microphone && (!localCaptureApproved || !uploadApproved))
             throw new LiveActionException("conversation.permission_required");
+        if (listening is not null && !microphone) throw new LiveActionException("conversation.invalid_input");
+        listening?.Activity.Validate();
+        Voiceprint? voiceprint = null;
+        if (listening?.RequireVoiceId == true)
+            voiceprint = voiceIdentity?.Current ?? throw new LiveActionException("voiceid.not_enrolled");
         caller.ThrowIfCancellationRequested();
         BoundedTextInput? input = microphone ? null : new(text ?? "");
         if (input is { UserText.Length: > 4096 }) throw new LiveActionException("conversation.input_limit");
@@ -243,7 +263,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
             long acceptedRevision = revision = checked(revision + 1);
             var authorization = new ConversationAuthorization(selected, voice, microphone, clock,
                 () => Volatile.Read(ref revision) == acceptedRevision, settings.LoadAsync, vault, caller);
-            operation = new(authorization, caller) { MemoryRequested = memoryApproved };
+            operation = new(authorization, caller) { MemoryRequested = memoryApproved, Listening = listening, Voiceprint = voiceprint };
             active = operation;
             var worker = operations.TryStart(async token =>
             {
@@ -358,7 +378,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
             {
                 operation.Authorization.Check(worker);
                 // Receipt is NOW for a newly received transcript. Never renew a queued/busy/expired intent.
-                var intent = policy.CreateIntent(new(operation.Authorization.Microphone ? InputSource.PushToTalkControl : InputSource.TypedControl,
+                var source = !operation.Authorization.Microphone ? InputSource.TypedControl
+                    : operation.HandsFree ? InputSource.HandsFreeListening : InputSource.PushToTalkControl;
+                var intent = policy.CreateIntent(new(source,
                     new Transcript(input!.UserText, confidence: operation.Transcription?.Confidence),
                     trustedTypedAddress: !operation.Authorization.Microphone));
                 var decision = policy.Evaluate(intent);
@@ -470,6 +492,68 @@ internal sealed class LiveConversationController : IAsyncDisposable
 
     private CorrelationIds Ids() => new() { SessionId = runtime.SessionId, TurnId = Guid.NewGuid(), RequestId = Guid.NewGuid() };
 
+    // Reads the capture's own 20 ms frames (no second audio queue) and releases it when the speaker pauses.
+    // Returns the speech range to send, or null when nobody spoke before the idle restart.
+    private async Task<SpeechRange?> EndpointAsync(LiveConversationOperation operation, CaptureRun run)
+    {
+        var settings = operation.Listening!.Activity;
+        var detector = new EnergyVoiceActivityDetector(settings);
+        var minimumFrames = (int)(ListeningOptions.MinimumUtterance.TotalMilliseconds / 20);
+        var frame = new byte[EnergyVoiceActivityDetector.FrameBytes];
+        var started = clock.GetTimestamp();
+        int index = 0, accepted = -1;
+        try
+        {
+            while (!run.Completion.IsCompleted)
+            {
+                bool copied;
+                do
+                {
+                    try { copied = run.TryCopyMonoFrame(index, frame); }
+                    catch (OperationCanceledException) { copied = false; }
+                    if (!copied) break;
+                    index++;
+                    var transition = detector.Process(frame);
+                    operation.VoiceLevel = detector.LastLevelDb;
+                    if (transition == VoiceActivityTransition.SpeechStarted)
+                    {
+                        if (accepted < 0) operation.Publish(new("mic.hearing_speech"));
+                    }
+                    else if (transition == VoiceActivityTransition.SpeechEnded)
+                    {
+                        // A cough or click is ignored; keep listening for real speech.
+                        if (accepted < 0 && detector.SpeechEndFrame - detector.SpeechStartFrame < minimumFrames)
+                        {
+                            operation.Publish(new("mic.listening"));
+                            continue;
+                        }
+                        if (accepted < 0) accepted = detector.SpeechStartFrame;
+                        await run.ReleaseAsync().ConfigureAwait(false);
+                        return Range(accepted, detector.SpeechEndFrame);
+                    }
+                    if (detector.Speaking && accepted < 0 &&
+                        index - detector.SpeechStartFrame >= minimumFrames) accepted = detector.SpeechStartFrame;
+                }
+                while (true);
+                if (accepted < 0 && !detector.Speaking && clock.GetElapsedTime(started) >= ListeningOptions.IdleRestart)
+                    return null;
+                await Task.WhenAny(run.Completion, Task.Delay(TimeSpan.FromMilliseconds(20), clock)).ConfigureAwait(false);
+            }
+            // Duration limit or Finish: send everything from the onset to the end of the recording.
+            if (accepted < 0 && detector.Speaking) accepted = detector.SpeechStartFrame;
+            return accepted < 0 ? null : Range(accepted, 0) with { EndSampleExclusive = int.MaxValue };
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(frame);
+            operation.VoiceLevel = -100;
+        }
+
+        SpeechRange Range(int startFrame, int endFrame) => new(
+            Math.Max(0, startFrame * EnergyVoiceActivityDetector.FrameSamples - EnergyVoiceActivityDetector.Samples(settings.PreRoll)),
+            endFrame * EnergyVoiceActivityDetector.FrameSamples + EnergyVoiceActivityDetector.Samples(settings.Tail));
+    }
+
     private async Task<BoundedWaveAudio?> CaptureAsync(LiveConversationOperation operation)
     {
         var permission = operation.Authorization;
@@ -482,9 +566,22 @@ internal sealed class LiveConversationController : IAsyncDisposable
             LiveConversationConfiguration.CaptureDuration, permission.Deadline(LiveConversationConfiguration.CapturePermission, fromAcceptance: true));
         var run = microphone.Press(request, new(request, true), operation.OriginalCaller);
         operation.Attach(run);
-        operation.Publish(new("mic.capturing"));
+        operation.Publish(new(operation.HandsFree ? "mic.listening" : "mic.capturing"));
         try
         {
+            SpeechRange? heard = null;
+            if (operation.HandsFree)
+            {
+                heard = await EndpointAsync(operation, run).ConfigureAwait(false);
+                if (heard is null)
+                {
+                    await run.CancelAsync().ConfigureAwait(false);
+                    await run.Completion.ConfigureAwait(false);
+                    permission.Check();
+                    operation.Publish(new("mic.no_speech", Finished: true));
+                    return null;
+                }
+            }
             var terminal = await run.Completion.ConfigureAwait(false);
             permission.Check();
             using var utterance = run.TakeUtterance();
@@ -494,17 +591,40 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 return null;
             }
             byte[] pcm = new byte[utterance.ByteCount];
-            BoundedWaveAudio wave;
+            BoundedWaveAudio? wave = null;
             try
             {
                 permission.Check();
                 utterance.CopyPcmTo(pcm);
-                wave = BoundedWaveAudio.FromPcm(CapturedUtterance.Format, pcm);
+                var total = pcm.Length / 2;
+                // Hands-free uploads only the detected speech (with pre-roll/tail), not the idle wait before it.
+                var start = Math.Min(heard?.StartSample ?? 0, total);
+                var end = Math.Min(heard?.EndSampleExclusive ?? total, total);
+                var speech = pcm.AsSpan(start * 2, Math.Max(0, end - start) * 2);
+                if (operation.Voiceprint is { } voiceprint)
+                {
+                    operation.Publish(new("speaker.checking"));
+                    var check = SpeakerVerifier.Check(VoiceIdentity.Encoder, voiceprint.Embedding, voiceprint.Threshold, speech);
+                    permission.Check();
+                    operation.SpeakerCheck = check;
+                    if (check.Verdict != SpeakerVerdict.User)
+                    {
+                        operation.Publish(new(check.Verdict == SpeakerVerdict.TooShort ? "speaker.too_short" : "speaker.not_user", Finished: true));
+                        return null;
+                    }
+                    operation.Publish(new("speaker.verified"));
+                }
+                if (speech.Length >= 2) wave = BoundedWaveAudio.FromPcm(CapturedUtterance.Format, speech);
             }
             finally
             {
                 CryptographicOperations.ZeroMemory(pcm);
                 utterance.Dispose();
+            }
+            if (wave is null)
+            {
+                operation.Publish(new("mic.no_speech", Finished: true));
+                return null;
             }
             operation.Publish(new("mic.transferred_and_cleared"));
             return wave;

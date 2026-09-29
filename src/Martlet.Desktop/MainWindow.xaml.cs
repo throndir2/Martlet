@@ -27,6 +27,7 @@ public partial class MainWindow : ThemedWindow
     private readonly ISetupService? setupService;
     private readonly ICompanionSettingsService? companionService;
     private readonly DesktopMemoryService? memory;
+    private readonly VoiceIdentity voiceIdentity;
     private readonly ConfigurationRecoveryController? recovery;
     private readonly AudioSetupService audioSetup;
     private readonly LiveConversationController? conversation;
@@ -82,11 +83,13 @@ public partial class MainWindow : ThemedWindow
         setupService = store is null ? null : new SetupService(store, vault);
         companionService = store is null ? null : new CompanionSettingsService(store);
         memory = store is null ? null : new DesktopMemoryService(store);
+        voiceIdentity = new(store?.DataDirectory);
+        voiceIdentity.Load();
         recovery = store is null ? null : new(store, setupOperations, () => !support.HasResources);
         if (setupService is not null)
         {
             conversation = new(setupOperations, setupService, vault, new WasapiCaptureDeviceFactory(), new WasapiDeviceFactory(),
-                memory: memory, generatedSpeech: avatar.Observer, revokeAvatar: avatar.Revoke);
+                memory: memory, generatedSpeech: avatar.Observer, revokeAvatar: avatar.Revoke, voiceIdentity: voiceIdentity);
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
         }
         audioSessionEvents.LockedChanged += AvatarSessionLocked;
@@ -476,7 +479,7 @@ public partial class MainWindow : ThemedWindow
     private async void Conversation_Click(object sender, RoutedEventArgs e)
     {
         if (conversation is null || closing || saving || runningFixture || model?.IsRunning == true) return;
-        new LiveConversationWindow(setupService!, setupOperations, conversation, audioSessionEvents, audioSetup)
+        new LiveConversationWindow(setupService!, setupOperations, conversation, audioSessionEvents, audioSetup, voiceIdentity: voiceIdentity)
             { Owner = this, Troubleshooting = OpenTroubleshooting, Support = support, ConfigurationRecovery = OpenRecovery,
                 Avatar = OpenAvatar }.ShowDialog();
         await RefreshAsync();

@@ -52,7 +52,7 @@ public static class SetupAdvisor
     private const int SpeechVram = 4, WhisperVram = 3, FaceVram = 4;
 
     private const string LlmWhat = "Thinks of each reply. Its size decides how smart answers are; where it runs decides how soon the first sentence starts.";
-    private const string SttWhat = "Turns your voice into text when you hold push-to-talk.";
+    private const string SttWhat = "Turns your voice into text when you hold push-to-talk or talk hands-free.";
     private const string TtsWhat = "Reads the reply aloud, one sentence at a time, while the rest is still being written.";
     private const string FaceWhat = "Moves the character's mouth and face to match the voice.";
     private const string CharacterWhat = "Draws your Live2D or VRM companion on the desktop.";

@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
+using Martlet.Audio;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.Diagnostics;
@@ -25,15 +26,18 @@ public partial class LiveConversationWindow : ThemedWindow
     private readonly IAudioSessionEvents sessionEvents;
     private readonly TimeProvider clock;
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromMilliseconds(100) };
+    private readonly VoiceIdentity? voiceIdentity;
     private SetupOperation? loading;
     private CancellationTokenSource? observation;
     private LiveConversationOperation? owned;
-    private bool closed, rendering, ready, mouseHeld, keyHeld;
+    private bool closed, rendering, ready, mouseHeld, keyHeld, listening, applyingPreferences;
+    private LiveConversationOperation? handledListen;
+    private string? listenNote;
     private volatile bool locked;
     private long generation;
 
     internal LiveConversationWindow(ISetupService settings, SetupOperationRunner operations, LiveConversationController controller,
-        IAudioSessionEvents sessionEvents, AudioSetupService? audio = null, TimeProvider? clock = null)
+        IAudioSessionEvents sessionEvents, AudioSetupService? audio = null, TimeProvider? clock = null, VoiceIdentity? voiceIdentity = null)
     {
         this.settings = settings;
         this.operations = operations;
@@ -41,12 +45,14 @@ public partial class LiveConversationWindow : ThemedWindow
         this.sessionEvents = sessionEvents;
         this.audio = audio;
         this.clock = clock ?? TimeProvider.System;
+        this.voiceIdentity = voiceIdentity;
         InitializeComponent();
         var controls = controller.Controls;
         locked = controls.Locked;
         PauseChoice.IsChecked = controls.Paused;
         MuteChoice.IsChecked = controls.Muted;
-        timer.Tick += (_, _) => { Observe(); RenderActions(); };
+        ApplyPreferences(TalkPreferences.Load(voiceIdentity?.DataDirectory));
+        timer.Tick += (_, _) => { Observe(); ContinueListening(); RenderActions(); };
         timer.Start();
         sessionEvents.LockedChanged += SessionSwitch;
         StatusText.Text = "REAL API mode; NOT RUN. Mic/STT/policy/LLM/TTS/playback: not run. No effects authorized.";
@@ -117,24 +123,37 @@ public partial class LiveConversationWindow : ThemedWindow
 
     private void RenderActions()
     {
-        if (closed || SendButton is null) return;
+        if (closed || SendButton is null || ListenButton is null) return;
         bool ownRunning = owned is { OwnershipReleased: false };
         bool available = ready && !locked && PauseChoice.IsChecked != true && MuteChoice.IsChecked != true &&
             !operations.IsRunning && controller.Configuration is not null;
         bool accepted = AcceptAction.IsChecked == true;
         bool voice = VoiceChoice.IsChecked == true;
+        bool handsFree = VoiceActivityMode.IsChecked == true;
+        bool voiceIdReady = VoiceIdChoice.IsChecked != true || voiceIdentity?.Current is not null;
+        bool microphoneReady = accepted && AcceptCapture.IsChecked == true && AcceptUpload.IsChecked == true && voiceIdReady &&
+            controller.Configuration?.Unavailable(voice, true) is null;
         AcceptMemory.IsEnabled = available && controller.Configuration?.Memory is { Enabled: true };
-        SendButton.IsEnabled = available && accepted && !string.IsNullOrWhiteSpace(InputText.Text) &&
+        SendButton.IsEnabled = !listening && available && accepted && !string.IsNullOrWhiteSpace(InputText.Text) &&
             controller.Configuration!.Unavailable(voice, false) is null;
         // Keep a held control enabled until release; disabling it would lose capture and cancel.
-        PttButton.IsEnabled = mouseHeld || keyHeld || available && accepted && AcceptCapture.IsChecked == true &&
-            AcceptUpload.IsChecked == true && controller.Configuration!.Unavailable(voice, true) is null;
+        PttButton.IsEnabled = mouseHeld || keyHeld || available && microphoneReady;
+        PttButton.Visibility = handsFree ? Visibility.Collapsed : Visibility.Visible;
+        ListenButton.Visibility = LevelMeter.Visibility = handsFree ? Visibility.Visible : Visibility.Collapsed;
+        ListenButton.IsEnabled = listening || available && microphoneReady;
+        ListenButton.Content = listening ? "Stop _listening" : "Start _listening";
         ReleaseButton.IsEnabled = ownRunning && owned!.Authorization.Microphone && owned.Turn is null && owned.Transcription is null && !owned.Status.Finished;
-        StopButton.IsEnabled = ownRunning || loading is not null || accepted || AcceptMemory.IsChecked == true ||
+        StopButton.IsEnabled = listening || ownRunning || loading is not null || accepted || AcceptMemory.IsChecked == true ||
             AcceptCapture.IsChecked == true || AcceptUpload.IsChecked == true;
-        ReloadButton.IsEnabled = !operations.IsRunning;
-        SetupButton.IsEnabled = AudioButton.IsEnabled = !operations.IsRunning;
+        ReloadButton.IsEnabled = !operations.IsRunning && !listening;
+        SetupButton.IsEnabled = AudioButton.IsEnabled = !operations.IsRunning && !listening;
         AudioButton.IsEnabled &= audio is not null;
+        VoiceIdChoice.IsEnabled = !listening;
+        VoiceIdStatus.Text = voiceIdentity is null ? "Voice ID is unavailable without a local data directory."
+            : voiceIdentity.LoadError ?? (voiceIdentity.Current is { } print
+                ? $"Enrolled {print.CreatedAt.LocalDateTime:d}; match threshold {print.Threshold:F2}. Runs on this PC; nothing about your voice is uploaded."
+                : VoiceIdChoice.IsChecked == true ? "Not set up yet: enroll your voice first (Set up Voice ID), or turn this off to talk."
+                : "Not set up. Enroll your voice once (about 20 seconds) to ignore other people and TV.");
     }
 
     private void ClearPermission()
@@ -144,28 +163,149 @@ public partial class LiveConversationWindow : ThemedWindow
         rendering = false;
     }
 
-    private bool Start(bool microphone)
+    private bool Start(bool microphone, bool handsFree = false)
     {
         if (closed || !ready || locked) return false;
         try
         {
+            var listen = microphone ? CurrentListening(handsFree) : null;
             var next = controller.Start(microphone ? null : InputText.Text, VoiceChoice.IsChecked == true, microphone,
                 AcceptAction.IsChecked == true, AcceptCapture.IsChecked == true, AcceptUpload.IsChecked == true,
-                memoryApproved: AcceptMemory.IsChecked == true);
+                memoryApproved: AcceptMemory.IsChecked == true, listening: listen);
             owned = next;
-            ClearPermission();
-            AnswerText.Clear();
-            RefusalText.Clear();
-            TranscriptText.Clear();
-            ResultText.Text = "Explicit action accepted. Stop revokes it; local cleanup may outlive reporting. Cost UNKNOWN.";
-            Motion.Enter(AnswerText, dy: 10);
+            // Hands-free keeps the session's approvals until listening stops; memory retrieval is still one-shot.
+            if (handsFree)
+            {
+                rendering = true;
+                AcceptMemory.IsChecked = false;
+                rendering = false;
+            }
+            else ClearPermission();
+            // While listening, the previous exchange stays visible until new speech is transcribed.
+            if (!handsFree || !listening)
+            {
+                AnswerText.Clear();
+                RefusalText.Clear();
+                TranscriptText.Clear();
+            }
+            ResultText.Text = handsFree ? "Listening... just start talking. Stop listening, Stop or Esc ends it."
+                : "Explicit action accepted. Stop revokes it; local cleanup may outlive reporting. Cost UNKNOWN.";
+            if (!handsFree) Motion.Enter(AnswerText, dy: 10);
             Observe();
             RenderActions();
             return true;
         }
         catch (LiveActionException error) { ResultText.Text = Remedy(error.Code); }
         catch (ContractException) { ResultText.Text = "Invalid or oversized input. Use at most 4096 valid Unicode characters / 16,384 UTF-8 bytes."; }
+        catch (VoiceIdentityException error) { ResultText.Text = error.Message; }
         return false;
+    }
+
+    private ListeningOptions CurrentListening(bool handsFree) => new(handsFree,
+        new VoiceActivitySettings
+        {
+            Sensitivity = SensitivitySlider.Value,
+            EndSilence = TalkPreferences.Pauses[Math.Clamp(PauseChoiceBox.SelectedIndex, 0, TalkPreferences.Pauses.Length - 1)]
+        },
+        VoiceIdChoice.IsChecked == true);
+
+    private void Listen_Click(object sender, RoutedEventArgs e)
+    {
+        if (listening) { StopListening("Hands-free listening stopped. Nothing is recorded now."); return; }
+        handledListen = null;
+        listening = Start(true, handsFree: true);
+        RenderActions();
+    }
+
+    private void StopListening(string message)
+    {
+        listening = false;
+        if (owned is { OwnershipReleased: false } operation && operation.HandsFree) controller.Stop(operation, "conversation.canceled");
+        ClearPermission();
+        ResultText.Text = message;
+        RenderActions();
+    }
+
+    // Re-arms hands-free listening after each finished turn (never while a reply is still playing).
+    private void ContinueListening()
+    {
+        if (!listening || closed || owned is not { } last || !last.OwnershipReleased) return;
+        if (!ReferenceEquals(handledListen, last))
+        {
+            handledListen = last;
+            var code = last.Status.Code;
+            listenNote = last.SpeakerCheck is { Verdict: not SpeakerVerdict.User } check && last.Voiceprint is { } print
+                ? VoiceIdentity.Describe(check, print.Threshold)
+                : code == "stt.NoSpeech" ? "(The last sound had no words.)" : null;
+            var keepGoing = code is "mic.no_speech" or "speaker.not_user" or "speaker.too_short" or "stt.NoSpeech" or
+                "runtime.Completed" or "runtime.Refused" || code.StartsWith("policy.", StringComparison.Ordinal) && !last.Status.Quarantined;
+            if (!keepGoing || last.Status.Quarantined)
+            {
+                listening = false;
+                ClearPermission();
+                RenderActions();
+                return;
+            }
+        }
+        if (operations.IsRunning || AcceptAction.IsChecked != true || AcceptCapture.IsChecked != true || AcceptUpload.IsChecked != true)
+            return;
+        if (!Start(true, handsFree: true))
+        {
+            listening = false;
+            ClearPermission();
+        }
+    }
+
+    private void ApplyPreferences(TalkPreferences preferences)
+    {
+        applyingPreferences = true;
+        (preferences.HandsFree ? VoiceActivityMode : PushToTalkMode).IsChecked = true;
+        SensitivitySlider.Value = preferences.Sensitivity;
+        PauseChoiceBox.SelectedIndex = preferences.PauseIndex;
+        VoiceIdChoice.IsChecked = preferences.VoiceId;
+        VoiceActivityPanel.Visibility = preferences.HandsFree ? Visibility.Visible : Visibility.Collapsed;
+        applyingPreferences = false;
+    }
+
+    private void SavePreferences()
+    {
+        if (applyingPreferences || voiceIdentity is null || SensitivitySlider is null || PauseChoiceBox is null || VoiceIdChoice is null) return;
+        var saved = new TalkPreferences(VoiceActivityMode.IsChecked == true, SensitivitySlider.Value,
+            PauseChoiceBox.SelectedIndex, VoiceIdChoice.IsChecked == true).Save(voiceIdentity.DataDirectory);
+        if (!saved) ResultText.Text = "Could not save your talk preferences to talk-preferences.json; they apply for this window only.";
+    }
+
+    private void Mode_Changed(object sender, RoutedEventArgs e)
+    {
+        if (VoiceActivityPanel is null || VoiceActivityMode is null || controller is null) return;
+        VoiceActivityPanel.Visibility = VoiceActivityMode.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        if (applyingPreferences) return;
+        if (listening) StopListening("Talk mode changed; hands-free listening stopped.");
+        SavePreferences();
+        RenderActions();
+    }
+
+    private void Activity_Changed(object sender, RoutedEventArgs e)
+    {
+        // Applies from the next utterance; the one being heard keeps its settings.
+        SavePreferences();
+    }
+
+    private void VoiceId_Changed(object sender, RoutedEventArgs e)
+    {
+        if (applyingPreferences || controller is null) return;
+        SavePreferences();
+        RenderActions();
+    }
+
+    private void VoiceIdSetup_Click(object sender, RoutedEventArgs e)
+    {
+        if (voiceIdentity is null) { ResultText.Text = "Voice ID needs a local data directory."; return; }
+        if (operations.IsRunning || listening) { ResultText.Text = Remedy("conversation.ownership_busy"); return; }
+        Cancel("conversation.configuration_changed");
+        var input = controller.Configuration?.Audio?.Input;
+        new VoiceIdWindow(voiceIdentity, operations, sessionEvents, input) { Owner = this }.ShowDialog();
+        RenderActions();
     }
 
     private void Send_Click(object sender, RoutedEventArgs e) => Start(false);
@@ -218,7 +358,8 @@ public partial class LiveConversationWindow : ThemedWindow
     }
     private void Cancel(string reason)
     {
-        mouseHeld = keyHeld = false;
+        mouseHeld = keyHeld = listening = false;
+        listenNote = null;
         PttButton.ReleaseMouseCapture();
         ClearPermission();
         if (owned is not null) controller.Stop(owned, reason);
@@ -237,6 +378,8 @@ public partial class LiveConversationWindow : ThemedWindow
     private void Consent_Changed(object sender, RoutedEventArgs e)
     {
         if (rendering || controller is null || AcceptAction is null) return;
+        if (listening && (AcceptAction.IsChecked != true || AcceptCapture.IsChecked != true || AcceptUpload.IsChecked != true))
+            listening = false;
         if (owned is { OwnershipReleased: false } && (AcceptAction.IsChecked != true ||
             owned.MemoryRequested && AcceptMemory.IsChecked != true ||
             owned.Authorization.Microphone && (AcceptCapture.IsChecked != true || AcceptUpload.IsChecked != true)))
@@ -247,6 +390,7 @@ public partial class LiveConversationWindow : ThemedWindow
     private void Controls_Changed(object sender, RoutedEventArgs e)
     {
         if (controller is null || PauseChoice is null || MuteChoice is null) return;
+        listening = false;
         ClearPermission();
         controller.SetControls(PauseChoice.IsChecked == true, MuteChoice.IsChecked == true, locked);
         RenderActions();
@@ -260,12 +404,14 @@ public partial class LiveConversationWindow : ThemedWindow
         Dispatcher.BeginInvoke(() =>
         {
             if (closed) return;
+            if (value) listening = false;
             ClearPermission();
             controller.SetControls(PauseChoice.IsChecked == true, MuteChoice.IsChecked == true, locked);
             RenderActions();
         });
     }
-    private void Window_Deactivated(object? sender, EventArgs e) { if (!closed) Cancel("conversation.deactivated"); }
+    // Hands-free listening is meant to keep working while you use other apps; lock, pause, mute, Stop and Close still end it.
+    private void Window_Deactivated(object? sender, EventArgs e) { if (!closed && !listening) Cancel("conversation.deactivated"); }
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
         Cancel("conversation.closed");
@@ -300,10 +446,18 @@ public partial class LiveConversationWindow : ThemedWindow
         var content = operation.Turn?.Content;
         string evidence = snapshot?.TextProvenance == EvidenceProvenance.Live ? "REAL provider response (not account/device qualification)"
             : snapshot?.TextProvenance == EvidenceProvenance.Fixture ? "FIXTURE HTTP evidence - NOT real inference" : "No provider response";
-        AnswerText.Text = $"{evidence}\n{content?.Text}";
-        RefusalText.Text = content?.Refusal ?? "";
+        // Hands-free keeps the previous reply on screen until the next one starts.
+        if (!operation.HandsFree || operation.Turn is not null)
+        {
+            AnswerText.Text = $"{evidence}\n{content?.Text}";
+            RefusalText.Text = content?.Refusal ?? "";
+        }
+        var speaker = operation.SpeakerCheck is { } check && operation.Voiceprint is { } print
+            ? VoiceIdentity.Describe(check, print.Threshold) : null;
         if (operation.Transcription is { } stt)
-            TranscriptText.Text = $"{(stt.Provenance == EvidenceProvenance.Live ? "REAL STT" : "FIXTURE STT - NOT inference")}: {stt.Outcome}; confidence UNKNOWN\n{operation.Transcript}";
+            TranscriptText.Text = $"{(stt.Provenance == EvidenceProvenance.Live ? "REAL STT" : "FIXTURE STT - NOT inference")}: {stt.Outcome}; confidence UNKNOWN\n{operation.Transcript}" +
+                (speaker is null ? "" : "\n" + speaker);
+        LevelMeter.Value = operation.HandsFree && !operation.Status.Finished ? Math.Clamp((operation.VoiceLevel + 60) / 50, 0, 1) : 0;
         var capture = operation.Capture?.Snapshot;
         var status = operation.Status;
         if (Support is { } support)
@@ -312,7 +466,9 @@ public partial class LiveConversationWindow : ThemedWindow
                     snapshot.TextProvenance ?? EvidenceProvenance.NotRun,
                 snapshot?.CommittedSegments ?? 0, snapshot?.QueuedSegments ?? 0));
         StatusText.Text = $"{status.Code}; app worker released: {operation.OwnershipReleased}; quarantine: {status.Quarantined}.\n" +
-            $"Mic: {capture?.State.ToString() ?? "not used"}; samples: {capture?.CanonicalSamples ?? 0}; retained PCM: {capture?.RetainedPcmBytes ?? 0}. VAD/wake/unsolicited: OFF.\n" +
+            $"Mic: {capture?.State.ToString() ?? "not used"}; samples: {capture?.CanonicalSamples ?? 0}; retained PCM: {capture?.RetainedPcmBytes ?? 0}. " +
+            $"Input: {(operation.HandsFree ? "hands-free voice activity" : operation.Authorization.Microphone ? "push-to-talk" : "typed")}; " +
+            $"Voice ID: {(operation.Voiceprint is null ? "off" : speaker ?? "not checked yet")}. Wake words/unsolicited: OFF.\n" +
             $"STT: {operation.Transcription?.Outcome.ToString() ?? "not completed / not used"}; Policy: {status.Policy?.ToString() ?? "see timeline"}; LLM/TTS: {snapshot?.State.ToString() ?? "not dispatched"}.\n" +
             $"Persona revision/style: {operation.PersonaRevision?.ToString() ?? "not dispatched"} / {operation.ResponseStyle?.ToString() ?? "not selected"}.\n" +
             $"In-memory context messages used/omitted: {operation.ContextMessages}/{operation.ContextMessagesOmitted}; retained completed turns: {controller.ContextTurns}.\n" +
@@ -323,9 +479,21 @@ public partial class LiveConversationWindow : ThemedWindow
         if (operation.Authorization.CredentialFailure is { } credential) ResultText.Text = CredentialMessages.Describe(credential);
         else if (status.AudioFailure is { } error) ResultText.Text = AudioSetupDiagnostics.Remedy(error) + " Typed fallback remains available.";
         else if ((snapshot?.ProviderFailure ?? status.ProviderFailure) is { } provider) ResultText.Text = ProviderRemedy(provider);
+        else if (status.Code is "speaker.not_user" or "speaker.too_short" && speaker is not null) ResultText.Text = speaker;
         else if (status.Finished) ResultText.Text = Remedy(status.Code);
         else if (operation.OwnershipReleased) ResultText.Text = "The action failed at a dependency boundary. No automatic retry; review settings and authorize a fresh action.";
+        else if (operation.HandsFree && ListeningMessage(status.Code) is { } message) ResultText.Text = message;
     }
+
+    private string? ListeningMessage(string code) => code switch
+    {
+        "mic.listening" => "Listening... just start talking. Stop listening, Stop or Esc ends it." + (listenNote is null ? "" : " " + listenNote),
+        "mic.hearing_speech" => "Hearing you... pause when you're done.",
+        "speaker.checking" => "Checking it's you (Voice ID, on this PC)...",
+        "speaker.verified" or "mic.transferred_and_cleared" or "stt.uploading" => "Got it. Transcribing...",
+        _ when code.StartsWith("runtime.", StringComparison.Ordinal) => "Replying... listening resumes after the reply finishes.",
+        _ => null
+    };
 
     internal static string ProviderRemedy(ProviderFailureCode code) => code switch
     {
@@ -360,6 +528,8 @@ public partial class LiveConversationWindow : ThemedWindow
         "conversation.expired" => "The original permission window expired. No permission was renewed. Discard old input/capture and explicitly authorize a new action.",
         "stt.deadline_exceeded" => "The original STT deadline expired. Upload/credential work may still own resources; no LLM follows. Wait for actual cleanup, then use typed fallback or authorize a fresh recording.",
         "stt.NoSpeech" => "STT returned no speech. No LLM or TTS request followed. Try a fresh PTT action or use typed input.",
+        "mic.no_speech" => "No speech was heard, so nothing was uploaded. While hands-free listening is on it simply keeps listening.",
+        "voiceid.not_enrolled" => "Only respond to my voice is on, but no voiceprint is saved. Use Set up Voice ID to enroll, or turn it off.",
         "runtime.Completed" => "Response completed. Device consumption/drain is not audibility. Any retry is a new potentially paid action.",
         "runtime.Refused" => "The provider refused. Refusal is shown separately, not routed as ordinary speech. Earlier partial response text can remain visible.",
         "runtime.Partial" or "runtime.Failed" => "The turn failed or is partial; response text remains visible. Check the stage/failure below, selected model/account limits and output. No automatic retry; earlier speech may have played.",
