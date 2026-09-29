@@ -38,6 +38,13 @@ public sealed class GatewayServer
     public GatewayCredentialStore Credentials { get; }
     public GatewayPairingService Pairing { get; }
 
+    /// <summary>Host-reported hardware served to paired desktops at /martlet/v1/machine; null when not collected.</summary>
+    public GatewayMachineReport? Machine
+    {
+        get => application.Machine;
+        set => application.Machine = value is null || value.IsValid() ? value : throw new ArgumentException("Invalid machine report.", nameof(value));
+    }
+
     public GatewayServer(
         GatewayHostIdentity identity,
         GatewayOrigin origin,

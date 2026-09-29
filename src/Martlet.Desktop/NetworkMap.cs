@@ -1,5 +1,6 @@
 using System.Net;
 using Martlet.Avatar.Hosting;
+using Martlet.Core.Installation;
 using Martlet.Core.Settings;
 
 namespace Martlet.Desktop;
@@ -18,7 +19,7 @@ internal sealed record NetworkNode(string Id, NodeKind Kind, string Title, strin
     IReadOnlyList<string> Notes);
 
 internal sealed record NetworkInputs(MachineInfo Machine, DeviceRole Role, AppSettings? Settings, AvatarProfile? Avatar,
-    bool CharacterShowing, IReadOnlyDictionary<string, HostCheck> HostChecks);
+    bool CharacterShowing, IReadOnlyDictionary<string, HostCheck> HostChecks, IReadOnlyList<HostHardware>? HostHardware = null);
 
 /// <summary>Turns saved settings, the avatar pairing and local hardware into the Devices map: every computer and
 /// cloud service, what it runs and what can be configured there. Reads nothing itself.</summary>
@@ -145,6 +146,7 @@ internal static class NetworkMap
                         target.Facts.Add(new("Address", gateway.Origin));
                         target.Facts.Add(new("Host ID", gateway.HostId));
                         target.Facts.Add(new("Identity", "Pinned TLS " + Short(gateway.SpkiFingerprint)));
+                        AddHardware(target, inputs, gateway.HostId);
                         target.Commands.Add(new(NodeAction.Setup, "Change its routes in Setup", true));
                     }
                     break;
@@ -209,7 +211,7 @@ internal static class NetworkMap
                 target.Facts.Insert(0, new("Address", paired.Origin));
                 target.Facts.Add(new("Identity", "Pinned TLS " + Short(paired.SpkiFingerprint)));
                 target.Facts.Add(new("This PC as", paired.DeviceId));
-                target.Facts.Add(new("Hardware", "Not reported to desktops yet. Run Host status on that computer."));
+                AddHardware(target, inputs, paired.HostId);
                 if (check is null) target.Worsen(NodeHealth.Unknown, "Paired, not checked yet");
                 else if (check.Reachable == false) target.Worsen(NodeHealth.Attention, "Not reachable");
                 else if (check.Reachable is null) target.Worsen(NodeHealth.Unknown, "Checking...");
@@ -263,6 +265,28 @@ internal static class NetworkMap
         order.Add(add);
 
         return order.Select(draft => draft.Build()).ToArray();
+    }
+
+    /// <summary>Adds what the host last reported about itself (saved on pairing and on Check connection).</summary>
+    private static void AddHardware(Draft target, NetworkInputs inputs, string hostId)
+    {
+        if (target.Facts.Any(f => f.Label is "Hardware" or "Graphics")) return;
+        if (inputs.HostHardware?.FirstOrDefault(h => h.HostId == hostId) is not { } report)
+        {
+            target.Facts.Add(new("Hardware", "Not reported yet. Use Check connection; older hosts need updating first."));
+            return;
+        }
+        if (report.Gpus.Count == 0) target.Facts.Add(new("Graphics", "No dedicated GPU reported"));
+        foreach (var gpu in report.Gpus)
+            target.Facts.Add(new("Graphics", gpu.Driver is { } driver ? $"{gpu.Describe()}, driver {driver}" : gpu.Describe()));
+        if (report.Processor is { } cpu)
+            target.Facts.Add(new("Processor", report.ProcessorThreads is { } threads ? $"{cpu} ({threads} threads)" : cpu));
+        if (report.MemoryGb is { } memory) target.Facts.Add(new("Memory", $"{memory:0} GB"));
+        target.Facts.Add(new("System", report.Kernel is { } kernel ? $"{report.OperatingSystem} (kernel {kernel})" : report.OperatingSystem));
+        target.Facts.Add(new("Runs Martlet", report.Method == "docker"
+            ? $"In Docker ({report.ContainerRuntime ?? "Docker"})" : "Natively (systemd user service)"));
+        target.Facts.Add(new("Reported", report.CollectedAt.ToLocalTime().ToString("g", System.Globalization.CultureInfo.CurrentCulture)));
+        target.Notes.AddRange(report.Capabilities());
     }
 
     private static Draft Cloud(Func<string, NodeKind, string, string, string, Draft> node, string id, string title, string host, string origin)

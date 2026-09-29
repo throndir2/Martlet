@@ -7,31 +7,64 @@ using Martlet.Core.Installation;
 namespace Martlet.Desktop;
 
 /// <summary>Four-step advisor: goal, features and computers become a per-role plan that explains what each
-/// part does, where it runs, what data leaves and what to use until planned parts arrive. Saves and contacts nothing.</summary>
+/// part does, where it runs, what data leaves and what to use until planned parts arrive. This PC's GPU and paired
+/// hosts' reported hardware prefill the computers step. Saves and contacts nothing.</summary>
 public partial class SetupAdvisorWindow : ThemedWindow
 {
     private const int ResultIndex = 3;
-    private static readonly string[] GpuNames =
-    [
-        "No dedicated GPU (or not sure)", "NVIDIA, 8 GB", "NVIDIA, 12 GB", "NVIDIA, 16 GB",
-        "NVIDIA, 24 GB", "NVIDIA, 32 GB or more", "AMD or Intel GPU"
-    ];
+    private static readonly string[] GpuNames = Enum.GetValues<AdvisorGpu>().Select(SetupAdvisor.GpuName).ToArray();
     private static readonly string[] MachineCounts =
-        ["None", "1 other computer", "2 other computers", "3 other computers", "4 other computers", "5 or more"];
+        ["None", "1 other computer", "2 other computers", "3 other computers", "4 other computers", "5 other computers"];
+    private const string TaskManagerHint = "Find it in Task Manager > Performance > GPU, under Dedicated GPU memory.";
 
+    /// <summary>One "other computer" row; keeps its answer while the count changes.</summary>
+    private sealed class ComputerRow(AdvisorComputer computer)
+    {
+        public AdvisorComputer Initial { get; } = computer;
+        public string Name { get; set; } = computer.Name ?? "";
+        public AdvisorGpu Gpu { get; set; } = computer.Gpu;
+        public TextBox? NameBox { get; set; }
+        public ComboBox? GpuBox { get; set; }
+
+        public void Capture()
+        {
+            if (NameBox is not null) Name = NameBox.Text.Trim();
+            if (GpuBox is not null) Gpu = (AdvisorGpu)Math.Max(0, GpuBox.SelectedIndex);
+        }
+
+        // A host's reported hardware is shown only while the answer still matches what it reported.
+        public AdvisorComputer Read() => new(Gpu, string.IsNullOrWhiteSpace(Name) ? null : Name,
+            Gpu == Initial.Gpu ? Initial.Detected : null);
+    }
+
+    private readonly AdvisorGpu? detectedGpu;
+    private readonly string? detectedText;
+    private readonly List<ComputerRow> rows = [];
     private int step;
     private SetupAdvice? advice;
 
     internal AdvisorAnswers Answers { get; private set; }
     internal AdvisorNextStep? RequestedStep { get; private set; }
 
-    internal SetupAdvisorWindow(AdvisorAnswers? previous = null)
+    /// <param name="detected">This PC's graphics card read from Windows, or null when it could not be read.</param>
+    /// <param name="pairedHosts">Paired Martlet hosts and the hardware they reported, used for a first-time answer.</param>
+    internal SetupAdvisorWindow(AdvisorAnswers? previous = null, (AdvisorGpu Gpu, string Text)? detected = null,
+        IReadOnlyList<AdvisorComputer>? pairedHosts = null)
     {
         InitializeComponent();
         ThisPcGpuChoice.ItemsSource = GpuNames;
-        ExtraGpuChoice.ItemsSource = GpuNames;
         ExtraMachinesChoice.ItemsSource = MachineCounts;
-        Answers = previous ?? new AdvisorAnswers();
+        detectedGpu = detected?.Gpu;
+        detectedText = detected?.Text;
+        Answers = previous ?? new AdvisorAnswers
+        {
+            ThisPcGpu = detectedGpu ?? AdvisorGpu.None,
+            ThisPcDetected = detectedText,
+            OtherComputers = (pairedHosts ?? []).Take(SetupAdvisor.MaxOtherComputers).ToArray()
+        };
+        if (pairedHosts is { Count: > 0 })
+            ExtraMachinesHint.Text = $"Your paired Martlet host{(pairedHosts.Count == 1 ? " is" : "s are")} filled in with the hardware " +
+                "they reported. Add other computers you plan to use and pick their GPU; if you have more than five, list your five strongest.";
         Load(Answers);
         ShowStep(0);
     }
@@ -51,26 +84,34 @@ public partial class SetupAdvisorWindow : ThemedWindow
         CustomVoiceChoice.IsChecked = answers.CustomVoice;
         ThisPcGpuChoice.SelectedIndex = (int)answers.ThisPcGpu;
         GamesChoice.IsChecked = answers.GamesOnThisPc;
-        ExtraMachinesChoice.SelectedIndex = Math.Clamp(answers.ExtraMachines, 0, 5);
-        ExtraGpuChoice.SelectedIndex = (int)answers.ExtraMachineGpu;
-        UpdateExtraGpu();
+        rows.Clear();
+        rows.AddRange(answers.OtherComputers.Take(SetupAdvisor.MaxOtherComputers).Select(c => new ComputerRow(c)));
+        var count = rows.Count;
+        if (ExtraMachinesChoice.SelectedIndex == count) BuildComputerRows();
+        else ExtraMachinesChoice.SelectedIndex = count;
+        UpdateThisPcHint();
     }
 
-    private AdvisorAnswers Read() => new()
+    private AdvisorAnswers Read()
     {
-        Goal = SmartestGoal.IsChecked == true ? AdvisorGoal.Smartest
-            : FastestGoal.IsChecked == true ? AdvisorGoal.Fastest
-            : PrivateGoal.IsChecked == true ? AdvisorGoal.Private
-            : AdvisorGoal.Balanced,
-        VoiceInput = VoiceInputChoice.IsChecked == true,
-        SpokenReplies = SpokenRepliesChoice.IsChecked == true,
-        Character = CharacterChoice.IsChecked == true,
-        CustomVoice = CustomVoiceChoice.IsChecked == true,
-        ThisPcGpu = (AdvisorGpu)Math.Max(0, ThisPcGpuChoice.SelectedIndex),
-        GamesOnThisPc = GamesChoice.IsChecked == true,
-        ExtraMachines = Math.Max(0, ExtraMachinesChoice.SelectedIndex),
-        ExtraMachineGpu = (AdvisorGpu)Math.Max(0, ExtraGpuChoice.SelectedIndex)
-    };
+        var thisPc = (AdvisorGpu)Math.Max(0, ThisPcGpuChoice.SelectedIndex);
+        foreach (var row in rows) row.Capture();
+        return new()
+        {
+            Goal = SmartestGoal.IsChecked == true ? AdvisorGoal.Smartest
+                : FastestGoal.IsChecked == true ? AdvisorGoal.Fastest
+                : PrivateGoal.IsChecked == true ? AdvisorGoal.Private
+                : AdvisorGoal.Balanced,
+            VoiceInput = VoiceInputChoice.IsChecked == true,
+            SpokenReplies = SpokenRepliesChoice.IsChecked == true,
+            Character = CharacterChoice.IsChecked == true,
+            CustomVoice = CustomVoiceChoice.IsChecked == true,
+            ThisPcGpu = thisPc,
+            ThisPcDetected = thisPc == detectedGpu ? detectedText : null,
+            GamesOnThisPc = GamesChoice.IsChecked == true,
+            OtherComputers = rows.Take(Math.Max(0, ExtraMachinesChoice.SelectedIndex)).Select(r => r.Read()).ToArray()
+        };
+    }
 
     private void ShowStep(int value)
     {
@@ -104,13 +145,53 @@ public partial class SetupAdvisorWindow : ThemedWindow
 
     private void CustomVoice_Checked(object sender, RoutedEventArgs e) => SpokenRepliesChoice.IsChecked = true;
     private void SpokenReplies_Unchecked(object sender, RoutedEventArgs e) => CustomVoiceChoice.IsChecked = false;
-    private void ExtraMachines_Changed(object sender, SelectionChangedEventArgs e) => UpdateExtraGpu();
+    private void ExtraMachines_Changed(object sender, SelectionChangedEventArgs e) => BuildComputerRows();
 
-    private void UpdateExtraGpu()
+    private void UpdateThisPcHint()
     {
-        var any = ExtraMachinesChoice.SelectedIndex > 0;
-        ExtraGpuChoice.IsEnabled = any;
-        ExtraGpuLabel.IsEnabled = any;
+        var selected = (AdvisorGpu)Math.Max(0, ThisPcGpuChoice.SelectedIndex);
+        ThisPcGpuHint.Text = detectedText is null ? TaskManagerHint
+            : selected == detectedGpu ? $"Detected on this PC: {detectedText}."
+            : $"Detected on this PC: {detectedText}. You chose something else; Martlet plans with your choice.";
+    }
+
+    private void ThisPcGpu_Changed(object sender, SelectionChangedEventArgs e) => UpdateThisPcHint();
+
+    /// <summary>One row per other computer: a name (the paired host ID, or your own label) and its GPU.</summary>
+    private void BuildComputerRows()
+    {
+        foreach (var row in rows) row.Capture();
+        var count = Math.Max(0, ExtraMachinesChoice.SelectedIndex);
+        while (rows.Count < count) rows.Add(new(new AdvisorComputer(AdvisorGpu.Unknown)));
+        OtherComputersPanel.Children.Clear();
+        for (var i = 0; i < count; i++)
+        {
+            var row = rows[i];
+            var number = i + 2;
+            var grid = new Grid { Margin = new Thickness(0, 4, 0, 0) };
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(3, GridUnitType.Star) });
+            row.NameBox = new TextBox { Text = row.Name, MinHeight = 30, VerticalContentAlignment = VerticalAlignment.Center, MaxLength = 48 };
+            AutomationProperties.SetAutomationId(row.NameBox, $"OtherComputerName{number}");
+            AutomationProperties.SetName(row.NameBox, $"Name of computer {number} (optional)");
+            row.NameBox.ToolTip = $"Optional name. Left empty, the plan calls it Computer {number}.";
+            row.GpuBox = new ComboBox { ItemsSource = GpuNames, SelectedIndex = (int)row.Gpu, MinHeight = 30 };
+            AutomationProperties.SetAutomationId(row.GpuBox, $"OtherComputerGpu{number}");
+            AutomationProperties.SetName(row.GpuBox, $"Graphics card in computer {number}");
+            Grid.SetColumn(row.GpuBox, 2);
+            grid.Children.Add(row.NameBox);
+            grid.Children.Add(row.GpuBox);
+            var label = new TextBlock { Text = $"Computer {number}: name (optional) and GPU", Margin = new Thickness(0, 8, 0, 0) };
+            OtherComputersPanel.Children.Add(label);
+            OtherComputersPanel.Children.Add(grid);
+            if (row.Initial.Detected is { } reported)
+                OtherComputersPanel.Children.Add(Muted($"Reported by this host: {reported}.", new Thickness(0, 4, 0, 0)));
+        }
+        if (count > 0)
+            OtherComputersPanel.Children.Add(Muted(
+                "Not sure? Choose \"Has a GPU, not sure which\". On Windows see Task Manager > Performance > GPU; on Linux run nvidia-smi. " +
+                "Once a computer is a paired Martlet host, it reports its GPU to Martlet automatically.", new Thickness(0, 8, 0, 0)));
     }
 
     private void BuildResult()
@@ -150,9 +231,15 @@ public partial class SetupAdvisorWindow : ThemedWindow
         }
 
         Add(Heading("Your computers"));
+        Add(Muted("What each computer should be used for.", new Thickness(0, 0, 0, 4)));
         foreach (var machine in advice.Machines)
         {
-            Add(new TextBlock { Text = machine.Name, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 6, 0, 2) });
+            var name = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 2) };
+            name.Inlines.Add(new System.Windows.Documents.Run(machine.Name) { FontWeight = FontWeights.SemiBold });
+            var hardware = new System.Windows.Documents.Run(" - " + machine.Hardware);
+            hardware.SetResourceReference(System.Windows.Documents.TextElement.ForegroundProperty, "MutedBrush");
+            name.Inlines.Add(hardware);
+            Add(name);
             foreach (var run in machine.Runs) Add(Bullet(run));
         }
 
@@ -240,7 +327,7 @@ public partial class SetupAdvisorWindow : ThemedWindow
             if (role.HowTo is not null) text.AppendLine($"  How to set it up: {role.HowTo}");
         }
         text.AppendLine();
-        foreach (var machine in plan.Machines) text.AppendLine($"{machine.Name}: {string.Join("; ", machine.Runs)}");
+        foreach (var machine in plan.Machines) text.AppendLine($"{machine.Name} ({machine.Hardware}): {string.Join("; ", machine.Runs)}");
         text.AppendLine();
         foreach (var note in plan.Notes) text.AppendLine("- " + note);
         return text.ToString();

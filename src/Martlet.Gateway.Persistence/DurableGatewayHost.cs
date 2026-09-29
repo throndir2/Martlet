@@ -352,6 +352,13 @@ public sealed class DurableGatewayHost : IAsyncDisposable
             throw Error(GatewayPersistenceFailure.Closed);
     }
 
+    /// <summary>Publishes host-reported hardware to paired desktops (read-only; grants no authority).</summary>
+    public void PublishMachine(GatewayMachineReport? report)
+    {
+        RequireOpen();
+        server!.Machine = report;
+    }
+
     public ValueTask CloseCleanlyAsync(CancellationToken cancellationToken = default) =>
         StopAsync(clean: true, cancellationToken);
 

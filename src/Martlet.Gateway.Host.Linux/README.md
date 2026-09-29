@@ -63,6 +63,10 @@ relax filesystem protection, or enable the currently blocked Compose recipes.
 
 Only `--config <canonical-absolute-path>/host.json` is accepted. The basename is
 literally `host.json`; approval uses the fixed sibling `service-approval.json`.
+The optional sibling `machine.json` (written by `martlet-host`, same 0600 owner
+custody) is read when the gateway opens and served at `GET /martlet/v1/machine`;
+it is not part of the approved configuration, so hardware changes never require
+re-approval. A missing or malformed file only means "not reported".
 The parser rejects extra arguments, environment selectors, approval flags,
 secrets and arbitrary command paths. No args, `help`, `--help` and `-h` are
 passive and do not read files, create keys or start a listener.

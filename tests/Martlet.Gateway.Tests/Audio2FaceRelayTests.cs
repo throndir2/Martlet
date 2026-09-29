@@ -101,4 +101,30 @@ public sealed class Audio2FaceRelayTests
         using var connection = new Audio2FaceHostConnection(pairing, secret, host.Clock);
         Assert.Null(await connection.ReadRouteAsync());
     }
+
+    [Fact]
+    public async Task Paired_desktop_reads_the_hardware_the_host_reported()
+    {
+        await using var host = await GatewayTestHost.StartAsync();
+        var card = host.OpenPairing(GatewayRole.Voice, "desktop-test");
+        var (pairing, secret) = await Audio2FaceHostClient.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
+            card.SpkiFingerprint, "desktop-test", card.PairingId, card.Token.Reveal());
+        using var connection = new Audio2FaceHostConnection(pairing, secret, host.Clock);
+        Assert.Null(await connection.ReadMachineAsync());
+
+        host.Server.Machine = GatewayMachineReport.Parse(System.Text.Encoding.UTF8.GetBytes(
+            "{\"collected_at\":\"2026-09-29T18:00:00Z\",\"method\":\"docker\",\"operating_system\":\"Docker Desktop\"," +
+            "\"processor_threads\":24,\"memory_gb\":31.2,\"nvidia_containers\":\"yes\",\"gpus\":[" +
+            "{\"name\":\"NVIDIA GeForce RTX 4080\",\"vendor\":\"nvidia\",\"memory_mb\":16376,\"driver\":\"566.03\"}," +
+            "{\"name\":\"AMD Radeon RX 6800\",\"vendor\":\"amd\",\"memory_mb\":16368}]}"));
+        var report = await connection.ReadMachineAsync();
+
+        Assert.NotNull(report);
+        Assert.Equal(pairing.HostId, report!.HostId);
+        Assert.Equal("docker", report.Method);
+        Assert.Equal(2, report.Gpus.Count);
+        Assert.Equal("NVIDIA GeForce RTX 4080", report.BestGpu!.Name);
+        Assert.Equal(Martlet.Core.Installation.AdvisorGpu.Nvidia16, report.AdvisorGpu);
+        Assert.Equal(new DateTimeOffset(2026, 9, 29, 18, 0, 0, TimeSpan.Zero), report.CollectedAt);
+    }
 }
