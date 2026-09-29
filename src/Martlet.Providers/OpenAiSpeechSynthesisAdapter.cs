@@ -61,7 +61,14 @@ public sealed class OpenAiSpeechSynthesisAdapter : IDisposable
     }
 }
 
-public sealed class SpeechSynthesisStream : IAsyncEnumerable<PcmFrame>
+// A speech stream the conversation runtime consumes: a cloud adapter's or a paired Martlet host's.
+public interface ISpeechSynthesisStream : IAsyncEnumerable<PcmFrame>
+{
+    SpeechSynthesisResult? Result { get; }
+    ProviderCapabilities Capabilities { get; }
+}
+
+public sealed class SpeechSynthesisStream : ISpeechSynthesisStream
 {
     private readonly HttpClient client;
     private readonly IProviderCredentialSource credentials;

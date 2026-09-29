@@ -238,6 +238,47 @@ public sealed partial class GatewayInferenceRoute
             Map(identity.Cancellation));
     }
 
+    /// <summary>
+    /// The F5 route a host relays to its own loopback F5 service (the <c>f5</c> host role). The route names the pinned
+    /// model weights the host's worker verifies; the complete worker identity (runtime inventory, vocabulary and
+    /// vocoder) stays with that worker, which checks it before every synthesis. Output is the F5 worker's contiguous
+    /// 24 kHz mono PCM16; the worker cannot stop GPU compute, so cancellation is discard-only.
+    /// </summary>
+    public static GatewayInferenceRoute F5Relay(
+        string destinationId,
+        string workerId,
+        string modelId,
+        string modelRevision,
+        string modelSha256)
+    {
+        GatewayRules.Token(modelId, 128);
+        GatewayRules.Token(modelRevision, 128);
+        GatewayRules.Sha256(modelSha256);
+        return new(
+            GatewayInferenceKind.F5Synthesis,
+            GatewayRole.Voice,
+            "martlet.gateway.f5-synthesis.v1",
+            "/martlet/v1/inference/f5-synthesis",
+            F5WorkerProtocol.ContractId,
+            F5ProtocolVersion.Current.ToString(),
+            destinationId,
+            workerId,
+            "1.0.0",
+            modelId,
+            modelRevision,
+            modelSha256,
+            IdentityDigest(F5WorkerProtocol.ContractId, F5ProtocolVersion.Current.ToString(), workerId, modelId,
+                modelRevision, modelSha256),
+            maximumRequestBytes: GatewayInferenceProtocol.MaximumRequestBytes,
+            maximumInputBytes: F5ReferenceLimits.MaximumAudioFileBytes,
+            maximumOutputBytes: checked((int)F5WorkerProtocol.MaximumSamples * 2),
+            maximumEventBytes: 16 * 1024,
+            maximumEvents: F5WorkerProtocol.MaximumEvents,
+            maximumStreamBytes: 7 * 1024 * 1024,
+            maximumDuration: F5WorkerProtocol.MaximumRequestDuration,
+            GatewayCancellationCapability.DiscardOnly);
+    }
+
     public static GatewayInferenceRoute Perception(
         string destinationId,
         PerceptionWorkerIdentity identity)

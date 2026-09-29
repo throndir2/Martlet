@@ -53,7 +53,7 @@
       "martlet.avatars": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.1.0, )"
+          "Martlet.Core": "[0.3.0, )"
         }
       },
       "martlet.core": {

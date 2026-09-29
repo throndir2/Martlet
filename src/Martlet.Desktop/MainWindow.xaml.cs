@@ -80,7 +80,8 @@ public partial class MainWindow : ThemedWindow
         if (setupService is not null)
         {
             conversation = new(setupOperations, setupService, vault, new WasapiCaptureDeviceFactory(), new WasapiDeviceFactory(),
-                memory: memory, generatedSpeech: avatar.Observer, revokeAvatar: avatar.Revoke, voiceIdentity: voiceIdentity);
+                memory: memory, generatedSpeech: avatar.Observer, revokeAvatar: avatar.Revoke, voiceIdentity: voiceIdentity,
+                dataDirectory: store!.DataDirectory);
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
         }
         audioSessionEvents.LockedChanged += AvatarSessionLocked;

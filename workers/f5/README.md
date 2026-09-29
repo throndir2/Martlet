@@ -6,8 +6,23 @@ open an HTTP listener, bind a public interface, expose an OpenAI-compatible
 route, run a shell, fetch a URL, download a model, select a default voice, or
 transcribe reference audio.
 
-The package is outside the root solution, Desktop/Core settings, gateway,
-packaging, and deployment graphs. Nothing starts it automatically.
+The Martlet host `f5` role (see [deploy/host](../../deploy/host/README.md)) runs
+it in a container built from [`host/Dockerfile`](host/Dockerfile): the
+hash-locked runtime from [`host/requirements.lock`](host/requirements.lock),
+the runtime inventory generated at build time, and
+[`host/martlet_f5_host.py`](host/martlet_f5_host.py), a separate process that
+listens only on 127.0.0.1:50080 for the gateway relay `Martlet.Gateway.F5`,
+provisions the pinned model files into the role's volume, writes the worker
+config and drives this worker over stdio (warmup, one synthesis at a time,
+cancel). The worker itself still opens no listener and downloads nothing.
+Two runtime fixes live in that image: `f5_tts` gets an empty `__init__.py`
+(f5-tts 1.1.22 ships a namespace package; the origin checks need a regular
+one) and urllib3's import-time IPv6 socket probe is replaced with its result
+(the audit hook denies every socket). File-less pseudo-modules such as
+`torch.ops` are skipped by the imported-origin check.
+
+The package is outside the root solution, Desktop/Core settings and Windows
+packaging graphs. Only the host `f5` role starts it, inside its container.
 
 ## Reviewed source reuse
 

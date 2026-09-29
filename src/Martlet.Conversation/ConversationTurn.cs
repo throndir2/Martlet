@@ -347,7 +347,7 @@ public sealed class ConversationTurn
         lock (Sync) speechWindow = window;
         Check(window);
         context = context with { Deadline = Deadline(window) };
-        var stream = Owner.Speech!.Stream(context, voice.Selection, input, voice.Limits, consent, originalCaller);
+        var stream = Owner.StreamSpeech(context, request, input, consent, originalCaller);
         PlaybackRun? run = null;
         lock (Sync)
         {

@@ -11,7 +11,7 @@ internal enum NodeAction
 {
     Setup, AudioSetup, Character, ToggleCharacter, Prerequisites, HostThisPc, AddComputer, ManageHost, CheckHost, HostDashboard, Advisor,
     UseForLipSync, LipSyncThisPc, InstallRole, RemoveRole, HostStatus, UpdateHost, ForgetHost,
-    PrepareHost, RebootHost, ShutdownHost, WakeHost, PrepareComputer, UseForThinking
+    PrepareHost, RebootHost, ShutdownHost, WakeHost, PrepareComputer, UseForThinking, UseForSpeaking
 }
 
 /// <summary>Who handles lip-sync: a paired host, this PC's own Audio2Face service, or nobody (voice loudness).</summary>
@@ -79,6 +79,11 @@ internal static class NetworkMap
         settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm) is { RouteType: SetupRouteType.GatewayOllama, Gateway: { } gateway }
             ? gateway.HostId : null;
 
+    /// <summary>The paired host whose F5 voice speaks replies (the TTS route is a gateway F5 route), or null.</summary>
+    internal static string? SpeakingHost(AppSettings? settings) =>
+        settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Tts) is { RouteType: SetupRouteType.GatewayF5, Gateway: { } gateway }
+            ? gateway.HostId : null;
+
     /// <summary>All paired hosts, including a lip-sync pairing saved only in the avatar profile.</summary>
     internal static IReadOnlyList<PairedHost> Hosts(NetworkInputs inputs)
     {
@@ -105,7 +110,8 @@ internal static class NetworkMap
     private static string RouteDetail(SetupRoute route)
     {
         var text = route.VoiceId is { } voice && route.RouteType != SetupRouteType.LocalWindowsTts
-            ? $"{route.ModelId}, voice {voice}" : route.VoiceId ?? route.ModelId;
+            ? $"{route.ModelId}, voice {voice}"
+            : route.Reference is { } reference ? $"{route.ModelId}, voice {reference.PresetName}" : route.VoiceId ?? route.ModelId;
         if (route.Enabled == false) text += " (turned off)";
         else if (route.Consent is null) text += " (review in Setup)";
         return text;
@@ -244,6 +250,7 @@ internal static class NetworkMap
             var check = inputs.HostChecks.GetValueOrDefault(paired.HostId);
             var inCharge = lipSync == LipSyncHandler.Host && inputs.Avatar!.RemoteHost!.HostId == paired.HostId;
             var thinks = ThinkingHost(inputs.Settings) == paired.HostId;
+            var speaks = SpeakingHost(inputs.Settings) == paired.HostId;
             var before = target.Roles.Count;
             foreach (var role in HostRoles.All)
             {
@@ -251,7 +258,8 @@ internal static class NetworkMap
                 if (role.Kind == HostRoles.Audio2Face && inCharge)
                     target.Roles.Add(new(role.Chip, role.Name, "In charge of lip-sync. " +
                         (check?.Text ?? "Use Check connection to see whether it runs Audio2Face.")));
-                else if (model is not null && !(role.Kind == HostRoles.Ollama && thinks)) // thinking is listed with its route
+                // Thinking and speaking handed to a host are listed with their routes.
+                else if (model is not null && !(role.Kind == HostRoles.Ollama && thinks) && !(role.Kind == HostRoles.F5 && speaks))
                     target.Roles.Add(new(role.Chip, role.Name, $"Installed (model {model}), standing by. Hand it {role.Job} to use it."));
             }
             if (local) thisPc.Roles.Add(new("Host", "Martlet host service (Docker)", $"Paired as {paired.HostId} on {paired.Pairing.Origin}"));
@@ -287,6 +295,7 @@ internal static class NetworkMap
             if (inputs.HostUpdates?.GetValueOrDefault(id) is { } update) target.Notes.Insert(0, update);
             var offersFace = check?.Offers?.ContainsKey(HostRoles.Audio2Face) == true;
             var offersThinking = check?.Offers?.ContainsKey(HostRoles.Ollama) == true;
+            var offersSpeaking = check?.Offers?.ContainsKey(HostRoles.F5) == true;
             target.Commands.Insert(0, new(NodeAction.CheckHost, "Check connection", !local && check?.Reachable != true, id));
             target.Commands.Add(new(NodeAction.UpdateHost, local ? "Update this PC's host service" : outdated ? $"Update it to Martlet {app}" : "Update host",
                 outdated && check?.Reachable == true, id));
@@ -296,6 +305,9 @@ internal static class NetworkMap
             if (companion && !thinks)
                 target.Commands.Add(new(NodeAction.UseForThinking, local ? "Hand thinking to this PC's host service" : "Hand thinking to this computer",
                     offersThinking, id));
+            if (companion && !speaks)
+                target.Commands.Add(new(NodeAction.UseForSpeaking, local ? "Hand speaking to this PC's host service" : "Hand speaking to this computer",
+                    offersSpeaking, id));
             foreach (var role in HostRoles.All)
             {
                 var offered = check?.Offers?.ContainsKey(role.Kind) == true;

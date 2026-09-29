@@ -130,8 +130,7 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
     {
         await ValidateSettingsAsync(token).ConfigureAwait(false);
         if (!Voice) return null;
-        var route = Configuration.Route(SetupRole.Tts);
-        var selection = new SpeechSynthesisSelection(route.ProviderAlias, route.ModelId, route.VoiceId!, SpeechOutputFormat.Pcm24KhzMono16Le);
+        var selection = Configuration.SpeechSelection();
         var expected = new OperationBudget(action.Context.Ids, action.Context.Epoch, ProviderRole.Tts, 1,
             action.Input.Utf8Bytes, 0, 0, LiveConversationConfiguration.SpeechLimits.MaxSamples);
         var expiry = Min(action.Context.Deadline, Deadline(TimeSpan.FromSeconds(20)));
@@ -157,6 +156,8 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
         // A paired Martlet host is bound to its exact pinned gateway origin and model.
         if (role == SetupRole.Llm && Configuration.HostTarget() is { } host)
             return HostTextGenerationStream.Binding(host, Configuration.TextSelection());
+        if (role == SetupRole.Tts && Configuration.HostSpeechTarget() is { } voiceHost)
+            return HostSpeechSynthesisStream.Binding(voiceHost);
         // A Chat Completions key is bound to the exact saved API base URL, never to api.openai.com.
         var origin = route.RouteType == SetupRouteType.ChatCompletions
             ? ChatCompletionsSetup.BaseUri(route.Origin) : OpenAiTranscriptionCatalog.Origin;

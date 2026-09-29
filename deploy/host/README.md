@@ -11,7 +11,7 @@ Windows desktop (Martlet) --pinned TLS, paired once--> host: Martlet gateway :94
                                                          | one gateway route per installed role
                                                          v
                                                        role services on the host's 127.0.0.1 only
-                                                       (Ollama thinking and Audio2Face lip-sync today; more roles plug in the same way)
+                                                       (Ollama thinking, F5 speaking and Audio2Face lip-sync today; more roles plug in the same way)
 ```
 
 ## Methods
@@ -41,7 +41,7 @@ pair --device-id <id> --name <name>
                     waits up to five minutes for it to be redeemed, then restarts the gateway
 roles               what this host can run
 describe <role>     a role's terms, secrets (stored or missing, never values), choices and GPU/CPU option, machine-readable
-add <role>          install a role, e.g. add ollama or add audio2face (same flow for every role)
+add <role>          install a role, e.g. add ollama, add f5 or add audio2face (same flow for every role)
 remove <role>       stop a role and unpublish it (keeps its data)
 machine             report this machine's hardware to paired desktops (also done by setup, pair, add and remove)
 update              update the gateway to this engine's Martlet version (identity, pairings, roles and data stay)
@@ -239,13 +239,13 @@ Trust model:
 | --- | --- | --- |
 | Requirements | `requires` | Shared checks/installs: `gpu` (NVIDIA driver), `docker` (Engine + Compose), `nvidia-toolkit` (native method) |
 | Terms | `terms` | Shown; continue only on `yes` (or shown in Martlet, whose Install click confirms) |
-| GPU or CPU | `gpu=optional\|<overlay>.yaml` | Detects NVIDIA GPU memory usable by containers and asks `gpu` or `cpu` (default: GPU when present; Martlet sends `choice.accelerator` or lets the host decide). `gpu` adds the role's Compose overlay (and the NVIDIA requirements); `cpu` runs without it |
+| GPU or CPU | `gpu=optional\|<overlay>.yaml`, `gpu=required\|<overlay>.yaml` | Detects NVIDIA GPU memory usable by containers. `optional` asks `gpu` or `cpu` (default: GPU when present; Martlet sends `choice.accelerator` or lets the host decide); `required` always uses the GPU. `gpu` adds the role's Compose overlay (and the NVIDIA requirements); `cpu` runs without it |
 | Secrets | `secret=name\|prompt` | Asked once (or sent by Martlet on stdin), stored in the host config `secrets/<name>` (0600), passed to Compose as environment secret `<NAME>` |
 | Choices | `choice=VAR\|label\|options\|default`, `choice_by_vram=VAR\|<MiB>@<value> ...` | Asked each time (or chosen in Martlet, where *Automatic* keeps the suggestion), written to the role's `.env`; `choice_by_vram` suggests the default by GPU memory (ascending thresholds, `0` = CPU) |
 | Registry | `registry=host\|user\|secret` | `docker login` with the stored secret |
 | Assets | `asset=url\|path` | Pinned HTTPS downloads (`{VAR}` uses a choice), copied into the role's `martlet-<role>-configs` volume |
 | Loopback | `rewrite=path\|sed`, `expect=path\|text` | Rewrite configs to 127.0.0.1 and verify it |
-| Service | `compose.yaml` | `docker compose up -d` with `network_mode: ${MARTLET_ROLE_NETWORK}` (host natively, the gateway's namespace in Docker) |
+| Service | `compose.yaml` | `docker compose up -d` with `network_mode: ${MARTLET_ROLE_NETWORK}` (host natively, the gateway's namespace in Docker); a role can build its image from Martlet's sources under `${MARTLET_SOURCE}` (the checkout natively, `/opt/martlet/source` in the host image) |
 | Readiness | `port`, `ready_timeout_minutes` | Wait until 127.0.0.1:`port` accepts connections |
 | Post-start | `post_start=<service>\|<command>` | Runs each command inside that service in order (`docker compose exec`; `{VAR}` uses a choice; plain words only), for example downloading a model; its progress streams to Martlet's run window |
 | Publish | `gateway_kind`, `model_from` | Add `{kind, endpoint, model}` to the gateway's `host.json` `roles` list; renew the service approval (gateway console, or `owner-approve` with `--yes`); restart |
@@ -257,16 +257,15 @@ Trust model:
    the external `${MARTLET_ROLE_CONFIGS_VOLUME}` volume; an optional GPU overlay
    goes next to them).
 2. Add the gateway relay worker for its `gateway_kind` (see
-   `Martlet.Gateway.Ollama` or `Martlet.Gateway.Audio2Face`) and register the kind in
+   `Martlet.Gateway.Ollama`, `Martlet.Gateway.F5` or `Martlet.Gateway.Audio2Face`) and register the kind in
    `Martlet.Gateway.Host.Linux` (`HostConfiguration.RoleKinds`, `NativeHostPlatform.RoleWorker`).
 3. Add one entry to `HostRoles` in `src/Martlet.Desktop/HostControl.cs` (kind, name, needs and the
    gateway route ID it advertises). The Devices map, the host dashboard and Martlet hosts then offer
    to install, remove and check it on any paired host; teach the desktop to use the route for its job.
 
 No new install script and no new method work: every method runs the same engine.
-Next in line, each with its own relay worker and catalog entry: F5 custom voices
-(`GatewayF5`, speaking), whisper speech-to-text (listening) and screen understanding
-(perception).
+Next in line, each with its own relay worker and catalog entry: whisper speech-to-text
+(listening) and screen understanding (perception).
 
 ## Switching which computer does what
 
@@ -280,6 +279,17 @@ what* shows which computer handles each job:
   without re-entering a key. A host without Ollama is offered the install; Martlet
   keeps thinking where it does until the model is ready and then switches over.
   Conversation text then goes only to that host, over its pinned TLS gateway.
+- **Speaking** moves between the voice from Setup (OpenAI or Windows speech) and
+  any paired host that runs `f5`. Martlet first asks which voice to clone: one
+  from its F5 voice list on this PC (`f5-voices`, Martlet.F5's reference preset
+  store) or a new mono 16-bit WAV of 1-30 s with its exact transcript and your
+  confirmation that the voice is yours or used with its speaker's permission
+  (`voice-rights-v1`). Handing speaking to a host saves a gateway F5 route with
+  that applied voice; the previous voice route is kept in `speaking-saved.json`.
+  A host without F5 is offered the install and Martlet switches over once it is
+  ready. Each reply segment's text and the reference recording then go only to
+  that host; its 24 kHz mono PCM16 plays like any other voice. Keep the original
+  recording where you chose it (the store re-checks it before each use).
 - **Lip-sync** moves between *This PC*, any paired host and *nobody* (voice
   loudness) instantly, without restarting the character.
 
@@ -355,6 +365,7 @@ ssh -t me@gpu-pc bash martlet-prepare gpu-power --power 0=250 tools --tools pyth
 | Role | Needs | Desktop use |
 | --- | --- | --- |
 | `ollama` | Docker; an NVIDIA GPU (NVIDIA Container Toolkit) makes replies fast, otherwise the CPU; official `ollama/ollama:0.34.4`, model `llama3.2:3b`, `qwen2.5:7b`, `llama3.1:8b` or `qwen2.5:14b` (suggested by GPU memory), kept in volume `martlet-ollama-models` and kept loaded | Thinking: the conversation model when the desktop hands thinking to this host (Devices > Who does what). Relay `Martlet.Gateway.Ollama` streams loopback `/api/chat` (persona, recent history, message) with an 8,192-token context |
+| `f5` | NVIDIA GPU (6 GB+) with the NVIDIA Container Toolkit (`gpu=required`); image built on the host from `workers/f5/host/Dockerfile` (`python:3.12.10`, hash-locked PyTorch 2.6.0 CUDA 12.4, `f5-tts` 1.1.22, `vocos` 0.1.0, the bounded `martlet_f5_worker` and its loopback front `martlet_f5_host.py` on 127.0.0.1:50080); `martlet-f5 provision` downloads and verifies the pinned `F5TTS_v1_Base` (CC-BY-NC-4.0) and Vocos (MIT) files into volume `martlet-f5-models`, `martlet-f5 warm` loads them | Speaking: replies in a voice cloned from your reference recording when the desktop hands speaking to this host (Devices > Who does what). Relay `Martlet.Gateway.F5` streams the worker's contiguous 24 kHz mono PCM16 frames and chunk completions; cancellation is discard-only |
 | `audio2face` | NVIDIA GPU (4 GB+), free NVIDIA account with an [NGC API key](https://org.ngc.nvidia.com/setup/api-key); NIM `nvcr.io/nim/nvidia/audio2face-3d:1.3`, models `claire`/`mark`/`james` | Automatic lip-sync uses it when the desktop hands lip-sync to this host (Devices > Who does what) |
 
 On a native host the `ollama` role listens on the host's own 127.0.0.1:11434, so

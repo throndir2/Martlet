@@ -99,6 +99,12 @@
           "Martlet.Sessions": "[0.3.0, )"
         }
       },
+      "martlet.f5": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Core": "[0.3.0, )"
+        }
+      },
       "martlet.fixtures": {
         "type": "Project",
         "dependencies": {
