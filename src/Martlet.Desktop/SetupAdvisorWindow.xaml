@@ -1,0 +1,115 @@
+<local:ThemedWindow x:Class="Martlet.Desktop.SetupAdvisorWindow"
+        xmlns:local="clr-namespace:Martlet.Desktop"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Style="{DynamicResource AppWindowStyle}"
+        Title="Martlet - which setup is right for me?" Width="900" Height="760" MinWidth="520" MinHeight="420"
+        WindowStartupLocation="CenterOwner"
+        AutomationProperties.AutomationId="SetupAdvisorWindow">
+    <DockPanel>
+        <Border DockPanel.Dock="Bottom" Padding="24,10" Background="{DynamicResource SoftBrush}">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button x:Name="BackButton" Content="_Back" Click="Back_Click" Padding="14,8" Margin="0,0,8,0"
+                            AutomationProperties.AutomationId="AdvisorBack"/>
+                    <Button x:Name="NextButton" Content="_Next" Click="Next_Click" Padding="14,8" Margin="0,0,8,0"
+                            Style="{DynamicResource PrimaryButton}" AutomationProperties.AutomationId="AdvisorNext"/>
+                    <Button Content="_Close" IsCancel="True" Click="Close_Click" Padding="14,8"
+                            AutomationProperties.AutomationId="AdvisorClose"/>
+                </StackPanel>
+                <TextBlock x:Name="StepText" VerticalAlignment="Center" Foreground="{DynamicResource MutedBrush}"
+                           AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="AdvisorStep"/>
+            </DockPanel>
+        </Border>
+        <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="24" MaxWidth="900">
+                <TextBlock Text="Which setup is right for me?" FontSize="24" FontWeight="SemiBold"/>
+                <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,6,0,16"
+                    Text="Answer three quick questions. Martlet suggests where each part should run and explains what it does. Nothing is installed, saved, tested or contacted."/>
+
+                <StackPanel x:Name="GoalStep">
+                    <TextBlock Text="1. What matters most to you?" Style="{DynamicResource SectionHeading}"/>
+                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,10"
+                        Text="The conversation model (the part that thinks of replies) is the biggest choice: a large hosted model is smarter, while a local model on a GPU of its own starts talking sooner and keeps your words at home."/>
+                    <RadioButton x:Name="BalancedGoal" GroupName="Goal" Margin="0,4,0,10" AutomationProperties.AutomationId="GoalBalanced"
+                                 AutomationProperties.Name="Balanced, recommended">
+                        <StackPanel>
+                            <TextBlock Text="Balanced (recommended)" FontWeight="SemiBold"/>
+                            <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}"
+                                Text="Smart hosted answers from OpenRouter or NVIDIA Build, with any spare GPU spent on your voice and the character's face."/>
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton x:Name="SmartestGoal" GroupName="Goal" Margin="0,4,0,10" AutomationProperties.AutomationId="GoalSmartest"
+                                 AutomationProperties.Name="Smartest answers">
+                        <StackPanel>
+                            <TextBlock Text="Smartest answers" FontWeight="SemiBold"/>
+                            <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}"
+                                Text="The biggest hosted model you are willing to pay for. Best replies; each request may cost money."/>
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton x:Name="FastestGoal" GroupName="Goal" Margin="0,4,0,10" AutomationProperties.AutomationId="GoalFastest"
+                                 AutomationProperties.Name="Fastest replies">
+                        <StackPanel>
+                            <TextBlock Text="Fastest replies" FontWeight="SemiBold"/>
+                            <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}"
+                                Text="A conversation model on a GPU of its own, so replies start as soon as possible. Smaller local models are less capable."/>
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton x:Name="PrivateGoal" GroupName="Goal" Margin="0,4,0,10" AutomationProperties.AutomationId="GoalPrivate"
+                                 AutomationProperties.Name="Private and offline">
+                        <StackPanel>
+                            <TextBlock Text="Private and offline" FontWeight="SemiBold"/>
+                            <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}"
+                                Text="Everything runs on your own computers. Works best with a good GPU; local models are less capable than large hosted ones."/>
+                        </StackPanel>
+                    </RadioButton>
+                </StackPanel>
+
+                <StackPanel x:Name="FeatureStep" Visibility="Collapsed">
+                    <TextBlock Text="2. What should Martlet do?" Style="{DynamicResource SectionHeading}"/>
+                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,10"
+                        Text="Each choice adds one part. With nothing selected you simply type and read replies."/>
+                    <CheckBox x:Name="VoiceInputChoice" Margin="0,4,0,0" AutomationProperties.AutomationId="FeatureVoiceInput"
+                              Content="Talk to it with my microphone (hold push-to-talk)"/>
+                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="24,0,0,10"
+                        Text="Adds speech-to-text, which turns your voice into text."/>
+                    <CheckBox x:Name="SpokenRepliesChoice" Margin="0,4,0,0" AutomationProperties.AutomationId="FeatureSpokenReplies"
+                              Content="Hear its replies spoken aloud" Unchecked="SpokenReplies_Unchecked"/>
+                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="24,0,0,10"
+                        Text="Adds a voice (text-to-speech) and uses your speakers or headphones."/>
+                    <CheckBox x:Name="CharacterChoice" Margin="0,4,0,0" AutomationProperties.AutomationId="FeatureCharacter"
+                              Content="Show an animated character"/>
+                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="24,0,0,10"
+                        Text="A Live2D or VRM companion on your desktop that moves its mouth when it speaks."/>
+                    <CheckBox x:Name="CustomVoiceChoice" Margin="0,4,0,0" AutomationProperties.AutomationId="FeatureCustomVoice"
+                              Content="Use a custom or cloned voice" Checked="CustomVoice_Checked"/>
+                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="24,0,0,10"
+                        Text="Needs an NVIDIA GPU. Only use voices you have permission to use."/>
+                </StackPanel>
+
+                <StackPanel x:Name="HardwareStep" Visibility="Collapsed">
+                    <TextBlock Text="3. Your computers" Style="{DynamicResource SectionHeading}"/>
+                    <Label Target="{Binding ElementName=ThisPcGpuChoice}" Content="_Graphics card (GPU) in this PC"/>
+                    <ComboBox x:Name="ThisPcGpuChoice" MinHeight="30" AutomationProperties.AutomationId="ThisPcGpu"
+                              AutomationProperties.Name="Graphics card in this PC"/>
+                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,10"
+                        Text="Find it in Task Manager > Performance > GPU, under Dedicated GPU memory."/>
+                    <CheckBox x:Name="GamesChoice" Margin="0,4,0,0" AutomationProperties.AutomationId="GamesOnThisPc"
+                              Content="I play games on this PC while Martlet is running"/>
+                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="24,0,0,12"
+                        Text="Martlet then keeps heavy work off this PC's GPU so your games stay smooth."/>
+                    <Label Target="{Binding ElementName=ExtraMachinesChoice}" Content="_Other computers I can dedicate to Martlet"/>
+                    <ComboBox x:Name="ExtraMachinesChoice" MinHeight="30" SelectionChanged="ExtraMachines_Changed"
+                              AutomationProperties.AutomationId="ExtraMachines" AutomationProperties.Name="Other computers I can dedicate to Martlet"/>
+                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,10"
+                        Text="Other computers on your home network run parts of Martlet through Martlet hosts. They can run Linux or Windows."/>
+                    <Label x:Name="ExtraGpuLabel" Target="{Binding ElementName=ExtraGpuChoice}" Content="_Their GPU (the smallest one, if they differ)"/>
+                    <ComboBox x:Name="ExtraGpuChoice" MinHeight="30" AutomationProperties.AutomationId="ExtraMachineGpu"
+                              AutomationProperties.Name="GPU in the other computers"/>
+                </StackPanel>
+
+                <StackPanel x:Name="ResultStep" Visibility="Collapsed" AutomationProperties.AutomationId="AdvisorResult"/>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</local:ThemedWindow>

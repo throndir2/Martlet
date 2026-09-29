@@ -7,6 +7,14 @@ Martlet measurements**; no GPU/driver/model tuple is qualified yet
 ([Ubuntu host matrix](INSTALLATION_SUPPORT.md#proposed-matrix)). Leave 10-15%
 VRAM headroom and measure your own machine.
 
+**In the app:** **Which setup is right for me?** on the home screen asks for
+your goal (balanced, smartest, fastest or private), features and computers. It
+then shows this guidance for each role: where the role runs, what it does, why,
+what data leaves your PC, how to set it up, and what to use until planned parts
+arrive. It saves, installs and contacts nothing. The recommendations and availability labels live in
+[`SetupAdvisor.cs`](../src/Martlet.Core/Installation/SetupAdvisor.cs); update
+them when a route ships.
+
 ## 1. What must stay on the PC you talk to
 
 These parts touch your devices, screen, keys or consent, so they always run in

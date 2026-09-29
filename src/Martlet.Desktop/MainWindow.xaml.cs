@@ -7,6 +7,7 @@ using System.Windows.Controls;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using Martlet.Core.Settings;
+using Martlet.Core.Installation;
 using Martlet.Diagnostics;
 using Martlet.Audio;
 using Martlet.Audio.Windows;
@@ -486,6 +487,22 @@ public partial class MainWindow : ThemedWindow
     internal void ObserveVoiceOperation(SetupOperation operation) => voiceOperation = operation;
 
     private void Troubleshooting_Click(object sender, RoutedEventArgs e) => OpenTroubleshooting(this);
+    private AdvisorAnswers? advisorAnswers;
+    private void Advisor_Click(object sender, RoutedEventArgs e)
+    {
+        if (closing) return;
+        var advisor = new SetupAdvisorWindow(advisorAnswers) { Owner = this };
+        advisor.ShowDialog();
+        advisorAnswers = advisor.Answers;
+        switch (advisor.RequestedStep)
+        {
+            case AdvisorNextStep.Setup: Setup_Click(sender, e); break;
+            case AdvisorNextStep.AudioSetup: AudioSetup_Click(sender, e); break;
+            case AdvisorNextStep.Hosts: Hosts_Click(sender, e); break;
+            case AdvisorNextStep.VoiceLibrary: VoiceLibrary_Click(sender, e); break;
+            case AdvisorNextStep.Character: Avatar_Click(sender, e); break;
+        }
+    }
     private void Avatar_Click(object sender, RoutedEventArgs e) => OpenAvatar(this);
     private void Hosts_Click(object sender, RoutedEventArgs e)
     {

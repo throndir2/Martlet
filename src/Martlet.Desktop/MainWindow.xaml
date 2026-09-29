@@ -41,8 +41,10 @@
                             <Button x:Name="ConversationButton" Content="Open _real API conversation" Click="Conversation_Click"
                                     Style="{DynamicResource PrimaryButton}" Margin="0,0,12,6"
                                     AutomationProperties.AutomationId="OpenLiveConversation" AutomationProperties.Name="Open real API conversation without network, credentials or device effects" />
-                            <Button x:Name="SetupButton" Content="Set_up / resume" Click="Setup_Click" Margin="0,0,0,6"
+                            <Button x:Name="SetupButton" Content="Set_up / resume" Click="Setup_Click" Margin="0,0,12,6"
                                     AutomationProperties.AutomationId="OpenSetup" AutomationProperties.Name="Open resumable setup, no network or credential lookup" />
+                            <Button x:Name="AdvisorButton" Content="_Which setup is right for me?" Click="Advisor_Click" Margin="0,0,0,6"
+                                    AutomationProperties.AutomationId="OpenSetupAdvisor" AutomationProperties.Name="Get a recommended setup for your goal and computers; saves and contacts nothing" />
                         </WrapPanel>
                     </StackPanel>
                     <Viewbox Grid.Column="1" Width="74" Height="90" Margin="16,0,0,0" VerticalAlignment="Top"
