@@ -49,6 +49,7 @@ internal sealed record HostConfiguration(string HostId, string StateDirectory,
             {
                 "loopback" => GatewayHostBinding.Loopback(origin),
                 "privateIp" => GatewayHostBinding.ExactPrivateAddress(origin),
+                "published" => GatewayHostBinding.PublishedPrivateAddress(origin, InsideContainer()),
                 _ => throw new HostInputException()
             };
         }
@@ -82,6 +83,10 @@ internal sealed record HostConfiguration(string HostId, string StateDirectory,
 
     internal static bool ModelToken(string text) => text is { Length: > 0 and <= 128 } &&
         char.IsAsciiLetterOrDigit(text[0]) && text.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-' or ':' or '/');
+
+    /// <summary>Docker/Podman markers; "published" binding is only valid in a container's own network namespace.</summary>
+    internal static Func<bool> InsideContainer { get; set; } =
+        () => File.Exists("/.dockerenv") || File.Exists("/run/.containerenv");
 
     internal static bool Identifier(string text) => text is { Length: > 0 and <= 64 } &&
         char.IsAsciiLetterOrDigit(text[0]) && text.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-');

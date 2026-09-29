@@ -65,9 +65,50 @@ public sealed class ConfigurationTests
         RoleConfig($"[{{\"kind\":\"audio2face\",\"endpoint\":\"{endpoint}\",\"model\":\"{model}\"}}]");
 
     [Fact]
+    public void Published_binding_is_only_accepted_inside_a_container()
+    {
+        var published = Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(Config("https://192.168.1.2:9443", "published")));
+        var previous = HostConfiguration.InsideContainer;
+        try
+        {
+            HostConfiguration.InsideContainer = () => false;
+            Assert.Throws<HostInputException>(() => HostConfiguration.Parse(published));
+            HostConfiguration.InsideContainer = () => true;
+            var binding = HostConfiguration.Parse(published).Binding;
+            Assert.Equal("https://192.168.1.2:9443", binding.Origin.CanonicalOrigin);
+            Assert.Equal(System.Net.IPAddress.Any, binding.ListenAddress);
+            Assert.Throws<HostInputException>(() => HostConfiguration.Parse(Config("https://127.0.0.1:9443", "published")));
+            Assert.Null(HostConfiguration.Parse(Config("https://192.168.1.2:9443", "privateIp")).Binding.ListenAddress);
+        }
+        finally { HostConfiguration.InsideContainer = previous; }
+    }
+
+    [Fact]
+    public void Pairing_code_carries_the_whole_invitation_and_parses_on_the_desktop()
+    {
+        var token = new string('T', 43);
+        var card = new GatewayPairingCard
+        {
+            PairingId = "AAAAAAAAAAAAAAAAAAAAAA", HostId = "gpu-host", Origin = "https://192.168.1.20:9443",
+            SpkiFingerprint = "sha256:" + new string('a', 64), Token = new GatewaySecret(token),
+            ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(5)
+        };
+        var code = PairingCode.Format(card);
+        Assert.StartsWith("martlet-pair-v1.", code, StringComparison.Ordinal);
+        Assert.DoesNotContain('\n', code);
+        var parsed = Martlet.Avatar.Audio2Face.Remote.HostPairingCode.Parse("  " + code + "\r\n");
+        Assert.Equal((card.Origin, card.HostId, card.SpkiFingerprint, card.PairingId, token),
+            (parsed.Origin, parsed.HostId, parsed.SpkiFingerprint, parsed.PairingId, parsed.Token));
+        Assert.DoesNotContain(token, parsed.ToString(), StringComparison.Ordinal);
+        foreach (var bad in new[] { "", "martlet-pair-v1.", "martlet-pair-v1.e30", code[..^4], code.Replace("v1", "v2") })
+            Assert.Throws<Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostException>(
+                () => Martlet.Avatar.Audio2Face.Remote.HostPairingCode.Parse(bad));
+    }
+
+    [Fact]
     public void Configuration_rendered_by_martlet_host_parses()
     {
-        // Exact shape written by deploy/ubuntu/host/martlet-host render_config (checked in a local harness).
+        // Exact shape written by deploy/host/martlet-host render_config (checked in a local harness).
         const string rendered = "{\"schemaVersion\":1,\"hostId\":\"gpu-host\",\"stateDirectory\":\"/home/u/.local/share/martlet/host/private/state\"," +
             "\"storageBackend\":\"linuxServicePermissions\",\"binding\":{\"mode\":\"privateIp\",\"origin\":\"https://192.168.1.20:9443\"}," +
             "\"serviceUid\":1000,\"serviceGid\":1000,\"roles\":[{\"kind\":\"audio2face\",\"endpoint\":\"http://127.0.0.1:52000/\",\"model\":\"mark\"}]}\n";

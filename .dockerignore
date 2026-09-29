@@ -1,0 +1,12 @@
+.git
+**/bin
+**/obj
+**/node_modules
+**/vendor
+**/dist
+**/dev-dist
+**/live2d-dist
+artifacts
+TestResults
+.vs
+.playwright-mcp

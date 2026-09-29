@@ -1,0 +1,66 @@
+<local:ThemedWindow x:Class="Martlet.Desktop.HostsWindow"
+        xmlns:local="clr-namespace:Martlet.Desktop"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Style="{DynamicResource AppWindowStyle}"
+        Title="Martlet - hosts" Width="860" Height="820" MinWidth="520" MinHeight="420"
+        Loaded="Window_Loaded" Closed="Window_Closed" WindowStartupLocation="CenterOwner">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="20">
+            <TextBlock Text="Martlet hosts" FontSize="24" FontWeight="SemiBold"/>
+            <TextBlock TextWrapping="Wrap" Margin="0,8"
+                Text="A Martlet host is a computer that runs extra roles for this desktop, such as Audio2Face lip-sync on an NVIDIA GPU. It can be another PC on your network or this PC through Docker Desktop. Every host is set up by the same martlet-host tool with the same steps; only the way Martlet reaches it differs. Hosts listen only on your private network, and changes on a host are confirmed in its own console."/>
+
+            <TextBlock Text="1. Set up a host" FontSize="18" FontWeight="SemiBold" Margin="0,12,0,4"/>
+            <Label Target="{Binding ElementName=MethodChoice}" Content="_Where the host runs"/>
+            <ComboBox x:Name="MethodChoice" MinHeight="28" SelectionChanged="Method_Changed" AutomationProperties.AutomationId="HostMethod">
+                <ComboBoxItem Content="This PC, with Docker Desktop (Windows)"/>
+                <ComboBoxItem Content="Another computer over SSH, using Docker there (Linux, Windows or macOS with Docker)"/>
+                <ComboBoxItem Content="Another computer over SSH, native Ubuntu install"/>
+                <ComboBoxItem Content="Another computer, I will type the commands there myself"/>
+            </ComboBox>
+            <StackPanel x:Name="SshPanel">
+                <Label Target="{Binding ElementName=SshTargetText}" Content="SSH _target (user@computer)"/>
+                <TextBox x:Name="SshTargetText" MinHeight="28" LostFocus="SshTarget_LostFocus" TextChanged="Target_Changed"
+                         AutomationProperties.AutomationId="SshTarget"/>
+            </StackPanel>
+            <Label Target="{Binding ElementName=AddressText}" Content="Host's private _LAN address (desktops connect to https://address:9443)"/>
+            <TextBox x:Name="AddressText" MinHeight="28" TextChanged="Target_Changed" AutomationProperties.AutomationId="HostAddress"/>
+            <WrapPanel Margin="0,10,0,0">
+                <Button Content="Set _up host" Click="Setup_Click" Padding="10,6" Margin="0,0,8,6" AutomationProperties.AutomationId="SetupHost"/>
+                <Button Content="Add _Audio2Face role" Click="AddAudio2Face_Click" Padding="10,6" Margin="0,0,8,6" AutomationProperties.AutomationId="AddAudio2Face"/>
+                <Button Content="Host _status" Click="Status_Click" Padding="10,6" Margin="0,0,8,6" AutomationProperties.AutomationId="HostStatusCommand"/>
+                <Button Content="_Remove Audio2Face role" Click="RemoveAudio2Face_Click" Padding="10,6" Margin="0,0,8,6"/>
+                <Button x:Name="InstallDockerButton" Content="I_nstall Docker Desktop" Click="InstallDocker_Click" Padding="10,6" Margin="0,0,8,6"
+                        AutomationProperties.AutomationId="InstallDockerDesktop"/>
+            </WrapPanel>
+            <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}"
+                Text="Each button opens a console window running the command below. SSH asks for your password or key as usual. Docker methods build the martlet-host image from this Martlet version's source on the host the first time (a few minutes). Audio2Face needs an NVIDIA GPU with 4 GB+ and a free NVIDIA NGC API key on the host."/>
+            <Label Target="{Binding ElementName=CommandText}" Content="Command"/>
+            <TextBox x:Name="CommandText" IsReadOnly="True" TextWrapping="Wrap" FontFamily="Consolas" MinHeight="90"
+                     AutomationProperties.AutomationId="HostCommand"/>
+
+            <TextBlock Text="2. Pair this PC with the host" FontSize="18" FontWeight="SemiBold" Margin="0,16,0,4"/>
+            <TextBlock TextWrapping="Wrap"
+                Text="Press Pair this PC to open the host's console, confirm opening it, type start, then pair with the device ID below and role voice. The host shows a one-use pairing code (martlet-pair-v1...). Paste it here and press Pair while that console stays open."/>
+            <Label Target="{Binding ElementName=DeviceIdText}" Content="This PC's _device ID"/>
+            <DockPanel>
+                <Button Content="_Copy" Click="CopyDeviceId_Click" DockPanel.Dock="Right" Padding="10,4" Margin="8,0,0,0"/>
+                <TextBox x:Name="DeviceIdText" MinHeight="28" AutomationProperties.AutomationId="DeviceId"/>
+            </DockPanel>
+            <WrapPanel Margin="0,8,0,0">
+                <Button Content="_Pair this PC (opens the host console)" Click="PairConsole_Click" Padding="10,6" Margin="0,0,8,0"
+                        AutomationProperties.AutomationId="PairConsole"/>
+            </WrapPanel>
+            <Label Target="{Binding ElementName=PairingCodeBox}" Content="Pairing c_ode from the host"/>
+            <PasswordBox x:Name="PairingCodeBox" MinHeight="28" AutomationProperties.AutomationId="PairingCode"/>
+            <WrapPanel Margin="0,8,0,0">
+                <Button Content="Pair with _host" Click="Pair_Click" Padding="10,6" Margin="0,0,8,0" AutomationProperties.AutomationId="PairHost"/>
+                <Button Content="Chec_k host" Click="Check_Click" Padding="10,6" Margin="0,0,8,0" AutomationProperties.AutomationId="CheckHost"/>
+                <Button Content="_Forget host" Click="Forget_Click" Padding="10,6" AutomationProperties.AutomationId="ForgetHost"/>
+            </WrapPanel>
+            <TextBlock x:Name="StatusText" TextWrapping="Wrap" Margin="0,10" AutomationProperties.LiveSetting="Polite"
+                       AutomationProperties.AutomationId="HostStatus"/>
+        </StackPanel>
+    </ScrollViewer>
+</local:ThemedWindow>

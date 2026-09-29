@@ -44,6 +44,41 @@ public sealed record Audio2FaceHostRoute(
     string AdapterVersion, string ModelId, string ModelRevision, string ModelSha256, string ArtifactIdentitySha256,
     int MaximumInputBytes, int MaximumEventBytes, int MaximumStreamBytes, TimeSpan MaximumDuration);
 
+/// <summary>The single-line invitation a Martlet host shows during "pair" (martlet-pair-v1.&lt;base64url JSON&gt;).</summary>
+public sealed record HostPairingCode(string Origin, string HostId, string SpkiFingerprint, string PairingId, string Token)
+{
+    public const string Prefix = "martlet-pair-v1.";
+
+    public static HostPairingCode Parse(string? text)
+    {
+        var value = text?.Trim() ?? "";
+        try
+        {
+            if (!value.StartsWith(Prefix, StringComparison.Ordinal) || value.Length > 2048) throw new FormatException();
+            using var document = JsonDocument.Parse(Base64Url.DecodeFromChars(value.AsSpan(Prefix.Length)));
+            var root = document.RootElement;
+            if (root.EnumerateObject().Count() != 5) throw new FormatException();
+            string Field(string name) => root.GetProperty(name).GetString() ?? throw new FormatException();
+            var code = new HostPairingCode(Field("o"), Field("h"), Field("s"), Field("i"), Field("t"));
+            Audio2FaceHostClient.CanonicalOrigin(code.Origin);
+            Audio2FaceHostClient.RequireIdentifier(code.HostId, "host ID");
+            Audio2FaceHostClient.RequireFingerprint(code.SpkiFingerprint);
+            if (!Audio2FaceHostClient.TryBase64Url(code.PairingId, 16, out _) || code.Token.Length != 43) throw new FormatException();
+            return code;
+        }
+        catch (Exception error) when (error is FormatException or JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            throw new Audio2FaceHostException("pairing.invalid",
+                "Paste the whole pairing code the host shows (it starts with martlet-pair-v1.).");
+        }
+    }
+
+    public Task<(Audio2FaceHostPairing Pairing, string Secret)> PairAsync(string deviceId, CancellationToken token = default) =>
+        Audio2FaceHostClient.PairAsync(Origin, HostId, SpkiFingerprint, deviceId, PairingId, Token, token);
+
+    public override string ToString() => $"Pairing code for {HostId} at {Origin} (token omitted)";
+}
+
 /// <summary>One facial frame; SampleOffset is relative to the first sample of the submitted chunk.</summary>
 public sealed record RemoteFaceFrame(long SampleOffset, IReadOnlyDictionary<string, double> Blendshapes);
 

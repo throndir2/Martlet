@@ -39,25 +39,9 @@
                       AutomationProperties.AutomationId="RemoteHostSection">
                 <StackPanel Margin="0,8,0,0">
                     <TextBlock TextWrapping="Wrap"
-                        Text="Run Audio2Face on a separate Ubuntu PC with an NVIDIA GPU: there, run 'martlet-host setup', 'martlet-host add audio2face' and 'martlet-host pair' (Martlet's host tool, deploy/ubuntu/host), enter the device ID below when pairing, then copy the values it shows. Automatic lip-sync then uses the host whenever this PC has no local Audio2Face. Only Martlet's generated voice is sent, over pinned TLS to the exact paired host."/>
-                    <Label Target="{Binding ElementName=HostOriginText}" Content="Host _address (https://IP:port)"/>
-                    <TextBox x:Name="HostOriginText" MinHeight="28" AutomationProperties.AutomationId="HostOrigin"/>
-                    <Label Target="{Binding ElementName=HostIdText}" Content="Host _ID"/>
-                    <TextBox x:Name="HostIdText" MinHeight="28" AutomationProperties.AutomationId="HostId"/>
-                    <Label Target="{Binding ElementName=HostFingerprintText}" Content="Host _fingerprint (sha256:...)"/>
-                    <TextBox x:Name="HostFingerprintText" MinHeight="28" FontFamily="Consolas" AutomationProperties.AutomationId="HostFingerprint"/>
-                    <Label Target="{Binding ElementName=DeviceIdText}" Content="This PC's _device ID (enter the same on the host)"/>
-                    <TextBox x:Name="DeviceIdText" MinHeight="28" AutomationProperties.AutomationId="DeviceId"/>
-                    <Label Target="{Binding ElementName=PairingIdText}" Content="_Pairing ID"/>
-                    <TextBox x:Name="PairingIdText" MinHeight="28" FontFamily="Consolas" AutomationProperties.AutomationId="PairingId"/>
-                    <Label Target="{Binding ElementName=PairingTokenBox}" Content="Pairing _token"/>
-                    <PasswordBox x:Name="PairingTokenBox" MinHeight="28" AutomationProperties.AutomationId="PairingToken"/>
-                    <WrapPanel Margin="0,8,0,0">
-                        <Button Content="Pair with _host" Click="PairHost_Click" Padding="10,6" Margin="0,0,8,0"
-                                AutomationProperties.AutomationId="PairHost"/>
-                        <Button Content="_Forget host" Click="ForgetHost_Click" Padding="10,6"
-                                AutomationProperties.AutomationId="ForgetHost"/>
-                    </WrapPanel>
+                        Text="Run Audio2Face on a PC with an NVIDIA GPU (another computer, or this PC through Docker Desktop) as a Martlet host. Martlet hosts sets it up over SSH, with Docker or natively on Ubuntu, and pairs this PC with a one-use code. Automatic lip-sync then uses the host whenever this PC has no local Audio2Face. Only Martlet's generated voice is sent, over pinned TLS to the exact paired host."/>
+                    <Button Content="_Pair or set up a Martlet host..." Click="Hosts_Click" Padding="10,6" Margin="0,8,0,0" HorizontalAlignment="Left"
+                            AutomationProperties.AutomationId="OpenHosts"/>
                     <TextBlock x:Name="HostStatusText" TextWrapping="Wrap" Margin="0,8" AutomationProperties.LiveSetting="Polite"
                                AutomationProperties.AutomationId="HostStatus"/>
                 </StackPanel>

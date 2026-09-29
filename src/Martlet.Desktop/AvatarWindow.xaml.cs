@@ -39,7 +39,6 @@ public partial class AvatarWindow : ThemedWindow
         CustomModelPanel.IsEnabled = false;
         SourceChoice.ItemsSource = AvatarChannels.BlendshapeNames.Order(StringComparer.Ordinal).ToArray();
         SourceChoice.SelectedItem = "jawOpen";
-        DeviceIdText.Text = SuggestedDeviceId();
         ShowRemoteHost();
         ShowConfiguration(AvatarConfiguration.Disabled);
         timer.Tick += (_, _) => StatusText.Text = controller.Status;
@@ -141,75 +140,16 @@ public partial class AvatarWindow : ThemedWindow
 
     private AvatarRemoteHost? remoteHost;
 
-    private static string SuggestedDeviceId()
+    private void ShowRemoteHost() => HostStatusText.Text = remoteHost is { } host
+        ? $"Paired with Martlet host {host.HostId} at {host.Origin}. Automatic lip-sync uses its Audio2Face when this PC has none."
+        : "No Martlet host paired.";
+
+    private async void Hosts_Click(object sender, RoutedEventArgs e)
     {
-        var name = new string(Environment.MachineName.ToLowerInvariant()
-            .Where(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.').ToArray());
-        var id = "desktop-" + (name.Length == 0 ? "pc" : name);
-        return id.Length > 64 ? id[..64] : id;
+        new HostsWindow(profiles, settings) { Owner = this }.ShowDialog();
+        // The hosts window saves the pairing into the same avatar document; pick up its new revision.
+        await ActionAsync(ReloadAsync);
     }
-
-    private void ShowRemoteHost()
-    {
-        if (remoteHost is { } host)
-        {
-            HostOriginText.Text = host.Origin;
-            HostIdText.Text = host.HostId;
-            HostFingerprintText.Text = host.SpkiFingerprint;
-            DeviceIdText.Text = host.DeviceId;
-            HostStatusText.Text = $"Paired with Martlet host {host.HostId} at {host.Origin}. Automatic lip-sync uses its Audio2Face when this PC has none.";
-        }
-        else HostStatusText.Text = "No Martlet host paired.";
-    }
-
-    private async void PairHost_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
-    {
-        if (profileId == Guid.Empty) throw new InvalidOperationException("Complete Setup once so the pairing can be saved.");
-        HostStatusText.Text = "Pairing with the Martlet host...";
-        try
-        {
-            var (pairing, secret) = await Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostClient.PairAsync(
-                HostOriginText.Text, HostIdText.Text.Trim(), HostFingerprintText.Text.Trim(), DeviceIdText.Text.Trim(),
-                PairingIdText.Text.Trim(), PairingTokenBox.Password.Trim(), lifetime.Token);
-            PairingTokenBox.Clear();
-            using (var lease = new SecretLease(secret))
-            {
-                var stored = new Martlet.Credentials.Windows.WindowsCredentialStore()
-                    .WriteAvatarHostSecret(pairing.HostId, pairing.CredentialId, lease);
-                if (stored != CredentialError.None) throw new InvalidOperationException(CredentialMessages.Describe(stored));
-            }
-            var previous = remoteHost;
-            remoteHost = new AvatarRemoteHost
-            {
-                Origin = pairing.Origin, HostId = pairing.HostId, SpkiFingerprint = pairing.SpkiFingerprint,
-                DeviceId = pairing.DeviceId, CredentialId = pairing.CredentialId
-            };
-            revision = await profiles.SaveAsync(Selected() with { ResourceRevision = null }, revision, lifetime.Token);
-            if (previous is not null && previous.CredentialId != remoteHost.CredentialId)
-                new Martlet.Credentials.Windows.WindowsCredentialStore().DeleteAvatarHostSecret(previous.HostId, previous.CredentialId);
-            PairingIdText.Clear();
-            ShowRemoteHost();
-            HostStatusText.Text += " Press Show character (or hide and show it) to start using it.";
-        }
-        catch (Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostException error)
-        {
-            HostStatusText.Text = error.Message;
-        }
-    });
-
-    private async void ForgetHost_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
-    {
-        if (remoteHost is not { } host) { HostStatusText.Text = "No Martlet host paired."; return; }
-        remoteHost = null;
-        if (profileId != Guid.Empty)
-            revision = await profiles.SaveAsync(Selected() with { ResourceRevision = null }, revision, lifetime.Token);
-        new Martlet.Credentials.Windows.WindowsCredentialStore().DeleteAvatarHostSecret(host.HostId, host.CredentialId);
-        HostOriginText.Clear();
-        HostIdText.Clear();
-        HostFingerprintText.Clear();
-        ShowRemoteHost();
-        HostStatusText.Text += " Revoke this device on the host with the gateway 'revoke' command.";
-    });
 
     private void BrowseModel_Click(object sender, RoutedEventArgs e)
     {
