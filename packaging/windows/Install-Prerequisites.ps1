@@ -391,7 +391,7 @@ function Install-Ollama {
     }
     $shown = if ($model) { $model } else { '<the model tag you pull>' }
     Write-Host ''
-    Write-Host 'To use it in Martlet: Setup / resume > LLM provider: OpenAI-compatible endpoint,' -ForegroundColor Green
+    Write-Host 'To use it in Martlet: Setup / resume > Destinations > LLM provider: Custom OpenAI-compatible endpoint,' -ForegroundColor Green
     Write-Host "  base URL $OllamaEndpoint/v1, model $shown, no API key needed." -ForegroundColor Green
 }
 

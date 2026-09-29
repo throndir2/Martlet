@@ -1,8 +1,9 @@
 # Prerequisites: what Martlet bundles, installs for you, or needs from you
 
-**Inventory date 2026-09-29.** Covers features on `main` plus work in progress
-in parallel sessions (cloud Chat Completions providers, recommended multi-machine
-layouts). Every prerequisite is delivered one of four ways:
+**Inventory date 2026-09-29.** Covers every feature on `main`, including the
+OpenRouter / NVIDIA Build / OpenAI-compatible LLM routes and the setup advisor,
+plus features still in progress (section 3). Every prerequisite is delivered one
+of four ways:
 
 | Delivery | Meaning |
 | --- | --- |
@@ -57,8 +58,8 @@ per-user app; no large model download without typing `y` or a model tag.
 | Speakers or headphones | Generated voice, tone test | You supply | |
 | Windows speech recognizer + SAPI voices for your language | Windows offline speech-to-text and Windows-voices TTS (CPU, free, offline) | **Installer option** (`WindowsSpeech`, unticked) | Adds `Language.Speech~~~<culture>~0.0.1.0` and `Language.TextToSpeech~~~<culture>~0.0.1.0` from Windows Update (one UAC prompt). en-US already includes a recognizer and two voices. Martlet uses SAPI (System.Speech); OneCore "natural" voices are not visible to it. |
 | OpenAI API key | OpenAI STT, TTS and LLM routes | You supply | Setup / resume > Credentials stores it in Windows Credential Manager. [Keys](https://platform.openai.com/api-keys). |
-| OpenRouter or NVIDIA Build API key | Hosted LLM through the Chat Completions route (in progress) | You supply | Base URLs `https://openrouter.ai/api/v1`, `https://integrate.api.nvidia.com/v1`. [OpenRouter keys](https://openrouter.ai/settings/keys), [NVIDIA Build](https://build.nvidia.com/). |
-| **Ollama** (or LM Studio / llama.cpp) | Local LLM on this PC over loopback | **Installer option** (`Ollama`, unticked) | `winget Ollama.Ollama` (MIT). The tool then offers one model sized to your GPU (`llama3.2:3b`, `llama3.1:8b`, `gemma3:12b`, `gemma3:27b`; you can type any tag) and prints the Martlet setting: OpenAI-compatible endpoint `http://127.0.0.1:11434/v1`, no key. LM Studio (`winget ElementLabs.LMStudio`) works the same way but is not automated. |
+| OpenRouter or NVIDIA Build API key | Hosted LLM through the Chat Completions route | You supply | Setup / resume > Destinations > LLM provider. Base URLs `https://openrouter.ai/api/v1`, `https://integrate.api.nvidia.com/v1`. [OpenRouter keys](https://openrouter.ai/settings/keys), [NVIDIA Build](https://build.nvidia.com/). |
+| **Ollama** (or LM Studio / llama.cpp) | Local LLM on this PC over loopback | **Installer option** (`Ollama`, unticked) | `winget Ollama.Ollama` (MIT). The tool then offers one model sized to your GPU (`llama3.2:3b`, `llama3.1:8b`, `gemma3:12b`, `gemma3:27b`; you can type any tag) and prints the Martlet setting: Setup / resume > Destinations > LLM provider *Custom OpenAI-compatible endpoint*, base URL `http://127.0.0.1:11434/v1`, no key. LM Studio (`winget ElementLabs.LMStudio`) works the same way but is not automated. |
 | Your own Live2D (`.model3.json`) or VRM1 (`.vrm`) models | Custom characters | You supply | Character settings > Browse model. Rights stay with you. |
 | NVIDIA GPU driver | Any local GPU role (LLM, Audio2Face, GPU voice) | You supply; the tool helps (`NvidiaDriver`) | NVIDIA drivers cannot be redistributed. The tool detects an NVIDIA GPU, checks `nvidia-smi` and opens NVIDIA's driver page. Not needed for API routes or loudness lip-sync. |
 | **WSL 2 + Docker Desktop** | Martlet hosts > *This PC* (Audio2Face and future GPU roles on this PC) | **Installer option** (`DockerDesktop`, unticked); also *Install Docker Desktop* in Martlet hosts | `wsl --install --no-distribution` (UAC; may need a restart), then `winget Docker.DockerDesktop` (Docker Subscription Service Agreement; free for personal use). |
@@ -88,7 +89,6 @@ each lands with an install path instead of a manual step.
 
 | Feature | Prerequisites | Planned delivery |
 | --- | --- | --- |
-| Cloud Chat Completions LLM (OpenRouter, NVIDIA Build, any OpenAI-compatible URL, loopback local servers) | Account + key, or a local server | Keys: you supply. Local server: `Ollama` installer option (above). |
 | Windows offline STT / Windows voices TTS dispatch | Windows speech capability for your language | `WindowsSpeech` installer option (above). |
 | whisper.cpp local STT | whisper.cpp v1.9.2 CPU binaries (MIT) + `ggml-base.en.bin` (148 MB, MIT) | Bundle the small binaries; download the model on request with its pinned SHA-256. |
 | Learned VAD / barge-in | Silero VAD v6.2.1 ONNX (1.3 MB, MIT) + ONNX Runtime 1.30.0 (MIT) | **Bundle** both when the feature ships. |
