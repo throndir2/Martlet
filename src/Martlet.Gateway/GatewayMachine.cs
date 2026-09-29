@@ -11,6 +11,10 @@ public sealed record GatewayMachineGpu
     public required string Vendor { get; init; }
     public int? MemoryMb { get; init; }
     public string? Driver { get; init; }
+    /// <summary>NVIDIA only: the enforced power limit and its default, in watts, and whether persistence mode is on.</summary>
+    public double? PowerLimitW { get; init; }
+    public double? PowerDefaultW { get; init; }
+    public bool? Persistence { get; init; }
 }
 
 /// <summary>What a host machine is like, collected by <c>martlet-host</c> on the host itself and served to paired
@@ -30,6 +34,8 @@ public sealed record GatewayMachineReport
     public string? ContainerRuntime { get; init; }
     /// <summary>Whether containers on this host can use NVIDIA GPUs: yes, no or unknown.</summary>
     public string? NvidiaContainers { get; init; }
+    /// <summary>The newest CUDA version the NVIDIA driver supports (nvidia-smi), when there is one.</summary>
+    public string? Cuda { get; init; }
     public required IReadOnlyList<GatewayMachineGpu> Gpus { get; init; }
 
     private static readonly JsonSerializerOptions Json = new()
@@ -55,14 +61,15 @@ public sealed record GatewayMachineReport
 
     internal bool IsValid() =>
         Method is "docker" or "native" &&
-        Text(OperatingSystem, required: true) && Text(Kernel) && Text(Processor) && Text(ContainerRuntime) &&
+        Text(OperatingSystem, required: true) && Text(Kernel) && Text(Processor) && Text(ContainerRuntime) && Text(Cuda) &&
         NvidiaContainers is null or "yes" or "no" or "unknown" &&
         ProcessorThreads is null or (> 0 and <= 4096) &&
         MemoryGb is null or (> 0 and <= 65_536) &&
         Gpus is { Count: <= 16 } &&
         Gpus.All(gpu => gpu is not null && Text(gpu.Name, required: true) && Text(gpu.Driver) &&
             gpu.Vendor is "nvidia" or "amd" or "intel" or "other" &&
-            gpu.MemoryMb is null or (> 0 and <= 1_048_576));
+            gpu.MemoryMb is null or (> 0 and <= 1_048_576) &&
+            gpu.PowerLimitW is null or (> 0 and <= 10_000) && gpu.PowerDefaultW is null or (> 0 and <= 10_000));
 
     private static bool Text(string? value, bool required = false) =>
         value is null ? !required : value.Length is > 0 and <= 128 && value.All(c => c is >= ' ' and <= '~');
