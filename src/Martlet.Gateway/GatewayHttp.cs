@@ -9,6 +9,7 @@ internal sealed partial class GatewayHttpApplication
 {
     internal const int MaximumPairingRequestBytes = 8_192;
     private static readonly JsonSerializerOptions Json = CreateJson();
+    private static readonly string? MartletVersion = typeof(GatewayHttpApplication).Assembly.GetName().Version?.ToString(3);
     private readonly GatewayHostIdentity identity;
     private readonly IGatewayPairingExchange pairing;
     private readonly GatewayRequestAuthenticator authenticator;
@@ -114,6 +115,7 @@ internal sealed partial class GatewayHttpApplication
                     ProtocolVersion = GatewayProtocolVersion.Current,
                     HostId = identity.HostId,
                     GeneratedAt = clock.GetUtcNow(),
+                    MartletVersion = MartletVersion,
                     Machine = machine
                 }).ConfigureAwait(false);
                 return;
@@ -371,6 +373,8 @@ internal sealed partial class GatewayHttpApplication
         public required GatewayProtocolVersion ProtocolVersion { get; init; }
         public required string HostId { get; init; }
         public required DateTimeOffset GeneratedAt { get; init; }
+        /// <summary>The Martlet release this gateway was built from, so desktops can offer to update older hosts.</summary>
+        public string? MartletVersion { get; init; }
         public GatewayMachineReport? Machine { get; init; }
     }
 

@@ -123,13 +123,16 @@ This page answers "what do I have, and what is each machine doing?"
     device ID, how Martlet reaches it, and a *Check connection* button that
     uses the existing pinned pairing and shows which roles it runs.
   - *Roles on a host*: *Hand lip-sync to this computer*, *Install Audio2Face
-    there* and *Remove Audio2Face from it*, its status console, *Pair again*
-    and *Forget this host*. Install, remove and status run the same
+    there* and *Remove Audio2Face from it*, its status console, *Update host*,
+    *Pair again* and *Forget this host*. Install, remove, update and status run the same
     `martlet-host` engine on that computer the way Martlet reaches it (SSH with
     Docker, SSH native Ubuntu, or this PC's Docker Desktop), in a console where
     the host owner confirms each change; the desktop never gets a shell,
     Docker socket or admin rights on the host. *How Martlet reaches it* sets
     that route; without one, Martlet copies the command to run on the host.
+  - *Martlet version* for hosts: the release the host's gateway reports on
+    *Check connection*, compared with this PC's. An older host shows *Update
+    available* and a primary *Update it to Martlet x.y.z*.
   - *Cloud*: address, key storage, data sent and a "may cost money" note.
   - *Actions* for the node: Audio setup, Character, Prerequisites, *Host
     services on this PC*, *Change in Setup*, *Manage host* and similar.
@@ -144,13 +147,15 @@ service on this PC:
 
 - **Hero**: "This PC is a Martlet host", with a status pill and the address
   desktops use (`https://<LAN IP>:9443`).
-- **Four steps**, each with one button:
+- **Five steps**, each with one button:
   1. *Docker Desktop*: installed or running, read locally. Opens the install
      console.
   2. *Host service*: set up the gateway, including the one-time firewall prompt.
   3. *Pair a desktop*: opens the host's pairing console, which shows the
      one-use code.
   4. *Roles*: add or remove Audio2Face lip-sync, and show host status.
+  5. *Keep it up to date*: rebuilds the host service from this app's version
+     (`martlet-host update`); done when its gateway image matches the app.
 - **Check host service** is an explicit TCP reachability probe of this PC's
   host port. It never runs automatically.
 - *Use this PC as a companion instead* switches the device role.
@@ -195,7 +200,9 @@ The conversation window puts the chat first:
 - **Companion** (make it yours): *How it thinks* (Setup), *Microphone and
   speakers*, *Character*, *Personality*, *Voice Library* and *Memory*, one card
   each with one line of explanation.
-- **Settings**: palette, this PC's role and the tour, app updates, the offline
+- **Settings**: palette, this PC's role and the tour, app updates (automatic
+  checks and their interval, automatic installs, keeping hosts on this PC's
+  version, *Check for updates now*, *Install*, *Update hosts now*), the offline
   demo (fixture), tools (Troubleshooting, Backup and restore, Prerequisites,
   Martlet hosts), and *Diagnostics* (pipeline, status details, local audio
   evidence, refresh and stop, create profile). Exit is also here.

@@ -149,6 +149,8 @@
                             <TextBlock x:Name="PairedText" Style="{DynamicResource Muted}" Margin="0,4,0,10" AutomationProperties.AutomationId="PairedHost"/>
                             <WrapPanel>
                                 <Button Content="Chec_k host" Click="Check_Click" Margin="0,0,10,0" AutomationProperties.AutomationId="CheckHost"/>
+                                <Button Content="_Update host" Click="UpdateHost_Click" Margin="0,0,10,0" AutomationProperties.AutomationId="UpdateHost"
+                                        ToolTip="Rebuild the host's gateway from this Martlet version; pairings and roles stay"/>
                                 <Button Content="_Forget host" Click="Forget_Click" AutomationProperties.AutomationId="ForgetHost"/>
                             </WrapPanel>
                         </StackPanel>

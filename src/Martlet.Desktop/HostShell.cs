@@ -77,6 +77,16 @@ internal interface IHostShellPrompts
 /// <summary>Raised for problems the owner can act on; the message is shown as is.</summary>
 internal sealed class HostShellException(string message, Exception? inner = null) : Exception(message, inner);
 
+/// <summary>For background runs: never asks, so anything needing an answer (password, new host key, sudo password that
+/// was not remembered) fails instead.</summary>
+internal sealed class NoHostShellPrompts : IHostShellPrompts
+{
+    internal static readonly NoHostShellPrompts Instance = new();
+    public bool TrustHostKey(HostShellTarget target, string hostKey) => false;
+    public string? LoginPassword(HostShellTarget target, bool retry) => null;
+    public HostShellSudo? SudoPassword(HostShellTarget target, bool retry) => null;
+}
+
 /// <summary>
 /// Runs commands on Linux Martlet hosts over SSH from the desktop, with no console window and no typed password after
 /// the first connection. This is Martlet's one SSH transport; reuse it rather than starting ssh.exe.

@@ -256,11 +256,17 @@ internal static class HostControl
             var offers = new Dictionary<string, string>(StringComparer.Ordinal);
             if (route is not null) offers[HostRoles.Audio2Face] = route.ModelId;
             var text = route is null ? "Reachable. Not running Audio2Face." : $"Reachable. Runs Audio2Face (model {route.ModelId}).";
-            try { text += " " + await HostsWindow.ReadHardwareAsync(connection, hardware, token); }
+            string? version = null;
+            try
+            {
+                var (hardwareText, reported) = await HostsWindow.ReadHardwareAsync(connection, hardware, token);
+                text += " " + hardwareText;
+                version = reported;
+            }
             catch (OperationCanceledException) when (!token.IsCancellationRequested) { }
             catch (Exception error) when (error is Audio2FaceHostException or IOException or JsonException or TimeoutException or
                 HttpRequestException or InvalidOperationException) { }
-            return new(true, text, offers);
+            return new(true, text, offers, version);
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested) { return new(false, "Did not answer in time."); }
         catch (Exception error) when (error is Audio2FaceHostException or IOException or UnauthorizedAccessException or ContractException or

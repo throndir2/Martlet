@@ -11,7 +11,7 @@ namespace Martlet.Desktop;
 /// <summary>How the desktop reaches the machine that becomes a Martlet host. Every method runs the same martlet-host engine.</summary>
 internal enum HostSetupMethod { ThisPcDocker, SshDocker, SshNative, OnHost }
 
-internal enum HostAction { Setup, Pair, AddAudio2Face, Status, RemoveAudio2Face }
+internal enum HostAction { Setup, Pair, AddAudio2Face, Status, RemoveAudio2Face, Update }
 
 internal sealed record HostSetupTarget(HostSetupMethod Method, string SshTarget, string Address, string? HostId, string Version);
 
@@ -34,6 +34,7 @@ internal static partial class HostSetupCommands
         HostAction.AddAudio2Face => "add audio2face",
         HostAction.Status => "status",
         HostAction.RemoveAudio2Face => "remove audio2face",
+        HostAction.Update => "update",
         _ => throw new ArgumentOutOfRangeException(nameof(action))
     };
 
@@ -50,44 +51,59 @@ internal static partial class HostSetupCommands
 
     internal static string Image(HostSetupTarget target) => $"martlet-host:{target.Version}";
 
-    /// <summary>POSIX shell for a Docker host: build the image once from this version's source, then run the engine
-    /// (interactively in a terminal; see <see cref="RemoteShell"/> for Martlet's unattended SSH runs).</summary>
-    internal static string DockerShell(HostSetupTarget target, HostAction action) =>
-        DockerShell(target, Engine(action), action == HostAction.Setup, unattended: false);
+    /// <summary>How a martlet-host command is run: in a console (humans), by ssh.exe in batch mode (keys only, never
+    /// prompts; the fallback for background updates) or by Martlet's in-app SSH runner (<see cref="HostShell"/>).</summary>
+    private enum ShellMode { Console, Batch, Runner }
 
-    private static string DockerShell(HostSetupTarget target, string engine, bool setup, bool unattended)
+    /// <summary>POSIX shell for a Docker host: build the image once from this version's source, then run the engine
+    /// (interactively in a terminal; see <see cref="RemoteShell"/> for Martlet's unattended SSH runs). Unattended batch
+    /// runs never prompt: no TTY and no sudo password, so they fail instead and the owner finishes from Martlet.</summary>
+    internal static string DockerShell(HostSetupTarget target, HostAction action, bool attended = true) =>
+        DockerShell(target, Engine(action), action == HostAction.Setup, attended ? ShellMode.Console : ShellMode.Batch, false);
+
+    private static string DockerShell(HostSetupTarget target, string engine, bool setup, ShellMode mode, bool assumeYes)
     {
         var image = Image(target);
         var build = $"$D build -t {image} -f deploy/host/Dockerfile {Repository}#";
-        var run = unattended ? "-i --log-driver none" : "-it";
-        return "D=docker; docker info >/dev/null 2>&1 || D='sudo docker'; " +
+        var run = mode switch { ShellMode.Console => " -it", ShellMode.Runner => " -i --log-driver none", _ => "" };
+        return $"D=docker; docker info >/dev/null 2>&1 || D='{(mode == ShellMode.Batch ? "sudo -n docker" : "sudo docker")}'; " +
             $"($D image inspect {image} >/dev/null 2>&1 || {build}v{target.Version} || {build}main) && " +
-            $"$D run --rm {run} -u 0 -v {DockerSocket}{Environment(target, setup)} {image} {(unattended ? "--yes " : "")}{engine}";
+            $"$D run --rm{run} -u 0 -v {DockerSocket}{Environment(target, setup)} {image} {(assumeYes ? "--yes " : "")}{engine}";
     }
 
-    /// <summary>POSIX shell for a native Ubuntu host: keep a Martlet checkout in ~/Martlet and run its engine.</summary>
+    /// <summary>POSIX shell for a native Ubuntu host: keep a Martlet checkout in ~/Martlet and run its engine. An update
+    /// checks out this desktop's release tag (falling back to main) before rebuilding the gateway from it.</summary>
     internal static string NativeShell(HostSetupTarget target, HostAction action) =>
-        NativeShell(target, Engine(action), action == HostAction.Setup, unattended: false);
+        NativeShell(target, Engine(action), action == HostAction.Setup, ShellMode.Console, false);
 
-    private static string NativeShell(HostSetupTarget target, string engine, bool setup, bool unattended)
+    private static string NativeShell(HostSetupTarget target, string engine, bool setup, ShellMode mode, bool assumeYes)
     {
         var prefix = setup ? $"MARTLET_HOST_ADDRESS={target.Address} " : "";
-        var quiet = unattended ? " </dev/null" : "";
-        return $"(command -v git >/dev/null 2>&1 || (sudo apt-get update -q && sudo apt-get install -y git)){quiet}; " +
-            $"(test -d ~/Martlet/.git || git clone --depth 1 {Repository} ~/Martlet){quiet}; git -C ~/Martlet pull --ff-only -q{quiet} || true; " +
-            $"{prefix}~/Martlet/deploy/host/martlet-host {(unattended ? "--yes " : "")}{engine}";
+        // The runner keeps stdin for martlet-host's answers, so nothing before it may read it.
+        var quiet = mode == ShellMode.Runner ? " </dev/null" : "";
+        var refresh = engine == "update"
+            ? $"{{ git -C ~/Martlet fetch -q --depth 1 origin tag v{target.Version}{quiet} && " +
+              $"git -C ~/Martlet -c advice.detachedHead=false checkout -q v{target.Version}; }} || " +
+              $"{{ git -C ~/Martlet checkout -q main && git -C ~/Martlet pull --ff-only -q{quiet}; }} || true; "
+            : $"git -C ~/Martlet pull --ff-only -q{quiet} || true; ";
+        var bootstrap = mode == ShellMode.Runner
+            ? $"(command -v git >/dev/null 2>&1 || (sudo apt-get update -q && sudo apt-get install -y git)){quiet}; " +
+              $"(test -d ~/Martlet/.git || git clone --depth 1 {Repository} ~/Martlet){quiet}; "
+            : "command -v git >/dev/null 2>&1 || (sudo apt-get update -q && sudo apt-get install -y git); " +
+              $"test -d ~/Martlet/.git || git clone --depth 1 {Repository} ~/Martlet; ";
+        return bootstrap + refresh + $"{prefix}~/Martlet/deploy/host/martlet-host {(assumeYes ? "--yes " : "")}{engine}";
     }
 
     /// <summary>The POSIX shell Martlet's SSH runner (<see cref="HostShell"/>) executes for one martlet-host command
     /// (for example "status", "add audio2face" or "pair --device-id ... --name ..."): unattended (--yes, no terminal),
     /// with answers read from stdin. The owner's click in Martlet is the confirmation.</summary>
-    internal static string RemoteShell(HostSetupTarget target, string engine, bool setup)
+    internal static string RemoteShell(HostSetupTarget target, string engine, bool setup, bool assumeYes = true)
     {
         Validate(target, setup ? HostAction.Setup : HostAction.Status);
         return target.Method switch
         {
-            HostSetupMethod.SshDocker => DockerShell(target, engine, setup, unattended: true),
-            HostSetupMethod.SshNative => NativeShell(target, engine, setup, unattended: true),
+            HostSetupMethod.SshDocker => DockerShell(target, engine, setup, ShellMode.Runner, assumeYes),
+            HostSetupMethod.SshNative => NativeShell(target, engine, setup, ShellMode.Runner, assumeYes),
             _ => throw new InvalidOperationException("Only SSH hosts run through Martlet's SSH runner.")
         };
     }
@@ -154,6 +170,123 @@ internal static partial class HostSetupCommands
         var path = Path.Combine(directory, $"martlet-host-{Engine(action).Replace(' ', '-')}.cmd");
         File.WriteAllText(path, Script(target, action), Encoding.ASCII);
         Process.Start(new ProcessStartInfo("cmd.exe", $"/k \"{path}\"") { UseShellExecute = true })?.Dispose();
+    }
+
+    private const string SshUnattended = "-T -o BatchMode=yes -o ConnectTimeout=15";
+
+    /// <summary>The console-less script automatic host updates run: SSH keys only (BatchMode), no TTY and no sudo password.
+    /// Anything that would need an answer fails instead, and the owner finishes with Update host in a console.</summary>
+    internal static string UnattendedScript(HostSetupTarget target, HostAction action)
+    {
+        Validate(target, action);
+        var lines = new StringBuilder("@echo off\r\n");
+        switch (target.Method)
+        {
+            case HostSetupMethod.ThisPcDocker:
+                var image = Image(target);
+                var build = $"docker build -t {image} -f deploy/host/Dockerfile {Repository}#";
+                lines.Append("docker info >NUL 2>&1 || (echo Docker Desktop is not running. & exit /b 3)\r\n");
+                lines.Append($"docker image inspect {image} >NUL 2>&1 || {build}v{target.Version} || {build}main || exit /b 4\r\n");
+                lines.Append($"docker run --rm -u 0 -v {DockerSocket}{Environment(target, action == HostAction.Setup)} {image} {Engine(action)}\r\n");
+                break;
+            case HostSetupMethod.SshDocker:
+                lines.Append($"ssh {SshUnattended} {target.SshTarget} \"{DockerShell(target, action, attended: false)}\"\r\n");
+                break;
+            case HostSetupMethod.SshNative:
+                lines.Append($"ssh {SshUnattended} {target.SshTarget} \"{NativeShell(target, action)}\"\r\n");
+                break;
+            default:
+                throw new InvalidOperationException("Martlet does not know how to reach this host; run the command on it instead.");
+        }
+        lines.Append("exit /b %errorlevel%\r\n");
+        return lines.ToString();
+    }
+
+    /// <summary>Runs an action without a window or any question and returns its exit code and the log it wrote. SSH hosts
+    /// go through Martlet's SSH runner when <paramref name="dataDirectory"/> is given (Martlet's key, the pinned host key
+    /// and a sudo password the owner chose to remember; anything else fails instead of asking); otherwise
+    /// <see cref="UnattendedScript"/> runs.</summary>
+    internal static async Task<(int ExitCode, string Log)> RunUnattendedAsync(HostSetupTarget target, HostAction action,
+        CancellationToken token, string? dataDirectory = null, string? pinnedHostKey = null)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet");
+        Directory.CreateDirectory(directory);
+        var name = $"martlet-host-{Engine(action).Replace(' ', '-')}-{target.HostId ?? "this-pc"}";
+        var script = Path.Combine(directory, name + ".cmd");
+        var log = Path.Combine(directory, name + ".log");
+        if (dataDirectory is not null && target.Method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative)
+            return (await RunQuietlyOverSshAsync(target, action, dataDirectory, pinnedHostKey, log, token), log);
+        File.WriteAllText(script, UnattendedScript(target, action), Encoding.ASCII);
+        using var process = Process.Start(new ProcessStartInfo("cmd.exe", $"/d /s /c \"\"{script}\" > \"{log}\" 2>&1\"")
+            { UseShellExecute = false, CreateNoWindow = true }) ?? throw new InvalidOperationException("Could not start the host update.");
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(token);
+        limit.CancelAfter(TimeSpan.FromMinutes(45));
+        try { await process.WaitForExitAsync(limit.Token); }
+        catch (OperationCanceledException)
+        {
+            try { process.Kill(entireProcessTree: true); }
+            catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception) { }
+            if (token.IsCancellationRequested) throw;
+            return (-1, log);
+        }
+        return (process.ExitCode, log);
+    }
+
+    private static async Task<int> RunQuietlyOverSshAsync(HostSetupTarget target, HostAction action, string dataDirectory,
+        string? pinnedHostKey, string log, CancellationToken token)
+    {
+        using var writer = new StreamWriter(log, append: false, Encoding.UTF8) { AutoFlush = true };
+        var sink = new LineSink(line => { lock (writer) writer.WriteLine(line); });
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(token);
+        limit.CancelAfter(TimeSpan.FromMinutes(45));
+        try
+        {
+            var result = await new HostShell(dataDirectory, NoHostShellPrompts.Instance).RunAsync(HostShellTarget.Parse(target.SshTarget),
+                new()
+                {
+                    Command = RemoteShell(target, Engine(action), action == HostAction.Setup, assumeYes: false), Input = "end\n",
+                    Sudo = true, PinnedHostKey = pinnedHostKey
+                }, sink, limit.Token);
+            return result.ExitCode;
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+            sink.Report("Stopped: it needed an answer (SSH password, new host key or sudo password) or took over 45 minutes.");
+            return -1;
+        }
+        catch (Exception error) when (error is HostShellException or Renci.SshNet.Common.SshException or IOException or
+            System.Net.Sockets.SocketException or InvalidOperationException)
+        {
+            sink.Report("Stopped: " + error.Message);
+            return -1;
+        }
+    }
+
+    /// <summary>The Martlet version of this PC's own host service (Docker Desktop), from its gateway container's image tag;
+    /// null when it is not set up or Docker is not running.</summary>
+    internal static async Task<string?> ThisPcGatewayVersionAsync(CancellationToken token)
+    {
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo("docker",
+                "container inspect -f \"{{.Config.Image}}\" martlet-host-gateway")
+            {
+                UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true
+            });
+            if (process is null) return null;
+            using var limit = CancellationTokenSource.CreateLinkedTokenSource(token);
+            limit.CancelAfter(TimeSpan.FromSeconds(15));
+            var output = await process.StandardOutput.ReadToEndAsync(limit.Token);
+            await process.WaitForExitAsync(limit.Token);
+            var image = output.Trim();
+            return process.ExitCode == 0 && image.StartsWith("martlet-host:", StringComparison.Ordinal) &&
+                System.Version.TryParse(image["martlet-host:".Length..], out var version) ? version.ToString(3) : null;
+        }
+        catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or
+            OperationCanceledException or IOException)
+        {
+            return null;
+        }
     }
 
     internal static void InstallDockerDesktop()

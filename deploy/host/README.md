@@ -44,6 +44,7 @@ describe <role>     a role's terms, secrets (stored or missing, never values) an
 add <role>          install a role, e.g. add audio2face (same flow for every role)
 remove <role>       stop a role and unpublish it (keeps its data)
 machine             report this machine's hardware to paired desktops (also done by setup, pair, add and remove)
+update              update the gateway to this engine's Martlet version (identity, pairings, roles and data stay)
 status | config     show the gateway and roles | print the generated host.json
 ```
 
@@ -53,6 +54,34 @@ handled by the gateway's owner commands, and answers come from stdin as
 `KEY=VALUE` lines ended by `end` (`secret.<name>=...`, `choice.<VAR>=...`), never
 from arguments or the environment. Martlet desktop always uses it for SSH hosts;
 a human on the host normally does not.
+
+### Updating a host
+
+Hosts follow the desktop's Martlet version. The gateway reports the release it
+was built from (`martlet_version` on `GET /martlet/v1/machine`), and the
+desktop's Devices map shows *Update available* when a host is older than the
+desktop. **Update host** runs `update` through the same route as every other
+command:
+
+- **Docker**: builds `martlet-host:<desktop version>` from the `v<version>` tag
+  (falling back to `main`) when it is not there yet, then runs `update` from it.
+  The gateway container is recreated from the new image; older unused
+  `martlet-host` images are removed (the network holder keeps its own).
+- **Native**: fetches and checks out the `v<version>` tag in `~/Martlet`
+  (falling back to `main`), publishes the gateway beside the running one, then
+  swaps it in and restarts the service.
+
+`update` asks nothing unless the new version changes `host.json`; that renews
+the service approval (in the gateway console, or with `--yes` through
+`owner-approve`), like any configuration change. For SSH hosts **Update host**
+runs `--yes update` in Martlet, so the click is that approval.
+With *Keep my Martlet hosts on this PC's version* (Settings > App updates) the
+desktop runs `update` in the background for older hosts every check interval,
+without asking anything: for SSH hosts through Martlet's SSH runner (its own key,
+the pinned host key and a sudo password only if you chose to remember one; no
+`--yes`), for this PC in Docker Desktop. A host that needs a password, a new host
+key, sudo or an approval fails that run without changing anything and keeps
+*Update host*.
 
 ### What the host tells Martlet
 
@@ -275,6 +304,9 @@ console where you confirm each step.
 - **Windows Firewall step**: the non-admin probe and the rule script (as `-WhatIf`)
   were run; the elevated change itself has not been applied on a test machine.
 - Not yet run: a real NVIDIA GPU with the Audio2Face NIM.
+- **Update**: the engine script passes `bash -n` and the desktop's update
+  commands are covered by unit tests. `update` itself has not yet been run
+  against a real Docker or native host.
 - **Machine report**: the collector was run natively in an Ubuntu 24.04 container
   and in Docker mode against Docker Desktop without GPU support (`gpus: []`,
   `nvidia_containers: "no"`); `nvidia-smi` output parsing was checked with sample
