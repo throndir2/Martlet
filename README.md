@@ -69,7 +69,7 @@ There is no remote memory, embedding, vector database or automatic backup.
 | [Avatar guide and compatibility](docs/AVATARS.md) | Accepted Live2D/VRM direction, Audio2Face-first analysis, per-model mappings, working/degraded/blocked permutations, parallel plan and remaining qualification |
 | [Architecture and provider contracts](docs/ARCHITECTURE.md) | Components, trust boundaries, conversation policy, streaming, and failure behavior |
 | [Installation and support design](docs/INSTALLATION_SUPPORT.md) | First run, host setup, lifecycle, doctor, and troubleshooting matrix |
-| [Recommended setups](docs/RECOMMENDED_SETUPS.md) | What must run on your PC versus an API or host, GPU/VRAM priorities, and one-, two- and three-machine layouts |
+| [Recommended setups](docs/RECOMMENDED_SETUPS.md) | What must run on your PC versus an API or host, offloading the LLM to OpenRouter/NVIDIA Build, fastest-response layouts, GPU/VRAM priorities, and layouts from one machine to an unlimited-budget setup |
 | [Delivery and release plan](docs/DELIVERY.md) | PR-sized backlog, dependencies, acceptance criteria, release gates, and traceability |
 | [Research and provenance](docs/RESEARCH.md) | Dated primary sources, verified constraints, and unresolved integration questions |
 | [Local MCP control](docs/MCP.md) | Stdio tools for headless diagnostics/fixtures and interactive desktop UI Automation |
