@@ -1083,7 +1083,7 @@ public sealed class LiveConversationTests
             Permit(window);
             var content = Assert.IsAssignableFrom<FrameworkElement>(window.Content);
             var scroll = Assert.IsType<ScrollViewer>(
-                Assert.IsType<StackPanel>(Control<TextBox>(window, "InputText").Parent).Parent);
+                Assert.IsType<StackPanel>(Control<TextBox>(window, "EnvelopeText").Parent).Parent);
             var stop = Control<Button>(window, "StopButton");
             window.UpdateLayout();
             Assert.True(scroll.ScrollableHeight > 0);

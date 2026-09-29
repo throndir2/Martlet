@@ -8,11 +8,11 @@
         AutomationProperties.AutomationId="SetupWindow" AutomationProperties.Name="Martlet resumable configuration, not voice readiness">
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="20">
-            <TextBlock Text="Setup / resume - configuration only" FontSize="24" FontWeight="SemiBold"/>
-            <TextBlock TextWrapping="Wrap" Margin="0,8"
-                       Text="No capture, devices, network, or secret lookup on opening this screen. Screen and memory OFF. Voice setup is NOT complete; audio qualification and real provider integration remain unavailable."/>
+            <TextBlock Text="How Martlet thinks" Style="{DynamicResource PageTitle}"/>
+            <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,16"
+                       Text="Choose the conversation model, voice and keys in four steps. Saving is configuration only: no capture, devices, network or secret lookup happens on opening this screen, and screen and memory stay OFF."/>
             <StackPanel x:Name="EditorPanel">
-                <TabControl x:Name="Steps" SelectionChanged="Step_Changed" AutomationProperties.AutomationId="SetupSteps">
+                <TabControl x:Name="Steps" Style="{DynamicResource StepperTabs}" SelectionChanged="Step_Changed" AutomationProperties.AutomationId="SetupSteps">
                     <TabItem Header="1. _Choice">
                         <StackPanel Margin="12">
                             <RadioButton x:Name="FixtureChoice" Content="_Fixture (safe default; no account, key, cost or call)"
@@ -75,7 +75,7 @@
                 </TabControl>
                 <WrapPanel Margin="0,12">
                     <Button Content="_Back" Click="Back_Click" Padding="12,8" Margin="0,0,8,0" AutomationProperties.AutomationId="SetupBack"/>
-                    <Button Content="_Next" Click="Next_Click" Padding="12,8" Margin="0,0,8,0" AutomationProperties.AutomationId="SetupNext"/>
+                    <Button Content="_Next" Click="Next_Click" Padding="12,8" Margin="0,0,8,0" Style="{DynamicResource PrimaryButton}" AutomationProperties.AutomationId="SetupNext"/>
                     <Button Content="_Save checkpoint" Click="Save_Click" Padding="12,8" Margin="0,0,8,0" AutomationProperties.AutomationId="SetupSave"/>
                     <Button Content="Save and e_xit setup" Click="SaveExit_Click" Padding="12,8" AutomationProperties.AutomationId="SetupSaveExit"/>
                 </WrapPanel>

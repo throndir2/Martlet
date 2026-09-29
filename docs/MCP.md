@@ -42,9 +42,14 @@ Call `ui_connect` with that process ID. `ui_snapshot` returns window accessible 
 automation IDs, enabled states, checkbox states, and selected read-only status
 fields; it does not dump arbitrary editable fields or credentials. `ui_click`
 invokes a control by automation ID and `ui_select` selects a named combo-box
-option. by default only passive navigation and
+option. By default only passive navigation and
 audio-OFF fixture controls can be clicked; only `FixtureScenario` may be
-selected. Use `ui_snapshot` again to observe asynchronous effects. Modal
+selected. The main window is split into pages, and a page's controls are only
+visible after you open it: click `NavHome`, `NavDevices`, `NavCompanion` or
+`NavSettings` first (for example `NavSettings` before `StartFixture`, or
+`NavCompanion` before `OpenSetup`). On Settings, click `DiagnosticsSection` to
+expand the pipeline and status fields. On a fresh data directory, `TourSkip`
+dismisses the welcome tour. Use `ui_snapshot` again to observe asynchronous effects. Modal
 actions may return `completed: false` while their dialog remains open; this
 means the invoke is still pending, not that the action finished.
 

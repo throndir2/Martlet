@@ -2,176 +2,518 @@
         xmlns:local="clr-namespace:Martlet.Desktop"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Martlet - Your companion corner" Width="1000" Height="860" MinWidth="520" MinHeight="420"
+        Title="Martlet" Width="1240" Height="820" MinWidth="900" MinHeight="580"
         Style="{DynamicResource AppWindowStyle}"
         WindowStartupLocation="CenterScreen"
         AutomationProperties.AutomationId="MartletMainWindow"
-        AutomationProperties.Name="Martlet foundation status"
+        AutomationProperties.Name="Martlet"
         Loaded="Window_Loaded" Closing="Window_Closing">
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Margin="28" MaxWidth="1120">
-            <WrapPanel Margin="0,0,0,18">
-                <StackPanel Margin="0,0,32,8">
-                    <TextBlock Text="martlet" FontSize="30" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"/>
-                    <TextBlock Text="A little space for your companion." Foreground="{DynamicResource MutedBrush}"/>
-                </StackPanel>
-                <StackPanel>
-                    <Label Content="Your _palette" Target="{Binding ElementName=ThemeChoice}" Padding="0,0,0,4"/>
-                    <ComboBox x:Name="ThemeChoice" Width="190" SelectionChanged="Theme_Changed"
-                              AutomationProperties.AutomationId="AppearanceTheme" AutomationProperties.Name="Appearance theme">
-                        <ComboBoxItem Content="Pink light"/>
-                        <ComboBoxItem Content="Rose dark"/>
-                    </ComboBox>
-                </StackPanel>
-            </WrapPanel>
-            <TextBlock x:Name="AppearanceStatus" TextWrapping="Wrap" Margin="0,0,0,12"
-                       Foreground="{DynamicResource MutedBrush}" AutomationProperties.LiveSetting="Polite"
-                       AutomationProperties.AutomationId="AppearanceStatus"/>
-            <Border Style="{DynamicResource CardStyle}" Background="{DynamicResource SoftBrush}" Padding="26">
-                <Grid>
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                    <StackPanel>
-                        <TextBlock Text="Your cozy companion corner" FontSize="28" FontWeight="SemiBold" TextWrapping="Wrap"/>
-                        <TextBlock Text="A conversation, a little company, a moment for you." TextWrapping="Wrap"
-                                   Foreground="{DynamicResource MutedBrush}" Margin="0,8,0,16"/>
-                        <TextBlock Text="You're in control" FontWeight="SemiBold"/>
-                        <TextBlock Text="Nothing listens on launch. Network remains idle unless you opted in to app update checks; real conversations need your configured routes and explicit permission for each action."
-                                   TextWrapping="Wrap" Margin="0,4,0,16"/>
-                        <WrapPanel>
-                            <Button x:Name="ConversationButton" Content="Open _real API conversation" Click="Conversation_Click"
-                                    Style="{DynamicResource PrimaryButton}" Margin="0,0,12,6"
-                                    AutomationProperties.AutomationId="OpenLiveConversation" AutomationProperties.Name="Open real API conversation without network, credentials or device effects" />
-                            <Button x:Name="SetupButton" Content="Set_up / resume" Click="Setup_Click" Margin="0,0,12,6"
-                                    AutomationProperties.AutomationId="OpenSetup" AutomationProperties.Name="Open resumable setup, no network or credential lookup" />
-                            <Button x:Name="AdvisorButton" Content="_Which setup is right for me?" Click="Advisor_Click" Margin="0,0,0,6"
-                                    AutomationProperties.AutomationId="OpenSetupAdvisor" AutomationProperties.Name="Get a recommended setup for your goal and computers; saves and contacts nothing" />
-                        </WrapPanel>
-                    </StackPanel>
-                    <Viewbox Grid.Column="1" Width="74" Height="90" Margin="16,0,0,0" VerticalAlignment="Top"
-                             IsHitTestVisible="False" Focusable="False">
-                        <Canvas Width="90" Height="100">
-                            <Ellipse Width="78" Height="78" Canvas.Top="10" Fill="{DynamicResource SurfaceBrush}"/>
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="236"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Navigation rail -->
+        <Border Background="{DynamicResource SoftBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
+            <DockPanel Margin="14,20,14,16">
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="8,0,0,26">
+                    <Grid x:Name="RailMark" Width="40" Height="40" IsHitTestVisible="False">
+                        <Ellipse Fill="{DynamicResource SurfaceBrush}" Stroke="{DynamicResource BorderBrush}" StrokeThickness="1"/>
+                        <Viewbox Margin="8">
                             <Path Data="M 39 66 C 33 59 14 48 19 34 C 23 23 35 26 39 33 C 45 23 58 24 62 34 C 68 47 48 61 39 66 Z"
                                   Fill="{DynamicResource AccentBrush}"/>
-                            <Path Data="M 72 3 L 75 12 L 84 15 L 75 18 L 72 27 L 69 18 L 60 15 L 69 12 Z M 12 73 L 14 79 L 20 81 L 14 83 L 12 89 L 10 83 L 4 81 L 10 79 Z"
-                                  Fill="{DynamicResource AccentBrush}"/>
-                        </Canvas>
-                    </Viewbox>
+                        </Viewbox>
+                    </Grid>
+                    <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="martlet" FontSize="22" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"/>
+                        <TextBlock x:Name="ModeText" Text="Companion PC" FontSize="12" Style="{DynamicResource Muted}"
+                                   AutomationProperties.AutomationId="DeviceRoleSummary"/>
+                    </StackPanel>
+                </StackPanel>
+                <TextBlock DockPanel.Dock="Bottom" x:Name="RailHint" FontSize="12" Style="{DynamicResource Muted}" Margin="8,12,4,0"
+                           Text="Nothing listens or connects on launch. You approve each action."/>
+                <StackPanel AutomationProperties.Name="Sections">
+                    <RadioButton x:Name="NavHome" GroupName="Nav" Style="{DynamicResource NavItem}" Tag="&#xE80F;" Content="Home"
+                                 IsChecked="True" Checked="Nav_Checked" AutomationProperties.AutomationId="NavHome"/>
+                    <RadioButton x:Name="NavDevices" GroupName="Nav" Style="{DynamicResource NavItem}" Tag="&#xE772;" Content="Devices"
+                                 Checked="Nav_Checked" AutomationProperties.AutomationId="NavDevices"/>
+                    <RadioButton x:Name="NavCompanion" GroupName="Nav" Style="{DynamicResource NavItem}" Tag="&#xE76E;" Content="Companion"
+                                 Checked="Nav_Checked" AutomationProperties.AutomationId="NavCompanion"/>
+                    <RadioButton x:Name="NavSettings" GroupName="Nav" Style="{DynamicResource NavItem}" Tag="&#xE713;" Content="Settings"
+                                 Checked="Nav_Checked" AutomationProperties.AutomationId="NavSettings"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Home: companion setup/ready, or the host dashboard -->
+            <ScrollViewer x:Name="HomePage" VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="36,30,36,24" MaxWidth="1000">
+                    <StackPanel x:Name="CompanionHome">
+                        <Border x:Name="HeroCard" Style="{DynamicResource HeroCard}">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock x:Name="GreetingText" Style="{DynamicResource Eyebrow}" Text="HELLO"/>
+                                    <TextBlock x:Name="StageTitle" Style="{DynamicResource HeroTitle}" Margin="0,6,0,0"
+                                               Text="Let's bring your companion to life" AutomationProperties.AutomationId="StageTitle"/>
+                                    <TextBlock x:Name="StageText" Style="{DynamicResource Muted}" FontSize="15" Margin="0,8,0,20" MaxWidth="560"
+                                               HorizontalAlignment="Left" AutomationProperties.AutomationId="StageText"
+                                               Text="First, choose how Martlet thinks: a cloud model, or one on your own computers."/>
+                                    <WrapPanel>
+                                        <Button x:Name="PrimaryStageButton" Style="{DynamicResource PrimaryButton}" Content="Choose how Martlet thinks"
+                                                Click="PrimaryStage_Click" Padding="22,12" FontSize="15" Margin="0,0,12,8"
+                                                AutomationProperties.AutomationId="PrimaryStageAction"/>
+                                        <Button x:Name="ConversationButton" Content="Start _talking" Click="Conversation_Click" Padding="20,12" FontSize="15" Margin="0,0,12,8"
+                                                AutomationProperties.AutomationId="OpenLiveConversation"
+                                                AutomationProperties.Name="Start talking: open the conversation window without network, credentials or device effects"/>
+                                        <Button x:Name="CharacterButton" Content="Show _character" Click="Character_Click" Padding="16,12" Margin="0,0,12,8"
+                                                AutomationProperties.AutomationId="ToggleCharacter" AutomationProperties.Name="Show or hide the animated desktop character"/>
+                                    </WrapPanel>
+                                    <WrapPanel Margin="0,4,0,0">
+                                        <Button x:Name="AdvisorButton" Style="{DynamicResource LinkButton}" Content="Not sure what you need? Get a recommendation"
+                                                Click="Advisor_Click" AutomationProperties.AutomationId="OpenSetupAdvisor"
+                                                AutomationProperties.Name="Which setup is right for me? Get a recommended setup; saves and contacts nothing"/>
+                                    </WrapPanel>
+                                </StackPanel>
+                                <Viewbox Grid.Column="1" Width="190" Height="190" Margin="20,0,0,0" IsHitTestVisible="False" Focusable="False"
+                                         VerticalAlignment="Center">
+                                    <Canvas Width="120" Height="120">
+                                        <Ellipse x:Name="HeroGlow" Width="104" Height="104" Canvas.Left="8" Canvas.Top="10" Fill="{DynamicResource GlowBrush}" Opacity="0.7"
+                                                 RenderTransformOrigin="0.5,0.5"/>
+                                        <Canvas x:Name="HeroFloat" Width="120" Height="120">
+                                            <Ellipse Width="84" Height="84" Canvas.Left="18" Canvas.Top="20" Fill="{DynamicResource SurfaceBrush}"
+                                                     Stroke="{DynamicResource BorderBrush}" StrokeThickness="1"/>
+                                            <Canvas x:Name="HeroHeart" Width="120" Height="120" RenderTransformOrigin="0.5,0.5">
+                                                <Path Canvas.Left="21" Canvas.Top="15" Data="M 39 66 C 33 59 14 48 19 34 C 23 23 35 26 39 33 C 45 23 58 24 62 34 C 68 47 48 61 39 66 Z"
+                                                      Fill="{DynamicResource AccentBrush}"/>
+                                            </Canvas>
+                                        </Canvas>
+                                        <Path x:Name="Sparkle1" Canvas.Left="84" Canvas.Top="2" Data="M 9 0 L 11.5 6.5 L 18 9 L 11.5 11.5 L 9 18 L 6.5 11.5 L 0 9 L 6.5 6.5 Z"
+                                              Fill="{DynamicResource AccentBrush}"/>
+                                        <Path x:Name="Sparkle2" Canvas.Left="6" Canvas.Top="88" Data="M 6 0 L 7.7 4.3 L 12 6 L 7.7 7.7 L 6 12 L 4.3 7.7 L 0 6 L 4.3 4.3 Z"
+                                              Fill="{DynamicResource AccentBrush}"/>
+                                        <Path x:Name="Sparkle3" Canvas.Left="100" Canvas.Top="84" Data="M 5 0 L 6.4 3.6 L 10 5 L 6.4 6.4 L 5 10 L 3.6 6.4 L 0 5 L 3.6 3.6 Z"
+                                              Fill="{DynamicResource AccentBrush}"/>
+                                    </Canvas>
+                                </Viewbox>
+                            </Grid>
+                        </Border>
+
+                        <Border x:Name="ChecklistCard" Style="{DynamicResource CardStyle}">
+                            <StackPanel>
+                                <DockPanel>
+                                    <TextBlock x:Name="ProgressText" DockPanel.Dock="Right" Style="{DynamicResource Muted}" VerticalAlignment="Center"
+                                               AutomationProperties.AutomationId="SetupProgress"/>
+                                    <TextBlock Text="Your setup" Style="{DynamicResource SectionHeading}"/>
+                                </DockPanel>
+                                <Grid Height="8" Margin="0,2,0,12">
+                                    <Border CornerRadius="4" Background="{DynamicResource SoftBrush}"/>
+                                    <Border x:Name="ProgressFill" CornerRadius="4" Background="{DynamicResource AccentBrush}" RenderTransformOrigin="0,0.5">
+                                        <Border.RenderTransform><ScaleTransform ScaleX="0"/></Border.RenderTransform>
+                                    </Border>
+                                </Grid>
+                                <StackPanel x:Name="StepsPanel" AutomationProperties.Name="Setup steps"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{DynamicResource CardStyle}">
+                            <DockPanel>
+                                <Button DockPanel.Dock="Right" Content="Open the map" Click="OpenDevices_Click" VerticalAlignment="Center" Margin="12,0,0,0"
+                                        AutomationProperties.AutomationId="OpenDevicesMap"/>
+                                <StackPanel>
+                                    <TextBlock Text="Your devices" Style="{DynamicResource SectionHeading}" Margin="0,0,0,2"/>
+                                    <TextBlock Style="{DynamicResource Muted}" Text="The computers and services Martlet uses, and what each one runs."/>
+                                    <WrapPanel x:Name="DeviceChips" Margin="0,6,0,0"/>
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <StackPanel x:Name="HostHome" Visibility="Collapsed">
+                        <Border Style="{DynamicResource HeroCard}">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Style="{DynamicResource Eyebrow}" Text="HOST SERVICE"/>
+                                    <TextBlock Style="{DynamicResource HeroTitle}" Margin="0,6,0,0" Text="This PC is a Martlet host"/>
+                                    <TextBlock Style="{DynamicResource Muted}" FontSize="15" Margin="0,8,0,14" MaxWidth="560" HorizontalAlignment="Left"
+                                               Text="It lends its graphics card to your main Martlet PC, for example for lip-sync. Desktops on your home network connect to:"/>
+                                    <Border Style="{DynamicResource Chip}" HorizontalAlignment="Left" Padding="12,6" Margin="0,0,0,18">
+                                        <TextBlock x:Name="HostAddressText" FontFamily="Consolas" FontSize="15" TextWrapping="NoWrap"
+                                                   AutomationProperties.AutomationId="HostServiceAddress"/>
+                                    </Border>
+                                    <WrapPanel>
+                                        <Button x:Name="CheckHostServiceButton" Style="{DynamicResource PrimaryButton}" Content="Check host service"
+                                                Click="CheckHostService_Click" Padding="20,12" Margin="0,0,12,8"
+                                                AutomationProperties.AutomationId="CheckHostService"/>
+                                        <Button Content="Open host status console" Click="HostStatusConsole_Click" Padding="16,12" Margin="0,0,12,8"
+                                                AutomationProperties.AutomationId="HostStatusConsole"/>
+                                    </WrapPanel>
+                                </StackPanel>
+                                <Grid Grid.Column="1" Width="170" Margin="20,0,0,0" VerticalAlignment="Center">
+                                    <Grid Width="120" Height="120" HorizontalAlignment="Center">
+                                        <Ellipse x:Name="HostPulse" Fill="{DynamicResource GlowBrush}" RenderTransformOrigin="0.5,0.5" Opacity="0"/>
+                                        <Ellipse Width="96" Height="96" Fill="{DynamicResource SurfaceBrush}" Stroke="{DynamicResource BorderBrush}"/>
+                                        <TextBlock Style="{DynamicResource Icon}" FontSize="40" Text="&#xE7F4;" Foreground="{DynamicResource AccentBrush}"/>
+                                    </Grid>
+                                    <TextBlock x:Name="HostStatusText" Margin="0,136,0,0" TextAlignment="Center" FontWeight="SemiBold"
+                                               AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="HostServiceStatus"
+                                               Text="Not checked yet"/>
+                                </Grid>
+                            </Grid>
+                        </Border>
+                        <Border Style="{DynamicResource CardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="Get this host running" Style="{DynamicResource SectionHeading}"/>
+                                <TextBlock Style="{DynamicResource Muted}" Margin="0,0,0,10"
+                                           Text="Do these once, in order. Each step opens a console window on this PC where you confirm every change."/>
+                                <StackPanel x:Name="HostStepsPanel" AutomationProperties.Name="Host setup steps"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{DynamicResource CardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="Good to know" Style="{DynamicResource SectionHeading}"/>
+                                <TextBlock Style="{DynamicResource Muted}" Margin="0,0,0,4" Text="&#x2022; The host listens only on your private network, on TCP 9443. Each desktop is paired once with a one-use code."/>
+                                <TextBlock Style="{DynamicResource Muted}" Margin="0,0,0,4" Text="&#x2022; Only the main PC's generated voice is sent here for lip-sync. No microphone audio, keys or files."/>
+                                <TextBlock Style="{DynamicResource Muted}" Margin="0,0,0,10" Text="&#x2022; GPU roles need an NVIDIA graphics card with a current driver and Docker Desktop's WSL 2 GPU support."/>
+                                <WrapPanel>
+                                    <Button Style="{DynamicResource LinkButton}" Content="Use this PC as a companion instead" Click="UseCompanion_Click"
+                                            AutomationProperties.AutomationId="SwitchToCompanion"/>
+                                    <Button Style="{DynamicResource LinkButton}" Content="Set up a host on another computer" Click="Hosts_Click"/>
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Devices: the map of computers and services -->
+            <ScrollViewer x:Name="DevicesPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" SizeChanged="DevicesPage_SizeChanged">
+                <Grid Margin="36,30,36,20">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition x:Name="DetailColumn" Width="320"/></Grid.ColumnDefinitions>
+                    <DockPanel Grid.ColumnSpan="2" Margin="0,0,0,16">
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Content="Refresh" Click="RefreshDevices_Click" Margin="0,0,10,0" AutomationProperties.AutomationId="RefreshDevices"/>
+                            <Button Content="Add a computer" Style="{DynamicResource PrimaryButton}" Click="Hosts_Click"
+                                    AutomationProperties.AutomationId="AddComputer"/>
+                        </StackPanel>
+                        <StackPanel>
+                            <TextBlock Text="Your devices" Style="{DynamicResource PageTitle}"/>
+                            <TextBlock Style="{DynamicResource Muted}" Margin="0,4,12,0"
+                                       Text="Every computer and service Martlet uses, and what each one runs. Select one to see its details and configure it."/>
+                        </StackPanel>
+                    </DockPanel>
+                    <Border x:Name="MapHost" Grid.Row="1" CornerRadius="24" Background="{DynamicResource SoftBrush}" Margin="0,0,16,0" Height="460"
+                            SizeChanged="MapHost_SizeChanged" ClipToBounds="True">
+                        <Viewbox Stretch="Uniform" StretchDirection="DownOnly" Margin="8">
+                            <Canvas x:Name="MapCanvas" Width="600" Height="440" AutomationProperties.Name="Device map"/>
+                        </Viewbox>
+                    </Border>
+                    <Border x:Name="DetailCard" Grid.Row="1" Grid.Column="1" Style="{DynamicResource CardStyle}" Margin="0" Padding="0" Height="460">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="DetailContent" Margin="22" AutomationProperties.AutomationId="DeviceDetails"
+                                        AutomationProperties.LiveSetting="Polite"/>
+                        </ScrollViewer>
+                    </Border>
                 </Grid>
-            </Border>
-            <Border Style="{DynamicResource CardStyle}">
-                <StackPanel>
-            <TextBlock Text="A tiny test, no strings attached" Style="{DynamicResource SectionHeading}"/>
-            <TextBlock Text="Explore a scripted demo without an account. FIXTURE - NOT AI. No microphone, provider or network; audio stays off unless you separately confirm a tone."
-                       TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}"/>
-            <Label Target="{Binding ElementName=ScenarioChoice}" Content="_Offline scenario (FIXTURE - NOT AI)" />
-            <ComboBox x:Name="ScenarioChoice" SelectedIndex="0" MinHeight="30"
-                      AutomationProperties.AutomationId="FixtureScenario" AutomationProperties.Name="Offline fixture scenario" />
-            <WrapPanel>
-                <Button x:Name="DemoButton" Content="_Try fixture (audio OFF)" Click="Demo_Click" Padding="12,8" Margin="0,4,12,4"
-                        AutomationProperties.AutomationId="StartFixture" AutomationProperties.Name="Try offline fixture, audio off" />
-                <Button x:Name="ToneButton" Content="Completed fixture + confirm 200 ms _tone" Click="Tone_Click" Padding="12,8" Margin="0,4,12,4"
-                        AutomationProperties.AutomationId="FixtureTone" AutomationProperties.Name="Confirm completed fixture and synthetic tone, not speech" />
-                <Button x:Name="FixtureStopButton" Content="Stop _fixture" Click="FixtureStop_Click" IsEnabled="False" Padding="12,8" Margin="0,4,12,4"
-                        AutomationProperties.AutomationId="StopFixture" AutomationProperties.Name="Stop fixture and tone" />
-            </WrapPanel>
-            <Label Target="{Binding ElementName=FixtureText}" Content="Fixture _text, trace and status (separate from real-mode status)" />
-            <TextBox x:Name="FixtureText" IsReadOnly="True" TextWrapping="Wrap" Height="210" VerticalScrollBarVisibility="Auto"
-                     AutomationProperties.AutomationId="FixtureStatus" AutomationProperties.Name="Scripted fixture text and trace, not AI" />
-            <TextBlock x:Name="ActivityText" TextWrapping="Wrap" Margin="0,0,0,8"
-                       AutomationProperties.Name="Diagnostic activity" AutomationProperties.LiveSetting="Polite" />
+            </ScrollViewer>
+
+            <!-- Companion: everything that shapes it -->
+            <ScrollViewer x:Name="CompanionPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="36,30,36,24" MaxWidth="1000">
+                    <TextBlock Text="Make it yours" Style="{DynamicResource PageTitle}"/>
+                    <TextBlock Style="{DynamicResource Muted}" Margin="0,4,0,18"
+                               Text="Everything that shapes how your companion thinks, sounds and looks. Each opens its own window, and nothing changes until you save there."/>
+                    <UniformGrid x:Name="CompanionCards" Columns="2">
+                        <Button x:Name="SetupButton" Style="{DynamicResource CardButton}" Tag="&#xE82F;" Click="Setup_Click"
+                                AutomationProperties.AutomationId="OpenSetup" AutomationProperties.Name="How it thinks: open resumable setup, no network or credential lookup">
+                            <StackPanel>
+                                <TextBlock Text="How it thinks" FontSize="16" FontWeight="SemiBold"/>
+                                <TextBlock Style="{DynamicResource Muted}" Text="Conversation model, voice and API keys (Setup)."/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="AudioSetupButton" Style="{DynamicResource CardButton}" Tag="&#xE720;" Click="AudioSetup_Click"
+                                AutomationProperties.AutomationId="OpenAudioSetup" AutomationProperties.Name="Microphone and speakers: open local audio setup without enumerating or testing devices">
+                            <StackPanel>
+                                <TextBlock Text="Microphone and speakers" FontSize="16" FontWeight="SemiBold"/>
+                                <TextBlock Style="{DynamicResource Muted}" Text="Choose and test your devices. Stays on this PC."/>
+                            </StackPanel>
+                        </Button>
+                        <Button Style="{DynamicResource CardButton}" Tag="&#xE77B;" Click="Avatar_Click"
+                                AutomationProperties.AutomationId="OpenAvatar" AutomationProperties.Name="Character: open character and avatar settings">
+                            <StackPanel>
+                                <TextBlock Text="Character" FontSize="16" FontWeight="SemiBold"/>
+                                <TextBlock Style="{DynamicResource Muted}" Text="Choose, show and tune the animated character."/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="CompanionButton" Style="{DynamicResource CardButton}" Tag="&#xE76E;" Click="Companion_Click"
+                                AutomationProperties.AutomationId="OpenCompanion" AutomationProperties.Name="Personality: edit local companion personas and response-style weights">
+                            <StackPanel>
+                                <TextBlock Text="Personality" FontSize="16" FontWeight="SemiBold"/>
+                                <TextBlock Style="{DynamicResource Muted}" Text="Personas and how playful, helpful or silly it is."/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="VoiceLibraryButton" Style="{DynamicResource CardButton}" Tag="&#xE8D6;" Click="VoiceLibrary_Click"
+                                AutomationProperties.AutomationId="OpenVoiceLibrary" AutomationProperties.Name="Voice Library: open local voice library without file scan, model loading or playback">
+                            <StackPanel>
+                                <TextBlock Text="Voice Library" FontSize="16" FontWeight="SemiBold"/>
+                                <TextBlock Style="{DynamicResource Muted}" Text="Prepare voice samples for five engines, locally."/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="MemoryButton" Style="{DynamicResource CardButton}" Tag="&#xE81C;" Click="Memory_Click"
+                                AutomationProperties.AutomationId="OpenMemory" AutomationProperties.Name="Memory: manage explicit local memory facts without opening the store on launch">
+                            <StackPanel>
+                                <TextBlock Text="Memory" FontSize="16" FontWeight="SemiBold"/>
+                                <TextBlock Style="{DynamicResource Muted}" Text="Facts it may remember. Off by default."/>
+                            </StackPanel>
+                        </Button>
+                    </UniformGrid>
                 </StackPanel>
-            </Border>
-            <Border Style="{DynamicResource CardStyle}">
-                <StackPanel>
-            <TextBlock Text="Make yourself at home" Style="{DynamicResource SectionHeading}"/>
-            <TextBlock Text="Set up your routes, choose local audio devices, or check in on your configuration."
-                       TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,12"/>
-            <WrapPanel>
-                <Button x:Name="CompanionButton" Content="_Companion personas" Click="Companion_Click" Padding="12,8" Margin="0,4,12,4"
-                        AutomationProperties.AutomationId="OpenCompanion" AutomationProperties.Name="Edit local companion personas and response-style weights" />
-                <Button x:Name="VoiceLibraryButton" Content="Voice _Library (local preparation; five engine targets)" Click="VoiceLibrary_Click" Padding="12,8" Margin="0,4,12,4"
-                        AutomationProperties.AutomationId="OpenVoiceLibrary" AutomationProperties.Name="Open local voice library without file scan, model loading or playback" />
-                <Button x:Name="MemoryButton" Content="Local _memory (OFF by default)" Click="Memory_Click" Padding="12,8" Margin="0,4,12,4"
-                        AutomationProperties.AutomationId="OpenMemory" AutomationProperties.Name="Manage explicit local memory facts without opening the store on launch" />
-                <Button x:Name="AudioSetupButton" Content="_Audio setup (local only)" Click="AudioSetup_Click" Padding="12,8" Margin="0,4,12,4"
-                        AutomationProperties.AutomationId="OpenAudioSetup" AutomationProperties.Name="Open local audio setup without enumerating or testing devices" />
-                <Button Content="Open _Troubleshooting" Click="Troubleshooting_Click" Padding="12,8" Margin="0,4,12,4"
-                        AutomationProperties.AutomationId="OpenTroubleshooting" AutomationProperties.Name="Open passive troubleshooting and local support preview" />
-                <Button x:Name="CharacterButton" Content="Show _character" Click="Character_Click" Padding="12,8" Margin="0,4,12,4"
-                        AutomationProperties.AutomationId="ToggleCharacter" AutomationProperties.Name="Show or hide the animated desktop character" />
-                <Button Content="Character _settings" Click="Avatar_Click" Padding="12,8" Margin="0,4,12,4"
-                        AutomationProperties.AutomationId="OpenAvatar" AutomationProperties.Name="Open character and avatar settings" />
-                <Button Content="Martlet _hosts" Click="Hosts_Click" Padding="12,8" Margin="0,4,12,4"
-                        AutomationProperties.AutomationId="OpenHosts" AutomationProperties.Name="Set up and pair Martlet hosts on this PC or other computers" />
-                <Button Content="Prere_quisites (check / install)" Click="Prerequisites_Click" Padding="12,8" Margin="0,4,12,4"
-                        AutomationProperties.AutomationId="OpenPrerequisites" AutomationProperties.Name="Check and install Windows prerequisites such as WebView2, Windows speech, Ollama and Docker Desktop in a console window" />
-            </WrapPanel>
-            <TextBlock Text="App updates" Style="{DynamicResource SectionHeading}" Margin="0,14,0,0"/>
-            <TextBlock Text="GitHub Releases are checked only when you ask, or after you opt in to checks at launch. Downloading requires a separate confirmation. Martlet saves the installer but does not install it for you; the installer is not code-signed."
-                       TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}"/>
-            <CheckBox x:Name="AutomaticUpdateCheck" Content="Check for app updates on launch (contacts GitHub)"
-                      Margin="0,8,0,8" Checked="UpdateCheckSetting_Changed" Unchecked="UpdateCheckSetting_Changed"
-                      AutomationProperties.AutomationId="AutomaticUpdateCheck" />
-            <WrapPanel>
-                <Button x:Name="CheckForUpdatesButton" Content="Check _for app updates" Click="CheckForUpdates_Click"
-                        Padding="12,8" Margin="0,4,12,4" AutomationProperties.AutomationId="CheckForAppUpdates"/>
-                <Button x:Name="DownloadUpdateButton" Content="_Download update (review first)" Click="DownloadUpdate_Click"
-                        Padding="12,8" Margin="0,4,0,4" Visibility="Collapsed"
-                        AutomationProperties.AutomationId="DownloadAppUpdate"/>
-                <Button x:Name="ReviewUpdateButton" Content="_View release details" Click="ReviewUpdate_Click"
-                        Padding="12,8" Margin="0,4,0,4" Visibility="Collapsed"
-                        AutomationProperties.AutomationId="ViewAppRelease"/>
-            </WrapPanel>
-            <TextBlock x:Name="UpdateStatusText" TextWrapping="Wrap" Margin="0,4,0,0"
-                       Foreground="{DynamicResource MutedBrush}" AutomationProperties.LiveSetting="Polite"
-                       AutomationProperties.AutomationId="AppUpdateStatus"/>
+            </ScrollViewer>
+
+            <!-- Settings: appearance, role, updates, demo, tools and diagnostics -->
+            <ScrollViewer x:Name="SettingsPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="36,30,36,24" MaxWidth="1000">
+                    <TextBlock Text="Settings" Style="{DynamicResource PageTitle}" Margin="0,0,0,18"/>
+
+                    <Border Style="{DynamicResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="Appearance" Style="{DynamicResource SectionHeading}"/>
+                            <Label Content="Your _palette" Target="{Binding ElementName=ThemeChoice}" Padding="0,0,0,6"/>
+                            <ComboBox x:Name="ThemeChoice" Width="220" HorizontalAlignment="Left" SelectionChanged="Theme_Changed"
+                                      AutomationProperties.AutomationId="AppearanceTheme" AutomationProperties.Name="Appearance theme">
+                                <ComboBoxItem Content="Pink light"/>
+                                <ComboBoxItem Content="Rose dark"/>
+                            </ComboBox>
+                            <TextBlock x:Name="AppearanceStatus" Style="{DynamicResource Muted}" Margin="0,8,0,0"
+                                       AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="AppearanceStatus"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{DynamicResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="What this PC is for" Style="{DynamicResource SectionHeading}"/>
+                            <TextBlock x:Name="RoleText" Style="{DynamicResource Muted}" Margin="0,0,0,10" AutomationProperties.AutomationId="DeviceRoleText"/>
+                            <WrapPanel>
+                                <Button x:Name="UseCompanionButton" Content="Use as my companion PC" Click="UseCompanion_Click" Margin="0,0,10,6"
+                                        AutomationProperties.AutomationId="UseAsCompanion"/>
+                                <Button x:Name="UseHostButton" Content="Use as a Martlet host" Click="UseHost_Click" Margin="0,0,10,6"
+                                        AutomationProperties.AutomationId="UseAsHost"/>
+                                <Button Content="Replay the welcome tour" Click="ReplayTour_Click" Margin="0,0,10,6"
+                                        AutomationProperties.AutomationId="ReplayTour"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{DynamicResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="App updates" Style="{DynamicResource SectionHeading}"/>
+                            <TextBlock Style="{DynamicResource Muted}"
+                                       Text="GitHub Releases are checked only when you ask, or after you opt in to checks at launch. Downloading requires a separate confirmation. Martlet saves the installer but does not install it for you; the installer is not code-signed."/>
+                            <CheckBox x:Name="AutomaticUpdateCheck" Content="Check for app updates on launch (contacts GitHub)"
+                                      Margin="0,10,0,8" Checked="UpdateCheckSetting_Changed" Unchecked="UpdateCheckSetting_Changed"
+                                      AutomationProperties.AutomationId="AutomaticUpdateCheck" />
+                            <WrapPanel>
+                                <Button x:Name="CheckForUpdatesButton" Content="Check _for app updates" Click="CheckForUpdates_Click"
+                                        Margin="0,4,12,4" AutomationProperties.AutomationId="CheckForAppUpdates"/>
+                                <Button x:Name="DownloadUpdateButton" Content="_Download update (review first)" Click="DownloadUpdate_Click"
+                                        Margin="0,4,12,4" Visibility="Collapsed" AutomationProperties.AutomationId="DownloadAppUpdate"/>
+                                <Button x:Name="ReviewUpdateButton" Content="_View release details" Click="ReviewUpdate_Click"
+                                        Margin="0,4,0,4" Visibility="Collapsed" AutomationProperties.AutomationId="ViewAppRelease"/>
+                            </WrapPanel>
+                            <TextBlock x:Name="UpdateStatusText" Style="{DynamicResource Muted}" Margin="0,4,0,0"
+                                       AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="AppUpdateStatus"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border x:Name="DemoCard" Style="{DynamicResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="Offline demo" Style="{DynamicResource SectionHeading}"/>
+                            <TextBlock Style="{DynamicResource Muted}"
+                                       Text="A scripted preview without an account. FIXTURE - NOT AI. No microphone, provider or network; audio stays off unless you separately confirm a tone."/>
+                            <Label Target="{Binding ElementName=ScenarioChoice}" Content="_Offline scenario (FIXTURE - NOT AI)" />
+                            <ComboBox x:Name="ScenarioChoice" SelectedIndex="0" MinHeight="30"
+                                      AutomationProperties.AutomationId="FixtureScenario" AutomationProperties.Name="Offline fixture scenario" />
+                            <WrapPanel Margin="0,6,0,0">
+                                <Button x:Name="DemoButton" Content="_Try fixture (audio OFF)" Click="Demo_Click" Style="{DynamicResource PrimaryButton}" Margin="0,4,12,4"
+                                        AutomationProperties.AutomationId="StartFixture" AutomationProperties.Name="Try offline fixture, audio off" />
+                                <Button x:Name="ToneButton" Content="Completed fixture + confirm 200 ms _tone" Click="Tone_Click" Margin="0,4,12,4"
+                                        AutomationProperties.AutomationId="FixtureTone" AutomationProperties.Name="Confirm completed fixture and synthetic tone, not speech" />
+                                <Button x:Name="FixtureStopButton" Content="Stop _fixture" Click="FixtureStop_Click" IsEnabled="False" Margin="0,4,12,4"
+                                        AutomationProperties.AutomationId="StopFixture" AutomationProperties.Name="Stop fixture and tone" />
+                            </WrapPanel>
+                            <Label Target="{Binding ElementName=FixtureText}" Content="Fixture text, trace and status (separate from real-mode status)" />
+                            <TextBox x:Name="FixtureText" IsReadOnly="True" TextWrapping="Wrap" Height="180" VerticalScrollBarVisibility="Auto"
+                                     AutomationProperties.AutomationId="FixtureStatus" AutomationProperties.Name="Scripted fixture text and trace, not AI" />
+                            <TextBlock x:Name="ActivityText" Style="{DynamicResource Muted}" Margin="0,8,0,0"
+                                       AutomationProperties.Name="Diagnostic activity" AutomationProperties.LiveSetting="Polite" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{DynamicResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="Tools" Style="{DynamicResource SectionHeading}"/>
+                            <WrapPanel>
+                                <Button Content="Open _Troubleshooting" Click="Troubleshooting_Click" Margin="0,4,12,4"
+                                        AutomationProperties.AutomationId="OpenTroubleshooting" AutomationProperties.Name="Open passive troubleshooting and local support preview" />
+                                <Button Content="Configuration backup / restore" Click="Recovery_Click" Margin="0,4,12,4"
+                                        AutomationProperties.AutomationId="OpenConfigurationRecovery" AutomationProperties.Name="Open passive local configuration backup and restore"/>
+                                <Button Content="Prere_quisites (check / install)" Click="Prerequisites_Click" Margin="0,4,12,4"
+                                        AutomationProperties.AutomationId="OpenPrerequisites" AutomationProperties.Name="Check and install Windows prerequisites such as WebView2, Windows speech, Ollama and Docker Desktop in a console window" />
+                                <Button Content="Martlet _hosts" Click="Hosts_Click" Margin="0,4,12,4"
+                                        AutomationProperties.AutomationId="OpenHosts" AutomationProperties.Name="Set up and pair Martlet hosts on this PC or other computers" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{DynamicResource CardStyle}">
+                        <Expander Header="Diagnostics and local status" AutomationProperties.AutomationId="DiagnosticsSection">
+                            <StackPanel Margin="0,8,0,0">
+                                <TextBlock Style="{DynamicResource Muted}" Text="Local diagnostics and honest status. A demo result never means a real connection is ready."/>
+                                <Label Target="{Binding ElementName=PipelineText}" Content="_Pipeline status" />
+                                <TextBox x:Name="PipelineText" IsReadOnly="True" TextWrapping="Wrap" Height="160" VerticalScrollBarVisibility="Auto"
+                                         AutomationProperties.AutomationId="PipelineStatus"
+                                         AutomationProperties.Name="Mic VAD STT policy LLM TTS playback and optional host status" />
+                                <Label Target="{Binding ElementName=StatusText}" Content="_Status details" />
+                                <TextBox x:Name="StatusText" IsReadOnly="True" TextWrapping="Wrap" MinHeight="180" MaxHeight="360" VerticalScrollBarVisibility="Auto"
+                                         AutomationProperties.Name="Foundation status details" AutomationProperties.AutomationId="FoundationStatus" />
+                                <TextBlock x:Name="DataPathText" Style="{DynamicResource Muted}" Margin="0,10,0,0" AutomationProperties.Name="Local settings location" />
+                                <Label Content="Local audio setup _evidence (separate from fixture/provider status)" Target="{Binding ElementName=AudioStatusText}" />
+                                <TextBox x:Name="AudioStatusText" IsReadOnly="True" TextWrapping="Wrap" Height="100" VerticalScrollBarVisibility="Auto"
+                                         AutomationProperties.AutomationId="LocalAudioStatus" AutomationProperties.Name="Local audio setup stages and historical evidence" />
+                                <WrapPanel Margin="0,10,0,0">
+                                    <Button x:Name="RefreshButton" Content="_Refresh local status" Margin="0,4,12,4" Click="Refresh_Click"
+                                            AutomationProperties.AutomationId="RefreshDiagnostics" AutomationProperties.Name="Refresh local status" />
+                                    <Button x:Name="StopButton" Content="S_top diagnostics" Margin="0,4,12,4" IsEnabled="False" Click="Stop_Click"
+                                            AutomationProperties.AutomationId="StopDiagnostics" AutomationProperties.Name="Stop diagnostics" />
+                                    <Button x:Name="CreateButton" Content="_Create unconfigured local profile" Margin="0,4,12,4" IsEnabled="False" Click="Create_Click"
+                                            AutomationProperties.AutomationId="CreateProfile" AutomationProperties.Name="Create unconfigured local profile" />
+                                </WrapPanel>
+                                <TextBlock Style="{DynamicResource Muted}" Margin="0,10,0,0"
+                                           Text="Creating a profile saves unconfigured settings only. It grants no consent. Tone output binds the Windows default once at explicit start, never follows a changed default or falls back to room speakers. Tone accounting is not proof of audibility. Closing exits Martlet; there is no background tray process." />
+                            </StackPanel>
+                        </Expander>
+                    </Border>
+
+                    <DockPanel Margin="0,0,0,8">
+                        <Button DockPanel.Dock="Right" Content="E_xit Martlet" Click="Exit_Click" AutomationProperties.Name="Exit Martlet"/>
+                        <TextBlock Style="{DynamicResource Muted}" VerticalAlignment="Center"
+                                   Text="Nothing listens on launch. Network stays idle unless you opted in to update checks; real conversations need your configured routes and explicit permission for each action."/>
+                    </DockPanel>
                 </StackPanel>
+            </ScrollViewer>
+
+            <!-- Status line for results of actions taken from this window -->
+            <Border x:Name="StatusBar" Grid.Row="1" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="0,1,0,0" Padding="20,10" Visibility="Collapsed">
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Style="{DynamicResource LinkButton}" Content="Dismiss" Margin="12,0,0,0" Click="DismissStatus_Click"
+                            VerticalAlignment="Center" AutomationProperties.AutomationId="DismissStatus"/>
+                    <TextBlock DockPanel.Dock="Left" Style="{DynamicResource Icon}" Text="&#xE946;" Foreground="{DynamicResource AccentBrush}" Margin="0,0,10,0"/>
+                    <TextBlock x:Name="ActionText" VerticalAlignment="Center" AutomationProperties.Name="Settings action result"
+                               AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="ActionResult"/>
+                </DockPanel>
             </Border>
-            <Border Style="{DynamicResource CardStyle}">
-                <StackPanel>
-            <TextBlock Text="Behind the scenes" Style="{DynamicResource SectionHeading}"/>
-            <TextBlock Text="Local diagnostics and honest status. A demo result never means a real connection is ready."
-                       TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}"/>
-            <Label Target="{Binding ElementName=PipelineText}" Content="_Pipeline status" />
-            <TextBox x:Name="PipelineText" IsReadOnly="True" TextWrapping="Wrap"
-                     Height="180" VerticalScrollBarVisibility="Auto"
-                     AutomationProperties.AutomationId="PipelineStatus"
-                     AutomationProperties.Name="Mic VAD STT policy LLM TTS playback and optional host status" />
-            <Label Target="{Binding ElementName=StatusText}" Content="_Status details" />
-            <TextBox x:Name="StatusText" IsReadOnly="True" TextWrapping="Wrap"
-                     MinHeight="200" MaxHeight="380" VerticalScrollBarVisibility="Auto"
-                     AutomationProperties.Name="Foundation status details"
-                     AutomationProperties.AutomationId="FoundationStatus" />
-            <TextBlock x:Name="DataPathText" TextWrapping="Wrap" Margin="0,12,0,0"
-                       AutomationProperties.Name="Local settings location" />
-            <Label Content="Local audio setup _evidence (separate from fixture/provider status)" Target="{Binding ElementName=AudioStatusText}" />
-            <TextBox x:Name="AudioStatusText" IsReadOnly="True" TextWrapping="Wrap" Height="110" VerticalScrollBarVisibility="Auto"
-                     AutomationProperties.AutomationId="LocalAudioStatus" AutomationProperties.Name="Local audio setup stages and historical evidence" />
-            <TextBlock x:Name="ActionText" TextWrapping="Wrap" Margin="0,8,0,8"
-                       AutomationProperties.Name="Settings action result"
-                       AutomationProperties.LiveSetting="Polite" />
-            <WrapPanel>
-                <Button Content="Configuration backup / restore (local only)" Click="Recovery_Click" Padding="12,8" Margin="0,4,12,4"
-                        AutomationProperties.AutomationId="OpenConfigurationRecovery" AutomationProperties.Name="Open passive local configuration backup and restore"/>
-                <Button x:Name="RefreshButton" Content="_Refresh local status" Padding="12,8" Margin="0,4,12,4"
-                        AutomationProperties.AutomationId="RefreshDiagnostics"
-                        AutomationProperties.Name="Refresh local status" Click="Refresh_Click" />
-                <Button x:Name="StopButton" Content="S_top diagnostics" Padding="12,8" Margin="0,4,12,4"
-                        IsEnabled="False" AutomationProperties.AutomationId="StopDiagnostics"
-                        AutomationProperties.Name="Stop diagnostics" Click="Stop_Click" />
-                <Button x:Name="CreateButton" Content="_Create unconfigured local profile" Padding="12,8" Margin="0,4,12,4"
-                        IsEnabled="False" AutomationProperties.AutomationId="CreateProfile" AutomationProperties.Name="Create unconfigured local profile"
-                        Click="Create_Click" />
-                <Button Content="E_xit" Padding="12,8" Margin="0,4,0,4"
-                        AutomationProperties.Name="Exit Martlet" Click="Exit_Click" />
-            </WrapPanel>
-            <TextBlock TextWrapping="Wrap" Margin="0,12,0,0"
-                       Text="Creating a profile saves unconfigured settings only. It grants no consent. Tone output binds the Windows default once at explicit start, never follows a changed default or falls back to room speakers. Tone accounting is not proof of audibility. Closing exits Martlet; there is no background tray process." />
-                </StackPanel>
-            </Border>
-            <TextBlock Text="Made for a little more warmth in your day." HorizontalAlignment="Center"
-                       Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,12" TextWrapping="Wrap"/>
-        </StackPanel>
-    </ScrollViewer>
+        </Grid>
+
+        <!-- Welcome tour: shown until this PC's role is chosen -->
+        <Grid x:Name="Tour" Grid.ColumnSpan="2" Visibility="Collapsed" Background="{DynamicResource CanvasBrush}"
+              AutomationProperties.AutomationId="WelcomeTour">
+            <Canvas IsHitTestVisible="False" ClipToBounds="True">
+                <Ellipse x:Name="TourBlob1" Width="520" Height="520" Canvas.Left="-160" Canvas.Top="-180" Fill="{DynamicResource GlowBrush}" Opacity="0.55"/>
+                <Ellipse x:Name="TourBlob2" Width="420" Height="420" Canvas.Right="-120" Canvas.Bottom="-140" Fill="{DynamicResource SoftBrush}" Opacity="0.9"/>
+            </Canvas>
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <Border x:Name="TourCard" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                        CornerRadius="28" Padding="40,34" MaxWidth="680" Margin="24" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <StackPanel>
+                        <StackPanel x:Name="TourWelcome">
+                            <Viewbox Width="130" Height="130" HorizontalAlignment="Center" IsHitTestVisible="False">
+                                <Canvas Width="120" Height="120">
+                                    <Ellipse Width="104" Height="104" Canvas.Left="8" Canvas.Top="10" Fill="{DynamicResource GlowBrush}" Opacity="0.7"/>
+                                    <Canvas x:Name="TourFloat" Width="120" Height="120">
+                                        <Ellipse Width="84" Height="84" Canvas.Left="18" Canvas.Top="20" Fill="{DynamicResource SoftBrush}"
+                                                 Stroke="{DynamicResource BorderBrush}" StrokeThickness="1"/>
+                                        <Canvas x:Name="TourHeart" Width="120" Height="120" RenderTransformOrigin="0.5,0.5">
+                                            <Path Canvas.Left="21" Canvas.Top="15" Data="M 39 66 C 33 59 14 48 19 34 C 23 23 35 26 39 33 C 45 23 58 24 62 34 C 68 47 48 61 39 66 Z"
+                                                  Fill="{DynamicResource AccentBrush}"/>
+                                        </Canvas>
+                                    </Canvas>
+                                    <Path x:Name="TourSparkle" Canvas.Left="86" Canvas.Top="4" Data="M 9 0 L 11.5 6.5 L 18 9 L 11.5 11.5 L 9 18 L 6.5 11.5 L 0 9 L 6.5 6.5 Z"
+                                          Fill="{DynamicResource AccentBrush}"/>
+                                </Canvas>
+                            </Viewbox>
+                            <TextBlock Text="Hi! I'm Martlet." Style="{DynamicResource HeroTitle}" TextAlignment="Center" Margin="0,14,0,0"/>
+                            <TextBlock Style="{DynamicResource Muted}" FontSize="15" TextAlignment="Center" Margin="0,10,0,24"
+                                       Text="A little companion for your desktop. I can chat with you, talk out loud and show an animated character. Let's get you set up; it only takes a few minutes."/>
+                            <Button Style="{DynamicResource PrimaryButton}" Content="Let's begin" HorizontalAlignment="Center" Padding="28,12" FontSize="15"
+                                    Click="TourBegin_Click" AutomationProperties.AutomationId="TourBegin"/>
+                        </StackPanel>
+
+                        <StackPanel x:Name="TourRole" Visibility="Collapsed">
+                            <TextBlock Text="What's this computer for?" Style="{DynamicResource HeroTitle}" FontSize="26"/>
+                            <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,20" Text="You can change this any time in Settings."/>
+                            <Button Style="{DynamicResource CardButton}" Tag="&#xE770;" Margin="0,0,0,12" Click="TourCompanion_Click"
+                                    AutomationProperties.AutomationId="TourCompanion">
+                                <StackPanel>
+                                    <TextBlock Text="Talk with my companion here" FontSize="17" FontWeight="SemiBold"/>
+                                    <TextBlock Style="{DynamicResource Muted}" Text="This is the PC you sit at. Martlet chats with you and shows its character here."/>
+                                </StackPanel>
+                            </Button>
+                            <Button Style="{DynamicResource CardButton}" Tag="&#xE7F4;" Margin="0,0,0,4" Click="TourHost_Click"
+                                    AutomationProperties.AutomationId="TourHost">
+                                <StackPanel>
+                                    <TextBlock Text="Lend this PC to Martlet" FontSize="17" FontWeight="SemiBold"/>
+                                    <TextBlock Style="{DynamicResource Muted}" Text="A spare or gaming PC with a good graphics card. It runs heavy parts, like lip-sync, for your main PC and shows a host dashboard here."/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+
+                        <StackPanel x:Name="TourStart" Visibility="Collapsed">
+                            <TextBlock Text="How would you like to start?" Style="{DynamicResource HeroTitle}" FontSize="26"/>
+                            <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,20" Text="Nothing is installed, sent or saved until you confirm it in the next window."/>
+                            <Button Style="{DynamicResource CardButton}" Tag="&#xE82F;" Margin="0,0,0,12" Click="TourAdvisor_Click"
+                                    AutomationProperties.AutomationId="TourAdvisor">
+                                <StackPanel>
+                                    <TextBlock Text="Recommend a setup for me" FontSize="17" FontWeight="SemiBold"/>
+                                    <TextBlock Style="{DynamicResource Muted}" Text="Three quick questions about your goal and your computers."/>
+                                </StackPanel>
+                            </Button>
+                            <Button Style="{DynamicResource CardButton}" Tag="&#xE713;" Margin="0,0,0,12" Click="TourSetup_Click"
+                                    AutomationProperties.AutomationId="TourSetup">
+                                <StackPanel>
+                                    <TextBlock Text="I know what I want" FontSize="17" FontWeight="SemiBold"/>
+                                    <TextBlock Style="{DynamicResource Muted}" Text="Pick a cloud or local conversation model and add its key."/>
+                                </StackPanel>
+                            </Button>
+                            <Button Style="{DynamicResource CardButton}" Tag="&#xE768;" Margin="0,0,0,4" Click="TourDemo_Click"
+                                    AutomationProperties.AutomationId="TourDemo">
+                                <StackPanel>
+                                    <TextBlock Text="Try the offline demo first" FontSize="17" FontWeight="SemiBold"/>
+                                    <TextBlock Style="{DynamicResource Muted}" Text="A scripted preview with no account, microphone or network."/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+
+                        <Grid Margin="0,26,0,0">
+                            <Button x:Name="TourBackButton" Style="{DynamicResource LinkButton}" Content="Back" HorizontalAlignment="Left"
+                                    Click="TourBack_Click" Visibility="Hidden" AutomationProperties.AutomationId="TourBack"/>
+                            <StackPanel x:Name="TourDots" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                        AutomationProperties.Name="Tour progress"/>
+                            <Button Style="{DynamicResource LinkButton}" Content="Skip for now" HorizontalAlignment="Right" Margin="0"
+                                    Click="TourSkip_Click" AutomationProperties.AutomationId="TourSkip"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </ScrollViewer>
+        </Grid>
+    </Grid>
 </local:ThemedWindow>

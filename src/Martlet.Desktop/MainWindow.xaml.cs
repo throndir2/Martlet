@@ -113,8 +113,9 @@ public partial class MainWindow : ThemedWindow
             DemoButton.IsEnabled = ToneButton.IsEnabled = ScenarioChoice.IsEnabled =
                 SetupButton.IsEnabled = AudioSetupButton.IsEnabled = CompanionButton.IsEnabled =
                 MemoryButton.IsEnabled = ConversationButton.IsEnabled = VoiceLibraryButton.IsEnabled =
-                AutomaticUpdateCheck.IsEnabled = CheckForUpdatesButton.IsEnabled = false;
+                AutomaticUpdateCheck.IsEnabled = CheckForUpdatesButton.IsEnabled = PrimaryStageButton.IsEnabled = false;
         }
+        InitializeShell();
     }
 
     private async void Theme_Changed(object sender, SelectionChangedEventArgs e)
@@ -147,6 +148,8 @@ public partial class MainWindow : ThemedWindow
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         var checkAtLaunch = updateChecksEnabled;
+        StartAmbientMotion();
+        _ = ReadMachineAsync();
         await RefreshAsync();
         await ShowSavedCharacterAsync(onlyIfAutoShow: true);
         if (checkAtLaunch && updateChecksEnabled && !closing)
@@ -292,6 +295,7 @@ public partial class MainWindow : ThemedWindow
         if (model is null)
         {
             StatusText.Text = startupError;
+            ActionText.Text = startupError ?? "";
             RefreshButton.IsEnabled = false;
             return;
         }
@@ -300,6 +304,7 @@ public partial class MainWindow : ThemedWindow
             await model.RefreshAsync();
             support.ObserveReport(model.Report, record: true);
         }
+        if (!closing) await RefreshHomeAsync();
     }
 
     private void Render()
@@ -318,7 +323,7 @@ public partial class MainWindow : ThemedWindow
         AudioSetupButton.IsEnabled = SetupButton.IsEnabled;
         CompanionButton.IsEnabled = SetupButton.IsEnabled;
         MemoryButton.IsEnabled = SetupButton.IsEnabled;
-        ConversationButton.IsEnabled = SetupButton.IsEnabled;
+        ConversationButton.IsEnabled = PrimaryStageButton.IsEnabled = SetupButton.IsEnabled;
         VoiceLibraryButton.IsEnabled = SetupButton.IsEnabled;
         RefreshButton.IsEnabled = !saving && !runningFixture && model.CanRefresh;
         StopButton.IsEnabled = !saving && model.IsRunning;
@@ -504,11 +509,7 @@ public partial class MainWindow : ThemedWindow
         }
     }
     private void Avatar_Click(object sender, RoutedEventArgs e) => OpenAvatar(this);
-    private void Hosts_Click(object sender, RoutedEventArgs e)
-    {
-        if (store is null || setupService is null || closing) return;
-        new HostsWindow(new AvatarProfileStore(store.DataDirectory), setupService) { Owner = this }.ShowDialog();
-    }
+    private void Hosts_Click(object sender, RoutedEventArgs e) => OpenHosts(null, 0);
     /// <summary>Opens the installed prerequisites tool; it changes nothing until the user picks an item.</summary>
     private void Prerequisites_Click(object sender, RoutedEventArgs e)
     {
@@ -544,6 +545,11 @@ public partial class MainWindow : ThemedWindow
         {
             togglingCharacter = false;
             UpdateCharacterButton();
+            if (!closing)
+            {
+                RenderHome();
+                if (DevicesPage.IsVisible) RenderMap();
+            }
         }
     }
     private void UpdateCharacterButton() =>
@@ -578,6 +584,7 @@ public partial class MainWindow : ThemedWindow
         new AvatarWindow(avatar, new AvatarProfileStore(store.DataDirectory), setupService, setupOperations)
             { Owner = owner }.ShowDialog();
         UpdateCharacterButton();
+        _ = RefreshHomeAsync();
     }
     private void AvatarSessionLocked(bool locked)
     {
@@ -665,6 +672,7 @@ public partial class MainWindow : ThemedWindow
             }
         }
         closing = true;
+        ReleaseShell();
         ageTimer.Stop();
         fixtureTimer.Stop();
         audioSessionEvents.LockedChanged -= audioSetup.SetSessionLocked;

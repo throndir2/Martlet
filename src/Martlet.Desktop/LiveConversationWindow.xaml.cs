@@ -54,7 +54,11 @@ public partial class LiveConversationWindow : ThemedWindow
         RenderActions();
     }
 
-    private async void Window_Loaded(object sender, RoutedEventArgs e) => await LoadAsync();
+    private async void Window_Loaded(object sender, RoutedEventArgs e)
+    {
+        Motion.Breathe(TalkHeart, 3.2);
+        await LoadAsync();
+    }
     private async void Reload_Click(object sender, RoutedEventArgs e) => await LoadAsync();
 
     private async Task LoadAsync()
@@ -154,6 +158,7 @@ public partial class LiveConversationWindow : ThemedWindow
             RefusalText.Clear();
             TranscriptText.Clear();
             ResultText.Text = "Explicit action accepted. Stop revokes it; local cleanup may outlive reporting. Cost UNKNOWN.";
+            Motion.Enter(AnswerText, dy: 10);
             Observe();
             RenderActions();
             return true;
