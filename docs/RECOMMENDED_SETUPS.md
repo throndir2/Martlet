@@ -1,4 +1,4 @@
-# Recommended setups: one, two or three machines
+# Recommended setups: one machine to unlimited budget
 
 **Planning guide, 2026-09-29.** This page answers "what must run on my PC,
 what can an API or another machine do, and how should I split the work?"
@@ -59,20 +59,39 @@ anything. This leaves the local GPU free for voice and face.
 The tradeoff is data and cost. Transcripts and conversation text go to that
 provider; OpenRouter also forwards requests to the upstream provider it routes
 to. Pricing and retention vary by model, so check them before choosing.
-Run the LLM locally only if you need privacy, offline use or no per-token
-charges.
+Run the LLM locally if you need privacy, offline use, no per-token charges or
+the fastest responses (see [Choose a goal](#choose-a-goal)).
 
 ### Where a GPU helps most
 
-Spend VRAM in this order:
+For the balanced default (best answers plus your own voice and face), spend
+VRAM in this order:
 
 1. **TTS**: custom voice, low latency, no per-character cost, small footprint.
 2. **Audio2Face**: the only way to get rich facial animation.
 3. **STT**: keeps microphone audio at home and improves accuracy. CPU is fine
    for push-to-talk, so this is optional.
 4. **LLM**: uses the most VRAM. Offload it to OpenRouter or NVIDIA Build unless
-   you need privacy, offline use or no per-token charges.
+   you need privacy, offline use, no per-token charges or the fastest responses.
 5. **Vision**: heaviest and least latency-sensitive. Use a hosted vision model or a separate machine.
+
+### Choose a goal
+
+| Goal | LLM | STT | TTS | Why |
+| --- | --- | --- | --- | --- |
+| Best answers | Large hosted model (OpenRouter, NVIDIA Build, OpenAI) | CPU or API | Local GPU | Frontier-size models without VRAM limits |
+| Fastest responses | Small or mid-size model on a **dedicated local GPU** | CPU | API, Windows voices, or GPU TTS on another machine | No internet round trip or provider queue for the slowest stage |
+| Private or offline | Local | Local | Local | Nothing leaves your machines |
+| Gaming on the Martlet PC | Hosted or on another machine | API, CPU or another machine | API or another machine | The game keeps the GPU |
+
+**Why a local LLM can be fastest.** Martlet speaks sentence by sentence: the
+first sentence goes to TTS while the LLM is still writing the rest. The wait
+after you stop talking is roughly STT time, plus the LLM's time to its first
+sentence, plus TTS time to first audio. A hosted LLM adds an internet round
+trip and possible provider queueing before the first token. A small model that
+fits entirely in an idle GPU's VRAM starts almost immediately and generates
+quickly. The tradeoff is answer quality: smaller models are less capable than
+large hosted ones. These are expectations, not Martlet measurements.
 
 ## 3. One machine (Windows PC with a good NVIDIA GPU)
 
@@ -103,6 +122,21 @@ The last column shows what else fits if you want the LLM local too.
 like), local CPU STT, local GPU TTS with your voice, and local Audio2Face.
 Microphone audio and your voice stay at home, and the GPU goes where it helps most.
 
+**Fastest responses on one PC:** give the whole GPU to the LLM, and serve it
+over loopback from Ollama, LM Studio or llama.cpp. Use STT on the CPU, and use
+API speech or Windows voices for TTS, so nothing else competes for the GPU.
+Use loudness lip-sync. Choose the smallest model whose answers you like, and
+keep every layer in VRAM: spilling layers to system RAM makes generation much
+slower.
+
+| VRAM | Fast local LLM (all layers on GPU, room for context) |
+| --- | --- |
+| 8 GB | 3-4B, or 7-8B Q4 with a short context |
+| 12 GB | 7-8B Q4-Q6 |
+| 16 GB | 7-8B Q8, or 12-14B Q4 |
+| 24 GB | 12-14B Q4-Q8 |
+| 32 GB+ | 24-32B Q4, or a faster 12-14B at higher precision |
+
 ## 4. Two machines
 
 ```mermaid
@@ -123,6 +157,11 @@ flowchart LR
   with the one-machine VRAM table.
 - Use wired Ethernet between them. On a LAN, extra latency is small next to
   model time.
+- **For the fastest responses**, run a local LLM on PC 2 as well, sized with
+  the fastest-responses table above. Then no stage crosses the internet. If
+  PC 2's GPU is small, give it the LLM alone and use API speech or Windows voices.
+  The Chat Completions route accepts plain HTTP only on loopback, so a LAN LLM
+  needs HTTPS or the planned Martlet host LLM role.
 
 ## 5. Three machines
 
@@ -138,15 +177,58 @@ machine. Add one when you want a local LLM, local vision or voice training:
 This split keeps a screenshot question or training job from taking VRAM from
 live speech. If you want a local LLM and Host 1 cannot fit it with speech,
 split by size: put the **LLM on the largest GPU** and speech (STT, TTS,
-Audio2Face) on the other host. Then use a hosted model for vision.
+Audio2Face) on the other host. Then use a hosted model for vision. This
+"LLM host + speech host" split is also the fastest three-machine layout:
+neither GPU waits on the other, and no stage crosses the internet.
 
-## 6. Four or more machines
+## 6. Four or more machines (unlimited budget)
 
-More machines help less after three. Useful additions are a dedicated
-training box, a separate vision host, or more desktops paired to the same
-hosts (run `pair` once per desktop). The F5 and vision workers run one job at
-a time (a second request gets `busy`), and a role never load-balances across
-hosts, so desktops sharing a host take turns.
+With no budget limit, give every heavy role its own machine and leave the
+gaming PC with only what must be local (section 1). The full layout below uses
+six machines; with four or five, merge roles as described after the table.
+Martlet's load on the gaming PC is then the Desktop app, audio devices, VAD and
+avatar rendering (light WebGL), so the game keeps nearly all of its CPU and GPU.
+
+```mermaid
+flowchart LR
+    PC["Gaming PC<br/>Desktop, mic, speakers,<br/>avatar render, VAD"]
+    LLM["LLM host<br/>largest GPU(s)"]
+    Speech["Speech host<br/>STT + TTS"]
+    Face["Face host<br/>Audio2Face"]
+    Context["Context host<br/>vision, OCR, memory"]
+    Train["Training box<br/>Voice Studio"]
+    PC <--> LLM
+    PC <--> Speech
+    PC <--> Face
+    PC <--> Context
+    Train -. "finished voices" .-> Speech
+```
+
+| Machine | Runs | Suggested GPU class | Why separate |
+| --- | --- | --- | --- |
+| Gaming PC (client) | Section 1 only | Whatever the game needs | Martlet takes almost nothing from the game |
+| LLM host | Conversation LLM | Fastest: a mid-size model fully on a 32 GB card. Smartest local: 70B-class Q4 needs ~40-48 GB (a 48 GB+ workstation card or several GPUs in one host); 100B+ needs ~96 GB+ | The LLM is the slowest stage; an idle dedicated GPU gives the quickest first sentence |
+| Speech host | STT (large Whisper class) and your TTS voice | 16-24 GB | STT and TTS run back to back on every turn; nothing else delays them |
+| Face host | Audio2Face | 8-16 GB NVIDIA | Animates one sentence while TTS makes the next, with no contention |
+| Context host | Vision/OCR, future memory embeddings/reranking | 24-48 GB for a local vision model | Screenshot questions are bursty and heavy |
+| Training box | Voice Studio fine-tuning and previews | 24 GB+ | Hours of training never touch the live path |
+
+With four or five machines, merge in this order: training box into the context
+host, face host into the speech host, then the context host into the speech
+host or a hosted vision model. Rules that still apply:
+
+- Each role has one destination. Martlet does not split a role across hosts or
+  load-balance between them. A role can use several GPUs inside one host
+  through the engine's own multi-GPU support.
+- You can keep a fast local model and a large hosted model configured, but
+  only one LLM route is active. Switching is a settings change, not automatic.
+- Even here, a hosted frontier model (OpenRouter, NVIDIA Build) gives the best
+  answers. Local hardware buys speed, privacy, a custom voice and a face.
+- Put every machine on the same wired switch. Audio, text and screenshots are
+  small, so 1 GbE is plenty, and a LAN hop adds only milliseconds per stage.
+- More desktops can pair to the same hosts (run `pair` once per desktop). The
+  F5 and vision workers run one job at a time (a second request gets `busy`),
+  so desktops sharing a host take turns.
 
 ## 7. What works today
 
