@@ -40,7 +40,7 @@ public partial class LiveConversationWindow : ThemedWindow
     private ScreenFrame? pendingFrame;
     private LiveConversationOperation? commentary, handledCommentary;
     private long nextGlance;
-    private string? watchNote;
+    private string? watchNote, captureNote;
     private volatile bool locked;
     private long generation;
 
@@ -191,7 +191,8 @@ public partial class LiveConversationWindow : ThemedWindow
         WatchDot.Visibility = watching ? Visibility.Visible : Visibility.Collapsed;
         Title = watching ? "Martlet - talk (watching your screen)" : "Martlet - talk";
         WatchStatus.Text = watching && pacer is { } pace
-            ? $"Watching ({pace.Chattiness}). {watchNote} Looks this hour: {pace.LooksThisHour} of at most {pace.Settings.LooksPerHour}."
+            ? $"Watching ({pace.Chattiness}). {watchNote} Looks this hour: {pace.LooksThisHour} of at most {pace.Settings.LooksPerHour}." +
+                (captureNote is { } why ? $" Full-screen game capture is unavailable ({why}); borderless and windowed still work." : "")
             : watchNote ?? "Not watching. Nothing on your screen is captured.";
         VoiceIdChoice.IsEnabled = !listening;
         VoiceIdStatus.Text = voiceIdentity is null ? "Voice ID is unavailable without a local data directory."
@@ -393,15 +394,20 @@ public partial class LiveConversationWindow : ThemedWindow
             if (!watching || closed || pacer is null)
             {
                 result.Frame?.Clear();
+                _ = Task.Run(glancer.Release);
                 return;
             }
+            captureNote = result.Note;
             if (result.Frame is not { } frame)
             {
                 watchNote = result.Skip switch
                 {
                     GlanceSkip.MartletInFront => "Martlet is in front, so it isn't looking.",
                     GlanceSkip.Private => "A password manager or private window is in front; not looking.",
-                    GlanceSkip.Blank => "The screen reads back black (exclusive full-screen or protected video). Switch the game to borderless or windowed so Martlet can see it.",
+                    GlanceSkip.Blank when result.ProtectedContent => "Windows blacks out protected video, so Martlet can't see it.",
+                    GlanceSkip.Blank when result.Note is { } why =>
+                        $"The screen reads back black and full-screen capture is unavailable: {why}. Borderless or windowed mode still works.",
+                    GlanceSkip.Blank => "The screen reads back black (protected content or a game that blocks capture).",
                     GlanceSkip.Minimized or GlanceSkip.NoWindow => "No window in front to look at.",
                     _ => "Couldn't capture the screen this time."
                 };
@@ -505,6 +511,8 @@ public partial class LiveConversationWindow : ThemedWindow
         pacer = null;
         pendingFrame?.Clear();
         pendingFrame = null;
+        // Frees the open duplication and its frame copy; off the UI thread in case a capture is finishing.
+        _ = Task.Run(glancer.Release);
         if (commentary is { OwnershipReleased: false } glance) controller.Stop(glance, "commentary.stopped", keepContext: true);
         rendering = true;
         if (AcceptScreen is not null) AcceptScreen.IsChecked = false;
@@ -666,6 +674,7 @@ public partial class LiveConversationWindow : ThemedWindow
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
         Cancel("conversation.closed");
+        _ = Task.Run(glancer.Release);
         closed = true;
         generation++;
         timer.Stop();

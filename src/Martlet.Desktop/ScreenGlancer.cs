@@ -49,17 +49,23 @@ internal sealed class ScreenFrame(byte[] pixels, int width, int height, string t
     }
 }
 
-internal sealed record GlanceResult(ScreenFrame? Frame, GlanceSkip Skip);
+/// <summary>How a look was taken: Desktop Duplication (what the monitor shows, full-screen games included) or GDI.
+/// <paramref name="Note"/> says why duplication was not used, for the watch status.</summary>
+internal sealed record GlanceResult(ScreenFrame? Frame, GlanceSkip Skip, string? Note = null, bool ProtectedContent = false);
 
 internal interface IScreenGlancer
 {
     GlanceResult Capture(ScreenScope scope);
     TimeSpan UserIdle { get; }
+    /// <summary>Frees the screen capture resources (the open duplication and its frame copy) when watching stops.</summary>
+    void Release();
 }
 
-/// <summary>Captures the foreground window (or its whole monitor) with GDI, downscaled to at most 1024 px. Works for
-/// windowed and borderless games; exclusive full-screen and DRM-protected content read back black and are skipped.
-/// Martlet's own windows, minimized windows and password managers / private browsing windows are never captured.</summary>
+/// <summary>Captures the foreground window (or its whole monitor), downscaled to at most 1024 px. It reads the monitor
+/// through DXGI Desktop Duplication, which also sees full-screen DirectX games, and falls back to GDI when duplication
+/// is unavailable (remote sessions, a refused hybrid-GPU laptop, a rotated monitor). No hooking or injection.
+/// Martlet's own windows, minimized windows and password managers / private browsing windows are never captured;
+/// protected video and windows that exclude themselves from capture read back black and are skipped.</summary>
 internal sealed class ScreenGlancer : IScreenGlancer
 {
     internal const int MaximumEdge = 1024;
@@ -69,7 +75,14 @@ internal sealed class ScreenGlancer : IScreenGlancer
         "password", "1password", "bitwarden", "keepass", "lastpass", "dashlane", "keeper", "credential manager",
         "inprivate", "incognito", "private browsing", "authenticator", "online banking"
     ];
+    private readonly DesktopDuplication duplication = new();
     private byte[]? previous;
+
+    public void Release()
+    {
+        duplication.Release();
+        previous = null;
+    }
 
     public TimeSpan UserIdle
     {
@@ -95,30 +108,41 @@ internal sealed class ScreenGlancer : IScreenGlancer
             var title = Title(window);
             var lower = title.ToLowerInvariant();
             if (PrivateTitles.Any(lower.Contains)) return new(null, GlanceSkip.Private);
+            var monitorHandle = MonitorFromWindow(window, MonitorDefaultToNearest);
             var monitor = new MONITORINFO { cbSize = (uint)Marshal.SizeOf<MONITORINFO>() };
-            if (!GetMonitorInfo(MonitorFromWindow(window, MonitorDefaultToNearest), ref monitor))
+            if (!GetMonitorInfo(monitorHandle, ref monitor))
                 return new(null, GlanceSkip.CaptureFailed);
             var area = monitor.rcMonitor;
             if (scope == ScreenScope.ActiveWindow)
             {
-                if (DwmGetWindowAttribute(window, DwmExtendedFrameBounds, out RECT bounds, Marshal.SizeOf<RECT>()) != 0 &&
+                if (DwmGetWindowAttribute(window, DwmExtendedFrameBounds, out NativeRect bounds, Marshal.SizeOf<NativeRect>()) != 0 &&
                     !GetWindowRect(window, out bounds)) return new(null, GlanceSkip.CaptureFailed);
-                area = RECT.Intersect(bounds, monitor.rcMonitor);
+                area = NativeRect.Intersect(bounds, monitor.rcMonitor);
             }
             if (area.Width < 64 || area.Height < 64) return new(null, GlanceSkip.NoWindow);
             var scale = Math.Min(1.0, (double)MaximumEdge / Math.Max(area.Width, area.Height));
             int width = Math.Max(1, (int)Math.Round(area.Width * scale)), height = Math.Max(1, (int)Math.Round(area.Height * scale));
-            var pixels = Grab(area, width, height);
-            if (pixels is null) return new(null, GlanceSkip.CaptureFailed);
-            var signature = Signature(pixels, width, height);
+            // Duplication first: it sees full-screen games and does not stall the game the way a GDI screen read can.
+            var pixels = duplication.Grab(monitorHandle, area, width, height);
+            var protectedContent = pixels is not null && duplication.ProtectedContent;
+            var note = pixels is null ? duplication.Problem : null;
+            var signature = pixels is null ? null : Signature(pixels, width, height);
+            if (pixels is null || signature is null || signature.Max() < 10)
+            {
+                // A still desktop can briefly read black from a fresh duplication; GDI decides then.
+                if (pixels is not null) Array.Clear(pixels);
+                pixels = Grab(area, width, height);
+                if (pixels is null) return new(null, GlanceSkip.CaptureFailed, note);
+                signature = Signature(pixels, width, height);
+            }
             if (signature.Max() < 10)
             {
                 Array.Clear(pixels);
-                return new(null, GlanceSkip.Blank);
+                return new(null, GlanceSkip.Blank, note, protectedContent);
             }
             var change = previous is null ? 1.0 : signature.Zip(previous, (a, b) => Math.Abs(a - b)).Average() / 255.0;
             previous = signature;
-            return new(new(pixels, width, height, title.Length > 80 ? title[..80] : title, change), GlanceSkip.None);
+            return new(new(pixels, width, height, title.Length > 80 ? title[..80] : title, change), GlanceSkip.None, note, protectedContent);
         }
         catch (Exception error) when (error is ExternalException or OutOfMemoryException or ArgumentException)
         {
@@ -130,7 +154,7 @@ internal sealed class ScreenGlancer : IScreenGlancer
         }
     }
 
-    private static byte[]? Grab(RECT area, int width, int height)
+    private static byte[]? Grab(NativeRect area, int width, int height)
     {
         var screen = GetDC(0);
         if (screen == 0) return null;
@@ -200,20 +224,7 @@ internal sealed class ScreenGlancer : IScreenGlancer
     private const uint SourceCopy = 0x00CC0020;
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct RECT
-    {
-        public int Left, Top, Right, Bottom;
-        public readonly int Width => Right - Left;
-        public readonly int Height => Bottom - Top;
-        public static RECT Intersect(RECT a, RECT b) => new()
-        {
-            Left = Math.Max(a.Left, b.Left), Top = Math.Max(a.Top, b.Top),
-            Right = Math.Min(a.Right, b.Right), Bottom = Math.Min(a.Bottom, b.Bottom)
-        };
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct MONITORINFO { public uint cbSize; public RECT rcMonitor, rcWork; public uint dwFlags; }
+    private struct MONITORINFO { public uint cbSize; public NativeRect rcMonitor, rcWork; public uint dwFlags; }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }
@@ -229,7 +240,7 @@ internal sealed class ScreenGlancer : IScreenGlancer
     [DllImport("user32.dll")] private static extern nint GetShellWindow();
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(nint window, out uint process);
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool IsIconic(nint window);
-    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool GetWindowRect(nint window, out RECT rect);
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool GetWindowRect(nint window, out NativeRect rect);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowTextLength(nint window);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(nint window, StringBuilder text, int count);
     [DllImport("user32.dll")] private static extern nint MonitorFromWindow(nint window, uint flags);
@@ -238,7 +249,7 @@ internal sealed class ScreenGlancer : IScreenGlancer
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool GetLastInputInfo(ref LASTINPUTINFO info);
     [DllImport("user32.dll")] private static extern nint GetDC(nint window);
     [DllImport("user32.dll")] private static extern int ReleaseDC(nint window, nint dc);
-    [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(nint window, int attribute, out RECT value, int size);
+    [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(nint window, int attribute, out NativeRect value, int size);
     [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(nint window, int attribute, out int value, int size);
     [DllImport("gdi32.dll")] private static extern nint CreateCompatibleDC(nint dc);
     [DllImport("gdi32.dll")] private static extern nint CreateDIBSection(nint dc, ref BITMAPINFOHEADER header, uint usage, out nint bits, nint section, uint offset);
