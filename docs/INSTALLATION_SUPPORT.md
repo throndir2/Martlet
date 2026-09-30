@@ -67,11 +67,11 @@ registration, Start menu shortcut, local help, and bundled diagnostic CLI.
 Install to the user's application directory without an elevation prompt in the
 golden path. Keep code and mutable data separate. Default install must not add
 firewall exceptions, install services, modify drivers, start at login, fetch
-large models, or require a browser login. Optional
-[prerequisites](PREREQUISITES.md) (Windows speech, Ollama, WSL 2 + Docker
-Desktop) are unticked installer tasks unless the installer's **Recommended
-setup** page (number of computers, graphics card, goal) recommends them; only a
-missing WebView2 runtime and a blocked microphone setting are always ticked by default.
+large models, or require a browser login. Setup asks no questions and installs
+no [prerequisites](PREREQUISITES.md); it offers to start Martlet, whose welcome
+tour offers what is missing (a missing WebView2 runtime and a blocked microphone
+setting ticked; Windows speech, Ollama, WSL 2 + Docker Desktop unticked unless
+the PC is an NVIDIA host or the setup advisor's plan needs them).
 
 Publish GitHub asset SHA-256, provenance and notices for the exact versioned
 installer. A GitHub-supplied checksum is not an independent publisher signature.

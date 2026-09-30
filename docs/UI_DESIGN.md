@@ -37,7 +37,8 @@ Every mode: Home · Devices (map) · Companion* · Settings      (* companion mo
 ### 1. Welcome tour (first launch)
 
 This full-window overlay appears when no device-role choice has been saved
-(`device-role.txt`). It has three short cards, animated between steps and marked
+(`device-role.txt`). The installer asks no setup questions, so this is where
+setup starts. It has up to four short cards, animated between steps and marked
 with step dots:
 
 1. **Hi, I'm Martlet.** One sentence about what Martlet does, plus *Let's begin*.
@@ -46,12 +47,19 @@ with step dots:
    - *Talk with my companion here* (the PC you sit at).
    - *Lend this PC to Martlet* (a spare or gaming PC with a GPU that runs heavy
      parts, such as lip-sync, for another PC).
-3. **How would you like to start?** (companion mode) *Recommend a setup for me*
-   opens the setup advisor, *I know what I want* opens Setup, and *Try the
-   offline demo* opens the demo. In host mode, the tour ends on the host
-   dashboard.
+3. **Get this PC ready** (only when something is missing). One tick box per
+   missing prerequisite, read from the registry and files: WebView2 and blocked
+   microphone access are ticked; WSL 2 + Docker Desktop is ticked for a host
+   with an NVIDIA GPU; Windows speech and Ollama wait unticked for the setup
+   advisor. *Install selected* hands the ticked items to the prerequisites tool
+   in a console window; *Not now* moves on.
+4. **How would you like to start?** (companion mode) *Recommend a setup for me*
+   opens the setup advisor (its plan adds *Install on this PC* for what it runs
+   here), *I know what I want* opens Setup, and *Try the offline demo* opens the
+   demo. In host mode, the tour ends on the host dashboard.
 
-The tour saves only the device role. It runs nothing and contacts nothing.
+The tour saves only the device role and contacts nothing; it installs only the
+items you tick and confirm with *Install selected*.
 Settings > *This PC's role* changes the role or replays the tour.
 
 ### 2. Companion home (main PC)

@@ -79,26 +79,29 @@ digest; it does not install the download. Windows may warn about an unknown
 publisher. The existing Updates library's separate signed ZIP/envelope remains
 unsupported by this installer, and rollback qualification has not been performed.
 
-## Prerequisites page and tool
+## Quick installer, first-run setup and the prerequisites tool
+
+The installer asks no setup questions: the public channel shows the license and
+release notice, then installs (no Ready page) and offers **Start Martlet and
+finish setting up** on the Finished page. Its only `[Run]` entry is that
+`postinstall nowait skipifsilent` launch, so silent installs and in-app updates
+never start it; `Test-Packaging.ps1` enforces this and rejects a `[Tasks]`
+section.
 
 Both installer channels ship `prerequisites\Install-Prerequisites.ps1` (copied by
 `Publish-Windows.ps1`, inventoried like every payload file) and a Start menu
-shortcut, **Martlet prerequisites**, that runs it with Windows PowerShell. The
-Desktop home screen's **Prerequisites (check / install)** opens the same tool.
-The installer's *Select Additional Tasks* page shows only items missing on the
-PC, detected in `[Code]` without side effects: WebView2 runtime (ticked),
-microphone privacy access (ticked; opens Settings), Windows speech for the
-display language, Ollama and WSL 2 + Docker Desktop (unticked unless
-recommended). A preceding *Recommended setup* page asks how many computers
-Martlet can use, this PC's graphics card (NVIDIA preselected when the registry
-or `nvidia-smi.exe` shows one) and the goal, shows where each part runs, and
-ticks the optional items that suit the answers; the user can change every tick.
-It mirrors the Desktop setup advisor in a few rules, is skipped when no optional
-item is missing and does nothing in silent installs. One task-gated
-`[Run]` entry passes the ticked IDs to the tool in a visible console; silent
-installs add `-NoPrompt`. The installer itself stays `PrivilegesRequired=lowest`;
-only the speech and WSL steps ask for UAC, and winget's Docker installer asks on
-its own. `Test-Packaging.ps1` requires every `[Run]` entry to be gated by a task.
+shortcut, **Martlet prerequisites**, that runs it with Windows PowerShell. All
+setup questions live in the Desktop app. On first run the welcome tour asks what
+the PC is for and, when anything is missing, shows a **Get this PC ready** step
+detected from the registry and files without side effects (`Prerequisites.cs`):
+WebView2 runtime and blocked microphone access (ticked), Windows speech for the
+display language, Ollama and WSL 2 + Docker Desktop (unticked, except Docker on a
+host PC with an NVIDIA GPU). The setup advisor's plan adds an **Install on this
+PC** button for the items its layout runs here. Both pass the ticked IDs to the
+tool with `-Install ... -PauseWhenDone` in a visible console; **Prerequisites
+(check / install)** on the home screen opens its checklist. Martlet stays a
+per-user app; only the speech and WSL steps ask for UAC, and winget's Docker
+installer asks on its own.
 The full list of what is bundled, offered or user-supplied is in
 [docs/PREREQUISITES.md](../../docs/PREREQUISITES.md).
 
@@ -429,8 +432,8 @@ physical file ownership. Complete bundled JavaScript licenses and esbuild legal
 comments remain distributed; npm metadata alone is not notice coverage.
 Live2D Framework/Core overrides, user models/avatar assets, NIM and GPU drivers
 remain external prerequisites and are never packaged. The WebView2 runtime is
-never packaged either; the installer's task page and the bundled prerequisites
-tool install it from Microsoft only when it is missing and ticked (see below).
+never packaged either; the Desktop welcome tour and the bundled prerequisites
+tool install it from Microsoft only when it is missing and ticked (see above).
 No license clearance is inferred.
 
 Retained npm archives and normalized build evidence reside outside the payload.

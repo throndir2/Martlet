@@ -25,7 +25,7 @@
             <StackPanel Margin="24" MaxWidth="900">
                 <TextBlock Text="Which setup is right for me?" FontSize="24" FontWeight="SemiBold"/>
                 <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,6,0,16"
-                    Text="Answer three quick questions. Martlet suggests where each part should run and explains what it does. Nothing is installed, saved, tested or contacted."/>
+                    Text="Answer three quick questions. Martlet suggests where each part should run and explains what it does. Nothing is installed, saved, tested or contacted until you press a button in your plan."/>
 
                 <StackPanel x:Name="GoalStep">
                     <TextBlock Text="1. What matters most to you?" Style="{DynamicResource SectionHeading}"/>

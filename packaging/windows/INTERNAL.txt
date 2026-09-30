@@ -15,8 +15,8 @@ private AvatarRenderer process; its browser shell is bundled offline. Doctor
 remains unchanged and does not load avatar, WebView2 or Audio2Face dependencies.
 Licensed Live2D Framework/Core overrides, avatar/model assets and the NIM/GPU
 runtime are user-supplied prerequisites. The WebView2 runtime, Windows speech,
-Ollama and WSL 2/Docker Desktop are installed only when ticked on the installer's
-task page or chosen in Start > Martlet prerequisites (Internal).
+Ollama and WSL 2/Docker Desktop are installed only when ticked in the Desktop
+welcome tour or setup advisor, or chosen in Start > Martlet prerequisites (Internal).
 Saving a profile does not establish rendering, model, hardware or inference
 readiness. Full bundled dependency notices are retained with this internal build.
 
