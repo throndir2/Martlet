@@ -254,6 +254,19 @@ and novice qualification. Engine availability and model training are not
 inferred from catalog entries or imported audio. Existing API behavior is
 preserved. All execution/qualification remains local and separately consented.
 
+### iOS and iPadOS track IO01-IO11 (2026-09-30)
+
+The [iOS plan](IOS.md#delivery-slices) adds a native Swift app for iPhone and
+iPad in two roles: a companion on the device you game on, and a host lending
+on-device speech, voices and Apple Intelligence over gateway protocol 2.0.
+IO01 generates C# conformance vectors; IO02 adds the project and a
+manual-dispatch unsigned IPA release; IO03-IO04 deliver the host (Listening,
+Thinking, then a generic Speaking route); IO05-IO09 the companion
+(conversation, screen watching, character, PiP, devices/cluster/memory/Voice ID);
+IO10 the satellite microphone/speaker; IO11 the same host on a Mac. Nothing is
+implemented; device acceptance is NOT RUN, and the Apple Developer Program fee
+remains an owner spending decision.
+
 ## 1. Execution rules
 
 Follow [the repository agent instructions](../AGENTS.md) for autonomous
