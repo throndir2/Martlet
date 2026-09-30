@@ -8,7 +8,7 @@
       "martlet.f5": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.4.0, )"
+          "Martlet.Core": "[0.5.0, )"
         }
       },
       "martlet.perception": {
@@ -17,7 +17,7 @@
       "martlet.providers": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.4.0, )"
+          "Martlet.Core": "[0.5.0, )"
         }
       }
     }
