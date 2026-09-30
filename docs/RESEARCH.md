@@ -696,6 +696,20 @@ runtimes. In particular, XTTS CPML restricts model and output use to
 noncommercial purposes; Chatterbox managed training is unverified. Each engine
 requires isolated dependencies and its own artifact closure.
 
+## S48: iOS and iPadOS platform research, 2026-09-30
+
+Primary Apple, Microsoft and GitHub sources are listed with the
+[iOS plan](IOS.md#sources). **Verified upstream:** Foundation Models is
+Swift-only, on Apple Intelligence devices, 4,096-token context on iOS 26; iOS 27
+adds on-device image input and an entitled Private Cloud Compute model (WWDC26
+session 241). SpeechAnalyzer (iOS 26) is on-device and Swift-only. Kestrel is
+not supported on iOS. The `macos-26` hosted runner image ships Xcode 26.x.
+**Consequence:** a native Swift app that reimplements gateway protocol 2.0
+against C#-generated vectors; host mode is foreground-only; screen watching
+needs a user-started broadcast. Free-provisioning limits, extension memory,
+Game Mode effects and App Review stances are community-reported and remain
+unverified.
+
 ## Linux service state custody and durable I/O (H03b3)
 
 **Accessed 2026-09-23.** Primary upstream contracts, not native Martlet evidence:
