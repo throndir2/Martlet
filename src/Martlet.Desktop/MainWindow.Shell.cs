@@ -10,6 +10,7 @@ using System.Windows.Media;
 using System.Windows.Shapes;
 using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Avatar.Hosting;
+using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
 using Martlet.Core.Installation;
 using Martlet.Core.Settings;
@@ -325,6 +326,7 @@ public partial class MainWindow
             homeHosts = [];
             ActionText.Text = error.Message;
         }
+        ObserveLocalJobs();
         RenderHome();
         if (DevicesPage.IsVisible) RenderMap();
     }
@@ -996,7 +998,9 @@ public partial class MainWindow
                 if (HostJob.For(role) is { } job && NetworkMap.Hosts(Inputs()).Count > 0)
                 {
                     change.Margin = new Thickness(0, 6, 0, 0);
-                    control = new StackPanel { Children = { JobChoice(job), change } };
+                    var controls = new StackPanel { Children = { JobChoice(job), change } };
+                    if (ClusterControls(job.Job) is { } cluster) controls.Children.Add(cluster);
+                    control = controls;
                 }
                 RolesBoard.Children.Add(RoleTile(name, owner?.Title ?? "Not chosen yet",
                     owner?.Roles.First(r => r.Name == name).Detail ?? "Pick a cloud model or one of your computers in Setup.", control, owner?.Id));
@@ -1041,7 +1045,8 @@ public partial class MainWindow
                     ? "Its own Audio2Face service when running, otherwise voice loudness. Add a computer to hand lip-sync to a GPU PC."
                     : "Its own Audio2Face service when running, otherwise voice loudness.", "this-pc")
             };
-            RolesBoard.Children.Add(RoleTile("Lip-sync (Audio2Face)", who, detail, choice, nodeId));
+            RolesBoard.Children.Add(RoleTile("Lip-sync (Audio2Face)", who, detail,
+                ClusterControls(ClusterJobs.LipSync) is { } lipSyncCluster ? new StackPanel { Children = { choice, lipSyncCluster } } : choice, nodeId));
         }
         finally { renderingBoard = false; }
     }
@@ -1108,16 +1113,8 @@ public partial class MainWindow
                     install = true;
                 }
             }
-            var (before, after) = await Pairings().AssignLipSyncAsync(host, key == "off", lifetime.Token);
-            homeAvatar = after;
-            if (avatar.IsShowing)
-            {
-                if (before.LipSync != after.LipSync)
-                {
-                    if (await StopAvatarSafelyAsync()) await ShowSavedCharacterAsync(onlyIfAutoShow: false);
-                }
-                else await avatar.UseHostAsync(after.RemoteHost, lifetime.Token);
-            }
+            await ApplyLipSyncAsync(host, key == "off");
+            RecordClusterJob(ClusterJobs.LipSync, ClusterSync.Local(ClusterJobs.LipSync, homeSettings, homeAvatar));
             var who = key == "off" ? "nobody (the mouth follows the voice's loudness)" : host?.HostId ?? "this PC";
             var message = $"Lip-sync is now handled by {who}.";
             if (install) LaunchOnHost(host!, HostRoles.Get(HostRoles.Audio2Face).Add);
@@ -1139,6 +1136,20 @@ public partial class MainWindow
                 if (DevicesPage.IsVisible) RenderMap();
             }
         }
+    }
+
+    /// <summary>Saves who handles lip-sync and switches a showing character over without restarting it (unless the
+    /// lip-sync mode itself changed).</summary>
+    private async Task ApplyLipSyncAsync(PairedHost? host, bool off)
+    {
+        var (before, after) = await Pairings().AssignLipSyncAsync(host, off, lifetime.Token);
+        homeAvatar = after;
+        if (!avatar.IsShowing) return;
+        if (before.LipSync != after.LipSync)
+        {
+            if (await StopAvatarSafelyAsync()) await ShowSavedCharacterAsync(onlyIfAutoShow: false);
+        }
+        else await avatar.UseHostAsync(after.RemoteHost, lifetime.Token);
     }
 
     private void CheckHosts_Click(object sender, RoutedEventArgs e) => _ = CheckHostsAsync(NetworkMap.Hosts(Inputs()));
@@ -1163,6 +1174,7 @@ public partial class MainWindow
                   $"{results.Count(r => r.Check.Offers?.ContainsKey(role.Kind) == true)} running {role.Name}")) + ".";
         RenderHome();
         if (DevicesPage.IsVisible) RenderMap();
+        QueueClusterSync();
     }
 
     /// <summary>Runs a martlet-host command on a paired host the way this PC reaches it: in Martlet over SSH (output and
@@ -1253,6 +1265,7 @@ public partial class MainWindow
         {
             await Pairings().ForgetAsync(host.HostId, token);
             hostChecks.Remove(host.HostId);
+            ForgetClusterHost(host.HostId);
             if (inCharge && avatar.IsShowing) await avatar.UseHostAsync(null, token);
             ActionText.Text = $"Forgot {host.HostId}. Revoke {host.Pairing.DeviceId} in its pairing console to finish.";
         });

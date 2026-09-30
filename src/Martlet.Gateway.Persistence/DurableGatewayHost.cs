@@ -359,6 +359,13 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         server!.Machine = report;
     }
 
+    /// <summary>Keeps the shared cluster plan paired desktops sync through this host in <paramref name="storage"/>.</summary>
+    public void AttachCluster(IGatewayClusterStorage storage)
+    {
+        RequireOpen();
+        server!.AttachClusterStorage(storage);
+    }
+
     public ValueTask CloseCleanlyAsync(CancellationToken cancellationToken = default) =>
         StopAsync(clean: true, cancellationToken);
 

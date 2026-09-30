@@ -45,6 +45,10 @@ public sealed class GatewayServer
         set => application.Machine = value is null || value.IsValid() ? value : throw new ArgumentException("Invalid machine report.", nameof(value));
     }
 
+    /// <summary>Keeps this host's copy of the shared cluster plan (served at /martlet/v1/cluster) in <paramref name="storage"/>
+    /// and loads the copy saved there.</summary>
+    public void AttachClusterStorage(IGatewayClusterStorage storage) => application.Cluster.Attach(storage);
+
     public GatewayServer(
         GatewayHostIdentity identity,
         GatewayOrigin origin,

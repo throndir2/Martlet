@@ -98,6 +98,13 @@ pairing and on **Check connection**, keeps it in `host-hardware.json`, shows it
 on the Devices map and fills the setup advisor's computers step with it. It is
 host-reported information, not a measurement, and it grants no authority.
 
+The gateway also keeps a copy of the shared **who does what** plan in
+`cluster.json` beside `host.json`, written by the gateway when a paired desktop
+syncs (Devices > Who does what > *Keep who does what in sync*). It names which
+host does each job, which jobs fail over and which roles each host runs; it
+holds no keys and the host never acts on it. See
+[Shared who does what and failover](../../docs/CLUSTER.md).
+
 ### Docker (any Docker host, including Windows)
 
 Build the image once from this repository (Martlet hosts does this on the host

@@ -112,6 +112,7 @@ public partial class MainWindow : ThemedWindow
                 AutomaticHostUpdate.IsEnabled = UpdateHostsButton.IsEnabled = false;
         }
         InitializeShell();
+        InitializeCluster();
     }
 
     private async void Theme_Changed(object sender, SelectionChangedEventArgs e)
@@ -147,6 +148,7 @@ public partial class MainWindow : ThemedWindow
         _ = ReadMachineAsync();
         await RefreshAsync();
         await ShowSavedCharacterAsync(onlyIfAutoShow: true);
+        StartCluster();
         if (!closing) await StartUpdatesAsync();
     }
     private async void Refresh_Click(object sender, RoutedEventArgs e) => await RefreshAsync();
@@ -337,9 +339,11 @@ public partial class MainWindow : ThemedWindow
     private async void Conversation_Click(object sender, RoutedEventArgs e)
     {
         if (conversation is null || closing || saving || runningFixture || model?.IsRunning == true) return;
-        new LiveConversationWindow(setupService!, setupOperations, conversation, audioSessionEvents, audioSetup, voiceIdentity: voiceIdentity)
+        openConversation = new LiveConversationWindow(setupService!, setupOperations, conversation, audioSessionEvents, audioSetup, voiceIdentity: voiceIdentity)
             { Owner = this, Troubleshooting = OpenTroubleshooting, Support = support, ConfigurationRecovery = OpenRecovery,
-                Avatar = OpenAvatar }.ShowDialog();
+                Avatar = OpenAvatar };
+        try { openConversation.ShowDialog(); }
+        finally { openConversation = null; }
         await RefreshAsync();
     }
 
@@ -550,6 +554,7 @@ public partial class MainWindow : ThemedWindow
         ageTimer.Stop();
         fixtureTimer.Stop();
         updateTimer.Stop();
+        clusterTimer.Stop();
         audioSessionEvents.LockedChanged -= audioSetup.SetSessionLocked;
         audioSessionEvents.LockedChanged -= AvatarSessionLocked;
         if (conversation is not null) audioSessionEvents.LockedChanged -= conversation.SetSessionLocked;
