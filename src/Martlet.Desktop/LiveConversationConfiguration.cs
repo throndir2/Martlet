@@ -327,12 +327,12 @@ internal sealed class LiveConversationConfiguration
         var tuning = ScreenCommentaryPacer.For(chattiness);
         return $"Screen -> LLM (only while Watch my screen is on, with its own permission): Martlet captures your " +
             (scope == ScreenScope.ActiveWindow ? "active window" : "whole screen (the monitor your active window is on)") +
-            $" on this PC every {ScreenCommentaryPacer.Tick.TotalSeconds:0} s, downscaled and kept only in memory (compared as a 16x9 grey thumbnail to notice changes). " +
+            $" on this PC every {ScreenCommentaryPacer.Tick.TotalSeconds:0} s through Windows Desktop Duplication (which also sees full-screen games, without touching the game) or GDI, downscaled and kept only in memory (compared as a 16x9 grey thumbnail to notice changes). " +
             $"Now and then it sends ONE screenshot (JPEG, at most {ScreenGlancer.MaximumEdge} px) with the window title, your persona and recent context to " +
             $"{(route is null ? "the Thinking model" : LlmDestinationName(route) + ", " + route.ModelId)}: at most {tuning.LooksPerHour} looks per hour ({chattiness}). " +
             "Most looks end in silence; each look is one potentially paid LLM request (a paired host has no per-request charge). " +
             "Martlet's own windows, minimized windows, password managers and private/incognito browser windows are never captured; " +
-            "exclusive full-screen games and protected video read back black and are skipped. Screenshots are never saved, logged or added to memory. " +
+            "protected video and windows that block capture read back black and are skipped. Screenshots are never saved, logged or added to memory. " +
             "Pause, mute, lock, Stop, Esc or Close ends watching.";
     }
 

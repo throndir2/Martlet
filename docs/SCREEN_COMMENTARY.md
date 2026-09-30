@@ -16,9 +16,10 @@ your setup can't.
    (while you play) until you click **Stop watching**, Stop, Esc, pause, mute,
    lock Windows or close the window. It never starts by itself and is never
    saved as on.
-3. Every 3 seconds Martlet captures the screen **on this PC** (GDI, downscaled
-   to at most 1024 px, kept only in memory) and compares a 16x9 grey thumbnail
-   with the last one to notice change.
+3. Every 3 seconds Martlet captures the screen **on this PC** (DXGI Desktop
+   Duplication, falling back to GDI; downscaled to at most 1024 px, kept only
+   in memory) and compares a 16x9 grey thumbnail with the last one to notice
+   change.
 4. A **pacer** decides when to take a real look, the way a person would:
    - never while you are talking to Martlet (hands-free speech, typing, a
      reply playing) and not for a while after (12-30 s);
@@ -41,10 +42,42 @@ your setup can't.
    yields to a look and re-arms right after.
 
 Never captured: Martlet's own windows, minimized windows, password managers and
-private/incognito browser windows (by window title). Exclusive full-screen games
-and protected video read back black; Martlet skips them and asks you to switch
-the game to **borderless** or **windowed**. Screenshots are never saved, logged,
-put in local memory or support bundles.
+private/incognito browser windows (by window title). Protected video reads back
+black and is skipped. Screenshots are never saved, logged, put in local memory
+or support bundles.
+
+## Full-screen games
+
+Martlet reads the monitor through the **DXGI Desktop Duplication API**: a copy
+of exactly what the monitor shows. Microsoft documents that it duplicates "even
+full screen DirectX applications", so full-screen games are seen without
+switching them to borderless. It is a documented Windows API, not a hook: Martlet
+never injects into or reads from the game process, so there is nothing for an
+anti-cheat to flag. (OBS's *Game Capture* works differently, by injecting a DLL
+into the game. Martlet deliberately does not do that.)
+
+| Game mode | Seen? |
+| --- | --- |
+| Windowed / borderless | Yes |
+| Full screen (DirectX 11/12, Vulkan, OpenGL on Windows 10/11) | Yes |
+| Legacy exclusive full screen (for example DirectX 9, or fullscreen optimizations turned off) | Yes in most cases. While the game switches display mode, Windows resets the duplication; Martlet reopens it on the next look |
+| Protected video (DRM), windows that exclude themselves from capture, UAC prompts | No: Windows returns black and the look is skipped |
+
+The duplication stays open only while watching. Each look copies the newest
+frame on the GPU and downscales it, which takes about 15 ms at 1080p on the
+test machine, every 3 seconds. Unlike a GDI screen read, it does not stall the
+game's rendering. A fresh duplication's first frame can be black on some
+drivers, so Martlet waits for a second frame when it opens the duplication.
+
+When duplication is unavailable, Martlet falls back to GDI, which sees windowed
+and borderless games only. The watch status then says why duplication is off:
+
+- **Laptops with two GPUs:** duplication must run on the GPU that drives the
+  monitor. Martlet opens it on that GPU, but if Windows still refuses, set
+  Martlet to **Power saving** in Windows Settings > System > Display >
+  Graphics.
+- A **rotated** monitor or an unusual desktop pixel format.
+- Another app already using the maximum number of duplications.
 
 ## What processes the images?
 
@@ -112,8 +145,9 @@ the next look.
 
 ## Limits and what is not done
 
-- GDI capture only: no Windows Graphics Capture/Desktop Duplication yet, so
-  exclusive full-screen games and HDR/protected content are skipped, not seen.
+- Full-screen capture was checked with Desktop Duplication on a 1080p desktop
+  over Remote Desktop, not yet with a real full-screen game, HDR or a two-GPU
+  laptop.
 - Keyboard/mouse idle only: a controller-only player is "away" after 5 minutes
   *if the picture is also still*; a moving game keeps watching.
 - Window-title privacy filtering is a keyword list; anything else in the
