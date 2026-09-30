@@ -184,6 +184,7 @@ public partial class MainWindow
             ObserveLocalJobs();
 
             var now = DateTimeOffset.UtcNow;
+            var before = clusterPlan.Digest();
             var plan = clusterPlan;
             foreach (var probe in probes)
                 if (probe.Plan is { } copy) plan = ClusterPlan.Merge(plan, copy);
@@ -201,7 +202,7 @@ public partial class MainWindow
                     plan = plan.Observe(probe.HostId, origin, roles, false, ClusterDevice, now);
             }
             clusterPlan = Failover(plan, probes, now, events);
-            SaveClusterPlan();
+            if (clusterPlan.Digest() != before) SaveClusterPlan();
             if (!assigningRole && !setupOperations.IsRunning && homeSettings?.Setup is not null) followed = await FollowClusterAsync(events);
             await PushClusterAsync(probes);
         }
