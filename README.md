@@ -7,7 +7,7 @@ configured OpenAI STT, participation policy, streaming LLM and optional generate
 voice/playback. Optional local **Voice ID** recognizes your enrolled voice and
 ignores other people before anything is uploaded.
 Each new action requires a bounded data/cost/output authorization; no credentials or audio are accessed on launch; network remains idle unless
-opt-in update checks or host updates are enabled. Text-only never requests TTS or opens output.
+opt-in update checks, host updates or [who-does-what sync](docs/CLUSTER.md) are enabled. Text-only never requests TTS or opens output.
 Actual account/device/first-conversation qualification remains **NOT RUN**.
 
 The desktop starts with a short welcome tour, then a Home page with one next
@@ -16,7 +16,9 @@ every computer and cloud service with its hardware and roles, where **Who does
 what** hands jobs such as Audio2Face lip-sync to any paired host on the spot and
 installs or removes host roles remotely, a host dashboard
 for PCs that lend their GPU, and Companion and Settings pages for everything
-else. See the [desktop UI design](docs/UI_DESIGN.md).
+else. Opt-in [shared who does what](docs/CLUSTER.md) keeps those assignments in
+sync on every host and every one of your computers, and moves a job to another
+host that runs the same engine when its host stops answering. See the [desktop UI design](docs/UI_DESIGN.md).
 
 Martlet also retains an accessible Windows desktop demo and Doctor self-test, using the
 production text validator, bounded session state, diagnostics and optional PCM
@@ -82,6 +84,7 @@ There is no remote memory, embedding, vector database or automatic backup.
 | [Architecture and provider contracts](docs/ARCHITECTURE.md) | Components, trust boundaries, conversation policy, streaming, and failure behavior |
 | [Installation and support design](docs/INSTALLATION_SUPPORT.md) | First run, host setup, lifecycle, doctor, and troubleshooting matrix |
 | [Recommended setups](docs/RECOMMENDED_SETUPS.md) | What must run on your PC versus an API or host, offloading the LLM to OpenRouter/NVIDIA Build, fastest-response layouts, GPU/VRAM priorities, and layouts from one machine to an unlimited-budget setup |
+| [Shared who does what and failover](docs/CLUSTER.md) | The cluster plan every host and desktop keeps, how copies merge, the 15-second sync, per-job failover between hosts and its edge cases |
 | [Prerequisites](docs/PREREQUISITES.md) | Every runtime prerequisite by feature and machine: what is bundled, what the installer and **Martlet prerequisites** tool install on request (WebView2, microphone access, Windows speech, Ollama, WSL 2 + Docker Desktop), what hosts install, and what you supply |
 | [Delivery and release plan](docs/DELIVERY.md) | PR-sized backlog, dependencies, acceptance criteria, release gates, and traceability |
 | [Research and provenance](docs/RESEARCH.md) | Dated primary sources, verified constraints, and unresolved integration questions |

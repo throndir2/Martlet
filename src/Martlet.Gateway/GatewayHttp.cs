@@ -89,6 +89,12 @@ internal sealed partial class GatewayHttpApplication
                 return;
             }
 
+            if (rawTarget == ClusterPath)
+            {
+                await InvokeClusterAsync(context).ConfigureAwait(false);
+                return;
+            }
+
             if (context.Request.Method == HttpMethods.Post &&
                 rawTarget == "/martlet/v1/inference/cancel")
             {

@@ -119,6 +119,15 @@ This page answers "what do I have, and what is each machine doing?"
   step and keeps the mouth on voice loudness until the host is ready. The host
   in charge goes first; this PC's own Audio2Face service and voice loudness
   are the fallbacks. *Check hosts* reads every host's roles (explicit only).
+- **Keep who does what in sync on all my computers** (under the board, OFF by
+  default) shares the assignments with every paired host and your other
+  computers ([details](CLUSTER.md)): every 15 seconds it checks the hosts,
+  follows changes made elsewhere and pushes changes made here. A status line
+  says how many hosts hold the current plan and which need an update. Each
+  tile then offers **Fail over to another host**: when its host stops
+  answering for about 30 seconds the job moves to another paired host that runs
+  the same engine, and the tile says where it moved from. Tiles also explain
+  when this PC cannot follow the plan (host not paired here, no voice chosen).
 - **Cards** show an icon, name, address, up to three role chips ("Thinks",
   "Listens", "Speaks", "Lip-sync", "Character") and a status dot. Ready nodes
   pulse, and animated dashes on the connections show which way data flows.

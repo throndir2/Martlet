@@ -47,8 +47,11 @@ the Windows Desktop app. None needs a strong GPU.
 
 Each AI role below can run on a cloud API (where one is offered), on this PC
 or on a paired Martlet host. Each role has exactly one destination and never
-silently falls back to another provider. The one exception is lip-sync's
-default **Auto** mode, which is documented below.
+silently falls back to another provider. The exceptions are lip-sync's
+default **Auto** mode, documented below, and opt-in
+[failover](CLUSTER.md#failover), which moves a job to another of your own
+paired hosts running the same engine when its host stops answering (announced,
+never to a cloud provider).
 
 | Role | API option | Local CPU option | GPU option | Notes |
 | --- | --- | --- | --- | --- |

@@ -268,9 +268,16 @@ internal sealed class HostPairings(string dataDirectory, AvatarProfileStore prof
     }
 }
 
-/// <summary>Talks to a paired host over its pinned pairing. Only ever runs on an explicit action.</summary>
+/// <summary>Talks to a paired host over its pinned pairing, on an explicit action or while the owner keeps who does what in
+/// sync (<see cref="ClusterSync"/>).</summary>
 internal static class HostControl
 {
+    /// <summary>Which Martlet roles (and models) a reachable host runs, in words.</summary>
+    internal static string Describe(IReadOnlyDictionary<string, string> offers) => offers.Count == 0
+        ? "Reachable. Runs no Martlet role yet."
+        : "Reachable. Runs " + string.Join(", ", HostRoles.All.Where(r => offers.ContainsKey(r.Kind))
+            .Select(r => $"{r.Name} (model {offers[r.Kind]})")) + ".";
+
     /// <summary>Reads which roles a paired host currently offers this PC, and saves the hardware it reports.</summary>
     internal static async Task<HostCheck> CheckAsync(AvatarRemoteHost host, HostHardwareStore? hardware, CancellationToken token)
     {
@@ -285,9 +292,7 @@ internal static class HostControl
             var offers = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var route in routes)
                 if (HostRoles.ForRoute(route.RouteId) is { } role) offers[role.Kind] = route.ModelId;
-            var text = offers.Count == 0 ? "Reachable. Runs no Martlet role yet."
-                : "Reachable. Runs " + string.Join(", ", HostRoles.All.Where(r => offers.ContainsKey(r.Kind))
-                    .Select(r => $"{r.Name} (model {offers[r.Kind]})")) + ".";
+            var text = Describe(offers);
             string? version = null;
             try
             {

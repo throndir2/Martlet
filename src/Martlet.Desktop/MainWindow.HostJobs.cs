@@ -147,6 +147,7 @@ public partial class MainWindow
                 return;
             pendingJobHosts.Remove(job.Role);
             await SaveJobHostAsync(job, host, route, voice);
+            RecordClusterJob(job.Job, new(host.HostId, false));
             ActionText.Text = $"{job.Title} is now handled by {host.HostId} ({job.Engine} {route.ModelId}{withVoice}). An open conversation window picks it up on Reload.";
         }
         catch (OperationCanceledException) { }
@@ -169,15 +170,16 @@ public partial class MainWindow
 
     /// <summary>Saves the job's route as the host's gateway route: pinned endpoint, this PC's pairing (whose secret stays
     /// where pairing saved it), the advertised route snapshot, enabled, with the selection recorded as the user's choice.
-    /// Speaking also applies the chosen reference voice in the F5 preset store and keeps it on the route.
+    /// Speaking also applies the chosen reference voice in the F5 preset store and keeps it on the route, or reuses an
+    /// already applied <paramref name="reference"/> (failover between F5 hosts keeps the voice).
     /// The previous route is kept aside so the job can go back to it without re-entering its key.</summary>
-    private async Task SaveJobHostAsync(HostJob job, PairedHost host, HostRoute route, F5ReferenceSnapshot? voice = null)
+    private async Task SaveJobHostAsync(HostJob job, PairedHost host, HostRoute route, F5ReferenceSnapshot? voice = null,
+        F5ReferenceSettings? reference = null)
     {
         var loaded = await setupService!.LoadAsync(lifetime.Token);
         if (loaded.Settings is not { Setup: not null } settings)
             throw new InvalidOperationException($"Complete Setup once so Martlet can save who does the {job.Job}.");
-        F5ReferenceSettings? reference = null;
-        if (job.RouteType == SetupRouteType.GatewayF5)
+        if (job.RouteType == SetupRouteType.GatewayF5 && reference is null)
         {
             if (voice is null) throw new InvalidOperationException("Choose the voice to speak with first.");
             if (voice.Rights.ProcessingDestinationId != route.DestinationId)
@@ -226,6 +228,7 @@ public partial class MainWindow
         var result = await setupService.SaveAsync(next, loaded.Revision, lifetime.Token);
         if (!result.Save.Saved) throw new InvalidOperationException(result.Summary);
         homeSettings = next;
+        RecordClusterJob(job.Job, new(null, false));
         ActionText.Text = $"{job.Title} is back on {name}. An open conversation window picks it up on Reload." +
             (saved.CredentialId is not null && next.Setup!.Routes.First(r => r.Role == job.Role).CredentialId is null
                 ? " Its key was removed meanwhile; store it again in Setup." : "");
@@ -251,6 +254,7 @@ public partial class MainWindow
             try
             {
                 await SaveJobHostAsync(job, host, route, pendingJobVoices.GetValueOrDefault(job.Role));
+                RecordClusterJob(job.Job, new(host.HostId, false));
                 pendingJobHosts.Remove(job.Role);
                 pendingJobVoices.Remove(job.Role);
                 ActionText.Text = $"{host.HostId} now runs {job.Engine} ({route.ModelId}) and handles {job.Job}.";

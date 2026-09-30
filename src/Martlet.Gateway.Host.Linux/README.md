@@ -70,6 +70,11 @@ The optional sibling `machine.json` (written by `martlet-host`, same 0600 owner
 custody) is read when the gateway opens and served at `GET /martlet/v1/machine`;
 it is not part of the approved configuration, so hardware changes never require
 re-approval. A missing or malformed file only means "not reported".
+`serve` also keeps the shared [cluster plan](../../docs/CLUSTER.md) that paired
+desktops sync through `/martlet/v1/cluster` in the sibling `cluster.json`
+(same 0600 custody, replaced atomically through `cluster.staging`). It is not
+approved configuration either; a missing or malformed copy starts empty and
+desktops push theirs again.
 The parser rejects extra arguments, environment selectors, approval flags,
 secrets and arbitrary command paths. No args, `help`, `--help` and `-h` are
 passive and do not read files, create keys or start a listener.

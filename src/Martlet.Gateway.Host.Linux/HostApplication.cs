@@ -62,6 +62,23 @@ internal sealed class QuietAudit : IGatewayAuditSink
     public void Record(GatewayAuditEvent gatewayEvent) { }
 }
 
+/// <summary>Keeps the gateway's copy of the shared cluster plan in cluster.json beside host.json (0600, service owner).
+/// It is not part of the approved configuration, so role changes never require re-approval.</summary>
+internal sealed class ControlClusterStorage(LinuxControlDirectory directory) : IGatewayClusterStorage
+{
+    private readonly object gate = new();
+
+    public byte[]? Load()
+    {
+        lock (gate) return directory.Read(LinuxControlDirectory.Cluster, Martlet.Core.Cluster.ClusterPlan.MaximumBytes);
+    }
+
+    public void Save(byte[] bytes)
+    {
+        lock (gate) directory.WriteCluster(bytes);
+    }
+}
+
 internal static class HostApplication
 {
     private static DurableGatewayHost? retainedOwner;
@@ -115,6 +132,7 @@ internal static class HostApplication
                 owner = platform.OpenHost("serve", config, approval, cancellation);
                 CheckApproval(directory, config, approval);
                 PublishMachine(owner, directory, output);
+                if (owner.Enabled) owner.AttachCluster(new ControlClusterStorage(directory));
                 await owner.StartAsync(cancellation);
                 CheckApproval(directory, config, approval);
                 output.WriteLine("serving: approved gateway listener; empty worker registry; no model readiness claim.");

@@ -67,6 +67,20 @@ public partial class LiveConversationWindow : ThemedWindow
     }
     private async void Reload_Click(object sender, RoutedEventArgs e) => await LoadAsync();
 
+    /// <summary>Reloads the saved choices after who does what changed elsewhere (a synced change or a failover), unless an
+    /// action or hands-free listening is running; then it asks for a Reload afterwards.</summary>
+    internal async void ReloadWhenIdle(string reason)
+    {
+        if (closed) return;
+        if (operations.IsRunning || listening || owned is { OwnershipReleased: false })
+        {
+            ResultText.Text = reason + " Reload when this action finishes to use the new computers.";
+            return;
+        }
+        await LoadAsync();
+        if (!closed) ResultText.Text = reason + " " + ResultText.Text;
+    }
+
     private async Task LoadAsync()
     {
         if (closed || operations.IsRunning) { ResultText.Text = Remedy("conversation.ownership_busy"); return; }

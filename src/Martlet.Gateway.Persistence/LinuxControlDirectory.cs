@@ -11,6 +11,8 @@ internal sealed class LinuxControlDirectory : IDisposable
     private int DirectoryFd => chain[^1].Handle.Value;
     internal const string Config = "host.json", Approval = "service-approval.json", Machine = "machine.json";
     internal const string Staging = "service-approval.staging";
+    /// <summary>The shared cluster plan the gateway keeps for paired desktops (not part of the approved configuration).</summary>
+    internal const string Cluster = "cluster.json", ClusterStaging = "cluster.staging";
     internal uint UserId => fs.UserId;
     internal uint GroupId => fs.GroupId;
 
@@ -70,7 +72,7 @@ internal sealed class LinuxControlDirectory : IDisposable
 
     internal byte[]? Read(string name, int maximum)
     {
-        if (name is not (Config or Approval or Machine)) throw Error(GatewayPersistenceFailure.InvalidPath);
+        if (name is not (Config or Approval or Machine or Cluster)) throw Error(GatewayPersistenceFailure.InvalidPath);
         Validate();
         var before = fs.StatAt(DirectoryFd, name);
         if (before is null) return null;
@@ -97,14 +99,32 @@ internal sealed class LinuxControlDirectory : IDisposable
     internal void WriteApproval(byte[] bytes)
     {
         if (bytes.Length is < 1 or > 8192) throw Error(GatewayPersistenceFailure.InvalidState);
-        _ = Read(Approval, 8192);
+        Replace(Approval, Staging, bytes, 8192);
+    }
+
+    /// <summary>Atomically replaces cluster.json (0600, service owner). A staging file left by an interrupted write is removed first.</summary>
+    internal void WriteCluster(byte[] bytes)
+    {
+        if (bytes.Length is < 1 or > 65_536) throw Error(GatewayPersistenceFailure.InvalidState);
         Validate();
-        using (var handle = new LinuxDescriptor(fs, fs.OpenAt(DirectoryFd, Staging,
+        if (fs.StatAt(DirectoryFd, ClusterStaging) is { } stale)
+        {
+            LinuxOwnedDirectory.CheckFile(fs, stale, chain[^1].Identity);
+            fs.Unlink(DirectoryFd, ClusterStaging);
+        }
+        Replace(Cluster, ClusterStaging, bytes, 65_536);
+    }
+
+    private void Replace(string name, string staging, byte[] bytes, int maximum)
+    {
+        _ = Read(name, maximum);
+        Validate();
+        using (var handle = new LinuxDescriptor(fs, fs.OpenAt(DirectoryFd, staging,
             ReadWrite | Create | Exclusive | NoFollow | CloseOnExec | NonBlocking,
             0x180, NoLinks | Beneath | NoMounts)))
         {
             var initial = fs.Stat(handle.Value);
-            Check(Staging, handle, initial);
+            Check(staging, handle, initial);
             var offset = 0;
             while (offset < bytes.Length)
             {
@@ -113,11 +133,11 @@ internal sealed class LinuxControlDirectory : IDisposable
                 offset += count;
             }
             fs.Flush(handle.Value);
-            Check(Staging, handle, initial);
+            Check(staging, handle, initial);
         }
-        _ = Read(Approval, 8192);
+        _ = Read(name, maximum);
         Validate();
-        fs.Rename(DirectoryFd, Staging, Approval, replace: true);
+        fs.Rename(DirectoryFd, staging, name, replace: true);
         fs.Flush(DirectoryFd);
     }
 
