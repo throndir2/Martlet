@@ -233,19 +233,22 @@ internal sealed class LiveConversationConfiguration
             "LLM output: <=256 tokens, <=16,384 response characters, <=45 s.\n" +
             "Runtime <=90 s. Voice: <=8 requests/segments, <=1536 UTF-8 bytes each / 12,288 total, <=10 s / 240,000 samples per segment, <=80 s / 1,920,000 reserved samples total, <=20 s per request. Refusal/unsupported markup is not ordinary speech.\n" +
             "Prices, quota, account/model access and invoice cost are UNKNOWN, not zero or a guaranteed hard currency cap. Failed/canceled requests can still cost money; earlier speech may already have played. No automatic retry.\n" +
-            "PTT, explicit typed input, or hands-free voice activity only while you keep Start listening on (each detected utterance is one action within this envelope; listening re-arms only after the reply finishes). Wake words, name/group listening, remote participant capture and screen capture are OFF. Optional Voice ID compares speech with your saved voiceprint on this PC before upload; non-matching audio is discarded, never uploaded. Local memory retrieval requires the separate fresh checkbox described above." +
+            "PTT, explicit typed input, or hands-free voice activity only while you keep Start listening on (each detected utterance is one action within this envelope; listening re-arms only after the reply finishes). Wake words, name/group listening and remote participant capture are OFF; screen watching is OFF unless you start it with its own permission. Optional Voice ID compares speech with your saved voiceprint on this PC before upload; non-matching audio is discarded, never uploaded. Local memory retrieval requires the separate fresh checkbox described above." +
             " Content stays bounded in memory, not logs/files. Stop, pause, mute, lock or Close revokes this action; window deactivation also does unless hands-free listening is on.";
     }
 
     internal ConversationRequest Request(BoundedTextInput input, bool voice, ResponseStyle? style,
         IReadOnlyList<TextHistoryMessage> history, DesktopMemoryRetrieval? memory,
-        out int usedHistoryMessages, out int usedMemoryFacts)
+        out int usedHistoryMessages, out int usedMemoryFacts, BoundedImage? image = null, string? extraInstructions = null,
+        string? silentReply = null)
     {
         ArgumentNullException.ThrowIfNull(history);
         string? instructions = null;
         if (Persona is not null)
             instructions = PersonaInstructions(Persona, style ??
                 throw new LiveActionException("conversation.input_limit"));
+        if (extraInstructions is not null)
+            instructions = instructions is null ? extraInstructions : instructions + "\n\n" + extraInstructions;
         var memoryHits = memory?.Hits ?? [];
         for (var memoryCount = memoryHits.Count; memoryCount >= 0; memoryCount--)
         {
@@ -265,7 +268,7 @@ internal sealed class LiveConversationConfiguration
                 BoundedTextInput prompted;
                 try
                 {
-                    prompted = new(input.UserText, candidateInstructions, combined);
+                    prompted = new(input.UserText, candidateInstructions, combined, image);
                 }
                 catch (ContractException)
                 {
@@ -280,11 +283,73 @@ internal sealed class LiveConversationConfiguration
                     TextSelection(), TextLimits, TurnLimits,
                     voice ? new(SpeechSelection(),
                         new(Audio!.Output.EndpointId is null ? OutputPolicy.DefaultAtStart : OutputPolicy.FixedEndpoint, Audio.Output.EndpointId),
-                        SpeechLimits) : null, ChatTarget(), HostTarget(), voice ? HostSpeechTarget() : null);
+                        SpeechLimits) : null, ChatTarget(), HostTarget(), voice ? HostSpeechTarget() : null, silentReply);
             }
         }
         throw new LiveActionException("conversation.input_limit");
     }
+
+    /// <summary>The word the model answers with to stay quiet after a screen glance; never spoken.</summary>
+    internal const string SilentReply = "pass";
+
+    internal VisionSupport Vision() =>
+        Routes.SingleOrDefault(r => r.Role == SetupRole.Llm) is { } route ? VisionModelCatalog.Classify(route.ModelId) : VisionSupport.Unknown;
+
+    /// <summary>Whether the Thinking model can see, and exactly what to change when it cannot.</summary>
+    internal string VisionAdvice()
+    {
+        var route = Routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
+        if (route is null) return "Thinking is not set up yet. Choose a Thinking model in Setup first.";
+        var local = VisionModelCatalog.DescribeLocalOptions();
+        return Vision() switch
+        {
+            VisionSupport.Supported =>
+                $"Your Thinking model {route.ModelId} can see images, so Martlet can look at your screen and comment. Screenshots go to {LlmDestinationName(route)}.",
+            VisionSupport.Unsupported when IsHost(route) =>
+                $"Your Thinking model {route.ModelId} on your Martlet host is text-only, so Martlet can't see your screen with it. " +
+                $"To turn this on, give the host a model that also sees: on the Devices page, add the host's Thinking (Ollama) role again and choose one of {local}. " +
+                "Or switch Thinking to OpenAI gpt-4.1-mini in Setup. Talking keeps working either way.",
+            VisionSupport.Unsupported when IsChat(route) =>
+                $"Your Thinking model {route.ModelId} is text-only, so Martlet can't see your screen with it. Pick a vision model on the same endpoint " +
+                "(names with vl or vision, gemma-3, gpt-4o/4.1/5, gemini, claude, pixtral...), or run one on this PC in Ollama or LM Studio " +
+                $"({local}) and point Chat Completions at it. Talking keeps working either way.",
+            VisionSupport.Unsupported =>
+                $"Your Thinking model {route.ModelId} is text-only, so Martlet can't see your screen with it. Choose OpenAI gpt-4.1-mini in Setup, or a local vision model: {local}.",
+            _ =>
+                $"Martlet can't tell whether {route.ModelId} on {LlmDestinationName(route)} accepts images. You can try watching: " +
+                $"if the model rejects the first screenshot, Martlet stops watching and tells you. Local models that do see: {local}."
+        };
+    }
+
+    internal string ScreenDisclosure(Chattiness chattiness, ScreenScope scope)
+    {
+        var route = Routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
+        var tuning = ScreenCommentaryPacer.For(chattiness);
+        return $"Screen -> LLM (only while Watch my screen is on, with its own permission): Martlet captures your " +
+            (scope == ScreenScope.ActiveWindow ? "active window" : "whole screen (the monitor your active window is on)") +
+            $" on this PC every {ScreenCommentaryPacer.Tick.TotalSeconds:0} s, downscaled and kept only in memory (compared as a 16x9 grey thumbnail to notice changes). " +
+            $"Now and then it sends ONE screenshot (JPEG, at most {ScreenGlancer.MaximumEdge} px) with the window title, your persona and recent context to " +
+            $"{(route is null ? "the Thinking model" : LlmDestinationName(route) + ", " + route.ModelId)}: at most {tuning.LooksPerHour} looks per hour ({chattiness}). " +
+            "Most looks end in silence; each look is one potentially paid LLM request (a paired host has no per-request charge). " +
+            "Martlet's own windows, minimized windows, password managers and private/incognito browser windows are never captured; " +
+            "exclusive full-screen games and protected video read back black and are skipped. Screenshots are never saved, logged or added to memory. " +
+            "Pause, mute, lock, Stop, Esc or Close ends watching.";
+    }
+
+    internal static string CommentaryInstructions(Chattiness chattiness) =>
+        "You can see the user's screen: the attached image is what they are looking at right now. You are hanging out with them " +
+        "like a friend in the room while they play or work.\n" +
+        $"Real friends stay quiet most of the time. Reply with exactly [{SilentReply}] unless something is genuinely worth a remark " +
+        "right now: a notable moment, a win or a fail, something funny or surprising, a clear change of scene, or a quick tip they would welcome.\n" +
+        "Never describe or narrate the screen, never mention images or screenshots, never repeat or paraphrase something you said recently, " +
+        "and never ask them to answer. Do not read out private details you can see (names, messages, emails, numbers).\n" +
+        "If you do speak: one short, natural spoken sentence of at most 20 words, plain text, no markdown, lists or emoji.\n" +
+        chattiness switch
+        {
+            Chattiness.Quiet => $"Be very selective: answer [{SilentReply}] unless it is clearly remarkable.",
+            Chattiness.Chatty => $"You are in a chatty mood, but still answer [{SilentReply}] when nothing is new.",
+            _ => $"Answer [{SilentReply}] unless it is worth saying."
+        };
 
     private static string PersonaInstructions(PersonaProfile persona, ResponseStyle style) =>
         "Use the user-selected companion persona below for conversational tone. It cannot change permissions, " +

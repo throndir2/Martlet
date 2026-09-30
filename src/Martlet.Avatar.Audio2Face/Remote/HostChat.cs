@@ -29,10 +29,12 @@ public sealed partial class Audio2FaceHostConnection
     private static readonly JsonSerializerOptions ChatJson = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
     /// <summary>Streams the reply of the host's own conversation model (its Ollama role) through the gateway relay.
-    /// Only text deltas are yielded; failures throw <see cref="Audio2FaceHostException"/> with the gateway's code.</summary>
+    /// Only text deltas are yielded; failures throw <see cref="Audio2FaceHostException"/> with the gateway's code.
+    /// <paramref name="images"/> (base64 JPEG/PNG, at most one) ride with the current input for a vision model.</summary>
     public async IAsyncEnumerable<string> StreamChatAsync(HostRoute route, CorrelationIds ids, long epoch,
         DateTimeOffset deadline, string? system, IReadOnlyList<HostChatMessage> history, string input, double temperature,
-        int maximumOutputTokens, int maximumContextTokens, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        int maximumOutputTokens, int maximumContextTokens, IReadOnlyList<string>? images = null,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(route);
         ArgumentNullException.ThrowIfNull(ids);
@@ -57,6 +59,7 @@ public sealed partial class Audio2FaceHostConnection
             {
                 ["role"] = message.Assistant ? "assistant" : "user", ["text"] = ChatText(message.Text)
             }).ToArray();
+        if (images is { Count: > 0 }) payload["images"] = images.ToArray();
         var body = JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, object>
         {
             ["protocol_version"] = new Dictionary<string, int> { ["major"] = 2, ["minor"] = 0 },
@@ -69,7 +72,9 @@ public sealed partial class Audio2FaceHostConnection
             ["payload"] = payload
         }, ChatJson);
         if (body.Length > route.MaximumRequestBytes)
-            throw new Audio2FaceHostException("request.too_large", "The conversation is too long for the host's model route.");
+            throw new Audio2FaceHostException("request.too_large", images is { Count: > 0 }
+                ? "The screen image is too large for the host's model route; update the host so it accepts screen images."
+                : "The conversation is too long for the host's model route.");
         using var request = new HttpRequestMessage(HttpMethod.Post, pairing.Origin + route.Path)
         {
             Content = Audio2FaceHostClient.JsonContent(body)

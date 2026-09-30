@@ -328,8 +328,11 @@ public sealed class InferenceRouteAuthenticationTests
             GatewayRole.Voice,
             signer,
             oversized))
-        using (var response = await host.Client.SendAsync(request))
         {
+            // The route admits a screen image (~1.5 MB), so wait for the gateway's verdict instead of
+            // streaming the whole oversized body into a connection it closes.
+            request.Headers.ExpectContinue = true;
+            using var response = await host.Client.SendAsync(request);
             Assert.Equal(HttpStatusCode.RequestEntityTooLarge,
                 response.StatusCode);
             Assert.True(response.Headers.ConnectionClose);

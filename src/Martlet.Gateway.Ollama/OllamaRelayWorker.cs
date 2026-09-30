@@ -143,7 +143,17 @@ public sealed class OllamaRelayWorker : IOllamaGatewayInferenceWorker, IAsyncDis
             if (payload.System is { } system) Message(writer, "system", system);
             foreach (var message in payload.History)
                 Message(writer, message.Role == TextHistoryRole.User ? "user" : "assistant", message.Text);
-            Message(writer, "user", payload.Input);
+            writer.WriteStartObject();
+            writer.WriteString("role", "user");
+            writer.WriteString("content", payload.Input);
+            // Ollama's native chat takes base64 images on the message; text-only models answer with an error.
+            if (payload.Images.Count > 0)
+            {
+                writer.WriteStartArray("images");
+                foreach (var image in payload.Images) writer.WriteStringValue(image);
+                writer.WriteEndArray();
+            }
+            writer.WriteEndObject();
             writer.WriteEndArray();
             writer.WriteBoolean("stream", true);
             // Keep the model loaded: the host is lent to the bot, and a cold load would stall the first reply.

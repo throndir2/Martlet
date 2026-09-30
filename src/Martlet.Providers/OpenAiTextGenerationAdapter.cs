@@ -263,7 +263,8 @@ internal sealed class TextGenerationOperation(
         if (chatBaseUri is null && !OpenAiTextGenerationCatalog.SupportsModel(model.UpstreamModelId))
             return Fail(ProviderFailureCode.ModelUnsupported);
         var binding = new ProviderCredentialBinding(chatBaseUri ?? OpenAiTransport.Origin, ProviderRole.Llm, model.UpstreamModelId);
-        if (authorization is null || !authorization.AllowTextDisclosure || !authorization.AllowPotentialCharges)
+        if (authorization is null || !authorization.AllowTextDisclosure || !authorization.AllowPotentialCharges ||
+            input.Image is not null && !authorization.AllowImageDisclosure)
             return Fail(ProviderFailureCode.ConsentMissing);
         if (authorization.Binding is null || (chatBaseUri is null
             ? !OpenAiTransport.IsApprovedOrigin(authorization.Binding.Origin)
@@ -373,7 +374,24 @@ internal sealed class TextGenerationOperation(
             writer.WriteStartArray("input");
             foreach (var message in input.History)
                 WriteMessage(writer, message.Role == TextHistoryRole.User ? "user" : "assistant", message.Text);
-            WriteMessage(writer, "user", input.UserText);
+            if (input.Image is { } image)
+            {
+                writer.WriteStartObject();
+                writer.WriteString("role", "user");
+                writer.WriteStartArray("content");
+                writer.WriteStartObject();
+                writer.WriteString("type", "input_text");
+                writer.WriteString("text", input.UserText);
+                writer.WriteEndObject();
+                writer.WriteStartObject();
+                writer.WriteString("type", "input_image");
+                writer.WriteString("image_url", image.ToDataUrl());
+                writer.WriteString("detail", "auto");
+                writer.WriteEndObject();
+                writer.WriteEndArray();
+                writer.WriteEndObject();
+            }
+            else WriteMessage(writer, "user", input.UserText);
             writer.WriteEndArray();
             writer.WriteEndObject();
         }
@@ -402,7 +420,26 @@ internal sealed class TextGenerationOperation(
             if (input.Personality is not null) WriteMessage(writer, "system", input.Personality);
             foreach (var message in input.History)
                 WriteMessage(writer, message.Role == TextHistoryRole.User ? "user" : "assistant", message.Text);
-            WriteMessage(writer, "user", input.UserText);
+            if (input.Image is { } image)
+            {
+                // OpenAI-compatible multimodal message; servers without vision reject it (surfaced as RequestRejected).
+                writer.WriteStartObject();
+                writer.WriteString("role", "user");
+                writer.WriteStartArray("content");
+                writer.WriteStartObject();
+                writer.WriteString("type", "text");
+                writer.WriteString("text", input.UserText);
+                writer.WriteEndObject();
+                writer.WriteStartObject();
+                writer.WriteString("type", "image_url");
+                writer.WriteStartObject("image_url");
+                writer.WriteString("url", image.ToDataUrl());
+                writer.WriteEndObject();
+                writer.WriteEndObject();
+                writer.WriteEndArray();
+                writer.WriteEndObject();
+            }
+            else WriteMessage(writer, "user", input.UserText);
             writer.WriteEndArray();
             writer.WriteEndObject();
         }

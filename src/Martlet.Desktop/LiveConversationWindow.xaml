@@ -163,6 +163,43 @@
                                             Margin="16,2,0,0" AutomationProperties.AutomationId="LiveVoiceIdSetup" />
                                 </StackPanel>
                             </Border>
+                            <Border Style="{DynamicResource Chip}" HorizontalAlignment="Stretch" Padding="12,10" Margin="0,0,0,12">
+                                <StackPanel>
+                                    <DockPanel Margin="0,0,0,6">
+                                        <Ellipse x:Name="WatchDot" DockPanel.Dock="Right" Width="10" Height="10" Fill="#D64545" Visibility="Collapsed"
+                                                 VerticalAlignment="Center" AutomationProperties.Name="Watching your screen" />
+                                        <TextBlock Text="Watch my screen" FontWeight="SemiBold"/>
+                                    </DockPanel>
+                                    <TextBlock Style="{DynamicResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,6"
+                                               Text="Martlet glances at what you're playing or doing and now and then says something, like a friend in the room. Most glances end in silence."/>
+                                    <TextBlock x:Name="VisionStatus" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,8" AutomationProperties.AutomationId="LiveVisionStatus" />
+                                    <DockPanel>
+                                        <TextBlock Text="Look at" Width="92" VerticalAlignment="Center" FontSize="12"/>
+                                        <ComboBox x:Name="ScreenScopeBox" SelectedIndex="0" SelectionChanged="Screen_Changed"
+                                                  AutomationProperties.Name="What Martlet looks at" AutomationProperties.AutomationId="LiveScreenScope">
+                                            <ComboBoxItem Content="my active window"/>
+                                            <ComboBoxItem Content="my whole screen"/>
+                                        </ComboBox>
+                                    </DockPanel>
+                                    <DockPanel Margin="0,6,0,0">
+                                        <TextBlock Text="How chatty" Width="92" VerticalAlignment="Center" FontSize="12"/>
+                                        <ComboBox x:Name="ChattinessBox" SelectedIndex="1" SelectionChanged="Screen_Changed"
+                                                  AutomationProperties.Name="How often Martlet comments" AutomationProperties.AutomationId="LiveChattiness">
+                                            <ComboBoxItem Content="Quiet: only the big moments"/>
+                                            <ComboBoxItem Content="Normal"/>
+                                            <ComboBoxItem Content="Chatty"/>
+                                        </ComboBox>
+                                    </DockPanel>
+                                    <CheckBox x:Name="AcceptScreen" Margin="0,10,0,6" Checked="Consent_Changed" Unchecked="Consent_Changed"
+                                              AutomationProperties.AutomationId="LiveAcceptScreen"
+                                              Content="While watching is on, I let Martlet capture my screen on this PC and send an occasional screenshot with the window title to the Thinking model named in the envelope below, including potential API charges and the selected voice output."/>
+                                    <Button x:Name="WatchButton" Content="Start _watching" Click="Watch_Click" IsEnabled="False" Padding="10,8" Margin="0,4,0,0"
+                                            AutomationProperties.AutomationId="LiveWatch" AutomationProperties.Name="Start or stop watching your screen"
+                                            AutomationProperties.HelpText="Keeps watching in the background until you click again, Stop, Esc, pause, mute, lock or close." />
+                                    <TextBlock x:Name="WatchStatus" Style="{DynamicResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"
+                                               AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="LiveWatchStatus" />
+                                </StackPanel>
+                            </Border>
                             <Label Target="{Binding ElementName=EnvelopeText}" Content="What it sends, where, and what it may _cost" Padding="0,0,0,4" FontSize="12"/>
                             <TextBox x:Name="EnvelopeText" IsReadOnly="True" TextWrapping="Wrap" Height="140" VerticalScrollBarVisibility="Auto" FontSize="12"
                                      AutomationProperties.AutomationId="LiveEnvelope" AutomationProperties.Name="Exact action bounds and data destinations" />

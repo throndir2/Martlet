@@ -18,6 +18,10 @@ renderer failure and Audio2Face unavailability do not delay or fail voice.
 Only explicit A2F mouth/expression mapping is currently wired; alternatives and
 other aspects require explicit omission, not automatic fallback.
 
+**Watch my screen** (off by default, its own permission) lets Martlet glance at
+your active window and occasionally comment; it needs a Thinking model that can
+see images. See [Screen commentary](SCREEN_COMMENTARY.md).
+
 ## First configured action
 
 1. In **Setup / resume**, choose the cloud API profile. Apply explicit

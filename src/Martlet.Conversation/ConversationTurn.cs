@@ -205,7 +205,7 @@ public sealed class ConversationTurn
                 TotalTimeout = request.TextLimits.MaxRequestTime
             }, Clock, stop.Token);
             var segmenter = request.Speech is { } voice
-                ? new SpeechSegmenter(voice.Limits.MaxInputBytes, request.TextLimits.MaxTextCharacters) : null;
+                ? new SpeechSegmenter(voice.Limits.MaxInputBytes, request.TextLimits.MaxTextCharacters, request.SilentReply) : null;
             lock (Sync)
             {
                 CheckActive();

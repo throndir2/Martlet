@@ -27,17 +27,26 @@ public partial class LiveConversationWindow : ThemedWindow
     private readonly TimeProvider clock;
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private readonly VoiceIdentity? voiceIdentity;
+    private readonly IScreenGlancer glancer;
     private SetupOperation? loading;
     private CancellationTokenSource? observation;
     private LiveConversationOperation? owned;
     private bool closed, rendering, ready, mouseHeld, keyHeld, listening, applyingPreferences;
     private LiveConversationOperation? handledListen;
     private string? listenNote;
+    // Screen watching: separate from the user's own turns (owned), so a glance never replaces the visible reply.
+    private bool watching, glancing, lookWanted;
+    private ScreenCommentaryPacer? pacer;
+    private ScreenFrame? pendingFrame;
+    private LiveConversationOperation? commentary, handledCommentary;
+    private long nextGlance;
+    private string? watchNote;
     private volatile bool locked;
     private long generation;
 
     internal LiveConversationWindow(ISetupService settings, SetupOperationRunner operations, LiveConversationController controller,
-        IAudioSessionEvents sessionEvents, AudioSetupService? audio = null, TimeProvider? clock = null, VoiceIdentity? voiceIdentity = null)
+        IAudioSessionEvents sessionEvents, AudioSetupService? audio = null, TimeProvider? clock = null, VoiceIdentity? voiceIdentity = null,
+        IScreenGlancer? glancer = null)
     {
         this.settings = settings;
         this.operations = operations;
@@ -46,13 +55,14 @@ public partial class LiveConversationWindow : ThemedWindow
         this.audio = audio;
         this.clock = clock ?? TimeProvider.System;
         this.voiceIdentity = voiceIdentity;
+        this.glancer = glancer ?? new ScreenGlancer();
         InitializeComponent();
         var controls = controller.Controls;
         locked = controls.Locked;
         PauseChoice.IsChecked = controls.Paused;
         MuteChoice.IsChecked = controls.Muted;
         ApplyPreferences(TalkPreferences.Load(voiceIdentity?.DataDirectory));
-        timer.Tick += (_, _) => { Observe(); ContinueListening(); RenderActions(); };
+        timer.Tick += (_, _) => { Observe(); Watch(); ContinueListening(); RenderActions(); };
         timer.Start();
         sessionEvents.LockedChanged += SessionSwitch;
         StatusText.Text = "REAL API mode; NOT RUN. Mic/STT/policy/LLM/TTS/playback: not run. No effects authorized.";
@@ -131,13 +141,24 @@ public partial class LiveConversationWindow : ThemedWindow
             "\nSupported STT: " + string.Join(", ", OpenAiTranscriptionCatalog.SupportedModelIds) +
             "\nSupported TTS: " + string.Join(", ", OpenAiSpeechSynthesisCatalog.SupportedModelIds) +
             "; voices: " + string.Join(", ", OpenAiSpeechSynthesisCatalog.SupportedVoices) + ". No model discovery or fallback.";
-        EnvelopeText.Text = selected?.Disclosure(voice) ??
-            "No active supported API configuration. Capture/upload/LLM/TTS permission is OFF. Use Setup / resume; the offline fixture remains available without credentials.";
+        EnvelopeText.Text = selected is null
+            ? "No active supported API configuration. Capture/upload/LLM/TTS permission is OFF. Use Setup / resume; the offline fixture remains available without credentials."
+            : selected.Disclosure(voice) + "\n" + selected.ScreenDisclosure(SelectedChattiness, SelectedScope);
+        VisionStatus.Text = selected is null ? "Load a saved Thinking model first (Setup / resume)."
+            : (selected.Vision() switch
+            {
+                VisionSupport.Supported => "Ready: ",
+                VisionSupport.Unsupported => "Can't see yet: ",
+                _ => "Not sure: "
+            }) + selected.VisionAdvice();
     }
+
+    private Chattiness SelectedChattiness => (Chattiness)Math.Clamp(ChattinessBox?.SelectedIndex ?? 1, 0, 2);
+    private ScreenScope SelectedScope => (ScreenScope)Math.Clamp(ScreenScopeBox?.SelectedIndex ?? 0, 0, 1);
 
     private void RenderActions()
     {
-        if (closed || SendButton is null || ListenButton is null) return;
+        if (closed || SendButton is null || ListenButton is null || WatchButton is null || AcceptScreen is null) return;
         bool ownRunning = owned is { OwnershipReleased: false };
         bool available = ready && !locked && PauseChoice.IsChecked != true && MuteChoice.IsChecked != true &&
             !operations.IsRunning && controller.Configuration is not null;
@@ -157,11 +178,21 @@ public partial class LiveConversationWindow : ThemedWindow
         ListenButton.IsEnabled = listening || available && microphoneReady;
         ListenButton.Content = listening ? "Stop _listening" : "Start _listening";
         ReleaseButton.IsEnabled = ownRunning && owned!.Authorization.Microphone && owned.Turn is null && owned.Transcription is null && !owned.Status.Finished;
-        StopButton.IsEnabled = listening || ownRunning || loading is not null || accepted || AcceptMemory.IsChecked == true ||
-            AcceptCapture.IsChecked == true || AcceptUpload.IsChecked == true;
-        ReloadButton.IsEnabled = !operations.IsRunning && !listening;
-        SetupButton.IsEnabled = AudioButton.IsEnabled = !operations.IsRunning && !listening;
+        StopButton.IsEnabled = listening || watching || ownRunning || loading is not null || accepted || AcceptMemory.IsChecked == true ||
+            AcceptCapture.IsChecked == true || AcceptUpload.IsChecked == true || AcceptScreen.IsChecked == true;
+        ReloadButton.IsEnabled = !operations.IsRunning && !listening && !watching;
+        SetupButton.IsEnabled = AudioButton.IsEnabled = !operations.IsRunning && !listening && !watching;
         AudioButton.IsEnabled &= audio is not null;
+        bool watchable = ready && !locked && PauseChoice.IsChecked != true && MuteChoice.IsChecked != true &&
+            AcceptScreen.IsChecked == true && controller.Configuration is { } configured &&
+            configured.Unavailable(voice, false) is null && configured.Vision() != VisionSupport.Unsupported;
+        WatchButton.IsEnabled = watching || watchable;
+        WatchButton.Content = watching ? "Stop _watching" : "Start _watching";
+        WatchDot.Visibility = watching ? Visibility.Visible : Visibility.Collapsed;
+        Title = watching ? "Martlet - talk (watching your screen)" : "Martlet - talk";
+        WatchStatus.Text = watching && pacer is { } pace
+            ? $"Watching ({pace.Chattiness}). {watchNote} Looks this hour: {pace.LooksThisHour} of at most {pace.Settings.LooksPerHour}."
+            : watchNote ?? "Not watching. Nothing on your screen is captured.";
         VoiceIdChoice.IsEnabled = !listening;
         VoiceIdStatus.Text = voiceIdentity is null ? "Voice ID is unavailable without a local data directory."
             : voiceIdentity.LoadError ?? (voiceIdentity.Current is { } print
@@ -180,6 +211,13 @@ public partial class LiveConversationWindow : ThemedWindow
     private bool Start(bool microphone, bool handsFree = false)
     {
         if (closed || !ready || locked) return false;
+        // You come first: a remark about your screen stops the moment you start talking or typing.
+        if (commentary is { OwnershipReleased: false } glance)
+        {
+            controller.Stop(glance, "commentary.interrupted", keepContext: true);
+            ResultText.Text = "Martlet stopped its remark about your screen so you can talk. Try again in a moment.";
+            return false;
+        }
         try
         {
             var listen = microphone ? CurrentListening(handsFree) : null;
@@ -187,6 +225,7 @@ public partial class LiveConversationWindow : ThemedWindow
                 AcceptAction.IsChecked == true, AcceptCapture.IsChecked == true, AcceptUpload.IsChecked == true,
                 memoryApproved: AcceptMemory.IsChecked == true, listening: listen);
             owned = next;
+            if (!handsFree) pacer?.NoteConversation();
             // Hands-free keeps the session's approvals until listening stops; memory retrieval is still one-shot.
             if (handsFree)
             {
@@ -252,7 +291,8 @@ public partial class LiveConversationWindow : ThemedWindow
                 ? VoiceIdentity.Describe(check, print.Threshold)
                 : code == "stt.NoSpeech" ? "(The last sound had no words.)" : null;
             var keepGoing = code is "mic.no_speech" or "speaker.not_user" or "speaker.too_short" or "stt.NoSpeech" or
-                "runtime.Completed" or "runtime.Refused" || code.StartsWith("policy.", StringComparison.Ordinal) && !last.Status.Quarantined;
+                "runtime.Completed" or "runtime.Refused" or "commentary.glance" ||
+                code.StartsWith("policy.", StringComparison.Ordinal) && !last.Status.Quarantined;
             if (!keepGoing || last.Status.Quarantined)
             {
                 listening = false;
@@ -261,7 +301,10 @@ public partial class LiveConversationWindow : ThemedWindow
                 return;
             }
         }
-        if (operations.IsRunning || AcceptAction.IsChecked != true || AcceptCapture.IsChecked != true || AcceptUpload.IsChecked != true)
+        if (operations.IsRunning) return;
+        // A wanted glance at the screen goes first; listening re-arms as soon as it finishes.
+        if (TryStartCommentary()) return;
+        if (AcceptAction.IsChecked != true || AcceptCapture.IsChecked != true || AcceptUpload.IsChecked != true)
             return;
         if (!Start(true, handsFree: true))
         {
@@ -277,16 +320,202 @@ public partial class LiveConversationWindow : ThemedWindow
         SensitivitySlider.Value = preferences.Sensitivity;
         PauseChoiceBox.SelectedIndex = preferences.PauseIndex;
         VoiceIdChoice.IsChecked = preferences.VoiceId;
+        ChattinessBox.SelectedIndex = preferences.ScreenChattiness;
+        ScreenScopeBox.SelectedIndex = preferences.ScreenScope;
         VoiceActivityPanel.Visibility = preferences.HandsFree ? Visibility.Visible : Visibility.Collapsed;
         applyingPreferences = false;
     }
 
     private void SavePreferences()
     {
-        if (applyingPreferences || voiceIdentity is null || SensitivitySlider is null || PauseChoiceBox is null || VoiceIdChoice is null) return;
+        if (applyingPreferences || voiceIdentity is null || SensitivitySlider is null || PauseChoiceBox is null || VoiceIdChoice is null ||
+            ChattinessBox is null || ScreenScopeBox is null) return;
         var saved = new TalkPreferences(VoiceActivityMode.IsChecked == true, SensitivitySlider.Value,
-            PauseChoiceBox.SelectedIndex, VoiceIdChoice.IsChecked == true).Save(voiceIdentity.DataDirectory);
+            PauseChoiceBox.SelectedIndex, VoiceIdChoice.IsChecked == true, ChattinessBox.SelectedIndex, ScreenScopeBox.SelectedIndex)
+            .Save(voiceIdentity.DataDirectory);
         if (!saved) ResultText.Text = "Could not save your talk preferences to talk-preferences.json; they apply for this window only.";
+    }
+
+    private void Watch_Click(object sender, RoutedEventArgs e)
+    {
+        if (watching) { StopWatching("Stopped watching your screen. Nothing is captured now."); return; }
+        var selected = controller.Configuration;
+        if (!ready || locked || selected is null) { ResultText.Text = Remedy("conversation.setup_required"); return; }
+        if (selected.Vision() == VisionSupport.Unsupported) { ResultText.Text = selected.VisionAdvice(); return; }
+        if (AcceptScreen.IsChecked != true) { ResultText.Text = Remedy("conversation.permission_required"); return; }
+        watching = true;
+        lookWanted = false;
+        pacer = new(SelectedChattiness, clock);
+        nextGlance = clock.GetTimestamp();
+        watchNote = "First look in a few seconds.";
+        ResultText.Text = "Watching your screen. Keep playing: Martlet only speaks up now and then. Stop watching, Stop or Esc ends it.";
+        RenderActions();
+    }
+
+    private void Screen_Changed(object sender, RoutedEventArgs e)
+    {
+        if (ChattinessBox is null || ScreenScopeBox is null || WatchStatus is null || EnvelopeText is null || applyingPreferences) return;
+        if (watching && pacer is not null && pacer.Chattiness != SelectedChattiness) pacer = new(SelectedChattiness, clock);
+        SavePreferences();
+        RenderConfiguration();
+        RenderActions();
+    }
+
+    // Runs on the UI timer: notices conversation, collects finished glances and schedules the next capture.
+    private void Watch()
+    {
+        if (!watching || closed || pacer is null) return;
+        if (commentary is { OwnershipReleased: true } done && !ReferenceEquals(handledCommentary, done))
+        {
+            handledCommentary = done;
+            HandleCommentary(done);
+            if (!watching) return;
+        }
+        // Anything but an idle hands-free listen means you and Martlet are talking right now.
+        if (owned is { OwnershipReleased: false } live && !IsIdleListen(live)) pacer.NoteConversation();
+        if (glancing || clock.GetTimestamp() < nextGlance) return;
+        nextGlance = clock.GetTimestamp() + (long)(ScreenCommentaryPacer.Tick.TotalSeconds * clock.TimestampFrequency);
+        _ = GlanceAsync();
+    }
+
+    // A hands-free listen that has not heard anyone yet (including the moment it re-arms).
+    private static bool IsIdleListen(LiveConversationOperation operation) =>
+        operation.HandsFree && operation.Turn is null && operation.Transcription is null &&
+        operation.Status.Code is "conversation.authorizing" or "mic.listening" or "mic.no_speech" or "commentary.glance";
+
+    private async Task GlanceAsync()
+    {
+        glancing = true;
+        try
+        {
+            var scope = SelectedScope;
+            var result = await Task.Run(() => glancer.Capture(scope));
+            if (!watching || closed || pacer is null)
+            {
+                result.Frame?.Clear();
+                return;
+            }
+            if (result.Frame is not { } frame)
+            {
+                watchNote = result.Skip switch
+                {
+                    GlanceSkip.MartletInFront => "Martlet is in front, so it isn't looking.",
+                    GlanceSkip.Private => "A password manager or private window is in front; not looking.",
+                    GlanceSkip.Blank => "The screen reads back black (exclusive full-screen or protected video). Switch the game to borderless or windowed so Martlet can see it.",
+                    GlanceSkip.Minimized or GlanceSkip.NoWindow => "No window in front to look at.",
+                    _ => "Couldn't capture the screen this time."
+                };
+                return;
+            }
+            pacer.ObserveFrame(frame.Change);
+            pendingFrame?.Clear();
+            pendingFrame = frame;
+            var idleListen = owned is { OwnershipReleased: false } live && IsIdleListen(live);
+            var busy = commentary is { OwnershipReleased: false } || operations.IsRunning && !idleListen;
+            var verdict = pacer.Decide(busy, glancer.UserIdle);
+            lookWanted = verdict == PacerVerdict.Look;
+            if (!lookWanted)
+            {
+                watchNote = verdict switch
+                {
+                    PacerVerdict.UserAway => "You seem to be away; waiting for you.",
+                    PacerVerdict.HourlyLimit => "Hourly look budget used up; resting.",
+                    PacerVerdict.AfterConversation or PacerVerdict.Busy => "You're talking; not interrupting.",
+                    _ => watchNote
+                };
+                return;
+            }
+            if (!operations.IsRunning) TryStartCommentary();
+            // An idle hands-free listen (nobody speaking) briefly yields; listening re-arms right after the glance.
+            else if (idleListen && listening) controller.Stop(owned!, "commentary.glance", keepContext: true);
+        }
+        finally
+        {
+            glancing = false;
+        }
+    }
+
+    private bool TryStartCommentary()
+    {
+        if (!lookWanted || !watching || closed || pendingFrame is not { } frame || operations.IsRunning) return false;
+        lookWanted = false;
+        pendingFrame = null;
+        try
+        {
+            var image = frame.Encode();
+            commentary = controller.StartCommentary(image, frame.Title, SelectedChattiness, VoiceChoice.IsChecked == true,
+                AcceptScreen.IsChecked == true);
+            watchNote = "Taking a look...";
+            return true;
+        }
+        catch (LiveActionException error)
+        {
+            if (error.Code is "conversation.ownership_busy") return false;
+            StopWatching(error.Code == "commentary.vision_unsupported" ? controller.Configuration?.VisionAdvice() ?? Remedy(error.Code) : Remedy(error.Code));
+            return false;
+        }
+        catch (Exception error) when (error is ContractException or InvalidOperationException or NotSupportedException or System.Runtime.InteropServices.ExternalException)
+        {
+            watchNote = "Couldn't prepare the screen image this time.";
+            return false;
+        }
+        finally
+        {
+            frame.Clear();
+        }
+    }
+
+    private void HandleCommentary(LiveConversationOperation done)
+    {
+        var status = done.Status;
+        var at = DateTime.Now.ToString("t");
+        if (done.Passed)
+        {
+            pacer?.NoteLook(false);
+            watchNote = $"Looked at {at}: nothing worth saying.";
+            return;
+        }
+        if (status.Code is "runtime.Completed")
+        {
+            pacer?.NoteLook(true);
+            AnswerText.Text = $"(Glanced at your screen at {at})\n{done.Turn?.Content.Text.Trim()}";
+            RefusalText.Clear();
+            watchNote = $"Said something at {at}.";
+            return;
+        }
+        if (status.Code is "runtime.Refused" or "commentary.interrupted" or "conversation.canceled" or "conversation.revoked")
+        {
+            pacer?.NoteLook(false);
+            return;
+        }
+        // No automatic retry of a failing paid request: stop and say what to change.
+        var selected = controller.Configuration;
+        var provider = done.Turn?.Snapshot.ProviderFailure ?? status.ProviderFailure;
+        StopWatching(provider == ProviderFailureCode.InputLimit
+            ? "The screenshot didn't fit the Thinking route. If Thinking runs on your Martlet host, update the host so its gateway accepts screen images, then start watching again."
+            : provider is not null && selected is not null && selected.Vision() != VisionSupport.Supported
+            ? $"The Thinking model rejected the screenshot ({provider}); it most likely can't see images. {selected.VisionAdvice()}"
+            : "Stopped watching: " + (provider is { } code ? ProviderRemedy(code) : Remedy(status.Code)));
+    }
+
+    private void StopWatching(string? message)
+    {
+        var wasWatching = watching;
+        watching = lookWanted = false;
+        pacer = null;
+        pendingFrame?.Clear();
+        pendingFrame = null;
+        if (commentary is { OwnershipReleased: false } glance) controller.Stop(glance, "commentary.stopped", keepContext: true);
+        rendering = true;
+        if (AcceptScreen is not null) AcceptScreen.IsChecked = false;
+        rendering = false;
+        if (message is not null && (wasWatching || watchNote is null))
+        {
+            watchNote = message;
+            ResultText.Text = message;
+        }
+        else if (wasWatching) watchNote = "Stopped watching. Nothing on your screen is captured.";
+        RenderActions();
     }
 
     private void Mode_Changed(object sender, RoutedEventArgs e)
@@ -376,6 +605,7 @@ public partial class LiveConversationWindow : ThemedWindow
         listenNote = null;
         PttButton.ReleaseMouseCapture();
         ClearPermission();
+        if (watching || AcceptScreen.IsChecked == true) StopWatching(null);
         if (owned is not null) controller.Stop(owned, reason);
         loading?.RequestCancellation();
         observation?.Cancel();
@@ -391,7 +621,8 @@ public partial class LiveConversationWindow : ThemedWindow
     }
     private void Consent_Changed(object sender, RoutedEventArgs e)
     {
-        if (rendering || controller is null || AcceptAction is null) return;
+        if (rendering || controller is null || AcceptAction is null || AcceptScreen is null) return;
+        if (watching && AcceptScreen.IsChecked != true) StopWatching("Screen permission withdrawn; stopped watching. Nothing is captured now.");
         if (listening && (AcceptAction.IsChecked != true || AcceptCapture.IsChecked != true || AcceptUpload.IsChecked != true))
             listening = false;
         if (owned is { OwnershipReleased: false } && (AcceptAction.IsChecked != true ||
@@ -406,6 +637,7 @@ public partial class LiveConversationWindow : ThemedWindow
         if (controller is null || PauseChoice is null || MuteChoice is null) return;
         listening = false;
         ClearPermission();
+        if (watching) StopWatching(PauseChoice.IsChecked == true ? "Paused; stopped watching your screen." : "Muted; stopped watching your screen.");
         controller.SetControls(PauseChoice.IsChecked == true, MuteChoice.IsChecked == true, locked);
         RenderActions();
     }
@@ -418,14 +650,19 @@ public partial class LiveConversationWindow : ThemedWindow
         Dispatcher.BeginInvoke(() =>
         {
             if (closed) return;
-            if (value) listening = false;
+            if (value)
+            {
+                listening = false;
+                if (watching) StopWatching("Windows locked; stopped watching your screen.");
+            }
             ClearPermission();
             controller.SetControls(PauseChoice.IsChecked == true, MuteChoice.IsChecked == true, locked);
             RenderActions();
         });
     }
-    // Hands-free listening is meant to keep working while you use other apps; lock, pause, mute, Stop and Close still end it.
-    private void Window_Deactivated(object? sender, EventArgs e) { if (!closed && !listening) Cancel("conversation.deactivated"); }
+    // Hands-free listening and screen watching are meant to keep working while you use other apps (or play);
+    // lock, pause, mute, Stop and Close still end them.
+    private void Window_Deactivated(object? sender, EventArgs e) { if (!closed && !listening && !watching) Cancel("conversation.deactivated"); }
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
         Cancel("conversation.closed");
@@ -548,6 +785,10 @@ public partial class LiveConversationWindow : ThemedWindow
         "runtime.Refused" => "The provider refused. Refusal is shown separately, not routed as ordinary speech. Earlier partial response text can remain visible.",
         "runtime.Partial" or "runtime.Failed" => "The turn failed or is partial; response text remains visible. Check the stage/failure below, selected model/account limits and output. No automatic retry; earlier speech may have played.",
         "conversation.cleanup_quarantined" or "mic.cleanup_quarantined" => "Cleanup is unproven; the app-wide ownership slot is quarantined. No replacement work is permitted. Close Martlet and review the device/session before a fresh launch.",
+        "commentary.glance" => "Listening paused for a moment while Martlet glances at your screen; it resumes right after.",
+        "commentary.passed" => "Martlet looked at your screen and had nothing to say.",
+        "commentary.interrupted" or "commentary.stopped" => "Martlet stopped its remark about your screen.",
+        "commentary.vision_unsupported" => "Your Thinking model can't see images, so screen watching is unavailable. See Watch my screen for what to change.",
         _ => $"{code}. No automatic continuation. Review the stage, use typed/text-only fallback if audio failed, or explicitly authorize a fresh action after actual cleanup."
     };
 }
