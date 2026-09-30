@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Run without parameters for an interactive checklist. Nothing is installed or changed until you
-    choose an item (or pass -Install, which the Martlet installer does for the tasks you ticked).
+    choose an item (or pass -Install, which the Martlet welcome tour and setup advisor do for the items you tick).
     Installers come from their publishers (Microsoft, Ollama, Docker) through Microsoft's signed
     WebView2 bootstrapper or winget, and keep their own license terms. Steps that change Windows
     features ask for administrator approval separately; Martlet itself stays a per-user app.
@@ -29,7 +29,7 @@ param(
     [string]$Culture = (Get-UICulture).Name,
     [string]$OllamaModel = '',
     [switch]$NoPrompt,
-    [switch]$FromInstaller
+    [switch]$PauseWhenDone
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -456,7 +456,7 @@ if ($selected.Count -gt 0) {
     Show-Status
     Write-Host ''
     Write-Host 'Run "Martlet prerequisites" from the Start menu (or Prerequisites on the Martlet home screen) any time to check again.'
-    if ($FromInstaller -and -not $NoPrompt) { Read-Host 'Press Enter to return to Martlet setup' | Out-Null }
+    if ($PauseWhenDone -and -not $NoPrompt) { Read-Host 'Press Enter to close this window and return to Martlet' | Out-Null }
     exit 0
 }
 

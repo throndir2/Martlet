@@ -17,15 +17,15 @@ you pick the GPU of any other computer, one per computer, including "Has a GPU,
 not sure which" (planned as an 8 GB NVIDIA card). It then recommends what each
 computer should be used for and shows this guidance for each role: where the role runs, what it does, why,
 what data leaves your PC, how to set it up, and what to use until planned parts
-arrive. It saves, installs and contacts nothing. The recommendations and availability labels live in
+arrive. When the plan runs Ollama, Windows speech or Docker Desktop on this PC and
+one is missing, **Install on this PC** installs just those; otherwise it saves,
+installs and contacts nothing. The recommendations and availability labels live in
 [`SetupAdvisor.cs`](../src/Martlet.Core/Installation/SetupAdvisor.cs); update
 them when a route ships.
 
-**In the installer:** the **Recommended setup** page asks the same core
-questions (how many computers, this PC's graphics card, the goal) in short form;
-the app's advisor asks for each computer's GPU. It shows where each part would run and ticks the optional prerequisites this PC
-needs for that layout. Its rules in `packaging/windows/Martlet.iss` follow this
-page; update both together. Everything it picks can be changed later.
+**Not in the installer:** setup asks no questions, so the advisor above is the
+single place these rules live. The installer only offers to start Martlet, whose
+welcome tour then asks what the PC is for and offers anything missing on it.
 
 ## 1. What must stay on the PC you talk to
 
@@ -62,8 +62,8 @@ default **Auto** mode, which is documented below.
 
 **Nothing requires a GPU.** The minimum working setup is the Windows app plus
 an API. Only Audio2Face lip-sync strictly needs an NVIDIA GPU, and loudness
-lip-sync replaces it on any PC. The installer and the **Martlet prerequisites**
-tool install what each layout needs on the Windows PC (Windows speech, Ollama,
+lip-sync replaces it on any PC. The welcome tour, the advisor and the **Martlet
+prerequisites** tool install what each layout needs on the Windows PC (Windows speech, Ollama,
 WSL 2 + Docker Desktop); see [Prerequisites](PREREQUISITES.md).
 
 ### Offload the LLM first

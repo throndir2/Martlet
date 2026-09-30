@@ -793,10 +793,13 @@ foreach ($required in @('#ifdef PublicRelease', 'DefaultDirName={localappdata}\P
 if ($authoring -match '(?im)^\[(UninstallRun|Registry|InstallDelete|UninstallDelete)\]|DelTree|DeleteFile|RegWrite|Exec\(') {
     throw 'Installer contains an unexpected mutation/deletion/autorun surface.'
 }
-# Prerequisite installs run only for tasks the user ticked on the wizard's task page.
+# Setup installs no prerequisites; its only [Run] entry is the Finished page's user-controlled "Start Martlet" box.
+if ($authoring -match '(?im)^\[Tasks\]|Install-Prerequisites\.ps1"" -') { throw 'Installer must not offer or run prerequisite installs; the Desktop welcome tour does.' }
 $runSection = [regex]::Match($authoring, '(?ims)^\[Run\]\s*(.*?)(?=^\[|\z)').Groups[1].Value
 foreach ($entry in @($runSection -split "`r?`n" | Where-Object { $_.Trim() -and -not $_.TrimStart().StartsWith(';') })) {
-    if ($entry -notmatch '; Tasks: ') { throw "Installer [Run] entry is not gated by a user-selected task: $entry" }
+    if ($entry -notmatch 'Filename: "\{app\}\\Desktop\\Martlet\.Desktop\.exe"' -or $entry -notmatch 'Flags: postinstall nowait skipifsilent') {
+        throw "Installer [Run] entry is not the user-controlled post-install launch of Martlet: $entry"
+    }
 }
 $script:cases++
 Assert-Fails 'internal payload refused by public installer' {

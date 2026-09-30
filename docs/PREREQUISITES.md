@@ -8,27 +8,25 @@ of four ways:
 | Delivery | Meaning |
 | --- | --- |
 | **Bundled** | Shipped inside the Martlet installer. Nothing to do. |
-| **Installer option** | A tick box on the installer's *Select Additional Tasks* page, and an item in the **Martlet prerequisites** tool. Downloaded from its publisher only when you tick it. |
+| **First-run option** | A tick box on the welcome tour's *Get this PC ready* step (shown only when missing), an **Install on this PC** button in the setup advisor's plan, and an item in the **Martlet prerequisites** tool. Downloaded from its publisher only when you choose it. |
 | **Host tool** | Installed on a GPU host by `martlet-host setup` / `add <role>` after you type `yes` ([Martlet host](../deploy/host/README.md)). |
 | **You supply** | Accounts, keys, your own models and GPU drivers. Martlet cannot redistribute or create them. |
 
 ## How users install and configure prerequisites
 
-1. **During installation.** The installer checks this PC and shows a tick box for
-   each missing prerequisite. *Missing on this PC* items (WebView2, microphone
-   access) are ticked by default. Before that, a **Recommended setup** page asks
-   how many computers Martlet can use (just this PC, one or more other GPU
-   computers, or this PC as a helper host), this PC's graphics card (NVIDIA is
-   preselected when detected) and what matters most (balanced, smartest,
-   fastest, private). It shows where each part would run and ticks only the
-   optional items (Windows speech, Ollama, WSL 2 + Docker Desktop) that suit the
-   answers; the rest stay unticked, and every tick can be changed. The page is
-   skipped when no optional item is missing, and silent installs keep the
-   `/TASKS` selection. Ticked items run
-   `prerequisites\Install-Prerequisites.ps1` in a visible console after the files
-   are copied. Items already present are not shown. Silent installs pass
-   `-NoPrompt`, so nothing waits for input. Nothing chosen here is final: see step 2,
-   and change where each role runs later in Martlet (Setup / resume, Devices).
+1. **The first time Martlet starts.** The installer asks nothing and installs no
+   prerequisites; its Finished page offers to start Martlet. The welcome tour
+   asks what this PC is for (the PC you talk on, or a host that lends its GPU),
+   then checks this PC and shows a **Get this PC ready** step with a tick box for
+   each missing prerequisite (the step is skipped when nothing is missing).
+   WebView2 and blocked microphone access are ticked by default; WSL 2 + Docker
+   Desktop is ticked for a host PC with an NVIDIA GPU; Windows speech and Ollama
+   stay unticked. Next, **Recommend a setup for me** asks your goal, features and
+   computers; when its plan runs Ollama, Windows speech or Docker Desktop on this
+   PC and one is missing, **Install on this PC** installs just those. Chosen items
+   run `prerequisites\Install-Prerequisites.ps1 -Install ...` in a visible
+   console. Nothing chosen here is final: see step 2, and change where each role
+   runs later in Martlet (Setup / resume, Devices).
 2. **Any time later.** Start menu > **Martlet prerequisites**, or
    **Prerequisites (check / install)** on the Martlet home screen, opens the same
    tool as an interactive checklist. It shows the status of every item and changes
@@ -61,17 +59,17 @@ per-user app; no large model download without typing `y` or a model tag.
 | WebView2 SDK 1.0.4191.47 loader, Windows SDK projection | Avatar renderer process | **Bundled** | The SDK, not the runtime. |
 | Live2D Cubism Core 05.01.0000 + Framework 5-r.4 + Hiyori sample | Default desktop character | **Bundled** | Redistributed under Live2D's terms; see RELEASE.txt. |
 | three 0.180.0 + @pixiv/three-vrm 3.5.5 | VRM characters | **Bundled** | Offline browser bundle; no Node/npm for users. |
-| **Microsoft Edge WebView2 Evergreen Runtime** | Showing or inspecting any character | **Installer option** (`WebView2`, ticked when missing) | Preinstalled on Windows 11, so usually already present. Not bundled: Microsoft services it evergreen and the offline installer is large (well over 100 MB). The tool runs Microsoft's bootstrapper (`go.microsoft.com/fwlink/p/?LinkId=2124703`, `/silent /install`), falling back to `winget Microsoft.EdgeWebView2Runtime`. |
-| Microphone + Windows privacy access for desktop apps | Push-to-talk, audio tests | **Installer option** (`Microphone`, shown only when Windows blocks it) | Configuration only: opens `ms-settings:privacy-microphone`. Martlet still asks before every capture. |
+| **Microsoft Edge WebView2 Evergreen Runtime** | Showing or inspecting any character | **First-run option** (`WebView2`, ticked when missing) | Preinstalled on Windows 11, so usually already present. Not bundled: Microsoft services it evergreen and the offline installer is large (well over 100 MB). The tool runs Microsoft's bootstrapper (`go.microsoft.com/fwlink/p/?LinkId=2124703`, `/silent /install`), falling back to `winget Microsoft.EdgeWebView2Runtime`. |
+| Microphone + Windows privacy access for desktop apps | Push-to-talk, audio tests | **First-run option** (`Microphone`, shown only when Windows blocks it) | Configuration only: opens `ms-settings:privacy-microphone`. Martlet still asks before every capture. |
 | Speakers or headphones | Generated voice, tone test | You supply | |
-| Windows speech recognizer + SAPI voices for your language | Windows offline speech-to-text and Windows-voices TTS (CPU, free, offline) | **Installer option** (`WindowsSpeech`, unticked) | Adds `Language.Speech~~~<culture>~0.0.1.0` and `Language.TextToSpeech~~~<culture>~0.0.1.0` from Windows Update (one UAC prompt). en-US already includes a recognizer and two voices. Martlet uses SAPI (System.Speech); OneCore "natural" voices are not visible to it. |
+| Windows speech recognizer + SAPI voices for your language | Windows offline speech-to-text and Windows-voices TTS (CPU, free, offline) | **First-run option** (`WindowsSpeech`, unticked; the private plan offers it) | Adds `Language.Speech~~~<culture>~0.0.1.0` and `Language.TextToSpeech~~~<culture>~0.0.1.0` from Windows Update (one UAC prompt). en-US already includes a recognizer and two voices. Martlet uses SAPI (System.Speech); OneCore "natural" voices are not visible to it. |
 | OpenAI API key | OpenAI STT, TTS and LLM routes | You supply | Setup / resume > Credentials stores it in Windows Credential Manager. [Keys](https://platform.openai.com/api-keys). |
 | OpenRouter or NVIDIA Build API key | Hosted LLM through the Chat Completions route | You supply | Setup / resume > Destinations > LLM provider. Base URLs `https://openrouter.ai/api/v1`, `https://integrate.api.nvidia.com/v1`. [OpenRouter keys](https://openrouter.ai/settings/keys), [NVIDIA Build](https://build.nvidia.com/). |
-| **Ollama** (or LM Studio / llama.cpp) | Local LLM on this PC over loopback | **Installer option** (`Ollama`, unticked) | `winget Ollama.Ollama` (MIT). The tool then offers one model sized to your GPU (`llama3.2:3b`, `llama3.1:8b`, `gemma3:12b`, `gemma3:27b`; you can type any tag) and prints the Martlet setting: Setup / resume > Destinations > LLM provider *Custom OpenAI-compatible endpoint*, base URL `http://127.0.0.1:11434/v1`, no key. LM Studio (`winget ElementLabs.LMStudio`) works the same way but is not automated. |
+| **Ollama** (or LM Studio / llama.cpp) | Local LLM on this PC over loopback | **First-run option** (`Ollama`, unticked; plans with a model on this PC offer it) | `winget Ollama.Ollama` (MIT). The tool then offers one model sized to your GPU (`llama3.2:3b`, `llama3.1:8b`, `gemma3:12b`, `gemma3:27b`; you can type any tag) and prints the Martlet setting: Setup / resume > Destinations > LLM provider *Custom OpenAI-compatible endpoint*, base URL `http://127.0.0.1:11434/v1`, no key. LM Studio (`winget ElementLabs.LMStudio`) works the same way but is not automated. |
 | Your own Live2D (`.model3.json`) or VRM1 (`.vrm`) models | Custom characters | You supply | Character settings > Browse model. Rights stay with you. |
 | NVIDIA GPU driver | Any local GPU role (LLM, Audio2Face, GPU voice) | You supply; the tool helps (`NvidiaDriver`) | NVIDIA drivers cannot be redistributed. The tool detects an NVIDIA GPU, checks `nvidia-smi` and opens NVIDIA's driver page. Not needed for API routes or loudness lip-sync. |
-| **WSL 2 + Docker Desktop** | Martlet hosts > *This PC* (Audio2Face and future GPU roles on this PC) | **Installer option** (`DockerDesktop`, unticked); also *Install Docker Desktop* in Martlet hosts | `wsl --install --no-distribution` (UAC; may need a restart), then `winget Docker.DockerDesktop` (Docker Subscription Service Agreement; free for personal use). |
-| Windows Firewall rule `Martlet-Host-Gateway` (TCP 9443, private/domain, local subnet) | Other PCs reaching a host on this PC | Automatic in Martlet hosts > *This PC* (one UAC prompt, only when needed) | Not an installer task: it is only needed once this PC becomes a host. |
+| **WSL 2 + Docker Desktop** | Martlet hosts > *This PC* (Audio2Face and future GPU roles on this PC) | **First-run option** (`DockerDesktop`, ticked for an NVIDIA host PC); also *Install Docker Desktop* in Martlet hosts | `wsl --install --no-distribution` (UAC; may need a restart), then `winget Docker.DockerDesktop` (Docker Subscription Service Agreement; free for personal use). |
+| Windows Firewall rule `Martlet-Host-Gateway` (TCP 9443, private/domain, local subnet) | Other PCs reaching a host on this PC | Automatic in Martlet hosts > *This PC* (one UAC prompt, only when needed) | Not a first-run option: it is only needed once this PC becomes a host. |
 | NVIDIA NGC API key | Audio2Face NIM image | You supply; `martlet-host add audio2face` asks once | [NGC API key](https://org.ngc.nvidia.com/setup/api-key); stored on the host only. |
 
 **Not needed on the client:** Git, Python, Node/npm, a .NET SDK, Docker (unless
@@ -82,7 +80,7 @@ feature steps), or a GPU.
 
 | Prerequisite | Needed for | Delivery |
 | --- | --- | --- |
-| Ubuntu 24.04 x86_64 with SSH, **or** another Windows PC with Martlet + Docker Desktop | Running roles | You supply the machine and OS; a Windows host uses the client installer's `DockerDesktop` option |
+| Ubuntu 24.04 x86_64 with SSH, **or** another Windows PC with Martlet + Docker Desktop | Running roles | You supply the machine and OS; a Windows host uses the `DockerDesktop` first-run option |
 | Docker Engine + Compose v2 | All container roles | **Host tool** (`martlet-host` installs after `yes`) |
 | NVIDIA driver | GPU roles | **Host tool** on Ubuntu (after `yes`); on Windows, the `NvidiaDriver` item |
 | NVIDIA Container Toolkit | GPU containers on Ubuntu | **Host tool** (after `yes`); Docker Desktop uses WSL 2 GPU support instead |
@@ -97,7 +95,7 @@ each lands with an install path instead of a manual step.
 
 | Feature | Prerequisites | Planned delivery |
 | --- | --- | --- |
-| Windows offline STT / Windows voices TTS dispatch | Windows speech capability for your language | `WindowsSpeech` installer option (above). |
+| Windows offline STT / Windows voices TTS dispatch | Windows speech capability for your language | `WindowsSpeech` first-run option (above). |
 | whisper.cpp local STT | whisper.cpp v1.9.2 CPU binaries (MIT) + `ggml-base.en.bin` (148 MB, MIT) | Bundle the small binaries; download the model on request with its pinned SHA-256. |
 | Learned VAD / barge-in | Silero VAD v6.2.1 ONNX (1.3 MB, MIT) + ONNX Runtime 1.30.0 (MIT) | **Bundle** both when the feature ships. |
 | F5-TTS and other Voice Studio engines (Qwen3-TTS, Chatterbox, GPT-SoVITS, XTTS-v2) | Python 3.12, PyTorch + CUDA, model weights, NVIDIA GPU | Host roles (`martlet-host add <role>`, containers). No Python on the Windows client. |

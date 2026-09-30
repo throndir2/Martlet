@@ -6,15 +6,15 @@ Do not disable system security protections to install Martlet.
 
 Supported platform: Windows 11 25H2 x64 (build 26200 or newer).
 This per-user installer provides a self-contained Desktop app, a Doctor CLI,
-dependency notices, a prerequisites tool, and an uninstaller. Nothing else is
-installed unless you tick it on the Select Additional Tasks page: the WebView2
-runtime for the desktop character (offered only when missing), Windows speech
-for your language, Ollama for a local LLM, or WSL 2 and Docker Desktop for GPU
-roles. The Recommended setup page before it asks how many computers Martlet
-can use, your graphics card and what matters most, then ticks what suits your
-answers; you can change every tick. Ticked items download from their publishers and keep their own license
-terms; Windows features ask for administrator approval separately. Run
-"Martlet prerequisites" from the Start menu to check or add them later. No API calls,
+dependency notices, a prerequisites tool, and an uninstaller. Setup asks no
+questions and installs nothing else. When Martlet first starts, its welcome
+tour asks what this PC is for, offers anything missing here (the WebView2
+runtime for the desktop character, microphone access, Windows speech, Ollama
+for a local LLM, or WSL 2 and Docker Desktop for GPU roles) and can recommend
+a setup for your computers. Only items you tick download, from their
+publishers, and keep their own license terms; Windows features ask for
+administrator approval separately. Run "Martlet prerequisites" from the Start
+menu to check or add them later. No API calls,
 microphone capture, model download, startup task, or automatic installation
 occurs merely by launching Martlet. If you opt in, Martlet checks GitHub for
 updates while it runs and can install them for you (Settings > App updates);

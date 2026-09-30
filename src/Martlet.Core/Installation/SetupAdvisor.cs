@@ -9,7 +9,9 @@ public enum AdvisorGpu { None, Unknown, Nvidia4, Nvidia8, Nvidia12, Nvidia16, Nv
 /// user's label; <paramref name="Detected"/> describes hardware the host reported, when it did.</summary>
 public sealed record AdvisorComputer(AdvisorGpu Gpu, string? Name = null, string? Detected = null);
 public enum AdvisorAvailability { Available, BeingBuilt, Planned }
-public enum AdvisorNextStep { Setup, AudioSetup, Hosts, Character, VoiceLibrary }
+public enum AdvisorNextStep { Setup, AudioSetup, Hosts, Character, VoiceLibrary, Prerequisites }
+/// <summary>A Windows prerequisite the plan runs on this PC; the Desktop app offers to install the missing ones.</summary>
+public enum AdvisorInstall { WindowsSpeech, Ollama, DockerDesktop }
 
 public sealed record AdvisorAnswers
 {
@@ -43,7 +45,11 @@ public sealed record AdvisorMachine(string Name, string Hardware, IReadOnlyList<
 
 public sealed record SetupAdvice(
     string Title, string Summary, IReadOnlyList<AdvisorRole> Roles, IReadOnlyList<AdvisorMachine> Machines,
-    IReadOnlyList<string> Notes, IReadOnlyList<AdvisorNextStep> NextSteps);
+    IReadOnlyList<string> Notes, IReadOnlyList<AdvisorNextStep> NextSteps)
+{
+    /// <summary>Windows prerequisites this plan runs on this PC, in install order.</summary>
+    public IReadOnlyList<AdvisorInstall> ThisPcInstalls { get; init; } = [];
+}
 
 /// <summary>Pure goal/hardware-to-placement recommendation for the setup advisor. It saves, probes and
 /// contacts nothing; sizes are rough planning estimates, not measurements (see docs/RECOMMENDED_SETUPS.md).</summary>
@@ -57,7 +63,7 @@ public static class SetupAdvisor
     private const string FaceWhat = "Moves the character's mouth and face to match the voice.";
     private const string CharacterWhat = "Draws your Live2D or VRM companion on the desktop.";
     private const string Local = "Stays on your computers.";
-    private const string LocalLlmHow = "Install Ollama (Start > Martlet prerequisites installs it and offers a model sized to your GPU) or LM Studio, and download the model. In Setup / resume > Destinations, choose an OpenAI-compatible LLM endpoint at http://127.0.0.1:11434/v1 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) and enter the model ID. No API key is needed.";
+    private const string LocalLlmHow = "Install Ollama (Install on this PC in the advisor's next steps, or Prerequisites on the home screen, installs it and offers a model sized to your GPU) or LM Studio, and download the model. In Setup / resume > Destinations, choose an OpenAI-compatible LLM endpoint at http://127.0.0.1:11434/v1 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) and enter the model ID. No API key is needed.";
     private const string HostedLlmHow = "In Setup / resume > Destinations, choose OpenRouter or NVIDIA Build as the LLM endpoint, enter a model ID from its catalog and store its API key.";
     private const string OpenAiHow = "In Setup / resume, choose OpenAI for this role and store your OpenAI API key.";
 
@@ -204,6 +210,7 @@ public static class SetupAdvisor
         }
 
         // Speech-to-text role.
+        var windowsSpeech = false;
         if (answers.VoiceInput)
         {
             if (whisperMachine is not null)
@@ -223,6 +230,7 @@ public static class SetupAdvisor
             else
             {
                 pc.Runs.Add("Speech-to-text (CPU)");
+                windowsSpeech = true;
                 roles.Add(new("Speech-to-text", "Windows offline speech recognition", "This PC (CPU)", SttWhat,
                     goal == AdvisorGoal.Fastest
                         ? "Short push-to-talk clips transcribe quickly on the CPU with no network hop."
@@ -255,6 +263,7 @@ public static class SetupAdvisor
             else if (goal is AdvisorGoal.Fastest or AdvisorGoal.Private)
             {
                 pc.Runs.Add("Voice (Windows voices)");
+                windowsSpeech = true;
                 roles.Add(new("Voice (text-to-speech)", "Windows installed voices", "This PC (CPU)", TtsWhat,
                     goal == AdvisorGoal.Fastest
                         ? "Starts speaking almost instantly but sounds robotic. OpenAI voices sound better but add an internet round trip."
@@ -346,7 +355,15 @@ public static class SetupAdvisor
         notes.Add("Each role uses exactly one place. Martlet never switches to another provider on its own; you change it in settings.");
         notes.Add("Model sizes and GPU memory are rough estimates, not measured on your hardware.");
 
-        var steps = new List<AdvisorNextStep> { AdvisorNextStep.Setup };
+        // Windows offline speech is still being wired in, so only the private plan asks for its language packs now.
+        var installs = new List<AdvisorInstall>();
+        if (windowsSpeech && goal == AdvisorGoal.Private) installs.Add(AdvisorInstall.WindowsSpeech);
+        if (llmMachine == pc || llmOnCpu) installs.Add(AdvisorInstall.Ollama);
+        if (faceMachine == pc || voiceMachine == pc) installs.Add(AdvisorInstall.DockerDesktop);
+
+        var steps = new List<AdvisorNextStep>();
+        if (installs.Count > 0) steps.Add(AdvisorNextStep.Prerequisites);
+        steps.Add(AdvisorNextStep.Setup);
         if (answers.VoiceInput || answers.SpokenReplies) steps.Add(AdvisorNextStep.AudioSetup);
         if (hostsInUse || faceMachine == pc || voiceMachine == pc) steps.Add(AdvisorNextStep.Hosts);
         if (answers.CustomVoice) steps.Add(AdvisorNextStep.VoiceLibrary);
@@ -361,7 +378,7 @@ public static class SetupAdvisor
             AdvisorGoal.Private => "Everything runs on your own computers.",
             _ => "Smart hosted answers, with your GPU spent where it helps most: voice and face."
         };
-        return new(title, summary, roles.ToArray(), machines.ToArray(), notes.ToArray(), steps.ToArray());
+        return new(title, summary, roles.ToArray(), machines.ToArray(), notes.ToArray(), steps.ToArray()) { ThisPcInstalls = installs.ToArray() };
     }
 
     public static string GoalName(AdvisorGoal goal) => goal switch

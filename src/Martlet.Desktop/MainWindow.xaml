@@ -507,6 +507,21 @@
                             </Button>
                         </StackPanel>
 
+                        <StackPanel x:Name="TourReady" Visibility="Collapsed">
+                            <TextBlock Text="Get this PC ready" Style="{DynamicResource HeroTitle}" FontSize="26"/>
+                            <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,18"
+                                       Text="Martlet checked this PC and found these missing. Tick what you want: each item downloads from its publisher in a console window and keeps its own license terms."/>
+                            <StackPanel x:Name="TourReadyItems" AutomationProperties.AutomationId="TourReadyItems"/>
+                            <TextBlock Style="{DynamicResource Muted}" Margin="0,8,0,20"
+                                       Text="Not sure? Keep the ticks. A setup recommendation can add what your plan needs, and Prerequisites on the home screen installs any of these later."/>
+                            <StackPanel Orientation="Horizontal">
+                                <Button x:Name="TourInstallButton" Style="{DynamicResource PrimaryButton}" Content="Install selected" Padding="22,10"
+                                        Click="TourInstall_Click" AutomationProperties.AutomationId="TourInstall"/>
+                                <Button x:Name="TourReadyLaterButton" Content="Not now" Margin="10,0,0,0" Padding="18,10" Click="TourReadyLater_Click"
+                                        AutomationProperties.AutomationId="TourReadyLater"/>
+                            </StackPanel>
+                        </StackPanel>
+
                         <StackPanel x:Name="TourStart" Visibility="Collapsed">
                             <TextBlock Text="How would you like to start?" Style="{DynamicResource HeroTitle}" FontSize="26"/>
                             <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,20" Text="Nothing is installed, sent or saved until you confirm it in the next window."/>

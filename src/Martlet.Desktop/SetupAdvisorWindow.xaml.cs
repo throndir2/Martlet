@@ -247,11 +247,24 @@ public partial class SetupAdvisorWindow : ThemedWindow
         foreach (var note in advice.Notes) Add(Bullet(note));
 
         Add(Heading("Next steps"));
-        Add(Muted("Open each window in order. Nothing changes until you save or confirm there.", new Thickness(0, 0, 0, 8)));
+        Add(Muted("Work through them in order. Nothing changes until you save or confirm in each window; an Install button " +
+            "downloads only the items it names, from their publishers.", new Thickness(0, 0, 0, 8)));
         var actions = new WrapPanel();
         foreach (var next in advice.NextSteps)
         {
-            var button = new Button { Content = NextStepLabel(next), Padding = new Thickness(12, 8, 12, 8), Margin = new Thickness(0, 4, 12, 4) };
+            var label = NextStepLabel(next);
+            if (next == AdvisorNextStep.Prerequisites)
+            {
+                var needed = advice.ThisPcInstalls.Select(Prerequisites.For).ToArray();
+                var missing = needed.Where(Prerequisites.IsMissing).ToArray();
+                if (missing.Length == 0)
+                {
+                    Add(Muted($"Already on this PC: {string.Join(", ", needed.Select(i => i.Title))}.", new Thickness(0, 0, 0, 4)));
+                    continue;
+                }
+                label = $"Install on this PC: {string.Join(", ", missing.Select(i => i.Title))}";
+            }
+            var button = new Button { Content = label, Padding = new Thickness(12, 8, 12, 8), Margin = new Thickness(0, 4, 12, 4) };
             AutomationProperties.SetAutomationId(button, $"AdvisorOpen{next}");
             button.Click += (_, _) =>
             {
@@ -312,6 +325,7 @@ public partial class SetupAdvisorWindow : ThemedWindow
         AdvisorNextStep.AudioSetup => "Open Audio setup (microphone and speakers)",
         AdvisorNextStep.Hosts => "Open Martlet hosts (GPU computers and Docker)",
         AdvisorNextStep.VoiceLibrary => "Open Voice Library (your voice samples)",
+        AdvisorNextStep.Prerequisites => "Install what this plan needs on this PC",
         _ => "Open Character settings"
     };
 
