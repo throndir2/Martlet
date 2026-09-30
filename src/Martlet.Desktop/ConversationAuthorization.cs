@@ -30,16 +30,19 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
     internal LiveConversationConfiguration Configuration { get; }
     internal bool Voice { get; }
     internal bool Microphone { get; }
+    /// <summary>A screen glance: this action may send its one attached screen image with the text.</summary>
+    internal bool Screen { get; }
     internal int ReservedRequests { get { lock (gate) return textRequests + sttRequests + speechRequests; } }
     internal CredentialError? CredentialFailure { get; private set; }
 
     internal ConversationAuthorization(LiveConversationConfiguration configuration, bool voice, bool microphone,
         TimeProvider clock, Func<bool> current, Func<CancellationToken, Task<SettingsLoadResult>> load,
-        ICredentialStore vault, CancellationToken caller)
+        ICredentialStore vault, CancellationToken caller, bool screen = false)
     {
         Configuration = configuration;
         Voice = voice;
         Microphone = microphone;
+        Screen = screen;
         this.clock = clock;
         this.current = current;
         this.load = load;
@@ -123,7 +126,7 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
             Ticket(ProviderRole.Llm);
         }
         return new(new(Binding(SetupRole.Llm), action.Model, action.Context.Ids, action.Context.Epoch,
-            action.Limits, expiry, true, true), new(action.Budget, expiry));
+            action.Limits, expiry, true, true, allowImageDisclosure: Screen && action.Input.Image is not null), new(action.Budget, expiry));
     }
 
     public async ValueTask<AuthorizedSpeechOperation?> AuthorizeSpeechAsync(SpeechAuthorizationAction action, CancellationToken token)

@@ -1,5 +1,10 @@
 # Selected-window perception foundations (P01/P02)
 
+> **Screen commentary is now app-wired separately.** The Desktop feature
+> [Watch my screen](SCREEN_COMMENTARY.md) captures the active window with GDI and
+> sends an occasional screenshot to the vision-capable Thinking model. It does
+> not use the isolated foundations below, which remain unwired.
+
 **Experimental isolated software foundation; production Windows capture is
 unavailable.** `Martlet.Perception` defines selected-window discovery, capture,
 preview and disclosure contracts with strict in-memory ownership and lifecycle

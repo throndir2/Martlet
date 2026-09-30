@@ -164,7 +164,8 @@ public sealed class HostTextGenerationStream : ITextGenerationStream
 
     private ProviderFailureCode? Authorize()
     {
-        if (authorization is null || !authorization.AllowTextDisclosure) return ProviderFailureCode.ConsentMissing;
+        if (authorization is null || !authorization.AllowTextDisclosure ||
+            input.Image is not null && !authorization.AllowImageDisclosure) return ProviderFailureCode.ConsentMissing;
         if (authorization.Binding.Origin != new Uri(target.Origin)) return ProviderFailureCode.OriginRejected;
         if (authorization.Binding != Binding(target, model) || authorization.Model != model ||
             authorization.Ids != context.Ids || authorization.Epoch != context.Epoch || authorization.Limits != limits)

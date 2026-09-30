@@ -174,7 +174,7 @@ internal static class GatewayInferenceJson
         var fields = Object(
             element,
             ["input", "temperature", "maximum_output_tokens", "maximum_context_tokens"],
-            ["system", "history"]);
+            ["system", "history", "images"]);
         var input = Text(fields, "input", BoundedTextInput.HardMaxUtf8Bytes, allowNewLines: true);
         string? system = fields.TryGetValue("system", out var systemElement)
             ? Text(systemElement, BoundedTextInput.HardMaxUtf8Bytes, allowNewLines: true)
@@ -207,7 +207,23 @@ internal static class GatewayInferenceJson
         var contextTokens = checked((int)Integer(
             fields, "maximum_context_tokens", 1, 32_768));
         GatewayRules.Require(outputTokens <= contextTokens, "request.invalid");
-        return new(input, temperature, outputTokens, contextTokens, system, history);
+        var images = new List<string>();
+        if (fields.TryGetValue("images", out var imagesElement))
+        {
+            GatewayRules.Require(imagesElement.ValueKind == JsonValueKind.Array &&
+                imagesElement.GetArrayLength() is > 0 and <= GatewayOllamaChatPayload.MaximumImages, "request.invalid");
+            foreach (var item in imagesElement.EnumerateArray())
+            {
+                var encoded = Text(item, GatewayOllamaChatPayload.MaximumImageBase64Characters);
+                var decoded = Convert.FromBase64String(encoded);
+                GatewayRules.Require(Convert.ToBase64String(decoded) == encoded, "request.invalid");
+                // Only a JPEG or PNG still image; BoundedImage checks the signature and byte bound.
+                var jpeg = decoded.Length > 3 && decoded[0] == 0xFF && decoded[1] == 0xD8;
+                _ = new BoundedImage(decoded, jpeg ? ImageMediaType.Jpeg : ImageMediaType.Png, 1, 1);
+                images.Add(encoded);
+            }
+        }
+        return new(input, temperature, outputTokens, contextTokens, system, history, images);
     }
 
     private static GatewayF5SynthesisPayload ParseF5(

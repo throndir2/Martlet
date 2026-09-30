@@ -170,8 +170,8 @@ public sealed partial class GatewayInferenceRoute
                 selection.RequestModel,
                 modelRevision,
                 modelSha256),
-            // Room for JSON escaping of the bounded persona, history and user text.
-            maximumRequestBytes: 96 * 1024,
+            // Room for JSON escaping of the bounded persona, history and user text, plus one base64 screen image.
+            maximumRequestBytes: 96 * 1024 + GatewayOllamaChatPayload.MaximumImageBase64Characters + 1024,
             maximumInputBytes: capabilities.MaxInputBytes,
             maximumOutputBytes: 64 * 1024,
             maximumEventBytes: 64 * 1024,
@@ -562,13 +562,18 @@ public abstract class GatewayInferencePayload
 
 public sealed class GatewayOllamaChatPayload : GatewayInferencePayload
 {
+    /// <summary>At most one image (base64 JPEG/PNG) rides with the current user input.</summary>
+    public const int MaximumImages = 1;
+    public const int MaximumImageBase64Characters = (Martlet.Providers.BoundedImage.HardMaxBytes + 2) / 3 * 4;
+
     internal GatewayOllamaChatPayload(
         string input,
         double temperature,
         int maximumOutputTokens,
         int maximumContextTokens,
         string? system = null,
-        IReadOnlyList<Martlet.Providers.TextHistoryMessage>? history = null)
+        IReadOnlyList<Martlet.Providers.TextHistoryMessage>? history = null,
+        IReadOnlyList<string>? images = null)
     {
         Input = input;
         Temperature = temperature;
@@ -576,6 +581,7 @@ public sealed class GatewayOllamaChatPayload : GatewayInferencePayload
         MaximumContextTokens = maximumContextTokens;
         System = system;
         History = history ?? [];
+        Images = images ?? [];
     }
 
     public string Input { get; }
@@ -586,6 +592,8 @@ public sealed class GatewayOllamaChatPayload : GatewayInferencePayload
     public string? System { get; }
     /// <summary>Earlier exchanges of this conversation, oldest first; the current user input follows them.</summary>
     public IReadOnlyList<Martlet.Providers.TextHistoryMessage> History { get; }
+    /// <summary>Base64 JPEG/PNG images attached to the current input (a screen glance); empty for plain chat.</summary>
+    public IReadOnlyList<string> Images { get; }
     internal override void Clear() { }
 }
 

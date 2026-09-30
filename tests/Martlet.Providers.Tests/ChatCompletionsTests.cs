@@ -62,6 +62,33 @@ public sealed class ChatCompletionsTests
     }
 
     [Fact]
+    public async Task Screen_image_needs_its_own_permission_and_rides_as_an_image_url_part()
+    {
+        var image = new BoundedImage([0xFF, 0xD8, 0xFF, .. new byte[40]], ImageMediaType.Jpeg, 16, 9);
+        var limits = new TextGenerationLimits();
+        await using (var refused = new LoopbackServer(Trace))
+        {
+            var context = ProviderFixtures.Context() with { Deadline = DateTimeOffset.UtcNow.AddMinutes(1) };
+            using var adapter = ChatCompletionsTextGenerationAdapter.Create(refused.BaseUrl, null);
+            var result = await TextFixtures.Collect(adapter.Stream(context, Model, new("(Screen glance.)", image: image),
+                limits, Authorize(context, limits, refused.BaseUrl)));
+            Assert.Equal(ProviderFailureCode.ConsentMissing, result.Result.Failure?.Code);
+        }
+        await using var server = new LoopbackServer(Trace);
+        var allowed = ProviderFixtures.Context() with { Deadline = DateTimeOffset.UtcNow.AddMinutes(1) };
+        using var vision = ChatCompletionsTextGenerationAdapter.Create(server.BaseUrl, null);
+        var permission = new TextDisclosureAuthorization(new(new(server.BaseUrl), ProviderRole.Llm, Model.UpstreamModelId),
+            Model, allowed.Ids, allowed.Epoch, limits, allowed.Deadline, true, true, allowImageDisclosure: true);
+        var completed = await TextFixtures.Collect(vision.Stream(allowed, Model, new("(Screen glance.)", "Stay quiet", image: image),
+            limits, permission));
+        Assert.Equal(TextGenerationOutcome.Completed, completed.Result.Outcome);
+        using var json = JsonDocument.Parse((await server.Request).Body);
+        var parts = json.RootElement.GetProperty("messages")[1].GetProperty("content").EnumerateArray().ToArray();
+        Assert.Equal("(Screen glance.)", parts[0].GetProperty("text").GetString());
+        Assert.Equal(image.ToDataUrl(), parts[1].GetProperty("image_url").GetProperty("url").GetString());
+    }
+
+    [Fact]
     public async Task Production_redirect_does_not_forward_body_or_key()
     {
         using var destination = new TcpListener(IPAddress.Loopback, 0);

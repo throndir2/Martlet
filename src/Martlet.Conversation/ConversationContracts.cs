@@ -46,11 +46,12 @@ public sealed record ChatCompletionsTarget(string BaseUrl, bool Keyless = false)
 
 // A new instance is explicit input, not a stored provider thread or automatic conversation history.
 // Host selects a paired Martlet host's own conversation model (Ollama) instead of a cloud destination;
-// HostSpeech selects a paired host's own F5 voice for the spoken reply.
+// HostSpeech selects a paired host's own F5 voice for the spoken reply. SilentReply is a word the model may answer
+// with to stay quiet (unprompted screen commentary); a sentence that is only that word is never spoken.
 public sealed class ConversationRequest(
     BoundedTextInput input, TextModelSelection model, TextGenerationLimits textLimits,
     ConversationLimits limits, SpeechOutput? speech = null, ChatCompletionsTarget? chat = null, HostTextTarget? host = null,
-    HostSpeechTarget? hostSpeech = null)
+    HostSpeechTarget? hostSpeech = null, string? silentReply = null)
 {
     [JsonIgnore] public BoundedTextInput Input { get; } = input;
     public TextModelSelection Model { get; } = model;
@@ -60,9 +61,12 @@ public sealed class ConversationRequest(
     public ChatCompletionsTarget? Chat { get; } = chat;
     [JsonIgnore] public HostTextTarget? Host { get; } = host;
     [JsonIgnore] public HostSpeechTarget? HostSpeech { get; } = hostSpeech;
+    [JsonIgnore] public string? SilentReply { get; } = silentReply;
 
     internal void Validate()
     {
+        ContractRules.Require(SilentReply is null || SilentReply.Length is > 0 and <= 16 && SilentReply.All(char.IsAsciiLetter),
+            "The silent reply word must be 1-16 ASCII letters.");
         ArgumentNullException.ThrowIfNull(Input);
         ArgumentNullException.ThrowIfNull(Model);
         ArgumentNullException.ThrowIfNull(TextLimits);
