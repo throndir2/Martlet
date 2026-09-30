@@ -79,7 +79,7 @@ mechanism; **Partial** = planned with a stated limit; **No** = not planned.
 | Voice ID (only respond to me) | Yes | Yes (port GE2E encoder) | - | Accelerate | IO09 |
 | Persona, response styles, participation policy | Yes | Yes (port) | - | Swift port | IO05 |
 | Local memory | Yes | Yes (port lexical store) | - | Swift port, file protection | IO09 |
-| Watch my screen (game commentary) | Yes (GDI) | **Partial: user starts a system broadcast** | - | ReplayKit Broadcast Upload Extension | IO06 |
+| Watch my screen (game commentary) | Yes (Desktop Duplication, GDI fallback) | **Partial: user starts a system broadcast** | - | ReplayKit Broadcast Upload Extension | IO06 |
 | Vision model for screen commentary | OpenAI, Chat Completions, host Ollama | Same, plus **on-device model with image input (iOS 27)** | Chat route accepts the image (iOS 27) | `FoundationModels` image attachments | IO03, IO06 |
 | On-screen text hints | - | Yes | Possible (perception OCR route) | Vision `VNRecognizeTextRequest` | IO06 |
 | Character (VRM / Live2D) | Yes (overlay) | Yes in the app; reuses the web bundles | - | `WKWebView` (WebGL2) | IO07 |
