@@ -7,7 +7,8 @@ namespace Martlet.Conversation;
 internal sealed record SpeechPiece(string? Text);
 
 // English-oriented plain prose, not a Markdown parser. State survives arbitrary delta boundaries.
-internal sealed class SpeechSegmenter(int byteLimit, int characterLimit)
+// silentWord: a reply sentence that is just this word (for example "[pass]" or "Pass.") means "say nothing".
+internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string? silentWord = null)
 {
     private readonly StringBuilder sentence = new();
     private bool pendingBoundary, fenced, suppressLine, atLineStart = true;
@@ -97,13 +98,17 @@ internal sealed class SpeechSegmenter(int byteLimit, int characterLimit)
         // Numeric list markers and bare dotted addresses are deliberately outside the prose subset.
         if (candidate.Length > 1 && candidate[^1] == '.' && candidate.AsSpan(0, candidate.Length - 1).IndexOfAnyExceptInRange('0', '9') < 0)
             suppressLine = true;
-        if (fenced || suppressLine || ContainsDottedToken(candidate))
+        if (fenced || suppressLine || ContainsDottedToken(candidate) || IsSilent(candidate, silentWord))
         {
             yield return new(null);
             yield break;
         }
         foreach (var part in Split(candidate, byteLimit)) yield return new(part);
     }
+
+    internal static bool IsSilent(string text, string? silentWord) =>
+        silentWord is not null && string.Equals(text.Trim().Trim('[', ']', '(', ')', '<', '>', '*', '"', '\'', '.', '!', ' '),
+            silentWord, StringComparison.OrdinalIgnoreCase);
 
     private static bool ContainsDottedToken(string text)
     {

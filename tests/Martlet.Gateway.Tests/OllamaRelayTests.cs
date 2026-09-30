@@ -96,6 +96,36 @@ public sealed class OllamaRelayTests
     }
 
     [Fact]
+    public async Task Relay_forwards_one_screen_image_to_the_hosts_ollama_on_the_current_message()
+    {
+        await using var ollama = await FakeOllama.StartAsync(200,
+            "{\"message\":{\"role\":\"assistant\",\"content\":\"[pass]\"},\"done\":true,\"done_reason\":\"stop\"}");
+        await using var worker = new OllamaRelayWorker(ollama.Endpoint, "gemma3:4b");
+        await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [worker]);
+        var (connection, route) = await ConnectAsync(host);
+        using var owned = connection;
+        var jpeg = Convert.ToBase64String(new byte[] { 0xFF, 0xD8, 0xFF }.Concat(new byte[64]).ToArray());
+
+        var text = new List<string>();
+        await foreach (var delta in connection.StreamChatAsync(route, NewIds(), 1, host.Clock.GetUtcNow().AddSeconds(30),
+            "Stay quiet unless it matters.", [new(false, "Hi"), new(true, "Hey!")], "(Screen glance.)", 0.7, 64, 4_096, [jpeg]))
+            text.Add(delta);
+
+        Assert.Equal(["[pass]"], text);
+        var messages = Assert.Single(ollama.Requests).RootElement.GetProperty("messages").EnumerateArray().ToArray();
+        Assert.False(messages[1].TryGetProperty("images", out _));
+        Assert.Equal(jpeg, Assert.Single(messages[^1].GetProperty("images").EnumerateArray()).GetString());
+
+        // Not a JPEG/PNG: rejected at the gateway before it reaches Ollama.
+        await Assert.ThrowsAsync<Audio2FaceHostException>(async () =>
+        {
+            await foreach (var _ in connection.StreamChatAsync(route, NewIds(), 2, host.Clock.GetUtcNow().AddSeconds(30),
+                null, [], "(Screen glance.)", 0.7, 64, 4_096, [Convert.ToBase64String(new byte[64])])) { }
+        });
+        Assert.Single(ollama.Requests);
+    }
+
+    [Fact]
     public async Task Relay_reports_a_missing_model_or_stopped_ollama_as_unavailable()
     {
         await using var ollama = await FakeOllama.StartAsync(404, "{\"error\":\"model 'llama3.2:3b' not found\"}");

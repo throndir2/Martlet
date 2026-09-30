@@ -52,6 +52,10 @@ internal sealed class LiveConversationOperation
     internal ListeningOptions? Listening { get; init; }
     internal Voiceprint? Voiceprint { get; init; }
     internal SpeakerCheck? SpeakerCheck { get; set; }
+    /// <summary>An unprompted screen glance rather than a reply to the user.</summary>
+    internal bool Commentary { get; init; }
+    /// <summary>The glance ended in silence: the model answered [pass].</summary>
+    internal bool Passed { get; set; }
     private double voiceLevel = -100;
     internal double VoiceLevel { get => Volatile.Read(ref voiceLevel); set => Volatile.Write(ref voiceLevel, value); }
     internal bool HandsFree => Listening?.HandsFree == true;
@@ -129,6 +133,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private readonly DesktopMemoryService? memory;
     private readonly VoiceIdentity? voiceIdentity;
     private readonly TaskCompletionSource quarantine = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    // What Martlet said while watching the screen (last 30 minutes), so it does not repeat itself. In memory only.
+    private readonly Queue<(long At, string Text)> remarks = new();
     private LiveConversationOperation? active;
     private LiveConversationConfiguration? configuration;
     private long revision, captureEpoch;
@@ -177,7 +183,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         {
             changed = configuration is not null && configuration.Revision != next?.Revision;
             memory?.Invalidate();
-            context.Clear();
+            ClearContextLocked();
             configuration = next;
             stop = RevokeLocked();
         }
@@ -193,7 +199,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         {
             if (paused == pause && muted == mute && locked == sessionLocked) return;
             memory?.Invalidate();
-            context.Clear();
+            ClearContextLocked();
             paused = pause;
             muted = mute;
             locked = sessionLocked;
@@ -210,7 +216,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         {
             if (locked == value) return;
             memory?.Invalidate();
-            context.Clear();
+            ClearContextLocked();
             locked = value;
             stop = RevokeLocked();
         }
@@ -224,7 +230,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         lock (gate)
         {
             memory?.Invalidate();
-            context.Clear();
+            ClearContextLocked();
             stop = RevokeLocked();
         }
         stop?.Cancel(code);
@@ -292,13 +298,167 @@ internal sealed class LiveConversationController : IAsyncDisposable
         return operation;
     }
 
-    internal void Stop(LiveConversationOperation operation, string reason = "conversation.canceled")
+    private void ClearContextLocked()
+    {
+        context.Clear();
+        remarks.Clear();
+    }
+
+    internal static TimeSpan RemarkMemory => TimeSpan.FromMinutes(30);
+
+    /// <summary>One unprompted screen glance: the image, the window title and recent context go to the Thinking model,
+    /// which either answers [pass] (silence) or one short remark that is spoken like any reply. It bypasses the
+    /// participation policy (that decides whether to answer the user); the caller's pacer decides when to look.</summary>
+    internal LiveConversationOperation StartCommentary(BoundedImage image, string windowTitle, Chattiness chattiness, bool voice,
+        bool screenApproved, CancellationToken caller = default)
+    {
+        ArgumentNullException.ThrowIfNull(image);
+        if (!screenApproved) throw new LiveActionException("conversation.permission_required");
+        caller.ThrowIfCancellationRequested();
+        var published = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        LiveConversationOperation operation;
+        lock (gate)
+        {
+            if (disposed || paused || muted || locked) throw new LiveActionException("conversation.controls_blocked");
+            if (operations.IsRunning) throw new LiveActionException("conversation.ownership_busy");
+            var selected = configuration ?? throw new LiveActionException("conversation.setup_required");
+            if (selected.Unavailable(voice, false) is not null) throw new LiveActionException("conversation.configuration_unsupported");
+            if (selected.Vision() == VisionSupport.Unsupported) throw new LiveActionException("commentary.vision_unsupported");
+            long acceptedRevision = revision = checked(revision + 1);
+            var authorization = new ConversationAuthorization(selected, voice, false, clock,
+                () => Volatile.Read(ref revision) == acceptedRevision, settings.LoadAsync, vault, caller, screen: true);
+            operation = new(authorization, caller) { Commentary = true };
+            active = operation;
+            var prompt = CommentaryPromptLocked(windowTitle);
+            var worker = operations.TryStart(async token =>
+            {
+                await published.Task.ConfigureAwait(false);
+                authorization.BindWorker(token);
+                return await RunCommentaryAsync(operation, prompt, image, chattiness, token).ConfigureAwait(false);
+            });
+            if (worker is null)
+            {
+                authorization.Revoke();
+                throw new LiveActionException("conversation.ownership_busy");
+            }
+            operation.Worker = worker;
+        }
+        published.SetResult();
+        _ = SuperviseAsync(operation);
+        return operation;
+    }
+
+    private string CommentaryPromptLocked(string windowTitle)
+    {
+        while (remarks.TryPeek(out var oldest) && clock.GetElapsedTime(oldest.At) >= RemarkMemory) remarks.Dequeue();
+        var title = new string(windowTitle.Where(c => !char.IsControl(c) && c != '"').Take(80).ToArray()).Trim();
+        var prompt = "(Screen glance." + (title.Length > 0 ? $" Active window: \"{title}\"." : "");
+        if (remarks.Count > 0)
+            prompt += " What you already said while watching, oldest first: " + string.Join(" | ", remarks.Select(r => $"\"{r.Text}\"")) + ".";
+        return prompt + $" Reply [{LiveConversationConfiguration.SilentReply}] or one short remark.)";
+    }
+
+    internal static bool IsSilentReply(string text)
+    {
+        var trimmed = text.Trim();
+        return trimmed.Length == 0 || trimmed.StartsWith("[" + LiveConversationConfiguration.SilentReply, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(trimmed.Trim('[', ']', '(', ')', '<', '>', '*', '"', '\'', '.', '!', ' '),
+                LiveConversationConfiguration.SilentReply, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task<SetupWorkResult> RunCommentaryAsync(LiveConversationOperation operation, string prompt, BoundedImage image,
+        Chattiness chattiness, CancellationToken worker)
+    {
+        try
+        {
+            await operation.Authorization.ValidateSettingsAsync(worker).ConfigureAwait(false);
+            ConversationTurn turn;
+            lock (gate)
+            {
+                operation.Authorization.Check(worker);
+                var configured = operation.Authorization.Configuration;
+                var persona = configured.Persona;
+                ResponseStyle? style = persona is null ? null : ResponseStyleSelector.Select(persona.Styles, nextStyle);
+                var history = context.Snapshot();
+                var request = configured.Request(new(prompt), operation.Authorization.Voice, style, history, null,
+                    out var usedHistory, out _, image, LiveConversationConfiguration.CommentaryInstructions(chattiness),
+                    LiveConversationConfiguration.SilentReply);
+                operation.PersonaRevision = persona?.ConfigurationRevision;
+                operation.ResponseStyle = style;
+                operation.ContextMessages = usedHistory;
+                operation.ContextMessagesOmitted = history.Count - usedHistory;
+                operation.Authorization.BindInput(request.Input);
+                operation.Publish(new("commentary.looking"));
+                turn = runtime.Start(request, operation.Authorization, operation.OriginalCaller);
+                operation.Attach(turn);
+            }
+            var terminal = await turn.Completion.ConfigureAwait(false);
+            var text = turn.Content.Text;
+            var passed = terminal.State == ConversationState.Completed && IsSilentReply(text);
+            operation.Passed = passed;
+            if (terminal.State == ConversationState.Completed && !passed)
+            {
+                lock (gate)
+                {
+                    if (ReferenceEquals(active, operation) && !operation.Authorization.IsCanceled)
+                    {
+                        var remark = text.Trim();
+                        context.Add("(You glanced at my screen.)", remark);
+                        remarks.Enqueue((clock.GetTimestamp(), remark.Length > 200 ? remark[..200] : remark));
+                        while (remarks.Count > 4) remarks.Dequeue();
+                    }
+                }
+            }
+            operation.Publish(new(passed ? "commentary.passed" : "runtime." + terminal.State, Finished: true,
+                Quarantined: terminal.Quarantined, ProviderFailure: terminal.ProviderFailure, AudioFailure: terminal.Playback?.Error?.Code));
+            await turn.OwnershipRelease.ConfigureAwait(false);
+            if (turn.Snapshot.Quarantined)
+            {
+                operation.Publish(operation.Status with { Code = "conversation.cleanup_quarantined", Quarantined = true });
+                await quarantine.Task.ConfigureAwait(false);
+            }
+            return new(terminal.State is ConversationState.Completed or ConversationState.Refused ? SetupWorkOutcome.Completed : SetupWorkOutcome.Failed);
+        }
+        catch (OperationCanceledException) when (worker.IsCancellationRequested || operation.OriginalCaller.IsCancellationRequested)
+        {
+            operation.Publish(new("conversation.canceled", Finished: true));
+            return new(SetupWorkOutcome.Canceled);
+        }
+        catch (LiveActionException error)
+        {
+            operation.Publish(new(error.Code, Finished: true));
+            return new(SetupWorkOutcome.Failed);
+        }
+        catch (ContractException error)
+        {
+            operation.Publish(new("conversation.invalid_input", Finished: true, AudioFailure: error.Code));
+            return new(SetupWorkOutcome.Failed);
+        }
+        finally
+        {
+            if (operation.Turn is { } turn)
+            {
+                await turn.StopAsync().ConfigureAwait(false);
+                await turn.OwnershipRelease.ConfigureAwait(false);
+                if (turn.Snapshot.Quarantined) await quarantine.Task.ConfigureAwait(false);
+            }
+            lock (gate)
+            {
+                operation.FinishExecution();
+                if (ReferenceEquals(active, operation)) RevokeLocked();
+            }
+        }
+    }
+
+    // keepContext: a brief hand-over (an idle listen yielding to a screen glance, or a glance yielding to the user),
+    // not the user ending the conversation.
+    internal void Stop(LiveConversationOperation operation, string reason = "conversation.canceled", bool keepContext = false)
     {
         lock (gate)
         {
             if (!ReferenceEquals(operation, active)) return;
             memory?.Invalidate();
-            context.Clear();
+            if (!keepContext) ClearContextLocked();
             if (operation.OwnershipReleased || operation.ExecutionFinished) return;
             RevokeLocked();
         }
@@ -657,7 +817,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         {
             disposed = true;
             memory?.Invalidate();
-            context.Clear();
+            ClearContextLocked();
             owned = RevokeLocked();
         }
         owned?.Cancel("conversation.closed");

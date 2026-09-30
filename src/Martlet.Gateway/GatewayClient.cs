@@ -237,7 +237,8 @@ public sealed class GatewayAuthenticatedClient : IDisposable
                 limits.MaxOutputTokens,
                 limits.MaxContextTokens,
                 input.Personality,
-                input.History)), cancellationToken);
+                input.History,
+                input.Image is { } image ? [image.ToBase64()] : null)), cancellationToken);
     }
 
     public IAsyncEnumerable<GatewayInferenceEvent> StreamF5Async(
@@ -603,6 +604,7 @@ internal static class GatewayClientJson
                 ["role"] = message.Role == TextHistoryRole.User ? "user" : "assistant",
                 ["text"] = message.Text
             }).ToArray();
+        if (ollama.Images.Count > 0) payload["images"] = ollama.Images.ToArray();
         return payload;
     }
 

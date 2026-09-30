@@ -19,6 +19,46 @@ public sealed class TextHistoryMessage(TextHistoryRole role, string text)
     public override string ToString() => nameof(TextHistoryMessage);
 }
 
+public enum ImageMediaType { Jpeg, Png }
+
+/// <summary>One still image attached to the current user message (a screen glance). Bytes are copied, bounded and
+/// checked for a JPEG/PNG signature; they are private content and never appear in <see cref="ToString"/>.</summary>
+public sealed class BoundedImage
+{
+    public const int HardMaxBytes = 1_048_576;
+    public const int HardMaxEdge = 2_048;
+    // Local admission reservation for one image; providers count images differently (tiles, patches).
+    public const int TokenReservation = 1_536;
+    private readonly byte[] bytes;
+
+    public BoundedImage(ReadOnlySpan<byte> content, ImageMediaType mediaType, int width, int height)
+    {
+        ContractRules.Require(content.Length is > 16 and <= HardMaxBytes, "The image exceeds its byte bound.");
+        ContractRules.Require(width is > 0 and <= HardMaxEdge && height is > 0 and <= HardMaxEdge, "The image dimensions are out of range.");
+        ContractRules.Require(mediaType switch
+        {
+            ImageMediaType.Jpeg => content[0] == 0xFF && content[1] == 0xD8 && content[2] == 0xFF,
+            ImageMediaType.Png => content[..8].SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }),
+            _ => false
+        }, "The image content does not match its media type.");
+        bytes = content.ToArray();
+        MediaType = mediaType;
+        Width = width;
+        Height = height;
+    }
+
+    public ImageMediaType MediaType { get; }
+    public int Width { get; }
+    public int Height { get; }
+    public int ByteCount => bytes.Length;
+    [JsonIgnore]
+    public ReadOnlyMemory<byte> Content => bytes;
+    public string MimeType => MediaType == ImageMediaType.Jpeg ? "image/jpeg" : "image/png";
+    public string ToBase64() => Convert.ToBase64String(bytes);
+    public string ToDataUrl() => $"data:{MimeType};base64,{ToBase64()}";
+    public override string ToString() => $"{nameof(BoundedImage)} {Width}x{Height} (content omitted)";
+}
+
 public sealed class BoundedTextInput
 {
     public const int HardMaxUtf8Bytes = 16_384;
@@ -29,11 +69,15 @@ public sealed class BoundedTextInput
     public string? Personality { get; }
     [JsonIgnore]
     public IReadOnlyList<TextHistoryMessage> History { get; }
+    /// <summary>Optional image sent with the current user message only; never part of history.</summary>
+    [JsonIgnore]
+    public BoundedImage? Image { get; }
     public int Utf8Bytes { get; }
     // Local admission budget, NOT measured token usage or a price estimate.
     public int InputTokenReservation { get; }
 
-    public BoundedTextInput(string userText, string? personality = null, IEnumerable<TextHistoryMessage>? history = null)
+    public BoundedTextInput(string userText, string? personality = null, IEnumerable<TextHistoryMessage>? history = null,
+        BoundedImage? image = null)
     {
         var messages = new List<TextHistoryMessage>();
         int bytes = Count(userText);
@@ -54,8 +98,10 @@ public sealed class BoundedTextInput
         UserText = userText;
         Personality = personality;
         History = messages.AsReadOnly();
+        Image = image;
         Utf8Bytes = bytes;
-        InputTokenReservation = bytes + 256 * (messages.Count + (personality is null ? 1 : 2));
+        InputTokenReservation = bytes + 256 * (messages.Count + (personality is null ? 1 : 2)) +
+            (image is null ? 0 : BoundedImage.TokenReservation);
     }
 
     private static int Count(string value)
@@ -101,8 +147,11 @@ public sealed record TextGenerationLimits : IContract
 // Created only by a caller that obtained permission; never interchangeable with STT consent.
 public sealed class TextDisclosureAuthorization(
     ProviderCredentialBinding binding, TextModelSelection model, CorrelationIds ids, long epoch,
-    TextGenerationLimits limits, DateTimeOffset expiresAt, bool allowTextDisclosure, bool allowPotentialCharges)
+    TextGenerationLimits limits, DateTimeOffset expiresAt, bool allowTextDisclosure, bool allowPotentialCharges,
+    bool allowImageDisclosure = false)
 {
+    /// <summary>Separate permission to send an attached screen image; text permission alone never covers it.</summary>
+    public bool AllowImageDisclosure { get; } = allowImageDisclosure;
     public ProviderCredentialBinding Binding { get; } = binding;
     public TextModelSelection Model { get; } = model;
     public CorrelationIds Ids { get; } = ids;

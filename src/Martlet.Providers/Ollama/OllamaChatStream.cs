@@ -189,6 +189,9 @@ public sealed class OllamaChatStream : IAsyncEnumerable<ProviderEvent>, IAsyncDi
     private async Task<OllamaChatStep?> InitializeAsync()
     {
         EnsureTimesAndSources();
+        // This direct loopback contract is text-only; an attached image is never silently dropped.
+        if (action.Input.Image is not null)
+            return OllamaChatFailures.Fail(ProviderFailureCode.ModelUnsupported);
         if (action.Input.Utf8Bytes > action.Limits.MaxInputBytes ||
             action.Input.InputTokenReservation > action.Limits.MaxInputTokens)
             return OllamaChatFailures.Fail(ProviderFailureCode.InputLimit);
