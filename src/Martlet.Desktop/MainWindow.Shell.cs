@@ -1364,7 +1364,7 @@ public partial class MainWindow
             case NodeAction.Character: Avatar_Click(this, args); break;
             case NodeAction.ToggleCharacter: Character_Click(this, args); break;
             case NodeAction.Prerequisites: Prerequisites_Click(this, args); break;
-            case NodeAction.HostThisPc: OpenHosts(HostSetupMethod.ThisPcDocker, 1); break;
+            case NodeAction.HostThisPc: SetUpThisPcHostAsync().Forget(); break;
             case NodeAction.AddComputer: OpenHosts(null, 0); break;
             case NodeAction.ManageHost: OpenHosts(null, 2, FindHost(argument)); break;
             case NodeAction.CheckHost:
@@ -1402,6 +1402,35 @@ public partial class MainWindow
         if (store is null || setupService is null || closing) return;
         new HostsWindow(new AvatarProfileStore(store.DataDirectory), setupService, method, step, manage) { Owner = this }.ShowDialog();
         RefreshHomeAsync().Forget();
+    }
+
+    /// <summary>Sets up and pairs Martlet's host service on this PC in one click; with <paramref name="job"/> it then
+    /// continues straight into handing that job to it (installing its engine there when needed).</summary>
+    private async Task SetUpThisPcHostAsync(HostJob? job = null)
+    {
+        if (store is null || setupService is null || closing) return;
+        if (hostBusy) { ActionText.Text = "This PC's host service is already being set up."; return; }
+        hostBusy = true;
+        PairedHost? host;
+        try
+        {
+            string? status;
+            (host, status) = await HostsWindow.SetUpThisPcAsync(this, new AvatarProfileStore(store.DataDirectory), setupService,
+                text => ActionText.Text = text, lifetime.Token);
+            if (status is not null && !closing) ActionText.Text = status;
+        }
+        catch (OperationCanceledException) { return; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or
+            ContractException or JsonException)
+        {
+            ActionText.Text = error.Message;
+            return;
+        }
+        finally { hostBusy = false; }
+        if (closing || host is null) return;
+        await ReadMachineAsync();
+        await RefreshHomeAsync();
+        if (job is not null && FindHost(host.HostId) is not null) await AssignJobAsync(job, "host:" + host.HostId);
     }
 
     // ---------- small visuals ----------

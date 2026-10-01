@@ -28,8 +28,11 @@ For SSH hosts the desktop does everything itself (see [Driving Linux hosts from
 Windows](#driving-linux-hosts-from-windows-over-ssh)): you enter `user@computer`
 and the password once, and never need to log in to that computer. The owner's
 click in Martlet, over the owner's own SSH session, is the confirmation for each
-change. For *This PC* a console window runs the command shown in Martlet hosts,
-and on the host itself every change is confirmed by typing `yes`.
+change. For *This PC* Set up host does the same with Docker Desktop: Martlet
+starts Docker, builds the host image, runs `setup` unattended and pairs itself,
+with no console. Role changes on this PC still open a console window running the
+command shown in Martlet hosts, and on the host itself every change is confirmed
+by typing `yes`.
 
 Commands are the same everywhere:
 

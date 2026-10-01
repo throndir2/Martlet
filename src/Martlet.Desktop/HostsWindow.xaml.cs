@@ -92,7 +92,9 @@ public partial class HostsWindow : ThemedWindow
             : Ssh
                 ? "Enter user@computer and press Add this computer. Martlet asks for that account's password once, adds its own SSH key, " +
                   "checks Docker, sets the host up and pairs this PC by itself. You never need to log in there."
-                : "Fill in the address, then press Set up host and answer the questions in the console window.");
+                : Method == HostSetupMethod.ThisPcDocker
+                    ? "Press Set up host. Martlet starts Docker Desktop, sets the host up and pairs this PC by itself; nothing to type."
+                    : "Fill in the address, then press Set up host and answer the questions in the console window.");
         RolesSummaryText.Text = Ssh
             ? $"Roles install from here over SSH; Martlet asks for what each role needs and shows the progress. This host runs on {MethodName(Method)}."
             : $"Roles are added in the host's console, one at a time, with the same flow for every role. This host runs on {MethodName(Method)}.";
@@ -273,17 +275,20 @@ public partial class HostsWindow : ThemedWindow
 
     private async void Setup_Click(object sender, RoutedEventArgs e)
     {
-        if (Method == HostSetupMethod.ThisPcDocker && !busy && HostSetupCommands.IsPrivate(AddressText.Text.Trim()))
+        if (Method == HostSetupMethod.ThisPcDocker)
         {
-            busy = true;
-            string? firewall;
-            try { firewall = await OpenFirewallAsync(this, AddressText.Text.Trim(), text => StatusText.Text = text, lifetime.Token); }
-            catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
-            { firewall = $"Windows Firewall was not changed ({error.Message}). Other PCs may not reach this host."; }
-            catch (OperationCanceledException) { return; }
-            finally { busy = false; }
-            Run(HostAction.Setup);
-            if (firewall is not null) StatusText.Text = firewall + " " + StatusText.Text;
+            await ActionAsync(async () =>
+            {
+                var (host, status) = await SetUpThisPcAsync(this, pairings, text => StatusText.Text = text, lifetime.Token);
+                if (host is not null)
+                {
+                    paired = host;
+                    DeviceIdText.Text = host.Pairing.DeviceId;
+                    PairedText.Text = $"{host.HostId} at {host.Pairing.Origin}, paired as {host.Pairing.DeviceId}. Reached via: {host.Reach}.";
+                    ShowStep(3);
+                }
+                if (status is not null) StatusText.Text = status;
+            });
             return;
         }
         Run(HostAction.Setup);
@@ -420,7 +425,19 @@ public partial class HostsWindow : ThemedWindow
     private async Task<PairedHost> SavePairingAsync(Audio2FaceHostPairing pairing, string secret, HostSetupMethod method, string? ssh,
         string? sshHostKey)
     {
-        await pairings.LoadProfileAsync(lifetime.Token);
+        var (host, lipSync) = await KeepPairingAsync(pairings, pairing, secret, method, ssh, sshHostKey, lifetime.Token);
+        paired = host;
+        ShowPaired((await pairings.LoadAsync(lifetime.Token)).Hosts.Count);
+        StatusText.Text = $"Paired with {host.HostId}. " + (lipSync
+            ? "It handles lip-sync when it runs Audio2Face."
+            : "It stands by; hand it jobs under Who does what on the Devices map.");
+        return host;
+    }
+
+    private static async Task<(PairedHost Host, bool LipSync)> KeepPairingAsync(HostPairings pairings, Audio2FaceHostPairing pairing,
+        string secret, HostSetupMethod method, string? ssh, string? sshHostKey, CancellationToken token)
+    {
+        await pairings.LoadProfileAsync(token);
         var store = new WindowsCredentialStore();
         using (var lease = new SecretLease(secret))
         {
@@ -432,13 +449,57 @@ public partial class HostsWindow : ThemedWindow
             Origin = pairing.Origin, HostId = pairing.HostId, SpkiFingerprint = pairing.SpkiFingerprint,
             DeviceId = pairing.DeviceId, CredentialId = pairing.CredentialId
         };
-        var (host, lipSync) = await pairings.AddAsync(remote, method, ssh, lifetime.Token, sshHostKey);
-        paired = host;
-        ShowPaired((await pairings.LoadAsync(lifetime.Token)).Hosts.Count);
-        StatusText.Text = $"Paired with {host.HostId}. " + (lipSync
-            ? "It handles lip-sync when it runs Audio2Face."
-            : "It stands by; hand it jobs under Who does what on the Devices map.");
-        return host;
+        return await pairings.AddAsync(remote, method, ssh, token, sshHostKey);
+    }
+
+    /// <summary>One click sets up Martlet's host service on this PC: offers to install Docker Desktop when it is missing,
+    /// opens the firewall port for the private network (one UAC prompt, only when needed), then in a run window starts
+    /// Docker, builds the host image, runs setup unattended, pairs this desktop and reads the host's hardware.
+    /// Returns the paired host (null when it did not finish) and a status line for the caller to show.</summary>
+    internal static Task<(PairedHost? Host, string? Status)> SetUpThisPcAsync(Window owner, AvatarProfileStore profiles,
+        ISetupService settings, Action<string> progress, CancellationToken token) =>
+        SetUpThisPcAsync(owner, new HostPairings(Path.GetDirectoryName(profiles.FilePath)!, profiles, settings), progress, token);
+
+    private static async Task<(PairedHost? Host, string? Status)> SetUpThisPcAsync(Window owner, HostPairings pairings,
+        Action<string> progress, CancellationToken token)
+    {
+        if (!MachineInfo.DockerDesktopInstalled())
+        {
+            if (InstallDockerDesktop(owner) is not { } installing) return (null, null);
+            return (null, installing.Replace("set up the host", "press Set up this PC's host service again"));
+        }
+        var address = HostSetupCommands.ThisPcAddress();
+        if (!HostSetupCommands.IsPrivate(address))
+            return (null, "This PC has no private network address (10.x, 172.16-31.x or 192.168.x). Connect it to your home network first.");
+        string? firewall;
+        try { firewall = await OpenFirewallAsync(owner, address!, progress, token); }
+        catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
+        { firewall = $"Windows Firewall was not changed ({error.Message}). Other PCs may not reach this host."; }
+        var version = typeof(App).Assembly.GetName().Version is { } v ? v.ToString(3) : "0.0.0";
+        var target = new HostSetupTarget(HostSetupMethod.ThisPcDocker, "", address!,
+            HostSetupCommands.SuggestedHostId(Environment.MachineName), version);
+        var (hosts, _) = await pairings.LoadAsync(token);
+        var deviceId = hosts.FirstOrDefault()?.Pairing.DeviceId ?? HostSetupCommands.SuggestedDeviceId();
+        PairedHost? host = null;
+        progress("Setting up this PC's host service...");
+        var summary = await HostRunWindow.RunAsync(owner, "Set up this PC's host service", async run =>
+        {
+            await HostLocal.EnsureDockerAsync(run.Status, run.Output, run.Token);
+            await HostLocal.EnsureImageAsync(target, run.Status, run.Output, run.Token);
+            run.Status("Setting up the host service on this PC...");
+            var exit = await HostLocal.EngineAsync(target, ["setup"], run.Output, run.Token);
+            if (exit != 0) throw new InvalidOperationException($"Setup stopped (exit {exit}). The output shows why.");
+            run.Status("Pairing this PC with its host service...");
+            var (pairing, secret) = await HostLocal.PairAsync(target, deviceId, Environment.MachineName, run.Output, run.Token);
+            host = (await KeepPairingAsync(pairings, pairing, secret, HostSetupMethod.ThisPcDocker, null, null, run.Token)).Host;
+            run.Status("Reading this PC's hardware...");
+            string check;
+            try { check = await CheckAsync(host.Pairing, new HostHardwareStore(pairings.DataDirectory), run.Status, run.Token); }
+            catch (InvalidOperationException error) { check = "Its check did not answer yet: " + error.Message; }
+            return $"This PC's host service ({host.HostId}) is set up and paired. {check}";
+        });
+        var status = summary ?? "This PC's host service was not set up. The run window shows why.";
+        return (host, firewall is null ? status : firewall + " " + status);
     }
 
     /// <summary>Checks a paired host over its pinned pairing, reports which roles it offers and saves the hardware it
