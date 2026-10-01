@@ -27,7 +27,8 @@ public sealed class AvatarOverlayTests
             Assert.False(window.ShowActivated);
             Assert.Equal(Colors.Transparent, ((SolidColorBrush)window.Background).Color);
             Assert.Null(window.Owner);
-            var viewport = Assert.IsType<Grid>(((DockPanel)window.Content).Children[1]);
+            var viewport = Assert.IsType<Grid>(window.Content);
+            Assert.Equal("MoveAvatar", AutomationProperties.GetAutomationId(viewport));
             var browser = Assert.IsType<WebView2CompositionControl>(viewport.Children[0]);
             Assert.Equal(0, browser.DefaultBackgroundColor.A);
             Assert.False(browser.IsHitTestVisible);
@@ -37,19 +38,14 @@ public sealed class AvatarOverlayTests
             Assert.Equal(Colors.Transparent, ((SolidColorBrush)viewport.Background).Color);
             window.Show();
             await Dispatcher.Yield();
-            var move = Control(window, "MoveAvatar");
-            var close = Control(window, "CloseAvatar");
-            Assert.Same(window.TryFindResource("SoftBrush"), move.Background);
-            Assert.Same(window.TryFindResource("TextBrush"), close.Foreground);
+            Assert.Empty(FindButtons(window));
             var loading = Assert.IsType<TextBlock>(viewport.Children[1]);
             Assert.Same(window.TryFindResource("SurfaceBrush"), loading.Background);
             window.ApplyOverlayTheme(dark: true);
             window.UpdateLayout();
-            Assert.Same(window.TryFindResource("SoftBrush"), move.Background);
-            Assert.Same(window.TryFindResource("TextBrush"), close.Foreground);
             Assert.Same(window.TryFindResource("SurfaceBrush"), loading.Background);
-            Assert.Equal(((SolidColorBrush)Appearance.Palette(PinkTheme.Dark, SystemParameters.HighContrast)["SoftBrush"]).Color,
-                ((SolidColorBrush)move.Background).Color);
+            Assert.Equal(((SolidColorBrush)Appearance.Palette(PinkTheme.Dark, SystemParameters.HighContrast)["SurfaceBrush"]).Color,
+                ((SolidColorBrush)loading.Background).Color);
             Assert.Equal(Colors.Transparent, ((SolidColorBrush)window.Background).Color);
             Assert.True(input.Waiting);
             Assert.Null(browser.CoreWebView2);
@@ -68,7 +64,7 @@ public sealed class AvatarOverlayTests
     }
 
     [Fact]
-    public Task Move_handle_supports_keyboard_positioning_recovery_and_escape_close() => OnDispatcher(async () =>
+    public Task Overlay_supports_keyboard_positioning_recovery_and_escape_close() => OnDispatcher(async () =>
     {
         using var input = new PendingInput();
         using var output = new MemoryStream();
@@ -77,9 +73,7 @@ public sealed class AvatarOverlayTests
         try
         {
             await Dispatcher.Yield();
-            var move = Control(window, "MoveAvatar");
-            Assert.True(move.Focusable);
-            Assert.Contains("Arrow keys", AutomationProperties.GetHelpText(move), StringComparison.Ordinal);
+            var move = (UIElement)window.Content;
             var left = window.Left;
             var top = window.Top;
             Press(window, move, Key.Left);
@@ -103,27 +97,15 @@ public sealed class AvatarOverlayTests
         finally { window.Close(); }
     });
 
-    [Fact]
-    public Task Close_control_exits_only_the_overlay_and_disposes_its_private_transport() => OnDispatcher(async () =>
+    private static IEnumerable<Button> FindButtons(DependencyObject root)
     {
-        using var input = new PendingInput();
-        using var output = new MemoryStream();
-        var window = new RendererWindow(input, output);
-        window.Show();
-        try
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
         {
-            await Dispatcher.Yield();
-            Control(window, "CloseAvatar").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            Assert.False(window.IsVisible);
-            Assert.False(input.CanRead);
-            Assert.False(output.CanWrite);
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is Button button) yield return button;
+            foreach (var nested in FindButtons(child)) yield return nested;
         }
-        finally { window.Close(); }
-    });
-
-    private static Button Control(RendererWindow window, string id) =>
-        ((StackPanel)((DockPanel)window.Content).Children[0]).Children.OfType<Button>()
-            .Single(button => AutomationProperties.GetAutomationId(button) == id);
+    }
 
     private static void Press(Window window, UIElement target, Key key)
     {
