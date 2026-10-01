@@ -12,10 +12,11 @@ internal static class UpdateCheckPreferences
             using var reader = new StreamReader(path);
             var buffer = new char[16];
             var count = reader.ReadBlock(buffer, 0, buffer.Length);
+            // "Disabled" was saved while checks were opt-in; it resets to the current default (on).
             return new string(buffer, 0, count) switch
             {
-                "Enabled" => true,
-                "Disabled" => false,
+                "On" or "Enabled" or "Disabled" => true,
+                "Off" => false,
                 _ => throw new InvalidDataException("Unrecognized update-check preference.")
             };
         }
@@ -30,7 +31,7 @@ internal static class UpdateCheckPreferences
         var temporary = Path.Combine(directory, $"update-checks.{Guid.NewGuid():N}.tmp");
         try
         {
-            File.WriteAllText(temporary, enabled ? "Enabled" : "Disabled");
+            File.WriteAllText(temporary, enabled ? "On" : "Off");
             File.Move(temporary, path, overwrite: true);
         }
         finally

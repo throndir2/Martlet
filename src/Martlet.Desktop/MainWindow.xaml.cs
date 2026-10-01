@@ -54,7 +54,7 @@ public partial class MainWindow : ThemedWindow
     private TaskCompletionSource? updateDrain;
     private string? interruptedUpdateCleanup;
     private GitHubUpdate? availableUpdate;
-    private bool updateChecksEnabled;
+    private bool updateChecksEnabled = true;
     private bool changingUpdateChoice;
     private bool updateBusy;
 

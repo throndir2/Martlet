@@ -6,8 +6,8 @@ explicit typed input, bounded push-to-talk or hands-free voice activity through
 configured OpenAI STT, participation policy, streaming LLM and optional generated
 voice/playback. Optional local **Voice ID** recognizes your enrolled voice and
 ignores other people before anything is uploaded.
-Each new action requires a bounded data/cost/output authorization; no credentials or audio are accessed on launch; network remains idle unless
-opt-in update checks, host updates or [who-does-what sync](docs/CLUSTER.md) are enabled. Text-only never requests TTS or opens output.
+Each new action requires a bounded data/cost/output authorization; no credentials or audio are accessed on launch; network remains idle except for
+update checks (on by default; can be turned off), host updates or [who-does-what sync](docs/CLUSTER.md) when enabled. Text-only never requests TTS or opens output.
 Actual account/device/first-conversation qualification remains **NOT RUN**.
 
 The desktop starts with a short welcome tour, then a Home page with one next
@@ -136,8 +136,9 @@ itself, but only while the character is hidden, no conversation, demo or
 Martlet window is open and Martlet is not the active window (it restarts
 minimized); otherwise the downloaded update installs when you exit Martlet.
 Choices live in `update-checks.txt` and `updates.json`, separately from profile
-settings and configuration backup; unreadable preferences turn automatic checks OFF with a
-visible error. Releases are normal GitHub releases; code signing is not a
+settings and configuration backup; a choice saved while checks were opt-in
+resets to on, and unreadable preferences fall back to checks ON (installs and
+host updates OFF) with a visible error. Releases are normal GitHub releases; code signing is not a
 requirement for this personal project, so the installer is unsigned. The
 digest detects a damaged download; it does not prove who published it. Do not
 run an internal build as an update.
