@@ -128,7 +128,8 @@ This page answers "what do I have, and what is each machine doing?"
   handing the job to a host checks it, offers to install the role (Ollama or
   whisper) there and switches over once it is ready, and the Setup choice comes
   back without re-entering a key. Each tile's *Change in Companion* opens that
-  job's tab; speaking changes there, because it needs a model and consent. **Lip-sync switches on the spot** from a drop-down: *This PC*,
+  job's tab (lip-sync's opens *Character*); speaking changes there, because it needs a model and consent. **Lip-sync switches on the spot**
+  from a drop-down once a host is paired: *This PC*,
   any paired host, or *Nobody (mouth follows voice loudness)*. A showing
   character keeps showing; the next sentence uses the new computer.
   Handing lip-sync to a host first checks it over its pinned pairing. If it
@@ -254,8 +255,8 @@ The conversation window puts the chat first:
   3. *Listening*: the speech-to-text provider, model and key, then the
      microphone.
   4. *Character*: what it looks like now, then the character model (show,
-     hide, choose and customize, reset), its personality, and who handles
-     lip-sync.
+     hide, choose and customize, reset), its personality, and where lip-sync
+     runs.
   5. *Memory*: whether memory is on, and *Manage memory* for its facts.
 
   Every tab starts with **Now**: what it uses and any problem stopping it.
@@ -285,6 +286,23 @@ The conversation window puts the chat first:
   - *A cloud provider*: provider, model (and voice), API key and an explicit
     choice checkbox. Saving stores the route, then the key in Windows Credential
     Manager, then the confirmed choice.
+
+  Lip-sync on the *Character* tab uses the same **Where it runs** chooser and
+  cards, with *Voice loudness* in place of a cloud provider. The recommended
+  place follows the hardware: *This PC* with an NVIDIA graphics card of 4 GB or
+  more, otherwise another computer that can run Audio2Face, otherwise voice
+  loudness. Each card's button commits the choice, which switches right away,
+  even while the character talks:
+
+  - *This PC*: two choices, the one in use first, like the voice. **Audio2Face,
+    with Docker** (*Set up Audio2Face with Docker* sets up and pairs Martlet's
+    host service on this PC, then hands lip-sync to it, installing Audio2Face
+    with its NGC key; once the host service exists, *Use Audio2Face on this
+    PC* and *Check it*) or **Your own Audio2Face service** at the character's
+    loopback endpoint (*Use my own service*).
+  - *Another of your computers*: the same host list as the job tabs, with *Use
+    it*, *Add a computer*, *Check hosts* and the Devices map.
+  - *Voice loudness*: *Use voice loudness* turns Audio2Face off.
 
   *Advanced setup* at the bottom of each job tab opens the full Setup window on
   that job, for every route type and stored or detached keys. Microphone and

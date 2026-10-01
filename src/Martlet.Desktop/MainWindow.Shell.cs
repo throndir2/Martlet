@@ -1056,7 +1056,17 @@ public partial class MainWindow
 
             var hosts = NetworkMap.Hosts(Inputs());
             var handler = NetworkMap.LipSync(homeAvatar);
-            var choice = LipSyncChoice();
+            var lipSyncChange = new Button { Content = "Change in Companion", HorizontalAlignment = HorizontalAlignment.Left };
+            AutomationProperties.SetAutomationId(lipSyncChange, "RoleChange-LipSync");
+            lipSyncChange.Click += (_, _) => OpenCompanion(CompanionTab.Character);
+            FrameworkElement lipSyncControl = lipSyncChange;
+            if (hosts.Count > 0)
+            {
+                lipSyncChange.Margin = new Thickness(0, 6, 0, 0);
+                var controls = new StackPanel { Children = { LipSyncChoice(), lipSyncChange } };
+                if (ClusterControls(ClusterJobs.LipSync) is { } lipSyncCluster) controls.Children.Add(lipSyncCluster);
+                lipSyncControl = controls;
+            }
             var (who, detail, nodeId) = handler switch
             {
                 LipSyncHandler.Loudness => ("Nobody", "The mouth follows the voice's loudness on this PC.", (string?)"this-pc"),
@@ -1067,9 +1077,7 @@ public partial class MainWindow
                     ? "Its own Audio2Face service when running, otherwise voice loudness. Add a computer to hand lip-sync to a GPU PC."
                     : "Its own Audio2Face service when running, otherwise voice loudness.", "this-pc")
             };
-            RolesBoard.Children.Add(RoleTile("Lip-sync (Audio2Face)", who, detail,
-                ClusterControls(ClusterJobs.LipSync) is { } lipSyncCluster ? new StackPanel { Children = { choice, lipSyncCluster } } : choice, nodeId,
-                TileProblem(ClusterJobs.LipSync)));
+            RolesBoard.Children.Add(RoleTile("Lip-sync (Audio2Face)", who, detail, lipSyncControl, nodeId, TileProblem(ClusterJobs.LipSync)));
         }
         finally { renderingBoard = false; }
     }
@@ -1195,6 +1203,7 @@ public partial class MainWindow
                 }
             }
             await ApplyLipSyncAsync(host, key == "off");
+            tabPlace.Remove(CompanionTab.Character);
             RecordClusterJob(ClusterJobs.LipSync, ClusterSync.Local(ClusterJobs.LipSync, homeSettings, homeAvatar));
             var who = key == "off" ? "nobody (the mouth follows the voice's loudness)" : host?.HostId ?? "this PC";
             var message = $"Lip-sync is now handled by {who}.";
@@ -1435,9 +1444,9 @@ public partial class MainWindow
         RefreshHomeAsync().Forget();
     }
 
-    /// <summary>Sets up and pairs Martlet's host service on this PC in one click; with <paramref name="job"/> it then
-    /// continues straight into handing that job to it (installing its engine there when needed).</summary>
-    private async Task SetUpThisPcHostAsync(HostJob? job = null)
+    /// <summary>Sets up and pairs Martlet's host service on this PC in one click; with <paramref name="andThen"/> it then
+    /// continues straight into handing a job to it ("host:ID"), installing its engine there when needed.</summary>
+    private async Task SetUpThisPcHostAsync(Func<string, Task>? andThen = null)
     {
         if (store is null || setupService is null || closing) return;
         if (hostBusy) { ActionText.Text = "This PC's host service is already being set up."; return; }
@@ -1461,7 +1470,7 @@ public partial class MainWindow
         if (closing || host is null) return;
         await ReadMachineAsync();
         await RefreshHomeAsync();
-        if (job is not null && FindHost(host.HostId) is not null) await AssignJobAsync(job, "host:" + host.HostId);
+        if (andThen is not null && FindHost(host.HostId) is not null) await andThen("host:" + host.HostId);
     }
 
     // ---------- small visuals ----------
