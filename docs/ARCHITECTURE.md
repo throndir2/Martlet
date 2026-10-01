@@ -145,8 +145,8 @@ same core turn behavior regardless of provider and avatar state.
 Create only when implementation is authorized: `src\Martlet.Desktop`,
 `src\Martlet.Core`, `src\Martlet.Audio`, `src\Martlet.Providers`,
 `src\Martlet.Diagnostics`, `src\Martlet.Doctor`, `src\Martlet.Gateway`,
-`workers\f5`, `contracts`, `tests\fixtures`, `packaging\windows`, and
-`deploy\ubuntu`. Keep schema ownership with D02 and installer identity ownership
+`workers\f5`, `contracts`, `packaging\windows`, and `deploy\ubuntu`. Keep
+schema ownership with D02 and installer identity ownership
 with F02; do not let parallel tasks invent their own protocol or settings store.
 
 ## 2. Trust, data, and permission boundaries

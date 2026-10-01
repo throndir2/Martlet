@@ -364,7 +364,7 @@ regressions were run **before** fixes: 10 failed, 1 passed (the HTTP 200 truncat
 control). The fixes and expanded 23-case regression group pass with all 168
 existing cases, **191 total**, including callback deferral, UTC forward/rollback,
 serializer-entry expiry, 401/403/429 versus 200 throwing streams, and stop
-precedence. This remains offline fixture evidence, not a live authorization.
+precedence. This remains fixture-backed local evidence, not a live authorization.
 
 **Still NOT RUN:** real model/account eligibility, transcription accuracy and
 latency, retention/account controls, actual billing, TLS/network behavior on a
@@ -584,8 +584,8 @@ Local SDK 10.0.401 evidence: **323 provider cases passed** (191 existing STT,
 malformed-input cases passed**. All associated Release builds had zero warnings
 and errors. The targeted selectors were `FullyQualifiedName~ContractTests` in
 `tests\Martlet.Core.Tests` and
-`FullyQualifiedName~ProviderSequenceValidatorTests|FullyQualifiedName~SequenceMalformedInputTests`
-in `tests\Martlet.Fixtures.Tests`; each used locked restore, `build --no-restore`
+`FullyQualifiedName~ProviderSequenceValidatorTests|FullyQualifiedName~SequenceMalformedInputTests`;
+each used locked restore, `build --no-restore`
 and `test --no-build`. Outputs stayed under this session's unique C: artifact
 directory, with process-local SDK/CLI environment only. These are authored
 offline production-path tests, not measurements of the service.

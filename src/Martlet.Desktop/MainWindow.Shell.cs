@@ -292,12 +292,6 @@ public partial class MainWindow
     private void TourAdvisor_Click(object sender, RoutedEventArgs e) { HideTour(); Advisor_Click(sender, e); }
     private void TourSetup_Click(object sender, RoutedEventArgs e) { HideTour(); OpenSection(SetupSection.Thinking); }
 
-    private void TourDemo_Click(object sender, RoutedEventArgs e)
-    {
-        HideTour();
-        Navigate(NavSettings);
-        Dispatcher.BeginInvoke(() => DemoCard.BringIntoView(), System.Windows.Threading.DispatcherPriority.Loaded);
-    }
 
     private void TourSkip_Click(object sender, RoutedEventArgs e)
     {

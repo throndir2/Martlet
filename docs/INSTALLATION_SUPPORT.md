@@ -17,9 +17,8 @@ below remains a target, not a claim that those services are available.
 **Future product specification, not an end-user installation guide.**
 The [foundation](FOUNDATION.md) implements a narrow local status CLI and WPF
 shell. The current [internal packaging recipe](../packaging/windows/README.md)
-and [offline fixture experience](DIAGNOSTICS.md#offline-fixture-experience-f03c)
-now provide a self-contained payload/unsigned installer build and real Desktop/
-Doctor demo commands. The broader host utilities, live setup and qualified
+now provides a self-contained payload/unsigned installer build and real Desktop/
+Doctor status commands. The broader host utilities, live setup and qualified
 installation journey below remain future work. Do not run
 privileged setup or download models as part of implementing this documentation.
 See [delivery](DELIVERY.md) for gates and [architecture](ARCHITECTURE.md) for

@@ -10,14 +10,14 @@ internal sealed class DesktopAutomation(bool allowEffects)
     private static readonly HashSet<string> SafeClicks = new(StringComparer.Ordinal)
     {
         "OpenTroubleshooting", "OpenSetup", "OpenAudioSetup", "OpenLiveConversation",
-        "OpenConfigurationRecovery", "RefreshDiagnostics", "StartFixture", "StopFixture",
+        "OpenConfigurationRecovery", "RefreshDiagnostics",
         "SetupClose", "AudioClose", "CloseLive", "SupportClose",
         "RecoveryClose", "SupportFreeze", "SupportClear",
         "NavHome", "NavDevices", "NavCompanion", "NavSettings", "TourSkip", "DiagnosticsSection"
     };
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
-        "FixtureStatus", "FoundationStatus", "PipelineStatus", "LocalAudioStatus",
+        "FoundationStatus", "PipelineStatus", "LocalAudioStatus",
         "LiveStatus", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult"
     };
     private int? processId;
@@ -100,7 +100,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
 
     internal object Select(string id, string item)
     {
-        if (!allowEffects && id != "FixtureScenario")
+        if (!allowEffects)
             throw new InvalidOperationException("This selection requires --allow-ui-effects.");
         var element = Find(id);
         if (!element.Current.IsEnabled) throw new InvalidOperationException($"Control '{id}' is disabled.");

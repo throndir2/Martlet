@@ -22,25 +22,17 @@ internal sealed class McpServer(DesktopAutomation desktop)
             probes = new { type = "array", items = new { type = "string" }, minItems = 1 },
             dataDirectory = new { type = "string" }
         }, ["probes"]),
-        Tool("fixture", "Run an offline scripted fixture with audio OFF; this is NOT AI.", new
-        {
-            scenario = new { type = "string", @enum = new[]
-            {
-                "complete", "streaming", "refused", "refused-after-partial", "no-speech",
-                "not-addressed", "canceled", "truncated", "slow", "failed"
-            } },
-            dataDirectory = new { type = "string" }
-        }, ["scenario"]),
+
         Tool("ui_connect", "Attach to an already-running Martlet.Desktop process in this interactive session.", new
         {
             pid = new { type = "integer", minimum = 1 }
         }, ["pid"]),
         Tool("ui_snapshot", "Inspect automation IDs, enabled state and selected non-secret status fields of attached Martlet windows.", new { }),
-        Tool("ui_click", "Invoke an automation-ID control. Only safe fixture/navigation controls work without --allow-ui-effects.", new
+        Tool("ui_click", "Invoke an automation-ID control. Only safe navigation controls work without --allow-ui-effects.", new
         {
             id = new { type = "string" }
         }, ["id"]),
-        Tool("ui_select", "Select a named option from a combo box. Only FixtureScenario works without --allow-ui-effects.", new
+        Tool("ui_select", "Select a named option from a combo box. Requires --allow-ui-effects.", new
         {
             id = new { type = "string" }, item = new { type = "string" }
         }, ["id", "item"]),
@@ -116,8 +108,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "doctor_list" => await DoctorAsync(["list", "--json"], arguments, cancellation),
                 "doctor_run" => await DoctorAsync(
                     ["run", .. RequiredStrings(arguments, "probes"), "--json"], arguments, cancellation),
-                "fixture" => await DoctorAsync(
-                    ["self-test", "--scenario", RequiredString(arguments, "scenario"), "--json"], arguments, cancellation),
+
                 "ui_connect" => desktop.Connect(RequiredInt(arguments, "pid")),
                 "ui_snapshot" => desktop.Snapshot(),
                 "ui_click" => await desktop.ClickAsync(RequiredString(arguments, "id")),

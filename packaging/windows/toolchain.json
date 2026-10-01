@@ -10,12 +10,12 @@
   },
   "applicationGraphs": {
     "Desktop": {
-      "projects": ["Martlet.Desktop", "Martlet.Core", "Martlet.Diagnostics", "Martlet.Fixtures", "Martlet.Sessions", "Martlet.Audio", "Martlet.Credentials.Windows", "Martlet.Conversation", "Martlet.Memory", "Martlet.Providers", "Martlet.Participation", "Martlet.Support", "Martlet.Avatars", "Martlet.Avatar.Hosting", "Martlet.Avatar.Audio2Face", "Martlet.F5"],
+      "projects": ["Martlet.Desktop", "Martlet.Core", "Martlet.Diagnostics", "Martlet.Audio", "Martlet.Credentials.Windows", "Martlet.Conversation", "Martlet.Memory", "Martlet.Providers", "Martlet.Participation", "Martlet.Support", "Martlet.Avatars", "Martlet.Avatar.Hosting", "Martlet.Avatar.Audio2Face", "Martlet.F5"],
       "packages": ["NAudio.Wasapi", "NAudio.Core", "System.Numerics.Tensors", "Google.Protobuf", "Grpc.Core.Api", "Grpc.Net.Client", "Grpc.Net.Common", "Microsoft.Extensions.DependencyInjection.Abstractions", "Microsoft.Extensions.Logging.Abstractions", "SSH.NET"],
       "frameworks": ["Microsoft.NETCore.App", "Microsoft.WindowsDesktop.App"]
     },
     "Doctor": {
-      "projects": ["Martlet.Doctor", "Martlet.Core", "Martlet.Diagnostics", "Martlet.Fixtures", "Martlet.Sessions", "Martlet.Audio"],
+      "projects": ["Martlet.Doctor", "Martlet.Core", "Martlet.Diagnostics", "Martlet.Audio"],
       "packages": ["NAudio.Wasapi", "NAudio.Core", "System.Numerics.Tensors"],
       "frameworks": ["Microsoft.NETCore.App"]
     },

@@ -272,7 +272,6 @@ public sealed class SetupDispatcherTests(ITestOutputHelper output)
         try
         {
             await WaitUntil(() => Control<StackPanel>(window, "EditorPanel").IsEnabled);
-            Control<RadioButton>(window, "ApiChoice").IsChecked = true;
             Control<TabControl>(window, "Steps").SelectedIndex = (int)SetupStep.Destinations;
             Control<ComboBox>(window, "RoleChoice").SelectedItem = SetupRole.Llm;
             var catalog = Control<ComboBox>(window, "ModelCatalogChoice");
@@ -308,7 +307,6 @@ public sealed class SetupDispatcherTests(ITestOutputHelper output)
         try
         {
             await WaitUntil(() => Control<StackPanel>(window, "EditorPanel").IsEnabled);
-            Control<RadioButton>(window, "ApiChoice").IsChecked = true;
             Control<TabControl>(window, "Steps").SelectedIndex = (int)SetupStep.Destinations;
             Control<ComboBox>(window, "RoleChoice").SelectedItem = SetupRole.Stt;
             Assert.False(Control<ComboBox>(window, "ProviderChoice").IsEnabled);

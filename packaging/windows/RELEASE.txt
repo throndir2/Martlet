@@ -21,7 +21,7 @@ updates while it runs and can install them for you (Settings > App updates);
 real provider use requires explicit configuration
 and per-action consent and may incur charges.
 
-The offline fixture is scripted (FIXTURE - NOT AI). An in-app update closes
+An in-app update closes
 Martlet, runs the newer installer and starts Martlet again; to update by hand,
 close Martlet before running a newer installer.
 

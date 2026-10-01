@@ -12,7 +12,6 @@ using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.Desktop;
 using Martlet.Diagnostics;
-using Martlet.Sessions;
 using Martlet.Support;
 
 namespace Martlet.Desktop.Tests;
@@ -204,7 +203,7 @@ public sealed class SupportIntegrationTests
     });
 
     [Fact]
-    public async Task ActualMalformedSettingsFixtureFailureAndFrozenJournalKeepCanariesOut()
+    public async Task ActualMalformedSettingsAndFrozenJournalKeepCanariesOut()
     {
         using var scope = new Scope();
         Directory.CreateDirectory(scope.Data);
@@ -222,13 +221,8 @@ public sealed class SupportIntegrationTests
         Assert.Null((await Done(controller.StartRecording())).Failure);
         controller.ObserveReport(report, record: true);
         await Until(() => !controller.IsBusy);
-        await using var fixture = new FixtureSession();
-        var failed = FixtureDiagnostics.Report(await fixture.RunAsync("failed"));
-        controller.ObserveReport(failed, fixture: true, record: true);
-        await Until(() => !controller.IsBusy);
-        Assert.Null((await Done(controller.Freeze(true, true, Range()))).Failure);
+        Assert.Null((await Done(controller.Freeze(true, Range()))).Failure);
         var preview = controller.Preview!;
-        Assert.Contains("fixture.failed", string.Join("", preview.Contents));
         Assert.Contains("settings.malformed", string.Join("", preview.Contents));
         Assert.DoesNotContain(Canary, string.Join("", preview.Contents));
         controller.Record([Event()]);
@@ -261,7 +255,7 @@ public sealed class SupportIntegrationTests
         }
         try
         {
-            var result = await Done(controller.Freeze(false, true, Range()));
+            var result = await Done(controller.Freeze(true, Range()));
             Assert.NotNull(result.Failure);
             Assert.Null(controller.Preview);
             Assert.False(File.Exists(scope.Output));
@@ -279,7 +273,7 @@ public sealed class SupportIntegrationTests
         var fs = new FaultFiles { FailWrite = !failedClose, FailClose = failedClose };
         var backend = new Backend(fs);
         var controller = await Ready(scope, backend);
-        await Done(controller.Freeze(false, false, Range()));
+        await Done(controller.Freeze(false, Range()));
         var preview = controller.Preview!;
         var sentinel = Path.Combine(scope.Root, "unrelated.keep");
         File.WriteAllText(sentinel, Canary);
@@ -304,7 +298,7 @@ public sealed class SupportIntegrationTests
         var controller = await Ready(scope);
         foreach (var mode in new[] { "no", "digest", "exists" })
         {
-            await Done(controller.Freeze(false, false, Range()));
+            await Done(controller.Freeze(false, Range()));
             var preview = controller.Preview!;
             if (mode == "exists") File.WriteAllText(scope.Output, Canary);
             var result = await Done(controller.Export(preview.Id, mode == "digest" ? "wrong" : preview.Digest, scope.Output, mode != "no"));
@@ -338,7 +332,7 @@ public sealed class SupportIntegrationTests
         var fs = new FaultFiles { FailWrite = true, FailDelete = true };
         var backend = new Backend(fs);
         var controller = await Ready(scope, backend);
-        await Done(controller.Freeze(false, false, Range()));
+        await Done(controller.Freeze(false, Range()));
         var preview = controller.Preview!;
         Assert.Equal(SupportFailure.AccessDenied, (await Done(controller.Export(preview.Id, preview.Digest, scope.Output, true))).Failure);
         Assert.True(backend.Snapshot!.HasPendingCleanup);
@@ -367,7 +361,7 @@ public sealed class SupportIntegrationTests
         window = new(controller, confirm: _ =>
         {
             if (change == "destination") Field<TextBox>(window!, "DestinationText").Text = Path.Combine(scope.Root, "changed.zip");
-            else if (change == "selection") Field<ComboBox>(window!, "SourceChoice").SelectedIndex = 1;
+            else if (change == "selection") Field<CheckBox>(window!, "LogsChoice").IsChecked = true;
             else controller.ObserveReport(controller.Report! with { CreatedAt = controller.Report!.CreatedAt.AddSeconds(1) });
             return true;
         });
@@ -438,7 +432,7 @@ public sealed class SupportIntegrationTests
         var fs = new FaultFiles();
         var backend = new Backend(fs);
         var controller = await Ready(scope, backend);
-        await Done(controller.Freeze(false, false, Range()));
+        await Done(controller.Freeze(false, Range()));
         var preview = controller.Preview!;
         fs.BeforeMove = controller.CancelAndClose;
         var result = await Done(controller.Export(preview.Id, preview.Digest, scope.Output, true));
@@ -528,7 +522,7 @@ public sealed class SupportIntegrationTests
             await fixture.Finish();
             await Until(() => controller.LiveStatus.Contains("conversation.completed", StringComparison.Ordinal));
             await Until(() => !controller.IsBusy);
-            Assert.Null((await Done(controller.Freeze(false, true, Range()))).Failure);
+            Assert.Null((await Done(controller.Freeze(true, Range()))).Failure);
             var preview = controller.Preview!;
             var content = string.Join("\n", preview.Contents);
             Assert.Contains("conversation.completed", content);
@@ -585,7 +579,7 @@ public sealed class SupportIntegrationTests
             backend.Release.Set();
             await Until(() => !controller.IsBusy);
             Assert.Single(backend.Completed);
-            Assert.Null((await Done(controller.Freeze(false, true, Range()))).Failure);
+            Assert.Null((await Done(controller.Freeze(true, Range()))).Failure);
             var content = string.Join("\n", controller.Preview!.Contents);
             Assert.Contains("conversation.running", content);
             Assert.DoesNotContain("conversation.completed", content);

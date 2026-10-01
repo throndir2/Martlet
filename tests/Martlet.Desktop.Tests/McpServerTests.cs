@@ -12,20 +12,17 @@ namespace Martlet.Desktop.Tests;
 public sealed class McpServerTests(ITestOutputHelper output)
 {
     [Fact]
-    public async Task NegotiatesAndRunsRealOfflineFixtureOverStdio()
+    public async Task NegotiatesAndListsToolsOverStdio()
     {
         var messages = await SendAsync(
             """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}""",
             """{"jsonrpc":"2.0","method":"notifications/initialized"}""",
-            """{"jsonrpc":"2.0","id":2,"method":"tools/list"}""",
-            """{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"fixture","arguments":{"scenario":"complete"}}}""");
-        Assert.Equal(3, messages.Length);
+            """{"jsonrpc":"2.0","id":2,"method":"tools/list"}""");
+        Assert.Equal(2, messages.Length);
         Assert.Equal("2025-06-18", messages[0].GetProperty("result").GetProperty("protocolVersion").GetString());
-        Assert.Contains(messages[1].GetProperty("result").GetProperty("tools").EnumerateArray(),
-            tool => tool.GetProperty("name").GetString() == "ui_click");
-        var result = ToolResult(messages[2]);
-        Assert.Equal(0, result.GetProperty("exitCode").GetInt32());
-        Assert.True(result.GetProperty("report").GetRawText().Contains("fixture", StringComparison.OrdinalIgnoreCase));
+        var tools = messages[1].GetProperty("result").GetProperty("tools").EnumerateArray().ToArray();
+        Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "ui_click");
+        Assert.DoesNotContain(tools, tool => tool.GetProperty("name").GetString() == "fixture");
     }
 
     [Fact]
@@ -54,22 +51,19 @@ public sealed class McpServerTests(ITestOutputHelper output)
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public Task AttachesToRealDesktopAndInvokesOfflineFixture(bool churn) => WithDesktop(async (_, automation) =>
+    public Task AttachesToRealDesktopAndNavigates(bool churn) => WithDesktop(async (_, automation) =>
     {
         var churnTask = churn ? ChurnWindows() : Task.CompletedTask;
         try
         {
             await Task.Run(() => automation.ClickAsync("NavSettings"));
-            await Task.Delay(300);
-            await Task.Run(() => automation.ClickAsync("StartFixture"));
-            var fixture = "";
-            for (var attempt = 0; attempt < 50 && !fixture.Contains("Scenario: complete", StringComparison.Ordinal); attempt++)
+            var settings = "";
+            for (var attempt = 0; attempt < 50 && !settings.Contains("AutomaticUpdateCheck", StringComparison.Ordinal); attempt++)
             {
                 await Task.Delay(100);
-                fixture = JsonSerializer.Serialize(await Task.Run(automation.Snapshot));
+                settings = JsonSerializer.Serialize(await Task.Run(automation.Snapshot));
             }
-            Assert.Contains("FIXTURE - NOT AI", fixture);
-            Assert.Contains("Scenario: complete", fixture);
+            Assert.Contains("AutomaticUpdateCheck", settings);
             if (churn)
             {
                 for (var iteration = 0; iteration < 100; iteration++)

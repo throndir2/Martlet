@@ -608,8 +608,7 @@ if ($PublishDirectory) {
 }
 
 $help = [IO.File]::ReadAllText((Join-Path $copy 'help\INTERNAL.txt'))
-foreach ($required in @('FIXTURE - NOT AI', 'self-test --scenario streaming --json',
-        'Stop fixture', 'NOT spoken AI', 'Permission is not saved.',
+foreach ($required in @('Martlet.Doctor.exe status --json',
         'V04b', 'Send typed text', 'Stop / revoke this action', 'LOCAL microphone capture',
         'separately permit uploading', 'NOT RUN', 'V06b', 'Record troubleshooting metadata',
         'OFF at every launch', 'support-v1', 'Preview every frozen file',

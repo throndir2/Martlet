@@ -2,10 +2,9 @@
 
 **Internal lane: INTERNAL DEVELOPMENT ONLY - UNSIGNED. Not a supported installer or a completed
 F02/AC-02/G1 gate.** This packages V04b real explicit typed / push-to-talk app
-integration alongside the offline WPF fixture/status experience and Doctor
-self-test, including the bounded optional synthetic-tone sink. Opening the app
-or conversation window does not authorize requests, credential lookup or device
-access. Saved configuration is not live API/account/model readiness.
+integration alongside the Desktop status experience and Doctor status command.
+Opening the app or conversation window does not authorize requests, credential
+lookup or device access. Saved configuration is not live API/account/model readiness.
 Desktop V07a adds explicit same-profile configuration backup/previewed restore,
 not a diagnostic ZIP or installer updater. Transactional binary upgrades,
 rollback and signed distribution remain unimplemented.
@@ -211,7 +210,7 @@ escape-looking names such as `%2C` or `%3B`. Spaces and Unicode are supported.
 
 `Smoke-Package.ps1` always launches the actual native Doctor apphost. The
 `-InteractiveDesktop` switch additionally launches the native WPF apphost, reads
-first-run status and exercises the accessible fixture controls/Stop/retry/close.
+first-run status and exercises the accessible close path.
 It is deliberately opt-in on interactive developer desktops; without the switch,
 the local smoke runs Doctor only, not a simulated interactive or clean-OS claim.
 Both programs receive a unique temporary Unicode data path. The smoke checks read-only launch and
@@ -256,8 +255,7 @@ extraction or ReadyToRun compilation is used. The SDK is not shipped.
 The exact authored assembly inventories are checked both on disk and in each
 application's `.deps.json` (including each project's runtime asset):
 
-- Both: `Martlet.Core`, `Martlet.Audio`, `Martlet.Fixtures`, `Martlet.Sessions`,
-  `Martlet.Diagnostics`.
+- Both: `Martlet.Core`, `Martlet.Audio`, `Martlet.Diagnostics`.
 - Desktop only: `Martlet.Desktop`, `Martlet.Credentials.Windows`,
   `Martlet.Conversation`, `Martlet.Providers`, `Martlet.Participation`,
   `Martlet.Support`, `Martlet.Memory`.
@@ -566,9 +564,8 @@ allowance for arbitrary local/network feeds.
 
 ## V04b integration, fixtures and dependency evidence
 
-The twelve RID locks cover Core, Audio, Fixtures, Sessions, Diagnostics,
-Credentials.Windows, Conversation, Providers, Participation, Support, Desktop
-and Doctor.
+The RID locks cover Core, Audio, Diagnostics, Credentials.Windows,
+Conversation, Providers, Participation, Support, Desktop and Doctor.
 The three V04b library locks and Desktop's added project edges are generated
 by the existing maintenance helper, not hand-authored placeholder locks.
 Normal locks remain separate; maintenance regression checks hash
@@ -605,14 +602,8 @@ microphone/STT or output path fails; refusal is not ordinary generated speech.
 
 `Smoke-Package.ps1` reuses the canonical executable smokes in bounded child
 PowerShell processes with runtime-discovery variables still pointed away from
-the SDK. Both the native Doctor's ten self-test choices and, when explicitly
-interactive, WPF's real fixture controls run with **audio OFF**. Permissioned
-tone controls are never invoked by automation. Fixture success does not turn
-the ordinary status report green; profiles and corrupted originals are not
-silently replaced. The installed `help\INTERNAL.txt` describes exact commands,
-exits, synthetic text/refusal, the separate 200 ms tone permission and the bounded
-real-conversation controls. Smoke and packaging validation must never authorize
-live requests, vault effects, microphone capture or generated-voice playback.
+the SDK. Smoke and packaging validation must never authorize live requests,
+vault effects, microphone capture or generated-voice playback.
 
 ## Inno Setup provenance and terms
 
@@ -661,7 +652,7 @@ interrupted upgrades or rollback; SmartScreen/reputation/signing; novice or
 screen-reader qualification; denied-egress or live provider/audio qualification.
 For V04b, **real API/account or vault effects, physical microphone/speaker
 trials, clean-Windows installation, live first trial, signing and release are
-NOT RUN**. Deterministic offline fixtures and fake-port tests are not those
+NOT RUN**. Deterministic fake-port tests are not those
 external trials; implemented app controls are not evidence that they passed.
 No isolated consumer VM was supplied. Never use this shared developer host as
 a disposable install test or install into its real app/data locations.

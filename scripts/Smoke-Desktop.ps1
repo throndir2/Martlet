@@ -93,16 +93,6 @@ function Invoke-Control([string]$Id) {
     Write-Verbose "$([DateTime]::UtcNow.ToString('O')) Invoked $Id"
 }
 
-function Select-Fixture([string]$Name) {
-    $choice = Find-Control 'FixtureScenario'
-    $choice.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
-    $condition = [System.Windows.Automation.PropertyCondition]::new(
-        [System.Windows.Automation.AutomationElement]::NameProperty, $Name)
-    $item = $choice.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
-    if ($null -eq $item) { throw 'Requested accessible fixture scenario was not found.' }
-    $item.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
-    $choice.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Collapse()
-}
 function Select-Theme([string]$Name) {
     $choice = Find-Control 'AppearanceTheme'
     if ($null -eq $choice -or -not $choice.Current.IsKeyboardFocusable) { throw 'Appearance selector is not keyboard accessible.' }
@@ -119,23 +109,6 @@ function Select-Theme([string]$Name) {
         Start-Sleep -Milliseconds 50
     }
     throw 'Theme selection did not report successful persistence.'
-}
-function Wait-Fixture([string]$Pattern) {
-    $deadline = [DateTime]::UtcNow.AddSeconds(20)
-    while ([DateTime]::UtcNow -lt $deadline) {
-        if ($script:process.HasExited) { throw 'Desktop exited during fixture.' }
-        $control = Find-Control 'FixtureStatus'
-        if ($null -ne $control) {
-            $value = Read-Value $control
-            if ($value -like $Pattern) {
-                if (-not $control.Current.IsKeyboardFocusable -or $value -notlike '*FIXTURE - NOT AI*' -or
-                    $value.Contains($data) -or $value.Contains('PRIVATE-CANARY')) { throw 'Fixture accessibility/provenance/privacy failed.' }
-                return $value
-            }
-        }
-        Start-Sleep -Milliseconds 50
-    }
-    throw 'Accessible fixture status was not available within 20 seconds.'
 }
 
 function Wait-Setup([string]$Pattern, [string]$StatusId = 'SetupStatus') {
@@ -161,31 +134,6 @@ function Wait-Setup([string]$Pattern, [string]$StatusId = 'SetupStatus') {
     throw "Accessible setup checkpoint was not available within 20 seconds: $Pattern"
 }
 
-function Stop-ActiveFixture {
-    $script:process.Refresh()
-    $handle = $script:process.MainWindowHandle
-    if ($script:process.HasExited -or $handle -eq 0 -or $script:window.Current.ProcessId -ne $script:process.Id) {
-        throw 'The owned fixture window is no longer available.'
-    }
-    $stop = Find-Control 'StopFixture'
-    if ($null -eq $stop -or $stop.Current.Name -ne 'Stop fixture and tone') {
-        throw 'Required accessible fixture Stop action is unavailable.'
-    }
-    $active = Read-Value (Find-Control 'FixtureStatus')
-    if ($active -notlike '*Scenario: slow*Stage: Script*' -or $active -notlike '*fixture.running*' -or -not $stop.Current.IsEnabled) {
-        throw 'The selected fixture is not currently active and cancelable; no Stop input was sent.'
-    }
-    [uint32]$owner = 0
-    if ([MartletDesktopSmokeKeys]::GetWindowThreadProcessId($handle, [ref]$owner) -eq 0 -or $owner -ne $script:process.Id) {
-        throw 'The fixture HWND no longer belongs to the launched process; no input was sent.'
-    }
-    # UIA Invoke can spend two seconds in its RPC before reaching this two-second scenario.
-    # Post the existing Alt+F access key only to this verified HWND, never global SendInput.
-    # WPF's ordinary access-key/enablement path executes Stop; the canceled result is required below.
-    if (-not [MartletDesktopSmokeKeys]::PostMessage($handle, 0x0106, [UIntPtr]0x66, [IntPtr]0x20000001)) {
-        throw 'The targeted fixture Stop access-key message could not be queued.'
-    }
-}
 
 try {
     Start-Desktop
@@ -220,40 +168,6 @@ try {
         }
         $pipeline.SetFocus()
         if (-not $pipeline.Current.HasKeyboardFocus) { throw 'Pipeline did not accept keyboard focus.' }
-        Invoke-Control 'StartFixture'
-        $complete = Wait-Fixture '*fixture.completed*'
-        if ($complete -notlike '*Synthetic text: A synthetic fixture response.*' -or $complete -notlike '*Audio OFF / not run*') {
-            throw 'The desktop demo did not render actual fixture text with audio off.'
-        }
-        if ((Read-Value $pipeline) -notlike '*LLM:*NotRun*' -or (Test-Path -LiteralPath $data)) {
-            throw 'Fixture success modified real readiness or persisted a profile.'
-        }
-        Select-Fixture 'refused-after-partial'
-        Invoke-Control 'StartFixture'
-        $refused = Wait-Fixture '*fixture.refused*'
-        if ($refused -notlike '*partial; not a completed answer*' -or $refused -notlike '*Separate scripted refusal (never read aloud)*') {
-            throw 'Refusal was not kept separate from partial synthetic text.'
-        }
-        Select-Fixture 'slow'
-        Invoke-Control 'StartFixture'
-        $running = Wait-Fixture '*Scenario: slow*Stage: Script*'
-        Stop-ActiveFixture
-        $stopped = Wait-Fixture '*Scenario: slow*Stage: Finished*fixture.stopped*'
-        if ($stopped -notlike '*Scenario: slow*Stage: Finished*' -or $stopped -notlike '*outcome: Canceled*' -or
-            $stopped -notlike '*queued text: 0*' -or $stopped -notmatch '(?m)^Synthetic text: \r?$') {
-            throw 'Stop did not finish with an explicit canceled outcome and empty text/queue.'
-        }
-        Select-Fixture 'streaming'
-        Invoke-Control 'StartFixture'
-        $streaming = Wait-Fixture '*fixture.completed*'
-        if ($streaming -notlike '*Synthetic text: Synthetic text.*' -or $streaming -like '*Partial fixture.*') {
-            throw 'New fixture did not replace retired output in order.'
-        }
-        $oldIds = [regex]::Match($stopped, '(?m)^Session:.*').Value
-        $newIds = [regex]::Match($streaming, '(?m)^Session:.*').Value
-        if (-not $oldIds -or -not $newIds -or $oldIds -ceq $newIds) {
-            throw 'New fixture did not use fresh IDs after Stop; retired output cannot be accepted.'
-        }
         $stop = Find-Control 'StopDiagnostics'
         if ($null -eq $stop -or $stop.Current.IsEnabled -or $stop.Current.Name -ne 'Stop diagnostics') {
             throw 'Stop must be exposed and disabled while idle.'
@@ -328,7 +242,7 @@ try {
     Invoke-Control 'OpenSetup'
     $null = Wait-Setup '*Checkpoint: Choice*'
     Invoke-Control 'SetupSaveExit'
-    $null = Wait-Status '*Profile: Fixture;*Setup checkpoint: Choice*'
+    $null = Wait-Status '*Profile: Api;*Setup checkpoint: Choice*'
     $setupSnapshots = @(Get-ChildItem -LiteralPath $data -Filter 'settings.v1.*.bak' -File | Select-Object -ExpandProperty FullName)
     if ($setupSnapshots.Count -ne 1 -or
         [Convert]::ToHexString([IO.File]::ReadAllBytes($setupSnapshots[0])) -cne [Convert]::ToHexString($legacyBytes)) {
@@ -336,7 +250,6 @@ try {
     }
     Invoke-Control 'OpenSetup'
     $null = Wait-Setup '*Checkpoint: Choice*'
-    (Find-Control 'SetupApi').GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern).Select()
     Invoke-Control 'SetupNext'
     $null = Wait-Setup '*Checkpoint: Destinations*'
     (Find-Control 'SetupModel').GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).SetValue('gpt-4o-mini-transcribe')
@@ -442,8 +355,6 @@ try {
         if ($value -notlike '*exit 3*' -or $value -notlike '*settings.restore*' -or (Find-Control 'CreateProfile').Current.IsEnabled) {
             throw 'Invalid settings did not show an actionable, non-destructive failure.'
         }
-        Invoke-Control 'StartFixture'
-        $null = Wait-Fixture '*fixture.completed*'
         Close-Desktop
         if ([Convert]::ToHexString([System.IO.File]::ReadAllBytes($settings)) -cne [Convert]::ToHexString($bytes)) {
             throw 'Desktop changed invalid settings bytes.'
@@ -458,12 +369,6 @@ try {
     }
     Close-Desktop
     [System.IO.Directory]::Delete($settings)
-    Start-Desktop
-    $null = Wait-Status '*First run:*'
-    Select-Fixture 'slow'
-    Invoke-Control 'StartFixture'
-    $null = Wait-Fixture '*Scenario: slow*Stage: Script*'
-    Close-Desktop
     Start-Desktop
     $null = Wait-Status '*First run:*'
     Select-Theme 'Rose dark'
@@ -495,7 +400,7 @@ try {
         throw 'Invalid launch arguments must leave a read-only, actionable startup error.'
     }
     Close-Desktop
-    Write-Output 'PASS: passive Troubleshooting from main/setup, recording and export OFF; actual offline fixtures/refusal/Stop, audio OFF; accessible no-key setup/migration/save/resume/Back/model consent invalidation; profile/remedies/preservation; pink/dark selection and restart persistence without profile creation; bounded close. No OS credential actions or network.'
+    Write-Output 'PASS: passive Troubleshooting from main/setup, recording and export OFF; accessible no-key setup/migration/save/resume/Back/model consent invalidation; profile/remedies/preservation; pink/dark selection and restart persistence without profile creation; bounded close. No OS credential actions or network.'
 }
 finally {
     if ($null -ne $process) {

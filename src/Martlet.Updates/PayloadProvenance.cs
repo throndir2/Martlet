@@ -33,7 +33,7 @@ internal static class PayloadProvenance
         PayloadBrowser.Facts Browser);
     private static readonly string[] Projects =
     [
-        "Martlet.Desktop", "Martlet.Doctor", "Martlet.Core", "Martlet.Diagnostics", "Martlet.Fixtures", "Martlet.Sessions",
+        "Martlet.Desktop", "Martlet.Doctor", "Martlet.Core", "Martlet.Diagnostics",
         "Martlet.Audio", "Martlet.Credentials.Windows", "Martlet.Conversation", "Martlet.Providers", "Martlet.Participation",
         "Martlet.Support", "Martlet.Memory", "Martlet.Avatars", "Martlet.Avatar.Hosting", "Martlet.Avatar.Audio2Face", "Martlet.Avatar.RendererHost"
     ];

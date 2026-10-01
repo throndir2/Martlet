@@ -10,12 +10,12 @@ No CLI export or support upload/contact channel is implemented.
 V04b adds a separate [real conversation timeline](CONVERSATION.md) in Desktop,
 fed by actual capture/STT/policy/runtime/playback state and sanitized credential/
 configuration failures. It does not turn ordinary Doctor probes into live
-requests. `status`, `run` and `self-test` retain their existing no-network,
-no-key and fixture semantics; catalog/configuration state is never a live pass.
+requests. `status` and `run` retain their existing no-network, no-key semantics;
+catalog/configuration state is never a live pass.
 The executable smoke now also requires unconfigured live Send/PTT disabled
 and all live permission/output choices OFF.
 
-This records the **AC-04 local registry and F03c fixture integration**, not M1
+This records the **AC-04 local registry integration**, not M1
 release qualification or G1 completion. It extends the foundation's entry points without
 changing Core contracts, settings serialization, original file bytes or the
 provider/PCM schema. The existing foundation document describes the earlier
@@ -54,8 +54,7 @@ the existing per-user location. Tests/smokes always specify unique temporary
 directories. IDs and flags are exact and case-sensitive; repeated IDs/flags,
 unknown IDs, empty `run`, extra arguments, relative/invalid directories and
 unimplemented commands return one sanitized invocation-error report.
-The separate explicit `self-test` command is described below. There is no
-`--profile`, repair, export or generic shell action.
+There is no `self-test`, `--profile`, repair, export or generic shell action.
 
 `status` reports all twelve registered checks. Only settings, application and
 runtime callbacks execute. `run` restricts the report and execution to the
@@ -75,8 +74,8 @@ exception. Help/version retain normal success and do not load settings.
 | 3 | Invalid invocation, or selected settings inspection found invalid/newer/inaccessible configuration; takes precedence over failures |
 
 An optional failed or incomplete **selected** check also prevents green, as in
-the foundation. Fixture success describes only the explicitly injected fixture
-check, never live readiness.
+the foundation. Fixture success describes only explicitly injected test
+fixtures, never live readiness.
 
 ## Production registry
 
@@ -187,9 +186,10 @@ Settings-save guides also retain `settings.reload` and `settings.correct`.
 Restoration means first keeping a backup and choosing compatible data/builds;
 access guidance explicitly says not to run as administrator or disable protection.
 Device guides describe intended input/output and Windows privacy/volume controls
-without opening or changing them. Provider/host guides state the missing capability,
-future consent boundary and that nothing was contacted. `fixture.passed` remains an injection/conformance seam; the installed session
-uses separate `fixture.*` findings below, never automatic registry execution.
+without opening or changing them. Provider/host guides state the missing
+capability, future consent boundary and that nothing was contacted.
+`fixture.passed` remains an injection/conformance seam, never automatic registry
+execution.
 
 ## Desktop and evidence limits
 
@@ -242,118 +242,3 @@ For an intentionally relocated build, pass its actual binary explicitly:
 .\scripts\Smoke-Doctor.ps1 -ExecutablePath (Join-Path $artifacts 'bin\Martlet.Doctor\release\Martlet.Doctor.exe')
 .\scripts\Smoke-Desktop.ps1 -ExecutablePath (Join-Path $artifacts 'bin\Martlet.Desktop\release\Martlet.Desktop.exe')
 ```
-
-## Offline fixture experience (F03c)
-
-Desktop **Try fixture (audio OFF)** and Doctor
-`self-test [--scenario NAME] [--json] [--data-directory ABSOLUTE_PATH]` execute
-the same portable `Martlet.Sessions.FixtureSession`. This is a usable internal
-demo, not live transcription, AI inference or configured provider readiness.
-The ten choices are `complete`, `streaming`, `refused`, `refused-after-partial`,
-`no-speech`, `not-addressed`, `canceled`, `truncated`, `slow`, and `failed`.
-Omitting the choice means `complete`. The CLI accelerates script time; WPF
-paces ordinary steps at 200 ms and the slow fixture at 2 seconds. Its actual
-15-second simulated first-event deadline is enforced by the production
-validator, not fabricated by the UI. These are not latency measurements.
-
-`self-test` reads no profile and writes nothing, even when existing settings
-are malformed. A supplied data location is still validated syntactically.
-Missing/unconfigured/corrupt profiles do not block the desktop demo, and no
-launch/run persists consent. No input field pretends scripted text came from
-a user microphone or provider. There is no simulated live waveform.
-
-### Shared production seam and bounds
-
-`FixtureSession(PcmPlaybackSink?, TimeProvider?, pacing)` owns one active run.
-`RunAsync(name, approvedToneOutput?, token)`, `StopAsync`, `Snapshot`, `IsRunning`
-and `DisposeAsync` are the integration seam, not a real-provider API.
-Concurrent starts are rejected; Stop clears presentation/validator buffers,
-invalidates PCM admission, requests bounded sink cleanup and waits for that
-run. Explicit new runs use fresh turn/request IDs in the session and increasing
-epochs. A new run never consumes old callbacks or PCM, never retries a remote
-request, and never automatically replays partial output. Failed native cleanup
-quarantines the same sink; text-only retries remain usable.
-Stop captures the exact playback run under the session gate before awaiting
-cleanup. A delayed old Stop cannot select a newer run from the shared sink.
-Coordinated production-session/backend regressions cover that interleaving and
-overlapping Stop/dispose/start without holding a monitor across an await.
-
-The shared `FixtureCursor` extracted from `FixtureRunner` advances existing
-catalog scripts through `ProviderSequenceValidator.AcceptJson`, `Poll`, actual
-queue drains, `Stop`, `EndOfInput` and original transition semantics. There is
-no parallel event parser or validator. The original 30-scenario runner and
-its golden/permutation tests continue using this cursor. Session scenarios are
-an allowlisted novice subset, at most 4,096 displayed characters and the
-existing 256 KiB contract-document cap. Trace retention inherits the existing
-129-observation bound. Text timing/cancellation and sink device/time boundaries
-are injected; there are no devices, tasks or networking inside the cursor.
-
-`DiagnosticStatusModel.FixtureReport` / `.FixtureText` are separate from the
-unchanged real-mode `Report`. `ObserveFixture` uses `FixtureDiagnostics.Report`;
-Doctor uses the same mapper and `ReportFormatter.Human`. Fixture evidence ages
-after one minute using the existing status clock and cannot refresh itself
-into a current pass. Registry callbacks cannot label any `fixture.*` finding
-as live. The read-only executor's permission/effect guard is unchanged.
-
-### JSON, exits and remedies
-
-The existing version-1 `DoctorReport` adds optional `fixture` **only** for
-explicit self-tests; ordinary status/list/run output retains its previous
-shape and semantics. `fixture` includes scenario, `FIXTURE - NOT AI` label,
-fixture provenance, current stage, real validator sequence/correlation/epoch,
-synthetic text, separate refusal text, partial/stopped flags, the original
-metadata-only fixture trace and optional real sink accounting/error.
-Only this explicitly requested demo report contains authored text.
-No real settings/credential/provider text or endpoint IDs are copied into it.
-
-| Code | Exit | Meaning / guide |
-| --- | --- | --- |
-| `fixture.completed` | 0 | Requested fixture completed; any requested tone separately finished. `fixture.explain`; not global readiness. |
-| `fixture.running`, `fixture.playback` | 2 | Current in-process stage, not completed evidence. |
-| `fixture.refused` | 2 | Separate refusal; prior delivered text is partial, never an answer/read-aloud request. |
-| `fixture.no_speech`, `fixture.not_addressed` | 2 | Reasoned synthetic silence, not device failure. `fixture.explain`. |
-| `fixture.stopped` | 2 | Canceled/stopped, pending content discarded. `fixture.retry` requires an explicit new action. |
-| `fixture.failed`, `fixture.deadline` | 1 | Scripted failure/truncation/deadline. Original normalized Core error and precise sequence issue retained; `fixture.retry`. |
-| `fixture.audio_failed` | 1 | Real sink error retained with its original normalized code; `fixture.audio` explains output and release/retry boundaries. |
-| `fixture.audio_incomplete` | 2 | Text ended, but requested playback did not complete; never green. |
-
-Invalid arguments return the existing sanitized invocation report/exit 3;
-unknown strings and raw exception bodies are not echoed. `ready` still means
-**only the listed requested checks** passed. A self-test pass never means
-provider, installation, capture, GPU or audibility readiness.
-
-### Explicit synthetic tone, not speech
-
-Desktop's separate **Completed fixture + confirm 200 ms tone** button asks for
-permission each time (default No), then runs `complete` and the tone. Windows
-Doctor's `self-test --play-tone` is the explicit per-action equivalent; it is
-never appended by the application, diagnostics or smoke scripts. The portable
-Doctor target rejects that flag rather than substituting a fake output.
-Both hosts construct `WasapiDeviceFactory` / `PcmPlaybackSink` without device
-access. Only an ordinary completed current fixture plus this action can call
-`sink.Start`. Refused, no-speech, canceled, partial and failed text cannot.
-
-The locally generated `SyntheticTone` (also used by `SpeakerSmoke`) is 200 ms,
-faded 440 Hz, 24 kHz mono PCM16, about 2% full-scale amplitude: two owned Core
-100 ms frames starting sequence/offset zero, exactly 4,800 samples/channel.
-No people, voices or recordings are used. It is NOT TTS or an AI reply.
-Default-at-start binds once; loss never switches to room speakers.
-The attempt deadline is 5 seconds plus the existing bounded cleanup policy.
-Submitted/device-consumed/drain/released fields are actual sink observations,
-not audible samples; `audible_samples` remains absent/null (unknown).
-Headless tests execute the same sink using controlled backends and remain
-fixture/backend evidence, not listening evidence.
-
-Local executable smokes use isolated explicit data directories and audio OFF.
-Doctor exercises all ten choices, exact exits, invalid selections and unchanged
-corrupt settings. WPF automation invokes real controls for complete, streaming,
-partial refusal, Stop/new run, invalid-profile demo, and close while active,
-preserving the queued reentrant-close fix. Deterministic session tests add
-script-boundary interruption, output byte identity, device loss after submission,
-external stop, capacity overflow, cleanup quarantine and fresh text retry.
-
-**Not run / not qualified:** clean consumer OS, denied-egress sandbox, actual
-screen-reader/novice usability trial, mic/speaker/audibility, real provider or GPU,
-physical fixture-to-device listening, installer lifecycle, signing/distribution.
-Do not claim AC-04 as fully integrated, M1/G1, or live full-path success.
-Logs/support bundles/retention/export remain V06, not an implicit feature.

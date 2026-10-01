@@ -115,4 +115,4 @@ finally {
     elseif ((Get-RealSettingsSnapshot) -cne $before) { throw 'Real user settings changed during smoke. Stop and investigate; no automatic restore attempted.' }
 }
 $preservation = if ($protectedOverride) { 'selected protected scope unchanged; ordinary profile not inspected' } else { 'real user settings unchanged' }
-Write-Output "PASS: published Doctor offline fixtures/version/help/JSON/data preservation; Desktop fixture smoke=$InteractiveDesktop; audio OFF; isolated data paths; $preservation."
+Write-Output "PASS: published Doctor version/help/JSON/data preservation; Desktop smoke=$InteractiveDesktop; audio OFF; isolated data paths; $preservation."

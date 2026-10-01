@@ -152,7 +152,6 @@ public partial class MainWindow
     private string? BusyReason() =>
         avatar.IsShowing ? "The character"
         : conversation?.IsRunning == true ? "The conversation"
-        : runningFixture ? "The offline demo"
         : null;
 
     private bool IsIdleForUpdate() =>

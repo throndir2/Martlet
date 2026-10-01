@@ -92,7 +92,7 @@ internal sealed class SupportController
     private bool recording, retire, cleanupPending;
     private long dropped, omitted;
     private long revision;
-    private DoctorReport? report, fixtureReport;
+    private DoctorReport? report;
     private string message = "Recording OFF. No journal opened; no support files read.";
     private string liveStatus = "Conversation: NOT RUN / no app observation. No provider or device readiness implied.";
     private string lastExport = "";
@@ -119,7 +119,6 @@ internal sealed class SupportController
     }
     internal SupportPreview? Preview { get { lock (gate) return preview; } }
     internal DoctorReport? Report { get { lock (gate) return report; } }
-    internal DoctorReport? FixtureReport { get { lock (gate) return fixtureReport; } }
     internal string Status { get { lock (gate) return $"{message}\nRecording: {(recording ? "ON (local metadata only)" : "OFF")}; " +
         $"worker: {(active is null ? "idle" : "IO/cancellation still owned")}; cleanup pending: {cleanupPending}.\n" +
         $"Dropped (busy/transition bound): {Dropped}; omitted (unsupported metadata): {Omitted}. No raw fallback or automatic retry.\n{lastExport}"; } }
@@ -130,14 +129,13 @@ internal sealed class SupportController
         this.backend = backend ?? new();
     }
 
-    internal void ObserveReport(DoctorReport value, bool fixture = false, bool record = false)
+    internal void ObserveReport(DoctorReport value, bool record = false)
     {
-        // Never retain the fixture's scripted text, refusal or trace in the support owner.
-        var metadata = value with { Fixture = null, Probes = value.Probes.ToArray() };
+        var metadata = value with { Probes = value.Probes.ToArray() };
         lock (gate)
         {
-            if ((fixture ? fixtureReport : report)?.CreatedAt != metadata.CreatedAt) Interlocked.Increment(ref revision);
-            if (fixture) fixtureReport = metadata; else report = metadata;
+            if (report?.CreatedAt != metadata.CreatedAt) Interlocked.Increment(ref revision);
+            report = metadata;
         }
         if (!record || !Recording) return;
         var events = new List<DiagnosticEvent>();
@@ -202,10 +200,10 @@ internal sealed class SupportController
         });
     }
 
-    internal SupportWork? Freeze(bool fixture, bool includeLogs, LogRange range)
+    internal SupportWork? Freeze(bool includeLogs, LogRange range)
     {
         DoctorReport? selected, settings;
-        lock (gate) { selected = fixture ? fixtureReport : report; settings = report; }
+        lock (gate) { selected = settings = report; }
         return Begin(token =>
         {
             if (selected is null || settings?.SettingsState is not { } state)
@@ -224,7 +222,7 @@ internal sealed class SupportController
                 finally { CryptographicOperations.ZeroMemory(bytes); }
             }
             lock (gate) preview = new(frozen.Id, frozen.Digest, frozen.FrozenAtUtc, frozen.SelectedRange, frozen.Files,
-                contents.AsReadOnly(), (fixture ? "Last shared FIXTURE report (NOT inference)" : "Shared local Doctor report") +
+                contents.AsReadOnly(), "Shared local Doctor report" +
                 (includeLogs ? "; selected journal receipt range (mixed provenance retained)" : "; NO log records selected/collected for this snapshot"));
             return new("Exact snapshot frozen. Review ALL five files. No export or approval has occurred.");
         });

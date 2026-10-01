@@ -2,15 +2,15 @@
 
 This portable `net10.0` library joins the **production** Responses LLM adapter,
 Core temporal validator, incremental speech segmenter, raw-PCM TTS adapter and
-`PcmPlaybackSink`. It is not the app's labeled offline fixture experience, a
-provider readiness probe, an audio decoder or an alternate provider parser.
+`PcmPlaybackSink`. It is not a provider readiness probe, an audio decoder or an
+alternate provider parser.
 It references Core, Providers and Audio; no packages are added to production.
 
 **V04b now wires this runtime into the explicit Desktop API surface and its
 publish graph.** See [app composition and gates](../../docs/CONVERSATION.md).
-Doctor remains fixture/read-only, not a live command. The app connects
-explicit typed/PTT action policy, microphone/STT and the OS-vault bridge. Learned
-VAD is V01b. V04/G2 real mic-to-voice acceptance has not passed.
+Doctor remains read-only, not a live command. The app connects explicit
+typed/PTT action policy, microphone/STT and the OS-vault bridge. Learned VAD is
+V01b. V04/G2 real mic-to-voice acceptance has not passed.
 
 ## Composition and public boundary
 

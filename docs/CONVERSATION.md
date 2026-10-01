@@ -1,12 +1,10 @@
 # Explicit Desktop API conversation (V04b)
 
 **Internal functional integration, not account/device/release qualification.**
-Open **real API conversation** from Desktop. This is separate from **Try fixture
-(audio OFF)**, which still works without settings, credentials, microphone,
-network or GPU. Opening either conversation or setup never resolves a key,
-enumerates devices, records, plays, discovers a model or makes an API request.
-Ordinary Doctor/status remains read-only; `self-test` is still a fixture command,
-not a live connection test.
+Open **real API conversation** from Desktop. Opening conversation or setup never
+resolves a key, enumerates devices, records, plays, discovers a model or makes
+an API request. Ordinary Doctor/status remains read-only and is not a live
+connection test.
 
 An optional **Avatar setup / STOP avatar** entry is available within the live
 window and from the main window. Its [feature guide](../src/Martlet.Avatar.Hosting/README.md)
@@ -272,8 +270,8 @@ STT serializer/parser, participation policy, runtime LLM/TTS parsers and real
 PCM sink with controlled devices. There are no real accounts, vault entries,
 recordings, physical endpoints or billable requests in these tests. Native
 Desktop smoke opens the live surface without a profile/key, requires Send/PTT
-disabled and voice/permission OFF, then exercises existing no-key setup and
-offline fixture behavior. Package smoke launches actual self-contained
+disabled and voice/permission OFF, then exercises existing no-key setup.
+Package smoke launches actual self-contained
 Desktop/Doctor apphosts; it does not run the installer.
 
 In-process WPF regression cases exercise fixed Stop bounds and hit testing at
