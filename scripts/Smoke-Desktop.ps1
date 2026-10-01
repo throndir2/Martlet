@@ -176,8 +176,20 @@ try {
         $refreshed = Wait-Status '*First run:*' $first
         if ($refreshed -notlike '*settings.first_run*') { throw 'Refresh did not use the shared diagnostic catalog.' }
         Invoke-Control 'OpenAudioSetup'
+        # Exact local evidence sits under the window's Details expander.
+        $details = $null
+        $deadline = [DateTime]::UtcNow.AddSeconds(20)
+        while ($null -eq $details -and [DateTime]::UtcNow -lt $deadline) {
+            $script:process.Refresh()
+            $script:window = [Windows.Automation.AutomationElement]::FromHandle($script:process.MainWindowHandle)
+            $details = Find-Control 'AudioDetails'
+            if ($null -eq $details) { Start-Sleep -Milliseconds 100 }
+        }
+        if ($null -eq $details) { throw 'Audio setup details are not accessible.' }
+        $details.GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
         $audio = Wait-Setup '*never tested*UNVERIFIED*' 'AudioStatus'
-        if ($audio -notlike '*No provider*' -or (Find-Control 'AudioHeard').Current.IsEnabled) {
+        $heard = Find-Control 'AudioHeard'
+        if ($audio -notlike '*No provider*' -or ($null -ne $heard -and $heard.Current.IsEnabled)) {
             throw 'Unrun audio setup must remain local, unverified and not confirmable.'
         }
         if (Test-Path -LiteralPath $data) { throw 'Opening audio setup wrote settings before explicit save.' }

@@ -93,7 +93,10 @@ Below the hero, **Now** has one line per job: *Thinking*, *Voice*,
 needs attention or not working, grey not set up), what Martlet uses now in one
 sentence, and one button (*Set up*, *Review* or *Change*) that opens that
 job's Companion tab. Only Thinking is required; while it is missing its line
-is highlighted and its button is primary.
+is highlighted and its button is primary. The Listening line also says
+*Microphone not set up yet* (amber, with *Set up mic* once listening itself is
+ready) until a microphone test passes, and the Listening tab's **Now** card
+says the same.
 
 When a chosen job stops working (its host isn't answering, its role was
 removed, its key was deleted, or Setup saved a route this version can't use),
@@ -318,6 +321,16 @@ The conversation window puts the chat first:
   that job, for every route type and stored or detached keys. Microphone and
   speakers, the Voice Library, character customization, personality and
   memory facts still open their own windows from their tabs.
+
+  **Microphone and speakers** is one short page with two cards. Each card has
+  the device picker (Windows default first; *Find devices* lists the rest), one
+  test button and a state chip with one plain sentence: *Not set up*,
+  *Testing*, *Working*, *Needs attention* (with the fix, such as "Too quiet.
+  Check that the microphone isn't muted...") or *Did you hear it?* (with *Yes,
+  I heard it*). The microphone test is the primary button until it passes,
+  then *Done*. Picking and finished tests save on their own; there is no Save
+  button. Each test still asks first, and the exact evidence and
+  *Troubleshooting* sit under *Details*.
 - **Settings**: palette, this PC's role and the tour, app updates (automatic
   checks and their interval, automatic installs, keeping hosts on this PC's
   version, *Check for updates now*, *Install*, *Update hosts now*), tools

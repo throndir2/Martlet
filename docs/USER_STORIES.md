@@ -711,9 +711,8 @@ updates *Where it runs* automatically (and offers to install it).
 - **Flow**: pick from the drop-down (applies immediately); **Play test
   sound**.
 - **Clicks**: 2.
-- **Today**: Audio setup window: *Find devices*, select, *Test output
-  (confirm tone)*, *I heard it on this output*, *Save audio choices and
-  historical checkpoints*.
+- **Today**: Microphone and speakers window: optional *Find devices*, pick
+  (saves at once), *Play test sound* (confirm the beep), *Yes, I heard it*.
 
 #### D6. Turn speaking on or off
 
@@ -1235,7 +1234,7 @@ moves to it. Jobs already running well locally stay local.
 | Microphone | Audio setup | Default: *Windows default (Headset Mic)*, following Windows when it changes. |
 | Speakers | Audio setup | Default: *Windows default*, following Windows. |
 | Microphone and output tests (gate "qualified") | Audio setup | Optional *Test* buttons; never a gate. |
-| *Save audio choices and historical checkpoints* | Audio setup | Removed; picking applies. |
+| *Save audio choices and historical checkpoints* | Audio setup | Removed (done): picking and finished tests save automatically. |
 | Character | Avatar window | Hiyori (already the default). |
 | *Save choices*, *Activate reviewed avatar* | Avatar window | Removed; picking applies. |
 | GPU inspection permission, mapping, reduced-fidelity acceptance, analysis permission | Avatar window › Advanced | Automatic: mapping from `Audio2FaceAutoMapping`, permission covered by the terms sheet. Manual mapping under *Advanced*. |
@@ -1316,7 +1315,7 @@ Each flow below asks for a step Martlet could do itself.
 | 3 | Voice › F5 | Done in #145: the bundled sample voice is used without a picker; *Choose another voice* opens the picker | Keep; move the picker inline into the Voice list (D2, D3) | `F5VoiceDialog.cs`, `HostSpeech.cs` |
 | 4 | Cloud card | Consent checkbox, key per job, *Save* | Paste key = switch; key reused across jobs (C4) | `MainWindow.SetupPages.cs:540-580` |
 | 5 | Legacy Setup window | Demo preselected; *Apply this job's choice*, credentials tab, *Save checkpoint*, *Save and exit setup* | Removed | `SetupWindow.xaml` |
-| 6 | Audio setup | No device until chosen; tests gate readiness; *Save audio choices* | Windows default devices, no gate | `AudioSetupWindow.xaml(.cs)` |
+| 6 | Audio setup | Per-test confirmation; the microphone test gates *Working* (Save removed: picking applies) | Windows default devices, no gate | `AudioSetupWindow.xaml(.cs)` |
 | 7 | Conversation | Voice output off each time; 1–3 consent ticks per message; *Finish and send* | Voice on; standing permissions; release sends | `LiveConversationWindow.xaml:105-237` |
 | 8 | Character | *Save choices*, *Activate reviewed avatar*, inspection and analysis permissions, manual mapping | Picking applies; automatic mapping | `AvatarWindow.xaml(.cs)`, `Audio2FaceAutoMapping.cs` |
 | 9 | Host role install | Role dialog with GPU/CPU choice and options on other computers; on this PC whisper's choice is made on the Listening tab and the install asks nothing | *Automatic* preselected; dialog only for the NGC key | `HostDialogs.cs:125-148` |
