@@ -179,7 +179,7 @@ public partial class HostsWindow : ThemedWindow
             HostSetupCommands.Launch(Target(), action);
             StatusText.Text = action.Verb switch
             {
-                HostVerb.Setup => "Setup opened in a console window. Answer its questions there; afterwards pair this PC.",
+                HostVerb.Setup => "Setup is running in a console window; nothing to type. When it says Host ready, pair this PC.",
                 HostVerb.Pair => "The host console opened. Follow its instructions, then paste the pairing code here and press Pair with host.",
                 HostVerb.Update => "The update opened in a console window. It rebuilds the host's gateway from this Martlet version; pairings and roles stay.",
                 _ => "Opened in a console window."

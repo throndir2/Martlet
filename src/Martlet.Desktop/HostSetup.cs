@@ -151,7 +151,8 @@ internal static partial class HostSetupCommands
         lines.Append("echo Docker Desktop is not running yet. When it shows it is running, press the same button again. & goto :eof\r\n");
         lines.Append(":ready\r\n");
         lines.Append($"docker image inspect {image} >NUL 2>&1 || {build}v{target.Version} || {build}main\r\n");
-        lines.Append($"docker run --rm -it -u 0 -v {DockerSocket}{Environment(target, action == HostAction.Setup)} {image} {Engine(action)}\r\n");
+        // The owner's click in Martlet is the confirmation (--yes), as for SSH hosts; the console only asks for secrets and choices.
+        lines.Append($"docker run --rm -it -u 0 -v {DockerSocket}{Environment(target, action == HostAction.Setup)} {image} --yes {Engine(action)}\r\n");
         lines.Append("echo.\r\necho Finished. You can close this window.\r\n");
         return lines.ToString();
     }

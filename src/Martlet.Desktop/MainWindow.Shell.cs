@@ -575,7 +575,7 @@ public partial class MainWindow
             HostSetupCommands.Launch(ThisPcTarget(), action);
             ActionText.Text = action.Verb switch
             {
-                HostVerb.Setup => "Host setup opened in a console window. Answer its questions there, then check the host service.",
+                HostVerb.Setup => "Host setup is running in a console window; nothing to type. When it says Host ready, check the host service.",
                 HostVerb.Pair => "The pairing console opened. Type start, then pair with your main PC's device ID and role voice; it shows a one-use code.",
                 HostVerb.Status => "Host status opened in a console window.",
                 HostVerb.Update => $"Host service update opened in a console window. It rebuilds from Martlet {Version} and restarts the gateway; pairings and roles stay.",
