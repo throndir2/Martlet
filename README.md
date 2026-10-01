@@ -46,8 +46,9 @@ Later milestones cover Ubuntu self-hosting, two-host GPU deployments, opt-in
 screen understanding and memory. [Live2D and VRM avatar development](docs/AVATARS.md)
 is authorized in parallel now, with Audio2Face first/preferred and avatars OFF
 by default. The internal Desktop route renders either model in a transparent,
-always-on-top character overlay: drag the character or its **Move character**
-handle to reposition it while she talks. Explicit model inspection and
+always-on-top character overlay with no buttons of its own: drag the character
+to reposition it while she talks, and use **Hide character** or **Reset
+character position** in the main window. Explicit model inspection and
 generated-speech activation still require the local prerequisites in the
 [Desktop avatar guide](src/Martlet.Avatar.Hosting/README.md). This is not a
 qualified end-user avatar release; voice reliability and model/device

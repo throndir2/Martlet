@@ -433,8 +433,26 @@ public partial class MainWindow : ThemedWindow
             }
         }
     }
-    private void UpdateCharacterButton() =>
+    private void UpdateCharacterButton()
+    {
         CharacterButton.Content = avatar.IsShowing ? "Hide _character" : "Show _character";
+        ResetCharacterButton.Visibility = avatar.IsShowing ? Visibility.Visible : Visibility.Collapsed;
+    }
+    private async void ResetCharacter_Click(object sender, RoutedEventArgs e) => await ResetCharacterPositionAsync();
+    private async Task ResetCharacterPositionAsync()
+    {
+        try
+        {
+            await avatar.ResetPositionAsync(lifetime.Token);
+            ActionText.Text = "Character moved back to the lower-right of your main screen.";
+        }
+        catch (Exception error) when (error is System.IO.IOException or InvalidOperationException or TimeoutException or
+            OperationCanceledException or ObjectDisposedException)
+        {
+            if (!closing) ActionText.Text = $"Character position could not be reset: {error.Message}";
+        }
+        finally { UpdateCharacterButton(); }
+    }
     /// <summary>Shows the saved character, or the bundled default when none is configured.</summary>
     private async Task ShowSavedCharacterAsync(bool onlyIfAutoShow)
     {
