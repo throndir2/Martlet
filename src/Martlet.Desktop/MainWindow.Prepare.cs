@@ -12,7 +12,7 @@ public partial class MainWindow
         var window = new PrepareHostWindow(host, host is null ? null : Pairings(), start) { Owner = this };
         window.Closed += (_, _) =>
         {
-            if (!closing) _ = RefreshHomeAsync();
+            if (!closing) RefreshHomeAsync().Forget();
         };
         window.Show();
     }

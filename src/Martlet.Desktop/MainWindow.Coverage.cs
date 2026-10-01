@@ -178,9 +178,9 @@ public partial class MainWindow
     {
         switch (fix)
         {
-            case CoverageFix.UseFallback when job.Job == ClusterJobs.LipSync: _ = AssignLipSyncAsync("this-pc"); break;
-            case CoverageFix.UseFallback when HostJob.All.FirstOrDefault(j => j.Job == job.Job) is { } hostJob: _ = AssignJobAsync(hostJob, "saved"); break;
-            case CoverageFix.CheckHost when FindHost(job.HostId) is { } host: _ = CheckHostsAsync([host]); break;
+            case CoverageFix.UseFallback when job.Job == ClusterJobs.LipSync: AssignLipSyncAsync("this-pc").Forget(); break;
+            case CoverageFix.UseFallback when HostJob.All.FirstOrDefault(j => j.Job == job.Job) is { } hostJob: AssignJobAsync(hostJob, "saved").Forget(); break;
+            case CoverageFix.CheckHost when FindHost(job.HostId) is { } host: CheckHostsAsync([host]).Forget(); break;
             case CoverageFix.OpenSetup: RunNodeAction(NodeAction.Setup); break;
             case CoverageFix.OpenDevices: Navigate(NavDevices); break;
         }

@@ -545,7 +545,7 @@ public partial class MainWindow
             new("service", "Host service",
                 hostServiceReachable == true ? "Set up and reachable on your network."
                     : "Sets up the gateway once. Windows asks once to allow TCP 9443 from your private network.",
-                hostServiceReachable == true, false, [new("Set up host service", () => _ = SetUpHostServiceAsync(), true)]),
+                hostServiceReachable == true, false, [new("Set up host service", () => SetUpHostServiceAsync().Forget(), true)]),
             new("pair", "Pair your main PC",
                 "Open the pairing console here; it shows a one-use code. On your main PC, go to Devices > Add a computer > Pair and paste it.",
                 false, false, [new("Open pairing console", () => LaunchHost(HostAction.Pair), true)]),
@@ -671,8 +671,8 @@ public partial class MainWindow
 
     private void RefreshDevices_Click(object sender, RoutedEventArgs e)
     {
-        _ = ReadMachineAsync();
-        _ = RefreshHomeAsync();
+        ReadMachineAsync().Forget();
+        RefreshHomeAsync().Forget();
     }
 
     private void MapHost_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -1084,7 +1084,7 @@ public partial class MainWindow
         Option("off", "Nobody (mouth follows voice loudness)");
         choice.SelectionChanged += (_, _) =>
         {
-            if (!renderingBoard && choice.SelectedItem is ComboBoxItem { Tag: string key } && key != current) _ = AssignLipSyncAsync(key);
+            if (!renderingBoard && choice.SelectedItem is ComboBoxItem { Tag: string key } && key != current) AssignLipSyncAsync(key).Forget();
         };
         return choice;
     }
@@ -1202,7 +1202,7 @@ public partial class MainWindow
         else await avatar.UseHostAsync(after.RemoteHost, lifetime.Token);
     }
 
-    private void CheckHosts_Click(object sender, RoutedEventArgs e) => _ = CheckHostsAsync(NetworkMap.Hosts(Inputs()));
+    private void CheckHosts_Click(object sender, RoutedEventArgs e) => CheckHostsAsync(NetworkMap.Hosts(Inputs())).Forget();
 
     private async Task CheckHostsAsync(IReadOnlyList<PairedHost> hosts)
     {
@@ -1246,7 +1246,7 @@ public partial class MainWindow
             if (host.Method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative && store is not null)
             {
                 ActionText.Text = $"Running {HostSetupCommands.Engine(action)} on {host.HostId} over SSH; its progress shows in a separate window.";
-                _ = RunOverSshAsync(host, action);
+                RunOverSshAsync(host, action).Forget();
                 return;
             }
             HostSetupCommands.Launch(host.Target(Version), action);
@@ -1274,7 +1274,7 @@ public partial class MainWindow
         var done = await HostSshActions.RunAsync(this, store!.DataDirectory, host.Target(Version), host.SshHostKey, action);
         if (closing) return;
         ActionText.Text = done is null ? $"{HostSetupCommands.Engine(action)} on {host.HostId} stopped; its window shows why." : $"{host.HostId}: {done}";
-        if (done is not null && action != HostAction.Status) _ = CheckHostsAsync([host]);
+        if (done is not null && action != HostAction.Status) CheckHostsAsync([host]).Forget();
     }
 
     private void RunHostRole(string? argument, bool add)
@@ -1290,7 +1290,7 @@ public partial class MainWindow
         var offered = hostChecks.GetValueOrDefault(host.HostId)?.Offers?.ContainsKey(role.Kind) == true;
         if (!add && (offered || hostChecks.GetValueOrDefault(host.HostId)?.Offers is null))
         {
-            _ = RemoveHostRoleAsync(host, role);
+            RemoveHostRoleAsync(host, role).Forget();
             return;
         }
         LaunchOnHost(host, add ? role.Add : role.Remove);
@@ -1369,15 +1369,15 @@ public partial class MainWindow
             case NodeAction.ManageHost: OpenHosts(null, 2, FindHost(argument)); break;
             case NodeAction.CheckHost:
                 var hosts = NetworkMap.Hosts(Inputs());
-                _ = CheckHostsAsync(argument is null ? hosts : hosts.Where(h => h.HostId == argument).ToArray());
+                CheckHostsAsync(argument is null ? hosts : hosts.Where(h => h.HostId == argument).ToArray()).Forget();
                 break;
             case NodeAction.HostDashboard: Navigate(NavHome); break;
             case NodeAction.Advisor: Advisor_Click(this, args); break;
-            case NodeAction.UseForLipSync: _ = AssignLipSyncAsync("host:" + argument); break;
-            case NodeAction.UseForThinking: _ = AssignThinkingAsync("host:" + argument); break;
-            case NodeAction.UseForListening: _ = AssignJobAsync(HostJob.Listening, "host:" + argument); break;
-            case NodeAction.UseForSpeaking: _ = AssignJobAsync(HostJob.Speaking, "host:" + argument); break;
-            case NodeAction.LipSyncThisPc: _ = AssignLipSyncAsync("this-pc"); break;
+            case NodeAction.UseForLipSync: AssignLipSyncAsync("host:" + argument).Forget(); break;
+            case NodeAction.UseForThinking: AssignThinkingAsync("host:" + argument).Forget(); break;
+            case NodeAction.UseForListening: AssignJobAsync(HostJob.Listening, "host:" + argument).Forget(); break;
+            case NodeAction.UseForSpeaking: AssignJobAsync(HostJob.Speaking, "host:" + argument).Forget(); break;
+            case NodeAction.LipSyncThisPc: AssignLipSyncAsync("this-pc").Forget(); break;
             case NodeAction.InstallRole: RunHostRole(argument, add: true); break;
             case NodeAction.RemoveRole: RunHostRole(argument, add: false); break;
             case NodeAction.HostStatus: if (FindHost(argument) is { } host) LaunchOnHost(host, HostAction.Status); break;
@@ -1388,7 +1388,7 @@ public partial class MainWindow
                     LaunchOnHost(outdated, HostAction.Update);
                 }
                 break;
-            case NodeAction.ForgetHost: _ = ForgetHostAsync(argument); break;
+            case NodeAction.ForgetHost: ForgetHostAsync(argument).Forget(); break;
             case NodeAction.PrepareHost: if (FindHost(argument) is { } prepare) OpenPrepare(prepare, PrepareStart.Status); break;
             case NodeAction.RebootHost: if (FindHost(argument) is { } reboot) OpenPrepare(reboot, PrepareStart.Reboot); break;
             case NodeAction.ShutdownHost: if (FindHost(argument) is { } shutdown) OpenPrepare(shutdown, PrepareStart.Shutdown); break;
@@ -1401,7 +1401,7 @@ public partial class MainWindow
     {
         if (store is null || setupService is null || closing) return;
         new HostsWindow(new AvatarProfileStore(store.DataDirectory), setupService, method, step, manage) { Owner = this }.ShowDialog();
-        _ = RefreshHomeAsync();
+        RefreshHomeAsync().Forget();
     }
 
     // ---------- small visuals ----------

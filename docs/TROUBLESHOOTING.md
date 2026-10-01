@@ -1,5 +1,27 @@
 # Desktop troubleshooting and local support (V06b)
 
+## Crashes and unexpected errors (error log)
+
+Martlet always keeps a small local error log; it is never uploaded.
+
+- Location: `%LOCALAPPDATA%\Martlet\logs\` (or `<--data-directory>\logs\`).
+  `desktop.log` is the app; `avatar-renderer.log` is the character process.
+  Each file rotates at 2 MiB and keeps 3 older copies.
+- Contents: startup/exit lines plus every unhandled exception, failed background
+  task and unexpected avatar-renderer exit, with full exception type, message
+  and stack trace. Exception messages can include local paths or provider error
+  text; review a log before sharing it.
+- Behaviour: an unexpected error on the UI thread is logged and shown once in a
+  dialog, and Martlet keeps running instead of closing. Failures that cannot be
+  recovered (out of memory, stack overflow, native access violations) are
+  logged where the runtime allows, then the process ends.
+- After a crash, kill or power loss, the next launch says the previous session
+  ended unexpectedly and offers to open the logs folder.
+- Open it any time from **Troubleshooting > Open crash / error logs**.
+
+Native crashes that bypass .NET are also listed in Windows Event Viewer >
+Windows Logs > Application (sources `.NET Runtime` and `Application Error`).
+
 ## Missing prerequisites (character, microphone, Windows speech, local LLM, Docker)
 
 If the character does not appear, push-to-talk hears nothing, Windows speech

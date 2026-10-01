@@ -38,11 +38,19 @@ public partial class TroubleshootingWindow : ThemedWindow
         FromText.Text = this.clock.GetUtcNow().Subtract(TimeSpan.FromDays(7)).ToString("O");
         ThroughText.Text = this.clock.GetUtcNow().ToString("O");
         OmissionsText.Text = SupportSnapshot.OmissionSummary;
+        ErrorLogText.Text = ErrorLog.Directory is { } logs
+            ? $"Crash and error log (always on, local only, never uploaded; includes exception details and stack traces): {logs}"
+            : "Crash and error log unavailable: the logs folder could not be created.";
         ResultText.Text = "No export selected or approved. No support contact/upload channel is configured.";
         initialized = true;
         timer.Tick += (_, _) => Render();
         timer.Start();
         Render();
+    }
+
+    private void OpenErrorLogs_Click(object sender, RoutedEventArgs e)
+    {
+        if (!ErrorLog.OpenFolder()) ErrorLogText.Text = "Could not open the logs folder. " + ErrorLogText.Text;
     }
 
     private void Render()

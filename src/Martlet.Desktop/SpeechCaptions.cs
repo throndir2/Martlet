@@ -60,7 +60,7 @@ internal sealed class SpeechCaptions : IDisposable
         this.avatar = avatar;
         this.directory = directory;
         Preferences = SpeechDisplayPreferences.Load(directory);
-        _ = ReadAsync();
+        ReadAsync().Forget();
     }
 
     internal SpokenTextFeed Feed { get; } = new();
@@ -83,7 +83,7 @@ internal sealed class SpeechCaptions : IDisposable
                 var id = ++current;
                 if (Preferences.SpeechBubbles && avatar.IsShowing) Say(line.Text);
                 if (Preferences.Subtitles) (overlay ??= new()).ShowLine(line.Text);
-                _ = ClearAfterAsync(line.Finished, id);
+                ClearAfterAsync(line.Finished, id).Forget();
             }
         }
         catch (OperationCanceledException) { }

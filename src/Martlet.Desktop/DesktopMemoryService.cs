@@ -218,7 +218,7 @@ internal sealed class DesktopMemoryService : IDisposable
             invalidation = new();
             generation = checked(generation + 1);
         }
-        _ = CancelAndDisposeAsync(previous);
+        CancelAndDisposeAsync(previous).Forget();
     }
 
     private async Task<T> WithStoreAsync<T>(
@@ -323,7 +323,7 @@ internal sealed class DesktopMemoryService : IDisposable
             generation = checked(generation + 1);
             source = invalidation;
         }
-        _ = CancelAndDisposeAsync(source);
+        CancelAndDisposeAsync(source).Forget();
     }
 
     private static async Task CancelAndDisposeAsync(CancellationTokenSource source)

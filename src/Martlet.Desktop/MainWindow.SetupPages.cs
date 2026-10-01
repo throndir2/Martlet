@@ -313,8 +313,8 @@ public partial class MainWindow
         var buttons = Row(
             installed ? null : PageButton("Install Ollama", () => ActionText.Text = Prerequisites.Launch([Prerequisites.Ollama]), primary: true, id: "SetupInstallOllama"),
             PageButton("Download model", () => PullOllamaModel(ModelId()), id: "SetupPullModel"),
-            PageButton("Check Ollama", () => _ = CheckOllamaAsync(), id: "SetupCheckOllama"),
-            PageButton("Use Ollama on this PC", () => _ = SaveLocalThinkingAsync(ModelId()), primary: installed, id: "SetupUseLocalThinking"));
+            PageButton("Check Ollama", () => CheckOllamaAsync().Forget(), id: "SetupCheckOllama"),
+            PageButton("Use Ollama on this PC", () => SaveLocalThinkingAsync(ModelId()).Forget(), primary: installed, id: "SetupUseLocalThinking"));
 
         return Card(Heading("Ollama on this PC"),
             Note($"Martlet talks to Ollama at {LocalOllamaBaseUrl}. Your messages, persona and any memory facts you allow stay on this PC; " +
@@ -417,7 +417,7 @@ public partial class MainWindow
                 new Thickness(0, 0, 0, 8)));
             stack.Add(Row(
                 PageButton(inUse ? (f5 ? "Choose another voice" : $"Set up {job.Engine} again") : $"Use {job.Engine} on this PC",
-                    () => _ = AssignJobAsync(job, "host:" + thisPc.HostId), primary: !inUse, id: "SetupUseLocal-" + job.Job),
+                    () => AssignJobAsync(job, "host:" + thisPc.HostId).Forget(), primary: !inUse, id: "SetupUseLocal-" + job.Job),
                 PageButton("Check it", () => RunNodeAction(NodeAction.CheckHost, thisPc.HostId), id: "SetupCheckLocal-" + job.Job)));
         }
         return Card([.. stack]);
@@ -447,7 +447,7 @@ public partial class MainWindow
             text.Children.Add(new TextBlock { Text = host.HostId, FontSize = 15, FontWeight = FontWeights.SemiBold });
             text.Children.Add(Note(detail, new Thickness(0, 2, 0, 0)));
             var use = PageButton(owner == host.HostId ? (job.RouteType == SetupRouteType.GatewayF5 ? "Choose another voice" : "In use") : "Use it",
-                () => _ = AssignJobAsync(job, "host:" + host.HostId), primary: owner != host.HostId && cannot is null, id: $"SetupUseHost-{job.Job}-{host.HostId}");
+                () => AssignJobAsync(job, "host:" + host.HostId).Forget(), primary: owner != host.HostId && cannot is null, id: $"SetupUseHost-{job.Job}-{host.HostId}");
             use.IsEnabled = cannot is null && !(owner == host.HostId && job.RouteType != SetupRouteType.GatewayF5);
             var row = new DockPanel { Margin = new Thickness(0, 0, 0, 10) };
             DockPanel.SetDock(use, Dock.Right);
@@ -555,8 +555,8 @@ public partial class MainWindow
         voice.SelectionChanged += (_, _) => { sectionEdited = true; consent.IsChecked = false; };
         key.PasswordChanged += (_, _) => sectionEdited = true;
 
-        var save = PageButton("Save", () => _ = SaveCloudAsync(job, Selected(), baseUrl.Text.Trim(), Selected().Chat ? modelText.Text.Trim() : model.SelectedItem as string ?? "",
-            role == SetupRole.Tts ? voice.SelectedItem as string : null, key, consent.IsChecked == true), primary: true, id: "SetupCloudSave-" + section);
+        var save = PageButton("Save", () => SaveCloudAsync(job, Selected(), baseUrl.Text.Trim(), Selected().Chat ? modelText.Text.Trim() : model.SelectedItem as string ?? "",
+            role == SetupRole.Tts ? voice.SelectedItem as string : null, key, consent.IsChecked == true).Forget(), primary: true, id: "SetupCloudSave-" + section);
 
         var stack = new List<UIElement>
         {
@@ -717,8 +717,8 @@ public partial class MainWindow
                 "Choose a built-in Live2D character or your own Live2D or VRM model, and tune its size, position and motion.", new Thickness(0, 2, 0, 8)),
             Row(PageButton(showing ? "Hide" : "Show", () => RunNodeAction(NodeAction.ToggleCharacter), primary: !showing, id: "SetupCharacterToggle"),
                 PageButton("Choose and customize", () => RunNodeAction(NodeAction.Character), id: "SetupCharacterCustomize"),
-                showing ? PageButton("Reset position", () => _ = ResetCharacterPositionAsync(), id: "SetupCharacterResetPosition") : null,
-                showing ? PageButton("Reset zoom", () => _ = ResetCharacterZoomAsync(), id: "SetupCharacterResetZoom") : null)));
+                showing ? PageButton("Reset position", () => ResetCharacterPositionAsync().Forget(), id: "SetupCharacterResetPosition") : null,
+                showing ? PageButton("Reset zoom", () => ResetCharacterZoomAsync().Forget(), id: "SetupCharacterResetZoom") : null)));
 
         var persona = homeSettings?.Companion?.ActivePersona;
         page.Children.Add(Card(Heading("Personality"),

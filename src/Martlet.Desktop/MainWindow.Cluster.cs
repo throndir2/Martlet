@@ -36,7 +36,7 @@ public partial class MainWindow
 
     private void InitializeCluster()
     {
-        clusterTimer.Tick += (_, _) => _ = SyncClusterAsync();
+        clusterTimer.Tick += (_, _) => SyncClusterAsync().Forget();
         if (store is null)
         {
             ClusterSyncChoice.IsEnabled = false;
@@ -52,7 +52,7 @@ public partial class MainWindow
     {
         if (!clusterEnabled || store is null || closing) return;
         clusterTimer.Start();
-        _ = SyncClusterAsync();
+        SyncClusterAsync().Forget();
     }
 
     private void ClusterSync_Click(object sender, RoutedEventArgs e)
@@ -164,7 +164,7 @@ public partial class MainWindow
     /// <summary>Runs a sync once the current role change has finished (it holds <see cref="assigningRole"/>).</summary>
     private void QueueClusterSync()
     {
-        if (clusterEnabled && !closing) Dispatcher.InvokeAsync(() => _ = SyncClusterAsync(), DispatcherPriority.ContextIdle);
+        if (clusterEnabled && !closing) Dispatcher.InvokeAsync(() => SyncClusterAsync().Forget(), DispatcherPriority.ContextIdle);
     }
 
     private async Task SyncClusterAsync()
