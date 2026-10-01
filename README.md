@@ -57,6 +57,11 @@ generated-speech activation still require the local prerequisites in the
 qualified end-user avatar release; voice reliability and model/device
 qualification remain separate requirements.
 
+**Watch my screen or a camera** lets Martlet comment now and then on your
+screen, a webcam or capture card, a phone camera (phone-as-webcam apps or an
+IP camera address) or other video sources. See
+[screen and camera commentary](docs/SCREEN_COMMENTARY.md).
+
 **Voice Library (local preparation)** now offers all five self-hosted research
 targets (F5-TTS, Qwen3-TTS, Chatterbox, GPT-SoVITS, XTTS-v2), explicit private
 WAV/transcript import for reference or training material, persistent

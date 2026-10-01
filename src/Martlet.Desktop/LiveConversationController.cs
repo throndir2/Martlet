@@ -311,7 +311,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
     /// which either answers [pass] (silence) or one short remark that is spoken like any reply. It bypasses the
     /// participation policy (that decides whether to answer the user); the caller's pacer decides when to look.</summary>
     internal LiveConversationOperation StartCommentary(BoundedImage image, string windowTitle, Chattiness chattiness, bool voice,
-        bool screenApproved, CancellationToken caller = default)
+        bool screenApproved, WatchSource? source = null, CancellationToken caller = default)
     {
         ArgumentNullException.ThrowIfNull(image);
         if (!screenApproved) throw new LiveActionException("conversation.permission_required");
@@ -330,12 +330,13 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 () => Volatile.Read(ref revision) == acceptedRevision, settings.LoadAsync, vault, caller, screen: true);
             operation = new(authorization, caller) { Commentary = true };
             active = operation;
-            var prompt = CommentaryPromptLocked(windowTitle);
+            var camera = source is { IsScreen: false };
+            var prompt = CommentaryPromptLocked(windowTitle, camera);
             var worker = operations.TryStart(async token =>
             {
                 await published.Task.ConfigureAwait(false);
                 authorization.BindWorker(token);
-                return await RunCommentaryAsync(operation, prompt, image, chattiness, token).ConfigureAwait(false);
+                return await RunCommentaryAsync(operation, prompt, image, chattiness, camera, token).ConfigureAwait(false);
             });
             if (worker is null)
             {
@@ -349,11 +350,12 @@ internal sealed class LiveConversationController : IAsyncDisposable
         return operation;
     }
 
-    private string CommentaryPromptLocked(string windowTitle)
+    private string CommentaryPromptLocked(string windowTitle, bool camera = false)
     {
         while (remarks.TryPeek(out var oldest) && clock.GetElapsedTime(oldest.At) >= RemarkMemory) remarks.Dequeue();
         var title = new string(windowTitle.Where(c => !char.IsControl(c) && c != '"').Take(80).ToArray()).Trim();
-        var prompt = "(Screen glance." + (title.Length > 0 ? $" Active window: \"{title}\"." : "");
+        var prompt = camera ? "(Camera glance." + (title.Length > 0 ? $" Camera: \"{title}\"." : "")
+            : "(Screen glance." + (title.Length > 0 ? $" Active window: \"{title}\"." : "");
         if (remarks.Count > 0)
             prompt += " What you already said while watching, oldest first: " + string.Join(" | ", remarks.Select(r => $"\"{r.Text}\"")) + ".";
         return prompt + $" Reply [{LiveConversationConfiguration.SilentReply}] or one short remark.)";
@@ -368,7 +370,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
     }
 
     private async Task<SetupWorkResult> RunCommentaryAsync(LiveConversationOperation operation, string prompt, BoundedImage image,
-        Chattiness chattiness, CancellationToken worker)
+        Chattiness chattiness, bool camera, CancellationToken worker)
     {
         try
         {
@@ -382,7 +384,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 ResponseStyle? style = persona is null ? null : ResponseStyleSelector.Select(persona.Styles, nextStyle);
                 var history = context.Snapshot();
                 var request = configured.Request(new(prompt), operation.Authorization.Voice, style, history, null,
-                    out var usedHistory, out _, image, LiveConversationConfiguration.CommentaryInstructions(chattiness),
+                    out var usedHistory, out _, image, LiveConversationConfiguration.CommentaryInstructions(chattiness, camera),
                     LiveConversationConfiguration.SilentReply);
                 operation.PersonaRevision = persona?.ConfigurationRevision;
                 operation.ResponseStyle = style;

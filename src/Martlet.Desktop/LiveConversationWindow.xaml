@@ -167,11 +167,11 @@
                                 <StackPanel>
                                     <DockPanel Margin="0,0,0,6">
                                         <Ellipse x:Name="WatchDot" DockPanel.Dock="Right" Width="10" Height="10" Fill="#D64545" Visibility="Collapsed"
-                                                 VerticalAlignment="Center" AutomationProperties.Name="Watching your screen" />
-                                        <TextBlock Text="Watch my screen" FontWeight="SemiBold"/>
+                                                 VerticalAlignment="Center" AutomationProperties.Name="Watching" />
+                                        <TextBlock Text="Watch my screen or a camera" FontWeight="SemiBold"/>
                                     </DockPanel>
                                     <TextBlock Style="{DynamicResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,6"
-                                               Text="Martlet glances at what you're playing or doing and now and then says something, like a friend in the room. Most glances end in silence."/>
+                                               Text="Martlet glances at what you're playing or doing (on screen, or through a webcam, capture card or your phone's camera) and now and then says something, like a friend in the room. Most glances end in silence."/>
                                     <TextBlock x:Name="VisionStatus" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,8" AutomationProperties.AutomationId="LiveVisionStatus" />
                                     <DockPanel>
                                         <TextBlock Text="Look at" Width="92" VerticalAlignment="Center" FontSize="12"/>
@@ -179,8 +179,27 @@
                                                   AutomationProperties.Name="What Martlet looks at" AutomationProperties.AutomationId="LiveScreenScope">
                                             <ComboBoxItem Content="my active window"/>
                                             <ComboBoxItem Content="my whole screen"/>
+                                            <ComboBoxItem Content="a camera (webcam, capture card, phone as webcam)"/>
+                                            <ComboBoxItem Content="a phone or network camera address"/>
                                         </ComboBox>
                                     </DockPanel>
+                                    <DockPanel x:Name="CameraPanel" Margin="0,6,0,0" Visibility="Collapsed">
+                                        <TextBlock Text="Camera" Width="92" VerticalAlignment="Center" FontSize="12"/>
+                                        <Button x:Name="FindCamerasButton" DockPanel.Dock="Right" Content="_Find cameras" Click="FindCameras_Click" Padding="8,2" Margin="6,0,0,0"
+                                                AutomationProperties.AutomationId="LiveFindCameras"
+                                                AutomationProperties.HelpText="Lists the cameras Windows offers to desktop apps. Nothing is opened until you start watching." />
+                                        <ComboBox x:Name="CameraBox" DisplayMemberPath="Name" SelectionChanged="Screen_Changed"
+                                                  AutomationProperties.Name="Which camera Martlet looks through" AutomationProperties.AutomationId="LiveCamera" />
+                                    </DockPanel>
+                                    <StackPanel x:Name="AddressPanel" Margin="0,6,0,0" Visibility="Collapsed">
+                                        <DockPanel>
+                                            <TextBlock Text="Address" Width="92" VerticalAlignment="Center" FontSize="12"/>
+                                            <TextBox x:Name="AddressBox" TextChanged="Address_Changed" LostFocus="Address_LostFocus"
+                                                     AutomationProperties.Name="Phone or network camera address" AutomationProperties.AutomationId="LiveVideoAddress" />
+                                        </DockPanel>
+                                        <TextBlock Style="{DynamicResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="92,2,0,0"
+                                                   Text="A snapshot or MJPEG address from a phone camera app on your Wi-Fi (for example http://192.168.1.20:8080/shot.jpg), an rtsp:// camera stream or a video file. A password in the address is used but never saved."/>
+                                    </StackPanel>
                                     <DockPanel Margin="0,6,0,0">
                                         <TextBlock Text="How chatty" Width="92" VerticalAlignment="Center" FontSize="12"/>
                                         <ComboBox x:Name="ChattinessBox" SelectedIndex="1" SelectionChanged="Screen_Changed"
@@ -192,9 +211,9 @@
                                     </DockPanel>
                                     <CheckBox x:Name="AcceptScreen" Margin="0,10,0,6" Checked="Consent_Changed" Unchecked="Consent_Changed"
                                               AutomationProperties.AutomationId="LiveAcceptScreen"
-                                              Content="While watching is on, I let Martlet capture my screen on this PC and send an occasional screenshot with the window title to the Thinking model named in the envelope below, including potential API charges and the selected voice output."/>
+                                              Content="While watching is on, I let Martlet capture my screen or the chosen camera on this PC and send an occasional picture (with the window or camera name) to the Thinking model named in the envelope below, including potential API charges and the selected voice output."/>
                                     <Button x:Name="WatchButton" Content="Start _watching" Click="Watch_Click" IsEnabled="False" Padding="10,8" Margin="0,4,0,0"
-                                            AutomationProperties.AutomationId="LiveWatch" AutomationProperties.Name="Start or stop watching your screen"
+                                            AutomationProperties.AutomationId="LiveWatch" AutomationProperties.Name="Start or stop watching"
                                             AutomationProperties.HelpText="Keeps watching in the background until you click again, Stop, Esc, pause, mute, lock or close." />
                                     <TextBlock x:Name="WatchStatus" Style="{DynamicResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"
                                                AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="LiveWatchStatus" />
