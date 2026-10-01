@@ -23,6 +23,7 @@ public partial class MainWindow
 {
     private sealed record HomeStep(string Id, string Title, string Detail, bool Done, bool Optional, IReadOnlyList<StepCommand> Commands);
     private sealed record StepCommand(string Label, Action Run, bool Primary = false);
+    private sealed record NowLine(CompanionTab Tab, NodeHealth Health, string Text, string Action, bool Primary = false);
     private sealed record MapElement(NetworkNode Node, Button Card, Line? Track, Line? Flow, Ellipse? Ring);
 
     private static readonly string Version = AppVersions.Current;
@@ -99,18 +100,18 @@ public partial class MainWindow
 
     private void Nav_Checked(object sender, RoutedEventArgs e)
     {
-        if (HomePage is null || DevicesPage is null || CompanionPage is null || SettingsPage is null || SetupPage is null) return;
+        if (HomePage is null || DevicesPage is null || CompanionPage is null || SettingsPage is null) return;
         if (sender is RadioButton { IsChecked: false }) return;
         FrameworkElement page = ReferenceEquals(sender, NavDevices) ? DevicesPage
             : ReferenceEquals(sender, NavCompanion) ? CompanionPage
             : ReferenceEquals(sender, NavSettings) ? SettingsPage
             : HomePage;
-        openSection = null;
-        foreach (var candidate in new FrameworkElement[] { HomePage, DevicesPage, CompanionPage, SettingsPage, SetupPage })
+        openTab = null;
+        foreach (var candidate in new FrameworkElement[] { HomePage, DevicesPage, CompanionPage, SettingsPage })
             candidate.Visibility = ReferenceEquals(candidate, page) ? Visibility.Visible : Visibility.Collapsed;
-        Motion.Enter(page);
+        if (ReferenceEquals(page, CompanionPage)) ShowCompanionTab(entering: true);
+        else Motion.Enter(page);
         if (ReferenceEquals(page, DevicesPage)) RenderMap();
-        if (ReferenceEquals(page, CompanionPage)) Motion.Cascade(CompanionCards.Children.OfType<UIElement>());
     }
 
     private void Navigate(RadioButton item)
@@ -290,7 +291,7 @@ public partial class MainWindow
     }
 
     private void TourAdvisor_Click(object sender, RoutedEventArgs e) { HideTour(); Advisor_Click(sender, e); }
-    private void TourSetup_Click(object sender, RoutedEventArgs e) { HideTour(); OpenSection(SetupSection.Thinking); }
+    private void TourSetup_Click(object sender, RoutedEventArgs e) { HideTour(); OpenCompanion(CompanionTab.Thinking); }
 
 
     private void TourSkip_Click(object sender, RoutedEventArgs e)
@@ -349,32 +350,31 @@ public partial class MainWindow
         EvaluateCoverage();
         JobCoverage? Problem(string job) => coverage.FirstOrDefault(c => c.Job == job && c.IsProblem);
         var thinkingProblem = Problem(ClusterJobs.Thinking);
+        var speakingProblem = Problem(ClusterJobs.Speaking);
+        var listeningProblem = Problem(ClusterJobs.Listening);
+        var lipSyncProblem = Problem(ClusterJobs.LipSync);
+        static string Pending(SetupRoute route) => route.Enabled == false ? "Turned off." : "Chosen, not confirmed yet. Review it to finish.";
+        var micTested = audio?.Input.Checkpoint is not null;
+        var persona = homeSettings?.Companion?.ActivePersona.Name ?? "default";
 
-        var steps = new List<HomeStep>
+        var now = new List<NowLine>
         {
-            new("brain", "How Martlet thinks",
-                thinkingProblem is not null ? $"Not working now: {thinkingProblem.Problem}"
-                    : brainReady ? $"{PlaceName(llm!)}: {llm!.ModelId}"
-                    : llm is not null ? "Chosen. Review it on this page to finish."
-                    : "Provider, model and key. Runs on this PC by default (Ollama), or another computer or a cloud model.",
-                brainReady, false, [new(brainReady ? "Change" : "Choose", () => OpenSection(SetupSection.Thinking), !brainReady)]),
-            new("voice", "Its voice",
-                Problem(ClusterJobs.Speaking) is { } speakingProblem ? $"Not working now: {speakingProblem.Problem}"
-                    : NetworkMap.IsReady(tts) ? $"Speaks with {PlaceName(tts!)}{(tts!.Reference is { } voice ? $", voice {voice.PresetName}" : tts.VoiceId is { } id ? $", voice {id}" : "")}"
-                    : "Text-to-speech provider, model, voice and key. Uses the F5 voice on this PC by default.",
-                NetworkMap.IsReady(tts), true, [new(NetworkMap.IsReady(tts) ? "Change" : "Set up", () => OpenSection(SetupSection.Voice))]),
-            new("listen", "How it listens",
-                Problem(ClusterJobs.Listening) is { } listeningProblem ? $"Not working now: {listeningProblem.Problem}"
-                    : NetworkMap.IsReady(stt) ? $"Hears you with {PlaceName(stt!)}{(audio?.Input.Checkpoint is null ? "; test your microphone" : "")}"
-                    : "Microphone and speech-to-text. Uses whisper on this PC by default. You can always type instead.",
-                NetworkMap.IsReady(stt) && audio?.Input.Checkpoint is not null, true,
-                [new(NetworkMap.IsReady(stt) ? "Change" : "Set up", () => OpenSection(SetupSection.Listening))]),
-            new("character", "Character",
-                (avatar.IsShowing ? "On your desktop. " : "") +
-                    $"{CharacterModelName()}, personality {homeSettings?.Companion?.ActivePersona.Name ?? "default"}, lip-sync by {LipSyncOwnerName()}.",
-                homeAvatar is not null || avatar.IsShowing, true,
-                [new("Open", () => OpenSection(SetupSection.Character)),
-                 new(avatar.IsShowing ? "Hide" : "Show", () => RunNodeAction(NodeAction.ToggleCharacter))])
+            thinkingProblem is not null ? new NowLine(CompanionTab.Thinking, NodeHealth.Attention, $"Not working now: {thinkingProblem.Problem}", "Change")
+                : brainReady ? new NowLine(CompanionTab.Thinking, NodeHealth.Ready, $"{PlaceName(llm!)}: {llm!.ModelId}", "Change")
+                : llm is not null ? new NowLine(CompanionTab.Thinking, NodeHealth.Attention, Pending(llm), "Review", Primary: true)
+                : new NowLine(CompanionTab.Thinking, NodeHealth.Unknown, "Not set up yet. Martlet needs this to reply; it runs on this PC by default.", "Set up", Primary: true),
+            speakingProblem is not null ? new NowLine(CompanionTab.Voice, NodeHealth.Attention, $"Not working now: {speakingProblem.Problem}", "Change")
+                : NetworkMap.IsReady(tts) ? new NowLine(CompanionTab.Voice, NodeHealth.Ready,
+                    $"{PlaceName(tts!)}{(tts!.Reference is { } voice ? $", voice {voice.PresetName}" : tts.VoiceId is { } id ? $", voice {id}" : "")}", "Change")
+                : tts is not null ? new NowLine(CompanionTab.Voice, NodeHealth.Attention, Pending(tts), "Review")
+                : new NowLine(CompanionTab.Voice, NodeHealth.Unknown, "Optional. Not set up, so Martlet replies in text.", "Set up"),
+            listeningProblem is not null ? new NowLine(CompanionTab.Listening, NodeHealth.Attention, $"Not working now: {listeningProblem.Problem}", "Change")
+                : NetworkMap.IsReady(stt) ? new NowLine(CompanionTab.Listening, micTested ? NodeHealth.Ready : NodeHealth.Attention,
+                    $"{PlaceName(stt!)}{(micTested ? "" : "; microphone not tested yet")}", "Change")
+                : stt is not null ? new NowLine(CompanionTab.Listening, NodeHealth.Attention, Pending(stt), "Review")
+                : new NowLine(CompanionTab.Listening, NodeHealth.Unknown, "Optional. Not set up; you can always type.", "Set up"),
+            new NowLine(CompanionTab.Character, lipSyncProblem is not null ? NodeHealth.Attention : homeAvatar is not null || avatar.IsShowing ? NodeHealth.Ready : NodeHealth.Unknown,
+                $"{CharacterModelName()}, {(avatar.IsShowing ? "on your desktop" : "hidden")}. Personality {persona}; lip-sync by {LipSyncOwnerName()}.", "Change")
         };
 
         if (brainReady && thinkingProblem is not null)
@@ -396,19 +396,16 @@ public partial class MainWindow
             var nothingYet = homeSettings is null || routes.Count == 0;
             StageTitle.Text = nothingYet ? "Let's bring your companion to life" : "Almost there";
             StageText.Text = nothingYet
-                ? "First, choose how Martlet thinks. It runs on this PC by default; a cloud model or another computer works too. Everything else is optional."
-                : llm is not null ? "Your conversation model is chosen. Review it on How Martlet thinks to finish."
-                : "Choose how Martlet thinks to start talking. Everything else is optional.";
-            PrimaryStageButton.Content = nothingYet ? "Choose how Martlet thinks" : "Finish setup";
+                ? "First, set up how Martlet thinks. It runs on this PC by default; a cloud model or another computer works too. Everything else is optional."
+                : llm is not null ? "Its thinking is chosen. Review it in Companion to finish."
+                : "Set up how Martlet thinks to start talking. Everything else is optional.";
+            PrimaryStageButton.Content = nothingYet ? "Set up thinking" : "Finish setup";
             PrimaryStageButton.Visibility = Visibility.Visible;
             ConversationButton.ClearValue(StyleProperty);
         }
 
-        RenderSteps(StepsPanel, steps, numbered: true);
+        RenderNow(now);
         ShowCoverage(HomeCoverage, devices: false);
-        var done = steps.Count(s => s.Done);
-        ProgressText.Text = $"{done} of {steps.Count} done";
-        if (ProgressFill.RenderTransform is ScaleTransform fill) Motion.ScaleX(fill, (double)done / steps.Count);
 
         DeviceChips.Children.Clear();
         foreach (var node in NetworkMap.Build(Inputs()).Where(n => n.Kind != NodeKind.Add))
@@ -423,7 +420,46 @@ public partial class MainWindow
             DeviceChips.Children.Add(chip);
         }
         RenderHost();
-        if (openSection is not null && !sectionEdited) RenderSection();
+        if (openTab is not null && !tabEdited) RenderTab();
+    }
+
+    /// <summary>Home's Now card: one line per job with its state and one button to its Companion tab, where it changes.</summary>
+    private void RenderNow(IReadOnlyList<NowLine> lines)
+    {
+        var first = NowPanel.Children.Count == 0;
+        NowPanel.Children.Clear();
+        for (var i = 0; i < lines.Count; i++)
+        {
+            var line = lines[i];
+            var title = TabTitle(line.Tab);
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(104) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.Children.Add(Dot(line.Health, 10, new Thickness(0, 0, 12, 0)));
+            var name = new TextBlock { Text = title, FontSize = 15, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(name, 1);
+            grid.Children.Add(name);
+            var text = new TextBlock { Text = line.Text, VerticalAlignment = VerticalAlignment.Center };
+            text.SetResourceReference(StyleProperty, "Muted");
+            text.TextWrapping = TextWrapping.Wrap;
+            Grid.SetColumn(text, 2);
+            grid.Children.Add(text);
+            var tab = line.Tab;
+            var button = new Button { Content = line.Action, MinWidth = 86, Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+            if (line.Primary) button.SetResourceReference(StyleProperty, "PrimaryButton");
+            AutomationProperties.SetName(button, $"{line.Action}: {title}");
+            AutomationProperties.SetAutomationId(button, "Now-" + tab);
+            button.Click += (_, _) => OpenCompanion(tab);
+            Grid.SetColumn(button, 3);
+            grid.Children.Add(button);
+            var row = new Border { Child = grid, Padding = new Thickness(14, 10, 14, 10), CornerRadius = new CornerRadius(14), Margin = new Thickness(0, 0, 0, 4) };
+            if (line.Primary) row.SetResourceReference(Border.BackgroundProperty, "SoftBrush");
+            AutomationProperties.SetName(row, $"{title}: {line.Text}");
+            NowPanel.Children.Add(row);
+            if (first) Motion.Enter(row, delay: i * 60);
+        }
     }
 
     private void RenderSteps(Panel panel, IReadOnlyList<HomeStep> steps, bool numbered)
@@ -503,7 +539,7 @@ public partial class MainWindow
         previousDone[panel] = done;
     }
 
-    private void PrimaryStage_Click(object sender, RoutedEventArgs e) => OpenSection(SetupSection.Thinking);
+    private void PrimaryStage_Click(object sender, RoutedEventArgs e) => OpenCompanion(CompanionTab.Thinking);
 
     // ---------- host dashboard ----------
 
@@ -1001,9 +1037,10 @@ public partial class MainWindow
             {
                 var name = NetworkMap.RoleName(role);
                 var owner = nodes.FirstOrDefault(n => n.Kind != NodeKind.Missing && n.Roles.Any(r => r.Name == name));
-                var change = new Button { Content = owner is null ? "Choose in Setup" : "Change in Setup", HorizontalAlignment = HorizontalAlignment.Left };
+                var change = new Button { Content = owner is null ? "Set up in Companion" : "Change in Companion", HorizontalAlignment = HorizontalAlignment.Left };
                 AutomationProperties.SetAutomationId(change, "RoleChange-" + role);
-                change.Click += (_, _) => RunNodeAction(NodeAction.Setup);
+                var tab = TabFor(role);
+                change.Click += (_, _) => OpenCompanion(tab);
                 FrameworkElement control = change;
                 if (HostJob.For(role) is { } job && NetworkMap.Hosts(Inputs()).Count > 0)
                 {
@@ -1013,7 +1050,7 @@ public partial class MainWindow
                     control = controls;
                 }
                 RolesBoard.Children.Add(RoleTile(name, owner?.Title ?? "Not chosen yet",
-                    owner?.Roles.First(r => r.Name == name).Detail ?? "Pick a cloud model or one of your computers in Setup.", control, owner?.Id,
+                    owner?.Roles.First(r => r.Name == name).Detail ?? "Pick a cloud model or one of your computers in Companion.", control, owner?.Id,
                     HostJob.For(role) is { } tileJob ? TileProblem(tileJob.Job) : null));
             }
 
@@ -1319,7 +1356,7 @@ public partial class MainWindow
                 if (avatar.IsShowing) await avatar.UseHostAsync(null, token);
             }
             ActionText.Text = $"Forgot {host.HostId}. Revoke {host.Pairing.DeviceId} in its pairing console to finish." +
-                (stranded.Count > 0 ? $" Nobody does the {string.Join(" or ", stranded)} now; choose another in Setup or on the Devices page." : "");
+                (stranded.Count > 0 ? $" Nobody does the {string.Join(" or ", stranded)} now; choose another in Companion or on the Devices page." : "");
         });
         await RefreshHomeAsync();
     }
@@ -1353,7 +1390,7 @@ public partial class MainWindow
         var args = new RoutedEventArgs();
         switch (action)
         {
-            case NodeAction.Setup: Setup_Click(this, args); break;
+            case NodeAction.Companion: OpenCompanion(Enum.TryParse<SetupRole>(argument, out var jobRole) ? TabFor(jobRole) : CompanionTab.Thinking); break;
             case NodeAction.AudioSetup: AudioSetup_Click(this, args); break;
             case NodeAction.Character: Avatar_Click(this, args); break;
             case NodeAction.ToggleCharacter: Character_Click(this, args); break;
