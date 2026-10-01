@@ -70,7 +70,7 @@ internal sealed class VoiceSampleRecording
             : new InputSelection(InputPolicy.FollowDefaultOnNextPress);
         var request = new CaptureRequest(ids, Interlocked.Increment(ref epoch), selection, MaximumDuration, clock.GetUtcNow().AddSeconds(12));
         var run = microphone.Press(request, new(request, true), token);
-        Volatile.Write(ref finish, () => _ = run.ReleaseAsync());
+        Volatile.Write(ref finish, () => run.ReleaseAsync().Forget());
         var detector = new EnergyVoiceActivityDetector(new() { EndSilence = TimeSpan.FromSeconds(1) });
         var frame = new byte[EnergyVoiceActivityDetector.FrameBytes];
         try

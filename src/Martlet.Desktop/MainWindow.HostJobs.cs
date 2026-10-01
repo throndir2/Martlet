@@ -91,7 +91,7 @@ public partial class MainWindow
         }
         choice.SelectionChanged += (_, _) =>
         {
-            if (!renderingBoard && choice.SelectedItem is ComboBoxItem { Tag: string key } && key != current) _ = AssignJobAsync(job, key);
+            if (!renderingBoard && choice.SelectedItem is ComboBoxItem { Tag: string key } && key != current) AssignJobAsync(job, key).Forget();
         };
         return choice;
     }
@@ -159,7 +159,7 @@ public partial class MainWindow
                 pendingJobHosts[job.Role] = host.HostId;
                 if (voice is not null) pendingJobVoices[job.Role] = voice;
                 LaunchOnHost(host, role.Add);
-                _ = WatchJobHandoffAsync(job, host);
+                WatchJobHandoffAsync(job, host).Forget();
                 return;
             }
             if (!ConfirmationDialog.Confirm(this,

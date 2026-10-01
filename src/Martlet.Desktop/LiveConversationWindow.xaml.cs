@@ -473,7 +473,7 @@ public partial class LiveConversationWindow : ThemedWindow
         if (owned is { OwnershipReleased: false } live && !IsIdleListen(live)) pacer.NoteConversation();
         if (glancing || clock.GetTimestamp() < nextGlance) return;
         nextGlance = clock.GetTimestamp() + (long)(ScreenCommentaryPacer.Tick.TotalSeconds * clock.TimestampFrequency);
-        _ = GlanceAsync();
+        GlanceAsync().Forget();
     }
 
     // A hands-free listen that has not heard anyone yet (including the moment it re-arms).
@@ -491,8 +491,8 @@ public partial class LiveConversationWindow : ThemedWindow
             if (!watching || closed || pacer is null)
             {
                 result.Frame?.Clear();
-                _ = Task.Run(glancer.Release);
-                _ = Task.Run(video.Release);
+                Task.Run(glancer.Release).Forget();
+                Task.Run(video.Release).Forget();
                 return;
             }
             captureNote = source.IsScreen ? result.Note : null;
@@ -616,8 +616,8 @@ public partial class LiveConversationWindow : ThemedWindow
         pendingFrame?.Clear();
         pendingFrame = null;
         // Frees the open duplication, camera or stream (the camera light goes off); off the UI thread in case a capture is finishing.
-        _ = Task.Run(glancer.Release);
-        _ = Task.Run(video.Release);
+        Task.Run(glancer.Release).Forget();
+        Task.Run(video.Release).Forget();
         if (commentary is { OwnershipReleased: false } glance) controller.Stop(glance, "commentary.stopped", keepContext: true);
         rendering = true;
         if (AcceptScreen is not null) AcceptScreen.IsChecked = false;
@@ -779,8 +779,8 @@ public partial class LiveConversationWindow : ThemedWindow
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
         Cancel("conversation.closed");
-        _ = Task.Run(glancer.Release);
-        _ = Task.Run(video.Release);
+        Task.Run(glancer.Release).Forget();
+        Task.Run(video.Release).Forget();
         closed = true;
         generation++;
         timer.Stop();

@@ -17,7 +17,10 @@
                 <Button x:Name="StopButton" Content="_Stop / cancel support work" Click="Stop_Click" Padding="8" Margin="0,4,8,4" AutomationProperties.AutomationId="SupportStop" />
                 <Button x:Name="CleanupButton" Content="Retry owned _cleanup" Click="Cleanup_Click" Padding="8" Margin="0,4,8,4" AutomationProperties.AutomationId="SupportCleanup" />
                 <Button x:Name="RefreshButton" Content="_Refresh shared local status" Click="Refresh_Click" Padding="8" Margin="0,4,8,4" AutomationProperties.AutomationId="SupportRefresh" />
+                <Button Content="Open crash / error _logs" Click="OpenErrorLogs_Click" Padding="8" Margin="0,4,8,4" AutomationProperties.AutomationId="SupportOpenErrorLogs" />
             </WrapPanel>
+            <TextBox x:Name="ErrorLogText" IsReadOnly="True" TextWrapping="Wrap" Margin="0,4"
+                     AutomationProperties.AutomationId="SupportErrorLogLocation" AutomationProperties.Name="Local crash and error log location" />
             <TextBox x:Name="WorkText" IsReadOnly="True" TextWrapping="Wrap" Height="100" VerticalScrollBarVisibility="Auto"
                      AutomationProperties.AutomationId="SupportStatus" AutomationProperties.Name="Support ownership errors omissions and dropped count" />
             <Label Content="Actual shared _status / remedies (not a new readiness evaluation)" Target="{Binding ElementName=StatusText}" />

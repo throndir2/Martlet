@@ -89,13 +89,13 @@ internal sealed class LiveConversationOperation
     internal void Attach(CaptureRun run)
     {
         Volatile.Write(ref capture, run);
-        if (Authorization.IsCanceled) _ = run.CancelAsync();
-        else if (Volatile.Read(ref releasedPress) != 0) _ = run.ReleaseAsync();
+        if (Authorization.IsCanceled) run.CancelAsync().Forget();
+        else if (Volatile.Read(ref releasedPress) != 0) run.ReleaseAsync().Forget();
     }
     internal void Attach(ConversationTurn run)
     {
         Volatile.Write(ref turn, run);
-        if (Authorization.IsCanceled) _ = run.StopAsync();
+        if (Authorization.IsCanceled) run.StopAsync().Forget();
     }
     internal void ReleasePress()
     {
@@ -295,7 +295,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
             });
         }
         published.SetResult();
-        _ = SuperviseAsync(operation);
+        SuperviseAsync(operation).Forget();
         return operation;
     }
 
@@ -346,7 +346,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
             operation.Worker = worker;
         }
         published.SetResult();
-        _ = SuperviseAsync(operation);
+        SuperviseAsync(operation).Forget();
         return operation;
     }
 
@@ -827,7 +827,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         // Never wait for native cleanup on the dispatcher. The shared slot remains reserved until real exit.
         await runtime.DisposeAsync().ConfigureAwait(false);
         if (owned is null || owned.Worker.Completion.IsCompleted) transcription.Dispose();
-        else _ = DisposeAfterReleaseAsync(owned);
+        else DisposeAfterReleaseAsync(owned).Forget();
     }
     private async Task DisposeAfterReleaseAsync(LiveConversationOperation operation)
     {

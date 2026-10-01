@@ -147,7 +147,7 @@ public partial class MainWindow : ThemedWindow
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         StartAmbientMotion();
-        _ = ReadMachineAsync();
+        ReadMachineAsync().Forget();
         await RefreshAsync();
         await ShowSavedCharacterAsync(onlyIfAutoShow: true);
         StartCluster();
@@ -501,7 +501,7 @@ public partial class MainWindow : ThemedWindow
         new AvatarWindow(avatar, new AvatarProfileStore(store.DataDirectory), setupService, setupOperations, captions)
             { Owner = owner }.ShowDialog();
         UpdateCharacterButton();
-        _ = RefreshHomeAsync();
+        RefreshHomeAsync().Forget();
     }
     private void AvatarSessionLocked(bool locked)
     {

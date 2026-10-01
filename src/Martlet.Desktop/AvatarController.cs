@@ -625,7 +625,7 @@ internal sealed class AvatarController : IAsyncDisposable
             Publish("Avatar renderer/transport unavailable. Voice continues; deactivate and inspect before an explicit retry.");
             runtimeFailed = true;
             observer.Disable();
-            lock (stateGate) if (activation is { } currentActivation) _ = currentActivation.CancelAsync();
+            lock (stateGate) if (activation is { } currentActivation) currentActivation.CancelAsync().Forget();
         }
         finally
         {
@@ -751,8 +751,8 @@ internal sealed class AvatarController : IAsyncDisposable
             generation++;
             // Local loudness lip-sync is not a privileged analysis session; it survives pause/mute/config revocations.
             if (loudness is null) observer.Disable();
-            if (pending is { } attempt) _ = attempt.CancelAsync();
-            if (activation is { } current) _ = current.CancelAsync();
+            if (pending is { } attempt) attempt.CancelAsync().Forget();
+            if (activation is { } current) current.CancelAsync().Forget();
         }
     }
 
