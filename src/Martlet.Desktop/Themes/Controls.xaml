@@ -51,34 +51,38 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="Chrome" Background="{TemplateBinding Background}"
-                            BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="10" Padding="{TemplateBinding Padding}" RenderTransformOrigin="0.5,0.5">
-                        <Border.RenderTransform><ScaleTransform/></Border.RenderTransform>
-                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
-                                          RecognizesAccessKey="True"/>
-                    </Border>
+                    <Grid x:Name="Root" RenderTransformOrigin="0.5,0.5">
+                        <Grid.RenderTransform><ScaleTransform/></Grid.RenderTransform>
+                        <Border x:Name="Chrome" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="10" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                              RecognizesAccessKey="True"/>
+                        </Border>
+                        <!-- Hover ring overlays the chrome so the thicker border never changes layout size. -->
+                        <Border x:Name="HoverRing" BorderBrush="{DynamicResource FocusBrush}" BorderThickness="2"
+                                CornerRadius="10" IsHitTestVisible="False" Visibility="Hidden"/>
+                    </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource FocusBrush}"/>
-                            <Setter TargetName="Chrome" Property="BorderThickness" Value="2"/>
+                            <Setter TargetName="HoverRing" Property="Visibility" Value="Visible"/>
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="Chrome" Property="Opacity" Value="0.75"/>
                             <Trigger.EnterActions>
                                 <BeginStoryboard>
                                     <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="Chrome" Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)" To="0.97" Duration="0:0:0.09"/>
-                                        <DoubleAnimation Storyboard.TargetName="Chrome" Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)" To="0.97" Duration="0:0:0.09"/>
+                                        <DoubleAnimation Storyboard.TargetName="Root" Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)" To="0.97" Duration="0:0:0.09"/>
+                                        <DoubleAnimation Storyboard.TargetName="Root" Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)" To="0.97" Duration="0:0:0.09"/>
                                     </Storyboard>
                                 </BeginStoryboard>
                             </Trigger.EnterActions>
                             <Trigger.ExitActions>
                                 <BeginStoryboard>
                                     <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="Chrome" Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)" To="1" Duration="0:0:0.14"/>
-                                        <DoubleAnimation Storyboard.TargetName="Chrome" Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)" To="1" Duration="0:0:0.14"/>
+                                        <DoubleAnimation Storyboard.TargetName="Root" Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)" To="1" Duration="0:0:0.14"/>
+                                        <DoubleAnimation Storyboard.TargetName="Root" Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)" To="1" Duration="0:0:0.14"/>
                                     </Storyboard>
                                 </BeginStoryboard>
                             </Trigger.ExitActions>
@@ -111,14 +115,17 @@
         </Setter>
     </Style>
     <ControlTemplate x:Key="InputTemplate" TargetType="Control">
-        <Border x:Name="Chrome" Background="{TemplateBinding Background}" CornerRadius="10"
-                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
-            <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"/>
-        </Border>
+        <Grid>
+            <Border x:Name="Chrome" Background="{TemplateBinding Background}" CornerRadius="10"
+                    BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+                <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"/>
+            </Border>
+            <Border x:Name="FocusRing" BorderBrush="{DynamicResource FocusBrush}" BorderThickness="2"
+                    CornerRadius="10" IsHitTestVisible="False" Visibility="Hidden"/>
+        </Grid>
         <ControlTemplate.Triggers>
             <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource FocusBrush}"/>
-                <Setter TargetName="Chrome" Property="BorderThickness" Value="2"/>
+                <Setter TargetName="FocusRing" Property="Visibility" Value="Visible"/>
             </Trigger>
             <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Foreground" Value="{DynamicResource MutedBrush}"/>
