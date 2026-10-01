@@ -362,11 +362,11 @@ public partial class MainWindow
                 brainReady ? $"{NetworkMap.ProviderName(llm!)}: {llm!.ModelId}"
                     : llm is not null ? "Chosen. Review its data and cost details in Setup to finish."
                     : "Choose a cloud model (OpenRouter, NVIDIA Build or OpenAI) or one on your own computers.",
-                brainReady, false, [new(brainReady ? "Change" : "Choose", () => RunNodeAction(NodeAction.Setup), !brainReady)]),
+                brainReady, false, [new(brainReady ? "Change" : "Choose", () => { nextSetupJob = SetupRole.Llm; RunNodeAction(NodeAction.Setup); }, !brainReady)]),
             new("voice", "Its voice and ears",
                 voiceReady ? $"Listens with {NetworkMap.ProviderName(stt!)}, speaks with {NetworkMap.ProviderName(tts!)}"
                     : "Add speech-to-text and a voice so you can talk out loud. You can always type instead.",
-                voiceReady, true, [new(voiceReady ? "Change" : "Set up", () => RunNodeAction(NodeAction.Setup))]),
+                voiceReady, true, [new(voiceReady ? "Change" : "Set up", () => { nextSetupJob = NetworkMap.IsReady(stt) ? SetupRole.Tts : SetupRole.Stt; RunNodeAction(NodeAction.Setup); })]),
             new("audio", "Microphone and speakers",
                 audioTested ? "Tested on this PC" : audio is not null ? "Chosen, not tested yet" : "Pick and test them. Nothing leaves this PC.",
                 audioTested, true, [new(audioTested ? "Change" : "Test", () => RunNodeAction(NodeAction.AudioSetup))]),
