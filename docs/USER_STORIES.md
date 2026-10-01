@@ -11,7 +11,9 @@ document is the UX specification for replacing that. It covers:
 4. reusable interaction patterns;
 5. every user story, each with **all** of its entry points, the exact screens
    it passes through, click counts, edge cases and acceptance criteria;
-6. a glossary of labels, what happens to each current window, and a build order.
+6. a glossary of labels, what happens to each current window, and a build order;
+7. the minimum a user has to provide, and every default, detection and
+   automatic install that covers the rest (section 11).
 
 [UI design](UI_DESIGN.md) describes what ships today. This document is the
 target. Where the two differ, this one wins for new work.
@@ -103,7 +105,8 @@ These are acceptance criteria for every screen.
 | R3 | **No consoles, no typed commands.** Installs, downloads, host setup, pairing and updates run in Martlet with progress, a one-line status and *Cancel*. Raw output is under *Details*. | No visible `cmd`/PowerShell window in any normal flow. Nobody types `yes`, `start`, `stop` or a pairing code. |
 | R4 | **Agree up front.** Licences, EULAs and data destinations are agreed during setup, before anything installs. Runtime never asks. | Starting a conversation, showing the character or talking never shows an agreement. |
 | R5 | **Recommended is preselected.** Every choice opens with the best option for this machine selected and labelled *Recommended*, with a one-line reason. | Accepting defaults needs only the primary button. |
-| R6 | **One button per outcome.** The primary button does the whole outcome (install, download, verify, switch) and says what it will do: *Set up Qwen 3 8B (5 GB)*. | No "now click X, then go back and click Y" instructions. |
+| R6 | **Choosing does the whole outcome.** Picking an option installs, downloads, verifies and switches by itself (P2). Where an explicit button remains, it does the whole outcome and says what: *Set up Qwen 3 8B (5 GB)*. | No "now click X, then go back and click Y" instructions; no *Apply*, *Save* or *Activate* after a choice. |
+| R13 | **Ask only for what Martlet can't know.** The user supplies choices with a real trade-off (already preselected), API keys, agreement, and what Windows itself demands (UAC, reboot). Everything else is defaulted, detected or installed (section 11). | Every input field is justified in section 11. |
 | R7 | **Undo over confirm.** Reversible changes apply immediately with an *Undo* toast. Only destructive, irreversible actions get one default-No confirmation. | Switching model, voice, machine or character has no confirmation dialog. |
 | R8 | **Status is always visible.** Each job shows a *Now* line with a status dot. Long tasks continue in the background and show on Home. | The user can leave a page during an install and find its progress on Home. |
 | R9 | **Problems come with their fix.** A broken job says what it means for the user and offers one *Fix* button. | Every error state has a button. |
@@ -193,10 +196,23 @@ tab. On Home, a broken line shows its *Fix* button inline.
 Three cards in a row: **This PC**, **Another of my computers**, **A cloud
 provider**. Cards that can't work show why and are disabled (*This PC: needs
 a 6 GB NVIDIA GPU*). The recommended card has a *Recommended* badge.
-Selecting a card **expands its options below in place**, with the
-recommended option already selected and one primary button. Nothing changes
-until the primary button is pressed. The previously active choice keeps a
-*Current* badge.
+Selecting a card **expands its options below in place** with the
+recommended option already selected, and **choosing is committing**:
+
+- **This PC**: setup of the recommended option starts immediately in the
+  inline runner (P5). Picking another option in the list while it runs
+  switches the target. If an agreement for it isn't on file, a one-row terms
+  sheet (P6) appears first and ticking it starts setup.
+- **Another of my computers**: the best *ready* computer is used immediately;
+  if none is ready, the best capable computer starts setting it up.
+- **A cloud provider**: the API key is the only input. Pasting a key tests it
+  and, if it works, switches. If a key for that provider is already saved,
+  selecting the card switches immediately.
+
+Switching is **make-before-break**: the current choice keeps working until
+the new one has passed its test, then *Now* changes and an undo toast
+appears (P8). A failed setup leaves the old choice running. The previously
+active choice keeps a *Previous* badge with *Switch back*.
 
 ### P3. Option list
 
@@ -526,11 +542,14 @@ The sub-stories C2–C4 cover each card.
      fits your 12 GB GPU*, *Llama 3.1 8B · 5 GB · fast*, *Qwen 3 14B · 9 GB ·
      OK, uses most of your GPU*, … Models that don't fit are collapsed under
      *Won't run well on this PC (3)*.
-  2. Primary: **Set up Qwen 3 8B (5 GB)**. If Ollama's terms aren't agreed
-     yet, a one-row terms sheet sits above it.
-  3. P5 runner on the page: *Install Ollama › Download › Load › Test*.
-  4. On success, *Now* updates and an undo toast appears.
-- **Clicks**: 2 (This PC, Set up). If already installed: 2 (This PC, Use).
+  2. Setup of the recommended model **starts immediately** (P2) in the P5
+     runner on the page: *Install Ollama › Download › Load › Test*. If
+     Ollama's terms aren't on file yet, a one-row terms sheet appears first
+     and ticking it starts setup. Picking another model in the list while it
+     runs switches the target.
+  3. The previous choice keeps working until the test passes; then *Now*
+     updates and an undo toast appears.
+- **Clicks**: 1 (This PC). If an agreement is needed: 2.
 - **Edge cases**: low disk space shows before starting with *Free up space*
   (C7); Ollama already installed by the user is detected and reused; the
   download continues if the user leaves the page.
@@ -545,13 +564,15 @@ The sub-stories C2–C4 cover each card.
 
 - **Start**: Thinking tab.
 - **Flow**:
-  1. Click **Another of my computers**. Expands: machine picker (P4), best
-     preselected (*GAMING-PC · Ready with Qwen 3 32B*).
+  1. Click **Another of my computers**. Expands: machine picker (P4). The
+     best *ready* computer is used immediately (*GAMING-PC · Ready with Qwen
+     3 32B*); undo toast.
   2. Under the selected machine, its model list (P3) with what it already
-     has marked *Ready* and what it could install.
-  3. Primary: **Use GAMING-PC** (or **Set up Qwen 3 32B on GAMING-PC (19
-     GB)** when not installed). Remote install runs in P5 here.
-- **Clicks**: 2 (card, Use) when ready; 3 when choosing another model.
+     has marked *Ready* and what it could install. Picking one that isn't
+     installed starts setting it up there (P5) while the old choice keeps
+     working.
+- **Clicks**: 1 when a computer is ready; 2 to pick another computer or
+  model.
 - **Edge cases**: machine offline → shown *Offline · last seen 2 h ago* and
   not selectable, with *Wake it* if Wake-on-LAN is known; no other machines
   → the card shows *Add a computer* inline.
@@ -568,13 +589,15 @@ The sub-stories C2–C4 cover each card.
      *Recommended: many models, one key*, OpenAI, NVIDIA Build, *Custom
      (OpenAI-compatible)*). Each shows *what is sent* and *pricing ↗*.
   2. Model list (P3) for that provider, recommended preselected.
-  3. **API key** field: shows *Saved ✓* if a key exists (with *Replace*),
-     else empty with *Get a key ↗*.
+  3. **API key** field: the only input. Shows *Saved ✓* if a key exists
+     (with *Replace*), else empty with *Get a key ↗*. A key saved for the
+     same provider by another job (or brought from the network) is reused.
   4. One-row terms sheet for the provider if not agreed.
-  5. Primary: **Use OpenRouter**. Saves the key, sends one tiny test
-     request, switches *Now*.
-- **Clicks**: 3 (card, agree, Use) + paste key. Changing just the model on
-  the current provider: 2 (pick, Use).
+  5. Pasting the key saves it, sends one tiny test request and switches
+     *Now* (no *Save* button). With a key already saved, choosing the
+     provider switches immediately.
+- **Clicks**: 2 (card, agree) + paste key; 1 if the key and agreement are
+  already on file. Changing just the model on the current provider: 1.
 - **Edge cases**: invalid key → inline under the field *OpenRouter rejected
   this key* with *Get a key ↗*; no credit → *Your OpenRouter account has no
   credit*; custom endpoint shows URL and model ID fields.
@@ -1048,8 +1071,8 @@ it.*
 | --- | --- | ---: |
 | A1 First working reply on a new PC (defaults) | 10+ clicks, console, 3 consent ticks | 4 |
 | B1 Second PC joins with the network's setup | not possible | 4 + 1 approval |
-| C2 Think on this PC (not installed) | 4 buttons + console + return | 2 |
-| C4 Switch cloud model | legacy Setup: 6+ | 2 |
+| C2 Think on this PC (not installed) | 4 buttons + console + return | 1 |
+| C4 Switch cloud model | legacy Setup: 6+ | 1 |
 | C5 Switch model mid-conversation | close conversation, go to Setup | 2 |
 | D2 Pick another voice | Voice Library / F5 dialog | 1 |
 | D3 Make a voice from a recording | 2 windows, ~10 fields | 4 |
@@ -1120,19 +1143,186 @@ Each slice ships on its own and is visible to users.
 
 1. **Inline task runner (P5)** and removal of every visible console:
    Ollama download, prerequisites, Docker install, host setup, host status.
-2. **Companion tabs own Now (R1, R2)**: fold Audio setup, Avatar,
+2. **Defaults and automatic setup (section 11)**: choosing commits (P2),
+   *This PC* chains install › download › test › switch, Windows default audio
+   devices, one key per provider reused across jobs, voice output on, and the
+   Docker-free *This PC* engines (Windows speech, native whisper.cpp).
+3. **Companion tabs own Now (R1, R2)**: fold Audio setup, Avatar,
    Companion, Voice Library, F5 dialog, Voice ID and Memory windows into the
-   tabs; P2 chooser with expand-in-place and recommended preselection; one
-   primary button per card; retire the legacy Setup window and the advisor.
-   Apply the glossary.
-3. **Conversation window**: header chips, Thinking quick switch, single
+   tabs; P2 chooser with expand-in-place and recommended preselection;
+   retire the legacy Setup window and the advisor. Apply the glossary.
+4. **Conversation window**: header chips, Thinking quick switch, single
    *Send*, global talk hotkey, tray icon.
-4. **Standing permissions and terms up front (G1, G3)**: Plan › Terms ›
+5. **Standing permissions and terms up front (G1, G3)**: Plan › Terms ›
    Permissions in first run; remove runtime consent checkboxes.
-5. **Network membership (B1–B7)**: network identity, LAN discovery and join
+6. **Network membership (B1–B7)**: network identity, LAN discovery and join
    code, approve-to-join with check number, network-wide trust replacing
    per-desktop host pairing, machine profiles, encrypted key transfer, sync
    and failover always on. Builds on the cluster plan in
    [CLUSTER.md](CLUSTER.md).
-6. **Maintenance (J2–J5)**: network-wide update, two-click problem report,
+7. **Maintenance (J2–J5)**: network-wide update, two-click problem report,
    backup/restore, reset.
+
+---
+
+## 11. Minimum input and automatic setup
+
+The goal: after a few preselected choices, the only thing a user types is an
+API key, and only if they chose a cloud provider. Everything else has a
+default, is detected, or is installed by Martlet.
+
+### 11.1 What the user provides, and nothing else
+
+| Always (first run) | When |
+| --- | --- |
+| Where each job runs | Preselected from this PC's hardware (11.3). Most users change nothing. |
+| An API key per cloud provider chosen | Only for cloud choices. One key per provider, reused by every job that provider serves. |
+| One agreement checkbox | Covers exactly what the plan installs or sends (P6). |
+| What Windows itself demands | At most one UAC prompt per setup run; a restart only when WSL needs it, after which setup resumes by itself. |
+
+| Only when the user opts in | Input |
+| --- | --- |
+| A custom voice | A 10-second recording and *whose voice is this* |
+| Audio2Face lip-sync | A free NVIDIA NGC key (the only second key in the product) |
+| A Linux machine over SSH | Address, user and password once |
+| Their own character | A model file |
+| Their own model server | URL and model ID under *Advanced* |
+
+### 11.2 Minimum-input recipes from first launch
+
+| Situation | User does | Martlet sets up |
+| --- | --- | --- |
+| Gaming PC (NVIDIA 12 GB+), no key | *Set up* › *Agree and set up* | Thinking: local model sized to the GPU (Ollama). Listening: whisper on this PC. Voice: F5 with the bundled default voice. Character: Hiyori, voice-loudness lip-sync. |
+| Mid PC (NVIDIA 6–10 GB), no key | Same, 2 clicks | Thinking: 8B local model. Listening: whisper (CPU, so the GPU stays free for thinking). Voice: Windows voice. |
+| Laptop, no GPU, OpenAI key | Pick *Cloud* for Thinking, paste key, agree | Thinking, Listening and Voice all on OpenAI with that one key. |
+| Laptop, no GPU, OpenRouter or NVIDIA Build key | Pick *Cloud*, paste key, agree | Thinking on that provider. Listening and Voice on Windows speech (no install, no key). |
+| Laptop, no GPU, no key | *Set up* › *Agree and set up* | Thinking: small CPU model (slow but works, Home suggests a key or another computer). Listening and Voice: Windows speech. Works with zero typing. |
+| Second PC | *Join my Martlet network* › approve on the first PC | Takes the network's plan and keys; offers its abilities (B1). |
+
+### 11.3 Default plan by hardware
+
+The plan reads CPU, RAM, GPU and VRAM locally and budgets VRAM across jobs
+that share one GPU (it never plans more than fits). Model names are examples;
+sizes follow [Recommended setups](RECOMMENDED_SETUPS.md).
+
+| This PC | Thinking | Listening | Voice | Lip-sync |
+| --- | --- | --- | --- | --- |
+| No NVIDIA GPU | Cloud if a key is given, else a ~3B CPU model | Windows speech | Windows voice | Voice loudness |
+| NVIDIA 6–10 GB | 8B local | whisper small (CPU) | Windows voice | Voice loudness |
+| NVIDIA 12–16 GB | 8B–14B local | whisper (GPU) | F5, bundled voice | Voice loudness (Audio2Face offered) |
+| NVIDIA 24 GB+ | 14B–32B local | whisper (GPU) | F5, bundled voice | Voice loudness (Audio2Face offered) |
+| Network has a stronger computer | That computer, for any job it does better | same | same | same |
+
+Rule for keys: when the user adds a provider key, every job still on a
+fallback (small CPU model, Windows speech) that the provider does better
+moves to it. Jobs already running well locally stay local.
+
+### 11.4 Every input today, and what replaces it
+
+| Input today | Where | Target |
+| --- | --- | --- |
+| *Demo only* vs *Use AI models* (Demo preselected) | Setup › Choice | Removed. First run is real setup. |
+| Job selector | Setup › Jobs | Removed; one tab per job. |
+| Provider | Setup › Jobs, cloud card | Preselected (OpenRouter for Thinking; the provider whose key the user has). Asked only when *Cloud* is chosen. |
+| API base URL | Setup › Jobs | Filled from the provider; only *Custom* under *Advanced* shows it. |
+| Model ID (text) | Setup › Jobs, cloud card | Preselected recommended model from a list; after the key is entered, the list comes from the provider. Typed IDs only under *Advanced*. |
+| TTS voice ID (text, `alloy`) | Setup › Jobs | Preselected; chosen from a list with *Preview*. |
+| **API key** | Setup › Credentials, cloud card | **Asked.** Next to the provider, once per provider, reused across jobs and brought along when joining a network. |
+| Route consent checkbox | Setup, cloud card | The terms sheet, once. |
+| *Apply this job's choice*, *Save checkpoint*, *Save and exit setup*, cloud *Save* | Setup, cloud card | Removed; choosing commits (P2). |
+| Store / read / detach / remove key | Setup › Credentials | Thinking › *Advanced* › *Keys*. |
+| Microphone | Audio setup | Default: *Windows default (Headset Mic)*, following Windows when it changes. |
+| Speakers | Audio setup | Default: *Windows default*, following Windows. |
+| Microphone and output tests (gate "qualified") | Audio setup | Optional *Test* buttons; never a gate. |
+| *Save audio choices and historical checkpoints* | Audio setup | Removed; picking applies. |
+| Character | Avatar window | Hiyori (already the default). |
+| *Save choices*, *Activate reviewed avatar* | Avatar window | Removed; picking applies. |
+| GPU inspection permission, mapping, reduced-fidelity acceptance, analysis permission | Avatar window › Advanced | Automatic: mapping from `Audio2FaceAutoMapping`, permission covered by the terms sheet. Manual mapping under *Advanced*. |
+| Renderer endpoint, SDK path | Avatar window | Defaults; *Advanced* only. |
+| Lip-sync | Avatar window, Devices | Voice loudness; Audio2Face used automatically when it's available. |
+| Host method (Docker / SSH Docker / SSH Ubuntu / manual) | Hosts › Where it runs | Detected: *This PC* sets itself up; a Windows PC joins the network; SSH only for Linux. |
+| SSH target | Hosts › Install | Asked, Linux path only. |
+| Host LAN address | Hosts › Install | Detected and reported by the machine. |
+| *Install Docker Desktop* | Hosts, welcome tour | Inside the runner when a job needs it (or not needed, 11.6). |
+| Pairing code paste, *Pair with host*, *Check host* | Hosts › Pair | Removed; network trust (B1, B2). |
+| Role options (GPU or CPU, model) | Role install dialog | *Automatic*, preselected by the machine's hardware. |
+| NVIDIA NGC key | Audio2Face role | Asked only when the user turns on Audio2Face, with *Get a free key ↗*. |
+| Talk mode, talk key | Conversation | Push-to-talk on a global key (preset), changeable on Listening. |
+| Hands-free sensitivity, reply pause | Conversation | Defaults (0.5, 0.8 s); Listening › *Advanced*. |
+| *Speak the reply …* (off) | Conversation | On whenever a voice is set. |
+| Per-message consent checkboxes | Conversation | Standing permissions (G3). |
+| Voice ID, screen watching | Conversation | Off; one switch each when wanted. |
+| Memory: storage location, enable checkbox, *Save memory configuration* | Memory window | One switch; stored in Martlet's data folder. |
+| Updates: check, interval, auto-install, host updates | Settings | All on by default: check daily, install when Martlet next closes, update the network too. |
+| Persona name and text | Companion window | Default *Martlet* persona; editing optional. |
+| *Keep who does what in sync*, failover | Devices | Always on inside a network. |
+| Setup advisor questions (3 pages) | Advisor window | Replaced by hardware detection (11.3). |
+| Prerequisite tick list | Welcome tour | Removed; each job installs what it needs (11.5). |
+| Windows microphone privacy | Prerequisites | Detected. Windows doesn't let apps change it, so a Fix card opens the exact Settings page. |
+
+### 11.5 Prerequisites Martlet installs by itself
+
+All run in the inline runner (P5), covered by the one agreement and one UAC
+prompt per run.
+
+| Prerequisite | Needed when | Target |
+| --- | --- | --- |
+| WebView2 Runtime | Always (character) | Bundled with the installer; never a separate step. |
+| Ollama | Thinking on this PC | Silent install, then the model download, load and test. |
+| Model files (LLM, whisper, F5) | The job that uses them | Downloaded in the runner; resumable. |
+| Windows speech languages | Windows speech chosen and the language is missing | Installed through Windows features in the runner. |
+| WSL 2 | A job on this PC that needs the host service | `wsl --install --no-distribution` in the runner; if Windows needs a restart, Martlet resumes setup after sign-in. |
+| Docker Desktop | Same | Silent install with its licence accepted on the user's behalf after the terms sheet; started automatically; no sign-in. |
+| Firewall rule (TCP 9443) | Only when this PC helps other computers | Part of the same single elevation; no separate Public-to-Private dialog. |
+| NVIDIA driver | GPU jobs | Detected. If missing or too old, a Fix card links to the driver download (drivers can't be installed silently and reliably). The plan falls back to CPU or cloud until then. |
+| NVIDIA NGC key | Audio2Face only | Opt-in (11.1). |
+
+### 11.6 Gaps that block "just a key"
+
+These need building before the recipes in 11.2 work:
+
+1. **Windows speech as a route.** `Martlet.Speech.Windows` and
+   `Martlet.Stt.Windows` exist but aren't choices in the app. Without them a
+   PC with no GPU and an OpenRouter/NVIDIA key has no voice or listening.
+2. **Listening on this PC without Docker.** `Martlet.LocalStt` (native
+   whisper.cpp, no Docker) exists as a disabled candidate. Wiring it in
+   removes WSL, Docker Desktop and the host service from the most common
+   *This PC* listening setup.
+3. ~~A bundled default F5 voice~~: done in #145 (F5-TTS's MIT English
+   sample is used when no voice is chosen; recording is optional).
+4. **One key per provider.** Keys are bound per job today; an OpenAI key
+   should serve Thinking, Listening and Voice without being entered three
+   times.
+5. **Live model lists.** After a key is entered, read the provider's models
+   instead of a static list and typed IDs.
+6. **A zero-key Thinking fallback**: a small CPU model in the plan for PCs
+   with no GPU and no key.
+7. **Resume after restart** for WSL installs.
+8. **Evaluate dropping Docker Desktop on Windows**: run the host service in
+   a Martlet-managed WSL distribution (the native Ubuntu host path) for the
+   roles that don't need containers. Audio2Face still needs containers.
+
+### 11.7 Current flows that need this treatment
+
+Each flow below asks for a step Martlet could do itself.
+
+| # | Flow today | Extra steps the user takes | Target | Code |
+| --- | --- | --- | --- | --- |
+| 1 | Thinking › This PC | *Install Ollama*, *Download model* (console), *Check Ollama*, *Use Ollama on this PC* | Selecting *This PC* runs the whole chain (C2) | `MainWindow.SetupPages.cs:314-345` |
+| 2 | Voice / Listening › This PC | *Install Docker Desktop*, *Set up this PC's host service* (one click since #141/#142), then *Use F5/whisper on this PC*, *Check it* | Selecting *This PC* runs Docker › host service › role › model › test › switch as one chain; Listening uses native whisper.cpp with no Docker (11.6) | `MainWindow.SetupPages.cs:408-420` |
+| 3 | Voice › F5 | Done in #145: the bundled sample voice is used without a picker; *Choose another voice* opens the picker | Keep; move the picker inline into the Voice list (D2, D3) | `F5VoiceDialog.cs`, `HostSpeech.cs` |
+| 4 | Cloud card | Consent checkbox, key per job, *Save* | Paste key = switch; key reused across jobs (C4) | `MainWindow.SetupPages.cs:540-580` |
+| 5 | Legacy Setup window | Demo preselected; *Apply this job's choice*, credentials tab, *Save checkpoint*, *Save and exit setup* | Removed | `SetupWindow.xaml` |
+| 6 | Audio setup | No device until chosen; tests gate readiness; *Save audio choices* | Windows default devices, no gate | `AudioSetupWindow.xaml(.cs)` |
+| 7 | Conversation | Voice output off each time; 1–3 consent ticks per message; *Finish and send* | Voice on; standing permissions; release sends | `LiveConversationWindow.xaml:105-237` |
+| 8 | Character | *Save choices*, *Activate reviewed avatar*, inspection and analysis permissions, manual mapping | Picking applies; automatic mapping | `AvatarWindow.xaml(.cs)`, `Audio2FaceAutoMapping.cs` |
+| 9 | Host role install | Role dialog with GPU/CPU choice and options | *Automatic* preselected; dialog only for the NGC key | `HostDialogs.cs:125-148` |
+| 10 | Add a computer | Method choice, typed LAN address, *Install Docker Desktop*, pairing code, *Pair with host*, *Check host* | Join the network (B1); SSH only for Linux (B6) | `HostsWindow.xaml(.cs)` |
+| 11 | Prepare a Linux host | Type target, *Read status*, *Tick what is missing*, *Run selected* | Part of B6's runner | `PrepareHostWindow.xaml(.cs)` |
+| 12 | Prerequisites | Welcome-tour tick list, visible PowerShell; Ollama and Windows speech left unticked | Installed on demand by the job that needs them | `Prerequisites.cs`, `MainWindow.Shell.cs:231-260` |
+| 13 | Firewall | Separate *make network Private* confirmation, then UAC | Inside the single elevation, only when helping others | `HostsWindow.xaml.cs:308-320`, `WindowsFirewall.cs` |
+| 14 | Memory | Storage choice, enable checkbox, *Save memory configuration* | One switch | `MemoryWindow.xaml(.cs)` |
+| 15 | Updates | Four separate preferences | All on by default | `MainWindow.Updates.cs`, `UpdateCheckPreferences.cs` |
+| 16 | Devices sync and failover | Two opt-in toggles | Always on inside a network | `MainWindow.Cluster.cs` |
+| 17 | Voice Library import | Purpose, engine, rights basis, storage confirmation, *Import* | *Make a new voice* (D3) | `VoiceLibraryWindow.xaml.cs` |
+| 18 | Setup advisor | Three question pages, then a plan the user still carries out by hand | Hardware-based plan that sets itself up (A1) | `SetupAdvisorWindow.xaml(.cs)` |
