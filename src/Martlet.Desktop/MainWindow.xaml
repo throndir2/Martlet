@@ -109,6 +109,8 @@
                             </Grid>
                         </Border>
 
+                        <StackPanel x:Name="HomeCoverage" AutomationProperties.Name="What isn't working right now"/>
+
                         <Border x:Name="ChecklistCard" Style="{DynamicResource CardStyle}">
                             <StackPanel>
                                 <DockPanel>
@@ -226,6 +228,7 @@
                                                Text="Hand each job to any of your computers. Lip-sync switches right away, even while the character is talking."/>
                                 </StackPanel>
                             </DockPanel>
+                            <StackPanel x:Name="RolesCoverage" AutomationProperties.Name="What isn't working right now"/>
                             <CheckBox x:Name="ClusterSyncChoice" Margin="0,12,0,0" Click="ClusterSync_Click"
                                       Content="Keep who does what in sync on all my computers (checks hosts every 15 seconds)"
                                       AutomationProperties.AutomationId="ClusterSync"/>

@@ -24,7 +24,7 @@ public sealed record GatewayMachineReport
 {
     public const int MaximumBytes = 16_384;
     public required DateTimeOffset CollectedAt { get; init; }
-    /// <summary>How the gateway runs on the host: docker or native.</summary>
+    /// <summary>How the gateway runs on the host: docker, native, or app (inside the Martlet app on a Mac, phone or tablet).</summary>
     public required string Method { get; init; }
     public required string OperatingSystem { get; init; }
     public string? Kernel { get; init; }
@@ -37,6 +37,14 @@ public sealed record GatewayMachineReport
     /// <summary>The newest CUDA version the NVIDIA driver supports (nvidia-smi), when there is one.</summary>
     public string? Cuda { get; init; }
     public required IReadOnlyList<GatewayMachineGpu> Gpus { get; init; }
+    /// <summary>The operating system the host's roles run on: linux, windows, macos, ios or android. Absent on older
+    /// hosts, which run the Linux host engine.</summary>
+    public string? Platform { get; init; }
+    public string? OsVersion { get; init; }
+    /// <summary>x64 or arm64.</summary>
+    public string? Architecture { get; init; }
+    /// <summary>Device features such as apple-intelligence, gemini-nano, foreground-only or battery.</summary>
+    public IReadOnlyList<string>? Features { get; init; }
 
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -60,7 +68,12 @@ public sealed record GatewayMachineReport
     }
 
     internal bool IsValid() =>
-        Method is "docker" or "native" &&
+        Method is "docker" or "native" or "app" &&
+        Platform is null or "linux" or "windows" or "macos" or "ios" or "android" &&
+        Architecture is null or "x64" or "arm64" &&
+        Text(OsVersion) &&
+        (Features is null || Features is { Count: <= 16 } && Features.All(f => f is { Length: > 0 and <= 32 } &&
+            f.All(c => c is >= 'a' and <= 'z' or >= '0' and <= '9' or '-'))) &&
         Text(OperatingSystem, required: true) && Text(Kernel) && Text(Processor) && Text(ContainerRuntime) && Text(Cuda) &&
         NvidiaContainers is null or "yes" or "no" or "unknown" &&
         ProcessorThreads is null or (> 0 and <= 4096) &&

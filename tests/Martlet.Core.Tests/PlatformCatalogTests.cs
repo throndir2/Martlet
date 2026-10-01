@@ -1,0 +1,113 @@
+using Martlet.Core.Cluster;
+using Martlet.Core.Installation;
+using Martlet.Core.Platforms;
+
+namespace Martlet.Core.Tests;
+
+public sealed class PlatformCatalogTests
+{
+    private static readonly DateTimeOffset Now = new(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
+
+    private static HostHardware Report(string id, params HostGpu[] gpus) =>
+        new(id, "https://192.168.1.20:9443", Now, Now, "native", "Ubuntu 24.04", null, null, 8, 32, null, "yes", gpus);
+
+    [Fact]
+    public void Gpu_roles_are_refused_with_the_reason_unknown_without_a_report_and_allowed_when_they_fit()
+    {
+        var amd = PlatformDevice.FromHost("gpu-1", Report("gpu-1", new HostGpu("Radeon RX 6600", "amd", 8192, "amdgpu")));
+        var f5 = PlatformCatalog.Check("f5", PlatformSide.Host, amd);
+        Assert.Equal(PlatformVerdict.No, f5.Verdict);
+        Assert.Contains("NVIDIA GPU with 6 GB+", f5.Reason, StringComparison.Ordinal);
+        Assert.Contains("Radeon RX 6600", f5.Reason, StringComparison.Ordinal);
+        Assert.True(PlatformCatalog.Check("ollama", PlatformSide.Host, amd).Allowed);
+
+        var unreported = PlatformCatalog.Check("audio2face", PlatformSide.Host, PlatformDevice.FromHost("old", null));
+        Assert.Equal(PlatformVerdict.Unknown, unreported.Verdict);
+        Assert.True(unreported.Allowed);
+
+        var small = PlatformDevice.FromHost("gpu-2", Report("gpu-2", new HostGpu("RTX 3050", "nvidia", 4096, "560")));
+        Assert.Equal(PlatformVerdict.Yes, PlatformCatalog.Check("audio2face", PlatformSide.Host, small).Verdict);
+        Assert.Equal(PlatformVerdict.No, PlatformCatalog.Check("f5", PlatformSide.Host, small).Verdict);
+    }
+
+    [Fact]
+    public void Phone_hosts_report_their_platform_and_cannot_take_desktop_engines()
+    {
+        var iphone = PlatformDevice.FromHost("iphone", Report("iphone") with
+        {
+            Method = "app", Platform = "ios", OsVersion = "26.1", Architecture = "arm64",
+            Features = [PlatformFeatures.ForegroundOnly]
+        });
+        Assert.Equal(DevicePlatform.Ios, iphone.Platform);
+        Assert.True(iphone.ForegroundOnly);
+        Assert.False(PlatformCatalog.ManagesRolesRemotely(iphone));
+        Assert.Equal(PlatformVerdict.No, PlatformCatalog.Check("ollama", PlatformSide.Host, iphone).Verdict);
+        Assert.Equal(PlatformVerdict.NotYet, PlatformCatalog.Check("apple-speech", PlatformSide.Host, iphone).Verdict);
+        Assert.Contains(PlatformCatalog.HostNotes(iphone), note => note.Contains("only while Martlet is open", StringComparison.Ordinal));
+        Assert.True(PlatformCatalog.ManagesRolesRemotely(PlatformDevice.FromHost("linux", null)));
+    }
+
+    [Fact]
+    public void Every_engine_names_a_known_job_and_at_most_one_entry_per_platform_and_side()
+    {
+        foreach (var engine in PlatformCatalog.Engines)
+        {
+            Assert.Contains(engine.Job, ClusterJobs.All.Append(PlatformCatalog.Feature));
+            Assert.Equal(engine.Support.Count, engine.Support.DistinctBy(s => (s.Platform, s.Side)).Count());
+            Assert.All(engine.Support.Where(s => s.Availability == PlatformAvailability.Planned), s => Assert.False(string.IsNullOrEmpty(s.Slice)));
+        }
+    }
+
+    [Fact]
+    public void Coverage_names_the_problem_effect_and_fixes_for_a_silent_thinking_host()
+    {
+        var job = new JobSituation
+        {
+            Job = ClusterJobs.Thinking, Doer = JobDoer.Host, DoerName = "gpu-1", Fallback = "Cloud: OpenRouter", FallbackIsCloud = true,
+            Host = new() { HostId = "gpu-1", Reachable = false, Engine = "Ollama", SyncOn = true, Failover = true, FailoverTarget = "gpu-2" }
+        };
+        var coverage = JobCoverageRules.Evaluate(job);
+        Assert.Equal(CoverageState.Unavailable, coverage.State);
+        Assert.Contains("gpu-1 isn't answering", coverage.Problem, StringComparison.Ordinal);
+        Assert.Contains("moves it to gpu-2", coverage.Problem, StringComparison.Ordinal);
+        Assert.Equal(JobCoverageRules.Effect(ClusterJobs.Thinking), coverage.Effect);
+        Assert.Equal([CoverageFix.CheckHost, CoverageFix.UseFallback, CoverageFix.OpenDevices], coverage.Fixes);
+        Assert.Equal("Martlet can't reply right now", JobCoverageRules.Headline([coverage]));
+
+        var unchecked_ = JobCoverageRules.Evaluate(job with { Host = job.Host! with { Reachable = null } });
+        Assert.Equal(CoverageState.Unknown, unchecked_.State);
+        Assert.Null(JobCoverageRules.Headline([unchecked_]));
+
+        var lipSync = JobCoverageRules.Evaluate(new()
+        {
+            Job = ClusterJobs.LipSync, Doer = JobDoer.Host, Host = new() { HostId = "gpu-1", Reachable = true, Serves = false, Engine = "Audio2Face" }
+        });
+        Assert.Equal(CoverageState.Limited, lipSync.State);
+    }
+
+    [Fact]
+    public void Forget_and_remove_say_where_each_job_goes_before_anything_changes()
+    {
+        var thinking = new JobSituation
+        {
+            Job = ClusterJobs.Thinking, Doer = JobDoer.Host, Fallback = "Cloud: OpenRouter", FallbackIsCloud = true,
+            Host = new() { HostId = "gpu-1", Reachable = true, Engine = "Ollama", SyncOn = true }
+        };
+        var listening = new JobSituation
+        {
+            Job = ClusterJobs.Listening, Doer = JobDoer.Host, Host = new() { HostId = "gpu-1", Reachable = true, Engine = "whisper" }
+        };
+        var forget = JobCoverageRules.ForgetImpact([thinking, listening], "gpu-1");
+        Assert.Contains(forget, line => line.StartsWith("Thinking goes back to your Setup choice, Cloud: OpenRouter", StringComparison.Ordinal) &&
+            line.Contains("may cost money", StringComparison.Ordinal));
+        Assert.Contains(forget, line => line.StartsWith("Listening: nobody will do it", StringComparison.Ordinal));
+        Assert.Contains(forget, line => line.Contains("other computers", StringComparison.Ordinal));
+        Assert.Empty(JobCoverageRules.ForgetImpact([thinking], "gpu-9"));
+
+        Assert.True(JobCoverageRules.HandBackFirst(thinking, "gpu-1"));
+        var withFailover = thinking with { Host = thinking.Host! with { Failover = true, FailoverTarget = "gpu-2" } };
+        Assert.False(JobCoverageRules.HandBackFirst(withFailover, "gpu-1"));
+        Assert.Contains(JobCoverageRules.RemoveRoleImpact(withFailover, "gpu-1", sharedPlanUsesHost: true),
+            line => line.Contains("moves to gpu-2", StringComparison.Ordinal));
+    }
+}
