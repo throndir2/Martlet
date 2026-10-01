@@ -400,13 +400,12 @@ public partial class MainWindow
         if (thisPc is null)
         {
             stack.Add(Note((machine.DockerRunning ? "Docker Desktop is running. "
-                    : machine.DockerInstalled ? "Docker Desktop is installed but not running. Start it first. "
-                    : "Docker Desktop isn't installed yet. ") +
-                $"First set up Martlet's host service on this PC (once). Then come back and choose Use {job.Engine} on this PC; Martlet installs {job.Engine} there when you do.",
+                    : machine.DockerInstalled ? "Docker Desktop is installed; Martlet starts it when needed. "
+                    : "Docker Desktop isn't installed yet; Martlet offers to install it first. ") +
+                $"Set up this PC's host service sets up and pairs Martlet's host service here by itself (once), then continues with {job.Engine}.",
                 new Thickness(0, 0, 0, 8)));
             stack.Add(Row(
-                machine.DockerInstalled ? null : PageButton("Install Docker Desktop", () => ActionText.Text = Prerequisites.Launch([Prerequisites.DockerDesktop]), id: "SetupInstallDocker"),
-                PageButton("Set up this PC's host service", () => RunNodeAction(NodeAction.HostThisPc), primary: true, id: "SetupHostThisPc")));
+                PageButton("Set up this PC's host service", () => SetUpThisPcHostAsync(job).Forget(), primary: true, id: "SetupHostThisPc")));
         }
         else
         {
