@@ -365,7 +365,7 @@ public partial class MainWindow
 
     /// <summary>Brings every paired host that runs an older Martlet (or does not report its version) to this PC's version,
     /// one at a time and without a console window. A host that would need a password, sudo or an approval there keeps an
-    /// Update host command on its Devices card, which runs the same update in a console.</summary>
+    /// Update host command on its Devices card, which runs the same update in a run window.</summary>
     private async Task UpdateHostsAsync(bool automatic)
     {
         if (store is null || closing || hostUpdatesRunning) return;

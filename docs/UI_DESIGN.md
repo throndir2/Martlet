@@ -60,8 +60,8 @@ with step dots:
    missing prerequisite, read from the registry and files: WebView2 and blocked
    microphone access are ticked; WSL 2 + Docker Desktop is ticked for a host
    with an NVIDIA GPU; Windows speech and Ollama wait unticked for the setup
-   advisor. *Install selected* hands the ticked items to the prerequisites tool
-   in a console window; *Not now* moves on.
+   advisor. *Install selected* runs the prerequisites tool for the ticked items
+   hidden, with its output in a Martlet run window; *Not now* moves on.
 4. **How would you like to start?** (companion mode) *Recommend a setup for me*
    opens the setup advisor (its plan adds *Install on this PC* for what it runs
    here), and *I know what I want* opens Companion › *Thinking*. In host mode,
@@ -93,7 +93,10 @@ Below the hero, **Now** has one line per job: *Thinking*, *Voice*,
 needs attention or not working, grey not set up), what Martlet uses now in one
 sentence, and one button (*Set up*, *Review* or *Change*) that opens that
 job's Companion tab. Only Thinking is required; while it is missing its line
-is highlighted and its button is primary.
+is highlighted and its button is primary. The Listening line also says
+*Microphone not set up yet* (amber, with *Set up mic* once listening itself is
+ready) until a microphone test passes, and the Listening tab's **Now** card
+says the same.
 
 When a chosen job stops working (its host isn't answering, its role was
 removed, its key was deleted, or Setup saved a route this version can't use),
@@ -128,7 +131,8 @@ This page answers "what do I have, and what is each machine doing?"
   handing the job to a host checks it, offers to install the role (Ollama or
   whisper) there and switches over once it is ready, and the Setup choice comes
   back without re-entering a key. Each tile's *Change in Companion* opens that
-  job's tab; speaking changes there, because it needs a model and consent. **Lip-sync switches on the spot** from a drop-down: *This PC*,
+  job's tab (lip-sync's opens *Character*); speaking changes there, because it needs a model and consent. **Lip-sync switches on the spot**
+  from a drop-down once a host is paired: *This PC*,
   any paired host, or *Nobody (mouth follows voice loudness)*. A showing
   character keeps showing; the next sentence uses the new computer.
   Handing lip-sync to a host first checks it over its pinned pairing. If it
@@ -168,11 +172,13 @@ This page answers "what do I have, and what is each machine doing?"
     device ID, how Martlet reaches it, and a *Check connection* button that
     uses the existing pinned pairing and shows which roles it runs.
   - *Roles on a host*: *Hand lip-sync to this computer*, *Install Audio2Face
-    there* and *Remove Audio2Face from it*, its status console, *Update host*,
+    there* and *Remove Audio2Face from it*, *Show its status*, *Update host*,
     *Pair again* and *Forget this host*. Install, remove, update and status run the same
     `martlet-host` engine on that computer the way Martlet reaches it (SSH with
-    Docker, SSH native Ubuntu, or this PC's Docker Desktop), in a console where
-    the host owner confirms each change; the desktop never gets a shell,
+    Docker, SSH native Ubuntu, or this PC's Docker Desktop), in a Martlet run
+    window with live output and *Cancel* (never a console window); the owner's
+    click is the confirmation. On this PC, roles with a GPU-or-CPU choice
+    preselect the suggestion from the graphics card's free memory. The desktop never gets a shell,
     Docker socket or admin rights on the host. *How Martlet reaches it* sets
     that route; without one, Martlet copies the command to run on the host.
   - *Martlet version* for hosts: the release the host's gateway reports on
@@ -194,11 +200,11 @@ service on this PC:
 - **Hero**: "This PC is a Martlet host", with a status pill and the address
   desktops use (`https://<LAN IP>:9443`).
 - **Five steps**, each with one button:
-  1. *Docker Desktop*: installed or running, read locally. Opens the install
-     console.
+  1. *Docker Desktop*: installed or running, read locally. Installs it with
+     winget in a run window.
   2. *Host service*: set up the gateway, including the one-time firewall prompt.
-  3. *Pair a desktop*: opens the host's pairing console, which shows the
-     one-use code.
+  3. *Pair a desktop*: *Show a pairing code* asks for the main PC's device ID
+     and shows the one-use code in a run window (copied to the clipboard).
   4. *Roles*: add or remove Audio2Face lip-sync, and show host status.
   5. *Keep it up to date*: rebuilds the host service from this app's version
      (`martlet-host update`); done when its gateway image matches the app.
@@ -217,8 +223,8 @@ The long form became a four-step wizard with a step rail:
    computer* for SSH: connect, check Docker, set up, pair and read the machine
    report in a run window with live output and *Cancel*), and the exact command
    in a *Show the command* expander.
-3. **Pair**: three numbered mini-steps, the device ID with *Copy*, *Open
-   pairing console* (*Pair automatically over SSH* for SSH hosts), the pasted
+3. **Pair**: three numbered mini-steps, the device ID with *Copy*, *Pair
+   automatically* (*Pair automatically over SSH* for SSH hosts), the pasted
    code and *Pair*, plus *Check* and *Forget*.
    Pairing adds the host to `hosts.json` (every paired host and how Martlet
    reaches it; nonsecret, secrets stay in Windows Credential Manager). The
@@ -254,8 +260,8 @@ The conversation window puts the chat first:
   3. *Listening*: the speech-to-text provider, model and key, then the
      microphone.
   4. *Character*: what it looks like now, then the character model (show,
-     hide, choose and customize, reset), its personality, and who handles
-     lip-sync.
+     hide, choose and customize, reset), its personality, and where lip-sync
+     runs.
   5. *Memory*: whether memory is on, and *Manage memory* for its facts.
 
   Every tab starts with **Now**: what it uses and any problem stopping it.
@@ -268,28 +274,63 @@ The conversation window puts the chat first:
   Each job tab (1-3) then asks **Where it runs**, defaulting to *This PC
   (recommended)*:
 
-  - *This PC*: thinking uses Ollama at `http://127.0.0.1:11434/v1` (install
-    Ollama, pick a suggested model sized to the graphics card, *Download model*
-    in a console, *Check Ollama* over loopback on request, *Use Ollama on this
+  - *This PC*: thinking uses Ollama at `http://127.0.0.1:11434/v1` (*Install
+    Ollama and use it* installs Ollama with the suggested model sized to the
+    graphics card and switches to it; *Download model* shows Ollama's progress
+    in a run window, *Check Ollama* over loopback on request, *Use Ollama on this
     PC*). Voice offers two one-click choices, the one in use (or the one this
     PC's hardware suits) first: **F5 voice, with Docker** (*Set up F5 with
     Docker* sets up and pairs Martlet's host service on this PC, so this PC
     also becomes one of your hosts, installs F5 and switches over with F5-TTS's
     published sample voice) or **Windows voice, no Docker** (*Use a Windows
     voice* picks an installed voice in this PC's language, with no host
-    service; a voice list and *Hear it* follow). Listening (whisper) runs in
-    Martlet's host service on this PC; *Set up whisper with Docker* does the
-    same chain.
+    service; a voice list and *Hear it* follow). Listening offers the same kind
+    of two choices for whisper in Martlet's host service: **On the graphics
+    card** or **On the processor**. Martlet reads the card live (nvidia-smi:
+    memory in use, driver 580+ for whisper's CUDA build) and adds what it
+    already runs there (Ollama's model, F5, Audio2Face), then recommends the
+    card (large-v3-turbo, or small when memory is tight) unless it is too busy
+    or can't run it, in which case the processor (small) is recommended with
+    the reason. One click and one confirmation run Docker, the host service,
+    the install with that choice and the switch in a single run window; the
+    engine asks nothing.
   - *Another of your computers*: every paired host with what it runs and *Use
     it*, plus *Add a computer*, *Check hosts* and the Devices map.
   - *A cloud provider*: provider, model (and voice), API key and an explicit
     choice checkbox. Saving stores the route, then the key in Windows Credential
     Manager, then the confirmed choice.
 
+  Lip-sync on the *Character* tab uses the same **Where it runs** chooser and
+  cards, with *Voice loudness* in place of a cloud provider. The recommended
+  place follows the hardware: *This PC* with an NVIDIA graphics card of 4 GB or
+  more, otherwise another computer that can run Audio2Face, otherwise voice
+  loudness. Each card's button commits the choice, which switches right away,
+  even while the character talks:
+
+  - *This PC*: two choices, the one in use first, like the voice. **Audio2Face,
+    with Docker** (*Set up Audio2Face with Docker* sets up and pairs Martlet's
+    host service on this PC, then hands lip-sync to it, installing Audio2Face
+    with its NGC key; once the host service exists, *Use Audio2Face on this
+    PC* and *Check it*) or **Your own Audio2Face service** at the character's
+    loopback endpoint (*Use my own service*).
+  - *Another of your computers*: the same host list as the job tabs, with *Use
+    it*, *Add a computer*, *Check hosts* and the Devices map.
+  - *Voice loudness*: *Use voice loudness* turns Audio2Face off.
+
   *Advanced setup* at the bottom of each job tab opens the full Setup window on
   that job, for every route type and stored or detached keys. Microphone and
   speakers, the Voice Library, character customization, personality and
   memory facts still open their own windows from their tabs.
+
+  **Microphone and speakers** is one short page with two cards. Each card has
+  the device picker (Windows default first; *Find devices* lists the rest), one
+  test button and a state chip with one plain sentence: *Not set up*,
+  *Testing*, *Working*, *Needs attention* (with the fix, such as "Too quiet.
+  Check that the microphone isn't muted...") or *Did you hear it?* (with *Yes,
+  I heard it*). The microphone test is the primary button until it passes,
+  then *Done*. Picking and finished tests save on their own; there is no Save
+  button. Each test still asks first, and the exact evidence and
+  *Troubleshooting* sit under *Details*.
 - **Settings**: palette, this PC's role and the tour, app updates (automatic
   checks and their interval, automatic installs, keeping hosts on this PC's
   version, *Check for updates now*, *Install*, *Update hosts now*), tools

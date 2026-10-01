@@ -29,7 +29,8 @@ internal sealed record LocalChatModel(string Id, string Size, string Fits, doubl
 /// key for a cloud provider. Everything saves through the same setup service, consent and credential rules as Setup.</summary>
 public partial class MainWindow
 {
-    private enum JobPlace { ThisPc, Computer, Cloud }
+    /// <summary>Where a job runs. Lip-sync's third place is the voice's loudness (no Audio2Face) instead of a cloud provider.</summary>
+    private enum JobPlace { ThisPc, Computer, Cloud, Loudness }
 
     private sealed record CloudProvider(string Name, string? BaseUrl, bool Chat, string? DefaultModel, bool NeedsKey)
     {
@@ -244,44 +245,26 @@ public partial class MainWindow
 
         page.Children.Add(JobNowCard(section, job, route));
 
-        var where = new StackPanel();
-        where.Children.Add(Heading("Where it runs"));
-        void Place(JobPlace value, string label, string detail)
-        {
-            var text = new StackPanel();
-            text.Children.Add(new TextBlock { Text = label + (route is not null && value == current ? "  \u00b7  in use" : ""),
-                FontSize = 15, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
-            text.Children.Add(Note(detail, new Thickness(0, 2, 0, 0)));
-            var option = new RadioButton { Content = text, GroupName = "Place-" + section, IsChecked = value == place, Margin = new Thickness(0, 0, 0, 10) };
-            AutomationProperties.SetName(option, $"{label}: {detail}");
-            AutomationProperties.SetAutomationId(option, $"Place-{section}-{value}");
-            option.Checked += (_, _) =>
+        page.Children.Add(WhereItRunsCard(section, section.ToString(), "Where it runs", null, route is null ? null : current, place,
+            (JobPlace.ThisPc, "This PC (recommended)", role switch
             {
-                tabPlace[section] = value;
-                RenderTab();
-            };
-            where.Children.Add(option);
-        }
-        Place(JobPlace.ThisPc, "This PC (recommended)", role switch
-        {
-            SetupRole.Llm => "Ollama runs a free conversation model here. Nothing leaves this PC and there is no per-request charge.",
-            SetupRole.Tts => "The natural F5 voice in Docker, or a voice already installed in Windows with no Docker at all. " +
-                "Nothing leaves this PC and there is no per-request charge.",
-            _ => "whisper turns your speech into text here. Your voice never leaves this PC."
-        });
-        Place(JobPlace.Computer, "Another of your computers",
-            $"Hand {job.Job} to a paired Martlet host on your network, for example a gaming PC. Add one here if you have none yet.");
-        Place(JobPlace.Cloud, "A cloud provider", role == SetupRole.Llm
-            ? "OpenAI, OpenRouter, NVIDIA Build or any OpenAI-compatible server, with your API key. May cost money."
-            : "OpenAI, with your API key. May cost money.");
-        page.Children.Add(Card(where));
+                SetupRole.Llm => "Ollama runs a free conversation model here. Nothing leaves this PC and there is no per-request charge.",
+                SetupRole.Tts => "The natural F5 voice in Docker, or a voice already installed in Windows with no Docker at all. " +
+                    "Nothing leaves this PC and there is no per-request charge.",
+                _ => "whisper turns your speech into text here. Your voice never leaves this PC."
+            }),
+            (JobPlace.Computer, "Another of your computers",
+                $"Hand {job.Job} to a paired Martlet host on your network, for example a gaming PC. Add one here if you have none yet."),
+            (JobPlace.Cloud, "A cloud provider", role == SetupRole.Llm
+                ? "OpenAI, OpenRouter, NVIDIA Build or any OpenAI-compatible server, with your API key. May cost money."
+                : "OpenAI, with your API key. May cost money.")));
 
         var otherHosts = NetworkMap.Hosts(Inputs()).Where(h => h.HostId != thisPc?.HostId).ToArray();
         page.Children.Add(place switch
         {
             JobPlace.ThisPc when role == SetupRole.Llm => LocalThinkingCard(route),
             JobPlace.ThisPc when role == SetupRole.Tts => LocalVoiceCard(job, route, thisPc),
-            JobPlace.ThisPc => LocalHostJobCard(job, route, thisPc),
+            JobPlace.ThisPc => LocalListeningCard(route, thisPc),
             JobPlace.Computer => ComputersCard(job, route, role == SetupRole.Llm ? null : thisPc),
             _ => CloudCard(section, job, route)
         });
@@ -331,20 +314,57 @@ public partial class MainWindow
             warning.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
             now.Children.Add(warning);
         }
+        if (section == CompanionTab.Listening && homeSettings?.Audio?.Input.Checkpoint is null)
+        {
+            var mic = new TextBlock { Text = "Microphone not set up yet. Test it below so Martlet can hear you; you can still type.",
+                TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
+            mic.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
+            AutomationProperties.SetAutomationId(mic, "ListeningMicNotSetUp");
+            now.Children.Add(mic);
+        }
         return Card(now);
+    }
+
+    /// <summary>The "Where it runs" chooser, the same on every job: one option per place, the one in use marked. Choosing a place
+    /// shows that place's card below it; the card's own button commits the choice.</summary>
+    private Border WhereItRunsCard(CompanionTab section, string id, string heading, string? note, JobPlace? inUse, JobPlace place,
+        params (JobPlace Value, string Label, string Detail)[] options)
+    {
+        var where = new StackPanel();
+        where.Children.Add(Heading(heading));
+        if (note is not null) where.Children.Add(Note(note, new Thickness(0, 0, 0, 10)));
+        foreach (var (value, label, detail) in options)
+        {
+            var text = new StackPanel();
+            text.Children.Add(new TextBlock { Text = label + (value == inUse ? "  \u00b7  in use" : ""),
+                FontSize = 15, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
+            text.Children.Add(Note(detail, new Thickness(0, 2, 0, 0)));
+            var option = new RadioButton { Content = text, GroupName = "Place-" + id, IsChecked = value == place, Margin = new Thickness(0, 0, 0, 10) };
+            AutomationProperties.SetName(option, $"{label}: {detail}");
+            AutomationProperties.SetAutomationId(option, $"Place-{id}-{value}");
+            option.Checked += (_, _) =>
+            {
+                tabPlace[section] = value;
+                RenderTab();
+            };
+            where.Children.Add(option);
+        }
+        return Card(where);
     }
 
     private Border AudioCard(bool output)
     {
         var audio = homeSettings?.Audio;
-        var tested = output ? audio?.Output.Checkpoint is not null : audio?.Input.Checkpoint is not null;
+        var checkpoint = output ? audio?.Output.Checkpoint : audio?.Input.Checkpoint;
         var what = output ? "Speakers" : "Microphone";
-        var text = tested ? $"{what} chosen and tested on this PC." : audio is not null ? $"{what} chosen, not tested yet." : $"No {what.ToLowerInvariant()} chosen yet.";
+        var text = checkpoint is not null ? $"Set up and tested on {checkpoint.TestedAt.ToLocalTime():d}."
+            : output ? "Not tested yet. Martlet uses your Windows default speakers until you pick others."
+            : "Not set up yet. Pick your microphone and run a quick 5-second test.";
         return Card(Heading(what),
-            Note(text + (output ? " Martlet plays its voice here." : " Martlet listens only while you hold to talk or turn on hands-free.") +
-                " Choosing and testing devices stays on this PC.", new Thickness(0, 0, 0, 8)),
-            Row(PageButton(tested ? $"Change {what.ToLowerInvariant()}" : $"Choose and test {what.ToLowerInvariant()}",
-                () => RunNodeAction(NodeAction.AudioSetup), primary: !tested, id: "OpenAudioSetup")));
+            Note(text + (output ? " Martlet plays its voice here." : " Martlet listens only while you hold to talk or turn on hands-free."),
+                new Thickness(0, 0, 0, 8)),
+            Row(PageButton(checkpoint is not null ? $"Change {what.ToLowerInvariant()}" : $"Set up {what.ToLowerInvariant()}",
+                () => RunNodeAction(NodeAction.AudioSetup), primary: checkpoint is null, id: "OpenAudioSetup")));
     }
 
     private Border VoicesCard() => Card(Heading("Voice Library"),
@@ -381,14 +401,14 @@ public partial class MainWindow
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
 
         string ModelId() => (model.Text ?? "").Trim();
-        // Until Ollama is installed, installing it is the only step that does anything.
+        // Until Ollama is installed, installing it (with the chosen model, then switching to it) is the only step that does anything.
         var buttons = installed
             ? Row(
-                PageButton("Download model", () => PullOllamaModel(ModelId()), id: "SetupPullModel"),
+                PageButton("Download model", () => PullOllamaModelAsync(ModelId()).Forget(), id: "SetupPullModel"),
                 PageButton("Check Ollama", () => CheckOllamaAsync().Forget(), id: "SetupCheckOllama"),
                 PageButton("Use Ollama on this PC", () => SaveLocalThinkingAsync(ModelId()).Forget(), primary: true, id: "SetupUseLocalThinking"))
             : Row(
-                PageButton("Install Ollama", () => ActionText.Text = Prerequisites.Launch([Prerequisites.Ollama]), primary: true, id: "SetupInstallOllama"),
+                PageButton("Install Ollama and use it", () => InstallOllamaAsync(ModelId()).Forget(), primary: true, id: "SetupInstallOllama"),
                 PageButton("Use Ollama on this PC", () => SaveLocalThinkingAsync(ModelId()).Forget(), id: "SetupUseLocalThinking"));
 
         return Card(Heading("Ollama on this PC"),
@@ -403,22 +423,38 @@ public partial class MainWindow
             buttons);
     }
 
-    private void PullOllamaModel(string model)
+    /// <summary>Downloads a model into this PC's Ollama in a run window (no console), then refreshes what Ollama has.</summary>
+    private async Task PullOllamaModelAsync(string model)
     {
-        try
+        try { ChatCompletionsSetup.ModelId(model); }
+        catch (ContractException error) { ActionText.Text = error.Message; return; }
+        ActionText.Text = $"Downloading {model} with Ollama; the run window shows the progress.";
+        var done = await HostRunWindow.RunAsync(this, $"Download {model}", async run =>
         {
-            ChatCompletionsSetup.ModelId(model);
-            var ollama = new[]
-            {
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Ollama", "ollama.exe"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Ollama", "ollama.exe")
-            }.FirstOrDefault(File.Exists) ?? "ollama";
-            Process.Start(new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "cmd.exe"), $"/k \"\"{ollama}\" pull {model}\"")
-                { UseShellExecute = true })?.Dispose();
-            ActionText.Text = $"Downloading {model} with Ollama in a console window. When it finishes, choose Use Ollama on this PC.";
+            await LocalOllama.PullAsync(model, run.Status, run.Output, run.Token);
+            return $"{model} is downloaded. Choose Use Ollama on this PC to think with it.";
+        });
+        if (closing) return;
+        ActionText.Text = done ?? $"{model} was not downloaded. The run window shows why.";
+        if (done is not null) await CheckOllamaAsync();
+    }
+
+    /// <summary>One click: installs Ollama with the chosen model (no console) and, once it is there, thinks with it.</summary>
+    private async Task InstallOllamaAsync(string model)
+    {
+        try { ChatCompletionsSetup.ModelId(model); }
+        catch (ContractException error) { ActionText.Text = error.Message; return; }
+        await InstallPrerequisitesAsync([Prerequisites.Ollama], model);
+        if (closing) return;
+        if (Prerequisites.IsMissing(Prerequisites.Ollama))
+        {
+            if (openTab == CompanionTab.Thinking) RenderTab();
+            return;
         }
-        catch (ContractException error) { ActionText.Text = error.Message; }
-        catch (Exception error) when (error is Win32Exception or IOException) { ActionText.Text = error.Message; }
+        await CheckOllamaAsync();
+        if (closing) return;
+        if (ollamaModels?.Contains(model, StringComparer.Ordinal) == true) await SaveLocalThinkingAsync(model);
+        else ActionText.Text = $"Ollama is installed, but {model} isn't downloaded yet: choose Download model.";
     }
 
     /// <summary>Asks the local Ollama (loopback only, on request) which models it has.</summary>
@@ -453,48 +489,32 @@ public partial class MainWindow
         $"Martlet now thinks with {model} in Ollama on this PC. Nothing leaves this PC." +
         (ollamaModels is { } known && !known.Contains(model, StringComparer.Ordinal) ? $" {model} isn't downloaded yet: choose Download model." : ""));
 
-    // ---------- this PC: whisper and F5 through this PC's host service, or a Windows voice ----------
+    // ---------- this PC: F5 through this PC's host service, or a Windows voice ----------
 
-    private Border LocalHostJobCard(HostJob job, SetupRoute? route, PairedHost? thisPc)
-    {
-        var gpu = machine.BestGpu;
-        var stack = new List<UIElement>
-        {
-            Heading("whisper on this PC"),
-            Note("whisper transcribes what you say in memory on this PC and stores nothing. It runs in Martlet's host service on this PC, " +
-                "inside Docker Desktop.", new Thickness(0, 0, 0, 8)),
-            Note(gpu is null ? "No dedicated graphics card was found on this PC." : $"This PC has {gpu.Describe()}.", new Thickness(0, 0, 0, 8))
-        };
-        stack.AddRange(HostServiceSteps(job, route, thisPc, primary: true));
-        return Card([.. stack]);
-    }
-
-    /// <summary>A job that runs in Martlet's host service on this PC (Docker Desktop). Without the host service, one click sets it
-    /// up and pairs it, so this PC also becomes one of your hosts, then installs the job's engine and switches over by itself.</summary>
+    /// <summary>F5 in Martlet's host service on this PC (Docker Desktop). Without the host service, one click sets it up and
+    /// pairs it, so this PC also becomes one of your hosts, then installs F5 and switches over, all in one run window.</summary>
     private List<UIElement> HostServiceSteps(HostJob job, SetupRoute? route, PairedHost? thisPc, bool primary)
     {
-        var f5 = job.RouteType == SetupRouteType.GatewayF5;
         var inUse = route?.RouteType == job.RouteType && thisPc is not null && route.Gateway?.HostId == thisPc.HostId;
         var steps = new List<UIElement>();
         if (thisPc is null)
         {
             steps.Add(Note((machine.DockerRunning ? "Docker Desktop is running. "
                     : machine.DockerInstalled ? "Docker Desktop is installed; Martlet starts it when needed. "
-                    : "Docker Desktop isn't installed yet; Martlet offers to install it first. ") +
+                    : "Docker Desktop isn't installed yet; Martlet installs it first. ") +
                 $"Setting it up adds Martlet's host service on this PC (this PC then also appears as one of your hosts), installs {job.Engine} " +
                 "in it and switches over by itself.", new Thickness(0, 0, 0, 8)));
-            steps.Add(Row(PageButton(f5 ? "Set up F5 with Docker" : $"Set up {job.Engine} with Docker", () => SetUpThisPcHostAsync(job).Forget(),
-                primary, id: "SetupHostThisPc")));
+            steps.Add(Row(PageButton("Set up F5 with Docker", () => UseF5HereAsync().Forget(), primary, id: "SetupHostThisPc")));
             return steps;
         }
         var model = hostChecks.GetValueOrDefault(thisPc.HostId)?.Offers?.GetValueOrDefault(job.HostRoleKind);
-        steps.Add(Note(inUse ? $"In use: {job.Engine} on this PC ({thisPc.HostId}){(f5 && route!.Reference is { } voice ? $", voice {voice.PresetName}" : "")}."
+        steps.Add(Note(inUse ? $"In use: {job.Engine} on this PC ({thisPc.HostId}){(route!.Reference is { } voice ? $", voice {voice.PresetName}" : "")}."
             : model is not null ? $"This PC's host service runs {job.Engine} ({model})."
             : $"This PC's host service ({thisPc.HostId}) is set up. If it doesn't run {job.Engine} yet, Martlet installs it and switches over by itself.",
             new Thickness(0, 0, 0, 8)));
         steps.Add(Row(
-            PageButton(inUse ? (f5 ? "Choose another voice" : $"Set up {job.Engine} again") : f5 ? "Use F5 on this PC" : $"Use {job.Engine} on this PC",
-                () => AssignJobAsync(job, "host:" + thisPc.HostId).Forget(), primary: primary && !inUse, id: "SetupUseLocal-" + job.Job),
+            PageButton(inUse ? "Choose another voice" : "Use F5 on this PC",
+                () => (inUse ? AssignJobAsync(job, "host:" + thisPc.HostId) : UseF5HereAsync()).Forget(), primary: primary && !inUse, id: "SetupUseLocal-" + job.Job),
             PageButton("Check it", () => RunNodeAction(NodeAction.CheckHost, thisPc.HostId), id: "SetupCheckLocal-" + job.Job)));
         return steps;
     }
@@ -656,30 +676,39 @@ public partial class MainWindow
     }
     // ---------- another of your computers ----------
 
-    private Border ComputersCard(HostJob job, SetupRoute? route, PairedHost? exclude)
+    private Border ComputersCard(HostJob job, SetupRoute? route, PairedHost? exclude) =>
+        ComputersCard(job.Job, job.Engine, job.HostRoleKind, NetworkMap.JobHost(homeSettings, job.Role),
+            $"Does the {job.Job} now ({job.Engine} {route?.ModelId}).",
+            job.RouteType == SetupRouteType.GatewayF5 ? "Choose another voice" : null,
+            key => AssignJobAsync(job, key), job.Disclosure, exclude);
+
+    /// <summary>Every paired host (except <paramref name="exclude"/>) with what it runs and <i>Use it</i>, plus <i>Add a
+    /// computer</i>, <i>Check hosts</i> and the Devices map. <paramref name="again"/> labels the owner's button when using it
+    /// again does something (choosing another voice); otherwise the owner shows <i>In use</i>.</summary>
+    private Border ComputersCard(string job, string engine, string roleKind, string? owner, string ownerDetail, string? again,
+        Func<string, Task> assign, string disclosure, PairedHost? exclude)
     {
         var stack = new List<UIElement> { Heading("Your computers") };
         var hosts = NetworkMap.Hosts(Inputs()).Where(h => h.HostId != exclude?.HostId).ToArray();
-        var owner = NetworkMap.JobHost(homeSettings, job.Role);
         if (hosts.Length == 0)
             stack.Add(Note("No other Martlet host is paired yet. Add a computer with a graphics card, such as a gaming PC, then hand " +
-                $"{job.Job} to it here. Martlet installs {job.Engine} there when you do.", new Thickness(0, 0, 0, 8)));
+                $"{job} to it here. Martlet installs {engine} there when you do.", new Thickness(0, 0, 0, 8)));
         foreach (var host in hosts)
         {
             var check = hostChecks.GetValueOrDefault(host.HostId);
-            var model = check?.Offers?.GetValueOrDefault(job.HostRoleKind);
-            var cannot = model is null ? CannotHand(host.HostId, job.HostRoleKind, job.Job) : null;
-            var detail = owner == host.HostId ? $"Does the {job.Job} now ({job.Engine} {route?.ModelId})."
+            var model = check?.Offers?.GetValueOrDefault(roleKind);
+            var cannot = model is null ? CannotHand(host.HostId, roleKind, job) : null;
+            var detail = owner == host.HostId ? ownerDetail
                 : cannot is not null ? $"Can't take it now: {cannot}"
-                : model is not null ? $"Runs {job.Engine} ({model})."
-                : check?.Reachable == true ? $"{job.Engine} isn't installed there yet; Martlet offers to install it."
+                : model is not null ? $"Runs {engine} ({model})."
+                : check?.Reachable == true ? $"{engine} isn't installed there yet; Martlet offers to install it."
                 : check?.Reachable == false ? "Not reachable right now." : "Not checked yet.";
             var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             text.Children.Add(new TextBlock { Text = host.HostId, FontSize = 15, FontWeight = FontWeights.SemiBold });
             text.Children.Add(Note(detail, new Thickness(0, 2, 0, 0)));
-            var use = PageButton(owner == host.HostId ? (job.RouteType == SetupRouteType.GatewayF5 ? "Choose another voice" : "In use") : "Use it",
-                () => AssignJobAsync(job, "host:" + host.HostId).Forget(), primary: owner != host.HostId && cannot is null, id: $"SetupUseHost-{job.Job}-{host.HostId}");
-            use.IsEnabled = cannot is null && !(owner == host.HostId && job.RouteType != SetupRouteType.GatewayF5);
+            var use = PageButton(owner == host.HostId ? again ?? "In use" : "Use it",
+                () => assign("host:" + host.HostId).Forget(), primary: owner != host.HostId && cannot is null, id: $"SetupUseHost-{job}-{host.HostId}");
+            use.IsEnabled = cannot is null && !(owner == host.HostId && again is null);
             var row = new DockPanel { Margin = new Thickness(0, 0, 0, 10) };
             DockPanel.SetDock(use, Dock.Right);
             row.Children.Add(use);
@@ -687,10 +716,10 @@ public partial class MainWindow
             stack.Add(row);
         }
         stack.Add(Row(
-            PageButton("Add a computer", () => RunNodeAction(NodeAction.AddComputer), primary: hosts.Length == 0, id: "SetupAddComputer-" + job.Job),
-            hosts.Length == 0 ? null : PageButton("Check hosts", () => RunNodeAction(NodeAction.CheckHost), id: "SetupCheckHosts-" + job.Job),
-            PageButton("Open the Devices map", () => Navigate(NavDevices), id: "SetupOpenMap-" + job.Job)));
-        stack.Add(Note(job.Disclosure, new Thickness(0, 8, 0, 0)));
+            PageButton("Add a computer", () => RunNodeAction(NodeAction.AddComputer), primary: hosts.Length == 0, id: "SetupAddComputer-" + job),
+            hosts.Length == 0 ? null : PageButton("Check hosts", () => RunNodeAction(NodeAction.CheckHost), id: "SetupCheckHosts-" + job),
+            PageButton("Open the Devices map", () => Navigate(NavDevices), id: "SetupOpenMap-" + job)));
+        stack.Add(Note(disclosure, new Thickness(0, 8, 0, 0)));
         return Card([.. stack]);
     }
 
@@ -991,22 +1020,124 @@ public partial class MainWindow
             Note("Its personas and how playful, helpful or silly it is.", new Thickness(0, 0, 0, 8)),
             Row(PageButton("Edit personality", () => Companion_Click(this, new RoutedEventArgs()), id: "OpenCompanion"))));
 
-        var hosts = NetworkMap.Hosts(Inputs());
-        renderingBoard = true;
-        ComboBox choice;
-        try { choice = LipSyncChoice(); }
-        finally { renderingBoard = false; }
-        choice.MaxWidth = 420;
-        choice.HorizontalAlignment = HorizontalAlignment.Left;
-        page.Children.Add(Card(Heading("Lip-sync"),
-            Note("Who moves the character's mouth with its voice. Audio2Face looks most natural and needs an NVIDIA graphics card, on this PC or " +
-                "another computer; otherwise the mouth follows the voice's loudness. It switches right away, even while the character talks.",
-                new Thickness(0, 0, 0, 8)),
-            choice,
-            Row(hosts.Count == 0 ? PageButton("Add a computer", () => RunNodeAction(NodeAction.AddComputer), id: "SetupLipSyncAddComputer") : null,
-                hosts.Count == 0 ? null : PageButton("Check hosts", () => RunNodeAction(NodeAction.CheckHost), id: "SetupLipSyncCheckHosts"),
-                PageButton("Open the Devices map", () => Navigate(NavDevices), id: "SetupLipSyncMap"))));
+        RenderLipSync(page);
     }
+
+    // ---------- lip-sync: where it runs, like every job ----------
+
+    /// <summary>Who moves the character's mouth, chosen like every job: this PC (Audio2Face in its host service, or a service you
+    /// run yourself), another of your computers, or the voice's loudness. It switches right away, even while the character talks.</summary>
+    private void RenderLipSync(Panel page)
+    {
+        var thisPc = ThisPcHost();
+        var handler = NetworkMap.LipSync(homeAvatar);
+        var owner = handler == LipSyncHandler.Host ? homeAvatar!.RemoteHost!.HostId : null;
+        var current = handler switch
+        {
+            LipSyncHandler.Loudness => JobPlace.Loudness,
+            LipSyncHandler.Host when owner != thisPc?.HostId => JobPlace.Computer,
+            _ => JobPlace.ThisPc
+        };
+        var place = tabPlace.TryGetValue(CompanionTab.Character, out var chosen) ? chosen : current;
+        var gpu = machine.BestGpu;
+        var fits = gpu is { IsNvidia: true } && (gpu.MemoryGb ?? 0) >= 4;
+        var otherHosts = NetworkMap.Hosts(Inputs()).Where(h => h.HostId != thisPc?.HostId).ToArray();
+        var recommended = fits ? JobPlace.ThisPc
+            : otherHosts.Any(h => CannotHand(h.HostId, HostRoles.Audio2Face, ClusterJobs.LipSync) is null) ? JobPlace.Computer
+            : JobPlace.Loudness;
+        string Label(JobPlace value, string label) => value == recommended ? label + " (recommended)" : label;
+
+        page.Children.Add(WhereItRunsCard(CompanionTab.Character, "LipSync", "Lip-sync: where it runs",
+            "Who moves the character's mouth with its voice. It switches right away, even while the character talks.", current, place,
+            (JobPlace.ThisPc, Label(JobPlace.ThisPc, "This PC"),
+                "NVIDIA Audio2Face looks most natural. It needs an NVIDIA graphics card with 4 GB or more and a free NVIDIA NGC key. " +
+                "Only the generated voice is used, and nothing leaves this PC."),
+            (JobPlace.Computer, Label(JobPlace.Computer, "Another of your computers"),
+                "Hand lip-sync to a paired Martlet host on your network, for example a gaming PC. Add one here if you have none yet."),
+            (JobPlace.Loudness, Label(JobPlace.Loudness, "Voice loudness"),
+                "No Audio2Face: the mouth opens and closes with the voice's loudness. Works with any character on any PC, with nothing to set up.")));
+
+        page.Children.Add(place switch
+        {
+            JobPlace.ThisPc => LocalLipSyncCard(thisPc, handler, owner, fits),
+            JobPlace.Computer => ComputersCard(ClusterJobs.LipSync, "Audio2Face", HostRoles.Audio2Face, owner,
+                $"Does the lip-sync now (Audio2Face{(hostChecks.GetValueOrDefault(owner ?? "")?.Offers?.GetValueOrDefault(HostRoles.Audio2Face) is { } model ? " " + model : "")}).",
+                null, AssignLipSyncAsync,
+                "Only Martlet's generated voice then goes to that computer, over its pinned TLS gateway; no microphone audio, keys or files. " +
+                "Audio2Face there needs an NVIDIA graphics card with 4 GB or more and a free NVIDIA NGC key. Until it is ready, and whenever it " +
+                "doesn't answer, the mouth follows the voice's loudness.", thisPc),
+            _ => LoudnessCard(handler == LipSyncHandler.Loudness)
+        });
+    }
+
+    /// <summary>Lip-sync on this PC: two ways, like its voice. Audio2Face in Martlet's host service here (one click sets the host
+    /// service up and pairs it, installs Audio2Face and hands lip-sync to it), or an Audio2Face service you already run yourself.
+    /// Docker's Audio2Face comes first unless your own service is in use and this PC's graphics card can't run it.</summary>
+    private Border LocalLipSyncCard(PairedHost? thisPc, LipSyncHandler handler, string? owner, bool fits)
+    {
+        var gpu = machine.BestGpu;
+        var dockerInUse = handler == LipSyncHandler.Host && thisPc is not null && owner == thisPc.HostId;
+        var ownInUse = handler == LipSyncHandler.ThisPc;
+
+        var docker = new List<UIElement>
+        {
+            OptionTitle("Audio2Face, with Docker", dockerInUse ? "in use" : fits ? "recommended for this PC" : null),
+            Note("NVIDIA Audio2Face-3D moves the mouth and face in time with Martlet's generated voice. It runs in Martlet's host service " +
+                "on this PC, inside Docker Desktop, and needs a free NVIDIA NGC API key, which you enter when it installs. Until it is " +
+                "ready, the mouth follows the voice's loudness.", new Thickness(0, 2, 0, 6)),
+            Note(gpu is null ? "No dedicated graphics card was found on this PC; Audio2Face needs an NVIDIA graphics card with 4 GB or more."
+                : $"This PC has {gpu.Describe()}." + (fits ? "" : " Audio2Face needs an NVIDIA graphics card with 4 GB or more, so another " +
+                    "computer or voice loudness suits this PC better."), new Thickness(0, 0, 0, 6))
+        };
+        if (thisPc is null)
+        {
+            docker.Add(Note((machine.DockerRunning ? "Docker Desktop is running. "
+                    : machine.DockerInstalled ? "Docker Desktop is installed; Martlet starts it when needed. "
+                    : "Docker Desktop isn't installed yet; Martlet offers to install it first. ") +
+                "Setting it up adds Martlet's host service on this PC (this PC then also appears as one of your hosts), installs Audio2Face " +
+                "in it and hands lip-sync to it.", new Thickness(0, 0, 0, 8)));
+            docker.Add(Row(PageButton("Set up Audio2Face with Docker", () => SetUpThisPcHostAsync(AssignLipSyncAsync).Forget(),
+                primary: fits, id: "SetupLipSyncHostThisPc")));
+        }
+        else
+        {
+            var model = hostChecks.GetValueOrDefault(thisPc.HostId)?.Offers?.GetValueOrDefault(HostRoles.Audio2Face);
+            docker.Add(Note(dockerInUse ? $"In use: Audio2Face in this PC's host service ({thisPc.HostId}){(model is null ? "" : $", model {model}")}."
+                : model is not null ? $"This PC's host service runs Audio2Face ({model})."
+                : $"This PC's host service ({thisPc.HostId}) is set up. If it doesn't run Audio2Face yet, Martlet installs it and switches over by itself.",
+                new Thickness(0, 0, 0, 8)));
+            docker.Add(Row(
+                PageButton(dockerInUse ? "Set up Audio2Face again" : "Use Audio2Face on this PC",
+                    () => AssignLipSyncAsync("host:" + thisPc.HostId).Forget(), primary: fits && !dockerInUse, id: "SetupLipSyncUseLocal"),
+                PageButton("Check it", () => RunNodeAction(NodeAction.CheckHost, thisPc.HostId), id: "SetupLipSyncCheckLocal")));
+        }
+
+        var endpoint = new Uri(homeAvatar?.Endpoint ?? AvatarProfile.DefaultEndpoint).Authority;
+        var own = new List<UIElement>
+        {
+            OptionTitle("Your own Audio2Face service", ownInUse ? "in use" : null),
+            Note($"An Audio2Face-3D service you already run on this PC at {endpoint}, without Martlet's host service. Martlet uses it " +
+                "whenever it answers; otherwise the mouth follows the voice's loudness.", new Thickness(0, 2, 0, 6))
+        };
+        if (ownInUse)
+            own.Add(Note(homeAvatar?.LipSync == AvatarLipSync.Audio2Face
+                ? "In use, with Audio2Face-only lip-sync activated in the character's settings (Choose and customize)."
+                : $"In use: Martlet checks {endpoint} before each sentence.", new Thickness(0, 0, 0, 4)));
+        else own.Add(Row(PageButton("Use my own service", () => AssignLipSyncAsync("this-pc").Forget(), id: "SetupLipSyncOwnService")));
+
+        // The own service is the default fallback, so it comes first only when it is in use and Docker's Audio2Face doesn't fit here.
+        var dockerFirst = dockerInUse || !ownInUse || fits;
+        return Card(Heading("Lip-sync on this PC"),
+            Note("Choose one. Until Audio2Face answers, the mouth follows the voice's loudness.", new Thickness(0, 0, 0, 4)),
+            Option(dockerFirst ? docker : own, dockerFirst ? dockerInUse : ownInUse),
+            Option(dockerFirst ? own : docker, dockerFirst ? ownInUse : dockerInUse));
+    }
+
+    private Border LoudnessCard(bool inUse) => Card(Heading("Voice loudness"),
+        Note("The mouth opens and closes with how loud Martlet's voice is. It works with every character on any PC, with nothing to " +
+            "install and nothing sent anywhere. It looks simpler than Audio2Face.", new Thickness(0, 0, 0, 8)),
+        inUse ? (UIElement)Note("In use: Audio2Face is off.", new Thickness(0, 0, 0, 4))
+            : Row(PageButton("Use voice loudness", () => AssignLipSyncAsync("off").Forget(), primary: true, id: "SetupLipSyncLoudness")));
 
     // ---------- memory ----------
 

@@ -141,11 +141,11 @@ run an internal build as an update.
 
 Paired **Martlet hosts** follow the desktop's version: the gateway reports its
 release, the Devices map shows *Update available* for older hosts, and **Update
-host** rebuilds that host's gateway from this version in a console
+host** rebuilds that host's gateway from this version in a Martlet run window
 (`martlet-host update`; identity, pairings and roles stay). *Keep my Martlet
 hosts on this PC's version* does the same in the background every interval
 for hosts Martlet reaches over an SSH key or this PC's Docker Desktop; a host
-that needs a password, sudo or an approval keeps the console route. The
+that needs a password, sudo or an approval keeps the Update host route. The
 [Windows packaging guide](packaging/windows/README.md) distinguishes local
 internal builds from the manually dispatched release workflow, which has no
 push, PR, tag or scheduled trigger.

@@ -279,7 +279,8 @@ public partial class MainWindow : ThemedWindow
         {
             case AdvisorNextStep.Prerequisites:
                 var missing = SetupAdvisor.Recommend(advisor.Answers).ThisPcInstalls.Select(Prerequisites.For).Where(Prerequisites.IsMissing).ToArray();
-                ActionText.Text = missing.Length > 0 ? Prerequisites.Launch(missing) : "Everything this plan needs on this PC is already installed.";
+                if (missing.Length == 0) ActionText.Text = "Everything this plan needs on this PC is already installed.";
+                else InstallPrerequisitesAsync(missing).Forget();
                 break;
             case AdvisorNextStep.Setup: OpenCompanion(CompanionTab.Thinking); break;
             case AdvisorNextStep.AudioSetup: AudioSetup_Click(sender, e); break;
@@ -315,8 +316,26 @@ public partial class MainWindow : ThemedWindow
             .ToArray();
     }
     private void Hosts_Click(object sender, RoutedEventArgs e) => OpenHosts(null, 0);
-    /// <summary>Opens the installed prerequisites tool; it changes nothing until the user picks an item.</summary>
-    private void Prerequisites_Click(object sender, RoutedEventArgs e) => ActionText.Text = Prerequisites.Launch([]);
+    /// <summary>Shows the prerequisites checklist in Martlet; it changes nothing until the user ticks and installs items.</summary>
+    private void Prerequisites_Click(object sender, RoutedEventArgs e) => ChoosePrerequisitesAsync().Forget();
+
+    private async Task ChoosePrerequisitesAsync()
+    {
+        if (closing) return;
+        if (await Prerequisites.ChooseAndInstallAsync(this) is { } status && !closing) ActionText.Text = status;
+        if (!closing) await ReadMachineAsync();
+    }
+
+    /// <summary>Installs prerequisites in a run window (no console) and reports the outcome on the home screen.</summary>
+    private async Task InstallPrerequisitesAsync(IReadOnlyCollection<Prerequisite> items, string? ollamaModel = null)
+    {
+        if (closing) return;
+        ActionText.Text = $"Installing {string.Join(", ", items.Select(i => i.Title))}; the run window shows the progress.";
+        var status = await Prerequisites.InstallAsync(this, items, ollamaModel);
+        if (closing) return;
+        ActionText.Text = status;
+        await ReadMachineAsync();
+    }
     private bool togglingCharacter;
     private async void Character_Click(object sender, RoutedEventArgs e)
     {

@@ -130,8 +130,8 @@ internal static partial class HostSetupCommands
         return target.HostId is { } id ? text + $" -e MARTLET_HOST_ID={id}" : text;
     }
 
-    /// <summary>The Windows command script a launcher opens in a console window (this PC with Docker Desktop only; SSH
-    /// hosts run in-app through <see cref="HostShell"/>).</summary>
+    /// <summary>The Windows command script equivalent of a this-PC action (Docker Desktop), shown as the command preview and
+    /// for running by hand. Martlet itself runs these actions without any console (<see cref="HostLocal"/>).</summary>
     internal static string Script(HostSetupTarget target, HostAction action)
     {
         Validate(target, action);
@@ -175,24 +175,10 @@ internal static partial class HostSetupCommands
     private const string DockerDesktopStart =
         "if exist \"%ProgramFiles%\\Docker\\Docker\\Docker Desktop.exe\" start \"\" \"%ProgramFiles%\\Docker\\Docker\\Docker Desktop.exe\"\r\n";
 
-    /// <summary>Installs WSL-based Docker Desktop with winget; the user already agreed to the listed terms in Martlet.</summary>
-    internal const string DockerDesktopInstall =
-        "winget install -e --id Docker.DockerDesktop --accept-package-agreements --accept-source-agreements";
-
-    internal static void Launch(HostSetupTarget target, HostAction action)
-    {
-        var directory = Path.Combine(Path.GetTempPath(), "Martlet");
-        Directory.CreateDirectory(directory);
-        var path = Path.Combine(directory, $"martlet-host-{Engine(action).Replace(' ', '-')}.cmd");
-        File.WriteAllText(path, Script(target, action), Encoding.ASCII);
-        Process.Start(new ProcessStartInfo("cmd.exe", $"/k \"{path}\"") { UseShellExecute = true })?.Dispose();
-        ErrorLog.Info($"Opened a console window for martlet-host {Engine(action)} ({target.Method}): {path}");
-    }
-
     private const string SshUnattended = "-T -o BatchMode=yes -o ConnectTimeout=15";
 
     /// <summary>The console-less script automatic host updates run: SSH keys only (BatchMode), no TTY and no sudo password.
-    /// Anything that would need an answer fails instead, and the owner finishes with Update host in a console.</summary>
+    /// Anything that would need an answer fails instead, and the owner finishes with Update host in Martlet.</summary>
     internal static string UnattendedScript(HostSetupTarget target, HostAction action)
     {
         Validate(target, action);
@@ -304,22 +290,6 @@ internal static partial class HostSetupCommands
         {
             return null;
         }
-    }
-
-    internal static void InstallDockerDesktop()
-    {
-        var directory = Path.Combine(Path.GetTempPath(), "Martlet");
-        Directory.CreateDirectory(directory);
-        var path = Path.Combine(directory, "install-docker-desktop.cmd");
-        File.WriteAllText(path,
-            "@echo off\r\ntitle Install Docker Desktop\r\n" +
-            "echo Installing Docker Desktop with winget. Windows asks for administrator approval; a restart or sign-out may follow.\r\n" +
-            DockerDesktopInstall + "\r\n" +
-            "if errorlevel 1 (echo. & echo Docker Desktop was not installed. See the messages above. & goto :eof)\r\n" +
-            "echo.\r\necho Starting Docker Desktop. Accept Docker's terms if it asks; if it asks you to restart or sign out, do that first.\r\n" +
-            DockerDesktopStart +
-            "echo Then return to Martlet hosts and press Set up host.\r\n", Encoding.ASCII);
-        Process.Start(new ProcessStartInfo("cmd.exe", $"/k \"{path}\"") { UseShellExecute = true })?.Dispose();
     }
 
     internal static bool IsPrivate(string? text) =>

@@ -338,12 +338,20 @@ the shared Windows profile without separate permission.
 
 ## Explicit local audio setup (V02b)
 
-Open **Audio setup (local only)** from Desktop. This is a separate local
-device-test surface, **not** a first-conversation wizard, AI/VAD test, provider
-capability check, or permission to listen on launch. Opening it only loads
-settings. It does not enumerate endpoints, open devices, sample a microphone,
-play output, resolve a key, contact a provider, or write settings.
-Status remains usable without audio hardware.
+Open **Microphone and speakers** from Companion › *Listening* or *Voice* (or
+the Devices map). This is a separate local device-test surface, **not** a
+first-conversation wizard, AI/VAD test, provider capability check, or
+permission to listen on launch. Opening it only loads settings. It does not
+enumerate endpoints, open devices, sample a microphone, play output, resolve a
+key, contact a provider, or write settings. Status remains usable without
+audio hardware.
+
+The window shows one card per device: a picker, one test button and a
+plain-language state (*Not set up*, *Testing*, *Working*, *Needs attention*,
+*Did you hear it?*) with the next step in one sentence. *Test microphone* is
+the primary button until the microphone passes, then *Done*. The exact
+technical evidence (whole-test level, last result with its remedy, test
+history and worker ownership) and *Troubleshooting* sit under **Details**.
 
 | Action | Actual effect and evidence |
 | --- | --- |
@@ -351,10 +359,10 @@ Status remains usable without audio hardware.
 | Microphone choice | Fixed opaque endpoint identity, or deliberate `FollowDefaultOnNextPress`. Default is resolved on each newly authorized test; a mid-capture default/input/property/format change stops and discards rather than reopening. |
 | Output choice | Fixed identity, or `DefaultAtStart`. The actual output binds once; active playback never follows a changed default or falls back. |
 | **Test microphone** | Default-No confirmation names the selected configuration and local-only boundary. Fresh IDs/epoch; actual `MicrophoneCapture`, at most 5 seconds with at most 20 seconds of consent including cleanup/transfer. The live meter shows transient PCM levels; the final result measures peak, RMS and level coverage over the completed normalized PCM lease without copying it. No frames, insufficient frames, low or intermittent level, device failure and cancellation are distinct non-pass results. This is a local level advisory, not speech/VAD, permission, audio quality or device readiness. |
-| **Test output** | Separate default-No confirmation for the existing `SyntheticTone`: 200 ms faded 440 Hz, low amplitude, not speech/TTS. Actual `PcmPlaybackSink`, five-second deadline, exact sample count, selected output only. No system/app volume or default changes. |
-| **I heard it** | Enabled only for this window's successfully drained current output test, never from a loaded checkpoint. Explicit human confirmation is separate from device consumption. Choice changes, interruption, deactivation and reopening invalidate confirmability. |
-| **Save audio choices and historical checkpoints** | Explicit atomic settings save with the loaded optimistic revision. It does not authorize a later test. Reload is required after conflicting/interrupted saves; files are never reset to make setup succeed. |
-| **Stop / Pause / Close / deactivation / session lock** | Cancel only the currently owned test handle, clear unclaimed capture, and stop observation. Unlock/reopen never rearms. No simultaneous input/output. |
+| **Play test sound** | Separate default-No confirmation for the existing `SyntheticTone`: 200 ms faded 440 Hz, low amplitude, not speech/TTS. Actual `PcmPlaybackSink`, five-second deadline, exact sample count, selected output only. No system/app volume or default changes. |
+| **Yes, I heard it** | Shown and enabled only for this window's successfully drained current output test, never from a loaded checkpoint. Explicit human confirmation is separate from device consumption. Choice changes, interruption, deactivation and reopening invalidate confirmability. |
+| Automatic save | Picking a device, a finished test and *Yes, I heard it* each save atomically with the loaded optimistic revision, one save at a time; a pass records a historical checkpoint and any other finished result clears it, while a stopped test changes nothing. *Done* waits for a pending save. Saving does not authorize a later test. **Reload** appears after a conflicting or interrupted save; files are never reset to make setup succeed. |
+| **Stop test / Done / Close / deactivation / session lock** | Cancel only the currently owned test handle (never an in-flight save), clear unclaimed capture, and stop observation. Unlock/reopen never rearms. No simultaneous input/output. |
 
 For a local **historical** `SamplesReceived` checkpoint, a completed and released
 microphone test must have at least four seconds of canonical PCM, whole-test
