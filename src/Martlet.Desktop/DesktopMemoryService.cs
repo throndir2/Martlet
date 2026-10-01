@@ -15,13 +15,18 @@ internal sealed class DesktopMemoryException(string code, string message) : Exce
 }
 
 internal sealed record MemoryConfigurationSaveResult(SetupSaveResult Save, AppSettings Settings);
-internal sealed record DesktopMemoryRetrieval(long? StoreRevision, IReadOnlyList<MemoryRetrievalHit> Hits);
+/// <summary>Facts recalled for one turn: the best lexical matches first, then the most recently changed facts.</summary>
+internal sealed record DesktopMemoryRecall(long? StoreRevision, IReadOnlyList<MemoryFact> Facts);
+internal sealed record MemoryCaptureChange(MemoryCaptureKind Kind, string Content);
 
 internal sealed class DesktopMemoryService : IDisposable
 {
-    internal const int MaximumRetrievedFacts = 3;
+    internal const int MaximumRecalledFacts = 12;
+    private static readonly TimeSpan StoreWait = TimeSpan.FromSeconds(10);
 
     private readonly object gate = new();
+    // One store owner at a time in this process: conversation recall, background remembering and Memory window actions.
+    private readonly SemaphoreSlim storeGate = new(1, 1);
     private readonly SettingsStore settings;
     private readonly TimeProvider clock;
     private readonly Func<MemoryStoreActivationPreview, MemoryStoreAuthorization, CancellationToken, MemoryStore> openStore;
@@ -50,16 +55,11 @@ internal sealed class DesktopMemoryService : IDisposable
         AppSettings current,
         string? revision,
         bool enabled,
-        bool enableApproved,
         MemoryStoragePolicy policy,
         string? customDirectory,
         CancellationToken token = default)
     {
         ArgumentNullException.ThrowIfNull(current);
-        if (enabled && !enableApproved)
-            throw new DesktopMemoryException("memory.enable_permission_required",
-                "Memory remains OFF until the local scope and behavior are explicitly accepted.");
-
         var draft = SetupSettings.Begin(current);
         var priorMemory = draft.Memory ?? MemorySettings.Create();
         var nextMemory = priorMemory
@@ -165,36 +165,26 @@ internal sealed class DesktopMemoryService : IDisposable
             (store, operationToken) => store.ExportAsync(
                 preview, authorization, destination, operationToken), token);
 
-    internal async Task<DesktopMemoryRetrieval> RetrieveAsync(
+    internal async Task<DesktopMemoryRecall> RecallAsync(
         MemorySettings expected,
         string query,
+        int maximum = MaximumRecalledFacts,
         CancellationToken token = default)
     {
         ArgumentNullException.ThrowIfNull(expected);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maximum, 1);
         var snapshot = SnapshotInvalidation();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, snapshot.Token);
-        DesktopMemoryRetrieval result;
+        DesktopMemoryRecall result;
         try
         {
-            var bounded = MemoryQuery.TryFromBoundedSource(query, MaximumRetrievedFacts);
-            if (bounded is null)
-            {
-                await RequireEnabledAsync(expected.ConfigurationRevision, linked.Token)
-                    .ConfigureAwait(false);
-                result = new(null, Array.Empty<MemoryRetrievalHit>());
-            }
-            else
-            {
-                var retrieved = await WithStoreAsync(expected.ConfigurationRevision,
-                    (store, operationToken) => store.RetrieveAsync(
-                        bounded, operationToken), linked.Token).ConfigureAwait(false);
-                result = new(retrieved.StoreRevision, retrieved.Hits);
-            }
+            result = await WithStoreAsync(expected.ConfigurationRevision,
+                (store, operationToken) => RecallAsync(store, query, maximum, operationToken),
+                linked.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (snapshot.Token.IsCancellationRequested && !token.IsCancellationRequested)
         {
-            throw new DesktopMemoryException("memory.retrieval_invalidated",
-                "Memory changed or consent was revoked while retrieval was active.");
+            throw Invalidated();
         }
 
         TestHook?.Invoke(DesktopMemoryPoint.RetrievalCompleted, linked.Token);
@@ -202,11 +192,117 @@ internal sealed class DesktopMemoryService : IDisposable
         {
             EnsureOpen();
             if (snapshot.Generation != generation || snapshot.Token.IsCancellationRequested)
-                throw new DesktopMemoryException("memory.retrieval_invalidated",
-                    "Memory changed or consent was revoked while retrieval was active.");
+                throw Invalidated();
         }
         return result;
     }
+
+    /// <summary>Related facts shown to the model while remembering. Unlike a turn's recall it is not invalidated by Stop;
+    /// <see cref="RememberAsync"/> rechecks every fact revision it acts on.</summary>
+    internal Task<DesktopMemoryRecall> KnownFactsAsync(MemorySettings expected, string query, int maximum,
+        CancellationToken token = default)
+    {
+        ArgumentNullException.ThrowIfNull(expected);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maximum, 1);
+        return WithStoreAsync(expected.ConfigurationRevision,
+            (store, operationToken) => RecallAsync(store, query, maximum, operationToken), token);
+    }
+
+    private static async Task<DesktopMemoryRecall> RecallAsync(MemoryStore store, string query, int maximum,
+        CancellationToken token)
+    {
+        var facts = new List<MemoryFact>(maximum);
+        var included = new HashSet<Guid>();
+        if (MemoryQuery.TryFromBoundedSource(query, Math.Min(maximum, MemoryLimits.MaximumResults)) is { } bounded)
+            foreach (var hit in (await store.RetrieveAsync(bounded, token).ConfigureAwait(false)).Hits)
+                if (included.Add(hit.Fact.Id))
+                    facts.Add(hit.Fact);
+        var inspection = await store.InspectAsync(token).ConfigureAwait(false);
+        foreach (var fact in inspection.Facts.OrderByDescending(fact => fact.UpdatedAtUtc).ThenBy(fact => fact.Id))
+        {
+            if (facts.Count >= maximum)
+                break;
+            if (included.Add(fact.Id))
+                facts.Add(fact);
+        }
+        return new(inspection.StoreRevision, facts);
+    }
+
+    /// <summary>Applies what the model picked out of a conversation. Near-duplicates are skipped, updates and forgets only
+    /// touch the exact fact revisions that were shown to the model, and a full store makes room by dropping the oldest
+    /// conversation fact (never one the user typed).</summary>
+    internal Task<IReadOnlyList<MemoryCaptureChange>> RememberAsync(
+        Guid expectedConfigurationRevision,
+        IReadOnlyList<MemoryFact> shown,
+        IReadOnlyList<MemoryCaptureOperation> operations,
+        CancellationToken token = default)
+    {
+        ArgumentNullException.ThrowIfNull(shown);
+        ArgumentNullException.ThrowIfNull(operations);
+        return WithStoreAsync(expectedConfigurationRevision, async (store, operationToken) =>
+        {
+            var changes = new List<MemoryCaptureChange>();
+            var current = (await store.InspectAsync(operationToken).ConfigureAwait(false)).Facts.ToList();
+            foreach (var operation in operations)
+            {
+                var target = operation.Index is { } index && index >= 1 && index <= shown.Count &&
+                    current.FirstOrDefault(fact => fact.Id == shown[index - 1].Id) is { } found &&
+                    found.Revision == shown[index - 1].Revision ? found : null;
+                switch (operation.Kind)
+                {
+                    case MemoryCaptureKind.Remember when operation.Content is { } content:
+                        if (current.Any(fact => MemoryCapture.SameFact(fact.Content, content)))
+                            continue;
+                        if (current.Count >= MemoryLimits.MaximumFacts)
+                        {
+                            var oldest = current.Where(fact => fact.LastModifiedBy.SourceKind == MemorySourceKind.Conversation)
+                                .OrderBy(fact => fact.UpdatedAtUtc).FirstOrDefault();
+                            if (oldest is null)
+                                continue;
+                            await store.DeleteAsync(new()
+                            {
+                                Id = oldest.Id, ExpectedRevision = oldest.Revision, ConsentId = Guid.NewGuid()
+                            }, operationToken).ConfigureAwait(false);
+                            current.Remove(oldest);
+                        }
+                        var saved = await store.SaveAsync(new()
+                        {
+                            Content = content,
+                            Provenance = MemoryProvenance.Conversation(Guid.NewGuid(), CurrentUtc()),
+                            Retention = MemoryRetention.UntilDeleted()
+                        }, operationToken).ConfigureAwait(false);
+                        current.Add(saved.Fact);
+                        changes.Add(new(MemoryCaptureKind.Remember, saved.Fact.Content));
+                        break;
+                    case MemoryCaptureKind.Update when target is not null && operation.Content is { } content:
+                        if (MemoryCapture.SameFact(target.Content, content) ||
+                            current.Any(fact => fact.Id != target.Id && MemoryCapture.SameFact(fact.Content, content)))
+                            continue;
+                        var edited = await store.EditAsync(new()
+                        {
+                            Id = target.Id, ExpectedRevision = target.Revision, Content = content,
+                            Provenance = MemoryProvenance.Conversation(Guid.NewGuid(), CurrentUtc()),
+                            Retention = target.Retention
+                        }, operationToken).ConfigureAwait(false);
+                        current[current.IndexOf(target)] = edited.Fact;
+                        changes.Add(new(MemoryCaptureKind.Update, edited.Fact.Content));
+                        break;
+                    case MemoryCaptureKind.Forget when target is not null:
+                        await store.DeleteAsync(new()
+                        {
+                            Id = target.Id, ExpectedRevision = target.Revision, ConsentId = Guid.NewGuid()
+                        }, operationToken).ConfigureAwait(false);
+                        current.Remove(target);
+                        changes.Add(new(MemoryCaptureKind.Forget, target.Content));
+                        break;
+                }
+            }
+            return (IReadOnlyList<MemoryCaptureChange>)changes;
+        }, token);
+    }
+
+    private static DesktopMemoryException Invalidated() => new("memory.retrieval_invalidated",
+        "Memory changed or was turned off while it was being read.");
 
     internal void Invalidate()
     {
@@ -233,7 +329,19 @@ internal sealed class DesktopMemoryService : IDisposable
         var preview = MemoryStoreActivationPreview.Create(configured.Directory);
         preview.ValidateLocalScope();
         var approval = preview.Authorize(MemoryConsentDecision.Allow);
-        var store = openStore(preview, approval, token);
+        if (!await storeGate.WaitAsync(StoreWait, token).ConfigureAwait(false))
+            throw new DesktopMemoryException("memory.busy",
+                "Memory is busy with another action or a pending cleanup. Try again in a moment.");
+        MemoryStore store;
+        try
+        {
+            store = openStore(preview, approval, token);
+        }
+        catch
+        {
+            storeGate.Release();
+            throw;
+        }
         try
         {
             return await action(store, token).ConfigureAwait(false);
@@ -261,6 +369,7 @@ internal sealed class DesktopMemoryService : IDisposable
             }
             store.Dispose();
             lock (gate) cleanupRetry = null;
+            storeGate.Release();
         }
     }
 
@@ -278,10 +387,10 @@ internal sealed class DesktopMemoryService : IDisposable
         if (loaded.State != SettingsLoadState.Loaded || loaded.Error is not null ||
             loaded.Settings?.Memory is not { Enabled: true } memory)
             throw new DesktopMemoryException("memory.disabled",
-                "Local memory is OFF. Open Memory, review the scope and enable it explicitly.");
+                "Memory is OFF. Turn it on in Memory to let Martlet remember and recall things.");
         if (memory.ConfigurationRevision != expectedConfigurationRevision)
             throw new DesktopMemoryException("memory.configuration_changed",
-                "Memory configuration changed. Reload and review it before a fresh action.");
+                "Memory settings changed. Reload and try again.");
         return (memory, memory.ResolveDirectory(settings.DataDirectory));
     }
 

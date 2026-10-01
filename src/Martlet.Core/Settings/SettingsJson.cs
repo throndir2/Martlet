@@ -8,7 +8,7 @@ public static class SettingsJson
     {
         // Inspect versions before rejecting new fields, so a newer file has an actionable version error.
         ContractJson.Read<VersionHeader>(bytes, AppSettings.MaxFileBytes);
-        return ContractJson.Read<AppSettings>(bytes, AppSettings.MaxFileBytes);
+        return AppSettings.ApplyMemoryDefault(ContractJson.Read<AppSettings>(bytes, AppSettings.MaxFileBytes));
     }
 
     private sealed record VersionHeader : IContract

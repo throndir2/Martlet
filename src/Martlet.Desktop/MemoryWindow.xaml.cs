@@ -85,7 +85,7 @@ public partial class MemoryWindow : ThemedWindow
             AppLocalChoice.IsChecked = true;
             CustomChoice.IsChecked = false;
             CustomDirectory.Text = "";
-            EnableChoice.IsChecked = false;
+            EnableChoice.IsChecked = true;
             configurationRevision = Guid.Empty;
         }
         else
@@ -96,7 +96,6 @@ public partial class MemoryWindow : ThemedWindow
             EnableChoice.IsChecked = memory.Enabled;
             configurationRevision = memory.ConfigurationRevision;
         }
-        AcceptEnable.IsChecked = false;
         rendering = false;
         DisposeExportPreview();
         FactsList.ItemsSource = null;
@@ -104,10 +103,12 @@ public partial class MemoryWindow : ThemedWindow
         FactDetails.Clear();
         RetentionChoice.SelectedIndex = -1;
         ConfigurationStatus.Text = memory is null
-            ? "Legacy settings loaded. Memory is OFF; saving explicitly migrates settings with an atomic original snapshot. The fact store was not opened."
-            : $"Memory settings loaded: {(memory.Enabled ? "ENABLED" : "OFF")}. The fact store was not opened.";
+            ? "Legacy settings loaded. Saving migrates them (keeping an exact copy of the original file) and turns memory on."
+            : $"Memory is {(memory.Enabled ? "ON" : "OFF")}.";
         RenderResolvedDirectory();
         RenderActions();
+        if (memory is { Enabled: true } && !closed)
+            await RefreshFactsAsync();
     }
 
     private async void SaveConfiguration_Click(object sender, RoutedEventArgs e)
@@ -120,7 +121,6 @@ public partial class MemoryWindow : ThemedWindow
             ? MemoryStoragePolicy.CustomLocalDirectory
             : MemoryStoragePolicy.AppLocalData;
         var enabled = EnableChoice.IsChecked == true;
-        var enableApproved = AcceptEnable.IsChecked == true;
         var customDirectory = CustomDirectory.Text;
         await RunAsync(async token =>
         {
@@ -128,7 +128,6 @@ public partial class MemoryWindow : ThemedWindow
                 loadedSettings,
                 loadedRevision,
                 enabled,
-                enableApproved,
                 policy,
                 customDirectory,
                 token).ConfigureAwait(false);
@@ -144,16 +143,15 @@ public partial class MemoryWindow : ThemedWindow
         loadedSettings = result.Settings;
         loadedRevision = result.Save.Save.Revision;
         configurationRevision = result.Settings.Memory!.ConfigurationRevision;
-        rendering = true;
-        AcceptEnable.IsChecked = false;
-        rendering = false;
         DisposeExportPreview();
         FactsList.ItemsSource = null;
         ConfigurationStatus.Text = result.Settings.Memory.Enabled
-            ? "Local memory enabled for this reviewed scope. No fact was read or written. Each retrieval still needs fresh per-action permission."
-            : "Local memory is OFF. No store open/read/write is permitted while disabled.";
+            ? "Memory is ON. Martlet remembers lasting things you talk about and recalls them in later conversations."
+            : "Memory is OFF. Nothing is recalled or remembered; facts already saved stay on this PC (turn memory on to review or delete them).";
         RenderResolvedDirectory();
         RenderActions();
+        if (result.Settings.Memory.Enabled && !closed)
+            await RefreshFactsAsync();
     }
 
     private async void RefreshFacts_Click(object sender, RoutedEventArgs e) => await RefreshFactsAsync();
@@ -168,8 +166,8 @@ public partial class MemoryWindow : ThemedWindow
             "Fact inspection failed. No success is assumed.");
         if (closed || inspection is null)
             return;
-        FactsList.ItemsSource = inspection.Facts;
-        FactStatus.Text = $"Inspected {inspection.Facts.Count} fact(s) at store revision {inspection.StoreRevision}. Content remains local unless a later turn receives separate retrieval permission.";
+        FactsList.ItemsSource = inspection.Facts.OrderByDescending(fact => fact.UpdatedAtUtc).ToArray();
+        FactStatus.Text = $"{inspection.Facts.Count} fact(s) remembered (store revision {inspection.StoreRevision}).";
         RenderActions();
     }
 
@@ -195,7 +193,7 @@ public partial class MemoryWindow : ThemedWindow
         FactContent.Clear();
         RetentionChoice.SelectedIndex = -1;
         await RefreshFactsAsync();
-        FactStatus.Text = $"Fact saved explicitly at store revision {receipt.StoreRevision}. No transcript was ingested.";
+        FactStatus.Text = $"Fact saved at store revision {receipt.StoreRevision}.";
     }
 
     private async void EditFact_Click(object sender, RoutedEventArgs e)
@@ -326,8 +324,8 @@ public partial class MemoryWindow : ThemedWindow
         FactDetails.Text =
             $"Fact ID: {fact.Id}; revision: {fact.Revision}\n" +
             $"Created: {fact.CreatedAtUtc:O}; updated: {fact.UpdatedAtUtc:O}\n" +
-            $"Created provenance: {fact.CreatedFrom.SourceKind}; consent: {fact.CreatedFrom.ConsentId}; observed: {fact.CreatedFrom.ObservedAtUtc:O}\n" +
-            $"Last-modified provenance: {fact.LastModifiedBy.SourceKind}; consent: {fact.LastModifiedBy.ConsentId}; observed: {fact.LastModifiedBy.ObservedAtUtc:O}\n" +
+            $"Created from: {MemoryPromptContext.Source(fact.CreatedFrom.SourceKind)}; consent: {fact.CreatedFrom.ConsentId}; observed: {fact.CreatedFrom.ObservedAtUtc:O}\n" +
+            $"Last changed: {MemoryPromptContext.Source(fact.LastModifiedBy.SourceKind)}; consent: {fact.LastModifiedBy.ConsentId}; observed: {fact.LastModifiedBy.ObservedAtUtc:O}\n" +
             $"Retention: {RetentionText(fact.Retention)}";
         RenderActions();
     }
@@ -347,13 +345,7 @@ public partial class MemoryWindow : ThemedWindow
     {
         if (rendering)
             return;
-        if (!ReferenceEquals(sender, AcceptEnable))
-        {
-            rendering = true;
-            AcceptEnable.IsChecked = false;
-            rendering = false;
-            InvalidateDraftPresentation();
-        }
+        InvalidateDraftPresentation();
         RenderResolvedDirectory();
         RenderActions();
     }
@@ -362,9 +354,6 @@ public partial class MemoryWindow : ThemedWindow
     {
         if (rendering)
             return;
-        rendering = true;
-        AcceptEnable.IsChecked = false;
-        rendering = false;
         InvalidateDraftPresentation();
         RenderResolvedDirectory();
         RenderActions();
@@ -482,8 +471,7 @@ public partial class MemoryWindow : ThemedWindow
             loadedSettings?.Memory is { Enabled: true } memory &&
             memory.ConfigurationRevision == configurationRevision;
         ReloadButton.IsEnabled = !busy;
-        SaveConfigurationButton.IsEnabled = !busy && loadedSettings is not null &&
-            (EnableChoice.IsChecked != true || AcceptEnable.IsChecked == true);
+        SaveConfigurationButton.IsEnabled = !busy && loadedSettings is not null;
         RefreshFactsButton.IsEnabled = PurgeExpiredButton.IsEnabled =
             CreateExportPreviewButton.IsEnabled = enabled && !busy;
         SaveFactButton.IsEnabled = enabled && !busy;

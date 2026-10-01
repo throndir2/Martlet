@@ -103,7 +103,7 @@ There is no remote memory, embedding, vector database or automatic backup.
 | [Resumable setup and local audio](docs/SETUP.md) | V02a configuration/vault actions and V02b explicit local device tests, historical checkpoints, strict migration and remaining live gates |
 | [Explicit API conversation](docs/CONVERSATION.md) | V04b typed/PTT path, hands-free voice activity, local Voice ID, exact supported models and bounds, fresh authorization, Stop/cleanup, troubleshooting and separately authorized live-trial checklist |
 | [Voice Studio research and setup](docs/VOICE_STUDIO.md) | Five-engine implementation research, guided setup, audio imports, A/B previews, training and staged acceptance |
-| [Consented local memory](docs/MEMORY.md) | OFF-by-default P03a/P03b/P03c Desktop fact management, per-turn retrieval, privacy/deletion/export and remaining qualification gates |
+| [Memory](docs/MEMORY.md) | ON-by-default local memory: automatic recall each turn, remembering lasting facts from conversations, Desktop fact management, privacy/deletion/export and remaining qualification gates |
 
 The broader plan documents remain future specifications except for the current
 implementation/acceptance ledger in [DELIVERY](docs/DELIVERY.md) and the

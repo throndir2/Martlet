@@ -1,19 +1,21 @@
-# Consented local memory and Desktop integration (P03a/P03b/P03c)
+# Memory (P03a/P03b/P03c)
 
-**Implemented internally in the local library, Core settings/recovery, Desktop
-management UI, explicit typed/PTT conversation, root solution and Windows
-package graph.** Memory remains OFF on new, v1-v3 migrated and restored profiles.
-Opening Martlet, Memory, Setup, Troubleshooting or a conversation does not open
-the fact store. Only an explicit enabled management action or a fresh
-per-turn retrieval approval can open it.
+**Memory is ON by default.** Martlet remembers lasting things that are talked
+about and recalls them in later conversations. New profiles, v1-v5 migrated
+profiles and v4/v5 profiles whose memory was only OFF by the old default all
+read as ON; an OFF saved under settings v6 is an explicit choice and stays OFF.
+Configuration restore still forces memory OFF for review (like routes).
 
-The implementation performs no capture, automatic transcript ingestion/fact
-extraction, provider call on management actions, store-wide upload, embedding,
-model execution, vector-database access, backup or background timer. This is
-internal P03a/P03b/P03c functional evidence, not completed remote P03, AC-16,
-P04 or G4 qualification. Gateway authentication/role enforcement, memory-store
-backup/restore, real-user usefulness/privacy comprehension, clean-machine and
-physical crash/power-loss evidence remain separate gates.
+When memory is ON, each explicit conversation turn recalls saved facts
+automatically, and after each completed reply the same Thinking model picks out
+lasting facts to save (see [Automatic recall and remembering](#automatic-recall-and-remembering)).
+Facts stay in the local store on this PC; there is no embedding, vector
+database, cloud copy, store-wide upload, backup or background timer. Screen and
+camera glances are never remembered. This is internal functional evidence, not
+completed remote P03, AC-16, P04 or G4 qualification. Gateway
+authentication/role enforcement, memory-store backup/restore, real-user
+usefulness/privacy comprehension, clean-machine and physical crash/power-loss
+evidence remain separate gates.
 
 The foundation was reused from `fc1fd57f59fed0899ccbd5991797f1699d4e9bfb`
 in PR #39 with finalization-time expiry and consistent top-K ranking fixes.
@@ -25,43 +27,46 @@ receipt/snapshot semantics. Source avatar/listen-first dependencies are excluded
 no Gateway or installation schema/activation changes are included.
 AC-16 is unchanged. Source package hashes are historical, not new evidence.
 
-## Desktop enablement and explicit fact management
+## Desktop enablement and fact management
 
-**Local memory (OFF by default)** exposes an accessible management window. A
-settings-only load shows the current policy without touching the store. The
-default scope is the app-owned `memory` child of the selected Martlet local-data
-directory. A user may instead enter or browse to a custom absolute local
-directory. The shared foundation rejects roots, UNC/network/unknown-volume,
-alternate-stream and reparse/link scopes. Enabling requires a separate review
-checkbox; configuration validation reads path metadata but creates no directory,
-lock or store document.
+**Memory (ON by default)** exposes an accessible management window. Opening it
+loads the policy and, when memory is ON, lists the remembered facts newest
+first with where each came from. The default scope is the app-owned `memory`
+child of the selected Martlet local-data directory. A user may instead enter or
+browse to a custom absolute local directory. The shared foundation rejects
+roots, UNC/network/unknown-volume, alternate-stream and reparse/link scopes.
+The enable checkbox plus **Save memory configuration** turns memory on or off;
+configuration validation reads path metadata but creates no directory, lock or
+store document.
 
-Strict settings schema 4 owns `enabled`, the app-local/custom policy, optional
-normalized custom path and a fresh configuration revision. v1-v3 migration is
+Strict memory settings own `enabled`, the app-local/custom policy, optional
+normalized custom path and a fresh configuration revision. Settings v6 marks
+memory as ON by default: reading a v1-v5 file treats an OFF memory section as
+the old default (ON) until the file is saved as v6, and v1-v5 migration is
 explicit and atomic and creates the existing exact original-file snapshot.
 Configuration backup includes only this enable/path policy, never facts/store/
-exports. Restore accepts compatible v1-v4 settings but always forces memory OFF:
-v4 sources retain their storage policy for review; older sources preserve the
+exports. Restore accepts compatible v1-v6 settings but always forces memory OFF
+for review: v4+ sources retain their storage policy; older sources preserve the
 current policy. No restore action opens, copies or validates a fact store.
 Changing configuration invalidates an in-flight app retrieval.
 
-Every fact starts in the dedicated editor and is saved only by **Save new
-fact**. Conversation input/transcripts, answers, support metadata and persona
-text have no save callback. New/edit actions require an explicit
-`until_deleted` or 30/90/365-day expiry choice and record fresh `user_entry`
-provenance. Inspect shows fact/store revisions, creation and last-modified
-source/times/consent IDs and exact expiry. Delete uses an explicit Yes/No dialog
-whose default is No; purge expiry is also an explicit action. All work runs
-off the WPF dispatcher under the app-shared effect owner, so setup, audio,
-fixture, recovery, memory and conversation effects cannot overlap in-process.
+Facts come from two places: the dedicated editor (**Save new fact**, with an
+explicit `until_deleted` or 30/90/365-day expiry and fresh `user_entry`
+provenance) and automatic remembering from conversations (`conversation`
+provenance, kept until deleted). Inspect shows fact/store revisions, creation
+and last-modified source/times/consent IDs and exact expiry. Delete uses an
+explicit Yes/No dialog whose default is No; purge expiry is also an explicit
+action. Management work runs off the WPF dispatcher under the app-shared effect
+owner, and every store open in the process (recall, remembering, management)
+is serialized behind one store gate.
 
 ## Explicit activation and actions
 
 The library still has no default directory or automatic `Open`. The Desktop
-owner resolves its reviewed settings policy, then creates a pure path-bound
+owner resolves its settings policy, then creates a pure path-bound
 preview. `ValidateLocalScope` checks the local path without creating anything.
-The activation decision defaults to `No`; only the explicit app action produces
-a one-use `Allow` authorization:
+The activation decision defaults to `No`; the Desktop owner produces a one-use
+`Allow` authorization only while memory is ON:
 
 ```csharp
 var activation = MemoryStoreActivationPreview.Create(selectedLocalDirectory);
@@ -78,13 +83,15 @@ only that selected scope and acquires its exclusive owner lock. A second owner
 is refused. An authorization is bound with ordinal equality to the exact preview
 and normalized path and cannot be replayed, including by case-folding it.
 
-The only fact-producing operation is explicit `SaveAsync(SaveFactRequest)`.
-There is no transcript, conversation, provider, watcher, ingestion callback or
-generic object API. Each save requires bounded fact content, typed provenance,
-an explicit consent UUID and a retention choice. Supported provenance is:
+The only fact-producing library operation is `SaveAsync(SaveFactRequest)`.
+The library has no transcript, conversation, provider, watcher, ingestion
+callback or generic object API; Desktop decides what to save. Each save
+requires bounded fact content, typed provenance, a consent UUID and a retention
+choice. Supported provenance is:
 
 - `user_entry`
 - `user_reviewed_import`
+- `conversation` (picked out of a finished exchange while memory was ON)
 
 `InspectAsync` returns exact current facts and provenance. `EditAsync` and
 `DeleteAsync` require the fact UUID and expected fact revision; a stale or
@@ -220,38 +227,54 @@ checkbox is cleared for every preview and the export button requires that
 fresh checkbox. Export remains create-only and local; support has no upload or
 contact path and configuration recovery never includes the bytes.
 
-## Fresh per-turn retrieval and request budgeting
+## Automatic recall and remembering
 
-The live typed/PTT surface has an **optional next action only** memory checkbox,
-separate from the existing provider/cost permission, capture permission and STT
-upload permission. It is unchecked on every load and after every action. When
-unchecked, even enabled memory is not opened or read. Automatic listening is
-not implemented by this slice and cannot authorize memory disclosure.
+There is no per-turn memory checkbox: the memory setting decides. When memory
+is OFF, the store is never opened or read by a conversation.
 
-After STT and participation accept the current explicit turn, an approved
-retrieval tokenizes only that current user input and asks the local lexical
-index for at most three results. Zero matches is a valid empty result. Each hit
-is formatted as a user message between
-`[MARTLET_LOCAL_MEMORY_FACT]` labels with fact/store revision, source kind,
-creation/last-modified observation times and expiry. A system instruction says
-these are user-saved reference data, never instructions, permissions, routing
-or tool directives. Consent UUIDs, paths and nonmatching/store-wide facts are
-not sent.
+**Recall.** After STT and participation accept the current explicit typed, PTT
+or hands-free turn, Desktop opens the store once, asks the lexical index for the
+best matches for that user input and fills up to twelve facts with the most
+recently changed ones (so a small store is recalled whole). The facts travel in
+the system instructions as one block between `[MARTLET_LOCAL_MEMORY]` labels,
+one line per fact with its source (`saved by the user` / `from conversation`)
+and date. The instruction says they are background data, never instructions,
+permissions, routing or tool directives. Consent UUIDs, paths and the rest of
+the store are not sent.
 
 The existing 16,384-byte, 16-message and 16,640 local input-token reservation is
 unchanged. Current input/persona/style are admitted first; oldest volatile
-conversation messages are omitted, then lowest-ranked memory hits are omitted
+conversation messages are omitted, then the least relevant recalled facts,
 until the request fits. Used/omitted fact counts and store revision are visible
 metadata, but fact content is excluded from the timeline, support journal and
-ordinary logs. Retrieval failure or invalidation fails the action before any
-LLM request; it never silently continues without requested memory.
+ordinary logs. Memory is helpful, not required: if a fact changes while it is
+read, the current facts are read once more; if the store can't be read (busy,
+unavailable, turned off), the reply goes ahead without memory and the status
+names the problem.
 
-Delete, save/edit/purge, memory configuration, retrieval-consent revocation,
-pause, lock, Stop, output/configuration change, conversation close and app exit
-advance the app retrieval generation and cancel the old operation. The
-foundation store revision check separately invalidates a source/index/cache
-result changed in flight. A result is accepted only after both checks and a
-fresh settings comparison.
+**Remembering.** After a reply completes, the exchange is queued (at most four
+pending) and handled in the background, one at a time, on a separate text-only
+runtime so it never delays the next turn. Desktop recalls up to ten related
+facts, then sends one extra request (persona-free, <=256 output tokens, same
+Thinking route and credential binding, its own one-request authorization) with
+the latest exchange, the previous exchange as context and those numbered facts.
+The model answers in a strict line format: `REMEMBER: <fact>`,
+`UPDATE <n>: <fact>`, `FORGET <n>` or `NOTHING`, at most three lines. Desktop
+validates every line (single line, <=300 characters, real words, in-range
+numbers, no memory labels), skips near-duplicates, applies updates/forgets only
+to the exact fact revisions it showed, and saves new facts with `conversation`
+provenance until deleted. A full store drops its oldest conversation fact, never
+a fact the user typed. The conversation window shows what was remembered
+(*Remembered: …*), and Memory lists it.
+
+Delete, save/edit/purge, memory configuration, pause, lock, Stop,
+output/configuration change, conversation close and app exit advance the app
+retrieval generation and cancel the old operation. The foundation store
+revision check separately invalidates a source/index/cache result changed in
+flight. Lock, pause, mute, a configuration change, conversation close and app
+exit cancel pending remembering; Stop and window deactivation do not, because
+the exchange already finished. Turning memory off or changing its configuration
+drops anything still being remembered.
 
 ## Local validation
 
@@ -272,7 +295,7 @@ The project uses only the runtime/BCL; the test project uses existing central
 test pins. Both now join `Martlet.slnx`; Desktop and package graphs reference
 the runtime assembly. Direct Memory tests remain useful for focused storage
 validation. Desktop/Core/Updates suites cover production-path WPF, settings
-migration/recovery, explicit retrieval/input encoding and lifecycle invalidation.
+migration/recovery, automatic recall/remembering/input encoding and lifecycle invalidation.
 All validation remains local; no remote workflow was added or run.
 
 ## Remaining gates

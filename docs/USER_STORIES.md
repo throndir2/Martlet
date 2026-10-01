@@ -972,9 +972,11 @@ it.*
   facts with search, edit and delete inline; *Export* is one button with a
   save dialog.
 - **Clicks**: 1 to turn on; 2 to forget a fact.
-- **Today**: Memory window (storage choice, enable checkbox, *Save memory
-  configuration*, fact editor, export preview, export checkbox), plus a
-  per-message memory checkbox in the conversation.
+- **Today**: memory is on by default. Each turn recalls relevant and recent
+  facts automatically, and after each reply the Thinking model picks out lasting
+  facts to save; the conversation shows *Remembered: …* under the reply. The
+  Memory window lists facts newest first (with where each came from), plus an
+  enable checkbox, storage choice, fact editor and export preview.
 
 ### I. Devices and the network
 

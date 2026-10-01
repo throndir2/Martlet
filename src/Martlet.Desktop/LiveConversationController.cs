@@ -1,3 +1,4 @@
+using System.IO;
 using System.Security.Cryptography;
 using System.Text.Json.Serialization;
 using Martlet.Audio;
@@ -49,6 +50,8 @@ internal sealed class LiveConversationOperation
     internal int MemoryFactsUsed { get; set; }
     internal int MemoryFactsOmitted { get; set; }
     internal long? MemoryStoreRevision { get; set; }
+    /// <summary>Why memory could not be read for this turn (the reply went ahead without it).</summary>
+    internal string? MemoryProblem { get; set; }
     internal ListeningOptions? Listening { get; init; }
     internal Voiceprint? Voiceprint { get; init; }
     internal SpeakerCheck? SpeakerCheck { get; set; }
@@ -117,6 +120,7 @@ internal sealed class LiveConversationOperation
 // App-lifetime owner; setup, fixture and live work all reserve the SAME reviewed operation runner.
 internal sealed class LiveConversationController : IAsyncDisposable
 {
+    private const int MaximumPendingCaptures = 4;
     private readonly object gate = new();
     private readonly SetupOperationRunner operations;
     private readonly ISetupService settings;
@@ -135,6 +139,15 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private readonly TaskCompletionSource quarantine = new(TaskCreationOptions.RunContinuationsAsynchronously);
     // What Martlet said while watching the screen (last 30 minutes), so it does not repeat itself. In memory only.
     private readonly Queue<(long At, string Text)> remarks = new();
+    // Remembering runs after a reply on its own text-only runtime, one exchange at a time, so it never delays the next turn.
+    private readonly Func<IProviderCredentialSource, TimeProvider, ConversationRuntime>? runtimeFactory;
+    private readonly ConversationCredentialSource captureCredentials;
+    private ConversationRuntime? captureRuntime;
+    private ConversationAuthorization? captureAuthorization;
+    private CancellationTokenSource captureCancel = new();
+    private Task captureTail = Task.CompletedTask;
+    private int capturesPending;
+    private bool captureQuarantined;
     private LiveConversationOperation? active;
     private LiveConversationConfiguration? configuration;
     private long revision, captureEpoch;
@@ -145,6 +158,11 @@ internal sealed class LiveConversationController : IAsyncDisposable
     internal LiveConversationConfiguration? Configuration { get { lock (gate) return configuration; } }
     internal ParticipationSnapshot PolicySnapshot => policy.Snapshot;
     internal (bool Paused, bool Muted, bool Locked) Controls { get { lock (gate) return (paused, muted, locked); } }
+    /// <summary>Raised off the dispatcher after a finished exchange changed memory or could not be remembered.</summary>
+    internal event Action<MemoryCaptureReport>? MemoryCaptured;
+    /// <summary>Tests turn background remembering off to inspect only the reply request.</summary>
+    internal bool AutoCapture { get; set; } = true;
+    internal Task MemoryCaptureIdle { get { lock (gate) return captureTail; } }
     internal LiveConversationController(SetupOperationRunner operations, ISetupService settings, ICredentialStore vault,
         ICaptureDeviceFactory captureDevices, IPlaybackDeviceFactory playbackDevices, TimeProvider? clock = null,
         Func<IProviderCredentialSource, TimeProvider, ConversationRuntime>? runtimeFactory = null,
@@ -163,7 +181,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
         this.revokeAvatar = revokeAvatar;
         this.memory = memory;
         this.voiceIdentity = voiceIdentity;
+        this.runtimeFactory = runtimeFactory;
         context = new(this.clock);
+        captureCredentials = new(() => Volatile.Read(ref captureAuthorization));
         var credentials = new ConversationCredentialSource(() => Volatile.Read(ref active)?.Authorization);
         runtime = runtimeFactory?.Invoke(credentials, this.clock) ??
             ConversationRuntime.Create(credentials, playbackDevices, clock: this.clock, generatedSpeech: generatedSpeech,
@@ -185,6 +205,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
             changed = configuration is not null && configuration.Revision != next?.Revision;
             memory?.Invalidate();
             ClearContextLocked();
+            if (configuration?.Revision != next?.Revision) CancelCapturesLocked();
             configuration = next;
             stop = RevokeLocked();
         }
@@ -201,6 +222,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
             if (paused == pause && muted == mute && locked == sessionLocked) return;
             memory?.Invalidate();
             ClearContextLocked();
+            if (pause || mute || sessionLocked) CancelCapturesLocked();
             paused = pause;
             muted = mute;
             locked = sessionLocked;
@@ -218,6 +240,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
             if (locked == value) return;
             memory?.Invalidate();
             ClearContextLocked();
+            if (value) CancelCapturesLocked();
             locked = value;
             stop = RevokeLocked();
         }
@@ -232,6 +255,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         {
             memory?.Invalidate();
             ClearContextLocked();
+            CancelCapturesLocked();
             stop = RevokeLocked();
         }
         stop?.Cancel(code);
@@ -249,7 +273,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
 
     internal LiveConversationOperation Start(string? text, bool voice, bool microphone, bool approved,
         bool localCaptureApproved = false, bool uploadApproved = false, CancellationToken caller = default,
-        bool memoryApproved = false, ListeningOptions? listening = null)
+        ListeningOptions? listening = null)
     {
         if (!approved || microphone && (!localCaptureApproved || !uploadApproved))
             throw new LiveActionException("conversation.permission_required");
@@ -269,12 +293,14 @@ internal sealed class LiveConversationController : IAsyncDisposable
             if (operations.IsRunning) throw new LiveActionException("conversation.ownership_busy");
             var selected = configuration ?? throw new LiveActionException("conversation.setup_required");
             if (selected.Unavailable(voice, microphone) is not null) throw new LiveActionException("conversation.configuration_unsupported");
-            if (memoryApproved && (memory is null || selected.Memory is not { Enabled: true }))
-                throw new LiveActionException("memory.disabled");
             long acceptedRevision = revision = checked(revision + 1);
             var authorization = new ConversationAuthorization(selected, voice, microphone, clock,
                 () => Volatile.Read(ref revision) == acceptedRevision, settings.LoadAsync, vault, caller);
-            operation = new(authorization, caller) { MemoryRequested = memoryApproved, Listening = listening, Voiceprint = voiceprint };
+            operation = new(authorization, caller)
+            {
+                MemoryRequested = memory is not null && selected.Memory is { Enabled: true },
+                Listening = listening, Voiceprint = voiceprint
+            };
             active = operation;
             var worker = operations.TryStart(async token =>
             {
@@ -566,17 +592,14 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 history = context.Snapshot();
             }
 
-            DesktopMemoryRetrieval? memoryResult = null;
+            DesktopMemoryRecall? memoryResult = null;
             if (operation.MemoryRequested)
             {
-                operation.Publish(new("memory.retrieving"));
-                memoryResult = await memory!.RetrieveAsync(
-                    operation.Authorization.Configuration.Memory!,
-                    input!.UserText,
-                    worker).ConfigureAwait(false);
+                operation.Publish(new("memory.recalling"));
+                memoryResult = await RecallAsync(operation, input!.UserText, worker).ConfigureAwait(false);
                 operation.Authorization.Check(worker);
                 await operation.Authorization.ValidateSettingsAsync(worker).ConfigureAwait(false);
-                operation.MemoryStoreRevision = memoryResult.StoreRevision;
+                operation.MemoryStoreRevision = memoryResult?.StoreRevision;
             }
 
             lock (gate)
@@ -590,7 +613,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 operation.ContextMessages = usedHistory;
                 operation.ContextMessagesOmitted = history.Count - usedHistory;
                 operation.MemoryFactsUsed = usedMemory;
-                operation.MemoryFactsOmitted = (memoryResult?.Hits.Count ?? 0) - usedMemory;
+                operation.MemoryFactsOmitted = (memoryResult?.Facts.Count ?? 0) - usedMemory;
                 operation.Authorization.BindInput(request.Input);
                 // Exact-content commit, pause/consent state and immediate Start share this short, non-awaiting gate.
                 turn = runtime.Start(request, operation.Authorization, operation.OriginalCaller);
@@ -602,7 +625,12 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 lock (gate)
                 {
                     if (ReferenceEquals(active, operation) && !operation.Authorization.IsCanceled)
+                    {
+                        var earlier = context.Snapshot();
                         context.Add(input!.UserText, turn.Content.Text);
+                        if (operation.MemoryRequested)
+                            EnqueueCaptureLocked(operation.Authorization.Configuration, earlier, input.UserText, turn.Content.Text);
+                    }
                 }
             }
             operation.Publish(new("runtime." + terminal.State, Finished: true, Quarantined: terminal.Quarantined,
@@ -663,6 +691,152 @@ internal sealed class LiveConversationController : IAsyncDisposable
     }
 
     private CorrelationIds Ids() => new() { SessionId = runtime.SessionId, TurnId = Guid.NewGuid(), RequestId = Guid.NewGuid() };
+
+    // Memory helps but is never required: if the store can't be read right now, the reply goes ahead without it.
+    private async Task<DesktopMemoryRecall?> RecallAsync(LiveConversationOperation operation, string query, CancellationToken worker)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                return await memory!.RecallAsync(operation.Authorization.Configuration.Memory!, query,
+                    DesktopMemoryService.MaximumRecalledFacts, worker).ConfigureAwait(false);
+            }
+            catch (DesktopMemoryException error) when (error.Code == "memory.retrieval_invalidated" && attempt == 0)
+            {
+                // A fact changed while it was read; read the current facts once more unless this action was revoked.
+                operation.Authorization.Check(worker);
+            }
+            catch (Exception error) when (error is DesktopMemoryException or MemoryException or ContractException or
+                IOException or UnauthorizedAccessException or ObjectDisposedException)
+            {
+                operation.Authorization.Check(worker);
+                operation.MemoryProblem = error switch
+                {
+                    DesktopMemoryException app => app.Code,
+                    MemoryException store => "memory." + store.Failure,
+                    _ => "memory.unavailable"
+                };
+                operation.Publish(new("memory.unavailable"));
+                return null;
+            }
+        }
+    }
+
+    private void EnqueueCaptureLocked(LiveConversationConfiguration configured, IReadOnlyList<TextHistoryMessage> earlier,
+        string user, string reply)
+    {
+        if (!AutoCapture || memory is null || disposed || captureQuarantined || configured.Memory is not { Enabled: true } ||
+            capturesPending >= MaximumPendingCaptures)
+            return;
+        capturesPending++;
+        var job = new MemoryCaptureJob(configured,
+            earlier.LastOrDefault(message => message.Role == TextHistoryRole.User)?.Text,
+            earlier.LastOrDefault(message => message.Role == TextHistoryRole.Assistant)?.Text,
+            user, reply, captureCancel.Token);
+        captureTail = CaptureAfterAsync(captureTail, job);
+    }
+
+    private sealed record MemoryCaptureJob(LiveConversationConfiguration Configuration, string? EarlierUser, string? EarlierReply,
+        string User, string Reply, CancellationToken Token)
+    {
+        public override string ToString() => nameof(MemoryCaptureJob);
+    }
+
+    private async Task CaptureAfterAsync(Task previous, MemoryCaptureJob job)
+    {
+        await previous.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        MemoryCaptureReport? report;
+        try
+        {
+            report = await Task.Run(() => CaptureAsync(job)).ConfigureAwait(false);
+        }
+        catch (Exception error)
+        {
+            ErrorLog.Warn("Remembering a conversation exchange failed.", error);
+            report = new(Failure: "memory." + error.GetType().Name);
+        }
+        finally
+        {
+            lock (gate) capturesPending--;
+        }
+        if (report is not null) MemoryCaptured?.Invoke(report);
+    }
+
+    private async Task<MemoryCaptureReport?> CaptureAsync(MemoryCaptureJob job)
+    {
+        var token = job.Token;
+        try
+        {
+            token.ThrowIfCancellationRequested();
+            var expected = job.Configuration.Memory!;
+            var known = await memory!.KnownFactsAsync(expected, job.User, MemoryCapture.MaximumShownFacts, token).ConfigureAwait(false);
+            var prompt = MemoryCapture.Prompt(job.EarlierUser, job.EarlierReply, job.User, job.Reply, known.Facts);
+            var request = job.Configuration.MemoryCaptureRequest(prompt.Input);
+            var capture = CaptureRuntime();
+            var authorization = new ConversationAuthorization(job.Configuration, voice: false, microphone: false, clock,
+                () => !token.IsCancellationRequested, settings.LoadAsync, vault, token);
+            authorization.BindInput(request.Input);
+            Volatile.Write(ref captureAuthorization, authorization);
+            string answer;
+            try
+            {
+                var turn = capture.Start(request, authorization, token);
+                var terminal = await turn.Completion.ConfigureAwait(false);
+                await turn.OwnershipRelease.ConfigureAwait(false);
+                if (turn.Snapshot.Quarantined)
+                    lock (gate) captureQuarantined = true;
+                if (terminal.State != ConversationState.Completed)
+                    return token.IsCancellationRequested ? null
+                        : new(Failure: terminal.ProviderFailure?.ToString() ?? "runtime." + terminal.State);
+                answer = turn.Content.Text;
+            }
+            finally
+            {
+                Interlocked.CompareExchange(ref captureAuthorization, null, authorization);
+            }
+            var operations = MemoryCapture.Parse(answer, prompt.ShownFacts);
+            if (operations.Count == 0) return null;
+            var changes = await memory.RememberAsync(expected.ConfigurationRevision,
+                known.Facts.Take(prompt.ShownFacts).ToArray(), operations, token).ConfigureAwait(false);
+            return changes.Count == 0 ? null : new(changes);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            return null;
+        }
+        catch (Exception error) when (error is LiveActionException or DesktopMemoryException or MemoryException or
+            ContractException or IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            // Turning memory off, changing settings or revoking live work simply drops what was still being remembered.
+            var code = error switch
+            {
+                LiveActionException live => live.Code,
+                DesktopMemoryException app => app.Code,
+                MemoryException store => "memory." + store.Failure,
+                _ => "memory.unavailable"
+            };
+            return token.IsCancellationRequested || code is "memory.disabled" or "memory.configuration_changed" or
+                "conversation.configuration_changed" or "conversation.revoked" ? null : new(Failure: code);
+        }
+    }
+
+    private ConversationRuntime CaptureRuntime()
+    {
+        lock (gate)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            return captureRuntime ??= runtimeFactory?.Invoke(captureCredentials, clock) ??
+                ConversationRuntime.Create(captureCredentials, clock: clock, hostText: new HostTextClient());
+        }
+    }
+
+    private void CancelCapturesLocked()
+    {
+        var previous = captureCancel;
+        captureCancel = new();
+        previous.CancelAsync().Forget();
+    }
 
     // Reads the capture's own 20 ms frames (no second audio queue) and releases it when the speaker pauses.
     // Returns the speech range to send, or null when nobody spoke before the idle restart.
@@ -821,13 +995,24 @@ internal sealed class LiveConversationController : IAsyncDisposable
             disposed = true;
             memory?.Invalidate();
             ClearContextLocked();
+            CancelCapturesLocked();
             owned = RevokeLocked();
         }
         owned?.Cancel("conversation.closed");
+        DisposeCaptureRuntimeAsync().Forget();
         // Never wait for native cleanup on the dispatcher. The shared slot remains reserved until real exit.
         await runtime.DisposeAsync().ConfigureAwait(false);
         if (owned is null || owned.Worker.Completion.IsCompleted) transcription.Dispose();
         else DisposeAfterReleaseAsync(owned).Forget();
+    }
+    private async Task DisposeCaptureRuntimeAsync()
+    {
+        Task tail;
+        lock (gate) tail = captureTail;
+        await tail.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        ConversationRuntime? owned;
+        lock (gate) owned = captureRuntime;
+        if (owned is not null) await owned.DisposeAsync().ConfigureAwait(false);
     }
     private async Task DisposeAfterReleaseAsync(LiveConversationOperation operation)
     {

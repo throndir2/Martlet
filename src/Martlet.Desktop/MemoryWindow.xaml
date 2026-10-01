@@ -3,16 +3,16 @@
         Style="{DynamicResource AppWindowStyle}"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Martlet - Local memory" Width="900" Height="850" MinWidth="560" MinHeight="480"
+        Title="Martlet - Memory" Width="900" Height="850" MinWidth="560" MinHeight="480"
         WindowStartupLocation="CenterOwner" Loaded="Window_Loaded" Closing="Window_Closing"
-        AutomationProperties.Name="Local memory management, off by default">
+        AutomationProperties.Name="Memory management, on by default">
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="20">
-            <TextBlock Text="Local memory" FontSize="24" FontWeight="SemiBold" TextWrapping="Wrap" />
+            <TextBlock Text="Memory" FontSize="24" FontWeight="SemiBold" TextWrapping="Wrap" />
             <TextBlock Margin="0,8" TextWrapping="Wrap"
-                       Text="OFF by default. Martlet saves only facts you type here and explicitly choose to save; it never ingests conversation transcripts. The store stays local, has no cloud/upload/embedding/vector database/background backup, and is not included in configuration or support exports." />
+                       Text="ON by default. Martlet remembers lasting things you talk about (your name, people and pets in your life, likes, plans...) and recalls them in later conversations. After each reply the Thinking model picks out what is worth keeping; you can also type facts yourself. Everything is saved on this PC only, listed below, and you can edit or delete any fact or turn memory off. The store has no cloud copy, upload, embedding or vector database and is not included in configuration or support exports." />
             <WrapPanel>
-                <Button x:Name="ReloadButton" Content="_Reload memory settings (does not open the fact store)" Click="Reload_Click"
+                <Button x:Name="ReloadButton" Content="_Reload memory" Click="Reload_Click"
                         Padding="10,6" Margin="0,4,8,4" AutomationProperties.AutomationId="MemoryReload" />
                 <Button x:Name="RetryCleanupButton" Content="Retry owned _cleanup" Click="RetryCleanup_Click"
                         Padding="10,6" Margin="0,4,8,4" AutomationProperties.AutomationId="MemoryRetryCleanup" />
@@ -34,13 +34,9 @@
             </DockPanel>
             <TextBlock x:Name="ResolvedDirectoryText" Margin="0,5" TextWrapping="Wrap"
                        AutomationProperties.Name="Resolved local memory directory" />
-            <CheckBox x:Name="EnableChoice" Content="Enable local memory (OFF on new or migrated profiles)"
+            <CheckBox x:Name="EnableChoice" Content="Remember things we talk about and recall them in conversations (on by default)"
                       Checked="Configuration_Changed" Unchecked="Configuration_Changed" Margin="0,8,0,4"
                       AutomationProperties.AutomationId="MemoryEnable" />
-            <CheckBox x:Name="AcceptEnable" Margin="0,4"
-                      Content="I reviewed this exact local scope. I authorize Martlet to open it only for my explicit memory actions and separately authorized retrieval actions. This setting does not save transcripts or authorize provider disclosure."
-                      Checked="Configuration_Changed" Unchecked="Configuration_Changed"
-                      AutomationProperties.AutomationId="MemoryAcceptEnable" />
             <Button x:Name="SaveConfigurationButton" Content="_Save memory configuration" Click="SaveConfiguration_Click"
                     Padding="10,7" Margin="0,6,0,6" HorizontalAlignment="Left"
                     AutomationProperties.AutomationId="MemorySaveConfiguration" />
@@ -48,15 +44,15 @@
                      AutomationProperties.AutomationId="MemoryStatus" AutomationProperties.LiveSetting="Polite"
                      AutomationProperties.Name="Memory configuration status" />
 
-            <TextBlock Text="Explicit facts" FontSize="18" FontWeight="SemiBold" Margin="0,16,0,4" />
-            <TextBlock Text="The fact store is opened only by the actions below while memory is enabled. Select retention for every new fact; expiry is physically purged on the next explicit store operation." TextWrapping="Wrap" />
+            <TextBlock Text="Remembered facts" FontSize="18" FontWeight="SemiBold" Margin="0,16,0,4" />
+            <TextBlock Text="Facts picked out of conversations and facts you type here. Choose retention for every fact you add; expired facts are removed on the next memory action." TextWrapping="Wrap" />
             <WrapPanel>
                 <Button x:Name="RefreshFactsButton" Content="_Inspect / refresh facts" Click="RefreshFacts_Click"
                         Padding="10,6" Margin="0,6,8,6" AutomationProperties.AutomationId="MemoryRefreshFacts" />
                 <Button x:Name="PurgeExpiredButton" Content="P_urge expired facts" Click="PurgeExpired_Click"
                         Padding="10,6" Margin="0,6,8,6" AutomationProperties.AutomationId="MemoryPurgeExpired" />
             </WrapPanel>
-            <Label Target="{Binding ElementName=FactContent}" Content="_Fact content (typed explicitly; never populated from a transcript)" />
+            <Label Target="{Binding ElementName=FactContent}" Content="_Fact content" />
             <TextBox x:Name="FactContent" AcceptsReturn="True" TextWrapping="Wrap" MaxLength="4096" Height="90"
                      VerticalScrollBarVisibility="Auto" AutomationProperties.AutomationId="MemoryFactContent" />
             <Label Target="{Binding ElementName=RetentionChoice}" Content="_Retention" />
@@ -69,7 +65,7 @@
                 <Button x:Name="DeleteFactButton" Content="_Delete selected fact" Click="DeleteFact_Click"
                         Padding="10,6" Margin="0,6,8,6" AutomationProperties.AutomationId="MemoryDeleteFact" />
             </WrapPanel>
-            <Label Target="{Binding ElementName=FactsList}" Content="Saved _facts" />
+            <Label Target="{Binding ElementName=FactsList}" Content="Remembered _facts" />
             <ListBox x:Name="FactsList" Height="150" DisplayMemberPath="Content" SelectionChanged="FactsList_SelectionChanged"
                      AutomationProperties.AutomationId="MemoryFacts" AutomationProperties.Name="Saved local facts" />
             <Label Target="{Binding ElementName=FactDetails}" Content="Selected fact _provenance and expiry" />

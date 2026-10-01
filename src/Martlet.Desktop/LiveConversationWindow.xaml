@@ -69,6 +69,9 @@
                             <TextBox x:Name="AnswerText" IsReadOnly="True" TextWrapping="Wrap" MinHeight="140" MaxHeight="440" VerticalScrollBarVisibility="Auto"
                                      Background="{DynamicResource SoftBrush}" BorderThickness="0" Padding="14,10" FontSize="15"
                                      AutomationProperties.AutomationId="LiveAnswer" />
+                            <TextBlock x:Name="MemoryNote" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="2,6,0,0"
+                                       Visibility="Collapsed" AutomationProperties.LiveSetting="Polite"
+                                       AutomationProperties.AutomationId="LiveMemoryNote" AutomationProperties.Name="What Martlet just remembered" />
                         </StackPanel>
                     </DockPanel>
 
@@ -224,10 +227,6 @@
                                      AutomationProperties.AutomationId="LiveEnvelope" AutomationProperties.Name="Exact action bounds and data destinations" />
                             <CheckBox x:Name="AcceptAction" Margin="0,12,0,6" Checked="Consent_Changed" Unchecked="Consent_Changed" AutomationProperties.AutomationId="LiveAcceptAction"
                                       Content="I authorize my next Send / PTT action (or, while hands-free listening is on, each detected utterance) within this displayed envelope, including potential API charges and the selected generated-voice output."/>
-                            <CheckBox x:Name="AcceptMemory" Margin="0,6"
-                                      Content="Optional, next Send / PTT only: I separately authorize bounded lexical retrieval from my enabled local memory and disclosure of only fitting top facts (at most three) with provenance to the selected LLM. This is fresh permission, not provider permission, and is cleared after use."
-                                      Checked="Consent_Changed" Unchecked="Consent_Changed" AutomationProperties.AutomationId="LiveAcceptMemory"
-                                      AutomationProperties.HelpText="OFF for every action by default. Does not save this conversation or upload the complete memory store." />
                             <CheckBox x:Name="AcceptCapture" Content="For microphone input: I permit bounded LOCAL microphone capture, including other people only with their permission." Margin="0,6"
                                       Checked="Consent_Changed" Unchecked="Consent_Changed" AutomationProperties.AutomationId="LiveAcceptCapture" />
                             <CheckBox x:Name="AcceptUpload" Content="For microphone input: I separately permit uploading this audio to the named STT destination with potential charges, even if policy later suppresses it." Margin="0,6"
