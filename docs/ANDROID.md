@@ -54,11 +54,13 @@ promise a cross-platform desktop ([non-goals](../DEVELOPMENT_PLAN.md#explicit-no
    on GitHub's Ubuntu runner builds and signs one APK and attaches it to the
    GitHub release. Android requires every APK to be signed with the developer's
    own key (no certificate authority is involved), and updates must use the
-   same key forever, so the key is an owner decision. **New since today:**
+   same key forever ([decided](#decisions-2026-10-01): a free key the owner
+   creates once with a script). **New since today:**
    Google's developer verification blocks unregistered apps on certified
    devices in Brazil, Indonesia, Singapore and Thailand from 2026-09-30 and
    worldwide from 2027, except through ADB or a one-time "advanced flow".
-   Registering is an owner decision ([Owner decisions](#owner-decisions-and-inputs)).
+   Decided: only Google's free limited-distribution account, no paid or ID
+   verification ([Decisions](#decisions-2026-10-01)).
 
 **Recommended order:** release and updates first (AN01-AN02), then the host,
 satellite and camera source (AN03-AN06, AN11: smallest path to an old phone
@@ -149,7 +151,7 @@ Per-engine detail by Android version is in the
 | An App Bundle (`.aab`) cannot be sideloaded ([app bundles](https://developer.android.com/guide/app-bundle)) | Ship an APK. An AAB only matters if Play publication is chosen later. |
 | Play Protect scans sideloaded apps and blocks those that request SMS, notification-listener or accessibility permissions ([Play Protect guidance](https://developers.google.com/android/play-protect/warning-dev-guidance)) | Martlet never requests those permissions (no accessibility service for overlays or game detection). |
 | An app that installs its own updates needs your **Install unknown apps** permission for itself, and Android shows its own install confirmation ([PackageInstaller.SessionParams](https://developer.android.com/reference/android/content/pm/PackageInstaller.SessionParams)) | Like Windows, update checks are off by default. Martlet asks for the permission once with the reason; you confirm every update in Android's dialog. Only the exact `Martlet-<version>-android.apk` asset is offered, checked against GitHub's SHA-256 digest (integrity, not publisher identity). |
-| **Developer verification:** from **2026-09-30** apps must be registered by a verified developer to be installed **and updated** on certified devices in Brazil, Indonesia, Singapore and Thailand; worldwide from 2027. ADB and a one-time **advanced flow** (developer options, a "not being coached" check, restart, a one-day wait, then **Install anyway**, for 7 days or indefinitely) remain. Free limited-distribution accounts cover up to 20 devices ([rollout](https://android-developers.googleblog.com/2026/03/android-developer-verification-rolling-out-to-all-developers.html), [advanced flow](https://android-developers.googleblog.com/2026/03/android-developer-verification.html)) | Owner decision on registration. Until then the install guide explains the advanced flow for affected countries; nothing changes elsewhere before 2027. The APK's package name and key are chosen once, because registration binds to them. |
+| **Developer verification:** from **2026-09-30** apps must be registered by a verified developer to be installed **and updated** on certified devices in Brazil, Indonesia, Singapore and Thailand; worldwide from 2027. ADB and a one-time **advanced flow** (developer options, a "not being coached" check, restart, a one-day wait, then **Install anyway**, for 7 days or indefinitely) remain. Free limited-distribution accounts cover up to 20 devices ([rollout](https://android-developers.googleblog.com/2026/03/android-developer-verification-rolling-out-to-all-developers.html), [advanced flow](https://android-developers.googleblog.com/2026/03/android-developer-verification.html)) | Decided: the owner registers only a free limited-distribution account (email, no ID, no fee) for their own devices before enforcement reaches their country; nobody pays for full verification. Everyone else follows the install guide's advanced flow (or ADB) where enforcement applies. The package name and key are chosen once, because registration binds to them. |
 | GitHub's `ubuntu-latest` image ships Android SDK platforms 34-37, build tools, NDK 27-29, JDK 17/21 and Gradle; secrets are limited to 48 KB ([runner image](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md), [secrets](https://docs.github.com/en/actions/reference/security/secrets)) | A one-job workflow with no SDK setup steps; the keystore fits in a secret as base64. |
 
 ## Android versions and old hardware
@@ -309,7 +311,7 @@ both phones by whichever platform gets there first.
 
 | ID | Deliverable | Depends on | Acceptance | Size / risk |
 | --- | --- | --- | --- | --- |
-| AN01 | `android/` Gradle project, `martlet-kit` protocol core passing the IO01 vectors, and `android-release.yml` (manual dispatch only, `ubuntu-latest`, no tests; builds `Martlet-<version>-android.apk`, signs it with the release key from repository secrets and attaches it to the `v<version>` GitHub release); version code derived from `Directory.Build.props` | IO01; release-key decision | Workflow produces an APK that `apksigner verify` accepts; it sideloads on an Android 8.0+ device and launches | M / M |
+| AN01 | `android/` Gradle project, `martlet-kit` protocol core passing the IO01 vectors, and `android-release.yml` (manual dispatch only, `ubuntu-latest`, no tests; builds `Martlet-<version>-android.apk`, signs it with the release key from repository secrets and attaches it to the `v<version>` GitHub release); version code derived from `Directory.Build.props`; plus `scripts/New-AndroidReleaseKey.ps1`, which the owner runs once to create the key, upload it as repository secrets and keep an offline copy | IO01; the owner has run the key script once | Workflow produces an APK that `apksigner verify` accepts; it sideloads on an Android 8.0+ device and launches | M / M |
 | AN02 | **App updates.** Off by default like Windows; checks GitHub Releases for the exact asset, verifies GitHub's SHA-256 digest, installs through `PackageInstaller` with Android's own confirmation; guides "Install unknown apps" and, where it applies, developer verification | AN01 | An installed build updates to the next one from **Install** and keeps its data; a wrong digest is refused | S / L |
 | AN03 | **Host core.** Hosting screen, `connectedDevice` service and notification, Keystore TLS identity with an IP-address certificate, pairing (QR + code), version/capabilities/status/machine/cluster/cancel, local network permission, wake lock on charger, heat `busy`, **Keep Martlet running** checklist, optional start at boot; desktop "managed on the device" host type | AN01 (+ IO03 desktop work) | Desktop pairs by pasting the code and shows the phone on the Devices map; a phone on its charger with the screen off stays reachable for 8 hours and after a reboot when chosen | M / H |
 | AN04 | **Host Listening and Thinking.** Transcription route with whisper.cpp and the verified on-device recognizer; chat route with LiteRT-LM and llama.cpp, Gemini Nano only while the Hosting screen is in front; image input for vision models | AN03 | Desktop holds a voice conversation with Listening and Thinking on the phone, screen off; Gemini Nano reports not ready when the screen goes off, with no silent switch | L / H |
@@ -352,33 +354,37 @@ every status is planned or not planned.
 | Satellite microphone/speaker | satellite | no: host role (turn on hosting on the same device) | no: host role | yes | yes | 26 | Microphone permission; `microphone` service started from the Hosting screen (not at boot); charger | planned AN06 |
 | Phone camera as a Watch source | phone-camera | no: host role (turn on hosting on the same device) | no: host role | limited: plain HTTP with a password, readable on your Wi-Fi; only while sharing | limited: same; picture quality depends on the old camera | 26 | Camera permission; `camera` service started from the Hosting screen (not at boot); local network permission when targeting Android 17 | planned AN11 |
 
-## Owner decisions and inputs
+## Decisions (2026-10-01)
 
-- **Release signing key (required before AN01 publishes).** Recommended: the
-  owner runs `keytool` once on their own PC (RSA 4096, 30-year validity,
-  PKCS12), keeps two offline backups, and stores it base64-encoded with its
-  passwords as repository secrets (`ANDROID_KEYSTORE_BASE64`,
-  `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`) so
-  agents can publish releases. Alternative: the workflow builds unsigned and
-  the owner signs each release locally with `apksigner`. The key is never
-  committed or generated by an agent.
-- **Developer verification.** Options: a free limited-distribution account
-  (email only, up to 20 devices; fits a personal project), full verification
-  (government ID; Google implies a registration fee, amount unverified), or no
-  registration (users in enforced countries use the advanced flow or ADB;
-  worldwide from 2027). This is an identity and possibly a spending decision.
-- **Package name** (permanent, tied to the key and registration): proposed
-  `io.github.throndir2.martlet`.
-- **Releases:** attach the APK to the same `v<version>` GitHub release as the
-  Windows installer (recommended) rather than separate tags.
-- **Test devices:** one modern phone (Android 14+, 8 GB), one 2018-2020 phone
-  (Android 8-11, 3-4 GB) for the host, satellite and old-hardware claims,
-  optionally a tablet (split screen) and a Gemini Nano device (Pixel 9 or newer).
-- **Models offered by default:** Apache-2.0 models (Gemma 4, Qwen) only, or
-  also Gemma 3/3n behind their licence acceptance.
-- **Google Play publication** stays out of scope unless the owner decides
-  otherwise; it needs a developer account fee and a review of the overlay,
-  service types and self-update.
+The owner asked to decide everything that costs nothing and skip anything
+that costs money. Decided:
+
+- **Release signing key: free, self-made, created by the owner once.** AN01
+  adds `scripts/New-AndroidReleaseKey.ps1`. It runs `keytool` on the owner's
+  own PC (RSA 4096, 30-year validity, PKCS12), uploads the base64 keystore and
+  its passwords as repository secrets (`ANDROID_KEYSTORE_BASE64`,
+  `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`)
+  with `gh secret set`, and leaves the keystore for two offline backups. Agents
+  then publish releases. The key is never committed, and no agent creates or
+  keeps it.
+- **Developer verification: free only.** Only Google's free
+  limited-distribution account (email, no government ID, no fee, up to 20 of
+  the owner's devices), registered before enforcement reaches the owner's
+  country (worldwide from 2027). No paid or ID verification. Other people
+  install through the advanced flow or ADB where enforcement applies, as the
+  install guide explains.
+- **Package name:** `io.github.throndir2.martlet` (permanent).
+- **Releases:** the APK is attached to the same `v<version>` GitHub release as
+  the Windows installer.
+- **Models:** Apache-2.0 models (Gemma 4, Qwen) are offered by default. Gemma
+  3/3n are offered after you accept the Gemma Terms of Use (free).
+- **No Google Play:** its developer account costs a fee.
+- **Live2D:** the same bundled Cubism Core for Web as on Windows, under the
+  same terms. The owner names Android in the Expandable Application review
+  already applied for; VRM needs no review.
+- **Test devices:** only devices the owner already has; nothing is bought.
+  Acceptance on hardware nobody has (for example a Gemini Nano phone) stays NOT
+  RUN.
 
 ## Not planned
 
