@@ -48,7 +48,9 @@ public sealed record F5ReferenceAudioFormat
 public enum F5VoiceRightsBasis
 {
     OwnVoice,
-    ExplicitPermission
+    ExplicitPermission,
+    /// <summary>The reference clip published with F5-TTS (MIT) that Martlet bundles as its starting voice.</summary>
+    PublishedSample
 }
 
 public sealed record F5VoiceRightsAcknowledgement

@@ -17,14 +17,97 @@ namespace Martlet.Desktop;
 internal static class F5Voices
 {
     internal const string DirectoryName = "f5-voices";
+    internal const string SampleName = "F5 sample voice (English)";
+    internal const string SampleTranscript = "Some call me nature, others call me mother nature.";
+    private const string SampleDirectoryName = "f5-sample-voice";
+    private const string SampleFileName = "f5-sample-en.wav";
+    private static readonly Lazy<byte[]> sample = new(() =>
+    {
+        using var stream = typeof(F5Voices).Assembly.GetManifestResourceStream("Martlet.Desktop.F5SampleVoice.wav") ??
+            throw new InvalidOperationException("Martlet's sample voice is missing from this build.");
+        using var copy = new MemoryStream();
+        stream.CopyTo(copy);
+        return copy.ToArray();
+    });
+    private static readonly Lazy<string> sampleSha256 = new(() => Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(sample.Value)));
+
+    /// <summary>The WAV bytes of F5-TTS's published English reference clip, bundled as the voice to start with.</summary>
+    internal static byte[] SampleBytes => sample.Value;
+
+    internal static bool IsSample(F5ReferenceSnapshot snapshot) =>
+        string.Equals(snapshot.AudioSha256, sampleSha256.Value, StringComparison.OrdinalIgnoreCase);
 
     internal static string Directory(string dataDirectory) => Path.Combine(dataDirectory, DirectoryName);
 
     internal static F5ReferencePresetStore Open(string dataDirectory) => F5ReferencePresetStore.Open(Directory(dataDirectory));
 
+    /// <summary>Writes the sample voice next to the preferences (the store re-reads a voice's original file before every
+    /// use, so it must live somewhere stable across updates) and returns its path.</summary>
+    internal static string EnsureSample(string dataDirectory)
+    {
+        var folder = Path.Combine(dataDirectory, SampleDirectoryName);
+        var path = Path.Combine(folder, SampleFileName);
+        if (File.Exists(path) && File.ReadAllBytes(path).AsSpan().SequenceEqual(SampleBytes)) return path;
+        System.IO.Directory.CreateDirectory(folder);
+        var staged = path + ".tmp";
+        File.WriteAllBytes(staged, SampleBytes);
+        File.Move(staged, path, overwrite: true);
+        return path;
+    }
+
+    /// <summary>The voice F5 speaks with when the owner has not picked one for <paramref name="destination"/>: the applied or
+    /// most recent voice already chosen for it, otherwise the bundled sample voice.</summary>
+    internal static async Task<F5ReferenceSnapshot> DefaultAsync(string dataDirectory, string destination, CancellationToken token)
+    {
+        using var store = Open(dataDirectory);
+        var inspection = store.Inspect();
+        return inspection.Presets
+                .Select(p => p.Snapshots.LastOrDefault(s => s.Rights.ProcessingDestinationId == destination))
+                .OfType<F5ReferenceSnapshot>()
+                .OrderByDescending(s => s.PresetId == inspection.AppliedPresetId)
+                .ThenByDescending(s => s.CreatedAtUtc)
+                .FirstOrDefault()
+            ?? await SampleAsync(store, dataDirectory, destination, token);
+    }
+
+    /// <summary>The bundled sample voice's snapshot for <paramref name="destination"/>, added to the voice list if needed.</summary>
+    internal static async Task<F5ReferenceSnapshot> SampleAsync(F5ReferencePresetStore store, string dataDirectory, string destination,
+        CancellationToken token)
+    {
+        var path = EnsureSample(dataDirectory);
+        if (store.Inspect().Presets.SelectMany(p => p.Snapshots)
+                .FirstOrDefault(s => IsSample(s) && s.Rights.ProcessingDestinationId == destination) is { } existing)
+            return existing;
+        return await store.SnapshotAsync(new()
+        {
+            PresetName = SampleName,
+            AbsoluteSourcePath = path,
+            Transcript = SampleTranscript,
+            Rights = new()
+            {
+                AcknowledgementId = Guid.NewGuid(),
+                Basis = F5VoiceRightsBasis.PublishedSample,
+                StatementVersion = F5ReferenceLimits.RightsStatementVersion,
+                ProcessingDestinationId = destination,
+                AcknowledgedAtUtc = DateTimeOffset.UtcNow,
+                Confirmed = true
+            }
+        }, token);
+    }
+
+    /// <summary>The exact recording a voice snapshot keeps, for playing it back.</summary>
+    internal static async Task<byte[]> ReadAudioAsync(string dataDirectory, F5ReferenceSnapshot snapshot, CancellationToken token)
+    {
+        if (IsSample(snapshot)) EnsureSample(dataDirectory);
+        using var store = Open(dataDirectory);
+        using var lease = await store.AcquireForPreviewAsync(snapshot.PresetId, snapshot.ReferenceRevision, token);
+        return lease.Reference.Audio.ToArray();
+    }
+
     /// <summary>Applies a snapshot as the voice to speak with and returns the settings record the TTS route keeps.</summary>
     internal static async Task<F5ReferenceSettings> ApplyAsync(string dataDirectory, F5ReferenceSnapshot snapshot, CancellationToken token)
     {
+        if (IsSample(snapshot)) EnsureSample(dataDirectory);
         using var store = Open(dataDirectory);
         var preview = await store.CreateApplyPreviewAsync(snapshot.PresetId, snapshot.ReferenceRevision, token);
         var receipt = await store.ApplyAsync(preview, preview.Authorize(F5ApplyDecision.Allow), token);
@@ -74,6 +157,7 @@ internal sealed class HostSpeechClient(string dataDirectory) : IHostSpeechClient
     {
         try
         {
+            F5Voices.EnsureSample(dataDirectory);
             using var store = F5Voices.Open(dataDirectory);
             using var lease = await store.AcquireAppliedAsync(target.ReferenceRevision, token).ConfigureAwait(false);
             if (lease.PresetId != target.PresetId) throw new HostTextException(ProviderFailureCode.VoiceUnsupported);
@@ -81,7 +165,10 @@ internal sealed class HostSpeechClient(string dataDirectory) : IHostSpeechClient
             return new(reference.PresetId, reference.ReferenceRevision, reference.AudioSha256, reference.Transcript,
                 reference.TranscriptRevision, reference.Audio.ToArray());
         }
-        catch (F5Exception) { throw new HostTextException(ProviderFailureCode.VoiceUnsupported); }
+        catch (Exception error) when (error is F5Exception or IOException or UnauthorizedAccessException)
+        {
+            throw new HostTextException(ProviderFailureCode.VoiceUnsupported);
+        }
     }
 
     private static Audio2FaceHostConnection Connect(HostSpeechTarget target)

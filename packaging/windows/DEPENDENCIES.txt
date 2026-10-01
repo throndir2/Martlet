@@ -76,6 +76,16 @@ that commit. The encoder was trained upstream on LibriSpeech and VoxCeleb; no
 recording or training audio is redistributed. Hands-free voice activity is an
 authored energy detector and adds no model.
 
+F5 sample voice: Martlet.Desktop embeds F5-TTS's published English reference
+clip (SWivid/F5-TTS, commit 9c614e9657089213efc6a7421b30630be138a3f5,
+src/f5_tts/infer/examples/basic/basic_ref_en.wav, SHA-256
+b0e22048e72414fcc1e6b6342e47a774d748a195ed34e4a5b3fcf416707f2b71), Copyright
+2024 Yushen CHEN, MIT License. Modification: the RIFF header's chunk-size field
+was corrected to the file's actual length (upstream is 4 bytes short); the
+audio samples are unchanged. Upstream does not identify the speaker. It is the
+voice F5 speaks with until the owner chooses another one.
+notices\F5-TTS-LICENSE.txt: the complete upstream MIT license from that commit.
+
 Installer: built with Inno Setup 7.1.0 x64, copyright Jordan Russell / Martijn
 Laan. https://jrsoftware.org/ . The compiler is NOT installed with Martlet.
 Inno's built-in copyright/about notices are unchanged; its license is packaged

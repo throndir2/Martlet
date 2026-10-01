@@ -391,7 +391,7 @@ public partial class MainWindow
         {
             Heading(f5 ? "F5 voice on this PC" : "whisper on this PC"),
             Note((f5
-                ? "F5 speaks every reply in a voice cloned from a short recording you are allowed to use. Each reply's text stays on this PC. The F5 model is licensed for non-commercial use (CC-BY-NC-4.0). "
+                ? "F5 speaks every reply in a voice cloned from a short recording you are allowed to use. It starts with F5's sample voice; choose another voice to hear the voices or add your own. Each reply's text stays on this PC. The F5 model is licensed for non-commercial use (CC-BY-NC-4.0). "
                 : "whisper transcribes what you say in memory on this PC and stores nothing. ") +
                 "It runs in Martlet's host service on this PC, inside Docker Desktop.", new Thickness(0, 0, 0, 8)),
             Note(hardware, new Thickness(0, 0, 0, 8))

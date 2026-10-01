@@ -156,6 +156,19 @@ transcript revisions, mid-turn Apply exclusion, exact worker identity,
 contiguous PCM, truncation, cancellation, late-frame discard, cache
 invalidation, and preview separation. It opens no network or audio device.
 
+## Desktop starting voice and playback
+
+Martlet.Desktop bundles F5-TTS's published English reference clip
+(`basic_ref_en.wav`, MIT; see `packaging\windows\DEPENDENCIES.txt`) with its
+upstream transcript. When Speaking is first handed to an F5 host, Desktop uses
+the voice already chosen for that destination, otherwise this sample, with no
+picker. The sample is written to `f5-sample-voice\` under Martlet's data
+directory and snapshotted with the `PublishedSample` rights basis. **Choose
+another voice** opens the picker, which lists the stored voices, the sample and
+a new recording. **Play** plays the selected recording locally. The worker
+policy is unchanged: Desktop still sends an explicit reference with every
+request, and the worker never chooses a voice.
+
 ## Gates still not run
 
 This foundation does **not** complete H04, AC-22, H06, or G3. Remaining gates
