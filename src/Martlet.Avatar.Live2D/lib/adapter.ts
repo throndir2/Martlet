@@ -186,7 +186,7 @@ export class Live2DAdapter {
     requireCondition(!sdk.CubismFramework.isStarted(), "RUNTIME_BUSY",
       "Framework is already owned by another host; use a dedicated browser realm.");
     this.#validateCanvas();
-    const gl = this.#canvas.getContext("webgl", { alpha: true, premultipliedAlpha: true, antialias: false });
+    const gl = this.#canvas.getContext("webgl", { alpha: true, premultipliedAlpha: true, antialias: true });
     requireCondition(gl, "MISSING_WEBGL", "A working dedicated WebGL canvas is required.");
     requireCondition(!gl.isContextLost(), "CONTEXT_LOST", "Recreate the renderer after WebGL context loss.");
     const generation = ++this.#generation;
@@ -234,7 +234,12 @@ export class Live2DAdapter {
           gl.bindTexture(gl.TEXTURE_2D, texture);
           gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
           gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+          // Atlases are drawn far below native size; trilinear mipmaps stop minification aliasing.
+          // WebGL1 only supports mipmaps for power-of-two textures.
+          const powerOfTwo = (expected.width & (expected.width - 1)) === 0 &&
+            (expected.height & (expected.height - 1)) === 0;
+          if (powerOfTwo) gl.generateMipmap(gl.TEXTURE_2D);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, powerOfTwo ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR);
           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);

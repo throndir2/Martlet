@@ -1,6 +1,7 @@
 namespace Martlet.Core.Settings;
 
-public sealed record ChatCompletionsEndpointOption(string Name, string BaseUrl);
+/// <summary>A named Chat Completions provider. DefaultModelId is only a prefilled suggestion; the owner still applies and consents.</summary>
+public sealed record ChatCompletionsEndpointOption(string Name, string BaseUrl, string DefaultModelId);
 
 public static class ChatCompletionsEndpointCatalog
 {
@@ -12,8 +13,8 @@ public static class ChatCompletionsEndpointCatalog
     public static IReadOnlyList<ChatCompletionsEndpointOption> NamedEndpoints { get; } =
         Array.AsReadOnly<ChatCompletionsEndpointOption>(
         [
-            new("OpenRouter", OpenRouterBaseUrl),
-            new("NVIDIA Build", NvidiaBuildBaseUrl)
+            new("OpenRouter", OpenRouterBaseUrl, "meta-llama/llama-3.3-70b-instruct"),
+            new("NVIDIA Build", NvidiaBuildBaseUrl, "meta/llama-3.3-70b-instruct")
         ]);
 
     public static ChatCompletionsEndpointOption? Named(string? baseUrl) =>

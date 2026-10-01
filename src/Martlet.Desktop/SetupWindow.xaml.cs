@@ -50,7 +50,7 @@ public partial class SetupWindow : ThemedWindow
     private bool routeDirty;
     private SetupRole Role => RoleChoice.SelectedItem is SetupRole role ? role : SetupRole.Stt;
 
-    private sealed record LlmProvider(string Name, string? BaseUrl, bool Chat)
+    private sealed record LlmProvider(string Name, string? BaseUrl, bool Chat, string? DefaultModelId = null)
     {
         public override string ToString() => Name;
     }
@@ -60,11 +60,28 @@ public partial class SetupWindow : ThemedWindow
     [
         OpenAiProvider,
         .. ChatCompletionsEndpointCatalog.NamedEndpoints.Select(endpoint =>
-            new LlmProvider($"{endpoint.Name} ({endpoint.BaseUrl}, Chat Completions)", endpoint.BaseUrl, true)),
+            new LlmProvider($"{endpoint.Name} ({endpoint.BaseUrl}, Chat Completions)", endpoint.BaseUrl, true, endpoint.DefaultModelId)),
         CustomProvider
     ];
+    private static readonly SetupRole[] Jobs = [SetupRole.Llm, SetupRole.Stt, SetupRole.Tts];
     private LlmProvider Provider => Role == SetupRole.Llm && ProviderChoice.SelectedItem is LlmProvider provider
         ? provider : OpenAiProvider;
+
+    /// <summary>The job to show first; otherwise the first job with a saved choice, else Thinking.</summary>
+    internal SetupRole? InitialRole { get; init; }
+
+    /// <summary>The recommended model a provider prefills for a job; null when Martlet cannot know one (a custom server).</summary>
+    internal static string? DefaultModel(SetupRole role, bool chat, string? chatDefault) => chat ? chatDefault : role switch
+    {
+        SetupRole.Llm => OpenAiTextGenerationCatalog.DefaultModelId,
+        SetupRole.Stt => OpenAiTranscriptionCatalog.DefaultModelId,
+        SetupRole.Tts => OpenAiSpeechSynthesisCatalog.DefaultModelId,
+        _ => null
+    };
+
+    private static bool IsAnyDefault(string model) =>
+        model.Length == 0 || Jobs.Any(job => DefaultModel(job, false, null) == model)
+        || LlmProviders.Any(provider => provider.DefaultModelId == model);
 
     public SetupWindow(ISetupService service, SetupOperationRunner operations,
         Func<string, bool>? confirm = null, TimeProvider? clock = null, TimeSpan? observationTimeout = null)
@@ -78,7 +95,7 @@ public partial class SetupWindow : ThemedWindow
             throw new ArgumentOutOfRangeException(nameof(observationTimeout));
         InitializeComponent();
         rendering = true;
-        RoleChoice.ItemsSource = Enum.GetValues<SetupRole>();
+        RoleChoice.ItemsSource = Jobs;
         RoleChoice.SelectedIndex = 0;
         ProviderChoice.ItemsSource = LlmProviders;
         ProviderChoice.SelectedItem = OpenAiProvider;
@@ -112,6 +129,10 @@ public partial class SetupWindow : ThemedWindow
                 FixtureChoice.IsChecked = draft.Profile.Kind is ProfileKind.Fixture or ProfileKind.NotConfigured;
                 ApiChoice.IsChecked = draft.Profile.Kind == ProfileKind.Api;
                 Steps.SelectedIndex = (int)draft.Setup!.Checkpoint;
+                var routes = draft.Setup.Routes;
+                RoleChoice.SelectedItem = InitialRole
+                    ?? Jobs.Cast<SetupRole?>().FirstOrDefault(job => routes.Any(route => route.Role == job))
+                    ?? SetupRole.Llm;
                 rendering = false;
                 RenderRole();
             }
@@ -189,9 +210,10 @@ public partial class SetupWindow : ThemedWindow
     {
         SetupStatus.Text = draft is null ? "Setup blocked. Original settings preserved; see the remedy below." : SetupSettings.Describe(draft);
         var saved = draft?.Setup?.Routes.SingleOrDefault(r => r.Role == Role);
+        var job = SetupJobNameConverter.Name(Role);
         CredentialScope.Text = saved?.RouteType == SetupRouteType.ChatCompletions
-            ? $"Selected role: {Role}; internal alias: {saved.ProviderAlias}; destination: {LiveConversationConfiguration.LlmDestinationName(saved)}. The key is bound to this exact base URL and is optional for local servers. Select another role on Destinations."
-            : $"Selected role: {Role}; internal alias: {OpenAiSetup.Alias(Role)}; origin: {OpenAiSetup.Origin}. Select another role on Destinations.";
+            ? $"Selected job: {job}; internal alias: {saved.ProviderAlias}; destination: {LiveConversationConfiguration.LlmDestinationName(saved)}. The key is bound to this exact base URL and is optional for local servers. Select another job on Jobs."
+            : $"Selected job: {job}; internal alias: {OpenAiSetup.Alias(Role)}; origin: {OpenAiSetup.Origin}. Select another job on Jobs.";
         RemovalChoice.ItemsSource = draft?.Setup?.PendingRemovals;
         RemovalChoice.SelectedIndex = 0;
     }
@@ -209,9 +231,18 @@ public partial class SetupWindow : ThemedWindow
         var catalog = chat ? Array.Empty<string>() : Catalog(Role);
         ModelCatalogChoice.SelectedItem = route is not null && catalog.Contains(route.ModelId, StringComparer.Ordinal)
             ? route.ModelId : null;
-        ModelId.Text = route?.ModelId ?? "";
-        VoiceId.Text = route?.VoiceId ?? "";
+        var prefilled = string.IsNullOrEmpty(route?.ModelId);
+        ModelId.Text = prefilled ? DefaultModel(Role, Provider.Chat, Provider.DefaultModelId) ?? "" : route!.ModelId;
+        VoiceId.Text = route?.VoiceId ?? (Role == SetupRole.Tts ? OpenAiSpeechSynthesisCatalog.DefaultVoice : "");
         VoiceId.IsEnabled = Role == SetupRole.Tts;
+        VoicePanel.Visibility = Role == SetupRole.Tts ? Visibility.Visible : Visibility.Collapsed;
+        VoiceHint.Text = $"Voices this adapter supports: {string.Join(", ", OpenAiSpeechSynthesisCatalog.SupportedVoices)}. A Martlet host voice (F5) is chosen on the Devices map.";
+        JobText.Text = Role switch
+        {
+            SetupRole.Llm => "Thinking is the conversation model that writes Martlet's replies. Pick a cloud provider here, or hand thinking to a paired Martlet host on the Devices map.",
+            SetupRole.Stt => "Listening turns what you say into text. It needs a microphone (Microphone and speakers page). Without it you can still type.",
+            _ => "Speaking turns replies into a voice played on your speakers (Microphone and speakers page). Without it replies stay as text."
+        };
         ConsentChoice.IsChecked = route?.Consent is not null;
         KeyInput.Clear();
         routeDirty = false;
@@ -230,16 +261,19 @@ public partial class SetupWindow : ThemedWindow
         var catalog = provider.Chat ? Array.Empty<string>() : Catalog(Role);
         ModelCatalogChoice.ItemsSource = catalog;
         ModelCatalogChoice.IsEnabled = catalog.Count > 0;
+        ProviderPanel.Visibility = Role == SetupRole.Llm ? Visibility.Visible : Visibility.Collapsed;
+        BaseUrlPanel.Visibility = provider.Chat ? Visibility.Visible : Visibility.Collapsed;
+        CatalogPanel.Visibility = catalog.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
         const string reasoning = " Prefer instruct/chat models: each reply is capped at 256 tokens and reasoning/thinking models spend part of that on hidden thinking.";
         ProviderHint.Text = Role != SetupRole.Llm
-            ? $"{Role} uses the named OpenAI adapter; choose one of the known compatible models below."
+            ? $"{SetupJobNameConverter.Name(Role).Split(' ')[0]} uses OpenAI in the cloud (https://api.openai.com) and its own API key. The recommended model is prefilled."
             : provider.BaseUrl == ChatCompletionsEndpointCatalog.OpenRouterBaseUrl
-                ? "Enter the exact OpenRouter model ID, for example meta-llama/llama-3.3-70b-instruct or openai/gpt-4o-mini (':free' variants use OpenRouter's free tier). Store your OpenRouter API key on Credentials. OpenRouter chooses the upstream provider; fallback to other providers is disabled." + reasoning
+                ? $"Recommended: {provider.DefaultModelId} (prefilled). You can enter any exact OpenRouter model ID instead, for example openai/gpt-4o-mini (':free' variants use OpenRouter's free tier). Store your OpenRouter API key on Credentials. OpenRouter chooses the upstream provider; fallback to other providers is disabled." + reasoning
                 : provider.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl
-                    ? "Enter the exact model ID shown on build.nvidia.com, for example meta/llama-3.3-70b-instruct. Store your NVIDIA API key (nvapi-...) on Credentials." + reasoning
+                    ? $"Recommended: {provider.DefaultModelId} (prefilled). You can enter any exact model ID shown on build.nvidia.com instead. Store your NVIDIA API key (nvapi-...) on Credentials." + reasoning
                     : provider.Chat
-                        ? "Enter the API base URL without /chat/completions, for example https://api.groq.com/openai/v1, https://api.together.xyz/v1, or a local server such as http://127.0.0.1:1234/v1 (LM Studio), http://127.0.0.1:8080/v1 (llama.cpp) or http://127.0.0.1:11434/v1 (Ollama). HTTP is allowed only for a literal loopback IP. A key is optional; store one on Credentials if the server requires it." + reasoning
-                        : "Named OpenAI Responses adapter; choose one of the known compatible models below.";
+                        ? "Enter the API base URL without /chat/completions, for example https://api.groq.com/openai/v1, https://api.together.xyz/v1, or a local server such as http://127.0.0.1:1234/v1 (LM Studio), http://127.0.0.1:8080/v1 (llama.cpp) or http://127.0.0.1:11434/v1 (Ollama), and the model ID that server serves. HTTP is allowed only for a literal loopback IP. A key is optional; store one on Credentials if the server requires it." + reasoning
+                        : $"Recommended: {OpenAiTextGenerationCatalog.DefaultModelId} (prefilled, fast and inexpensive). Pick the larger model below if you prefer.";
         BoundaryText.Text = provider.Chat
             ? $"{OpenAiSetup.Boundary(Role)} Internal alias: {ChatCompletionsSetup.Alias}. Destination: {(provider.BaseUrl ?? "the exact base URL entered below")}."
             : $"{OpenAiSetup.Boundary(Role)} Internal alias: {OpenAiSetup.Alias(Role)}. Destination: {OpenAiSetup.Origin}.";
@@ -251,10 +285,14 @@ public partial class SetupWindow : ThemedWindow
         rendering = true;
         if (Provider == CustomProvider && ChatCompletionsEndpointCatalog.Named(BaseUrl.Text) is not null) BaseUrl.Text = "";
         RenderProvider();
+        var prefill = IsAnyDefault(ModelId.Text.Trim());
+        if (prefill) ModelId.Text = DefaultModel(Role, Provider.Chat, Provider.DefaultModelId) ?? "";
         ConsentChoice.IsChecked = false;
         rendering = false;
         routeDirty = true;
-        ResultText.Text = "LLM provider changed. Enter the exact model ID, apply the route and explicitly review its destination consent again before saving.";
+        ResultText.Text = prefill && ModelId.Text.Length > 0
+            ? "Provider changed and its recommended model prefilled. Review it, apply the route and explicitly review its destination consent again before saving."
+            : "Provider changed. Enter the exact model ID, apply the route and explicitly review its destination consent again before saving.";
     }
 
     private void Choice_Changed(object sender, RoutedEventArgs e)
