@@ -9,7 +9,6 @@
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
     <ProjectReference Include="..\..\src\Martlet.Doctor\Martlet.Doctor.csproj" />
     <Using Include="Xunit" />
-    <Compile Include="..\Martlet.Audio.Tests\ControlledDevice.cs" Link="ControlledDevice.cs" />
     <Compile Include="..\Martlet.Core.Tests\ManualClock.cs" Link="ManualClock.cs" />
   </ItemGroup>
 </Project>

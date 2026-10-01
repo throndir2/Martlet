@@ -313,7 +313,7 @@
                 <StackPanel x:Name="SetupPageContent" Margin="36,30,36,24" MaxWidth="1000" AutomationProperties.AutomationId="SetupSectionPage"/>
             </ScrollViewer>
 
-            <!-- Settings: appearance, role, updates, demo, tools and diagnostics -->
+            <!-- Settings: appearance, role, updates, tools and diagnostics -->
             <ScrollViewer x:Name="SettingsPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
                 <StackPanel Margin="36,30,36,24" MaxWidth="1000">
                     <TextBlock Text="Settings" Style="{DynamicResource PageTitle}" Margin="0,0,0,18"/>
@@ -383,30 +383,6 @@
                         </StackPanel>
                     </Border>
 
-                    <Border x:Name="DemoCard" Style="{DynamicResource CardStyle}">
-                        <StackPanel>
-                            <TextBlock Text="Offline demo" Style="{DynamicResource SectionHeading}"/>
-                            <TextBlock Style="{DynamicResource Muted}"
-                                       Text="A scripted preview without an account. FIXTURE - NOT AI. No microphone, provider or network; audio stays off unless you separately confirm a tone."/>
-                            <Label Target="{Binding ElementName=ScenarioChoice}" Content="_Offline scenario (FIXTURE - NOT AI)" />
-                            <ComboBox x:Name="ScenarioChoice" SelectedIndex="0" MinHeight="30"
-                                      AutomationProperties.AutomationId="FixtureScenario" AutomationProperties.Name="Offline fixture scenario" />
-                            <WrapPanel Margin="0,6,0,0">
-                                <Button x:Name="DemoButton" Content="_Try fixture (audio OFF)" Click="Demo_Click" Style="{DynamicResource PrimaryButton}" Margin="0,4,12,4"
-                                        AutomationProperties.AutomationId="StartFixture" AutomationProperties.Name="Try offline fixture, audio off" />
-                                <Button x:Name="ToneButton" Content="Completed fixture + confirm 200 ms _tone" Click="Tone_Click" Margin="0,4,12,4"
-                                        AutomationProperties.AutomationId="FixtureTone" AutomationProperties.Name="Confirm completed fixture and synthetic tone, not speech" />
-                                <Button x:Name="FixtureStopButton" Content="Stop _fixture" Click="FixtureStop_Click" IsEnabled="False" Margin="0,4,12,4"
-                                        AutomationProperties.AutomationId="StopFixture" AutomationProperties.Name="Stop fixture and tone" />
-                            </WrapPanel>
-                            <Label Target="{Binding ElementName=FixtureText}" Content="Fixture text, trace and status (separate from real-mode status)" />
-                            <TextBox x:Name="FixtureText" IsReadOnly="True" TextWrapping="Wrap" Height="180" VerticalScrollBarVisibility="Auto"
-                                     AutomationProperties.AutomationId="FixtureStatus" AutomationProperties.Name="Scripted fixture text and trace, not AI" />
-                            <TextBlock x:Name="ActivityText" Style="{DynamicResource Muted}" Margin="0,8,0,0"
-                                       AutomationProperties.Name="Diagnostic activity" AutomationProperties.LiveSetting="Polite" />
-                        </StackPanel>
-                    </Border>
-
                     <Border Style="{DynamicResource CardStyle}">
                         <StackPanel>
                             <TextBlock Text="Tools" Style="{DynamicResource SectionHeading}"/>
@@ -426,7 +402,9 @@
                     <Border Style="{DynamicResource CardStyle}">
                         <Expander Header="Diagnostics and local status" AutomationProperties.AutomationId="DiagnosticsSection">
                             <StackPanel Margin="0,8,0,0">
-                                <TextBlock Style="{DynamicResource Muted}" Text="Local diagnostics and honest status. A demo result never means a real connection is ready."/>
+                                <TextBlock Style="{DynamicResource Muted}" Text="Local diagnostics and honest status."/>
+                                <TextBlock x:Name="ActivityText" Style="{DynamicResource Muted}" Margin="0,4,0,0"
+                                           AutomationProperties.Name="Diagnostic activity" AutomationProperties.LiveSetting="Polite" />
                                 <Label Target="{Binding ElementName=PipelineText}" Content="_Pipeline status" />
                                 <TextBox x:Name="PipelineText" IsReadOnly="True" TextWrapping="Wrap" Height="160" VerticalScrollBarVisibility="Auto"
                                          AutomationProperties.AutomationId="PipelineStatus"
@@ -435,7 +413,7 @@
                                 <TextBox x:Name="StatusText" IsReadOnly="True" TextWrapping="Wrap" MinHeight="180" MaxHeight="360" VerticalScrollBarVisibility="Auto"
                                          AutomationProperties.Name="Foundation status details" AutomationProperties.AutomationId="FoundationStatus" />
                                 <TextBlock x:Name="DataPathText" Style="{DynamicResource Muted}" Margin="0,10,0,0" AutomationProperties.Name="Local settings location" />
-                                <Label Content="Local audio setup _evidence (separate from fixture/provider status)" Target="{Binding ElementName=AudioStatusText}" />
+                                <Label Content="Local audio setup _evidence (separate from provider status)" Target="{Binding ElementName=AudioStatusText}" />
                                 <TextBox x:Name="AudioStatusText" IsReadOnly="True" TextWrapping="Wrap" Height="100" VerticalScrollBarVisibility="Auto"
                                          AutomationProperties.AutomationId="LocalAudioStatus" AutomationProperties.Name="Local audio setup stages and historical evidence" />
                                 <WrapPanel Margin="0,10,0,0">
@@ -551,18 +529,11 @@
                                     <TextBlock Style="{DynamicResource Muted}" Text="Three quick questions about your goal and your computers."/>
                                 </StackPanel>
                             </Button>
-                            <Button Style="{DynamicResource CardButton}" Tag="&#xE713;" Margin="0,0,0,12" Click="TourSetup_Click"
+                            <Button Style="{DynamicResource CardButton}" Tag="&#xE713;" Margin="0,0,0,4" Click="TourSetup_Click"
                                     AutomationProperties.AutomationId="TourSetup">
                                 <StackPanel>
                                     <TextBlock Text="I know what I want" FontSize="17" FontWeight="SemiBold"/>
                                     <TextBlock Style="{DynamicResource Muted}" Text="Pick a cloud or local conversation model and add its key."/>
-                                </StackPanel>
-                            </Button>
-                            <Button Style="{DynamicResource CardButton}" Tag="&#xE768;" Margin="0,0,0,4" Click="TourDemo_Click"
-                                    AutomationProperties.AutomationId="TourDemo">
-                                <StackPanel>
-                                    <TextBlock Text="Try the offline demo first" FontSize="17" FontWeight="SemiBold"/>
-                                    <TextBlock Style="{DynamicResource Muted}" Text="A scripted preview with no account, microphone or network."/>
                                 </StackPanel>
                             </Button>
                         </StackPanel>

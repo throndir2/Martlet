@@ -81,7 +81,7 @@ voice `alloy`. They live next to their catalogs
    fields that job uses (provider/base URL for Thinking, voice for Speaking,
    model list only when there is a real choice), job-specific explanations,
    recommended defaults prefilled, and home steps opening Setup on the matching
-   job. "Fixture" is labeled *Demo only*.
+   job. The old demo-vs-real setup choice was removed.
 2. **Job editor with placement.** One editor per job combining Setup's route
    fields with *Who does what* placement; home rows per job; remove the
    standalone Jobs picker. Keys shown inline per provider.
@@ -90,14 +90,6 @@ voice `alloy`. They live next to their catalogs
    `VisionModelCatalog`.
 
 ## Queued to figure out
-
-### Demo mode instead of "Fixture"
-
-"Fixture" is a test term. Phase 1 relabels it *Demo only: scripted replies, no
-AI model*. Open questions: move Demo out of the Setup path entirely (a *Try a
-demo* button on Home/Settings, which already exists as "Try fixture"), and make
-*Use AI models* implicit once any job is configured, so Setup no longer starts
-with a demo-vs-real choice.
 
 ### Host a thinking model locally (This PC) with recommended models
 

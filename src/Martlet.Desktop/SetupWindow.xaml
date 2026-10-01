@@ -16,13 +16,10 @@
                        Text="Pick a provider and model for each job; recommended defaults are prefilled. Saving is configuration only: no capture, devices, network or secret lookup happens on opening this screen, and screen and memory stay OFF."/>
             <StackPanel x:Name="EditorPanel">
                 <TabControl x:Name="Steps" Style="{DynamicResource StepperTabs}" SelectionChanged="Step_Changed" AutomationProperties.AutomationId="SetupSteps">
-                    <TabItem Header="1. _Choice">
+                    <TabItem Header="1. _Overview">
                         <StackPanel Margin="12">
-                            <RadioButton x:Name="FixtureChoice" Content="_Demo only: scripted replies, no AI model (nothing is sent anywhere; needs no account or key)"
-                                         IsChecked="True" Margin="0,8" Checked="Choice_Changed" AutomationProperties.AutomationId="SetupFixture"/>
-                            <RadioButton x:Name="ApiChoice" Content="_Use AI models: OpenAI, OpenRouter, NVIDIA Build or an OpenAI-compatible server (cloud or your own)"
-                                         Margin="0,8" Checked="Choice_Changed" AutomationProperties.AutomationId="SetupApi"/>
-                            <TextBlock TextWrapping="Wrap" Text="Thinking can use OpenAI, OpenRouter, NVIDIA Build or any OpenAI-compatible Chat Completions endpoint (including a local server such as LM Studio, llama.cpp, vLLM or Ollama on a loopback address). Listening and Speaking use OpenAI in the cloud, or a paired Martlet host from the Devices map. No automatic cloud fallback. Switching to Demo only preserves saved choices and keys without using them."/>
+                            <TextBlock TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,8" Text="Use AI models: OpenAI, OpenRouter, NVIDIA Build or an OpenAI-compatible server (cloud or your own)."/>
+                            <TextBlock TextWrapping="Wrap" Text="Thinking can use OpenAI, OpenRouter, NVIDIA Build or any OpenAI-compatible Chat Completions endpoint (including a local server such as LM Studio, llama.cpp, vLLM or Ollama on a loopback address). Listening and Speaking use OpenAI in the cloud, or a paired Martlet host from the Devices map. No automatic cloud fallback."/>
                         </StackPanel>
                     </TabItem>
                     <TabItem Header="2. _Jobs">
@@ -89,7 +86,7 @@
                         </StackPanel>
                     </TabItem>
                     <TabItem Header="4. _Review">
-                        <TextBlock Margin="12" TextWrapping="Wrap" Text="Review status below. Fixture works without keys. API configuration can be saved incomplete: missing roles, renewed destination consent, key presence/API validity and local microphone/output qualification must be reviewed later. No first voice response, capability probe or live connection is claimed."/>
+                        <TextBlock Margin="12" TextWrapping="Wrap" Text="Review status below. API configuration can be saved incomplete: missing roles, renewed destination consent, key presence/API validity and local microphone/output qualification must be reviewed later. No first voice response, capability probe or live connection is claimed."/>
                     </TabItem>
                 </TabControl>
                 <WrapPanel Margin="0,12">

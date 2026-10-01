@@ -2,7 +2,7 @@
 
 Feedback on the first screen was clear: it was overwhelming, and people could
 not tell what to do next. The old home window stacked about twenty buttons, a
-fixture demo, update checks and three diagnostic text boxes on one scrolling
+set of update checks and three diagnostic text boxes on one scrolling
 page. This document describes the replacement: one job per screen, a single
 obvious next step at every stage, and a living map of the user's computers.
 
@@ -55,8 +55,8 @@ with step dots:
    in a console window; *Not now* moves on.
 4. **How would you like to start?** (companion mode) *Recommend a setup for me*
    opens the setup advisor (its plan adds *Install on this PC* for what it runs
-   here), *I know what I want* opens Setup, and *Try the offline demo* opens the
-   demo. In host mode, the tour ends on the host dashboard.
+   here), and *I know what I want* opens Setup. In host mode, the tour ends on
+   the host dashboard.
 
 The tour saves only the device role and contacts nothing; it installs only the
 items you tick and confirm with *Install selected*.
@@ -258,17 +258,17 @@ The conversation window puts the chat first:
   each with one line of explanation.
 - **Settings**: palette, this PC's role and the tour, app updates (automatic
   checks and their interval, automatic installs, keeping hosts on this PC's
-  version, *Check for updates now*, *Install*, *Update hosts now*), the offline
-  demo (fixture), tools (Troubleshooting, Backup and restore, Prerequisites,
-  Martlet hosts), and *Diagnostics* (pipeline, status details, local audio
+  version, *Check for updates now*, *Install*, *Update hosts now*), tools
+  (Troubleshooting, Backup and restore, Prerequisites, Martlet hosts), and
+  *Diagnostics* (pipeline, status details, local audio
   evidence, refresh and stop, create profile). Exit is also here.
 
 ### 8. Setup (configuration)
 
-Setup keeps its four checkpoints (Choice, Jobs, Credentials, Review), drawn as
+Setup keeps its four checkpoints (Overview, Jobs, Credentials, Review), drawn as
 a numbered stepper with a connecting line, and *Next* is the primary button.
-*Choice* offers *Demo only* or *Use AI models*. *Jobs* sets up one job at a
-time (Thinking, Listening, Speaking) and shows only that job's fields, with the
+*Overview* describes using AI models. *Jobs* sets up one job at a time
+(Thinking, Listening, Speaking) and shows only that job's fields, with the
 provider's recommended model prefilled. Home steps open Setup on the matching
 job. Consent and credential behavior did not change. The broader redesign
 (jobs, placement on hosts, audio separation and queued local model hosting) is

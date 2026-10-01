@@ -17,15 +17,13 @@ saved choices for explicitly authorized typed/PTT actions. Unsupported model/
 voice IDs are rejected there without discovery or fallback; its guide lists
 the exact supported IDs and account/device gates still NOT RUN.
 Open **Setup / resume**
-in the existing Desktop. **Demo only** (internally the fixture profile; scripted
-replies, no AI model) is the safe first-run choice; it needs no
-account, key, terminal, device, network or saved profile. Existing offline
-fixture, refusal, Stop and status actions are unchanged. Opening setup and
+in the existing Desktop. The first tab is **Overview**, which describes using
+OpenAI, OpenRouter, NVIDIA Build or an OpenAI-compatible API. Opening setup and
 ordinary Desktop/Doctor status are read-only: no credential lookup, device
 enumeration, capture, provider discovery or network requests.
 
-Choose **Use AI models** to save per-job routes without making an inference
-request. The **Jobs** tab sets up one job at a time: **Thinking** (conversation
+Use the **Jobs** tab to save per-job routes without making an inference
+request. It sets up one job at a time: **Thinking** (conversation
 model, internally the LLM role), **Listening** (speech to text, STT) and
 **Speaking** (text to voice, TTS). Each job shows only its own fields: the
 provider and base URL appear only for Thinking, the voice only for Speaking.
@@ -76,7 +74,7 @@ Screen remains OFF; [local memory](MEMORY.md) is separately OFF by default,
 never enabled by Setup or an installation plan. No health test, account login,
 provider listing or billable probe is run.
 
-Back/Next and the tabs navigate Choice, Jobs, Credentials and Review.
+Back/Next and the tabs navigate Overview, Jobs, Credentials and Review.
 **Apply** commits route fields to the working checkpoint; **Save checkpoint**
 or **Save and exit setup** persists it atomically. Unsaved route fields block
 save until applied; changing the selected job discards unapplied fields with
@@ -84,7 +82,7 @@ a visible explanation. **Reload** explicitly discards unsaved edits. The
 keyboard-focusable status remains available at every step. Missing roles,
 consent, key references and audio qualification are explained instead of
 displaying a pretend completed voice setup. Reopening resumes the saved step.
-Switching to Demo only preserves stored API routes/keys but does not use them.
+Saving a legacy Fixture profile upgrades it to Api.
 
 ### Slow or interrupted setup actions
 
@@ -145,9 +143,9 @@ Schema 5 uses setup schema 2 with explicit `OpenAi`, `GatewayOllama`,
 `GatewayF5`, and `LocalWhisper` role discriminators. Migrating ordinary API
 settings preserves their role/model/voice/credential choices and does not select
 self-host routes. Endpoint, model, package and reference snapshots are passive
-configuration, not runtime qualification. The current Desktop still offers
-Fixture/OpenAI setup only and refuses self-host dispatch. Actual accessible
-self-host Setup, typed/PTT/optional-TTS routing and the expanded published
+configuration, not runtime qualification. The current Desktop still offers API
+setup only and refuses self-host dispatch. Actual accessible self-host Setup,
+typed/PTT/optional-TTS routing and the expanded published
 dependency graph are a **mandatory separate layer 2**, not completed by this
 foundation.
 
@@ -331,12 +329,6 @@ resume/Back and consent invalidation. Separate Windows tests exercise actual
 Delete and initial-load/save boundaries: heartbeat, duplicate rejection,
 Cancel/Close, timeout, late-result suppression, retained locks/leases/recovery
 markers and sanitized failures. No real vault is used by these tests.
-The executable smoke sends the existing Stop access key only to its verified
-owned HWND, after observing an active/cancelable fixture. This avoids an
-observed two-second UIA Invoke RPC delay on the existing two-second deadline
-scenario, without changing fixture timing or accepting ordinary completion.
-It requires a finished canceled outcome, empty text/queue and fresh subsequent
-IDs/output; no global keyboard input or direct handler invocation is used.
 Native PInvoke is compiled, **not OS
 roundtrip qualified**. Real Credential Manager write/read/delete, real
 microphone/speaker, live API, clean VM lifecycle, signing, release and novice
@@ -350,7 +342,7 @@ device-test surface, **not** a first-conversation wizard, AI/VAD test, provider
 capability check, or permission to listen on launch. Opening it only loads
 settings. It does not enumerate endpoints, open devices, sample a microphone,
 play output, resolve a key, contact a provider, or write settings.
-Status and the audio-OFF fixture remain usable without audio hardware.
+Status remains usable without audio hardware.
 
 | Action | Actual effect and evidence |
 | --- | --- |
@@ -361,7 +353,7 @@ Status and the audio-OFF fixture remain usable without audio hardware.
 | **Test output** | Separate default-No confirmation for the existing `SyntheticTone`: 200 ms faded 440 Hz, low amplitude, not speech/TTS. Actual `PcmPlaybackSink`, five-second deadline, exact sample count, selected output only. No system/app volume or default changes. |
 | **I heard it** | Enabled only for this window's successfully drained current output test, never from a loaded checkpoint. Explicit human confirmation is separate from device consumption. Choice changes, interruption, deactivation and reopening invalidate confirmability. |
 | **Save audio choices and historical checkpoints** | Explicit atomic settings save with the loaded optimistic revision. It does not authorize a later test. Reload is required after conflicting/interrupted saves; files are never reset to make setup succeed. |
-| **Stop / Pause / Close / deactivation / session lock** | Cancel only the currently owned test handle, clear unclaimed capture, and stop observation. Unlock/reopen never rearms. No simultaneous input/output and no silent contention with the fixture tone. |
+| **Stop / Pause / Close / deactivation / session lock** | Cancel only the currently owned test handle, clear unclaimed capture, and stop observation. Unlock/reopen never rearms. No simultaneous input/output. |
 
 For a local **historical** `SamplesReceived` checkpoint, a completed and released
 microphone test must have at least four seconds of canonical PCM, whole-test
@@ -395,7 +387,7 @@ in-flight native call cannot honestly be retracted.
 ### Shared ownership, responsiveness and metadata
 
 `AudioSetupWindow` uses the existing app-shared `SetupOperationRunner`, also
-used by credential setup and fixture actions. `AudioSetupService.Start` offers
+used by credential setup. `AudioSetupService.Start` offers
 an action with a snapshotted choice and per-action permission; it returns
 `AudioSetupOperation` with metadata-only status and the original worker handle.
 `Stop()` targets that handle, not sink-wide current playback. Workers never
@@ -408,7 +400,7 @@ nine seconds. Stop/Close do not await blocked callbacks on WPF. A timed-out or
 closed observation discards late lists/events/results and leaves the shared
 worker reserved until actual native **and cancellation-handler** release.
 Failed native release remains quarantined; creating a replacement factory is
-not a recovery path. Fixture tone failure with unproven release conservatively
+not a recovery path. Output tone failure with unproven release conservatively
 holds the shared slot because its frozen public terminal cannot prove a late
 release. Close Martlet if an owned driver never returns. A terminal report or
 responsive window is not a measured physical Stop guarantee.
@@ -441,7 +433,7 @@ Changing identity or label renews that choice's configuration revision and
 invalidates its corresponding checkpoint. Save rejects changed identities
 reusing a prior revision. A checkpoint records the matching configuration
 revision, UTC test time and `SamplesReceived`, `ToneDrained`, or `Heard`.
-These are **local historical observations**, not provider/fixture evidence or
+These are **local historical observations**, not provider evidence or
 evergreen device readiness. Default-policy history qualifies only that action's
 policy, not today's possibly different default endpoint. Reopened/saved
 evidence is always labeled stale for current readiness; it grants no capture,
@@ -449,7 +441,7 @@ playback, cloud or vault permission.
 
 `AudioSetupDiagnostics` supplies shared stage descriptions and specific
 privacy/busy/missing/changed/format/cleanup/volume remedies. The Desktop local
-audio section is separate from the fixture and real-provider pipeline.
+audio section is separate from the real-provider pipeline.
 Doctor's existing `settings.load` metadata includes only selection/default
 booleans, historical times/outcomes and `LocalObserved`/`LocalUserReported`
 provenance: never endpoint IDs, friendly labels,

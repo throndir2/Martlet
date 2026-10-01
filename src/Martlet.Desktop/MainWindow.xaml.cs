@@ -11,7 +11,6 @@ using Martlet.Core.Installation;
 using Martlet.Diagnostics;
 using Martlet.Audio;
 using Martlet.Audio.Windows;
-using Martlet.Sessions;
 using Martlet.Credentials.Windows;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Voices;
@@ -38,17 +37,11 @@ public partial class MainWindow : ThemedWindow
     private readonly DiagnosticStatusModel? model;
     private readonly DispatcherTimer ageTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly CancellationTokenSource lifetime = new();
-    private readonly FixtureSession fixture = new(new PcmPlaybackSink(new WasapiDeviceFactory()),
-        pacing: TimeSpan.FromMilliseconds(200));
-    private readonly DispatcherTimer fixtureTimer = new() { Interval = TimeSpan.FromMilliseconds(100) };
-    private FixtureSessionSnapshot? lastFixture;
-    private bool runningFixture;
+    private readonly DispatcherTimer characterTimer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private bool saving;
     private bool closing;
     private bool mayClose;
-    private SetupOperation? fixtureOperation;
     private SetupOperation? voiceOperation;
-    private readonly TaskCompletionSource fixtureQuarantine = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private CancellationTokenSource? updateCheckCancellation;
     private CancellationTokenSource? updateDownloadCancellation;
     private TaskCompletionSource? updateDrain;
@@ -88,12 +81,8 @@ public partial class MainWindow : ThemedWindow
         }
         audioSessionEvents.LockedChanged += AvatarSessionLocked;
         this.startupError = startupError;
-        ScenarioChoice.ItemsSource = FixtureSession.Scenarios;
-        ScenarioChoice.SelectedIndex = 0;
-        FixtureText.Text = "FIXTURE - NOT AI. Choose a scenario; no fixture or audio has run.";
-        fixtureTimer.Tick += (_, _) => ObserveFixture();
-        fixtureTimer.Tick += (_, _) => UpdateCharacterButton();
-        fixtureTimer.Start();
+        characterTimer.Tick += (_, _) => UpdateCharacterButton();
+        characterTimer.Start();
         DataPathText.Text = "Local settings only. Reports never include the data directory, credentials or settings contents.";
         StatusText.Text = "Foundation: loading local status. No audio or network services are active.";
         AudioStatusText.Text = AudioSetupDiagnostics.Describe(null);
@@ -107,8 +96,7 @@ public partial class MainWindow : ThemedWindow
         else
         {
             PipelineText.Text = "Mic / VAD / STT / Policy / LLM / TTS / Playback: unavailable; not run. Correct the launch data directory first.";
-            DemoButton.IsEnabled = ToneButton.IsEnabled = ScenarioChoice.IsEnabled =
-                SetupButton.IsEnabled = AudioSetupButton.IsEnabled = CompanionButton.IsEnabled =
+            SetupButton.IsEnabled = AudioSetupButton.IsEnabled = CompanionButton.IsEnabled =
                 MemoryButton.IsEnabled = ConversationButton.IsEnabled = VoiceLibraryButton.IsEnabled =
                 AutomaticUpdateCheck.IsEnabled = CheckForUpdatesButton.IsEnabled = PrimaryStageButton.IsEnabled =
                 AutomaticHostUpdate.IsEnabled = UpdateHostsButton.IsEnabled = false;
@@ -178,93 +166,18 @@ public partial class MainWindow : ThemedWindow
             return;
         StatusText.Text = model.Text;
         support.ObserveReport(model.Report);
-        if (model.FixtureReport is { } observedFixture) support.ObserveReport(observedFixture, fixture: true);
         PipelineText.Text = string.Join(Environment.NewLine, model.Pipeline.Select(node => node.Description));
-        ActivityText.Text = runningFixture ? "Offline fixture active. Stop fixture is available. No real provider or microphone is active."
-            : setupOperations.IsRunning ? "An app-shared setup/audio/conversation worker owns resources. Check its action window; new effects wait for actual cleanup."
+        ActivityText.Text = setupOperations.IsRunning ? "An app-shared setup/audio/conversation worker owns resources. Check its action window; new effects wait for actual cleanup."
             : model.Activity;
-        CreateButton.IsEnabled = !saving && !runningFixture && !setupOperations.IsRunning && model.CanCreateProfile;
-        SetupButton.IsEnabled = !saving && !runningFixture && !model.IsRunning;
+        CreateButton.IsEnabled = !saving && !setupOperations.IsRunning && model.CanCreateProfile;
+        SetupButton.IsEnabled = !saving && !model.IsRunning;
         AudioSetupButton.IsEnabled = SetupButton.IsEnabled;
         CompanionButton.IsEnabled = SetupButton.IsEnabled;
         MemoryButton.IsEnabled = SetupButton.IsEnabled;
         ConversationButton.IsEnabled = PrimaryStageButton.IsEnabled = SetupButton.IsEnabled;
         VoiceLibraryButton.IsEnabled = SetupButton.IsEnabled;
-        RefreshButton.IsEnabled = !saving && !runningFixture && model.CanRefresh;
+        RefreshButton.IsEnabled = !saving && model.CanRefresh;
         StopButton.IsEnabled = !saving && model.IsRunning;
-        DemoButton.IsEnabled = ToneButton.IsEnabled = !saving && !runningFixture && !model.IsRunning && !setupOperations.IsRunning;
-        ScenarioChoice.IsEnabled = !runningFixture;
-        FixtureStopButton.IsEnabled = runningFixture;
-        FixtureText.Text = model.FixtureText;
-    }
-
-    private void ObserveFixture()
-    {
-        if (closing || fixture.Snapshot is not { } current || current == lastFixture)
-            return;
-        lastFixture = current;
-        if (model is not null)
-            model.ObserveFixture(current);
-        else
-            FixtureText.Text = ReportFormatter.Human(FixtureDiagnostics.Report(current));
-    }
-
-    private async void Demo_Click(object sender, RoutedEventArgs e) =>
-        await RunFixtureAsync((string)ScenarioChoice.SelectedItem, tone: false);
-
-    private async void Tone_Click(object sender, RoutedEventArgs e)
-    {
-        if (ConfirmationDialog.Confirm(this,
-            "Play a 200 ms synthetic tone, NOT speech, after a completed offline fixture? Check the current Windows output, volume and audience first. The default is fixed at start, with no fallback. This permission applies only to this action and is not saved.",
-            "Explicit output permission"))
-            await RunFixtureAsync("complete", tone: true);
-    }
-
-    private async Task RunFixtureAsync(string scenario, bool tone)
-    {
-        if (closing || saving || runningFixture || model?.IsRunning == true || setupOperations.IsRunning)
-            return;
-        var reported = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var session = fixture;
-        var quarantine = fixtureQuarantine.Task;
-        fixtureOperation = setupOperations.TryStart(async token =>
-        {
-            try
-            {
-                var result = await session.RunAsync(scenario, tone ? new(OutputPolicy.DefaultAtStart) : null, token).ConfigureAwait(false);
-                reported.TrySetResult();
-                // Fixture's public report cannot establish a late release after a frozen failed terminal.
-                // Keep the shared slot quarantined instead of allowing a second native audio owner.
-                if (result.Playback is { DeviceReleased: false })
-                    await quarantine.ConfigureAwait(false);
-                return new SetupWorkResult(SetupWorkOutcome.Completed);
-            }
-            finally { reported.TrySetResult(); }
-        });
-        if (fixtureOperation is null) return;
-        runningFixture = true;
-        Render();
-        try
-        {
-            await Task.WhenAny(reported.Task, fixtureOperation.Completion);
-            if (fixture.Snapshot?.Playback is not { DeviceReleased: false })
-                await fixtureOperation.Completion;
-            ObserveFixture();
-            if (model?.FixtureReport is { } report) support.ObserveReport(report, fixture: true, record: true);
-        }
-        finally
-        {
-            runningFixture = false;
-            if (!closing)
-                Render();
-        }
-    }
-
-    private void FixtureStop_Click(object sender, RoutedEventArgs e)
-    {
-        var owned = fixtureOperation;
-        owned?.RequestCancellation();
-        ObserveFixture();
     }
 
     private async void Create_Click(object sender, RoutedEventArgs e)
@@ -309,7 +222,7 @@ public partial class MainWindow : ThemedWindow
 
     private async void Setup_Click(object sender, RoutedEventArgs e)
     {
-        if (store is null || closing || saving || runningFixture || model?.IsRunning == true) return;
+        if (store is null || closing || saving || model?.IsRunning == true) return;
         var characterWasShowing = avatar.IsShowing;
         if (!await StopAvatarSafelyAsync()) return;
         new SetupWindow(setupService!, setupOperations) { Owner = this, Troubleshooting = OpenTroubleshooting, ConfigurationRecovery = OpenRecovery, InitialRole = nextSetupJob }.ShowDialog();
@@ -320,7 +233,7 @@ public partial class MainWindow : ThemedWindow
 
     private async void AudioSetup_Click(object sender, RoutedEventArgs e)
     {
-        if (store is null || closing || saving || runningFixture || model?.IsRunning == true) return;
+        if (store is null || closing || saving || model?.IsRunning == true) return;
         new AudioSetupWindow(setupService!, setupOperations, audioSetup,
             observe: text => { if (!closing) AudioStatusText.Text = text; }, sessionEvents: audioSessionEvents)
             { Owner = this, Troubleshooting = OpenTroubleshooting }.ShowDialog();
@@ -329,21 +242,21 @@ public partial class MainWindow : ThemedWindow
 
     private async void Companion_Click(object sender, RoutedEventArgs e)
     {
-        if (companionService is null || closing || saving || runningFixture || model?.IsRunning == true) return;
+        if (companionService is null || closing || saving || model?.IsRunning == true) return;
         new CompanionWindow(companionService, setupOperations) { Owner = this }.ShowDialog();
         await RefreshAsync();
     }
 
     private async void Memory_Click(object sender, RoutedEventArgs e)
     {
-        if (memory is null || closing || saving || runningFixture || model?.IsRunning == true) return;
+        if (memory is null || closing || saving || model?.IsRunning == true) return;
         new MemoryWindow(memory, setupOperations) { Owner = this }.ShowDialog();
         await RefreshAsync();
     }
 
     private async void Conversation_Click(object sender, RoutedEventArgs e)
     {
-        if (conversation is null || closing || saving || runningFixture || model?.IsRunning == true) return;
+        if (conversation is null || closing || saving || model?.IsRunning == true) return;
         openConversation = new LiveConversationWindow(setupService!, setupOperations, conversation, audioSessionEvents, audioSetup, voiceIdentity: voiceIdentity)
             { Owner = this, Troubleshooting = OpenTroubleshooting, Support = support, ConfigurationRecovery = OpenRecovery,
                 Avatar = OpenAvatar };
@@ -354,7 +267,7 @@ public partial class MainWindow : ThemedWindow
 
     private void VoiceLibrary_Click(object sender, RoutedEventArgs e)
     {
-        if (store is null || closing || saving || runningFixture || model?.IsRunning == true) return;
+        if (store is null || closing || saving || model?.IsRunning == true) return;
         new VoiceLibraryWindow(new VoiceLibrary(System.IO.Path.Combine(store.DataDirectory, "voice-library")), setupOperations)
             { Owner = this, OperationStarted = ObserveVoiceOperation }.ShowDialog();
     }
@@ -591,7 +504,7 @@ public partial class MainWindow : ThemedWindow
         closing = true;
         ReleaseShell();
         ageTimer.Stop();
-        fixtureTimer.Stop();
+        characterTimer.Stop();
         updateTimer.Stop();
         clusterTimer.Stop();
         audioSessionEvents.LockedChanged -= audioSetup.SetSessionLocked;
@@ -599,12 +512,10 @@ public partial class MainWindow : ThemedWindow
         if (conversation is not null) audioSessionEvents.LockedChanged -= conversation.SetSessionLocked;
         audioSessionEvents.Dispose();
         lifetime.Cancel();
-        fixtureOperation?.RequestCancellation();
         setupOperations.RequestCancellation();
         IsEnabled = false;
         if (model is not null)
             await model.CloseAsync();
-        await Task.Run(async () => await fixture.DisposeAsync());
         if (conversation is not null) await Task.Run(async () => await conversation.DisposeAsync());
         captions.Dispose();
         if (!await StopAvatarSafelyAsync())

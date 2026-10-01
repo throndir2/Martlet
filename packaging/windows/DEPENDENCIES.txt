@@ -19,7 +19,7 @@ notices\WPF-THIRD-PARTY-NOTICES.txt and WinForms-THIRD-PARTY-NOTICES.txt:
 upstream notices from the matching v10.0.12 source tags, checksum pinned.
 The complete runtime notice lists are retained, not reduced to just this summary.
 
-Both native entry points include Martlet.Core, Fixtures, Sessions, Diagnostics
+Both native entry points include Martlet.Core, Diagnostics
 and the Windows Audio target. Desktop additionally includes Martlet.Conversation,
 Martlet.Providers and Martlet.Participation for V04b explicit typed / push-to-talk
 app integration. These authored BCL-only libraries add no NuGet package, native
@@ -30,7 +30,7 @@ Doctor. Desktop additionally includes Martlet.Support for V06b local
 troubleshooting metadata recording, immutable preview and explicitly approved
 local ZIP export. This authored BCL-only library adds no NuGet package, native
 binary, provider SDK or network/upload channel. Its Diagnostics dependency
-reuses the existing Core/Sessions/Fixtures/Audio graph; no duplicate collector
+reuses the existing Core graph; no duplicate collector
 or redactor is redistributed. Doctor shares authored Diagnostics help only
 and does not depend on or bundle Martlet.Support.
 

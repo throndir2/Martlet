@@ -3,6 +3,7 @@ using Martlet.Core.Contracts;
 
 namespace Martlet.Core.Settings;
 
+// Fixture is a retired "Demo only" choice kept so saved numeric values still load; Setup saves it as Api.
 public enum ProfileKind { NotConfigured, Fixture, Api, ExistingEndpoints, SelfHosted }
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]

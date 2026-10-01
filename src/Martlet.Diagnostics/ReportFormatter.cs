@@ -17,8 +17,7 @@ public static class ReportFormatter
             text.AppendLine($"Run started: {started:O}; report completed: {report.CompletedAt:O}");
         if (report.InvocationError is { } error)
             text.AppendLine($"{error.Code}: {error.Summary} Next action: {error.ActionId}");
-        if (report.Fixture is { } fixture)
-            text.Append(FixtureDiagnostics.Describe(fixture));
+
         if (report.Setup is { } setup)
             text.AppendLine(setup.Describe());
         foreach (var probe in report.Probes)
@@ -35,7 +34,7 @@ public static class ReportFormatter
                 text.AppendLine($"  Next action ({action}): {probe.Remedy ?? "No guide was included in this report."}");
         }
         text.AppendLine("Only listed requested checks are covered. Unselected audio, GPU, cloud and host paths were not tested.");
-        text.AppendLine("No AI conversation was run by this diagnostic report. Use the separate explicitly authorized Desktop conversation surface; fixtures are not real AI.");
+        text.AppendLine("No AI conversation was run by this diagnostic report. Use the separate explicitly authorized Desktop conversation surface.");
         return text.ToString();
     }
 

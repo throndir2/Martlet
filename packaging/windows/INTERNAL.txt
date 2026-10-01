@@ -1,12 +1,11 @@
 MARTLET - INTERNAL DEVELOPMENT ONLY - UNSIGNED
 
 This internal build includes V04b real explicit typed / push-to-talk (PTT) app
-integration, V06b local troubleshooting, the offline fixture demo and bundled
+integration, V06b local troubleshooting and bundled
 Doctor. It is NOT a supported
-novice release or a verified live first trial. All fixture text is scripted:
-FIXTURE - NOT AI.
+novice release or a verified live first trial.
 There is no microphone capture, playback, provider/key/model lookup, login startup
-or network inference on launch. Demo defaults require no profile or sound device.
+or network inference on launch.
 Do not publish this installer or tell users to bypass SmartScreen/antivirus.
 No project code or asset license is granted. Distribution/signing remains gated.
 
@@ -20,16 +19,13 @@ welcome tour or setup advisor, or chosen in Start > Martlet prerequisites (Inter
 Saving a profile does not establish rendering, model, hardware or inference
 readiness. Full bundled dependency notices are retained with this internal build.
 
-Start menu: Martlet (Internal) opens the fixture/status shell. Real API
+Start menu: Martlet (Internal) opens the status shell. Real API
 conversation is a separate explicit action; opening it does not start a request.
 Martlet Doctor (Internal) opens a command window and prints the same status.
 In that window, run Martlet.Doctor.exe --help for the implemented CLI options.
 Doctor status can return 2 (incomplete/not ready), which is expected here.
-Try fixture (audio OFF) runs the selected scripted scenario. Stop fixture clears
-pending text/audio, and a new action uses fresh turn/request IDs and epochs.
-Refusal and partial output remain distinct from a completed answer.
 
-Setup / resume saves configuration only: fixture (safe default), or named
+Setup / resume saves configuration only: named
 OpenAI routes with explicit upstream model/voice IDs and role-specific
 destination/data/cost choices. Saving setup makes no provider call and does not
 establish account, model or device readiness.
@@ -48,7 +44,7 @@ the old key; deletion is separately confirmed for an exact pending reference.
 Interrupted transactions retain pending cleanup metadata: reload and review.
 The OS vault does not protect against malware already running as your user.
 
-Real API conversation (separate from the fixture):
+Real API conversation:
   Save a supported named OpenAI configuration in Setup / resume; return and
   Reload saved choices. Unsupported/missing routes remain unavailable. There
   is no model discovery, automatic fallback, key validation or free-request
@@ -106,7 +102,7 @@ and real conversation, including before a profile exists or with invalid setting
   Report-only preview does not create/read a journal. Freeze exact preview.
   Preview every frozen file, its size, source and SHA-256: build.json,
   settings.json, doctor.json, events.json and manifest.json. Review provenance
-  and omissions; shared reports/fixtures are not proof of real-mode readiness.
+  and omissions; shared reports are not proof of real-mode readiness.
   Choose a separate local ZIP destination with an existing parent. Default-No
   confirmation binds those exact frozen bytes and destination. No existing file
   is overwritten; selection/destination changes require another confirmation.
@@ -141,21 +137,10 @@ V07a local configuration backup / restore:
   See TROUBLESHOOTING.md for full scope, errors and preserved evidence.
 
 Doctor examples (no audio, network, settings writes or AI):
-  Martlet.Doctor.exe self-test --scenario streaming --json
-  Martlet.Doctor.exe self-test --scenario refused --json
-  Martlet.Doctor.exe self-test --scenario truncated --json
-Other choices: complete, refused-after-partial, no-speech, not-addressed,
-canceled, slow, failed. Slow uses accelerated synthetic script time.
-Self-test exits: 0 requested fixture completed; 1 failure; 2 refused/silent/
-canceled/incomplete; 3 invalid invocation. A pass is NOT real-mode readiness.
-
-The separate completed-fixture + tone button asks permission each time, default
-No. Windows Doctor self-test --play-tone is the explicit per-action equivalent.
-Check the current output, audience and volume first. This is a faded 200 ms
-synthetic tone, NOT spoken AI. Default output binds once at start, with no
-automatic following, fallback or replay. Device failure leaves text usable.
-Submitted/device-consumed samples do not prove audibility. Permission is not saved.
-Fixture success does not verify real AI conversation or support-bundle behavior.
+  Martlet.Doctor.exe status --json
+  Martlet.Doctor.exe run application.version runtime.version --json
+Exits: 0 requested checks passed; 1 failure; 2 incomplete/not run;
+3 invalid invocation. A pass is NOT real-mode readiness.
 
 Installed program files:
   %LocalAppData%\Programs\Martlet Internal\Desktop\Martlet.Desktop.exe
@@ -188,8 +173,7 @@ Checksums detect corruption; they are not a publisher signature or trust grant.
 
 NOT RUN for this V04b/V06b/V07a integration: real API/account or vault effects, physical
 microphone/speaker trials, clean-Windows installation, a live first trial,
-signing or release. Deterministic offline fixtures remain available unchanged;
-their success must not be presented as any of those external gates.
+signing or release.
 Windows 11 25H2 x64 is the target, not a qualified support claim. Clean-machine
 install/uninstall/repair, interrupted upgrade, disk-full, novice usability and
 signed-download tests still require an isolated Windows VM and release approval.

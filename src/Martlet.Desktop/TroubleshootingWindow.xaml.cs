@@ -57,7 +57,7 @@ public partial class TroubleshootingWindow : ThemedWindow
     {
         if (closed) return;
         WorkText.Text = support.Status;
-        var report = SourceChoice.SelectedIndex == 1 ? support.FixtureReport : support.Report;
+        var report = support.Report;
         StatusText.Text = report is null ? "No shared report observed. Use Refresh shared local status; no fake pass is supplied."
             : ReportFormatter.Human(report);
         StatusText.Text += "\n\n" + support.LiveStatus;
@@ -71,7 +71,7 @@ public partial class TroubleshootingWindow : ThemedWindow
         ChooseButton.IsEnabled = available && displayed is not null;
         ExportButton.IsEnabled = available && displayed is not null && frozenSelection == selection &&
             !string.IsNullOrWhiteSpace(DestinationText.Text);
-        SourceChoice.IsEnabled = LogsChoice.IsEnabled = FromText.IsEnabled = ThroughText.IsEnabled = available;
+        LogsChoice.IsEnabled = FromText.IsEnabled = ThroughText.IsEnabled = available;
         DestinationText.IsEnabled = available;
     }
 
@@ -126,7 +126,7 @@ public partial class TroubleshootingWindow : ThemedWindow
         { ResultText.Text = "Enter explicit UTC times (for example 2026-09-13T12:00:00+00:00); no range was selected."; return; }
         ClearPresentation();
         var chosen = selection;
-        if (await Observe(support.Freeze(SourceChoice.SelectedIndex == 1, LogsChoice.IsChecked == true, new(from, through))) &&
+        if (await Observe(support.Freeze(LogsChoice.IsChecked == true, new(from, through))) &&
             !closed && chosen == selection && support.Preview is { } preview)
         {
             displayed = preview;

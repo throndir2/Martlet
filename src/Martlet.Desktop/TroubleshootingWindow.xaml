@@ -27,13 +27,8 @@
             <TextBox x:Name="StatusText" IsReadOnly="True" TextWrapping="Wrap" Height="170" VerticalScrollBarVisibility="Auto"
                      AutomationProperties.AutomationId="SupportReport" AutomationProperties.Name="Shared report with provenance freshness and actions" />
             <WrapPanel>
-                <Label Content="Report _source" Target="{Binding ElementName=SourceChoice}" />
-                <ComboBox x:Name="SourceChoice" Width="230" SelectedIndex="0" SelectionChanged="Selection_Changed" AutomationProperties.AutomationId="SupportSource">
-                    <ComboBoxItem Content="Shared local Doctor report" />
-                    <ComboBoxItem Content="Last fixture report (NOT inference)" />
-                </ComboBox>
                 <CheckBox x:Name="LogsChoice" Content="Include selected _journal records (OFF)" Checked="Selection_Changed" Unchecked="Selection_Changed"
-                          Margin="12,4" AutomationProperties.AutomationId="SupportIncludeLogs" />
+                          Margin="0,4" AutomationProperties.AutomationId="SupportIncludeLogs" />
             </WrapPanel>
             <WrapPanel>
                 <Label Content="Receipt UTC _from" Target="{Binding ElementName=FromText}" />

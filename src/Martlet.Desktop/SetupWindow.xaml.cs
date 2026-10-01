@@ -126,8 +126,7 @@ public partial class SetupWindow : ThemedWindow
             if (draft is not null)
             {
                 rendering = true;
-                FixtureChoice.IsChecked = draft.Profile.Kind is ProfileKind.Fixture or ProfileKind.NotConfigured;
-                ApiChoice.IsChecked = draft.Profile.Kind == ProfileKind.Api;
+
                 Steps.SelectedIndex = (int)draft.Setup!.Checkpoint;
                 var routes = draft.Setup.Routes;
                 RoleChoice.SelectedItem = InitialRole
@@ -295,12 +294,6 @@ public partial class SetupWindow : ThemedWindow
             : "Provider changed. Enter the exact model ID, apply the route and explicitly review its destination consent again before saving.";
     }
 
-    private void Choice_Changed(object sender, RoutedEventArgs e)
-    {
-        if (rendering || draft is null) return;
-        draft = draft with { Profile = draft.Profile with { Kind = ApiChoice.IsChecked == true ? ProfileKind.Api : ProfileKind.Fixture } };
-        RenderStatus();
-    }
 
     private void Step_Changed(object sender, SelectionChangedEventArgs e)
     {
@@ -392,8 +385,8 @@ public partial class SetupWindow : ThemedWindow
     {
         if (draft is null || routeDirty)
             throw new ContractException(ErrorCode.InvalidContract, "Apply edited route fields before saving, or reload the saved checkpoint.");
-        if (draft.Profile.Kind == ProfileKind.NotConfigured)
-            draft = draft with { Profile = draft.Profile with { Kind = ProfileKind.Fixture } };
+        if (draft.Profile.Kind is ProfileKind.NotConfigured or ProfileKind.Fixture)
+            draft = draft with { Profile = draft.Profile with { Kind = ProfileKind.Api } };
         draft.Validate();
         return draft;
     }

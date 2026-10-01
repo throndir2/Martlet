@@ -1103,7 +1103,7 @@ public sealed record SetupSettings : IContract
     public static string Describe(AppSettings? settings)
     {
         if (settings?.Setup is not { } setup)
-            return "Setup not started. Open Setup / resume; fixture needs no account or key.";
+            return "Setup not started. Open Setup / resume.";
         var lines = new List<string>
         {
             $"Saved choice: {settings.Profile.Kind}. Checkpoint: {setup.Checkpoint}. Configuration only; live account, package, model and device readiness are not established by this summary.",

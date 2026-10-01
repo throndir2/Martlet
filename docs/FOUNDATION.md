@@ -186,8 +186,8 @@ Exit 0 means requested checks passed (or a help/version command completed),
 1 means a reported probe failed, 2 means incomplete/degraded/unknown/skipped/
 stale/no-required-check state, and 3 means invalid invocation/configuration or
 inaccessible settings. Configuration errors take precedence. Failed and
-incomplete optional probes also prevent a green report. A fixture pass can
-only describe the explicitly requested fixture check, not live readiness.
+incomplete optional probes also prevent a green report. `fixture.passed` can
+only describe injected test fixtures, not live readiness.
 
 The present `status` always remains non-ready: `settings.load` inspects the
 actual local file with live **settings-only** provenance; `provider.connection`
@@ -213,7 +213,7 @@ qualification. No G1/G2/release gate is passed from these unit tests.
 | Owner after merge | Primary paths and coordination |
 | --- | --- |
 | F02 packaging | New `packaging\windows` and publish profiles; consume existing Desktop/Doctor projects and preserve the documented data path. Coordinate any project/solution changes. |
-| F03a fixtures | New fixture adapters/harness and `tests\fixtures`; use `Core\Contracts` vocabulary. Add stateful conformance rather than redesigning settings. Coordinate shared contract/solution additions. |
+| F03a fixtures | In-process fixture adapters/harness use `Core\Contracts` vocabulary. Add stateful conformance rather than redesigning settings. Coordinate shared contract/solution additions. |
 | F03b PCM sink | New `src\Martlet.Audio` plus focused tests; reference Core and consume `PcmFrame`/`PcmFormat`. Select a real isolated adapter, no duplicate audio contract or settings store. |
 | F04 diagnostics | Own `src\Martlet.Diagnostics`, Doctor, Desktop status integration and relevant tests; extend result semantics with a registry/remedies/deadlines/freshness calculation. This slice does not already implement F04. |
 | Coordinator/shared owner | `Martlet.slnx`, `Directory.*.props`, `global.json`, `NuGet.config`, `.github\workflows`, `src\Martlet.Core`, `contracts\golden`, shared docs and lock updates. Serialize overlapping changes through the parent. |

@@ -146,7 +146,7 @@ public partial class LiveConversationWindow : ThemedWindow
             "\nSupported TTS: " + string.Join(", ", OpenAiSpeechSynthesisCatalog.SupportedModelIds) +
             "; voices: " + string.Join(", ", OpenAiSpeechSynthesisCatalog.SupportedVoices) + ". No model discovery or fallback.";
         EnvelopeText.Text = selected is null
-            ? "No active supported API configuration. Capture/upload/LLM/TTS permission is OFF. Use Setup / resume; the offline fixture remains available without credentials."
+            ? "No active supported API configuration. Capture/upload/LLM/TTS permission is OFF. Use Setup / resume."
             : selected.Disclosure(voice) + "\n" + selected.ScreenDisclosure(SelectedChattiness, SelectedSource);
         VisionStatus.Text = selected is null ? "Load a saved Thinking model first (Setup / resume)."
             : (selected.Vision() switch
