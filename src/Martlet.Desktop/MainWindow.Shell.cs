@@ -355,6 +355,7 @@ public partial class MainWindow
         var lipSyncProblem = Problem(ClusterJobs.LipSync);
         static string Pending(SetupRoute route) => route.Enabled == false ? "Turned off." : "Chosen, not confirmed yet. Review it to finish.";
         var micTested = audio?.Input.Checkpoint is not null;
+        var micNote = micTested ? "" : " Microphone not set up yet.";
         var persona = homeSettings?.Companion?.ActivePersona.Name ?? "default";
 
         var now = new List<NowLine>
@@ -368,11 +369,11 @@ public partial class MainWindow
                     $"{PlaceName(tts!)}{VoiceSuffix(tts!)}", "Change")
                 : tts is not null ? new NowLine(CompanionTab.Voice, NodeHealth.Attention, Pending(tts), "Review")
                 : new NowLine(CompanionTab.Voice, NodeHealth.Unknown, "Optional. Not set up, so Martlet replies in text.", "Set up"),
-            listeningProblem is not null ? new NowLine(CompanionTab.Listening, NodeHealth.Attention, $"Not working now: {listeningProblem.Problem}", "Change")
+            listeningProblem is not null ? new NowLine(CompanionTab.Listening, NodeHealth.Attention, $"Not working now: {listeningProblem.Problem}{micNote}", "Change")
                 : NetworkMap.IsReady(stt) ? new NowLine(CompanionTab.Listening, micTested ? NodeHealth.Ready : NodeHealth.Attention,
-                    $"{PlaceName(stt!)}{(micTested ? "" : "; microphone not tested yet")}", "Change")
-                : stt is not null ? new NowLine(CompanionTab.Listening, NodeHealth.Attention, Pending(stt), "Review")
-                : new NowLine(CompanionTab.Listening, NodeHealth.Unknown, "Optional. Not set up; you can always type.", "Set up"),
+                    $"{PlaceName(stt!)}{(micTested ? "" : "." + micNote)}", micTested ? "Change" : "Set up mic")
+                : stt is not null ? new NowLine(CompanionTab.Listening, NodeHealth.Attention, Pending(stt) + micNote, "Review")
+                : new NowLine(CompanionTab.Listening, NodeHealth.Unknown, "Optional. Not set up; you can always type." + micNote, "Set up"),
             new NowLine(CompanionTab.Character, lipSyncProblem is not null ? NodeHealth.Attention : homeAvatar is not null || avatar.IsShowing ? NodeHealth.Ready : NodeHealth.Unknown,
                 $"{CharacterModelName()}, {(avatar.IsShowing ? "on your desktop" : "hidden")}. Personality {persona}; lip-sync by {LipSyncOwnerName()}.", "Change")
         };

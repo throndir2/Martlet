@@ -2,11 +2,14 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
+using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.Diagnostics;
 
 namespace Martlet.Desktop;
 
+/// <summary>Microphone and speakers: pick a device, run a quick local test, and the choice saves as you go.
+/// Plain-language state is shown on each device card; exact technical evidence stays under Details.</summary>
 public partial class AudioSetupWindow : ThemedWindow
 {
     internal Action<Window>? Troubleshooting { get; init; }
@@ -22,6 +25,7 @@ public partial class AudioSetupWindow : ThemedWindow
     private readonly bool ownsSessionEvents;
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private AppSettings? draft;
+    private AudioSettings? persisted;
     private string? revision;
     private AudioSetupOperation? ownedAudio;
     private SetupOperation? ownedSettings;
@@ -29,9 +33,13 @@ public partial class AudioSetupWindow : ThemedWindow
     private AudioDeviceList? devices;
     private AudioTestStatus? lastStatus;
     private long generation;
-    private bool closed, busy, rendering, needsReload = true, confirming;
+    private bool closed, busy, rendering, needsReload = true, confirming, loading, saving, saveQueued;
     private volatile bool locked;
     private Guid? confirmableOutput;
+    private string message = "";
+    private string? reloadHint;
+    private string? micResult, outputResult;
+    private bool micProblem, micIsNext;
     private string stages = "Mic: never tested. Output: never tested.";
     private string discoveryStage = "Discovery: not run.";
     private string microphoneStage = "Mic: never tested.";
@@ -54,7 +62,12 @@ public partial class AudioSetupWindow : ThemedWindow
         this.sessionEvents = sessionEvents ?? new WindowsAudioSessionEvents();
         ownsSessionEvents = sessionEvents is null;
         locked = audio.IsSessionLocked;
-        timer.Tick += (_, _) => { RenderProgress(); RenderActions(); };
+        timer.Tick += (_, _) =>
+        {
+            RenderProgress();
+            RenderActions();
+            if (saveQueued && !busy && !operations.IsRunning && !locked) _ = SaveQueuedAsync();
+        };
         timer.Start();
         this.sessionEvents.LockedChanged += SessionSwitch;
         RenderStatus();
@@ -64,11 +77,18 @@ public partial class AudioSetupWindow : ThemedWindow
     private async void Window_Loaded(object sender, RoutedEventArgs e) => await LoadAsync();
     private async void Reload_Click(object sender, RoutedEventArgs e) => await LoadAsync();
 
+    private void Say(string text)
+    {
+        message = text;
+        if (!closed) RenderActions();
+    }
+
     private bool MayStart()
     {
         if (closed) return false;
         if (!busy && !operations.IsRunning && !locked) return true;
         ResultText.Text = "An earlier setup/fixture action still owns its worker, or this session is locked. No overlapping action was started. Wait for actual release.";
+        Say(locked ? "Tests are paused while Windows is locked." : "Another setup task is still finishing. Try again in a moment.");
         return false;
     }
 
@@ -78,16 +98,31 @@ public partial class AudioSetupWindow : ThemedWindow
         var backend = settings;
         ownedSettings = operations.TryStart(async token => new(SetupWorkOutcome.Completed, Loaded: await backend.LoadAsync(token).ConfigureAwait(false)));
         if (ownedSettings is null) return;
-        var result = await ObserveAsync(ownedSettings, TimeSpan.FromSeconds(5));
-        if (result?.Loaded is not { } loaded) return;
+        loading = true;
+        message = "";
+        SetupWorkResult? result;
+        try { result = await ObserveAsync(ownedSettings, TimeSpan.FromSeconds(5)); }
+        finally { loading = false; }
+        if (result?.Loaded is not { } loaded)
+        {
+            if (!closed) reloadHint = "Couldn't load your settings. Click Reload to try again.";
+            return;
+        }
         draft = loaded.Error is null ? SetupSettings.Begin(loaded.Settings) : null;
+        persisted = loaded.Settings?.Audio;
         revision = loaded.Revision;
         needsReload = loaded.Error is not null;
+        reloadHint = loaded.Error is { } error ? $"Couldn't load your settings: {error.Summary} Click Reload to try again." : null;
+        saveQueued = false;
         confirmableOutput = null;
         devices = null;
+        micResult = outputResult = null;
+        MicMeter.Value = 0;
+        DevicesText.Text = "Martlet uses your Windows defaults. Find devices to pick a specific one.";
         if (draft is not null) draft = draft with { Audio = draft.Audio ?? AudioSettings.Create() };
         ResultText.Text = loaded.Error?.Summary ??
-            "Loaded local settings only. Find devices and tests have NOT run. Save is explicit; existing v1 settings migrate with an exact original snapshot.";
+            "Loaded local settings only. Find devices and tests have NOT run. Choices save automatically when you change or test them; existing v1 settings migrate with an exact original snapshot.";
+        message = "";
         RenderChoices();
         RenderStatus();
         RenderActions();
@@ -105,30 +140,34 @@ public partial class AudioSetupWindow : ThemedWindow
     private static void Fill(ComboBox box, AudioChoice selected, bool input, IReadOnlyList<AudioEndpoint>? endpoints)
     {
         var defaultChoice = AudioChoice.Default(input);
-        var items = new List<SelectionItem> { new(null, defaultChoice.DisplayName) };
+        var items = new List<SelectionItem> { new(null, defaultChoice.DisplayName, input ? "Windows default microphone" : "Windows default speakers") };
         if (endpoints is not null)
-            items.AddRange(endpoints.Select(item => new SelectionItem(item.EndpointId, item.DisplayName)));
+            items.AddRange(endpoints.Select(item => new SelectionItem(item.EndpointId, item.DisplayName, item.DisplayName)));
         if (selected.EndpointId is not null && items.All(item => item.Id != selected.EndpointId))
-            items.Add(new(selected.EndpointId, selected.DisplayName));
+            items.Add(new(selected.EndpointId, selected.DisplayName, selected.DisplayName));
         box.ItemsSource = items;
         box.SelectedItem = items.First(item => item.Id == selected.EndpointId);
     }
 
-    private sealed record SelectionItem(string? Id, string Label)
+    // Label is the stored display name; Shown is what the list displays.
+    private sealed record SelectionItem(string? Id, string Label, string Shown)
     {
-        public override string ToString() => Label;
+        public override string ToString() => Shown;
     }
 
     private void Choice_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (rendering || draft?.Audio is not { } choices) return;
-        if (busy || operations.IsRunning) { RenderChoices(); return; }
-        var input = (SelectionItem)InputChoice.SelectedItem;
-        var output = (SelectionItem)OutputChoice.SelectedItem;
+        if (ownedAudio is not null || locked || needsReload || loading) { RenderChoices(); return; }
+        if (InputChoice.SelectedItem is not SelectionItem input || OutputChoice.SelectedItem is not SelectionItem output) return;
         var next = choices with { Input = choices.Input.Select(input.Id, input.Label), Output = choices.Output.Select(output.Id, output.Label) };
-        if (next.Output != choices.Output) confirmableOutput = null;
+        if (next == choices) return;
+        if (next.Input != choices.Input) { micResult = null; MicMeter.Value = 0; }
+        if (next.Output != choices.Output) { confirmableOutput = null; outputResult = null; }
         draft = draft with { Audio = next };
-        ResultText.Text = "Choice changed in memory. Its corresponding checkpoint was invalidated; Save explicitly to persist. Testing still needs fresh permission.";
+        ResultText.Text = "Choice changed. Its corresponding checkpoint was invalidated and the new choice saves automatically. Testing still needs fresh permission.";
+        message = "Changed. Run a quick test to make sure it works.";
+        QueueSave();
         RenderStatus();
         RenderActions();
     }
@@ -137,74 +176,145 @@ public partial class AudioSetupWindow : ThemedWindow
     private async void Mic_Click(object sender, RoutedEventArgs e) => await RunAudioAsync(AudioSetupAction.Microphone);
     private async void Output_Click(object sender, RoutedEventArgs e) => await RunAudioAsync(AudioSetupAction.Output);
 
-    private bool Confirm(string message)
+    private bool Confirm(string question, string title)
     {
         confirming = true;
         try
         {
-            return confirm?.Invoke(message) ?? ConfirmationDialog.Confirm(this, message, "One local action only");
+            return confirm?.Invoke(question) ?? ConfirmationDialog.Confirm(this, question, title);
         }
         finally { confirming = false; }
     }
 
+    private static string Named(AudioChoice choice, bool input) => choice.EndpointId is null
+        ? input ? "your Windows default microphone" : "your Windows default speakers"
+        : $"\"{choice.DisplayName}\"";
+
     private async Task RunAudioAsync(AudioSetupAction action)
     {
         if (!MayStart() || needsReload || draft?.Audio is not { } choices) return;
-        var choice = action == AudioSetupAction.Microphone ? choices.Input : choices.Output;
-        if (action != AudioSetupAction.Discovery && !Confirm(action == AudioSetupAction.Microphone
-            ? $"Capture from '{choice.DisplayName}' locally for at most 5 seconds? Only actual amplitude is shown, not speech detection. All PCM is discarded. Nothing is saved or uploaded. Stop, Pause, leaving this window or locking the session cancels. Permission expires within 20 seconds and is not saved."
-            : $"Play a quiet 200 ms synthetic tone, NOT speech, on '{choice.DisplayName}'? Check your volume and audience first. Output binds once with no fallback. This is not an audibility pass; separately confirm 'I heard it'. Permission is for this action only."))
+        var input = action == AudioSetupAction.Microphone;
+        var choice = input ? choices.Input : choices.Output;
+        if (action != AudioSetupAction.Discovery && !Confirm(input
+                ? $"Test {Named(choice, true)}?{Environment.NewLine}{Environment.NewLine}Martlet listens for up to 5 seconds to check that sound comes through, so talk or hum while it runs. Nothing is recorded, saved or sent, and leaving this window stops the test."
+                : $"Play a short, quiet beep on {Named(choice, false)}?{Environment.NewLine}{Environment.NewLine}Check your volume first. Martlet doesn't change your volume or Windows defaults.",
+            input ? "Test microphone" : "Play test sound"))
         {
             ResultText.Text = "Permission declined. No endpoint was opened and no audio test ran.";
+            Say("Test canceled. Nothing was opened.");
             return;
         }
         if (!MayStart()) return;
-        if (action == AudioSetupAction.Microphone)
+        if (input)
         {
-            draft = draft with { Audio = choices with { Input = choices.Input with { Checkpoint = null } } };
             LevelText.Text = "No PCM received in this test.";
+            micResult = null;
+            MicMeter.Value = 0;
         }
         if (action == AudioSetupAction.Output)
         {
             confirmableOutput = null;
-            draft = draft with { Audio = choices with { Output = choices.Output with { Checkpoint = null } } };
+            outputResult = null;
         }
         var operation = audio.Start(action, choice, explicitlyApproved: true);
         if (operation is null) { MayStart(); return; }
         ownedAudio = operation;
         lastStatus = null;
+        message = "";
         var result = await ObserveAsync(operation.Worker, action == AudioSetupAction.Discovery ? TimeSpan.FromSeconds(5) : observationTimeout);
         if (result is null) return;
         RenderProgress();
-        if (operation.Status.Succeeded && result.Outcome == SetupWorkOutcome.Completed)
+        var status = operation.Status;
+        var passed = status.Succeeded && result.Outcome == SetupWorkOutcome.Completed;
+        if (action == AudioSetupAction.Discovery)
         {
-            if (action == AudioSetupAction.Discovery)
+            if (passed)
             {
                 devices = operation.Devices;
                 RenderChoices();
                 ResultText.Text = $"Found {devices!.Inputs.Count} input(s) and {devices.Outputs.Count} output(s). Listing is a snapshot, NOT permission or readiness; use Find again to refresh. " +
                     (devices.Inputs.Count == 0 || devices.Outputs.Count == 0 ? "A device category is missing. Reconnect or enable the intended endpoint manually. " : "") +
                     "Saved endpoints absent from this list remain unverified; no fallback occurs.";
+                DevicesText.Text = Found(devices);
             }
-            else if (operation.Status.Checkpoint is { } checkpoint && draft?.Audio is { } current)
+            else
             {
-                draft = draft with { Audio = action == AudioSetupAction.Microphone
-                    ? current with { Input = current.Input with { Checkpoint = checkpoint } }
-                    : current with { Output = current.Output with { Checkpoint = checkpoint } } };
-                if (action == AudioSetupAction.Output) confirmableOutput = checkpoint.ConfigurationRevision;
-                ResultText.Text = operation.Status.Stage + ". Save explicitly to keep this historical checkpoint.";
+                ResultText.Text = "Local action failed or canceled: " + status.Stage + ". " + AudioSetupDiagnostics.Remedy(status.Error);
+                message = result.Outcome == SetupWorkOutcome.Canceled ? "Search stopped." : "Couldn't list devices. " + Problem(status.Error, input: true);
             }
         }
-        else if (action == AudioSetupAction.Microphone &&
-            operation.Status.Signal is AudioInputSignal.NoFrames or AudioInputSignal.BelowAdvisoryThreshold
-                or AudioInputSignal.InsufficientFrames or AudioInputSignal.IntermittentAmplitude)
-            ResultText.Text = $"Local microphone test did not meet the level advisory: {operation.Status.Stage}. " +
-                InputSignalRemedy(operation.Status.Signal.Value);
-        else ResultText.Text = "Local action failed or canceled: " + operation.Status.Stage + ". " + AudioSetupDiagnostics.Remedy(operation.Status.Error);
+        else if (result.Outcome == SetupWorkOutcome.Canceled)
+        {
+            ResultText.Text = "Local action failed or canceled: " + status.Stage + ". " + AudioSetupDiagnostics.Remedy(status.Error);
+            message = "Test stopped. Nothing changed.";
+        }
+        else
+        {
+            // A finished test replaces this choice's earlier result: a pass records it, anything else clears it.
+            var checkpoint = passed ? status.Checkpoint : null;
+            if (draft?.Audio is { } current && (input ? current.Input : current.Output).ConfigurationRevision == choice.ConfigurationRevision)
+                draft = draft with { Audio = input
+                    ? current with { Input = current.Input with { Checkpoint = checkpoint } }
+                    : current with { Output = current.Output with { Checkpoint = checkpoint } } };
+            if (checkpoint is not null)
+            {
+                if (input) { micResult = "Working. Martlet picked up sound from this microphone."; micProblem = false; }
+                else confirmableOutput = checkpoint.ConfigurationRevision;
+                ResultText.Text = status.Stage + ". Saved automatically as a historical checkpoint, not current readiness.";
+            }
+            else if (input && status.Signal is { } signal and (AudioInputSignal.NoFrames or AudioInputSignal.BelowAdvisoryThreshold
+                or AudioInputSignal.InsufficientFrames or AudioInputSignal.IntermittentAmplitude))
+            {
+                ResultText.Text = $"Local microphone test did not meet the level advisory: {status.Stage}. " + InputSignalRemedy(signal);
+                micResult = SignalProblem(signal);
+                micProblem = true;
+            }
+            else
+            {
+                ResultText.Text = "Local action failed or canceled: " + status.Stage + ". " + AudioSetupDiagnostics.Remedy(status.Error);
+                if (input) { micResult = Problem(status.Error, input: true); micProblem = true; }
+                else outputResult = "The test sound didn't play. " + Problem(status.Error, input: false);
+            }
+            ownedAudio = null;
+            QueueSave();
+        }
         ownedAudio = null;
         RenderStatus();
         RenderActions();
     }
+
+    private static string Found(AudioDeviceList list)
+    {
+        static string Count(int count, string one, string many) => count == 1 ? "1 " + one : $"{count} {many}";
+        const string remedy = " Plug it in or turn it on in Windows Sound settings, then find devices again.";
+        var inputs = Count(list.Inputs.Count, "microphone", "microphones");
+        var outputs = Count(list.Outputs.Count, "speaker or headset", "speakers and headsets");
+        return list.Inputs.Count == 0 && list.Outputs.Count == 0 ? "No microphones or speakers found." + remedy
+            : list.Inputs.Count == 0 ? $"Found {outputs}, but no microphone." + remedy
+            : list.Outputs.Count == 0 ? $"Found {inputs}, but no speakers or headset." + remedy
+            : $"Found {inputs} and {outputs}. Pick one below.";
+    }
+
+    private static string SignalProblem(AudioInputSignal signal) => signal switch
+    {
+        AudioInputSignal.NoFrames => "No sound came through. Check that the microphone is plugged in and that Windows lets desktop apps use it (Settings > Privacy & security > Microphone).",
+        AudioInputSignal.BelowAdvisoryThreshold => "Too quiet. Check that the microphone isn't muted and its Windows input level is up, then talk during the test.",
+        AudioInputSignal.InsufficientFrames => "The microphone stopped sending sound partway through. Check its connection, then test again.",
+        AudioInputSignal.IntermittentAmplitude => "Only a short sound came through. Keep talking or humming for the whole test, then try again.",
+        _ => throw new ArgumentOutOfRangeException(nameof(signal))
+    };
+
+    private static string Problem(ErrorCode? code, bool input) => code switch
+    {
+        ErrorCode.AudioAccessDenied => "Windows is blocking the microphone. Open Settings > Privacy & security > Microphone and let desktop apps use it.",
+        ErrorCode.AudioDeviceBusy => "Another app is using this device on its own. Close that app, then try again.",
+        ErrorCode.AudioFormatUnsupported => "This device uses an audio format Martlet can't open. Pick another device.",
+        ErrorCode.AudioDeviceUnavailable or ErrorCode.AudioDeviceLost or ErrorCode.AudioDeviceChanged =>
+            "The device was unplugged or changed. Reconnect it, click Find devices and pick it again.",
+        ErrorCode.DeadlineExceeded => "The test took too long. Try again.",
+        ErrorCode.AudioCaptureFailed or ErrorCode.AudioPlaybackFailed => "The device stopped responding. If tests stay unavailable, restart Martlet.",
+        _ => input ? "The test didn't finish. Check the microphone, then try again." : "Check that your speakers or headset are connected and turned up, then try again."
+    };
 
     private async Task<SetupWorkResult?> ObserveAsync(SetupOperation worker, TimeSpan timeout)
     {
@@ -220,8 +330,14 @@ public partial class AudioSetupWindow : ThemedWindow
             if (closed || current != generation) return null;
             if (stop.IsCancellationRequested || finished != worker.Completion)
             {
+                var timedOut = !stop.IsCancellationRequested;
                 worker.RequestCancellation();
-                if (ReferenceEquals(worker, ownedSettings)) needsReload = true;
+                if (ReferenceEquals(worker, ownedSettings))
+                {
+                    needsReload = true;
+                    reloadHint = "Saving or loading didn't finish. Click Reload to check your choices.";
+                }
+                else if (timedOut) message = "The device didn't respond in time. Wait a moment, then try again.";
                 ResultText.Text = "Observation stopped or timed out; cancellation requested. Native work/callbacks may STILL OWN resources. No replacement can start until actual release; late results are discarded. Interrupted saves require Reload.";
                 RetireAudioObservation();
                 ownedAudio = null;
@@ -232,6 +348,7 @@ public partial class AudioSetupWindow : ThemedWindow
             if (result.Outcome != SetupWorkOutcome.Completed && ReferenceEquals(worker, ownedSettings))
             {
                 needsReload = true;
+                reloadHint = "Saving or loading didn't finish. Click Reload to check your choices.";
                 ResultText.Text = "Settings action interrupted or failed. Reload and review; no rollback is claimed. Original exception details are not displayed.";
             }
             return result;
@@ -245,6 +362,8 @@ public partial class AudioSetupWindow : ThemedWindow
             if (!closed) { RenderStatus(); RenderActions(); }
         }
     }
+
+    private static double Meter(double rms) => Math.Clamp((20 * Math.Log10(Math.Max(rms, 1e-6)) + 60) / 50, 0, 1);
 
     private void RenderProgress()
     {
@@ -268,16 +387,25 @@ public partial class AudioSetupWindow : ThemedWindow
         if (status.Action == AudioSetupAction.Microphone)
         {
             if (status.Signal == AudioInputSignal.NoFrames)
+            {
                 LevelText.Text = "No PCM frames received in this test. No amplitude result or checkpoint.";
+                MicMeter.Value = 0;
+            }
             else if (status.Peak is { } peak && status.Rms is { } rms)
+            {
                 LevelText.Text = $"{(status.Finished ? "Whole-test" : "Live")} selected PCM: peak {peak:F6}; RMS {rms:F6}; canonical samples {status.Samples}. " +
                     (status.Signal == AudioInputSignal.BelowAdvisoryThreshold ? "Below 1% full-scale RMS advisory threshold; no checkpoint. " :
                     status.Signal is AudioInputSignal.InsufficientFrames or AudioInputSignal.IntermittentAmplitude ? "Insufficient frame or level coverage; no checkpoint. " :
                     status.Signal == AudioInputSignal.DetectableAmplitude ? "Met 1% RMS, 4 seconds PCM and 1.25 seconds above-threshold level advisory. " : "") +
                     (status.SamplesAtOrAboveThreshold is { } count ? $"Samples at/above 1% full-scale: {count}. " : "") +
                     "Amplitude only, NOT VAD, speech detection or audio quality.";
+                MicMeter.Value = Meter(rms);
+            }
             else if (status.Finished)
+            {
                 LevelText.Text = "Capture failed or canceled; earlier live level is not a valid test result. No checkpoint.";
+                MicMeter.Value = 0;
+            }
         }
         RenderStatus();
     }
@@ -305,15 +433,73 @@ public partial class AudioSetupWindow : ThemedWindow
     {
         if (closed) return;
         var available = !busy && !operations.IsRunning && !locked;
-        ChoicesPanel.IsEnabled = available && !needsReload && draft is not null;
-        FindButton.IsEnabled = ChoicesPanel.IsEnabled;
+        var ready = draft is not null && !needsReload;
+        var testing = ownedAudio is not null;
+        // Picking stays open while a choice saves, so changing both devices in a row never bounces back.
+        InputChoice.IsEnabled = OutputChoice.IsEnabled =
+            ready && !locked && !testing && !loading && (!operations.IsRunning || saving);
+        FindButton.IsEnabled = MicButton.IsEnabled = OutputButton.IsEnabled = available && ready;
         ReloadButton.IsEnabled = available;
-        StopButton.IsEnabled = PauseButton.IsEnabled = ownedAudio is not null || ownedSettings is not null;
-        HeardButton.IsEnabled = available && confirmableOutput is { } id && draft?.Audio?.Output.ConfigurationRevision == id;
+        ReloadButton.Visibility = needsReload && !loading && !busy ? Visibility.Visible : Visibility.Collapsed;
+        StopButton.IsEnabled = testing;
+        StopButton.Visibility = testing ? Visibility.Visible : Visibility.Collapsed;
+        var confirmable = confirmableOutput is { } id && draft?.Audio?.Output.ConfigurationRevision == id;
+        HeardButton.IsEnabled = available && confirmable;
+        HeardButton.Visibility = confirmable ? Visibility.Visible : Visibility.Collapsed;
         ActivityText.Text = operations.IsRunning
             ? "An app-shared setup/fixture worker is active or quarantined. Stop and Close stay responsive. Timeout is NOT ownership release."
             : locked ? "Session locked. Tests stay off; unlock and explicitly start a fresh action."
             : "Idle. No listening or playback is armed. Saved settings never authorize a test.";
+        MessageText.Text = locked ? "Tests are paused while Windows is locked."
+            : needsReload && reloadHint is not null ? reloadHint
+            : operations.IsRunning && !busy && !saving ? "Another setup task is still finishing. Tests come back when it's done."
+            : message;
+        RenderDevices(confirmable);
+    }
+
+    private void RenderDevices(bool confirmable)
+    {
+        var choices = draft?.Audio;
+        var running = ownedAudio?.Status.Action;
+
+        // One primary action: testing the microphone until it works, then Done.
+        var micNext = choices is not null && choices.Input.Checkpoint is null;
+        if (micNext != micIsNext)
+        {
+            micIsNext = micNext;
+            if (micNext) { MicButton.SetResourceReference(StyleProperty, "PrimaryButton"); DoneButton.ClearValue(StyleProperty); }
+            else { MicButton.ClearValue(StyleProperty); DoneButton.SetResourceReference(StyleProperty, "PrimaryButton"); }
+        }
+
+        if (running == AudioSetupAction.Microphone)
+            ShowState(MicBadge, "Testing", "AccentBrush", MicText, "Listening... talk or hum until the test ends.");
+        else if (micResult is not null)
+            ShowState(MicBadge, micProblem ? "Needs attention" : "Working", micProblem ? "WarningBrush" : "SuccessBrush", MicText, micResult);
+        else if (choices?.Input.Checkpoint is { } heard)
+            ShowState(MicBadge, "Working", "SuccessBrush", MicText, $"Working. Last tested {heard.TestedAt.ToLocalTime():d}.");
+        else
+            ShowState(MicBadge, "Not set up", null, MicText, "Click Test microphone, then talk for a few seconds.");
+
+        if (running == AudioSetupAction.Output)
+            ShowState(OutputBadge, "Testing", "AccentBrush", OutputText, "Playing a short beep...");
+        else if (confirmable)
+            ShowState(OutputBadge, "Did you hear it?", "AccentBrush", OutputText,
+                "Did you hear a short beep? If not, check your volume and the device picked above, then play it again.");
+        else if (outputResult is not null)
+            ShowState(OutputBadge, "Needs attention", "WarningBrush", OutputText, outputResult);
+        else if (choices?.Output.Checkpoint is { Outcome: LocalAudioOutcome.Heard } played)
+            ShowState(OutputBadge, "Working", "SuccessBrush", OutputText, $"Working. You heard the test sound on {played.TestedAt.ToLocalTime():d}.");
+        else if (choices?.Output.Checkpoint is not null)
+            ShowState(OutputBadge, "Not confirmed", null, OutputText, "The test sound played, but nobody confirmed hearing it. Play it again to check.");
+        else
+            ShowState(OutputBadge, "Not tested", null, OutputText, "Click Play test sound to hear a short, quiet beep.");
+    }
+
+    private static void ShowState(TextBlock badge, string state, string? brush, TextBlock detail, string text)
+    {
+        badge.Text = state;
+        badge.SetResourceReference(TextBlock.ForegroundProperty, brush ?? "MutedBrush");
+        detail.Text = text;
     }
 
     private void Heard_Click(object sender, RoutedEventArgs e)
@@ -322,35 +508,70 @@ public partial class AudioSetupWindow : ThemedWindow
             choices.Output.Checkpoint is not { Outcome: LocalAudioOutcome.ToneDrained } checkpoint) return;
         draft = draft with { Audio = choices with { Output = choices.Output with { Checkpoint = checkpoint with { Outcome = LocalAudioOutcome.Heard } } } };
         confirmableOutput = null;
-        ResultText.Text = "You confirmed hearing THIS test on THIS selected configuration. This is a historical human report, not evergreen readiness. Save explicitly to persist.";
+        outputResult = null;
+        ResultText.Text = "You confirmed hearing THIS test on THIS selected configuration. This is a historical human report, not evergreen readiness. It saves automatically.";
+        message = "";
+        QueueSave();
         RenderStatus();
         RenderActions();
     }
 
-    private async void Save_Click(object sender, RoutedEventArgs e)
+    private void QueueSave()
     {
-        if (!MayStart() || needsReload || draft is null) return;
-        var snapshot = draft;
-        var expected = revision;
-        var backend = settings;
-        ownedSettings = operations.TryStart(async token => new(SetupWorkOutcome.Completed,
-            Saved: await backend.SaveAsync(snapshot, expected, token).ConfigureAwait(false)));
-        if (ownedSettings is null) return;
-        var result = await ObserveAsync(ownedSettings, TimeSpan.FromSeconds(5));
-        if (result?.Saved is not { } saved) return;
-        needsReload = !saved.Save.Saved;
-        if (saved.Save.Saved) { draft = saved.Settings; revision = saved.Save.Revision; }
-        ResultText.Text = saved.Summary;
-        RenderStatus();
-        RenderActions();
+        if (draft?.Audio is null || draft.Audio == persisted) return;
+        saveQueued = true;
+        _ = SaveQueuedAsync();
+    }
+
+    // Choices and test results save as they change. Saves run one at a time on the shared worker; a change made
+    // while one is saving waits for the next pass. The timer retries a save that another worker blocked.
+    private async Task SaveQueuedAsync()
+    {
+        if (saving) return;
+        saving = true;
+        try
+        {
+            while (saveQueued && !closed && !needsReload && draft is not null && !busy && !operations.IsRunning && !locked)
+            {
+                saveQueued = false;
+                if (draft.Audio == persisted) continue;
+                var snapshot = draft;
+                var expected = revision;
+                var backend = settings;
+                var worker = operations.TryStart(async token => new(SetupWorkOutcome.Completed,
+                    Saved: await backend.SaveAsync(snapshot, expected, token).ConfigureAwait(false)));
+                if (worker is null) { saveQueued = true; return; }
+                ownedSettings = worker;
+                var result = await ObserveAsync(worker, TimeSpan.FromSeconds(5));
+                if (result?.Saved is not { } saved) return;
+                if (!saved.Save.Saved)
+                {
+                    needsReload = true;
+                    reloadHint = "Couldn't save because your settings changed in another window. Click Reload, then pick again.";
+                    ResultText.Text = saved.Summary;
+                    return;
+                }
+                revision = saved.Save.Revision;
+                persisted = saved.Settings.Audio;
+                if (ReferenceEquals(draft, snapshot)) draft = saved.Settings;
+                ResultText.Text = string.IsNullOrEmpty(ResultText.Text) ? saved.Summary : ResultText.Text + Environment.NewLine + saved.Summary;
+            }
+        }
+        finally
+        {
+            saving = false;
+            if (!closed) { RenderStatus(); RenderActions(); }
+        }
     }
 
     private void StopOwned()
     {
-        ownedAudio?.Stop();
-        ownedSettings?.RequestCancellation();
-        observation?.Cancel();
+        // Saves are short and atomic, so stopping, deactivating and closing end only the owned test.
         confirmableOutput = null;
+        if (ownedAudio is null) return;
+        ownedAudio.Stop();
+        observation?.Cancel();
+        message = "Test stopped. Nothing changed.";
         RetireAudioObservation();
     }
 
@@ -364,6 +585,7 @@ public partial class AudioSetupWindow : ThemedWindow
             case AudioSetupAction.Microphone:
                 microphoneStage = stage;
                 LevelText.Text = "Test observation stopped; meter is no longer live.";
+                MicMeter.Value = 0;
                 break;
             case AudioSetupAction.Output: outputStage = stage; break;
         }
@@ -372,7 +594,19 @@ public partial class AudioSetupWindow : ThemedWindow
     }
 
     private void Stop_Click(object sender, RoutedEventArgs e) => StopOwned();
-    private void Close_Click(object sender, RoutedEventArgs e) => Close();
+
+    private async void Close_Click(object sender, RoutedEventArgs e)
+    {
+        // Let a just-made choice finish saving before the window goes away.
+        DoneButton.IsEnabled = false;
+        for (var i = 0; i < 50 && !closed && (saving || saveQueued && !needsReload && !locked); i++)
+        {
+            if (!saving) await SaveQueuedAsync();
+            if (saving || saveQueued) await Task.Delay(100);
+        }
+        if (!closed) Close();
+    }
+
     private void Window_Deactivated(object? sender, EventArgs e)
     {
         if (!confirming) StopOwned();
@@ -394,6 +628,8 @@ public partial class AudioSetupWindow : ThemedWindow
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
         StopOwned();
+        // Start a pending save before closing; the shared worker finishes it after the window is gone.
+        if (saveQueued && !saving) _ = SaveQueuedAsync();
         closed = true;
         ++generation;
         timer.Stop();

@@ -3,63 +3,111 @@
         Style="{DynamicResource AppWindowStyle}"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Martlet - Local audio setup" Width="840" Height="780" MinWidth="520" MinHeight="420"
-        AutomationProperties.AutomationId="AudioSetupWindow" AutomationProperties.Name="Explicit local audio setup"
+        Title="Martlet - Microphone and speakers" Width="640" Height="760" MinWidth="480" MinHeight="420"
+        WindowStartupLocation="CenterOwner"
+        AutomationProperties.AutomationId="AudioSetupWindow" AutomationProperties.Name="Microphone and speakers, tested on this PC only"
         Loaded="Window_Loaded" Closing="Window_Closing" Deactivated="Window_Deactivated">
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Margin="20">
-            <TextBlock Text="Audio setup - LOCAL tests, not AI" FontSize="24" FontWeight="SemiBold" />
-            <TextBlock Margin="0,8" TextWrapping="Wrap"
-                       Text="Opening this window does not enumerate or open devices. Find devices lists local Windows endpoints only, not microphone permission or audibility. Each test needs fresh permission. No recording is saved, no speech recognition/VAD, provider, network or vault access occurs. Settings never authorize listening on launch." />
-            <WrapPanel>
-                <Button x:Name="FindButton" Content="_Find devices" Click="Find_Click" Margin="0,4,12,4" Padding="10,6"
-                        AutomationProperties.AutomationId="AudioFind" AutomationProperties.Name="Find local input and output devices explicitly" />
-                <Button x:Name="ReloadButton" Content="_Reload saved choices" Click="Reload_Click" Margin="0,4,12,4" Padding="10,6"
-                        AutomationProperties.AutomationId="AudioReload" />
-            </WrapPanel>
-            <StackPanel x:Name="ChoicesPanel">
-                <Label Content="_Microphone" Target="{Binding ElementName=InputChoice}" />
-                <ComboBox x:Name="InputChoice" MinHeight="30" SelectionChanged="Choice_Changed"
-                          AutomationProperties.AutomationId="AudioInput" AutomationProperties.Name="Microphone fixed endpoint or follow default on next test" />
-                <TextBlock TextWrapping="Wrap" Margin="0,6"
-                           Text="Default follows only on the NEXT authorized test. A default/input/format change during capture stops and discards; it never reopens. Fixed selection never falls back." />
-                <Button x:Name="MicButton" Content="_Test microphone (confirm up to 5 seconds)" Click="Mic_Click" HorizontalAlignment="Left" Padding="10,6"
-                        AutomationProperties.AutomationId="AudioTestMic" />
-                <Label Content="Actual input _level (whole-test 1% RMS plus frame/level coverage advisory; NOT speech detection)" Target="{Binding ElementName=LevelText}" />
-                <TextBox x:Name="LevelText" IsReadOnly="True" Text="No PCM received." AutomationProperties.AutomationId="AudioLevel"
-                         AutomationProperties.Name="Actual selected input whole-test peak RMS and sample count" />
-                <TextBlock TextWrapping="Wrap" Margin="0,4,0,8"
-                           Text="This is only a LOCAL historical level advisory, not an OS permission, speech/VAD or hardware verdict. A quiet or brief valid phrase may fall below it; this test does not gate typed or push-to-talk use." />
-                <Label Content="_Output" Target="{Binding ElementName=OutputChoice}" />
-                <ComboBox x:Name="OutputChoice" MinHeight="30" SelectionChanged="Choice_Changed"
-                          AutomationProperties.AutomationId="AudioOutput" AutomationProperties.Name="Output fixed endpoint or default bound once at start" />
-                <TextBlock TextWrapping="Wrap" Margin="0,6"
-                           Text="Output binds once at test start; no active switching or fallback. A quiet 200 ms faded 440 Hz synthetic tone is not speech. Check your output, volume and audience first; Martlet does not change volume or system defaults." />
-                <WrapPanel>
-                    <Button x:Name="OutputButton" Content="Test output (confirm _tone)" Click="Output_Click" Margin="0,4,12,4" Padding="10,6"
-                            AutomationProperties.AutomationId="AudioTestOutput" />
-                    <Button x:Name="HeardButton" Content="I _heard it on this output" Click="Heard_Click" Margin="0,4,12,4" Padding="10,6" IsEnabled="False"
-                            AutomationProperties.AutomationId="AudioHeard" />
-                </WrapPanel>
-                <Button x:Name="SaveButton" Content="_Save audio choices and historical checkpoints" Click="Save_Click"
-                        HorizontalAlignment="Left" Margin="0,8" Padding="10,6" AutomationProperties.AutomationId="AudioSave" />
+    <DockPanel>
+        <Border DockPanel.Dock="Bottom" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="20,12">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="StopButton" Content="_Stop test" Click="Stop_Click" Padding="14,8" Margin="0,0,8,0" Visibility="Collapsed"
+                            AutomationProperties.AutomationId="AudioStop" AutomationProperties.Name="Stop the current test" />
+                    <Button x:Name="ReloadButton" Content="_Reload" Click="Reload_Click" Padding="14,8" Margin="0,0,8,0" Visibility="Collapsed"
+                            AutomationProperties.AutomationId="AudioReload" AutomationProperties.Name="Reload saved choices" />
+                    <Button x:Name="DoneButton" Content="_Done" Click="Close_Click" Padding="20,8" Style="{DynamicResource PrimaryButton}"
+                            AutomationProperties.AutomationId="AudioClose" AutomationProperties.Name="Done, close microphone and speakers" />
+                </StackPanel>
+                <TextBlock x:Name="MessageText" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0"
+                           AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="AudioMessage" />
+            </DockPanel>
+        </Border>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="22,18,22,18">
+                <TextBlock Text="Microphone and speakers" Style="{DynamicResource PageTitle}" />
+                <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,16"
+                           Text="Pick what Martlet listens to and plays through, then run a quick test. Choices save as you go. Tests stay on this PC: nothing is recorded or sent." />
+
+                <DockPanel Margin="0,0,0,14">
+                    <Button x:Name="FindButton" DockPanel.Dock="Right" Click="Find_Click" Padding="12,7" Margin="12,0,0,0" VerticalAlignment="Center"
+                            AutomationProperties.AutomationId="AudioFind" AutomationProperties.Name="Find microphones and speakers on this PC">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{DynamicResource Icon}" Text="&#xE72C;" FontSize="14" Margin="0,0,8,0" />
+                            <AccessText Text="_Find devices" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <TextBlock x:Name="DevicesText" Style="{DynamicResource Muted}" VerticalAlignment="Center" AutomationProperties.AutomationId="AudioDevices"
+                               Text="Martlet uses your Windows defaults. Find devices to pick a specific one." />
+                </DockPanel>
+
+                <!-- 1. Microphone -->
+                <Border Style="{DynamicResource CardStyle}" Padding="20,16" Margin="0,0,0,14">
+                    <StackPanel>
+                        <DockPanel>
+                            <Border DockPanel.Dock="Right" Style="{DynamicResource Chip}" Margin="8,0,0,0" VerticalAlignment="Center">
+                                <TextBlock x:Name="MicBadge" Style="{DynamicResource ChipText}" AutomationProperties.AutomationId="AudioMicState" />
+                            </Border>
+                            <TextBlock Style="{DynamicResource Icon}" Text="&#xE720;" FontSize="20" Foreground="{DynamicResource AccentBrush}" Margin="0,0,10,0" />
+                            <TextBlock Text="Microphone" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        </DockPanel>
+                        <ComboBox x:Name="InputChoice" Margin="0,12,0,0" MinHeight="34" SelectionChanged="Choice_Changed"
+                                  AutomationProperties.AutomationId="AudioInput" AutomationProperties.Name="Microphone" />
+                        <DockPanel Margin="0,12,0,0">
+                            <Button x:Name="MicButton" DockPanel.Dock="Left" Content="_Test microphone" Click="Mic_Click" Padding="14,8"
+                                    AutomationProperties.AutomationId="AudioTestMic" AutomationProperties.Name="Test microphone for up to 5 seconds" />
+                            <ProgressBar x:Name="MicMeter" Height="8" Minimum="0" Maximum="1" Margin="14,0,0,0" VerticalAlignment="Center"
+                                         AutomationProperties.AutomationId="AudioMicMeter" AutomationProperties.Name="Microphone level during the test" />
+                        </DockPanel>
+                        <TextBlock x:Name="MicText" Margin="0,10,0,0" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
+                                   AutomationProperties.AutomationId="AudioMicText" />
+                    </StackPanel>
+                </Border>
+
+                <!-- 2. Speakers -->
+                <Border Style="{DynamicResource CardStyle}" Padding="20,16" Margin="0,0,0,14">
+                    <StackPanel>
+                        <DockPanel>
+                            <Border DockPanel.Dock="Right" Style="{DynamicResource Chip}" Margin="8,0,0,0" VerticalAlignment="Center">
+                                <TextBlock x:Name="OutputBadge" Style="{DynamicResource ChipText}" AutomationProperties.AutomationId="AudioOutputState" />
+                            </Border>
+                            <TextBlock Style="{DynamicResource Icon}" Text="&#xE767;" FontSize="20" Foreground="{DynamicResource AccentBrush}" Margin="0,0,10,0" />
+                            <TextBlock Text="Speakers or headphones" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        </DockPanel>
+                        <ComboBox x:Name="OutputChoice" Margin="0,12,0,0" MinHeight="34" SelectionChanged="Choice_Changed"
+                                  AutomationProperties.AutomationId="AudioOutput" AutomationProperties.Name="Speakers or headphones" />
+                        <WrapPanel Margin="0,12,0,0">
+                            <Button x:Name="OutputButton" Content="Play test _sound" Click="Output_Click" Padding="14,8" Margin="0,0,10,0"
+                                    AutomationProperties.AutomationId="AudioTestOutput" AutomationProperties.Name="Play a short quiet test beep" />
+                            <Button x:Name="HeardButton" Content="Yes, I _heard it" Click="Heard_Click" Padding="14,8" IsEnabled="False" Visibility="Collapsed"
+                                    Style="{DynamicResource PrimaryButton}"
+                                    AutomationProperties.AutomationId="AudioHeard" AutomationProperties.Name="Yes, I heard the test beep on this output" />
+                        </WrapPanel>
+                        <TextBlock x:Name="OutputText" Margin="0,10,0,0" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
+                                   AutomationProperties.AutomationId="AudioOutputText" />
+                    </StackPanel>
+                </Border>
+
+                <Expander Header="Details" Margin="0,4,0,0" AutomationProperties.AutomationId="AudioDetails">
+                    <StackPanel Margin="0,8,0,0">
+                        <TextBlock Style="{DynamicResource Muted}" FontSize="12" Margin="0,0,0,8"
+                                   Text="Opening this window doesn't list or open any device. Each test asks first, runs only on this PC and keeps nothing: no recording is saved and no provider, network or key is used. A microphone pass means sound came through, not that speech was recognized; a played beep counts as heard only when you confirm it. Saved choices never start a test or listening on their own, and Martlet never changes your volume or Windows defaults." />
+                        <Button Style="{DynamicResource LinkButton}" HorizontalAlignment="Left" Content="Troubleshooting" Click="Troubleshooting_Click"
+                                AutomationProperties.AutomationId="AudioTroubleshooting" />
+                        <TextBlock x:Name="ActivityText" TextWrapping="Wrap" FontSize="12" Margin="0,8,0,0" AutomationProperties.LiveSetting="Polite"
+                                   AutomationProperties.Name="Local audio action and ownership" />
+                        <Label Content="Microphone _level" Target="{Binding ElementName=LevelText}" Padding="0,8,0,4" FontSize="12" />
+                        <TextBox x:Name="LevelText" IsReadOnly="True" TextWrapping="Wrap" FontSize="12" Text="No PCM received."
+                                 AutomationProperties.AutomationId="AudioLevel" AutomationProperties.Name="Actual selected input whole-test peak RMS and sample count" />
+                        <Label Content="Last _result" Target="{Binding ElementName=ResultText}" Padding="0,8,0,4" FontSize="12" />
+                        <TextBox x:Name="ResultText" IsReadOnly="True" TextWrapping="Wrap" MinHeight="54" MaxHeight="160" VerticalScrollBarVisibility="Auto" FontSize="12"
+                                 AutomationProperties.AutomationId="AudioResult" AutomationProperties.Name="Audio action result and remedy" />
+                        <Label Content="Test _history" Target="{Binding ElementName=StatusText}" Padding="0,8,0,4" FontSize="12" />
+                        <TextBox x:Name="StatusText" IsReadOnly="True" TextWrapping="Wrap" MinHeight="90" MaxHeight="230" VerticalScrollBarVisibility="Auto" FontSize="12"
+                                 AutomationProperties.AutomationId="AudioStatus" AutomationProperties.Name="Local microphone and output outcomes, not provider readiness" />
+                    </StackPanel>
+                </Expander>
             </StackPanel>
-            <WrapPanel>
-                <Button x:Name="StopButton" Content="_Stop current local action" Click="Stop_Click" Margin="0,4,12,4" Padding="10,6"
-                        AutomationProperties.AutomationId="AudioStop" />
-                <Button x:Name="PauseButton" Content="_Pause local test (discard)" Click="Stop_Click" Margin="0,4,12,4" Padding="10,6"
-                        AutomationProperties.AutomationId="AudioPause" />
-                <Button Content="Troubleshooting (local only)" Click="Troubleshooting_Click" Margin="0,4,12,4" Padding="10,6" AutomationProperties.AutomationId="AudioTroubleshooting" />
-                <Button Content="_Close audio setup" Click="Close_Click" Margin="0,4,12,4" Padding="10,6"
-                        AutomationProperties.AutomationId="AudioClose" />
-            </WrapPanel>
-            <TextBlock x:Name="ActivityText" TextWrapping="Wrap" Margin="0,6" AutomationProperties.LiveSetting="Polite"
-                       AutomationProperties.Name="Local audio action and ownership" />
-            <Label Content="Local _stages and historical evidence" Target="{Binding ElementName=StatusText}" />
-            <TextBox x:Name="StatusText" IsReadOnly="True" TextWrapping="Wrap" MinHeight="110" MaxHeight="230" VerticalScrollBarVisibility="Auto"
-                     AutomationProperties.AutomationId="AudioStatus" AutomationProperties.Name="Local microphone and output outcomes, not provider readiness" />
-            <TextBox x:Name="ResultText" IsReadOnly="True" TextWrapping="Wrap" MinHeight="70" MaxHeight="160" VerticalScrollBarVisibility="Auto"
-                     AutomationProperties.AutomationId="AudioResult" AutomationProperties.Name="Audio action result and remedy" />
-        </StackPanel>
-    </ScrollViewer>
+        </ScrollViewer>
+    </DockPanel>
 </local:ThemedWindow>

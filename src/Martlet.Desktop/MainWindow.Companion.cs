@@ -331,20 +331,30 @@ public partial class MainWindow
             warning.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
             now.Children.Add(warning);
         }
+        if (section == CompanionTab.Listening && homeSettings?.Audio?.Input.Checkpoint is null)
+        {
+            var mic = new TextBlock { Text = "Microphone not set up yet. Test it below so Martlet can hear you; you can still type.",
+                TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
+            mic.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
+            AutomationProperties.SetAutomationId(mic, "ListeningMicNotSetUp");
+            now.Children.Add(mic);
+        }
         return Card(now);
     }
 
     private Border AudioCard(bool output)
     {
         var audio = homeSettings?.Audio;
-        var tested = output ? audio?.Output.Checkpoint is not null : audio?.Input.Checkpoint is not null;
+        var checkpoint = output ? audio?.Output.Checkpoint : audio?.Input.Checkpoint;
         var what = output ? "Speakers" : "Microphone";
-        var text = tested ? $"{what} chosen and tested on this PC." : audio is not null ? $"{what} chosen, not tested yet." : $"No {what.ToLowerInvariant()} chosen yet.";
+        var text = checkpoint is not null ? $"Set up and tested on {checkpoint.TestedAt.ToLocalTime():d}."
+            : output ? "Not tested yet. Martlet uses your Windows default speakers until you pick others."
+            : "Not set up yet. Pick your microphone and run a quick 5-second test.";
         return Card(Heading(what),
-            Note(text + (output ? " Martlet plays its voice here." : " Martlet listens only while you hold to talk or turn on hands-free.") +
-                " Choosing and testing devices stays on this PC.", new Thickness(0, 0, 0, 8)),
-            Row(PageButton(tested ? $"Change {what.ToLowerInvariant()}" : $"Choose and test {what.ToLowerInvariant()}",
-                () => RunNodeAction(NodeAction.AudioSetup), primary: !tested, id: "OpenAudioSetup")));
+            Note(text + (output ? " Martlet plays its voice here." : " Martlet listens only while you hold to talk or turn on hands-free."),
+                new Thickness(0, 0, 0, 8)),
+            Row(PageButton(checkpoint is not null ? $"Change {what.ToLowerInvariant()}" : $"Set up {what.ToLowerInvariant()}",
+                () => RunNodeAction(NodeAction.AudioSetup), primary: checkpoint is null, id: "OpenAudioSetup")));
     }
 
     private Border VoicesCard() => Card(Heading("Voice Library"),
