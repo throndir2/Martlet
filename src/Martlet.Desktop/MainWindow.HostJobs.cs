@@ -137,12 +137,19 @@ public partial class MainWindow
                 ActionText.Text = $"{job.Title} stays where it is: {cannot}";
                 return;
             }
-            // F5 clones a reference voice: the owner picks one (or adds a recording with its rights confirmation) first.
+            // F5 clones a reference voice. Handing Speaking to a host starts with the voice already chosen for it, else the
+            // bundled sample voice; "Choose another voice" (the host already speaks) opens the picker.
             F5ReferenceSnapshot? voice = null;
-            if (job.RouteType == SetupRouteType.GatewayF5 &&
-                (voice = F5VoiceDialog.Choose(this, store.DataDirectory, host.HostId, route?.DestinationId ?? F5Destination)) is null)
-                return;
+            if (job.RouteType == SetupRouteType.GatewayF5)
+            {
+                var destination = route?.DestinationId ?? F5Destination;
+                voice = NetworkMap.JobHost(homeSettings, job.Role) == host.HostId
+                    ? F5VoiceDialog.Choose(this, store.DataDirectory, host.HostId, destination)
+                    : await F5Voices.DefaultAsync(store.DataDirectory, destination, lifetime.Token);
+                if (voice is null) return;
+            }
             var withVoice = voice is null ? "" : $" in the voice '{voice.PresetName}'";
+            var changeVoice = voice is null ? "" : " You can hear and change the voice later with Choose another voice.";
             if (route is null)
             {
                 var role = HostRoles.Get(job.HostRoleKind);
@@ -153,8 +160,8 @@ public partial class MainWindow
                             : host.CanLaunch ? $"A console opens ({host.Reach}) where you confirm each step and pick the model. " : "Martlet copies the command to run on it. ") +
                         $"It needs {role.Needs}." +
                         (HostCan(host.HostId, job.HostRoleKind) is { Verdict: Martlet.Core.Platforms.PlatformVerdict.Unknown } unsure ? " " + unsure.Reason : "") +
-                        $" Until the model is downloaded Martlet keeps {job.Job} where it is now, then switches over{withVoice} by itself. " +
-                        job.Disclosure + HostCaveats(host.HostId), "Install and hand over"))
+                        $" Until the model is downloaded Martlet keeps {job.Job} where it is now, then switches over{withVoice} by itself." +
+                        changeVoice + " " + job.Disclosure + HostCaveats(host.HostId), "Install and hand over"))
                     return;
                 pendingJobHosts[job.Role] = host.HostId;
                 if (voice is not null) pendingJobVoices[job.Role] = voice;
@@ -163,7 +170,7 @@ public partial class MainWindow
                 return;
             }
             if (!ConfirmationDialog.Confirm(this,
-                    $"Hand {job.Job} to {host.HostId}? Its {job.Engine} model {route.ModelId} {job.Use}{withVoice}. {job.Disclosure}" +
+                    $"Hand {job.Job} to {host.HostId}? Its {job.Engine} model {route.ModelId} {job.Use}{withVoice}.{changeVoice} {job.Disclosure}" +
                     HostCaveats(host.HostId),
                     $"Hand over {job.Job}"))
                 return;

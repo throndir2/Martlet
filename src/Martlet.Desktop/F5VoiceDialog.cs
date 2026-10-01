@@ -1,4 +1,5 @@
 using System.IO;
+using System.Media;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -7,11 +8,13 @@ using Microsoft.Win32;
 
 namespace Martlet.Desktop;
 
-/// <summary>Chooses the reference voice a host's F5 clones: one already in the local F5 preset store, or a new recording
-/// with its exact transcript and the owner's voice-rights confirmation (voice-rights-v1), which the store requires.</summary>
+/// <summary>Chooses the reference voice a host's F5 clones: one already in the local F5 preset store, Martlet's bundled
+/// sample voice, or a new recording with its exact transcript and the owner's voice-rights confirmation (voice-rights-v1),
+/// which the store requires. Play lets the owner hear the selected recording first.</summary>
 internal sealed class F5VoiceDialog : ThemedWindow
 {
     private const string NewKey = "new";
+    private const string SampleKey = "sample";
     private readonly string dataDirectory;
     private readonly string destination;
     private readonly ComboBox voices = new();
@@ -33,6 +36,7 @@ internal sealed class F5VoiceDialog : ThemedWindow
     private readonly TextBlock error = new() { TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed, Margin = new Thickness(0, 8, 0, 0) };
     private readonly Button ok = new() { Content = "_Use this voice", IsDefault = true, MinWidth = 110 };
     private F5ReferenceSnapshot? chosen;
+    private SoundPlayer? player;
 
     private F5VoiceDialog(string dataDirectory, string host, string destination, IReadOnlyList<F5ReferenceSnapshot> existing)
     {
@@ -54,17 +58,27 @@ internal sealed class F5VoiceDialog : ThemedWindow
         {
             Text = "F5 clones a voice from a short reference recording: a mono 16-bit PCM WAV of 1 to 30 seconds (5 to 15 seconds " +
                 "of clear speech works best) and the exact words it says. Martlet keeps a copy in its voice list on this PC and " +
-                "sends it with each reply only to that host. Keep the original file where it is; Martlet checks it has not changed.",
+                "sends it with each reply only to that host. Keep the original file where it is; Martlet checks it has not changed. " +
+                $"'{F5Voices.SampleName}' is the reference clip published with F5-TTS, ready to use. Choose Play to hear a voice.",
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 10)
         });
         root.Children.Add(new Label { Content = "_Voice", Target = voices, Padding = new Thickness(0, 0, 0, 4) });
         AutomationProperties.SetAutomationId(voices, "F5Voice");
         foreach (var snapshot in existing)
             voices.Items.Add(new ComboBoxItem { Content = $"{snapshot.PresetName} (added {snapshot.CreatedAtUtc.ToLocalTime():d})", Tag = snapshot });
+        if (!existing.Any(F5Voices.IsSample))
+            voices.Items.Add(new ComboBoxItem { Content = F5Voices.SampleName, Tag = SampleKey });
         voices.Items.Add(new ComboBoxItem { Content = "A new recording...", Tag = NewKey });
         voices.SelectedIndex = 0;
         voices.SelectionChanged += (_, _) => ShowNew();
-        root.Children.Add(voices);
+        var play = new Button { Content = "_Play", Margin = new Thickness(8, 0, 0, 0), MinWidth = 90 };
+        AutomationProperties.SetAutomationId(play, "F5VoicePlay");
+        play.Click += async (_, _) => await PlayAsync();
+        var choice = new DockPanel();
+        DockPanel.SetDock(play, Dock.Right);
+        choice.Children.Add(play);
+        choice.Children.Add(voices);
+        root.Children.Add(choice);
 
         var browse = new Button { Content = "_Browse...", Margin = new Thickness(8, 0, 0, 0), MinWidth = 90 };
         browse.Click += (_, _) =>
@@ -108,6 +122,7 @@ internal sealed class F5VoiceDialog : ThemedWindow
         buttons.Children.Add(ok);
         root.Children.Add(buttons);
         Content = root;
+        Closed += (_, _) => player?.Stop();
         ShowNew();
     }
 
@@ -137,13 +152,72 @@ internal sealed class F5VoiceDialog : ThemedWindow
     private void ShowNew() =>
         newVoice.Visibility = (voices.SelectedItem as ComboBoxItem)?.Tag is NewKey ? Visibility.Visible : Visibility.Collapsed;
 
+    /// <summary>Plays the selected voice's recording on the default output device: the stored copy of a listed voice, the
+    /// bundled sample, or the chosen file of a new recording.</summary>
+    private async Task PlayAsync()
+    {
+        error.Visibility = Visibility.Collapsed;
+        try
+        {
+            byte[] audio;
+            switch ((voices.SelectedItem as ComboBoxItem)?.Tag)
+            {
+                case F5ReferenceSnapshot snapshot:
+                    audio = await F5Voices.ReadAudioAsync(dataDirectory, snapshot, CancellationToken.None);
+                    break;
+                case SampleKey:
+                    audio = F5Voices.SampleBytes;
+                    break;
+                default:
+                    if (!File.Exists(path.Text))
+                    {
+                        Show("Choose the recording (a WAV file) to play it.");
+                        return;
+                    }
+                    if (new FileInfo(path.Text).Length > F5ReferenceLimits.MaximumAudioFileBytes)
+                    {
+                        Show("The recording must be a mono 16-bit PCM WAV of 1 to 30 seconds, at most 4 MB.");
+                        return;
+                    }
+                    audio = await File.ReadAllBytesAsync(path.Text);
+                    break;
+            }
+            player?.Stop();
+            player = new SoundPlayer(new MemoryStream(audio));
+            player.Play();
+        }
+        catch (F5Exception failure) { Show(F5Voices.Describe(failure)); }
+        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            Show("This recording can't be played: " + failure.Message);
+        }
+    }
+
     private async Task AcceptAsync()
     {
         error.Visibility = Visibility.Collapsed;
+        player?.Stop();
         if ((voices.SelectedItem as ComboBoxItem)?.Tag is F5ReferenceSnapshot existing)
         {
             chosen = existing;
             DialogResult = true;
+            return;
+        }
+        if ((voices.SelectedItem as ComboBoxItem)?.Tag is SampleKey)
+        {
+            ok.IsEnabled = false;
+            try
+            {
+                using var store = F5Voices.Open(dataDirectory);
+                chosen = await F5Voices.SampleAsync(store, dataDirectory, destination, CancellationToken.None);
+                DialogResult = true;
+            }
+            catch (F5Exception failure) { Show(F5Voices.Describe(failure)); }
+            catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or InvalidOperationException)
+            {
+                Show(failure.Message);
+            }
+            finally { ok.IsEnabled = true; }
             return;
         }
         var problem = !File.Exists(path.Text) ? "Choose the recording (a WAV file)."
