@@ -119,6 +119,16 @@ public partial class MainWindow
         {
             await CheckForUpdatesAsync(background: true);
             if (closing) return;
+            if (!AutoInstalling && availableUpdate is { } offered && announcedUpdate != offered.Tag)
+            {
+                announcedUpdate = offered.Tag;
+                if (OwnedWindows.Count == 0 && !setupOperations.IsRunning)
+                {
+                    await ConfirmAndInstallAsync(offered, prompted: true);
+                    if (closing) return;
+                }
+                else ActionText.Text = $"Martlet {offered.Version.ToString(3)} is available. Install it from Settings > App updates.";
+            }
             if (AutoInstalling && availableUpdate is { } update && readyUpdate?.Update.Version != update.Version)
                 await DownloadUpdateAsync();
             if (AutoInstallReady && readyUpdate is { } ready && !closing)
@@ -228,11 +238,6 @@ public partial class MainWindow
             UpdateStatusText.Text = $"Martlet {result.Version.ToString(3)} is available ({Mib(result)})." + (AutoInstalling
                 ? " Downloading it to install automatically."
                 : " Press Install to download it, check it against GitHub's SHA-256 digest and restart into it.");
-            if (background && !AutoInstalling && announcedUpdate != result.Tag)
-            {
-                announcedUpdate = result.Tag;
-                ActionText.Text = $"Martlet {result.Version.ToString(3)} is available. Install it from Settings > App updates.";
-            }
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
         catch (OperationCanceledException)
@@ -290,13 +295,21 @@ public partial class MainWindow
     private async void DownloadUpdate_Click(object sender, RoutedEventArgs e)
     {
         if (closing || updateBusy || availableUpdate is not { } update) return;
+        await ConfirmAndInstallAsync(update, prompted: false);
+    }
+
+    /// <summary>Asks once, then downloads and verifies the installer, closes Martlet, runs the installer and starts again.</summary>
+    private async Task ConfirmAndInstallAsync(GitHubUpdate update, bool prompted)
+    {
         var busy = BusyReason();
         if (!ConfirmationDialog.Confirm(this,
-                $"Install Martlet {update.Version.ToString(3)} now? Martlet downloads {update.AssetName} ({Mib(update)}) from its public " +
-                "GitHub Release, checks it against GitHub's SHA-256 digest, then closes, installs it and starts again." +
+                (prompted ? $"A new version of Martlet ({update.Version.ToString(3)}) is available; you run {Version}.\n\n" : "") +
+                $"Update to Martlet {update.Version.ToString(3)} now? Martlet downloads {update.AssetName} ({Mib(update)}) from its public " +
+                "GitHub Release, checks it against GitHub's SHA-256 digest, then closes, runs the installer and starts again." +
                 (busy is null ? "" : $" {busy} stops until Martlet is back.") +
+                (prompted ? " Choose No to keep working; Settings > App updates can install it later." : "") +
                 "\n\nThe installer is not code-signed: the digest detects a damaged download but does not prove who published it.",
-                "Install update"))
+                prompted ? "Martlet update available" : "Install update"))
             return;
         if (readyUpdate?.Update.Version != update.Version) await DownloadUpdateAsync();
         if (readyUpdate?.Update.Version == update.Version) InstallNow(quiet: false);

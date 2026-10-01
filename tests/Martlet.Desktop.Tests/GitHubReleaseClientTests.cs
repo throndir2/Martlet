@@ -8,12 +8,12 @@ namespace Martlet.Desktop.Tests;
 public sealed class GitHubReleaseClientTests
 {
     [Fact]
-    public void UpdateChecksDefaultOffAndAreStoredOutsideProfile()
+    public void UpdateChecksDefaultOnAndAreStoredOutsideProfile()
     {
         var root = Path.Combine(Path.GetTempPath(), "Martlet.UpdateCheck." + Guid.NewGuid().ToString("N"));
         try
         {
-            Assert.False(UpdateCheckPreferences.Load(root));
+            Assert.True(UpdateCheckPreferences.Load(root));
             Assert.False(Directory.Exists(root));
             Directory.CreateDirectory(root);
             File.WriteAllText(Path.Combine(root, "settings.json"), "profile sentinel");

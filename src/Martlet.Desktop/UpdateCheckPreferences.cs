@@ -19,8 +19,8 @@ internal static class UpdateCheckPreferences
                 _ => throw new InvalidDataException("Unrecognized update-check preference.")
             };
         }
-        catch (FileNotFoundException) { return false; }
-        catch (DirectoryNotFoundException) { return false; }
+        catch (FileNotFoundException) { return true; }
+        catch (DirectoryNotFoundException) { return true; }
     }
 
     internal static void Save(string directory, bool enabled)
