@@ -163,6 +163,8 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
             return HostTranscriptionAdapter.Binding(listener, route.ModelId);
         if (role == SetupRole.Tts && Configuration.HostSpeechTarget() is { } voiceHost)
             return HostSpeechSynthesisStream.Binding(voiceHost);
+        if (role == SetupRole.Tts && Configuration.WindowsVoiceTarget() is { } windowsVoice)
+            return WindowsVoiceSynthesisStream.Binding(windowsVoice);
         // A Chat Completions key is bound to the exact saved API base URL, never to api.openai.com.
         var origin = route.RouteType == SetupRouteType.ChatCompletions
             ? ChatCompletionsSetup.BaseUri(route.Origin) : OpenAiTranscriptionCatalog.Origin;

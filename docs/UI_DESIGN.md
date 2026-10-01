@@ -81,12 +81,20 @@ its own page inside the main window (with tabs to move between them and a
 
 1. *How Martlet thinks*: where the conversation model runs, the provider, the
    model and its API key.
-2. *Its voice* (optional): speakers, then the text-to-speech provider, model,
-   voice and key, plus the Voice Library.
-3. *How it listens* (optional): microphone, then the speech-to-text provider,
-   model and key.
-4. *Character* (optional): the character model (show, hide, customize, reset),
-   its personality and memory, and who handles lip-sync.
+2. *Its voice* (optional): where the voice runs and the voice itself, then the
+   speakers.
+3. *How it listens* (optional): the speech-to-text provider, model and key,
+   then the microphone.
+4. *Character* (optional): what it looks like now, then the character model
+   (show, hide, customize, reset), its personality and memory, and who handles
+   lip-sync.
+
+Every page starts with **Now**: what the job uses and any problem stopping
+it. Cards appear only when they apply to the chosen place: the Voice Library
+shows only where F5 speaks (this PC's F5 or another of your computers), never
+for a cloud provider or a Windows voice; a single-provider cloud card names
+the provider instead of offering a one-item list; Ollama's download and check
+buttons appear once Ollama is installed.
 
 Each job page (1-3) asks **Where it runs**, defaulting to *This PC
 (recommended)*:
@@ -94,9 +102,14 @@ Each job page (1-3) asks **Where it runs**, defaulting to *This PC
 - *This PC*: thinking uses Ollama at `http://127.0.0.1:11434/v1` (install
   Ollama, pick a suggested model sized to the graphics card, *Download model*
   in a console, *Check Ollama* over loopback on request, *Use Ollama on this
-  PC*). Speaking (F5) and listening (whisper) run in Martlet's host service on
-  this PC; if it isn't set up yet, the page offers Docker Desktop and *Set up
-  this PC's host service*, then *Use F5/whisper on this PC* installs the role.
+  PC*). Speaking offers two one-click choices, the one in use (or the one this
+  PC's hardware suits) first: **F5 voice, with Docker** (*Set up F5 with
+  Docker* sets up and pairs Martlet's host service on this PC, so this PC also
+  becomes one of your hosts, installs F5 and switches over with F5-TTS's
+  published sample voice) or **Windows voice, no Docker** (*Use a Windows
+  voice* picks an installed voice in this PC's language; no host service; a
+  voice list and *Hear it* follow). Listening (whisper) runs in Martlet's host
+  service on this PC; *Set up whisper with Docker* does the same chain.
 - *Another of your computers*: every paired host with what it runs and *Use
   it*, plus *Add a computer*, *Check hosts* and the Devices map. This replaces
   the old *More computers* step.

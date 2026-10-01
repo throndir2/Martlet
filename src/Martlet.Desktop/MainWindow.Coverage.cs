@@ -43,7 +43,9 @@ public partial class MainWindow
                 Fallback = saved is null ? null : SavedName(saved), FallbackIsCloud = saved is not null && IsCloud(saved)
             };
         }
-        if (route.RouteType is SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWindowsTts or SetupRouteType.LocalWhisper)
+        if (route.RouteType == SetupRouteType.LocalWindowsTts)
+            return new() { Job = job.Job, Doer = JobDoer.ThisDevice, DoerName = name, Enabled = enabled, Reviewed = reviewed };
+        if (route.RouteType is SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWhisper)
             return new()
             {
                 Job = job.Job, Doer = JobDoer.ThisDevice, DoerName = name, Enabled = enabled, Reviewed = reviewed,

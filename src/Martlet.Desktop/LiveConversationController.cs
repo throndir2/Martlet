@@ -168,7 +168,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         runtime = runtimeFactory?.Invoke(credentials, this.clock) ??
             ConversationRuntime.Create(credentials, playbackDevices, clock: this.clock, generatedSpeech: generatedSpeech,
                 hostText: new HostTextClient(), hostSpeech: dataDirectory is null ? null : new HostSpeechClient(dataDirectory),
-                spokenText: spokenText);
+                spokenText: spokenText, windowsVoice: new WindowsVoiceClient());
         transcription = transcriptionFactory?.Invoke(credentials, this.clock) ??
             OpenAiTranscriptionAdapter.Create(credentials, this.clock);
         hostTranscription = new(hostListener ?? new HostTranscriptionClient(), this.clock);

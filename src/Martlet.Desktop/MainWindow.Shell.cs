@@ -360,8 +360,8 @@ public partial class MainWindow
                 brainReady, false, [new(brainReady ? "Change" : "Choose", () => OpenSection(SetupSection.Thinking), !brainReady)]),
             new("voice", "Its voice",
                 Problem(ClusterJobs.Speaking) is { } speakingProblem ? $"Not working now: {speakingProblem.Problem}"
-                    : NetworkMap.IsReady(tts) ? $"Speaks with {PlaceName(tts!)}{(tts!.Reference is { } voice ? $", voice {voice.PresetName}" : tts.VoiceId is { } id ? $", voice {id}" : "")}"
-                    : "Text-to-speech provider, model, voice and key. Uses the F5 voice on this PC by default.",
+                    : NetworkMap.IsReady(tts) ? $"Speaks with {PlaceName(tts!)}{VoiceSuffix(tts!)}"
+                    : "Text-to-speech provider, model, voice and key. Speaks on this PC by default: the F5 voice with Docker, or a Windows voice.",
                 NetworkMap.IsReady(tts), true, [new(NetworkMap.IsReady(tts) ? "Change" : "Set up", () => OpenSection(SetupSection.Voice))]),
             new("listen", "How it listens",
                 Problem(ClusterJobs.Listening) is { } listeningProblem ? $"Not working now: {listeningProblem.Problem}"

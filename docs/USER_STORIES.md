@@ -1281,9 +1281,11 @@ prompt per run.
 
 These need building before the recipes in 11.2 work:
 
-1. **Windows speech as a route.** `Martlet.Speech.Windows` and
-   `Martlet.Stt.Windows` exist but aren't choices in the app. Without them a
-   PC with no GPU and an OpenRouter/NVIDIA key has no voice or listening.
+1. **Windows speech as a route.** Done for speaking: *Its voice › This PC ›
+   Windows voice, no Docker* saves an installed Windows voice and
+   conversations speak with it through SAPI on this PC (no System.Speech
+   package in the release). `Martlet.Stt.Windows` (recognition) still isn't a
+   choice in the app.
 2. **Listening on this PC without Docker.** `Martlet.LocalStt` (native
    whisper.cpp, no Docker) exists as a disabled candidate. Wiring it in
    removes WSL, Docker Desktop and the host service from the most common

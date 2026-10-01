@@ -10,6 +10,7 @@ public sealed class ConversationRuntime : IAsyncDisposable
     internal OpenAiTextGenerationAdapter Text { get; }
     internal IHostTextClient? HostText { get; private init; }
     internal IHostSpeechClient? HostSpeech { get; private init; }
+    internal IWindowsVoiceClient? WindowsVoice { get; private init; }
     internal OpenAiSpeechSynthesisAdapter? Speech { get; }
     internal PcmPlaybackSink? Sink { get; }
     internal PlaybackOptions PlaybackOptions { get; }
@@ -44,7 +45,7 @@ public sealed class ConversationRuntime : IAsyncDisposable
     public static ConversationRuntime Create(IProviderCredentialSource credentials,
         IPlaybackDeviceFactory? devices = null, PlaybackOptions? playbackOptions = null, TimeProvider? clock = null,
         GeneratedSpeechObserver? generatedSpeech = null, IHostTextClient? hostText = null, IHostSpeechClient? hostSpeech = null,
-        SpokenTextFeed? spokenText = null)
+        SpokenTextFeed? spokenText = null, IWindowsVoiceClient? windowsVoice = null)
     {
         ArgumentNullException.ThrowIfNull(credentials);
         var time = clock ?? TimeProvider.System;
@@ -53,24 +54,28 @@ public sealed class ConversationRuntime : IAsyncDisposable
         return new(OpenAiTextGenerationAdapter.Create(credentials, time),
             devices is null ? null : OpenAiSpeechSynthesisAdapter.Create(credentials, time), sink, options, time,
             target => ChatCompletionsTextGenerationAdapter.Create(target.BaseUrl, target.Keyless ? null : credentials, time))
-            { GeneratedSpeech = generatedSpeech, HostText = hostText, HostSpeech = hostSpeech, SpokenText = spokenText };
+            { GeneratedSpeech = generatedSpeech, HostText = hostText, HostSpeech = hostSpeech, SpokenText = spokenText, WindowsVoice = windowsVoice };
     }
 
     internal static ConversationRuntime ForFixture(OpenAiTextGenerationAdapter text,
         OpenAiSpeechSynthesisAdapter? speech, IPlaybackDeviceFactory? devices, PlaybackOptions options, TimeProvider clock,
         GeneratedSpeechObserver? generatedSpeech = null,
         Func<ChatCompletionsTarget, ChatCompletionsTextGenerationAdapter>? chat = null, IHostTextClient? hostText = null,
-        IHostSpeechClient? hostSpeech = null)
+        IHostSpeechClient? hostSpeech = null, IWindowsVoiceClient? windowsVoice = null)
     {
         return new(text, speech, devices is null ? null : new(devices, options, clock), options, clock, chat)
-            { GeneratedSpeech = generatedSpeech, HostText = hostText, HostSpeech = hostSpeech };
+            { GeneratedSpeech = generatedSpeech, HostText = hostText, HostSpeech = hostSpeech, WindowsVoice = windowsVoice };
     }
 
-    // The saved TTS destination: a paired Martlet host's F5 voice or the OpenAI speech adapter.
+    // The saved TTS destination: a paired Martlet host's F5 voice, an installed Windows voice or the OpenAI speech adapter.
     internal ISpeechSynthesisStream StreamSpeech(ProviderRequestContext context, ConversationRequest request,
         BoundedSpeechInput input, SpeechDisclosureAuthorization consent, CancellationToken caller)
     {
         var voice = request.Speech!;
+        if (request.WindowsVoice is { } windows)
+            return new WindowsVoiceSynthesisStream(WindowsVoice ?? throw new InvalidOperationException(
+                "This runtime was not composed with a Windows voice client."), windows, context, voice.Selection,
+                input, voice.Limits, consent, Clock, caller);
         if (request.HostSpeech is { } host)
             return new HostSpeechSynthesisStream(HostSpeech ?? throw new InvalidOperationException(
                 "This runtime was not composed with a Martlet host speech client."), host, context, voice.Selection,

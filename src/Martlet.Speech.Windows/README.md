@@ -11,7 +11,10 @@ of arbitrary third-party voice plug-ins.
 ## Host integration contract
 
 The Desktop/settings/package integration is a separately coordinated change;
-this module alone does not add a visible conversation selection.
+this module alone does not add a visible conversation selection. Desktop's
+*Windows voice, no Docker* choice speaks through SAPI over COM directly
+(`src/Martlet.Desktop/WindowsVoices.cs`, same installed voice IDs and 24 kHz
+mono PCM16 output), so the release does not carry the System.Speech package.
 
 - Persist the explicit `LocalWindowsTts` route, provider `windows-speech`,
   model `windows-installed`, origin `local://windows`, and exact installed
