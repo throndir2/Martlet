@@ -41,6 +41,7 @@ ROLES_DIR="${MARTLET_HOST_ROLES_DIR:-${HERE}/roles}"
 MODE="${MARTLET_HOST_MODE:-native}"
 SERVICE="martlet-host-gateway"
 NET="martlet-host-net"
+HOLD_READY="Network holder ready."
 HELPER_IMAGE="busybox:1.36.1"
 DOTNET_SDK="10.0.401"
 
@@ -288,8 +289,30 @@ write_config() {
 }
 
 service_stop() {
-  if [[ "${MODE}" == docker ]]; then docker stop "${SERVICE}" >/dev/null 2>&1 || true
+  if [[ "${MODE}" == docker ]]; then
+    # Something else (the network holder's restart pass, the restart policy) can start it again right after a stop.
+    local attempt
+    for attempt in 1 2 3 4 5 6 7 8 9 10; do
+      docker stop "${SERVICE}" >/dev/null 2>&1 || true
+      sleep 1
+      [[ "$(docker container inspect -f '{{.State.Running}}' "${SERVICE}" 2>/dev/null || true)" == true ]] || return 0
+    done
   else systemctl --user stop "${SERVICE}.service" 2>/dev/null || true; fi
+}
+
+# Runs a short owner operation (owner-init, owner-approve) with the service stopped. The gateway state allows one
+# process at a time, so while a just-stopped gateway is still letting go of it (StoreBusy) it waits and tries again.
+owner_operation() {
+  local attempt out status
+  for attempt in 1 2 3 4 5 6; do
+    service_stop
+    status=0
+    out="$(gateway "$@" 2>&1)" || status=$?
+    printf '%s\n' "${out}"
+    [[ ${status} != 0 && "${out}" == *StoreBusy:* && ${attempt} -lt 6 ]] || return ${status}
+    note "Another gateway process still holds this host's state; waiting for it to stop, then trying again..."
+    sleep 5
+  done
 }
 
 service_start() {
@@ -316,7 +339,7 @@ reapprove() {
   service_stop
   if assume_yes; then
     note "The gateway configuration changed; renewing its unattended-start approval for exactly this configuration."
-    gateway owner-approve --config "${GW_CONFIG}" || fail "The gateway approval was not renewed."
+    owner_operation owner-approve --config "${GW_CONFIG}" || fail "The gateway approval was not renewed."
   else
     cat <<'TEXT'
 
@@ -489,7 +512,13 @@ docker_launch() {
       docker run -d --name "${NET}" --restart unless-stopped -p "${lan}:${port}:${port}" --user 1000:1000 \
         --group-add "${socket_group}" -v /var/run/docker.sock:/var/run/docker.sock "${IMAGE}" hold >/dev/null
       note "Gateway address ${lan}:${port} is published by ${NET}."
-      sleep 4
+      # The new holder first restarts the gateway and roles in its network; let it finish so it cannot restart
+      # the gateway while setup has it stopped for an owner operation.
+      local waited
+      for waited in {1..90}; do
+        sleep 2
+        [[ "$(docker logs "${NET}" 2>&1 || true)" == *"${HOLD_READY}"* ]] && break
+      done
     fi
     docker volume create martlet-host-config >/dev/null
     docker volume create martlet-host-private >/dev/null
@@ -517,6 +546,7 @@ cmd_hold() {
       docker restart "${container}" >/dev/null 2>&1 && note "Restarted ${container} in the gateway network." || true
     fi
   done < <(docker ps -aq 2>/dev/null || true)
+  note "${HOLD_READY}"
   while true; do sleep 3600 & wait $!; done
 }
 
@@ -560,7 +590,7 @@ cmd_setup() {
     service_stop
     if assume_yes; then
       note "Creating this host's permanent gateway identity and approving its unattended start."
-      gateway owner-init --config "${GW_CONFIG}" || fail "The gateway identity was not created."
+      owner_operation owner-init --config "${GW_CONFIG}" || fail "The gateway identity was not created."
     else
       cat <<'TEXT'
 The gateway console opens to create this host's identity. Confirm creation with: yes
