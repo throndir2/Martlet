@@ -351,8 +351,6 @@ public partial class MainWindow
         var voiceReady = NetworkMap.IsReady(stt) && NetworkMap.IsReady(tts);
         var audio = homeSettings?.Audio;
         var audioTested = audio is { Input.Checkpoint: not null, Output.Checkpoint: not null };
-        var characterName = homeAvatar is { } saved && BundledLive2D.IsBuiltIn(saved.ModelPath)
-            ? saved.ModelPath[BundledLive2D.Prefix.Length..] : homeAvatar is null ? "Hiyori" : "Your character";
         var paired = NetworkMap.Hosts(Inputs()).Count;
         var hosts = paired > 0 || routes.Any(r => r.Gateway is not null);
 
@@ -371,7 +369,7 @@ public partial class MainWindow
                 audioTested ? "Tested on this PC" : audio is not null ? "Chosen, not tested yet" : "Pick and test them. Nothing leaves this PC.",
                 audioTested, true, [new(audioTested ? "Change" : "Test", () => RunNodeAction(NodeAction.AudioSetup))]),
             new("character", "Character",
-                avatar.IsShowing ? $"{characterName} is on your desktop" : $"{characterName} is ready. Show it or choose your own model.",
+                avatar.IsShowing ? "Your character is on your desktop" : "Your character is ready. Show it or customize it.",
                 homeAvatar is not null || avatar.IsShowing, true,
                 [new(avatar.IsShowing ? "Hide" : "Show", () => RunNodeAction(NodeAction.ToggleCharacter)),
                  new("Customize", () => RunNodeAction(NodeAction.Character))]),
