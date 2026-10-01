@@ -73,11 +73,11 @@ public sealed class SupportIntegrationTests
     });
 
     [Theory]
-    [InlineData("SetupButton", "SetupTroubleshooting", false)]
-    [InlineData("AudioSetupButton", "AudioTroubleshooting", false)]
+    [InlineData("OpenSetup", "SetupTroubleshooting", false)]
+    [InlineData("OpenAudioSetup", "AudioTroubleshooting", false)]
     [InlineData("ConversationButton", "LiveTroubleshooting", false)]
-    [InlineData("SetupButton", "SetupTroubleshooting", true)]
-    [InlineData("AudioSetupButton", "AudioTroubleshooting", true)]
+    [InlineData("OpenSetup", "SetupTroubleshooting", true)]
+    [InlineData("OpenAudioSetup", "AudioTroubleshooting", true)]
     [InlineData("ConversationButton", "LiveTroubleshooting", true)]
     public Task MainSupportCanBePresentedInsideEachShownModalWorkflow(string workflowButton, string supportButton, bool blocked) => OnDispatcher(async () =>
     {
@@ -92,12 +92,13 @@ public sealed class SupportIntegrationTests
         var observed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         try
         {
-            await Until(() => Field<Button>(main, workflowButton).IsEnabled);
+            // Setup and Audio setup open from Companion's Thinking and Listening tabs; each waits for the same idle state as Start talking.
+            await Until(() => Field<Button>(main, "ConversationButton").IsEnabled);
             ButtonById(main, "OpenTroubleshooting").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             original = main.OwnedWindows.OfType<TroubleshootingWindow>().Single();
             Click(original, "RecordButton");
             await Until(() => Field<TextBox>(original, "WorkText").Text.Contains("Recording: ON", StringComparison.Ordinal) &&
-                !controller.IsBusy && Field<Button>(main, workflowButton).IsEnabled);
+                !controller.IsBusy && Field<Button>(main, "ConversationButton").IsEnabled);
             if (blocked)
             {
                 fs.WriteRelease = release;
@@ -139,7 +140,13 @@ public sealed class SupportIntegrationTests
                 catch (Exception error) { observed.TrySetException(error); }
                 finally { modal?.Close(); }
             });
-            Click(main, workflowButton); // Enters the real WPF modal dispatcher frame.
+            if (workflowButton == "ConversationButton") Click(main, workflowButton); // Enters the real WPF modal dispatcher frame.
+            else
+            {
+                Field<RadioButton>(main, "NavCompanion").IsChecked = true;
+                if (workflowButton == "OpenAudioSetup") ButtonById(main, "CompanionTab-Listening").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                ButtonById(main, workflowButton).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            }
             await observed.Task.WaitAsync(TimeSpan.FromSeconds(10));
         }
         finally

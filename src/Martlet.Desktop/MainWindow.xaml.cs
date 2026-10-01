@@ -96,9 +96,7 @@ public partial class MainWindow : ThemedWindow
         else
         {
             PipelineText.Text = "Mic / VAD / STT / Policy / LLM / TTS / Playback: unavailable; not run. Correct the launch data directory first.";
-            SetupButton.IsEnabled = AudioSetupButton.IsEnabled = CompanionButton.IsEnabled =
-                MemoryButton.IsEnabled = ConversationButton.IsEnabled = VoiceLibraryButton.IsEnabled =
-                AutomaticUpdateCheck.IsEnabled = CheckForUpdatesButton.IsEnabled = PrimaryStageButton.IsEnabled =
+            ConversationButton.IsEnabled = AutomaticUpdateCheck.IsEnabled = CheckForUpdatesButton.IsEnabled = PrimaryStageButton.IsEnabled =
                 AutomaticHostUpdate.IsEnabled = UpdateHostsButton.IsEnabled = false;
         }
         InitializeShell();
@@ -170,12 +168,7 @@ public partial class MainWindow : ThemedWindow
         ActivityText.Text = setupOperations.IsRunning ? "An app-shared setup/audio/conversation worker owns resources. Check its action window; new effects wait for actual cleanup."
             : model.Activity;
         CreateButton.IsEnabled = !saving && !setupOperations.IsRunning && model.CanCreateProfile;
-        SetupButton.IsEnabled = !saving && !model.IsRunning;
-        AudioSetupButton.IsEnabled = SetupButton.IsEnabled;
-        CompanionButton.IsEnabled = SetupButton.IsEnabled;
-        MemoryButton.IsEnabled = SetupButton.IsEnabled;
-        ConversationButton.IsEnabled = PrimaryStageButton.IsEnabled = SetupButton.IsEnabled;
-        VoiceLibraryButton.IsEnabled = SetupButton.IsEnabled;
+        ConversationButton.IsEnabled = PrimaryStageButton.IsEnabled = !saving && !model.IsRunning;
         RefreshButton.IsEnabled = !saving && model.CanRefresh;
         StopButton.IsEnabled = !saving && model.IsRunning;
     }
@@ -288,7 +281,7 @@ public partial class MainWindow : ThemedWindow
                 var missing = SetupAdvisor.Recommend(advisor.Answers).ThisPcInstalls.Select(Prerequisites.For).Where(Prerequisites.IsMissing).ToArray();
                 ActionText.Text = missing.Length > 0 ? Prerequisites.Launch(missing) : "Everything this plan needs on this PC is already installed.";
                 break;
-            case AdvisorNextStep.Setup: Setup_Click(sender, e); break;
+            case AdvisorNextStep.Setup: OpenCompanion(CompanionTab.Thinking); break;
             case AdvisorNextStep.AudioSetup: AudioSetup_Click(sender, e); break;
             case AdvisorNextStep.Hosts: Hosts_Click(sender, e); break;
             case AdvisorNextStep.VoiceLibrary: VoiceLibrary_Click(sender, e); break;
