@@ -17,14 +17,14 @@ using Martlet.Providers;
 
 namespace Martlet.Desktop;
 
-/// <summary>The setup pages Home links to. Each is one in-window page.</summary>
-internal enum SetupSection { Thinking, Voice, Listening, Character }
+/// <summary>The Companion page's tabs: the one place each choice that shapes Martlet is made. Home and Devices link here.</summary>
+internal enum CompanionTab { Thinking, Voice, Listening, Character, Memory }
 
 /// <summary>A conversation model Ollama can download and run on this PC. <paramref name="MinimumVramGb"/> is the GPU memory it
 /// needs to run comfortably on the graphics card (0 means any PC).</summary>
 internal sealed record LocalChatModel(string Id, string Size, string Fits, double MinimumVramGb);
 
-/// <summary>The setup pages: How Martlet thinks, Its voice, How it listens and Character. Each job page asks where the job runs
+/// <summary>The Companion page: Thinking, Voice, Listening, Character and Memory tabs. Each job tab asks where the job runs
 /// (this PC by default, another of your computers, or a cloud provider) and shows only that place's fields, including the API
 /// key for a cloud provider. Everything saves through the same setup service, consent and credential rules as Setup.</summary>
 public partial class MainWindow
@@ -55,26 +55,43 @@ public partial class MainWindow
         CustomCloud
     ];
 
-    private SetupSection? openSection;
-    private bool sectionEdited;
-    private bool savingSection;
+    private CompanionTab companionTab = CompanionTab.Thinking;
+    private CompanionTab? openTab;
+    private bool tabEdited;
+    private bool savingTab;
     private IReadOnlyList<string>? ollamaModels;
     private IReadOnlyList<WindowsVoice>? windowsVoices;
-    private readonly Dictionary<SetupSection, JobPlace> sectionPlace = [];
+    private readonly Dictionary<CompanionTab, JobPlace> tabPlace = [];
 
-    private static SetupRole RoleOf(SetupSection section) => section switch
+    private static SetupRole RoleOf(CompanionTab section) => section switch
     {
-        SetupSection.Voice => SetupRole.Tts,
-        SetupSection.Listening => SetupRole.Stt,
+        CompanionTab.Voice => SetupRole.Tts,
+        CompanionTab.Listening => SetupRole.Stt,
         _ => SetupRole.Llm
     };
 
-    private static string SectionTitle(SetupSection section) => section switch
+    internal static CompanionTab TabFor(SetupRole role) => role switch
     {
-        SetupSection.Thinking => "How Martlet thinks",
-        SetupSection.Voice => "Its voice",
-        SetupSection.Listening => "How it listens",
-        _ => "Character"
+        SetupRole.Tts => CompanionTab.Voice,
+        SetupRole.Stt => CompanionTab.Listening,
+        _ => CompanionTab.Thinking
+    };
+
+    internal static CompanionTab TabFor(string job) => job switch
+    {
+        ClusterJobs.Speaking => CompanionTab.Voice,
+        ClusterJobs.Listening => CompanionTab.Listening,
+        ClusterJobs.LipSync => CompanionTab.Character,
+        _ => CompanionTab.Thinking
+    };
+
+    private static string TabTitle(CompanionTab section) => section switch
+    {
+        CompanionTab.Thinking => "Thinking",
+        CompanionTab.Voice => "Voice",
+        CompanionTab.Listening => "Listening",
+        CompanionTab.Character => "Character",
+        _ => "Memory"
     };
 
     /// <summary>Recommended local model: the largest in the list this PC's graphics card fits.</summary>
@@ -99,7 +116,7 @@ public partial class MainWindow
     private string PlaceName(SetupRoute route)
     {
         if (IsLocalOllama(route)) return "Ollama on this PC";
-        if (route.RouteType == SetupRouteType.LocalWindowsTts) return "the Windows voice on this PC";
+        if (route.RouteType == SetupRouteType.LocalWindowsTts) return "Windows voice on this PC";
         if (SelfHostSetup.IsGateway(route.RouteType) && route.Gateway is { } gateway)
         {
             var engine = route.RouteType switch
@@ -130,56 +147,80 @@ public partial class MainWindow
 
     // ---------- page frame ----------
 
-    private void OpenSection(SetupSection section)
+    /// <summary>Shows a Companion tab and selects Companion in the navigation rail. Every shortcut to a choice (Home, the
+    /// Devices map, fix cards, the tour and the advisor) lands here, so each choice has one home.</summary>
+    private void OpenCompanion(CompanionTab tab)
     {
-        if (SetupPage is null) return;
-        openSection = section;
-        sectionPlace.Remove(section);
-        foreach (var nav in new[] { NavHome, NavDevices, NavCompanion, NavSettings }) nav.IsChecked = false;
-        foreach (var page in new FrameworkElement[] { HomePage, DevicesPage, CompanionPage, SettingsPage }) page.Visibility = Visibility.Collapsed;
-        SetupPage.Visibility = Visibility.Visible;
-        SetupPage.ScrollToTop();
-        RenderSection();
-        Motion.Enter(SetupPage);
+        if (CompanionPage is null) return;
+        if (Role == DeviceRole.Host)
+        {
+            // A host has no Companion page; its routes are still reachable through full Setup.
+            nextSetupJob = tab is CompanionTab.Character or CompanionTab.Memory ? null : (SetupRole?)RoleOf(tab);
+            Setup_Click(this, new RoutedEventArgs());
+            return;
+        }
+        companionTab = tab;
+        tabPlace.Remove(tab);
+        if (NavCompanion.IsChecked == true) ShowCompanionTab(entering: false);
+        else NavCompanion.IsChecked = true;
     }
 
-    private void RenderSection()
+    private void ShowCompanionTab(bool entering)
     {
-        if (openSection is not { } section) return;
-        sectionEdited = false;
-        var page = SetupPageContent;
+        openTab = companionTab;
+        CompanionPage.ScrollToTop();
+        RenderTab();
+        Motion.Enter(entering ? CompanionPage : companionBody ?? (FrameworkElement)CompanionPage);
+    }
+
+    private StackPanel? companionBody;
+
+    private void RenderTab()
+    {
+        if (openTab is not { } section) return;
+        tabEdited = false;
+        var page = CompanionContent;
         page.Children.Clear();
 
-        var back = PageButton("\u2190 Your setup", () => Navigate(NavHome), link: true, id: "SetupSectionBack");
-        back.HorizontalAlignment = HorizontalAlignment.Left;
-        page.Children.Add(back);
+        var heading = new TextBlock { Text = "Companion" };
+        heading.SetResourceReference(StyleProperty, "PageTitle");
+        page.Children.Add(heading);
+        page.Children.Add(Note("Everything that shapes how Martlet thinks, sounds, listens and looks. Home shows how it's doing right now.",
+            new Thickness(0, 4, 0, 14)));
 
-        var tabs = new WrapPanel { Margin = new Thickness(0, 10, 0, 16) };
-        AutomationProperties.SetName(tabs, "Setup pages");
-        foreach (var other in Enum.GetValues<SetupSection>())
+        var tabs = new WrapPanel { Margin = new Thickness(0, 0, 0, 14) };
+        AutomationProperties.SetName(tabs, "Companion tabs");
+        foreach (var other in Enum.GetValues<CompanionTab>())
         {
-            var tab = PageButton(SectionTitle(other), () => OpenSection(other), primary: other == section, id: "SetupTab-" + other);
+            var tab = PageButton(TabTitle(other), () => OpenCompanion(other), primary: other == section, id: "CompanionTab-" + other);
             tab.Margin = new Thickness(0, 0, 8, 6);
+            if (other == section) AutomationProperties.SetItemStatus(tab, "Selected");
             tabs.Children.Add(tab);
         }
         page.Children.Add(tabs);
 
-        var title = new TextBlock { Text = SectionTitle(section) };
-        title.SetResourceReference(StyleProperty, "PageTitle");
-        page.Children.Add(title);
-        page.Children.Add(Note(section switch
+        var body = new StackPanel();
+        AutomationProperties.SetName(body, TabTitle(section));
+        companionBody = body;
+        page.Children.Add(body);
+        body.Children.Add(Note(section switch
         {
-            SetupSection.Thinking => "The conversation model that writes Martlet's replies: where it runs, the provider, the model and its API key. " +
+            CompanionTab.Thinking => "The conversation model that writes Martlet's replies: where it runs, the provider, the model and its API key. " +
                 "It runs on this PC by default, so nothing leaves your computer.",
-            SetupSection.Voice => "How Martlet speaks its replies: where the voice runs, the voice itself and the speakers it plays on. " +
+            CompanionTab.Voice => "How Martlet speaks its replies: where the voice runs, the voice itself and the speakers it plays on. " +
                 "By default it speaks on this PC, with the F5 voice in Docker or a Windows voice with no Docker.",
-            SetupSection.Listening => "How Martlet hears you: your microphone and the speech-to-text provider, model and key. " +
+            CompanionTab.Listening => "How Martlet hears you: your microphone and the speech-to-text provider, model and key. " +
                 "By default whisper runs on this PC. You can always type instead.",
-            _ => "What Martlet looks like and who it is: the character model on your desktop, its personality and who moves its lips."
-        }, new Thickness(0, 4, 0, 16)));
+            CompanionTab.Character => "What Martlet looks like and who it is: the character on your desktop, its personality and who moves its lips.",
+            _ => "Facts Martlet may remember about you. Off by default."
+        }, new Thickness(0, 0, 0, 16)));
 
-        if (section == SetupSection.Character) RenderCharacterSection(page);
-        else RenderJobSection(page, section);
+        switch (section)
+        {
+            case CompanionTab.Character: RenderCharacterTab(body); break;
+            case CompanionTab.Memory: RenderMemoryTab(body); break;
+            default: RenderJobTab(body, section); break;
+        }
     }
 
     // ---------- job pages ----------
@@ -189,7 +230,7 @@ public partial class MainWindow
     private static bool RunsHereWithoutHost(SetupRoute route) =>
         IsLocalOllama(route) || route.RouteType is SetupRouteType.LocalWindowsTts or SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWhisper;
 
-    private void RenderJobSection(Panel page, SetupSection section)
+    private void RenderJobTab(Panel page, CompanionTab section)
     {
         var role = RoleOf(section);
         var job = HostJob.For(role)!;
@@ -199,9 +240,9 @@ public partial class MainWindow
             : SelfHostSetup.IsGateway(route.RouteType)
                 ? route.Gateway?.HostId == thisPc?.HostId && role != SetupRole.Llm ? JobPlace.ThisPc : JobPlace.Computer
                 : JobPlace.Cloud;
-        var place = sectionPlace.TryGetValue(section, out var chosen) ? chosen : current;
+        var place = tabPlace.TryGetValue(section, out var chosen) ? chosen : current;
 
-        page.Children.Add(NowCard(section, job, route));
+        page.Children.Add(JobNowCard(section, job, route));
 
         var where = new StackPanel();
         where.Children.Add(Heading("Where it runs"));
@@ -216,8 +257,8 @@ public partial class MainWindow
             AutomationProperties.SetAutomationId(option, $"Place-{section}-{value}");
             option.Checked += (_, _) =>
             {
-                sectionPlace[section] = value;
-                RenderSection();
+                tabPlace[section] = value;
+                RenderTab();
             };
             where.Children.Add(option);
         }
@@ -247,18 +288,18 @@ public partial class MainWindow
 
         // The Voice Library prepares recordings for self-hosted voices, so it shows only where F5 speaks: this PC's F5 or
         // another of your computers. A cloud provider and a Windows voice have their own voices.
-        if (section == SetupSection.Voice && (place == JobPlace.Computer && otherHosts.Length > 0 ||
+        if (section == CompanionTab.Voice && (place == JobPlace.Computer && otherHosts.Length > 0 ||
                 place == JobPlace.ThisPc && route?.RouteType == SetupRouteType.GatewayF5 && thisPc is not null && route.Gateway?.HostId == thisPc.HostId))
             page.Children.Add(VoicesCard());
 
-        if (section == SetupSection.Voice) page.Children.Add(AudioCard(output: true));
-        if (section == SetupSection.Listening) page.Children.Add(AudioCard(output: false));
+        if (section == CompanionTab.Voice) page.Children.Add(AudioCard(output: true));
+        if (section == CompanionTab.Listening) page.Children.Add(AudioCard(output: false));
 
         var advanced = PageButton("Advanced setup: every job, stored keys and detached keys", () =>
         {
             nextSetupJob = role;
-            RunNodeAction(NodeAction.Setup);
-        }, link: true, id: "SetupAdvanced-" + section);
+            Setup_Click(this, new RoutedEventArgs());
+        }, link: true, id: "OpenSetup");
         advanced.HorizontalAlignment = HorizontalAlignment.Left;
         advanced.Margin = new Thickness(0, 4, 0, 0);
         page.Children.Add(advanced);
@@ -271,11 +312,11 @@ public partial class MainWindow
         : "";
 
     /// <summary>What the job uses now, first on every setup page, with any problem that stops it.</summary>
-    private Border NowCard(SetupSection section, HostJob job, SetupRoute? route)
+    private Border JobNowCard(CompanionTab section, HostJob job, SetupRoute? route)
     {
         var problem = coverage.FirstOrDefault(c => c.Job == job.Job && c.IsProblem);
         var status = route is null
-            ? section == SetupSection.Voice
+            ? section == CompanionTab.Voice
                 ? "Not chosen yet. Martlet speaks on this PC by default: set up the F5 voice with Docker, or use a Windows voice with no Docker."
                 : "Not chosen yet. This PC is recommended below."
             : (route.RouteType == SetupRouteType.LocalWindowsTts ? "Windows voice on this PC" : $"{PlaceName(route)}: {route.ModelId}") +
@@ -303,14 +344,14 @@ public partial class MainWindow
             Note(text + (output ? " Martlet plays its voice here." : " Martlet listens only while you hold to talk or turn on hands-free.") +
                 " Choosing and testing devices stays on this PC.", new Thickness(0, 0, 0, 8)),
             Row(PageButton(tested ? $"Change {what.ToLowerInvariant()}" : $"Choose and test {what.ToLowerInvariant()}",
-                () => RunNodeAction(NodeAction.AudioSetup), primary: !tested, id: "SetupAudio-" + what)));
+                () => RunNodeAction(NodeAction.AudioSetup), primary: !tested, id: "OpenAudioSetup")));
     }
 
     private Border VoicesCard() => Card(Heading("Voice Library"),
         Note("F5 speaks in the voice of a short recording. It starts with F5-TTS's published English sample voice, so it works right away; " +
             "Choose another voice hears the voices or records your own. The Voice Library keeps recordings for self-hosted voices on this PC.",
             new Thickness(0, 0, 0, 8)),
-        Row(PageButton("Open the Voice Library", () => VoiceLibrary_Click(this, new RoutedEventArgs()), id: "SetupVoiceLibrary")));
+        Row(PageButton("Open the Voice Library", () => VoiceLibrary_Click(this, new RoutedEventArgs()), id: "OpenVoiceLibrary")));
 
     // ---------- this PC: Ollama for thinking ----------
 
@@ -322,7 +363,7 @@ public partial class MainWindow
             Text = IsLocalOllama(route) ? route!.ModelId : recommended.Id };
         AutomationProperties.SetName(model, "Local model");
         AutomationProperties.SetAutomationId(model, "SetupLocalModel");
-        model.TextChanged += (_, _) => sectionEdited = true;
+        model.TextChanged += (_, _) => tabEdited = true;
         var picks = new ComboBox { Width = 420, HorizontalAlignment = HorizontalAlignment.Left,
             ItemsSource = LocalChatModels.Select(m => $"{m.Id}  ({m.Size}, fits {m.Fits}{(m == recommended ? ", recommended here" : "")})")
                 .Concat((ollamaModels ?? []).Where(id => LocalChatModels.All(m => m.Id != id)).Select(id => $"{id}  (downloaded)")).ToArray() };
@@ -404,7 +445,7 @@ public partial class MainWindow
                 ? "Ollama isn't installed on this PC yet. Install it first."
                 : "Ollama didn't answer on this PC. Start Ollama from the Start menu, then check again.";
         }
-        if (!closing && openSection == SetupSection.Thinking) RenderSection();
+        if (!closing && openTab == CompanionTab.Thinking) RenderTab();
     }
 
     private Task SaveLocalThinkingAsync(string model) => SaveSectionRouteAsync(HostJob.Thinking,
@@ -576,7 +617,7 @@ public partial class MainWindow
         }
         finally
         {
-            if (!closing && openSection == SetupSection.Voice) RenderSection();
+            if (!closing && openTab == CompanionTab.Voice) RenderTab();
         }
     }
 
@@ -655,7 +696,7 @@ public partial class MainWindow
 
     // ---------- cloud provider ----------
 
-    private Border CloudCard(SetupSection section, HostJob job, SetupRoute? route)
+    private Border CloudCard(CompanionTab section, HostJob job, SetupRoute? route)
     {
         var role = job.Role;
         var cloudRoute = route is not null && (route.RouteType is null or SetupRouteType.OpenAi ||
@@ -753,12 +794,12 @@ public partial class MainWindow
         }
         Refresh(keepModel: false);
         consent.IsChecked = cloudRoute?.Consent is not null;
-        provider.SelectionChanged += (_, _) => { sectionEdited = true; Refresh(keepModel: false); };
-        modelText.TextChanged += (_, _) => { if (!modelText.IsKeyboardFocusWithin) return; sectionEdited = true; consent.IsChecked = false; };
-        model.SelectionChanged += (_, _) => { sectionEdited = true; consent.IsChecked = false; };
-        baseUrl.TextChanged += (_, _) => { sectionEdited = true; consent.IsChecked = false; };
-        voice.SelectionChanged += (_, _) => { sectionEdited = true; consent.IsChecked = false; };
-        key.PasswordChanged += (_, _) => { sectionEdited = true; RefreshKeyMark(); };
+        provider.SelectionChanged += (_, _) => { tabEdited = true; Refresh(keepModel: false); };
+        modelText.TextChanged += (_, _) => { if (!modelText.IsKeyboardFocusWithin) return; tabEdited = true; consent.IsChecked = false; };
+        model.SelectionChanged += (_, _) => { tabEdited = true; consent.IsChecked = false; };
+        baseUrl.TextChanged += (_, _) => { tabEdited = true; consent.IsChecked = false; };
+        voice.SelectionChanged += (_, _) => { tabEdited = true; consent.IsChecked = false; };
+        key.PasswordChanged += (_, _) => { tabEdited = true; RefreshKeyMark(); };
         baseUrl.TextChanged += (_, _) => { keySaved = SameAsSaved(Selected()) && cloudRoute!.CredentialId is not null; RefreshKeyMark(); };
 
         var save = PageButton("Save", () => SaveCloudAsync(job, Selected(), baseUrl.Text.Trim(), Selected().Chat ? modelText.Text.Trim() : model.SelectedItem as string ?? "",
@@ -854,17 +895,17 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Saves a job's route chosen on a setup page: the route, then its key (which resets consent), then the user's
+    /// <summary>Saves a job's route chosen on its Companion tab: the route, then its key (which resets consent), then the user's
     /// confirmed choice. A key the route no longer uses is listed for explicit removal in Setup, as there.</summary>
     private async Task SaveSectionRouteAsync(HostJob job, Func<AppSettings, AppSettings> select, SecretLease? key, string done)
     {
         if (store is null || setupService is null || closing) return;
-        if (savingSection || assigningRole || setupOperations.IsRunning)
+        if (savingTab || assigningRole || setupOperations.IsRunning)
         {
             ActionText.Text = "Another change is still finishing. Try again in a moment.";
             return;
         }
-        savingSection = true;
+        savingTab = true;
         var role = job.Role;
         var token = lifetime.Token;
         try
@@ -899,7 +940,7 @@ public partial class MainWindow
             pendingJobVoices.Remove(role);
             RecordClusterJob(job.Job, new(null, false));
             ActionText.Text = done + " An open conversation window picks it up on Reload.";
-            sectionPlace.Remove(openSection ?? SetupSection.Thinking);
+            tabPlace.Remove(openTab ?? CompanionTab.Thinking);
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or JsonException)
@@ -908,10 +949,10 @@ public partial class MainWindow
         }
         finally
         {
-            savingSection = false;
+            savingTab = false;
             if (!closing)
             {
-                sectionEdited = false;
+                tabEdited = false;
                 RenderHome();
             }
         }
@@ -919,7 +960,7 @@ public partial class MainWindow
 
     // ---------- character ----------
 
-    private void RenderCharacterSection(Panel page)
+    private void RenderCharacterTab(Panel page)
     {
         var showing = avatar.IsShowing;
         var persona = homeSettings?.Companion?.ActivePersona;
@@ -941,15 +982,14 @@ public partial class MainWindow
 
         page.Children.Add(Card(Heading("Character model"),
             Note("Choose a built-in Live2D character or your own Live2D or VRM model, and tune its size, position and motion.", new Thickness(0, 0, 0, 8)),
-            Row(PageButton(showing ? "Hide" : "Show", () => RunNodeAction(NodeAction.ToggleCharacter), primary: !showing, id: "SetupCharacterToggle"),
-                PageButton("Choose and customize", () => RunNodeAction(NodeAction.Character), id: "SetupCharacterCustomize"),
+            Row(PageButton(showing ? "Hide character" : "Show character", () => RunNodeAction(NodeAction.ToggleCharacter), primary: !showing, id: "SetupCharacterToggle"),
+                PageButton("Choose and customize", () => RunNodeAction(NodeAction.Character), id: "OpenAvatar"),
                 showing ? PageButton("Reset position", () => ResetCharacterPositionAsync().Forget(), id: "SetupCharacterResetPosition") : null,
                 showing ? PageButton("Reset zoom", () => ResetCharacterZoomAsync().Forget(), id: "SetupCharacterResetZoom") : null)));
 
         page.Children.Add(Card(Heading("Personality"),
-            Note("Its personas and how playful, helpful or silly it is. Memory keeps facts it may remember (off by default).", new Thickness(0, 0, 0, 8)),
-            Row(PageButton("Edit personality", () => Companion_Click(this, new RoutedEventArgs()), primary: true, id: "SetupPersonality"),
-                PageButton("Memory", () => Memory_Click(this, new RoutedEventArgs()), id: "SetupMemory"))));
+            Note("Its personas and how playful, helpful or silly it is.", new Thickness(0, 0, 0, 8)),
+            Row(PageButton("Edit personality", () => Companion_Click(this, new RoutedEventArgs()), id: "OpenCompanion"))));
 
         var hosts = NetworkMap.Hosts(Inputs());
         renderingBoard = true;
@@ -966,6 +1006,20 @@ public partial class MainWindow
             Row(hosts.Count == 0 ? PageButton("Add a computer", () => RunNodeAction(NodeAction.AddComputer), id: "SetupLipSyncAddComputer") : null,
                 hosts.Count == 0 ? null : PageButton("Check hosts", () => RunNodeAction(NodeAction.CheckHost), id: "SetupLipSyncCheckHosts"),
                 PageButton("Open the Devices map", () => Navigate(NavDevices), id: "SetupLipSyncMap"))));
+    }
+
+    // ---------- memory ----------
+
+    private void RenderMemoryTab(Panel page)
+    {
+        var on = homeSettings?.Memory?.Enabled == true;
+        page.Children.Add(Card(Heading("Now"),
+            new TextBlock { Text = on ? "On" : "Off", FontSize = 15, TextWrapping = TextWrapping.Wrap },
+            Note(on
+                ? "Martlet may use the facts you saved here. Memory keeps only facts you type and choose to save, on this PC; it never adds your conversations."
+                : "Martlet uses no saved facts. Turn memory on to keep facts you type and choose to save, on this PC only.",
+                new Thickness(0, 2, 0, 8)),
+            Row(PageButton("Manage memory", () => Memory_Click(this, new RoutedEventArgs()), primary: !on, id: "OpenMemory"))));
     }
 
     // ---------- small builders ----------

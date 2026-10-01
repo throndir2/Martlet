@@ -1115,8 +1115,8 @@ option names and in *Details*, never as navigation labels.
 | Welcome tour (4 cards) | Replaced by Welcome › Plan › Terms › Permissions › Setting up (A1/B1) |
 | Setup advisor window | Removed; its logic becomes the *Recommended* preselection (R5) and the A1 plan |
 | Legacy Setup window (Choice, Jobs, Credentials, Review) | Removed; keys are on job tabs, stored/detached keys under Thinking › *Advanced* |
-| Setup section pages (Thinking, Its voice, How it listens, Character) | Become Companion tabs |
-| Companion card grid | Removed; Companion is the tab set |
+| Setup section pages (Thinking, Its voice, How it listens, Character) | Become Companion tabs (done, with a Memory tab) |
+| Companion card grid | Removed; Companion is the tab set (done) |
 | Audio setup window | Split into Voice › Speakers and Listening › Microphone |
 | Avatar window | Character tab; mapping/renderer under *Advanced* |
 | Companion (persona) window | Character tab › Personality |

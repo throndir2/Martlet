@@ -11,7 +11,7 @@ obvious next step at every stage, and a living map of the user's computers.
 1. **One screen, one job.** Each stage shows one primary action. Everything
    else moves behind navigation or a *Details* expander.
 2. **Say what to do, in plain words.** Headlines say where you are ("Almost
-   there"), and the button says what happens next ("Choose how Martlet thinks").
+   there"), and the button says what happens next ("Set up thinking").
    Exact legal, cost and data wording stays available, one click away, and is
    never removed.
 3. **The companion is the hero.** An animated Martlet mark greets you. The Live2D
@@ -29,10 +29,19 @@ obvious next step at every stage, and a living map of the user's computers.
 ## Stages and surfaces
 
 ```text
-first launch ──> Welcome tour ──┬── "Talk with my companion here" ──> Companion home (setup checklist ─> ready)
+first launch ──> Welcome tour ──┬── "Talk with my companion here" ──> Home (Now lines ─> ready)
                                 └── "Lend this PC to Martlet"     ──> Host dashboard (host service)
 Every mode: Home · Devices (map) · Companion* · Settings      (* companion mode only)
 ```
+
+Each page answers one question, so no two pages do the same thing:
+
+| Page | Question | Changes settings? |
+| --- | --- | --- |
+| **Home** | Is Martlet ready, and can I talk to it? | No. It shows status and links to where each thing changes. |
+| **Companion** | How does Martlet think, sound, listen, look and remember? | Yes: the one place each of those choices is made. |
+| **Devices** | Which computer does what? | Machines and handing jobs between them. |
+| **Settings** | How does the app itself behave? | Appearance, this PC's role, updates, tools. |
 
 ### 1. Welcome tour (first launch)
 
@@ -55,77 +64,44 @@ with step dots:
    in a console window; *Not now* moves on.
 4. **How would you like to start?** (companion mode) *Recommend a setup for me*
    opens the setup advisor (its plan adds *Install on this PC* for what it runs
-   here), and *I know what I want* opens Setup. In host mode, the tour ends on
-   the host dashboard.
+   here), and *I know what I want* opens Companion › *Thinking*. In host mode,
+   the tour ends on the host dashboard.
 
 The tour saves only the device role and contacts nothing; it installs only the
 items you tick and confirm with *Install selected*.
 Settings > *This PC's role* changes the role or replays the tour.
 
-### 2. Companion home (main PC)
+### 2. Home (main PC)
+
+Home answers "is Martlet ready, and can I talk to it?" It shows status and
+offers *Start talking*; it changes no settings itself. Every choice is made in
+Companion (section 7), and Home links there.
 
 The hero card changes with setup progress:
 
 | Stage | Headline | Primary action |
 | --- | --- | --- |
-| Nothing saved yet | "Let's bring your companion to life" | *Choose how Martlet thinks* (opens its page) |
-| Conversation model not chosen, or chosen without destination consent | "Almost there" | *Finish setup* |
-| Ready (conversation model chosen, consented and on) | "Ready when you are" (with a time-of-day greeting) | **Start talking** |
+| Nothing saved yet | "Let's bring your companion to life" | *Set up thinking* (opens Companion › *Thinking*) |
+| Thinking not chosen, or chosen without destination consent | "Almost there" | *Finish setup* |
+| Ready (thinking chosen, consented and on) | "Ready when you are" (with a time-of-day greeting) | **Start talking** |
 
 *Show character* sits next to the primary action at every stage. *Not sure?
 Get a recommendation* opens the advisor.
 
-Below the hero, **Your setup** shows a progress bar and four steps. Each opens
-its own page inside the main window (with tabs to move between them and a
-*Your setup* link back). Only the first is required:
-
-1. *How Martlet thinks*: where the conversation model runs, the provider, the
-   model and its API key.
-2. *Its voice* (optional): where the voice runs and the voice itself, then the
-   speakers.
-3. *How it listens* (optional): the speech-to-text provider, model and key,
-   then the microphone.
-4. *Character* (optional): what it looks like now, then the character model
-   (show, hide, customize, reset), its personality and memory, and who handles
-   lip-sync.
-
-Every page starts with **Now**: what the job uses and any problem stopping
-it. Cards appear only when they apply to the chosen place: the Voice Library
-shows only where F5 speaks (this PC's F5 or another of your computers), never
-for a cloud provider or a Windows voice; a single-provider cloud card names
-the provider instead of offering a one-item list; Ollama's download and check
-buttons appear once Ollama is installed.
-
-Each job page (1-3) asks **Where it runs**, defaulting to *This PC
-(recommended)*:
-
-- *This PC*: thinking uses Ollama at `http://127.0.0.1:11434/v1` (install
-  Ollama, pick a suggested model sized to the graphics card, *Download model*
-  in a console, *Check Ollama* over loopback on request, *Use Ollama on this
-  PC*). Speaking offers two one-click choices, the one in use (or the one this
-  PC's hardware suits) first: **F5 voice, with Docker** (*Set up F5 with
-  Docker* sets up and pairs Martlet's host service on this PC, so this PC also
-  becomes one of your hosts, installs F5 and switches over with F5-TTS's
-  published sample voice) or **Windows voice, no Docker** (*Use a Windows
-  voice* picks an installed voice in this PC's language; no host service; a
-  voice list and *Hear it* follow). Listening (whisper) runs in Martlet's host
-  service on this PC; *Set up whisper with Docker* does the same chain.
-- *Another of your computers*: every paired host with what it runs and *Use
-  it*, plus *Add a computer*, *Check hosts* and the Devices map. This replaces
-  the old *More computers* step.
-- *A cloud provider*: provider, model (and voice), API key and an explicit
-  choice checkbox. Saving stores the route, then the key in Windows Credential
-  Manager, then the confirmed choice. *Advanced setup* opens the full Setup
-  window for stored and detached keys.
-
-Each row shows a done or to-do mark and one action. Completed marks pop in.
+Below the hero, **Now** has one line per job: *Thinking*, *Voice*,
+*Listening* and *Character*. Each line has a status dot (green working, amber
+needs attention or not working, grey not set up), what Martlet uses now in one
+sentence, and one button (*Set up*, *Review* or *Change*) that opens that
+job's Companion tab. Only Thinking is required; while it is missing its line
+is highlighted and its button is primary.
 
 When a chosen job stops working (its host isn't answering, its role was
 removed, its key was deleted, or Setup saved a route this version can't use),
 a **What isn't working** card appears under the hero with the reason, what it
-means ("Martlet can't hear you; you can still type") and one-click fixes. If
-thinking is down, the headline becomes "Martlet can't reply right now". The
-rules are in [Platforms](PLATFORMS.md#what-the-app-guarantees).
+means ("Martlet can't hear you; you can still type") and one-click fixes; the
+job's Now line says *Not working now*. If thinking is down, the headline
+becomes "Martlet can't reply right now". The rules are in
+[Platforms](PLATFORMS.md#what-the-app-guarantees).
 
 ### 3. Devices (hardware map)
 
@@ -142,7 +118,7 @@ This page answers "what do I have, and what is each machine doing?"
 - **Nodes** are *This PC* (center), each paired Martlet host or self-hosted
   gateway, each cloud destination grouped by origin, and a ghost *Add a
   computer* node. When no conversation model is chosen, a ghost *Conversation
-  model* node points to Setup. Every paired host appears, whether or not it has
+  model* node points to Companion › *Thinking*. Every paired host appears, whether or not it has
   a job yet.
 - **Who does what** (above the map, companion mode) has one tile per job:
   *Thinking*, *Listening*, *Speaking* and *Lip-sync (Audio2Face)*. Each tile
@@ -151,8 +127,8 @@ This page answers "what do I have, and what is each machine doing?"
   the Setup choice or any paired host (with its model, or "not installed");
   handing the job to a host checks it, offers to install the role (Ollama or
   whisper) there and switches over once it is ready, and the Setup choice comes
-  back without re-entering a key. Speaking changes in Setup, because it needs a
-  model and consent. **Lip-sync switches on the spot** from a drop-down: *This PC*,
+  back without re-entering a key. Each tile's *Change in Companion* opens that
+  job's tab; speaking changes there, because it needs a model and consent. **Lip-sync switches on the spot** from a drop-down: *This PC*,
   any paired host, or *Nobody (mouth follows voice loudness)*. A showing
   character keeps showing; the next sentence uses the new computer.
   Handing lip-sync to a host first checks it over its pinned pairing. If it
@@ -204,7 +180,8 @@ This page answers "what do I have, and what is each machine doing?"
     available* and a primary *Update it to Martlet x.y.z*.
   - *Cloud*: address, key storage, data sent and a "may cost money" note.
   - *Actions* for the node: Audio setup, Character, Prerequisites, *Host
-    services on this PC*, *Change in Setup*, *Manage host* and similar.
+    services on this PC*, *Change thinking in Companion* (one per job a cloud
+    service or computer does), *Manage host* and similar.
 
 Reading hardware is local only. It opens no port, starts no process and makes
 no network request.
@@ -266,9 +243,53 @@ The conversation window puts the chat first:
 
 ### 7. Companion and Settings pages
 
-- **Companion** (make it yours): *How it thinks* (Setup), *Microphone and
-  speakers*, *Character*, *Personality*, *Voice Library* and *Memory*, one card
-  each with one line of explanation.
+- **Companion** answers "how does Martlet think, sound, listen, look and
+  remember?" It is the one place each of those choices is made, as five tabs.
+  Home's Now lines, the Devices tiles and nodes, fix cards, the tour and the
+  advisor all open the matching tab (Companion opens on the last tab used,
+  *Thinking* at first):
+  1. *Thinking*: where the conversation model runs, the provider, the model and
+     its API key.
+  2. *Voice*: where the voice runs and the voice itself, then the speakers.
+  3. *Listening*: the speech-to-text provider, model and key, then the
+     microphone.
+  4. *Character*: what it looks like now, then the character model (show,
+     hide, choose and customize, reset), its personality, and who handles
+     lip-sync.
+  5. *Memory*: whether memory is on, and *Manage memory* for its facts.
+
+  Every tab starts with **Now**: what it uses and any problem stopping it.
+  Cards appear only when they apply to the chosen place: the Voice Library
+  shows only where F5 speaks (this PC's F5 or another of your computers), never
+  for a cloud provider or a Windows voice; a one-provider cloud card names the
+  provider instead of offering a one-item list; Ollama's download and check
+  buttons appear once Ollama is installed.
+
+  Each job tab (1-3) then asks **Where it runs**, defaulting to *This PC
+  (recommended)*:
+
+  - *This PC*: thinking uses Ollama at `http://127.0.0.1:11434/v1` (install
+    Ollama, pick a suggested model sized to the graphics card, *Download model*
+    in a console, *Check Ollama* over loopback on request, *Use Ollama on this
+    PC*). Voice offers two one-click choices, the one in use (or the one this
+    PC's hardware suits) first: **F5 voice, with Docker** (*Set up F5 with
+    Docker* sets up and pairs Martlet's host service on this PC, so this PC
+    also becomes one of your hosts, installs F5 and switches over with F5-TTS's
+    published sample voice) or **Windows voice, no Docker** (*Use a Windows
+    voice* picks an installed voice in this PC's language, with no host
+    service; a voice list and *Hear it* follow). Listening (whisper) runs in
+    Martlet's host service on this PC; *Set up whisper with Docker* does the
+    same chain.
+  - *Another of your computers*: every paired host with what it runs and *Use
+    it*, plus *Add a computer*, *Check hosts* and the Devices map.
+  - *A cloud provider*: provider, model (and voice), API key and an explicit
+    choice checkbox. Saving stores the route, then the key in Windows Credential
+    Manager, then the confirmed choice.
+
+  *Advanced setup* at the bottom of each job tab opens the full Setup window on
+  that job, for every route type and stored or detached keys. Microphone and
+  speakers, the Voice Library, character customization, personality and
+  memory facts still open their own windows from their tabs.
 - **Settings**: palette, this PC's role and the tour, app updates (automatic
   checks and their interval, automatic installs, keeping hosts on this PC's
   version, *Check for updates now*, *Install*, *Update hosts now*), tools
@@ -282,8 +303,9 @@ Setup keeps its four checkpoints (Overview, Jobs, Credentials, Review), drawn as
 a numbered stepper with a connecting line, and *Next* is the primary button.
 *Overview* describes using AI models. *Jobs* sets up one job at a time
 (Thinking, Listening, Speaking) and shows only that job's fields, with the
-provider's recommended model prefilled. Home steps open Setup on the matching
-job. Consent and credential behavior did not change. The broader redesign
+provider's recommended model prefilled. It is the *Advanced setup* behind each
+Companion job tab, which opens it on the matching job. Consent and credential
+behavior did not change. The broader redesign
 (jobs, placement on hosts, audio separation and queued local model hosting) is
 in [COMPONENTS.md](COMPONENTS.md).
 
@@ -295,8 +317,7 @@ in [COMPONENTS.md](COMPONENTS.md).
 | Float | hero mark | Y ±5, 3.2 s, sine, forever |
 | Twinkle | sparkles | opacity 0.35 to 1, 1.6 s, staggered |
 | Heartbeat | mark heart | scale 1 to 1.08 to 1, 1.8 s |
-| Progress fill | setup progress | width, 600 ms, cubic ease-out |
-| Check pop | completed step | scale 0.4 to 1, 320 ms, back ease |
+| Check pop | completed host step | scale 0.4 to 1, 320 ms, back ease |
 | Pulse ring | online nodes, host status | scale 1 to 1.9 and opacity 0.6 to 0, 2 s, forever |
 | Flow | map connections | dash offset, 1.2 s, linear, forever |
 | Panel slide | node detail | X +24 to 0 and fade, 240 ms |
@@ -316,9 +337,9 @@ looping animations do not start and transitions complete immediately.
    hardware probe) and `NetworkMap` (turns settings, the avatar pairing and
    hardware into nodes, roles, facts and actions).
 3. `MainWindow` becomes the shell: nav rail, welcome tour, stage-aware home,
-   host dashboard, devices map with detail panel, Companion and Settings pages.
-   Every existing handler and named control is kept (tests use
-   `ConversationButton`, `SetupButton`, `AudioSetupButton` and `ActionText`).
+   host dashboard, devices map with detail panel, Companion tabs and Settings.
+   Tests drive `ConversationButton`, `NavCompanion`, the Companion buttons by
+   automation ID (`OpenSetup`, `OpenAudioSetup`) and `ActionText`.
 4. `HostsWindow` becomes the wizard, with the connection check and firewall
    helper exposed for the map and the host dashboard.
 5. `LiveConversationWindow` gets the chat-first layout with every named

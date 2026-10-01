@@ -10,7 +10,7 @@ internal enum NodeKind { ThisPc, Host, Cloud, Missing, Add }
 internal enum NodeHealth { Ready, Unknown, Off, Attention }
 internal enum NodeAction
 {
-    Setup, AudioSetup, Character, ToggleCharacter, Prerequisites, HostThisPc, AddComputer, ManageHost, CheckHost, HostDashboard, Advisor,
+    Companion, AudioSetup, Character, ToggleCharacter, Prerequisites, HostThisPc, AddComputer, ManageHost, CheckHost, HostDashboard, Advisor,
     UseForLipSync, LipSyncThisPc, InstallRole, RemoveRole, HostStatus, UpdateHost, ForgetHost,
     PrepareHost, RebootHost, ShutdownHost, WakeHost, PrepareComputer, UseForThinking, UseForListening, UseForSpeaking
 }
@@ -107,13 +107,21 @@ internal static class NetworkMap
         _ => "Speaks"
     };
 
+    /// <summary>The job's word in Companion's tab names: thinking, listening or voice.</summary>
+    internal static string JobWord(SetupRole role) => role switch
+    {
+        SetupRole.Stt => "listening",
+        SetupRole.Llm => "thinking",
+        _ => "voice"
+    };
+
     private static string RouteDetail(SetupRoute route)
     {
         var text = route.RouteType == SetupRouteType.LocalWindowsTts ? WindowsVoices.DisplayName(route.VoiceId)
             : route.VoiceId is { } voice ? $"{route.ModelId}, voice {voice}"
             : route.Reference is { } reference ? $"{route.ModelId}, voice {reference.PresetName}" : route.ModelId;
         if (route.Enabled == false) text += " (turned off)";
-        else if (route.Consent is null) text += " (review in Setup)";
+        else if (route.Consent is null) text += " (review in Companion)";
         return text;
     }
 
@@ -194,7 +202,6 @@ internal static class NetworkMap
                         target.Facts.Add(new("Host ID", gateway.HostId));
                         target.Facts.Add(new("Identity", "Pinned TLS " + Short(gateway.SpkiFingerprint)));
                         AddHardware(target, inputs, gateway.HostId);
-                        target.Commands.Add(new(NodeAction.Setup, "Change its routes in Setup", true));
                     }
                     break;
                 case SetupRouteType.ChatCompletions when Uri.TryCreate(route.Origin, UriKind.Absolute, out var endpoint):
@@ -209,7 +216,6 @@ internal static class NetworkMap
                         if (target.Facts.Count == 0)
                         {
                             target.Facts.Add(new("Address", route.Origin));
-                            target.Commands.Add(new(NodeAction.Setup, "Change in Setup", true));
                         }
                     }
                     else
@@ -223,8 +229,11 @@ internal static class NetworkMap
                     break;
             }
             target.Roles.Add(role);
+            if (target != thisPc)
+                target.Commands.Add(new(NodeAction.Companion, $"Change {JobWord(route.Role)} in Companion",
+                    target.Commands.All(c => !c.Primary), route.Role.ToString()));
             if (route.Enabled == false) target.Worsen(NodeHealth.Off, "Turned off");
-            else if (route.Consent is null) target.Worsen(NodeHealth.Attention, "Needs review in Setup");
+            else if (route.Consent is null) target.Worsen(NodeHealth.Attention, "Needs review in Companion");
             if (target.Kind == NodeKind.Cloud)
             {
                 target.Facts.Add(new(RoleChip(route.Role), route.CredentialId is null ? "No key saved" : "Key saved in Windows Credential Manager"));
@@ -242,7 +251,7 @@ internal static class NetworkMap
             var missing = Node("missing:brain", NodeKind.Missing, "Conversation model", "Not chosen yet", CloudGlyph);
             missing.Worsen(NodeHealth.Attention, "Choose one");
             missing.Roles.Add(new("Thinks", "Thinking (conversation model)", "Pick a cloud model (OpenRouter, NVIDIA Build, OpenAI) or one on your own computers."));
-            missing.Commands.Add(new(NodeAction.Setup, "Choose how Martlet thinks", true));
+            missing.Commands.Add(new(NodeAction.Companion, "Set up thinking in Companion", true, nameof(SetupRole.Llm)));
             missing.Commands.Add(new(NodeAction.Advisor, "Get a recommendation"));
         }
 
@@ -463,7 +472,6 @@ internal static class NetworkMap
         {
             cloud.Facts.Add(new("Address", origin));
             cloud.Facts.Add(new("Cost", "Requests may cost money on your account"));
-            cloud.Commands.Add(new(NodeAction.Setup, "Change in Setup", true));
         }
         return cloud;
     }

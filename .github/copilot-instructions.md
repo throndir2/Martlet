@@ -26,6 +26,11 @@ early, replace obsolete designs when warranted and minimize narration.
 Parallelize independent work with isolated ownership. Safety, consent and
 honest reporting remain mandatory.
 
+Never use Copilot Cloud (cloud/coding agent, cloud sessions, Copilot code
+review or any GitHub-hosted agent) and never consume GitHub Actions minutes,
+apart from dispatching `windows-release.yml` to build an actual release. All
+agent work, builds and checks run locally.
+
 Never create GitHub CI pipelines: Actions are reserved for minimal
 build/package/release workflows (manual dispatch or tag/release triggers only;
 no PR, push or schedule triggers, hosted tests or disguised validation).

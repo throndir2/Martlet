@@ -163,7 +163,7 @@ public partial class MainWindow
             {
                 CoverageFix.UseFallback => job.Job == ClusterJobs.LipSync ? "Take lip-sync back to this PC" : $"Use {job.Fallback} instead",
                 CoverageFix.CheckHost => $"Check {job.HostId} now",
-                CoverageFix.OpenSetup => "Open Setup",
+                CoverageFix.OpenSetup => $"Change {(job.Job == ClusterJobs.Speaking ? "voice" : job.Job)}",
                 _ => "Open Devices"
             };
             var button = new Button { Content = label, Margin = new Thickness(0, 0, 8, 4), Padding = new Thickness(12, 6, 12, 6) };
@@ -183,7 +183,7 @@ public partial class MainWindow
             case CoverageFix.UseFallback when job.Job == ClusterJobs.LipSync: AssignLipSyncAsync("this-pc").Forget(); break;
             case CoverageFix.UseFallback when HostJob.All.FirstOrDefault(j => j.Job == job.Job) is { } hostJob: AssignJobAsync(hostJob, "saved").Forget(); break;
             case CoverageFix.CheckHost when FindHost(job.HostId) is { } host: CheckHostsAsync([host]).Forget(); break;
-            case CoverageFix.OpenSetup: RunNodeAction(NodeAction.Setup); break;
+            case CoverageFix.OpenSetup: OpenCompanion(TabFor(job.Job)); break;
             case CoverageFix.OpenDevices: Navigate(NavDevices); break;
         }
     }
