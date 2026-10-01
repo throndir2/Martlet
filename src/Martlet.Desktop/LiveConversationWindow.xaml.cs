@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.IO;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
@@ -28,6 +29,8 @@ public partial class LiveConversationWindow : ThemedWindow
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private readonly VoiceIdentity? voiceIdentity;
     private readonly IScreenGlancer glancer;
+    private readonly IVideoInput video;
+    private WatchSource watchSource = new(WatchKind.ActiveWindow);
     private SetupOperation? loading;
     private CancellationTokenSource? observation;
     private LiveConversationOperation? owned;
@@ -46,8 +49,9 @@ public partial class LiveConversationWindow : ThemedWindow
 
     internal LiveConversationWindow(ISetupService settings, SetupOperationRunner operations, LiveConversationController controller,
         IAudioSessionEvents sessionEvents, AudioSetupService? audio = null, TimeProvider? clock = null, VoiceIdentity? voiceIdentity = null,
-        IScreenGlancer? glancer = null)
+        IScreenGlancer? glancer = null, IVideoInput? video = null)
     {
+        this.video = video ?? new VideoInput();
         this.settings = settings;
         this.operations = operations;
         this.controller = controller;
@@ -143,7 +147,7 @@ public partial class LiveConversationWindow : ThemedWindow
             "; voices: " + string.Join(", ", OpenAiSpeechSynthesisCatalog.SupportedVoices) + ". No model discovery or fallback.";
         EnvelopeText.Text = selected is null
             ? "No active supported API configuration. Capture/upload/LLM/TTS permission is OFF. Use Setup / resume; the offline fixture remains available without credentials."
-            : selected.Disclosure(voice) + "\n" + selected.ScreenDisclosure(SelectedChattiness, SelectedScope);
+            : selected.Disclosure(voice) + "\n" + selected.ScreenDisclosure(SelectedChattiness, SelectedSource);
         VisionStatus.Text = selected is null ? "Load a saved Thinking model first (Setup / resume)."
             : (selected.Vision() switch
             {
@@ -154,7 +158,23 @@ public partial class LiveConversationWindow : ThemedWindow
     }
 
     private Chattiness SelectedChattiness => (Chattiness)Math.Clamp(ChattinessBox?.SelectedIndex ?? 1, 0, 2);
-    private ScreenScope SelectedScope => (ScreenScope)Math.Clamp(ScreenScopeBox?.SelectedIndex ?? 0, 0, 1);
+    private WatchKind SelectedKind => (WatchKind)Math.Clamp(ScreenScopeBox?.SelectedIndex ?? 0, 0, 3);
+
+    /// <summary>What Watch would look at now; a camera or address that isn't chosen yet has an empty Id.</summary>
+    private WatchSource SelectedSource => SelectedKind switch
+    {
+        WatchKind.Camera when CameraBox?.SelectedItem is CameraDevice camera => new(WatchKind.Camera, camera.Id, camera.Name),
+        WatchKind.Url when NormalizedAddress(AddressBox?.Text) is { Length: > 0 } address =>
+            new(WatchKind.Url, address, WatchSource.SafeName(address)),
+        var kind => new(kind)
+    };
+
+    private static string NormalizedAddress(string? text)
+    {
+        var address = (text ?? "").Trim().Trim('"');
+        if (address.Length == 0 || address.Contains("://", StringComparison.Ordinal) || File.Exists(address)) return address;
+        return "http://" + address;
+    }
 
     private void RenderActions()
     {
@@ -186,14 +206,25 @@ public partial class LiveConversationWindow : ThemedWindow
         bool watchable = ready && !locked && PauseChoice.IsChecked != true && MuteChoice.IsChecked != true &&
             AcceptScreen.IsChecked == true && controller.Configuration is { } configured &&
             configured.Unavailable(voice, false) is null && configured.Vision() != VisionSupport.Unsupported;
-        WatchButton.IsEnabled = watching || watchable;
+        var kind = SelectedKind;
+        bool sourceChosen = SelectedSource is { IsScreen: true } or { Id.Length: > 0 };
+        WatchButton.IsEnabled = watching || watchable && sourceChosen;
         WatchButton.Content = watching ? "Stop _watching" : "Start _watching";
         WatchDot.Visibility = watching ? Visibility.Visible : Visibility.Collapsed;
-        Title = watching ? "Martlet - talk (watching your screen)" : "Martlet - talk";
+        CameraPanel.Visibility = kind == WatchKind.Camera ? Visibility.Visible : Visibility.Collapsed;
+        AddressPanel.Visibility = kind == WatchKind.Url ? Visibility.Visible : Visibility.Collapsed;
+        // The camera or address stays fixed while watching; moving between screen and camera stops watching.
+        CameraBox.IsEnabled = FindCamerasButton.IsEnabled = AddressBox.IsEnabled = !watching;
+        Title = watching ? $"Martlet - talk (watching {watchSource.Label})" : "Martlet - talk";
         WatchStatus.Text = watching && pacer is { } pace
-            ? $"Watching ({pace.Chattiness}). {watchNote} Looks this hour: {pace.LooksThisHour} of at most {pace.Settings.LooksPerHour}." +
+            ? $"Watching {watchSource.Label} ({pace.Chattiness}). {watchNote} Looks this hour: {pace.LooksThisHour} of at most {pace.Settings.LooksPerHour}." +
                 (captureNote is { } why ? $" Full-screen game capture is unavailable ({why}); borderless and windowed still work." : "")
-            : watchNote ?? "Not watching. Nothing on your screen is captured.";
+            : watchNote ?? (kind switch
+            {
+                WatchKind.Camera when !sourceChosen => "Not watching. Click Find cameras and choose one; no camera is opened until you start watching.",
+                WatchKind.Url when !sourceChosen => "Not watching. Enter the address your phone camera app shows.",
+                _ => "Not watching. Nothing on your screen or cameras is captured."
+            });
         VoiceIdChoice.IsEnabled = !listening;
         VoiceIdStatus.Text = voiceIdentity is null ? "Voice ID is unavailable without a local data directory."
             : voiceIdentity.LoadError ?? (voiceIdentity.Current is { } print
@@ -323,6 +354,14 @@ public partial class LiveConversationWindow : ThemedWindow
         VoiceIdChoice.IsChecked = preferences.VoiceId;
         ChattinessBox.SelectedIndex = preferences.ScreenChattiness;
         ScreenScopeBox.SelectedIndex = preferences.ScreenScope;
+        CameraBox.Items.Clear();
+        if (preferences.CameraId.Length > 0)
+        {
+            // The saved camera is shown without enumerating devices; Find cameras refreshes the list.
+            CameraBox.Items.Add(new CameraDevice(preferences.CameraId, preferences.CameraName.Length > 0 ? preferences.CameraName : "Saved camera"));
+            CameraBox.SelectedIndex = 0;
+        }
+        AddressBox.Text = preferences.VideoAddress;
         VoiceActivityPanel.Visibility = preferences.HandsFree ? Visibility.Visible : Visibility.Collapsed;
         applyingPreferences = false;
     }
@@ -330,37 +369,95 @@ public partial class LiveConversationWindow : ThemedWindow
     private void SavePreferences()
     {
         if (applyingPreferences || voiceIdentity is null || SensitivitySlider is null || PauseChoiceBox is null || VoiceIdChoice is null ||
-            ChattinessBox is null || ScreenScopeBox is null) return;
+            ChattinessBox is null || ScreenScopeBox is null || CameraBox is null || AddressBox is null) return;
+        var camera = CameraBox.SelectedItem as CameraDevice;
         var saved = new TalkPreferences(VoiceActivityMode.IsChecked == true, SensitivitySlider.Value,
-            PauseChoiceBox.SelectedIndex, VoiceIdChoice.IsChecked == true, ChattinessBox.SelectedIndex, ScreenScopeBox.SelectedIndex)
+            PauseChoiceBox.SelectedIndex, VoiceIdChoice.IsChecked == true, ChattinessBox.SelectedIndex, ScreenScopeBox.SelectedIndex,
+            camera?.Id ?? "", camera?.Name ?? "", WatchSource.WithoutCredentials(AddressBox.Text))
             .Save(voiceIdentity.DataDirectory);
         if (!saved) ResultText.Text = "Could not save your talk preferences to talk-preferences.json; they apply for this window only.";
     }
 
     private void Watch_Click(object sender, RoutedEventArgs e)
     {
-        if (watching) { StopWatching("Stopped watching your screen. Nothing is captured now."); return; }
+        if (watching) { StopWatching($"Stopped watching {watchSource.Label}. Nothing is captured now."); return; }
         var selected = controller.Configuration;
         if (!ready || locked || selected is null) { ResultText.Text = Remedy("conversation.setup_required"); return; }
         if (selected.Vision() == VisionSupport.Unsupported) { ResultText.Text = selected.VisionAdvice(); return; }
         if (AcceptScreen.IsChecked != true) { ResultText.Text = Remedy("conversation.permission_required"); return; }
+        var source = SelectedSource;
+        if (!source.IsScreen && source.Id.Length == 0)
+        {
+            ResultText.Text = source.Kind == WatchKind.Camera ? "Choose a camera first (Find cameras)." : "Enter the camera address first.";
+            return;
+        }
+        watchSource = source;
         watching = true;
         lookWanted = false;
         pacer = new(SelectedChattiness, clock);
         nextGlance = clock.GetTimestamp();
         watchNote = "First look in a few seconds.";
-        ResultText.Text = "Watching your screen. Keep playing: Martlet only speaks up now and then. Stop watching, Stop or Esc ends it.";
+        captureNote = null;
+        ResultText.Text = $"Watching {source.Label}. Keep going: Martlet only speaks up now and then. Stop watching, Stop or Esc ends it.";
         RenderActions();
     }
 
     private void Screen_Changed(object sender, RoutedEventArgs e)
     {
-        if (ChattinessBox is null || ScreenScopeBox is null || WatchStatus is null || EnvelopeText is null || applyingPreferences) return;
+        if (ChattinessBox is null || ScreenScopeBox is null || WatchStatus is null || EnvelopeText is null || CameraBox is null ||
+            AddressBox is null || applyingPreferences) return;
+        if (!watching) watchNote = null;
         if (watching && pacer is not null && pacer.Chattiness != SelectedChattiness) pacer = new(SelectedChattiness, clock);
+        if (watching && SelectedSource != watchSource)
+        {
+            if (SelectedSource.IsScreen && watchSource.IsScreen) watchSource = SelectedSource;
+            else StopWatching("You changed what Martlet looks at, so it stopped watching. Start watching again to use the new choice.");
+        }
         SavePreferences();
         RenderConfiguration();
         RenderActions();
     }
+
+    private async void FindCameras_Click(object sender, RoutedEventArgs e)
+    {
+        FindCamerasButton.IsEnabled = false;
+        var previous = (CameraBox.SelectedItem as CameraDevice)?.Id;
+        try
+        {
+            var cameras = await Task.Run(video.Cameras);
+            if (closed) return;
+            applyingPreferences = true;
+            CameraBox.Items.Clear();
+            foreach (var camera in cameras) CameraBox.Items.Add(camera);
+            CameraBox.SelectedItem = cameras.FirstOrDefault(c => c.Id == previous) ?? cameras.FirstOrDefault();
+            applyingPreferences = false;
+            watchNote = cameras.Count == 0
+                ? "Windows offers no cameras to desktop apps. Plug in a webcam, connect your phone as a webcam (Phone Link on Windows 11, DroidCam, Camo, iVCam) or use the address option."
+                : $"Found {cameras.Count} camera{(cameras.Count == 1 ? "" : "s")}.";
+        }
+        catch (Exception error) when (error is VideoSourceException or System.Runtime.InteropServices.ExternalException)
+        {
+            watchNote = error is VideoSourceException ? error.Message : "Windows couldn't list cameras right now. Try again in a moment.";
+        }
+        finally
+        {
+            applyingPreferences = false;
+            FindCamerasButton.IsEnabled = !watching;
+        }
+        SavePreferences();
+        RenderConfiguration();
+        RenderActions();
+    }
+
+    private void Address_Changed(object sender, RoutedEventArgs e)
+    {
+        if (applyingPreferences || EnvelopeText is null) return;
+        watchNote = null;
+        RenderConfiguration();
+        RenderActions();
+    }
+
+    private void Address_LostFocus(object sender, RoutedEventArgs e) => SavePreferences();
 
     // Runs on the UI timer: notices conversation, collects finished glances and schedules the next capture.
     private void Watch()
@@ -389,18 +486,23 @@ public partial class LiveConversationWindow : ThemedWindow
         glancing = true;
         try
         {
-            var scope = SelectedScope;
-            var result = await Task.Run(() => glancer.Capture(scope));
+            var source = watchSource;
+            var result = await Task.Run(() => source.IsScreen ? glancer.Capture(source.Scope) : video.Capture(source));
             if (!watching || closed || pacer is null)
             {
                 result.Frame?.Clear();
                 _ = Task.Run(glancer.Release);
+                _ = Task.Run(video.Release);
                 return;
             }
-            captureNote = result.Note;
+            captureNote = source.IsScreen ? result.Note : null;
             if (result.Frame is not { } frame)
             {
-                watchNote = result.Skip switch
+                watchNote = !source.IsScreen ? result.Skip switch
+                {
+                    GlanceSkip.Blank => $"{char.ToUpperInvariant(source.Label[0])}{source.Label[1..]} shows only black (lens covered, privacy shutter closed or the camera is off).",
+                    _ => result.Note ?? "Couldn't read the camera this time; trying again shortly."
+                } : result.Skip switch
                 {
                     GlanceSkip.MartletInFront => "Martlet is in front, so it isn't looking.",
                     GlanceSkip.Private => "A password manager or private window is in front; not looking.",
@@ -418,7 +520,8 @@ public partial class LiveConversationWindow : ThemedWindow
             pendingFrame = frame;
             var idleListen = owned is { OwnershipReleased: false } live && IsIdleListen(live);
             var busy = commentary is { OwnershipReleased: false } || operations.IsRunning && !idleListen;
-            var verdict = pacer.Decide(busy, glancer.UserIdle);
+            // Keyboard/mouse idleness means "away" only for the screen; in front of a camera people often don't type at all.
+            var verdict = pacer.Decide(busy, source.IsScreen ? glancer.UserIdle : TimeSpan.Zero);
             lookWanted = verdict == PacerVerdict.Look;
             if (!lookWanted)
             {
@@ -449,8 +552,9 @@ public partial class LiveConversationWindow : ThemedWindow
         try
         {
             var image = frame.Encode();
-            commentary = controller.StartCommentary(image, frame.Title, SelectedChattiness, VoiceChoice.IsChecked == true,
-                AcceptScreen.IsChecked == true);
+            // An address's host is not useful to the model; a camera's or window's name is.
+            commentary = controller.StartCommentary(image, watchSource.Kind == WatchKind.Url ? "" : frame.Title, SelectedChattiness,
+                VoiceChoice.IsChecked == true, AcceptScreen.IsChecked == true, watchSource);
             watchNote = "Taking a look...";
             return true;
         }
@@ -462,7 +566,7 @@ public partial class LiveConversationWindow : ThemedWindow
         }
         catch (Exception error) when (error is ContractException or InvalidOperationException or NotSupportedException or System.Runtime.InteropServices.ExternalException)
         {
-            watchNote = "Couldn't prepare the screen image this time.";
+            watchNote = "Couldn't prepare the image this time.";
             return false;
         }
         finally
@@ -484,7 +588,7 @@ public partial class LiveConversationWindow : ThemedWindow
         if (status.Code is "runtime.Completed")
         {
             pacer?.NoteLook(true);
-            AnswerText.Text = $"(Glanced at your screen at {at})\n{done.Turn?.Content.Text.Trim()}";
+            AnswerText.Text = $"(Glanced at {watchSource.Label} at {at})\n{done.Turn?.Content.Text.Trim()}";
             RefusalText.Clear();
             watchNote = $"Said something at {at}.";
             return;
@@ -498,9 +602,9 @@ public partial class LiveConversationWindow : ThemedWindow
         var selected = controller.Configuration;
         var provider = done.Turn?.Snapshot.ProviderFailure ?? status.ProviderFailure;
         StopWatching(provider == ProviderFailureCode.InputLimit
-            ? "The screenshot didn't fit the Thinking route. If Thinking runs on your Martlet host, update the host so its gateway accepts screen images, then start watching again."
+            ? "The picture didn't fit the Thinking route. If Thinking runs on your Martlet host, update the host so its gateway accepts images, then start watching again."
             : provider is not null && selected is not null && selected.Vision() != VisionSupport.Supported
-            ? $"The Thinking model rejected the screenshot ({provider}); it most likely can't see images. {selected.VisionAdvice()}"
+            ? $"The Thinking model rejected the picture ({provider}); it most likely can't see images. {selected.VisionAdvice()}"
             : "Stopped watching: " + (provider is { } code ? ProviderRemedy(code) : Remedy(status.Code)));
     }
 
@@ -511,8 +615,9 @@ public partial class LiveConversationWindow : ThemedWindow
         pacer = null;
         pendingFrame?.Clear();
         pendingFrame = null;
-        // Frees the open duplication and its frame copy; off the UI thread in case a capture is finishing.
+        // Frees the open duplication, camera or stream (the camera light goes off); off the UI thread in case a capture is finishing.
         _ = Task.Run(glancer.Release);
+        _ = Task.Run(video.Release);
         if (commentary is { OwnershipReleased: false } glance) controller.Stop(glance, "commentary.stopped", keepContext: true);
         rendering = true;
         if (AcceptScreen is not null) AcceptScreen.IsChecked = false;
@@ -522,7 +627,7 @@ public partial class LiveConversationWindow : ThemedWindow
             watchNote = message;
             ResultText.Text = message;
         }
-        else if (wasWatching) watchNote = "Stopped watching. Nothing on your screen is captured.";
+        else if (wasWatching) watchNote = "Stopped watching. Nothing on your screen or cameras is captured.";
         RenderActions();
     }
 
@@ -675,6 +780,7 @@ public partial class LiveConversationWindow : ThemedWindow
     {
         Cancel("conversation.closed");
         _ = Task.Run(glancer.Release);
+        _ = Task.Run(video.Release);
         closed = true;
         generation++;
         timer.Stop();
