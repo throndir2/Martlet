@@ -68,45 +68,9 @@ internal sealed class RendererWindow : Window
         WindowStartupLocation = WindowStartupLocation.Manual;
         PlaceOnDesktop();
 
-        var move = new Button
-        {
-            Content = "Move character", Cursor = Cursors.SizeAll, Padding = new Thickness(10, 5, 10, 5),
-            ToolTip = "Drag the character or this handle. Mouse wheel resizes. Arrow keys move; Shift makes fine adjustments. Home returns to the primary screen."
-        };
-        AutomationProperties.SetAutomationId(move, "MoveAvatar");
-        AutomationProperties.SetName(move, "Move character");
-        AutomationProperties.SetHelpText(move, (string)move.ToolTip);
-        move.PreviewMouseLeftButtonDown += DragCharacter;
-        move.PreviewKeyDown += (_, e) =>
-        {
-            var step = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? 1 : 10;
-            switch (e.Key)
-            {
-                case Key.Left: Left -= step; break;
-                case Key.Right: Left += step; break;
-                case Key.Up: Top -= step; break;
-                case Key.Down: Top += step; break;
-                case Key.Home: PlaceOnDesktop(); break;
-                default: return;
-            }
-            e.Handled = true;
-        };
-        var close = new Button
-        {
-            Content = "Close", Padding = new Thickness(10, 5, 10, 5),
-            ToolTip = "Close the avatar only. Voice continues."
-        };
-        AutomationProperties.SetAutomationId(close, "CloseAvatar");
-        AutomationProperties.SetName(close, "Close character overlay");
-        close.Click += (_, _) => Close();
-        var controls = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
-        controls.Children.Add(move);
-        controls.Children.Add(close);
-        controls.Children.Add(CreateSpeechBubble());
-        DockPanel.SetDock(controls, Dock.Top);
-        var layout = new DockPanel();
-        layout.Children.Add(controls);
-        layout.Children.Add(viewport);
+        // Show/hide and reset-position controls live in the main Martlet window; the overlay shows only the character.
+        AutomationProperties.SetAutomationId(viewport, "MoveAvatar");
+        AutomationProperties.SetName(viewport, "Character. Drag to move; mouse wheel resizes.");
         viewport.Children.Add(browser);
         var loading = new TextBlock
         {
@@ -116,6 +80,7 @@ internal sealed class RendererWindow : Window
         loading.SetResourceReference(TextBlock.BackgroundProperty, "SurfaceBrush");
         loading.SetResourceReference(TextBlock.ForegroundProperty, "TextBrush");
         viewport.Children.Add(loading);
+        viewport.Children.Add(CreateSpeechBubble());
         viewport.MouseLeftButtonDown += DragCharacter;
         viewport.MouseWheel += (_, e) =>
         {
@@ -131,8 +96,22 @@ internal sealed class RendererWindow : Window
             Left = centerX - width / 2;
             Top = bottom - height;
         };
-        PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) { e.Handled = true; Close(); } };
-        Content = layout;
+        PreviewKeyDown += (_, e) =>
+        {
+            var step = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? 1 : 10;
+            switch (e.Key)
+            {
+                case Key.Escape: Close(); break;
+                case Key.Left: Left -= step; break;
+                case Key.Right: Left += step; break;
+                case Key.Up: Top -= step; break;
+                case Key.Down: Top += step; break;
+                case Key.Home: PlaceOnDesktop(); break;
+                default: return;
+            }
+            e.Handled = true;
+        };
+        Content = viewport;
         Loaded += async (_, _) => await RunAsync();
         Closed += (_, _) =>
         {
@@ -174,7 +153,6 @@ internal sealed class RendererWindow : Window
     {
         if (e.ButtonState != MouseButtonState.Pressed) return;
         e.Handled = true;
-        if (sender is Button handle) handle.Focus();
         DragMove();
     }
 
@@ -317,8 +295,14 @@ internal sealed class RendererWindow : Window
             while (!lifetime.IsCancellationRequested)
             {
                 message = await RendererProtocol.ReadAsync(input, lifetime.Token);
-                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "say"))
+                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "home" or "say"))
                     throw new InvalidDataException("Renderer command is invalid.");
+                                if (message.Kind == "home")
+                                {
+                                    PlaceOnDesktop();
+                                    await ReplyAsync("ok", new { });
+                                    continue;
+                                }
                 if (message.Kind == "theme")
                 {
                     ApplyOverlayTheme(RendererProtocol.Data<RendererTheme>(message).Dark);

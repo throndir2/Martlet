@@ -114,17 +114,21 @@ never restored after restart.
 The character appears in a transparent, borderless, always-on-top desktop
 overlay, initially near the lower-right corner of the primary work area.
 
-Drag the character or **Move character** handle to reposition the overlay,
-including onto another monitor. The mouse wheel over the character resizes it.
-With the move handle focused, use arrow keys
-for 10-DIP steps (device-independent pixels), Shift+arrows for 1-DIP steps, or Home to return to the
-primary screen. The small move/close controls stay available; the model has no
-opaque panel or title bar. The overlay does not take keyboard focus on opening.
+Drag the character to reposition the overlay, including onto another monitor.
+The mouse wheel over the character resizes it. After clicking the character,
+use arrow keys for 10-DIP steps (device-independent pixels), Shift+arrows for
+1-DIP steps, or Home to return to the primary screen. The overlay itself has no
+buttons, panel or title bar; its controls live in the main Martlet window.
+**Reset character position** (home screen, shown while the character is
+visible) returns it to the lower-right of the primary screen at its default
+size, even if it was dragged off-screen. The overlay does not take keyboard
+focus on opening.
 Position is session-only, and this is not a global click-through or game-injected
 overlay. Exclusive-fullscreen applications may cover it.
 
-**Close**, Alt+F4, or Escape while the overlay has focus closes only the renderer;
-normal voice playback continues. **Show character** opens it again.
+**Hide character** in the main window, Alt+F4, or Escape while the overlay has
+focus closes only the renderer; normal voice playback continues. **Show
+character** opens it again.
 The host uses WPF composition WebView2 and transparent page/WebGL surfaces for
 both models, with Windows 10 2004+ graphics-composition bindings included in the
 renderer build. The bundled Hiyori model has been rendered locally through the

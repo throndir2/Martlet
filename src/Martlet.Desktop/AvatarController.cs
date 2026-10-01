@@ -62,6 +62,17 @@ internal sealed class AvatarController : IAsyncDisposable
         finally { changes.Release(); }
     }
 
+    /// <summary>Returns the character overlay to its default spot on the primary screen.</summary>
+    internal async Task ResetPositionAsync(CancellationToken token)
+    {
+        await changes.WaitAsync(token);
+        try
+        {
+            if (renderer is { HasExited: false } current) await current.SendAsync("home", new { }, token);
+        }
+        finally { changes.Release(); }
+    }
+
     /// <summary>Shows (or with null, hides) a speech bubble beside the character. A no-op while the character is hidden.</summary>
     internal async Task SayAsync(string? text, CancellationToken token)
     {
