@@ -120,12 +120,14 @@ allowed. Third-party components retain their own terms and must be cleared
 for distribution separately.
 
 **App updates** come from Martlet's public GitHub Releases (Settings > App
-updates). Checks are **OFF by default**. Turning on *Check GitHub for new
-versions automatically* checks right away and then every 15 minutes to 24
-hours (default: every hour) while Martlet runs; **Check for updates now**
-makes an explicit request instead. Only normal (non-draft, non-prerelease)
+updates). Checks are **ON by default**: Martlet checks at launch and then every
+15 minutes to 24 hours (default: every hour) while it runs; turning off
+*Check GitHub for new versions automatically* stops all automatic requests,
+and **Check for updates now** makes an explicit request instead. When a check
+finds a new version, Martlet asks once per version whether to update now.
+Only normal (non-draft, non-prerelease)
 releases with the exact `Martlet-<version>-win-x64.exe` asset are offered.
-**Install** downloads it (at most 512 MiB) into `updates\` in the local data
+**Update now** (or **Install**) downloads it (at most 512 MiB) into `updates\` in the local data
 directory, verifies the exact bytes against GitHub's SHA-256 asset digest,
 closes Martlet, runs the installer with its progress window (`/SILENT`, no
 optional prerequisite tasks) and starts Martlet again; the next launch reports
@@ -134,7 +136,7 @@ itself, but only while the character is hidden, no conversation, demo or
 Martlet window is open and Martlet is not the active window (it restarts
 minimized); otherwise the downloaded update installs when you exit Martlet.
 Choices live in `update-checks.txt` and `updates.json`, separately from profile
-settings and configuration backup; unreadable preferences stay OFF with a
+settings and configuration backup; unreadable preferences turn automatic checks OFF with a
 visible error. Releases are normal GitHub releases; code signing is not a
 requirement for this personal project, so the installer is unsigned. The
 digest detects a damaged download; it does not prove who published it. Do not

@@ -533,11 +533,12 @@ revocation later; report that limitation. Removing Martlet never uninstalls
 shared Docker/driver packages by default. Retained data remains subject to the
 user's local backup/privacy policy.
 
-The Desktop supports OFF-by-default automatic checks (on enabling, then every
-15 minutes to 24 hours while it runs) or an explicit manual check against the
+The Desktop supports ON-by-default automatic checks (at launch, then every
+15 minutes to 24 hours while it runs; a found version is offered once with an
+*Update now* prompt) or an explicit manual check against the
 public GitHub releases list. A newer versioned win-x64 installer from a normal
 (non-draft, non-prerelease) release is downloaded into the local `updates\`
-folder only after an exact GitHub asset size/SHA-256 check. *Install* (or the
+folder only after an exact GitHub asset size/SHA-256 check. *Install* (or *Update now*, or the
 opt-in automatic install, which waits until the character, conversations and
 Martlet windows are closed, or until exit) closes Martlet, runs the installer
 silently with its progress window and no optional prerequisite tasks, records
