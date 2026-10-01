@@ -62,13 +62,24 @@ internal sealed class AvatarController : IAsyncDisposable
         finally { changes.Release(); }
     }
 
-    /// <summary>Returns the character overlay to its default spot on the primary screen.</summary>
+    /// <summary>Returns the character overlay to its default spot, size and zoom on the primary screen.</summary>
     internal async Task ResetPositionAsync(CancellationToken token)
     {
         await changes.WaitAsync(token);
         try
         {
             if (renderer is { HasExited: false } current) await current.SendAsync("home", new { }, token);
+        }
+        finally { changes.Release(); }
+    }
+
+    /// <summary>Zooms the character overlay "in", "out", or "reset"s it to the default size without moving it.</summary>
+    internal async Task ZoomAsync(string action, CancellationToken token)
+    {
+        await changes.WaitAsync(token);
+        try
+        {
+            if (renderer is { HasExited: false } current) await current.SendAsync("zoom", new RendererZoom(action), token);
         }
         finally { changes.Release(); }
     }

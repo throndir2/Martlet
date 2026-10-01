@@ -70,7 +70,8 @@ internal sealed class RendererWindow : Window
 
         // Show/hide and reset-position controls live in the main Martlet window; the overlay shows only the character.
         AutomationProperties.SetAutomationId(viewport, "MoveAvatar");
-        AutomationProperties.SetName(viewport, "Character. Drag to move; mouse wheel resizes.");
+        AutomationProperties.SetName(viewport,
+            "Character. Drag to move; mouse wheel zooms; Ctrl+drag or middle-drag pans when zoomed in; right-click for zoom and reset options.");
         viewport.Children.Add(browser);
         var loading = new TextBlock
         {
@@ -82,20 +83,17 @@ internal sealed class RendererWindow : Window
         viewport.Children.Add(loading);
         viewport.Children.Add(CreateSpeechBubble());
         viewport.MouseLeftButtonDown += DragCharacter;
+        viewport.MouseDown += (_, e) => { if (e.ChangedButton == MouseButton.Middle) StartPan(e); };
+        viewport.MouseMove += (_, e) => Pan(e.GetPosition(viewport));
+        viewport.MouseUp += (_, _) => EndPan();
+        viewport.LostMouseCapture += (_, _) => panFrom = null;
+        // Mouse wheel grows the overlay up to screen height, then keeps zooming into the character toward the cursor.
         viewport.MouseWheel += (_, e) =>
         {
-            // Mouse wheel over the character resizes the overlay, keeping its bottom-center anchored.
             e.Handled = true;
-            var area = SystemParameters.WorkArea;
-            var width = Math.Clamp(Width * (e.Delta > 0 ? 1.1 : 1 / 1.1), 180, Math.Min(area.Width, area.Height * 0.75));
-            var height = width * 4 / 3;
-            var centerX = Left + Width / 2;
-            var bottom = Top + Height;
-            Width = width;
-            Height = height;
-            Left = centerX - width / 2;
-            Top = bottom - height;
+            Zoom(e.Delta > 0 ? ZoomStep : 1 / ZoomStep, e.GetPosition(viewport));
         };
+        viewport.ContextMenu = CreateZoomMenu();
         PreviewKeyDown += (_, e) =>
         {
             var step = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? 1 : 10;
@@ -106,7 +104,10 @@ internal sealed class RendererWindow : Window
                 case Key.Right: Left += step; break;
                 case Key.Up: Top -= step; break;
                 case Key.Down: Top += step; break;
-                case Key.Home: PlaceOnDesktop(); break;
+                case Key.Home: ResetToDefault(); break;
+                case Key.OemPlus or Key.Add: Zoom(ZoomStep * ZoomStep, null); break;
+                case Key.OemMinus or Key.Subtract: Zoom(1 / (ZoomStep * ZoomStep), null); break;
+                case Key.D0 or Key.NumPad0: ResetZoom(); break;
                 default: return;
             }
             e.Handled = true;
@@ -149,9 +150,140 @@ internal sealed class RendererWindow : Window
         Top = Math.Max(area.Top, area.Bottom - Height - 24);
     }
 
+    private const double ZoomStep = 1.1, MaxViewZoom = 16, MinOverlayWidth = 180;
+    private double viewZoom = 1, viewX, viewY;
+    private Point? panFrom;
+
+    private static double MaxOverlayWidth
+    {
+        get
+        {
+            var area = SystemParameters.WorkArea;
+            return Math.Max(MinOverlayWidth, Math.Min(area.Width, area.Height * 0.75));
+        }
+    }
+
+    private bool CanZoomIn => Width < MaxOverlayWidth - 0.5 || viewZoom < MaxViewZoom;
+    private bool CanZoomOut => viewZoom > 1 || Width > MinOverlayWidth + 0.5;
+    private bool IsDefaultZoom => viewZoom == 1 && Math.Abs(Width - Math.Min(420, SystemParameters.WorkArea.Width)) < 0.5;
+
+    /// <summary>
+    /// Zooms in by growing the overlay up to its screen-height limit, then by zooming the camera into the
+    /// character (toward <paramref name="anchor"/>, or the face). Zooming out reverses that order.
+    /// </summary>
+    private void Zoom(double factor, Point? anchor)
+    {
+        if (factor > 1 && Width < MaxOverlayWidth - 0.5) ResizeOverlay(Width * factor);
+        else if (factor > 1 || viewZoom > 1)
+        {
+            var point = anchor ?? new Point(viewport.ActualWidth / 2, viewport.ActualHeight * 0.3);
+            var cx = viewport.ActualWidth > 0 ? point.X / viewport.ActualWidth * 2 - 1 : 0;
+            var cy = viewport.ActualHeight > 0 ? 1 - point.Y / viewport.ActualHeight * 2 : 0;
+            var zoom = Math.Clamp(viewZoom * factor, 1, MaxViewZoom);
+            var applied = zoom / viewZoom;
+            SetView(zoom, cx - (cx - viewX) * applied, cy - (cy - viewY) * applied);
+        }
+        else ResizeOverlay(Width * factor);
+    }
+
+    // Resizes the overlay keeping its bottom-center anchored.
+    private void ResizeOverlay(double width)
+    {
+        width = Math.Clamp(width, MinOverlayWidth, MaxOverlayWidth);
+        var height = width * 4 / 3;
+        var centerX = Left + Width / 2;
+        var bottom = Top + Height;
+        Width = width;
+        Height = height;
+        Left = centerX - width / 2;
+        Top = bottom - height;
+    }
+
+    private void ResetZoom()
+    {
+        SetView(1, 0, 0);
+        ResizeOverlay(Math.Min(420, SystemParameters.WorkArea.Width));
+    }
+
+    private void ResetToDefault()
+    {
+        SetView(1, 0, 0);
+        PlaceOnDesktop();
+    }
+
+    // Pan is clamped so the zoomed view never leaves the character's fitted frame.
+    private void SetView(double zoom, double x, double y)
+    {
+        viewZoom = zoom;
+        viewX = Math.Clamp(x, 1 - zoom, zoom - 1);
+        viewY = Math.Clamp(y, 1 - zoom, zoom - 1);
+        SendView();
+    }
+
+    private void SendView()
+    {
+        try
+        {
+            browser.CoreWebView2?.PostWebMessageAsJson(JsonSerializer.Serialize(
+                new { kind = "view", data = new { zoom = viewZoom, x = viewX, y = viewY } }, RendererProtocol.Json));
+        }
+        catch (Exception error) when (error is InvalidOperationException or System.Runtime.InteropServices.COMException) { }
+    }
+
+    private void StartPan(MouseButtonEventArgs e)
+    {
+        if (viewZoom <= 1) return;
+        e.Handled = true;
+        panFrom = e.GetPosition(viewport);
+        viewport.CaptureMouse();
+    }
+
+    private void Pan(Point position)
+    {
+        if (panFrom is not { } from || viewport.ActualWidth <= 0 || viewport.ActualHeight <= 0) return;
+        panFrom = position;
+        SetView(viewZoom, viewX + (position.X - from.X) * 2 / viewport.ActualWidth,
+            viewY - (position.Y - from.Y) * 2 / viewport.ActualHeight);
+    }
+
+    private void EndPan()
+    {
+        if (panFrom is null) return;
+        panFrom = null;
+        viewport.ReleaseMouseCapture();
+    }
+
+    private ContextMenu CreateZoomMenu()
+    {
+        MenuItem Item(string header, string id, string gesture, Action action)
+        {
+            var item = new MenuItem { Header = header, InputGestureText = gesture };
+            AutomationProperties.SetAutomationId(item, id);
+            item.Click += (_, _) => action();
+            return item;
+        }
+        var zoomIn = Item("Zoom _in", "ZoomIn", "+", () => Zoom(ZoomStep * ZoomStep, null));
+        var zoomOut = Item("Zoom _out", "ZoomOut", "-", () => Zoom(1 / (ZoomStep * ZoomStep), null));
+        var reset = Item("_Reset zoom", "ResetZoom", "0", ResetZoom);
+        var home = Item("Reset _position and size", "ResetPosition", "Home", ResetToDefault);
+        var menu = new ContextMenu { Items = { zoomIn, zoomOut, reset, new Separator(), home } };
+        menu.Opened += (_, _) =>
+        {
+            zoomIn.IsEnabled = CanZoomIn;
+            zoomOut.IsEnabled = CanZoomOut;
+            reset.IsEnabled = !IsDefaultZoom;
+        };
+        return menu;
+    }
+
     private void DragCharacter(object sender, MouseButtonEventArgs e)
     {
         if (e.ButtonState != MouseButtonState.Pressed) return;
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && viewZoom > 1)
+        {
+            StartPan(e);
+            return;
+        }
         e.Handled = true;
         DragMove();
     }
@@ -291,18 +423,31 @@ internal sealed class RendererWindow : Window
                 modelFile = assets.ModelFile, resourceRevision = assets.Revision,
                 assets = assets.Assets.Select(a => a.Name).ToArray() });
             await ReplyAsync("capabilities", loaded);
+            SendView();
             StartLookTracking();
             while (!lifetime.IsCancellationRequested)
             {
                 message = await RendererProtocol.ReadAsync(input, lifetime.Token);
-                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "home" or "say"))
+                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "home" or "zoom" or "say"))
                     throw new InvalidDataException("Renderer command is invalid.");
-                                if (message.Kind == "home")
-                                {
-                                    PlaceOnDesktop();
-                                    await ReplyAsync("ok", new { });
-                                    continue;
-                                }
+                if (message.Kind == "home")
+                {
+                    ResetToDefault();
+                    await ReplyAsync("ok", new { });
+                    continue;
+                }
+                if (message.Kind == "zoom")
+                {
+                    switch (RendererProtocol.Data<RendererZoom>(message).Action)
+                    {
+                        case "in": Zoom(ZoomStep * ZoomStep, null); break;
+                        case "out": Zoom(1 / (ZoomStep * ZoomStep), null); break;
+                        case "reset": ResetZoom(); break;
+                        default: throw new InvalidDataException("Zoom action is invalid.");
+                    }
+                    await ReplyAsync("ok", new { });
+                    continue;
+                }
                 if (message.Kind == "theme")
                 {
                     ApplyOverlayTheme(RendererProtocol.Data<RendererTheme>(message).Dark);
@@ -364,7 +509,10 @@ internal sealed class RendererWindow : Window
             if (closed || failure.Failed || browser.CoreWebView2 is null) { timer.Stop(); return; }
             if (!GetCursorPos(out var cursor)) return;
             Point face;
-            try { face = viewport.PointToScreen(new Point(viewport.ActualWidth / 2, viewport.ActualHeight * 0.3)); }
+            // The face sits at 30% height when unzoomed; follow it through the camera zoom.
+            var faceX = (viewX + 1) / 2;
+            var faceY = (1 - (0.4 * viewZoom + viewY)) / 2;
+            try { face = viewport.PointToScreen(new Point(viewport.ActualWidth * faceX, viewport.ActualHeight * faceY)); }
             catch (InvalidOperationException) { return; }
             var x = Math.Clamp((cursor.X - face.X) / 700, -1, 1);
             var y = Math.Clamp((face.Y - cursor.Y) / 700, -1, 1);

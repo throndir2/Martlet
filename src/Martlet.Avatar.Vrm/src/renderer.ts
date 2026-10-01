@@ -7,6 +7,7 @@ export class VrmAvatarAdapter extends VrmRuntime {
   private renderer: THREE.WebGLRenderer;
   private world = new THREE.Scene();
   private camera = new THREE.PerspectiveCamera(30, 1, 0.01, 100);
+  private view = { zoom: 1, x: 0, y: 0 };
   private closed = false;
 
   constructor(canvas: HTMLCanvasElement) {
@@ -43,7 +44,22 @@ export class VrmAvatarAdapter extends VrmRuntime {
     integer(width, 1, 4096, "canvas width"); integer(height, 1, 4096, "canvas height");
     this.renderer.setSize(width, height, false);
     this.camera.aspect = width / height;
+    this.updateProjection();
+  }
+
+  /** Camera zoom applied after fitting: screen = fitted * zoom + (x, y), in clip space. */
+  setView(zoom: number, x: number, y: number): void {
+    requireValid(!this.closed, "Renderer is disposed.");
+    finite(zoom, 1, 32, "view zoom"); finite(x, -1000, 1000, "view x"); finite(y, -1000, 1000, "view y");
+    this.view = { zoom, x, y };
+    this.updateProjection();
+  }
+
+  private updateProjection(): void {
     this.camera.updateProjectionMatrix();
+    const { zoom, x, y } = this.view;
+    this.camera.projectionMatrix.premultiply(new THREE.Matrix4().set(zoom, 0, 0, x, 0, zoom, 0, y, 0, 0, 1, 0, 0, 0, 0, 1));
+    this.camera.projectionMatrixInverse.copy(this.camera.projectionMatrix).invert();
   }
 
   override update(deltaSeconds: number): void {
