@@ -18,9 +18,12 @@ public partial class HostRunWindow : ThemedWindow
         InitializeComponent();
         Title = "Martlet - " + title;
         HeadingText.Text = title;
+        this.title = title;
         Output = new Progress<string>(Append);
         Prompts = new HostShellDialogs(this);
     }
+
+    private readonly string title;
 
     /// <summary>Remote output lines; posts to this window.</summary>
     internal IProgress<string> Output { get; }
@@ -42,22 +45,28 @@ public partial class HostRunWindow : ThemedWindow
     private async Task<string?> RunAsync(Func<HostRunWindow, Task<string>> job)
     {
         running = true;
+        ErrorLog.Info($"Host run started: {title} (output: {HostRunLog.Path ?? "unavailable"})");
+        HostRunLog.Write(title, "--- started");
         try
         {
             var summary = await job(this);
             Status(summary);
             Append("Done. " + summary);
+            ErrorLog.Info($"Host run finished: {title}: {summary}");
             return summary;
         }
         catch (OperationCanceledException)
         {
             Status("Canceled.");
+            HostRunLog.Write(title, "--- canceled");
+            ErrorLog.Info($"Host run canceled: {title}");
             return null;
         }
         catch (Exception error) when (error is not OutOfMemoryException)
         {
             Status(error.Message);
             Append("Stopped: " + error.Message);
+            ErrorLog.Warn($"Host run failed: {title}", error);
             return null;
         }
         finally
@@ -69,6 +78,7 @@ public partial class HostRunWindow : ThemedWindow
 
     private void Append(string line)
     {
+        HostRunLog.Write(title, line);
         OutputText.AppendText(line + Environment.NewLine);
         if (OutputText.Text.Length > MaximumCharacters)
             OutputText.Text = OutputText.Text[^(MaximumCharacters / 2)..];
