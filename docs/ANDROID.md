@@ -47,9 +47,9 @@ promise a cross-platform desktop ([non-goals](../DEVELOPMENT_PLAN.md#explicit-no
    cancellation, Android 12's touch rules for overlays, and on-device models
    competing with the game for memory and heat.
 5. **Old phones are useful.** Android 8.0 (API 26) is the minimum. A
-   3-4 GB phone makes a good satellite microphone/speaker, Android-voice host
-   or cloud-backed companion, and can run whisper tiny/base or a 0.5-1B
-   language model slowly. See [Old hardware](#android-versions-and-old-hardware).
+   3-4 GB phone makes a good satellite microphone/speaker, room camera for
+   **Watch my screen**, Android-voice host or cloud-backed companion, and can
+   run whisper tiny/base or a 0.5-1B language model slowly. See [Old hardware](#android-versions-and-old-hardware).
 6. **Builds need no Mac and no paid certificate.** A manual-dispatch workflow
    on GitHub's Ubuntu runner builds and signs one APK and attaches it to the
    GitHub release. Android requires every APK to be signed with the developer's
@@ -60,10 +60,10 @@ promise a cross-platform desktop ([non-goals](../DEVELOPMENT_PLAN.md#explicit-no
    worldwide from 2027, except through ADB or a one-time "advanced flow".
    Registering is an owner decision ([Owner decisions](#owner-decisions-and-inputs)).
 
-**Recommended order:** release and updates first (AN01-AN02), then the host
-and satellite (AN03-AN06: smallest path to an old phone doing real work for
-the existing desktop, and it builds the protocol stack the companion needs),
-then the companion (AN07-AN10). See [Delivery slices](#delivery-slices).
+**Recommended order:** release and updates first (AN01-AN02), then the host,
+satellite and camera source (AN03-AN06, AN11: smallest path to an old phone
+doing real work for the existing desktop, and it builds the protocol stack the
+companion needs), then the companion (AN07-AN10). See [Delivery slices](#delivery-slices).
 
 ## Feature matrix
 
@@ -99,6 +99,7 @@ Per-engine detail by Android version is in the
 | Status while in a game | Tray | Ongoing notification with Talk/Stop; system microphone indicator | Hosting notification | Foreground service notification | AN03, AN07 |
 | Pair with hosts, who does what, failover | Yes | Yes (QR or pasted code) | Appears as a host node | Gateway client, cluster plan | AN03, AN10 |
 | Microphone/speaker satellite for the PC companion | - | - | **Yes** (new satellite routes) | `AudioRecord`, `AudioTrack` | AN06 |
+| Phone camera as a Watch source | Yes (webcams, capture cards, phone-as-webcam apps, http snapshot/MJPEG, rtsp) | - | **Yes: serves the camera as an HTTP JPEG snapshot/MJPEG address** the desktop's [address source](SCREEN_COMMENTARY.md#cameras-phones-and-other-video-sources) reads | CameraX, `camera` foreground service | AN11 |
 | Host role install/remove over SSH/Docker | Yes | No | No: roles are toggled on the device | - | - |
 | Setup advisor, prerequisites installer, Doctor, MCP | Yes | Minimal in-app checks only | Hosting checks (battery, maker restrictions, heat) | - | AN03, AN07 |
 | App updates | GitHub Releases | GitHub Releases, you confirm each install | Same | `PackageInstaller` | AN02 |
@@ -128,6 +129,7 @@ Per-engine detail by Android version is in the
 
 | Constraint (source) | Design answer |
 | --- | --- |
+| A phone or tablet camera as a Watch source: the desktop reads an `http(s)` JPEG snapshot (once per look) or MJPEG stream (one frame per look), with optional `user:password@` but no header tokens, and checks HTTPS against the system's trusted authorities ([video sources](SCREEN_COMMENTARY.md#cameras-phones-and-other-video-sources), `VideoSources.cs`); a `camera` foreground service needs the camera permission and cannot start in the background or at boot ([service types](https://developer.android.com/develop/background-work/services/fgs/service-types)) | **Share camera** on the Hosting screen starts a `camera` service and serves `http://<phone>:<port>/shot.jpg` and `/video` on the Wi-Fi address only, with a random password shown on the phone as the full address to paste. Plain HTTP is used because the desktop does not trust a self-signed certificate on this route, so the password and pictures are readable on your Wi-Fi: the screen says so. It runs only while sharing (notification, Android's camera indicator), keeps frames in memory and stops on **Stop sharing**. A later paired, pinned gateway camera route would remove that exposure but needs desktop work. Phone-as-webcam apps keep working as Windows cameras meanwhile. |
 | Doze suspends network access for idle apps, but a process **running a foreground service has no network restrictions**, and a charging device has none at all ([Doze](https://developer.android.com/training/monitoring-device-state/doze-standby), [power limits](https://developer.android.com/topic/performance/power/power-details)) | Hosting runs in a foreground service with an ongoing notification ("Hosting for GAMING-PC: Listening, Speaking"). A charger is recommended. |
 | Android 14+ requires a service type. `connectedDevice` covers "interactions with external devices that require a ... network connection" (prerequisite: the normal `CHANGE_NETWORK_STATE` permission); `dataSync`/`mediaProcessing` stop after 6 hours a day; `specialUse` is reviewed by Play; Android 15 boot rules block `microphone` and `mediaProjection` but not `connectedDevice` ([service types](https://developer.android.com/develop/background-work/services/fgs/service-types), [Android 15](https://developer.android.com/about/versions/15/behavior-changes-15)) | Host service type `connectedDevice` (`specialUse` only if a store review ever requires it). **Start hosting at boot** is an option for Listening, Thinking and Speaking. The satellite adds the `microphone` type, which cannot start at boot or from the background, so it resumes only when you open Martlet. |
 | Battery-optimization exemptions are "not acceptable" for most Play apps; phone makers add their own killers (Samsung "sleeping apps", Xiaomi autostart and others) ([Doze](https://developer.android.com/training/monitoring-device-state/doze-standby), [dontkillmyapp.com](https://dontkillmyapp.com/problem)) | Martlet does not request the exemption by itself. The Hosting screen has a **Keep Martlet running** checklist: battery setting (opens the system page), the maker's extra steps (linked from dontkillmyapp.com) and charging. The desktop shows the host unreachable as today, and opt-in [failover](CLUSTER.md#failover) applies. |
@@ -179,6 +181,7 @@ speeds on such phones are not measured):
 | Use | Verdict | Why |
 | --- | --- | --- |
 | Satellite microphone/speaker for the PC companion | **Best fit** | Capture, VAD and playback only; leave it on a charger in another room |
+| Camera for the desktop's **Watch my screen** | Good | Serves one JPEG per look; a phone-as-webcam app already works today as a Windows camera |
 | Cloud-backed companion (OpenAI, OpenRouter, NVIDIA Build) | Good | Network and audio only; screen watching sends one JPEG per look to the cloud model |
 | Speaking host with Android voices | Good | The system engine is light |
 | Listening host or on-device whisper | Possible | `tiny` (~273 MB memory) or `base` (~388 MB); `small` needs ~852 MB ([whisper.cpp](https://github.com/ggml-org/whisper.cpp)) |
@@ -316,6 +319,7 @@ both phones by whichever platform gets there first.
 | AN08 | **Watch my screen.** MediaProjection with per-session consent and single-app sharing, 1024 px virtual display, thumbnail change detection, pacer port, vision through the current Thinking route; ends on chip Stop or lock | AN07 | During a game shared alone, remarks follow the Windows pacer rules; Stop in the status bar chip or locking ends watching | M / M |
 | AN09 | **Character.** VRM and Live2D web bundles in a `WebView` in the app and as a floating overlay (two touch modes, frame cap, light mode), loudness lip-sync, Audio2Face via a paired NVIDIA host, side-by-side layout on tablets | AN07, AN10 for Audio2Face | Character talks in sync over a full-screen game for 10 minutes; taps on the game still register in "let touches through"; frame cost recorded on a modern and an old phone | M / H |
 | AN10 | **Devices, cluster, memory, Voice ID.** Pair the companion with hosts (QR or paste), use host Ollama/whisper/F5/Audio2Face routes, join who-does-what sync and failover; port local memory and the GE2E Voice ID encoder, checked against C# vectors added to the IO01 generator | AN03, AN07 | Companion uses a Linux host's roles; a Who does what change on Windows reaches the phone within a check; Voice ID scores match C# within tolerance | L / M |
+| AN11 | **Phone camera as a Watch source.** **Share camera** serves the camera as an HTTP JPEG snapshot and MJPEG stream with a random password, in a `camera` service started from the Hosting screen; works on old phones; no desktop change | AN01 | Windows **Watch my screen** with the phone's address remarks on the camera picture for 10 minutes; **Stop sharing** ends it and the address stops answering | S / L |
 
 ## Capability table for the platform matrix
 
@@ -346,6 +350,7 @@ every status is planned or not planned.
 | Push-to-talk controls | ptt-control | yes | limited: no "add tile" prompt before Android 13; add the tile by hand | no: companion feature | no: companion feature | 26 (tile 24, add prompt 33) | Notification permission on Android 13+; a running conversation session | planned AN07 |
 | Hands-free listening | hands-free | limited: echo cancellation varies by device and may not remove game audio; silence while a game uses the microphone | limited: same; before Android 10 the first app keeps the microphone | no: companion feature | no: companion feature | 26 | Microphone permission; `microphone` service started from the Martlet screen | planned AN07 |
 | Satellite microphone/speaker | satellite | no: host role (turn on hosting on the same device) | no: host role | yes | yes | 26 | Microphone permission; `microphone` service started from the Hosting screen (not at boot); charger | planned AN06 |
+| Phone camera as a Watch source | phone-camera | no: host role (turn on hosting on the same device) | no: host role | limited: plain HTTP with a password, readable on your Wi-Fi; only while sharing | limited: same; picture quality depends on the old camera | 26 | Camera permission; `camera` service started from the Hosting screen (not at boot); local network permission when targeting Android 17 | planned AN11 |
 
 ## Owner decisions and inputs
 
