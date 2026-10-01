@@ -12,6 +12,7 @@
     <!-- Streamed over SSH by Prepare this computer; the Linux computer needs no Martlet checkout. -->
     <EmbeddedResource Include="..\..\deploy\host\martlet-prepare" LogicalName="Martlet.Desktop.martlet-prepare" Link="Assets\martlet-prepare" />
     <InternalsVisibleTo Include="Martlet.Desktop.Tests" />
+    <Using Include="Martlet.Logging" />
     <ProjectReference Include="..\Martlet.Conversation\Martlet.Conversation.csproj" />
     <ProjectReference Include="..\Martlet.Participation\Martlet.Participation.csproj" />
     <ProjectReference Include="..\Martlet.Credentials.Windows\Martlet.Credentials.Windows.csproj" />

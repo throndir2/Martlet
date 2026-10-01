@@ -45,6 +45,7 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
         info.Environment.Clear();
         foreach (var name in new[] { "SystemRoot", "WINDIR", "TEMP", "TMP", "LOCALAPPDATA", "DOTNET_ROOT" })
             if (Environment.GetEnvironmentVariable(name) is { } value) info.Environment[name] = value;
+        if (ErrorLog.Directory is { } logs) info.Environment[ErrorLog.DirectoryEnvironmentVariable] = logs;
         info.ArgumentList.Add("--private-pipes");
         info.ArgumentList.Add(commands.GetClientHandleAsString());
         info.ArgumentList.Add(replies.GetClientHandleAsString());
@@ -55,6 +56,12 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
             throw new Win32Exception(Marshal.GetLastWin32Error());
         process = Process.Start(info) ?? throw new IOException("Renderer process did not start.");
         Exited = process.WaitForExitAsync();
+        var started = process;
+        _ = Exited.ContinueWith(_ =>
+        {
+            if (disposed) ErrorLog.Info("Avatar renderer stopped by Martlet.");
+            else ErrorLog.Error($"Avatar renderer exited unexpectedly with code {SafeExitCode(started)}. See avatar-renderer.log.");
+        }, TaskScheduler.Default);
         commands.DisposeLocalCopyOfClientHandle();
         replies.DisposeLocalCopyOfClientHandle();
         if (!AssignProcessToJobObject(job, process.Handle))
@@ -87,6 +94,12 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
             return response;
         }
         finally { exchange.Release(); }
+    }
+
+    private static string SafeExitCode(Process process)
+    {
+        try { return $"0x{process.ExitCode:X8}"; }
+        catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException) { return "unknown"; }
     }
 
     public ValueTask DisposeAsync()

@@ -59,7 +59,7 @@ public partial class MainWindow
         changingUpdateChoice = false;
         ShowUpdateControls();
         UpdateStatusText.Text = problem ?? DescribeUpdateSettings();
-        updateTimer.Tick += (_, _) => _ = UpdateTickAsync();
+        updateTimer.Tick += (_, _) => UpdateTickAsync().Forget();
     }
 
     private bool AutoInstalling => updateChecksEnabled && updatePreferences.AutoInstall;
@@ -169,7 +169,7 @@ public partial class MainWindow
             if (!enabled) updateCheckCancellation?.Cancel();
             ShowUpdateControls();
             UpdateStatusText.Text = DescribeUpdateSettings();
-            if (enabled) _ = RunUpdateCycleAsync();
+            if (enabled) RunUpdateCycleAsync().Forget();
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -196,7 +196,7 @@ public partial class MainWindow
             updatePreferences = next;
             ShowUpdateControls();
             UpdateStatusText.Text = DescribeUpdateSettings();
-            if (startNow) _ = RunUpdateCycleAsync();
+            if (startNow) RunUpdateCycleAsync().Forget();
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -362,7 +362,7 @@ public partial class MainWindow
 
     // ---------- hosts ----------
 
-    private void UpdateHosts_Click(object sender, RoutedEventArgs e) => _ = UpdateHostsAsync(automatic: false);
+    private void UpdateHosts_Click(object sender, RoutedEventArgs e) => UpdateHostsAsync(automatic: false).Forget();
 
     /// <summary>Brings every paired host that runs an older Martlet (or does not report its version) to this PC's version,
     /// one at a time and without a console window. A host that would need a password, sudo or an approval there keeps an

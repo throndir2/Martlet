@@ -164,7 +164,7 @@ public partial class HostsWindow : ThemedWindow
         ShowCommand(action);
         if (Ssh)
         {
-            _ = RunOverSshAsync(action);
+            RunOverSshAsync(action).Forget();
             return;
         }
         try
