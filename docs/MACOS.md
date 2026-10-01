@@ -40,7 +40,7 @@ Windows product ([non-goals](../DEVELOPMENT_PLAN.md#explicit-non-goals-for-mvp))
    macOS runner builds two downloads (Apple silicon and Intel). They are not
    notarized: on first launch the user clicks **Open Anyway** in System
    Settings > Privacy & Security once. Notarization needs the $99/year Apple
-   Developer Program, an owner spending decision not taken here. See
+   Developer Program, which Martlet does not use ([Decisions](#decisions-2026-10-01)). See
    [Unsigned builds](#unsigned-builds-what-the-user-sees).
 5. **What limits the companion while gaming:** watching the screen needs the
    Screen & System Audio Recording permission (macOS 15+ asks again
@@ -95,7 +95,7 @@ mechanism; **Partial** = planned with a stated limit; **No** = not planned.
 | Constraint (source) | Design answer |
 | --- | --- |
 | Gatekeeper: since macOS 15 Control-click **Open** no longer overrides it for software that is not notarized; the user goes to System Settings > Privacy & Security ([Apple](https://developer.apple.com/news/?id=saqachfa), [support](https://support.apple.com/en-us/102445)). Apple silicon runs no native arm64 code without at least an ad-hoc signature ([Apple](https://support.apple.com/guide/security/rosetta-2-on-a-mac-with-apple-silicon-secebb113be1/web)) | Ship ad-hoc or self-signed builds and document the one-time **Open Anyway** step; never claim they are signed by an identified developer or notarized; never suggest turning Gatekeeper off. Details in [Unsigned builds](#unsigned-builds-what-the-user-sees). |
-| Privacy permissions (microphone, screen recording) follow the app's code identity. Ad-hoc signed code "has a DR but it's tied to that specific version of the code", so macOS cannot carry a permission across versions ([TN3127](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements)); keychain items behave the same way | Sign releases with one stable **self-made certificate** (free, created once, stored as a repository secret): macOS then sees each update as the same app. Without it, each update asks again for the microphone, screen recording and keychain access. Owner decision below. |
+| Privacy permissions (microphone, screen recording) follow the app's code identity. Ad-hoc signed code "has a DR but it's tied to that specific version of the code", so macOS cannot carry a permission across versions ([TN3127](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements)); keychain items behave the same way | Sign releases with one stable **self-made certificate** (free, created once, stored as a repository secret): macOS then sees each update as the same app. Without it, each update asks again for the microphone, screen recording and keychain access. Decided: use it ([Decisions](#decisions-2026-10-01)). |
 | Key events from other apps need Accessibility (`NSEvent` global monitor) or Input Monitoring (event taps) ([docs](https://developer.apple.com/documentation/appkit/nsevent/addglobalmonitorforevents(matching:handler:))) | Push-to-talk uses a registered global hot key (Carbon `RegisterEventHotKey` through [KeyboardShortcuts](https://github.com/sindresorhus/KeyboardShortcuts), which reports key down and key up and works sandboxed) and needs no permission. The combination is swallowed, so the game does not see it. Default combos include Command or Control (macOS 15.0 rejected Option-only hot keys, [forum](https://developer.apple.com/forums/thread/763878)). Mouse-button push-to-talk would need Input Monitoring: later, opt-in. |
 | ScreenCaptureKit needs the **Screen & System Audio Recording** permission, and an app must restart after it is granted ([sample](https://developer.apple.com/documentation/screencapturekit/capturing-screen-content-in-macos)); macOS 15+ periodically asks the user to re-confirm (reported monthly; interval not documented by Apple). `SCContentSharingPicker` and `SCScreenshotManager` need macOS 14 | **Start watching** explains the permission and the restart before triggering it; a re-confirmation prompt is shown as "macOS asks again", not an error. Watching never starts by itself and is never saved as on, as on [Windows](SCREEN_COMMENTARY.md). Whether the system picker avoids the standing permission is unverified. |
 | Full-screen apps live in their own Space. A window joins every Space with `canJoinAllSpaces` and shows beside a full-screen window with `fullScreenAuxiliary` ([docs](https://developer.apple.com/documentation/appkit/nswindow/collectionbehavior-swift.struct/fullscreenauxiliary)) | The character is a borderless, transparent, non-activating `NSPanel` at floating level with those behaviors, so it never steals focus from the game. Games that capture the display exclusively (legacy `CGDisplayCapture`) may hide it; the voice conversation continues regardless. |
@@ -137,11 +137,11 @@ the cost of the macOS custody backend; it would be retired when (b) lands.
 
 ### Proposed layout
 
-The Mac app joins the IO02 project. If IO02 has not started, name the folder
-`apple/` instead of `ios/` (coordinator decision).
+The Mac app joins the IO02 project in the shared `apple/` folder (decided
+2026-10-01).
 
 ```text
-ios/ (or apple/)
+apple/
   project.yml                 XcodeGen spec: iOS app, broadcast extension, MartletMac, MartletHostAgent
   MartletKit/                 Swift package, now also built for macOS 14+
     Sources/Host/             host server shared by iPhone, iPad and Mac (IO03)
@@ -308,8 +308,8 @@ On a Mac that means:
 - **Notarization** (no Open Anyway step at all) requires a Developer ID
   certificate from the Apple Developer Program, $99/year
   ([Developer ID](https://developer.apple.com/developer-id/),
-  [enroll](https://developer.apple.com/programs/enroll/)): an owner spending
-  decision, not part of this plan.
+  [enroll](https://developer.apple.com/programs/enroll/)). Martlet does not
+  use it: it costs money.
 
 A GitHub asset digest checks that the download is intact; it does not prove
 who published it. Martlet's release notes and in-app text say exactly this.
@@ -355,7 +355,7 @@ is manual on a real Mac and stays NOT RUN until done.
 
 | ID | Deliverable | Depends on | Acceptance | Size / risk |
 | --- | --- | --- | --- | --- |
-| MA01 | **Mac app shell and release.** macOS 14+ target in the IO02 project, `MartletKit` built for macOS, menu bar item with empty Companion and Hosting windows, move-to-Applications check, `macos-release.yml` producing both `.dmg` files (ad-hoc, or the self-made identity once approved) and first-launch instructions in the release notes | IO02 | A manual run attaches both `.dmg` files to the `v<version>` release; after Open Anyway the app opens on an Apple silicon Mac and the x64 build opens on an Intel Mac | M / M |
+| MA01 | **Mac app shell and release.** macOS 14+ target in the IO02 project, `MartletKit` built for macOS, menu bar item with empty Companion and Hosting windows, move-to-Applications check, `macos-release.yml` producing both `.dmg` files (signed with the self-made identity once its script has run, ad-hoc until then) and first-launch instructions in the release notes | IO02 | A manual run attaches both `.dmg` files to the `v<version>` release; after Open Anyway the app opens on an Apple silicon Mac and the x64 build opens on an Intel Mac | M / M |
 | MA02 | **Mac host: Listening and Thinking.** **Lend this Mac**: login agent, TLS identity and pairing (QR and code) as IO03, Keychain authority, transcription route (whisper.cpp Metal/CPU; Apple speech on 26), chat route (Ollama relay with memory-based model suggestion, Apple Intelligence model, MLX LLM/VLM), sleep and App Nap assertions, thermal pause, machine report fields; desktop engine labels, managed-on-the-device hosts, Mac icon and advisor entries | IO01, IO02, MA01 (host code shared with IO03; whichever lands first owns it) | The Windows desktop pairs with a Mac by pasting the code, hands it Listening and Thinking on the Devices page and holds a voice conversation; Ollama runs on Metal on Apple silicon; quitting the app keeps hosting and logging in again restarts it; failover between the Mac and a Linux host works | L / H |
 | MA03 | **Mac host: Speaking.** Existing F5 route served by f5-tts-swift (MLX) with reference resampling; generic speech route (IO04) served by Apple voices and, after authorization and confirmation, Personal Voice | MA02, IO04 | The desktop speaks replies in a cloned voice from an Apple silicon Mac and with an Apple voice from an Intel Mac; F5 latency recorded per chip and memory size | M / H |
 | MA04 | **Mac companion conversation.** Typed, push-to-talk hotkey (hold to talk), hands-free (voice processing, minimal ducking, energy VAD port, re-arm after reply) with OpenAI, Chat Completions, Apple speech/Intelligence/voices, this Mac's whisper.cpp and Ollama; persona and styles; per-action authorization and disclosure as on Windows; login keychain credentials; menu bar status | MA01, IO05 (shared conversation code) | Hands-free conversation continues while a full-screen game is in front with its audio audible; the hotkey works inside the game without Accessibility permission; Stop/mute end capture; nothing uploads without the per-action permission | L / M |
@@ -387,7 +387,7 @@ verify>`. Nothing in this table has run on a Mac.
 | Lip-sync: voice loudness | loudness-lipsync | yes | yes | no: runs where the character is drawn | no: runs where the character is drawn | 14 | None | planned MA05 |
 | Listening: Apple on-device speech | apple-speech | yes | unknown: whether `SpeechTranscriber` models run on Intel (`DictationTranscriber` is the documented fallback) | yes: serves the transcription route | unknown: same as Intel companion | 26 | Microphone permission; locale assets downloaded by macOS | planned MA02 (host), MA04 (companion) |
 | Thinking: Apple Intelligence on-device model | apple-on-device-llm | yes: text on 26, screen images on 27 | no: Apple Intelligence needs Apple silicon | yes: serves the chat route | no: needs Apple silicon | 26 (images 27) | M1 or later (or MacBook Neo); Apple Intelligence turned on; supported language; 8-14 GB storage | planned MA02 (host), MA04 (companion) |
-| Thinking: Apple Private Cloud Compute | apple-pcc | limited: macOS 27, managed entitlement, daily limits, Apple's servers | no: macOS 27 is Apple silicon only | limited: same as companion | no: macOS 27 is Apple silicon only | 27 | Managed entitlement (likely needs the paid Developer Program) | not planned: needs the paid Apple Developer Program and Apple's entitlement (owner decision) |
+| Thinking: Apple Private Cloud Compute | apple-pcc | limited: macOS 27, managed entitlement, daily limits, Apple's servers | no: macOS 27 is Apple silicon only | limited: same as companion | no: macOS 27 is Apple silicon only | 27 | Managed entitlement (likely needs the paid Developer Program) | not planned: needs the paid Apple Developer Program and Apple's entitlement; Martlet skips paid programs |
 | Speaking: Apple voices | apple-voices | yes | yes | yes: serves the new speech route (IO04) | yes: serves the new speech route (IO04) | 14 | Optional downloaded Enhanced/Premium voices | planned MA03 (host), MA04 (companion) |
 | Speaking: Personal Voice | personal-voice | yes: after per-app authorization | unknown: creating one needs Apple silicon; using a synced voice on Intel is unverified | limited: only after an on-Mac confirmation that replies in your voice play on another computer | unknown: same as Intel companion | 14 | Apple silicon to create the voice; Personal Voice authorization | planned MA03 (host), MA04 (companion) |
 | Thinking and vision: MLX models | mlx-llm | yes: on this Mac | no: MLX needs Apple silicon | yes: serves the chat route, including screen images with vision models | no: MLX needs Apple silicon | 14 | Apple silicon; memory per model | planned MA02 |
@@ -401,22 +401,30 @@ verify>`. Nothing in this table has run on a Mac.
 | Host through Docker Desktop for Mac | docker-host | no: host-only method | no: host-only method | limited: CPU only inside a Linux VM; host image needs the arm64 fix | unknown: expected to work like Docker Desktop on Windows, CPU only; never run | 15 (Docker supports the current and two previous macOS) | Docker Desktop, 4 GB+ RAM | planned MA10 |
 | Old Intel Mac reinstalled with Ubuntu | linux-host | no: no longer runs macOS | no: no longer runs macOS | no: the native Linux method is x86_64 only | yes: becomes a normal Linux host (CPU roles) | none (replaces macOS) | Ubuntu 24.04 x86_64; T2 Macs (2018-2020) need the t2linux kernel | works today (Linux host route; never run on Mac hardware) |
 
-## Owner decisions and inputs
+## Decisions (2026-10-01)
 
-- **Test Macs:** an Apple silicon Mac on macOS 26 or later (16 GB+ ideal) for
-  the host, Apple Intelligence and MLX; an Intel Mac (2018-2020) for the x64
-  build; macOS 27 later for image input.
-- **Two free repository secrets (recommended):** a self-made code-signing
-  identity (keeps permissions across updates) and a Sparkle EdDSA key (lets
-  the app verify updates). Without them: ad-hoc builds, permissions asked
-  again after each update, and no in-app updater (download updates by hand).
-- **Apple Developer Program ($99/year):** not authorized by this plan. It
-  removes the Open Anyway step (Developer ID + notarization) and is needed for
-  Private Cloud Compute's entitlement. Shared with the iOS decision.
-- **Folder name** `apple/` instead of `ios/` if IO02 has not started.
-- **Live2D on a second platform:** confirm the bundled Cubism Core for Web is
-  covered by Live2D's terms for the Mac build, as for Windows.
-- **Mac App Store:** out of scope; it would require sandboxing and review.
+The owner asked to decide everything that costs nothing and skip anything
+that costs money. Decided:
+
+- **No paid Apple programs.** No notarization, Developer ID, Mac App Store or
+  Private Cloud Compute. Users click **Open Anyway** once per install.
+- **Signing and update keys: yes, both free.** A self-made code-signing
+  identity (so permissions survive updates) and a Sparkle EdDSA key (so the app
+  verifies its updates), stored as repository secrets. MA01 adds
+  `scripts/New-MacReleaseKeys.ps1`, which the owner runs once on their own
+  computer (Windows with Git's `openssl`, or a Mac). It creates both, uploads
+  them as secrets with `gh secret set` and leaves a copy for two offline
+  backups. Keys are never committed, and no agent creates or keeps them.
+  Until the script has run, releases are ad-hoc signed and in-app updates
+  stay off.
+- **Folder:** `apple/`, shared with the iPhone and iPad apps.
+- **Releases:** the arm64 and x64 `.dmg` files are attached to the same
+  `v<version>` GitHub release as the Windows installer.
+- **Live2D:** the same bundled Cubism Core for Web as on Windows, under the
+  same terms. The owner names macOS in the Expandable Application review
+  already applied for; VRM needs no review.
+- **Test Macs:** only Macs the owner already has; nothing is bought. Cells for
+  hardware nobody has (an Intel Mac, macOS 27) stay NOT RUN.
 
 ## Not planned
 

@@ -41,7 +41,7 @@ macOS 14, iOS/iPadOS 26, Android 8.0.
 | --- | --- | --- | --- | --- | --- |
 | Thinking: OpenAI, OpenRouter, NVIDIA Build, any OpenAI-compatible server | **Works** | Planned (MA04) | Planned (IO05) | Planned (AN07) | Not planned: no Linux companion app; Linux computers are hosts |
 | Thinking on the device itself | **Works**: a local server (Ollama, LM Studio) through Chat Completions | Planned: Apple Intelligence (M1+, macOS 26+; screen images from 27) and Ollama on the Mac's GPU (MA04); MLX models (MA02). Intel: CPU-only 1-4B models | Planned (IO05): Apple Intelligence (iPhone 15 Pro or later, M-series iPad, iOS 26+; images from 27) | Planned (AN07): Gemini Nano on supported flagships, **only while Martlet is in front, never behind a game**; small LiteRT or llama.cpp models (old phones: 0.5-1B, slow) | - |
-| Thinking: Apple Private Cloud Compute | - | Not planned: needs Apple's entitlement and most likely the paid Developer Program (owner decision) | Not planned: same | - | - |
+| Thinking: Apple Private Cloud Compute | - | Not planned: needs Apple's entitlement and most likely the paid Developer Program, which Martlet doesn't use | Not planned: same | - | - |
 | Listening: OpenAI | **Works** | Planned (MA04) | Planned (IO05) | Planned (AN07) | - |
 | Listening on the device | Planned (PL02): Windows speech and whisper.cpp can be saved but are not used yet | Planned (MA04): Apple speech (macOS 26; unverified on Intel), whisper.cpp | Planned (IO05): Apple speech (iOS 26+) | Planned (AN07): Android speech, on the phone from Android 12 (older phones may send audio to Google, with a warning); whisper.cpp tiny/base | - |
 | Speaking: OpenAI | **Works** | Planned (MA04) | Planned (IO05) | Planned (AN07) | - |
@@ -165,6 +165,7 @@ now. The macOS, iOS and Android apps must implement them the same way.
 | Host older than platform reporting | Counted as a Linux host. GPU checks use its hardware report when it has one; otherwise they are unknown |
 | Older desktop paired with a phone host | The older desktop ignores the new platform fields, treats the phone as a Linux host and may offer installs that fail. **Update desktops before pairing a phone or Mac host** |
 | iPhone/iPad host goes to the background | It stops answering. The card says it hosts only while Martlet is open on its screen. Failover is suggested when you hand it a job |
+| iPhone/iPad build expired (free Apple ID, 7 days) | Martlet there stops opening until AltStore or SideStore refreshes it, so the host stops answering like any other. The Devices map reminds you to keep the refresh going |
 | Phone host without the job switched on | Shown as "can't take it now: switch on listening in Martlet on that device" |
 | A phone or Mac serves a job through an existing route (for example Apple speech on the transcription route) | Works like any host. Menus show the model it advertises instead of "whisper" |
 | Failover moves thinking to a model that can't see images | Screen watching says the model can't see ([SCREEN_COMMENTARY](SCREEN_COMMENTARY.md#incompatibility-warnings)); talking keeps working |
@@ -191,6 +192,25 @@ them count as Linux.
 | `os_version` | for example `26.1`, `14` | app hosts |
 | `architecture` | `x64`, `arm64` | every host |
 | `features` | up to 16 of `apple-intelligence`, `gemini-nano`, `foreground-only`, `battery` | app hosts |
+
+## Decisions (2026-10-01)
+
+The owner asked for every decision that costs nothing to be made, and for
+anything that costs money to be skipped:
+
+| Topic | Decision | Effect |
+| --- | --- | --- |
+| Paid programs (Apple Developer Program, Google Play, Android full verification) | **None** | iPhone/iPad: free Apple ID sideloading, re-signed every 7 days; no TestFlight, App Store, App Groups or Private Cloud Compute. Mac: not notarized; users click Open Anyway once. Android: sideloaded APK; Google's free limited-distribution account only |
+| Hardware | Only devices the owner already has | Results on devices nobody has stay NOT RUN; nothing is bought |
+| Signing and update keys | Free, self-made, created once by the owner with a script, stored as repository secrets, backed up offline; never committed and never created by an agent | Android updates install over each other; Mac permissions survive updates; Mac in-app updates are verified |
+| Folders | `apple/` (iPhone, iPad, Mac), `android/` | - |
+| Releases | Every platform's files attach to the same `v<version>` GitHub release | One version number everywhere |
+| Android package name | `io.github.throndir2.martlet` | Permanent |
+| On-phone models | Apache-2.0 by default; Gemma 3/3n after accepting its free terms | - |
+| Live2D | Same bundled Cubism Core for Web on every platform; the owner names the new platforms in the Expandable Application review already applied for | VRM needs no review |
+
+The details are in each plan: [iOS](IOS.md#decisions-2026-10-01),
+[macOS](MACOS.md#decisions-2026-10-01), [Android](ANDROID.md#decisions-2026-10-01).
 
 ## Delivery slices
 

@@ -175,7 +175,7 @@ public static class PlatformCatalog
     private const PlatformSide You = PlatformSide.Companion, Host = PlatformSide.Host;
     private const string NoLinuxApp = "there is no Linux companion app; Linux computers are hosts";
     private const string NoCloudOnHosts = "cloud routes run on the device you talk to; hosts never hold cloud keys";
-    private const string PccDecision = "needs Apple's entitlement and most likely the paid Apple Developer Program (owner decision)";
+    private const string PccDecision = "needs Apple's entitlement and most likely the paid Apple Developer Program, which Martlet doesn't use";
 
     private static readonly PlatformRequirement Nvidia4 = new() { NvidiaGb = 4 };
     private static readonly PlatformRequirement Nvidia6 = new() { NvidiaGb = 6 };
@@ -462,6 +462,9 @@ public static class PlatformCatalog
         if (device.ForegroundOnly)
             yield return $"{device.Name} hosts only while Martlet is open on its screen. Keep it on a charger with the app open, " +
                 "and turn on failover for its jobs.";
+        if (device.Platform == DevicePlatform.Ios)
+            yield return "Martlet on it is installed with a free Apple ID and must be refreshed in AltStore or SideStore every " +
+                "7 days; an expired copy stops opening and stops hosting.";
         if (device.Features?.Contains(PlatformFeatures.OnBattery) == true)
             yield return $"{device.Name} is running on battery; it may slow down or stop hosting when the battery is low.";
         if (Engine("remote-roles").On(device.Platform, PlatformSide.Host) is { Availability: PlatformAvailability.NotPlanned } remote)
