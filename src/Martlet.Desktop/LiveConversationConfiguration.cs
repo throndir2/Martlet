@@ -321,28 +321,48 @@ internal sealed class LiveConversationConfiguration
         };
     }
 
-    internal string ScreenDisclosure(Chattiness chattiness, ScreenScope scope)
+    internal string ScreenDisclosure(Chattiness chattiness, WatchSource source)
     {
         var route = Routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
         var tuning = ScreenCommentaryPacer.For(chattiness);
-        return $"Screen -> LLM (only while Watch my screen is on, with its own permission): Martlet captures your " +
-            (scope == ScreenScope.ActiveWindow ? "active window" : "whole screen (the monitor your active window is on)") +
+        var destination = route is null ? "the Thinking model" : LlmDestinationName(route) + ", " + route.ModelId;
+        if (!source.IsScreen)
+            return "Camera -> LLM (only while Watch is on, with its own permission): Martlet " +
+                (source.Kind == WatchKind.Camera
+                    ? $"opens {source.Label} through Windows Media Foundation only while watching (its light is on exactly then) and reads a frame"
+                    : $"fetches one picture from {source.Label} (a snapshot or the first frame of an MJPEG stream; rtsp:// streams and video files are read through Media Foundation)") +
+                $" every {ScreenCommentaryPacer.Tick.TotalSeconds:0} s, downscaled and kept only in memory (compared as a 16x9 grey thumbnail to notice changes). " +
+                $"Now and then it sends ONE picture (JPEG, at most {ScreenGlancer.MaximumEdge} px)" +
+                (source.Kind == WatchKind.Camera ? " with the camera name" : "") + $", your persona and recent context to {destination}: " +
+                $"at most {tuning.LooksPerHour} looks per hour ({chattiness}). Most looks end in silence; each look is one potentially paid LLM request " +
+                "(a paired host has no per-request charge). The model is told never to identify people or comment on anyone's looks. " +
+                "Anyone in view of the camera is seen; tell them. Pictures are never saved, logged or added to memory, and the address's password is never saved. " +
+                "Pause, mute, lock, Stop, Esc or Close ends watching.";
+        return $"Screen -> LLM (only while Watch is on, with its own permission): Martlet captures your " +
+            (source.Scope == ScreenScope.ActiveWindow ? "active window" : "whole screen (the monitor your active window is on)") +
             $" on this PC every {ScreenCommentaryPacer.Tick.TotalSeconds:0} s through Windows Desktop Duplication (which also sees full-screen games, without touching the game) or GDI, downscaled and kept only in memory (compared as a 16x9 grey thumbnail to notice changes). " +
             $"Now and then it sends ONE screenshot (JPEG, at most {ScreenGlancer.MaximumEdge} px) with the window title, your persona and recent context to " +
-            $"{(route is null ? "the Thinking model" : LlmDestinationName(route) + ", " + route.ModelId)}: at most {tuning.LooksPerHour} looks per hour ({chattiness}). " +
+            $"{destination}: at most {tuning.LooksPerHour} looks per hour ({chattiness}). " +
             "Most looks end in silence; each look is one potentially paid LLM request (a paired host has no per-request charge). " +
             "Martlet's own windows, minimized windows, password managers and private/incognito browser windows are never captured; " +
             "protected video and windows that block capture read back black and are skipped. Screenshots are never saved, logged or added to memory. " +
             "Pause, mute, lock, Stop, Esc or Close ends watching.";
     }
 
-    internal static string CommentaryInstructions(Chattiness chattiness) =>
-        "You can see the user's screen: the attached image is what they are looking at right now. You are hanging out with them " +
-        "like a friend in the room while they play or work.\n" +
+    internal static string CommentaryInstructions(Chattiness chattiness, bool camera = false) =>
+        (camera
+            ? "You can see through a camera the user chose to share with you: the attached image is what it shows right now (maybe them, " +
+              "their room, a pet, a table game, a TV or whatever their phone points at). You are hanging out with them like a friend in the room.\n"
+            : "You can see the user's screen: the attached image is what they are looking at right now. You are hanging out with them " +
+              "like a friend in the room while they play or work.\n") +
         $"Real friends stay quiet most of the time. Reply with exactly [{SilentReply}] unless something is genuinely worth a remark " +
         "right now: a notable moment, a win or a fail, something funny or surprising, a clear change of scene, or a quick tip they would welcome.\n" +
-        "Never describe or narrate the screen, never mention images or screenshots, never repeat or paraphrase something you said recently, " +
-        "and never ask them to answer. Do not read out private details you can see (names, messages, emails, numbers).\n" +
+        (camera
+            ? "Never describe or narrate what the camera sees, never mention images, cameras or pictures, never repeat or paraphrase something you said recently, " +
+              "and never ask them to answer. Never try to identify anyone, never guess anyone's age, health or identity, and never comment on anyone's body, " +
+              "looks or clothes. Do not read out private details you can see (documents, screens, messages, numbers).\n"
+            : "Never describe or narrate the screen, never mention images or screenshots, never repeat or paraphrase something you said recently, " +
+              "and never ask them to answer. Do not read out private details you can see (names, messages, emails, numbers).\n") +
         "If you do speak: one short, natural spoken sentence of at most 20 words, plain text, no markdown, lists or emoji.\n" +
         chattiness switch
         {
