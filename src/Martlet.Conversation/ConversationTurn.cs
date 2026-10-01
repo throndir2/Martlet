@@ -373,6 +373,7 @@ public sealed class ConversationTurn
                         run = Owner.StartPlayback(this, ids, voice.Output, Deadline(window), stop.Token);
                         playback = run;
                         speechObservation = Owner.GeneratedSpeech?.Begin(run, frame.Format);
+                        Owner.SpokenText?.Post(segment, run.Completion);
                     }
                 }
                 await SubmitAsync(run, frame, window).ConfigureAwait(false);

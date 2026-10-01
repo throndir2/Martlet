@@ -6,52 +6,71 @@
         Title="Martlet - Setup / resume" Width="850" Height="820" MinWidth="600" MinHeight="520"
         WindowStartupLocation="CenterOwner" Loaded="Window_Loaded" Closing="Window_Closing"
         AutomationProperties.AutomationId="SetupWindow" AutomationProperties.Name="Martlet resumable configuration, not voice readiness">
+    <local:ThemedWindow.Resources>
+        <local:SetupJobNameConverter x:Key="JobName"/>
+    </local:ThemedWindow.Resources>
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="20">
-            <TextBlock Text="How Martlet thinks" Style="{DynamicResource PageTitle}"/>
+            <TextBlock Text="AI jobs: thinking, listening and speaking" Style="{DynamicResource PageTitle}"/>
             <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,16"
-                       Text="Choose the conversation model, voice and keys in four steps. Saving is configuration only: no capture, devices, network or secret lookup happens on opening this screen, and screen and memory stay OFF."/>
+                       Text="Pick a provider and model for each job; recommended defaults are prefilled. Saving is configuration only: no capture, devices, network or secret lookup happens on opening this screen, and screen and memory stay OFF."/>
             <StackPanel x:Name="EditorPanel">
                 <TabControl x:Name="Steps" Style="{DynamicResource StepperTabs}" SelectionChanged="Step_Changed" AutomationProperties.AutomationId="SetupSteps">
                     <TabItem Header="1. _Choice">
                         <StackPanel Margin="12">
-                            <RadioButton x:Name="FixtureChoice" Content="_Fixture (safe default; no account, key, cost or call)"
+                            <RadioButton x:Name="FixtureChoice" Content="_Demo only: scripted replies, no AI model (nothing is sent anywhere; needs no account or key)"
                                          IsChecked="True" Margin="0,8" Checked="Choice_Changed" AutomationProperties.AutomationId="SetupFixture"/>
-                            <RadioButton x:Name="ApiChoice" Content="_Cloud API profile: OpenAI, OpenRouter, NVIDIA Build or an OpenAI-compatible endpoint (configuration only)"
+                            <RadioButton x:Name="ApiChoice" Content="_Use AI models: OpenAI, OpenRouter, NVIDIA Build or an OpenAI-compatible server (cloud or your own)"
                                          Margin="0,8" Checked="Choice_Changed" AutomationProperties.AutomationId="SetupApi"/>
-                            <TextBlock TextWrapping="Wrap" Text="The LLM role can use OpenAI, OpenRouter, NVIDIA Build or any OpenAI-compatible Chat Completions endpoint (including a local server such as LM Studio, llama.cpp, vLLM or Ollama on a loopback address). STT and TTS use OpenAI. No automatic cloud fallback. Switching to fixture preserves saved routes and keys without using them."/>
+                            <TextBlock TextWrapping="Wrap" Text="Thinking can use OpenAI, OpenRouter, NVIDIA Build or any OpenAI-compatible Chat Completions endpoint (including a local server such as LM Studio, llama.cpp, vLLM or Ollama on a loopback address). Listening and Speaking use OpenAI in the cloud, or a paired Martlet host from the Devices map. No automatic cloud fallback. Switching to Demo only preserves saved choices and keys without using them."/>
                         </StackPanel>
                     </TabItem>
-                    <TabItem Header="2. _Destinations">
+                    <TabItem Header="2. _Jobs">
                         <StackPanel Margin="12">
-                            <TextBlock TextWrapping="Wrap" Text="Microphone audio -> STT cloud (https://api.openai.com). Transcript/context -> LLM (OpenAI, OpenRouter, NVIDIA Build or the exact OpenAI-compatible base URL you enter). Response text -> TTS cloud (https://api.openai.com, generated voice)."/>
+                            <TextBlock TextWrapping="Wrap" Text="Martlet has three AI jobs. Set each one up separately: Thinking (the conversation model), Listening (turns your speech into text) and Speaking (turns replies into a voice). Your microphone and speakers are chosen on the Microphone and speakers page, and handing a job to another computer happens on the Devices map."/>
                             <TextBlock x:Name="DisclosureText" TextWrapping="Wrap" Margin="0,8"/>
                             <TextBlock TextWrapping="Wrap">
                                 <Hyperlink NavigateUri="https://openai.com/api/pricing/" RequestNavigate="Link_Click">Current official API pricing</Hyperlink>
                                 <Run Text=" | "/>
                                 <Hyperlink NavigateUri="https://platform.openai.com/docs/guides/your-data" RequestNavigate="Link_Click">Current data retention policy</Hyperlink>
                             </TextBlock>
-                            <Label Target="{Binding ElementName=RoleChoice}" Content="Configure _role"/>
-                            <ComboBox x:Name="RoleChoice" SelectionChanged="Role_Changed" MinHeight="30" AutomationProperties.AutomationId="SetupRole"/>
-                            <TextBlock x:Name="BoundaryText" TextWrapping="Wrap" Margin="0,8"/>
-                            <Label Target="{Binding ElementName=ProviderChoice}" Content="LLM _provider / endpoint (LLM role only; STT and TTS use OpenAI)"/>
-                            <ComboBox x:Name="ProviderChoice" SelectionChanged="Provider_Changed" MinHeight="30" AutomationProperties.AutomationId="SetupProvider"/>
-                            <Label Target="{Binding ElementName=BaseUrl}" Content="API _base URL (Chat Completions; Martlet appends /chat/completions)"/>
-                            <TextBox x:Name="BaseUrl" MaxLength="2048" TextChanged="Route_Changed" AutomationProperties.AutomationId="SetupBaseUrl"/>
+                            <Label Target="{Binding ElementName=RoleChoice}" Content="_Job to set up"/>
+                            <ComboBox x:Name="RoleChoice" SelectionChanged="Role_Changed" MinHeight="30" AutomationProperties.AutomationId="SetupRole">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Converter={StaticResource JobName}}"/>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <TextBlock x:Name="JobText" TextWrapping="Wrap" Margin="0,8,0,0" AutomationProperties.AutomationId="SetupJobText"/>
+                            <TextBlock x:Name="BoundaryText" TextWrapping="Wrap" Margin="0,8" Style="{DynamicResource Muted}"/>
+                            <StackPanel x:Name="ProviderPanel">
+                                <Label Target="{Binding ElementName=ProviderChoice}" Content="_Provider"/>
+                                <ComboBox x:Name="ProviderChoice" SelectionChanged="Provider_Changed" MinHeight="30" AutomationProperties.AutomationId="SetupProvider"/>
+                            </StackPanel>
+                            <StackPanel x:Name="BaseUrlPanel">
+                                <Label Target="{Binding ElementName=BaseUrl}" Content="API _base URL (Martlet appends /chat/completions)"/>
+                                <TextBox x:Name="BaseUrl" MaxLength="2048" TextChanged="Route_Changed" AutomationProperties.AutomationId="SetupBaseUrl"/>
+                            </StackPanel>
                             <TextBlock x:Name="ProviderHint" TextWrapping="Wrap" Margin="0,4" AutomationProperties.AutomationId="SetupProviderHint"/>
-                            <Label Target="{Binding ElementName=ModelCatalogChoice}" Content="Known compatible _models for this named adapter"/>
-                            <ComboBox x:Name="ModelCatalogChoice" MinHeight="30" AutomationProperties.AutomationId="SetupModelCatalog"/>
-                            <Button Content="_Use selected compatible model ID" Click="UseCatalogModel_Click" Padding="8" Margin="0,4"
-                                    AutomationProperties.AutomationId="SetupUseCatalogModel"/>
-                            <Label Target="{Binding ElementName=ModelId}" Content="Actual _upstream model ID (not Martlet's internal alias; no default)"/>
+                            <StackPanel x:Name="CatalogPanel">
+                                <Label Target="{Binding ElementName=ModelCatalogChoice}" Content="Known compatible _models"/>
+                                <ComboBox x:Name="ModelCatalogChoice" MinHeight="30" AutomationProperties.AutomationId="SetupModelCatalog"/>
+                                <Button Content="_Use selected model" Click="UseCatalogModel_Click" Padding="8" Margin="0,4"
+                                        AutomationProperties.AutomationId="SetupUseCatalogModel"/>
+                            </StackPanel>
+                            <Label Target="{Binding ElementName=ModelId}" Content="_Model ID (recommended default prefilled; change it if you prefer another)"/>
                             <TextBox x:Name="ModelId" MaxLength="128" TextChanged="Route_Changed" AutomationProperties.AutomationId="SetupModel"/>
-                            <Label Target="{Binding ElementName=VoiceId}" Content="Actual upstream _voice ID (TTS only; no default)"/>
-                            <TextBox x:Name="VoiceId" MaxLength="128" TextChanged="Route_Changed" AutomationProperties.AutomationId="SetupVoice"/>
+                            <StackPanel x:Name="VoicePanel">
+                                <Label Target="{Binding ElementName=VoiceId}" Content="_Voice"/>
+                                <TextBox x:Name="VoiceId" MaxLength="128" TextChanged="Route_Changed" AutomationProperties.AutomationId="SetupVoice"/>
+                                <TextBlock x:Name="VoiceHint" TextWrapping="Wrap" Margin="0,4" Style="{DynamicResource Muted}"/>
+                            </StackPanel>
                             <CheckBox x:Name="ConsentChoice" Margin="0,12" Checked="Consent_Changed" Unchecked="Consent_Changed" AutomationProperties.AutomationId="SetupConsent">
-                                <TextBlock TextWrapping="Wrap" Text="I select this role, model, voice and destination after reviewing its data/cost disclosure. This is NOT permission for capture or any paid request."/>
+                                <TextBlock TextWrapping="Wrap" Text="I choose this provider, model and destination for this job after reviewing its data/cost disclosure. This is NOT permission for capture or any paid request."/>
                             </CheckBox>
-                            <Button Content="_Apply selected route and consent choice" Click="ApplyRoute_Click" Padding="8" AutomationProperties.AutomationId="SetupApplyRoute"/>
-                            <TextBlock TextWrapping="Wrap" Margin="0,8" Text="Apply before navigating or saving. Route/model/voice/key changes clear that role's consent. The local adapter catalog is not account availability or a network probe. Unsupported IDs do not replace the working draft. No fallback is performed."/>
+                            <Button Content="_Apply this job's choice" Click="ApplyRoute_Click" Padding="8" AutomationProperties.AutomationId="SetupApplyRoute"/>
+                            <TextBlock TextWrapping="Wrap" Margin="0,8" Style="{DynamicResource Muted}" Text="Apply before switching jobs or saving. A prefilled default is only a suggestion until you apply it. Changing provider, model, voice or key clears that job's consent. The model list is Martlet's adapter catalog, not proof of account availability. No fallback is performed."/>
                         </StackPanel>
                     </TabItem>
                     <TabItem Header="3. _Credentials">

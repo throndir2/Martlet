@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using Martlet.Avatar.Hosting;
@@ -27,6 +28,12 @@ internal sealed class RendererWindow : Window
         Focusable = false
     };
     private readonly Grid viewport = new() { Background = Brushes.Transparent, Cursor = Cursors.SizeAll };
+    private readonly Popup speechBubble = new()
+    {
+        AllowsTransparency = true, Placement = PlacementMode.Absolute, Focusable = false, IsHitTestVisible = false
+    };
+    private readonly TextBlock speechText = new() { TextWrapping = TextWrapping.Wrap, MaxWidth = 300, FontSize = 15 };
+    private readonly System.Windows.Shapes.Polygon speechTail = new();
     private ResourceDictionary? palette;
     private bool darkTheme;
     private bool highContrast;
@@ -61,44 +68,9 @@ internal sealed class RendererWindow : Window
         WindowStartupLocation = WindowStartupLocation.Manual;
         PlaceOnDesktop();
 
-        var move = new Button
-        {
-            Content = "Move character", Cursor = Cursors.SizeAll, Padding = new Thickness(10, 5, 10, 5),
-            ToolTip = "Drag the character or this handle. Mouse wheel resizes. Arrow keys move; Shift makes fine adjustments. Home returns to the primary screen."
-        };
-        AutomationProperties.SetAutomationId(move, "MoveAvatar");
-        AutomationProperties.SetName(move, "Move character");
-        AutomationProperties.SetHelpText(move, (string)move.ToolTip);
-        move.PreviewMouseLeftButtonDown += DragCharacter;
-        move.PreviewKeyDown += (_, e) =>
-        {
-            var step = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? 1 : 10;
-            switch (e.Key)
-            {
-                case Key.Left: Left -= step; break;
-                case Key.Right: Left += step; break;
-                case Key.Up: Top -= step; break;
-                case Key.Down: Top += step; break;
-                case Key.Home: PlaceOnDesktop(); break;
-                default: return;
-            }
-            e.Handled = true;
-        };
-        var close = new Button
-        {
-            Content = "Close", Padding = new Thickness(10, 5, 10, 5),
-            ToolTip = "Close the avatar only. Voice continues."
-        };
-        AutomationProperties.SetAutomationId(close, "CloseAvatar");
-        AutomationProperties.SetName(close, "Close character overlay");
-        close.Click += (_, _) => Close();
-        var controls = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
-        controls.Children.Add(move);
-        controls.Children.Add(close);
-        DockPanel.SetDock(controls, Dock.Top);
-        var layout = new DockPanel();
-        layout.Children.Add(controls);
-        layout.Children.Add(viewport);
+        // Show/hide and reset-position controls live in the main Martlet window; the overlay shows only the character.
+        AutomationProperties.SetAutomationId(viewport, "MoveAvatar");
+        AutomationProperties.SetName(viewport, "Character. Drag to move; mouse wheel resizes.");
         viewport.Children.Add(browser);
         var loading = new TextBlock
         {
@@ -108,6 +80,7 @@ internal sealed class RendererWindow : Window
         loading.SetResourceReference(TextBlock.BackgroundProperty, "SurfaceBrush");
         loading.SetResourceReference(TextBlock.ForegroundProperty, "TextBrush");
         viewport.Children.Add(loading);
+        viewport.Children.Add(CreateSpeechBubble());
         viewport.MouseLeftButtonDown += DragCharacter;
         viewport.MouseWheel += (_, e) =>
         {
@@ -123,8 +96,22 @@ internal sealed class RendererWindow : Window
             Left = centerX - width / 2;
             Top = bottom - height;
         };
-        PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) { e.Handled = true; Close(); } };
-        Content = layout;
+        PreviewKeyDown += (_, e) =>
+        {
+            var step = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? 1 : 10;
+            switch (e.Key)
+            {
+                case Key.Escape: Close(); break;
+                case Key.Left: Left -= step; break;
+                case Key.Right: Left += step; break;
+                case Key.Up: Top -= step; break;
+                case Key.Down: Top += step; break;
+                case Key.Home: PlaceOnDesktop(); break;
+                default: return;
+            }
+            e.Handled = true;
+        };
+        Content = viewport;
         Loaded += async (_, _) => await RunAsync();
         Closed += (_, _) =>
         {
@@ -166,8 +153,69 @@ internal sealed class RendererWindow : Window
     {
         if (e.ButtonState != MouseButtonState.Pressed) return;
         e.Handled = true;
-        if (sender is Button handle) handle.Focus();
         DragMove();
+    }
+
+    private Popup CreateSpeechBubble()
+    {
+        speechText.SetResourceReference(TextBlock.ForegroundProperty, "TextBrush");
+        AutomationProperties.SetAutomationId(speechText, "CharacterSpeech");
+        AutomationProperties.SetLiveSetting(speechText, AutomationLiveSetting.Polite);
+        var body = new Border
+        {
+            CornerRadius = new CornerRadius(14), BorderThickness = new Thickness(2), Padding = new Thickness(12, 8, 12, 9),
+            Child = speechText
+        };
+        body.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
+        body.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
+        speechTail.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "SurfaceBrush");
+        speechTail.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "BorderBrush");
+        speechTail.StrokeThickness = 2;
+        speechTail.VerticalAlignment = VerticalAlignment.Bottom;
+        speechTail.Margin = new Thickness(-2, 0, -2, 14);
+        var shape = new DockPanel { LastChildFill = true };
+        shape.Children.Add(speechTail);
+        shape.Children.Add(body);
+        speechBubble.Child = shape;
+        LocationChanged += (_, _) => PlaceSpeech();
+        SizeChanged += (_, _) => PlaceSpeech();
+        Closed += (_, _) => speechBubble.IsOpen = false;
+        return speechBubble;
+    }
+
+    // The bubble sits beside the character's head: to its left when there is room on screen, otherwise to its right.
+    private void ShowSpeech(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            speechBubble.IsOpen = false;
+            return;
+        }
+        speechText.Text = text.Length > 600 ? text[..600] + "…" : text;
+        PlaceSpeech();
+        speechBubble.IsOpen = true;
+    }
+
+    private void PlaceSpeech()
+    {
+        if (speechText.Text.Length == 0) return;
+        var shape = (FrameworkElement)speechBubble.Child;
+        shape.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        var size = shape.DesiredSize;
+        var left = Left + Width * 0.18 - size.Width >= SystemParameters.VirtualScreenLeft;
+        DockPanel.SetDock(speechTail, left ? Dock.Right : Dock.Left);
+        speechTail.Points = left
+            ? new PointCollection { new(0, 0), new(14, 10), new(0, 18) }
+            : new PointCollection { new(14, 0), new(0, 10), new(14, 18) };
+        var head = Top + Height * 0.32;
+        speechBubble.HorizontalOffset = left ? Left + Width * 0.18 - size.Width : Left + Width * 0.82;
+        speechBubble.VerticalOffset = Math.Max(SystemParameters.VirtualScreenTop, head - size.Height);
+        if (speechBubble.IsOpen)
+        {
+            // Nudging the offset forces an open Popup to reposition after its owner moves.
+            speechBubble.HorizontalOffset += 0.01;
+            speechBubble.HorizontalOffset -= 0.01;
+        }
     }
 
     private async Task RunAsync()
@@ -247,11 +295,23 @@ internal sealed class RendererWindow : Window
             while (!lifetime.IsCancellationRequested)
             {
                 message = await RendererProtocol.ReadAsync(input, lifetime.Token);
-                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion"))
+                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "home" or "say"))
                     throw new InvalidDataException("Renderer command is invalid.");
+                                if (message.Kind == "home")
+                                {
+                                    PlaceOnDesktop();
+                                    await ReplyAsync("ok", new { });
+                                    continue;
+                                }
                 if (message.Kind == "theme")
                 {
                     ApplyOverlayTheme(RendererProtocol.Data<RendererTheme>(message).Dark);
+                    await ReplyAsync("ok", new { });
+                    continue;
+                }
+                if (message.Kind == "say")
+                {
+                    ShowSpeech(RendererProtocol.Data<RendererSay>(message).Text);
                     await ReplyAsync("ok", new { });
                     continue;
                 }
