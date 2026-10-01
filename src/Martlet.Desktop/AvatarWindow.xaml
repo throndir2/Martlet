@@ -40,7 +40,7 @@
             <CheckBox x:Name="SubtitleChoice" Content="Show s_ubtitles at the bottom of the active screen while Martlet speaks"
                       Margin="0,0,0,4" Click="SpeechDisplay_Click" AutomationProperties.AutomationId="SubtitleChoice"/>
             <TextBlock x:Name="SpeechDisplayStatus" TextWrapping="Wrap" Margin="0,0,0,10" AutomationProperties.LiveSetting="Polite"
-                       Text="Saved immediately. Subtitles follow the screen of the window you are using and appear over windowed and borderless full-screen games (not exclusive full-screen). They are hidden from screen capture."/>
+                       Text="Saved immediately. Subtitles follow the screen of the window you are using and appear on top of full-screen games, just like the character. They are hidden from screen capture."/>
             <Expander Header="Audio2Face on another computer (Martlet host)" Margin="0,4,0,10"
                       AutomationProperties.AutomationId="RemoteHostSection">
                 <StackPanel Margin="0,8,0,0">
