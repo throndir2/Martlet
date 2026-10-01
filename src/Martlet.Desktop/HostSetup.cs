@@ -186,6 +186,7 @@ internal static partial class HostSetupCommands
         var path = Path.Combine(directory, $"martlet-host-{Engine(action).Replace(' ', '-')}.cmd");
         File.WriteAllText(path, Script(target, action), Encoding.ASCII);
         Process.Start(new ProcessStartInfo("cmd.exe", $"/k \"{path}\"") { UseShellExecute = true })?.Dispose();
+        ErrorLog.Info($"Opened a console window for martlet-host {Engine(action)} ({target.Method}): {path}");
     }
 
     private const string SshUnattended = "-T -o BatchMode=yes -o ConnectTimeout=15";

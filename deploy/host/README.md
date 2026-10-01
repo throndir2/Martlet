@@ -138,8 +138,19 @@ or over `ssh -t user@host`. How it fits together:
   the containers that joined it, because Docker does not order restarts of
   shared-namespace containers.
 - Every command runs in a fresh engine container as the unprivileged `martlet`
-  user (uid 1000) inside that network. `-u 0` only lets the launcher reach the
-  Docker socket.
+  user (uid 1000) inside that network, named `martlet-host-<command>-<UTC time>-<n>`.
+  `-u 0` only lets the launcher reach the Docker socket.
+- The gateway state allows one process at a time. A console window closed while
+  its engine waits for input leaves that engine running (its terminal never
+  ends), holding the state for good. When an owner operation or the gateway
+  service finds the state busy, the engine lists every container using it and
+  stops engine sessions running 10+ minutes (after `yes`, or confirmed in
+  Martlet); newer ones are only named. `status` lists them too.
+- Each `setup`, `add`, `remove`, `pair`, `machine` and `update` run appends its
+  start, its end (exit code or the reason it stopped) and any busy-state findings
+  to `logs/engine.log` in the config volume (natively `~/.config/martlet/host/`);
+  `status` shows the last lines. A start without an exit line means that run was
+  killed or abandoned. Docker itself does not log engines (`--log-driver none`).
 - The gateway runs in **`martlet-host-gateway`** (no Docker socket) with binding
   mode `published`: it listens on the container's wildcard address while its
   certificate and clients use the host's LAN origin.
