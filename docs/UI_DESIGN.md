@@ -250,22 +250,36 @@ The conversation window puts the chat first:
   *Thinking* at first):
   1. *Thinking*: where the conversation model runs, the provider, the model and
      its API key.
-  2. *Voice*: speakers, then the text-to-speech provider, model, voice and key,
-     plus the Voice Library.
-  3. *Listening*: microphone, then the speech-to-text provider, model and key.
-  4. *Character*: the character model (show, hide, choose and customize, reset),
-     its personality, and who handles lip-sync.
+  2. *Voice*: where the voice runs and the voice itself, then the speakers.
+  3. *Listening*: the speech-to-text provider, model and key, then the
+     microphone.
+  4. *Character*: what it looks like now, then the character model (show,
+     hide, choose and customize, reset), its personality, and who handles
+     lip-sync.
   5. *Memory*: whether memory is on, and *Manage memory* for its facts.
 
-  Each job tab (1-3) shows **Now**, then asks **Where it runs**, defaulting to
-  *This PC (recommended)*:
+  Every tab starts with **Now**: what it uses and any problem stopping it.
+  Cards appear only when they apply to the chosen place: the Voice Library
+  shows only where F5 speaks (this PC's F5 or another of your computers), never
+  for a cloud provider or a Windows voice; a one-provider cloud card names the
+  provider instead of offering a one-item list; Ollama's download and check
+  buttons appear once Ollama is installed.
+
+  Each job tab (1-3) then asks **Where it runs**, defaulting to *This PC
+  (recommended)*:
 
   - *This PC*: thinking uses Ollama at `http://127.0.0.1:11434/v1` (install
     Ollama, pick a suggested model sized to the graphics card, *Download model*
     in a console, *Check Ollama* over loopback on request, *Use Ollama on this
-    PC*). Voice (F5) and listening (whisper) run in Martlet's host service on
-    this PC; if it isn't set up yet, the tab offers Docker Desktop and *Set up
-    this PC's host service*, then *Use F5/whisper on this PC* installs the role.
+    PC*). Voice offers two one-click choices, the one in use (or the one this
+    PC's hardware suits) first: **F5 voice, with Docker** (*Set up F5 with
+    Docker* sets up and pairs Martlet's host service on this PC, so this PC
+    also becomes one of your hosts, installs F5 and switches over with F5-TTS's
+    published sample voice) or **Windows voice, no Docker** (*Use a Windows
+    voice* picks an installed voice in this PC's language, with no host
+    service; a voice list and *Hear it* follow). Listening (whisper) runs in
+    Martlet's host service on this PC; *Set up whisper with Docker* does the
+    same chain.
   - *Another of your computers*: every paired host with what it runs and *Use
     it*, plus *Add a computer*, *Check hosts* and the Devices map.
   - *A cloud provider*: provider, model (and voice), API key and an explicit

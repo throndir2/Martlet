@@ -365,7 +365,7 @@ public partial class MainWindow
                 : new NowLine(CompanionTab.Thinking, NodeHealth.Unknown, "Not set up yet. Martlet needs this to reply; it runs on this PC by default.", "Set up", Primary: true),
             speakingProblem is not null ? new NowLine(CompanionTab.Voice, NodeHealth.Attention, $"Not working now: {speakingProblem.Problem}", "Change")
                 : NetworkMap.IsReady(tts) ? new NowLine(CompanionTab.Voice, NodeHealth.Ready,
-                    $"{PlaceName(tts!)}{(tts!.Reference is { } voice ? $", voice {voice.PresetName}" : tts.VoiceId is { } id ? $", voice {id}" : "")}", "Change")
+                    $"{PlaceName(tts!)}{VoiceSuffix(tts!)}", "Change")
                 : tts is not null ? new NowLine(CompanionTab.Voice, NodeHealth.Attention, Pending(tts), "Review")
                 : new NowLine(CompanionTab.Voice, NodeHealth.Unknown, "Optional. Not set up, so Martlet replies in text.", "Set up"),
             listeningProblem is not null ? new NowLine(CompanionTab.Listening, NodeHealth.Attention, $"Not working now: {listeningProblem.Problem}", "Change")

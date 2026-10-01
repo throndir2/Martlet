@@ -61,6 +61,7 @@ internal sealed class LiveConversationConfiguration
     private static bool IsChat(SetupRoute? route) => route?.RouteType == SetupRouteType.ChatCompletions;
     private static bool IsHost(SetupRoute? route) => route?.RouteType == SetupRouteType.GatewayOllama;
     private static bool IsHostVoice(SetupRoute? route) => route?.RouteType == SetupRouteType.GatewayF5;
+    private static bool IsWindowsVoice(SetupRoute? route) => route?.RouteType == SetupRouteType.LocalWindowsTts;
 
     internal TextModelSelection TextSelection()
     {
@@ -99,11 +100,19 @@ internal sealed class LiveConversationConfiguration
             : null;
     }
 
-    /// <summary>The speech selection a voice action authorizes: the OpenAI model and voice, or the host's F5 model and the
-    /// applied reference voice (its preset ID; the voice itself stays in the local F5 preset store).</summary>
+    /// <summary>The installed Windows voice that speaks on this PC, when Its voice uses the Windows voice.</summary>
+    internal WindowsVoiceTarget? WindowsVoiceTarget()
+    {
+        var route = Route(SetupRole.Tts);
+        return IsWindowsVoice(route) && route.VoiceId is { } voice ? new(voice) : null;
+    }
+
+    /// <summary>The speech selection a voice action authorizes: the OpenAI model and voice, the installed Windows voice, or
+    /// the host's F5 model and the applied reference voice (its preset ID; the voice itself stays in the local F5 preset store).</summary>
     internal SpeechSynthesisSelection SpeechSelection()
     {
         var route = Route(SetupRole.Tts);
+        if (WindowsVoiceTarget() is { } windows) return WindowsVoiceSynthesisStream.Selection(windows);
         return IsHostVoice(route)
             ? new(SelfHostSetup.GatewayF5Alias, route.ModelId, route.Reference?.PresetId.ToString("N") ?? "none",
                 SpeechOutputFormat.Pcm24KhzMono16Le)
@@ -138,6 +147,12 @@ internal sealed class LiveConversationConfiguration
                     return $"{role}: the Martlet host pairing, its F5 route or the chosen voice is incomplete. Hand speaking to your host again on the Devices page.";
                 continue;
             }
+            if (role == SetupRole.Tts && IsWindowsVoice(route) && route.Enabled == true)
+            {
+                if (route.Consent != route.Selection()) return $"{role}: voice choice missing or changed. Choose the Windows voice again on Its voice.";
+                if (WindowsVoiceTarget() is null) return $"{role}: no Windows voice is chosen. Choose one on Its voice.";
+                continue;
+            }
             if (role == SetupRole.Llm && IsChat(route) && route.Enabled == true)
             {
                 if (route.Consent != route.Selection()) return $"{role}: destination choice missing or changed. Review it in Setup.";
@@ -156,7 +171,7 @@ internal sealed class LiveConversationConfiguration
                 return $"{role}: this Desktop build supports enabled OpenAI routes only" +
                     (role == SetupRole.Llm ? " (or an enabled OpenRouter, NVIDIA Build or OpenAI-compatible Chat Completions LLM route, or Ollama on a paired Martlet host)"
                         : role == SetupRole.Stt ? " (or whisper on a paired Martlet host)"
-                        : role == SetupRole.Tts ? " (or F5 on a paired Martlet host)" : "") +
+                        : role == SetupRole.Tts ? " (or F5 on a paired Martlet host, or a Windows voice on this PC)" : "") +
                     "; the saved self-host choice is retained, not dispatched.";
             if (route.Consent != route.Selection()) return $"{role}: destination choice missing or changed. Review it in Setup.";
             if (route.CredentialId is null) return $"{role}: missing credential reference. Store a key explicitly in Setup.";
@@ -199,6 +214,9 @@ internal sealed class LiveConversationConfiguration
         string SpeechDisclosure()
         {
             var tts = Routes.SingleOrDefault(r => r.Role == SetupRole.Tts);
+            if (IsWindowsVoice(tts))
+                return $"Response -> TTS: the Windows voice '{WindowsVoices.DisplayName(tts!.VoiceId)}' on this PC. Each reply segment is spoken " +
+                    "locally by Windows; nothing is sent anywhere, there is no key and no per-request charge.";
             if (!IsHostVoice(tts) || tts!.Gateway is not { } gateway)
                 return $"Response -> TTS: {OpenAiSetup.Origin}, {Selection(SetupRole.Tts)}.";
             return $"Response -> TTS: your Martlet host {gateway.HostId} ({gateway.Origin}, F5 {tts.ModelId}, pinned TLS), " +
@@ -283,7 +301,8 @@ internal sealed class LiveConversationConfiguration
                     TextSelection(), TextLimits, TurnLimits,
                     voice ? new(SpeechSelection(),
                         new(Audio!.Output.EndpointId is null ? OutputPolicy.DefaultAtStart : OutputPolicy.FixedEndpoint, Audio.Output.EndpointId),
-                        SpeechLimits) : null, ChatTarget(), HostTarget(), voice ? HostSpeechTarget() : null, silentReply);
+                        SpeechLimits) : null, ChatTarget(), HostTarget(), voice ? HostSpeechTarget() : null, silentReply,
+                    voice ? WindowsVoiceTarget() : null);
             }
         }
         throw new LiveActionException("conversation.input_limit");

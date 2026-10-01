@@ -117,9 +117,9 @@ internal static class NetworkMap
 
     private static string RouteDetail(SetupRoute route)
     {
-        var text = route.VoiceId is { } voice && route.RouteType != SetupRouteType.LocalWindowsTts
-            ? $"{route.ModelId}, voice {voice}"
-            : route.Reference is { } reference ? $"{route.ModelId}, voice {reference.PresetName}" : route.VoiceId ?? route.ModelId;
+        var text = route.RouteType == SetupRouteType.LocalWindowsTts ? WindowsVoices.DisplayName(route.VoiceId)
+            : route.VoiceId is { } voice ? $"{route.ModelId}, voice {voice}"
+            : route.Reference is { } reference ? $"{route.ModelId}, voice {reference.PresetName}" : route.ModelId;
         if (route.Enabled == false) text += " (turned off)";
         else if (route.Consent is null) text += " (review in Companion)";
         return text;
@@ -140,7 +140,8 @@ internal static class NetworkMap
         SetupRouteType.GatewayOllama => "Ollama on your Martlet host",
         SetupRouteType.GatewayF5 => "F5 on your Martlet host",
         SetupRouteType.GatewayStt => "whisper on your Martlet host",
-        SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWindowsTts => "Windows speech",
+        SetupRouteType.LocalWindowsStt => "Windows speech",
+        SetupRouteType.LocalWindowsTts => "Windows voice",
         SetupRouteType.LocalWhisper => "whisper.cpp on this PC",
         _ => "OpenAI"
     };
@@ -178,7 +179,7 @@ internal static class NetworkMap
             {
                 case SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWindowsTts:
                     target = thisPc;
-                    role = role with { Detail = "Windows speech: " + RouteDetail(route) };
+                    role = role with { Detail = (route.RouteType == SetupRouteType.LocalWindowsTts ? "Windows voice: " : "Windows speech: ") + RouteDetail(route) };
                     break;
                 case SetupRouteType.LocalWhisper:
                     target = thisPc;
