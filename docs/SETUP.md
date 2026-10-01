@@ -17,40 +17,48 @@ saved choices for explicitly authorized typed/PTT actions. Unsupported model/
 voice IDs are rejected there without discovery or fallback; its guide lists
 the exact supported IDs and account/device gates still NOT RUN.
 Open **Setup / resume**
-in the existing Desktop. Fixture is the safe first-run choice; it needs no
+in the existing Desktop. **Demo only** (internally the fixture profile; scripted
+replies, no AI model) is the safe first-run choice; it needs no
 account, key, terminal, device, network or saved profile. Existing offline
 fixture, refusal, Stop and status actions are unchanged. Opening setup and
 ordinary Desktop/Doctor status are read-only: no credential lookup, device
 enumeration, capture, provider discovery or network requests.
 
-Choose **Cloud API profile** to save role-specific routes without making
-an inference request. STT and TTS use the named OpenAI origin
-`https://api.openai.com`. Internal aliases `openai-stt`, `openai-llm`, and
-`openai-tts` are Martlet policy identifiers, not upstream model names. Enter the
-actual upstream model ID, and an upstream voice ID for TTS, explicitly.
+Choose **Use AI models** to save per-job routes without making an inference
+request. The **Jobs** tab sets up one job at a time: **Thinking** (conversation
+model, internally the LLM role), **Listening** (speech to text, STT) and
+**Speaking** (text to voice, TTS). Each job shows only its own fields: the
+provider and base URL appear only for Thinking, the voice only for Speaking.
+Listening and Speaking use the named OpenAI origin `https://api.openai.com`
+(or a paired host from the Devices map). Internal aliases `openai-stt`,
+`openai-llm`, and `openai-tts` are Martlet policy identifiers, not upstream
+model names. The home steps open Setup on the matching job. See
+[COMPONENTS.md](COMPONENTS.md) for the jobs/placement design.
 
-For the LLM role, **LLM provider / endpoint** selects one of:
+For Thinking, **Provider** selects one of (the recommended model is prefilled):
 
-| Provider | API base URL | Key |
-| --- | --- | --- |
-| OpenAI (Responses API) | `https://api.openai.com` | Required |
-| OpenRouter | `https://openrouter.ai/api/v1` | Required (OpenRouter key) |
-| NVIDIA Build | `https://integrate.api.nvidia.com/v1` | Required (`nvapi-...` key from build.nvidia.com) |
-| Custom OpenAI-compatible endpoint | Any canonical HTTPS base such as `https://api.groq.com/openai/v1`, or a loopback server such as `http://127.0.0.1:1234/v1` (LM Studio), `http://127.0.0.1:8080/v1` (llama.cpp) or `http://127.0.0.1:11434/v1` (Ollama) | Optional |
+| Provider | API base URL | Prefilled model | Key |
+| --- | --- | --- | --- |
+| OpenAI (Responses API) | `https://api.openai.com` | `gpt-4.1-mini-2025-04-14` | Required |
+| OpenRouter | `https://openrouter.ai/api/v1` | `meta-llama/llama-3.3-70b-instruct` | Required (OpenRouter key) |
+| NVIDIA Build | `https://integrate.api.nvidia.com/v1` | `meta/llama-3.3-70b-instruct` | Required (`nvapi-...` key from build.nvidia.com) |
+| Custom OpenAI-compatible endpoint | Any canonical HTTPS base such as `https://api.groq.com/openai/v1`, or a loopback server such as `http://127.0.0.1:1234/v1` (LM Studio), `http://127.0.0.1:8080/v1` (llama.cpp) or `http://127.0.0.1:11434/v1` (Ollama) | none (enter the model your server serves) | Optional |
 
-The Chat Completions providers take the exact model ID you type (for example
-`meta-llama/llama-3.3-70b-instruct:free` on OpenRouter or
-`meta/llama-3.3-70b-instruct` on NVIDIA Build); there is no model catalog or
-discovery. Martlet appends `/chat/completions`. HTTP is allowed only for a
+Listening prefills `gpt-4o-mini-transcribe`; Speaking prefills
+`gpt-4o-mini-tts-2025-12-15` with voice `alloy`. Switching provider replaces a
+prefilled default with the new provider's default but keeps a model you typed.
+The Chat Completions providers accept any exact model ID (for example
+`openai/gpt-4o-mini` or a `:free` variant on OpenRouter); there is no model
+catalog or discovery. Martlet appends `/chat/completions`. HTTP is allowed only for a
 literal loopback IP (`localhost` is rejected). Keys are bound to the exact base
 URL. Switching the LLM to another destination detaches the previous key and
 lists it for explicit removal on **Credentials**. Each reply is capped at 256
 tokens; reasoning/thinking models spend part of that on hidden thinking (never
 spoken or shown), so prefer instruct/chat models.
-No model/voice is silently selected or discovered, and saving does not prove
-that an entered ID exists or is accessible.
+A prefilled default is only a suggestion: nothing is saved until you apply the
+job and consent, and saving does not prove that an ID exists or is accessible.
 
-For each role, review the displayed boundary and apply the route:
+For each job, review the displayed boundary and apply the route:
 
 | Role | Disclosed data destination |
 | --- | --- |
@@ -68,15 +76,15 @@ Screen remains OFF; [local memory](MEMORY.md) is separately OFF by default,
 never enabled by Setup or an installation plan. No health test, account login,
 provider listing or billable probe is run.
 
-Back/Next and the tabs navigate Choice, Destinations, Credentials and Review.
+Back/Next and the tabs navigate Choice, Jobs, Credentials and Review.
 **Apply** commits route fields to the working checkpoint; **Save checkpoint**
 or **Save and exit setup** persists it atomically. Unsaved route fields block
-save until applied; changing the selected role discards unapplied fields with
+save until applied; changing the selected job discards unapplied fields with
 a visible explanation. **Reload** explicitly discards unsaved edits. The
 keyboard-focusable status remains available at every step. Missing roles,
 consent, key references and audio qualification are explained instead of
 displaying a pretend completed voice setup. Reopening resumes the saved step.
-Switching to fixture preserves stored API routes/keys but does not use them.
+Switching to Demo only preserves stored API routes/keys but does not use them.
 
 ### Slow or interrupted setup actions
 

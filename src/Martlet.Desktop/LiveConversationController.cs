@@ -152,7 +152,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         Func<int, int>? nextStyle = null,
         DesktopMemoryService? memory = null,
         GeneratedSpeechObserver? generatedSpeech = null, Action? revokeAvatar = null, VoiceIdentity? voiceIdentity = null,
-        IHostTranscriptionClient? hostListener = null, string? dataDirectory = null)
+        IHostTranscriptionClient? hostListener = null, string? dataDirectory = null, SpokenTextFeed? spokenText = null)
     {
         this.operations = operations;
         this.settings = settings;
@@ -167,7 +167,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
         var credentials = new ConversationCredentialSource(() => Volatile.Read(ref active)?.Authorization);
         runtime = runtimeFactory?.Invoke(credentials, this.clock) ??
             ConversationRuntime.Create(credentials, playbackDevices, clock: this.clock, generatedSpeech: generatedSpeech,
-                hostText: new HostTextClient(), hostSpeech: dataDirectory is null ? null : new HostSpeechClient(dataDirectory));
+                hostText: new HostTextClient(), hostSpeech: dataDirectory is null ? null : new HostSpeechClient(dataDirectory),
+                spokenText: spokenText);
         transcription = transcriptionFactory?.Invoke(credentials, this.clock) ??
             OpenAiTranscriptionAdapter.Create(credentials, this.clock);
         hostTranscription = new(hostListener ?? new HostTranscriptionClient(), this.clock);

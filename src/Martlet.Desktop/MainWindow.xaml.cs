@@ -32,6 +32,7 @@ public partial class MainWindow : ThemedWindow
     private readonly AudioSetupService audioSetup;
     private readonly LiveConversationController? conversation;
     private readonly AvatarController avatar = new();
+    private readonly SpeechCaptions captions;
     private readonly WindowsAudioSessionEvents audioSessionEvents = new();
     private readonly string? startupError;
     private readonly DiagnosticStatusModel? model;
@@ -77,11 +78,12 @@ public partial class MainWindow : ThemedWindow
         voiceIdentity = new(store?.DataDirectory);
         voiceIdentity.Load();
         recovery = store is null ? null : new(store, setupOperations, () => !support.HasResources);
+        captions = new(avatar, store?.DataDirectory);
         if (setupService is not null)
         {
             conversation = new(setupOperations, setupService, vault, new WasapiCaptureDeviceFactory(), new WasapiDeviceFactory(),
                 memory: memory, generatedSpeech: avatar.Observer, revokeAvatar: avatar.Revoke, voiceIdentity: voiceIdentity,
-                dataDirectory: store!.DataDirectory);
+                dataDirectory: store!.DataDirectory, spokenText: captions.Feed);
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
         }
         audioSessionEvents.LockedChanged += AvatarSessionLocked;
@@ -303,12 +305,15 @@ public partial class MainWindow : ThemedWindow
             await RefreshAsync();
     }
 
+    private Martlet.Core.Settings.SetupRole? nextSetupJob;
+
     private async void Setup_Click(object sender, RoutedEventArgs e)
     {
         if (store is null || closing || saving || runningFixture || model?.IsRunning == true) return;
         var characterWasShowing = avatar.IsShowing;
         if (!await StopAvatarSafelyAsync()) return;
-        new SetupWindow(setupService!, setupOperations) { Owner = this, Troubleshooting = OpenTroubleshooting, ConfigurationRecovery = OpenRecovery }.ShowDialog();
+        new SetupWindow(setupService!, setupOperations) { Owner = this, Troubleshooting = OpenTroubleshooting, ConfigurationRecovery = OpenRecovery, InitialRole = nextSetupJob }.ShowDialog();
+        nextSetupJob = null;
         await RefreshAsync();
         if (characterWasShowing) await ShowSavedCharacterAsync(onlyIfAutoShow: false);
     }
@@ -430,8 +435,26 @@ public partial class MainWindow : ThemedWindow
             }
         }
     }
-    private void UpdateCharacterButton() =>
+    private void UpdateCharacterButton()
+    {
         CharacterButton.Content = avatar.IsShowing ? "Hide _character" : "Show _character";
+        ResetCharacterButton.Visibility = avatar.IsShowing ? Visibility.Visible : Visibility.Collapsed;
+    }
+    private async void ResetCharacter_Click(object sender, RoutedEventArgs e) => await ResetCharacterPositionAsync();
+    private async Task ResetCharacterPositionAsync()
+    {
+        try
+        {
+            await avatar.ResetPositionAsync(lifetime.Token);
+            ActionText.Text = "Character moved back to the lower-right of your main screen.";
+        }
+        catch (Exception error) when (error is System.IO.IOException or InvalidOperationException or TimeoutException or
+            OperationCanceledException or ObjectDisposedException)
+        {
+            if (!closing) ActionText.Text = $"Character position could not be reset: {error.Message}";
+        }
+        finally { UpdateCharacterButton(); }
+    }
     /// <summary>Shows the saved character, or the bundled default when none is configured.</summary>
     private async Task ShowSavedCharacterAsync(bool onlyIfAutoShow)
     {
@@ -459,7 +482,7 @@ public partial class MainWindow : ThemedWindow
     private void OpenAvatar(Window owner)
     {
         if (store is null || setupService is null || closing) return;
-        new AvatarWindow(avatar, new AvatarProfileStore(store.DataDirectory), setupService, setupOperations)
+        new AvatarWindow(avatar, new AvatarProfileStore(store.DataDirectory), setupService, setupOperations, captions)
             { Owner = owner }.ShowDialog();
         UpdateCharacterButton();
         _ = RefreshHomeAsync();
@@ -567,6 +590,7 @@ public partial class MainWindow : ThemedWindow
             await model.CloseAsync();
         await Task.Run(async () => await fixture.DisposeAsync());
         if (conversation is not null) await Task.Run(async () => await conversation.DisposeAsync());
+        captions.Dispose();
         if (!await StopAvatarSafelyAsync())
         {
             closing = false;

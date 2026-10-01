@@ -352,8 +352,6 @@ public partial class MainWindow
         var voiceReady = NetworkMap.IsReady(stt) && NetworkMap.IsReady(tts);
         var audio = homeSettings?.Audio;
         var audioTested = audio is { Input.Checkpoint: not null, Output.Checkpoint: not null };
-        var characterName = homeAvatar is { } saved && BundledLive2D.IsBuiltIn(saved.ModelPath)
-            ? saved.ModelPath[BundledLive2D.Prefix.Length..] : homeAvatar is null ? "Hiyori" : "Your character";
         var paired = NetworkMap.Hosts(Inputs()).Count;
         var hosts = paired > 0 || routes.Any(r => r.Gateway is not null);
         EvaluateCoverage();
@@ -368,19 +366,20 @@ public partial class MainWindow
                     : brainReady ? $"{NetworkMap.ProviderName(llm!)}: {llm!.ModelId}"
                     : llm is not null ? "Chosen. Review its data and cost details in Setup to finish."
                     : "Choose a cloud model (OpenRouter, NVIDIA Build or OpenAI) or one on your own computers.",
-                brainReady, false, [new(brainReady ? "Change" : "Choose", () => RunNodeAction(NodeAction.Setup), !brainReady)]),
+                brainReady, false, [new(brainReady ? "Change" : "Choose", () => { nextSetupJob = SetupRole.Llm; RunNodeAction(NodeAction.Setup); }, !brainReady)]),
             new("voice", "Its voice and ears",
                 voiceProblem is not null ? $"{voiceProblem.Title} isn't working now: {voiceProblem.Problem}"
                     : voiceReady ? $"Listens with {NetworkMap.ProviderName(stt!)}, speaks with {NetworkMap.ProviderName(tts!)}"
                     : "Add speech-to-text and a voice so you can talk out loud. You can always type instead.",
-                voiceReady, true, [new(voiceReady ? "Change" : "Set up", () => RunNodeAction(NodeAction.Setup))]),
+                voiceReady, true, [new(voiceReady ? "Change" : "Set up", () => { nextSetupJob = NetworkMap.IsReady(stt) ? SetupRole.Tts : SetupRole.Stt; RunNodeAction(NodeAction.Setup); })]),
             new("audio", "Microphone and speakers",
                 audioTested ? "Tested on this PC" : audio is not null ? "Chosen, not tested yet" : "Pick and test them. Nothing leaves this PC.",
                 audioTested, true, [new(audioTested ? "Change" : "Test", () => RunNodeAction(NodeAction.AudioSetup))]),
             new("character", "Character",
-                avatar.IsShowing ? $"{characterName} is on your desktop" : $"{characterName} is ready. Show it or choose your own model.",
+                avatar.IsShowing ? "Your character is on your desktop" : "Your character is ready. Show it or customize it.",
                 homeAvatar is not null || avatar.IsShowing, true,
                 [new(avatar.IsShowing ? "Hide" : "Show", () => RunNodeAction(NodeAction.ToggleCharacter)),
+                 .. avatar.IsShowing ? new[] { new StepCommand("Reset position", () => _ = ResetCharacterPositionAsync()) } : [],
                  new("Customize", () => RunNodeAction(NodeAction.Character))]),
             new("hosts", "More computers",
                 paired > 1 ? $"{paired} Martlet hosts are paired. Hand them jobs on the Devices map."

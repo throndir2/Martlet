@@ -95,8 +95,9 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
 function draw(now) {
   if (active && !failed && adapter) {
     try {
-      const width = Math.min(2048, Math.max(1, Math.floor(canvas.clientWidth)));
-      const height = Math.min(2048, Math.max(1, Math.floor(canvas.clientHeight)));
+      const ratio = Math.min(2048 / Math.max(1, canvas.clientWidth, canvas.clientHeight), window.devicePixelRatio || 1);
+      const width = Math.min(2048, Math.max(1, Math.round(canvas.clientWidth * ratio)));
+      const height = Math.min(2048, Math.max(1, Math.round(canvas.clientHeight * ratio)));
       if (renderer === "Vrm") adapter.resize(width, height);
       else if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
       adapter.update(Math.min(0.1, last ? (now - last) / 1000 : 0));

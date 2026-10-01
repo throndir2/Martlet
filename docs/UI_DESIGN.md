@@ -244,9 +244,14 @@ The conversation window puts the chat first:
 
 ### 8. Setup (configuration)
 
-Setup keeps its four checkpoints, now drawn as a numbered stepper with a
-connecting line, and *Next* is the primary button. Its consent and credential
-behavior did not change.
+Setup keeps its four checkpoints (Choice, Jobs, Credentials, Review), drawn as
+a numbered stepper with a connecting line, and *Next* is the primary button.
+*Choice* offers *Demo only* or *Use AI models*. *Jobs* sets up one job at a
+time (Thinking, Listening, Speaking) and shows only that job's fields, with the
+provider's recommended model prefilled. Home steps open Setup on the matching
+job. Consent and credential behavior did not change. The broader redesign
+(jobs, placement on hosts, audio separation and queued local model hosting) is
+in [COMPONENTS.md](COMPONENTS.md).
 
 ## Motion system
 

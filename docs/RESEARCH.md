@@ -710,6 +710,24 @@ needs a user-started broadcast. Free-provisioning limits, extension memory,
 Game Mode effects and App Review stances are community-reported and remain
 unverified.
 
+## S49: smart home, Matter and IP camera research, 2026-09-30
+
+Sources are listed with the [smart home plan](SMART_HOME.md#sources).
+**Verified upstream:** Home Assistant's official MCP Server integration serves
+its Assist API at `/api/mcp` over stateless Streamable HTTP with a long-lived
+token or OAuth, limited to exposed entities, without sampling or
+notifications. python-matter-server is archived; its successor matterjs-server
+(Apache-2.0, Node.js) is beta and targets Matter 1.6. Matter 1.5 added cameras
+over WebRTC; 1.6 added NFC commissioning and Joint Fabric. go2rtc (MIT) serves
+`/api/frame.jpeg`; Frigate is MIT. On ollama.com, `gemma3` and `qwen2.5vl` are
+vision-only, while `qwen3-vl` and `gemma4` list vision and tools. Google Home
+APIs ship only Android and iOS SDKs. **Consequence:** integrate through Home
+Assistant's MCP server first; add opt-in tool calling and an MCP client; treat
+cameras as snapshot frame sources sharing the video-source seam; native Matter
+only as an optional host container. Vendor API details for Hue, Shelly,
+SmartThings, Alexa, Nest and Ring are summarized from documentation and
+remain unexercised.
+
 ## Linux service state custody and durable I/O (H03b3)
 
 **Accessed 2026-09-23.** Primary upstream contracts, not native Martlet evidence:

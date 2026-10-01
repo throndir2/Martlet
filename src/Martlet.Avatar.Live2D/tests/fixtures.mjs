@@ -122,7 +122,7 @@ export function environment() {
     deleteTexture: () => calls.push(["texture.delete"]),
     getError: () => 0,
   };
-  for (const method of ["bindTexture", "pixelStorei", "texImage2D", "texParameteri", "bindFramebuffer",
+  for (const method of ["bindTexture", "pixelStorei", "texImage2D", "texParameteri", "generateMipmap", "bindFramebuffer",
     "viewport", "clearColor", "clear"]) gl[method] = () => {};
   const events = new Map();
   const canvas = {

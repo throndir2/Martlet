@@ -13,6 +13,10 @@ public static class OpenAiSpeechSynthesisCatalog
     public static IReadOnlyList<string> SupportedModelIds { get; } =
         Array.AsReadOnly(new[] { "gpt-4o-mini-tts-2025-12-15" });
     public static IReadOnlyList<string> SupportedVoices { get; } = Array.AsReadOnly(new[] { "alloy", "coral" });
+
+    /// <summary>Prefilled suggestions in Setup; never applied without the owner's consent.</summary>
+    public const string DefaultModelId = "gpt-4o-mini-tts-2025-12-15";
+    public const string DefaultVoice = "alloy";
     public static PcmFormat PcmFormat { get; } = new()
     {
         SampleRate = 24_000, Channels = 1, Encoding = PcmEncoding.Signed16LittleEndian
