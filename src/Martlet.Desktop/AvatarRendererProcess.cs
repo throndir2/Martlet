@@ -32,7 +32,15 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
     private readonly object disposeGate = new();
     internal Guid Activation { get; } = Guid.NewGuid();
     public RendererCapabilities? Capabilities { get; private set; }
-    public bool HasExited => process is null || process.HasExited;
+    public bool HasExited
+    {
+        get
+        {
+            if (disposed || process is null) return true;
+            try { return process.HasExited; }
+            catch (InvalidOperationException) { return true; }
+        }
+    }
     public Task Exited { get; private set; } = Task.CompletedTask;
 
     public async Task StartAsync(AvatarProfile profile, string revision, CancellationToken token)
