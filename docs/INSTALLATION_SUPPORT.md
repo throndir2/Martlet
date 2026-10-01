@@ -547,7 +547,7 @@ binary-use grant; code signing is not a requirement for this personal project.
 Rollback is reinstalling an older release; there is no automatic downgrade.
 Paired hosts report their Martlet version, and `martlet-host update` rebuilds
 a host's gateway from the desktop's version in place (identity, pairings,
-roles and data kept); the desktop runs it in a console per host or, when
+roles and data kept); the desktop runs it in a run window per host or, when
 opted in, in the background over SSH keys or Docker Desktop.
 Windows may display publisher warnings;
 never suppress or bypass them. No surprise model updates or

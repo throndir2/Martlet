@@ -101,7 +101,7 @@
                     <Label Target="{Binding ElementName=AddressText}" Content="Host's private _LAN address (desktops connect to https://address:9443)"/>
                     <TextBox x:Name="AddressText" TextChanged="Target_Changed" AutomationProperties.AutomationId="HostAddress"/>
                     <TextBlock Style="{DynamicResource Muted}" Margin="0,8,0,14"
-                               Text="Over SSH, Martlet runs the command below itself and shows its output with Cancel; on this PC a console window opens. Docker methods build the martlet-host image from this Martlet version's source the first time (a few minutes)."/>
+                               Text="Over SSH and on this PC, Martlet runs the command below itself and shows its output with Cancel; no console window opens. Docker methods build the martlet-host image from this Martlet version's source the first time (a few minutes)."/>
                     <WrapPanel>
                         <Button x:Name="SetupButton" Content="Set _up host" Click="Setup_Click" Style="{DynamicResource PrimaryButton}" Padding="20,10" Margin="0,0,10,8"
                                 AutomationProperties.AutomationId="SetupHost"/>
@@ -136,7 +136,7 @@
                     </Border>
                     <Border Style="{DynamicResource CardStyle}">
                         <StackPanel>
-                            <TextBlock Text="3. Or paste a code here while the host's console stays open" FontWeight="SemiBold" FontSize="15"/>
+                            <TextBlock Text="3. Or paste a code the host showed you" FontWeight="SemiBold" FontSize="15"/>
                             <PasswordBox x:Name="PairingCodeBox" Margin="0,8,0,10" AutomationProperties.AutomationId="PairingCode"
                                          AutomationProperties.Name="Pairing code from the host"/>
                             <Button Content="Pair with _host" Click="Pair_Click" Style="{DynamicResource PrimaryButton}" HorizontalAlignment="Left"

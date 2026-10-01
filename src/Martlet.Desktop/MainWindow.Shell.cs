@@ -278,7 +278,7 @@ public partial class MainWindow
     private void TourInstall_Click(object sender, RoutedEventArgs e)
     {
         var chosen = TourReadyChoices();
-        if (chosen.Length > 0) ActionText.Text = Prerequisites.Launch(chosen);
+        if (chosen.Length > 0) InstallPrerequisitesAsync(chosen).Forget();
         ContinueAfterTourReady();
     }
 
@@ -577,8 +577,8 @@ public partial class MainWindow
                     : "Sets up the gateway once. Windows asks once to allow TCP 9443 from your private network.",
                 hostServiceReachable == true, false, [new("Set up host service", () => SetUpHostServiceAsync().Forget(), true)]),
             new("pair", "Pair your main PC",
-                "Open the pairing console here; it shows a one-use code. On your main PC, go to Devices > Add a computer > Pair and paste it.",
-                false, false, [new("Open pairing console", () => LaunchHost(HostAction.Pair), true)]),
+                "Martlet shows a one-use code here (and copies it). On your main PC, go to Devices > Add a computer > Pair and paste it.",
+                false, false, [new("Show a pairing code", () => LaunchHost(HostAction.Pair), true)]),
             new("roles", "Add roles",
                 string.Join(" ", HostRoles.All.Select(r => $"{r.Name} needs {r.Needs}.")) + " " + nvidia,
                 false, true, [.. HostRoles.All.SelectMany(r => new[]
@@ -598,24 +598,36 @@ public partial class MainWindow
         RenderSteps(HostStepsPanel, steps, numbered: true);
     }
 
-    private void LaunchHost(HostAction action)
+    /// <summary>Runs a host-dashboard step on this PC's host service in a run window (never a console). Pairing shows the
+    /// one-use code for the main PC.</summary>
+    private void LaunchHost(HostAction action) => LaunchHostAsync(action).Forget();
+
+    private async Task LaunchHostAsync(HostAction action)
     {
+        if (closing || store is null) return;
+        if (hostBusy) { ActionText.Text = "Another host service step is still running."; return; }
+        hostBusy = true;
         try
         {
-            HostSetupCommands.Launch(ThisPcTarget(), action);
-            ActionText.Text = action.Verb switch
-            {
-                HostVerb.Setup => "Host setup is running in a console window; nothing to type. When it says Host ready, check the host service.",
-                HostVerb.Pair => "The pairing console opened. Type start, then pair with your main PC's device ID and role voice; it shows a one-use code.",
-                HostVerb.Status => "Host status opened in a console window.",
-                HostVerb.Update => $"Host service update opened in a console window. It rebuilds from Martlet {Version} and restarts the gateway; pairings and roles stay.",
-                _ => "Opened in a console window. Confirm each change there."
-            };
+            ActionText.Text = "Running on this PC's host service; its progress shows in a separate window.";
+            var done = action.Verb == HostVerb.Pair
+                ? await HostActions.PairOtherDesktopAsync(this, ThisPcTarget())
+                : await HostActions.RunAsync(this, store.DataDirectory, ThisPcTarget(), null, action);
+            if (closing) return;
+            ActionText.Text = done ?? "Stopped. The run window shows why.";
+            if (done is not null && action.Verb is HostVerb.Setup or HostVerb.Update)
+                thisPcHostVersion = await HostSetupCommands.ThisPcGatewayVersionAsync(lifetime.Token);
         }
+        catch (OperationCanceledException) { }
         catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException or
             System.ComponentModel.Win32Exception)
         {
             ActionText.Text = error.Message;
+        }
+        finally
+        {
+            hostBusy = false;
+            if (!closing) RenderHost();
         }
     }
 
@@ -637,13 +649,14 @@ public partial class MainWindow
         { firewall = $"Windows Firewall was not changed ({error.Message}). Other PCs may not reach this host."; }
         catch (OperationCanceledException) { return; }
         finally { hostBusy = false; }
-        LaunchHost(HostAction.Setup);
+        await LaunchHostAsync(HostAction.Setup);
         if (firewall is not null) ActionText.Text = firewall + " " + ActionText.Text;
     }
 
-    private void InstallDocker()
+    private async void InstallDocker()
     {
-        if (HostsWindow.InstallDockerDesktop(this) is { } status) ActionText.Text = status;
+        if (await HostsWindow.InstallDockerDesktopAsync(this) is { } status && !closing) ActionText.Text = status;
+        if (!closing) await ReadMachineAsync();
     }
 
     private void StartDocker()
@@ -1195,7 +1208,7 @@ public partial class MainWindow
                             $"{host.HostId} does not run Audio2Face yet. Hand lip-sync to it and install Audio2Face there now? " +
                             (host.Method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative
                                 ? $"Martlet installs it over SSH ({host.Reach}) and shows its progress. "
-                                : host.CanLaunch ? $"A console opens ({host.Reach}) where you confirm each step. " : "Martlet copies the command to run on it. ") +
+                                : host.CanLaunch ? "Martlet installs it in this PC's host service and shows its progress. " : "Martlet copies the command to run on it. ") +
                             $"It needs {role.Needs}. Until it is ready, the mouth follows the voice's loudness; then it switches over by itself.",
                             "Install and hand over"))
                         return;
@@ -1267,54 +1280,45 @@ public partial class MainWindow
         QueueClusterSync();
     }
 
-    /// <summary>Runs a martlet-host command on a paired host the way this PC reaches it: in Martlet over SSH (output and
-    /// Cancel in a run window; the click is the confirmation) or in a console on this PC's Docker Desktop. Without a known
-    /// route it copies the command instead.</summary>
-    private void LaunchOnHost(PairedHost host, HostAction action)
+    /// <summary>Runs a martlet-host command on a paired host the way this PC reaches it, in Martlet with its output and Cancel
+    /// in a run window (over SSH, or on this PC's Docker Desktop); never in a console. Without a known route it copies the
+    /// command instead.</summary>
+    private void LaunchOnHost(PairedHost host, HostAction action, IReadOnlyDictionary<string, string>? answers = null) =>
+        RunHostActionAsync(host, action, answers).Forget();
+
+    /// <summary><see cref="LaunchOnHost"/>, awaitable: returns the run's summary, or null when it stopped or could not run.</summary>
+    private async Task<string?> RunHostActionAsync(PairedHost host, HostAction action, IReadOnlyDictionary<string, string>? answers = null)
     {
         try
         {
-            if (!host.CanLaunch)
+            if (!host.CanLaunch || store is null)
             {
                 var command = HostSetupCommands.Preview(host.Target(Version) with { Method = HostSetupMethod.OnHost }, action);
                 try { Clipboard.SetText(command); }
                 catch (System.Runtime.InteropServices.ExternalException) { }
                 ActionText.Text = $"Martlet does not know how to reach {host.HostId} yet, so the command to run on it was copied. " +
                     "Or choose how Martlet reaches it in its details on the Devices map.";
-                return;
+                return null;
             }
-            if (host.Method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative && store is not null)
-            {
-                ActionText.Text = $"Running {HostSetupCommands.Engine(action)} on {host.HostId} over SSH; its progress shows in a separate window.";
-                RunOverSshAsync(host, action).Forget();
-                return;
-            }
-            HostSetupCommands.Launch(host.Target(Version), action);
-            var role = action.Role is { } kind ? HostRoles.Get(kind).Name : "";
-            ActionText.Text = action.Verb switch
-            {
-                HostVerb.Status => $"{host.HostId}'s status opened in a console window ({host.Reach}).",
-                HostVerb.Add => $"Installing {role} on {host.HostId} in a console window ({host.Reach}). Confirm each step there; " +
-                    "this PC picks the role up by itself once it is running.",
-                HostVerb.Remove => $"Removing {role} from {host.HostId} in a console window ({host.Reach}). Confirm there.",
-                HostVerb.Update => $"Updating {host.HostId} to Martlet {Version} in a console window ({host.Reach}). Its pairings and roles stay; " +
-                    "press Check connection afterwards.",
-                _ => $"Opened on {host.HostId} in a console window ({host.Reach})."
-            };
+            var local = host.Method == HostSetupMethod.ThisPcDocker;
+            ActionText.Text = $"Running {HostSetupCommands.Engine(action)} on {(local ? "this PC's host service" : host.HostId + " over SSH")}; " +
+                "its progress shows in a separate window.";
+            // Adding a role on this PC preselects what suits it (for example whisper on the processor when the graphics card is full).
+            var recommended = answers is null && local && action.Verb == HostVerb.Add && action.Role == HostRoles.Stt
+                ? (await ListeningAdviceAsync()).Answers() : null;
+            var done = await HostActions.RunAsync(this, store.DataDirectory, host.Target(Version), host.SshHostKey, action, answers, recommended);
+            if (closing) return done;
+            ActionText.Text = done is null ? $"{HostSetupCommands.Engine(action)} on {host.HostId} stopped; its window shows why." : $"{host.HostId}: {done}";
+            if (done is not null && action != HostAction.Status) CheckHostsAsync([host]).Forget();
+            if (local) gpuProbe = null;
+            return done;
         }
         catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException or
             System.ComponentModel.Win32Exception)
         {
             ActionText.Text = error.Message;
+            return null;
         }
-    }
-
-    private async Task RunOverSshAsync(PairedHost host, HostAction action)
-    {
-        var done = await HostSshActions.RunAsync(this, store!.DataDirectory, host.Target(Version), host.SshHostKey, action);
-        if (closing) return;
-        ActionText.Text = done is null ? $"{HostSetupCommands.Engine(action)} on {host.HostId} stopped; its window shows why." : $"{host.HostId}: {done}";
-        if (done is not null && action != HostAction.Status) CheckHostsAsync([host]).Forget();
     }
 
     private void RunHostRole(string? argument, bool add)
@@ -1444,8 +1448,9 @@ public partial class MainWindow
         RefreshHomeAsync().Forget();
     }
 
-    /// <summary>Sets up and pairs Martlet's host service on this PC in one click; with <paramref name="andThen"/> it then
-    /// continues straight into handing a job to it ("host:ID"), installing its engine there when needed.</summary>
+    /// <summary>Sets up and pairs Martlet's host service on this PC in one click, in a run window; with
+    /// <paramref name="andThen"/> it then continues straight into handing a job to it ("host:ID"). Whisper and F5 chain
+    /// their install into the same window instead (<see cref="SetUpJobHereAsync"/>).</summary>
     private async Task SetUpThisPcHostAsync(Func<string, Task>? andThen = null)
     {
         if (store is null || setupService is null || closing) return;
