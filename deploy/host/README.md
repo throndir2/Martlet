@@ -55,8 +55,10 @@ status | config     show the gateway and roles | print the generated host.json
 confirmations are taken as given, the gateway identity and service approval are
 handled by the gateway's owner commands, and answers come from stdin as
 `KEY=VALUE` lines ended by `end` (`secret.<name>=...`, `choice.<VAR>=...`), never
-from arguments or the environment. Martlet desktop always uses it for SSH hosts;
-a human on the host normally does not.
+from arguments or the environment. Martlet desktop always uses it (for SSH hosts
+and for this PC's Docker Desktop console, where the button click is the
+confirmation and only secrets or choices are typed); a human on the host
+normally does not.
 
 ### Updating a host
 
