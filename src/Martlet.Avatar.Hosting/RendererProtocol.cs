@@ -10,6 +10,7 @@ public sealed record RendererParameter(string Id, double Minimum, double Maximum
 public sealed record RendererCapabilities(string ModelId, RendererParameter[] Parameters);
 public sealed record RendererLoad(AvatarProfile Profile, string ResourceRevision, bool DarkTheme);
 public sealed record RendererTheme(bool Dark);
+public sealed record RendererSay(string? Text);
 public sealed record RendererMapping(string Target, string Aspect);
 public sealed record RendererConfiguration(string SourceId, string ModelRevision, string MappingRevision, RendererMapping[] Targets);
 public sealed record RendererIdentity(Guid SessionId, Guid TurnId, Guid RequestId, string SourceId, long Epoch, int SampleRate);

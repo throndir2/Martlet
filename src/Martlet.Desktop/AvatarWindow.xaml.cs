@@ -17,6 +17,7 @@ public partial class AvatarWindow : ThemedWindow
     private readonly AvatarProfileStore profiles;
     private readonly ISetupService settings;
     private readonly SetupOperationRunner operations;
+    private readonly SpeechCaptions? captions;
     private readonly CancellationTokenSource lifetime = new();
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private Guid profileId;
@@ -25,13 +26,17 @@ public partial class AvatarWindow : ThemedWindow
     private bool renderingDraft = true;
 
     internal AvatarWindow(AvatarController controller, AvatarProfileStore profiles,
-        ISetupService settings, SetupOperationRunner operations)
+        ISetupService settings, SetupOperationRunner operations, SpeechCaptions? captions = null)
     {
         InitializeComponent();
         this.controller = controller;
         this.profiles = profiles;
         this.settings = settings;
         this.operations = operations;
+        this.captions = captions;
+        SpeechBubbleChoice.IsChecked = captions?.Preferences.SpeechBubbles == true;
+        SubtitleChoice.IsChecked = captions?.Preferences.Subtitles == true;
+        SpeechBubbleChoice.IsEnabled = SubtitleChoice.IsEnabled = captions is not null;
         RendererChoice.ItemsSource = Enum.GetValues<AvatarRenderer>();
         RendererChoice.SelectedItem = AvatarRenderer.Live2D;
         CharacterChoice.SelectedIndex = 0;
@@ -47,6 +52,14 @@ public partial class AvatarWindow : ThemedWindow
     }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e) => await ActionAsync(ReloadAsync);
+    private void SpeechDisplay_Click(object sender, RoutedEventArgs e)
+    {
+        if (captions is null) return;
+        var saved = captions.Update(new(SpeechBubbleChoice.IsChecked == true, SubtitleChoice.IsChecked == true));
+        SpeechDisplayStatus.Text = saved
+            ? "Saved. Changes apply from Martlet's next sentence."
+            : "Applied for this session, but speech-display.json could not be saved. Check access to your data directory.";
+    }
     private async void Reload_Click(object sender, RoutedEventArgs e) => await ActionAsync(ReloadAsync);
     private void Window_Closed(object? sender, EventArgs e)
     {

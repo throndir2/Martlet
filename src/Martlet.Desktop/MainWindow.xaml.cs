@@ -32,6 +32,7 @@ public partial class MainWindow : ThemedWindow
     private readonly AudioSetupService audioSetup;
     private readonly LiveConversationController? conversation;
     private readonly AvatarController avatar = new();
+    private readonly SpeechCaptions captions;
     private readonly WindowsAudioSessionEvents audioSessionEvents = new();
     private readonly string? startupError;
     private readonly DiagnosticStatusModel? model;
@@ -77,11 +78,12 @@ public partial class MainWindow : ThemedWindow
         voiceIdentity = new(store?.DataDirectory);
         voiceIdentity.Load();
         recovery = store is null ? null : new(store, setupOperations, () => !support.HasResources);
+        captions = new(avatar, store?.DataDirectory);
         if (setupService is not null)
         {
             conversation = new(setupOperations, setupService, vault, new WasapiCaptureDeviceFactory(), new WasapiDeviceFactory(),
                 memory: memory, generatedSpeech: avatar.Observer, revokeAvatar: avatar.Revoke, voiceIdentity: voiceIdentity,
-                dataDirectory: store!.DataDirectory);
+                dataDirectory: store!.DataDirectory, spokenText: captions.Feed);
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
         }
         audioSessionEvents.LockedChanged += AvatarSessionLocked;
@@ -459,7 +461,7 @@ public partial class MainWindow : ThemedWindow
     private void OpenAvatar(Window owner)
     {
         if (store is null || setupService is null || closing) return;
-        new AvatarWindow(avatar, new AvatarProfileStore(store.DataDirectory), setupService, setupOperations)
+        new AvatarWindow(avatar, new AvatarProfileStore(store.DataDirectory), setupService, setupOperations, captions)
             { Owner = owner }.ShowDialog();
         UpdateCharacterButton();
         _ = RefreshHomeAsync();
@@ -567,6 +569,7 @@ public partial class MainWindow : ThemedWindow
             await model.CloseAsync();
         await Task.Run(async () => await fixture.DisposeAsync());
         if (conversation is not null) await Task.Run(async () => await conversation.DisposeAsync());
+        captions.Dispose();
         if (!await StopAvatarSafelyAsync())
         {
             closing = false;
