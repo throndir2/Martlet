@@ -15,6 +15,9 @@ public static class OpenAiTranscriptionCatalog
         "gpt-4o-mini-transcribe-2025-12-15", "whisper-1"
     });
 
+    /// <summary>Prefilled suggestion in Setup; never applied without the owner's consent.</summary>
+    public const string DefaultModelId = "gpt-4o-mini-transcribe";
+
     public static bool SupportsModel(string? upstreamModelId) =>
         SupportedModelIds.Contains(upstreamModelId, StringComparer.Ordinal);
 

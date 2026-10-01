@@ -303,12 +303,15 @@ public partial class MainWindow : ThemedWindow
             await RefreshAsync();
     }
 
+    private Martlet.Core.Settings.SetupRole? nextSetupJob;
+
     private async void Setup_Click(object sender, RoutedEventArgs e)
     {
         if (store is null || closing || saving || runningFixture || model?.IsRunning == true) return;
         var characterWasShowing = avatar.IsShowing;
         if (!await StopAvatarSafelyAsync()) return;
-        new SetupWindow(setupService!, setupOperations) { Owner = this, Troubleshooting = OpenTroubleshooting, ConfigurationRecovery = OpenRecovery }.ShowDialog();
+        new SetupWindow(setupService!, setupOperations) { Owner = this, Troubleshooting = OpenTroubleshooting, ConfigurationRecovery = OpenRecovery, InitialRole = nextSetupJob }.ShowDialog();
+        nextSetupJob = null;
         await RefreshAsync();
         if (characterWasShowing) await ShowSavedCharacterAsync(onlyIfAutoShow: false);
     }
