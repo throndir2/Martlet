@@ -68,21 +68,42 @@ The hero card changes with setup progress:
 
 | Stage | Headline | Primary action |
 | --- | --- | --- |
-| Nothing saved yet | "Let's bring your companion to life" | *Choose how Martlet thinks* (Setup) |
+| Nothing saved yet | "Let's bring your companion to life" | *Choose how Martlet thinks* (opens its page) |
 | Conversation model not chosen, or chosen without destination consent | "Almost there" | *Finish setup* |
 | Ready (conversation model chosen, consented and on) | "Ready when you are" (with a time-of-day greeting) | **Start talking** |
 
 *Show character* sits next to the primary action at every stage. *Not sure?
 Get a recommendation* opens the advisor.
 
-Below the hero, **Your setup** shows a progress bar and five steps. Only the
-first is required:
+Below the hero, **Your setup** shows a progress bar and four steps. Each opens
+its own page inside the main window (with tabs to move between them and a
+*Your setup* link back). Only the first is required:
 
-1. *How Martlet thinks* (conversation model and route) opens Setup.
-2. *Its voice and ears* (speech-to-text and text-to-speech; optional) opens Setup.
-3. *Microphone and speakers* (optional) opens Audio setup.
-4. *Character* (optional) opens Character settings.
-5. *More computers* (optional) opens the Devices map or the Add a computer wizard.
+1. *How Martlet thinks*: where the conversation model runs, the provider, the
+   model and its API key.
+2. *Its voice* (optional): speakers, then the text-to-speech provider, model,
+   voice and key, plus the Voice Library.
+3. *How it listens* (optional): microphone, then the speech-to-text provider,
+   model and key.
+4. *Character* (optional): the character model (show, hide, customize, reset),
+   its personality and memory, and who handles lip-sync.
+
+Each job page (1-3) asks **Where it runs**, defaulting to *This PC
+(recommended)*:
+
+- *This PC*: thinking uses Ollama at `http://127.0.0.1:11434/v1` (install
+  Ollama, pick a suggested model sized to the graphics card, *Download model*
+  in a console, *Check Ollama* over loopback on request, *Use Ollama on this
+  PC*). Speaking (F5) and listening (whisper) run in Martlet's host service on
+  this PC; if it isn't set up yet, the page offers Docker Desktop and *Set up
+  this PC's host service*, then *Use F5/whisper on this PC* installs the role.
+- *Another of your computers*: every paired host with what it runs and *Use
+  it*, plus *Add a computer*, *Check hosts* and the Devices map. This replaces
+  the old *More computers* step.
+- *A cloud provider*: provider, model (and voice), API key and an explicit
+  choice checkbox. Saving stores the route, then the key in Windows Credential
+  Manager, then the confirmed choice. *Advanced setup* opens the full Setup
+  window for stored and detached keys.
 
 Each row shows a done or to-do mark and one action. Completed marks pop in.
 

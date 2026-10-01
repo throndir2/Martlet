@@ -308,6 +308,11 @@
                 </StackPanel>
             </ScrollViewer>
 
+            <!-- Setup section pages: how it thinks, its voice, how it listens, character (built in MainWindow.SetupPages.cs) -->
+            <ScrollViewer x:Name="SetupPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+                <StackPanel x:Name="SetupPageContent" Margin="36,30,36,24" MaxWidth="1000" AutomationProperties.AutomationId="SetupSectionPage"/>
+            </ScrollViewer>
+
             <!-- Settings: appearance, role, updates, demo, tools and diagnostics -->
             <ScrollViewer x:Name="SettingsPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
                 <StackPanel Margin="36,30,36,24" MaxWidth="1000">

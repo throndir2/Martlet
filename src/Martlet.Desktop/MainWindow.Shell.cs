@@ -99,12 +99,14 @@ public partial class MainWindow
 
     private void Nav_Checked(object sender, RoutedEventArgs e)
     {
-        if (HomePage is null || DevicesPage is null || CompanionPage is null || SettingsPage is null) return;
+        if (HomePage is null || DevicesPage is null || CompanionPage is null || SettingsPage is null || SetupPage is null) return;
+        if (sender is RadioButton { IsChecked: false }) return;
         FrameworkElement page = ReferenceEquals(sender, NavDevices) ? DevicesPage
             : ReferenceEquals(sender, NavCompanion) ? CompanionPage
             : ReferenceEquals(sender, NavSettings) ? SettingsPage
             : HomePage;
-        foreach (var candidate in new FrameworkElement[] { HomePage, DevicesPage, CompanionPage, SettingsPage })
+        openSection = null;
+        foreach (var candidate in new FrameworkElement[] { HomePage, DevicesPage, CompanionPage, SettingsPage, SetupPage })
             candidate.Visibility = ReferenceEquals(candidate, page) ? Visibility.Visible : Visibility.Collapsed;
         Motion.Enter(page);
         if (ReferenceEquals(page, DevicesPage)) RenderMap();
@@ -288,7 +290,7 @@ public partial class MainWindow
     }
 
     private void TourAdvisor_Click(object sender, RoutedEventArgs e) { HideTour(); Advisor_Click(sender, e); }
-    private void TourSetup_Click(object sender, RoutedEventArgs e) { HideTour(); Setup_Click(sender, e); }
+    private void TourSetup_Click(object sender, RoutedEventArgs e) { HideTour(); OpenSection(SetupSection.Thinking); }
 
     private void TourDemo_Click(object sender, RoutedEventArgs e)
     {
@@ -349,43 +351,36 @@ public partial class MainWindow
         var stt = Route(SetupRole.Stt);
         var tts = Route(SetupRole.Tts);
         var brainReady = NetworkMap.IsReady(llm);
-        var voiceReady = NetworkMap.IsReady(stt) && NetworkMap.IsReady(tts);
         var audio = homeSettings?.Audio;
-        var audioTested = audio is { Input.Checkpoint: not null, Output.Checkpoint: not null };
-        var paired = NetworkMap.Hosts(Inputs()).Count;
-        var hosts = paired > 0 || routes.Any(r => r.Gateway is not null);
         EvaluateCoverage();
         JobCoverage? Problem(string job) => coverage.FirstOrDefault(c => c.Job == job && c.IsProblem);
         var thinkingProblem = Problem(ClusterJobs.Thinking);
-        var voiceProblem = Problem(ClusterJobs.Listening) ?? Problem(ClusterJobs.Speaking);
 
         var steps = new List<HomeStep>
         {
             new("brain", "How Martlet thinks",
                 thinkingProblem is not null ? $"Not working now: {thinkingProblem.Problem}"
-                    : brainReady ? $"{NetworkMap.ProviderName(llm!)}: {llm!.ModelId}"
-                    : llm is not null ? "Chosen. Review its data and cost details in Setup to finish."
-                    : "Choose a cloud model (OpenRouter, NVIDIA Build or OpenAI) or one on your own computers.",
-                brainReady, false, [new(brainReady ? "Change" : "Choose", () => { nextSetupJob = SetupRole.Llm; RunNodeAction(NodeAction.Setup); }, !brainReady)]),
-            new("voice", "Its voice and ears",
-                voiceProblem is not null ? $"{voiceProblem.Title} isn't working now: {voiceProblem.Problem}"
-                    : voiceReady ? $"Listens with {NetworkMap.ProviderName(stt!)}, speaks with {NetworkMap.ProviderName(tts!)}"
-                    : "Add speech-to-text and a voice so you can talk out loud. You can always type instead.",
-                voiceReady, true, [new(voiceReady ? "Change" : "Set up", () => { nextSetupJob = NetworkMap.IsReady(stt) ? SetupRole.Tts : SetupRole.Stt; RunNodeAction(NodeAction.Setup); })]),
-            new("audio", "Microphone and speakers",
-                audioTested ? "Tested on this PC" : audio is not null ? "Chosen, not tested yet" : "Pick and test them. Nothing leaves this PC.",
-                audioTested, true, [new(audioTested ? "Change" : "Test", () => RunNodeAction(NodeAction.AudioSetup))]),
+                    : brainReady ? $"{PlaceName(llm!)}: {llm!.ModelId}"
+                    : llm is not null ? "Chosen. Review it on this page to finish."
+                    : "Provider, model and key. Runs on this PC by default (Ollama), or another computer or a cloud model.",
+                brainReady, false, [new(brainReady ? "Change" : "Choose", () => OpenSection(SetupSection.Thinking), !brainReady)]),
+            new("voice", "Its voice",
+                Problem(ClusterJobs.Speaking) is { } speakingProblem ? $"Not working now: {speakingProblem.Problem}"
+                    : NetworkMap.IsReady(tts) ? $"Speaks with {PlaceName(tts!)}{(tts!.Reference is { } voice ? $", voice {voice.PresetName}" : tts.VoiceId is { } id ? $", voice {id}" : "")}"
+                    : "Text-to-speech provider, model, voice and key. Uses the F5 voice on this PC by default.",
+                NetworkMap.IsReady(tts), true, [new(NetworkMap.IsReady(tts) ? "Change" : "Set up", () => OpenSection(SetupSection.Voice))]),
+            new("listen", "How it listens",
+                Problem(ClusterJobs.Listening) is { } listeningProblem ? $"Not working now: {listeningProblem.Problem}"
+                    : NetworkMap.IsReady(stt) ? $"Hears you with {PlaceName(stt!)}{(audio?.Input.Checkpoint is null ? "; test your microphone" : "")}"
+                    : "Microphone and speech-to-text. Uses whisper on this PC by default. You can always type instead.",
+                NetworkMap.IsReady(stt) && audio?.Input.Checkpoint is not null, true,
+                [new(NetworkMap.IsReady(stt) ? "Change" : "Set up", () => OpenSection(SetupSection.Listening))]),
             new("character", "Character",
-                avatar.IsShowing ? "Your character is on your desktop" : "Your character is ready. Show it or customize it.",
+                (avatar.IsShowing ? "On your desktop. " : "") +
+                    $"{CharacterModelName()}, personality {homeSettings?.Companion?.ActivePersona.Name ?? "default"}, lip-sync by {LipSyncOwnerName()}.",
                 homeAvatar is not null || avatar.IsShowing, true,
-                [new(avatar.IsShowing ? "Hide" : "Show", () => RunNodeAction(NodeAction.ToggleCharacter)),
-                 .. avatar.IsShowing ? new[] { new StepCommand("Reset position", () => ResetCharacterPositionAsync().Forget()),
-                     new StepCommand("Reset zoom", () => ResetCharacterZoomAsync().Forget()) } : [],
-                 new("Customize", () => RunNodeAction(NodeAction.Character))]),
-            new("hosts", "More computers",
-                paired > 1 ? $"{paired} Martlet hosts are paired. Hand them jobs on the Devices map."
-                    : hosts ? "A Martlet host is paired. See it on the Devices map." : "Lend a GPU PC to Martlet for lip-sync and more.",
-                hosts, true, [new(hosts ? "Open map" : "Add", () => { if (hosts) Navigate(NavDevices); else RunNodeAction(NodeAction.AddComputer); })])
+                [new("Open", () => OpenSection(SetupSection.Character)),
+                 new(avatar.IsShowing ? "Hide" : "Show", () => RunNodeAction(NodeAction.ToggleCharacter))])
         };
 
         if (brainReady && thinkingProblem is not null)
@@ -407,8 +402,8 @@ public partial class MainWindow
             var nothingYet = homeSettings is null || routes.Count == 0;
             StageTitle.Text = nothingYet ? "Let's bring your companion to life" : "Almost there";
             StageText.Text = nothingYet
-                ? "First, choose how Martlet thinks: a cloud model, or one on your own computers. Everything else is optional."
-                : llm is not null ? "Your conversation model is chosen. Review its data and cost details in Setup to finish."
+                ? "First, choose how Martlet thinks. It runs on this PC by default; a cloud model or another computer works too. Everything else is optional."
+                : llm is not null ? "Your conversation model is chosen. Review it on How Martlet thinks to finish."
                 : "Choose how Martlet thinks to start talking. Everything else is optional.";
             PrimaryStageButton.Content = nothingYet ? "Choose how Martlet thinks" : "Finish setup";
             PrimaryStageButton.Visibility = Visibility.Visible;
@@ -434,6 +429,7 @@ public partial class MainWindow
             DeviceChips.Children.Add(chip);
         }
         RenderHost();
+        if (openSection is not null && !sectionEdited) RenderSection();
     }
 
     private void RenderSteps(Panel panel, IReadOnlyList<HomeStep> steps, bool numbered)
@@ -513,7 +509,7 @@ public partial class MainWindow
         previousDone[panel] = done;
     }
 
-    private void PrimaryStage_Click(object sender, RoutedEventArgs e) => Setup_Click(sender, e);
+    private void PrimaryStage_Click(object sender, RoutedEventArgs e) => OpenSection(SetupSection.Thinking);
 
     // ---------- host dashboard ----------
 
@@ -1029,46 +1025,7 @@ public partial class MainWindow
 
             var hosts = NetworkMap.Hosts(Inputs());
             var handler = NetworkMap.LipSync(homeAvatar);
-            var current = handler switch
-            {
-                LipSyncHandler.Loudness => "off",
-                LipSyncHandler.Host => "host:" + homeAvatar!.RemoteHost!.HostId,
-                _ => "this-pc"
-            };
-            var choice = new ComboBox { MinWidth = 200, HorizontalAlignment = HorizontalAlignment.Stretch };
-            AutomationProperties.SetName(choice, "Who handles lip-sync");
-            AutomationProperties.SetAutomationId(choice, "LipSyncOwner");
-            void Option(string key, string text, string? blocked = null)
-            {
-                var item = new ComboBoxItem { Content = text, Tag = key };
-                if (blocked is not null)
-                {
-                    item.IsEnabled = false;
-                    item.ToolTip = blocked;
-                    ToolTipService.SetShowOnDisabled(item, true);
-                    AutomationProperties.SetHelpText(item, blocked);
-                }
-                choice.Items.Add(item);
-                if (key == current) choice.SelectedItem = item;
-            }
-            Option("this-pc", "This PC");
-            foreach (var host in hosts)
-            {
-                var check = hostChecks.GetValueOrDefault(host.HostId);
-                var offers = check?.Offers?.ContainsKey(HostRoles.Audio2Face) == true;
-                if (!offers && CannotHand(host.HostId, HostRoles.Audio2Face, ClusterJobs.LipSync) is { } cannot)
-                {
-                    Option("host:" + host.HostId, $"{host.HostId} (can't take it now)", cannot);
-                    continue;
-                }
-                Option("host:" + host.HostId, host.HostId + (offers ? " (runs Audio2Face)"
-                    : check?.Reachable == true ? " (Audio2Face not installed)" : check?.Reachable == false ? " (not reachable)" : ""));
-            }
-            Option("off", "Nobody (mouth follows voice loudness)");
-            choice.SelectionChanged += (_, _) =>
-            {
-                if (!renderingBoard && choice.SelectedItem is ComboBoxItem { Tag: string key } && key != current) AssignLipSyncAsync(key).Forget();
-            };
+            var choice = LipSyncChoice();
             var (who, detail, nodeId) = handler switch
             {
                 LipSyncHandler.Loudness => ("Nobody", "The mouth follows the voice's loudness on this PC.", (string?)"this-pc"),
@@ -1084,6 +1041,52 @@ public partial class MainWindow
                 TileProblem(ClusterJobs.LipSync)));
         }
         finally { renderingBoard = false; }
+    }
+
+    /// <summary>Who handles lip-sync: this PC, a paired host (installing Audio2Face there if needed) or nobody.</summary>
+    private ComboBox LipSyncChoice()
+    {
+        var current = NetworkMap.LipSync(homeAvatar) switch
+        {
+            LipSyncHandler.Loudness => "off",
+            LipSyncHandler.Host => "host:" + homeAvatar!.RemoteHost!.HostId,
+            _ => "this-pc"
+        };
+        var choice = new ComboBox { MinWidth = 200, HorizontalAlignment = HorizontalAlignment.Stretch };
+        AutomationProperties.SetName(choice, "Who handles lip-sync");
+        AutomationProperties.SetAutomationId(choice, "LipSyncOwner");
+        void Option(string key, string text, string? blocked = null)
+        {
+            var item = new ComboBoxItem { Content = text, Tag = key };
+            if (blocked is not null)
+            {
+                item.IsEnabled = false;
+                item.ToolTip = blocked;
+                ToolTipService.SetShowOnDisabled(item, true);
+                AutomationProperties.SetHelpText(item, blocked);
+            }
+            choice.Items.Add(item);
+            if (key == current) choice.SelectedItem = item;
+        }
+        Option("this-pc", "This PC");
+        foreach (var host in NetworkMap.Hosts(Inputs()))
+        {
+            var check = hostChecks.GetValueOrDefault(host.HostId);
+            var offers = check?.Offers?.ContainsKey(HostRoles.Audio2Face) == true;
+            if (!offers && CannotHand(host.HostId, HostRoles.Audio2Face, ClusterJobs.LipSync) is { } cannot)
+            {
+                Option("host:" + host.HostId, $"{host.HostId} (can't take it now)", cannot);
+                continue;
+            }
+            Option("host:" + host.HostId, host.HostId + (offers ? " (runs Audio2Face)"
+                : check?.Reachable == true ? " (Audio2Face not installed)" : check?.Reachable == false ? " (not reachable)" : ""));
+        }
+        Option("off", "Nobody (mouth follows voice loudness)");
+        choice.SelectionChanged += (_, _) =>
+        {
+            if (!renderingBoard && choice.SelectedItem is ComboBoxItem { Tag: string key } && key != current) AssignLipSyncAsync(key).Forget();
+        };
+        return choice;
     }
 
     private Border RoleTile(string title, string owner, string detail, FrameworkElement control, string? nodeId, string? problem = null)

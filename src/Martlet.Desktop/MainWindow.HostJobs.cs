@@ -199,8 +199,8 @@ public partial class MainWindow
         F5ReferenceSettings? reference = null)
     {
         var loaded = await setupService!.LoadAsync(lifetime.Token);
-        if (loaded.Settings is not { Setup: not null } settings)
-            throw new InvalidOperationException($"Complete Setup once so Martlet can save who does the {job.Job}.");
+        if (loaded.Error is not null) throw new InvalidOperationException(loaded.Error.Summary);
+        var settings = UseModels(SetupSettings.Begin(loaded.Settings));
         if (job.RouteType == SetupRouteType.GatewayF5 && reference is null)
         {
             if (voice is null) throw new InvalidOperationException("Choose the voice to speak with first.");
@@ -208,7 +208,7 @@ public partial class MainWindow
                 throw new InvalidOperationException($"{host.HostId}'s F5 voice runs under a different destination; choose the voice again.");
             reference = await F5Voices.ApplyAsync(store!.DataDirectory, voice, lifetime.Token);
         }
-        var previous = settings.Setup.Routes.FirstOrDefault(r => r.Role == job.Role);
+        var previous = settings.Setup!.Routes.FirstOrDefault(r => r.Role == job.Role);
         var endpoint = new GatewayEndpointSettings
         {
             SchemaVersion = 1, Origin = host.Pairing.Origin, HostId = host.HostId,
