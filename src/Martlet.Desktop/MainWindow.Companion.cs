@@ -281,7 +281,7 @@ public partial class MainWindow
         {
             JobPlace.ThisPc when role == SetupRole.Llm => LocalThinkingCard(route),
             JobPlace.ThisPc when role == SetupRole.Tts => LocalVoiceCard(job, route, thisPc),
-            JobPlace.ThisPc => LocalHostJobCard(job, route, thisPc),
+            JobPlace.ThisPc => LocalListeningCard(route, thisPc),
             JobPlace.Computer => ComputersCard(job, route, role == SetupRole.Llm ? null : thisPc),
             _ => CloudCard(section, job, route)
         });
@@ -381,14 +381,14 @@ public partial class MainWindow
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
 
         string ModelId() => (model.Text ?? "").Trim();
-        // Until Ollama is installed, installing it is the only step that does anything.
+        // Until Ollama is installed, installing it (with the chosen model, then switching to it) is the only step that does anything.
         var buttons = installed
             ? Row(
-                PageButton("Download model", () => PullOllamaModel(ModelId()), id: "SetupPullModel"),
+                PageButton("Download model", () => PullOllamaModelAsync(ModelId()).Forget(), id: "SetupPullModel"),
                 PageButton("Check Ollama", () => CheckOllamaAsync().Forget(), id: "SetupCheckOllama"),
                 PageButton("Use Ollama on this PC", () => SaveLocalThinkingAsync(ModelId()).Forget(), primary: true, id: "SetupUseLocalThinking"))
             : Row(
-                PageButton("Install Ollama", () => ActionText.Text = Prerequisites.Launch([Prerequisites.Ollama]), primary: true, id: "SetupInstallOllama"),
+                PageButton("Install Ollama and use it", () => InstallOllamaAsync(ModelId()).Forget(), primary: true, id: "SetupInstallOllama"),
                 PageButton("Use Ollama on this PC", () => SaveLocalThinkingAsync(ModelId()).Forget(), id: "SetupUseLocalThinking"));
 
         return Card(Heading("Ollama on this PC"),
@@ -403,22 +403,38 @@ public partial class MainWindow
             buttons);
     }
 
-    private void PullOllamaModel(string model)
+    /// <summary>Downloads a model into this PC's Ollama in a run window (no console), then refreshes what Ollama has.</summary>
+    private async Task PullOllamaModelAsync(string model)
     {
-        try
+        try { ChatCompletionsSetup.ModelId(model); }
+        catch (ContractException error) { ActionText.Text = error.Message; return; }
+        ActionText.Text = $"Downloading {model} with Ollama; the run window shows the progress.";
+        var done = await HostRunWindow.RunAsync(this, $"Download {model}", async run =>
         {
-            ChatCompletionsSetup.ModelId(model);
-            var ollama = new[]
-            {
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Ollama", "ollama.exe"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Ollama", "ollama.exe")
-            }.FirstOrDefault(File.Exists) ?? "ollama";
-            Process.Start(new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "cmd.exe"), $"/k \"\"{ollama}\" pull {model}\"")
-                { UseShellExecute = true })?.Dispose();
-            ActionText.Text = $"Downloading {model} with Ollama in a console window. When it finishes, choose Use Ollama on this PC.";
+            await LocalOllama.PullAsync(model, run.Status, run.Output, run.Token);
+            return $"{model} is downloaded. Choose Use Ollama on this PC to think with it.";
+        });
+        if (closing) return;
+        ActionText.Text = done ?? $"{model} was not downloaded. The run window shows why.";
+        if (done is not null) await CheckOllamaAsync();
+    }
+
+    /// <summary>One click: installs Ollama with the chosen model (no console) and, once it is there, thinks with it.</summary>
+    private async Task InstallOllamaAsync(string model)
+    {
+        try { ChatCompletionsSetup.ModelId(model); }
+        catch (ContractException error) { ActionText.Text = error.Message; return; }
+        await InstallPrerequisitesAsync([Prerequisites.Ollama], model);
+        if (closing) return;
+        if (Prerequisites.IsMissing(Prerequisites.Ollama))
+        {
+            if (openTab == CompanionTab.Thinking) RenderTab();
+            return;
         }
-        catch (ContractException error) { ActionText.Text = error.Message; }
-        catch (Exception error) when (error is Win32Exception or IOException) { ActionText.Text = error.Message; }
+        await CheckOllamaAsync();
+        if (closing) return;
+        if (ollamaModels?.Contains(model, StringComparer.Ordinal) == true) await SaveLocalThinkingAsync(model);
+        else ActionText.Text = $"Ollama is installed, but {model} isn't downloaded yet: choose Download model.";
     }
 
     /// <summary>Asks the local Ollama (loopback only, on request) which models it has.</summary>
@@ -453,48 +469,32 @@ public partial class MainWindow
         $"Martlet now thinks with {model} in Ollama on this PC. Nothing leaves this PC." +
         (ollamaModels is { } known && !known.Contains(model, StringComparer.Ordinal) ? $" {model} isn't downloaded yet: choose Download model." : ""));
 
-    // ---------- this PC: whisper and F5 through this PC's host service, or a Windows voice ----------
+    // ---------- this PC: F5 through this PC's host service, or a Windows voice ----------
 
-    private Border LocalHostJobCard(HostJob job, SetupRoute? route, PairedHost? thisPc)
-    {
-        var gpu = machine.BestGpu;
-        var stack = new List<UIElement>
-        {
-            Heading("whisper on this PC"),
-            Note("whisper transcribes what you say in memory on this PC and stores nothing. It runs in Martlet's host service on this PC, " +
-                "inside Docker Desktop.", new Thickness(0, 0, 0, 8)),
-            Note(gpu is null ? "No dedicated graphics card was found on this PC." : $"This PC has {gpu.Describe()}.", new Thickness(0, 0, 0, 8))
-        };
-        stack.AddRange(HostServiceSteps(job, route, thisPc, primary: true));
-        return Card([.. stack]);
-    }
-
-    /// <summary>A job that runs in Martlet's host service on this PC (Docker Desktop). Without the host service, one click sets it
-    /// up and pairs it, so this PC also becomes one of your hosts, then installs the job's engine and switches over by itself.</summary>
+    /// <summary>F5 in Martlet's host service on this PC (Docker Desktop). Without the host service, one click sets it up and
+    /// pairs it, so this PC also becomes one of your hosts, then installs F5 and switches over, all in one run window.</summary>
     private List<UIElement> HostServiceSteps(HostJob job, SetupRoute? route, PairedHost? thisPc, bool primary)
     {
-        var f5 = job.RouteType == SetupRouteType.GatewayF5;
         var inUse = route?.RouteType == job.RouteType && thisPc is not null && route.Gateway?.HostId == thisPc.HostId;
         var steps = new List<UIElement>();
         if (thisPc is null)
         {
             steps.Add(Note((machine.DockerRunning ? "Docker Desktop is running. "
                     : machine.DockerInstalled ? "Docker Desktop is installed; Martlet starts it when needed. "
-                    : "Docker Desktop isn't installed yet; Martlet offers to install it first. ") +
+                    : "Docker Desktop isn't installed yet; Martlet installs it first. ") +
                 $"Setting it up adds Martlet's host service on this PC (this PC then also appears as one of your hosts), installs {job.Engine} " +
                 "in it and switches over by itself.", new Thickness(0, 0, 0, 8)));
-            steps.Add(Row(PageButton(f5 ? "Set up F5 with Docker" : $"Set up {job.Engine} with Docker", () => SetUpThisPcHostAsync(job).Forget(),
-                primary, id: "SetupHostThisPc")));
+            steps.Add(Row(PageButton("Set up F5 with Docker", () => UseF5HereAsync().Forget(), primary, id: "SetupHostThisPc")));
             return steps;
         }
         var model = hostChecks.GetValueOrDefault(thisPc.HostId)?.Offers?.GetValueOrDefault(job.HostRoleKind);
-        steps.Add(Note(inUse ? $"In use: {job.Engine} on this PC ({thisPc.HostId}){(f5 && route!.Reference is { } voice ? $", voice {voice.PresetName}" : "")}."
+        steps.Add(Note(inUse ? $"In use: {job.Engine} on this PC ({thisPc.HostId}){(route!.Reference is { } voice ? $", voice {voice.PresetName}" : "")}."
             : model is not null ? $"This PC's host service runs {job.Engine} ({model})."
             : $"This PC's host service ({thisPc.HostId}) is set up. If it doesn't run {job.Engine} yet, Martlet installs it and switches over by itself.",
             new Thickness(0, 0, 0, 8)));
         steps.Add(Row(
-            PageButton(inUse ? (f5 ? "Choose another voice" : $"Set up {job.Engine} again") : f5 ? "Use F5 on this PC" : $"Use {job.Engine} on this PC",
-                () => AssignJobAsync(job, "host:" + thisPc.HostId).Forget(), primary: primary && !inUse, id: "SetupUseLocal-" + job.Job),
+            PageButton(inUse ? "Choose another voice" : "Use F5 on this PC",
+                () => (inUse ? AssignJobAsync(job, "host:" + thisPc.HostId) : UseF5HereAsync()).Forget(), primary: primary && !inUse, id: "SetupUseLocal-" + job.Job),
             PageButton("Check it", () => RunNodeAction(NodeAction.CheckHost, thisPc.HostId), id: "SetupCheckLocal-" + job.Job)));
         return steps;
     }

@@ -56,12 +56,13 @@ new window the user has to find, finish and close.
 
 ### 1.3 Consoles and typed commands
 
+Martlet no longer opens any console window: downloads, prerequisites, Docker
+Desktop, this PC's host service (setup, roles, status, update, pairing) and
+SSH hosts all run in a run window with live output and *Cancel* (the inline
+runner, P5, is the next step). What remains is typed on a host by hand:
+
 | Action | What the user sees today |
 | --- | --- |
-| Thinking › **Download model** | A visible `cmd.exe /k` window running `ollama pull` |
-| Welcome tour / Settings › **Prerequisites (check / install)** | A visible PowerShell window |
-| Hosts › **Install Docker Desktop** | Agreement dialog, then a visible console, then UAC, possibly a restart |
-| Host-mode Home › **Open host status console** | A console |
 | Hosts › *I'll type the commands on the host myself* | Open console, type `start`, run `pair --device-id …`, copy a `martlet-pair-v1.…` code back, type `stop` |
 
 ### 1.4 Agreements in the middle of using it
@@ -1310,18 +1311,18 @@ Each flow below asks for a step Martlet could do itself.
 
 | # | Flow today | Extra steps the user takes | Target | Code |
 | --- | --- | --- | --- | --- |
-| 1 | Thinking › This PC | *Install Ollama*, *Download model* (console), *Check Ollama*, *Use Ollama on this PC* | Selecting *This PC* runs the whole chain (C2) | `MainWindow.SetupPages.cs:314-345` |
-| 2 | Voice / Listening › This PC | *Install Docker Desktop*, *Set up this PC's host service* (one click since #141/#142), then *Use F5/whisper on this PC*, *Check it* | Selecting *This PC* runs Docker › host service › role › model › test › switch as one chain; Listening uses native whisper.cpp with no Docker (11.6) | `MainWindow.SetupPages.cs:408-420` |
+| 1 | Thinking › This PC | *Install Ollama and use it* (installs, downloads the suggested model and switches, in a run window); *Check Ollama* and *Download model* remain | Selecting *This PC* runs the whole chain (C2) | `MainWindow.SetupPages.cs:314-345` |
+| 2 | Voice / Listening › This PC | One click per option and one confirmation: Docker (installed when missing) › host service › role › switch run in one run window. Listening picks GPU or CPU in Martlet from the card's free memory and what already runs on it | Selecting *This PC* runs Docker › host service › role › model › test › switch as one chain; Listening uses native whisper.cpp with no Docker (11.6) | `MainWindow.SetupPages.cs:408-420` |
 | 3 | Voice › F5 | Done in #145: the bundled sample voice is used without a picker; *Choose another voice* opens the picker | Keep; move the picker inline into the Voice list (D2, D3) | `F5VoiceDialog.cs`, `HostSpeech.cs` |
 | 4 | Cloud card | Consent checkbox, key per job, *Save* | Paste key = switch; key reused across jobs (C4) | `MainWindow.SetupPages.cs:540-580` |
 | 5 | Legacy Setup window | Demo preselected; *Apply this job's choice*, credentials tab, *Save checkpoint*, *Save and exit setup* | Removed | `SetupWindow.xaml` |
 | 6 | Audio setup | No device until chosen; tests gate readiness; *Save audio choices* | Windows default devices, no gate | `AudioSetupWindow.xaml(.cs)` |
 | 7 | Conversation | Voice output off each time; 1–3 consent ticks per message; *Finish and send* | Voice on; standing permissions; release sends | `LiveConversationWindow.xaml:105-237` |
 | 8 | Character | *Save choices*, *Activate reviewed avatar*, inspection and analysis permissions, manual mapping | Picking applies; automatic mapping | `AvatarWindow.xaml(.cs)`, `Audio2FaceAutoMapping.cs` |
-| 9 | Host role install | Role dialog with GPU/CPU choice and options | *Automatic* preselected; dialog only for the NGC key | `HostDialogs.cs:125-148` |
+| 9 | Host role install | Role dialog with GPU/CPU choice and options on other computers; on this PC whisper's choice is made on the Listening tab and the install asks nothing | *Automatic* preselected; dialog only for the NGC key | `HostDialogs.cs:125-148` |
 | 10 | Add a computer | Method choice, typed LAN address, *Install Docker Desktop*, pairing code, *Pair with host*, *Check host* | Join the network (B1); SSH only for Linux (B6) | `HostsWindow.xaml(.cs)` |
 | 11 | Prepare a Linux host | Type target, *Read status*, *Tick what is missing*, *Run selected* | Part of B6's runner | `PrepareHostWindow.xaml(.cs)` |
-| 12 | Prerequisites | Welcome-tour tick list, visible PowerShell; Ollama and Windows speech left unticked | Installed on demand by the job that needs them | `Prerequisites.cs`, `MainWindow.Shell.cs:231-260` |
+| 12 | Prerequisites | Welcome-tour tick list (installs in a run window, no console); Ollama and Windows speech left unticked | Installed on demand by the job that needs them | `Prerequisites.cs`, `MainWindow.Shell.cs:231-260` |
 | 13 | Firewall | Separate *make network Private* confirmation, then UAC | Inside the single elevation, only when helping others | `HostsWindow.xaml.cs:308-320`, `WindowsFirewall.cs` |
 | 14 | Memory | Storage choice, enable checkbox, *Save memory configuration* | One switch | `MemoryWindow.xaml(.cs)` |
 | 15 | Updates | Four separate preferences | All on by default | `MainWindow.Updates.cs`, `UpdateCheckPreferences.cs` |

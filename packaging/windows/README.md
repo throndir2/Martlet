@@ -97,8 +97,9 @@ WebView2 runtime and blocked microphone access (ticked), Windows speech for the
 display language, Ollama and WSL 2 + Docker Desktop (unticked, except Docker on a
 host PC with an NVIDIA GPU). The setup advisor's plan adds an **Install on this
 PC** button for the items its layout runs here. Both pass the ticked IDs to the
-tool with `-Install ... -PauseWhenDone` in a visible console; **Prerequisites
-(check / install)** on the home screen opens its checklist. Martlet stays a
+tool with `-NoPrompt -Install ...`, hidden, and show its output in a Martlet run
+window (no console; elevated steps stay hidden too); **Prerequisites
+(check / install)** on the home screen shows the same checklist in Martlet. Martlet stays a
 per-user app; only the speech and WSL steps ask for UAC, and winget's Docker
 installer asks on its own.
 The full list of what is bundled, offered or user-supplied is in

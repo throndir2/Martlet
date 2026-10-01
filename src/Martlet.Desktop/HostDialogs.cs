@@ -116,6 +116,33 @@ internal sealed class HostInputDialog : ThemedWindow
         values[key] = () => combo.SelectedItem as string ?? selected;
     }
 
+    internal void AddText(string key, string label, string text, string? hint = null)
+    {
+        fields.Children.Add(new Label { Content = label, Padding = new Thickness(0, 6, 0, 4) });
+        var box = new TextBox { Text = text, MaxLength = 64 };
+        AutomationProperties.SetName(box, label);
+        AutomationProperties.SetAutomationId(box, "HostInput-" + key);
+        fields.Children.Add(box);
+        if (hint is not null)
+        {
+            var note = new TextBlock { Text = hint, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) };
+            note.SetResourceReference(StyleProperty, "Muted");
+            fields.Children.Add(note);
+        }
+        values[key] = () => box.Text.Trim();
+        required.Add(key);
+    }
+
+    internal void AddCheck(string key, string label, bool isChecked)
+    {
+        var box = new CheckBox { Content = new TextBlock { Text = label, TextWrapping = TextWrapping.Wrap }, IsChecked = isChecked,
+            Margin = new Thickness(0, 6, 0, 4) };
+        AutomationProperties.SetName(box, label);
+        AutomationProperties.SetAutomationId(box, "HostInput-" + key);
+        fields.Children.Add(box);
+        values[key] = () => box.IsChecked == true ? "yes" : "";
+    }
+
     internal void AddRemember(string text)
     {
         remember = new CheckBox { Content = text, Margin = new Thickness(0, 10, 0, 0) };
@@ -131,23 +158,43 @@ internal sealed class HostInputDialog : ThemedWindow
     }
 
     /// <summary>Asks for a role's secrets and choices (declared by the host's role.conf) and shows its terms; the Install
-    /// click is the owner's confirmation. Returns martlet-host answers (secret.name=..., choice.VAR=...), or null.</summary>
-    internal static Dictionary<string, string>? ForRole(Window owner, string host, string role, HostRoleInputs inputs)
+    /// click is the owner's confirmation. Returns martlet-host answers (secret.name=..., choice.VAR=...), or null.
+    /// <paramref name="recommended"/> preselects answers Martlet worked out for this machine (for example GPU or CPU from
+    /// what already runs on its graphics card), each with its reason.</summary>
+    internal static Dictionary<string, string>? ForRole(Window owner, string host, string role, HostRoleInputs inputs,
+        IReadOnlyDictionary<string, (string Value, string Why)>? recommended = null, bool local = false)
     {
         var message = $"{inputs.Title}\n\nNeeds: {inputs.Requires}." +
             (inputs.Terms.Length > 0 ? $"\n\n{inputs.Terms}" : "") +
-            "\n\nMartlet installs it now without further questions (missing Docker, NVIDIA driver or NVIDIA Container Toolkit " +
-            "are installed too). Secrets go to the host over SSH and are kept there in its private config (0600).";
+            (local
+                ? "\n\nMartlet installs it now in this PC's host service (Docker Desktop), without further questions or console windows. " +
+                  "Secrets are kept in the host service's private config on this PC."
+                : "\n\nMartlet installs it now without further questions (missing Docker, NVIDIA driver or NVIDIA Container Toolkit " +
+                  "are installed too). Secrets go to the host over SSH and are kept there in its private config (0600).");
         var dialog = new HostInputDialog($"Add {role}", $"Add {role} on {host}", message, "_Install");
         foreach (var secret in inputs.Secrets)
             dialog.AddSecret("secret." + secret.Name, secret.Prompt,
                 secret.Stored ? "Already saved on the host; leave empty to keep it." : null, optional: secret.Stored);
+        (string Value, string Why)? Pick(string key, IEnumerable<string> options) =>
+            recommended?.GetValueOrDefault(key) is { Value: { } value } pick && options.Contains(value) ? pick : null;
         if (inputs.GpuOrCpu)
-            dialog.AddChoice("choice.accelerator", "Run it on (Automatic: the NVIDIA GPU when the host can use one, otherwise the CPU)",
-                [Automatic, "gpu", "cpu"], Automatic);
+        {
+            string[] options = [Automatic, "gpu", "cpu"];
+            dialog.AddChoice("choice.accelerator", Pick("choice.accelerator", options) is { } pick
+                    ? $"Run it on (recommended: {pick.Value}, {pick.Why})"
+                    : "Run it on (Automatic: the NVIDIA GPU when the host can use one, otherwise the CPU)",
+                options, Pick("choice.accelerator", options)?.Value ?? Automatic);
+        }
         foreach (var choice in inputs.Choices)
-            dialog.AddChoice("choice." + choice.Variable, choice.Suggested ? choice.Label + " (Automatic: suggested by the host's GPU memory)" : choice.Label,
-                choice.Suggested ? [Automatic, .. choice.Options] : choice.Options, choice.Suggested ? Automatic : choice.Default);
+        {
+            var key = "choice." + choice.Variable;
+            string[] options = choice.Suggested ? [Automatic, .. choice.Options] : [.. choice.Options];
+            var pick = Pick(key, options);
+            dialog.AddChoice(key,
+                pick is { } chosen ? $"{choice.Label} (recommended: {chosen.Value}, {chosen.Why})"
+                    : choice.Suggested ? choice.Label + " (Automatic: suggested by the host's GPU memory)" : choice.Label,
+                options, pick?.Value ?? (choice.Suggested ? Automatic : choice.Default));
+        }
         var values = dialog.Ask(owner);
         return values?.Where(pair => pair.Value.Length > 0 && pair.Value != Automatic)
             .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);

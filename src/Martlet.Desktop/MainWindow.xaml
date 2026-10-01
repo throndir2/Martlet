@@ -154,7 +154,7 @@
                                         <Button x:Name="CheckHostServiceButton" Style="{DynamicResource PrimaryButton}" Content="Check host service"
                                                 Click="CheckHostService_Click" Padding="20,12" Margin="0,0,12,8"
                                                 AutomationProperties.AutomationId="CheckHostService"/>
-                                        <Button Content="Open host status console" Click="HostStatusConsole_Click" Padding="16,12" Margin="0,0,12,8"
+                                        <Button Content="Show host status" Click="HostStatusConsole_Click" Padding="16,12" Margin="0,0,12,8"
                                                 AutomationProperties.AutomationId="HostStatusConsole"/>
                                     </WrapPanel>
                                 </StackPanel>
@@ -174,7 +174,7 @@
                             <StackPanel>
                                 <TextBlock Text="Get this host running" Style="{DynamicResource SectionHeading}"/>
                                 <TextBlock Style="{DynamicResource Muted}" Margin="0,0,0,10"
-                                           Text="Do these once, in order. Each step opens a console window on this PC where you confirm every change."/>
+                                           Text="Do these once, in order. Martlet runs each step on this PC and shows its progress; nothing to type."/>
                                 <StackPanel x:Name="HostStepsPanel" AutomationProperties.Name="Host setup steps"/>
                             </StackPanel>
                         </Border>
@@ -332,7 +332,7 @@
                                 <Button Content="Configuration backup / restore" Click="Recovery_Click" Margin="0,4,12,4"
                                         AutomationProperties.AutomationId="OpenConfigurationRecovery" AutomationProperties.Name="Open passive local configuration backup and restore"/>
                                 <Button Content="Prere_quisites (check / install)" Click="Prerequisites_Click" Margin="0,4,12,4"
-                                        AutomationProperties.AutomationId="OpenPrerequisites" AutomationProperties.Name="Check and install Windows prerequisites such as WebView2, Windows speech, Ollama and Docker Desktop in a console window" />
+                                        AutomationProperties.AutomationId="OpenPrerequisites" AutomationProperties.Name="Check and install Windows prerequisites such as WebView2, Windows speech, Ollama and Docker Desktop" />
                                 <Button Content="Martlet _hosts" Click="Hosts_Click" Margin="0,4,12,4"
                                         AutomationProperties.AutomationId="OpenHosts" AutomationProperties.Name="Set up and pair Martlet hosts on this PC or other computers" />
                             </WrapPanel>
@@ -447,7 +447,7 @@
                         <StackPanel x:Name="TourReady" Visibility="Collapsed">
                             <TextBlock Text="Get this PC ready" Style="{DynamicResource HeroTitle}" FontSize="26"/>
                             <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,18"
-                                       Text="Martlet checked this PC and found these missing. Tick what you want: each item downloads from its publisher in a console window and keeps its own license terms."/>
+                                       Text="Martlet checked this PC and found these missing. Tick what you want: Martlet installs each item from its publisher and shows the progress; each keeps its own license terms."/>
                             <StackPanel x:Name="TourReadyItems" AutomationProperties.AutomationId="TourReadyItems"/>
                             <TextBlock Style="{DynamicResource Muted}" Margin="0,8,0,20"
                                        Text="Not sure? Keep the ticks. A setup recommendation can add what your plan needs, and Prerequisites on the home screen installs any of these later."/>

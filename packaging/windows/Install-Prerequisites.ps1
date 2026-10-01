@@ -98,8 +98,10 @@ function Invoke-Elevated([string]$Script, [string]$Purpose) {
     $pause = if ($NoPrompt) { '' } else { "`nWrite-Host ''`nRead-Host 'Finished. Press Enter to close this window' | Out-Null" }
     $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Script + $pause))
     Write-Host "Windows asks for administrator approval to $Purpose."
+    # Martlet runs this tool with -NoPrompt and shows its output itself, so the elevated step gets no console window either.
+    $style = if ($NoPrompt) { 'Hidden' } else { 'Normal' }
     try {
-        $process = Start-Process -FilePath $WindowsPowerShell -Verb RunAs -Wait -PassThru `
+        $process = Start-Process -FilePath $WindowsPowerShell -Verb RunAs -Wait -PassThru -WindowStyle $style `
             -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $encoded)
         return $process.ExitCode
     }

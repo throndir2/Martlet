@@ -1,7 +1,6 @@
-using System.ComponentModel;
-using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Windows;
 using Martlet.Core.Installation;
 using Microsoft.Win32;
 
@@ -10,8 +9,8 @@ namespace Martlet.Desktop;
 /// <summary>A Windows prerequisite the bundled tool installs; <paramref name="Id"/> is its -Install name.</summary>
 internal sealed record Prerequisite(string Id, string Title, string Detail);
 
-/// <summary>Finds missing Windows prerequisites from the registry and files only, and hands the ones the user picked
-/// to the installed prerequisites tool in a visible console. Nothing is installed until the user asks.</summary>
+/// <summary>Finds missing Windows prerequisites from the registry and files only, and installs the ones the user picked
+/// with the installed prerequisites tool, hidden, in a Martlet run window. Nothing is installed until the user asks.</summary>
 internal static class Prerequisites
 {
     private const string WebView2Client = @"Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}";
@@ -60,24 +59,48 @@ internal static class Prerequisites
         }
     }
 
-    /// <summary>Opens the prerequisites tool: installs <paramref name="items"/> when given, otherwise its checklist.
-    /// Returns a status line for the home screen.</summary>
-    internal static string Launch(IReadOnlyCollection<Prerequisite> items)
+    /// <summary>Installs <paramref name="items"/> with the bundled prerequisites tool in a run window: PowerShell runs hidden
+    /// (-NoPrompt), so no console appears; installers and Windows' administrator prompt show their own windows.
+    /// <paramref name="ollamaModel"/> also downloads that model once Ollama is installed. Returns a status line.</summary>
+    internal static async Task<string> InstallAsync(Window owner, IReadOnlyCollection<Prerequisite> items, string? ollamaModel = null)
     {
+        if (items.Count == 0) return "Nothing to install.";
         var script = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "prerequisites", "Install-Prerequisites.ps1"));
         if (!File.Exists(script))
             return $"The prerequisites tool is installed with Martlet but was not found at {script}. From a source checkout, run packaging\\windows\\Install-Prerequisites.ps1.";
-        var arguments = $"-NoProfile -ExecutionPolicy Bypass -File \"{script}\"";
-        if (items.Count > 0) arguments += " -PauseWhenDone -Install " + string.Join(",", items.Select(i => i.Id));
-        try
+        var titles = string.Join(", ", items.Select(i => i.Title));
+        var summary = await HostRunWindow.RunAsync(owner, items.Count == 1 ? $"Install {items.First().Title}" : "Install prerequisites", async run =>
         {
             var powershell = Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe");
-            Process.Start(new ProcessStartInfo(powershell, arguments) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(script)! })?.Dispose();
-        }
-        catch (Exception error) when (error is Win32Exception or IOException) { return error.Message; }
-        return items.Count == 0
-            ? "Prerequisites opened in a console window. Nothing is installed until you choose an item there."
-            : $"Installing {string.Join(", ", items.Select(i => i.Title))} in a console window. Each comes from its publisher; follow the window until it finishes.";
+            var args = new List<string> { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, "-NoPrompt",
+                "-Install", string.Join(",", items.Select(i => i.Id)) };
+            if (!string.IsNullOrWhiteSpace(ollamaModel)) args.AddRange(["-OllamaModel", ollamaModel.Trim()]);
+            run.Status($"Installing {titles}. Each comes from its publisher; Windows may ask for administrator approval...");
+            var exit = await LocalProcess.RunAsync(powershell, args, run.Output, run.Token, workingDirectory: Path.GetDirectoryName(script));
+            var still = items.Where(i => i.Id != Microphone.Id && IsMissing(i)).ToArray();
+            if (exit != 0) throw new InvalidOperationException($"The prerequisites tool stopped (exit {exit}). The output shows why.");
+            return still.Length == 0 ? $"Done: {titles}."
+                : $"Finished, but {string.Join(", ", still.Select(i => i.Title))} still isn't installed. The output shows why.";
+        });
+        return summary ?? $"{titles} were not installed. The run window shows why.";
+    }
+
+    /// <summary>The prerequisites checklist in Martlet: what is installed and what is missing, with the missing items to
+    /// install ticked by default. Installs the ticked items in a run window; returns a status line, or null when canceled.</summary>
+    internal static async Task<string?> ChooseAndInstallAsync(Window owner)
+    {
+        var missing = Missing();
+        var installed = All.Where(i => !missing.Contains(i)).ToArray();
+        var dialog = new HostInputDialog("Prerequisites", "Windows prerequisites for Martlet",
+            (installed.Length == 0 ? "" : $"Already on this PC: {string.Join(", ", installed.Select(i => i.Title))}.\n\n") +
+            (missing.Count == 0 ? "Everything Martlet can install is already here."
+                : "Tick what to install. Each item comes from its publisher and keeps its own license terms; Martlet shows the progress."),
+            missing.Count == 0 ? "_Close" : "_Install selected");
+        foreach (var item in missing)
+            dialog.AddCheck(item.Id, $"{item.Title}: {item.Detail}", ReferenceEquals(item, WebView2) || ReferenceEquals(item, Microphone));
+        if (dialog.Ask(owner) is not { } values || missing.Count == 0) return null;
+        var chosen = missing.Where(i => values.GetValueOrDefault(i.Id) == "yes").ToArray();
+        return chosen.Length == 0 ? null : await InstallAsync(owner, chosen);
     }
 
     private static bool HasWebView2()
