@@ -15,6 +15,7 @@ public sealed class ConversationRuntime : IAsyncDisposable
     internal PlaybackOptions PlaybackOptions { get; }
     internal TimeProvider Clock { get; }
     internal GeneratedSpeechObserver? GeneratedSpeech { get; private init; }
+    internal SpokenTextFeed? SpokenText { get; private init; }
     private readonly Func<ChatCompletionsTarget, ChatCompletionsTextGenerationAdapter>? chatFactory;
     private readonly Dictionary<ChatCompletionsTarget, ChatCompletionsTextGenerationAdapter> chatAdapters = [];
     private bool chatClosed;
@@ -42,7 +43,8 @@ public sealed class ConversationRuntime : IAsyncDisposable
     // Merely constructing adapters/sink is passive. No credential resolution, HTTP or device enumeration.
     public static ConversationRuntime Create(IProviderCredentialSource credentials,
         IPlaybackDeviceFactory? devices = null, PlaybackOptions? playbackOptions = null, TimeProvider? clock = null,
-        GeneratedSpeechObserver? generatedSpeech = null, IHostTextClient? hostText = null, IHostSpeechClient? hostSpeech = null)
+        GeneratedSpeechObserver? generatedSpeech = null, IHostTextClient? hostText = null, IHostSpeechClient? hostSpeech = null,
+        SpokenTextFeed? spokenText = null)
     {
         ArgumentNullException.ThrowIfNull(credentials);
         var time = clock ?? TimeProvider.System;
@@ -51,7 +53,7 @@ public sealed class ConversationRuntime : IAsyncDisposable
         return new(OpenAiTextGenerationAdapter.Create(credentials, time),
             devices is null ? null : OpenAiSpeechSynthesisAdapter.Create(credentials, time), sink, options, time,
             target => ChatCompletionsTextGenerationAdapter.Create(target.BaseUrl, target.Keyless ? null : credentials, time))
-            { GeneratedSpeech = generatedSpeech, HostText = hostText, HostSpeech = hostSpeech };
+            { GeneratedSpeech = generatedSpeech, HostText = hostText, HostSpeech = hostSpeech, SpokenText = spokenText };
     }
 
     internal static ConversationRuntime ForFixture(OpenAiTextGenerationAdapter text,

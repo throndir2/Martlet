@@ -48,7 +48,10 @@ is authorized in parallel now, with Audio2Face first/preferred and avatars OFF
 by default. The internal Desktop route renders either model in a transparent,
 always-on-top character overlay with no buttons of its own: drag the character
 to reposition it while she talks, and use **Hide character** or **Reset
-character position** in the main window. Explicit model inspection and
+character position** in the main window. Optional **speech bubbles** beside the
+character and **subtitles** at the bottom of the active screen (over windowed
+and borderless full-screen games) show each sentence as she says it; turn them
+on in the Character window. Explicit model inspection and
 generated-speech activation still require the local prerequisites in the
 [Desktop avatar guide](src/Martlet.Avatar.Hosting/README.md). This is not a
 qualified end-user avatar release; voice reliability and model/device
