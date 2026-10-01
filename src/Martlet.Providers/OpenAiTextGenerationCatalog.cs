@@ -16,6 +16,9 @@ public static class OpenAiTextGenerationCatalog
             "gpt-4.1-2025-04-14"
         });
 
+    /// <summary>Prefilled suggestion in Setup; never applied without the owner's consent.</summary>
+    public const string DefaultModelId = "gpt-4.1-mini-2025-04-14";
+
     public static bool SupportsModel(string? upstreamModelId) =>
         SupportedModelIds.Contains(upstreamModelId, StringComparer.Ordinal);
 
