@@ -9,9 +9,9 @@ every role. That page mixed three unrelated questions:
 2. **Where does the job run?** (cloud, this PC, or a paired host)
 3. **Which hardware plays and records sound?** (microphone and speakers)
 
-Phase 1 (below) is shipped. Phase 2 shipped as the Home setup pages (*How
-Martlet thinks*, *Its voice*, *How it listens*, *Character*; see
-[UI_DESIGN.md](UI_DESIGN.md#2-companion-home-main-pc)), which combine
+Phase 1 (below) is shipped. Phase 2 shipped as the Companion tabs (*Thinking*,
+*Voice*, *Listening*, *Character*, *Memory*; see
+[UI_DESIGN.md](UI_DESIGN.md#7-companion-and-settings-pages)), which combine
 placement (This PC by default, another computer, or cloud) with provider,
 model and key. The later phases are the agreed direction.
 
@@ -31,7 +31,7 @@ aliases); only the user-facing words change.
 ## Target layout
 
 ```text
-Home: Your setup
+Home: Now
   Thinking   ->  [Cloud: OpenRouter llama-3.3-70b]   (Change)
   Listening  ->  [Cloud: OpenAI gpt-4o-mini-transcribe] (Change)
   Speaking   ->  [gpu-pc: F5 voice "Ava"]            (Change)

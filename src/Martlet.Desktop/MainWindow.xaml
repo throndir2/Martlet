@@ -52,7 +52,7 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- Home: companion setup/ready, or the host dashboard -->
+            <!-- Home: how Martlet is doing and Start talking (every choice is made in Companion), or the host dashboard -->
             <ScrollViewer x:Name="HomePage" VerticalScrollBarVisibility="Auto">
                 <StackPanel Margin="36,30,36,24" MaxWidth="1000">
                     <StackPanel x:Name="CompanionHome">
@@ -65,9 +65,9 @@
                                                Text="Let's bring your companion to life" AutomationProperties.AutomationId="StageTitle"/>
                                     <TextBlock x:Name="StageText" Style="{DynamicResource Muted}" FontSize="15" Margin="0,8,0,20" MaxWidth="560"
                                                HorizontalAlignment="Left" AutomationProperties.AutomationId="StageText"
-                                               Text="First, choose how Martlet thinks: a cloud model, or one on your own computers."/>
+                                               Text="First, set up how Martlet thinks. It runs on this PC by default."/>
                                     <WrapPanel>
-                                        <Button x:Name="PrimaryStageButton" Style="{DynamicResource PrimaryButton}" Content="Choose how Martlet thinks"
+                                        <Button x:Name="PrimaryStageButton" Style="{DynamicResource PrimaryButton}" Content="Set up thinking"
                                                 Click="PrimaryStage_Click" Padding="22,12" FontSize="15" Margin="0,0,12,8"
                                                 AutomationProperties.AutomationId="PrimaryStageAction"/>
                                         <Button x:Name="ConversationButton" Content="Start _talking" Click="Conversation_Click" Padding="20,12" FontSize="15" Margin="0,0,12,8"
@@ -114,20 +114,13 @@
 
                         <StackPanel x:Name="HomeCoverage" AutomationProperties.Name="What isn't working right now"/>
 
-                        <Border x:Name="ChecklistCard" Style="{DynamicResource CardStyle}">
+                        <Border x:Name="NowCard" Style="{DynamicResource CardStyle}">
                             <StackPanel>
-                                <DockPanel>
-                                    <TextBlock x:Name="ProgressText" DockPanel.Dock="Right" Style="{DynamicResource Muted}" VerticalAlignment="Center"
-                                               AutomationProperties.AutomationId="SetupProgress"/>
-                                    <TextBlock Text="Your setup" Style="{DynamicResource SectionHeading}"/>
-                                </DockPanel>
-                                <Grid Height="8" Margin="0,2,0,12">
-                                    <Border CornerRadius="4" Background="{DynamicResource SoftBrush}"/>
-                                    <Border x:Name="ProgressFill" CornerRadius="4" Background="{DynamicResource AccentBrush}" RenderTransformOrigin="0,0.5">
-                                        <Border.RenderTransform><ScaleTransform ScaleX="0"/></Border.RenderTransform>
-                                    </Border>
-                                </Grid>
-                                <StackPanel x:Name="StepsPanel" AutomationProperties.Name="Setup steps"/>
+                                <StackPanel Margin="0,0,0,8">
+                                    <TextBlock Text="Now" Style="{DynamicResource SectionHeading}" Margin="0,0,0,2"/>
+                                    <TextBlock Style="{DynamicResource Muted}" Text="What Martlet uses right now. Each choice is made in Companion."/>
+                                </StackPanel>
+                                <StackPanel x:Name="NowPanel" AutomationProperties.Name="What Martlet uses now" AutomationProperties.AutomationId="NowLines"/>
                             </StackPanel>
                         </Border>
 
@@ -255,62 +248,9 @@
                 </Grid>
             </ScrollViewer>
 
-            <!-- Companion: everything that shapes it -->
+            <!-- Companion: the one place each choice is made, as tabs (built in MainWindow.Companion.cs). Home only shows status. -->
             <ScrollViewer x:Name="CompanionPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
-                <StackPanel Margin="36,30,36,24" MaxWidth="1000">
-                    <TextBlock Text="Make it yours" Style="{DynamicResource PageTitle}"/>
-                    <TextBlock Style="{DynamicResource Muted}" Margin="0,4,0,18"
-                               Text="Everything that shapes how your companion thinks, sounds and looks. Each opens its own window, and nothing changes until you save there."/>
-                    <UniformGrid x:Name="CompanionCards" Columns="2">
-                        <Button x:Name="SetupButton" Style="{DynamicResource CardButton}" Tag="&#xE82F;" Click="Setup_Click"
-                                AutomationProperties.AutomationId="OpenSetup" AutomationProperties.Name="How it thinks: open resumable setup, no network or credential lookup">
-                            <StackPanel>
-                                <TextBlock Text="How it thinks" FontSize="16" FontWeight="SemiBold"/>
-                                <TextBlock Style="{DynamicResource Muted}" Text="Conversation model, voice and API keys (Setup)."/>
-                            </StackPanel>
-                        </Button>
-                        <Button x:Name="AudioSetupButton" Style="{DynamicResource CardButton}" Tag="&#xE720;" Click="AudioSetup_Click"
-                                AutomationProperties.AutomationId="OpenAudioSetup" AutomationProperties.Name="Microphone and speakers: open local audio setup without enumerating or testing devices">
-                            <StackPanel>
-                                <TextBlock Text="Microphone and speakers" FontSize="16" FontWeight="SemiBold"/>
-                                <TextBlock Style="{DynamicResource Muted}" Text="Choose and test your devices. Stays on this PC."/>
-                            </StackPanel>
-                        </Button>
-                        <Button Style="{DynamicResource CardButton}" Tag="&#xE77B;" Click="Avatar_Click"
-                                AutomationProperties.AutomationId="OpenAvatar" AutomationProperties.Name="Character: open character and avatar settings">
-                            <StackPanel>
-                                <TextBlock Text="Character" FontSize="16" FontWeight="SemiBold"/>
-                                <TextBlock Style="{DynamicResource Muted}" Text="Choose, show and tune the animated character."/>
-                            </StackPanel>
-                        </Button>
-                        <Button x:Name="CompanionButton" Style="{DynamicResource CardButton}" Tag="&#xE76E;" Click="Companion_Click"
-                                AutomationProperties.AutomationId="OpenCompanion" AutomationProperties.Name="Personality: edit local companion personas and response-style weights">
-                            <StackPanel>
-                                <TextBlock Text="Personality" FontSize="16" FontWeight="SemiBold"/>
-                                <TextBlock Style="{DynamicResource Muted}" Text="Personas and how playful, helpful or silly it is."/>
-                            </StackPanel>
-                        </Button>
-                        <Button x:Name="VoiceLibraryButton" Style="{DynamicResource CardButton}" Tag="&#xE8D6;" Click="VoiceLibrary_Click"
-                                AutomationProperties.AutomationId="OpenVoiceLibrary" AutomationProperties.Name="Voice Library: open local voice library without file scan, model loading or playback">
-                            <StackPanel>
-                                <TextBlock Text="Voice Library" FontSize="16" FontWeight="SemiBold"/>
-                                <TextBlock Style="{DynamicResource Muted}" Text="Prepare voice samples for five engines, locally."/>
-                            </StackPanel>
-                        </Button>
-                        <Button x:Name="MemoryButton" Style="{DynamicResource CardButton}" Tag="&#xE81C;" Click="Memory_Click"
-                                AutomationProperties.AutomationId="OpenMemory" AutomationProperties.Name="Memory: manage explicit local memory facts without opening the store on launch">
-                            <StackPanel>
-                                <TextBlock Text="Memory" FontSize="16" FontWeight="SemiBold"/>
-                                <TextBlock Style="{DynamicResource Muted}" Text="Facts it may remember. Off by default."/>
-                            </StackPanel>
-                        </Button>
-                    </UniformGrid>
-                </StackPanel>
-            </ScrollViewer>
-
-            <!-- Setup section pages: how it thinks, its voice, how it listens, character (built in MainWindow.SetupPages.cs) -->
-            <ScrollViewer x:Name="SetupPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
-                <StackPanel x:Name="SetupPageContent" Margin="36,30,36,24" MaxWidth="1000" AutomationProperties.AutomationId="SetupSectionPage"/>
+                <StackPanel x:Name="CompanionContent" Margin="36,30,36,24" MaxWidth="1000" AutomationProperties.AutomationId="CompanionPage"/>
             </ScrollViewer>
 
             <!-- Settings: appearance, role, updates, tools and diagnostics -->

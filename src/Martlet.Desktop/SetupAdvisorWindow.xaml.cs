@@ -321,7 +321,7 @@ public partial class SetupAdvisorWindow : ThemedWindow
 
     internal static string NextStepLabel(AdvisorNextStep next) => next switch
     {
-        AdvisorNextStep.Setup => "Open Setup / resume (models and keys)",
+        AdvisorNextStep.Setup => "Set up thinking in Companion (model and key)",
         AdvisorNextStep.AudioSetup => "Open Audio setup (microphone and speakers)",
         AdvisorNextStep.Hosts => "Open Martlet hosts (GPU computers and Docker)",
         AdvisorNextStep.VoiceLibrary => "Open Voice Library (your voice samples)",

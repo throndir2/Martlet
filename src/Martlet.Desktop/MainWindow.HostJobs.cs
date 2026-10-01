@@ -243,8 +243,8 @@ public partial class MainWindow
         }
         if (JobSavedRoute.Load(store!.DataDirectory, job.SavedFile) is not { } saved)
         {
-            ActionText.Text = $"Choose how Martlet does the {job.Job} in Setup.";
-            RunNodeAction(NodeAction.Setup);
+            ActionText.Text = $"Choose how Martlet does the {job.Job} here.";
+            OpenCompanion(TabFor(job.Role));
             return;
         }
         var name = NetworkMap.ProviderName(saved);
