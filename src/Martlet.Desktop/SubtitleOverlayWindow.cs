@@ -7,7 +7,8 @@ using System.Windows.Media;
 namespace Martlet.Desktop;
 
 // A click-through, never-activated, topmost caption strip at the bottom of the monitor showing the foreground window.
-// It covers windowed and borderless full-screen games; exclusive full-screen swap chains cannot be overlaid.
+// Same always-on-top layered window the character overlay uses, so it shows over full-screen games wherever the
+// character does; it also re-raises itself to the top of the topmost band on every line.
 internal sealed class SubtitleOverlayWindow : Window
 {
     private const int ExtendedStyle = -20;

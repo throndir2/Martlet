@@ -49,8 +49,8 @@ by default. The internal Desktop route renders either model in a transparent,
 always-on-top character overlay with no buttons of its own: drag the character
 to reposition it while she talks, and use **Hide character** or **Reset
 character position** in the main window. Optional **speech bubbles** beside the
-character and **subtitles** at the bottom of the active screen (over windowed
-and borderless full-screen games) show each sentence as she says it; turn them
+character and **subtitles** at the bottom of the active screen (over full-screen
+games, the same way the character is) show each sentence as she says it; turn them
 on in the Character window. Explicit model inspection and
 generated-speech activation still require the local prerequisites in the
 [Desktop avatar guide](src/Martlet.Avatar.Hosting/README.md). This is not a
