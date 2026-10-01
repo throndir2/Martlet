@@ -372,6 +372,7 @@ public partial class MainWindow
                 avatar.IsShowing ? "Your character is on your desktop" : "Your character is ready. Show it or customize it.",
                 homeAvatar is not null || avatar.IsShowing, true,
                 [new(avatar.IsShowing ? "Hide" : "Show", () => RunNodeAction(NodeAction.ToggleCharacter)),
+                 .. avatar.IsShowing ? new[] { new StepCommand("Reset position", () => _ = ResetCharacterPositionAsync()) } : [],
                  new("Customize", () => RunNodeAction(NodeAction.Character))]),
             new("hosts", "More computers",
                 paired > 1 ? $"{paired} Martlet hosts are paired. Hand them jobs on the Devices map."
