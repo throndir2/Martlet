@@ -497,6 +497,19 @@ public partial class MainWindow
         var key = new PasswordBox { MaxLength = SecretLease.MaximumLength, Width = 420, HorizontalAlignment = HorizontalAlignment.Left };
         AutomationProperties.SetName(key, "API key");
         AutomationProperties.SetAutomationId(key, "SetupCloudKey-" + section);
+        var keySavedMark = new TextBlock
+        {
+            Text = "••••••••  Key saved (type to replace)", IsHitTestVisible = false, VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(12, 0, 0, 0), Opacity = 0.7
+        };
+        keySavedMark.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+        var keyField = new Grid { Width = 420, HorizontalAlignment = HorizontalAlignment.Left, Children = { key, keySavedMark } };
+        var keySaved = false;
+        void RefreshKeyMark()
+        {
+            using var entered = key.SecurePassword;
+            keySavedMark.Visibility = keySaved && entered.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
         var keyStatus = Note("", new Thickness(0, 4, 0, 0));
         var hint = Note("", new Thickness(0, 4, 0, 0));
         var consent = new CheckBox { Margin = new Thickness(0, 12, 0, 8) };
@@ -535,7 +548,9 @@ public partial class MainWindow
                 else model.SelectedItem = Catalog(p).Contains(value, StringComparer.Ordinal) ? value : Default(p);
             }
             var saved = SameAsSaved(p) && cloudRoute!.CredentialId is not null;
-            keyStatus.Text = saved ? "A key is saved for this provider. Leave this empty to keep it, or paste a new one to replace it."
+            keySaved = saved;
+            RefreshKeyMark();
+            keyStatus.Text = saved ? $"Your {p.Name} key is saved in Windows Credential Manager. For security it isn't shown here. Leave this empty to keep it, or paste a new one to replace it."
                 : p.NeedsKey ? $"Paste your {p.Name} API key. It is kept in Windows Credential Manager, never in settings."
                 : "Optional: only if your server needs a key.";
             hint.Text = p == OpenAiCloud ? (role == SetupRole.Llm ? $"Recommended: {OpenAiTextGenerationCatalog.DefaultModelId}." : "The recommended model is prefilled.")
@@ -553,7 +568,8 @@ public partial class MainWindow
         model.SelectionChanged += (_, _) => { sectionEdited = true; consent.IsChecked = false; };
         baseUrl.TextChanged += (_, _) => { sectionEdited = true; consent.IsChecked = false; };
         voice.SelectionChanged += (_, _) => { sectionEdited = true; consent.IsChecked = false; };
-        key.PasswordChanged += (_, _) => sectionEdited = true;
+        key.PasswordChanged += (_, _) => { sectionEdited = true; RefreshKeyMark(); };
+        baseUrl.TextChanged += (_, _) => { keySaved = SameAsSaved(Selected()) && cloudRoute!.CredentialId is not null; RefreshKeyMark(); };
 
         var save = PageButton("Save", () => SaveCloudAsync(job, Selected(), baseUrl.Text.Trim(), Selected().Chat ? modelText.Text.Trim() : model.SelectedItem as string ?? "",
             role == SetupRole.Tts ? voice.SelectedItem as string : null, key, consent.IsChecked == true).Forget(), primary: true, id: "SetupCloudSave-" + section);
@@ -575,7 +591,7 @@ public partial class MainWindow
             stack.Add(voice);
         }
         stack.Add(new Label { Content = "API _key", Target = key, Padding = new Thickness(0, 8, 0, 4) });
-        stack.Add(key);
+        stack.Add(keyField);
         stack.Add(keyStatus);
         stack.Add(Note(OpenAiSetup.Disclosure, new Thickness(0, 10, 0, 0)));
         stack.Add(consent);
@@ -619,7 +635,7 @@ public partial class MainWindow
             await SaveSectionRouteAsync(job, settings => provider.Chat
                     ? ChatCompletionsSetup.SelectRoute(settings, url!, model)
                     : SetupSettings.SelectRoute(settings, role, model, role == SetupRole.Tts ? voice : null),
-                key, $"{job.Title} now uses {provider.Name} ({model}{(voice is null ? "" : ", voice " + voice)}). Requests may cost money there.");
+                key, $"{job.Title} now uses {provider.Name} ({model}{(voice is null ? "" : ", voice " + voice)}).{(key is null ? "" : " Your API key is saved securely in Windows Credential Manager.")} Requests may cost money there.");
         }
         catch (ContractException error) { ActionText.Text = error.Message; }
         finally { key?.Dispose(); }
