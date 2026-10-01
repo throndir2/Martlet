@@ -42,7 +42,7 @@ public partial class MainWindow
             try { updateChecksEnabled = UpdateCheckPreferences.Load(store.DataDirectory); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
             {
-                problem = "Could not read update-checks.txt, so automatic checks stay off until you choose again.";
+                problem = "Could not read update-checks.txt, so automatic checks use the default (on) until you choose again.";
             }
             try { updatePreferences = UpdatePreferences.Load(store.DataDirectory); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)

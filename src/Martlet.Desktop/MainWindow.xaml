@@ -450,7 +450,7 @@
                     <DockPanel Margin="0,0,0,8">
                         <Button DockPanel.Dock="Right" Content="E_xit Martlet" Click="Exit_Click" AutomationProperties.Name="Exit Martlet"/>
                         <TextBlock Style="{DynamicResource Muted}" VerticalAlignment="Center"
-                                   Text="Nothing listens on launch. Network stays idle unless you opted in to update checks or host updates; real conversations need your configured routes and explicit permission for each action."/>
+                                   Text="Nothing listens on launch. Network stays idle except for update checks (on by default) and host updates you enabled; real conversations need your configured routes and explicit permission for each action."/>
                     </DockPanel>
                 </StackPanel>
             </ScrollViewer>

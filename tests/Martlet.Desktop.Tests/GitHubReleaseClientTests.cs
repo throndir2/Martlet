@@ -21,6 +21,8 @@ public sealed class GitHubReleaseClientTests
             Assert.True(UpdateCheckPreferences.Load(root));
             UpdateCheckPreferences.Save(root, false);
             Assert.False(UpdateCheckPreferences.Load(root));
+            File.WriteAllText(Path.Combine(root, "update-checks.txt"), "Disabled");
+            Assert.True(UpdateCheckPreferences.Load(root));
             Assert.Equal("profile sentinel", File.ReadAllText(Path.Combine(root, "settings.json")));
             Assert.Empty(Directory.GetFiles(root, "*.tmp"));
             File.WriteAllText(Path.Combine(root, "update-checks.txt"), new string('x', 100));
