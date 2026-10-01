@@ -69,7 +69,21 @@ GW_CONFIG="${GW_CONF_DIR}/host.json"
 
 say()  { printf '\n\033[1m%s\033[0m\n' "$*"; }
 note() { printf '%s\n' "$*"; }
-fail() { printf '\n\033[31mStopped: %s\033[0m\n' "$*" >&2; exit 1; }
+fail() { journal "stopped: $*"; printf '\n\033[31mStopped: %s\033[0m\n' "$*" >&2; exit 1; }
+
+# Engine journal on this host (Docker runs engines with --log-driver none, so nothing else records them): when each
+# command started and how it ended, plus who held the gateway state when it was busy. Never secrets or pairing codes.
+# A "started" line without an "exit" line means that run was killed or abandoned.
+JOURNAL="${CONF}/logs/engine.log"
+JOURNAL_ON=0
+JOURNAL_SESSION=""
+journal() {
+  [[ ${JOURNAL_ON} == 1 ]] || return 0
+  { ( umask 077
+      mkdir -p "${CONF}/logs"
+      if [[ -f "${JOURNAL}" && $(stat -c %s "${JOURNAL}") -gt 1048576 ]]; then mv -f "${JOURNAL}" "${JOURNAL}.1"; fi
+      printf '%s %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${JOURNAL_SESSION}" "$*" >> "${JOURNAL}" ); } 2>/dev/null || true
+}
 assume_yes() { [[ "${MARTLET_ASSUME_YES:-0}" == 1 ]]; }
 # Unattended: --yes with answers on stdin (Martlet desktop), not a human at a terminal.
 unattended() { assume_yes && [[ ! -t 0 ]]; }
@@ -300,8 +314,63 @@ service_stop() {
   else systemctl --user stop "${SERVICE}.service" 2>/dev/null || true; fi
 }
 
+# Running containers that use this host's gateway state (the martlet-host-private volume), except this session, one per
+# line: name, minutes running, image and command, the gateway command inside (or none), and "service" or "session"
+# (tab-separated). In the Docker method an engine whose console window was closed keeps running, because its terminal
+# never ends, so it can hold the gateway state for good.
+STALE_MINUTES=10
+other_sessions() {
+  [[ "${MODE}" == docker ]] || return 0
+  local id name started now kind tool what
+  now="$(date -u +%s)"
+  while read -r id name; do
+    [[ -n "${id}" && "${name}" != "${MARTLET_ENGINE_NAME:-}" ]] || continue
+    started="$(docker container inspect -f '{{.State.StartedAt}}' "${id}" 2>/dev/null || true)"
+    started="${started%%.*}"; started="$(date -u -d "${started%Z}Z" +%s 2>/dev/null || printf '%s' "${now}")"
+    what="$(docker container inspect -f '{{.Config.Image}} {{join .Config.Cmd " "}}' "${id}" 2>/dev/null || true)"
+    tool="$(docker top "${id}" 2>/dev/null | grep -m1 -oE 'Martlet\.Gateway\.Host\.Linux\.dll [a-z-]+' | cut -d' ' -f2 || true)"
+    kind=session; [[ "${name}" == "${SERVICE}" ]] && kind=service
+    printf '%s\t%s\t%s\t%s\t%s\n' "${name}" "$(( (now - started) / 60 ))" "${what//$'\t'/ }" "${tool:-none}" "${kind}"
+  done < <(docker ps --no-trunc --filter volume=martlet-host-private --format '{{.ID}} {{.Names}}' 2>/dev/null || true)
+}
+
+# Names what else uses this host's gateway state when an owner operation finds it busy, and stops abandoned Martlet
+# sessions (running ${STALE_MINUTES}+ minutes) so this one can finish. Newer sessions may still be in use by someone and
+# are only named. Returns 0 when it stopped one.
+release_gateway_state() {
+  if [[ "${MODE}" != docker ]]; then
+    note "Gateway processes on this host:"
+    pgrep -af 'Martlet\.Gateway\.Host\.Linux\.dll' | sed 's/^/  /' || note "  (none found)"
+    journal "gateway state busy; gateway processes: $(pgrep -f 'Martlet\.Gateway\.Host\.Linux\.dll' | tr '\n' ' ' || true)"
+    return 1
+  fi
+  local sessions=() line name minutes what tool kind stale=()
+  mapfile -t sessions < <(other_sessions)
+  if [[ ${#sessions[@]} -eq 0 ]]; then
+    note "No other container uses this host's gateway state now."
+    journal "gateway state busy; no other container uses it"
+    return 1
+  fi
+  note "Other containers using this host's gateway state:"
+  for line in "${sessions[@]}"; do
+    IFS=$'\t' read -r name minutes what tool kind <<< "${line}"
+    note "  ${name} (${kind}): ${what}; running ${minutes} min; gateway process: ${tool}"
+    journal "gateway state busy; ${name} (${kind}): ${what}; running ${minutes} min; gateway process: ${tool}"
+    if [[ "${kind}" == session ]] && (( minutes >= STALE_MINUTES )); then stale+=("${name}"); fi
+  done
+  [[ ${#stale[@]} -gt 0 ]] || return 1
+  note "Running ${STALE_MINUTES}+ minutes, ${stale[*]} is most likely left over from a closed console window and waits forever."
+  if ! assume_yes && [[ ! -t 0 || ! -t 2 ]]; then note "Stop it with: docker stop ${stale[*]}"; return 1; fi
+  ask "Stop ${stale[*]}?" || return 1
+  docker stop -t 3 "${stale[@]}" >/dev/null 2>&1 || true
+  journal "stopped abandoned sessions: ${stale[*]}"
+  note "Stopped ${stale[*]}."
+  return 0
+}
+
 # Runs a short owner operation (owner-init, owner-approve) with the service stopped. The gateway state allows one
-# process at a time, so while a just-stopped gateway is still letting go of it (StoreBusy) it waits and tries again.
+# process at a time: while a just-stopped gateway is still letting go of it (StoreBusy) this waits and tries again, and
+# it names (and stops, when abandoned) any other Martlet session that holds it.
 owner_operation() {
   local attempt out status
   for attempt in 1 2 3 4 5 6; do
@@ -309,26 +378,39 @@ owner_operation() {
     status=0
     out="$(gateway "$@" 2>&1)" || status=$?
     printf '%s\n' "${out}"
-    [[ ${status} != 0 && "${out}" == *StoreBusy:* && ${attempt} -lt 6 ]] || return ${status}
-    note "Another gateway process still holds this host's state; waiting for it to stop, then trying again..."
+    [[ ${status} != 0 && "${out}" == *StoreBusy:* ]] || return ${status}
+    journal "$1: gateway state busy (attempt ${attempt})"
+    if release_gateway_state; then continue; fi
+    [[ ${attempt} -lt 6 ]] || break
+    note "Another process still holds this host's gateway state; waiting for it to let go, then trying again..."
     sleep 5
   done
+  if [[ "${MODE}" == docker ]]; then
+    note "Something else still holds this host's gateway state (listed above). Finish or close that Martlet session, or stop it with: docker stop <name>"
+  else
+    note "Something else still holds this host's gateway state (listed above). Finish or close that martlet-host session, then try again."
+  fi
+  return ${status}
 }
 
 service_start() {
-  if [[ "${MODE}" == docker ]]; then
-    # Recreated each time so an updated image takes effect; state lives in the named volumes.
-    docker rm -f "${SERVICE}" >/dev/null 2>&1 || true
-    docker run -d --name "${SERVICE}" --restart unless-stopped --network "container:${NET}" --user 1000:1000 \
-      -v martlet-host-config:/var/lib/martlet/config -v martlet-host-private:/var/lib/martlet/private \
-      "${IMAGE}" serve >/dev/null
-  else
-    systemctl --user restart "${SERVICE}.service"
-  fi
-  local attempt
-  for attempt in 1 2 3 4 5 6; do
-    sleep 2
-    if gateway health --config "${GW_CONFIG}" >/dev/null 2>&1; then note "Gateway healthy."; return; fi
+  local round attempt
+  for round in 1 2; do
+    if [[ "${MODE}" == docker ]]; then
+      # Recreated each time so an updated image takes effect; state lives in the named volumes.
+      docker rm -f "${SERVICE}" >/dev/null 2>&1 || true
+      docker run -d --name "${SERVICE}" --restart unless-stopped --network "container:${NET}" --user 1000:1000 \
+        -v martlet-host-config:/var/lib/martlet/config -v martlet-host-private:/var/lib/martlet/private \
+        "${IMAGE}" serve >/dev/null
+    else
+      systemctl --user restart "${SERVICE}.service"
+    fi
+    for attempt in 1 2 3 4 5 6; do
+      sleep 2
+      if gateway health --config "${GW_CONFIG}" >/dev/null 2>&1; then note "Gateway healthy."; return; fi
+    done
+    # An abandoned session that holds the gateway state keeps the service from opening it.
+    [[ ${round} == 1 ]] && release_gateway_state || break
   done
   if [[ "${MODE}" == docker ]]; then fail "The gateway is not healthy. Check: docker logs ${SERVICE}"
   else fail "The gateway is not healthy. Check: journalctl --user -u ${SERVICE}"; fi
@@ -525,11 +607,13 @@ docker_launch() {
   fi
   docker container inspect "${NET}" >/dev/null 2>&1 || fail "Run 'setup' first."
   local tty=(-i); [[ -t 0 && -t 1 ]] && tty=(-it)
+  # A recognizable name (in docker ps, and so the engine can tell itself from other sessions using the gateway state).
+  local engine_name; engine_name="martlet-host-$1-$(date -u +%Y%m%d-%H%M%S)-${RANDOM}"
   # --log-driver none: engine output (which can include a one-use pairing code) is streamed, never logged by Docker.
-  exec docker run --rm "${tty[@]}" --log-driver none --user 1000:1000 --group-add "${socket_group}" --network "container:${NET}" \
+  exec docker run --rm "${tty[@]}" --name "${engine_name}" --log-driver none --user 1000:1000 --group-add "${socket_group}" --network "container:${NET}" \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v martlet-host-config:/var/lib/martlet/config -v martlet-host-private:/var/lib/martlet/private \
-    -e MARTLET_ENGINE=inner -e MARTLET_HOST_IMAGE="${IMAGE}" -e MARTLET_HOST_ID -e MARTLET_ASSUME_YES \
+    -e MARTLET_ENGINE=inner -e MARTLET_ENGINE_NAME="${engine_name}" -e MARTLET_HOST_IMAGE="${IMAGE}" -e MARTLET_HOST_ID -e MARTLET_ASSUME_YES \
     -e MARTLET_HOST_ADDRESS -e MARTLET_HOST_PORT "${IMAGE}" "$@"
 }
 
@@ -652,13 +736,13 @@ cmd_pair() {
     [[ -n "${name}" ]] || fail "Add --name <display name> for that desktop."
     service_stop
     # However pairing ends (including a dropped SSH connection), the gateway service comes back.
-    trap 'trap - EXIT; service_start >/dev/null 2>&1 || true' EXIT
+    trap 'code=$?; trap - EXIT; service_start >/dev/null 2>&1 || true; journal "exit ${code}"' EXIT
     trap '' PIPE
     note "Pairing ${device} (${name}). Martlet reads the one-use code below by itself; by hand, paste it into Martlet hosts."
     note "Type cancel (or close stdin in Martlet) to withdraw it; it expires after five minutes."
     local status=0
     gateway owner-pair --config "${GW_CONFIG}" --device-id "${device}" --name "${name}" --roles "${roles}" || status=$?
-    trap - EXIT
+    trap 'journal "exit $?"' EXIT
     service_start
     [[ ${status} == 0 ]] || fail "Pairing did not complete."
     say "Paired. The gateway is serving again."
@@ -945,6 +1029,16 @@ cmd_status() {
   if [[ "${MODE}" == docker ]]; then docker ps --filter "name=^${SERVICE}$" --filter "name=^${NET}$" --format '{{.Names}}: {{.Status}}' || true
   else systemctl --user is-active "${SERVICE}.service" || true; fi
   gateway health --config "${GW_CONFIG}" || true
+  local name minutes what tool kind
+  while IFS=$'\t' read -r name minutes what tool kind; do
+    [[ "${kind}" == session ]] || continue
+    note "Other martlet-host session: ${name}: ${what}; running ${minutes} min; gateway process: ${tool}"
+    if (( minutes >= STALE_MINUTES )); then note "  Most likely left over from a closed console window; stop it with: docker stop ${name}"; fi
+  done < <(other_sessions)
+  if [[ -f "${JOURNAL}" ]]; then
+    note "Recent martlet-host runs on this host (${JOURNAL}):"
+    tail -n 12 "${JOURNAL}" | sed 's/^/  /'
+  fi
   show_machine
   local file role port
   for file in "${CONF}/roles"/*.role; do
@@ -962,6 +1056,15 @@ if [[ "${MODE}" == docker && "${MARTLET_ENGINE:-launcher}" != inner ]]; then
     setup|roles|describe|add|remove|pair|status|config|machine|update) docker_launch "$@" ;;
   esac
 fi
+
+case "${1:-help}" in
+  setup|add|remove|pair|machine|update)
+    JOURNAL_ON=1
+    if [[ "${MODE}" == docker ]]; then JOURNAL_SESSION="${MARTLET_ENGINE_NAME:-engine} ${IMAGE}"
+    else JOURNAL_SESSION="native/$$ $(git -C "${REPO}" describe --tags --always 2>/dev/null || printf 'source')"; fi
+    journal "started: $*"
+    trap 'journal "exit $?"' EXIT ;;
+esac
 
 case "${1:-help}" in
   setup) cmd_setup ;;

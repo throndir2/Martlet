@@ -12,7 +12,7 @@
     <NuGetLockFilePath Condition="'$(_RuntimeLockRids)' != '' and '$(_RuntimeLockKeyValid)' == 'True' and '$(NuGetLockFilePath)' == ''">$(MSBuildProjectDirectory)\obj\runtime-locks\$([System.String]::Copy('$(_RuntimeLockRids)').Replace(';', '_'))\packages.lock.json</NuGetLockFilePath>
     <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
-    <Version>0.10.1</Version>
+    <Version>0.10.2</Version>
   </PropertyGroup>
   <Target Name="ValidateRuntimeLockKey" BeforeTargets="_GenerateRestoreGraphProjectEntry;PrepareForBuild"
           Condition="'$(_RuntimeLockRids)' != '' and '$(_RuntimeLockKeyValid)' != 'True'">
