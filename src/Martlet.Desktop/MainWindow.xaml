@@ -76,8 +76,11 @@
                                         <Button x:Name="CharacterButton" Content="Show _character" Click="Character_Click" Padding="16,12" Margin="0,0,12,8"
                                                 AutomationProperties.AutomationId="ToggleCharacter" AutomationProperties.Name="Show or hide the animated desktop character"/>
                                         <Button x:Name="ResetCharacterButton" Content="_Reset character position" Click="ResetCharacter_Click" Padding="16,12" Margin="0,0,12,8"
-                                                Visibility="Collapsed" ToolTip="Bring the character back to the lower-right of your main screen"
-                                                AutomationProperties.AutomationId="ResetCharacterPosition" AutomationProperties.Name="Reset the desktop character's position"/>
+                                                Visibility="Collapsed" ToolTip="Bring the character back to the lower-right of your main screen at its default size and zoom"
+                                                AutomationProperties.AutomationId="ResetCharacterPosition" AutomationProperties.Name="Reset the desktop character's position, size and zoom"/>
+                                        <Button x:Name="ResetCharacterZoomButton" Content="Reset character _zoom" Click="ResetCharacterZoom_Click" Padding="16,12" Margin="0,0,12,8"
+                                                Visibility="Collapsed" ToolTip="Return the character to its default size and zoom without moving it. Mouse wheel over the character zooms; right-click it for more zoom options."
+                                                AutomationProperties.AutomationId="ResetCharacterZoom" AutomationProperties.Name="Reset the desktop character's size and zoom"/>
                                     </WrapPanel>
                                     <WrapPanel Margin="0,4,0,0">
                                         <Button x:Name="AdvisorButton" Style="{DynamicResource LinkButton}" Content="Not sure what you need? Get a recommendation"

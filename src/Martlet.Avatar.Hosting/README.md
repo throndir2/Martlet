@@ -115,14 +115,20 @@ The character appears in a transparent, borderless, always-on-top desktop
 overlay, initially near the lower-right corner of the primary work area.
 
 Drag the character to reposition the overlay, including onto another monitor.
-The mouse wheel over the character resizes it. After clicking the character,
-use arrow keys for 10-DIP steps (device-independent pixels), Shift+arrows for
-1-DIP steps, or Home to return to the primary screen. The overlay itself has no
-buttons, panel or title bar; its controls live in the main Martlet window.
+The mouse wheel over the character zooms: it first grows the overlay up to the
+height of the screen, then keeps zooming the camera into the character (up to
+16x, toward the cursor). When zoomed in, Ctrl+drag or middle-drag pans.
+Right-click the character for **Zoom in**, **Zoom out**, **Reset zoom** and
+**Reset position and size**. After clicking the character, use arrow keys for
+10-DIP steps (device-independent pixels), Shift+arrows for 1-DIP steps, +/- to
+zoom, 0 to reset zoom, or Home to return to the primary screen at the default
+size. The overlay has no buttons, panel or title bar; its other controls live
+in the main Martlet window.
 **Reset character position** (home screen, shown while the character is
 visible) returns it to the lower-right of the primary screen at its default
-size, even if it was dragged off-screen. The overlay does not take keyboard
-focus on opening.
+size and zoom, even if it was dragged off-screen. **Reset character zoom**
+restores the default size and zoom without moving it. The overlay does not take
+keyboard focus on opening.
 Position is session-only, and this is not a global click-through or game-injected
 overlay. Exclusive-fullscreen applications may cover it.
 

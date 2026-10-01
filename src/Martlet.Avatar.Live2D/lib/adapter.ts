@@ -128,6 +128,7 @@ export class Live2DAdapter {
   #lipSyncAge = Number.POSITIVE_INFINITY;
   #lookTarget = { x: 0, y: 0 };
   #look = { x: 0, y: 0 };
+  #view = { zoom: 1, x: 0, y: 0 };
 
   constructor(canvas: HTMLCanvasElement, options: {
     sdk?: SdkModules;
@@ -162,6 +163,14 @@ export class Live2DAdapter {
     finite(x, "look x");
     finite(y, "look y");
     this.#lookTarget = { x: Math.max(-1, Math.min(1, x)), y: Math.max(-1, Math.min(1, y)) };
+  }
+
+  /** Camera zoom applied after fitting: screen = fitted * zoom + (x, y), in clip space. */
+  setView(zoom: number, x: number, y: number): void {
+    finite(zoom, "view zoom");
+    finite(x, "view x");
+    finite(y, "view y");
+    this.#view = { zoom: Math.max(1, Math.min(32, zoom)), x, y };
   }
 
   playMotion(group: string): boolean {
@@ -390,9 +399,10 @@ export class Live2DAdapter {
     const width = model.getCanvasWidth();
     const height = model.getCanvasHeight();
     const aspect = this.#canvas.width / this.#canvas.height;
-    const scale = Math.min(2 / height, 2 * aspect / width);
+    const view = this.#view;
+    const scale = Math.min(2 / height, 2 * aspect / width) * view.zoom;
     const matrix = new sdk.CubismMatrix44();
-    matrix.setMatrix(new Float32Array([scale / aspect, 0, 0, 0, 0, scale, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]));
+    matrix.setMatrix(new Float32Array([scale / aspect, 0, 0, 0, 0, scale, 0, 0, 0, 0, 1, 0, view.x, view.y, 0, 1]));
     renderer.setMvpMatrix(matrix);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, this.#canvas.width, this.#canvas.height);

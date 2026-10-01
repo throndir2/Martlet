@@ -3,6 +3,7 @@ import { VrmAvatarAdapter } from "../../Martlet.Avatar.Vrm/src/index.ts";
 
 const canvas = document.getElementById("avatar");
 let adapter, renderer, revision, configurationId, active = false, last = 0, failed = false;
+let view = { zoom: 1, x: 0, y: 0 };
 const post = value => window.chrome.webview.postMessage(value);
 const resource = name => fetch(`asset/${name}`).then(response => {
   if (!response.ok) throw new Error("Local resource unavailable.");
@@ -14,6 +15,11 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
   if (message.kind === "look") {
     // Fire-and-forget cursor follow from the host window; never replies and never fails the renderer.
     try { if (active && !failed) adapter?.setLook?.(message.data.x, message.data.y); } catch { }
+    return;
+  }
+  if (message.kind === "view") {
+    // Fire-and-forget camera zoom/pan from the host window; never replies and never fails the renderer.
+    try { view = message.data; if (active && !failed) adapter?.setView?.(view.zoom, view.x, view.y); } catch { }
     return;
   }
   try {
@@ -47,6 +53,7 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
           !p.name.startsWith("look")).map(p => ({ id: p.name, minimum: 0, maximum: 1, neutral: 0,
           aspects: [mouth.has(p.name) ? "Mouth" : "Expression"] })) });
       } else throw new Error("Unsupported renderer.");
+      try { adapter.setView(view.zoom, view.x, view.y); } catch { }
       active = true;
     } else if (message.kind === "configure") {
       revision = data;

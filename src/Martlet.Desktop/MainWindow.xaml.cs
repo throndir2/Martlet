@@ -439,14 +439,30 @@ public partial class MainWindow : ThemedWindow
     {
         CharacterButton.Content = avatar.IsShowing ? "Hide _character" : "Show _character";
         ResetCharacterButton.Visibility = avatar.IsShowing ? Visibility.Visible : Visibility.Collapsed;
+        ResetCharacterZoomButton.Visibility = ResetCharacterButton.Visibility;
     }
     private async void ResetCharacter_Click(object sender, RoutedEventArgs e) => await ResetCharacterPositionAsync();
+    private async void ResetCharacterZoom_Click(object sender, RoutedEventArgs e) => await ResetCharacterZoomAsync();
+    private async Task ResetCharacterZoomAsync()
+    {
+        try
+        {
+            await avatar.ZoomAsync("reset", lifetime.Token);
+            ActionText.Text = "Character returned to its default size and zoom.";
+        }
+        catch (Exception error) when (error is System.IO.IOException or InvalidOperationException or TimeoutException or
+            OperationCanceledException or ObjectDisposedException)
+        {
+            if (!closing) ActionText.Text = $"Character zoom could not be reset: {error.Message}";
+        }
+        finally { UpdateCharacterButton(); }
+    }
     private async Task ResetCharacterPositionAsync()
     {
         try
         {
             await avatar.ResetPositionAsync(lifetime.Token);
-            ActionText.Text = "Character moved back to the lower-right of your main screen.";
+            ActionText.Text = "Character moved back to the lower-right of your main screen at its default size.";
         }
         catch (Exception error) when (error is System.IO.IOException or InvalidOperationException or TimeoutException or
             OperationCanceledException or ObjectDisposedException)
