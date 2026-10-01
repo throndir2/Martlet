@@ -153,11 +153,29 @@ public partial class MainWindow
             if (route is null)
             {
                 var role = HostRoles.Get(job.HostRoleKind);
+                // On this PC Martlet already knows what suits it, so the install asks nothing more: whisper goes on the
+                // graphics card or the processor by what already runs there, F5 has nothing to choose.
+                IReadOnlyDictionary<string, string>? answers = null;
+                var how = host.Method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative
+                    ? $"Martlet installs it over SSH ({host.Reach}), asks which model and shows its progress. "
+                    : host.CanLaunch ? "Martlet installs it in this PC's host service, asks which model and shows its progress. " : "Martlet copies the command to run on it. ";
+                if (host.Method == HostSetupMethod.ThisPcDocker && job.Role == SetupRole.Stt)
+                {
+                    var advice = await ListeningAdviceAsync();
+                    answers = new Dictionary<string, string>(StringComparer.Ordinal)
+                    {
+                        ["choice.accelerator"] = advice.UseGpu ? "gpu" : "cpu", ["choice.STT_MODEL"] = advice.Model
+                    };
+                    how = $"Martlet installs it in this PC's host service on the {(advice.UseGpu ? "graphics card" : "processor")} with the " +
+                        $"{advice.Model} model (recommended because {advice.Reason}) and shows its progress. ";
+                }
+                else if (host.Method == HostSetupMethod.ThisPcDocker && job.RouteType == SetupRouteType.GatewayF5)
+                {
+                    answers = new Dictionary<string, string>(StringComparer.Ordinal);
+                    how = "Martlet installs it in this PC's host service and shows its progress. ";
+                }
                 if (!ConfirmationDialog.Confirm(this,
-                        $"{host.HostId} does not run {job.Engine} yet. Install it there and hand {job.Job} to it once it is ready? " +
-                        (host.Method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative
-                            ? $"Martlet installs it over SSH ({host.Reach}), asks which model and shows its progress. "
-                            : host.CanLaunch ? $"A console opens ({host.Reach}) where you confirm each step and pick the model. " : "Martlet copies the command to run on it. ") +
+                        $"{host.HostId} does not run {job.Engine} yet. Install it there and hand {job.Job} to it once it is ready? " + how +
                         $"It needs {role.Needs}." +
                         (HostCan(host.HostId, job.HostRoleKind) is { Verdict: Martlet.Core.Platforms.PlatformVerdict.Unknown } unsure ? " " + unsure.Reason : "") +
                         $" Until the model is downloaded Martlet keeps {job.Job} where it is now, then switches over{withVoice} by itself." +
@@ -165,7 +183,7 @@ public partial class MainWindow
                     return;
                 pendingJobHosts[job.Role] = host.HostId;
                 if (voice is not null) pendingJobVoices[job.Role] = voice;
-                LaunchOnHost(host, role.Add);
+                LaunchOnHost(host, role.Add, answers);
                 WatchJobHandoffAsync(job, host).Forget();
                 return;
             }

@@ -1,23 +1,19 @@
 using System.Diagnostics;
 using System.IO;
-using System.Text;
 using System.Text.RegularExpressions;
 using Martlet.Avatar.Audio2Face.Remote;
 
 namespace Martlet.Desktop;
 
 /// <summary>Drives martlet-host on this PC's Docker Desktop without a console: starts Docker, builds the host image,
-/// runs setup unattended (--yes) and pairs this desktop by itself, streaming output to a <see cref="HostRunWindow"/>.
-/// The owner's click in Martlet is the confirmation, as for SSH hosts (<see cref="HostRemote"/>).</summary>
+/// runs setup, roles, status and updates unattended (--yes) and pairs desktops, streaming output to a
+/// <see cref="HostRunWindow"/>. The owner's click in Martlet is the confirmation, as for SSH hosts (<see cref="HostRemote"/>).</summary>
 internal static partial class HostLocal
 {
     [GeneratedRegex(@"martlet-pair-v1\.[A-Za-z0-9_-]+")]
     private static partial Regex PairingCodePattern();
 
-    [GeneratedRegex(@"\x1B\[[0-9;?]*[A-Za-z]")]
-    private static partial Regex AnsiPattern();
-
-    private static string Docker
+    internal static string Docker
     {
         get
         {
@@ -52,6 +48,40 @@ internal static partial class HostLocal
         throw new InvalidOperationException("Docker Desktop did not start within ten minutes. Open it, make sure it says it is running, then try again.");
     }
 
+    /// <summary>winget (App Installer), or null when this PC does not have it.</summary>
+    internal static string? Winget()
+    {
+        var alias = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "WindowsApps", "winget.exe");
+        if (File.Exists(alias)) return alias;
+        foreach (var folder in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            try
+            {
+                var candidate = Path.Combine(folder.Trim('"'), "winget.exe");
+                if (File.Exists(candidate)) return candidate;
+            }
+            catch (ArgumentException) { }
+        }
+        return null;
+    }
+
+    /// <summary>Installs Docker Desktop (WSL 2 based) with winget, without a console: Docker's own installer and Windows'
+    /// administrator prompt appear; the output streams into the run window. The owner already accepted the terms in Martlet.</summary>
+    internal static async Task InstallDockerDesktopAsync(Action<string> status, IProgress<string> output, CancellationToken token)
+    {
+        var winget = Winget() ?? throw new InvalidOperationException(
+            "winget (App Installer from the Microsoft Store) isn't available on this PC, so Martlet can't install Docker Desktop. " +
+            "Install Docker Desktop from docker.com, then try again.");
+        status("Installing Docker Desktop. Windows asks for administrator approval; this can take several minutes...");
+        string[] args = ["install", "--exact", "--id", "Docker.DockerDesktop", "--source", "winget",
+            "--accept-package-agreements", "--accept-source-agreements"];
+        output.Report("$ winget " + string.Join(' ', args));
+        var exit = await LocalProcess.RunAsync(winget, args, output, token);
+        if (!MachineInfo.DockerDesktopInstalled())
+            throw new InvalidOperationException($"Docker Desktop was not installed (winget exit {exit}). The output shows why.");
+        output.Report("Docker Desktop is installed. If it asks you to restart or sign out, do that, then press the same button again.");
+    }
+
     /// <summary>Builds martlet-host:&lt;version&gt; from this version's source (falling back to main) unless it exists.</summary>
     internal static async Task EnsureImageAsync(HostSetupTarget target, Action<string> status, IProgress<string> output, CancellationToken token)
     {
@@ -68,9 +98,10 @@ internal static partial class HostLocal
         throw new InvalidOperationException("The host image could not be built. The output shows why.");
     }
 
-    /// <summary>Runs one martlet-host command unattended in a container on this PC; returns its exit code.</summary>
+    /// <summary>Runs one martlet-host command unattended in a container on this PC; returns its exit code.
+    /// <paramref name="answers"/> are martlet-host answers (secret.&lt;name&gt;=..., choice.&lt;VAR&gt;=...) sent over stdin.</summary>
     internal static Task<int> EngineAsync(HostSetupTarget target, IReadOnlyList<string> engine, IProgress<string> output,
-        CancellationToken token, Task<string?>? moreInput = null)
+        CancellationToken token, Task<string?>? moreInput = null, IReadOnlyDictionary<string, string>? answers = null)
     {
         HostSetupCommands.Validate(target, HostAction.Status);
         var setup = engine.Count > 0 && engine[0] == "setup";
@@ -84,7 +115,12 @@ internal static partial class HostLocal
         args.Add("--yes");
         args.AddRange(engine);
         output.Report("$ martlet-host " + string.Join(' ', engine) + "  (on this PC, Docker Desktop)");
-        return RunAsync(args, output, token, "end\n", moreInput);
+        var input = string.Concat((answers ?? new Dictionary<string, string>()).Select(pair =>
+        {
+            if (pair.Value.Contains('\n') || pair.Value.Contains('\r')) throw new InvalidOperationException("Answers must be a single line.");
+            return $"{pair.Key}={pair.Value}\n";
+        })) + "end\n";
+        return RunAsync(args, output, token, input, moreInput);
     }
 
     /// <summary>Pairs this desktop with this PC's host: runs "pair --device-id ... --name ...", reads the one-use code from
@@ -125,58 +161,46 @@ internal static partial class HostLocal
         return result;
     }
 
-    private static async Task<int> RunAsync(IEnumerable<string> args, IProgress<string>? output, CancellationToken token,
-        string? input = null, Task<string?>? moreInput = null)
+    /// <summary>Reads a role's terms, secrets and choices from this PC's host engine (martlet-host describe).</summary>
+    internal static async Task<HostRoleInputs> DescribeAsync(HostSetupTarget target, string role, IProgress<string> output,
+        CancellationToken token)
     {
-        var start = new ProcessStartInfo(Docker)
+        var lines = new List<string>();
+        var sink = new LineSink(line =>
         {
-            UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true,
-            RedirectStandardInput = true, StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8
-        };
-        foreach (var arg in args) start.ArgumentList.Add(arg);
-        using var process = new Process { StartInfo = start };
-        void Line(string? text)
-        {
-            if (text is not null && output is not null) output.Report(AnsiPattern().Replace(text, ""));
-        }
-        process.OutputDataReceived += (_, e) => Line(e.Data);
-        process.ErrorDataReceived += (_, e) => Line(e.Data);
-        try { process.Start(); }
-        catch (System.ComponentModel.Win32Exception error)
-        {
-            throw new InvalidOperationException("Docker could not be started: " + error.Message);
-        }
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-        var feeding = FeedAsync(process.StandardInput, input, moreInput, process.WaitForExitAsync(CancellationToken.None));
-        try { await process.WaitForExitAsync(token); }
-        catch (OperationCanceledException)
-        {
-            try { process.Kill(entireProcessTree: true); }
-            catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception) { }
-            throw;
-        }
-        await feeding;
-        process.WaitForExit();
-        return process.ExitCode;
+            if (line.StartsWith("role.", StringComparison.Ordinal)) lines.Add(line);
+            else output.Report(line);
+        });
+        var exit = await EngineAsync(target, ["describe", role], sink, token);
+        if (exit != 0 || lines.Count == 0)
+            throw new InvalidOperationException($"Could not read the {role} role from this PC's host service (exit {exit}). See the output.");
+        return HostRemote.ParseRole(lines);
     }
 
-    private static async Task FeedAsync(StreamWriter stdin, string? input, Task<string?>? more, Task exited)
+    /// <summary>Lets another desktop (for example the main PC) pair with this PC's host: runs "pair --device-id ... --name ..."
+    /// and shows its one-use code, which <paramref name="code"/> also receives (for the clipboard). The engine waits up to
+    /// five minutes for that desktop to redeem it; canceling withdraws the code.</summary>
+    internal static async Task<int> PairOtherAsync(HostSetupTarget target, string deviceId, string name, Action<string> code,
+        IProgress<string> output, CancellationToken token)
     {
-        try
+        if (!DeviceIdPattern().IsMatch(deviceId)) throw new InvalidOperationException("Enter the other PC's device ID (for example desktop-main-pc).");
+        var label = new string(name.Where(c => c is >= ' ' and <= '~').Take(64).ToArray()).Trim();
+        if (label.Length == 0 || label[0] == '-') label = "Martlet desktop";
+        var withdraw = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var registration = token.Register(() => withdraw.TrySetResult("cancel\n"));
+        var sink = new LineSink(line =>
         {
-            if (input is not null) { await stdin.WriteAsync(input); await stdin.FlushAsync(); }
-            if (more is not null && await Task.WhenAny(more, exited) == more && await more is { } last)
-            {
-                await stdin.WriteAsync(last);
-                await stdin.FlushAsync();
-            }
-        }
-        catch (IOException) { }
-        catch (ObjectDisposedException) { }
-        finally
-        {
-            try { stdin.Close(); } catch (Exception error) when (error is IOException or ObjectDisposedException) { }
-        }
+            if (PairingCodePattern().Match(line) is { Success: true } match) code(match.Value);
+            output.Report(line);
+        });
+        try { return await EngineAsync(target, ["pair", "--device-id", deviceId, "--name", label], sink, token, withdraw.Task); }
+        finally { withdraw.TrySetResult(null); }
     }
+
+    [GeneratedRegex(@"\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z")]
+    private static partial Regex DeviceIdPattern();
+
+    private static Task<int> RunAsync(IEnumerable<string> args, IProgress<string>? output, CancellationToken token,
+        string? input = null, Task<string?>? moreInput = null) =>
+        LocalProcess.RunAsync(Docker, args, output, token, input, moreInput);
 }

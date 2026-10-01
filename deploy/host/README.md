@@ -30,9 +30,10 @@ and the password once, and never need to log in to that computer. The owner's
 click in Martlet, over the owner's own SSH session, is the confirmation for each
 change. For *This PC* Set up host does the same with Docker Desktop: Martlet
 starts Docker, builds the host image, runs `setup` unattended and pairs itself,
-with no console. Role changes on this PC still open a console window running the
-command shown in Martlet hosts, and on the host itself every change is confirmed
-by typing `yes`.
+with no console. Role changes, status, updates and pairing on this PC run the same
+way in a Martlet run window (never a console window); choices such as whisper on
+the GPU or the CPU are made in Martlet first. On the host itself every change is
+confirmed by typing `yes`.
 
 Commands are the same everywhere:
 
@@ -202,8 +203,12 @@ the same pairing client as the **Pair with host** button and stores the device
 secret in Windows Credential Manager, and the host restarts its gateway. If
 redeeming fails, Martlet sends `cancel` so the host stops waiting at once.
 
-**This PC or by hand:** in Martlet > **Martlet hosts**, copy *This PC's device
-ID* and press **Open pairing console**. In the host console confirm opening with
+**This PC:** **Pair automatically** runs the same unattended pairing on this PC's
+Docker Desktop. To pair *another* desktop with this PC's host, the host
+dashboard's **Show a pairing code** asks for that desktop's device ID and shows the
+one-use code in Martlet (copied to the clipboard, never logged).
+
+**By hand:** on the host run `martlet-host pair`. In the host console confirm opening with
 `yes`, type `start` (`yes`), then `pair` with that device ID, a name and role
 `voice` (`yes`). The host shows a pairing code `martlet-pair-v1....` (origin,
 host ID, TLS pin, one-use pairing ID and token). Paste it into Martlet hosts and
@@ -331,7 +336,7 @@ From each host's details the desktop runs `add <role>`, `remove <role>` and
 native, or this PC's Docker Desktop), so moving a job from one GPU PC to another
 is: hand it to the new host (Martlet offers to install the role there), then
 remove the role from the old one. SSH hosts run these in Martlet (the click
-confirms); this PC's Docker Desktop opens a console where you confirm each step.
+confirms), and so does this PC's Docker Desktop (no console window).
 
 ## Preparing a computer
 

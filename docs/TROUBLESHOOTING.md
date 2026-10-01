@@ -9,7 +9,7 @@ Martlet always keeps a small local error log; it is never uploaded.
   `host-runs.log` is the output of every Martlet host run window (set up this
   PC, add a host, pair, add/remove a role), exactly as shown, with pairing codes
   masked (rotates at 2 MiB, keeps one older copy). `desktop.log` also records
-  each host run's start and result and every host console window Martlet opens.
+  each host run's start and result. Martlet never opens a console window.
   `desktop.log` and `avatar-renderer.log` rotate at 2 MiB and keep 3 older copies.
 - Contents: startup/exit lines plus every unhandled exception, failed background
   task and unexpected avatar-renderer exit, with full exception type, message
