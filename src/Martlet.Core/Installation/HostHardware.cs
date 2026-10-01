@@ -32,6 +32,15 @@ public sealed record HostHardware(
     /// <summary>The Martlet release the host's gateway runs; null for hosts from 0.2.0 and earlier.</summary>
     public string? MartletVersion { get; init; }
 
+    /// <summary>The operating system its roles run on (linux, windows, macos, ios, android); null for hosts that predate
+    /// platform reporting, which run the Linux host engine.</summary>
+    public string? Platform { get; init; }
+    public string? OsVersion { get; init; }
+    /// <summary>x64 or arm64, when reported.</summary>
+    public string? Architecture { get; init; }
+    /// <summary>Reported device features such as apple-intelligence or foreground-only (Martlet.Core.Platforms.PlatformFeatures).</summary>
+    public IReadOnlyList<string>? Features { get; init; }
+
     [JsonIgnore] public HostGpu? BestGpu => Gpus.OrderByDescending(g => g.IsNvidia).ThenByDescending(g => g.MemoryMb ?? 0).FirstOrDefault();
 
     [JsonIgnore] public AdvisorGpu AdvisorGpu => BestGpu is { } gpu ? SetupAdvisor.Classify(gpu.Vendor, gpu.MemoryGb) : AdvisorGpu.None;

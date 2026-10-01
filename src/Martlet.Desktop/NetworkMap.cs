@@ -1,6 +1,7 @@
 using System.Net;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Installation;
+using Martlet.Core.Platforms;
 using Martlet.Core.Settings;
 
 namespace Martlet.Desktop;
@@ -41,6 +42,7 @@ internal static class NetworkMap
 {
     internal const string ThisPcGlyph = "\uE770";
     internal const string ComputerGlyph = "\uE7F4";
+    internal const string PhoneGlyph = "\uE8EA";
     internal const string CloudGlyph = "\uE753";
     internal const string AddGlyph = "\uE710";
 
@@ -50,7 +52,7 @@ internal static class NetworkMap
         internal NodeKind Kind { get; } = kind;
         internal string Title { get; set; } = title;
         internal string Subtitle { get; set; } = subtitle;
-        internal string Glyph { get; } = glyph;
+        internal string Glyph { get; set; } = glyph;
         internal NodeHealth Health { get; set; } = NodeHealth.Ready;
         internal string HealthText { get; set; } = "Ready";
         internal List<HostedRole> Roles { get; } = [];
@@ -301,24 +303,41 @@ internal static class NetworkMap
             if (inputs.HostUpdates?.GetValueOrDefault(id) is { } update) target.Notes.Insert(0, update);
             var offersFace = check?.Offers?.ContainsKey(HostRoles.Audio2Face) == true;
             var offersThinking = check?.Offers?.ContainsKey(HostRoles.Ollama) == true;
+            // What this host can run at all, from the platform and hardware it reported: impossible roles are explained,
+            // never offered, and phones and tablets switch their roles on themselves.
+            var device = PlatformDevice.FromHost(id, inputs.HostHardware?.FirstOrDefault(h => h.HostId == id));
+            var managed = PlatformCatalog.ManagesRolesRemotely(device);
+            if (!local && device.Platform is DevicePlatform.Ios or DevicePlatform.Android) target.Glyph = PhoneGlyph;
+            bool Can(string kind) => check?.Offers?.ContainsKey(kind) == true ||
+                managed && (PlatformCatalog.EngineForHostRole(kind) is not { } engine ||
+                    PlatformCatalog.Check(engine, PlatformSide.Host, device).Allowed);
+            foreach (var note in PlatformCatalog.HostNotes(device)) target.Notes.Add(note);
             target.Commands.Insert(0, new(NodeAction.CheckHost, "Check connection", !local && check?.Reachable != true, id));
-            target.Commands.Add(new(NodeAction.UpdateHost, local ? "Update this PC's host service" : outdated ? $"Update it to Martlet {app}" : "Update host",
-                outdated && check?.Reachable == true, id));
-            if (companion && !inCharge)
+            if (managed)
+                target.Commands.Add(new(NodeAction.UpdateHost, local ? "Update this PC's host service" : outdated ? $"Update it to Martlet {app}" : "Update host",
+                    outdated && check?.Reachable == true, id));
+            if (companion && !inCharge && Can(HostRoles.Audio2Face))
                 target.Commands.Add(new(NodeAction.UseForLipSync, local ? "Hand lip-sync to this PC's host service" : "Hand lip-sync to this computer",
                     offersFace, id));
-            if (companion && !thinks)
+            if (companion && !thinks && Can(HostRoles.Ollama))
                 target.Commands.Add(new(NodeAction.UseForThinking, local ? "Hand thinking to this PC's host service" : "Hand thinking to this computer",
                     offersThinking, id));
-            if (companion && !listens)
+            if (companion && !listens && Can(HostRoles.Stt))
                 target.Commands.Add(new(NodeAction.UseForListening, local ? "Hand listening to this PC's host service" : "Hand listening to this computer",
                     check?.Offers?.ContainsKey(HostRoles.Stt) == true, id));
-            if (companion && !speaks)
+            if (companion && !speaks && Can(HostRoles.F5))
                 target.Commands.Add(new(NodeAction.UseForSpeaking, local ? "Hand speaking to this PC's host service" : "Hand speaking to this computer",
                     check?.Offers?.ContainsKey(HostRoles.F5) == true, id));
             foreach (var role in HostRoles.All)
             {
                 var offered = check?.Offers?.ContainsKey(role.Kind) == true;
+                if (!managed) continue;
+                if (!offered && PlatformCatalog.EngineForHostRole(role.Kind) is { } engine &&
+                    PlatformCatalog.Check(engine, PlatformSide.Host, device) is { Allowed: false } cannot)
+                {
+                    target.Notes.Add($"{role.Name}: {cannot.Reason}");
+                    continue;
+                }
                 if (!offered)
                     target.Commands.Add(new(NodeAction.InstallRole, local ? $"Install {role.Name} in this PC's host service" : $"Install {role.Name} there",
                         Argument: id + "/" + role.Kind));
@@ -326,8 +345,8 @@ internal static class NetworkMap
                     target.Commands.Add(new(NodeAction.RemoveRole, local ? $"Remove {role.Name} from this PC's host service" : $"Remove {role.Name} from it",
                         Argument: id + "/" + role.Kind));
             }
-            target.Commands.Add(new(NodeAction.HostStatus, "Show its status", Argument: id));
-            if (!local && paired.Method != HostSetupMethod.ThisPcDocker)
+            if (managed) target.Commands.Add(new(NodeAction.HostStatus, "Show its status", Argument: id));
+            if (!local && managed && paired.Method != HostSetupMethod.ThisPcDocker)
             {
                 // Linux computers: set them up and power them from here (martlet-prepare over SSH, Wake-on-LAN).
                 target.Commands.Add(new(NodeAction.PrepareHost, "Prepare this computer (drivers, Docker, GPU, tools)", Argument: id));
@@ -344,7 +363,7 @@ internal static class NetworkMap
             }
             target.Commands.Add(new(NodeAction.ManageHost, "Pair again or change its setup", Argument: id));
             target.Commands.Add(new(NodeAction.ForgetHost, "Forget this host", Argument: id));
-            if (!paired.CanLaunch && !local)
+            if (!paired.CanLaunch && !local && managed)
                 target.Notes.Add("Tell Martlet how to reach it (below) to install or remove roles from here; otherwise it shows the command to run there.");
         }
 

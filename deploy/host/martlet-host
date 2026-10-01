@@ -353,11 +353,12 @@ nvidia_gpus_json() {
 }
 
 collect_machine() {
-  local os="" kernel="" cpu="" threads="" memory="" runtime="" nvidia_containers="unknown" cuda="" gpus=() line
+  local os="" kernel="" cpu="" threads="" memory="" runtime="" nvidia_containers="unknown" cuda="" arch="" gpus=() line
   local query=(--query-gpu=name,memory.total,driver_version,persistence_mode,power.limit,power.default_limit --format=csv,noheader,nounits)
   local cuda_pattern='CUDA Version: *[0-9]+(\.[0-9]+)+'
   cpu="$(grep -m1 'model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2- || true)"
   if [[ "${MODE}" == docker ]]; then
+    arch="$(docker info --format '{{.Architecture}}' 2>/dev/null || true)"
     os="$(docker info --format '{{.OperatingSystem}}' 2>/dev/null || true)"
     kernel="$(docker info --format '{{.KernelVersion}}' 2>/dev/null || true)"
     threads="$(docker info --format '{{.NCPU}}' 2>/dev/null || true)"
@@ -370,6 +371,7 @@ collect_machine() {
       cuda="$(timeout 60 docker run --rm --gpus all --entrypoint nvidia-smi "${IMAGE}" 2>/dev/null | grep -oE "${cuda_pattern}" | grep -oE '[0-9.]+$' | head -n1 || true)"
     else nvidia_containers="no"; fi
   else
+    arch="$(uname -m)"
     os="$(. /etc/os-release 2>/dev/null && printf '%s' "${PRETTY_NAME:-Linux}" || printf 'Linux')"
     kernel="$(uname -r)"
     threads="$(nproc 2>/dev/null || true)"
@@ -400,10 +402,12 @@ collect_machine() {
     done
   fi
   local joined; joined="$(IFS=,; printf '%s' "${gpus[*]:-}")"
+  # The roles always run on Linux (natively or in Docker containers), whatever computer Docker runs on.
+  case "${arch}" in x86_64|amd64) arch="x64" ;; aarch64|arm64) arch="arm64" ;; *) arch="" ;; esac
   mkdir -p "${GW_CONF_DIR}"; chmod 700 "${GW_CONF_DIR}"
   ( umask 077
-    printf '{"collected_at":"%s","method":"%s","operating_system":%s,"kernel":%s,"processor":%s,"processor_threads":%s,"memory_gb":%s,"container_runtime":%s,"nvidia_containers":"%s","cuda":%s,"gpus":[%s]}\n' \
-      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${MODE}" "$(json_text "${os:-Linux}")" "$(json_opt "${kernel}")" "$(json_opt "${cpu}")" \
+    printf '{"collected_at":"%s","method":"%s","platform":"linux","architecture":%s,"operating_system":%s,"kernel":%s,"processor":%s,"processor_threads":%s,"memory_gb":%s,"container_runtime":%s,"nvidia_containers":"%s","cuda":%s,"gpus":[%s]}\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${MODE}" "$(json_opt "${arch}")" "$(json_text "${os:-Linux}")" "$(json_opt "${kernel}")" "$(json_opt "${cpu}")" \
       "$(json_num "${threads}")" "$(json_num "${memory}")" "$(json_opt "${runtime}")" "${nvidia_containers}" "$(json_opt "${cuda}")" "${joined}" \
       > "${MACHINE_FILE}.tmp" && mv -f "${MACHINE_FILE}.tmp" "${MACHINE_FILE}" )
 }

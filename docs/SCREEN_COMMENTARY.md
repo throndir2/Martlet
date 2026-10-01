@@ -46,6 +46,41 @@ private/incognito browser windows (by window title). Protected video reads back
 black and is skipped. Screenshots are never saved, logged, put in local memory
 or support bundles.
 
+## Cameras, phones and other video sources
+
+**What Martlet looks at** also offers two non-screen sources. The pacer,
+chattiness, looks per hour, `[pass]` rule and the stop conditions are the same;
+keyboard/mouse idle is not used for them (only a still picture counts as an
+empty room).
+
+- **A camera (webcam, capture card, phone as webcam).** Click **Find cameras**
+  to list Windows video capture devices (Media Foundation). Anything Windows
+  shows as a camera works: USB webcams, capture cards (a console or a second
+  PC), OBS Virtual Camera, and **phone cameras** through Windows 11 Phone Link
+  "connected camera", DroidCam, Camo, iVCam or similar apps. The camera is
+  opened only while watching (its light is on only then) and released on stop.
+- **A phone or network camera address.** Enter one of:
+  - `http(s)://` a JPEG snapshot URL (fetched once per look), for example the
+    Android "IP Webcam" app's `http://phone:8080/shot.jpg`, go2rtc
+    `/api/frame.jpeg?src=<cam>` or Frigate `/api/<cam>/latest.jpg`;
+  - `http(s)://` an MJPEG stream (one frame is read per look), for example
+    `http://phone:8080/video`;
+  - `rtsp://` a camera stream, or a path to a video file, read through the
+    Media Foundation Source Reader.
+
+  `user:password@` in the address is used for the request but never saved;
+  the saved address has credentials stripped. Header-based tokens (for example
+  Home Assistant's `camera_proxy` bearer token) are not supported yet; use a
+  snapshot URL that carries its own access instead.
+
+A future Martlet phone app can be a source by serving the same contract: a
+JPEG snapshot or MJPEG over HTTP(S) on the local network.
+
+Camera privacy: frames are kept only in memory (never saved, logged or put in
+memory or support bundles), the picture goes to the Thinking model only when a
+look happens, and the model is told never to identify people or comment on
+bodies, looks or clothes. Tell anyone in view that the camera is watching.
+
 ## Full-screen games
 
 Martlet reads the monitor through the **DXGI Desktop Duplication API**: a copy
@@ -156,3 +191,6 @@ the next look.
   text-only Thinking model has to be swapped for a vision one.
 - Real capture on a game and a real vision model reply were not run in the
   change that added this; see the pull request for what was checked.
+- Camera capture was checked with a local video file and HTTP snapshot/MJPEG
+  test servers, not yet with a physical webcam, Phone Link camera or RTSP
+  camera.

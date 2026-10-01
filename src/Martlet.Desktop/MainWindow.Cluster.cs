@@ -88,6 +88,7 @@ public partial class MainWindow
             : "Sync is off. This PC keeps its own choices and checks nothing in the background.";
         ShowClusterStatus();
         if (DevicesPage.IsVisible) RenderMap();
+        RefreshCoverage();
     }
 
     /// <summary>Records a job change made on this PC (in Who does what or Setup) as the newest entry of the shared plan.</summary>
@@ -225,6 +226,7 @@ public partial class MainWindow
                     clusterSignature = signature;
                     if (DevicesPage.IsVisible) RenderMap();
                 }
+                RefreshCoverage();
             }
         }
     }

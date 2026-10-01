@@ -36,9 +36,9 @@ promise a cross-platform desktop ([non-goals](../DEVELOPMENT_PLAN.md#explicit-no
    workflow on a GitHub-hosted macOS runner (free for this public repository)
    builds an unsigned `.ipa`. Users sign it on install with their own Apple ID
    (AltStore, SideStore or Sideloadly), like the unsigned Windows installer.
-   A free Apple ID means re-signing every 7 days and at most 3 sideloaded apps;
-   the $99/year Apple Developer Program removes most limits but is spending
-   and an owner decision, not part of this plan.
+   A free Apple ID means re-signing every 7 days and at most 3 sideloaded apps.
+   **Decided 2026-10-01: no paid Apple programs.** Everything in this plan works
+   with a free Apple ID; see [Decisions](#decisions-2026-10-01).
 4. **What an iPhone is good at hosting:** on-device speech recognition, Apple
    voices including your own Personal Voice, Apple Intelligence's on-device
    model (vision input from iOS 27), Vision OCR, and acting as a wireless
@@ -71,7 +71,7 @@ mechanism; **Partial** = planned with a stated limit; **No** = not planned.
 | Listening: paired host whisper | Yes | Yes | - | Gateway client | IO09 |
 | Thinking: OpenAI / OpenRouter / NVIDIA Build / any Chat Completions | Yes | Yes | - | Same HTTPS APIs | IO05 |
 | Thinking: on-device | Loopback Ollama/LM Studio | **Yes: Apple Intelligence on-device model** | **Yes: serves the existing chat route** | `FoundationModels` `SystemLanguageModel` (Apple Intelligence devices) | IO03, IO05 |
-| Thinking: Apple Private Cloud Compute | - | Partial (iOS 27, entitlement, daily limit) | Partial | `PrivateCloudComputeLanguageModel` | IO05 |
+| Thinking: Apple Private Cloud Compute | - | Not planned: needs Apple's entitlement and a paid team | Not planned | `PrivateCloudComputeLanguageModel` | - |
 | Thinking: paired host Ollama | Yes | Yes | - | Gateway client | IO09 |
 | Speaking: OpenAI TTS | Yes | Yes | - | Streaming PCM | IO05 |
 | Speaking: on-device voices | Windows voices | **Yes: Apple voices and Personal Voice** | **Yes: new generic speech route** | `AVSpeechSynthesizer.write(_:toBufferCallback:)`, Personal Voice authorization | IO04, IO05 |
@@ -80,6 +80,7 @@ mechanism; **Partial** = planned with a stated limit; **No** = not planned.
 | Persona, response styles, participation policy | Yes | Yes (port) | - | Swift port | IO05 |
 | Local memory | Yes | Yes (port lexical store) | - | Swift port, file protection | IO09 |
 | Watch my screen (game commentary) | Yes (Desktop Duplication, GDI fallback) | **Partial: user starts a system broadcast** | - | ReplayKit Broadcast Upload Extension | IO06 |
+| Phone camera as a Watch source | Yes (webcams, capture cards, phone-as-webcam apps, http snapshot/MJPEG, rtsp) | Planned: serve the camera as an HTTP JPEG snapshot/MJPEG that the desktop's address source reads | - | AVCaptureSession | IO06 |
 | Vision model for screen commentary | OpenAI, Chat Completions, host Ollama | Same, plus **on-device model with image input (iOS 27)** | Chat route accepts the image (iOS 27) | `FoundationModels` image attachments | IO03, IO06 |
 | On-screen text hints | - | Yes | Possible (perception OCR route) | Vision `VNRecognizeTextRequest` | IO06 |
 | Character (VRM / Live2D) | Yes (overlay) | Yes in the app; reuses the web bundles | - | `WKWebView` (WebGL2) | IO07 |
@@ -92,7 +93,7 @@ mechanism; **Partial** = planned with a stated limit; **No** = not planned.
 | Microphone/speaker satellite for the PC companion | - | - | **Yes** (new satellite routes) | AVAudioEngine | IO10 |
 | Host role install/remove over SSH/Docker | Yes | No | No: roles are toggled on the device | - | - |
 | Setup advisor, prerequisites installer, Doctor, MCP | Yes | Minimal in-app checks only | Hosting checks only | - | IO05 |
-| App updates | GitHub Releases | AltStore/SideStore source; TestFlight only with the paid program | Same | - | IO02 |
+| App updates | GitHub Releases | AltStore/SideStore source (no TestFlight: it needs the paid program) | Same | - | IO02 |
 | Voice Studio training | Planned | No | No (Mac later, maybe) | - | - |
 
 ## Platform constraints and the design answer
@@ -105,14 +106,14 @@ mechanism; **Partial** = planned with a stated limit; **No** = not planned.
 | Local network access needs permission (`NSLocalNetworkUsageDescription`, `NSBonjourServices`) ([docs](https://developer.apple.com/documentation/bundleresources/information-property-list/nslocalnetworkusagedescription)) | Ask on first pairing or hosting, with the reason. Hosts bind only the Wi-Fi private address; no Bonjour trust (discovery supplies an address, never trust, as on Windows). |
 | No one-call API to create a self-signed TLS identity on iOS | Generate a P-256 key and self-signed certificate on the device with [apple/swift-certificates](https://github.com/apple/swift-certificates), keep both in the Keychain (`ThisDeviceOnly`), serve with Network.framework `NWListener` + TLS 1.2/1.3. Host ID and SPKI pin use the gateway's existing derivation. |
 | Clients pin by SPKI | `sec_protocol_options_set_verify_block` (Network.framework) or a `URLSession` trust delegate compares SHA-256 of the SPKI with the paired pin. |
-| Broadcast Upload Extensions are limited to about 50 MB (consistently reported on Apple forums) and are started by the user from a system picker | The extension only downscales to 1024 px, compares a 16x9 grey thumbnail and hands at most one JPEG per look to the app; the pacer and model call stay in the app (which is running because the companion session holds audio). Transfer by App Group container when the signing team supports it (reported unavailable to free Personal Teams, unverified), otherwise a loopback socket with a per-session token. The red recording indicator is the visible state. |
+| Broadcast Upload Extensions are limited to about 50 MB (consistently reported on Apple forums) and are started by the user from a system picker | The extension only downscales to 1024 px, compares a 16x9 grey thumbnail and hands at most one JPEG per look to the app; the pacer and model call stay in the app (which is running because the companion session holds audio). Frames go to the app over a loopback socket with a per-session token, never an App Group: App Groups are reported unavailable to free Apple IDs, and Martlet uses only free signing. The red recording indicator is the visible state. |
 | ScreenCaptureKit is documented for iOS/iPadOS 26 ([Apple](https://developer.apple.com/documentation/screencapturekit/capturing-screen-content-on-ios)), not verified here | Evaluate in IO06 as a replacement for the extension; ReplayKit is the baseline. |
 | No always-on-top overlay API | Picture-in-Picture fed with rendered frames through `AVSampleBufferDisplayLayer` ([ContentSource](https://developer.apple.com/documentation/avkit/avpictureinpicturecontroller/contentsource-swift.class), iOS 15+). The character is rendered to pixel buffers (native VRM renderer or WebGL snapshots, chosen by measured cost). App Review acceptance of non-video PiP is uncertain; sideloaded builds are unaffected. On iPad, the Martlet window beside the game is the reliable route. |
 | Foundation Models: Apple Intelligence devices only (iPhone 15 Pro or later, iPhone 16/17/Air, A17 Pro iPad mini, M1+ iPad; [Apple](https://support.apple.com/en-us/121115)), 4,096-token context on iOS 26 ([docs](https://developer.apple.com/documentation/foundationmodels/managing-the-context-window)), shared system resource, Swift-only | Route shown only when `SystemLanguageModel` reports available. Persona, style, memory facts and history are trimmed to the model's reported context (iOS 26.4 token-count APIs) instead of the desktop's fixed byte budget. Image input only on iOS 27 ([WWDC26 session 241](https://developer.apple.com/videos/play/wwdc2026/241/)); the vision classification says so per OS. |
-| Private Cloud Compute model (iOS 27): 32K context, reasoning, free under 2M first-time downloads, per-user daily limit, **requires an entitlement** | Optional Thinking choice once the entitlement is granted; disclosed as Apple's server, not on-device. Not planned for free Personal Team builds. |
+| Private Cloud Compute model (iOS 27): 32K context, reasoning, free under 2M first-time downloads, per-user daily limit, **requires an entitlement** | Not planned: the entitlement most likely needs the paid Apple Developer Program, which Martlet does not use. |
 | Personal Voice needs per-app user authorization; no documented rule against sending its generated audio to another device (App Review stance unverified) | Personal Voice is offered on the phone only after authorization, and as a host voice only with an extra on-phone confirmation that replies in your voice will play on the paired computer. |
 | Hosted runner images lag Xcode releases: `macos-26` ships Xcode 26.x (image 20260907) | Build against the iOS 26 SDK; iOS 27-only APIs (FM image input, PCC) sit behind `#if compiler`/`if #available` and light up when the workflow's Xcode supports them. |
-| Free Apple ID signing: 7-day expiry, 3 apps, Developer Mode on the device; some capabilities (App Groups, possibly Private Cloud Compute) need a paid team | Ship one app bundle with one extension. Document the weekly refresh (AltStore/SideStore can refresh over Wi-Fi). Paid-team capabilities are optional enhancements, never required for the core features. |
+| Free Apple ID signing: 7-day expiry, 3 active apps and 10 App IDs a week (the app and each extension use one; [AltStore](https://faq.altstore.io/altstore-classic/app-ids)), Developer Mode on the device; App Groups and Private Cloud Compute need a paid team | Ship one app bundle with one extension (2 App IDs). Document the weekly refresh (AltStore/SideStore refresh over Wi-Fi). A build that expired stops opening; as a host it then simply stops answering, and the desktop's coverage card says so. No feature depends on a paid capability. |
 | Thermal and battery | Hosting screen shows thermal state (`ProcessInfo.thermalState`) and pauses new jobs at `.serious` with a visible reason; the desktop sees `busy`, not silent slowness. |
 
 ## Technology decision
@@ -127,10 +128,10 @@ remain authoritative. IO01 generates golden vectors from the C# code into
 `contracts/gateway/`; `MartletKit` tests must reproduce them byte for byte.
 A protocol change lands in C# first, with regenerated vectors.
 
-Proposed layout:
+Layout (one `apple/` folder shared with the [macOS app](MACOS.md#proposed-layout), decided 2026-10-01):
 
 ```text
-ios/
+apple/
   project.yml                 XcodeGen spec (reviewable text, no .xcodeproj churn)
   MartletKit/                 Swift package
     Sources/Gateway/          pairing code, pinned client, HMAC signer/verifier, host server, routes
@@ -188,7 +189,7 @@ today's desktop uses, with the same bounds and strict JSON:
 | `GET /health/live`, `GET /health/ready` | Unchanged documents |
 | `POST /martlet/v1/pair` | Pairing starts only from **Pair a computer** on the Hosting screen: one-use 5-minute invitation, shown as a QR code and as the `martlet-pair-v1.` line (`{o,h,s,i,t}`, as in `Martlet.Gateway.Host.Linux/PairingCode.cs`); the phone screen is the local approval. Permanent pairing, rotation and revocation follow protocol 2.0; secrets and HMAC verifiers live in the Keychain |
 | `GET /martlet/v1/version`, `capabilities`, `status` | Advertises only roles switched on and ready on the device (for example no chat route without Apple Intelligence) |
-| `GET /martlet/v1/machine` | Device model, iOS version, memory, `method: native`, GPU vendor `other`; Apple Intelligence availability once the report gains an optional field |
+| `GET /martlet/v1/machine` | `method: app`, `platform: ios`, `os_version`, `architecture: arm64`, memory, no GPUs, and `features` such as `apple-intelligence`, `foreground-only` and `battery` ([platform fields](PLATFORMS.md#machine-report-platform-fields)); the desktop uses them to offer only what the device can do |
 | `GET`/`POST /martlet/v1/cluster` | Stores its copy like a Linux host; never acts on it |
 | `POST /martlet/v1/inference/transcription` | Existing contract (16 kHz mono PCM16, at most 30 s, text events) served by SpeechAnalyzer; model ID `apple-speech-<locale>` |
 | `POST /martlet/v1/inference/ollama-chat` | Existing request/event contract served by `SystemLanguageModel` (model ID `apple-on-device`); the optional screen image is accepted only on iOS 27 |
@@ -200,13 +201,14 @@ Every request is authenticated with the existing `Martlet-HMAC` scheme
 (`martlet-request-v1` canonical bytes, timestamp window, nonce replay store).
 Unpaired callers see only liveness and pairing.
 
-**Desktop changes (small):** label engines from the advertised route and model
-instead of the role kind ("Listening: Apple speech on your iPhone" rather
-than "whisper"); a host type **managed on the device** whose roles are toggled
-on the phone (no SSH/Docker add/remove, no update button); the generic speech
-route (`SetupRouteType.GatewaySpeech`); vision classification for
-`apple-on-device` (image input only when the host reports iOS 27); and an
-iPhone icon on the Devices map.
+**Desktop changes:** [PL01](PLATFORMS.md#delivery-slices) already handles hosts
+that report `platform: ios`: they are managed on the device (no SSH/Docker
+add/remove, update or prepare commands), shown with a phone icon, labeled by
+the model they advertise, marked as hosting only while the app is open, and
+refused for impossible engines (Ollama, F5, Audio2Face) with the reason.
+Still to do: the generic speech route (`SetupRouteType.GatewaySpeech`) and
+vision classification for `apple-on-device` (image input only when the host
+reports iOS 27).
 Failover already works by advertised route, so an iPhone and a Linux host that
 both serve Listening can fail over to each other.
 
@@ -218,7 +220,7 @@ acceptance is manual on a real device and stays NOT RUN until done.
 | ID | Deliverable | Depends on | Acceptance | Size / risk |
 | --- | --- | --- | --- | --- |
 | IO01 | Gateway conformance vectors: a C# generator writes `contracts/gateway/` vectors for pairing code, host ID/SPKI derivation, canonical request bytes and HMAC, pairing/version/capabilities/machine documents, inference event streams for transcription and chat, and cluster merge cases | - | Vectors regenerate identically from C#; each field is covered by at least one reject case | S / L |
-| IO02 | `ios/` XcodeGen project, `MartletKit` protocol core passing IO01, and `ios-release.yml` (manual dispatch, macOS runner, `CODE_SIGNING_ALLOWED=NO`, `Martlet-<version>-ios.ipa` plus an AltStore/SideStore source file on the GitHub release) | IO01 | Release build produces an installable unsigned IPA; sideload with a free Apple ID launches the app | M / M |
+| IO02 | `apple/` XcodeGen project, `MartletKit` protocol core passing IO01, and `ios-release.yml` (manual dispatch, macOS runner, `CODE_SIGNING_ALLOWED=NO`, `Martlet-<version>-ios.ipa` plus an AltStore/SideStore source file on the GitHub release) | IO01 | Release build produces an installable unsigned IPA; sideload with a free Apple ID launches the app | M / M |
 | IO03 | **iOS host: Listening and Thinking.** Hosting screen, TLS identity, pairing (QR + code), Keychain authority, the endpoints above with SpeechAnalyzer and Foundation Models; desktop engine labels and "managed on the device" hosts | IO02 | Windows desktop pairs by pasting the code, hands Listening and Thinking to the iPhone on the Devices page, and holds a voice conversation; suspending the app shows the host unreachable and resumes cleanly | L / H |
 | IO04 | **Speaking route.** Generic `martlet.gateway.speech.v1` contract in C# (gateway, client, Desktop `GatewaySpeech`), served on iOS by Apple voices and, after authorization and confirmation, Personal Voice | IO03 | Desktop speaks replies with an iPhone voice; F5 and OpenAI routes unchanged | M / M |
 | IO05 | **Companion conversation.** Typed, push-to-talk and hands-free (voice processing, energy VAD port, re-arm after reply) with OpenAI, Chat Completions and Apple on-device STT/LLM/TTS; persona and styles; per-action authorization and disclosure mirroring Windows; Keychain credentials; background audio while another app is in front | IO02 | Hands-free conversation continues while an iOS game is in front, with game audio mixed; Stop/mute end capture; nothing uploads without the per-action permission | L / M |
@@ -227,27 +229,36 @@ acceptance is manual on a real device and stays NOT RUN until done.
 | IO08 | **Character over games and status.** PiP renderer from pixel buffers (experimental), Live Activity with listening/speaking state | IO07 | PiP character animates over a full-screen game for 10 minutes without dropping the conversation; measured frame cost recorded | M / H |
 | IO09 | **Devices, cluster, memory, Voice ID.** Pair the companion with hosts (QR/paste), use host Ollama/whisper/F5/Audio2Face routes, join who-does-what sync and failover; port local memory and the GE2E Voice ID encoder | IO03, IO05 | Companion uses a Linux host's roles; a Who does what change on Windows reaches the phone within a check | L / M |
 | IO10 | **Satellite.** The Windows companion listens and speaks through a paired iPhone (voice-processed microphone utterances and reply playback as satellite routes) | IO03, IO04 | Talk to the Windows companion from another room through the phone | M / M |
-| IO11 | **Mac host (bonus).** The same Swift host as a macOS LaunchAgent on Apple silicon: Apple engines plus MLX F5 ([f5-tts-swift](https://github.com/lucasnewman/f5-tts-swift)) on the existing F5 route and MLX LLM/VLM models on the chat route | IO03 | Desktop hands Speaking to a Mac with a cloned F5 voice | M / M |
+| IO11 | **Mac host (bonus).** The same Swift host as a macOS LaunchAgent on Apple silicon: Apple engines plus MLX F5 ([f5-tts-swift](https://github.com/lucasnewman/f5-tts-swift)) on the existing F5 route and MLX LLM/VLM models on the chat route. Detailed as MA02-MA03 in the [macOS plan](MACOS.md#delivery-slices) | IO03 | Desktop hands Speaking to a Mac with a cloned F5 voice | M / M |
 
-## Owner decisions and inputs
+## Decisions (2026-10-01)
 
-- **Test devices:** at least one iPhone on iOS 26 or later; an Apple
-  Intelligence device (iPhone 15 Pro or newer, or an M-series iPad) for
-  on-device Thinking; an iPad for the side-by-side and extension-memory checks.
-- **Apple ID** for free sideloading. A Mac is optional (on-device debugging);
-  builds run on the hosted macOS runner.
-- **Apple Developer Program ($99/year):** not authorized by this plan.
-  Recommended when screen watching (App Groups) or a long-lived host device
-  (no weekly re-sign) matter, and required for TestFlight, the App Store and
-  most likely the Private Cloud Compute entitlement.
-- **App Store publication** stays out of scope unless the owner decides
-  otherwise; it adds review risk for background audio and non-video PiP.
+The owner asked to decide everything that costs nothing and skip anything
+that costs money. Decided:
+
+- **No paid Apple programs.** No Apple Developer Program, TestFlight, App
+  Store or Private Cloud Compute. Installs use a **free Apple ID** through
+  AltStore, SideStore or Sideloadly, re-signed every 7 days. No feature depends
+  on a paid capability: the broadcast extension talks to the app over a
+  loopback socket instead of an App Group.
+- **Folder:** `apple/`, shared by the iPhone, iPad and Mac apps.
+- **Releases:** the unsigned `.ipa` and the AltStore/SideStore source file are
+  attached to the same `v<version>` GitHub release as the Windows installer.
+- **Live2D:** the same bundled Cubism Core for Web as on Windows, under the
+  same terms (Live2D lists iOS Safari as a supported Web SDK platform). The
+  owner names iOS/iPadOS in the Expandable Application review already applied
+  for; VRM needs no review.
+- **Test devices:** only devices the owner already has; nothing is bought.
+  Acceptance on hardware nobody has stays NOT RUN.
+
+Still needed from the owner (free): an Apple ID for sideloading, and Developer
+Mode turned on on the iPhone or iPad.
 
 ## Not planned
 
 Host role installation over SSH/Docker from or onto iOS; Audio2Face on Apple
 hardware; Voice Studio training on iOS; MCP control; Windows-style self-update
-(the sideload source or TestFlight handles updates); always-on or automatic
+(the sideload source handles updates); always-on or automatic
 screen capture.
 
 ## Sources
