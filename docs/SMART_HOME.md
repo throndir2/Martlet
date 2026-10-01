@@ -106,6 +106,12 @@ Whatever abstraction the video-source work introduces should accept a
 **pull-based snapshot source** with a stable ID and display name, so cameras
 plug in without touching the pacer or the vision routes.
 
+That seam now exists: `WatchSource` (kind, stable ID, display name) and
+`IVideoInput` in `src/Martlet.Desktop/VideoSources.cs`. A go2rtc or Frigate
+snapshot URL already works as a **phone or network camera address** source
+([video sources](SCREEN_COMMENTARY.md#cameras-phones-and-other-video-sources));
+Home Assistant's bearer-token `camera_proxy` still needs header support.
+
 ## Model requirements
 
 Tool calling and vision are separate model abilities. Verified on
