@@ -173,8 +173,9 @@ public static class PlatformCatalog
     private const DevicePlatform Win = DevicePlatform.Windows, Linux = DevicePlatform.Linux, Mac = DevicePlatform.MacOs,
         Ios = DevicePlatform.Ios, Android = DevicePlatform.Android;
     private const PlatformSide You = PlatformSide.Companion, Host = PlatformSide.Host;
-    private const string IosPlan = "IOS.md", MacPlan = "MACOS.md", AndroidPlan = "ANDROID.md";
     private const string NoLinuxApp = "there is no Linux companion app; Linux computers are hosts";
+    private const string NoCloudOnHosts = "cloud routes run on the device you talk to; hosts never hold cloud keys";
+    private const string PccDecision = "needs Apple's entitlement and most likely the paid Apple Developer Program (owner decision)";
 
     private static readonly PlatformRequirement Nvidia4 = new() { NvidiaGb = 4 };
     private static readonly PlatformRequirement Nvidia6 = new() { NvidiaGb = 6 };
@@ -183,9 +184,10 @@ public static class PlatformCatalog
     private static readonly PlatformRequirement IosIntelligence = new() { MinimumOs = new(26, 0), Feature = PlatformFeatures.AppleIntelligence };
     private static readonly PlatformRequirement MacIntelligence = new()
         { MinimumOs = new(26, 0), AppleSilicon = true, Feature = PlatformFeatures.AppleIntelligence };
-    private static readonly PlatformRequirement Pcc = new() { MinimumOs = new(27, 0), Feature = PlatformFeatures.AppleIntelligence };
     private static readonly PlatformRequirement Nano = new() { Feature = PlatformFeatures.GeminiNano };
-    private static readonly PlatformRequirement Phone6Gb = new() { MemoryGb = 6 };
+    private static readonly PlatformRequirement Android9 = new() { MinimumOs = new(9, 0) };
+    private static readonly PlatformRequirement Android12 = new() { MinimumOs = new(12, 0) };
+    private static readonly PlatformRequirement Android13 = new() { MinimumOs = new(13, 0) };
 
     private static PlatformSupport Works(DevicePlatform p, PlatformSide s, string note = "", PlatformRequirement? r = null) =>
         new(p, s, PlatformAvailability.Works, note, r);
@@ -194,11 +196,13 @@ public static class PlatformCatalog
     private static PlatformSupport NotPlanned(DevicePlatform p, PlatformSide s, string note) => new(p, s, PlatformAvailability.NotPlanned, note);
     private static PlatformSupport Impossible(DevicePlatform p, PlatformSide s, string note) => new(p, s, PlatformAvailability.Impossible, note);
 
-    /// <summary>Cloud engines run at a provider, so every companion app can use them.</summary>
+    /// <summary>Cloud engines run at a provider, called by the device you talk to, so every companion app can use them and
+    /// no host ever does.</summary>
     private static PlatformSupport[] Cloud(string windowsNote = "") =>
     [
-        Works(Win, You, windowsNote), Planned(Mac, You, MacPlan), Planned(Ios, You, "IO05"), Planned(Android, You, AndroidPlan),
-        NotPlanned(Linux, You, NoLinuxApp)
+        Works(Win, You, windowsNote), Planned(Mac, You, "MA04"), Planned(Ios, You, "IO05"), Planned(Android, You, "AN07"),
+        NotPlanned(Linux, You, NoLinuxApp),
+        .. new[] { Win, Linux, Mac, Ios, Android }.Select(p => NotPlanned(p, Host, NoCloudOnHosts))
     ];
 
     private static PlatformSupport[] AppleOnly(string engine, params PlatformSide[] sides) =>
@@ -208,7 +212,7 @@ public static class PlatformCatalog
 
     private static PlatformSupport[] NvidiaOnly(string engine) =>
     [
-        Impossible(Mac, Host, $"{engine} needs an NVIDIA GPU; Macs have none"),
+        Impossible(Mac, Host, $"{engine} needs an NVIDIA GPU; Macs have none, and Docker on a Mac has no GPU"),
         Impossible(Ios, Host, $"{engine} needs an NVIDIA GPU; iPhones and iPads have none"),
         Impossible(Android, Host, $"{engine} needs an NVIDIA GPU; phones and tablets have none")
     ];
@@ -223,38 +227,43 @@ public static class PlatformCatalog
         [
             Works(Linux, Host, "an NVIDIA GPU makes replies fast; small models also run on the CPU"),
             Works(Win, Host, "through Docker Desktop (This PC's host service), or as a local server through Chat Completions"),
-            Planned(Mac, Host, MacPlan, "native Ollama uses the Mac's GPU; Docker on a Mac is CPU-only"),
+            Planned(Mac, Host, "MA02", "native Ollama on the Mac's GPU on Apple silicon; CPU-only and 1-4B models on an Intel Mac"),
             Impossible(Ios, Host, "Ollama does not run on iPhone or iPad; Apple Intelligence does the thinking there"),
-            NotPlanned(Android, Host, "Ollama has no Android app; Android hosts use Gemini Nano or a small on-phone model")
+            NotPlanned(Android, Host, "Ollama has no Android build; Android hosts use a LiteRT, llama.cpp or Gemini Nano model on the same route")
         ]),
         new("apple-on-device-llm", ClusterJobs.Thinking, "Apple Intelligence (on-device model)",
         [
-            Planned(Ios, You, "IO05", "on the iPhone or iPad itself", IosIntelligence),
+            Planned(Ios, You, "IO05", "on the iPhone or iPad itself; screen images from iOS 27", IosIntelligence),
             Planned(Ios, Host, "IO03", "served to your other computers", IosIntelligence),
-            Planned(Mac, You, MacPlan, "", MacIntelligence), Planned(Mac, Host, MacPlan, "", MacIntelligence),
+            Planned(Mac, You, "MA04", "screen images from macOS 27", MacIntelligence),
+            Planned(Mac, Host, "MA02", "served to your other computers", MacIntelligence),
             .. AppleOnly("Apple's on-device model", You, Host)
         ]),
         new("apple-pcc", ClusterJobs.Thinking, "Apple Private Cloud Compute",
         [
-            Planned(Ios, You, "IO05", "Apple's server model; needs an Apple-granted entitlement and has a daily limit", Pcc),
-            Planned(Mac, You, MacPlan, "Apple's server model; needs an Apple-granted entitlement and has a daily limit", Pcc),
+            NotPlanned(Ios, You, PccDecision), NotPlanned(Mac, You, PccDecision),
             .. AppleOnly("Private Cloud Compute", You)
         ]),
         new("gemini-nano", ClusterJobs.Thinking, "Gemini Nano (on the phone)",
         [
-            Planned(Android, You, AndroidPlan, "only on phones with Google's on-device model", Nano),
-            Planned(Android, Host, AndroidPlan, "only on phones with Google's on-device model", Nano),
+            Planned(Android, You, "AN07", "supported flagships only, and only while Martlet is the app in front, never while a game is", Nano),
+            Planned(Android, Host, "AN04", "supported flagships only, and only while the Hosting screen is in front", Nano),
             Impossible(Win, You, "Gemini Nano runs only on supported Android phones"),
             Impossible(Ios, You, "Gemini Nano runs only on supported Android phones")
         ]),
-        new("litert-llm", ClusterJobs.Thinking, "Small open model on the phone (LiteRT or llama.cpp)",
+        new("litert-llm", ClusterJobs.Thinking, "Small open model on the phone (LiteRT-LM)",
         [
-            Planned(Android, You, AndroidPlan, "small Gemma-class models; slow on older phones", Phone6Gb),
-            Planned(Android, Host, AndroidPlan, "small Gemma-class models; slow on older phones", Phone6Gb)
+            Planned(Android, You, "AN07", "competes with a game for memory and heat; 0.5-1B models only on old phones"),
+            Planned(Android, Host, "AN04", "Gemma-class models on recent phones; 0.5-1B models, slowly, on old ones")
         ]),
-        new("mlx-llm", ClusterJobs.Thinking, "Open model on a Mac's GPU (MLX)",
+        new("llama-cpp", ClusterJobs.Thinking, "Small open model on the phone (llama.cpp)",
         [
-            Planned(Mac, Host, MacPlan, "", AppleSilicon), Planned(Mac, You, MacPlan, "", AppleSilicon),
+            Planned(Android, You, "AN07", "competes with a game for memory and heat", Android9),
+            Planned(Android, Host, "AN04", "0.5-1B models on the CPU of old phones, slowly", Android9)
+        ]),
+        new("mlx-llm", ClusterJobs.Thinking, "Open models on a Mac's GPU (MLX), including vision models",
+        [
+            Planned(Mac, Host, "MA02", "", AppleSilicon), Planned(Mac, You, "MA02", "", AppleSilicon),
             Impossible(Win, Host, "MLX runs only on Apple silicon"), Impossible(Linux, Host, "MLX runs only on Apple silicon")
         ]),
 
@@ -264,13 +273,15 @@ public static class PlatformCatalog
         [
             Works(Linux, Host, "runs well on the CPU; an NVIDIA GPU makes it faster"),
             Works(Win, Host, "through Docker Desktop (This PC's host service)"),
-            Planned(Mac, Host, MacPlan, "whisper.cpp uses the Mac's GPU natively"),
+            Planned(Mac, Host, "MA02", "whisper.cpp on the Mac's GPU on Apple silicon; base/small models on an Intel Mac's CPU"),
             NotPlanned(Ios, Host, "iPhones and iPads use Apple speech recognition instead"),
-            Planned(Android, Host, AndroidPlan, "whisper.cpp on the phone's CPU; small models only")
+            Planned(Android, Host, "AN04", "tiny/base models on old phones; speed unmeasured")
         ]),
-        new("local-whisper", ClusterJobs.Listening, "whisper.cpp on this PC",
+        new("local-whisper", ClusterJobs.Listening, "whisper.cpp on this device",
         [
             Planned(Win, You, "PL02", "it can be saved in Setup, but conversations don't use it yet"),
+            Planned(Mac, You, "MA04", "the Mac's GPU on Apple silicon; base/small models on Intel"),
+            Planned(Android, You, "AN07", "tiny/base models on old phones"),
             NotPlanned(Linux, You, NoLinuxApp)
         ]),
         new("windows-speech", ClusterJobs.Listening, "Windows speech recognition",
@@ -282,13 +293,14 @@ public static class PlatformCatalog
         new("apple-speech", ClusterJobs.Listening, "Apple speech recognition (on-device)",
         [
             Planned(Ios, You, "IO05", "", Os26), Planned(Ios, Host, "IO03", "served to your other computers", Os26),
-            Planned(Mac, You, MacPlan, "", Os26), Planned(Mac, Host, MacPlan, "", Os26),
+            Planned(Mac, You, "MA04", "unverified on Intel Macs", Os26), Planned(Mac, Host, "MA02", "unverified on Intel Macs", Os26),
             .. AppleOnly("Apple speech recognition", You, Host)
         ]),
         new("android-speech", ClusterJobs.Listening, "Android speech recognition",
         [
-            Planned(Android, You, AndroidPlan, "on the phone on Android 12+; older phones may send audio to Google"),
-            Planned(Android, Host, AndroidPlan, "on the phone on Android 12+"),
+            Planned(Android, You, "AN07", "on the phone from Android 12 where the language is installed; older phones use the system " +
+                "recognizer, which may send audio to its maker, with its own warning and permission"),
+            Planned(Android, Host, "AN04", "unverified: the on-device recognizer must take the desktop's audio, never the phone's microphone", Android13),
             Impossible(Win, You, "Android speech runs only on Android"), Impossible(Ios, You, "Android speech runs only on Android")
         ]),
 
@@ -297,13 +309,14 @@ public static class PlatformCatalog
         new("f5", ClusterJobs.Speaking, "F5 voice cloning",
         [
             Works(Linux, Host, "", Nvidia6), Works(Win, Host, "through Docker Desktop (This PC's host service)", Nvidia6),
-            Impossible(Mac, Host, "the F5 host role needs an NVIDIA GPU; a Mac uses F5 on MLX instead"),
+            Impossible(Mac, Host, "the F5 worker needs NVIDIA CUDA; an Apple-silicon Mac serves the same route with F5 on MLX"),
             Impossible(Ios, Host, "F5 needs an NVIDIA GPU; iPhones and iPads have none"),
             Impossible(Android, Host, "F5 needs an NVIDIA GPU; phones and tablets have none")
         ]),
         new("f5-mlx", ClusterJobs.Speaking, "F5 voice cloning on a Mac (MLX)",
         [
-            Planned(Mac, Host, "IO11", "", AppleSilicon),
+            Planned(Mac, Host, "MA03", "serves the existing F5 route; 16 GB+ suggested", AppleSilicon),
+            Planned(Mac, You, "MA03", "16 GB+ suggested", AppleSilicon),
             Impossible(Win, Host, "MLX runs only on Apple silicon"), Impossible(Linux, Host, "MLX runs only on Apple silicon")
         ]),
         new("windows-voices", ClusterJobs.Speaking, "Windows voices",
@@ -315,19 +328,20 @@ public static class PlatformCatalog
         new("apple-voices", ClusterJobs.Speaking, "Apple voices",
         [
             Planned(Ios, You, "IO05"), Planned(Ios, Host, "IO04", "served to your other computers"),
-            Planned(Mac, You, MacPlan), Planned(Mac, Host, MacPlan),
+            Planned(Mac, You, "MA04"), Planned(Mac, Host, "MA03", "served to your other computers"),
             .. AppleOnly("Apple voices", You, Host)
         ]),
         new("personal-voice", ClusterJobs.Speaking, "Your Personal Voice (Apple)",
         [
             Planned(Ios, You, "IO05", "after you allow Martlet to use it", new() { MinimumOs = new(17, 0) }),
             Planned(Ios, Host, "IO04", "after you allow it and confirm on the iPhone", new() { MinimumOs = new(17, 0) }),
-            Planned(Mac, You, MacPlan, "after you allow Martlet to use it", new() { MinimumOs = new(14, 0) }),
-            .. AppleOnly("Personal Voice", You)
+            Planned(Mac, You, "MA04", "after you allow Martlet to use it; unverified on Intel Macs", new() { MinimumOs = new(14, 0) }),
+            Planned(Mac, Host, "MA03", "after you allow it and confirm on the Mac", new() { MinimumOs = new(14, 0) }),
+            .. AppleOnly("Personal Voice", You, Host)
         ]),
         new("android-tts", ClusterJobs.Speaking, "Android voices",
         [
-            Planned(Android, You, AndroidPlan), Planned(Android, Host, AndroidPlan, "served to your other computers"),
+            Planned(Android, You, "AN07"), Planned(Android, Host, "AN05", "served to your other computers; network-only voices are hidden"),
             Impossible(Win, You, "Android voices exist only on Android"), Impossible(Ios, You, "Android voices exist only on Android")
         ]),
 
@@ -339,44 +353,56 @@ public static class PlatformCatalog
         ]),
         new("loudness-lipsync", ClusterJobs.LipSync, "Mouth follows the voice's loudness",
         [
-            Works(Win, You), Planned(Mac, You, MacPlan), Planned(Ios, You, "IO07"), Planned(Android, You, AndroidPlan)
+            Works(Win, You), Planned(Mac, You, "MA05"), Planned(Ios, You, "IO07"), Planned(Android, You, "AN09")
         ]),
 
         // ---- features of the device you talk to, and of hosts ----
         new("character-overlay", Feature, "Character over other windows and games",
         [
             Works(Win, You, "a transparent always-on-top window"),
-            Planned(Mac, You, MacPlan, "a floating window above other apps"),
+            Planned(Mac, You, "MA05", "a floating panel over full-screen games and Spaces"),
             Planned(Ios, You, "IO08", "inside Martlet and beside a game on iPad; over a full-screen game only through Picture-in-Picture (experimental)"),
-            Planned(Android, You, AndroidPlan, "needs the 'Display over other apps' permission"),
+            Planned(Android, You, "AN09", "needs 'Display over other apps'; touches reach the game only through a mostly transparent overlay"),
             NotPlanned(Linux, You, NoLinuxApp)
         ]),
         new("screen-watch", Feature, "Watch my screen (game commentary)",
         [
             Works(Win, You, "borderless or windowed games; protected video reads back black"),
-            Planned(Mac, You, MacPlan, "needs the Screen Recording permission"),
+            Planned(Mac, You, "MA06", "needs the Screen & System Audio Recording permission, which macOS asks again from time to time"),
             Planned(Ios, You, "IO06", "only while a screen broadcast you start yourself is running"),
-            Planned(Android, You, AndroidPlan, "asks for screen-capture permission each session"),
+            Planned(Android, You, "AN08", "asks for screen-capture permission each session"),
             NotPlanned(Linux, You, NoLinuxApp)
+        ]),
+        new("camera-watch", Feature, "Watch a camera or a phone's camera",
+        [
+            Works(Win, You, "webcams, capture cards, phone-as-webcam apps, and HTTP snapshot, MJPEG or RTSP addresses"),
+            Planned(Ios, Host, "IO06", "the iPhone serves its camera as an HTTP JPEG snapshot or MJPEG stream on your network"),
+            Planned(Android, Host, "AN11", "the phone serves its camera as a password-protected plain-HTTP snapshot or MJPEG stream, readable on your Wi-Fi, only while sharing")
         ]),
         new("hands-free", Feature, "Hands-free listening",
         [
-            Works(Win, You), Planned(Mac, You, MacPlan),
+            Works(Win, You), Planned(Mac, You, "MA04"),
             Planned(Ios, You, "IO05", "keeps listening behind a game only while listening is on"),
-            Planned(Android, You, AndroidPlan, "keeps listening behind a game with a notification showing"),
+            Planned(Android, You, "AN07", "keeps listening behind a game with a notification showing; echo cancellation varies by phone"),
             NotPlanned(Linux, You, NoLinuxApp)
         ]),
         new("voice-id", Feature, "Voice ID (only respond to my voice)",
         [
-            Works(Win, You), Planned(Mac, You, MacPlan), Planned(Ios, You, "IO09"), Planned(Android, You, AndroidPlan)
+            Works(Win, You), Planned(Mac, You, "MA07"), Planned(Ios, You, "IO09"), Planned(Android, You, "AN10")
         ]),
         new("memory", Feature, "Local memory",
         [
-            Works(Win, You), Planned(Mac, You, MacPlan), Planned(Ios, You, "IO09"), Planned(Android, You, AndroidPlan)
+            Works(Win, You), Planned(Mac, You, "MA07"), Planned(Ios, You, "IO09"), Planned(Android, You, "AN10")
+        ]),
+        new("host-pairing", Feature, "Pair with hosts, who does what and failover",
+        [
+            Works(Win, You), Planned(Mac, You, "MA07"), Planned(Ios, You, "IO09"), Planned(Android, You, "AN10"),
+            NotPlanned(Linux, You, NoLinuxApp)
         ]),
         new("satellite", Feature, "Microphone and speaker for another computer's companion",
         [
-            Planned(Ios, Host, "IO10"), Planned(Android, Host, AndroidPlan), Planned(Mac, Host, MacPlan),
+            Planned(Ios, Host, "IO10"), Planned(Android, Host, "AN06", "old 3-4 GB phones on a charger are enough"),
+            Planned(Mac, Host, "MA09"),
             NotPlanned(Win, Host, "a Windows PC runs the full companion instead"),
             NotPlanned(Linux, Host, "Linux hosts have no audio role")
         ]),
@@ -384,19 +410,18 @@ public static class PlatformCatalog
         [
             Works(Linux, Host, "Docker or native Ubuntu; runs in the background"),
             Works(Win, Host, "through Docker Desktop and WSL 2"),
-            Planned(Mac, Host, MacPlan, "runs in the background"),
+            Planned(Mac, Host, "MA02", "a login agent; keeps hosting after you quit the window"),
             Planned(Ios, Host, "IO03", "only while Martlet is open on the screen; it stops when the app goes to the background"),
-            Planned(Android, Host, AndroidPlan, "runs in the background with a notification showing")
+            Planned(Android, Host, "AN03", "in the background with a notification showing, even with the screen off")
         ]),
         new("remote-roles", Feature, "Install and remove host roles from your desktop",
         [
             Works(Linux, Host, "over SSH, or in a console on the host"), Works(Win, Host, "This PC's Docker Desktop"),
-            Planned(Mac, Host, MacPlan),
+            NotPlanned(Mac, Host, "roles are switched on in Martlet on the Mac (a Mac running Docker or Ubuntu is a Linux host)"),
             NotPlanned(Ios, Host, "roles are switched on in Martlet on the iPhone or iPad"),
             NotPlanned(Android, Host, "roles are switched on in Martlet on the phone or tablet")
         ])
     ];
-
     /// <summary>The engine a Martlet host role kind installs (deploy/host/roles).</summary>
     public static string? EngineForHostRole(string roleKind) => roleKind switch
     {
@@ -476,12 +501,9 @@ public static class PlatformCatalog
         return Version.TryParse(digits, out var version) ? version : null;
     }
 
-    private static string SliceText(string? slice) => slice switch
-    {
-        null or "" => "a later slice",
-        IosPlan => "see the iOS plan",
-        MacPlan => "see the macOS plan",
-        AndroidPlan => "see the Android plan",
-        _ => slice
-    };
+    private static string SliceText(string? slice) => string.IsNullOrEmpty(slice) ? "a later slice"
+        : slice.StartsWith("IO", StringComparison.Ordinal) ? $"{slice} in the iOS plan"
+        : slice.StartsWith("MA", StringComparison.Ordinal) ? $"{slice} in the macOS plan"
+        : slice.StartsWith("AN", StringComparison.Ordinal) ? $"{slice} in the Android plan"
+        : slice;
 }

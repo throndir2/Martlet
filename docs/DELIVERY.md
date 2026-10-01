@@ -280,6 +280,35 @@ whisper.cpp, PL03 extends the setup advisor to Macs, phones and old PCs, PL04
 covers ARM64 Linux hosts and PL05 adds coverage in the conversation window.
 macOS and Android plans follow the iOS pattern. Real multi-device behavior is NOT RUN.
 
+### macOS track MA01-MA10 (2026-10-01)
+
+The [macOS plan](MACOS.md#delivery-slices) covers Macs as companions and hosts,
+on Apple silicon and on Intel. One native Swift/SwiftUI/AppKit app shares
+MartletKit with iOS. **Lend this Mac** runs the IO03 Swift host as a login
+agent; the .NET gateway (its storage backend is Linux-only) and Docker Desktop
+(no GPU) were rejected for this. Apple silicon hosts run Ollama and whisper.cpp
+on the GPU, F5 on MLX (MA02-MA03 deliver IO11), Apple speech, voices and Apple
+Intelligence. Intel Macs (last macOS is 26) run CPU whisper, Apple voices and
+satellite, or become Linux hosts with Ubuntu. Releases are separate arm64 and
+x64 unsigned `.dmg` files from a manual-dispatch `macos-26` workflow; users
+click Open Anyway once. Owner decisions: test Macs, two free repository secrets
+(self-made signing identity, Sparkle key) and the $99/year notarization. Every
+Mac result is NOT RUN.
+
+### Android track AN01-AN11 (2026-09-30)
+
+The [Android plan](ANDROID.md#delivery-slices) adds a native Kotlin/Compose app
+(Android 8.0+, API 26) for three uses: a companion on the phone or tablet you
+game on, a gateway protocol 2.0 host that keeps serving with the screen off
+from a foreground service, and old 3-4 GB phones as satellite
+microphone/speaker or light hosts. AN01 adds the project, `martlet-kit`
+checked against the IO01 vectors and a manual-dispatch signed-APK release;
+AN02 adds in-app updates; AN03-AN06 the host; AN07-AN10 the companion; AN11
+serves the phone's camera as a Watch source the desktop already reads. Owner
+decisions: the release signing key, and Android developer verification
+(enforced from 2026-09-30 in BR/ID/SG/TH, worldwide from 2027). Nothing is
+implemented.
+
 ## 1. Execution rules
 
 Follow [the repository agent instructions](../AGENTS.md) for autonomous

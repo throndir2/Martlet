@@ -32,65 +32,79 @@ Android apps follow the same rules.
 
 ## The device you talk to
 
+Slice IDs: IO = [iOS plan](IOS.md#delivery-slices), MA = [macOS
+plan](MACOS.md#delivery-slices), AN = [Android plan](ANDROID.md#delivery-slices),
+PL = [below](#delivery-slices). Minimum systems: Windows 10/11 x64 (today),
+macOS 14, iOS/iPadOS 26, Android 8.0.
+
 | Job or feature | Windows | macOS | iPhone / iPad | Android | Linux |
 | --- | --- | --- | --- | --- | --- |
-| Thinking: OpenAI, OpenRouter, NVIDIA Build, any OpenAI-compatible server | **Works** | Planned | Planned (IO05) | Planned | Not planned: no Linux companion app; Linux computers are hosts |
-| Thinking on the device itself | Local server through Chat Completions (**Works**) | Planned: Apple Intelligence (M1+, macOS 26+), MLX models (Apple silicon) | Planned: Apple Intelligence (iPhone 15 Pro or later, M-series iPad, iOS 26+); Private Cloud Compute (iOS 27, entitlement) | Planned: Gemini Nano (supported phones), small LiteRT / llama.cpp model (6 GB+) | - |
-| Listening: OpenAI | **Works** | Planned | Planned | Planned | - |
-| Listening on the device | Planned (PL02): Windows speech and whisper.cpp can be saved but are not used yet | Planned: Apple speech (macOS 26+) | Planned: Apple speech (iOS 26+) | Planned: Android speech (on the phone from Android 12) | - |
-| Speaking: OpenAI | **Works** | Planned | Planned | Planned | - |
-| Speaking on the device | Planned (PL02): Windows voices | Planned: Apple voices, Personal Voice | Planned: Apple voices, Personal Voice | Planned: Android voices | - |
-| Your own cloned voice (F5) | Through a host with an NVIDIA GPU (**Works**) | Through a host; or F5 on MLX on the Mac (IO11) | Through a host | Through a host | - |
-| Lip-sync | Loudness (**Works**); Audio2Face on this PC or a host (**Works**, NVIDIA) | Loudness; Audio2Face through a host | Loudness; Audio2Face through a host | Loudness; Audio2Face through a host | - |
-| Character over other windows and games | **Works** (transparent always-on-top) | Planned: floating window | Planned (IO07/IO08): in the app, beside a game on iPad; over a full-screen game only with Picture-in-Picture (experimental) | Planned: needs *Display over other apps* | - |
-| Watch my screen | **Works** (borderless/windowed games) | Planned: Screen Recording permission | Planned (IO06): only while a screen broadcast you start is running | Planned: screen-capture permission each session | - |
-| Hands-free listening | **Works** | Planned | Planned: behind a game only while listening is on | Planned: behind a game with a notification showing | - |
-| Voice ID, local memory, personas | **Works** | Planned | Planned (IO09) | Planned | - |
-| Pair with hosts, who does what, failover | **Works** | Planned | Planned (IO09) | Planned | - |
+| Thinking: OpenAI, OpenRouter, NVIDIA Build, any OpenAI-compatible server | **Works** | Planned (MA04) | Planned (IO05) | Planned (AN07) | Not planned: no Linux companion app; Linux computers are hosts |
+| Thinking on the device itself | **Works**: a local server (Ollama, LM Studio) through Chat Completions | Planned: Apple Intelligence (M1+, macOS 26+; screen images from 27) and Ollama on the Mac's GPU (MA04); MLX models (MA02). Intel: CPU-only 1-4B models | Planned (IO05): Apple Intelligence (iPhone 15 Pro or later, M-series iPad, iOS 26+; images from 27) | Planned (AN07): Gemini Nano on supported flagships, **only while Martlet is in front, never behind a game**; small LiteRT or llama.cpp models (old phones: 0.5-1B, slow) | - |
+| Thinking: Apple Private Cloud Compute | - | Not planned: needs Apple's entitlement and most likely the paid Developer Program (owner decision) | Not planned: same | - | - |
+| Listening: OpenAI | **Works** | Planned (MA04) | Planned (IO05) | Planned (AN07) | - |
+| Listening on the device | Planned (PL02): Windows speech and whisper.cpp can be saved but are not used yet | Planned (MA04): Apple speech (macOS 26; unverified on Intel), whisper.cpp | Planned (IO05): Apple speech (iOS 26+) | Planned (AN07): Android speech, on the phone from Android 12 (older phones may send audio to Google, with a warning); whisper.cpp tiny/base | - |
+| Speaking: OpenAI | **Works** | Planned (MA04) | Planned (IO05) | Planned (AN07) | - |
+| Speaking on the device | Planned (PL02): Windows voices | Planned (MA04): Apple voices, Personal Voice | Planned (IO05): Apple voices, Personal Voice | Planned (AN07): Android voices | - |
+| Your own cloned voice (F5) | **Works** through an NVIDIA host | Through an NVIDIA host (MA07); F5 on MLX on Apple silicon, 16 GB+ suggested (MA03) | Through a host (IO09) | Through a host (AN10) | - |
+| Lip-sync | **Works**: loudness; Audio2Face on this PC or a host (NVIDIA) | Planned (MA05): loudness; Audio2Face through an NVIDIA host | Planned (IO07): same | Planned (AN09): same | - |
+| Character over other windows and games | **Works**: transparent always-on-top window | Planned (MA05): floating panel over full-screen games and Spaces | Planned (IO07/IO08): in the app, beside a game on iPad; over a full-screen game only through Picture-in-Picture (experimental) | Planned (AN09): needs *Display over other apps*; taps reach the game only through a mostly transparent overlay | - |
+| Watch my screen | **Works** (borderless/windowed games) | Planned (MA06): Screen Recording permission, asked again from time to time | Planned (IO06): only while a screen broadcast you start is running | Planned (AN08): screen-capture permission each session | - |
+| Watch a camera or a phone's camera | **Works**: webcams, capture cards, phone-as-webcam apps (Phone Link, DroidCam, Camo, iVCam), HTTP snapshot/MJPEG/RTSP addresses ([details](SCREEN_COMMENTARY.md#cameras-phones-and-other-video-sources)) | - | The iPhone can serve its camera to Windows (IO06) | Martlet on the phone can serve its camera to Windows (AN11: password-protected plain HTTP, readable on your Wi-Fi, only while sharing); any IP-camera app works today | - |
+| Hands-free listening | **Works** | Planned (MA04), with a global push-to-talk hotkey | Planned (IO05): behind a game only while listening is on | Planned (AN07): behind a game with a notification showing; echo cancellation varies by phone | - |
+| Voice ID, local memory, personas | **Works** | Planned (MA07) | Planned (IO09) | Planned (AN10) | - |
+| Pair with hosts, who does what, failover | **Works** | Planned (MA07) | Planned (IO09) | Planned (AN10) | - |
 
 ## Devices that do jobs (hosts)
 
-| Job or feature | Linux (Docker or native Ubuntu, x86_64) | Windows (Docker Desktop, This PC) | macOS | iPhone / iPad | Android |
+| Job or feature | Linux (Docker or native Ubuntu, x86_64) | Windows (Docker Desktop, This PC) | macOS (the Martlet app) | iPhone / iPad | Android |
 | --- | --- | --- | --- | --- | --- |
-| Thinking: Ollama | **Works** (NVIDIA makes it fast; small models on the CPU) | **Works** | Planned: native, uses the Mac's GPU | Impossible: Apple Intelligence does the thinking there | Not planned: no Ollama for Android |
-| Thinking: Apple Intelligence | Impossible | Impossible | Planned (M1+, macOS 26+) | Planned (IO03; Apple Intelligence devices, iOS 26+) | Impossible |
-| Thinking: Gemini Nano or a small on-phone model | - | - | - | - | Planned |
-| Thinking: MLX models | Impossible | Impossible | Planned (Apple silicon) | - | - |
-| Listening: whisper | **Works** (CPU is fine; NVIDIA faster) | **Works** | Planned: whisper.cpp on the Mac's GPU | Not planned: Apple speech instead | Planned: small models on the CPU |
-| Listening: Apple speech | Impossible | Impossible | Planned (macOS 26+) | Planned (IO03, iOS 26+) | Impossible |
-| Listening: Android speech | - | - | - | - | Planned (Android 12+) |
-| Speaking: F5 voice cloning | **Works**: NVIDIA GPU with **6 GB+** | **Works**: NVIDIA 6 GB+ | Impossible as the F5 host role; F5 on MLX planned (IO11, Apple silicon) | Impossible | Impossible |
-| Speaking: device voices | - | - | Planned: Apple voices | Planned (IO04): Apple voices, Personal Voice after you confirm on the phone | Planned: Android voices |
+| Thinking: Ollama | **Works** (NVIDIA makes it fast; small models on the CPU) | **Works** | Planned (MA02): native, on the GPU on Apple silicon; Intel CPU-only, 1-4B | Impossible: Apple Intelligence does the thinking there | Not planned: no Ollama for Android; a LiteRT or llama.cpp model serves the same route |
+| Thinking: Apple Intelligence | Impossible | Impossible | Planned (MA02; Apple silicon, macOS 26+) | Planned (IO03; Apple Intelligence devices, iOS 26+) | Impossible |
+| Thinking: MLX models (including vision) | Impossible | Impossible | Planned (MA02; Apple silicon) | - | - |
+| Thinking: Gemini Nano, LiteRT or llama.cpp | - | - | - | - | Planned (AN04): LiteRT and llama.cpp in the background; Gemini Nano **only while the Hosting screen is in front** |
+| Listening: whisper | **Works** (CPU is fine; NVIDIA faster) | **Works** | Planned (MA02): Metal on Apple silicon; base/small on Intel | Not planned: Apple speech instead | Planned (AN04): tiny/base on old phones |
+| Listening: Apple speech | Impossible | Impossible | Planned (MA02; macOS 26, unverified on Intel) | Planned (IO03, iOS 26+) | Impossible |
+| Listening: Android speech | - | - | - | - | Planned (AN04; Android 13+, unverified that it can take the desktop's audio) |
+| Speaking: F5 voice cloning | **Works**: NVIDIA GPU with **6 GB+** | **Works**: NVIDIA 6 GB+ | F5 on MLX serves the same route (MA03; Apple silicon) | Impossible | Impossible |
+| Speaking: device voices | - | - | Planned (MA03): Apple voices, Personal Voice after you confirm on the Mac | Planned (IO04): Apple voices, Personal Voice after you confirm on the phone | Planned (AN05): Android voices |
 | Lip-sync: Audio2Face | **Works**: NVIDIA GPU with **4 GB+** | **Works**: NVIDIA 4 GB+ | Impossible: no NVIDIA GPU | Impossible | Impossible |
-| Microphone and speaker for another computer (satellite) | Not planned | Not planned | Planned | Planned (IO10) | Planned |
-| Keeps hosting in the background | **Yes** | **Yes**, while Docker Desktop runs | Planned: yes | **No**: only while Martlet is open on the screen | Planned: yes, with a notification showing |
-| Roles installed and removed from your desktop | **Yes** (SSH or console) | **Yes** | Planned | No: switched on in Martlet on the device | No: switched on in Martlet on the device |
+| Microphone and speaker for another computer (satellite) | Not planned | Not planned | Planned (MA09) | Planned (IO10) | Planned (AN06): old 3-4 GB phones are enough |
+| Keeps hosting in the background | **Yes** | **Yes**, while Docker Desktop runs | Planned: yes, as a login agent | **No**: only while Martlet is open on the screen | Planned (AN03): yes, with a notification, even with the screen off |
+| Roles installed and removed from your desktop | **Yes** (SSH or console) | **Yes** | No: switched on in Martlet on the Mac | No: switched on in Martlet on the device | No: switched on in Martlet on the device |
+
+A Mac can also be a **Linux host**: Docker Desktop for Mac runs the host engine
+on the CPU only (MA10, which needs the ARM64 image of PL04 on Apple silicon),
+and an old Intel Mac reinstalled with Ubuntu is a normal Linux host today
+(T2 models need the t2linux kernel; never run on Mac hardware).
 
 Hardware thresholds come from the host roles and the platform plans:
 Audio2Face needs an NVIDIA GPU with 4 GB+ and F5 needs 6 GB+. Ollama and
 whisper run on any CPU, and a GPU makes them faster. Apple Intelligence
 requires the [Apple Intelligence devices](https://support.apple.com/en-us/121115).
-ARM64 Linux computers such as a Raspberry Pi are **unknown**: the host image
-and role images have only been built for x86_64 (PL04).
+Gemini Nano needs one of Google's supported phones. ARM64 Linux computers
+such as a Raspberry Pi are **unknown**: the host image and role images have
+only been built for x86_64 (PL04).
 
 ## Using the hardware you already own
 
-Planned rows depend on their platform plan. "Today" means the current
-Windows app and host engine.
+"Today" means the current Windows app and host engine. The other rows need
+their plan's slices.
 
 | What you have | Best use | When |
 | --- | --- | --- |
 | Gaming PC with an NVIDIA GPU (8 GB+, even an older RTX 20/30) | Host: Audio2Face, your F5 voice, whisper; a small local model if VRAM allows | Today |
 | PC or mini PC without NVIDIA (x86_64, Linux or Windows) | Companion with cloud thinking; host for whisper on the CPU, or a small Ollama model | Today |
-| Old Windows laptop | Companion with OpenAI/OpenRouter; talk to Martlet from another room | Today |
+| Old Windows laptop | Companion with OpenAI or OpenRouter; talk to Martlet from another room | Today |
+| Any old phone with a camera | A camera for Watch my screen through Phone Link, DroidCam, Camo, iVCam or an IP-camera app | Today, on Windows |
+| Old Intel Mac reinstalled with Ubuntu | Linux host for whisper or a small model on the CPU | Today (never run on Mac hardware) |
 | Raspberry Pi or other ARM Linux | Small whisper or Ollama host once the images are built for ARM64 | PL04 |
-| Apple-silicon Mac (8 GB+) | Companion; host for Apple speech, Apple voices, Apple Intelligence, whisper.cpp, Ollama, F5 on MLX | [macOS plan](MACOS.md) |
-| Intel Mac | Companion with cloud thinking; CPU-only whisper or a small model | [macOS plan](MACOS.md) |
-| iPhone 15 Pro or later, iPad with M-series | Companion while gaming on it; host for thinking, listening and speaking while the app is open | [iOS plan](IOS.md) |
-| Older iPhone or iPad on iOS 26 (no Apple Intelligence) | Companion with cloud thinking; host for listening and speaking while the app is open; satellite microphone | [iOS plan](IOS.md) |
-| Recent Android phone (Gemini Nano, 8 GB+) | Companion while gaming; host for thinking, listening and speaking in the background | [Android plan](ANDROID.md) |
-| Old Android phone (3-4 GB) | Satellite microphone and speaker; companion with cloud thinking; Android voices host | [Android plan](ANDROID.md) |
-
+| Apple-silicon Mac (16 GB+ ideal, 8 GB works for small models) | Companion with a floating character; host for Ollama/whisper.cpp on the GPU, F5 on MLX, Apple speech, voices and Apple Intelligence | MA02-MA07 |
+| Intel Mac (2018-2020, last macOS is 26) | Companion with cloud thinking; host for CPU whisper, Apple voices, satellite microphone | MA02-MA09 |
+| iPhone 15 Pro or later, iPad with M-series | Companion while gaming on it; host for thinking, listening and speaking while the app is open | IO03-IO09 |
+| Older iPhone or iPad on iOS 26 (no Apple Intelligence) | Companion with cloud thinking; host for listening and speaking while the app is open; satellite microphone | IO03-IO10 |
+| Recent Android phone (supported flagship, 8 GB+) | Companion while gaming; host for listening, speaking and LiteRT/llama.cpp thinking with the screen off | AN03-AN10 |
+| Old Android phone (2018-2020, 3-4 GB, Android 8+) | Satellite microphone and speaker on a charger; a camera for Watch my screen; companion with cloud thinking; Android voices or tiny whisper host | AN03-AN07, AN11 |
 ## What the app guarantees
 
 These rules apply to every Martlet companion. The Windows app implements them
@@ -157,6 +171,10 @@ now. The macOS, iOS and Android apps must implement them the same way.
 | Lip-sync host down | Reduced: the mouth follows the voice's loudness. Fix: take lip-sync back to this PC |
 | Only speaking is down | Martlet still hears you and replies as text |
 | Battery-powered host (reports `battery`) | Noted on the Devices map: it may slow down or stop hosting |
+| Android host using Gemini Nano when its Hosting screen leaves the front | The phone stops advertising that model (Android allows Gemini Nano only in the front). Thinking shows as not working, with no silent switch to another model (AN04) |
+| Android host stopped by the phone's battery saver | It stops answering like any host. The phone's **Keep Martlet running** checklist explains how to exempt it (AN03) |
+| Mac host asleep, or its user logged out | It stops answering. Martlet on the Mac keeps the Mac awake while it hosts and keeps hosting after the window closes, but not after logout (MA02) |
+| Mac with Docker Desktop, or Ubuntu installed | It is a Linux host: CPU-only roles, GPU roles shown disabled with the reason |
 | Sync off and no check yet | Devices shows "not checked since Martlet started". Home stays quiet until something is known to be wrong |
 
 ## Machine report platform fields
@@ -181,6 +199,6 @@ them count as Linux.
 | PL01 | Platform catalog, coverage card, guardrails in the Windows app, impact-aware forget/remove, machine report platform fields | Done in this change; device results NOT RUN |
 | PL02 | Use Windows speech, Windows voices and whisper.cpp in conversations (today they can be saved but are refused) | Planned |
 | PL03 | Setup advisor asks about Macs, phones, tablets and old PCs, and recommends jobs for them from this catalog | Planned |
-| PL04 | ARM64 Linux hosts (Raspberry Pi 5 class): host and role images for arm64, then qualification | Planned |
+| PL04 | ARM64 Linux hosts (Raspberry Pi 5 class, Docker Desktop on Apple silicon): host and role images for arm64, then qualification. Shared with MA10 | Planned |
 | PL05 | Conversation window shows the coverage card before a turn instead of failing at dispatch | Planned |
-| IO, MA, AN | Platform apps: [iOS](IOS.md#delivery-slices), [macOS](MACOS.md), [Android](ANDROID.md) | Planned |
+| IO, MA, AN | Platform apps: [iOS](IOS.md#delivery-slices) IO01-IO11, [macOS](MACOS.md#delivery-slices) MA01-MA10, [Android](ANDROID.md#delivery-slices) AN01-AN11 | Planned |

@@ -229,7 +229,7 @@ acceptance is manual on a real device and stays NOT RUN until done.
 | IO08 | **Character over games and status.** PiP renderer from pixel buffers (experimental), Live Activity with listening/speaking state | IO07 | PiP character animates over a full-screen game for 10 minutes without dropping the conversation; measured frame cost recorded | M / H |
 | IO09 | **Devices, cluster, memory, Voice ID.** Pair the companion with hosts (QR/paste), use host Ollama/whisper/F5/Audio2Face routes, join who-does-what sync and failover; port local memory and the GE2E Voice ID encoder | IO03, IO05 | Companion uses a Linux host's roles; a Who does what change on Windows reaches the phone within a check | L / M |
 | IO10 | **Satellite.** The Windows companion listens and speaks through a paired iPhone (voice-processed microphone utterances and reply playback as satellite routes) | IO03, IO04 | Talk to the Windows companion from another room through the phone | M / M |
-| IO11 | **Mac host (bonus).** The same Swift host as a macOS LaunchAgent on Apple silicon: Apple engines plus MLX F5 ([f5-tts-swift](https://github.com/lucasnewman/f5-tts-swift)) on the existing F5 route and MLX LLM/VLM models on the chat route | IO03 | Desktop hands Speaking to a Mac with a cloned F5 voice | M / M |
+| IO11 | **Mac host (bonus).** The same Swift host as a macOS LaunchAgent on Apple silicon: Apple engines plus MLX F5 ([f5-tts-swift](https://github.com/lucasnewman/f5-tts-swift)) on the existing F5 route and MLX LLM/VLM models on the chat route. Detailed as MA02-MA03 in the [macOS plan](MACOS.md#delivery-slices) | IO03 | Desktop hands Speaking to a Mac with a cloned F5 voice | M / M |
 
 ## Owner decisions and inputs
 

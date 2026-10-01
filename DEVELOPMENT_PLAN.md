@@ -198,8 +198,10 @@ execution, public-hosted Martlet backend, account system, commercial voice
 cloning catalog, universal inference compatibility,
 mandatory Docker on Windows, embedded Python/CUDA suite, always-on screenshots,
 automatic cloud rerouting, cross-platform desktop promise, or required avatar.
-The iOS/iPadOS companion and host are a separate post-MVP track requested on
-2026-09-30 ([plan](docs/IOS.md)); they add a native app, not a
+The iOS/iPadOS, macOS and Android companions and hosts are separate post-MVP
+tracks requested on 2026-09-30 ([iOS](docs/IOS.md), [macOS](docs/MACOS.md),
+[Android](docs/ANDROID.md); what each OS supports is in
+[Platforms](docs/PLATFORMS.md)); they add native apps, not a
 cross-platform desktop. Smart home control and IP cameras are likewise a
 separate post-MVP track requested on 2026-09-30 ([plan](docs/SMART_HOME.md)):
 a narrow, opt-in, user-turn-only home tool surface, not general tool
