@@ -188,7 +188,7 @@ today's desktop uses, with the same bounds and strict JSON:
 | `GET /health/live`, `GET /health/ready` | Unchanged documents |
 | `POST /martlet/v1/pair` | Pairing starts only from **Pair a computer** on the Hosting screen: one-use 5-minute invitation, shown as a QR code and as the `martlet-pair-v1.` line (`{o,h,s,i,t}`, as in `Martlet.Gateway.Host.Linux/PairingCode.cs`); the phone screen is the local approval. Permanent pairing, rotation and revocation follow protocol 2.0; secrets and HMAC verifiers live in the Keychain |
 | `GET /martlet/v1/version`, `capabilities`, `status` | Advertises only roles switched on and ready on the device (for example no chat route without Apple Intelligence) |
-| `GET /martlet/v1/machine` | Device model, iOS version, memory, `method: native`, GPU vendor `other`; Apple Intelligence availability once the report gains an optional field |
+| `GET /martlet/v1/machine` | `method: app`, `platform: ios`, `os_version`, `architecture: arm64`, memory, no GPUs, and `features` such as `apple-intelligence`, `foreground-only` and `battery` ([platform fields](PLATFORMS.md#machine-report-platform-fields)); the desktop uses them to offer only what the device can do |
 | `GET`/`POST /martlet/v1/cluster` | Stores its copy like a Linux host; never acts on it |
 | `POST /martlet/v1/inference/transcription` | Existing contract (16 kHz mono PCM16, at most 30 s, text events) served by SpeechAnalyzer; model ID `apple-speech-<locale>` |
 | `POST /martlet/v1/inference/ollama-chat` | Existing request/event contract served by `SystemLanguageModel` (model ID `apple-on-device`); the optional screen image is accepted only on iOS 27 |
@@ -200,13 +200,14 @@ Every request is authenticated with the existing `Martlet-HMAC` scheme
 (`martlet-request-v1` canonical bytes, timestamp window, nonce replay store).
 Unpaired callers see only liveness and pairing.
 
-**Desktop changes (small):** label engines from the advertised route and model
-instead of the role kind ("Listening: Apple speech on your iPhone" rather
-than "whisper"); a host type **managed on the device** whose roles are toggled
-on the phone (no SSH/Docker add/remove, no update button); the generic speech
-route (`SetupRouteType.GatewaySpeech`); vision classification for
-`apple-on-device` (image input only when the host reports iOS 27); and an
-iPhone icon on the Devices map.
+**Desktop changes:** [PL01](PLATFORMS.md#delivery-slices) already handles hosts
+that report `platform: ios`: they are managed on the device (no SSH/Docker
+add/remove, update or prepare commands), shown with a phone icon, labeled by
+the model they advertise, marked as hosting only while the app is open, and
+refused for impossible engines (Ollama, F5, Audio2Face) with the reason.
+Still to do: the generic speech route (`SetupRouteType.GatewaySpeech`) and
+vision classification for `apple-on-device` (image input only when the host
+reports iOS 27).
 Failover already works by advertised route, so an iPhone and a Linux host that
 both serve Listening can fail over to each other.
 

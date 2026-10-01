@@ -267,6 +267,19 @@ IO10 the satellite microphone/speaker; IO11 the same host on a Mac. Nothing is
 implemented; device acceptance is NOT RUN, and the Apple Developer Program fee
 remains an owner spending decision.
 
+### Platform guardrails PL01-PL05 (2026-10-01)
+
+[Platforms](PLATFORMS.md) defines what each OS supports as the device you talk
+to and as a host. PL01 (merged with that page) adds the `Martlet.Core.Platforms`
+catalog and coverage rules. In the Windows app, impossible host choices are
+disabled with the reason, and Home and Who does what show which job stopped
+working, its effect and a fix. Forgetting a host or removing a role first says
+where each job goes, then hands jobs back to their Setup choices. Hosts report
+`platform`/`architecture`/`features`. PL02 dispatches Windows speech and
+whisper.cpp, PL03 extends the setup advisor to Macs, phones and old PCs, PL04
+covers ARM64 Linux hosts and PL05 adds coverage in the conversation window.
+macOS and Android plans follow the iOS pattern. Real multi-device behavior is NOT RUN.
+
 ## 1. Execution rules
 
 Follow [the repository agent instructions](../AGENTS.md) for autonomous

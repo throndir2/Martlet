@@ -86,6 +86,13 @@ first is required:
 
 Each row shows a done or to-do mark and one action. Completed marks pop in.
 
+When a chosen job stops working (its host isn't answering, its role was
+removed, its key was deleted, or Setup saved a route this version can't use),
+a **What isn't working** card appears under the hero with the reason, what it
+means ("Martlet can't hear you; you can still type") and one-click fixes. If
+thinking is down, the headline becomes "Martlet can't reply right now". The
+rules are in [Platforms](PLATFORMS.md#what-the-app-guarantees).
+
 ### 3. Devices (hardware map)
 
 This page answers "what do I have, and what is each machine doing?"
@@ -119,6 +126,13 @@ This page answers "what do I have, and what is each machine doing?"
   step and keeps the mouth on voice loudness until the host is ready. The host
   in charge goes first; this PC's own Audio2Face service and voice loudness
   are the fallbacks. *Check hosts* reads every host's roles (explicit only).
+  The same card as on Home sits at the top of the board, also listing jobs
+  whose host hasn't been checked since Martlet started. A host that can't run
+  an engine at all (F5 without a 6 GB NVIDIA GPU, Ollama on an iPhone) appears
+  in the drop-down as *can't take it now* with the reason, and its install
+  command is replaced by that reason on the map. Phones and tablets have no
+  install, remove, update or SSH commands; their roles are switched on on the
+  device.
 - **Keep who does what in sync on all my computers** (under the board, OFF by
   default) shares the assignments with every paired host and your other
   computers ([details](CLUSTER.md)): every 15 seconds it checks the hosts,

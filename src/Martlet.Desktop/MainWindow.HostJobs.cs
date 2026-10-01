@@ -60,9 +60,16 @@ public partial class MainWindow
         var choice = new ComboBox { MinWidth = 200, HorizontalAlignment = HorizontalAlignment.Stretch };
         AutomationProperties.SetName(choice, $"Who does the {job.Job}");
         AutomationProperties.SetAutomationId(choice, job.Title + "Owner");
-        void Option(string key, string text)
+        void Option(string key, string text, string? blocked = null)
         {
             var item = new ComboBoxItem { Content = text, Tag = key };
+            if (blocked is not null)
+            {
+                item.IsEnabled = false;
+                item.ToolTip = blocked;
+                ToolTipService.SetShowOnDisabled(item, true);
+                AutomationProperties.SetHelpText(item, blocked);
+            }
             choice.Items.Add(item);
             if (key == current) choice.SelectedItem = item;
         }
@@ -72,7 +79,14 @@ public partial class MainWindow
         {
             var check = hostChecks.GetValueOrDefault(host.HostId);
             var model = check?.Offers?.GetValueOrDefault(job.HostRoleKind);
-            Option("host:" + host.HostId, host.HostId + (model is not null ? $" ({job.Engine} {model})"
+            // A host that cannot run the engine at all (no NVIDIA GPU for F5, an iPhone for Ollama...) or whose roles are
+            // switched on on the device itself is shown, not offered.
+            if (model is null && CannotHand(host.HostId, job.HostRoleKind, job.Job) is { } cannot)
+            {
+                Option("host:" + host.HostId, $"{host.HostId} (can't take it now)", cannot);
+                continue;
+            }
+            Option("host:" + host.HostId, host.HostId + (model is not null ? $" ({EngineLabel(host.HostId, job.Engine, model)})"
                 : check?.Reachable == true ? $" ({job.Engine} not installed)" : check?.Reachable == false ? " (not reachable)" : ""));
         }
         choice.SelectionChanged += (_, _) =>
@@ -118,6 +132,11 @@ public partial class MainWindow
                 return;
             }
             var route = check.Routes?.FirstOrDefault(r => r.RouteId == job.RouteId);
+            if (route is null && CannotHand(host.HostId, job.HostRoleKind, job.Job) is { } cannot)
+            {
+                ActionText.Text = $"{job.Title} stays where it is: {cannot}";
+                return;
+            }
             // F5 clones a reference voice: the owner picks one (or adds a recording with its rights confirmation) first.
             F5ReferenceSnapshot? voice = null;
             if (job.RouteType == SetupRouteType.GatewayF5 &&
@@ -132,8 +151,10 @@ public partial class MainWindow
                         (host.Method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative
                             ? $"Martlet installs it over SSH ({host.Reach}), asks which model and shows its progress. "
                             : host.CanLaunch ? $"A console opens ({host.Reach}) where you confirm each step and pick the model. " : "Martlet copies the command to run on it. ") +
-                        $"It needs {role.Needs}. Until the model is downloaded Martlet keeps {job.Job} where it is now, then switches over{withVoice} by itself. " +
-                        job.Disclosure, "Install and hand over"))
+                        $"It needs {role.Needs}." +
+                        (HostCan(host.HostId, job.HostRoleKind) is { Verdict: Martlet.Core.Platforms.PlatformVerdict.Unknown } unsure ? " " + unsure.Reason : "") +
+                        $" Until the model is downloaded Martlet keeps {job.Job} where it is now, then switches over{withVoice} by itself. " +
+                        job.Disclosure + HostCaveats(host.HostId), "Install and hand over"))
                     return;
                 pendingJobHosts[job.Role] = host.HostId;
                 if (voice is not null) pendingJobVoices[job.Role] = voice;
@@ -142,7 +163,8 @@ public partial class MainWindow
                 return;
             }
             if (!ConfirmationDialog.Confirm(this,
-                    $"Hand {job.Job} to {host.HostId}? Its {job.Engine} model {route.ModelId} {job.Use}{withVoice}. {job.Disclosure}",
+                    $"Hand {job.Job} to {host.HostId}? Its {job.Engine} model {route.ModelId} {job.Use}{withVoice}. {job.Disclosure}" +
+                    HostCaveats(host.HostId),
                     $"Hand over {job.Job}"))
                 return;
             pendingJobHosts.Remove(job.Role);
@@ -224,6 +246,18 @@ public partial class MainWindow
                 (IsCloud(saved) ? $"{job.Sent} go to that provider again, and requests may cost money there." : "It runs on this PC again."),
                 "Use the Setup choice"))
             return;
+        await HandBackAsync(job, saved);
+    }
+
+    /// <summary>Puts the job back on the route kept aside while a host did it, already confirmed by the caller, and records
+    /// it in the shared plan (each computer uses its own choice).</summary>
+    private async Task HandBackAsync(HostJob job, SetupRoute saved)
+    {
+        var loaded = await setupService!.LoadAsync(lifetime.Token);
+        if (loaded.Settings is not { Setup: not null } settings) throw new InvalidOperationException("Complete Setup once first.");
+        pendingJobHosts.Remove(job.Role);
+        pendingJobVoices.Remove(job.Role);
+        var name = NetworkMap.ProviderName(saved);
         var next = HostHandoff.Back(settings, saved);
         var result = await setupService.SaveAsync(next, loaded.Revision, lifetime.Token);
         if (!result.Save.Saved) throw new InvalidOperationException(result.Summary);

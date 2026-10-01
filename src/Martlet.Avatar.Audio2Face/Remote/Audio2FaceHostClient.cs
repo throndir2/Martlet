@@ -425,7 +425,15 @@ public sealed partial class Audio2FaceHostConnection : IDisposable
                 clock.GetUtcNow(), Text(machine, "method") ?? "unknown", Text(machine, "operating_system") ?? "Unknown",
                 Text(machine, "kernel"), Text(machine, "processor"), Integer(machine, "processor_threads"),
                 machine.TryGetProperty("memory_gb", out var memory) && memory.ValueKind == JsonValueKind.Number ? memory.GetDouble() : null,
-                Text(machine, "container_runtime"), Text(machine, "nvidia_containers"), gpus, Text(machine, "cuda")) { MartletVersion = version }, version);
+                Text(machine, "container_runtime"), Text(machine, "nvidia_containers"), gpus, Text(machine, "cuda"))
+            {
+                MartletVersion = version, Platform = Text(machine, "platform"), OsVersion = Text(machine, "os_version"),
+                Architecture = Text(machine, "architecture"),
+                Features = machine.TryGetProperty("features", out var features) && features.ValueKind == JsonValueKind.Array
+                    ? features.EnumerateArray().Take(16).Where(f => f.ValueKind == JsonValueKind.String)
+                        .Select(f => Clean(f.GetString())).OfType<string>().ToArray()
+                    : null
+            }, version);
         }
         catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException)
         {

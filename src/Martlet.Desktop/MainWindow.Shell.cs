@@ -13,6 +13,7 @@ using Martlet.Avatar.Hosting;
 using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
 using Martlet.Core.Installation;
+using Martlet.Core.Platforms;
 using Martlet.Core.Settings;
 
 namespace Martlet.Desktop;
@@ -355,16 +356,22 @@ public partial class MainWindow
             ? saved.ModelPath[BundledLive2D.Prefix.Length..] : homeAvatar is null ? "Hiyori" : "Your character";
         var paired = NetworkMap.Hosts(Inputs()).Count;
         var hosts = paired > 0 || routes.Any(r => r.Gateway is not null);
+        EvaluateCoverage();
+        JobCoverage? Problem(string job) => coverage.FirstOrDefault(c => c.Job == job && c.IsProblem);
+        var thinkingProblem = Problem(ClusterJobs.Thinking);
+        var voiceProblem = Problem(ClusterJobs.Listening) ?? Problem(ClusterJobs.Speaking);
 
         var steps = new List<HomeStep>
         {
             new("brain", "How Martlet thinks",
-                brainReady ? $"{NetworkMap.ProviderName(llm!)}: {llm!.ModelId}"
+                thinkingProblem is not null ? $"Not working now: {thinkingProblem.Problem}"
+                    : brainReady ? $"{NetworkMap.ProviderName(llm!)}: {llm!.ModelId}"
                     : llm is not null ? "Chosen. Review its data and cost details in Setup to finish."
                     : "Choose a cloud model (OpenRouter, NVIDIA Build or OpenAI) or one on your own computers.",
                 brainReady, false, [new(brainReady ? "Change" : "Choose", () => RunNodeAction(NodeAction.Setup), !brainReady)]),
             new("voice", "Its voice and ears",
-                voiceReady ? $"Listens with {NetworkMap.ProviderName(stt!)}, speaks with {NetworkMap.ProviderName(tts!)}"
+                voiceProblem is not null ? $"{voiceProblem.Title} isn't working now: {voiceProblem.Problem}"
+                    : voiceReady ? $"Listens with {NetworkMap.ProviderName(stt!)}, speaks with {NetworkMap.ProviderName(tts!)}"
                     : "Add speech-to-text and a voice so you can talk out loud. You can always type instead.",
                 voiceReady, true, [new(voiceReady ? "Change" : "Set up", () => RunNodeAction(NodeAction.Setup))]),
             new("audio", "Microphone and speakers",
@@ -381,7 +388,14 @@ public partial class MainWindow
                 hosts, true, [new(hosts ? "Open map" : "Add", () => { if (hosts) Navigate(NavDevices); else RunNodeAction(NodeAction.AddComputer); })])
         };
 
-        if (brainReady)
+        if (brainReady && thinkingProblem is not null)
+        {
+            StageTitle.Text = JobCoverageRules.Headline(coverage) ?? "Martlet can't reply right now";
+            StageText.Text = $"{thinkingProblem.Problem} {thinkingProblem.Effect} The card below shows how to fix it.";
+            PrimaryStageButton.Visibility = Visibility.Collapsed;
+            ConversationButton.ClearValue(StyleProperty);
+        }
+        else if (brainReady)
         {
             StageTitle.Text = "Ready when you are";
             StageText.Text = $"{NetworkMap.ProviderName(llm!)} is its brain. Type or hold to talk; you approve each message before anything is sent.";
@@ -402,6 +416,7 @@ public partial class MainWindow
         }
 
         RenderSteps(StepsPanel, steps, numbered: true);
+        ShowCoverage(HomeCoverage, devices: false);
         var done = steps.Count(s => s.Done);
         ProgressText.Text = $"{done} of {steps.Count} done";
         if (ProgressFill.RenderTransform is ScaleTransform fill) Motion.ScaleX(fill, (double)done / steps.Count);
@@ -903,7 +918,8 @@ public partial class MainWindow
             }
         }
 
-        if (node.PairedHostId is { } pairedId && node.Kind == NodeKind.Host && FindHost(pairedId) is { } paired)
+        if (node.PairedHostId is { } pairedId && node.Kind == NodeKind.Host && FindHost(pairedId) is { } paired &&
+            PlatformCatalog.ManagesRolesRemotely(PlatformDevice.FromHost(pairedId, HardwareStore?.Find(pairedId))))
             RenderReachEditor(paired);
 
         if (node.Commands.Count > 0)
@@ -986,6 +1002,10 @@ public partial class MainWindow
         renderingBoard = true;
         try
         {
+            EvaluateCoverage();
+            ShowCoverage(RolesCoverage, devices: true);
+            string? TileProblem(string job) => coverage.FirstOrDefault(c => c.Job == job && c.IsProblem) is { } problem
+                ? $"{(problem.State == CoverageState.Limited ? "Reduced" : "Not working")}: {problem.Problem}" : null;
             RolesBoard.Children.Clear();
             foreach (var role in new[] { SetupRole.Llm, SetupRole.Stt, SetupRole.Tts })
             {
@@ -1003,7 +1023,8 @@ public partial class MainWindow
                     control = controls;
                 }
                 RolesBoard.Children.Add(RoleTile(name, owner?.Title ?? "Not chosen yet",
-                    owner?.Roles.First(r => r.Name == name).Detail ?? "Pick a cloud model or one of your computers in Setup.", control, owner?.Id));
+                    owner?.Roles.First(r => r.Name == name).Detail ?? "Pick a cloud model or one of your computers in Setup.", control, owner?.Id,
+                    HostJob.For(role) is { } tileJob ? TileProblem(tileJob.Job) : null));
             }
 
             var hosts = NetworkMap.Hosts(Inputs());
@@ -1017,9 +1038,16 @@ public partial class MainWindow
             var choice = new ComboBox { MinWidth = 200, HorizontalAlignment = HorizontalAlignment.Stretch };
             AutomationProperties.SetName(choice, "Who handles lip-sync");
             AutomationProperties.SetAutomationId(choice, "LipSyncOwner");
-            void Option(string key, string text)
+            void Option(string key, string text, string? blocked = null)
             {
                 var item = new ComboBoxItem { Content = text, Tag = key };
+                if (blocked is not null)
+                {
+                    item.IsEnabled = false;
+                    item.ToolTip = blocked;
+                    ToolTipService.SetShowOnDisabled(item, true);
+                    AutomationProperties.SetHelpText(item, blocked);
+                }
                 choice.Items.Add(item);
                 if (key == current) choice.SelectedItem = item;
             }
@@ -1027,7 +1055,13 @@ public partial class MainWindow
             foreach (var host in hosts)
             {
                 var check = hostChecks.GetValueOrDefault(host.HostId);
-                Option("host:" + host.HostId, host.HostId + (check?.Offers?.ContainsKey(HostRoles.Audio2Face) == true ? " (runs Audio2Face)"
+                var offers = check?.Offers?.ContainsKey(HostRoles.Audio2Face) == true;
+                if (!offers && CannotHand(host.HostId, HostRoles.Audio2Face, ClusterJobs.LipSync) is { } cannot)
+                {
+                    Option("host:" + host.HostId, $"{host.HostId} (can't take it now)", cannot);
+                    continue;
+                }
+                Option("host:" + host.HostId, host.HostId + (offers ? " (runs Audio2Face)"
                     : check?.Reachable == true ? " (Audio2Face not installed)" : check?.Reachable == false ? " (not reachable)" : ""));
             }
             Option("off", "Nobody (mouth follows voice loudness)");
@@ -1046,12 +1080,13 @@ public partial class MainWindow
                     : "Its own Audio2Face service when running, otherwise voice loudness.", "this-pc")
             };
             RolesBoard.Children.Add(RoleTile("Lip-sync (Audio2Face)", who, detail,
-                ClusterControls(ClusterJobs.LipSync) is { } lipSyncCluster ? new StackPanel { Children = { choice, lipSyncCluster } } : choice, nodeId));
+                ClusterControls(ClusterJobs.LipSync) is { } lipSyncCluster ? new StackPanel { Children = { choice, lipSyncCluster } } : choice, nodeId,
+                TileProblem(ClusterJobs.LipSync)));
         }
         finally { renderingBoard = false; }
     }
 
-    private Border RoleTile(string title, string owner, string detail, FrameworkElement control, string? nodeId)
+    private Border RoleTile(string title, string owner, string detail, FrameworkElement control, string? nodeId, string? problem = null)
     {
         var tile = new Border { Width = 236, Padding = new Thickness(14, 12, 14, 12), CornerRadius = new CornerRadius(16), Margin = new Thickness(0, 0, 12, 12) };
         tile.SetResourceReference(Border.BackgroundProperty, "SoftBrush");
@@ -1071,9 +1106,16 @@ public partial class MainWindow
         var text = new TextBlock { Text = detail, MaxHeight = 38, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 2, 0, 8), ToolTip = detail };
         text.SetResourceReference(StyleProperty, "Muted");
         stack.Children.Add(text);
+        if (problem is not null)
+        {
+            var warning = new TextBlock { Text = problem, TextWrapping = TextWrapping.Wrap, FontSize = 12, Margin = new Thickness(0, -4, 0, 8) };
+            warning.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
+            AutomationProperties.SetAutomationId(warning, "RoleProblem-" + title.Split(' ')[0]);
+            stack.Children.Add(warning);
+        }
         stack.Children.Add(control);
         tile.Child = stack;
-        AutomationProperties.SetName(tile, $"{title}: handled by {owner}. {detail}");
+        AutomationProperties.SetName(tile, $"{title}: handled by {owner}. {detail}{(problem is null ? "" : " " + problem)}");
         return tile;
     }
 
@@ -1101,6 +1143,11 @@ public partial class MainWindow
                 }
                 if (check.Offers?.ContainsKey(HostRoles.Audio2Face) != true)
                 {
+                    if (CannotHand(host.HostId, HostRoles.Audio2Face, ClusterJobs.LipSync) is { } cannot)
+                    {
+                        ActionText.Text = $"Lip-sync stays where it is: {cannot}";
+                        return;
+                    }
                     var role = HostRoles.Get(HostRoles.Audio2Face);
                     if (!ConfirmationDialog.Confirm(this,
                             $"{host.HostId} does not run Audio2Face yet. Hand lip-sync to it and install Audio2Face there now? " +
@@ -1232,42 +1279,50 @@ public partial class MainWindow
         var parts = argument?.Split('/') ?? [];
         if (parts.Length != 2 || FindHost(parts[0]) is not { } host) return;
         var role = HostRoles.Get(parts[1]);
+        if (add && CannotHand(host.HostId, role.Kind, role.Job) is { } cannot)
+        {
+            ActionText.Text = $"{role.Name} can't be installed on {host.HostId}: {cannot}";
+            return;
+        }
         var offered = hostChecks.GetValueOrDefault(host.HostId)?.Offers?.ContainsKey(role.Kind) == true;
-        if (!add && offered && homeAvatar?.RemoteHost?.HostId == host.HostId && role.Kind == HostRoles.Audio2Face &&
-            !ConfirmationDialog.Confirm(this, $"{host.HostId} handles lip-sync right now. Remove Audio2Face from it anyway? " +
-                "The mouth follows the voice's loudness until you hand lip-sync to another computer.", "Remove role"))
+        if (!add && (offered || hostChecks.GetValueOrDefault(host.HostId)?.Offers is null))
+        {
+            _ = RemoveHostRoleAsync(host, role);
             return;
-        if (!add && role.Kind == HostRoles.Ollama && NetworkMap.ThinkingHost(homeSettings) == host.HostId &&
-            !ConfirmationDialog.Confirm(this, $"{host.HostId} does the thinking right now. Remove Ollama from it anyway? " +
-                "Martlet cannot answer until you hand thinking to another computer or back to the cloud (Devices > Who does what).", "Remove role"))
-            return;
-        if (!add && role.Kind == HostRoles.Stt && NetworkMap.JobHost(homeSettings, SetupRole.Stt) == host.HostId &&
-            !ConfirmationDialog.Confirm(this, $"{host.HostId} does the listening right now. Remove whisper from it anyway? " +
-                "Martlet cannot hear you until you hand listening to another computer or back to your Setup choice (Devices > Who does what).", "Remove role"))
-            return;
-        if (!add && role.Kind == HostRoles.F5 && NetworkMap.JobHost(homeSettings, SetupRole.Tts) == host.HostId &&
-            !ConfirmationDialog.Confirm(this, $"{host.HostId} does the speaking right now. Remove F5 from it anyway? " +
-                "Martlet cannot speak replies until you hand speaking to another computer or back to your Setup voice (Devices > Who does what).", "Remove role"))
-            return;
+        }
         LaunchOnHost(host, add ? role.Add : role.Remove);
     }
 
     private async Task ForgetHostAsync(string? hostId)
     {
         if (FindHost(hostId) is not { } host) return;
-        var inCharge = homeAvatar?.RemoteHost?.HostId == host.HostId;
+        var impact = JobCoverageRules.ForgetImpact(JobSituations(), host.HostId);
         if (!ConfirmationDialog.Confirm(this,
-                $"Forget {host.HostId} on this PC? Martlet stops using it{(inCharge ? " and lip-sync goes back to this PC" : "")}, and this PC's " +
-                $"pairing secret is deleted. To remove this PC from the host too, revoke {host.Pairing.DeviceId} in its pairing console.",
+                $"Forget {host.HostId} on this PC? Martlet stops using it and this PC's pairing secret is deleted." +
+                (impact.Count > 0 ? $" It does jobs for this PC: {string.Join(" ", impact)}" : "") +
+                $" To remove this PC from the host too, revoke {host.Pairing.DeviceId} in its pairing console.",
                 "Forget host"))
             return;
+        var inCharge = homeAvatar?.RemoteHost?.HostId == host.HostId;
         await HostTaskAsync(async token =>
         {
+            // Jobs it did go back to the choice kept aside for them first, so no route is left pointing at a forgotten host.
+            var stranded = new List<string>();
+            foreach (var job in HostJob.All.Where(j => NetworkMap.JobHost(homeSettings, j.Role) == host.HostId))
+            {
+                if (store is not null && JobSavedRoute.Load(store.DataDirectory, job.SavedFile) is { } saved) await HandBackAsync(job, saved);
+                else stranded.Add(job.Job);
+            }
             await Pairings().ForgetAsync(host.HostId, token);
             hostChecks.Remove(host.HostId);
             ForgetClusterHost(host.HostId);
-            if (inCharge && avatar.IsShowing) await avatar.UseHostAsync(null, token);
-            ActionText.Text = $"Forgot {host.HostId}. Revoke {host.Pairing.DeviceId} in its pairing console to finish.";
+            if (inCharge)
+            {
+                RecordClusterJob(ClusterJobs.LipSync, new(null, false));
+                if (avatar.IsShowing) await avatar.UseHostAsync(null, token);
+            }
+            ActionText.Text = $"Forgot {host.HostId}. Revoke {host.Pairing.DeviceId} in its pairing console to finish." +
+                (stranded.Count > 0 ? $" Nobody does the {string.Join(" or ", stranded)} now; choose another in Setup or on the Devices page." : "");
         });
         await RefreshHomeAsync();
     }

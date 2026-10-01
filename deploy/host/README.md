@@ -86,7 +86,8 @@ key, sudo or an approval fails that run without changing anything and keeps
 ### What the host tells Martlet
 
 `setup`, `pair`, `add`, `remove` and `machine` collect what the machine is like
-into `machine.json` beside `host.json`: OS and kernel, CPU and thread count,
+into `machine.json` beside `host.json`: OS and kernel, the platform its roles run
+on (`linux`) and its architecture (`x64` or `arm64`), CPU and thread count,
 memory, container runtime, whether containers can use NVIDIA GPUs, the newest
 CUDA version the NVIDIA driver supports, and each GPU (name, vendor, memory,
 driver, and for NVIDIA its power limit, default limit and persistence mode). Natively it reads `nvidia-smi`, `/proc` and
@@ -97,6 +98,9 @@ to paired desktops at `GET /martlet/v1/machine`. Martlet fetches it right after
 pairing and on **Check connection**, keeps it in `host-hardware.json`, shows it
 on the Devices map and fills the setup advisor's computers step with it. It is
 host-reported information, not a measurement, and it grants no authority.
+Martlet also uses it to keep impossible roles off its menus (for example F5 on a
+host without an NVIDIA GPU with 6 GB+) and says why; a host without a report is
+allowed with a note. See [Platforms](../../docs/PLATFORMS.md).
 
 The gateway also keeps a copy of the shared **who does what** plan in
 `cluster.json` beside `host.json`, written by the gateway when a paired desktop
