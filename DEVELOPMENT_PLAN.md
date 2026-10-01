@@ -200,7 +200,10 @@ mandatory Docker on Windows, embedded Python/CUDA suite, always-on screenshots,
 automatic cloud rerouting, cross-platform desktop promise, or required avatar.
 The iOS/iPadOS companion and host are a separate post-MVP track requested on
 2026-09-30 ([plan](docs/IOS.md)); they add a native app, not a
-cross-platform desktop.
+cross-platform desktop. Smart home control and IP cameras are likewise a
+separate post-MVP track requested on 2026-09-30 ([plan](docs/SMART_HOME.md)):
+a narrow, opt-in, user-turn-only home tool surface, not general tool
+execution.
 
 Training/fine-tuning remains outside the API MVP but is now explicitly in
 scope for the optional self-hosted Voice Studio, where the chosen engine has
