@@ -120,6 +120,19 @@ production deployment, destructive actions, installing host services/drivers,
 or changing permissions, protections or billing.
 Do not create, enable, expand, dispatch or retry remote validation CI.
 
+## No Copilot Cloud or GitHub Actions minutes
+
+- Never use Copilot Cloud: do not start, delegate to, assign issues to or
+  request work from the Copilot cloud/coding agent, cloud sessions, Copilot
+  code review or any other GitHub-hosted agent. All agent work runs locally.
+- Never consume GitHub Actions minutes, apart from building a release with
+  `windows-release.yml`. Do not add, enable, dispatch or rerun any other
+  workflow, add `copilot-setup-steps.yml`, or use hosted or self-hosted
+  runners for builds, tests, validation, agents or automation.
+- Releasing is the only exception: dispatch `windows-release.yml` only to
+  publish an actual release, at most once per version unless a build failure
+  has been fixed.
+
 **Releases are pre-authorized.** Agents may create and maintain a minimal
 build/package/release workflow (manual dispatch or tag/release trigger only),
 dispatch it and publish GitHub releases without asking. It contains no tests or
