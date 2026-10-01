@@ -69,6 +69,7 @@ public partial class LiveConversationWindow : ThemedWindow
         timer.Tick += (_, _) => { Observe(); Watch(); ContinueListening(); RenderActions(); };
         timer.Start();
         sessionEvents.LockedChanged += SessionSwitch;
+        controller.MemoryCaptured += MemoryCaptured;
         StatusText.Text = "REAL API mode; NOT RUN. Mic/STT/policy/LLM/TTS/playback: not run. No effects authorized.";
         RenderConfiguration();
         RenderActions();
@@ -188,7 +189,6 @@ public partial class LiveConversationWindow : ThemedWindow
         bool voiceIdReady = VoiceIdChoice.IsChecked != true || voiceIdentity?.Current is not null;
         bool microphoneReady = accepted && AcceptCapture.IsChecked == true && AcceptUpload.IsChecked == true && voiceIdReady &&
             controller.Configuration?.Unavailable(voice, true) is null;
-        AcceptMemory.IsEnabled = available && controller.Configuration?.Memory is { Enabled: true };
         SendButton.IsEnabled = !listening && available && accepted && !string.IsNullOrWhiteSpace(InputText.Text) &&
             controller.Configuration!.Unavailable(voice, false) is null;
         // Keep a held control enabled until release; disabling it would lose capture and cancel.
@@ -198,7 +198,7 @@ public partial class LiveConversationWindow : ThemedWindow
         ListenButton.IsEnabled = listening || available && microphoneReady;
         ListenButton.Content = listening ? "Stop _listening" : "Start _listening";
         ReleaseButton.IsEnabled = ownRunning && owned!.Authorization.Microphone && owned.Turn is null && owned.Transcription is null && !owned.Status.Finished;
-        StopButton.IsEnabled = listening || watching || ownRunning || loading is not null || accepted || AcceptMemory.IsChecked == true ||
+        StopButton.IsEnabled = listening || watching || ownRunning || loading is not null || accepted ||
             AcceptCapture.IsChecked == true || AcceptUpload.IsChecked == true || AcceptScreen.IsChecked == true;
         ReloadButton.IsEnabled = !operations.IsRunning && !listening && !watching;
         SetupButton.IsEnabled = AudioButton.IsEnabled = !operations.IsRunning && !listening && !watching;
@@ -236,7 +236,7 @@ public partial class LiveConversationWindow : ThemedWindow
     private void ClearPermission()
     {
         rendering = true;
-        AcceptAction.IsChecked = AcceptMemory.IsChecked = AcceptCapture.IsChecked = AcceptUpload.IsChecked = false;
+        AcceptAction.IsChecked = AcceptCapture.IsChecked = AcceptUpload.IsChecked = false;
         rendering = false;
     }
 
@@ -255,17 +255,11 @@ public partial class LiveConversationWindow : ThemedWindow
             var listen = microphone ? CurrentListening(handsFree) : null;
             var next = controller.Start(microphone ? null : InputText.Text, VoiceChoice.IsChecked == true, microphone,
                 AcceptAction.IsChecked == true, AcceptCapture.IsChecked == true, AcceptUpload.IsChecked == true,
-                memoryApproved: AcceptMemory.IsChecked == true, listening: listen);
+                listening: listen);
             owned = next;
             if (!handsFree) pacer?.NoteConversation();
-            // Hands-free keeps the session's approvals until listening stops; memory retrieval is still one-shot.
-            if (handsFree)
-            {
-                rendering = true;
-                AcceptMemory.IsChecked = false;
-                rendering = false;
-            }
-            else ClearPermission();
+            // Hands-free keeps the session's approvals until listening stops.
+            if (!handsFree) ClearPermission();
             // While listening, the previous exchange stays visible until new speech is transcribed.
             if (!handsFree || !listening)
             {
@@ -739,7 +733,6 @@ public partial class LiveConversationWindow : ThemedWindow
         if (listening && (AcceptAction.IsChecked != true || AcceptCapture.IsChecked != true || AcceptUpload.IsChecked != true))
             listening = false;
         if (owned is { OwnershipReleased: false } && (AcceptAction.IsChecked != true ||
-            owned.MemoryRequested && AcceptMemory.IsChecked != true ||
             owned.Authorization.Microphone && (AcceptCapture.IsChecked != true || AcceptUpload.IsChecked != true)))
             controller.Stop(owned, "conversation.revoked");
         RenderActions();
@@ -785,7 +778,23 @@ public partial class LiveConversationWindow : ThemedWindow
         generation++;
         timer.Stop();
         sessionEvents.LockedChanged -= SessionSwitch;
+        controller.MemoryCaptured -= MemoryCaptured;
     }
+
+    // Raised off the dispatcher once background remembering finishes for an exchange.
+    private void MemoryCaptured(MemoryCaptureReport report) => Dispatcher.BeginInvoke(() =>
+    {
+        if (closed) return;
+        MemoryNote.Text = report.Failure is { } failure
+            ? $"Couldn't update memory for that exchange ({failure}). The conversation itself is unaffected."
+            : string.Join("  ", report.Changes!.Select(change => change.Kind switch
+            {
+                MemoryCaptureKind.Remember => "Remembered: ",
+                MemoryCaptureKind.Update => "Updated memory: ",
+                _ => "Forgot: "
+            } + change.Content));
+        MemoryNote.Visibility = Visibility.Visible;
+    });
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
     private async void Setup_Click(object sender, RoutedEventArgs e)
     {
@@ -838,7 +847,8 @@ public partial class LiveConversationWindow : ThemedWindow
             $"STT: {operation.Transcription?.Outcome.ToString() ?? "not completed / not used"}; Policy: {status.Policy?.ToString() ?? "see timeline"}; LLM/TTS: {snapshot?.State.ToString() ?? "not dispatched"}.\n" +
             $"Persona revision/style: {operation.PersonaRevision?.ToString() ?? "not dispatched"} / {operation.ResponseStyle?.ToString() ?? "not selected"}.\n" +
             $"In-memory context messages used/omitted: {operation.ContextMessages}/{operation.ContextMessagesOmitted}; retained completed turns: {controller.ContextTurns}.\n" +
-            $"Local memory retrieval requested: {operation.MemoryRequested}; store revision: {operation.MemoryStoreRevision?.ToString() ?? "not read"}; facts used/omitted: {operation.MemoryFactsUsed}/{operation.MemoryFactsOmitted}. Fact content is never shown in this metadata timeline.\n" +
+            $"Memory: {(operation.MemoryRequested ? "on" : "off")}; store revision: {operation.MemoryStoreRevision?.ToString() ?? "not read"}; facts used/omitted: {operation.MemoryFactsUsed}/{operation.MemoryFactsOmitted}" +
+                (operation.MemoryProblem is { } problem ? $"; not read ({problem}), replied without it" : "") + ". Fact content is never shown in this metadata timeline.\n" +
             $"Reserved requests: {operation.Authorization.ReservedRequests}; segments: {snapshot?.CommittedSegments ?? 0}; queued: {snapshot?.QueuedSegments ?? 0}; suppressed fragments: {snapshot?.SuppressedFragments ?? 0}.\n" +
             $"Playback accepted/submitted/device-consumed: {snapshot?.AcceptedSamples ?? 0}/{snapshot?.SubmittedSamples ?? 0}/{snapshot?.DeviceConsumedSamples ?? 0}; drain: {snapshot?.Playback?.DeviceDrainObserved ?? false}; may have played: {snapshot?.MayHavePlayed ?? false}. NOT proof of heard audio; cost UNKNOWN.\n" +
             $"Runtime failure: {snapshot?.Failure}; provider: {snapshot?.ProviderFailure ?? status.ProviderFailure}; audio: {snapshot?.Playback?.Error?.Code ?? status.AudioFailure}.\n" + operation.Timeline;
@@ -884,9 +894,9 @@ public partial class LiveConversationWindow : ThemedWindow
     internal static string Remedy(string code) => code switch
     {
         "conversation.permission_required" => "Permission missing. Review the displayed envelope; PTT additionally needs separate local-capture and STT-upload permission.",
-        "memory.disabled" => "Local memory is OFF or not available for this loaded configuration. No memory store was opened. Use Local memory to review and enable a safe local scope, then Reload before a fresh action.",
-        "memory.configuration_changed" => "Memory configuration changed. Retrieval and this action were revoked; Reload and review a fresh action.",
-        "memory.retrieval_invalidated" => "Memory changed or permission was revoked while retrieval was active. No retrieved fact was accepted and no LLM request followed; review a fresh action.",
+        "memory.disabled" => "Memory is OFF for this loaded configuration. Turn it on in Memory, then Reload.",
+        "memory.configuration_changed" => "Memory settings changed during the action. Reload and try again.",
+        "memory.retrieval_invalidated" => "Memory changed while it was being read. Try again.",
         "conversation.ownership_busy" => "An app operation still owns resources or cleanup. No queue or replacement started. Stop that action and wait for actual release; close Martlet if native cleanup remains stuck.",
         "conversation.setup_required" or "conversation.configuration_unsupported" => "Review the supported named routes, credential references, destination choices and selected audio policy in Setup. No provider was contacted by this rejection.",
         "conversation.configuration_changed" => "Configuration changed during the action. Permission revoked; Reload and review the new role/model/voice/key/output before a fresh action.",

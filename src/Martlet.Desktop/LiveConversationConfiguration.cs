@@ -246,17 +246,20 @@ internal sealed class LiveConversationConfiguration
                 : $"LLM: <=1 request, <=4096 user-input characters; the selected persona '{Persona.Name}' and one weighted response style are included in the same <=16,384 UTF-8 byte / <=16,640 input-token reservation (not measured tokens). Persona revision is fixed for this action.\n") +
             "Up to eight completed explicit exchanges from the last two minutes may be included from volatile in-memory context only. Oldest exchanges are omitted until current input, persona, style and context fit the same LLM byte/token reservation. Pause, lock, configuration reload/change, Stop or closing the conversation clears context; it is not persisted.\n" +
             (Memory is { Enabled: true }
-                ? "Local memory is enabled for a reviewed local scope, but this action reads nothing unless the separate fresh retrieval permission is selected. If selected, bounded lexical retrieval reads at most three relevant facts and sends only the fitting top facts with explicit user-saved provenance labels inside the unchanged LLM input budget; it never uploads the complete store. Retrieved text is reference data, not instructions or authorization. Delete, configuration/consent change, pause, lock, Stop or Close invalidates in-flight retrieval.\n"
-                : "Local memory is OFF. No memory store open/read/write or persistent conversation content occurs. Enablement and each later retrieval disclosure are separate explicit actions.\n") +
+                ? $"Memory is ON (change it in Memory). Each reply may include up to {DesktopMemoryService.MaximumRecalledFacts} facts saved on this PC (the best matches for what you said, then the newest) inside the same LLM input budget; the complete store is never uploaded and recalled facts are background data, not instructions. After each completed reply, Martlet sends that exchange (with the previous exchange and up to {MemoryCapture.MaximumShownFacts} related saved facts) once more to the same Thinking model in one extra text-only request of <=256 output tokens, so it can pick out lasting things worth remembering; they are saved on this PC only and listed in Memory, where you can edit or delete them. Screen glances are not remembered. Lock, pause, mute or a configuration change cancels pending remembering.\n"
+                : "Memory is OFF: nothing is recalled or remembered and the memory store is not opened. Turn it on in Memory.\n") +
             "LLM output: <=256 tokens, <=16,384 response characters, <=45 s.\n" +
             "Runtime <=90 s. Voice: <=8 requests/segments, <=1536 UTF-8 bytes each / 12,288 total, <=10 s / 240,000 samples per segment, <=80 s / 1,920,000 reserved samples total, <=20 s per request. Refusal/unsupported markup is not ordinary speech.\n" +
             "Prices, quota, account/model access and invoice cost are UNKNOWN, not zero or a guaranteed hard currency cap. Failed/canceled requests can still cost money; earlier speech may already have played. No automatic retry.\n" +
-            "PTT, explicit typed input, or hands-free voice activity only while you keep Start listening on (each detected utterance is one action within this envelope; listening re-arms only after the reply finishes). Wake words, name/group listening and remote participant capture are OFF; screen watching is OFF unless you start it with its own permission. Optional Voice ID compares speech with your saved voiceprint on this PC before upload; non-matching audio is discarded, never uploaded. Local memory retrieval requires the separate fresh checkbox described above." +
-            " Content stays bounded in memory, not logs/files. Stop, pause, mute, lock or Close revokes this action; window deactivation also does unless hands-free listening is on.";
+            "PTT, explicit typed input, or hands-free voice activity only while you keep Start listening on (each detected utterance is one action within this envelope; listening re-arms only after the reply finishes). Wake words, name/group listening and remote participant capture are OFF; screen watching is OFF unless you start it with its own permission. Optional Voice ID compares speech with your saved voiceprint on this PC before upload; non-matching audio is discarded, never uploaded. Memory recall and remembering follow the memory setting described above." +
+            (Memory is { Enabled: true }
+                ? " Conversation content stays bounded in memory, not logs/files; only the short facts picked out for Memory are saved."
+                : " Content stays bounded in memory, not logs/files.") +
+            " Stop, pause, mute, lock or Close revokes this action; window deactivation also does unless hands-free listening is on.";
     }
 
     internal ConversationRequest Request(BoundedTextInput input, bool voice, ResponseStyle? style,
-        IReadOnlyList<TextHistoryMessage> history, DesktopMemoryRetrieval? memory,
+        IReadOnlyList<TextHistoryMessage> history, DesktopMemoryRecall? memory,
         out int usedHistoryMessages, out int usedMemoryFacts, BoundedImage? image = null, string? extraInstructions = null,
         string? silentReply = null)
     {
@@ -267,20 +270,18 @@ internal sealed class LiveConversationConfiguration
                 throw new LiveActionException("conversation.input_limit"));
         if (extraInstructions is not null)
             instructions = instructions is null ? extraInstructions : instructions + "\n\n" + extraInstructions;
-        var memoryHits = memory?.Hits ?? [];
-        for (var memoryCount = memoryHits.Count; memoryCount >= 0; memoryCount--)
+        var facts = memory?.Facts ?? [];
+        // Least relevant recalled facts go first, then the oldest exchanges, until the request fits.
+        for (var memoryCount = facts.Count; memoryCount >= 0; memoryCount--)
         {
-            var memoryMessages = memoryHits.Take(memoryCount)
-                .Select(hit => MemoryPromptContext.Message(memory!.StoreRevision!.Value, hit))
-                .ToArray();
             var candidateInstructions = memoryCount == 0
                 ? instructions
                 : instructions is null
-                    ? MemoryPromptContext.Instructions
-                    : instructions + "\n\n" + MemoryPromptContext.Instructions;
+                    ? MemoryPromptContext.Instructions(facts.Take(memoryCount).ToArray())
+                    : instructions + "\n\n" + MemoryPromptContext.Instructions(facts.Take(memoryCount).ToArray());
             for (var start = 0; start <= history.Count; start += 2)
             {
-                var combined = memoryMessages.Concat(history.Skip(start)).ToArray();
+                var combined = history.Skip(start).ToArray();
                 if (combined.Length > BoundedTextInput.HardMaxHistoryMessages)
                     continue;
                 BoundedTextInput prompted;
@@ -307,6 +308,10 @@ internal sealed class LiveConversationConfiguration
         }
         throw new LiveActionException("conversation.input_limit");
     }
+
+    /// <summary>The text-only request that asks the Thinking model what to remember from a finished exchange.</summary>
+    internal ConversationRequest MemoryCaptureRequest(BoundedTextInput input) =>
+        new(input, TextSelection(), TextLimits, TurnLimits, null, ChatTarget(), HostTarget());
 
     /// <summary>The word the model answers with to stay quiet after a screen glance; never spoken.</summary>
     internal const string SilentReply = "pass";

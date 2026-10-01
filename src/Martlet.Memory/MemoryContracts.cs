@@ -11,7 +11,8 @@ public enum MemoryConsentDecision
 public enum MemorySourceKind
 {
     UserEntry,
-    UserReviewedImport
+    UserReviewedImport,
+    Conversation
 }
 
 public enum MemoryRetentionKind
@@ -49,6 +50,10 @@ public sealed record MemoryProvenance
 
     public static MemoryProvenance UserReviewedImport(Guid consentId, DateTimeOffset observedAtUtc) =>
         new() { SourceKind = MemorySourceKind.UserReviewedImport, ConsentId = consentId, ObservedAtUtc = observedAtUtc };
+
+    /// <summary>Picked out of a conversation exchange while memory was ON.</summary>
+    public static MemoryProvenance Conversation(Guid consentId, DateTimeOffset observedAtUtc) =>
+        new() { SourceKind = MemorySourceKind.Conversation, ConsentId = consentId, ObservedAtUtc = observedAtUtc };
 
     internal void Validate()
     {

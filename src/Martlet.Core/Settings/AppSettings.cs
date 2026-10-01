@@ -9,7 +9,9 @@ public enum ProfileKind { NotConfigured, Fixture, Api, ExistingEndpoints, SelfHo
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record AppSettings : IContract
 {
-    public const int CurrentSchemaVersion = 5;
+    public const int CurrentSchemaVersion = 6;
+    /// <summary>From settings v6 memory is ON by default; earlier versions only recorded the old OFF default.</summary>
+    public const int MemoryOnByDefaultSchemaVersion = 6;
     public const int MaxFileBytes = 131_072;
     public required int SchemaVersion { get; init; }
     public required ProfileSettings Profile { get; init; }
@@ -75,9 +77,17 @@ public sealed record AppSettings : IContract
                 PendingRemovals = []
             }).UpgradeToCurrent(),
             Companion = settings.Companion ?? CompanionSettings.Create(),
-            Memory = settings.Memory ?? MemorySettings.Create()
+            Memory = settings.SchemaVersion < MemoryOnByDefaultSchemaVersion && settings.Memory is { } memory
+                ? memory.Configure(true, memory.StoragePolicy, memory.CustomDirectory)
+                : settings.Memory ?? MemorySettings.Create()
         };
     }
+
+    // Before v6 a saved OFF was only the old default, never a choice under the ON default; it reads as ON until saved as v6.
+    internal static AppSettings ApplyMemoryDefault(AppSettings settings) =>
+        settings.SchemaVersion < MemoryOnByDefaultSchemaVersion && settings.Memory is { Enabled: false } memory
+            ? settings with { Memory = memory with { Enabled = true } }
+            : settings;
 }
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]

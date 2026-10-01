@@ -24,7 +24,7 @@ public sealed record MemorySettings : IContract
     {
         SchemaVersion = 1,
         ConfigurationRevision = Guid.NewGuid(),
-        Enabled = false,
+        Enabled = true,
         StoragePolicy = MemoryStoragePolicy.AppLocalData
     };
 

@@ -12,7 +12,7 @@ namespace Martlet.Desktop.Tests;
 public sealed class MemoryWindowTests
 {
     [Fact]
-    public Task RealWindowKeepsDisabledStoreClosedAndRunsExplicitFactAndFrozenExportActions() =>
+    public Task RealWindowMigratesLegacySettingsAndRunsFactAndFrozenExportActions() =>
         OnDispatcher(async () =>
     {
         using var scope = new Scope();
@@ -36,7 +36,7 @@ public sealed class MemoryWindowTests
             await Until(() => Text(window, "ConfigurationStatus").Contains(
                 "Legacy settings loaded", StringComparison.Ordinal));
             Assert.False(Directory.Exists(scope.Memory));
-            Assert.False(Check(window, "MemoryEnable").IsChecked);
+            Assert.True(Check(window, "MemoryEnable").IsChecked);
             Assert.Equal("MemoryReload", AutomationProperties.GetAutomationId(
                 Control<Button>(window, "ReloadButton")));
 
@@ -44,15 +44,13 @@ public sealed class MemoryWindowTests
             Assert.Contains("Save or reload", Text(window, "FactStatus"));
             Assert.False(Directory.Exists(scope.Memory));
 
-            Check(window, "MemoryEnable").IsChecked = true;
-            Check(window, "MemoryAcceptEnable").IsChecked = true;
             Assert.True(Control<Button>(window, "SaveConfigurationButton").IsEnabled,
-                $"runner={runner.IsRunning}; enable={Check(window, "MemoryEnable").IsChecked}; consent={Check(window, "MemoryAcceptEnable").IsChecked}");
+                $"runner={runner.IsRunning}; enable={Check(window, "MemoryEnable").IsChecked}");
             Click(window, "MemorySaveConfiguration");
             await Until(() => !runner.IsRunning && Text(window, "ConfigurationStatus").Contains(
-                "enabled", StringComparison.OrdinalIgnoreCase),
+                "Memory is ON", StringComparison.Ordinal) && Text(window, "FactStatus").Contains(
+                "0 fact(s) remembered", StringComparison.Ordinal),
                 () => $"runner={runner.IsRunning}; status={Text(window, "ConfigurationStatus")}; settings={File.ReadAllText(store.FilePath)}");
-            Assert.False(Directory.Exists(scope.Memory));
             var configured = await store.LoadAsync();
             Assert.True(configured.Settings!.Memory!.Enabled);
             Assert.Equal(MemoryStoragePolicy.AppLocalData, configured.Settings.Memory.StoragePolicy);
@@ -68,14 +66,14 @@ public sealed class MemoryWindowTests
 
             var list = Control<ListBox>(window, "FactsList");
             list.SelectedIndex = 0;
-            Assert.Contains("Created provenance: UserEntry", Text(window, "FactDetails"));
+            Assert.Contains("Created from: saved by the user", Text(window, "FactDetails"));
             Assert.Contains("expires at", Text(window, "FactDetails"));
             Control<TextBox>(window, "FactContent").Text = "Preferred server region is north-west.";
             Click(window, "MemoryEditFact");
             await Until(() => !runner.IsRunning && list.Items.Cast<MemoryFact>().Single().Content.Contains(
                 "north-west", StringComparison.Ordinal));
             list.SelectedIndex = 0;
-            Assert.Contains("Last-modified provenance: UserEntry", Text(window, "FactDetails"));
+            Assert.Contains("Last changed: saved by the user", Text(window, "FactDetails"));
 
             Click(window, "MemoryCreateExportPreview");
             await Until(() => !runner.IsRunning && Text(window, "ExportSummary").Contains(
@@ -119,7 +117,7 @@ public sealed class MemoryWindowTests
     });
 
     [Fact]
-    public Task ScopeAndDestinationEditsClearConsentAndBlockThePersistedStore() =>
+    public Task ScopeEditsAndDestinationEditsClearExportConsentAndBlockThePersistedStore() =>
         OnDispatcher(async () =>
     {
         using var scope = new Scope();
@@ -130,7 +128,7 @@ public sealed class MemoryWindowTests
         var runner = new SetupOperationRunner();
         using var memory = new DesktopMemoryService(store);
         var configured = await memory.SaveConfigurationAsync(
-            initial, saved.Revision, enabled: true, enableApproved: true,
+            initial, saved.Revision, enabled: true,
             policy: MemoryStoragePolicy.AppLocalData, customDirectory: null);
         Assert.True(configured.Save.Save.Saved);
         await memory.SaveFactAsync(configured.Settings.Memory!.ConfigurationRevision,
@@ -143,10 +141,8 @@ public sealed class MemoryWindowTests
         window.Show();
         try
         {
-            await Until(() => Text(window, "ConfigurationStatus").Contains(
-                "ENABLED", StringComparison.Ordinal));
-            Click(window, "MemoryRefreshFacts");
-            await Until(() => !runner.IsRunning &&
+            await Until(() => !runner.IsRunning && Text(window, "ConfigurationStatus").Contains(
+                "Memory is ON", StringComparison.Ordinal) &&
                 Control<ListBox>(window, "FactsList").Items.Count == 1);
             Click(window, "MemoryCreateExportPreview");
             await Until(() => !runner.IsRunning &&
@@ -159,11 +155,9 @@ public sealed class MemoryWindowTests
             Assert.False(Check(window, "MemoryAcceptExport").IsChecked);
             Assert.False(Control<Button>(window, "ExportButton").IsEnabled);
 
-            Check(window, "MemoryAcceptEnable").IsChecked = true;
             Control<RadioButton>(window, "CustomChoice").IsChecked = true;
             Control<TextBox>(window, "CustomDirectory").Text = scope.OtherMemory;
 
-            Assert.False(Check(window, "MemoryAcceptEnable").IsChecked);
             Assert.False(Control<Button>(window, "RefreshFactsButton").IsEnabled);
             Assert.Empty(Control<ListBox>(window, "FactsList").Items);
             Assert.Equal("", Control<TextBox>(window, "ExportPreviewText").Text);
@@ -202,7 +196,6 @@ public sealed class MemoryWindowTests
                 settings,
                 saved.Revision,
                 enabled: true,
-                enableApproved: true,
                 policy: MemoryStoragePolicy.CustomLocalDirectory,
                 customDirectory: @"\\server\share\memory"));
 
@@ -224,7 +217,6 @@ public sealed class MemoryWindowTests
             original,
             saved.Revision,
             enabled: true,
-            enableApproved: true,
             policy: MemoryStoragePolicy.AppLocalData,
             customDirectory: null));
 
@@ -262,7 +254,7 @@ public sealed class MemoryWindowTests
         };
         using var memory = new DesktopMemoryService(settings, openStore: (preview, approval, token) =>
             MemoryStore.Open(preview, approval, TimeProvider.System, hooks, token));
-        var configured = await memory.SaveConfigurationAsync(initial, saved.Revision, true, true,
+        var configured = await memory.SaveConfigurationAsync(initial, saved.Revision, true,
             MemoryStoragePolicy.AppLocalData, null);
         var revision = configured.Settings.Memory!.ConfigurationRevision;
         await memory.SaveFactAsync(revision, "Existing synthetic fact.", MemoryRetention.UntilDeleted());
@@ -272,7 +264,8 @@ public sealed class MemoryWindowTests
         window.Show();
         try
         {
-            await Until(() => !runner.IsRunning && Text(window, "ConfigurationStatus").Contains("ENABLED", StringComparison.Ordinal));
+            await Until(() => !runner.IsRunning && Text(window, "ConfigurationStatus").Contains("Memory is ON", StringComparison.Ordinal) &&
+                Control<ListBox>(window, "FactsList").Items.Count == 1);
             if (export)
             {
                 Click(window, "MemoryCreateExportPreview");

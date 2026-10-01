@@ -1016,8 +1016,10 @@ public partial class MainWindow
         page.Children.Add(Card(Heading("Now"),
             new TextBlock { Text = on ? "On" : "Off", FontSize = 15, TextWrapping = TextWrapping.Wrap },
             Note(on
-                ? "Martlet may use the facts you saved here. Memory keeps only facts you type and choose to save, on this PC; it never adds your conversations."
-                : "Martlet uses no saved facts. Turn memory on to keep facts you type and choose to save, on this PC only.",
+                ? "Martlet remembers lasting things you talk about (your name, people and pets in your life, likes, plans...) and recalls them " +
+                  "in later conversations. After each reply the Thinking model picks out what is worth keeping. Everything stays on this PC; " +
+                  "review, edit or delete any fact, or turn memory off, in Manage memory."
+                : "Martlet doesn't remember or recall anything between conversations. Turn memory on in Manage memory.",
                 new Thickness(0, 2, 0, 8)),
             Row(PageButton("Manage memory", () => Memory_Click(this, new RoutedEventArgs()), primary: !on, id: "OpenMemory"))));
     }

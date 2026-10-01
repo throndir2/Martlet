@@ -15,7 +15,7 @@ public sealed class MemorySettingsTests : IDisposable
     [InlineData(1)]
     [InlineData(2)]
     [InlineData(3)]
-    public async Task HistoricalSchemaMigratesAtomicallyToDisabledAppLocalMemory(int schema)
+    public async Task HistoricalSchemaMigratesAtomicallyToEnabledAppLocalMemory(int schema)
     {
         var current = SetupSettings.Begin(null);
         var historical = current with
@@ -32,7 +32,7 @@ public sealed class MemorySettingsTests : IDisposable
         var draft = SetupSettings.Begin(loaded.Settings);
         Assert.Equal(AppSettings.CurrentSchemaVersion, draft.SchemaVersion);
         Assert.NotNull(draft.Memory);
-        Assert.False(draft.Memory.Enabled);
+        Assert.True(draft.Memory.Enabled);
         Assert.Equal(MemoryStoragePolicy.AppLocalData, draft.Memory.StoragePolicy);
         Assert.Null(draft.Memory.CustomDirectory);
         Assert.Equal(original, await File.ReadAllBytesAsync(Store.FilePath));
@@ -43,7 +43,57 @@ public sealed class MemorySettingsTests : IDisposable
         Assert.Equal(schema, migrated.MigratedFromSchemaVersion);
         Assert.Equal(original, await File.ReadAllBytesAsync(
             Path.Combine(directory, migrated.SnapshotFileName!)));
-        Assert.False((await Store.LoadAsync()).Settings!.Memory!.Enabled);
+        Assert.True((await Store.LoadAsync()).Settings!.Memory!.Enabled);
+        Assert.False(Directory.Exists(Path.Combine(directory, MemorySettings.AppLocalDirectoryName)));
+    }
+
+    [Theory]
+    [InlineData(4)]
+    [InlineData(5)]
+    public async Task OffByOldDefaultReadsAsOnUntilAnExplicitOffIsSavedAsCurrentSchema(int schema)
+    {
+        var current = SetupSettings.Begin(null);
+        var off = current.Memory!.Configure(false, MemoryStoragePolicy.AppLocalData, null);
+        var historical = current with
+        {
+            SchemaVersion = schema, Memory = off,
+            Setup = schema >= 5 ? current.Setup : current.Setup!.DowngradeOpenAiForHistoricalSettings()
+        };
+        historical.Validate();
+        Assert.True((await Store.SaveAsync(historical, null)).Saved);
+        var original = await File.ReadAllBytesAsync(Store.FilePath);
+
+        var loaded = await Store.LoadAsync();
+        Assert.Equal(schema, loaded.Settings!.SchemaVersion);
+        Assert.True(loaded.Settings.Memory!.Enabled);
+        Assert.Equal(off.ConfigurationRevision, loaded.Settings.Memory.ConfigurationRevision);
+        Assert.Equal(original, await File.ReadAllBytesAsync(Store.FilePath));
+
+        var migrated = SetupSettings.Begin(loaded.Settings);
+        Assert.True(migrated.Memory!.Enabled);
+        var saved = await Store.SaveAsync(migrated, loaded.Revision);
+        Assert.True(saved.Saved);
+        Assert.Equal(schema, saved.MigratedFromSchemaVersion);
+
+        var reloaded = await Store.LoadAsync();
+        var explicitOff = reloaded.Settings! with
+        {
+            Memory = reloaded.Settings.Memory!.Configure(false, MemoryStoragePolicy.AppLocalData, null)
+        };
+        Assert.True((await Store.SaveAsync(explicitOff, reloaded.Revision)).Saved);
+        var final = (await Store.LoadAsync()).Settings!;
+        Assert.Equal(AppSettings.CurrentSchemaVersion, final.SchemaVersion);
+        Assert.False(final.Memory!.Enabled);
+        Assert.False(SetupSettings.Begin(final).Memory!.Enabled);
+    }
+
+    [Fact]
+    public void NewProfilesStartWithMemoryOnInAppLocalData()
+    {
+        var memory = SetupSettings.Begin(null).Memory!;
+        Assert.True(memory.Enabled);
+        Assert.Equal(MemoryStoragePolicy.AppLocalData, memory.StoragePolicy);
+        Assert.True(MemorySettings.Create().Enabled);
     }
 
     [Fact]
@@ -160,7 +210,7 @@ public sealed class MemorySettingsTests : IDisposable
         }
         var json = node.ToJsonString();
         if (mutation == "duplicate")
-            json = json.Replace("\"enabled\":false", "\"enabled\":false,\"enabled\":true", StringComparison.Ordinal);
+            json = json.Replace("\"enabled\":true", "\"enabled\":true,\"enabled\":false", StringComparison.Ordinal);
         Assert.Throws<ContractException>(() => SettingsJson.Read(Encoding.UTF8.GetBytes(json)));
     }
 

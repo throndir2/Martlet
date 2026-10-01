@@ -70,8 +70,8 @@ access are **unknown**, not free or verified. Official
 [data retention policy](https://platform.openai.com/docs/guides/your-data)
 are linked in the UI (copy reviewed 2026-09-13; no rates cached). Opening a link
 requires an explicit browser action. A ChatGPT subscription is not API quota.
-Screen remains OFF; [local memory](MEMORY.md) is separately OFF by default,
-never enabled by Setup or an installation plan. No health test, account login,
+Screen remains OFF; [memory](MEMORY.md) is ON by default for new and migrated
+profiles and can be turned off in Companion › Memory. No health test, account login,
 provider listing or billable probe is run.
 
 Back/Next and the tabs navigate Overview, Jobs, Credentials and Review.
@@ -105,16 +105,17 @@ checkpoint remains the restart recovery boundary.
 
 ## Consent and schema
 
-`AppSettings` accepts strict schemas v1-v5. Profile schema stays v1.
-v3 adds companion personas/styles; v4 adds separately consented OFF-by-default
-local-memory enable/path policy, not facts. v2 adds versioned `SetupSettings`: a bounded
+`AppSettings` accepts strict schemas v1-v6. Profile schema stays v1.
+v3 adds companion personas/styles; v4 adds the local-memory enable/path policy,
+not facts; v6 makes memory ON by default (a v4/v5 memory section that is only
+OFF by the old default reads as ON until saved as v6). v2 adds versioned `SetupSettings`: a bounded
 checkpoint, up to three `SetupRoute` values and at most sixteen pending owned
 credential removals. Settings contain no secret or transcript. Unknown fields,
 invalid states, newer versions, malformed encodings and oversize files are
 rejected without rewriting their original bytes.
 
 `SetupSettings.Begin` only prepares an in-memory edit at the current schema.
-Explicit migration from v1-v4 preserves the original bytes; a v1 save
+Explicit migration from v1-v5 preserves the original bytes; a v1 save
 uses `File.Replace` to commit and snapshot the exact original as
 `settings.v1.<opaque-id>.bak` in the same directory. `SettingsSaveResult`
 explicitly reports `MigratedFromVersion1` and `SnapshotFileName`. Existing
@@ -232,7 +233,7 @@ envelope, not a ZIP/support bundle. Its deterministic manifest records
 `Martlet.Configuration`, producer assembly version, minimum reader format,
 settings schema, source profile UUID, snapshot UUID, UTC creation time and
 source SHA-256. `settings_bytes` is base64 of the **exact** <=128 KiB validated
-v1-v5 settings file (base64 is not encryption). Envelope SHA-256 covers the
+v1-v6 settings file (base64 is not encryption). Envelope SHA-256 covers the
 canonical serialized manifest, including the payload; source SHA-256 covers
 the original bytes. A fixed manifest serializes deterministically, but new
 snapshots intentionally have new identifiers/times. Integrity detects damage,
@@ -251,8 +252,8 @@ downloaded model to back up. Memory settings are included, but the separately
 owned fact store and its exports are never included. Secrets, transient text/audio, environment,
 arbitrary files and diagnostic logs are excluded.
 
-Restore requires an **existing valid same-profile** v1-v5 destination. Memory is
-always forced OFF with a fresh revision: v4 sources retain their path policy,
+Restore requires an **existing valid same-profile** v1-v6 destination. Memory is
+always forced OFF for review with a fresh revision: v4+ sources retain their path policy,
 older sources preserve the current path policy, and no fact store is opened.
 Missing,
 malformed, inaccessible or newer destination files are never overwritten as a

@@ -73,14 +73,16 @@ be supplied from volatile memory; oldest pairs are omitted until the whole reque
 the unchanged budget. Failed/refused/suppressed turns are excluded, and pause,
 lock, configuration load/change, Stop or conversation close clears the buffer.
 
-[Local memory](MEMORY.md) is separately OFF by default. Its next-action-only
-retrieval checkbox is independent of provider/cost, local capture and upload
-permission. After explicit typed/PTT participation accepts, it can retrieve
-at most three matching explicitly saved facts with revision/provenance/age
-labels inside the same input budget. No transcript is ingested; no full store,
-path or consent UUID is uploaded. Missing permission never opens the store;
-retrieval failure stops the turn rather than silently omitting requested facts.
-Nothing is persisted. TTS receives only eligible
+[Memory](MEMORY.md) is ON by default (Companion › Memory turns it off). When
+on, each explicit typed/PTT/hands-free turn automatically recalls up to twelve
+saved facts (best lexical matches for the current input, then the newest) as one
+labeled background block inside the same input budget; the full store, path and
+consent UUIDs are never uploaded. If the store can't be read, the reply goes
+ahead without memory and the status says why. After a completed reply, the
+exchange is sent once more, as one extra text-only request, to the same Thinking
+model, which picks out lasting facts to save locally (shown under the reply and
+listed in Memory). Screen glances are never remembered. The volatile exchange
+buffer itself is still not persisted. TTS receives only eligible
 generated segments. All provider routes have the fixed HTTPS origin
 `https://api.openai.com`; there is no custom endpoint, model discovery,
 fallback provider, retry loop or hidden continuation.
