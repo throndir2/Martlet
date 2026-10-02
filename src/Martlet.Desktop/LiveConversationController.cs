@@ -177,6 +177,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private Task captureTail = Task.CompletedTask;
     private int capturesPending;
     private bool captureQuarantined;
+    private string? lastCaptureFailure;
     private LiveConversationOperation? active;
     private LiveConversationConfiguration? configuration;
     private long revision, captureEpoch;
@@ -1241,7 +1242,36 @@ internal sealed class LiveConversationController : IAsyncDisposable
         {
             lock (gate) capturesPending--;
         }
+        if (report is { Failure: { } failure })
+        {
+            ErrorLog.Warn($"Remembering failed ({failure}).");
+            // Say why once; the same problem again on later exchanges stays in the log until remembering works again.
+            lock (gate)
+            {
+                if (failure == lastCaptureFailure) return;
+                lastCaptureFailure = failure;
+            }
+        }
+        else if (!job.Token.IsCancellationRequested)
+            lock (gate) lastCaptureFailure = null;
         if (report is not null) MemoryCaptured?.Invoke(report);
+    }
+
+    // The store is shared with recall and the Memory page, and a fact can change while the model reads it: wait and try again.
+    private static async Task<T> RetryStoreAsync<T>(Func<Task<T>> action, CancellationToken token)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                return await action().ConfigureAwait(false);
+            }
+            catch (Exception error) when (attempt < 2 && error is MemoryException { Failure: MemoryFailure.Busy or MemoryFailure.Conflict } or
+                DesktopMemoryException { Code: "memory.busy" })
+            {
+                await Task.Delay(TimeSpan.FromSeconds(1 + attempt), token).ConfigureAwait(false);
+            }
+        }
     }
 
     private async Task<MemoryCaptureReport?> CaptureAsync(MemoryCaptureJob job)
@@ -1251,14 +1281,16 @@ internal sealed class LiveConversationController : IAsyncDisposable
         {
             token.ThrowIfCancellationRequested();
             var expected = job.Configuration.Memory!;
-            var known = await memory!.KnownFactsAsync(expected, job.User, MemoryCapture.MaximumShownFacts, token).ConfigureAwait(false);
+            var known = await RetryStoreAsync(() => memory!.KnownFactsAsync(expected, job.User, MemoryCapture.MaximumShownFacts, token),
+                token).ConfigureAwait(false);
             var prompt = MemoryCapture.Prompt(job.EarlierUser, job.EarlierReply, job.User, job.Reply, known.Facts);
             var (answer, failure) = await AskAsync("Remembering", job.Configuration, prompt.Input, token).ConfigureAwait(false);
             if (answer is null) return token.IsCancellationRequested || failure is null ? null : new(Failure: failure);
             var operations = MemoryCapture.Parse(answer, prompt.ShownFacts);
             if (operations.Count == 0) return null;
-            var changes = await memory.RememberAsync(expected.ConfigurationRevision,
-                known.Facts.Take(prompt.ShownFacts).ToArray(), operations, token).ConfigureAwait(false);
+            var shown = known.Facts.Take(prompt.ShownFacts).ToArray();
+            var changes = await RetryStoreAsync(() => memory!.RememberAsync(expected.ConfigurationRevision, shown, operations, token),
+                token).ConfigureAwait(false);
             return changes.Count == 0 ? null : new(changes);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -1299,10 +1331,24 @@ internal sealed class LiveConversationController : IAsyncDisposable
             await turn.OwnershipRelease.ConfigureAwait(false);
             if (turn.Snapshot.Quarantined)
                 lock (gate) captureQuarantined = true;
+            var text = turn.Content.Text;
+            // A model that declines or answers with nothing has nothing to add: that is not a failure. Chat Completions servers
+            // report an empty answer as a malformed response.
+            var nothing = terminal.State == ConversationState.Refused || string.IsNullOrWhiteSpace(text) &&
+                (terminal.ProviderFailure is null && terminal.SequenceFailure?.Issue == Martlet.Core.Streaming.SequenceIssue.EmptyCompletion ||
+                 terminal.ProviderFailure == ProviderFailureCode.ResponseSchema);
+            // Cut off by the max reply length: the lines it finished still count.
+            var finished = terminal.ProviderFailure == ProviderFailureCode.OutputTokenLimit && text.LastIndexOf('\n') is > 0 and var end
+                ? text[..end] : null;
             if (!token.IsCancellationRequested && IsFailure(terminal))
-                LogFailure(purpose, configuration, SetupRole.Llm, Describe(terminal));
+            {
+                if (nothing || finished is not null) ErrorLog.Warn($"{purpose} got no usable answer ({Describe(terminal)}); nothing changed.");
+                else LogFailure(purpose, configuration, SetupRole.Llm, Describe(terminal));
+            }
             else if (terminal.State == ConversationState.Completed) Succeeded(SetupRole.Llm);
-            return terminal.State == ConversationState.Completed ? (turn.Content.Text, null)
+            return terminal.State == ConversationState.Completed ? (text, null)
+                : nothing ? (null, null)
+                : finished is not null ? (finished, null)
                 : (null, terminal.ProviderFailure?.ToString() ?? "runtime." + terminal.State);
         }
         finally
