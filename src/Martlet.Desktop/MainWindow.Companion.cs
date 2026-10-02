@@ -651,12 +651,15 @@ public partial class MainWindow
         var windowsInUse = route?.RouteType == SetupRouteType.LocalWindowsTts;
         var nothingHere = !f5InUse && !windowsInUse;
 
+        var f5About = Note("A natural voice copied from a short recording. It comes ready with F5-TTS's published English sample voice " +
+            "(MIT licence), and you can choose another voice or record your own later. Setting it up installs F5-TTS (MIT source; a large " +
+            "download) with the F5TTS_v1_Base model, licensed for non-commercial use only (CC-BY-NC-4.0). Reply text and voice recordings " +
+            "stay on this PC.", new Thickness(0, 2, 0, 6));
+        AutomationProperties.SetAutomationId(f5About, "SetupF5About");
         var f5 = new List<UIElement>
         {
             OptionTitle("F5 voice, with Docker", f5InUse ? "in use" : nothingHere && f5Fits ? "recommended for this PC" : null),
-            Note("A natural voice copied from a short recording. It comes ready with F5-TTS's published English sample voice (MIT licence), " +
-                "and you can choose another voice or record your own later. The F5 model is licensed for non-commercial use (CC-BY-NC-4.0).",
-                new Thickness(0, 2, 0, 6)),
+            f5About,
             Note(gpu is null ? "No dedicated graphics card was found on this PC; F5 needs an NVIDIA graphics card with 6 GB or more."
                 : $"This PC has {gpu.Describe()}." + (f5Fits ? "" : " F5 needs an NVIDIA graphics card with 6 GB or more, so a Windows voice suits this PC better."),
                 new Thickness(0, 0, 0, 6))
