@@ -55,7 +55,7 @@ public sealed class ChatMessage : INotifyPropertyChanged
 
 /// <summary>The conversation: its history and the message box. How Martlet listens (always or push-to-talk), whether it
 /// speaks and whether it may see (Vision) are chosen in Companion and run while this window is open; the mic and vision buttons
-/// pause and resume them, and Stop (Esc) stops everything at once.</summary>
+/// pause and resume them, and Stop (Esc) stops Martlet's reply, any recording and vision at once (listening carries on).</summary>
 public partial class LiveConversationWindow : ThemedWindow
 {
     internal SupportController? Support { get; init; }
@@ -77,12 +77,13 @@ public partial class LiveConversationWindow : ThemedWindow
     private bool closed, ready, mouseHeld, keyHeld, follow = true;
     private volatile bool locked;
     private long generation;
-    // Always listening runs whenever the window is open and the microphone is set up; the mic button or Stop pauses it. It
-    // runs beside replies (listener) and never pauses by itself: a microphone that can't be opened is tried again shortly.
+    // Always listening runs whenever the window is open and the microphone is set up; only the mic button pauses it (Stop and
+    // Esc quiet Martlet, not the microphone). It runs beside replies (listener) and never pauses by itself: a microphone that
+    // can't be opened, or listening that can't start yet (Voice ID not set up), says why and is tried again shortly.
     private bool listening, listenPaused;
     private LiveListener? listener;
     private long listenRetryAt, lastHeard;
-    private string? listenNote, micProblem;
+    private string? listenNote, micProblem, listenProblem;
     // What always listening heard that waits for a reply, and what the reply in progress answers: talking on before Martlet
     // says anything restarts that reply with everything said.
     private readonly List<HeardEntry> heardQueue = [];
@@ -377,28 +378,32 @@ public partial class LiveConversationWindow : ThemedWindow
         try
         {
             listener = controller.Listen(Listening(true));
+            listenProblem = null;
         }
         catch (LiveActionException error) when (error.Code is "conversation.ownership_busy" or "conversation.controls_blocked")
         {
             listenRetryAt = After(ListenRetry);
         }
-        catch (LiveActionException error)
-        {
-            listening = false;
-            notice = error.Code is "conversation.configuration_unsupported" or "conversation.setup_required" ? ListeningProblem() : Remedy(error.Code);
-        }
-        catch (VoiceIdentityException error)
-        {
-            listening = false;
-            notice = error.Message;
-        }
+        catch (LiveActionException error) { CantListen(ListenFailure(error.Code)); }
+        catch (VoiceIdentityException error) { CantListen(error.Message); }
+    }
+
+    private string ListenFailure(string code) =>
+        code is "conversation.configuration_unsupported" or "conversation.setup_required" ? ListeningProblem() : Remedy(code);
+
+    // Listening can't run right now: it says why and keeps trying, so it carries on by itself once that is fixed.
+    private void CantListen(string problem)
+    {
+        if (problem != listenProblem) notice = problem;
+        listenProblem = problem;
+        listenRetryAt = After(ListenRetry);
     }
 
     private void StopListening(bool keepHeard)
     {
         if (listener is { } live) controller.StopListening(live);
         listener = null;
-        micProblem = null;
+        micProblem = listenProblem = null;
         listenRetryAt = 0;
         if (keepHeard) return;
         foreach (var entry in heardQueue) entry.Bubble.AddNote("Not answered.");
@@ -414,18 +419,14 @@ public partial class LiveConversationWindow : ThemedWindow
         while (live.TryTake(out var speech)) Heard(speech);
         if (live.MicrophoneWorks) micProblem = null;
         if (live.Running) return;
-        // It ended by itself: the setup changed or can't be used. Anything else just starts it again shortly.
+        // It ended by itself: the setup changed (reloaded) or can't be used right now (said, and tried again). Anything else
+        // just starts it again shortly.
         listener = null;
         listenRetryAt = After(ListenRetry);
         switch (live.Ended)
         {
-            case "voiceid.not_enrolled":
-                listening = false;
-                notice = Remedy(live.Ended);
-                break;
-            case "conversation.configuration_unsupported" or "conversation.setup_required":
-                listening = false;
-                notice = ListeningProblem();
+            case "voiceid.not_enrolled" or "conversation.configuration_unsupported" or "conversation.setup_required":
+                CantListen(ListenFailure(live.Ended));
                 break;
             case "conversation.configuration_changed":
                 ReloadWhenIdle("Your setup changed.");
@@ -618,6 +619,16 @@ public partial class LiveConversationWindow : ThemedWindow
         RenderActions();
     }
 
+    /// <summary>Puts the "Message Martlet" hint where typed text starts. A TextBox applies its padding inside its content host
+    /// as well as through the theme's template, so the caret's own position is the only reliable offset.</summary>
+    private void Input_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (InputText.Text.Length > 0) return;
+        var start = InputText.GetRectFromCharacterIndex(0);
+        if (start.IsEmpty) return;
+        Placeholder.Margin = new Thickness(start.Left, start.Top, start.Left, 0);
+    }
+
     private void Input_KeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key != Key.Enter || (Keyboard.Modifiers & ModifierKeys.Shift) != 0) return;
@@ -772,8 +783,9 @@ public partial class LiveConversationWindow : ThemedWindow
         StopAll("conversation.canceled");
     }
 
-    /// <summary>Stop (Esc): Martlet's reply, any recording, listening and vision stop right away. The mic and vision buttons turn
-    /// them back on; the conversation so far is kept unless the window closes.</summary>
+    /// <summary>Stop (Esc): Martlet's reply, any recording and vision stop right away, and what was heard but not yet answered
+    /// is dropped. Always listening carries on, so nothing you say next is missed; only the mic button pauses it. The vision
+    /// button turns vision back on; the conversation so far is kept unless the window closes.</summary>
     private void StopAll(string reason, bool keepContext = true)
     {
         mouseHeld = keyHeld = false;
@@ -783,10 +795,8 @@ public partial class LiveConversationWindow : ThemedWindow
         pendingMessage = null;
         reloadReason = null;
         homeQuestion?.TrySetResult(false);
-        listenNote = null;
-        if (listening) listenPaused = true;
-        listening = false;
-        StopListening(keepHeard: false);
+        foreach (var entry in heardQueue) entry.Bubble.AddNote("Not answered.");
+        heardQueue.Clear();
         answering = null;
         restarts = 0;
         if (watching)
@@ -857,10 +867,12 @@ public partial class LiveConversationWindow : ThemedWindow
         MicChip.Visibility = available && preferences.HandsFree ? Visibility.Visible : Visibility.Collapsed;
         var micUsable = MicrophoneUsable;
         var micDown = listening && micProblem is not null;
+        var cantListen = listening && listenProblem is not null;
         MicChip.IsEnabled = true;
-        MicText.Text = micDown ? "Mic unavailable" : listening ? "Listening" : micUsable ? "Listening paused" : "Can't listen";
-        MicDot.SetResourceReference(Shape.FillProperty, micDown ? "WarningBrush" : listening ? "SuccessBrush" : micUsable ? "MutedBrush" : "WarningBrush");
+        MicText.Text = micDown ? "Mic unavailable" : cantListen ? "Can't listen" : listening ? "Listening" : micUsable ? "Listening paused" : "Can't listen";
+        MicDot.SetResourceReference(Shape.FillProperty, micDown || cantListen ? "WarningBrush" : listening ? "SuccessBrush" : micUsable ? "MutedBrush" : "WarningBrush");
         MicChip.ToolTip = micDown ? $"{micProblem} Martlet tries the microphone again every few seconds. Click to pause listening."
+            : cantListen ? $"{listenProblem} Martlet keeps trying and listens as soon as it can. Click to pause listening."
             : listening ? (listener is { Held: true }
                 ? "Not listening while Martlet speaks, so it never hears itself; it listens again right after. Click to pause listening."
                 : "Martlet hears you whenever you speak, even while it thinks, and decides when to answer. Click to pause listening.")
@@ -893,8 +905,9 @@ public partial class LiveConversationWindow : ThemedWindow
         VisionStatusText.Text = visionLine;
         VisionStatusText.Visibility = VisionChip.Visibility == Visibility.Visible && visionLine.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
 
+        // Stop quiets Martlet; listening is paused only from its own button.
         StopButton.IsEnabled = owned is { OwnershipReleased: false } || commentary is { OwnershipReleased: false } ||
-            pendingText is not null || listening || watching || loading is not null;
+            pendingText is not null || heardQueue.Count > 0 || watching || loading is not null;
         LevelMeter.Visibility = listening ? Visibility.Visible : Visibility.Collapsed;
         Title = watching ? $"Martlet - talk (looking at {watchSource.Label})" : "Martlet - talk";
         ResultText.Text = notice ?? Activity();
@@ -922,6 +935,7 @@ public partial class LiveConversationWindow : ThemedWindow
     }
 
     private string Idle() => !Available ? "" : LocalModelNote(true) ?? (listening && micProblem is not null ? "Type below; Martlet keeps trying the microphone."
+        : listening && listenProblem is not null ? listenProblem
         : listening ? "Listening. Just talk, or type below." + (listenNote is null ? "" : " " + listenNote)
         : !preferences.HandsFree && MicrophoneUsable ? "Type below, or hold the talk button to speak." : "Type a message below.");
 
@@ -1212,6 +1226,8 @@ public partial class LiveConversationWindow : ThemedWindow
 
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
+        listening = false;
+        StopListening(keepHeard: false);
         StopAll("conversation.closed", keepContext: false);
         Task.Run(glancer.Release).Forget();
         Task.Run(video.Release).Forget();

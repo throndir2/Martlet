@@ -919,10 +919,11 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 var request = operation.Authorization.Configuration.Request(
                     input!, operation.Authorization.Voice, style, history, memoryResult, lore,
                     out var usedHistory, out var usedMemory, out var usedLore,
-                    extraInstructions: Join(LiveConversationConfiguration.ReplyLengthInstructions, home?.Instructions,
+                    extraInstructions: Join(home?.Instructions,
                         VoicePromptContext.Instructions(operation.Heard),
                         operation.Spoken ? LiveConversationConfiguration.ListeningInstructions : null),
-                    silentReply: operation.Spoken ? LiveConversationConfiguration.SilentReply : null, tools: toolset);
+                    silentReply: operation.Spoken ? LiveConversationConfiguration.SilentReply : null, tools: toolset,
+                    closingInstructions: LiveConversationConfiguration.ReplyLengthInstructions);
                 operation.PersonaRevision = persona?.ConfigurationRevision;
                 operation.ResponseStyle = style;
                 operation.ContextMessages = usedHistory;

@@ -57,15 +57,19 @@ comment; it needs a Thinking model that can see images. See
    speak; with **Push-to-talk**, hold the talk button with the mouse or Space,
    then release to send (invoking it starts a recording and invoking it again
    sends). **Stop (Esc)** stays in the header at every size: it stops the reply,
-   discards a recording instead of sending it, and pauses listening and vision.
+   discards a recording instead of sending it, and pauses vision. It never
+   pauses always listening, so Martlet doesn't miss what you say next; only the
+   **Listening** button pauses it.
    Escape works anywhere in the window and does not close it or send anything.
 6. The history shows your messages, what you said (the transcript) and
    Martlet's replies as they stream in. A refusal is shown as such and never
    spoken as ordinary speech; a stopped or failed reply keeps its text with a
    *Cut short* note. Replies are kept short by asking, not by cutting: every
-   reply to what you type or say carries a fixed instruction to answer in about
-   one to three sentences (longer only when you ask for detail) and to finish
-   its last sentence. The max reply length (Companion › Replies, 1,024 tokens
+   reply to what you type or say ends its instructions (after persona, lore and
+   memory) with a fixed instruction to answer in one or two short sentences at
+   most, with no lists, second paragraph or closing offers (longer only when
+   you explicitly ask for detail, steps or a list), and to finish its last
+   sentence. The max reply length (Companion › Replies, 1,024 tokens
    by default) is only a ceiling against a runaway answer. When a spoken reply
    outgrows the speech budget below, Martlet stops saying it aloud but still
    shows all of it, with an *Only the start was said aloud* note.
@@ -175,7 +179,8 @@ factory. Closing the main window exits the app, not a background tray listener.
 This is not a measured 250 ms physical-stop guarantee.
 
 The fixed **Stop (Esc)** control also drops a typed message still waiting to be
-sent and pauses listening and vision. Escape works from the message box, the
+sent, and what always listening heard that was still waiting for a reply, and
+pauses vision; listening itself carries on. Escape works from the message box, the
 history and the held talk button. Releasing Space after Escape cannot send that
 discarded recording or rearm PTT. Stop during settings loading or a slow worker
 requests cancellation without releasing the shared ownership slot early.
@@ -231,10 +236,14 @@ the data folder.
   a row, so background talk can't loop it). A reply that already acted through
   Home Assistant or a tool finishes, and what you added is answered after it.
 - Typed messages go to the same slot and are always answered; listening carries
-  on beside them. It continues while the window is in the background. The
-  **Listening** button pauses and resumes it; Stop/Esc pauses it; session lock
-  and Close end it. Reply, provider and speech-to-text failures are shown and
-  never pause listening; nothing is retried automatically.
+  on beside them. It continues while the window is in the background. Only the
+  **Listening** button pauses and resumes it; Stop/Esc quiets Martlet but
+  leaves listening on; session lock and Close end it (unlocking resumes it).
+  Reply, provider and speech-to-text failures are shown and never pause
+  listening; nothing is retried automatically. When listening can't start
+  (for example *Only respond to my voice* is on but Voice ID isn't set up), the
+  button says *Can't listen* with why and Martlet keeps trying, so it listens
+  again as soon as that is fixed.
 
 **Voice ID** (Companion › Listening › **Set up Voice ID**) recognizes the enrolled user locally:
 

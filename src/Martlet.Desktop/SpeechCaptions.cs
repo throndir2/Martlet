@@ -4,8 +4,9 @@ using Martlet.Conversation;
 
 namespace Martlet.Desktop;
 
-// Where Martlet's spoken words are shown. Both are off by default; saved locally beside the other desktop preferences.
-internal sealed record SpeechDisplayPreferences(bool SpeechBubbles = false, bool Subtitles = false)
+// Where Martlet's spoken words are shown: speech bubbles beside the character are on by default (they only appear while the
+// character is showing), subtitles are off. Saved locally beside the other desktop preferences.
+internal sealed record SpeechDisplayPreferences(bool SpeechBubbles = true, bool Subtitles = false)
 {
     private const string FileName = "speech-display.json";
 
@@ -47,11 +48,12 @@ internal sealed record SpeechDisplayPreferences(bool SpeechBubbles = false, bool
 internal sealed class SpeechCaptions : IDisposable
 {
     private static readonly TimeSpan Linger = TimeSpan.FromSeconds(1.5);
+    private static readonly TimeSpan PreviewTime = TimeSpan.FromSeconds(4);
     private readonly AvatarController avatar;
     private readonly string? directory;
     private readonly CancellationTokenSource lifetime = new();
     private SubtitleOverlayWindow? overlay;
-    private Task bubbleSends = Task.CompletedTask;
+    private Task<bool> bubbleSends = Task.FromResult(true);
     private bool bubbleShown;
     private long current;
 
@@ -66,12 +68,29 @@ internal sealed class SpeechCaptions : IDisposable
     internal SpokenTextFeed Feed { get; } = new();
     internal SpeechDisplayPreferences Preferences { get; private set; }
 
+    /// <summary>Raised on the UI thread after the preferences change, so every place showing them can follow.</summary>
+    internal event Action? Changed;
+
     internal bool Update(SpeechDisplayPreferences next)
     {
         Preferences = next;
         if (!next.Subtitles) overlay?.ClearLine();
         if (!next.SpeechBubbles && bubbleShown) Say(null);
-        return next.Save(directory);
+        var saved = next.Save(directory);
+        Changed?.Invoke();
+        return saved;
+    }
+
+    /// <summary>Shows a sample bubble beside the showing character for a few seconds. False when the character is hidden or
+    /// its overlay did not take the bubble.</summary>
+    internal async Task<bool> PreviewAsync(string text)
+    {
+        if (!avatar.IsShowing) return false;
+        var id = ++current;
+        Say(text);
+        var shown = await bubbleSends;
+        ClearAfterAsync(Task.Delay(PreviewTime, lifetime.Token), id).Forget();
+        return shown;
     }
 
     private async Task ReadAsync()
@@ -106,12 +125,12 @@ internal sealed class SpeechCaptions : IDisposable
         bubbleSends = SendAfterAsync(bubbleSends, text);
     }
 
-    private async Task SendAfterAsync(Task previous, string? text)
+    private async Task<bool> SendAfterAsync(Task previous, string? text)
     {
         await previous;
-        try { await avatar.SayAsync(text, lifetime.Token); }
+        try { return await avatar.SayAsync(text, lifetime.Token); }
         catch (Exception error) when (error is IOException or InvalidDataException or InvalidOperationException or
-            OperationCanceledException or TimeoutException) { }
+            OperationCanceledException or TimeoutException) { return false; }
     }
 
     public void Dispose()

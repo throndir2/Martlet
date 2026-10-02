@@ -195,7 +195,13 @@ interactive Windows session** (ideally with a disposable `--data-directory`).
 Call `ui_connect` with that process ID. `ui_snapshot` returns window accessible names,
 automation IDs, enabled states, checkbox states, and selected read-only status
 fields (a text block's text, or a button's accessible name); it does not dump arbitrary editable fields or credentials.
-Status fields include `VisionStatus` (Companion › Vision: whether the Thinking model can see, or has been retired, and the fix), `RepliesNow` (Companion › Replies: that Martlet asks for short replies, the max reply length ceiling in effect and the other saved settings), `SetupCloudHint-Thinking` (the cloud provider's recommended Thinking model, or a retired-model warning), `SetupLocalRecommendation` (the local Ollama model recommended for this PC's graphics card), `SetupOllamaStatus` (whether Ollama is installed or running and which models it has), `SetupLocalModelTest` (Thinking › This PC: the last *Test model* result for the model in the box, or that it isn't tested yet), `SetupProviderHint` (Setup › Jobs prefilled model) and `SetupF5About` (Speaking › This PC: what setting up F5 installs and its licence). `SetupHostThisPc` and `SetupUseLocal-Speaking` start the F5 setup run window straight away (no extra confirmation; installing Docker Desktop still asks for its terms), so they need `--allow-ui-effects`. `SetupTestLocalModel` (Thinking › This PC's *Test model*) starts Ollama if needed, loads the model in the box and sends it one short loopback chat request in a run window, so it needs `--allow-ui-effects` too; read the outcome from `HostRunStatus` and `SetupLocalModelTest`. A run window (`HostRunWindow`, titled `Martlet - <run>`) returns its status line as `HostRunStatus` (for example *Waiting for Docker Desktop to start...* or why it stopped); its output (`HostRunOutput`, which can show a one-use pairing code) is not returned, so read it with `logs_tail` `host-runs`, which also records each status change. `HostRunCancel` cancels a running run (or closes the window afterwards) and needs `--allow-ui-effects`. On a fresh data directory, F5 setup first needs saved settings (*Complete Setup once...*): `SetupUseWindowsVoice` saves them. Setting `DOCKER_HOST` (for example to a local test named pipe) before launching the desktop points its Docker checks away from the real engine. `ui_click` invokes a control by automation ID and `ui_select` selects a named combo-box
+`{"name":"ui_snapshot","arguments":{"layout":true}}` also returns each control's
+screen `bounds` (`[x, y, width, height]` in pixels) and, for text controls, the
+`textBounds` of their first line of text (geometry only, never the text), so
+alignment can be checked: in the talk window, the empty box's hint
+`LivePlaceholder` must have the same `bounds` position as the `textBounds` of
+text typed into `LiveInput`.
+Status fields include `VisionStatus` (Companion › Vision: whether the Thinking model can see, or has been retired, and the fix), `RepliesNow` (Companion › Replies: that Martlet asks for replies of one or two sentences, the max reply length ceiling in effect and the other saved settings), `SetupCloudHint-Thinking` (the cloud provider's recommended Thinking model, or a retired-model warning), `SetupLocalRecommendation` (the local Ollama model recommended for this PC's graphics card), `SetupOllamaStatus` (whether Ollama is installed or running and which models it has), `SetupLocalModelTest` (Thinking › This PC: the last *Test model* result for the model in the box, or that it isn't tested yet), `SetupProviderHint` (Setup › Jobs prefilled model) and `SetupF5About` (Speaking › This PC: what setting up F5 installs and its licence). `SetupHostThisPc` and `SetupUseLocal-Speaking` start the F5 setup run window straight away (no extra confirmation; installing Docker Desktop still asks for its terms), so they need `--allow-ui-effects`. `SetupTestLocalModel` (Thinking › This PC's *Test model*) starts Ollama if needed, loads the model in the box and sends it one short loopback chat request in a run window, so it needs `--allow-ui-effects` too; read the outcome from `HostRunStatus` and `SetupLocalModelTest`. A run window (`HostRunWindow`, titled `Martlet - <run>`) returns its status line as `HostRunStatus` (for example *Waiting for Docker Desktop to start...* or why it stopped); its output (`HostRunOutput`, which can show a one-use pairing code) is not returned, so read it with `logs_tail` `host-runs`, which also records each status change. `HostRunCancel` cancels a running run (or closes the window afterwards) and needs `--allow-ui-effects`. On a fresh data directory, F5 setup first needs saved settings (*Complete Setup once...*): `SetupUseWindowsVoice` saves them. Setting `DOCKER_HOST` (for example to a local test named pipe) before launching the desktop points its Docker checks away from the real engine. `ui_click` invokes a control by automation ID and `ui_select` selects a named combo-box
 option. By default only passive navigation and
 diagnostics controls can be clicked. The main window is split into pages, and a
 page's controls are only visible after you open it: click `NavHome`,
@@ -280,6 +286,18 @@ size, its distance from the top of the screen, the camera zoom and where the
 top of the character's head sits relative to the overlay's top edge (it must
 stay in view at every zoom).
 
+The same page's *Speech bubbles and subtitles* card has the checkboxes
+`SetupCharacterSpeechBubbles` (on by default) and `SetupCharacterSubtitles`
+(off by default); snapshots return their states, and `SetupCharacterSpeechDisplay`
+returns whether each is on and whether bubbles show now (character showing) or
+once it is. Ticking either saves `speech-display.json` (the same choices as the
+character window's `SpeechBubbleChoice` and `SubtitleChoice`), so `ui_toggle`
+needs `--allow-ui-effects`. With the character showing,
+`SetupCharacterPreviewBubble` (also `--allow-ui-effects`) sends a sample bubble
+to the overlay for a few seconds; `SetupCharacterSpeechDisplay` then says
+whether the overlay took it. The bubble itself is drawn by the separate
+renderer process, so its text is not in snapshots.
+
 For F5 voices, open `CompanionTab-Voice` (the Voices card shows unless the
 voice comes from a cloud provider). `F5VoicesStatus` reads how many included
 and own voices there are and which is chosen or in use (an included voice's
@@ -309,7 +327,9 @@ over and needs `--allow-ui-effects`.
 Status fields include the talk window's `LiveStatus` (its status line),
 `LiveMic` (*Listening*, *Listening paused*, *Can't listen* or *Mic unavailable*
 with the reason; while Martlet speaks it reads *Not listening while Martlet
-speaks*),
+speaks*; *Listening paused* only ever follows a click on it: errors, Stop and
+`LiveStop` never pause listening, and listening that can't start yet, such as
+Voice ID not set up, reads *Can't listen* and keeps retrying),
 `LiveVision` (*Watching*, *Looking*, *Vision paused* or *Can't see*, with when
 it last checked the screen; it checks every 3 s), `LiveVisionStatus` (while
 vision is on: what it sees, for example *Watching the window behind Martlet*,
@@ -329,7 +349,8 @@ Opening the talk window with always
 listening on opens the microphone; for verification, save a fixed microphone
 that does not exist in the disposable data directory, so listening starts,
 fails without capturing real audio and shows *Mic unavailable* while it keeps
-retrying (it never pauses by itself).
+retrying (it never pauses by itself). The talk window's `LiveStop` (Stop, Esc)
+is a passive click: it only stops a reply, recording or vision.
 
 Window discovery uses visible top-level native handles filtered to the attached
 process, then verifies ownership around each UI Automation handle lookup.
