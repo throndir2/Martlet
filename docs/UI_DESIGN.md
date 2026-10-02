@@ -297,14 +297,17 @@ window ends it.
        hide, choose and customize, reset).
     7. *Personality*: the active persona and its style mix, *Edit
        personality*, and *Import a character card*.
-    8. *Memory*: whether memory is on, and *Manage memory* for its facts.
+    8. *Lorebook*: how many lorebooks are on for the active persona, each
+       lorebook with *Turn on/off*, *Edit lorebooks* and *Import a lorebook*
+       (see [Lorebooks](LOREBOOKS.md)).
+    9. *Memory*: whether memory is on, and *Manage memory* for its facts.
   - **What it does**: how it answers and acts (generation settings, tools,
     smart home). The group appears once it has a page.
 
   A page gets its own entry only if it has its own **Where it runs** choice,
   its own consent or data destination, or its own list to edit; anything else
-  is a card on an existing page. Planned pages and their groups: *Lorebook*
-  (who it is) and *Tools* (what it does).
+  is a card on an existing page. Planned pages and their groups: *Tools*
+  (what it does).
 
   Every page starts with **Now**: what it uses and any problem stopping it.
   Cards appear only when they apply to the chosen place: the Voice Library

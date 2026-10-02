@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using Martlet.Core.Contracts;
+using Martlet.Core.Lorebooks;
 using Martlet.Core.Settings;
 using Microsoft.Win32;
 
@@ -18,6 +19,9 @@ public partial class CompanionWindow : ThemedWindow
     private readonly Func<string?> chooseExport;
     private readonly Func<string?> chooseCard;
     private readonly bool importCardOnOpen;
+    private readonly LorebookStore? lorebooks;
+    // Keyword lorebooks from imported character cards, by persona; saved to the lorebook library together with the personas.
+    private readonly Dictionary<Guid, Lorebook> pendingLore = [];
     private readonly DispatcherTimer operationTimer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private AppSettings? draft;
     private string? revision;
@@ -31,7 +35,7 @@ public partial class CompanionWindow : ThemedWindow
 
     internal CompanionWindow(ICompanionSettingsService service, SetupOperationRunner operations,
         Func<string?>? chooseImport = null, Func<string?>? chooseExport = null, Func<string?>? chooseCard = null,
-        bool importCardOnOpen = false)
+        bool importCardOnOpen = false, LorebookStore? lorebooks = null)
     {
         this.service = service;
         this.operations = operations;
@@ -39,6 +43,7 @@ public partial class CompanionWindow : ThemedWindow
         this.chooseExport = chooseExport ?? SelectExport;
         this.chooseCard = chooseCard ?? SelectCard;
         this.importCardOnOpen = importCardOnOpen;
+        this.lorebooks = lorebooks;
         InitializeComponent();
         operationTimer.Tick += (_, _) => RenderOperationState();
         operationTimer.Start();
@@ -61,6 +66,7 @@ public partial class CompanionWindow : ThemedWindow
         {
             var loaded = result.Loaded!;
             revision = loaded.Revision;
+            pendingLore.Clear();
             draft = loaded.Error is null ? CompanionSettings.Begin(loaded.Settings) : null;
             ResultText.Text = loaded.Error?.Summary ?? loaded.Settings?.SchemaVersion switch
             {
@@ -243,6 +249,7 @@ public partial class CompanionWindow : ThemedWindow
         try
         {
             var updated = companion.Remove(selected.Id);
+            pendingLore.Remove(selected.Id);
             draft = draft with { Companion = updated };
             ResultText.Text = "Persona removed from the local draft. Save to persist the deletion.";
             RenderPersonas(updated.ActivePersonaId);
@@ -320,7 +327,7 @@ public partial class CompanionWindow : ThemedWindow
             draft = draft with { Companion = updated };
             RenderPersonas(updated.ActivePersonaId);
             return $"Added {Describe(card)} as the new persona \"{name}\" in the local draft. Review it, then Save to keep it." +
-                Fitting(card, persona);
+                Fitting(card, persona, KeepCardLore(card, updated.ActivePersonaId));
         }
         catch (ContractException error) { return error.Message; }
     }
@@ -338,7 +345,7 @@ public partial class CompanionWindow : ThemedWindow
             PersonaText.Text = persona.Text;
             editorDirty = true;
             return $"Loaded {Describe(card)} into the editor for \"{selected.Name}\"; its response-style weights are unchanged. " +
-                "Review it, then Apply and Save." + Fitting(card, persona);
+                "Review it, then Apply and Save." + Fitting(card, persona, KeepCardLore(card, selected.Id));
         }
         catch (ContractException error) { return error.Message; }
     }
@@ -360,15 +367,34 @@ public partial class CompanionWindow : ThemedWindow
     private static string Describe(CharacterCard card) =>
         $"{card.FormatName} \"{card.DisplayName}\"" + (card.Creator.Length > 0 ? $" by {card.Creator}" : "");
 
-    private static string Fitting(CharacterCard card, CharacterCardPersona persona)
+    private static string Fitting(CharacterCard card, CharacterCardPersona persona, Lorebook? lore)
     {
         var notes = new List<string>();
         if (persona.Shortened.Count > 0) notes.Add("Shortened to fit: " + string.Join(", ", persona.Shortened) + ".");
         if (persona.LeftOut.Count > 0) notes.Add("Left out to fit: " + string.Join(", ", persona.LeftOut) + ".");
-        if (card.KeywordLoreEntries > 0)
+        if (lore is not null)
+            notes.Add($"Its {lore.Entries.Count} keyword-triggered lorebook " + (lore.Entries.Count == 1 ? "entry goes" : "entries go") +
+                $" to the lorebook \"{lore.Name}\", used only with this persona, when you Save (always-on entries are in the persona text).");
+        else if (card.KeywordLoreEntries > 0)
             notes.Add($"Not imported: {card.KeywordLoreEntries} keyword-triggered lorebook " +
-                (card.KeywordLoreEntries == 1 ? "entry" : "entries") + " (Martlet has no lorebook; always-on entries are included).");
+                (card.KeywordLoreEntries == 1 ? "entry" : "entries") + " (lorebooks are unavailable here; always-on entries are included).");
         return notes.Count == 0 ? "" : " " + string.Join(" ", notes);
+    }
+
+    /// <summary>Keeps the card's keyword-triggered lorebook entries, attached to <paramref name="persona"/>, until Save. Always-on
+    /// entries are already in the persona text.</summary>
+    private Lorebook? KeepCardLore(CharacterCard card, Guid persona)
+    {
+        pendingLore.Remove(persona);
+        if (lorebooks is null || card.Lorebook is not { } import) return null;
+        var entries = import.Book.Entries.Where(entry => !entry.Constant).ToArray();
+        if (entries.Length == 0) return null;
+        var book = import.Book with
+        {
+            Id = Guid.NewGuid(), Activation = LorebookActivation.SelectedPersonas, PersonaIds = [persona], Entries = entries
+        };
+        pendingLore[persona] = book;
+        return book;
     }
 
     private void Window_PreviewDragOver(object sender, DragEventArgs e)
@@ -397,8 +423,16 @@ public partial class CompanionWindow : ThemedWindow
         var snapshot = draft!;
         var expected = revision;
         var backend = service;
-        await ObserveAsync(operations.TryStart(async token => new(SetupWorkOutcome.Completed,
-            Saved: await backend.SaveAsync(snapshot, expected, token).ConfigureAwait(false))), result =>
+        var store = lorebooks;
+        var lore = pendingLore.Values.ToArray();
+        LorebookSaveResult? loreSaved = null;
+        await ObserveAsync(operations.TryStart(async token =>
+        {
+            var saved = await backend.SaveAsync(snapshot, expected, token).ConfigureAwait(false);
+            if (saved.Save.Saved && lore.Length > 0 && store is not null)
+                loreSaved = await store.UpdateAsync(library => AttachCardLore(library, lore, saved.Settings), token).ConfigureAwait(false);
+            return new(SetupWorkOutcome.Completed, Saved: saved);
+        }), result =>
         {
             var saved = result.Saved!;
             ResultText.Text = saved.Save.Saved
@@ -408,11 +442,46 @@ public partial class CompanionWindow : ThemedWindow
                 : saved.Save.Error!.Summary;
             if (saved.Save.Saved)
             {
+                if (loreSaved is { Saved: true })
+                {
+                    ResultText.Text += " " + string.Join(" ", lore.Select(book =>
+                        $"The lorebook \"{book.Name}\" ({book.Entries.Count} keyword {(book.Entries.Count == 1 ? "entry" : "entries")}) is saved and used with its persona; change it on Companion > Lorebook."));
+                    pendingLore.Clear();
+                }
+                else if (loreSaved is { } failed)
+                    ResultText.Text += " The character card's lorebook was not saved: " + failed.Error + " Save again to retry.";
                 draft = saved.Settings;
                 revision = saved.Save.Revision;
                 RenderPersonas();
             }
         });
+    }
+
+    /// <summary>Adds each card's keyword lorebook for its persona, replacing an earlier copy from the same card (same name, same
+    /// single persona). Lorebooks for personas that were deleted before saving are dropped.</summary>
+    internal static LorebookLibrary AttachCardLore(LorebookLibrary library, IEnumerable<Lorebook> books, AppSettings saved)
+    {
+        var personas = saved.Companion?.Personas.Select(persona => persona.Id).ToHashSet() ?? [];
+        foreach (var book in books)
+        {
+            if (book.PersonaIds is not [var persona] || !personas.Contains(persona)) continue;
+            var existing = library.Books.FirstOrDefault(item => item.Activation == LorebookActivation.SelectedPersonas &&
+                item.PersonaIds is [var only] && only == persona && string.Equals(item.Name, book.Name, StringComparison.OrdinalIgnoreCase));
+            if (existing is not null)
+            {
+                library = library with
+                {
+                    Books = library.Books.Select(item => item.Id == existing.Id
+                        ? existing with { Entries = book.Entries, Description = book.Description } : item).ToArray()
+                };
+                continue;
+            }
+            ContractRules.Require(library.Books.Count < LorebookLibrary.MaximumBooks,
+                $"At most {LorebookLibrary.MaximumBooks} lorebooks are supported. Delete one on Companion > Lorebook.");
+            library = library with { Books = library.Books.Append(book with { Name = library.UniqueName(book.Name) }).ToArray() };
+        }
+        library.Validate();
+        return library;
     }
 
     private async void Reload_Click(object sender, RoutedEventArgs e) => await LoadAsync();

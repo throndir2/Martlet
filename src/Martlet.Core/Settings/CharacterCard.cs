@@ -26,8 +26,10 @@ public sealed partial record CharacterCard
     public string PostHistoryInstructions { get; init; } = "";
     /// <summary>Enabled lorebook entries marked constant (always in the prompt).</summary>
     public IReadOnlyList<string> AlwaysOnLore { get; init; } = [];
-    /// <summary>Enabled lorebook entries that only apply when a keyword appears; Martlet has no lorebook, so these are not imported.</summary>
+    /// <summary>Enabled lorebook entries that only apply when a keyword appears; they go to a lorebook, not the persona text.</summary>
     public int KeywordLoreEntries { get; init; }
+    /// <summary>The card's embedded character book as a Martlet lorebook (every entry, including always-on ones), if it has one.</summary>
+    public Lorebooks.LorebookImport? Lorebook { get; init; }
 
     /// <summary>The name the character goes by: a V3 nickname replaces <c>{{char}}</c> instead of the full name.</summary>
     public string DisplayName => Nickname.Length > 0 ? Nickname : Name;
@@ -415,6 +417,7 @@ public static class CharacterCardReader
 
         var lore = new List<string>();
         var keywordLore = 0;
+        Lorebooks.LorebookImport? lorebook = null;
         if (data.TryGetProperty("character_book", out var book) && book.ValueKind == JsonValueKind.Object &&
             book.TryGetProperty("entries", out var entries) && entries.ValueKind == JsonValueKind.Array)
         {
@@ -426,6 +429,8 @@ public static class CharacterCardReader
                 if (Flag(entry, "constant", false)) lore.Add(content);
                 else keywordLore++;
             }
+            var nickname = Text(data, "nickname").Trim();
+            lorebook = Lorebooks.SillyTavernLorebooks.FromCard(book, nickname.Length > 0 ? nickname : First(data, "name", "char_name").Trim());
         }
 
         var card = new CharacterCard
@@ -442,7 +447,8 @@ public static class CharacterCardReader
             SystemPrompt = Text(data, "system_prompt"),
             PostHistoryInstructions = Text(data, "post_history_instructions"),
             AlwaysOnLore = lore,
-            KeywordLoreEntries = keywordLore
+            KeywordLoreEntries = keywordLore,
+            Lorebook = lorebook
         };
         if (card.Name.Length == 0 && card.Description.Trim().Length == 0 && card.Personality.Trim().Length == 0)
             throw new CharacterCardException(Unsupported);

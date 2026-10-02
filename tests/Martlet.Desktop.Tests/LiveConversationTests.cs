@@ -24,6 +24,43 @@ namespace Martlet.Desktop.Tests;
 public sealed class LiveConversationTests
 {
     [Fact]
+    public async Task TriggeredLorebookEntriesSurroundThePersonaAndStayWhenSpaceRunsOut()
+    {
+        await using var fixture = await LiveFixture.Create();
+        var configuration = LiveConversationConfiguration.From(await fixture.Store.LoadAsync())!;
+        var library = Martlet.Core.Lorebooks.LorebookLibrary.Create() with
+        {
+            Books =
+            [
+                new()
+                {
+                    Id = Guid.NewGuid(), Name = "World",
+                    Entries =
+                    [
+                        new() { Uid = 0, Keys = ["castle"], Content = "The castle is Mab's.", Position = Martlet.Core.Lorebooks.LorebookPosition.BeforePersona },
+                        new() { Uid = 1, Keys = ["castle"], Content = "{{char}} fears the castle." }
+                    ]
+                }
+            ]
+        };
+        var lore = Martlet.Core.Lorebooks.LorebookScanner.Scan(library,
+            new("Tell me about the castle", [], configuration.Persona?.Id, configuration.Persona?.Name), _ => 0);
+        var long_ = new string('a', 4_000);
+        TextHistoryMessage[] history = [new(TextHistoryRole.User, long_), new(TextHistoryRole.Assistant, long_),
+            new(TextHistoryRole.User, long_), new(TextHistoryRole.Assistant, long_)];
+        var request = configuration.Request(new("Tell me about the castle"), false, ResponseStyle.Helpful, history, null, lore,
+            out var usedHistory, out _, out var usedLore);
+        Assert.Equal(2, usedLore);
+        Assert.True(usedHistory < history.Length);
+        var instructions = request.Input.Personality!;
+        var before = instructions.IndexOf("The castle is Mab's.", StringComparison.Ordinal);
+        var persona = instructions.IndexOf("Companion name:", StringComparison.Ordinal);
+        var after = instructions.IndexOf("fears the castle.", StringComparison.Ordinal);
+        Assert.True(before >= 0 && before < persona && persona < after, instructions);
+        Assert.Contains("[MARTLET_LOREBOOK]", instructions);
+        fixture.NoEffects();
+    }
+    [Fact]
     public async Task SchemaFiveDisabledOrSelfHostRouteCannotReachTheApiAdapter()
     {
         await using var fixture = await LiveFixture.Create();
@@ -58,7 +95,7 @@ public sealed class LiveConversationTests
         configuration = LiveConversationConfiguration.From(loaded with { Settings = paired })!;
         Assert.Null(configuration.Unavailable(false, false));
         Assert.Contains("Your own Martlet host runs this model", configuration.Disclosure(false));
-        var request = configuration.Request(new("Hello host"), false, ResponseStyle.Helpful, [], null, out _, out _);
+        var request = configuration.Request(new("Hello host"), false, ResponseStyle.Helpful, [], null, null, out _, out _, out _);
         Assert.Equal(SelfHostSetup.GatewayOllamaAlias, request.Model.ModelAlias);
         Assert.Equal("llama3.2-3b", request.Model.UpstreamModelId);
         Assert.Equal(("fixture-host", "https://127.0.0.1:7443", pairingCredential),
@@ -67,7 +104,7 @@ public sealed class LiveConversationTests
         Assert.Equal(VisionSupport.Unsupported, configuration.Vision());
         Assert.Contains("gemma3:4b", configuration.VisionAdvice());
         var image = new BoundedImage([0xFF, 0xD8, 0xFF, .. new byte[32]], ImageMediaType.Jpeg, 4, 4);
-        var glance = configuration.Request(new("(Screen glance.)"), false, ResponseStyle.Helpful, [], null, out _, out _, image,
+        var glance = configuration.Request(new("(Screen glance.)"), false, ResponseStyle.Helpful, [], null, null, out _, out _, out _, image,
             LiveConversationConfiguration.CommentaryInstructions(Chattiness.Normal), LiveConversationConfiguration.SilentReply);
         Assert.Same(image, glance.Input.Image);
         Assert.Equal("pass", glance.SilentReply);

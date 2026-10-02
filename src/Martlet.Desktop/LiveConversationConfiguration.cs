@@ -1,6 +1,7 @@
 using Martlet.Audio;
 using Martlet.Conversation;
 using Martlet.Core.Contracts;
+using Martlet.Core.Lorebooks;
 using Martlet.Core.Settings;
 using Martlet.Providers;
 
@@ -252,6 +253,7 @@ internal sealed class LiveConversationConfiguration
                 ? "LLM: <=1 request, <=4096 user-input characters / 16,384 UTF-8 bytes / <=16,640 input-token reservation (not measured tokens). This legacy settings profile has no persona; no persona/style instructions are uploaded until settings v3 is explicitly saved.\n"
                 : $"LLM: <=1 request, <=4096 user-input characters; the selected persona '{Persona.Name}' and one weighted response style are included in the same <=16,384 UTF-8 byte / <=16,640 input-token reservation (not measured tokens). Persona revision is fixed for this action.\n") +
             "Up to eight completed explicit exchanges from the last two minutes may be included from volatile in-memory context only. Oldest exchanges are omitted until current input, persona, style and context fit the same LLM byte/token reservation. Pause, lock, configuration reload/change, Stop or closing the conversation clears context; it is not persisted.\n" +
+            "Lorebooks: entries of the lorebooks you turned on (Companion > Lorebook, saved on this PC in lorebooks.json) are added to the LLM instructions when their keywords appear in what was just said (always-on entries every time), up to the lorebook budget and inside the same byte/token reservation. With no lorebook on, nothing is added.\n" +
             (Memory is { Enabled: true }
                 ? $"Memory is ON (change it in Memory). Each reply may include up to {DesktopMemoryService.MaximumRecalledFacts} facts saved on this PC (the best matches for what you said, then the newest) inside the same LLM input budget; the complete store is never uploaded and recalled facts are background data, not instructions. After each completed reply, Martlet sends that exchange (with the previous exchange and up to {MemoryCapture.MaximumShownFacts} related saved facts) once more to the same Thinking model in one extra text-only request of <={TextLimits.MaxOutputTokens} output tokens, so it can pick out lasting things worth remembering; they are saved on this PC only and listed in Memory, where you can edit or delete them. Screen glances are not remembered. Lock, pause, mute or a configuration change cancels pending remembering.\n"
                 : "Memory is OFF: nothing is recalled or remembered and the memory store is not opened. Turn it on in Memory.\n") +
@@ -266,54 +268,68 @@ internal sealed class LiveConversationConfiguration
     }
 
     internal ConversationRequest Request(BoundedTextInput input, bool voice, ResponseStyle? style,
-        IReadOnlyList<TextHistoryMessage> history, DesktopMemoryRecall? memory,
-        out int usedHistoryMessages, out int usedMemoryFacts, BoundedImage? image = null, string? extraInstructions = null,
-        string? silentReply = null)
+        IReadOnlyList<TextHistoryMessage> history, DesktopMemoryRecall? memory, LorebookScanResult? lore,
+        out int usedHistoryMessages, out int usedMemoryFacts, out int usedLoreEntries, BoundedImage? image = null,
+        string? extraInstructions = null, string? silentReply = null)
     {
         ArgumentNullException.ThrowIfNull(history);
-        string? instructions = null;
+        string? persona = null;
         if (Persona is not null)
-            instructions = PersonaInstructions(Persona, style ??
+            persona = PersonaInstructions(Persona, style ??
                 throw new LiveActionException("conversation.input_limit"));
-        if (extraInstructions is not null)
-            instructions = instructions is null ? extraInstructions : instructions + "\n\n" + extraInstructions;
         var facts = memory?.Facts ?? [];
-        // Least relevant recalled facts go first, then the oldest exchanges, until the request fits.
-        for (var memoryCount = facts.Count; memoryCount >= 0; memoryCount--)
+        var hits = lore?.Included ?? [];
+        // Lorebook entries keep their budget like SillyTavern's World Info: recalled facts go first (least relevant first),
+        // then the oldest exchanges; only when nothing else is left do the lowest-priority lore entries go.
+        for (var loreCount = hits.Count; loreCount >= 0; loreCount--)
         {
-            var candidateInstructions = memoryCount == 0
-                ? instructions
-                : instructions is null
-                    ? MemoryPromptContext.Instructions(facts.Take(memoryCount).ToArray())
-                    : instructions + "\n\n" + MemoryPromptContext.Instructions(facts.Take(memoryCount).ToArray());
-            for (var start = 0; start <= history.Count; start += 2)
+            var (before, after) = LorebookPromptContext.Blocks(hits.Take(loreCount).ToArray());
+            var instructions = Join(before, persona, after, extraInstructions);
+            if (!Fits(input, instructions, [], image))
+                continue;
+            for (var memoryCount = facts.Count; memoryCount >= 0; memoryCount--)
             {
-                var combined = history.Skip(start).ToArray();
-                if (combined.Length > BoundedTextInput.HardMaxHistoryMessages)
-                    continue;
-                BoundedTextInput prompted;
-                try
+                var candidateInstructions = memoryCount == 0 ? instructions
+                    : Join(instructions, MemoryPromptContext.Instructions(facts.Take(memoryCount).ToArray()));
+                for (var start = 0; start <= history.Count; start += 2)
                 {
-                    prompted = new(input.UserText, candidateInstructions, combined, image);
+                    var combined = history.Skip(start).ToArray();
+                    if (combined.Length > BoundedTextInput.HardMaxHistoryMessages || Prompt(input, candidateInstructions, combined, image) is not { } prompted)
+                        continue;
+                    usedHistoryMessages = history.Count - start;
+                    usedMemoryFacts = memoryCount;
+                    usedLoreEntries = loreCount;
+                    return new(prompted,
+                        TextSelection(), TextLimits, TurnLimits,
+                        voice ? new(SpeechSelection(),
+                            new(Audio!.Output.EndpointId is null ? OutputPolicy.DefaultAtStart : OutputPolicy.FixedEndpoint, Audio.Output.EndpointId),
+                            SpeechLimits) : null, ChatTarget(), HostTarget(), voice ? HostSpeechTarget() : null, silentReply,
+                        voice ? WindowsVoiceTarget() : null, Generation);
                 }
-                catch (ContractException)
-                {
-                    continue;
-                }
-                if (prompted.Utf8Bytes > TextLimits.MaxInputBytes ||
-                    prompted.InputTokenReservation > TextLimits.MaxInputTokens)
-                    continue;
-                usedHistoryMessages = history.Count - start;
-                usedMemoryFacts = memoryCount;
-                return new(prompted,
-                    TextSelection(), TextLimits, TurnLimits,
-                    voice ? new(SpeechSelection(),
-                        new(Audio!.Output.EndpointId is null ? OutputPolicy.DefaultAtStart : OutputPolicy.FixedEndpoint, Audio.Output.EndpointId),
-                        SpeechLimits) : null, ChatTarget(), HostTarget(), voice ? HostSpeechTarget() : null, silentReply,
-                    voice ? WindowsVoiceTarget() : null, Generation);
             }
         }
         throw new LiveActionException("conversation.input_limit");
+    }
+
+    private static string? Join(params string?[] parts) =>
+        parts.Where(part => part is not null).ToArray() is { Length: > 0 } present ? string.Join("\n\n", present) : null;
+
+    private bool Fits(BoundedTextInput input, string? instructions, TextHistoryMessage[] history, BoundedImage? image) =>
+        Prompt(input, instructions, history, image) is not null;
+
+    private BoundedTextInput? Prompt(BoundedTextInput input, string? instructions, TextHistoryMessage[] history, BoundedImage? image)
+    {
+        BoundedTextInput prompted;
+        try
+        {
+            prompted = new(input.UserText, instructions, history, image);
+        }
+        catch (ContractException)
+        {
+            return null;
+        }
+        return prompted.Utf8Bytes > TextLimits.MaxInputBytes || prompted.InputTokenReservation > TextLimits.MaxInputTokens
+            ? null : prompted;
     }
 
     /// <summary>The text-only request that asks the Thinking model what to remember from a finished exchange. It keeps the
@@ -373,7 +389,7 @@ internal sealed class LiveConversationConfiguration
                     : $"fetches one picture from {source.Label} (a snapshot or the first frame of an MJPEG stream; rtsp:// streams and video files are read through Media Foundation)") +
                 $" every {ScreenCommentaryPacer.Tick.TotalSeconds:0} s, downscaled and kept only in memory. " +
                 $"Now and then it sends ONE picture (JPEG, at most {ScreenGlancer.MaximumEdge} px)" +
-                (source.Kind == WatchKind.Camera ? " with the camera name" : "") + $", your persona and recent conversation to {destination}: " +
+                (source.Kind == WatchKind.Camera ? " with the camera name" : "") + $", your persona, triggered lorebook entries and recent conversation to {destination}: " +
                 $"at most {tuning.LooksPerHour} looks per hour ({chattiness}). Most looks end in silence; with a cloud provider each look is a request " +
                 "that may cost money (a paired host has no per-request charge). The model is told never to identify people or comment on anyone's looks. " +
                 "Anyone in view of the camera is seen; tell them. Pictures are never saved, logged or added to memory, and a password in the address is never saved. " +
@@ -381,7 +397,7 @@ internal sealed class LiveConversationConfiguration
         return "While vision is on and the talk window is open, Martlet captures your " +
             (source.Scope == ScreenScope.ActiveWindow ? "active window" : "whole screen (the monitor your active window is on)") +
             $" on this PC every {ScreenCommentaryPacer.Tick.TotalSeconds:0} s (full-screen games too, without touching the game), downscaled and kept only in memory. " +
-            $"Now and then it sends ONE screenshot (JPEG, at most {ScreenGlancer.MaximumEdge} px) with the window title, your persona and recent conversation to " +
+            $"Now and then it sends ONE screenshot (JPEG, at most {ScreenGlancer.MaximumEdge} px) with the window title, your persona, triggered lorebook entries and recent conversation to " +
             $"{destination}: at most {tuning.LooksPerHour} looks per hour ({chattiness}). " +
             "Most looks end in silence; with a cloud provider each look is a request that may cost money (a paired host has no per-request charge). " +
             "Martlet's own windows, minimized windows, password managers and private/incognito browser windows are never captured; " +
