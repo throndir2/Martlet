@@ -1250,6 +1250,7 @@ public partial class MainWindow
                 PageButton("Choose and customize", () => RunNodeAction(NodeAction.Character), id: "OpenAvatar"),
                 showing ? PageButton("Reset position", () => ResetCharacterPositionAsync().Forget(), id: "SetupCharacterResetPosition") : null,
                 showing ? PageButton("Reset zoom", () => ResetCharacterZoomAsync().Forget(), id: "SetupCharacterResetZoom") : null)));
+        page.Children.Add(SpeechDisplayCard());
         characterViewText = null;
         if (!showing) return;
         // Wheel zoom happens on the overlay itself; Martlet reads the overlay's view whenever this page renders.
@@ -1262,6 +1263,74 @@ public partial class MainWindow
                 PageButton("Zoom out", () => ZoomCharacterAsync("out").Forget(), id: "SetupCharacterZoomOut")),
             characterViewText));
         ZoomCharacterAsync("status").Forget();
+    }
+
+    private CheckBox? speechBubbleChoice, subtitleChoice;
+    private TextBlock? speechDisplayText;
+    private Button? speechPreviewButton;
+
+    /// <summary>Companion › Character's speech bubbles (on by default, shown while the character is) and subtitles: the same
+    /// saved choices as the character settings window, applied from Martlet's next sentence.</summary>
+    private Border SpeechDisplayCard()
+    {
+        var prefs = captions.Preferences;
+        speechBubbleChoice = new CheckBox { Content = "Speech bubbles beside the character while Martlet speaks", IsChecked = prefs.SpeechBubbles };
+        subtitleChoice = new CheckBox
+        {
+            Content = "Subtitles at the bottom of the active screen while Martlet speaks", IsChecked = prefs.Subtitles,
+            Margin = new Thickness(0, 6, 0, 0)
+        };
+        AutomationProperties.SetAutomationId(speechBubbleChoice, "SetupCharacterSpeechBubbles");
+        AutomationProperties.SetAutomationId(subtitleChoice, "SetupCharacterSubtitles");
+        speechBubbleChoice.Checked += (_, _) => SaveSpeechDisplay();
+        speechBubbleChoice.Unchecked += (_, _) => SaveSpeechDisplay();
+        subtitleChoice.Checked += (_, _) => SaveSpeechDisplay();
+        subtitleChoice.Unchecked += (_, _) => SaveSpeechDisplay();
+        speechDisplayText = Note("", new Thickness(0, 8, 0, 0));
+        AutomationProperties.SetAutomationId(speechDisplayText, "SetupCharacterSpeechDisplay");
+        speechPreviewButton = PageButton("Preview a speech bubble", () => PreviewSpeechBubbleAsync().Forget(), id: "SetupCharacterPreviewBubble");
+        ShowSpeechDisplay();
+        return Card(Heading("Speech bubbles and subtitles"), speechBubbleChoice, subtitleChoice,
+            Note("Subtitles follow the screen of the window you are using, appear on top of full-screen games just like the character, " +
+                "and are hidden from screen capture.", new Thickness(0, 6, 0, 0)),
+            speechDisplayText, Row(speechPreviewButton));
+    }
+
+    private void SaveSpeechDisplay()
+    {
+        if (showingSpeechDisplay || speechBubbleChoice is null || subtitleChoice is null) return;
+        var saved = captions.Update(new(speechBubbleChoice.IsChecked == true, subtitleChoice.IsChecked == true));
+        if (!saved) ShowSpeechDisplay("Applied for now, but speech-display.json could not be saved. Check access to your data folder.");
+    }
+
+    private bool showingSpeechDisplay;
+
+    /// <summary>Follows the saved choices, whichever window changed them.</summary>
+    private void ShowSpeechDisplay(string? outcome = null)
+    {
+        if (speechDisplayText is null) return;
+        var prefs = captions.Preferences;
+        showingSpeechDisplay = true;
+        try
+        {
+            if (speechBubbleChoice is not null) speechBubbleChoice.IsChecked = prefs.SpeechBubbles;
+            if (subtitleChoice is not null) subtitleChoice.IsChecked = prefs.Subtitles;
+        }
+        finally { showingSpeechDisplay = false; }
+        if (speechPreviewButton is not null) speechPreviewButton.IsEnabled = avatar.IsShowing && prefs.SpeechBubbles;
+        var bubbles = !prefs.SpeechBubbles ? "Speech bubbles are off."
+            : avatar.IsShowing ? "Speech bubbles are on: each sentence Martlet says appears beside the character."
+            : "Speech bubbles are on and appear beside the character once it is showing.";
+        speechDisplayText.Text = $"{bubbles} Subtitles are {(prefs.Subtitles ? "on" : "off")}." + (outcome is null ? "" : " " + outcome);
+    }
+
+    private async Task PreviewSpeechBubbleAsync()
+    {
+        var shown = await captions.PreviewAsync("Hi! While I talk, what I say shows up here.");
+        if (closing) return;
+        ShowSpeechDisplay(shown
+            ? "Preview bubble shown beside the character for a few seconds."
+            : "The preview bubble could not be shown. Show the character and try again.");
     }
 
     // ---------- personality ----------

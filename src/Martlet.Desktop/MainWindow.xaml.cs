@@ -83,6 +83,7 @@ public partial class MainWindow : ThemedWindow
         parakeet = store is null ? null : new(LocalVoices.SpeechRoot(store.DataDirectory));
         recovery = store is null ? null : new(store, setupOperations, () => !support.HasResources);
         captions = new(avatar, store?.DataDirectory);
+        captions.Changed += () => ShowSpeechDisplay();
         if (setupService is not null)
         {
             conversation = new(setupOperations, setupService, vault, new WasapiCaptureDeviceFactory(), new WasapiDeviceFactory(),
