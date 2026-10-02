@@ -151,7 +151,7 @@ now. The macOS, iOS and Android apps must implement them the same way.
 | Situation | What Martlet does |
 | --- | --- |
 | The host doing a job stops answering | The job is shown as not working, with its effect. Fixes: check it now, use the Setup choice, open Devices. With failover on, the card names the host it will move to, or says no other host runs the engine |
-| The host answers but the role was removed or its model is gone | Same as above: "gpu-1 answers but no longer runs Ollama" |
+| The host answers but the role was removed or never installed | Shown as not working (lip-sync: reduced): "gpu-1 answers but doesn't run Ollama: it isn't installed there". Fixes: install it there, use the Setup choice, open Devices |
 | This PC reaches no host at all | Every host job shows as not answering. Failover does not run, because this PC's own network is the likelier problem (see [CLUSTER](CLUSTER.md#edge-cases)) |
 | Forgetting a host that does jobs | The confirmation lists each job's fate. Jobs go back to their Setup choices first. A job with no Setup choice is left with nobody, and the card says so |
 | Removing a role that does a job here | Failover target: the job moves there. Otherwise it goes back to the Setup choice first ("Hand back and remove"). Otherwise nobody does it, as the confirmation said |

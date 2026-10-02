@@ -227,9 +227,10 @@ The long form became a four-step wizard with a step rail:
    automatically* (*Pair automatically over SSH* for SSH hosts), the pasted
    code and *Pair*, plus *Check* and *Forget*.
    Pairing adds the host to `hosts.json` (every paired host and how Martlet
-   reaches it; nonsecret, secrets stay in Windows Credential Manager). The
-   first host paired takes over lip-sync; later hosts stand by until you hand
-   them a job under *Who does what*.
+   reaches it; nonsecret, secrets stay in Windows Credential Manager). Pairing
+   hands the host no job (re-pairing keeps the ones it had): it stands by
+   until you hand it a job under *Who does what*. Lip-sync goes to a host only
+   once it runs Audio2Face, or with its install in the same step.
 4. **Roles**: role cards (Audio2Face today; planned roles shown as coming soon),
    with *Add*, *Remove* and *Host status*.
 
