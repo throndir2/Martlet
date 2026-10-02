@@ -272,7 +272,7 @@ sideloading only, no paid Apple program.
 [Platforms](PLATFORMS.md) defines what each OS supports as the device you talk
 to and as a host. PL01 (merged with that page) adds the `Martlet.Core.Platforms`
 catalog and coverage rules. In the Windows app, impossible host choices are
-disabled with the reason, and Home and Who does what show which job stopped
+disabled with the reason, and Home and Devices show which job stopped
 working, its effect and a fix. Forgetting a host or removing a role first says
 where each job goes, then hands jobs back to their Setup choices. Hosts report
 `platform`/`architecture`/`features`. PL02 dispatches Windows speech and

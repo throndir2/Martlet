@@ -154,8 +154,8 @@ public partial class AvatarWindow : ThemedWindow
     private AvatarRemoteHost? remoteHost;
 
     private void ShowRemoteHost() => HostStatusText.Text = remoteHost is { } host
-        ? $"Lip-sync is handed to Martlet host {host.HostId} at {host.Origin} (Audio2Face), with this PC's own service and voice loudness as fallbacks. Switch it under Devices > Who does what."
-        : "No Martlet host handles lip-sync. Pair one, then hand it lip-sync under Devices > Who does what.";
+        ? $"Lip-sync is handed to Martlet host {host.HostId} at {host.Origin} (Audio2Face), with this PC's own service and voice loudness as fallbacks. Switch it from the Lip-sync row on the Devices page."
+        : "No Martlet host handles lip-sync. Pair one, then hand it lip-sync on the Devices page.";
 
     private async void Hosts_Click(object sender, RoutedEventArgs e)
     {

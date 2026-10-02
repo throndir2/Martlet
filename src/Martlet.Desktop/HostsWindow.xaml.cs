@@ -280,7 +280,7 @@ public partial class HostsWindow : ThemedWindow
         string check;
         try { check = await CheckAsync(host.Pairing, Hardware, run.Status, run.Token); }
         catch (InvalidOperationException error) { check = "Its check did not answer yet: " + error.Message; }
-        return $"{host.HostId} is set up and paired. {check} It is on the Devices map; hand it jobs under Who does what.";
+        return $"{host.HostId} is set up and paired. {check} It is on the Devices map; select it there to hand it jobs.";
     }
 
     private async void ResetSshTrust_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
@@ -461,7 +461,7 @@ public partial class HostsWindow : ThemedWindow
         ShowPaired((await pairings.LoadAsync(lifetime.Token)).Hosts.Count);
         StatusText.Text = $"Paired with {host.HostId}. " + (lipSync
             ? "It keeps handling lip-sync."
-            : "It stands by; hand it jobs under Who does what on the Devices map.");
+            : "It stands by; select it on the Devices map to hand it jobs.");
         return host;
     }
 

@@ -91,7 +91,7 @@ public partial class MainWindow
         RefreshCoverage();
     }
 
-    /// <summary>Records a job change made on this PC (in Who does what or Setup) as the newest entry of the shared plan.</summary>
+    /// <summary>Records a job change made on this PC (on the Devices page or in Setup) as the newest entry of the shared plan.</summary>
     private void RecordClusterJob(string job, LocalJob local)
     {
         clusterObserved[job] = local;
@@ -104,7 +104,7 @@ public partial class MainWindow
         QueueClusterSync();
     }
 
-    /// <summary>Notices jobs that changed outside Who does what (for example in Setup) and records them.</summary>
+    /// <summary>Notices jobs that changed outside the Devices page (for example in Setup) and records them.</summary>
     private void ObserveLocalJobs()
     {
         if (store is null || homeSettings?.Setup is null) return;
@@ -392,7 +392,7 @@ public partial class MainWindow
         if (!clusterEnabled)
         {
             ClusterStatusText.Text = store is null ? "Unavailable without a local data folder."
-                : "Off: each computer keeps its own choices and nothing is checked in the background.";
+                : "Off: each computer keeps its own choices and nothing is checked in the background. Turn it on to let jobs fail over to another host.";
             return;
         }
         if (clusterCheckedAt is not { } checkedAt)
@@ -415,17 +415,16 @@ public partial class MainWindow
             (old > 0 ? $" {old} run{(old == 1 ? "s" : "")} an older Martlet: update {(old == 1 ? "it" : "them")} to share the plan (they can still do jobs)." : "");
     }
 
-    /// <summary>The failover choice and sync notes under a job's tile, or null when no host is paired.</summary>
+    /// <summary>The failover choice and sync notes under a job's row while Keep in sync is on, or null (sync off, or no
+    /// host paired).</summary>
     private FrameworkElement? ClusterControls(string job)
     {
-        if (NetworkMap.Hosts(Inputs()).Count == 0) return null;
+        if (!clusterEnabled || NetworkMap.Hosts(Inputs()).Count == 0) return null;
         var panel = new StackPanel { Margin = new Thickness(0, 6, 0, 0) };
         var failover = new CheckBox
         {
-            Content = "Fail over to another host", IsChecked = clusterPlan.For(job)?.Failover == true, IsEnabled = clusterEnabled,
-            ToolTip = clusterEnabled
-                ? $"If its host stops answering for about 30 seconds, move it to another paired host that runs {ClusterSync.Engine(job)}."
-                : "Turn on Keep in sync above first."
+            Content = "Fail over to another host", IsChecked = clusterPlan.For(job)?.Failover == true,
+            ToolTip = $"If its host stops answering for about 30 seconds, move it to another paired host that runs {ClusterSync.Engine(job)}."
         };
         AutomationProperties.SetAutomationId(failover, ClusterSync.Title(job).Replace("-", "", StringComparison.Ordinal) + "Failover");
         AutomationProperties.SetName(failover, $"Fail {ClusterSync.Title(job).ToLowerInvariant()} over to another host");

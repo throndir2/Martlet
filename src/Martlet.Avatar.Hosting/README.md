@@ -51,7 +51,7 @@ one-use `martlet-pair-v1...` code the host's `pair` console shows. The device
 secret is stored in Windows Credential Manager; `avatar.json` keeps only the
 nonsecret `RemoteHost` identity of the host that handles lip-sync, and
 `hosts.json` lists every paired host. Hand lip-sync to another host, back to
-this PC or to nobody under Devices > **Who does what**; a showing character
+this PC or to nobody from the Lip-sync row's **Done by** on the Devices page; a showing character
 switches without restarting.
 Automatic lip-sync then prefers the host in charge, then a local service, then
 loudness. Sentences are relayed in 0.5 s / 1 s chunks with 0.5 s of context so

@@ -169,7 +169,21 @@ these status texts, as does the talk window's `LiveStatus` (the line under "Mart
 `PeopleOtherNames-3`, `PeopleSave-3`, `PeopleOwner-3`, `PeopleMergeTarget-3`,
 `PeopleMerge-3`, `PeopleForget-3`); like `PeopleInstall`, `PeopleRecognize`,
 `PeopleShare`, `PeopleSync`, `PeopleForgetAll` and `SetupListenParakeet`, they
-change data or download and need `--allow-ui-effects`. Use `ui_snapshot` again to observe asynchronous effects. Modal
+change data or download and need `--allow-ui-effects`. On Devices, `Node-<id>`
+selects a device on the map (`Node-this-pc`, `Node-host:<host ID>`,
+`Node-cloud:<server>`, `Node-add`, `Node-missing:brain`) and
+`CoverageShow-<job>` selects the device doing a job; both only show details, so
+they are passive clicks, as are the `DeviceFactsSection`, `DeviceRolesSection`
+and `DeviceReachSection` expanders. `SelectedDevice` and `SelectedDeviceHealth`
+return the selected device's name and status, and each row title
+`DeviceComponent-<part>` (`job-Llm`, `job-Stt`, `job-Tts`, `lipsync`,
+`character`, `audio`, `host-service`, `host`, `role-<role>`, `offer`) returns the
+job's name. Job owners are `ThinkingOwner`, `ListeningOwner`, `SpeakingOwner`
+and `LipSyncOwner`, device commands `NodeAction-<action>`
+(`NodeAction-InstallRole-<role>` and `NodeAction-RemoveRole-<role>` for host
+roles), and Settings for all devices holds `CheckHosts`, `ClusterSync`,
+`ClusterStatus` (returned as text) and `RoleSetup-<role>` for jobs nobody does.
+Use `ui_snapshot` again to observe asynchronous effects. Modal
 actions may return `completed: false` while their dialog remains open; this
 means the invoke is still pending, not that the action finished.
 
@@ -263,12 +277,13 @@ observe them:
   ID; duplicates fail as ambiguous).
 - **Passive clicks:** add navigation, open/close, refresh and expand controls
   that start no work to `SafeClicks` in
-  `src\Martlet.Mcp.Protocol\DesktopAutomation.cs` (Companion pages,
-  `CompanionTab-*`, are allowed by prefix). Anything that sends,
+  `src\Martlet.Mcp.Protocol\DesktopAutomation.cs` (or `SafeClickPrefixes` for a
+  family of generated IDs such as `CompanionTab-` and `Node-`). Anything that sends,
   records, plays, spends, writes files or handles credentials stays behind
   `--allow-ui-effects`.
-- **Status:** add read-only, non-secret status fields to `SafeValues` so
-  snapshots return their text (a value pattern's value, a text block's text, or a status button's accessible name).
+- **Status:** add read-only, non-secret status fields to `SafeValues` (or
+  `SafeValuePrefixes`) so snapshots return their text (a value pattern's value,
+  a text block's text, or a status button's accessible name).
   Never expose editable fields, credentials, personal data or file paths.
 - **Headless capabilities:** add a tool to `Tools` and `CallAsync` in
   `src\Martlet.Mcp.Protocol\McpServer.cs` (strict input schema, bounded

@@ -3,7 +3,7 @@
 Martlet can keep **who does what** (which computer handles thinking,
 listening, speaking and lip-sync) the same on every computer you own, move
 jobs between computers on the spot, and move a job to another host when its
-host stops answering. It is opt-in: **Devices > Who does what > Keep who does
+host stops answering. It is opt-in: **Devices > Settings for all devices > Keep who does
 what in sync on all my computers**, plus a per-job **Fail over to another
 host** choice.
 
@@ -58,7 +58,7 @@ hosts**) the desktop:
    window reloads when idle;
 7. merges its copy into every reachable host whose copy differs.
 
-Changes made on this PC (Who does what, Setup, forgetting a host, failover
+Changes made on this PC (the Devices page, Setup, forgetting a host, failover
 choices) are recorded immediately, even while sync is off, so turning sync on
 later keeps whichever change is actually newest.
 
@@ -70,20 +70,20 @@ answered and advertises the job's route (the role is installed and its model
 ready). Candidates are ranked by fewest other jobs, then most GPU memory
 (from the host's hardware report), then host ID, so desktops that see the same
 hosts pick the same one. The move is stamped with `moved_from` and shared; the
-tile says where it came from.
+row says where it came from.
 
 ## Edge cases
 
 | Case | Behavior |
 | --- | --- |
-| No other host runs the engine | The job stays; its tile says no other paired host can take over. It never falls back to a cloud provider or this PC's Setup choice by itself |
-| Failover off | The job stays; its tile says the host is not doing it and offers failover |
+| No other host runs the engine | The job stays; its row says no other paired host can take over. It never falls back to a cloud provider or this PC's Setup choice by itself |
+| Failover off | The job stays; its row on the Devices page says the host is not doing it and offers failover |
 | This PC reaches no host at all | No failover: its own network is the likelier problem |
 | Host answers but lost the role (removed, model gone) | Counts as not serving the job, like an unreachable host |
 | Flapping host | Two consecutive misses are needed; a moved job never moves back by itself (no ping-pong). Choose the original host again to move it back |
 | Two desktops fail over at once | Same ranking, so normally the same target; otherwise the newest stamp wins everywhere within a check |
 | Change made on another desktop | Followed within a check; the status line names the computer that chose it |
-| Planned host not paired with this PC | This PC keeps its current route and its tile says to pair that host here; the shared plan is not overwritten |
+| Planned host not paired with this PC | This PC keeps its current route and its row says to pair that host here; the shared plan is not overwritten |
 | Speaking moves to another F5 host | The applied reference voice is reused (same `f5-host` destination). A desktop without an F5 voice keeps its route and asks you to pick the voice |
 | Host model differs | The new route records the model the host advertises; the failover confirmation says the model may differ |
 | Host older than cluster sync | Still usable and a failover candidate; it keeps no copy, and the status line suggests **Update host** |
