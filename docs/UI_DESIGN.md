@@ -93,8 +93,9 @@ Below the hero, **Now** has one line per job: *Thinking*, *Voice*,
 *Listening* and *Character*. Each line has a status dot (green working, amber
 needs attention or not working, grey not set up), what Martlet uses now in one
 sentence, and one button (*Set up*, *Review* or *Change*) that opens that
-job's Companion tab. Only Thinking is required; while it is missing its line
-is highlighted and its button is primary. The Windows default microphone is
+job's Companion page. Only Thinking is required; while it is missing its line
+is highlighted and its button is primary. When lip-sync stops working, the
+*Character* line becomes a *Lip-sync* line that opens the Lip-sync page. The Windows default microphone is
 assumed to work: the Listening line says *No microphone found* or *Your chosen
 microphone isn't connected* (amber, with *Fix mic* once listening itself is
 ready) only when this PC has no microphone or the chosen one is unplugged, and
@@ -133,7 +134,7 @@ This page answers "what do I have, and what is each machine doing?"
   handing the job to a host checks it, offers to install the role (Ollama or
   whisper) there and switches over once it is ready, and the Setup choice comes
   back without re-entering a key. Each tile's *Change in Companion* opens that
-  job's tab (lip-sync's opens *Character*); speaking changes there, because it needs a model and consent. **Lip-sync switches on the spot**
+  job's page (lip-sync's opens *Lip-sync*); speaking changes there, because it needs a model and consent. **Lip-sync switches on the spot**
   from a drop-down once a host is paired: *This PC*,
   any paired host, or *Nobody (mouth follows voice loudness)*. A showing
   character keeps showing; the next sentence uses the new computer.
@@ -253,21 +254,34 @@ The conversation window puts the chat first:
 ### 7. Companion and Settings pages
 
 - **Companion** answers "how does Martlet think, sound, listen, look and
-  remember?" It is the one place each of those choices is made, as five tabs.
-  Home's Now lines, the Devices tiles and nodes, fix cards, the tour and the
-  advisor all open the matching tab (Companion opens on the last tab used,
-  *Thinking* at first):
-  1. *Thinking*: where the conversation model runs, the provider, the model and
-     its API key.
-  2. *Voice*: where the voice runs and the voice itself, then the speakers.
-  3. *Listening*: the speech-to-text provider, model and key, then the
-     microphone.
-  4. *Character*: what it looks like now, then the character model (show,
-     hide, choose and customize, reset), its personality, and where lip-sync
-     runs.
-  5. *Memory*: whether memory is on, and *Manage memory* for its facts.
+  remember?" It is the one place each of those choices is made, as pages in a
+  side list grouped by what they decide. Home's Now lines, the Devices tiles and
+  nodes, fix cards, the tour and the advisor all open the matching page
+  (Companion opens on the last page used, *Thinking* at first):
 
-  Every tab starts with **Now**: what it uses and any problem stopping it.
+  - **How it works** (where each job runs):
+    1. *Thinking*: where the conversation model runs, the provider, the model
+       and its API key.
+    2. *Voice*: where the voice runs and the voice itself, then the speakers.
+    3. *Listening*: the speech-to-text provider, model and key, then the
+       microphone.
+    4. *Lip-sync*: who moves the character's mouth, and where it runs.
+  - **Who it is**:
+    5. *Character*: what it looks like now, then the character model (show,
+       hide, choose and customize, reset).
+    6. *Personality*: the active persona and its style mix, *Edit
+       personality*, and *Import a character card*.
+    7. *Memory*: whether memory is on, and *Manage memory* for its facts.
+  - **What it does**: how it answers and acts (generation settings, tools,
+    smart home). The group appears once it has a page.
+
+  A page gets its own entry only if it has its own **Where it runs** choice,
+  its own consent or data destination, or its own list to edit; anything else
+  is a card on an existing page. Planned pages and their groups: *Vision* (how
+  it works), *Lorebook* (who it is), *Replies*, *Tools* and *Smart home* (what
+  it does).
+
+  Every page starts with **Now**: what it uses and any problem stopping it.
   Cards appear only when they apply to the chosen place: the Voice Library
   shows only where F5 speaks (this PC's F5 or another of your computers), never
   for a cloud provider or a Windows voice; a one-provider cloud card names the
@@ -303,7 +317,7 @@ The conversation window puts the chat first:
     choice checkbox. Saving stores the route, then the key in Windows Credential
     Manager, then the confirmed choice.
 
-  Lip-sync on the *Character* tab uses the same **Where it runs** chooser and
+  Lip-sync on its own page uses the same **Where it runs** chooser and
   cards, with *Voice loudness* in place of a cloud provider. The recommended
   place follows the hardware: *This PC* with an NVIDIA graphics card of 4 GB or
   more, otherwise another computer that can run Audio2Face, otherwise voice

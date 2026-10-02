@@ -17,16 +17,23 @@ using Martlet.Providers;
 
 namespace Martlet.Desktop;
 
-/// <summary>The Companion page's tabs: the one place each choice that shapes Martlet is made. Home and Devices link here.</summary>
-internal enum CompanionTab { Thinking, Voice, Listening, Character, Memory }
+/// <summary>The Companion page's pages: the one place each choice that shapes Martlet is made, listed by group in a side list.
+/// Home and Devices link here. A new page adds its value here (in list order) and one arm each in GroupOf, TabTitle, TabGlyph,
+/// TabIntro and RenderTab.</summary>
+internal enum CompanionTab { Thinking, Voice, Listening, LipSync, Character, Personality, Memory }
+
+/// <summary>The side list's groups, in order: how it works (where each job runs), who it is (look, personality, what it knows)
+/// and what it does (how it answers and acts). A group with no pages yet is not shown.</summary>
+internal enum CompanionGroup { HowItWorks, WhoItIs, WhatItDoes }
 
 /// <summary>A conversation model Ollama can download and run on this PC. <paramref name="MinimumVramGb"/> is the GPU memory it
 /// needs to run comfortably on the graphics card (0 means any PC).</summary>
 internal sealed record LocalChatModel(string Id, string Size, string Fits, double MinimumVramGb);
 
-/// <summary>The Companion page: Thinking, Voice, Listening, Character and Memory tabs. Each job tab asks where the job runs
-/// (this PC by default, another of your computers, or a cloud provider) and shows only that place's fields, including the API
-/// key for a cloud provider. Everything saves through the same setup service, consent and credential rules as Setup.</summary>
+/// <summary>The Companion page: a side list of pages in groups (How it works: Thinking, Voice, Listening, Lip-sync; Who it is:
+/// Character, Personality, Memory). Each job page asks where the job runs (this PC by default, another of your computers, or a
+/// cloud provider; voice loudness for lip-sync) and shows only that place's fields, including the API key for a cloud provider.
+/// Everything saves through the same setup service, consent and credential rules as Setup.</summary>
 public partial class MainWindow
 {
     /// <summary>Where a job runs. Lip-sync's third place is the voice's loudness (no Audio2Face) instead of a cloud provider.</summary>
@@ -64,11 +71,13 @@ public partial class MainWindow
     private IReadOnlyList<WindowsVoice>? windowsVoices;
     private readonly Dictionary<CompanionTab, JobPlace> tabPlace = [];
 
-    private static SetupRole RoleOf(CompanionTab section) => section switch
+    /// <summary>The setup job a page sets up, or null for a page that isn't one of Setup's jobs.</summary>
+    private static SetupRole? JobRole(CompanionTab section) => section switch
     {
+        CompanionTab.Thinking => SetupRole.Llm,
         CompanionTab.Voice => SetupRole.Tts,
         CompanionTab.Listening => SetupRole.Stt,
-        _ => SetupRole.Llm
+        _ => null
     };
 
     internal static CompanionTab TabFor(SetupRole role) => role switch
@@ -82,8 +91,22 @@ public partial class MainWindow
     {
         ClusterJobs.Speaking => CompanionTab.Voice,
         ClusterJobs.Listening => CompanionTab.Listening,
-        ClusterJobs.LipSync => CompanionTab.Character,
+        ClusterJobs.LipSync => CompanionTab.LipSync,
         _ => CompanionTab.Thinking
+    };
+
+    private static CompanionGroup GroupOf(CompanionTab section) => section switch
+    {
+        CompanionTab.Thinking or CompanionTab.Voice or CompanionTab.Listening or CompanionTab.LipSync => CompanionGroup.HowItWorks,
+        CompanionTab.Character or CompanionTab.Personality or CompanionTab.Memory => CompanionGroup.WhoItIs,
+        _ => CompanionGroup.WhatItDoes
+    };
+
+    private static string GroupTitle(CompanionGroup group) => group switch
+    {
+        CompanionGroup.HowItWorks => "How it works",
+        CompanionGroup.WhoItIs => "Who it is",
+        _ => "What it does"
     };
 
     private static string TabTitle(CompanionTab section) => section switch
@@ -91,8 +114,41 @@ public partial class MainWindow
         CompanionTab.Thinking => "Thinking",
         CompanionTab.Voice => "Voice",
         CompanionTab.Listening => "Listening",
+        CompanionTab.LipSync => "Lip-sync",
         CompanionTab.Character => "Character",
-        _ => "Memory"
+        CompanionTab.Personality => "Personality",
+        CompanionTab.Memory => "Memory",
+        _ => section.ToString()
+    };
+
+    /// <summary>The page's icon in the side list (Segoe Fluent Icons).</summary>
+    private static string TabGlyph(CompanionTab section) => section switch
+    {
+        CompanionTab.Thinking => "\uE82F",
+        CompanionTab.Voice => "\uE767",
+        CompanionTab.Listening => "\uE720",
+        CompanionTab.LipSync => "\uE8BD",
+        CompanionTab.Character => "\uE77B",
+        CompanionTab.Personality => "\uE76E",
+        CompanionTab.Memory => "\uE8F1",
+        _ => "\uE76E"
+    };
+
+    /// <summary>The line under the page title: what the page decides, in one or two sentences.</summary>
+    private static string TabIntro(CompanionTab section) => section switch
+    {
+        CompanionTab.Thinking => "The conversation model that writes Martlet's replies: where it runs, the provider, the model and its API key. " +
+            "It runs on this PC by default, so nothing leaves your computer.",
+        CompanionTab.Voice => "How Martlet speaks its replies: where the voice runs, the voice itself and the speakers it plays on. " +
+            "By default it speaks on this PC, with the F5 voice in Docker or a Windows voice with no Docker.",
+        CompanionTab.Listening => "How Martlet hears you: your microphone and the speech-to-text provider, model and key. " +
+            "By default whisper runs on this PC. You can always type instead.",
+        CompanionTab.LipSync => "Who moves the character's mouth in time with its voice. It switches right away, even while the character talks.",
+        CompanionTab.Character => "What Martlet looks like: the character on your desktop, its model, size, position and motion.",
+        CompanionTab.Personality => "Who Martlet is: its personas and how helpful, sarcastic, silly or playful it is, including characters " +
+            "from SillyTavern or Chub character cards.",
+        CompanionTab.Memory => "Facts Martlet remembers about you between conversations.",
+        _ => ""
     };
 
     /// <summary>Recommended local model: the largest in the list this PC's graphics card fits.</summary>
@@ -148,7 +204,7 @@ public partial class MainWindow
 
     // ---------- page frame ----------
 
-    /// <summary>Shows a Companion tab and selects Companion in the navigation rail. Every shortcut to a choice (Home, the
+    /// <summary>Shows a Companion page and selects Companion in the navigation rail. Every shortcut to a choice (Home, the
     /// Devices map, fix cards, the tour and the advisor) lands here, so each choice has one home.</summary>
     private void OpenCompanion(CompanionTab tab)
     {
@@ -156,7 +212,7 @@ public partial class MainWindow
         if (Role == DeviceRole.Host)
         {
             // A host has no Companion page; its routes are still reachable through full Setup.
-            nextSetupJob = tab is CompanionTab.Character or CompanionTab.Memory ? null : (SetupRole?)RoleOf(tab);
+            nextSetupJob = JobRole(tab);
             Setup_Click(this, new RoutedEventArgs());
             return;
         }
@@ -169,58 +225,70 @@ public partial class MainWindow
     private void ShowCompanionTab(bool entering)
     {
         openTab = companionTab;
-        CompanionPage.ScrollToTop();
+        CompanionScroll.ScrollToTop();
         RenderTab();
-        Motion.Enter(entering ? CompanionPage : companionBody ?? (FrameworkElement)CompanionPage);
+        Motion.Enter(entering ? CompanionPage : CompanionContent);
     }
 
-    private StackPanel? companionBody;
+    private readonly Dictionary<CompanionTab, RadioButton> companionNav = [];
+    private bool selectingNav;
+
+    /// <summary>The side list, built once: each group's title, then its pages. Choosing a page opens it.</summary>
+    private void BuildCompanionNav()
+    {
+        if (companionNav.Count > 0) return;
+        foreach (var group in Enum.GetValues<CompanionTab>().GroupBy(GroupOf).OrderBy(g => g.Key))
+        {
+            var title = new TextBlock { Text = GroupTitle(group.Key).ToUpperInvariant(), Margin = new Thickness(12, companionNav.Count == 0 ? 0 : 18, 0, 4) };
+            title.SetResourceReference(StyleProperty, "Eyebrow");
+            CompanionNav.Children.Add(title);
+            foreach (var tab in group)
+            {
+                var item = new RadioButton { Content = TabTitle(tab), Tag = TabGlyph(tab), GroupName = "CompanionNav" };
+                item.SetResourceReference(StyleProperty, "NavItem");
+                AutomationProperties.SetName(item, $"{TabTitle(tab)} ({GroupTitle(group.Key)})");
+                AutomationProperties.SetAutomationId(item, "CompanionTab-" + tab);
+                item.Checked += (_, _) =>
+                {
+                    if (!selectingNav) OpenCompanion(tab);
+                };
+                companionNav[tab] = item;
+                CompanionNav.Children.Add(item);
+            }
+        }
+    }
 
     private void RenderTab()
     {
         if (openTab is not { } section) return;
         tabEdited = false;
+        BuildCompanionNav();
+        selectingNav = true;
+        try { companionNav[section].IsChecked = true; }
+        finally { selectingNav = false; }
+
         var page = CompanionContent;
         page.Children.Clear();
-
-        var heading = new TextBlock { Text = "Companion" };
+        var group = new TextBlock { Text = GroupTitle(GroupOf(section)).ToUpperInvariant() };
+        group.SetResourceReference(StyleProperty, "Eyebrow");
+        page.Children.Add(group);
+        var heading = new TextBlock { Text = TabTitle(section), Margin = new Thickness(0, 4, 0, 0) };
         heading.SetResourceReference(StyleProperty, "PageTitle");
+        AutomationProperties.SetHeadingLevel(heading, AutomationHeadingLevel.Level1);
         page.Children.Add(heading);
-        page.Children.Add(Note("Everything that shapes how Martlet thinks, sounds, listens and looks. Home shows how it's doing right now.",
-            new Thickness(0, 4, 0, 14)));
-
-        var tabs = new WrapPanel { Margin = new Thickness(0, 0, 0, 14) };
-        AutomationProperties.SetName(tabs, "Companion tabs");
-        foreach (var other in Enum.GetValues<CompanionTab>())
-        {
-            var tab = PageButton(TabTitle(other), () => OpenCompanion(other), primary: other == section, id: "CompanionTab-" + other);
-            tab.Margin = new Thickness(0, 0, 8, 6);
-            if (other == section) AutomationProperties.SetItemStatus(tab, "Selected");
-            tabs.Children.Add(tab);
-        }
-        page.Children.Add(tabs);
+        page.Children.Add(Note(TabIntro(section), new Thickness(0, 4, 0, 18)));
 
         var body = new StackPanel();
         AutomationProperties.SetName(body, TabTitle(section));
-        companionBody = body;
         page.Children.Add(body);
-        body.Children.Add(Note(section switch
-        {
-            CompanionTab.Thinking => "The conversation model that writes Martlet's replies: where it runs, the provider, the model and its API key. " +
-                "It runs on this PC by default, so nothing leaves your computer.",
-            CompanionTab.Voice => "How Martlet speaks its replies: where the voice runs, the voice itself and the speakers it plays on. " +
-                "By default it speaks on this PC, with the F5 voice in Docker or a Windows voice with no Docker.",
-            CompanionTab.Listening => "How Martlet hears you: your microphone and the speech-to-text provider, model and key. " +
-                "By default whisper runs on this PC. You can always type instead.",
-            CompanionTab.Character => "What Martlet looks like and who it is: the character on your desktop, its personality and who moves its lips.",
-            _ => "Facts Martlet may remember about you. Off by default."
-        }, new Thickness(0, 0, 0, 16)));
-
         switch (section)
         {
+            case CompanionTab.Thinking or CompanionTab.Voice or CompanionTab.Listening: RenderJobTab(body, section); break;
+            case CompanionTab.LipSync: RenderLipSyncTab(body); break;
             case CompanionTab.Character: RenderCharacterTab(body); break;
+            case CompanionTab.Personality: RenderPersonalityTab(body); break;
             case CompanionTab.Memory: RenderMemoryTab(body); break;
-            default: RenderJobTab(body, section); break;
+            default: throw new UnreachableException($"The Companion page {section} has no content.");
         }
     }
 
@@ -233,7 +301,7 @@ public partial class MainWindow
 
     private void RenderJobTab(Panel page, CompanionTab section)
     {
-        var role = RoleOf(section);
+        var role = JobRole(section)!.Value;
         var job = HostJob.For(role)!;
         var route = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == role);
         var thisPc = ThisPcHost();
@@ -999,25 +1067,26 @@ public partial class MainWindow
 
     // ---------- character ----------
 
-    private void RenderCharacterTab(Panel page)
+    /// <summary>A page's Now card: what it uses, then any problem that stops it.</summary>
+    private Border PageNowCard(string text, Martlet.Core.Platforms.JobCoverage? problem)
     {
-        var showing = avatar.IsShowing;
-        var persona = homeSettings?.Companion?.ActivePersona;
         var now = new StackPanel();
         now.Children.Add(Heading("Now"));
-        now.Children.Add(new TextBlock
-        {
-            Text = CharacterModelName() + (homeAvatar is { } profile ? $" ({profile.Renderer})" : "") + (showing ? ", on your desktop" : ", hidden") +
-                $". Personality {persona?.Name ?? "Default"}. Lip-sync by {LipSyncOwnerName()}.",
-            FontSize = 15, TextWrapping = TextWrapping.Wrap
-        });
-        if (coverage.FirstOrDefault(c => c.Job == ClusterJobs.LipSync && c.IsProblem) is { } problem)
+        now.Children.Add(new TextBlock { Text = text, FontSize = 15, TextWrapping = TextWrapping.Wrap });
+        if (problem is not null)
         {
             var warning = new TextBlock { Text = $"Not working now: {problem.Problem} {problem.Effect}", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
             warning.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
             now.Children.Add(warning);
         }
-        page.Children.Add(Card(now));
+        return Card(now);
+    }
+
+    private void RenderCharacterTab(Panel page)
+    {
+        var showing = avatar.IsShowing;
+        page.Children.Add(PageNowCard(CharacterModelName() + (homeAvatar is { } profile ? $" ({profile.Renderer})" : "") +
+            (showing ? ", on your desktop." : ", hidden."), null));
 
         page.Children.Add(Card(Heading("Character model"),
             Note("Choose a built-in Live2D character or your own Live2D or VRM model, and tune its size, position and motion.", new Thickness(0, 0, 0, 8)),
@@ -1025,32 +1094,72 @@ public partial class MainWindow
                 PageButton("Choose and customize", () => RunNodeAction(NodeAction.Character), id: "OpenAvatar"),
                 showing ? PageButton("Reset position", () => ResetCharacterPositionAsync().Forget(), id: "SetupCharacterResetPosition") : null,
                 showing ? PageButton("Reset zoom", () => ResetCharacterZoomAsync().Forget(), id: "SetupCharacterResetZoom") : null)));
+    }
 
-        page.Children.Add(Card(Heading("Personality"),
-            Note("Its personas and how playful, helpful or silly it is. Bring in characters from SillyTavern or Chub (CharacterHub) " +
-                "character cards: a PNG card image, a JSON card or a CHARX file.", new Thickness(0, 0, 0, 8)),
-            Row(PageButton("Edit personality", () => Companion_Click(this, new RoutedEventArgs()), id: "OpenCompanion"),
-                PageButton("Import a character card", () => OpenCompanionWindowAsync(importCard: true).Forget(), id: "ImportCharacterCard"))));
+    // ---------- personality ----------
 
-        RenderLipSync(page);
+    /// <summary>A persona's response-style mix in words: "always helpful", or "helpful 70%, silly 30%".</summary>
+    internal static string StyleMix(ResponseStyleWeights styles)
+    {
+        var parts = new (string Name, int Weight)[]
+        {
+            ("helpful", styles.Helpful), ("sarcastic", styles.Sarcastic), ("silly", styles.Silly),
+            ("distracted", styles.Distracted), ("playful teasing", styles.PlayfulTeasing)
+        }.Where(p => p.Weight > 0).OrderByDescending(p => p.Weight).ToArray();
+        var total = parts.Sum(p => p.Weight);
+        return parts.Length switch
+        {
+            0 => "helpful",
+            1 => "always " + parts[0].Name,
+            _ => string.Join(", ", parts.Select(p => $"{p.Name} {Math.Round(100.0 * p.Weight / total):0}%"))
+        };
+    }
+
+    private void RenderPersonalityTab(Panel page)
+    {
+        var companion = homeSettings?.Companion;
+        var persona = companion?.ActivePersona;
+        var count = companion?.Personas.Count ?? 1;
+        page.Children.Add(PageNowCard(persona is null
+            ? "The default persona, always helpful."
+            : $"{persona.Name}{(count > 1 ? $", one of {count} personas" : "")}. Style: {StyleMix(persona.Styles)}.", null));
+
+        page.Children.Add(Card(Heading("Personas"),
+            Note("Each persona has its own instructions and style mix: how helpful, sarcastic, silly, distracted or playfully teasing " +
+                "it is. Create, edit or switch personas; the next message you send uses the one selected.", new Thickness(0, 0, 0, 8)),
+            Row(PageButton("Edit personality", () => Companion_Click(this, new RoutedEventArgs()), primary: true, id: "OpenCompanion"))));
+
+        page.Children.Add(Card(Heading("Character cards"),
+            Note("Bring in characters from SillyTavern or Chub (CharacterHub): a PNG card image, a JSON card or a CHARX file " +
+                "becomes a new persona you review before saving.", new Thickness(0, 0, 0, 8)),
+            Row(PageButton("Import a character card", () => OpenCompanionWindowAsync(importCard: true).Forget(), id: "ImportCharacterCard"))));
     }
 
     // ---------- lip-sync: where it runs, like every job ----------
 
     /// <summary>Who moves the character's mouth, chosen like every job: this PC (Audio2Face in its host service, or a service you
     /// run yourself), another of your computers, or the voice's loudness. It switches right away, even while the character talks.</summary>
-    private void RenderLipSync(Panel page)
+    private void RenderLipSyncTab(Panel page)
     {
         var thisPc = ThisPcHost();
         var handler = NetworkMap.LipSync(homeAvatar);
         var owner = handler == LipSyncHandler.Host ? homeAvatar!.RemoteHost!.HostId : null;
+        var ownerMissing = owner is not null && HostServes(owner, ClusterJobs.LipSync, HostRoles.Get(HostRoles.Audio2Face).RouteId) == false;
+        page.Children.Add(PageNowCard(handler switch
+        {
+            LipSyncHandler.Loudness => "Voice loudness: the mouth opens and closes with the voice. Audio2Face is off.",
+            LipSyncHandler.Host => $"Audio2Face on {(owner == thisPc?.HostId ? "this PC" : owner)}" +
+                (ownerMissing ? ", not installed there yet, so the mouth follows the voice's loudness." : "."),
+            _ => $"Your own Audio2Face service on this PC ({new Uri(homeAvatar?.Endpoint ?? AvatarProfile.DefaultEndpoint).Authority})."
+        }, coverage.FirstOrDefault(c => c.Job == ClusterJobs.LipSync && c.IsProblem)));
+
         var current = handler switch
         {
             LipSyncHandler.Loudness => JobPlace.Loudness,
             LipSyncHandler.Host when owner != thisPc?.HostId => JobPlace.Computer,
             _ => JobPlace.ThisPc
         };
-        var place = tabPlace.TryGetValue(CompanionTab.Character, out var chosen) ? chosen : current;
+        var place = tabPlace.TryGetValue(CompanionTab.LipSync, out var chosen) ? chosen : current;
         var gpu = machine.BestGpu;
         var fits = gpu is { IsNvidia: true } && (gpu.MemoryGb ?? 0) >= 4;
         var otherHosts = NetworkMap.Hosts(Inputs()).Where(h => h.HostId != thisPc?.HostId).ToArray();
@@ -1059,8 +1168,7 @@ public partial class MainWindow
             : JobPlace.Loudness;
         string Label(JobPlace value, string label) => value == recommended ? label + " (recommended)" : label;
 
-        page.Children.Add(WhereItRunsCard(CompanionTab.Character, "LipSync", "Lip-sync: where it runs",
-            "Who moves the character's mouth with its voice. It switches right away, even while the character talks.", current, place,
+        page.Children.Add(WhereItRunsCard(CompanionTab.LipSync, "LipSync", "Where it runs", null, current, place,
             (JobPlace.ThisPc, Label(JobPlace.ThisPc, "This PC"),
                 "NVIDIA Audio2Face looks most natural. It needs an NVIDIA graphics card with 4 GB or more and a free NVIDIA NGC key. " +
                 "Only the generated voice is used, and nothing leaves this PC."),
@@ -1069,7 +1177,6 @@ public partial class MainWindow
             (JobPlace.Loudness, Label(JobPlace.Loudness, "Voice loudness"),
                 "No Audio2Face: the mouth opens and closes with the voice's loudness. Works with any character on any PC, with nothing to set up.")));
 
-        var ownerMissing = owner is not null && HostServes(owner, ClusterJobs.LipSync, HostRoles.Get(HostRoles.Audio2Face).RouteId) == false;
         page.Children.Add(place switch
         {
             JobPlace.ThisPc => LocalLipSyncCard(thisPc, handler, owner, fits),

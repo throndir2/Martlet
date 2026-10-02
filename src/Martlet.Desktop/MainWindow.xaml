@@ -237,10 +237,22 @@
                 </Grid>
             </ScrollViewer>
 
-            <!-- Companion: the one place each choice is made, as tabs (built in MainWindow.Companion.cs). Home only shows status. -->
-            <ScrollViewer x:Name="CompanionPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
-                <StackPanel x:Name="CompanionContent" Margin="36,30,36,24" MaxWidth="1000" AutomationProperties.AutomationId="CompanionPage"/>
-            </ScrollViewer>
+            <!-- Companion: the one place each choice is made: a side list of pages in groups, and the open page (built in MainWindow.Companion.cs). Home only shows status. -->
+            <Grid x:Name="CompanionPage" Visibility="Collapsed">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="CompanionNav" Width="190" Margin="12,30,12,24"
+                                    AutomationProperties.Name="Companion pages" AutomationProperties.AutomationId="CompanionNav"/>
+                    </ScrollViewer>
+                </Border>
+                <ScrollViewer x:Name="CompanionScroll" Grid.Column="1" VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="CompanionContent" Margin="32,30,32,24" MaxWidth="1000" AutomationProperties.AutomationId="CompanionPage"/>
+                </ScrollViewer>
+            </Grid>
 
             <!-- Settings: appearance, role, updates, tools and diagnostics -->
             <ScrollViewer x:Name="SettingsPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
