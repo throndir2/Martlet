@@ -1317,8 +1317,9 @@ These need building before the recipes in 11.2 work:
    whisper.cpp, no Docker) exists as a disabled candidate. Wiring it in
    removes WSL, Docker Desktop and the host service from the most common
    *This PC* listening setup.
-3. ~~A bundled default F5 voice~~: done in #145 (F5-TTS's MIT English
-   sample is used when no voice is chosen; recording is optional).
+3. ~~A bundled default F5 voice~~: done in #145; since replaced by ten included
+   voices that are free to use and share (public domain or CMU ARCTIC), the first
+   used when no voice is chosen; recording is optional.
 4. **One key per provider.** Keys are bound per job today; an OpenAI key
    should serve Thinking, Listening and Voice without being entered three
    times.
