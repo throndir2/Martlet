@@ -31,7 +31,13 @@ public partial class HostRunWindow : ThemedWindow
     internal IHostShellPrompts Prompts { get; }
     internal CancellationToken Token => cancel.Token;
 
-    internal void Status(string text) => StatusText.Text = text;
+    /// <summary>Sets the status line; each change is also written to the run log, so a run that stalls shows its last step.</summary>
+    internal void Status(string text)
+    {
+        if (StatusText.Text == text) return;
+        StatusText.Text = text;
+        HostRunLog.Write(title, "status: " + text);
+    }
 
     /// <summary>Opens a run window over <paramref name="owner"/> and runs <paramref name="job"/> (on the UI thread; await
     /// the runner). Returns the job's summary, or null when it failed or was canceled (the reason is shown).</summary>
