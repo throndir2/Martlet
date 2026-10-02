@@ -1,4 +1,5 @@
 using Martlet.Core.Contracts;
+using Martlet.Core.Settings;
 using Martlet.Providers;
 
 namespace Martlet.Providers.Tests;
@@ -10,6 +11,16 @@ public sealed class VisionModelCatalogTests
     [InlineData("gemma3-4b", VisionSupport.Supported)]
     [InlineData("gemma3:12b", VisionSupport.Supported)]
     [InlineData("google/gemma-3-27b-it", VisionSupport.Supported)]
+    [InlineData("gemma4:e2b", VisionSupport.Supported)]
+    [InlineData("gemma4-e4b", VisionSupport.Supported)]
+    [InlineData("google/gemma-4-31b-it", VisionSupport.Supported)]
+    [InlineData("google/gemma-4-26b-a4b-it", VisionSupport.Supported)]
+    [InlineData("google/diffusiongemma-26b-a4b-it", VisionSupport.Supported)]
+    [InlineData("qwen3-vl:8b", VisionSupport.Supported)]
+    [InlineData("moonshotai/kimi-k3", VisionSupport.Supported)]
+    [InlineData("z-ai/glm-5.3-flash", VisionSupport.Supported)]
+    [InlineData("meta/muse-glimmer-30b", VisionSupport.Supported)]
+    [InlineData("deepseek-ai/deepseek-v4.1-flash", VisionSupport.Supported)]
     [InlineData("qwen2.5vl-7b", VisionSupport.Supported)]
     [InlineData("qwen/qwen2.5-vl-72b-instruct", VisionSupport.Supported)]
     [InlineData("llama3.2-vision-11b", VisionSupport.Supported)]
@@ -38,6 +49,18 @@ public sealed class VisionModelCatalogTests
         Assert.NotEmpty(VisionModelCatalog.LocalRecommendations);
         Assert.All(VisionModelCatalog.LocalRecommendations,
             model => Assert.Equal(VisionSupport.Supported, VisionModelCatalog.Classify(model.Tag)));
+    }
+
+    [Fact]
+    public void Every_named_endpoint_default_can_see_and_none_is_retired()
+    {
+        Assert.All(ChatCompletionsEndpointCatalog.NamedEndpoints, endpoint =>
+        {
+            Assert.Equal(VisionSupport.Supported, VisionModelCatalog.Classify(endpoint.DefaultModelId));
+            Assert.False(endpoint.Retired(endpoint.DefaultModelId));
+        });
+        Assert.NotNull(ChatCompletionsEndpointCatalog.RetiredOn(ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, "meta/llama-3.3-70b-instruct"));
+        Assert.Null(ChatCompletionsEndpointCatalog.RetiredOn(ChatCompletionsEndpointCatalog.OpenRouterBaseUrl, "meta/llama-3.3-70b-instruct"));
     }
 
     [Fact]

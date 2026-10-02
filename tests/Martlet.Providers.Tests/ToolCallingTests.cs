@@ -132,6 +132,21 @@ public sealed class ToolCallingTests
     }
 
     [Fact]
+    public async Task Nvidia_build_default_model_whole_tool_call_completes()
+    {
+        // Shape recorded from google/diffusiongemma-26b-a4b-it on NVIDIA Build (vLLM) on 2026-10-01; only the tool differs.
+        const string trace =
+            """data: {"id":"chatcmpl-affa511f7682d74a","object":"chat.completion.chunk","created":1790909200,"model":"google/diffusiongemma-26b-a4b-it","choices":[{"index":0,"delta":{"role":"assistant","content":""},"logprobs":null,"finish_reason":null}],"prompt_token_ids":null,"prompt_text":null}""" + "\n\n" +
+            """data: {"id":"chatcmpl-affa511f7682d74a","object":"chat.completion.chunk","created":1790909200,"model":"google/diffusiongemma-26b-a4b-it","choices":[{"index":0,"delta":{"tool_calls":[{"id":"chatcmpl-tool-a516db82b40607a5","type":"function","index":0,"function":{"name":"read_file","arguments":"{\"path\": \"a.txt\"}"}}]},"logprobs":null,"finish_reason":"tool_calls","stop_reason":50,"token_ids":null}],"system_fingerprint":"vllm-0.21.0-d9f6bf25"}""" + "\n\n" +
+            "data: [DONE]\n\n";
+        var (result, _) = await RunChat(trace, new BoundedTextInput("Read a.txt", tools: [Tool()]));
+        Assert.Equal(TextGenerationOutcome.Completed, result.Outcome);
+        var call = Assert.Single(result.ToolCalls);
+        Assert.Equal(("chatcmpl-tool-a516db82b40607a5", "read_file"), (call.CallId, call.Name));
+        Assert.Equal("a.txt", JsonDocument.Parse(call.ArgumentsJson).RootElement.GetProperty("path").GetString());
+    }
+
+    [Fact]
     public async Task Chat_completions_accepts_whole_calls_without_index_finished_with_stop()
     {
         // Older Ollama: one chunk with the whole call (arguments as an object, no index or id), then finish "stop".

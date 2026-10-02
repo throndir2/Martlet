@@ -140,28 +140,54 @@ foundations remain unwired; this feature does not use them.
 | Setup | Sees images? |
 | --- | --- |
 | OpenAI `gpt-4.1-mini` / `gpt-4.1` | Yes |
-| Host Ollama `gemma3:4b`, `qwen2.5vl:7b`, `gemma3:12b`, `gemma3:27b` | Yes (now the suggested host models) |
+| NVIDIA Build `google/diffusiongemma-26b-a4b-it`, OpenRouter `google/gemma-4-26b-a4b-it` (the prefilled defaults) | Yes |
+| Host Ollama `gemma4:e2b`, `gemma4:e4b`, `qwen3-vl:8b`, `gemma4:12b`, `gemma4:26b` | Yes, and they call tools (now the suggested host models) |
+| Host Ollama `gemma3:4b`, `qwen2.5vl:7b`, `gemma3:12b`, `gemma3:27b` | Yes (no tool calling) |
 | Host Ollama `llama3.2:3b`, `qwen2.5:7b`, `llama3.1:8b`, `qwen2.5:14b` | **No, text-only** |
-| Chat Completions | Depends on the model: names with `vl`/`vision`, `gemma-3` (4B+), `gpt-4o`/`4.1`/`5`, `gemini`, `claude`, `pixtral`, `llama-4`... are recognized; others are *unknown* |
+| Chat Completions | Depends on the model: names with `vl`/`vision`, `gemma-3` (4B+), `gemma-4`, `gpt-4o`/`4.1`/`5`, `gemini`, `claude`, `pixtral`, `llama-4`... are recognized; others are *unknown* |
+| A model its named endpoint has retired (NVIDIA Build `meta/llama-3.3-70b-instruct`) | **No**: it no longer answers at all |
 
 `VisionModelCatalog` classifies the configured model as **Supported**,
 **Unsupported** or **Unknown**. There is no shared capability-discovery API
 across these routes, so it is a curated name list, not proof.
 
+### Vision on NVIDIA Build's Free Endpoints
+
+Checked on 2026-10-01 with a free developer key: one 1024 px JPEG game HUD in a
+streamed Chat Completions request shaped like Martlet's (persona as `system`,
+the image as an `image_url` data URL, and the same request with a tool). Every
+model below read the HP, gold, quest text and both shapes correctly.
+
+| Model | Image reply (median) | Text reply | Tool call | Notes |
+| --- | --- | --- | --- | --- |
+| `google/diffusiongemma-26b-a4b-it` | ~0.5 s | ~0.4 s | Yes | **Default.** Answers `[pass]` on a dull screen and remarks on a boss win |
+| `meta/llama-3.2-11b-vision-instruct` | ~3 s | ~1 s | Yes | Older; weaker remarks |
+| `meta/llama-3.2-90b-vision-instruct` | ~7 s | ~6 s | Yes | Truncated tool arguments |
+| `meta/muse-glimmer-30b`, `z-ai/glm-5.3-flash` | 2-6 s | 5-12 s | Yes | Reasoning models: empty glances within a 256-token reply cap |
+| `moonshotai/kimi-k3`, `deepseek-ai/deepseek-v4.1-flash`, `google/gemma-4-31b-it` | 10-35 s | slow | Yes | Too slow for talking; Gemma 4 31B also timed out |
+
+Gone (HTTP 410) or not found on that date: `meta/llama-3.3-70b-instruct`,
+`meta/llama-4-maverick-17b-128e-instruct`, `microsoft/phi-4-multimodal-instruct`,
+`nvidia/nemotron-nano-12b-v2-vl`, `google/gemma-3-4b-it`, `google/gemma-3-12b-it`,
+`microsoft/phi-3-vision-128k-instruct` and `moonshotai/kimi-k2.6`. NVIDIA
+changes this list often; build.nvidia.com marks the free ones *Free Endpoint*.
+
 ### Local models that see
 
 | Ollama tag | GPU memory | Why |
 | --- | --- | --- |
-| `gemma3:4b` | ~4 GB (also runs on the CPU) | small, talks and sees; the default |
-| `qwen2.5vl:7b` | ~6-8 GB | best at reading on-screen text and game HUDs at this size |
-| `gemma3:12b` | ~9-11 GB | a smarter talker that also sees |
-| `gemma3:27b` | ~18-20 GB | strongest single-GPU option |
+| `gemma4:e2b` | ~5 GB (also runs on the CPU) | small, talks, sees and uses tools; the default |
+| `gemma4:e4b` | ~7 GB | a smarter talker for 8 GB graphics cards |
+| `qwen3-vl:8b` | ~7 GB | best at reading on-screen text and game HUDs at this size |
+| `gemma4:12b` | ~9 GB | a smarter talker that also sees |
+| `gemma4:26b` | ~19-20 GB | strongest single-GPU option, and quick (4B active parameters) |
 
-These are one model that both talks and sees, so a host does not need a second
-model or more GPU memory for vision. The host's Ollama role now offers them and
-suggests them by GPU memory. Existing hosts keep their model until you add the
-Thinking role again (Devices page) and pick one; the host must also run this
-Martlet version so its gateway accepts images.
+These are one model that both talks and sees (and calls tools for Smart home
+and MCP), so a host does not need a second model or more GPU memory for
+vision. Companion › Thinking › This PC, the prerequisites tool and the host's
+Ollama role all suggest them by GPU memory. Existing hosts keep their model
+until you add the Thinking role again (Devices page) and pick one; the host
+must also run this Martlet version so its gateway accepts images.
 
 ## Incompatibility warnings
 
@@ -170,9 +196,11 @@ Companion › Vision always states the result for the **current** Thinking selec
 - **Ready:** the model sees; screenshots go to the named destination.
 - **Can't see yet:** the model is text-only. **Turn vision on** stays
   disabled (and the talk window's button says *Can't see*); the message names the fix for your route: on a host, add the
-  Thinking (Ollama) role again with `gemma3:4b` / `qwen2.5vl:7b` / `gemma3:12b`;
-  on Chat Completions, pick a vision model on the endpoint or run one locally;
-  or switch Thinking to OpenAI `gpt-4.1-mini`. Talking keeps working.
+  Thinking (Ollama) role again with `gemma4:e2b` / `gemma4:e4b` / `qwen3-vl:8b`;
+  on Chat Completions, pick a vision model on the endpoint (the named
+  endpoint's recommended model is named) or run one locally;
+  or switch Thinking to OpenAI `gpt-4.1-mini`. Talking keeps working (unless
+  the endpoint has retired the model, which the message says instead).
 - **Not sure:** an unknown Chat Completions model. You may try; if the model
   rejects the first screenshot, watching stops (no automatic retry) and the
   message says it most likely can't see images, with the same fix.

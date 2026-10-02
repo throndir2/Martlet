@@ -271,9 +271,9 @@ plus 1-2 GB of context). Planning figures, not measurements.
 
 | Unified memory | Good host jobs | Largest local LLM that fits well |
 | --- | --- | --- |
-| 8 GB (base M1/M2/M3) | Companion with Apple Intelligence; listening (Apple speech or whisper `small`); Apple voices; one job at a time | 3-4B (`gemma3:4b`, `llama3.2:3b`) |
-| 16 GB | All of the above plus F5 voice cloning (MLX) **or** a 7-8B model such as `qwen2.5vl:7b`, which also sees the screen | 7-8B |
-| 24-32 GB | Voice host (whisper `large-v3-turbo` + F5) and a 12-14B model together; `gemma3:27b` alone on 32 GB | 12-14B, 27B alone |
+| 8 GB (base M1/M2/M3) | Companion with Apple Intelligence; listening (Apple speech or whisper `small`); Apple voices; one job at a time | 2-4B (`gemma4:e2b`, `qwen3-vl:4b`; both also see the screen) |
+| 16 GB | All of the above plus F5 voice cloning (MLX) **or** a 7-8B model such as `gemma4:e4b` or `qwen3-vl:8b`, which also see the screen | 7-8B |
+| 24-32 GB | Voice host (whisper `large-v3-turbo` + F5) and a 12-14B model (`gemma4:12b`) together; `gemma4:26b` alone on 32 GB | 12-14B, 26-27B alone |
 | 64 GB | Dedicated thinking host: 32B comfortably, 70B Q4 just fits | 70B Q4 |
 | 96 GB+ (Max/Ultra) | Large thinking host | 100B+ |
 

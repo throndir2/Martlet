@@ -136,7 +136,13 @@ To drive the visible desktop, start `Martlet.Desktop.exe` yourself in the **same
 interactive Windows session** (ideally with a disposable `--data-directory`).
 Call `ui_connect` with that process ID. `ui_snapshot` returns window accessible names,
 automation IDs, enabled states, checkbox states, and selected read-only status
-fields; it does not dump arbitrary editable fields or credentials. `ui_click`
+fields (a read-only text box's value, or a status text block's text); it does not dump arbitrary editable fields or credentials.
+Status fields include `VisionStatus` (Companion › Vision: whether the Thinking
+model can see, or has been retired, and the fix), `SetupCloudHint-Thinking`
+(the cloud provider's recommended Thinking model, or a retired-model warning),
+`SetupLocalRecommendation` (the local Ollama model recommended for this PC's
+graphics card) and `SetupProviderHint` (Setup › Jobs prefilled model).
+`ui_click`
 invokes a control by automation ID and `ui_select` selects a named combo-box
 option. By default only passive navigation and
 diagnostics controls can be clicked. The main window is split into pages, and a
@@ -225,9 +231,9 @@ observe them:
   `src\Martlet.Mcp.Protocol\DesktopAutomation.cs`. Anything that sends,
   records, plays, spends, writes files or handles credentials stays behind
   `--allow-ui-effects`.
-- **Status:** add read-only, non-secret status fields to `SafeValues` so
-  snapshots return their text. Never expose editable fields, credentials,
-  personal data or file paths.
+- **Status:** add read-only, non-secret status fields (a read-only text box or
+  a text block) to `SafeValues` so snapshots return their text. Never expose
+  editable fields, credentials, personal data or file paths.
 - **Headless capabilities:** add a tool to `Tools` and `CallAsync` in
   `src\Martlet.Mcp.Protocol\McpServer.cs` (strict input schema, bounded
   arguments, ID-based results), or a Doctor probe that `doctor_run` reaches.

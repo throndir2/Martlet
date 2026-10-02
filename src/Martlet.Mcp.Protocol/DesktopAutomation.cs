@@ -15,10 +15,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "RecoveryClose", "SupportFreeze", "SupportClear",
         "NavHome", "NavDevices", "NavCompanion", "NavSettings", "TourSkip", "DiagnosticsSection"
     };
+    // Read-only, non-secret status: a text box's value or, for a text block, its text (its accessible name).
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
         "FoundationStatus", "PipelineStatus", "LocalAudioStatus",
-        "LiveStatus", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult"
+        "LiveStatus", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
+        "VisionStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint"
     };
     private int? processId;
 
@@ -46,8 +48,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
             {
                 var (window, element) = control;
                 var id = element.Current.AutomationId;
-                var value = SafeValues.Contains(id) && element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern)
-                    ? ((ValuePattern)pattern).Current.Value : null;
+                var value = !SafeValues.Contains(id) ? null
+                    : element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern) ? ((ValuePattern)pattern).Current.Value
+                    : element.Current.ControlType == ControlType.Text ? element.Current.Name : null;
                 return new
                 {
                     window = window.Current.Name,

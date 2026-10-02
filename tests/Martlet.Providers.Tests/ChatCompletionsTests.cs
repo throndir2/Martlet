@@ -436,6 +436,20 @@ public sealed class ChatCompletionsTests
             .Select(item => item.Text));
     }
 
+    [Fact]
+    public async Task Nvidia_build_default_model_stream_completes()
+    {
+        // Recorded from google/diffusiongemma-26b-a4b-it on NVIDIA Build (vLLM) on 2026-10-01: the whole reply in one chunk.
+        const string trace =
+            """data: {"id":"chatcmpl-98dd098f7c431da6","object":"chat.completion.chunk","created":1790909198,"model":"google/diffusiongemma-26b-a4b-it","choices":[{"index":0,"delta":{"role":"assistant","content":""},"logprobs":null,"finish_reason":null}],"prompt_token_ids":null,"prompt_text":null}""" + "\n\n" +
+            """data: {"id":"chatcmpl-98dd098f7c431da6","object":"chat.completion.chunk","created":1790909198,"model":"google/diffusiongemma-26b-a4b-it","choices":[{"index":0,"delta":{"content":"Hi! I am Martlet! Welcome!"},"logprobs":null,"finish_reason":"stop","stop_reason":null,"token_ids":null}],"system_fingerprint":"vllm-0.21.0-d9f6bf25"}""" + "\n\n" +
+            "data: [DONE]\n\n";
+        var result = await RunFixture(trace, baseUrl: ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl);
+        Assert.Equal(TextGenerationOutcome.Completed, result.Result.Outcome);
+        Assert.Equal("Hi! I am Martlet! Welcome!", string.Concat(result.Events.Where(item => item.Kind == ProviderEventKind.TextDelta)
+            .Select(item => item.Text)));
+    }
+
     private static async Task<(List<ProviderEvent> Events, TextGenerationResult Result)> RunFixture(
         string trace, TextGenerationLimits? limits = null, string baseUrl = BaseUrl)
     {

@@ -318,7 +318,7 @@ public sealed class SetupDispatcherTests(ITestOutputHelper output)
             foreach (var (name, baseUrl, model) in new[]
             {
                 ("OpenRouter", ChatCompletionsEndpointCatalog.OpenRouterBaseUrl, "meta-llama/llama-3.3-70b-instruct:free"),
-                ("NVIDIA Build", ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, "meta/llama-3.3-70b-instruct"),
+                ("NVIDIA Build", ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, "google/diffusiongemma-26b-a4b-it"),
                 ("Custom", "http://127.0.0.1:1234/v1", "local-model")
             })
             {

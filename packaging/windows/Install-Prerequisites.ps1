@@ -20,7 +20,7 @@
 .EXAMPLE
     .\Install-Prerequisites.ps1 -Check
 .EXAMPLE
-    .\Install-Prerequisites.ps1 -Install WebView2,Ollama -OllamaModel llama3.1:8b
+    .\Install-Prerequisites.ps1 -Install WebView2,Ollama -OllamaModel gemma4:e4b
 #>
 [CmdletBinding()]
 param(
@@ -359,11 +359,12 @@ function Start-OllamaServer([string]$Ollama) {
 }
 
 function Get-SuggestedOllamaModel {
+    # Every suggestion also sees images (screen watching) and calls tools. A "12 GB" card reports 11 GiB here.
     $vram = Get-NvidiaVramGiB
-    if ($vram -ge 32) { return [pscustomobject]@{ Tag = 'gemma3:27b'; Size = 'about 17 GB' } }
-    if ($vram -ge 16) { return [pscustomobject]@{ Tag = 'gemma3:12b'; Size = 'about 8 GB' } }
-    if ($vram -ge 10) { return [pscustomobject]@{ Tag = 'llama3.1:8b'; Size = 'about 5 GB' } }
-    return [pscustomobject]@{ Tag = 'llama3.2:3b'; Size = 'about 2 GB' }
+    if ($vram -ge 23) { return [pscustomobject]@{ Tag = 'gemma4:26b'; Size = 'about 19 GB' } }
+    if ($vram -ge 11) { return [pscustomobject]@{ Tag = 'gemma4:12b'; Size = 'about 8 GB' } }
+    if ($vram -ge 7) { return [pscustomobject]@{ Tag = 'gemma4:e4b'; Size = 'about 7 GB' } }
+    return [pscustomobject]@{ Tag = 'gemma4:e2b'; Size = 'about 5 GB' }
 }
 
 function Install-Ollama {
