@@ -268,6 +268,15 @@ provenance until deleted. A full store drops its oldest conversation fact, never
 a fact the user typed. The conversation window shows what was remembered
 (*Remembered: …*), and Memory lists it.
 
+A model that declines or answers with nothing simply has nothing to remember;
+an answer cut off by the max reply length keeps the lines it finished. If the
+store is briefly in use (recall, the Memory page) or a fact changed meanwhile,
+remembering waits and tries twice more. When it still fails, the conversation
+says why once (*Couldn't update memory.* plus the reason, such as the
+provider limiting requests or the memory folder being unusable); the same
+problem on later exchanges is only logged (`Remembering failed (<code>)`) until
+remembering works again.
+
 Delete, save/edit/purge, memory configuration, pause, lock, Stop,
 output/configuration change, conversation close and app exit advance the app
 retrieval generation and cancel the old operation. The foundation store

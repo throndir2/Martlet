@@ -1445,8 +1445,8 @@ public partial class LiveConversationWindow : ThemedWindow
     private void MemoryCaptured(MemoryCaptureReport report) => Dispatcher.BeginInvoke(() =>
     {
         if (closed) return;
-        var text = report.Failure is not null
-            ? "Couldn't update memory."
+        var text = report.Failure is { } failure
+            ? "Couldn't update memory. " + MemoryFailureReason(failure, controller.Configuration)
             : string.Join("  ", report.Changes!.Select(change => change.Kind switch
             {
                 MemoryCaptureKind.Remember => "Remembered: ",
@@ -1657,6 +1657,27 @@ public partial class LiveConversationWindow : ThemedWindow
             "The model hit the max reply length. Ask for a shorter answer, or raise the limit in Companion › Replies.",
         _ => "Martlet couldn't use the provider's answer. Try again."
     };
+
+    /// <summary>Why remembering an exchange failed, in words: the Thinking request's own remedy or what is wrong with the store.</summary>
+    internal static string MemoryFailureReason(string code, LiveConversationConfiguration? configuration) =>
+        Enum.TryParse<ProviderFailureCode>(code, out var provider) && !int.TryParse(code, out _)
+            ? ProviderRemedy(provider, configuration, ProviderRole.Llm)
+            : code switch
+            {
+                "memory.Busy" or "memory.busy" or "memory.Conflict" =>
+                    "Memory was in use by something else. Martlet tries again with the next thing you say.",
+                "memory.AccessDenied" => "Martlet can't write to the memory folder. Choose a folder you can write to in Companion › Memory.",
+                "memory.CorruptStore" or "memory.UnsupportedVersion" =>
+                    "The memory store can't be read. Check it in Companion › Memory.",
+                "memory.LimitExceeded" => "Memory is full. Delete some facts in Companion › Memory.",
+                "memory.IoFailure" or "memory.InvalidPath" or "memory.unavailable" =>
+                    "The memory folder couldn't be used. Check it in Companion › Memory.",
+                "memory.clock_invalid" => "The system clock needs fixing before Martlet can save facts.",
+                "runtime.Failed" or "runtime.Partial" or "runtime.Canceled" =>
+                    "Thinking didn't finish its answer. Martlet tries again with the next thing you say.",
+                "conversation.input_limit" => "That exchange was too long to remember.",
+                _ => Remedy(code)
+            };
 
     internal static string Remedy(string code) => code switch
     {

@@ -341,7 +341,12 @@ writes, rotates or deletes a log. Failed provider requests appear in the desktop
 log with their endpoint, model, HTTP status and the provider's own short
 explanation, followed by a `Reply failed (...)` line naming the route (`Spoken reply failed (...)` naming the voice
 route when the text arrived but speaking it failed), for
-example `{"name":"logs_tail","arguments":{"contains":"failed"}}`. Logs can
+example `{"name":"logs_tail","arguments":{"contains":"failed"}}`. Each exchange
+Martlet couldn't remember logs `Remembering failed (<code>)` (a provider failure
+such as `RateLimited`, or a store problem such as `memory.Busy`), and an empty or
+declined answer to the memory request logs `Remembering got no usable answer
+(...)`; read them with `{"name":"logs_tail","arguments":{"contains":"Remembering"}}`.
+Logs can
 include local paths and provider error text (never keys or conversation content).
 
 `mcp_servers_status` reads `mcp.json` from a data directory (optional absolute
