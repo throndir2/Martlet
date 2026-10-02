@@ -8,6 +8,7 @@ export class VrmAvatarAdapter extends VrmRuntime {
   private world = new THREE.Scene();
   private camera = new THREE.PerspectiveCamera(30, 1, 0.01, 100);
   private view = { zoom: 1, x: 0, y: 0 };
+  private top: number | undefined;
   private closed = false;
 
   constructor(canvas: HTMLCanvasElement) {
@@ -32,6 +33,14 @@ export class VrmAvatarAdapter extends VrmRuntime {
       finite(size, 0.0001, 100, "Rendered model size");
       this.camera.position.set(center.x, center.y, center.z + size * 2);
       this.camera.lookAt(center);
+      // The vertical field of view is fixed, so the fitted top does not depend on the canvas aspect.
+      this.camera.updateMatrixWorld();
+      this.camera.updateProjectionMatrix();
+      let top = Number.NEGATIVE_INFINITY;
+      for (const x of [box.min.x, box.max.x]) for (const z of [box.min.z, box.max.z])
+        top = Math.max(top, new THREE.Vector3(x, box.max.y, z).project(this.camera).y);
+      this.top = Number.isFinite(top) ? top : undefined;
+      this.updateProjection();
     } else {
       this.camera.position.set(0, 1, 3);
       this.camera.lookAt(0, 1, 0);
@@ -54,6 +63,9 @@ export class VrmAvatarAdapter extends VrmRuntime {
     this.view = { zoom, x, y };
     this.updateProjection();
   }
+
+  /** Top of the character (top of the head) in fitted clip space, before view zoom/pan; 1 is the canvas top. */
+  get contentTop(): number | undefined { return this.top; }
 
   private updateProjection(): void {
     this.camera.updateProjectionMatrix();

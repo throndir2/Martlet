@@ -49,6 +49,10 @@ public sealed class GatewayServer
     /// and loads the copy saved there.</summary>
     public void AttachClusterStorage(IGatewayClusterStorage storage) => application.Cluster.Attach(storage);
 
+    /// <summary>Keeps this host's copy of the shared voice list (served at /martlet/v1/voices) in <paramref name="storage"/>
+    /// and loads the copy saved there.</summary>
+    public void AttachVoiceStorage(IGatewayVoiceStorage storage) => application.Voices.Attach(storage);
+
     public GatewayServer(
         GatewayHostIdentity identity,
         GatewayOrigin origin,

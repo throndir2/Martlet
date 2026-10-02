@@ -47,6 +47,13 @@ public partial class MainWindow
         }
         if (route.RouteType == SetupRouteType.LocalWindowsTts)
             return new() { Job = job.Job, Doer = JobDoer.ThisDevice, DoerName = name, Enabled = enabled, Reviewed = reviewed };
+        if (route.RouteType == SetupRouteType.LocalParakeet)
+            return new()
+            {
+                Job = job.Job, Doer = JobDoer.ThisDevice, DoerName = name, Enabled = enabled, Reviewed = reviewed,
+                NotConnected = store is not null && Martlet.Sherpa.ParakeetEngine.Installed(LocalVoices.SpeechRoot(store.DataDirectory)) ? null
+                    : "the Parakeet model isn't downloaded on this PC. Choose Parakeet again on Companion › Listening to download it"
+            };
         if (route.RouteType is SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWhisper)
             return new()
             {

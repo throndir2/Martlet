@@ -232,6 +232,15 @@ the data folder.
   Same-person clean speech typically scores 0.80-0.95 and other people
   0.45-0.75; enrollment suggests a threshold from how consistent your phrases were.
 
+**Recognizing who is talking** (Companion › **People**, off until you download
+it) tells several people at the microphone apart with AudioTranscriber's
+sherpa-onnx speaker recognition, names the speaker to the Thinking model, labels
+earlier messages with who said them, and learns the names each voice goes by
+from the conversation. The list of voices can follow you to every computer
+through your paired hosts. **Parakeet** (Companion › Listening › This PC) is
+AudioTranscriber's more accurate speech-to-text, running inside Martlet with no
+Docker. See [Recognizing people by voice, and Parakeet](VOICES.md).
+
 ## Troubleshooting
 
 | Visible condition | Meaning and next action |

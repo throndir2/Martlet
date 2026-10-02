@@ -8,5 +8,6 @@
     <InternalsVisibleTo Include="Martlet.Mcp" />
     <InternalsVisibleTo Include="Martlet.Desktop.Tests" />
     <ProjectReference Include="..\Martlet.Doctor\Martlet.Doctor.csproj" />
+    <ProjectReference Include="..\Martlet.Sherpa\Martlet.Sherpa.csproj" />
   </ItemGroup>
 </Project>

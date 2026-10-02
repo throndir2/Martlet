@@ -187,6 +187,7 @@
           "Martlet.Home": "[0.11.0, )",
           "Martlet.Memory": "[0.11.0, )",
           "Martlet.Participation": "[0.11.0, )",
+          "Martlet.Sherpa": "[0.11.0, )",
           "Martlet.Support": "[0.11.0, )",
           "SSH.NET": "[2024.1.0, )"
         }
@@ -233,6 +234,9 @@
         "dependencies": {
           "Martlet.Core": "[0.11.0, )"
         }
+      },
+      "martlet.sherpa": {
+        "type": "Project"
       },
       "martlet.support": {
         "type": "Project",

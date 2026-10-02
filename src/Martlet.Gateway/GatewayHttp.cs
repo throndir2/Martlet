@@ -94,6 +94,11 @@ internal sealed partial class GatewayHttpApplication
                 await InvokeClusterAsync(context).ConfigureAwait(false);
                 return;
             }
+            if (rawTarget == VoicesPath)
+            {
+                await InvokeVoicesAsync(context).ConfigureAwait(false);
+                return;
+            }
 
             if (context.Request.Method == HttpMethods.Post &&
                 rawTarget == "/martlet/v1/inference/cancel")
@@ -296,10 +301,10 @@ internal sealed partial class GatewayHttpApplication
         }).ConfigureAwait(false);
     }
 
-    private static async ValueTask WriteJsonAsync<T>(HttpContext context, int status, T value)
+    private static async ValueTask WriteJsonAsync<T>(HttpContext context, int status, T value, int maximumBytes = GatewayRules.MaximumResponseBytes)
     {
         var bytes = JsonSerializer.SerializeToUtf8Bytes(value, Json);
-        GatewayRules.Require(bytes.Length <= GatewayRules.MaximumResponseBytes, "gateway.internal");
+        GatewayRules.Require(bytes.Length <= maximumBytes, "gateway.internal");
         context.Response.StatusCode = status;
         context.Response.ContentType = "application/json; charset=utf-8";
         context.Response.ContentLength = bytes.Length;
