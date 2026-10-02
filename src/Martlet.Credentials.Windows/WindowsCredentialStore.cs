@@ -115,4 +115,29 @@ public sealed class WindowsCredentialStore(ICredentialNative native) : ICredenti
         account is { Length: > 0 and <= 330 } && account.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-' or '@' or ':');
 
     private static string SshSudoTarget(string account) => $"Martlet/v3/ssh-sudo/{account}";
+
+    // Home Assistant long-lived access token for the smart home connection; one per saved connection.
+    public CredentialError WriteHomeAssistantToken(Guid credentialId, SecretLease secret)
+    {
+        if (credentialId == Guid.Empty) return CredentialError.InvalidInput;
+        if (!native.IsSupported) return CredentialError.UnsupportedPlatform;
+        var error = CredentialError.InvalidInput;
+        secret.Use(value => error = Map(native.Write(HomeAssistantTarget(credentialId), value)));
+        return error;
+    }
+
+    public CredentialReadResult ReadHomeAssistantToken(Guid credentialId)
+    {
+        if (credentialId == Guid.Empty) return new(CredentialError.InvalidInput, null);
+        if (!native.IsSupported) return new(CredentialError.UnsupportedPlatform, null);
+        var result = Map(native.Read(HomeAssistantTarget(credentialId), out var secret));
+        if (result != CredentialError.None) { secret?.Dispose(); return new(result, null); }
+        return secret is null ? new(CredentialError.Unavailable, null) : new(result, secret);
+    }
+
+    public CredentialError DeleteHomeAssistantToken(Guid credentialId) =>
+        credentialId == Guid.Empty ? CredentialError.InvalidInput
+            : native.IsSupported ? Map(native.Delete(HomeAssistantTarget(credentialId))) : CredentialError.UnsupportedPlatform;
+
+    private static string HomeAssistantTarget(Guid credentialId) => $"Martlet/v3/home-assistant/{credentialId:N}";
 }

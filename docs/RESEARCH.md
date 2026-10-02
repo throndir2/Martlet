@@ -728,6 +728,17 @@ only as an optional host container. Vendor API details for Hue, Shelly,
 SmartThings, Alexa, Nest and Ring are summarized from documentation and
 remain unexercised.
 
+**Addendum 2026-10-01 (S49a).** Verified on developers.home-assistant.io: the
+Conversation API `POST /api/conversation/process` takes `text`, optional
+`language`, `agent_id` and `conversation_id`, and answers `response_type`
+`action_done`, `query_answer` or `error` (`data.code` `no_intent_match`,
+`no_valid_targets`, `failed_to_handle`, `unknown`) with `speech.plain.speech`
+and `data.success`/`data.failed` targets typed `area`, `floor`, `domain`,
+`device_class`, `device`, `entity` or `custom`. **Consequence:** SH00 uses the
+built-in agent through this API so control works with models that lack tool
+calling; HA MCP tools follow through the shared MCP client. Not exercised
+against a real Home Assistant.
+
 ## Linux service state custody and durable I/O (H03b3)
 
 **Accessed 2026-09-23.** Primary upstream contracts, not native Martlet evidence:
