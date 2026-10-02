@@ -380,8 +380,9 @@ public partial class MainWindow
                     $"{PlaceName(stt!)}{(micMissing ? "." + micNote : "")}", micMissing ? "Fix mic" : "Change")
                 : stt is not null ? new NowLine(CompanionTab.Listening, NodeHealth.Attention, Pending(stt) + micNote, "Review")
                 : new NowLine(CompanionTab.Listening, NodeHealth.Unknown, "Optional. Not set up; you can always type." + micNote, "Set up"),
-            new NowLine(CompanionTab.Character, lipSyncProblem is not null ? NodeHealth.Attention : homeAvatar is not null || avatar.IsShowing ? NodeHealth.Ready : NodeHealth.Unknown,
-                $"{CharacterModelName()}, {(avatar.IsShowing ? "on your desktop" : "hidden")}. Personality {persona}; lip-sync by {LipSyncOwnerName()}.", "Change")
+            lipSyncProblem is not null ? new NowLine(CompanionTab.LipSync, NodeHealth.Attention, $"Not working now: {lipSyncProblem.Problem}", "Change")
+                : new NowLine(CompanionTab.Character, homeAvatar is not null || avatar.IsShowing ? NodeHealth.Ready : NodeHealth.Unknown,
+                    $"{CharacterModelName()}, {(avatar.IsShowing ? "on your desktop" : "hidden")}. Personality {persona}; lip-sync by {LipSyncOwnerName()}.", "Change")
         };
 
         if (brainReady && thinkingProblem is not null)
@@ -1078,7 +1079,7 @@ public partial class MainWindow
             var handler = NetworkMap.LipSync(homeAvatar);
             var lipSyncChange = new Button { Content = "Change in Companion", HorizontalAlignment = HorizontalAlignment.Left };
             AutomationProperties.SetAutomationId(lipSyncChange, "RoleChange-LipSync");
-            lipSyncChange.Click += (_, _) => OpenCompanion(CompanionTab.Character);
+            lipSyncChange.Click += (_, _) => OpenCompanion(CompanionTab.LipSync);
             FrameworkElement lipSyncControl = lipSyncChange;
             if (hosts.Count > 0)
             {
@@ -1223,7 +1224,7 @@ public partial class MainWindow
                 }
             }
             await ApplyLipSyncAsync(host, key == "off");
-            tabPlace.Remove(CompanionTab.Character);
+            tabPlace.Remove(CompanionTab.LipSync);
             RecordClusterJob(ClusterJobs.LipSync, ClusterSync.Local(ClusterJobs.LipSync, homeSettings, homeAvatar));
             var who = key == "off" ? "nobody (the mouth follows the voice's loudness)" : host?.HostId ?? "this PC";
             var message = $"Lip-sync is now handled by {who}.";

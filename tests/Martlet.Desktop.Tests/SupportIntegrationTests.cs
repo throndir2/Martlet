@@ -144,7 +144,7 @@ public sealed class SupportIntegrationTests
             else
             {
                 Field<RadioButton>(main, "NavCompanion").IsChecked = true;
-                if (workflowButton == "OpenAudioSetup") ButtonById(main, "CompanionTab-Listening").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                if (workflowButton == "OpenAudioSetup") ElementById<RadioButton>(main, "CompanionTab-Listening").IsChecked = true;
                 ButtonById(main, workflowButton).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             }
             await observed.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -686,18 +686,19 @@ public sealed class SupportIntegrationTests
         }
     }
     private static T Field<T>(Window window, string name) where T : FrameworkElement => Assert.IsType<T>(window.FindName(name));
-    private static Button ButtonById(DependencyObject root, string id)
+    private static Button ButtonById(DependencyObject root, string id) => ElementById<Button>(root, id);
+    private static T ElementById<T>(DependencyObject root, string id) where T : FrameworkElement
     {
-        if (root is Button button && AutomationProperties.GetAutomationId(button) == id) return button;
+        if (root is T element && AutomationProperties.GetAutomationId(element) == id) return element;
         foreach (var child in LogicalTreeHelper.GetChildren(root).OfType<DependencyObject>())
         {
             var found = Find(child);
             if (found is not null) return found;
         }
-        throw new InvalidOperationException("Required authored button missing: " + id);
-        Button? Find(DependencyObject current)
+        throw new InvalidOperationException("Required authored element missing: " + id);
+        T? Find(DependencyObject current)
         {
-            if (current is Button candidate && AutomationProperties.GetAutomationId(candidate) == id) return candidate;
+            if (current is T candidate && AutomationProperties.GetAutomationId(candidate) == id) return candidate;
             foreach (var child in LogicalTreeHelper.GetChildren(current).OfType<DependencyObject>())
                 if (Find(child) is { } found) return found;
             return null;
