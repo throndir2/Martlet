@@ -300,6 +300,9 @@ the same request returns `auth.replay`.
 | `GET /martlet/v1/machine` | Signed scoped device request, any role | Host ID, the gateway's Martlet release `martlet_version` (so desktops can offer to update older hosts), plus the host-reported `machine` (method `docker`/`native`/`app`, optional `platform`, `os_version`, `architecture` and `features` ([platform fields](../../docs/PLATFORMS.md#machine-report-platform-fields)), OS, kernel, CPU, threads, memory, container runtime, `nvidia_containers`, driver `cuda` version, at most 16 GPUs with vendor/memory/driver and, for NVIDIA, power limit/default and persistence mode) or no `machine` when none was collected. Informational and unauthenticated by the host itself; grants no authority |
 | `GET /martlet/v1/cluster` | Signed scoped device request, any role | Host ID and this host's copy of the shared [cluster plan](../../docs/CLUSTER.md) (`plan`: who does each job, per-job failover, hosts and their roles). Nonsecret; the host never acts on it |
 | `POST /martlet/v1/cluster` | Signed device body, any role | Strict schema-1 plan JSON, at most 16 KiB, merged per job and per host (newest stamp wins) into the host's copy, which is saved to `cluster.json` when a storage is attached (`GatewayServer.AttachClusterStorage`); returns the merged `plan`. Unknown fields, newer schemas and invalid names are `request.invalid` |
+| `GET /martlet/v1/logs?after=N[&limit=L]` | Signed scoped device request, any role | Host ID and a page of this host's [log](../../docs/DIAGNOSTICS.md#diagnostics-page-and-the-log-host), oldest first, after store position `N` (`0` for the oldest): every computer's lines it collected as the log host plus its own activity. Each entry is `{source, component, seq, at, level, message, relayed_by?}`; `next` is the position to continue from and `more` says whether more are waiting. `limit` 1-1000 (default 500); at most about 448 KiB per page |
+| `GET /martlet/v1/logs?own_after=S[&limit=L]` | Signed scoped device request, any role | The same page shape with only this gateway's own lines (`source` = host ID, `component` `gateway`) whose `seq` is after `S`, so a desktop can pass them on to the log host. `after` and `own_after` together, unknown or repeated parameters are `request.invalid` |
+| `POST /martlet/v1/logs` | Signed device body, any role | Strict schema-1 `LogBatch` (at most 384 KiB, 1,000 lines, 64 streams): lines from the sending desktop's own logs and lines it relays from other hosts. Per stream (`source`/`component`) only lines with a `seq` newer than the newest kept are stored, so redelivery is harmless; lines whose source is not the sender record `relayed_by`. Returns `accepted` and the `marks` (newest `seq`) of every stream the batch names. Saved to `logs.json` when a storage is attached (`GatewayServer.AttachLogStorage`) |
 | `POST /martlet/v1/inference/ollama-chat` | Signed `voice` body plus action permission | Exact selected native-chat model/revision/artifacts; `input` plus optional `system` and `history` (`user`/`assistant`, at most 16) within one 16,384-byte text budget; bounded UTF-8 text events. `Martlet.Gateway.Ollama` relays it to the host's loopback Ollama (`ollama` host role) |
 | `POST /martlet/v1/inference/f5-synthesis` | Signed `voice` body plus action permission | Exact F5/reference identity, WAV/transcript/chunk bounds and contiguous 24 kHz PCM. `Martlet.Gateway.F5` relays it to the host's loopback F5 service (`f5` host role; route `F5Relay`: pinned model weights, discard-only cancellation) |
 | `POST /martlet/v1/inference/perception/ocr` | Signed `perception` body plus action permission | Selected P02 OCR identity and bounded selected-window frame |
@@ -414,8 +417,15 @@ summary, exact remedy and a random trace ID. It never includes a supplied
 token, credential, signature, URL, request body, worker exception or stack.
 The required `IGatewayAuditSink` receives only trace ID, stable code and HTTP
 status; implementations must be thread-safe and nonthrowing. Framework request
-logging is disabled by the supplied Kestrel factory; a future host owns bounded
-local listener diagnostics separately.
+logging is disabled by the supplied Kestrel factory. The gateway keeps its own
+bounded activity log instead (`GatewayLogStore`, served at `/martlet/v1/logs`):
+start and stop, each paired device, each finished model request (route, device
+and duration) and each refused or failed request (route and device or method
+and path, stable code, HTTP status, summary and trace ID; the same code for the
+same route or method within a minute is counted, not repeated). It never records a
+request body, token, credential, signature, query value or worker exception.
+At most 6,000 lines and about 1.8 MB are kept (oldest dropped first); the log is
+saved at most every 30 seconds and when the listener stops.
 
 Stable remedies are code-owned in `GatewayFailures` and contract-tested. Main
 operator actions are:

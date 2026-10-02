@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Martlet.Core.Logs;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 
@@ -42,6 +43,7 @@ internal sealed partial class GatewayHttpApplication
         this.clock = clock;
         this.crypto = crypto;
         this.audit = audit;
+        Logs = new(identity.HostId, clock);
     }
 
     internal async Task InvokeAsync(HttpContext context)
@@ -76,6 +78,7 @@ internal sealed partial class GatewayHttpApplication
             {
                 var proof = await ReadPairingProofAsync(context.Request, context.RequestAborted).ConfigureAwait(false);
                 var credential = pairing.Exchange(proof, context.RequestAborted);
+                Logs.Own(LogLevels.Info, $"Paired device {credential.DeviceId} (roles: {string.Join(", ", credential.Roles).ToLowerInvariant()}).");
                 await WriteJsonAsync(context, 201, new PairingResponseDocument
                 {
                     ProtocolVersion = GatewayProtocolVersion.Current,
@@ -97,6 +100,11 @@ internal sealed partial class GatewayHttpApplication
             if (rawTarget == VoicesPath)
             {
                 await InvokeVoicesAsync(context).ConfigureAwait(false);
+                return;
+            }
+            if (IsLogsTarget(rawTarget!))
+            {
+                await InvokeLogsAsync(context, rawTarget!).ConfigureAwait(false);
                 return;
             }
 
@@ -281,6 +289,7 @@ internal sealed partial class GatewayHttpApplication
             Code = failure.Code,
             HttpStatus = failure.HttpStatus
         });
+        LogFailure(context, traceId, failure.Code, failure.HttpStatus);
         if (context.Response.HasStarted)
         {
             context.Abort();

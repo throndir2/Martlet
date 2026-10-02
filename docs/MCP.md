@@ -184,6 +184,19 @@ explanation, followed by a `Reply failed (...)` line naming the route, for
 example `{"name":"logs_tail","arguments":{"contains":"failed"}}`. Logs can
 include local paths and provider error text (never keys or conversation content).
 
+`logs_timeline` reads this PC's logs as the desktop's
+[Diagnostics page](DIAGNOSTICS.md#diagnostics-page-and-the-log-host) shows
+them (optional absolute `dataDirectory`, default the current user's):
+`desktop`, `avatar-renderer` and `host-runs` with their rotated copies, parsed
+into one timeline, newest first, of `{at, level, component, seq, message}`
+(a stack trace or output lines stay in their line's `message`). Optional
+filters: `level` (`all`, `warnings`, `errors`), `component`, `contains` (at
+most 200 characters) and `lines` (1-1000, default 200). It also returns
+`device` (this PC's ID as a log source), `logsFolder`, `total`, `errors`,
+`warnings`, per-`components` counts, `matching`, and `logHost` (the `logs`
+entry of `cluster.json`, null when nobody collects logs; `plan` is `none`,
+`loaded` or `unreadable`). Read-only; it contacts no host.
+
 To drive the visible desktop, start `Martlet.Desktop.exe` yourself in the **same
 interactive Windows session** (ideally with a disposable `--data-directory`).
 Call `ui_connect` with that process ID. `ui_snapshot` returns window accessible names,
@@ -193,7 +206,7 @@ Status fields include `VisionStatus` (Companion › Vision: whether the Thinking
 option. By default only passive navigation and
 diagnostics controls can be clicked. The main window is split into pages, and a
 page's controls are only visible after you open it: click `NavHome`,
-`NavDevices`, `NavCompanion` or `NavSettings` first (for example
+`NavDevices`, `NavCompanion`, `NavDiagnostics` or `NavSettings` first (for example
 `NavCompanion` before `OpenSetup`). On Settings, click `DiagnosticsSection` to
 expand the pipeline and status fields. On a fresh data directory, `TourSkip`
 dismisses the welcome tour, and `TourBegin` and `TourBack` step through it
@@ -265,6 +278,36 @@ passive. To see a problem on a disposable data directory, put invalid JSON in
 `settings.json` (*settings*), a stale `logs\desktop.<pid>.running` marker
 (*crash*), or choose Ollama on this PC in Companion › Thinking while Ollama
 isn't running (*ollama*).
+
+The Diagnostics page (`NavDiagnostics`) lists log lines newest first. Each
+shown line is a list item `LogEntry-<n>` (`LogEntry-0` is the newest shown)
+whose value reads *<time> <level> <computer> · <part>: <first line>*;
+clicking one only selects it, and `LogDetail` then returns the whole line
+(time, level, computer, part, who passed it on and every following line).
+`LogSummary` says how many lines are shown of how many, from how many
+computers, the last 24 hours' errors and warnings and where remote lines came
+from (the log host, each paired host's own log, or why not). The filters are
+pills that only filter: `LogLevel-all`, `LogLevel-warnings`, `LogLevel-errors`,
+`LogPart-<part>` (`all`, `desktop`, `avatar-renderer`, `host-runs`, `gateway`)
+and `LogSource-<computer>` (`all`, this PC's device ID such as
+`LogSource-desktop-diva`, or a host ID); all are passive clicks, and snapshots
+report which is chosen in `selected`. `LogSearch` needs `ui_set_text` (and so
+`--allow-ui-effects`). `LogsRefresh` reads the logs again and sends nothing, so
+it is passive; `LogsCopy` (clipboard) and `LogsOpenFolder` (Explorer) are not.
+`LogHostChoice` returns the chosen log host (*Nobody: each computer keeps its
+own*, a host ID, or *<host> (not paired with this PC)*); changing it with
+`ui_select` changes the shared plan and needs `--allow-ui-effects`.
+`LogHostStatus` says what this PC last sent to the log host, what it passed on
+and which hosts didn't answer or run an older Martlet. To see lines on a
+disposable data directory, write `logs\desktop.log` (lines like
+`2026-10-01 22:15:44.974 -07:00 WARN [1] message`), `logs\avatar-renderer.log`
+or `logs\host-runs.log` before launching. Home's `HealthOpen-errors-diagnostics`
+and `HealthOpen-crash-diagnostics` open this page.
+
+`ui_snapshot` reports `selected` (true or false) for controls that are chosen
+rather than ticked (navigation, Companion's side list, radio buttons and
+filter pills, list items), and a combo box in the status fields reads as its
+chosen option.
 
 For the desktop character, open `CompanionTab-Character`; with
 `--allow-ui-effects`, `SetupCharacterToggle` shows or hides it and

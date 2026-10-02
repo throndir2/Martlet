@@ -96,6 +96,23 @@ internal sealed class ControlVoiceStorage(LinuxControlDirectory directory) : IGa
     }
 }
 
+/// <summary>Keeps the gateway's log in logs.json beside host.json (0600, service owner): its own activity and, when the
+/// owner made it the log host, every computer's lines. Not part of the approved configuration.</summary>
+internal sealed class ControlLogStorage(LinuxControlDirectory directory) : IGatewayLogStorage
+{
+    private readonly object gate = new();
+
+    public byte[]? Load()
+    {
+        lock (gate) return directory.Read(LinuxControlDirectory.Logs, LinuxControlDirectory.MaximumLogsBytes);
+    }
+
+    public void Save(byte[] bytes)
+    {
+        lock (gate) directory.WriteLogs(bytes);
+    }
+}
+
 internal static class HostApplication
 {
     private static DurableGatewayHost? retainedOwner;
@@ -148,11 +165,14 @@ internal static class HostApplication
                 }
                 owner = platform.OpenHost("serve", config, approval, cancellation);
                 CheckApproval(directory, config, approval);
+                if (owner.Enabled) owner.AttachLogs(new ControlLogStorage(directory));
                 PublishMachine(owner, directory, output);
                 if (owner.Enabled)
                 {
                     owner.AttachCluster(new ControlClusterStorage(directory));
                     owner.AttachVoices(new ControlVoiceStorage(directory));
+                    owner.RecordActivity("INFO", config.Roles.Count == 0 ? "Serving with no roles (for example as the log host)."
+                        : "Serving roles: " + string.Join(", ", config.Roles.Select(r => $"{r.Kind} ({r.Model})")) + ".");
                 }
                 await owner.StartAsync(cancellation);
                 CheckApproval(directory, config, approval);
@@ -308,12 +328,17 @@ internal static class HostApplication
             if (directory.Read(LinuxControlDirectory.Machine, GatewayMachineReport.MaximumBytes) is { } bytes)
             {
                 report = GatewayMachineReport.Parse(bytes);
-                if (report is null) Report(output, "machine.invalid: machine.json ignored; run martlet-host machine to collect it again.");
+                if (report is null)
+                {
+                    Report(output, "machine.invalid: machine.json ignored; run martlet-host machine to collect it again.");
+                    owner.RecordActivity("WARN", "machine.json is invalid, so this host's hardware is not reported. Run martlet-host machine to collect it again.");
+                }
             }
         }
         catch (GatewayPersistenceException)
         {
             Report(output, "machine.unreadable: machine.json must be a 0600 file owned by the service user; hardware not reported.");
+            owner.RecordActivity("WARN", "machine.json is unreadable (it must be a 0600 file owned by the service user), so hardware is not reported.");
         }
         owner.PublishMachine(report);
     }

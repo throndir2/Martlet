@@ -373,6 +373,20 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         server!.AttachVoiceStorage(storage);
     }
 
+    /// <summary>Keeps this host's log (its own activity and the lines desktops send it as the log host) in
+    /// <paramref name="storage"/>.</summary>
+    public void AttachLogs(IGatewayLogStorage storage)
+    {
+        RequireOpen();
+        server!.AttachLogStorage(storage);
+    }
+
+    /// <summary>Adds a line to this host's own log, which paired desktops can read.</summary>
+    public void RecordActivity(string level, string message)
+    {
+        if (server is not null && !closed) server.RecordActivity(level, message);
+    }
+
     public ValueTask CloseCleanlyAsync(CancellationToken cancellationToken = default) =>
         StopAsync(clean: true, cancellationToken);
 

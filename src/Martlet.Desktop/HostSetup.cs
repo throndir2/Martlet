@@ -339,11 +339,5 @@ internal static partial class HostSetupCommands
         return (clean.Length == 0 ? "martlet" : clean.Length > 58 ? clean[..58] : clean) + "-host";
     }
 
-    internal static string SuggestedDeviceId()
-    {
-        var name = new string(System.Environment.MachineName.ToLowerInvariant()
-            .Where(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.').ToArray());
-        var id = "desktop-" + (name.Length == 0 ? "pc" : name);
-        return id.Length > 64 ? id[..64] : id;
-    }
+    internal static string SuggestedDeviceId() => Martlet.Diagnostics.LocalLogs.ThisDeviceId();
 }

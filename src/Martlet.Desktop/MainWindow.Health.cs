@@ -217,6 +217,7 @@ public partial class MainWindow
         HealthFix Open(CompanionTab tab, string label) => new("open-" + tab.ToString().ToLowerInvariant(), label, () => OpenCompanion(tab), Passive: true);
         HealthFix Dismiss(string id) => new("dismiss", "Dismiss", () => { dismissedHealth.Add(id); RenderHealth(); }, Passive: true);
         HealthFix Logs() => new("logs", "Open the logs folder", OpenLogsFolder);
+        HealthFix DiagnosticsPage() => new("diagnostics", "Open Diagnostics", () => Navigate(NavDiagnostics), Passive: true);
 
         var routes = homeSettings?.Setup?.Routes ?? [];
         SetupRoute? Route(SetupRole role) => routes.FirstOrDefault(r => r.Role == role);
@@ -425,12 +426,12 @@ public partial class MainWindow
             var message = last.Message.Length > 300 ? last.Message[..300] + "…" : last.Message;
             Add("errors", HealthLevel.Warning, $"Martlet hit {fresh} unexpected error{(fresh == 1 ? "" : "s")}",
                 $"The latest, at {last.At.LocalDateTime:t}: {message}",
-                [Logs(), new("troubleshooting", "Open Troubleshooting", () => OpenTroubleshooting(this)),
+                [DiagnosticsPage(), Logs(), new("troubleshooting", "Open Troubleshooting", () => OpenTroubleshooting(this)),
                  new("dismiss", "Dismiss", () => { errorsAcknowledged = errors; RenderHealth(); }, Passive: true)]);
         }
         if ((Application.Current as App)?.CrashedLastTime == true)
             Add("crash", HealthLevel.Notice, "Martlet closed unexpectedly last time",
-                "It crashed, was ended or the PC lost power. Details, if any were captured, are in the local log.", [Logs(), Dismiss("crash")]);
+                "It crashed, was ended or the PC lost power. Details, if any were captured, are in the local log.", [DiagnosticsPage(), Logs(), Dismiss("crash")]);
 
         // ---------- tiles ----------
         tiles.Add(JobTile("thinking", CompanionTab.Thinking, llm, thinkingDown, required: true,

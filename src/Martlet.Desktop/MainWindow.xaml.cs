@@ -114,6 +114,7 @@ public partial class MainWindow : ThemedWindow
         InitializeShell();
         InitializeCluster();
         InitializeVoiceSync();
+        InitializeLogs();
     }
 
     private async void Theme_Changed(object sender, SelectionChangedEventArgs e)
@@ -152,6 +153,7 @@ public partial class MainWindow : ThemedWindow
         await ShowSavedCharacterAsync(onlyIfAutoShow: true);
         StartCluster();
         StartVoiceSync();
+        StartLogShipping();
         // Parakeet takes a few seconds to load; do it now rather than on the first thing said.
         if (homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Stt)?.RouteType == SetupRouteType.LocalParakeet)
             parakeet?.WarmAsync().Forget();
@@ -562,6 +564,7 @@ public partial class MainWindow : ThemedWindow
         updateTimer.Stop();
         clusterTimer.Stop();
         voiceSyncTimer.Stop();
+        StopLogs();
         audioSessionEvents.LockedChanged -= audioSetup.SetSessionLocked;
         audioSessionEvents.LockedChanged -= AvatarSessionLocked;
         if (conversation is not null) audioSessionEvents.LockedChanged -= conversation.SetSessionLocked;
