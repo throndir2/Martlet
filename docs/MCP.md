@@ -224,8 +224,10 @@ runner (FIXTURE: it installs nothing), and two fixture devices. Steps check
 that only known commands and arguments are accepted, anonymous requests are
 refused, only the agent's local token takes and reports commands, output and
 outcomes reach the sender, secrets never appear in lists, commands or the saved
-copy, cancel works (waiting and running), commands survive a restart with a new
-token and the queue is bounded. It runs `src\Martlet.NodeLinkCheck` (built with
+copy, the shared Home Assistant connection (including token sharing, revision
+wins, tombstones, invalid bodies, restart storage and no token in gateway logs),
+cancel works (waiting and running), commands survive a restart with a new token
+and the queue is bounded. It runs `src\Martlet.NodeLinkCheck` (built with
 `Martlet.Mcp`) as its own process, because the gateway needs the ASP.NET Core
 runtime; it takes no arguments and contacts nothing outside loopback. The same
 program's `live <pairing-code> <container>` mode checks a disposable Linux

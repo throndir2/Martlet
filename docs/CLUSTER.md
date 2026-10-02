@@ -116,6 +116,16 @@ sharing is on (its own choice, on by default, independent of the who-does-what
 sync). Each voice is a last-writer-wins entry with the same hybrid revisions;
 forgotten and merged voices leave tombstones. See [VOICES](VOICES.md#sharing-between-your-computers).
 
+## The shared Home Assistant connection
+
+The Home Assistant address and long-lived access token can travel through the
+same paired-host path. Each host keeps one `home-assistant.json` beside
+`cluster.json`/`voices.json`; any paired desktop can read it and replace it via
+`GET`/`POST /martlet/v1/home-assistant`. A null address/token is a tombstone
+that stops sharing while keeping the latest revision. This document contains a
+secret: the HA token. Linux hosts keep it as a 0600 service-owner file and the
+gateway sends it only to paired devices over the pinned, signed connection.
+
 ## Commands between your computers
 
 Any paired computer can ask a host to **update**, **install or remove a role**

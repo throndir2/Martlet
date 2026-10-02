@@ -378,6 +378,13 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         server!.AttachVoiceStorage(storage);
     }
 
+    /// <summary>Keeps the shared Home Assistant connection paired desktops sync through this host in <paramref name="storage"/>.</summary>
+    public void AttachHomeAssistant(IGatewayHomeAssistantStorage storage)
+    {
+        RequireOpen();
+        server!.AttachHomeAssistantStorage(storage);
+    }
+
     /// <summary>Keeps the commands paired computers send through this host in <paramref name="storage"/> and accepts
     /// <paramref name="agentToken"/> from the Martlet app on this host that runs them.</summary>
     public void AttachCommands(IGatewayCommandStorage storage, string agentToken)
