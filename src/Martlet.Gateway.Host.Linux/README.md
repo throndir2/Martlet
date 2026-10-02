@@ -74,7 +74,11 @@ re-approval. A missing or malformed file only means "not reported".
 desktops sync through `/martlet/v1/cluster` in the sibling `cluster.json`
 (same 0600 custody, replaced atomically through `cluster.staging`). It is not
 approved configuration either; a missing or malformed copy starts empty and
-desktops push theirs again.
+desktops push theirs again. Its log (own activity plus, as the owner's
+[log host](../../docs/DIAGNOSTICS.md#diagnostics-page-and-the-log-host), every
+computer's lines) is kept the same way in `logs.json` (at most 2 MiB, through
+`logs.staging`); a missing or malformed log starts empty. A host with no roles
+is valid and can serve purely as the log host.
 The parser rejects extra arguments, environment selectors, approval flags,
 secrets and arbitrary command paths. No args, `help`, `--help` and `-h` are
 passive and do not read files, create keys or start a listener.

@@ -14,8 +14,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "OpenConfigurationRecovery", "RefreshDiagnostics",
         "SetupClose", "AudioClose", "CloseLive", "SupportClose",
         "RecoveryClose", "SupportFreeze", "SupportClear",
-        "NavHome", "NavDevices", "NavCompanion", "NavSettings", "TourSkip", "TourBegin", "TourBack", "DiagnosticsSection",
-        "OpenPeople", "DeviceFactsSection", "DeviceReachSection", "DeviceRolesSection", "HealthRecheck",
+        "NavHome", "NavDevices", "NavCompanion", "NavDiagnostics", "NavSettings", "TourSkip", "TourBegin", "TourBack", "DiagnosticsSection",
+        "OpenPeople", "DeviceFactsSection", "DeviceReachSection", "DeviceRolesSection", "HealthRecheck", "LogsRefresh",
         // The talk window's Stop (Esc) only stops work (a reply, a recording, vision); it starts nothing and never pauses listening.
         "LiveStop"
     };
@@ -23,8 +23,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// "Node-host:gpu-1") and the problem card's Show buttons only select a device and show its details; a job's
     /// "Where it runs" options ("Place-Voice-Computer") only show that place's choices, which their own buttons commit. Home's
     /// Health tiles ("HealthCheck-thinking") and its passive fixes ("HealthOpen-voice-setup-open-voice", "HealthOpen-crash-dismiss")
-    /// only open the page where something changes, or hide the item.</summary>
-    private static readonly string[] SafeClickPrefixes = ["CompanionTab-", "Node-", "CoverageShow-", "Place-", "HealthCheck-", "HealthOpen-"];
+    /// only open the page where something changes, or hide the item. Diagnostics' filters ("LogLevel-errors", "LogSource-all",
+    /// "LogPart-gateway") only filter the shown lines, and selecting a line ("LogEntry-0") only shows it in full.</summary>
+    private static readonly string[] SafeClickPrefixes = ["CompanionTab-", "Node-", "CoverageShow-", "Place-", "HealthCheck-", "HealthOpen-",
+        "LogLevel-", "LogSource-", "LogPart-", "LogEntry-"];
     // Read-only status text. Text blocks and buttons have no value, so their accessible name (a text block's text) is returned.
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
@@ -34,7 +36,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "LipSyncNow", "LipSyncNowProblem", "LipSyncOwnTitle", "LipSyncOwnState", "SelectedDevice", "SelectedDeviceHealth", "ClusterStatus",
         "VisionStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "SetupF5About", "F5VoicesStatus",
         "SetupOllamaStatus", "SetupLocalModelTest", "HostRunStatus", "RepliesNow",
-        "StageTitle", "StageText", "HealthTitle", "HealthSummary", "HealthAllClear"
+        "StageTitle", "StageText", "HealthTitle", "HealthSummary", "HealthAllClear",
+        "LogSummary", "LogHostStatus", "LogHostChoice", "LogDetail"
     };
     /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)");
     /// Companion › Voice's included F5 voices ("F5VoiceRow-arctic-slt" reads "SLT (US female)", with "· in use" when it is);
@@ -42,8 +45,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// the paired computers a job can be handed to ("HostChoice-speaking-gpu-pc" reads "gpu-pc: Runs F5 (f5tts-v1-base).")
     /// and why none are listed or which can't run it ("HostChoices-speaking", "HostChoicesUnable-speaking"); Home's items
     /// ("HealthIssue-ollama" reads "Problem: Ollama isn't running on this PC. ...") and Health tiles ("HealthCheck-microphone"
-    /// reads "Microphone: OK. Windows default").</summary>
-    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "F5VoiceRow-", "StepDetail-", "HostChoice", "HealthIssue-", "HealthCheck-"];
+    /// reads "Microphone: OK. Windows default"); Diagnostics' shown lines, newest first ("LogEntry-0" reads
+    /// "21:04:11.532 WARN This PC · App: Host gpu-box stopped answering: ...").</summary>
+    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "F5VoiceRow-", "StepDetail-", "HostChoice", "HealthIssue-", "HealthCheck-",
+        "LogEntry-"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>
@@ -76,10 +81,15 @@ internal sealed class DesktopAutomation(bool allowEffects)
             {
                 var (window, element) = control;
                 var id = element.Current.AutomationId;
-                // Status text blocks expose their text as the accessible name; a status button's name carries its state.
+                // Status text blocks expose their text as the accessible name; a status button's name carries its state, and a
+                // list item's (a Diagnostics log line) its text.
                 var value = !IsSafeValue(id) ? null
                     : element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern) ? ((ValuePattern)pattern).Current.Value
-                    : element.Current.ControlType == ControlType.Text || element.Current.ControlType == ControlType.Button ? element.Current.Name : null;
+                    : element.Current.ControlType == ControlType.Text || element.Current.ControlType == ControlType.Button ||
+                        element.Current.ControlType == ControlType.ListItem ? element.Current.Name
+                    // A combo box without a value pattern reads as its selected option.
+                    : element.TryGetCurrentPattern(SelectionPattern.Pattern, out var choice)
+                        ? ((SelectionPattern)choice).Current.GetSelection().FirstOrDefault()?.Current.Name : null;
                 var entry = new Dictionary<string, object?>
                 {
                     ["window"] = window.Current.Name,
@@ -88,7 +98,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
                     ["enabled"] = element.Current.IsEnabled,
                     ["value"] = value,
                     ["checkedState"] = element.TryGetCurrentPattern(TogglePattern.Pattern, out var toggle)
-                        ? ((TogglePattern)toggle).Current.ToggleState.ToString() : null
+                        ? ((TogglePattern)toggle).Current.ToggleState.ToString() : null,
+                    // Radio buttons, list items and navigation entries are selected rather than checked.
+                    ["selected"] = element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var item)
+                        ? ((SelectionItemPattern)item).Current.IsSelected : null
                 };
                 if (layout)
                 {

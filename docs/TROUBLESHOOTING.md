@@ -30,9 +30,15 @@ Martlet always keeps a small local error log; it is never uploaded.
   recovered (out of memory, stack overflow, native access violations) are
   logged where the runtime allows, then the process ends.
 - After a crash, kill or power loss, the next launch's Home says Martlet
-  closed unexpectedly last time, with *Open the logs folder*. Unexpected errors
-  while Martlet runs also show on Home with the latest one and the same button.
-- Open it any time from **Troubleshooting > Open crash / error logs**.
+  closed unexpectedly last time, with *Open Diagnostics* and *Open the logs
+  folder*. Unexpected errors while Martlet runs also show on Home with the
+  latest one and the same buttons.
+- Read every log in one list, filtered by level, part, computer and text, on
+  the **Diagnostics** page; with a log host it also shows your other computers'
+  and hosts' logs. See [Diagnostics page and the log host](DIAGNOSTICS.md#diagnostics-page-and-the-log-host).
+  `desktop.log` also records each message shown in the main window's status
+  line (`Status: ...`) and hosts that stop or start answering again.
+- Open the folder any time from **Troubleshooting > Open crash / error logs**.
 
 Native crashes that bypass .NET are also listed in Windows Event Viewer >
 Windows Logs > Application (sources `.NET Runtime` and `Application Error`).
