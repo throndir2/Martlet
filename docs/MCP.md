@@ -607,7 +607,7 @@ running server shows in Home's `HealthCheck-tools` (*1 of 1 server ready*).
 
 On Thinking, Voice, Listening and Lip-sync, each "Where it runs" option
 (`Place-<page>-<place>`, for example `Place-Voice-Computer` or
-`Place-LipSync-Loudness`) only shows that place's choices, so clicking it is
+`Place-LipSync-ThisPc`) only shows that place's choices, so clicking it is
 passive; the card's own buttons commit. Under *Another of your computers*, each
 paired computer that can run the job (every one except this PC's own host
 service on Voice, Listening and Lip-sync; a host saved as *This PC* whose
@@ -634,9 +634,16 @@ vision is on: what it sees, for example *Watching the window behind Martlet*,
 then the last look's outcome or why it is holding off, and the looks used this
 hour; it never contains window titles)
 and Companion › Lip-sync's `LipSyncNow` and `LipSyncNowProblem` (whether this
-PC's own Audio2Face service answers), plus, while that own service is the
-setting in effect (Martlet's default), `LipSyncOwnTitle` (its title with *in
-use*, *not running* or *checking*) and `LipSyncOwnState` (what it does now).
+PC's own Audio2Face service answers). Lip-sync's places are *This PC* and
+*Another of your computers*; under *This PC*, `LipSyncDockerTitle` (*Audio2Face,
+with Docker*) and `LipSyncLoudnessTitle` (*Voice loudness, no setup*) read each
+way's title with *in use*, *recommended for this PC* or *chosen, not installed
+yet*, and `LipSyncOwnTitle` the advanced *Your own Audio2Face service* (with
+*in use*, *not running* or *checking* while it is the setting in effect,
+Martlet's default) with `LipSyncOwnState` (what it does now). Voice loudness
+reads *in use* while the default's own service doesn't answer.
+`SetupLipSyncLoudness`, `SetupLipSyncOwnService` and the Audio2Face buttons
+change lip-sync and need `--allow-ui-effects`.
 When Thinking runs in Ollama on this PC, the talk window has Ollama load the
 model as it opens (and again on activity after a few quiet minutes), and
 `LiveStatus` says *Ollama is loading <model> on this PC (N s)…* while it loads,
