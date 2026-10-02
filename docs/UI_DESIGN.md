@@ -371,7 +371,11 @@ window ends it.
     host service on this PC, then hands lip-sync to it, installing Audio2Face
     with its NGC key; once the host service exists, *Use Audio2Face on this
     PC* and *Check it*) or **Your own Audio2Face service** at the character's
-    loopback endpoint (*Use my own service*).
+    loopback endpoint (*Use my own service*). The own service is Martlet's
+    default: it only looks for a service there before each sentence, so it is
+    marked *in use* only when one answers and *not running* (the mouth follows
+    the voice's loudness) when nothing does; it never implies Audio2Face is
+    installed.
   - *Another of your computers*: the same host list as the job tabs, with *Use
     it*, *Add a computer*, *Check hosts* and the Devices map.
   - *Voice loudness*: *Use voice loudness* turns Audio2Face off.
