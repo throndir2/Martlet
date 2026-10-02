@@ -1013,10 +1013,15 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 heard = await EndpointAsync(operation, run).ConfigureAwait(false);
                 if (heard is null)
                 {
+                    // A microphone that failed (absent, busy, denied) ends the run by itself; say so instead of "no speech",
+                    // which would quietly re-arm listening on a microphone that can't work.
+                    var failed = run.Completion.IsCompleted ? await run.Completion.ConfigureAwait(false) : null;
                     await run.CancelAsync().ConfigureAwait(false);
                     await run.Completion.ConfigureAwait(false);
                     permission.Check();
-                    operation.Publish(new("mic.no_speech", Finished: true));
+                    operation.Publish(failed is { State: CaptureState.Failed }
+                        ? new LiveConversationStatus("mic." + failed.State, Finished: true, AudioFailure: failed.Error?.Code)
+                        : new LiveConversationStatus("mic.no_speech", Finished: true));
                     return null;
                 }
             }

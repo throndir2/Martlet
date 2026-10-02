@@ -13,7 +13,8 @@ internal sealed class LiveConversationConfiguration
     internal Guid Profile { get; }
     internal string Revision { get; }
     internal IReadOnlyList<SetupRoute> Routes { get; }
-    internal AudioSettings? Audio { get; }
+    /// <summary>The saved microphone and speakers, or the Windows defaults when none were saved in Audio setup.</summary>
+    internal AudioSettings Audio { get; }
     internal PersonaProfile? Persona { get; }
     internal MemorySettings? Memory { get; }
     /// <summary>The saved reply generation settings (Companion > Replies); null keeps every model default.</summary>
@@ -62,7 +63,7 @@ internal sealed class LiveConversationConfiguration
         Profile = settings.Profile.Id;
         Revision = revision;
         Routes = Array.AsReadOnly(settings.Setup!.Routes.ToArray());
-        Audio = settings.Audio;
+        Audio = settings.Audio ?? WindowsDefaultAudio;
         Persona = settings.Companion?.ActivePersona;
         Memory = settings.Memory;
         Generation = settings.Generation;
@@ -77,6 +78,9 @@ internal sealed class LiveConversationConfiguration
         settings.Validate();
         return new(settings, loaded.Revision);
     }
+
+    // One shared instance, so reloading unchanged settings compares equal.
+    private static readonly AudioSettings WindowsDefaultAudio = AudioSettings.Create();
 
     internal SetupRoute Route(SetupRole role) => Routes.Single(r => r.Role == role);
 
@@ -217,7 +221,6 @@ internal sealed class LiveConversationConfiguration
             };
             if (!supported) return $"{role}: unsupported model/voice. Choose one of the displayed adapter catalog IDs in Setup; there is no fallback.";
         }
-        if ((voice || microphone) && Audio is null) return "Audio choices missing. Save the intended input/output policy in Audio setup (local only).";
         return null;
     }
 
@@ -271,7 +274,7 @@ internal sealed class LiveConversationConfiguration
                 ? $"Spoken audio -> STT: {OpenAiSetup.Origin}, {Selection(SetupRole.Stt)}.\n"
                 : $"Spoken audio -> STT: your Martlet host {sttHost.HostId} ({sttHost.Origin}, whisper, pinned TLS), {Selection(SetupRole.Stt)}. " +
                     "Your recorded speech goes only to that paired computer over its pinned TLS gateway and is transcribed in memory there, not stored; no cloud provider receives it and there is no per-request charge.\n") +
-            (voice ? SpeechDisclosure() + $" AI-generated voice, not a human. Output: {Audio?.Output.DisplayName ?? "not selected"}; fixed at start, no fallback.\n"
+            (voice ? SpeechDisclosure() + $" AI-generated voice, not a human. Output: {Audio.Output.DisplayName}; fixed at start, no fallback.\n"
                 : "Text-only: NO TTS requests and NO output device. Voice is separately selected.\n") +
             "One action expires within 150 s, including scheduling, recording and authorization. PTT: <=25 s, mono 16 kHz PCM16, <=800,000 PCM bytes; original local permission <=30 s including cleanup/transfer. STT: <=1 request, <=800,044 WAV bytes, <=30 s, <=4096 transcript characters.\n" +
             (Persona is null

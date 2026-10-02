@@ -221,6 +221,7 @@ public partial class MainWindow
     {
         LipSyncHandler.Loudness => "voice loudness",
         LipSyncHandler.Host => homeAvatar!.RemoteHost!.HostId,
+        _ when ownLipSyncAnswers == false => "voice loudness (Audio2Face isn't running on this PC)",
         _ => "this PC"
     };
 
@@ -250,6 +251,7 @@ public partial class MainWindow
         CompanionScroll.ScrollToTop();
         RenderTab();
         Motion.Enter(entering ? CompanionPage : CompanionContent);
+        if (openTab == CompanionTab.LipSync) CheckOwnLipSyncAsync().Forget();
     }
 
     private readonly Dictionary<CompanionTab, RadioButton> companionNav = [];
@@ -1087,16 +1089,20 @@ public partial class MainWindow
 
     // ---------- character ----------
 
-    /// <summary>A page's Now card: what it uses, then any problem that stops it.</summary>
-    private Border PageNowCard(string text, Martlet.Core.Platforms.JobCoverage? problem)
+    /// <summary>A page's Now card: what it uses, then any problem that stops it. <paramref name="id"/> names its status text for
+    /// UI Automation ("<c>id</c>" and "<c>id</c>Problem").</summary>
+    private Border PageNowCard(string text, Martlet.Core.Platforms.JobCoverage? problem, string? id = null)
     {
         var now = new StackPanel();
         now.Children.Add(Heading("Now"));
-        now.Children.Add(new TextBlock { Text = text, FontSize = 15, TextWrapping = TextWrapping.Wrap });
+        var status = new TextBlock { Text = text, FontSize = 15, TextWrapping = TextWrapping.Wrap };
+        if (id is not null) AutomationProperties.SetAutomationId(status, id);
+        now.Children.Add(status);
         if (problem is not null)
         {
             var warning = new TextBlock { Text = $"Not working now: {problem.Problem} {problem.Effect}", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
             warning.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
+            if (id is not null) AutomationProperties.SetAutomationId(warning, id + "Problem");
             now.Children.Add(warning);
         }
         return Card(now);
@@ -1170,8 +1176,14 @@ public partial class MainWindow
             LipSyncHandler.Loudness => "Voice loudness: the mouth opens and closes with the voice. Audio2Face is off.",
             LipSyncHandler.Host => $"Audio2Face on {(owner == thisPc?.HostId ? "this PC" : owner)}" +
                 (ownerMissing ? ", not installed there yet, so the mouth follows the voice's loudness." : "."),
-            _ => $"Your own Audio2Face service on this PC ({new Uri(homeAvatar?.Endpoint ?? AvatarProfile.DefaultEndpoint).Authority})."
-        }, coverage.FirstOrDefault(c => c.Job == ClusterJobs.LipSync && c.IsProblem)));
+            _ => $"Your own Audio2Face service on this PC ({OwnLipSyncEndpoint().Authority})" + ownLipSyncAnswers switch
+            {
+                true => ", answering.",
+                false => ": nothing answers there, so the mouth follows the voice's loudness. Audio2Face isn't installed or running " +
+                    "on this PC; install it with Docker below, or start your own service.",
+                _ => "."
+            }
+        }, coverage.FirstOrDefault(c => c.Job == ClusterJobs.LipSync && c.IsProblem), "LipSyncNow"));
 
         var current = handler switch
         {
@@ -1268,7 +1280,8 @@ public partial class MainWindow
         if (ownInUse)
             own.Add(Note(homeAvatar?.LipSync == AvatarLipSync.Audio2Face
                 ? "In use, with Audio2Face-only lip-sync activated in the character's settings (Choose and customize)."
-                : $"In use: Martlet checks {endpoint} before each sentence.", new Thickness(0, 0, 0, 4)));
+                : $"In use: Martlet checks {endpoint} before each sentence." +
+                    (ownLipSyncAnswers == false ? " Nothing answers there right now." : ""), new Thickness(0, 0, 0, 4)));
         else own.Add(Row(PageButton("Use my own service", () => AssignLipSyncAsync("this-pc").Forget(), id: "SetupLipSyncOwnService")));
 
         // The own service is the default fallback, so it comes first only when it is in use and Docker's Audio2Face doesn't fit here.

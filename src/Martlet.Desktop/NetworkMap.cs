@@ -393,7 +393,7 @@ internal static class NetworkMap
                     break;
                 case LipSyncHandler.Loudness:
                     thisPc.Roles.Add(new("Lip-sync", "Lip-sync", "In charge: the mouth follows the voice's loudness (Audio2Face is off)"));
-                    thisPc.Commands.Add(new(NodeAction.LipSyncThisPc, "Turn on Audio2Face lip-sync here"));
+                    thisPc.Commands.Add(new(NodeAction.Companion, "Set up Audio2Face lip-sync here", Argument: "LipSync"));
                     break;
                 default:
                     thisPc.Commands.Add(new(NodeAction.LipSyncThisPc, "Take lip-sync back to this PC"));

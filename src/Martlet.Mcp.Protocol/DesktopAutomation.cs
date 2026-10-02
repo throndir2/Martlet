@@ -15,10 +15,14 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "RecoveryClose", "SupportFreeze", "SupportClear",
         "NavHome", "NavDevices", "NavCompanion", "NavSettings", "TourSkip", "DiagnosticsSection"
     };
+    // Companion's page list ("CompanionTab-Listening", "CompanionTab-LipSync"...) only opens a page.
+    private const string SafeClickPrefix = "CompanionTab-";
+    // Read-only status text. Text blocks have no value, so their text (or else their accessible name) is returned instead.
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
         "FoundationStatus", "PipelineStatus", "LocalAudioStatus",
-        "LiveStatus", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult"
+        "LiveStatus", "LiveMic", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
+        "LipSyncNow", "LipSyncNowProblem"
     };
     private int? processId;
 
@@ -46,8 +50,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
             {
                 var (window, element) = control;
                 var id = element.Current.AutomationId;
-                var value = SafeValues.Contains(id) && element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern)
-                    ? ((ValuePattern)pattern).Current.Value : null;
+                var value = !SafeValues.Contains(id) ? null
+                    : element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern) ? ((ValuePattern)pattern).Current.Value
+                    : element.TryGetCurrentPattern(TextPattern.Pattern, out var text) ? ((TextPattern)text).DocumentRange.GetText(4096)
+                    : element.Current.Name;
                 return new
                 {
                     window = window.Current.Name,
@@ -64,7 +70,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
 
     internal async Task<object> ClickAsync(string id)
     {
-        if (!allowEffects && !SafeClicks.Contains(id))
+        if (!allowEffects && !SafeClicks.Contains(id) && id?.StartsWith(SafeClickPrefix, StringComparison.Ordinal) != true)
             throw new InvalidOperationException("This control requires an operator to start MCP with --allow-ui-effects.");
         var element = Find(id);
         if (!element.Current.IsEnabled) throw new InvalidOperationException($"Control '{id}' is disabled.");

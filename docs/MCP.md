@@ -136,17 +136,26 @@ To drive the visible desktop, start `Martlet.Desktop.exe` yourself in the **same
 interactive Windows session** (ideally with a disposable `--data-directory`).
 Call `ui_connect` with that process ID. `ui_snapshot` returns window accessible names,
 automation IDs, enabled states, checkbox states, and selected read-only status
-fields; it does not dump arbitrary editable fields or credentials. `ui_click`
+fields (a text block's text, or a button's accessible name); it does not dump arbitrary editable fields or credentials. `ui_click`
 invokes a control by automation ID and `ui_select` selects a named combo-box
 option. By default only passive navigation and
 diagnostics controls can be clicked. The main window is split into pages, and a
 page's controls are only visible after you open it: click `NavHome`,
 `NavDevices`, `NavCompanion` or `NavSettings` first (for example
-`NavCompanion` before `OpenSetup`). On Settings, click `DiagnosticsSection` to
+`NavCompanion` before `OpenSetup`), then a Companion page with
+`CompanionTab-<page>` (for example `CompanionTab-LipSync`). On Settings, click `DiagnosticsSection` to
 expand the pipeline and status fields. On a fresh data directory, `TourSkip`
 dismisses the welcome tour. Use `ui_snapshot` again to observe asynchronous effects. Modal
 actions may return `completed: false` while their dialog remains open; this
 means the invoke is still pending, not that the action finished.
+
+Status fields include the talk window's `LiveStatus` (its status line) and
+`LiveMic` (*Listening*, *Listening paused* or *Can't listen* with the reason),
+and Companion › Lip-sync's `LipSyncNow` and `LipSyncNowProblem` (whether this
+PC's own Audio2Face service answers). Opening the talk window with always
+listening on opens the microphone; for verification, save a fixed microphone
+that does not exist in the disposable data directory, so listening starts and
+fails without capturing real audio.
 
 Window discovery uses visible top-level native handles filtered to the attached
 process, then verifies ownership around each UI Automation handle lookup.
@@ -222,11 +231,13 @@ observe them:
   ID; duplicates fail as ambiguous).
 - **Passive clicks:** add navigation, open/close, refresh and expand controls
   that start no work to `SafeClicks` in
-  `src\Martlet.Mcp.Protocol\DesktopAutomation.cs`. Anything that sends,
+  `src\Martlet.Mcp.Protocol\DesktopAutomation.cs` (Companion pages,
+  `CompanionTab-*`, are allowed by prefix). Anything that sends,
   records, plays, spends, writes files or handles credentials stays behind
   `--allow-ui-effects`.
 - **Status:** add read-only, non-secret status fields to `SafeValues` so
-  snapshots return their text. Never expose editable fields, credentials,
+  snapshots return their text (value, else text-block text, else accessible
+  name). Never expose editable fields, credentials,
   personal data or file paths.
 - **Headless capabilities:** add a tool to `Tools` and `CallAsync` in
   `src\Martlet.Mcp.Protocol\McpServer.cs` (strict input schema, bounded
