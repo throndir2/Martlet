@@ -3,6 +3,7 @@ using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using Martlet.Logging;
+using Martlet.Providers.Ollama;
 
 namespace Martlet.Desktop;
 
@@ -82,13 +83,12 @@ internal sealed class LocalOllamaWarmup : IDisposable
         {
             using var limit = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
             limit.CancelAfter(LoadLimit);
-            using var content = new StringContent(JsonSerializer.Serialize(new { model = Model }), Encoding.UTF8, "application/json");
-            using var response = await client.PostAsync(Endpoint, content, limit.Token).ConfigureAwait(false);
-            if (response.IsSuccessStatusCode) result = LocalModelState.Ready;
-            else
+            (result, why, var draftFailed) = await RequestLoadAsync(limit.Token).ConfigureAwait(false);
+            if (draftFailed)
             {
-                why = Error(await response.Content.ReadAsStringAsync(limit.Token).ConfigureAwait(false)) ?? $"Ollama returned error {(int)response.StatusCode}";
-                result = response.StatusCode == HttpStatusCode.NotFound ? LocalModelState.MissingModel : LocalModelState.Failed;
+                ErrorLog.Warn($"Ollama on this PC couldn't fit {Model}'s draft model in graphics memory: {why}.");
+                await LocalOllama.DisableDraftAsync(client, Model, limit.Token).ConfigureAwait(false);
+                (result, why, _) = await RequestLoadAsync(limit.Token).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { return; }
@@ -98,6 +98,11 @@ internal sealed class LocalOllamaWarmup : IDisposable
             why = $"Ollama didn't finish loading it within {LoadLimit.TotalMinutes:0} minutes";
         }
         catch (HttpRequestException) { result = LocalModelState.NotRunning; }
+        catch (InvalidOperationException error)
+        {
+            result = LocalModelState.Failed;
+            why = error.Message.TrimEnd('.');
+        }
         var took = clock.GetElapsedTime(at);
         lock (gate)
         {
@@ -111,6 +116,17 @@ internal sealed class LocalOllamaWarmup : IDisposable
             ErrorLog.Info($"Ollama on this PC loaded {Model} in {took.TotalSeconds:0.0} s.");
         else if (result is LocalModelState.MissingModel or LocalModelState.Failed)
             ErrorLog.Warn($"Ollama on this PC couldn't load {Model} ({result}): {why}.");
+    }
+
+    private async Task<(LocalModelState State, string? Why, bool DraftFailed)> RequestLoadAsync(CancellationToken token)
+    {
+        using var content = new StringContent(JsonSerializer.Serialize(new { model = Model }), Encoding.UTF8, "application/json");
+        using var response = await client.PostAsync(Endpoint, content, token).ConfigureAwait(false);
+        if (response.IsSuccessStatusCode) return (LocalModelState.Ready, null, false);
+        var body = await response.Content.ReadAsStringAsync(token).ConfigureAwait(false);
+        var why = Error(body) ?? $"Ollama returned error {(int)response.StatusCode}";
+        return (response.StatusCode == HttpStatusCode.NotFound ? LocalModelState.MissingModel : LocalModelState.Failed, why,
+            OllamaDraftHead.FailedToLoad(body));
     }
 
     // Ollama answers errors as {"error":"..."}, for example "model requires more system memory (9.6 GiB) than is available".

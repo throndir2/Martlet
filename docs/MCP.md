@@ -260,7 +260,10 @@ manage key, and both hosts keep verifiers and no secret; no key
 (`auth.missing`), a malformed and a wrong key (`key.invalid`) are refused; the
 read+voice key reads version (naming the key), status and capabilities, the
 documented `curl -k --pinnedpubkey` request (System32's curl.exe) answers and a
-wrong pin is refused (exit 90), and the key chats through the native route; it gets `key.scope` for commands, voices,
+wrong pin is refused (exit 90), and the key chats through the native route (and
+still gets its reply when the model's Gemma 4 speculative-decoding draft fails
+to load: the relay saves `draft_num_predict 0` on the model with `/api/create`
+and retries); it gets `key.scope` for commands, voices,
 network, api-keys, posting the plan and posting logs; the manage key sends
 `host.status` and follows it but can't chat or read status; the same key works
 on the second host and after it restarts from its saved copy; the desktop sees
@@ -805,6 +808,12 @@ model as it opens (and again on activity after a few quiet minutes), and
 or why it can't (Ollama not running, model not downloaded, Ollama's own error);
 the desktop log records each load's duration
 (`{"name":"logs_tail","arguments":{"contains":"Ollama on this PC"}}`).
+When a load fails because a Gemma 4 model's speculative-decoding draft model
+doesn't fit in graphics memory (*Gemma4Assistant requires ctx_other ... error
+loading model: vector*), the talk window and *Test model* save
+`draft_num_predict 0` on that model in Ollama (`/api/create`, same tag) and load
+it again; the log records *Turned off the speculative-decoding draft model*
+and the test run's output says so.
 The talk window is modeless: `ui_snapshot`'s `windowStates` lists each window
 with `enabled` (false while a modal dialog such as Audio setup blocks it), and
 the main window stays enabled while the talk window is open. Opening the talk
