@@ -849,6 +849,9 @@ public partial class LiveConversationWindow : ThemedWindow
             $"In-memory context messages used/omitted: {operation.ContextMessages}/{operation.ContextMessagesOmitted}; retained completed turns: {controller.ContextTurns}.\n" +
             $"Memory: {(operation.MemoryRequested ? "on" : "off")}; store revision: {operation.MemoryStoreRevision?.ToString() ?? "not read"}; facts used/omitted: {operation.MemoryFactsUsed}/{operation.MemoryFactsOmitted}" +
                 (operation.MemoryProblem is { } problem ? $"; not read ({problem}), replied without it" : "") + ". Fact content is never shown in this metadata timeline.\n" +
+            $"Lorebook entries used/omitted: {operation.LoreEntriesUsed}/{operation.LoreEntriesOmitted}" +
+                (operation.LoreTitles.Count > 0 ? " (" + string.Join(", ", operation.LoreTitles.Take(8).Select(title => title.Length > 40 ? title[..40] + "\u2026" : title)) + (operation.LoreTitles.Count > 8 ? ", \u2026" : "") + ")" : "") +
+                (operation.LoreProblem is { } loreProblem ? $"; lorebooks not read, replied without them: {loreProblem}" : "") + ".\n" +
             $"Reserved requests: {operation.Authorization.ReservedRequests}; segments: {snapshot?.CommittedSegments ?? 0}; queued: {snapshot?.QueuedSegments ?? 0}; suppressed fragments: {snapshot?.SuppressedFragments ?? 0}.\n" +
             $"Playback accepted/submitted/device-consumed: {snapshot?.AcceptedSamples ?? 0}/{snapshot?.SubmittedSamples ?? 0}/{snapshot?.DeviceConsumedSamples ?? 0}; drain: {snapshot?.Playback?.DeviceDrainObserved ?? false}; may have played: {snapshot?.MayHavePlayed ?? false}. NOT proof of heard audio; cost UNKNOWN.\n" +
             $"Runtime failure: {snapshot?.Failure}; provider: {snapshot?.ProviderFailure ?? status.ProviderFailure}; audio: {snapshot?.Playback?.Error?.Code ?? status.AudioFailure}.\n" + operation.Timeline;

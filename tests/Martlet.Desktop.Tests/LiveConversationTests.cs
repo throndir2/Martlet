@@ -60,7 +60,7 @@ public sealed class LiveConversationTests
         configuration = LiveConversationConfiguration.From(loaded with { Settings = paired })!;
         Assert.Null(configuration.Unavailable(false, false));
         Assert.Contains("Your own Martlet host runs this model", configuration.Disclosure(false));
-        var request = configuration.Request(new("Hello host"), false, ResponseStyle.Helpful, [], null, out _, out _);
+        var request = configuration.Request(new("Hello host"), false, ResponseStyle.Helpful, [], null, null, out _, out _, out _);
         Assert.Equal(SelfHostSetup.GatewayOllamaAlias, request.Model.ModelAlias);
         Assert.Equal("llama3.2-3b", request.Model.UpstreamModelId);
         Assert.Equal(("fixture-host", "https://127.0.0.1:7443", pairingCredential),
@@ -69,7 +69,7 @@ public sealed class LiveConversationTests
         Assert.Equal(VisionSupport.Unsupported, configuration.Vision());
         Assert.Contains("gemma3:4b", configuration.VisionAdvice());
         var image = new BoundedImage([0xFF, 0xD8, 0xFF, .. new byte[32]], ImageMediaType.Jpeg, 4, 4);
-        var glance = configuration.Request(new("(Screen glance.)"), false, ResponseStyle.Helpful, [], null, out _, out _, image,
+        var glance = configuration.Request(new("(Screen glance.)"), false, ResponseStyle.Helpful, [], null, null, out _, out _, out _, image,
             LiveConversationConfiguration.CommentaryInstructions(Chattiness.Normal), LiveConversationConfiguration.SilentReply);
         Assert.Same(image, glance.Input.Image);
         Assert.Equal("pass", glance.SilentReply);

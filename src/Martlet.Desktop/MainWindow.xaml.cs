@@ -7,6 +7,7 @@ using System.Windows.Controls;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using Martlet.Core.Settings;
+using Martlet.Core.Lorebooks;
 using Martlet.Core.Installation;
 using Martlet.Diagnostics;
 using Martlet.Audio;
@@ -26,6 +27,7 @@ public partial class MainWindow : ThemedWindow
     private readonly ISetupService? setupService;
     private readonly ICompanionSettingsService? companionService;
     private readonly DesktopMemoryService? memory;
+    private readonly LorebookStore? lorebooks;
     private readonly VoiceIdentity voiceIdentity;
     private readonly ConfigurationRecoveryController? recovery;
     private readonly AudioSetupService audioSetup;
@@ -68,6 +70,7 @@ public partial class MainWindow : ThemedWindow
         setupService = store is null ? null : new SetupService(store, vault);
         companionService = store is null ? null : new CompanionSettingsService(store);
         memory = store is null ? null : new DesktopMemoryService(store);
+        lorebooks = store is null ? null : new LorebookStore(store.DataDirectory);
         voiceIdentity = new(store?.DataDirectory);
         voiceIdentity.Load();
         recovery = store is null ? null : new(store, setupOperations, () => !support.HasResources);
@@ -76,7 +79,7 @@ public partial class MainWindow : ThemedWindow
         {
             conversation = new(setupOperations, setupService, vault, new WasapiCaptureDeviceFactory(), new WasapiDeviceFactory(),
                 memory: memory, generatedSpeech: avatar.Observer, revokeAvatar: avatar.Revoke, voiceIdentity: voiceIdentity,
-                dataDirectory: store!.DataDirectory, spokenText: captions.Feed);
+                dataDirectory: store!.DataDirectory, spokenText: captions.Feed, lorebooks: lorebooks);
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
         }
         audioSessionEvents.LockedChanged += AvatarSessionLocked;
@@ -240,7 +243,14 @@ public partial class MainWindow : ThemedWindow
     private async Task OpenCompanionWindowAsync(bool importCard)
     {
         if (companionService is null || closing || saving || model?.IsRunning == true) return;
-        new CompanionWindow(companionService, setupOperations, importCardOnOpen: importCard) { Owner = this }.ShowDialog();
+        new CompanionWindow(companionService, setupOperations, importCardOnOpen: importCard, lorebooks: lorebooks) { Owner = this }.ShowDialog();
+        await RefreshAsync();
+    }
+
+    private async Task OpenLorebooksAsync(bool import = false)
+    {
+        if (lorebooks is null || closing || saving || model?.IsRunning == true) return;
+        new LorebookWindow(lorebooks, homeSettings?.Companion, importOnOpen: import) { Owner = this }.ShowDialog();
         await RefreshAsync();
     }
 
