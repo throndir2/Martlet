@@ -65,6 +65,14 @@ internal sealed class LiveConversationOperation
     /// <summary>The MCP tools offered to this turn's reply, if any.</summary>
     internal DesktopToolset? Toolset { get; set; }
     internal ListeningOptions? Listening { get; init; }
+    /// <summary>One utterance recorded by always listening (<see cref="LiveListener"/>): capture and speech-to-text only.</summary>
+    internal bool Listen { get; init; }
+    /// <summary>A reply to what always listening heard: the model may stay quiet ([pass]) when it wasn't meant for it.</summary>
+    internal bool Spoken { get; init; }
+    internal double? SpokenConfidence { get; init; }
+    private int hearing;
+    /// <summary>Speech longer than a cough or click is being recorded right now.</summary>
+    internal bool Hearing { get => Volatile.Read(ref hearing) != 0; set => Volatile.Write(ref hearing, value ? 1 : 0); }
     internal Voiceprint? Voiceprint { get; init; }
     internal SpeakerCheck? SpeakerCheck { get; set; }
     /// <summary>Who is being recognized in this utterance (runs alongside speech-to-text).</summary>
@@ -183,6 +191,13 @@ internal sealed class LiveConversationController : IAsyncDisposable
     internal IReadOnlyList<JobFailure> RecentFailures { get { lock (gate) return [.. failures.Values.OrderBy(f => f.Role)]; } }
     /// <summary>Raised off the dispatcher when <see cref="RecentFailures"/> changes.</summary>
     internal event Action? FailuresChanged;
+    // Always listening runs on its own slot beside replies (so it keeps hearing while Martlet thinks), with its own
+    // speech-to-text credentials bound to the one utterance being transcribed.
+    private readonly SetupOperationRunner listenSlot = new();
+    private readonly OpenAiTranscriptionAdapter listenTranscription;
+    private LiveListener? listener;
+    private LiveConversationOperation? transcribing;
+    private long listenEpoch, spokeUntil;
 
     internal bool IsRunning => operations.IsRunning;
     internal int ContextTurns { get { lock (gate) return context.Count; } }
@@ -236,6 +251,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 spokenText: spokenText, windowsVoice: new WindowsVoiceClient());
         transcription = transcriptionFactory?.Invoke(credentials, this.clock) ??
             OpenAiTranscriptionAdapter.Create(credentials, this.clock);
+        var listenCredentials = new ConversationCredentialSource(() => Volatile.Read(ref transcribing)?.Authorization);
+        listenTranscription = transcriptionFactory?.Invoke(listenCredentials, this.clock) ??
+            OpenAiTranscriptionAdapter.Create(listenCredentials, this.clock);
         hostTranscription = new(hostListener ?? new HostTranscriptionClient(), this.clock);
         policy = new(runtime.SessionId, new ParticipationConfiguration(), new ParticipationState(), this.clock);
     }
@@ -244,6 +262,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
     {
         var next = LiveConversationConfiguration.From(loaded);
         LiveConversationOperation? stop;
+        LiveListener? stopListening;
         bool changed;
         lock (gate)
         {
@@ -253,9 +272,11 @@ internal sealed class LiveConversationController : IAsyncDisposable
             if (configuration?.Revision != next?.Revision) CancelCapturesLocked();
             configuration = next;
             stop = RevokeLocked();
+            stopListening = RevokeListeningLocked();
         }
         if (changed) revokeAvatar?.Invoke();
         stop?.Cancel("conversation.configuration_changed");
+        stopListening?.Worker.RequestCancellation();
         // Opening the talk window starts the MCP servers in the background, so their tools are ready by the first reply.
         if (next is { SupportsTools: true } && tools is { HasEnabledServers: true }) tools.EnsureStarted(retry: true);
     }
@@ -264,6 +285,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
     {
         if (pause || mute || sessionLocked) revokeAvatar?.Invoke();
         LiveConversationOperation? stop;
+        LiveListener? stopListening;
         lock (gate)
         {
             if (paused == pause && muted == mute && locked == sessionLocked) return;
@@ -274,14 +296,17 @@ internal sealed class LiveConversationController : IAsyncDisposable
             muted = mute;
             locked = sessionLocked;
             stop = RevokeLocked();
+            stopListening = RevokeListeningLocked();
         }
         stop?.Cancel(sessionLocked ? "conversation.locked" : pause ? "conversation.paused" : "conversation.muted");
+        stopListening?.Worker.RequestCancellation();
     }
 
     internal void SetSessionLocked(bool value)
     {
         if (value) revokeAvatar?.Invoke();
         LiveConversationOperation? stop;
+        LiveListener? stopListening;
         lock (gate)
         {
             if (locked == value) return;
@@ -290,22 +315,34 @@ internal sealed class LiveConversationController : IAsyncDisposable
             if (value) CancelCapturesLocked();
             locked = value;
             stop = RevokeLocked();
+            stopListening = RevokeListeningLocked();
         }
         stop?.Cancel("conversation.locked");
+        stopListening?.Worker.RequestCancellation();
     }
 
     internal void Revoke(string code)
     {
         revokeAvatar?.Invoke();
         LiveConversationOperation? stop;
+        LiveListener? stopListening;
         lock (gate)
         {
             memory?.Invalidate();
             ClearContextLocked();
             CancelCapturesLocked();
             stop = RevokeLocked();
+            stopListening = RevokeListeningLocked();
         }
         stop?.Cancel(code);
+        stopListening?.Worker.RequestCancellation();
+    }
+
+    // Revokes every utterance always listening has authorized; the caller then stops its loop outside the gate.
+    private LiveListener? RevokeListeningLocked()
+    {
+        Interlocked.Increment(ref listenEpoch);
+        return listener is { Running: true } current ? current : null;
     }
 
     private LiveConversationOperation? RevokeLocked()
@@ -320,11 +357,11 @@ internal sealed class LiveConversationController : IAsyncDisposable
 
     internal LiveConversationOperation Start(string? text, bool voice, bool microphone, bool approved,
         bool localCaptureApproved = false, bool uploadApproved = false, CancellationToken caller = default,
-        ListeningOptions? listening = null)
+        ListeningOptions? listening = null, bool spoken = false, HeardVoices? heard = null, double? confidence = null)
     {
         if (!approved || microphone && (!localCaptureApproved || !uploadApproved))
             throw new LiveActionException("conversation.permission_required");
-        if (listening is not null && !microphone) throw new LiveActionException("conversation.invalid_input");
+        if (listening is not null && !microphone || spoken && microphone) throw new LiveActionException("conversation.invalid_input");
         listening?.Activity.Validate();
         Voiceprint? voiceprint = null;
         if (listening?.RequireVoiceId == true)
@@ -346,7 +383,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
             operation = new(authorization, caller)
             {
                 MemoryRequested = memory is not null && selected.Memory is { Enabled: true },
-                Listening = listening, Voiceprint = voiceprint
+                Listening = listening, Voiceprint = voiceprint, Spoken = spoken, Heard = spoken ? heard : null,
+                SpokenConfidence = spoken ? confidence : null
             };
             active = operation;
             var worker = operations.TryStart(async token =>
@@ -363,13 +401,214 @@ internal sealed class LiveConversationController : IAsyncDisposable
             operation.Worker = worker;
             policy.SetState(new()
             {
-                AuthorizationRevision = acceptedRevision, CaptureAuthorized = microphone, TranscriptionAuthorized = microphone,
+                AuthorizationRevision = acceptedRevision, CaptureAuthorized = microphone || spoken, TranscriptionAuthorized = microphone || spoken,
                 TextDestinationAuthorized = true, SpeechOutputRequested = voice, SpeechDestinationAuthorized = voice
             });
         }
         published.SetResult();
         SuperviseAsync(operation).Forget();
         return operation;
+    }
+
+    /// <summary>Starts always listening: one loop on its own slot beside replies that records one utterance at a time and
+    /// transcribes each (in order) while it already listens for the next, so nothing said while Martlet thinks is lost. Each
+    /// utterance is still its own action (fresh authorization, capture epoch, Voice ID check and STT request). It holds off only
+    /// while Martlet speaks, so it never hears itself, or while other setup work owns the app slot; microphone and
+    /// speech-to-text failures are reported and listening carries on.</summary>
+    internal LiveListener Listen(ListeningOptions options)
+    {
+        if (!options.HandsFree) throw new LiveActionException("conversation.invalid_input");
+        options.Activity.Validate();
+        Voiceprint? voiceprint = null;
+        if (options.RequireVoiceId) voiceprint = voiceIdentity?.Current ?? throw new LiveActionException("voiceid.not_enrolled");
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var listening = new LiveListener(options, voiceprint);
+        lock (gate)
+        {
+            if (disposed || paused || muted || locked) throw new LiveActionException("conversation.controls_blocked");
+            var selected = configuration ?? throw new LiveActionException("conversation.setup_required");
+            if (selected.Unavailable(false, true) is not null) throw new LiveActionException("conversation.configuration_unsupported");
+            listening.Worker = listenSlot.TryStart(async token =>
+            {
+                await started.Task.ConfigureAwait(false);
+                return await ListenLoopAsync(listening, token).ConfigureAwait(false);
+            }) ?? throw new LiveActionException("conversation.ownership_busy");
+            listener = listening;
+        }
+        started.SetResult();
+        return listening;
+    }
+
+    /// <summary>Stops always listening: the utterance being recorded is discarded and one being transcribed is canceled.</summary>
+    internal void StopListening(LiveListener listening)
+    {
+        lock (gate)
+        {
+            if (ReferenceEquals(listener, listening)) Interlocked.Increment(ref listenEpoch);
+        }
+        listening.Worker.RequestCancellation();
+    }
+
+    /// <summary>Always listening holds off while Martlet speaks (a reply or a remark, plus a short tail for the room's echo), so
+    /// it never hears itself, and while other setup work (a microphone test, Voice ID enrollment) owns the app slot.</summary>
+    internal bool ListeningHeld
+    {
+        get
+        {
+            lock (gate)
+            {
+                var now = clock.GetTimestamp();
+                if (active is { Worker: not null } current && !current.OwnershipReleased)
+                {
+                    if (current.Turn?.Snapshot is { State: ConversationState.Playing } or { MayHavePlayed: true, OwnershipReleased: false })
+                    {
+                        spokeUntil = now + (long)(SpeechTail.TotalSeconds * clock.TimestampFrequency);
+                        return true;
+                    }
+                    return now < spokeUntil;
+                }
+                return operations.IsRunning || now < spokeUntil;
+            }
+        }
+    }
+
+    internal static TimeSpan SpeechTail => TimeSpan.FromMilliseconds(300);
+    internal static TimeSpan MicrophoneRetry => TimeSpan.FromSeconds(5);
+
+    private async Task<SetupWorkResult> ListenLoopAsync(LiveListener listening, CancellationToken token)
+    {
+        var pending = Task.CompletedTask;
+        try
+        {
+            while (true)
+            {
+                token.ThrowIfCancellationRequested();
+                if (ListeningHeld)
+                {
+                    listening.Held = true;
+                    await Task.Delay(TimeSpan.FromMilliseconds(50), clock, token).ConfigureAwait(false);
+                    continue;
+                }
+                listening.Held = false;
+                var utterance = Utterance(listening, token);
+                listening.Utterance = utterance;
+                byte[]? speech;
+                try
+                {
+                    await utterance.Authorization.ValidateSettingsAsync(token).ConfigureAwait(false);
+                    speech = await CaptureSpeechAsync(utterance).ConfigureAwait(false);
+                }
+                catch (LiveActionException error) when (error.Code is "conversation.revoked" or "conversation.expired")
+                {
+                    token.ThrowIfCancellationRequested();
+                    utterance.Publish(new(error.Code, Finished: true));
+                    continue;
+                }
+                catch (Exception error) when (error is ContractException or InvalidOperationException && !token.IsCancellationRequested)
+                {
+                    // A microphone that can't be pressed right now is reported like a failed one and tried again shortly.
+                    utterance.Publish(new("mic.Failed", Finished: true, AudioFailure: (error as ContractException)?.Code ?? ErrorCode.AudioDeviceUnavailable));
+                    speech = null;
+                }
+                if (speech is null)
+                {
+                    utterance.Hearing = false;
+                    var status = utterance.Status;
+                    if (status.Code is not ("mic.no_speech" or "listen.held"))
+                        listening.Post(Result(utterance));
+                    if (status.AudioFailure is not null)
+                        await Task.Delay(MicrophoneRetry, clock, token).ConfigureAwait(false);
+                    continue;
+                }
+                listening.BeginTranscribing();
+                utterance.Hearing = false;
+                var previous = pending;
+                pending = Task.Run(() => TranscribeHeardAsync(previous, listening, utterance, speech, token), CancellationToken.None);
+            }
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            return new(SetupWorkOutcome.Canceled);
+        }
+        catch (LiveActionException error)
+        {
+            listening.Ended = error.Code;
+            return new(SetupWorkOutcome.Failed);
+        }
+        finally
+        {
+            listening.Held = false;
+            await pending.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    // One utterance: its own authorization (revoked with listening), recorded with the listener's options.
+    private LiveConversationOperation Utterance(LiveListener listening, CancellationToken token)
+    {
+        lock (gate)
+        {
+            if (disposed || paused || muted || locked) throw new LiveActionException("conversation.controls_blocked");
+            var selected = configuration ?? throw new LiveActionException("conversation.setup_required");
+            if (selected.Unavailable(false, true) is not null) throw new LiveActionException("conversation.configuration_unsupported");
+            var epoch = Volatile.Read(ref listenEpoch);
+            var authorization = new ConversationAuthorization(selected, voice: false, microphone: true, clock,
+                () => Volatile.Read(ref listenEpoch) == epoch, settings.LoadAsync, vault, token);
+            authorization.BindWorker(token);
+            return new(authorization, token)
+            {
+                Worker = listening.Worker, Listen = true, Listening = listening.Options, Voiceprint = listening.Voiceprint
+            };
+        }
+    }
+
+    private static HeardSpeech Result(LiveConversationOperation utterance) => new(utterance.Status,
+        utterance.Status.Code == "listen.heard" ? utterance.Transcript : null, utterance.Transcription?.Confidence, utterance.Heard,
+        utterance.SpeakerCheck, utterance.Voiceprint);
+
+    // Voice ID, then speech-to-text, one utterance after another (so what you said stays in order) while the next is recorded.
+    private async Task TranscribeHeardAsync(Task previous, LiveListener listening, LiveConversationOperation utterance, byte[] speech,
+        CancellationToken token)
+    {
+        try
+        {
+            await previous.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            BoundedWaveAudio? audio;
+            try { audio = Screen(utterance, speech); }
+            finally { CryptographicOperations.ZeroMemory(speech); }
+            if (audio is null) return;
+            // Never longer than the upload's own 30 s deadline, even if a native boundary ignores it.
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(35), clock);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, deadline.Token);
+            Volatile.Write(ref transcribing, utterance);
+            TranscriptionResult? result;
+            try { result = await TranscribeAsync(utterance, audio, listenTranscription, linked.Token).ConfigureAwait(false); }
+            finally { Interlocked.CompareExchange(ref transcribing, null, utterance); }
+            if (result is null) return;
+            utterance.Heard = await HeardAsync(utterance, linked.Token).ConfigureAwait(false);
+            utterance.Transcript = result.Text;
+            utterance.Publish(new("listen.heard", Finished: true));
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            utterance.Publish(new("conversation.canceled", Finished: true));
+        }
+        catch (OperationCanceledException)
+        {
+            utterance.Publish(new("stt.deadline_exceeded", Finished: true));
+        }
+        catch (LiveActionException error)
+        {
+            utterance.Publish(new(error.Code, Finished: true));
+        }
+        catch (ContractException error)
+        {
+            utterance.Publish(new("conversation.invalid_input", Finished: true, AudioFailure: error.Code));
+        }
+        finally
+        {
+            if (!token.IsCancellationRequested) listening.Post(Result(utterance));
+            listening.EndTranscribing();
+        }
     }
 
     private void ClearContextLocked()
@@ -440,6 +679,14 @@ internal sealed class LiveConversationController : IAsyncDisposable
         return trimmed.Length == 0 || trimmed.StartsWith("[" + LiveConversationConfiguration.SilentReply, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(trimmed.Trim('[', ']', '(', ')', '<', '>', '*', '"', '\'', '.', '!', ' '),
                 LiveConversationConfiguration.SilentReply, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>A reply still streaming that may turn out to be [pass]; it isn't shown until it clearly isn't.</summary>
+    internal static bool MaybeSilent(string text)
+    {
+        var trimmed = text.Trim();
+        return IsSilentReply(trimmed) || ("[" + LiveConversationConfiguration.SilentReply + "]").StartsWith(trimmed, StringComparison.OrdinalIgnoreCase) ||
+            LiveConversationConfiguration.SilentReply.StartsWith(trimmed, StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task<SetupWorkResult> RunCommentaryAsync(LiveConversationOperation operation, string prompt, BoundedImage image,
@@ -569,8 +816,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
                     if (ReferenceEquals(active, operation) && !operation.Authorization.IsCanceled)
                         policy.SetState(new()
                         {
-                            AuthorizationRevision = revision, CaptureAuthorized = operation.Authorization.Microphone,
-                            TranscriptionAuthorized = operation.Authorization.Microphone, TextDestinationAuthorized = true,
+                            AuthorizationRevision = revision, CaptureAuthorized = operation.Authorization.Microphone || operation.Spoken,
+                            TranscriptionAuthorized = operation.Authorization.Microphone || operation.Spoken, TextDestinationAuthorized = true,
                             SpeechOutputRequested = operation.Authorization.Voice, SpeechDestinationAuthorized = operation.Authorization.Voice,
                             Activity = snapshot.State == ConversationState.Playing ? ResponseActivity.Playing : ResponseActivity.Responding
                         });
@@ -590,44 +837,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
             {
                 var audio = await CaptureAsync(operation).ConfigureAwait(false);
                 if (audio is null) return new(SetupWorkOutcome.Completed);
-                operation.Authorization.Check(worker);
-                await operation.Authorization.ValidateSettingsAsync(worker).ConfigureAwait(false);
-                var context = new ProviderRequestContext
-                {
-                    Ids = Ids(), Epoch = operation.Capture!.Snapshot.Epoch,
-                    Deadline = operation.Authorization.Deadline(TimeSpan.FromSeconds(30))
-                };
-                var permission = operation.Authorization.AuthorizeAudio(context);
-                operation.Publish(new("stt.uploading"));
-                operation.BeginTranscription(clock, context.Deadline);
-                TranscriptionResult result;
-                try
-                {
-                    var stt = operation.Authorization.Configuration.Route(SetupRole.Stt);
-                    // Listening handed to a paired host: the utterance goes only to its pinned gateway.
-                    result = operation.Authorization.Configuration.SttHostTarget() is { } listener
-                        ? await hostTranscription.TranscribeAsync(context, listener, stt.ModelId, audio,
-                            LiveConversationConfiguration.TranscriptionLimits, permission, operation.OriginalCaller, worker).ConfigureAwait(false)
-                        // Parakeet on this PC: transcribed in memory here, nothing is sent anywhere.
-                        : operation.Authorization.Configuration.LocalStt()
-                            ? await (localTranscription ?? throw new LiveActionException("conversation.configuration_unsupported"))
-                                .TranscribeAsync(context, stt.ModelId, audio, LiveConversationConfiguration.TranscriptionLimits, permission,
-                                    operation.OriginalCaller, worker).ConfigureAwait(false)
-                        : await transcription.TranscribeAsync(context, stt.ModelId, audio,
-                            LiveConversationConfiguration.TranscriptionLimits, permission, operation.OriginalCaller, worker).ConfigureAwait(false);
-                }
-                finally { operation.EndTranscription(); }
-                operation.Authorization.Check(worker);
-                operation.Transcription = result;
-                if (result.Outcome != TranscriptionOutcome.Completed)
-                {
-                    if (result.Outcome != TranscriptionOutcome.NoSpeech)
-                        LogFailure("Transcription", operation.Authorization.Configuration, SetupRole.Stt,
-                            $"outcome {result.Outcome}" + (result.Failure?.Code is { } sttCode ? $", provider {sttCode}" : ""));
-                    operation.Publish(new("stt." + result.Outcome, Finished: true, ProviderFailure: result.Failure?.Code));
-                    return new(result.Outcome == TranscriptionOutcome.NoSpeech ? SetupWorkOutcome.Completed : SetupWorkOutcome.Failed);
-                }
-                Succeeded(SetupRole.Stt);
+                var result = await TranscribeAsync(operation, audio, transcription, worker).ConfigureAwait(false);
+                if (result is null)
+                    return new(operation.Transcription?.Outcome == TranscriptionOutcome.NoSpeech ? SetupWorkOutcome.Completed : SetupWorkOutcome.Failed);
                 operation.Heard = await HeardAsync(operation, worker).ConfigureAwait(false);
                 operation.Transcript = result.Text;
                 input = new(result.Text!);
@@ -641,11 +853,12 @@ internal sealed class LiveConversationController : IAsyncDisposable
             {
                 operation.Authorization.Check(worker);
                 // Receipt is NOW for a newly received transcript. Never renew a queued/busy/expired intent.
-                var source = !operation.Authorization.Microphone ? InputSource.TypedControl
+                var source = operation.Spoken ? InputSource.HandsFreeListening
+                    : !operation.Authorization.Microphone ? InputSource.TypedControl
                     : operation.HandsFree ? InputSource.HandsFreeListening : InputSource.PushToTalkControl;
                 var intent = policy.CreateIntent(new(source,
-                    new Transcript(input!.UserText, confidence: operation.Transcription?.Confidence),
-                    trustedTypedAddress: !operation.Authorization.Microphone));
+                    new Transcript(input!.UserText, confidence: operation.Transcription?.Confidence ?? operation.SpokenConfidence),
+                    trustedTypedAddress: !operation.Authorization.Microphone && !operation.Spoken));
                 var decision = policy.Evaluate(intent);
                 var commit = policy.TryCommit(decision);
                 operation.Publish(new("policy." + commit.Reason, Policy: commit.Reason, Finished: !commit.Accepted));
@@ -707,7 +920,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
                     input!, operation.Authorization.Voice, style, history, memoryResult, lore,
                     out var usedHistory, out var usedMemory, out var usedLore,
                     extraInstructions: Join(LiveConversationConfiguration.ReplyLengthInstructions, home?.Instructions,
-                        VoicePromptContext.Instructions(operation.Heard)), tools: toolset);
+                        VoicePromptContext.Instructions(operation.Heard),
+                        operation.Spoken ? LiveConversationConfiguration.ListeningInstructions : null),
+                    silentReply: operation.Spoken ? LiveConversationConfiguration.SilentReply : null, tools: toolset);
                 operation.PersonaRevision = persona?.ConfigurationRevision;
                 operation.ResponseStyle = style;
                 operation.ContextMessages = usedHistory;
@@ -730,6 +945,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
             }
             if (IsFailure(terminal)) LogFailure("Reply", configured, SetupRole.Llm, Describe(terminal));
             else if (terminal.State == ConversationState.Completed) Succeeded(SetupRole.Llm);
+            // What always listening heard may not have been meant for Martlet: the model answers [pass] and stays quiet.
+            var passed = operation.Spoken && terminal.State == ConversationState.Completed && IsSilentReply(turn.Content.Text);
+            operation.Passed = passed;
             if (terminal.State == ConversationState.Completed && !string.IsNullOrWhiteSpace(turn.Content.Text))
             {
                 lock (gate)
@@ -739,16 +957,17 @@ internal sealed class LiveConversationController : IAsyncDisposable
                         var earlier = context.Snapshot();
                         // Who said it travels with the words, so later replies (and memory) know who said what.
                         var said = VoicePromptContext.Prefix(operation.Heard) + input!.UserText;
-                        context.Add(said, turn.Content.Text);
-                        if (operation.MemoryRequested)
+                        // A pass stays in the conversation too, so later replies know what was said around Martlet.
+                        context.Add(said, passed ? $"[{LiveConversationConfiguration.SilentReply}]" : turn.Content.Text);
+                        if (operation.MemoryRequested && !passed)
                             EnqueueCaptureLocked(operation.Authorization.Configuration, earlier, said, turn.Content.Text);
-                        if (operation.Heard is { Known.Count: > 0 } heard && voices is { Active: true } &&
+                        if (!passed && operation.Heard is { Known.Count: > 0 } heard && voices is { Active: true } &&
                             VoiceNaming.Worth(heard, input.UserText, turn.Content.Text))
                             EnqueueNamingLocked(operation.Authorization.Configuration, heard, earlier, said, turn.Content.Text);
                     }
                 }
             }
-            operation.Publish(new("runtime." + terminal.State, Finished: true, Quarantined: terminal.Quarantined,
+            operation.Publish(new(passed ? "listen.passed" : "runtime." + terminal.State, Finished: true, Quarantined: terminal.Quarantined,
                 Policy: PolicyReason.DispatchAccepted, ProviderFailure: terminal.ProviderFailure, AudioFailure: terminal.Playback?.Error?.Code));
             await turn.OwnershipRelease.ConfigureAwait(false);
             if (turn.Snapshot.Quarantined)
@@ -806,6 +1025,52 @@ internal sealed class LiveConversationController : IAsyncDisposable
     }
 
     private CorrelationIds Ids() => new() { SessionId = runtime.SessionId, TurnId = Guid.NewGuid(), RequestId = Guid.NewGuid() };
+
+    // Speech-to-text for one recorded utterance through its one-use upload permission; null (with the reason published) when
+    // nothing usable came back.
+    private async Task<TranscriptionResult?> TranscribeAsync(LiveConversationOperation operation, BoundedWaveAudio audio,
+        OpenAiTranscriptionAdapter openAi, CancellationToken worker)
+    {
+        operation.Authorization.Check(worker);
+        await operation.Authorization.ValidateSettingsAsync(worker).ConfigureAwait(false);
+        var context = new ProviderRequestContext
+        {
+            Ids = Ids(), Epoch = operation.Capture!.Snapshot.Epoch,
+            Deadline = operation.Authorization.Deadline(TimeSpan.FromSeconds(30))
+        };
+        var permission = operation.Authorization.AuthorizeAudio(context);
+        operation.Publish(new("stt.uploading"));
+        operation.BeginTranscription(clock, context.Deadline);
+        TranscriptionResult result;
+        try
+        {
+            var stt = operation.Authorization.Configuration.Route(SetupRole.Stt);
+            // Listening handed to a paired host: the utterance goes only to its pinned gateway.
+            result = operation.Authorization.Configuration.SttHostTarget() is { } listener
+                ? await hostTranscription.TranscribeAsync(context, listener, stt.ModelId, audio,
+                    LiveConversationConfiguration.TranscriptionLimits, permission, operation.OriginalCaller, worker).ConfigureAwait(false)
+                // Parakeet on this PC: transcribed in memory here, nothing is sent anywhere.
+                : operation.Authorization.Configuration.LocalStt()
+                    ? await (localTranscription ?? throw new LiveActionException("conversation.configuration_unsupported"))
+                        .TranscribeAsync(context, stt.ModelId, audio, LiveConversationConfiguration.TranscriptionLimits, permission,
+                            operation.OriginalCaller, worker).ConfigureAwait(false)
+                : await openAi.TranscribeAsync(context, stt.ModelId, audio,
+                    LiveConversationConfiguration.TranscriptionLimits, permission, operation.OriginalCaller, worker).ConfigureAwait(false);
+        }
+        finally { operation.EndTranscription(); }
+        operation.Authorization.Check(worker);
+        operation.Transcription = result;
+        if (result.Outcome == TranscriptionOutcome.Completed)
+        {
+            Succeeded(SetupRole.Stt);
+            return result;
+        }
+        if (result.Outcome != TranscriptionOutcome.NoSpeech)
+            LogFailure("Transcription", operation.Authorization.Configuration, SetupRole.Stt,
+                $"outcome {result.Outcome}" + (result.Failure?.Code is { } sttCode ? $", provider {sttCode}" : ""));
+        operation.Publish(new("stt." + result.Outcome, Finished: true, ProviderFailure: result.Failure?.Code));
+        return null;
+    }
 
     private static string? Join(params string?[] parts) =>
         parts.Where(part => part is not null).ToArray() is { Length: > 0 } present ? string.Join("\n\n", present) : null;
@@ -1155,19 +1420,30 @@ internal sealed class LiveConversationController : IAsyncDisposable
                             continue;
                         }
                         if (accepted < 0) accepted = detector.SpeechStartFrame;
+                        operation.Hearing = true;
                         await run.ReleaseAsync().ConfigureAwait(false);
                         return Range(accepted, detector.SpeechEndFrame);
                     }
-                    if (detector.Speaking && accepted < 0 &&
-                        index - detector.SpeechStartFrame >= minimumFrames) accepted = detector.SpeechStartFrame;
+                    if (detector.Speaking && accepted < 0 && index - detector.SpeechStartFrame >= minimumFrames)
+                    {
+                        accepted = detector.SpeechStartFrame;
+                        operation.Hearing = true;
+                    }
                 }
                 while (true);
+                // Always listening stops listening the moment Martlet starts speaking, unless you were already talking.
+                if (accepted < 0 && operation.Listen && ListeningHeld)
+                {
+                    operation.Publish(new("listen.held"));
+                    return null;
+                }
                 if (accepted < 0 && !detector.Speaking && clock.GetElapsedTime(started) >= ListeningOptions.IdleRestart)
                     return null;
                 await Task.WhenAny(run.Completion, Task.Delay(TimeSpan.FromMilliseconds(20), clock)).ConfigureAwait(false);
             }
             // Duration limit or Finish: send everything from the onset to the end of the recording.
             if (accepted < 0 && detector.Speaking) accepted = detector.SpeechStartFrame;
+            if (accepted >= 0) operation.Hearing = true;
             return accepted < 0 ? null : Range(accepted, 0) with { EndSampleExclusive = int.MaxValue };
         }
         finally
@@ -1182,6 +1458,16 @@ internal sealed class LiveConversationController : IAsyncDisposable
     }
 
     private async Task<BoundedWaveAudio?> CaptureAsync(LiveConversationOperation operation)
+    {
+        var speech = await CaptureSpeechAsync(operation).ConfigureAwait(false);
+        if (speech is null) return null;
+        try { return Screen(operation, speech); }
+        finally { CryptographicOperations.ZeroMemory(speech); }
+    }
+
+    // Records one utterance and returns a private copy of the speech to send (the caller clears it), or null with the reason
+    // published. The microphone is released before this returns.
+    private async Task<byte[]?> CaptureSpeechAsync(LiveConversationOperation operation)
     {
         var permission = operation.Authorization;
         permission.Check();
@@ -1205,12 +1491,13 @@ internal sealed class LiveConversationController : IAsyncDisposable
                     // A microphone that failed (absent, busy, denied) ends the run by itself; say so instead of "no speech",
                     // which would quietly re-arm listening on a microphone that can't work.
                     var failed = run.Completion.IsCompleted ? await run.Completion.ConfigureAwait(false) : null;
+                    var held = operation.Status.Code == "listen.held";
                     await run.CancelAsync().ConfigureAwait(false);
                     await run.Completion.ConfigureAwait(false);
                     permission.Check();
                     operation.Publish(failed is { State: CaptureState.Failed }
                         ? new LiveConversationStatus("mic." + failed.State, Finished: true, AudioFailure: failed.Error?.Code)
-                        : new LiveConversationStatus("mic.no_speech", Finished: true));
+                        : new LiveConversationStatus(held ? "listen.held" : "mic.no_speech", Finished: true));
                     return null;
                 }
             }
@@ -1223,7 +1510,6 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 return null;
             }
             byte[] pcm = new byte[utterance.ByteCount];
-            BoundedWaveAudio? wave = null;
             try
             {
                 permission.Check();
@@ -1232,35 +1518,13 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 // Hands-free uploads only the detected speech (with pre-roll/tail), not the idle wait before it.
                 var start = Math.Min(heard?.StartSample ?? 0, total);
                 var end = Math.Min(heard?.EndSampleExclusive ?? total, total);
-                var speech = pcm.AsSpan(start * 2, Math.Max(0, end - start) * 2);
-                if (operation.Voiceprint is { } voiceprint)
-                {
-                    operation.Publish(new("speaker.checking"));
-                    var check = SpeakerVerifier.Check(VoiceIdentity.Encoder, voiceprint.Embedding, voiceprint.Threshold, speech);
-                    permission.Check();
-                    operation.SpeakerCheck = check;
-                    if (check.Verdict != SpeakerVerdict.User)
-                    {
-                        operation.Publish(new(check.Verdict == SpeakerVerdict.TooShort ? "speaker.too_short" : "speaker.not_user", Finished: true));
-                        return null;
-                    }
-                    operation.Publish(new("speaker.verified"));
-                }
-                Recognize(operation, speech);
-                if (speech.Length >= 2) wave = BoundedWaveAudio.FromPcm(CapturedUtterance.Format, speech);
+                return pcm.AsSpan(start * 2, Math.Max(0, end - start) * 2).ToArray();
             }
             finally
             {
                 CryptographicOperations.ZeroMemory(pcm);
                 utterance.Dispose();
             }
-            if (wave is null)
-            {
-                operation.Publish(new("mic.no_speech", Finished: true));
-                return null;
-            }
-            operation.Publish(new("mic.transferred_and_cleared"));
-            return wave;
         }
         finally
         {
@@ -1274,9 +1538,40 @@ internal sealed class LiveConversationController : IAsyncDisposable
         }
     }
 
+    // Voice ID (before anything is uploaded), then who is talking alongside speech-to-text: the audio to transcribe, or null
+    // with the reason published.
+    private BoundedWaveAudio? Screen(LiveConversationOperation operation, byte[] speech)
+    {
+        var permission = operation.Authorization;
+        permission.Check();
+        if (operation.Voiceprint is { } voiceprint)
+        {
+            operation.Publish(new("speaker.checking"));
+            var check = SpeakerVerifier.Check(VoiceIdentity.Encoder, voiceprint.Embedding, voiceprint.Threshold, speech);
+            permission.Check();
+            operation.SpeakerCheck = check;
+            if (check.Verdict != SpeakerVerdict.User)
+            {
+                operation.Publish(new(check.Verdict == SpeakerVerdict.TooShort ? "speaker.too_short" : "speaker.not_user", Finished: true));
+                return null;
+            }
+            operation.Publish(new("speaker.verified"));
+        }
+        Recognize(operation, speech);
+        if (speech.Length < 2)
+        {
+            operation.Publish(new("mic.no_speech", Finished: true));
+            return null;
+        }
+        var wave = BoundedWaveAudio.FromPcm(CapturedUtterance.Format, speech);
+        operation.Publish(new("mic.transferred_and_cleared"));
+        return wave;
+    }
+
     public async ValueTask DisposeAsync()
     {
         LiveConversationOperation? owned;
+        LiveListener? listening;
         lock (gate)
         {
             disposed = true;
@@ -1284,13 +1579,22 @@ internal sealed class LiveConversationController : IAsyncDisposable
             ClearContextLocked();
             CancelCapturesLocked();
             owned = RevokeLocked();
+            listening = RevokeListeningLocked();
         }
         owned?.Cancel("conversation.closed");
+        listening?.Worker.RequestCancellation();
         DisposeCaptureRuntimeAsync().Forget();
         // Never wait for native cleanup on the dispatcher. The shared slot remains reserved until real exit.
         await runtime.DisposeAsync().ConfigureAwait(false);
         if (owned is null || owned.Worker.Completion.IsCompleted) transcription.Dispose();
         else DisposeAfterReleaseAsync(owned).Forget();
+        if (listening is null || listening.Worker.Completion.IsCompleted) listenTranscription.Dispose();
+        else DisposeListenerAfterReleaseAsync(listening).Forget();
+    }
+    private async Task DisposeListenerAfterReleaseAsync(LiveListener listening)
+    {
+        await listening.Worker.Completion.ConfigureAwait(false);
+        listenTranscription.Dispose();
     }
     private async Task DisposeCaptureRuntimeAsync()
     {

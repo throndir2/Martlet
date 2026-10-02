@@ -301,7 +301,9 @@ hardware can't run it, with why. `SetupUseHost-<job>-<host ID>` hands the job
 over and needs `--allow-ui-effects`.
 
 Status fields include the talk window's `LiveStatus` (its status line),
-`LiveMic` (*Listening*, *Listening paused* or *Can't listen* with the reason),
+`LiveMic` (*Listening*, *Listening paused*, *Can't listen* or *Mic unavailable*
+with the reason; while Martlet speaks it reads *Not listening while Martlet
+speaks*),
 `LiveVision` (*Watching*, *Looking*, *Vision paused* or *Can't see*, with when
 it last checked the screen; it checks every 3 s), `LiveVisionStatus` (while
 vision is on: what it sees, for example *Watching the window behind Martlet*,
@@ -319,8 +321,9 @@ the desktop log records each load's duration
 (`{"name":"logs_tail","arguments":{"contains":"Ollama on this PC"}}`).
 Opening the talk window with always
 listening on opens the microphone; for verification, save a fixed microphone
-that does not exist in the disposable data directory, so listening starts and
-fails without capturing real audio.
+that does not exist in the disposable data directory, so listening starts,
+fails without capturing real audio and shows *Mic unavailable* while it keeps
+retrying (it never pauses by itself).
 
 Window discovery uses visible top-level native handles filtered to the attached
 process, then verifies ownership around each UI Automation handle lookup.

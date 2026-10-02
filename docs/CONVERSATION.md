@@ -199,8 +199,9 @@ the data folder.
 - With always listening, opening the talk window opens the microphone chosen in
   Companion › Listening (the Windows default unless another is picked; testing
   it there is optional). If listening isn't set up, the mic button says *Can't
-  listen* and why; if the microphone can't be opened (absent, busy, denied),
-  listening pauses and the status line says how to fix it, and you can type.
+  listen* and why. If the microphone can't be opened (absent, busy, denied), the
+  mic button says *Mic unavailable* with the fix, Martlet tries it again every
+  5 seconds, and you can type meanwhile.
   An adaptive energy detector (`EnergyVoiceActivityDetector`,
   20 ms frames read from the capture's own buffer through `TryCopyMonoFrame`)
   waits for speech, then releases the capture after your chosen pause
@@ -208,16 +209,32 @@ the data folder.
   is uploaded, not the idle wait before it. Sounds shorter than 450 ms (coughs,
   clicks) are ignored. **Sensitivity** trades missed quiet speech against false
   triggers from noise.
-- Each utterance is its own action: a fresh authorization, capture epoch, STT
-  request and policy intent (`InputSource.HandsFreeListening`, reason
-  `ExplicitHandsFree`). Listening re-arms only after the reply, including speech
-  playback, has finished, so Martlet does not hear itself. Idle listening restarts
-  the bounded capture every 12 seconds; nothing is uploaded when nobody spoke.
-- Typing while it listens hands the microphone over for the typed message;
-  listening resumes after the reply. It continues while the window is in the
-  background. The **Listening** button pauses and resumes it; Stop/Esc pauses
-  it; session lock and Close end it. Provider, device or cleanup failures stop
-  listening instead of retrying.
+- Listening never stops by itself. It runs on its own slot beside replies
+  (`LiveListener`): it records one utterance at a time and transcribes each, in
+  order, while it already listens for the next, so nothing said while Martlet
+  thinks is lost. Each utterance is still its own action: a fresh authorization,
+  capture epoch, Voice ID check and STT request. It holds off only while Martlet
+  speaks (a reply or a remark, plus 300 ms for the room's echo), so it never
+  hears itself, and while other setup work (a microphone test, Voice ID
+  enrollment) owns the app slot. Idle listening restarts the bounded capture
+  every 12 seconds; nothing is uploaded when nobody spoke.
+- What it hears appears in the history right away. Once you pause, everything
+  heard since the last reply goes to the Thinking model as one message
+  (`InputSource.HandsFreeListening`, reason `ExplicitHandsFree`) with
+  instructions that it hears an always-on microphone: it answers what is meant
+  for it and replies `[pass]` (never shown or spoken; the message is marked
+  *Martlet stayed quiet*) when it wasn't meant for it or needs no answer. When
+  what you said trails off ("so, um", "and", a trailing comma or dash), Martlet
+  waits 1.5 s longer for the rest.
+- If you keep talking before Martlet says anything, that reply is dropped and,
+  once you pause, asked again with everything you said (at most three times in
+  a row, so background talk can't loop it). A reply that already acted through
+  Home Assistant or a tool finishes, and what you added is answered after it.
+- Typed messages go to the same slot and are always answered; listening carries
+  on beside them. It continues while the window is in the background. The
+  **Listening** button pauses and resumes it; Stop/Esc pauses it; session lock
+  and Close end it. Reply, provider and speech-to-text failures are shown and
+  never pause listening; nothing is retried automatically.
 
 **Voice ID** (Companion › Listening › **Set up Voice ID**) recognizes the enrolled user locally:
 
@@ -255,9 +272,10 @@ Docker. See [Recognizing people by voice, and Parakeet](VOICES.md).
 | Configuration changed | Loaded revision/role/key/output no longer matches this action. Close and reopen the talk window to use the new choices. External profile editing/copying while running is unsupported. |
 | Credential missing / access denied | Review the signed-in Windows user and selected role reference. Explicit setup retrieval can check local readability only. Do not elevate or disable protection. |
 | STT no speech | No LLM/TTS followed. Review intended input and local microphone test; start a fresh PTT action or type instead. Silence samples are not VAD evidence. |
-| Hands-free never hears me / triggers on noise | Raise or lower **Sensitivity**; watch the level bar while speaking. Choose a longer pause if it cuts you off mid-sentence. |
+| Hands-free never hears me / triggers on noise | Raise or lower **Sensitivity**; watch the level bar while speaking. Choose a longer pause if it cuts you off mid-sentence (talking on before Martlet answers also merges what you say into one message). |
+| Martlet doesn't answer something it heard | The message is marked *Martlet stayed quiet*: the Thinking model decided it wasn't meant for it. Say its name or ask directly, or type. |
 | Voice ID ignores me | Run **Test** in Set up Voice ID. Lower the threshold slightly or re-enroll with your usual microphone and distance. Turn Voice ID off to talk meanwhile. |
-| Mic access/busy/lost/default-change/format | Use Audio setup's specific privacy/device remedy. No automatic recapture, loopback or device fallback. Typed input remains available. |
+| Mic access/busy/lost/default-change/format | Use Audio setup's specific privacy/device remedy. Always listening shows *Mic unavailable* and tries the same chosen microphone again every 5 seconds; there is no loopback or device fallback. Typed input remains available. |
 | Provider auth/model/quota/rate/network failure | Inspect the stable provider code; review account/model availability and current limits outside Martlet. A failed request is not a safe automatic retry. |
 | Refused / partial answer | Refusal is separate from answer text. Partial answer remains visible; unfinished/unsupported speech is discarded, not replayed. |
 | TTS/output failed | Read the response text. For the next new action choose text-only, or review the selected output/model/voice. Earlier speech may have played. |
