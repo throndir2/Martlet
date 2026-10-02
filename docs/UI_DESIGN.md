@@ -239,17 +239,33 @@ The long form became a four-step wizard with a step rail:
 
 ### 6. Talk (conversation)
 
-The conversation window puts the chat first:
+*Start talking* opens the conversation and nothing else: its history, what you
+said and the message box. Every choice about how Martlet listens, speaks and
+sees is made in Companion; the window has no settings, approvals, cost
+envelopes, timelines or links to other windows.
 
-- **Header**: Martlet mascot, title, and **Stop (Esc)** always visible. Links
-  to Reload, Setup, Audio, Character and Troubleshooting.
-- **Conversation (left)**: the result line, a *You said* bubble for the
-  push-to-talk transcript, the reply bubble, a separate refusal bubble, and a
-  *Details* expander with the configuration, supported IDs and stage timeline.
-- **Your next message (right)**: *Before your next message* scrolls: the voice
-  toggle, the exact data, cost and output envelope, the per-action approvals,
-  and Pause and Mute. Below it, the composer is always in view: the message
-  box, *Send*, *Hold to talk* (Space) and *Finish and send*.
+- **Header**: the mascot, *Martlet* and one status line (*Listening. Just
+  talk, or type below.*, *Martlet is thinking*, *Martlet is speaking. Esc
+  stops it.*, or what went wrong in plain words). On the right, small toggles
+  for what is on: **Listening** (shown with always listening; click to pause or
+  resume, or *Mic not set up* until the microphone is tested) and **Vision**
+  (shown when vision is on; click to pause or resume), then **Stop (Esc)**.
+- **History**: chat bubbles for the whole conversation while the window is
+  open: what you typed, what you said (the transcript, captioned *You
+  (spoken)*), Martlet's replies as they stream in, its remarks about your
+  screen, and short notes under a reply (*Remembered*, *Cut short*, a
+  refusal). It follows new messages unless you scroll up to read.
+- **Message box**: always in view. Enter sends, Shift+Enter starts a new line.
+  With push-to-talk chosen, *Hold to talk* (hold the mouse or Space) sits next
+  to *Send*; invoking it starts a recording and invoking it again sends.
+
+Opening the window starts what Companion chose: **always listening** (the
+default, once a microphone is set up and tested) and **vision** (off by
+default). Typing while Martlet listens hands the microphone over for the typed
+message, and listening resumes after the reply. **Stop (Esc)** stops the reply,
+any recording, listening and vision at once and keeps the conversation;
+locking Windows does the same and starts a fresh conversation, and closing the
+window ends it.
 
 ### 7. Companion and Settings pages
 
@@ -262,26 +278,36 @@ The conversation window puts the chat first:
   - **How it works** (where each job runs):
     1. *Thinking*: where the conversation model runs, the provider, the model
        and its API key.
-    2. *Voice*: where the voice runs and the voice itself, then the speakers.
+    2. *Voice*: where the voice runs and the voice itself, then the speakers,
+       then *Speak Martlet's replies aloud* (on by default).
     3. *Listening*: the speech-to-text provider, model and key, then the
-       microphone.
-    4. *Lip-sync*: who moves the character's mouth, and where it runs.
+       microphone, then **How you talk**: *Always listening* (the default;
+       Martlet hears you whenever the talk window is open, with sensitivity
+       and how long a pause ends your turn) or *Push-to-talk*, and Voice ID
+       (*Only respond to my voice* and *Set up Voice ID*).
+    4. *Vision*: whether Martlet may look at your screen or a camera while
+       the talk window is open (off by default): what it looks at (active
+       window, whole screen, a camera found with *Find cameras*, a phone or
+       network camera address, or a Home Assistant camera once Smart home is
+       connected), how chatty it is, what is captured and where it is sent,
+       and *Turn vision on*.
+    5. *Lip-sync*: who moves the character's mouth, and where it runs.
   - **Who it is**:
-    5. *Character*: what it looks like now, then the character model (show,
+    6. *Character*: what it looks like now, then the character model (show,
        hide, choose and customize, reset).
-    6. *Personality*: the active persona and its style mix, *Edit
+    7. *Personality*: the active persona and its style mix, *Edit
        personality*, and *Import a character card*.
-    7. *Lorebook*: how many lorebooks are on for the active persona, each
+    8. *Lorebook*: how many lorebooks are on for the active persona, each
        lorebook with *Turn on/off*, *Edit lorebooks* and *Import a lorebook*
        (see [Lorebooks](LOREBOOKS.md)).
-    8. *Memory*: whether memory is on, and *Manage memory* for its facts.
+    9. *Memory*: whether memory is on, and *Manage memory* for its facts.
   - **What it does**: how it answers and acts (generation settings, tools,
     smart home). The group appears once it has a page.
 
   A page gets its own entry only if it has its own **Where it runs** choice,
   its own consent or data destination, or its own list to edit; anything else
-  is a card on an existing page. Planned pages and their groups: *Vision* (how
-  it works), *Replies*, *Tools* and *Smart home* (what it does).
+  is a card on an existing page. Planned pages and their groups: *Tools*
+  (what it does).
 
   Every page starts with **Now**: what it uses and any problem stopping it.
   Cards appear only when they apply to the chosen place: the Voice Library
@@ -406,6 +432,8 @@ looping animations do not start and transitions complete immediately.
    automation ID (`OpenSetup`, `OpenAudioSetup`) and `ActionText`.
 4. `HostsWindow` becomes the wizard, with the connection check and firewall
    helper exposed for the map and the host dashboard.
-5. `LiveConversationWindow` gets the chat-first layout with every named
-   control unchanged.
+5. `LiveConversationWindow` is only the conversation: history bubbles, the
+   message box and the Listening, Vision and Stop toggles (section 6). Its
+   choices live in `TalkPreferences` (`talk-preferences.json`), edited on the
+   Companion Listening, Voice and Vision pages (`MainWindow.Talk.cs`).
 6. `SetupWindow` gets the stepper style.

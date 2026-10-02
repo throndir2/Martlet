@@ -395,7 +395,7 @@ public partial class MainWindow
         else if (brainReady)
         {
             StageTitle.Text = "Ready when you are";
-            StageText.Text = $"{NetworkMap.ProviderName(llm!)} is its brain. Type or hold to talk; you approve each message before anything is sent.";
+            StageText.Text = $"{NetworkMap.ProviderName(llm!)} is its brain. Start talking to chat by voice or text; the conversation shows as you go.";
             PrimaryStageButton.Visibility = Visibility.Collapsed;
             ConversationButton.SetResourceReference(StyleProperty, "PrimaryButton");
         }

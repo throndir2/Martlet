@@ -243,8 +243,8 @@ internal sealed class LiveConversationConfiguration
                     : "The endpoint's operator controls processing, retention and cost. ") +
                 "Reasoning/thinking traces are never spoken or shown, but count toward the reply token budget.\n") +
             (sttHost is null
-                ? $"PTT audio -> STT (only with separate local capture AND upload permission): {OpenAiSetup.Origin}, {Selection(SetupRole.Stt)}.\n"
-                : $"PTT and hands-free audio -> STT (only with separate local capture AND upload permission): your Martlet host {sttHost.HostId} ({sttHost.Origin}, whisper, pinned TLS), {Selection(SetupRole.Stt)}. " +
+                ? $"Spoken audio -> STT: {OpenAiSetup.Origin}, {Selection(SetupRole.Stt)}.\n"
+                : $"Spoken audio -> STT: your Martlet host {sttHost.HostId} ({sttHost.Origin}, whisper, pinned TLS), {Selection(SetupRole.Stt)}. " +
                     "Your recorded speech goes only to that paired computer over its pinned TLS gateway and is transcribed in memory there, not stored; no cloud provider receives it and there is no per-request charge.\n") +
             (voice ? SpeechDisclosure() + $" AI-generated voice, not a human. Output: {Audio?.Output.DisplayName ?? "not selected"}; fixed at start, no fallback.\n"
                 : "Text-only: NO TTS requests and NO output device. Voice is separately selected.\n") +
@@ -260,11 +260,11 @@ internal sealed class LiveConversationConfiguration
             $"LLM output: <={TextLimits.MaxOutputTokens} tokens (max reply length on Companion > Replies), <=16,384 response characters, <=45 s.\n" +
             "Runtime <=90 s. Voice: <=8 requests/segments, <=1536 UTF-8 bytes each / 12,288 total, <=10 s / 240,000 samples per segment, <=80 s / 1,920,000 reserved samples total, <=20 s per request. Refusal/unsupported markup is not ordinary speech.\n" +
             "Prices, quota, account/model access and invoice cost are UNKNOWN, not zero or a guaranteed hard currency cap. Failed/canceled requests can still cost money; earlier speech may already have played. No automatic retry.\n" +
-            "PTT, explicit typed input, or hands-free voice activity only while you keep Start listening on (each detected utterance is one action within this envelope; listening re-arms only after the reply finishes). Wake words, name/group listening and remote participant capture are OFF; screen watching is OFF unless you start it with its own permission. Optional Voice ID compares speech with your saved voiceprint on this PC before upload; non-matching audio is discarded, never uploaded. Memory recall and remembering follow the memory setting described above." +
+            "Typed input, push-to-talk, or always listening while the talk window is open, as chosen in Companion › Listening (each detected utterance is one action within this envelope; listening re-arms only after the reply finishes). Wake words, name/group listening and remote participant capture are OFF; vision is OFF unless turned on in Companion › Vision. Optional Voice ID compares speech with your saved voiceprint on this PC before upload; non-matching audio is discarded, never uploaded. Memory recall and remembering follow the memory setting described above." +
             (Memory is { Enabled: true }
                 ? " Conversation content stays bounded in memory, not logs/files; only the short facts picked out for Memory are saved."
                 : " Content stays bounded in memory, not logs/files.") +
-            " Stop, pause, mute, lock or Close revokes this action; window deactivation also does unless hands-free listening is on.";
+            " Stop, Esc, locking Windows or closing the talk window revokes this action.";
     }
 
     internal ConversationRequest Request(BoundedTextInput input, bool voice, ResponseStyle? style,
@@ -342,63 +342,68 @@ internal sealed class LiveConversationConfiguration
     /// <summary>The word the model answers with to stay quiet after a screen glance; never spoken.</summary>
     internal const string SilentReply = "pass";
 
-    internal VisionSupport Vision() =>
-        Routes.SingleOrDefault(r => r.Role == SetupRole.Llm) is { } route ? VisionModelCatalog.Classify(route.ModelId) : VisionSupport.Unknown;
+    internal VisionSupport Vision() => Vision(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm));
+
+    internal static VisionSupport Vision(SetupRoute? thinking) =>
+        thinking is null ? VisionSupport.Unknown : VisionModelCatalog.Classify(thinking.ModelId);
 
     /// <summary>Whether the Thinking model can see, and exactly what to change when it cannot.</summary>
-    internal string VisionAdvice()
+    internal string VisionAdvice() => VisionAdvice(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm));
+
+    internal static string VisionAdvice(SetupRoute? route)
     {
-        var route = Routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
-        if (route is null) return "Thinking is not set up yet. Choose a Thinking model in Setup first.";
+        if (route is null) return "Thinking is not set up yet. Choose a Thinking model in Companion first.";
         var local = VisionModelCatalog.DescribeLocalOptions();
-        return Vision() switch
+        return Vision(route) switch
         {
             VisionSupport.Supported =>
-                $"Your Thinking model {route.ModelId} can see images, so Martlet can look at your screen and comment. Screenshots go to {LlmDestinationName(route)}.",
+                $"Your Thinking model {route.ModelId} can see images, so Martlet can look at your screen and comment. Pictures go to {LlmDestinationName(route)}.",
             VisionSupport.Unsupported when IsHost(route) =>
                 $"Your Thinking model {route.ModelId} on your Martlet host is text-only, so Martlet can't see your screen with it. " +
                 $"To turn this on, give the host a model that also sees: on the Devices page, add the host's Thinking (Ollama) role again and choose one of {local}. " +
-                "Or switch Thinking to OpenAI gpt-4.1-mini in Setup. Talking keeps working either way.",
+                "Or switch Thinking to OpenAI gpt-4.1-mini in Companion. Talking keeps working either way.",
             VisionSupport.Unsupported when IsChat(route) =>
                 $"Your Thinking model {route.ModelId} is text-only, so Martlet can't see your screen with it. Pick a vision model on the same endpoint " +
                 "(names with vl or vision, gemma-3, gpt-4o/4.1/5, gemini, claude, pixtral...), or run one on this PC in Ollama or LM Studio " +
                 $"({local}) and point Chat Completions at it. Talking keeps working either way.",
             VisionSupport.Unsupported =>
-                $"Your Thinking model {route.ModelId} is text-only, so Martlet can't see your screen with it. Choose OpenAI gpt-4.1-mini in Setup, or a local vision model: {local}.",
+                $"Your Thinking model {route.ModelId} is text-only, so Martlet can't see your screen with it. Choose OpenAI gpt-4.1-mini in Companion, or a local vision model: {local}.",
             _ =>
-                $"Martlet can't tell whether {route.ModelId} on {LlmDestinationName(route)} accepts images. You can try watching: " +
-                $"if the model rejects the first screenshot, Martlet stops watching and tells you. Local models that do see: {local}."
+                $"Martlet can't tell whether {route.ModelId} on {LlmDestinationName(route)} accepts images. You can try it: " +
+                $"if the model rejects the first picture, Martlet stops looking and tells you. Local models that do see: {local}."
         };
     }
 
-    internal string ScreenDisclosure(Chattiness chattiness, WatchSource source)
+    internal string ScreenDisclosure(Chattiness chattiness, WatchSource source) =>
+        ScreenDisclosure(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm), chattiness, source);
+
+    /// <summary>What vision captures and sends, and where: shown in Companion › Vision before it is turned on.</summary>
+    internal static string ScreenDisclosure(SetupRoute? route, Chattiness chattiness, WatchSource source)
     {
-        var route = Routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
         var tuning = ScreenCommentaryPacer.For(chattiness);
         var destination = route is null ? "the Thinking model" : LlmDestinationName(route) + ", " + route.ModelId;
         if (!source.IsScreen)
-            return "Camera -> LLM (only while Watch is on, with its own permission): Martlet " +
+            return "While vision is on and the talk window is open, Martlet " +
                 (source.Kind == WatchKind.Camera
-                    ? $"opens {source.Label} through Windows Media Foundation only while watching (its light is on exactly then) and reads a frame"
+                    ? $"opens {source.Label} through Windows Media Foundation (its light is on exactly then) and reads a frame"
                     : $"fetches one picture from {source.Label} (a snapshot or the first frame of an MJPEG stream; rtsp:// streams and video files are read through Media Foundation)") +
-                $" every {ScreenCommentaryPacer.Tick.TotalSeconds:0} s, downscaled and kept only in memory (compared as a 16x9 grey thumbnail to notice changes). " +
+                $" every {ScreenCommentaryPacer.Tick.TotalSeconds:0} s, downscaled and kept only in memory. " +
                 $"Now and then it sends ONE picture (JPEG, at most {ScreenGlancer.MaximumEdge} px)" +
-                (source.Kind == WatchKind.Camera ? " with the camera name" : "") + $", your persona, triggered lorebook entries and recent context to {destination}: " +
-                $"at most {tuning.LooksPerHour} looks per hour ({chattiness}). Most looks end in silence; each look is one potentially paid LLM request " +
-                "(a paired host has no per-request charge). The model is told never to identify people or comment on anyone's looks. " +
-                "Anyone in view of the camera is seen; tell them. Pictures are never saved, logged or added to memory, and the address's password is never saved. " +
-                "Pause, mute, lock, Stop, Esc or Close ends watching.";
-        return $"Screen -> LLM (only while Watch is on, with its own permission): Martlet captures your " +
+                (source.Kind == WatchKind.Camera ? " with the camera name" : "") + $", your persona, triggered lorebook entries and recent conversation to {destination}: " +
+                $"at most {tuning.LooksPerHour} looks per hour ({chattiness}). Most looks end in silence; with a cloud provider each look is a request " +
+                "that may cost money (a paired host has no per-request charge). The model is told never to identify people or comment on anyone's looks. " +
+                "Anyone in view of the camera is seen; tell them. Pictures are never saved, logged or added to memory, and a password in the address is never saved. " +
+                "Locking Windows, Stop, Esc or closing the talk window ends it; the vision button there pauses it.";
+        return "While vision is on and the talk window is open, Martlet captures your " +
             (source.Scope == ScreenScope.ActiveWindow ? "active window" : "whole screen (the monitor your active window is on)") +
-            $" on this PC every {ScreenCommentaryPacer.Tick.TotalSeconds:0} s through Windows Desktop Duplication (which also sees full-screen games, without touching the game) or GDI, downscaled and kept only in memory (compared as a 16x9 grey thumbnail to notice changes). " +
-            $"Now and then it sends ONE screenshot (JPEG, at most {ScreenGlancer.MaximumEdge} px) with the window title, your persona, triggered lorebook entries and recent context to " +
+            $" on this PC every {ScreenCommentaryPacer.Tick.TotalSeconds:0} s (full-screen games too, without touching the game), downscaled and kept only in memory. " +
+            $"Now and then it sends ONE screenshot (JPEG, at most {ScreenGlancer.MaximumEdge} px) with the window title, your persona, triggered lorebook entries and recent conversation to " +
             $"{destination}: at most {tuning.LooksPerHour} looks per hour ({chattiness}). " +
-            "Most looks end in silence; each look is one potentially paid LLM request (a paired host has no per-request charge). " +
+            "Most looks end in silence; with a cloud provider each look is a request that may cost money (a paired host has no per-request charge). " +
             "Martlet's own windows, minimized windows, password managers and private/incognito browser windows are never captured; " +
             "protected video and windows that block capture read back black and are skipped. Screenshots are never saved, logged or added to memory. " +
-            "Pause, mute, lock, Stop, Esc or Close ends watching.";
+            "Locking Windows, Stop, Esc or closing the talk window ends it; the vision button there pauses it.";
     }
-
     internal static string CommentaryInstructions(Chattiness chattiness, bool camera = false) =>
         (camera
             ? "You can see through a camera the user chose to share with you: the attached image is what it shows right now (maybe them, " +

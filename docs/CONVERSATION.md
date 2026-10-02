@@ -1,13 +1,14 @@
 # Explicit Desktop API conversation (V04b)
 
 **Internal functional integration, not account/device/release qualification.**
-Open **real API conversation** from Desktop. Opening conversation or setup never
-resolves a key, enumerates devices, records, plays, discovers a model or makes
-an API request. Ordinary Doctor/status remains read-only and is not a live
-connection test.
+**Start talking** on Home opens the talk window: the conversation history, what
+you said and a message box, nothing else. How Martlet listens, speaks and sees
+is chosen in Companion (Listening, Voice and Vision); the window starts what was
+chosen there. Opening setup never resolves a key, enumerates devices, records,
+plays, discovers a model or makes an API request. Ordinary Doctor/status remains
+read-only and is not a live connection test.
 
-An optional **Avatar setup / STOP avatar** entry is available within the live
-window and from the main window. Its [feature guide](../src/Martlet.Avatar.Hosting/README.md)
+The character is shown and hidden from the main window. Its [feature guide](../src/Martlet.Avatar.Hosting/README.md)
 describes separately permitted local renderer inspection and generated-speech
 analysis. Opening it is passive; activation is never inherited from conversation
 permission or persisted. Only accepted generated TTS PCM is observed, never mic
@@ -16,9 +17,10 @@ renderer failure and Audio2Face unavailability do not delay or fail voice.
 Only explicit A2F mouth/expression mapping is currently wired; alternatives and
 other aspects require explicit omission, not automatic fallback.
 
-**Watch my screen** (off by default, its own permission) lets Martlet glance at
-your active window and occasionally comment; it needs a Thinking model that can
-see images. See [Screen commentary](SCREEN_COMMENTARY.md).
+**Vision** (Companion › Vision, off by default) lets Martlet glance at your
+active window, screen or a camera while the talk window is open and occasionally
+comment; it needs a Thinking model that can see images. See
+[Screen commentary](SCREEN_COMMENTARY.md).
 
 ## First configured action
 
@@ -44,22 +46,23 @@ see images. See [Screen commentary](SCREEN_COMMENTARY.md).
    stops on mid-capture change. Default output binds once and never moves an
    active stream. Local tests require their own permission and are not mandatory
    live-readiness gates.
-4. Return to the live window and **Reload saved choices**. Text-only is the
-   default: it needs only the configured LLM role, does not make TTS requests
-   and does not open an output device. Review the actual selected model,
-   origin, output and bounds in the displayed envelope.
-5. For typed input, enter text, explicitly authorize the next action and select
-   **Send typed text**. For PTT, additionally permit local microphone capture
-   and separately permit the STT upload. Hold PTT with the mouse or Space key,
-   then release to send. Accessible Invoke starts a bounded recording; **Finish
-   recording and send** seals it. **Stop** always discards instead of sending.
-   Stop stays above the scrolling form, including at the minimum window size.
-   **Escape** anywhere in the conversation window performs the same Stop;
-   it does not close the window or submit typed text/audio.
-6. Real normalized response text streams into the answer field. Refusal has a
-   separate field and is never ordinary speech. Selecting voice explicitly
-   authorizes only bounded eligible response segments for this same action.
-   Progress reports actual runtime/PCM accounting, not an animated success.
+4. Open **Start talking**. The destinations were confirmed when each job was
+   chosen in Companion, so the window asks nothing more: pressing **Send**
+   (or Enter), holding the talk button, or speaking while always listening is
+   on is the action. Replies are spoken when a voice is set up and *Speak
+   Martlet's replies aloud* is on (Companion › Voice); otherwise they are text
+   only, with no TTS request and no output device.
+5. Type and press Enter (Shift+Enter for a new line). With **Always listening**
+   (Companion › Listening, the default once the microphone is tested) just
+   speak; with **Push-to-talk**, hold the talk button with the mouse or Space,
+   then release to send (invoking it starts a recording and invoking it again
+   sends). **Stop (Esc)** stays in the header at every size: it stops the reply,
+   discards a recording instead of sending it, and pauses listening and vision.
+   Escape works anywhere in the window and does not close it or send anything.
+6. The history shows your messages, what you said (the transcript) and
+   Martlet's replies as they stream in. A refusal is shown as such and never
+   spoken as ordinary speech; a stopped or failed reply keeps its text with a
+   *Cut short* note.
 
 STT receives only the selected microphone's completed bounded utterance. LLM
 receives the typed text or that final transcript plus the fixed active persona
@@ -71,7 +74,8 @@ instruction until settings v3 is explicitly
 saved. Up to eight completed explicit exchanges from the prior two minutes may
 be supplied from volatile memory; oldest pairs are omitted until the whole request fits
 the unchanged budget. Failed/refused/suppressed turns are excluded, and pause,
-lock, configuration load/change, Stop or conversation close clears the buffer.
+lock, configuration load/change or closing the talk window clears the buffer;
+Stop keeps it, so the conversation continues after an interruption.
 
 [Memory](MEMORY.md) is ON by default (Companion › Memory turns it off). When
 on, each explicit typed/PTT/hands-free turn automatically recalls up to twelve
@@ -87,8 +91,8 @@ generated segments. All provider routes have the fixed HTTPS origin
 `https://api.openai.com`; there is no custom endpoint, model discovery,
 fallback provider, retry loop or hidden continuation.
 
-**PTT and explicit typed controls only.** Learned VAD, acoustic wake words,
-automatic name/group listening and unsolicited participation are OFF. Transcript
+**Typed input, push-to-talk or always listening only.** Learned VAD, acoustic
+wake words, automatic name/group listening and unsolicited participation are OFF. Transcript
 words cannot grant trusted-control provenance. Unknown STT confidence stays
 unknown. A PC microphone does not automatically capture remote participants or
 game/call audio. Capturing other people requires their permission.
@@ -114,8 +118,7 @@ prove API quota. Review official [pricing](https://openai.com/api/pricing/) and
 [data retention](https://platform.openai.com/docs/guides/your-data) separately.
 No-retention or free-service promise is made.
 
-The next action requires a new acceptance; the checkboxes are cleared on use
-and on configuration/output/lifecycle changes. Internal TTS callbacks do not
+Each message or utterance is its own bounded action. Internal TTS callbacks do not
 prompt for every sentence: they derive one-use permissions and exact
 `OperationBudget` reservations only for actual segments inside this accepted
 envelope. The runtime enforces its own original stage/turn clocks as well.
@@ -156,18 +159,18 @@ an intent that waited through STT. Policy consent signals are not provider
 permission. The policy lease remains owned until actual runtime
 `OwnershipRelease`, not merely `Completion`.
 
-Stop, pause, mute, losing the held control, deactivation, session lock and
-Close revoke pending permissions and stop only this operation. Unlocking,
-unmuting or reopening never rearms. Native/credential/HTTP work and cleanup
+Stop, losing the held control, session lock and Close stop only this operation.
+Unlocking resumes the listening and vision chosen in Companion (unless paused
+in the window); a paused mic or vision button stays paused until clicked. Native/credential/HTTP work and cleanup
 run off the dispatcher; the UI remains responsive. Noncooperative native work
 or callbacks can outlive a timeout or closed observer. The shared slot remains
 reserved; failed cleanup is quarantined rather than replaced with a fresh
 factory. Closing the main window exits the app, not a background tray listener.
 This is not a measured 250 ms physical-stop guarantee.
 
-The fixed **Stop / revoke (Esc)** control also clears accepted but unused
-action/memory/capture/upload permissions. Escape works from the typed input, response
-fields and held PTT control. Releasing Space after Escape cannot send that
+The fixed **Stop (Esc)** control also drops a typed message still waiting to be
+sent and pauses listening and vision. Escape works from the message box, the
+history and the held talk button. Releasing Space after Escape cannot send that
 discarded recording or rearm PTT. Stop during settings loading or a slow worker
 requests cancellation without releasing the shared ownership slot early.
 Partial response text remains available; stopped speech is not replayed.
@@ -182,13 +185,14 @@ permission for those original sources.
 
 ## Hands-free voice activity and Voice ID
 
-**How you talk** in the live window offers **Push-to-talk** (default) or
-**Voice activity**, a hands-free mode. The choice, sensitivity, pause length and
-Voice ID toggle are remembered in `talk-preferences.json` in the data folder;
-choosing voice activity never starts listening by itself.
+**How you talk** in Companion › Listening offers **Always listening** (default)
+or **Push-to-talk**. The choice, sensitivity, pause length, Voice ID toggle,
+*Speak replies* and Vision choices are remembered in `talk-preferences.json` in
+the data folder.
 
-- **Start listening** (with the same action, capture and upload approvals as PTT)
-  opens the microphone. An adaptive energy detector (`EnergyVoiceActivityDetector`,
+- With always listening, opening the talk window opens the microphone once it
+  has been set up and tested in Companion (until then the mic button says *Mic
+  not set up* and you can type). An adaptive energy detector (`EnergyVoiceActivityDetector`,
   20 ms frames read from the capture's own buffer through `TryCopyMonoFrame`)
   waits for speech, then releases the capture after your chosen pause
   (0.5/0.8/1.2 s). Only the detected speech plus 300 ms pre-roll and 200 ms tail
@@ -200,12 +204,13 @@ choosing voice activity never starts listening by itself.
   `ExplicitHandsFree`). Listening re-arms only after the reply, including speech
   playback, has finished, so Martlet does not hear itself. Idle listening restarts
   the bounded capture every 12 seconds; nothing is uploaded when nobody spoke.
-- Listening continues while the window is in the background. **Stop listening**,
-  Stop/Esc, pause, mute, session lock, unchecking an approval, changing talk mode
-  or output, and Close end it. Provider, device or cleanup failures stop listening
-  instead of retrying.
+- Typing while it listens hands the microphone over for the typed message;
+  listening resumes after the reply. It continues while the window is in the
+  background. The **Listening** button pauses and resumes it; Stop/Esc pauses
+  it; session lock and Close end it. Provider, device or cleanup failures stop
+  listening instead of retrying.
 
-**Voice ID** (**Set up Voice ID**) recognizes the enrolled user locally:
+**Voice ID** (Companion › Listening › **Set up Voice ID**) recognizes the enrolled user locally:
 
 - Enrollment records three read-aloud phrases with a separate local-only
   permission. A bundled speaker encoder (a managed port of Resemblyzer's GE2E
@@ -229,7 +234,7 @@ choosing voice activity never starts listening by itself.
 | Visible condition | Meaning and next action |
 | --- | --- |
 | Setup required / unsupported role | Review the displayed exact catalog IDs; store each role key, reselect its destination and save. No automatic fallback or capability request occurs. |
-| Configuration changed | Loaded revision/role/key/output no longer matches this action. Stop, Reload and explicitly approve the new selection. External profile editing/copying while running is unsupported. |
+| Configuration changed | Loaded revision/role/key/output no longer matches this action. Close and reopen the talk window to use the new choices. External profile editing/copying while running is unsupported. |
 | Credential missing / access denied | Review the signed-in Windows user and selected role reference. Explicit setup retrieval can check local readability only. Do not elevate or disable protection. |
 | STT no speech | No LLM/TTS followed. Review intended input and local microphone test; start a fresh PTT action or type instead. Silence samples are not VAD evidence. |
 | Hands-free never hears me / triggers on noise | Raise or lower **Sensitivity**; watch the level bar while speaking. Choose a longer pause if it cuts you off mid-sentence. |

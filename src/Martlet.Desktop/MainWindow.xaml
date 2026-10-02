@@ -66,7 +66,7 @@
                                                 AutomationProperties.AutomationId="PrimaryStageAction"/>
                                         <Button x:Name="ConversationButton" Content="Start _talking" Click="Conversation_Click" Padding="20,12" FontSize="15" Margin="0,0,12,8"
                                                 AutomationProperties.AutomationId="OpenLiveConversation"
-                                                AutomationProperties.Name="Start talking: open the conversation window without network, credentials or device effects"/>
+                                                AutomationProperties.Name="Start talking: open the conversation, which listens and looks as chosen in Companion"/>
                                         <Button x:Name="CharacterButton" Content="Show _character" Click="Character_Click" Padding="16,12" Margin="0,0,12,8"
                                                 AutomationProperties.AutomationId="ToggleCharacter" AutomationProperties.Name="Show or hide the animated desktop character"/>
                                         <Button x:Name="ResetCharacterButton" Content="_Reset character position" Click="ResetCharacter_Click" Padding="16,12" Margin="0,0,12,8"

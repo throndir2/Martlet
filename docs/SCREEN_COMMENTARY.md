@@ -7,15 +7,16 @@ your setup can't.
 
 ## How it works
 
-1. In **Talk with Martlet**, the **Watch my screen** panel shows whether your
-   Thinking model can see (see below), what Martlet looks at (**my active
-   window** or **my whole screen**, the monitor your active window is on) and
-   **how chatty** it is (Quiet, Normal, Chatty).
-2. Tick the screen permission and click **Start watching**. A red dot and the
-   window title show that watching is on. It keeps going in the background
-   (while you play) until you click **Stop watching**, Stop, Esc, pause, mute,
-   lock Windows or close the window. It never starts by itself and is never
-   saved as on.
+1. **Companion › Vision** shows whether your Thinking model can see (see
+   below), what Martlet looks at (**my active window** or **my whole screen**,
+   the monitor your active window is on, or a camera) and **how chatty** it is
+   (Quiet, Normal, Chatty), and says exactly what is captured and where it is
+   sent.
+2. Click **Turn vision on** (off by default). From then on, opening **Start
+   talking** starts looking; the talk window's **Vision on** button and its
+   title show it. It keeps going in the background (while you play) until you
+   click that button, Stop or Esc, lock Windows or close the talk window.
+   **Turn vision off** in Companion stops it for good.
 3. Every 3 seconds Martlet captures the screen **on this PC** (DXGI Desktop
    Duplication, falling back to GDI; downscaled to at most 1024 px, kept only
    in memory) and compares a 16x9 grey thumbnail with the last one to notice
@@ -37,9 +38,9 @@ your setup can't.
    remark, never to narrate the screen, repeat itself (it is given what it said
    in the last 30 minutes) or read out private details. `[pass]` is never
    spoken; a remark is spoken with the selected voice like any reply.
-6. You come first: talking, typing or push-to-talk stops a remark in progress.
-   With hands-free listening on, an idle listen (nobody speaking) briefly
-   yields to a look and re-arms right after.
+6. You come first: typing or push-to-talk stops a remark in progress. With
+   always listening on, an idle listen (nobody speaking) briefly yields to a
+   look and re-arms right after. Remarks appear in the talk window's history.
 
 Never captured: Martlet's own windows, minimized windows, password managers and
 private/incognito browser windows (by window title). Protected video reads back
@@ -68,10 +69,14 @@ empty room).
   - `rtsp://` a camera stream, or a path to a video file, read through the
     Media Foundation Source Reader.
 
-  `user:password@` in the address is used for the request but never saved;
-  the saved address has credentials stripped. Header-based tokens (for example
-  Home Assistant's `camera_proxy` bearer token) are not supported yet; use a
-  snapshot URL that carries its own access instead.
+  `user:password@` in the address is used until Martlet closes but never
+  saved; the saved address has credentials stripped, so enter it again after a
+  restart. With Home Assistant connected (Companion › Smart home), **Use a Home
+  Assistant camera** lists its cameras; picking one fills in its
+  `camera_proxy` snapshot address, and Martlet adds the saved Home Assistant
+  token (from Windows Credential Manager) only to requests for that address.
+  Other header-based tokens are not supported; use a snapshot URL that carries
+  its own access instead.
 
 A future Martlet phone app can be a source by serving the same contract: a
 JPEG snapshot or MJPEG over HTTP(S) on the local network.
@@ -160,11 +165,11 @@ Martlet version so its gateway accepts images.
 
 ## Incompatibility warnings
 
-The panel always states the result for the **current** Thinking selection:
+Companion › Vision always states the result for the **current** Thinking selection:
 
 - **Ready:** the model sees; screenshots go to the named destination.
-- **Can't see yet:** the model is text-only. **Start watching** stays
-  disabled and the message names the fix for your route: on a host, add the
+- **Can't see yet:** the model is text-only. **Turn vision on** stays
+  disabled (and the talk window's button says *Can't see*); the message names the fix for your route: on a host, add the
   Thinking (Ollama) role again with `gemma3:4b` / `qwen2.5vl:7b` / `gemma3:12b`;
   on Chat Completions, pick a vision model on the endpoint or run one locally;
   or switch Thinking to OpenAI `gpt-4.1-mini`. Talking keeps working.
@@ -174,9 +179,9 @@ The panel always states the result for the **current** Thinking selection:
 
 Other edges: a host running an older Martlet refuses the larger request; the
 look fails and the message says to update the host. A failed or expired look
-never retries. Setup, Audio and Reload are unavailable while watching; changing
-voice output stops watching, and a settings change made elsewhere stops it at
-the next look.
+never retries; it stops looking and the talk window says why. A settings change
+made elsewhere (a synced change or a failover) restarts looking with the new
+choices once Martlet is free.
 
 ## Limits and what is not done
 

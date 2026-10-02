@@ -75,10 +75,8 @@ public sealed class SupportIntegrationTests
     [Theory]
     [InlineData("OpenSetup", "SetupTroubleshooting", false)]
     [InlineData("OpenAudioSetup", "AudioTroubleshooting", false)]
-    [InlineData("ConversationButton", "LiveTroubleshooting", false)]
     [InlineData("OpenSetup", "SetupTroubleshooting", true)]
     [InlineData("OpenAudioSetup", "AudioTroubleshooting", true)]
-    [InlineData("ConversationButton", "LiveTroubleshooting", true)]
     public Task MainSupportCanBePresentedInsideEachShownModalWorkflow(string workflowButton, string supportButton, bool blocked) => OnDispatcher(async () =>
     {
         using var scope = new Scope();
@@ -509,15 +507,15 @@ public sealed class SupportIntegrationTests
         using var response = new HeldResponse(fixture);
         var controller = new SupportController(scope.Data);
         controller.ObserveReport(await new FoundationStatusService(fixture.Store).GetReportAsync());
-        var window = new LiveConversationWindow(fixture.Settings, fixture.Runner, fixture.Controller, fixture.Events, clock: fixture.Clock)
+        var window = new LiveConversationWindow(fixture.Settings, fixture.Runner, fixture.Controller, fixture.Events, clock: fixture.Clock,
+            preferences: new TalkPreferences(HandsFree: false, SpeakReplies: false))
             { Support = controller, ShowActivated = false, ShowInTaskbar = false };
         window.Show();
         try
         {
-            await Until(() => Field<TextBlock>(window, "ResultText").Text.Contains("Choices loaded", StringComparison.Ordinal));
+            await Until(() => window.IsReady);
             fixture.NoEffects();
             Field<TextBox>(window, "InputText").Text = Canary;
-            Field<CheckBox>(window, "AcceptAction").IsChecked = true;
             Click(window, "SendButton");
             await response.WaitForGenerating(fixture, window);
             // Earlier states were actually sampled with recording OFF. The held response keeps
@@ -558,15 +556,15 @@ public sealed class SupportIntegrationTests
         var controller = new SupportController(scope.Data, backend);
         controller.ObserveReport(await new FoundationStatusService(fixture.Store).GetReportAsync());
         await Done(controller.StartRecording());
-        var window = new LiveConversationWindow(fixture.Settings, fixture.Runner, fixture.Controller, fixture.Events, clock: fixture.Clock)
+        var window = new LiveConversationWindow(fixture.Settings, fixture.Runner, fixture.Controller, fixture.Events, clock: fixture.Clock,
+            preferences: new TalkPreferences(HandsFree: false, SpeakReplies: false))
             { Support = controller, ShowActivated = false, ShowInTaskbar = false };
         window.Show();
         try
         {
-            await Until(() => Field<TextBlock>(window, "ResultText").Text.Contains("Choices loaded", StringComparison.Ordinal));
+            await Until(() => window.IsReady);
             fixture.NoEffects();
             Field<TextBox>(window, "InputText").Text = Canary;
-            Field<CheckBox>(window, "AcceptAction").IsChecked = true;
             Click(window, "SendButton");
             await response.WaitForGenerating(fixture, window);
             await backend.Entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
@@ -620,14 +618,14 @@ public sealed class SupportIntegrationTests
                 return await respond(request, token);
             };
         }
-        internal async Task WaitForGenerating(LiveFixture fixture, Window window)
+        internal async Task WaitForGenerating(LiveFixture fixture, LiveConversationWindow window)
         {
             await Entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
             await Until(() =>
             {
                 // Advance the existing controlled runtime observer clock, as LiveFixture.Finish does.
                 fixture.Clock.Advance(TimeSpan.FromMilliseconds(5));
-                return Field<TextBox>(window, "StatusText").Text.Contains("runtime.Generating", StringComparison.Ordinal);
+                return window.Current?.Status.Code == "runtime.Generating";
             });
         }
         public void Dispose() => Release.TrySetResult();
