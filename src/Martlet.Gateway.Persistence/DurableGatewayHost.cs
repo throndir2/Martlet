@@ -395,6 +395,14 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         }
     }
 
+    /// <summary>Keeps the commands paired computers send through this host in <paramref name="storage"/> and accepts
+    /// <paramref name="agentToken"/> from the Martlet app on this host that runs them.</summary>
+    public void AttachCommands(IGatewayCommandStorage storage, string agentToken)
+    {
+        RequireOpen();
+        server!.AttachCommandStorage(storage, agentToken);
+    }
+
     /// <summary>Keeps this host's log (its own activity and the lines desktops send it as the log host) in
     /// <paramref name="storage"/>.</summary>
     public void AttachLogs(IGatewayLogStorage storage)

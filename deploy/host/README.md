@@ -19,6 +19,7 @@ Windows desktop (Martlet) --pinned TLS, paired once--> host: Martlet gateway :94
 | Method | Host needs | How to run it | Gateway runs as |
 | --- | --- | --- | --- |
 | **Desktop: this PC with Docker Desktop** | Windows + Docker Desktop (WSL 2) | Martlet > **Martlet hosts** > *This PC* | containers `martlet-host-net` + `martlet-host-gateway` |
+| **Desktop: another Windows PC that runs Martlet** | Martlet there (*Use as a Martlet host*) + Docker Desktop | Martlet on that PC sets itself up; pair the main PC with the code its host dashboard shows. The main PC then updates it and installs roles there [through Martlet on that PC](../../docs/CLUSTER.md#commands-between-your-computers) | same containers on that PC |
 | **Desktop: another computer over SSH, Docker** | SSH server + Docker (the one prerequisite; Linux x86_64; for another Windows PC install Martlet there and use *This PC*) | Martlet hosts > *over SSH, using Docker* > **Add this computer** (runs in Martlet) | same containers on that host |
 | **Desktop: another computer over SSH, native** | Ubuntu 24.04 x86_64 with SSH | Martlet hosts > *over SSH, native Ubuntu* > **Add this computer** (runs in Martlet) | systemd user service `martlet-host-gateway` |
 | **On the host, Docker** | any Docker host | `docker run ... martlet-host <command>` (below) | containers |
@@ -79,6 +80,12 @@ command:
 - **Native**: fetches and checks out the `v<version>` tag in `~/Martlet`
   (falling back to `main`), publishes the gateway beside the running one, then
   swaps it in and restarts the service.
+- **Through Martlet on that computer** (another Windows PC with Martlet): the
+  desktop sends a `martlet.update` command through the host's gateway; Martlet
+  there updates itself from its GitHub Release when it is older, then runs
+  `update` on its own Docker Desktop, and its output streams into the desktop's
+  run window. Martlet on a host PC also keeps its own host service on its
+  version by itself. See [Commands between your computers](../../docs/CLUSTER.md#commands-between-your-computers).
 
 `update` asks nothing unless the new version changes `host.json`; that renews
 the service approval (in the gateway console, or with `--yes` through
@@ -116,7 +123,11 @@ The gateway also keeps a copy of the shared **who does what** plan in
 syncs (Devices > Settings for all devices > *Keep who does what in sync*). It names which
 host does each job, which jobs fail over and which roles each host runs; it
 holds no keys and the host never acts on it. See
-[Shared who does what and failover](../../docs/CLUSTER.md). Beside it,
+[Shared who does what and failover](../../docs/CLUSTER.md). Beside them it keeps
+`commands.json` (commands paired computers sent, never their secrets) and
+`agent.token` (written fresh at each start; only Martlet on the host computer
+reads it, to take those commands). See
+[Commands between your computers](../../docs/CLUSTER.md#commands-between-your-computers).
 `network.json` holds the [Martlet network](../../docs/NETWORK.md) roster the
 host accepted (member desktops' public keys and the network's hosts); the host
 uses it to let member desktops pair by themselves and to revoke removed ones.
@@ -368,10 +379,11 @@ what* shows which computer handles each job:
 
 From each host's details the desktop runs `add <role>`, `remove <role>` and
 `status` on that host through the route it was paired with (SSH with Docker, SSH
-native, or this PC's Docker Desktop), so moving a job from one GPU PC to another
+native, this PC's Docker Desktop, or Martlet on that computer through its paired
+connection), so moving a job from one GPU PC to another
 is: hand it to the new host (Martlet offers to install the role there), then
-remove the role from the old one. SSH hosts run these in Martlet (the click
-confirms), and so does this PC's Docker Desktop (no console window).
+remove the role from the old one. Every route runs in Martlet (the click
+confirms) with its output in a run window; none asks you to type a command on the host.
 
 ## Preparing a computer
 

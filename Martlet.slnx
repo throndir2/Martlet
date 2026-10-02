@@ -20,6 +20,7 @@
     <Project Path="src/Martlet.Mcp/Martlet.Mcp.csproj" />
     <Project Path="src/Martlet.Mcp.Client/Martlet.Mcp.Client.csproj" />
     <Project Path="src/Martlet.Mcp.Protocol/Martlet.Mcp.Protocol.csproj" />
+    <Project Path="src/Martlet.NodeLinkCheck/Martlet.NodeLinkCheck.csproj" />
     <Project Path="src/Martlet.Support/Martlet.Support.csproj" />
     <Project Path="src/Martlet.Providers/Martlet.Providers.csproj" />
     <Project Path="src/Martlet.Participation/Martlet.Participation.csproj" />

@@ -12,7 +12,7 @@ later, without anyone logging in to it or typing a code on the other PCs.
 | --- | --- |
 | Pair your first host (Add a computer: this PC with Docker Desktop, a Linux computer over SSH, or a typed code) | This PC starts your network and adds the host to it |
 | Pair another host on any member PC | It joins the network; every other member pairs with it by itself within a minute |
-| Install Martlet on another PC and pair it with any one host of the network | It asks to join and shows a six-digit check number. On a member PC, **Devices › Your Martlet network** lists the request with the same number: **Allow** (or **Turn down**). Then the new PC pairs with every host by itself |
+| Install Martlet on another PC and choose it under Add a computer › *Martlet on your network* on that PC (or pair it with any one host of the network by code or SSH) | Both screens show a six-digit check number. **Allow** it on the computer with the hosts (*Martlet on your network*, or **Devices › Your Martlet network** for a PC that paired another way; **Turn down** refuses). Allowing it from *Martlet on your network* also lets it into the network, with no second Allow. Then the new PC pairs with every host by itself, including hosts added later |
 | **Remove from network** on another PC | Every host revokes it; it forgets the network's hosts. To come back it asks again (with a new key) |
 | **Remove from network** on a host | It stops trusting the network's PCs and they forget it. Pair it again with Add a computer to bring it back |
 | **Forget** a host on one PC | Only that PC stops using it (and won't pair with it again by itself); the rest of the network keeps it |
@@ -57,9 +57,12 @@ over SSH also manages it.
   credential (replacing older ones of that PC). The credential is kept in
   Windows Credential Manager like any other pairing.
 - **Joining.** Only a PC already paired with a host of the network (with the
-  owner's approval on that host) can ask to join, and the request names the
-  device ID of that pairing. The check number (six digits from the network,
-  device ID and key) appears on both screens; allow only when they match.
+  owner's approval on that host, or through *Martlet on your network*) can ask
+  to join, and the request names the device ID of that pairing. The check
+  number (six digits from the network, device ID and key) appears on both
+  screens; allow only when they match. A PC the owner just allowed from *Martlet
+  on your network* (same device ID, within 15 minutes) is let in by the
+  allowing PC without asking again.
 - **Revocation.** Hosts revoke every credential of a removed desktop. A removed
   host revokes every network desktop and keeps the roster, so the PCs learn of
   the removal and forget it.
@@ -71,9 +74,8 @@ Limits, by design for a home network:
 - A PC learns about changes through its hosts. A PC whose only host is
   unreachable learns about them when it reaches one.
 - At most 64 entries per roster, removed ones included.
-- Not yet: finding networks on the LAN without pairing a host first, a join
-  code, *Leave network* on the PC itself, sharing cloud keys or setups (see
-  [user stories B1-B7](USER_STORIES.md#b-joining-a-network)).
+- Not yet: a join code, *Leave network* on the PC itself, sharing cloud keys or
+  setups (see [user stories B1-B7](USER_STORIES.md#b-joining-a-network)).
 
 ## Where it lives
 
@@ -83,7 +85,7 @@ Limits, by design for a home network:
 | Host side | `Martlet.Gateway` `GatewayNetwork.cs`: `GET`/`POST /martlet/v1/network`, `/network/join`, `/network/deny`, `/pair/member` ([gateway contract](../src/Martlet.Gateway/README.md#martlet-network-member-pairing)); `network.json` on Linux hosts ([Linux gateway](../src/Martlet.Gateway.Host.Linux/README.md)) |
 | Desktop sync | `Martlet.Avatar.Audio2Face` `Remote/NetworkSync.cs` (`NetworkSyncEngine`, `NetworkLocalState`) and `Remote/HostNetwork.cs` (client calls, pairing by itself) |
 | Desktop UI | `MainWindow.Network.cs`, the **Your Martlet network** card on the Devices page; `NetworkIdentity.cs` for the key and `network.json` |
-| MCP | `network_status` (this PC's network from a data directory) and `network_selftest` (end-to-end rehearsal on loopback); card IDs in [MCP](MCP.md) |
+| MCP | `network_status` (this PC's network from a data directory) and `network_selftest` (end-to-end rehearsal on loopback, `Martlet.NodeLinkCheck network`); card IDs in [MCP](MCP.md) |
 
 ## Qualification
 

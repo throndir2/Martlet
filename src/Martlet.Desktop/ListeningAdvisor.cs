@@ -27,7 +27,7 @@ internal sealed record ListeningAdvice(bool UseGpu, string Reason, string? GpuMo
     internal IReadOnlyDictionary<string, (string Value, string Why)> Answers() => new Dictionary<string, (string, string)>(StringComparer.Ordinal)
     {
         ["choice.accelerator"] = (UseGpu ? "gpu" : "cpu", Reason),
-        ["choice.STT_MODEL"] = (Model, UseGpu ? "fits the free graphics card memory" : "quick enough on this processor")
+        ["choice.STT_MODEL"] = (Model, UseGpu ? "fits the available graphics memory" : "works well on this processor")
     };
 }
 
@@ -62,28 +62,27 @@ internal static partial class ListeningAdvisor
         if (gpu is null)
         {
             if (windowsGpu is { IsNvidia: true } card)
-                return Cpu("the NVIDIA driver isn't answering", "The NVIDIA driver doesn't answer (nvidia-smi), so whisper can't use the graphics card yet.",
-                    $"This PC has {card.Describe()}, but its NVIDIA driver doesn't answer.");
-            return Cpu("there is no NVIDIA graphics card", "whisper's graphics card build needs an NVIDIA graphics card.",
+                return Cpu("Martlet can't reach the NVIDIA driver", "Martlet can't use the NVIDIA graphics card right now.",
+                    $"This PC has {card.Describe()}, but Martlet can't reach its NVIDIA driver.");
+            return Cpu("there is no NVIDIA graphics card", "Whisper needs an NVIDIA graphics card for this option.",
                 windowsGpu is null ? "No dedicated graphics card was found on this PC." : $"This PC has {windowsGpu.Describe()}, which isn't NVIDIA.");
         }
         var planned = loads.Sum(l => l.Gb);
         var busy = Math.Max(gpu.UsedGb, planned + DesktopGb);
         var free = Math.Max(0, gpu.TotalGb - busy);
-        var note = $"This PC has {gpu.Name} ({Gb(gpu.TotalGb)} GB): {Gb(gpu.UsedGb)} GB in use now" +
-            (loads.Count == 0 ? "." : $"; {string.Join(", ", loads.Select(l => l.Describe()))} also use it when they run.") +
-            $" About {Gb(free)} GB is free for whisper.";
+        var note = $"This PC has {gpu.Name} with about {Gb(free)} GB free for Whisper" +
+            (loads.Count == 0 ? "." : $". Other local models may also use it: {string.Join(", ", loads.Select(l => l.Describe()))}.");
         if (gpu.DriverMajor is { } major && major < MinimumDriver)
-            return Cpu($"the NVIDIA driver ({gpu.Driver}) is older than {MinimumDriver}",
-                $"whisper's graphics card build needs NVIDIA driver {MinimumDriver} or newer; this PC has {gpu.Driver}. Update the driver to use it.", note);
+            return Cpu("the NVIDIA driver is out of date",
+                $"Update the NVIDIA driver to use the graphics card. This PC has {gpu.Driver}. Martlet needs {MinimumDriver} or newer.", note);
         if (containersUseGpu == false)
-            return Cpu("Docker Desktop can't use the graphics card", "Docker Desktop on this PC reported that containers can't use the NVIDIA graphics card yet.", note);
+            return Cpu("Docker Desktop can't use the graphics card", "Docker Desktop can't use the NVIDIA graphics card yet.", note);
         if (free >= LargeNeedGb)
             return new(true, $"{Gb(free)} GB of its {Gb(gpu.TotalGb)} GB is free", "large-v3-turbo", cpuModel, null, note);
         if (free >= SmallNeedGb)
-            return new(true, $"only {Gb(free)} GB of its {Gb(gpu.TotalGb)} GB is free, enough for the small model", "small", cpuModel, null, note);
+            return new(true, "enough graphics memory is free for the small model", "small", cpuModel, null, note);
         return new(false, loads.Count > 0
-                ? $"the graphics card is already busy ({string.Join(", ", loads.Select(l => l.What))}), with about {Gb(free)} GB free"
+                ? $"the graphics card is already busy, with about {Gb(free)} GB free"
                 : $"the graphics card has only about {Gb(free)} GB free",
             "small", cpuModel, null, note);
     }

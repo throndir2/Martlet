@@ -25,7 +25,7 @@ public static class HomeAssistantEndpoint
         if (!Uri.TryCreate(text, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https") ||
             uri.UserInfo.Length > 0 || uri.Query.Length > 0 || uri.Fragment.Length > 0 || uri.Host.Length == 0)
             throw new HomeAssistantException(HomeAssistantFailure.InvalidAddress,
-                $"That isn't a Home Assistant address. Use the address you open Home Assistant with, for example {Example} (no user name, ? or #).");
+                $"That isn't a Home Assistant address. Use the address you open Home Assistant with, for example {Example}.");
         var builder = new UriBuilder(uri);
         if (!typedScheme && uri.IsDefaultPort) builder.Port = DefaultPort;
         var path = builder.Path.TrimEnd('/');
@@ -34,8 +34,7 @@ public static class HomeAssistantEndpoint
         var normalized = builder.Uri;
         if (normalized.Scheme == Uri.UriSchemeHttp && !IsLocalNetwork(normalized))
             throw new HomeAssistantException(HomeAssistantFailure.InvalidAddress,
-                "Use https:// for a Home Assistant outside your home network (for example a Nabu Casa or reverse-proxy address). " +
-                "Plain http is only allowed for addresses on your local network.");
+                "Use https:// for Home Assistant outside your home network.");
         return normalized;
     }
 

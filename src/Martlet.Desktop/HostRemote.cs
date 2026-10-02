@@ -65,14 +65,13 @@ internal sealed partial class HostRemote(HostShell shell)
     internal static string? Blocker(HostSetupMethod method, HostProbe probe, string target) => method switch
     {
         HostSetupMethod.SshDocker when !probe.Docker =>
-            $"Docker is not installed on {target}. Docker is the one thing a Linux computer needs before Martlet can set it up: " +
-            "install Docker Engine there (on Ubuntu: sudo apt-get install docker.io docker-compose-v2), then press Add this computer again.",
+            $"Docker is not installed on {target}. Install Docker Engine there, then try again.",
         HostSetupMethod.SshDocker when !probe.DockerAccess && probe.Sudo == "none" =>
-            $"The account on {target} cannot use Docker and has no sudo. Add it to the docker group (sudo usermod -aG docker <user>) and try again.",
+            $"The account on {target} can't use Docker. Use an account with Docker access or sudo.",
         HostSetupMethod.SshNative when probe.OperatingSystem?.Contains("Ubuntu", StringComparison.OrdinalIgnoreCase) != true =>
-            $"{target} runs {probe.OperatingSystem ?? "an unknown system"}; the native method needs Ubuntu. Choose Docker instead.",
+            $"{target} runs {probe.OperatingSystem ?? "an unknown system"}. Choose the Docker method instead.",
         _ when probe.Architecture is { } arch && arch != "x86_64" =>
-            $"{target} is {arch}; Martlet hosts need an x86_64 (64-bit Intel/AMD) computer.",
+            $"{target} is not a 64-bit Intel or AMD computer.",
         _ => null
     };
 
@@ -102,7 +101,7 @@ internal sealed partial class HostRemote(HostShell shell)
     internal async Task<(Audio2FaceHostPairing Pairing, string Secret, string HostKey)> PairAsync(HostSetupTarget target, string deviceId,
         string name, bool sudo, string? pinnedHostKey, IProgress<string> output, CancellationToken token)
     {
-        if (!IdentifierPattern().IsMatch(deviceId)) throw new InvalidOperationException("Invalid device ID for this PC.");
+        if (!IdentifierPattern().IsMatch(deviceId)) throw new InvalidOperationException("This PC's device ID is invalid.");
         var label = new string(name.Where(c => c is >= ' ' and <= '~' and not '\'').Take(64).ToArray()).Trim();
         if (label.Length == 0 || label[0] == '-') label = "Martlet desktop";
         var withdraw = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -139,11 +138,24 @@ internal sealed partial class HostRemote(HostShell shell)
         }
         finally { withdraw.TrySetResult(null); }
         if (pairing is null)
-            throw new InvalidOperationException($"{target.SshTarget} did not show a pairing code (exit {result.ExitCode}). See the output.");
+            throw new InvalidOperationException($"{target.SshTarget} couldn't create a pairing code. See the output.");
         var (paired, secret) = await pairing;
         if (result.ExitCode != 0)
-            output.Report($"Paired, but the host reported exit {result.ExitCode} while restarting its gateway. Check host status.");
+            output.Report($"Paired, but the host reported exit {result.ExitCode} while restarting. Check host status.");
         return (paired, secret, result.HostKey);
+    }
+
+    /// <summary>Lets another desktop pair with an SSH host: runs "pair" there, which shows the host's address and a short
+    /// one-use code; <paramref name="shown"/> receives both (the code never reaches <paramref name="output"/>). The host waits
+    /// up to five minutes for that desktop to redeem it; canceling withdraws the code. Returns the exit code.</summary>
+    internal async Task<int> PairOtherAsync(HostSetupTarget target, bool sudo, string? pinnedHostKey, Action<string, string> shown,
+        IProgress<string> output, CancellationToken token, string codeNote)
+    {
+        var withdraw = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var registration = token.Register(() => withdraw.TrySetResult("cancel\n"));
+        var sink = HostLocal.ShownCodeSink(target.Address, shown, output, codeNote);
+        try { return (await RunAsync(target, "pair", false, sudo, null, pinnedHostKey, sink, token, withdraw.Task)).ExitCode; }
+        finally { withdraw.TrySetResult(null); }
     }
 
     /// <summary>Reads a role's terms, secrets and choices from the host (martlet-host describe).</summary>
@@ -158,7 +170,7 @@ internal sealed partial class HostRemote(HostShell shell)
         });
         var result = await RunAsync(target, "describe " + role, false, sudo, null, pinnedHostKey, sink, token);
         if (result.ExitCode != 0 || lines.Count == 0)
-            throw new InvalidOperationException($"Could not read the {role} role from {target.SshTarget} (exit {result.ExitCode}). See the output.");
+            throw new InvalidOperationException($"Couldn't read {role} from {target.SshTarget}. See the output.");
         return ParseRole(lines);
     }
 

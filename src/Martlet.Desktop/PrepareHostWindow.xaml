@@ -19,7 +19,7 @@
         <StackPanel DockPanel.Dock="Top" Margin="22,18,22,8">
             <TextBlock x:Name="HeadingText" Text="Prepare this computer" FontSize="24" FontWeight="SemiBold" />
             <TextBlock Margin="0,6,0,0" TextWrapping="Wrap" Style="{DynamicResource Muted}"
-                       Text="Martlet sets up a Linux (Ubuntu 22.04 or 24.04) computer over SSH so you never have to sign in to it: drivers, Docker, running without a screen, GPU power and developer tools. It reads what is there first; nothing changes until you tick it and press Run selected. Changes use sudo on that computer." />
+                       Text="Martlet can prepare a Linux PC for host jobs over SSH. It reads the PC first, then changes only what you select. Most changes need administrator rights." />
             <DockPanel Margin="0,12,0,0">
                 <TextBlock Text="SSH target" VerticalAlignment="Center" Margin="0,0,10,0" />
                 <Button x:Name="ReadButton" DockPanel.Dock="Right" Content="_Read status" Click="Read_Click" Padding="14,6" Margin="10,0,0,0"
@@ -47,18 +47,18 @@
                 <WrapPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
                     <Button x:Name="RunButton" Content="_Run selected" Style="{DynamicResource PrimaryButton}" Click="Run_Click" Padding="16,8" Margin="0,0,10,0"
                             AutomationProperties.AutomationId="PrepareRun" />
-                    <Button x:Name="MissingButton" Content="Tick what is _missing" Click="Missing_Click" Padding="14,8"
+                    <Button x:Name="MissingButton" Content="Select _missing" Click="Missing_Click" Padding="14,8"
                             AutomationProperties.AutomationId="PrepareTickMissing" />
                 </WrapPanel>
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel x:Name="Checklist" AutomationProperties.Name="What Martlet can set up on this computer" />
+                    <StackPanel x:Name="Checklist" AutomationProperties.Name="Setup checklist" />
                 </ScrollViewer>
             </DockPanel>
             <DockPanel Grid.Column="2">
                 <TextBlock DockPanel.Dock="Top" Text="Output" FontWeight="SemiBold" Margin="0,0,0,6" />
                 <TextBox x:Name="OutputText" IsReadOnly="True" FontFamily="Consolas" FontSize="12" TextWrapping="NoWrap"
                          HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" AcceptsReturn="True"
-                         AutomationProperties.Name="What the computer printed" AutomationProperties.AutomationId="PrepareOutput" />
+                         AutomationProperties.Name="Setup output" AutomationProperties.AutomationId="PrepareOutput" />
             </DockPanel>
         </Grid>
     </DockPanel>

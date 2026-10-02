@@ -6,7 +6,7 @@ using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Core.Network;
 using Martlet.Gateway;
 
-namespace Martlet.Mcp;
+namespace Martlet.NodeLinkCheck;
 
 /// <summary>
 /// Rehearses the Martlet network end to end on this PC with the production code: three real gateways (Kestrel, pinned TLS,
@@ -15,9 +15,9 @@ namespace Martlet.Mcp;
 /// itself, refuses forged keys and rosters, and removes a desktop and a host (revoking their access). Nothing leaves
 /// loopback, nothing is written to disk or the credential vault, and every key is thrown away at the end.
 /// </summary>
-internal static class NetworkSelfTest
+internal static class NetworkRehearsal
 {
-    internal static async Task<object> RunAsync(CancellationToken token)
+    internal static async Task<(bool Ok, object Report)> RunAsync(CancellationToken token)
     {
         var steps = new List<Step>();
         var started = DateTimeOffset.UtcNow;
@@ -144,17 +144,18 @@ internal static class NetworkSelfTest
                 $"B on lab-host-2: {revoked}; B in network: {b.State.Roster is not null}; new key needed: {result.RetireKey}; B still paired: {b.HostIds.Count}");
         });
 
-        return new
+        var ok = steps.All(s => s.Ok);
+        return (ok, new
         {
-            ok = steps.All(s => s.Ok),
+            ok,
             passed = steps.Count(s => s.Ok),
             total = steps.Count,
             seconds = Math.Round((DateTimeOffset.UtcNow - started).TotalSeconds, 1),
-            scope = "In-process: three real gateways on 127.0.0.1 (Kestrel, pinned TLS, volatile credentials) and two simulated desktops " +
+            scope = "Three real gateways on 127.0.0.1 (Kestrel, pinned TLS, volatile credentials) and two simulated desktops " +
                 "using the desktop's network client and sync engine. Not covered: the desktop window, Windows Credential Manager, " +
                 "network.json on a Linux host, martlet-host, SSH and a real LAN.",
             steps = steps.Select(s => new { step = s.Name, ok = s.Ok, detail = s.Detail })
-        };
+        });
     }
 
     private static async Task<string?> FailureAsync<T>(Func<Task<T>> action)

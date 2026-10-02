@@ -3,43 +3,43 @@
         Style="{DynamicResource AppWindowStyle}"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Martlet - Local configuration backup / restore" Width="900" Height="800" MinWidth="620" MinHeight="500"
+        Title="Martlet - Backup and restore" Width="900" Height="800" MinWidth="620" MinHeight="500"
         WindowStartupLocation="CenterOwner" Closing="Window_Closing"
         AutomationProperties.AutomationId="ConfigurationRecoveryWindow">
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="20">
-            <TextBlock Text="Local configuration backup / restore" FontSize="24" FontWeight="SemiBold" TextWrapping="Wrap"/>
+            <TextBlock Text="Backup and restore settings" FontSize="24" FontWeight="SemiBold" TextWrapping="Wrap"/>
             <TextBlock x:Name="ScopeText" TextWrapping="Wrap" Margin="0,10"/>
-            <TextBlock TextWrapping="Wrap" Margin="0,6" Text="Same-profile recovery ONLY into existing valid v1/v2/v3 settings. Version 3 snapshots include companion profiles; older snapshots preserve current companion profiles. Not portable profile import, corrupt-store repair, an updater or executable rollback. Opening reads no backup or vault, scans no files and starts no diagnostics, audio or network."/>
+            <TextBlock TextWrapping="Wrap" Margin="0,6" Text="Create a local backup of this profile, or restore one you made on this PC. Restoring settings does not restore API keys, permissions or audio tests."/>
             <StackPanel x:Name="Actions">
-                <Label Target="{Binding ElementName=BackupPath}" Content="New local _backup output (existing parent directory; never overwrite)"/>
+                <Label Target="{Binding ElementName=BackupPath}" Content="New _backup file"/>
                 <TextBox x:Name="BackupPath" MaxLength="2048" AutomationProperties.AutomationId="RecoveryBackupPath"/>
                 <WrapPanel Margin="0,6">
-                    <Button Content="Choose new output..." Click="ChooseBackup_Click" Padding="8" AutomationProperties.AutomationId="RecoveryChooseBackup"/>
-                    <Button Content="_Create local configuration snapshot..." Click="Backup_Click" Padding="8" Margin="8,0" AutomationProperties.AutomationId="RecoveryBackup"/>
+                    <Button Content="Choose file..." Click="ChooseBackup_Click" Padding="8" AutomationProperties.AutomationId="RecoveryChooseBackup"/>
+                    <Button Content="_Create backup..." Click="Backup_Click" Padding="8" Margin="8,0" AutomationProperties.AutomationId="RecoveryBackup"/>
                 </WrapPanel>
-                <Label Target="{Binding ElementName=SourcePath}" Content="Explicit _source snapshot (browsing does not read/import its content)"/>
+                <Label Target="{Binding ElementName=SourcePath}" Content="Backup to _restore"/>
                 <TextBox x:Name="SourcePath" MaxLength="2048" TextChanged="Source_Changed" AutomationProperties.AutomationId="RecoverySourcePath"/>
                 <WrapPanel Margin="0,6">
-                    <Button Content="Browse source..." Click="ChooseSource_Click" Padding="8" AutomationProperties.AutomationId="RecoveryChooseSource"/>
-                    <Button Content="_Read exact restore preview" Click="Preview_Click" Padding="8" Margin="8,0" AutomationProperties.AutomationId="RecoveryPreview"/>
+                    <Button Content="Browse..." Click="ChooseSource_Click" Padding="8" AutomationProperties.AutomationId="RecoveryChooseSource"/>
+                    <Button Content="_Preview restore" Click="Preview_Click" Padding="8" Margin="8,0" AutomationProperties.AutomationId="RecoveryPreview"/>
                 </WrapPanel>
             </StackPanel>
-            <Label Target="{Binding ElementName=PreviewText}" Content="Compatibility and exact _changes"/>
+            <Label Target="{Binding ElementName=PreviewText}" Content="Restore _changes"/>
             <TextBox x:Name="PreviewText" IsReadOnly="True" TextWrapping="Wrap" Height="180" VerticalScrollBarVisibility="Auto"
                      AutomationProperties.AutomationId="RecoveryChanges"/>
-            <Label Target="{Binding ElementName=CandidateText}" Content="EXACT candidate settings _JSON (personal configuration; no secret values)"/>
+            <Label Target="{Binding ElementName=CandidateText}" Content="Settings _preview (no API keys)"/>
             <TextBox x:Name="CandidateText" IsReadOnly="True" TextWrapping="Wrap" Height="200" VerticalScrollBarVisibility="Auto"
                      AutomationProperties.AutomationId="RecoveryCandidate"/>
-            <Button x:Name="RestoreButton" Content="_Review and confirm this exact restore (default No)..." Click="Restore_Click"
+            <Button x:Name="RestoreButton" Content="_Restore settings..." Click="Restore_Click"
                     Padding="10" Margin="0,8" IsEnabled="False" AutomationProperties.AutomationId="RecoveryRestore"/>
             <TextBox x:Name="ResultText" IsReadOnly="True" TextWrapping="Wrap" MinHeight="70" AutomationProperties.LiveSetting="Polite"
                      AutomationProperties.AutomationId="RecoveryResult"/>
             <TextBlock x:Name="ActivityText" TextWrapping="Wrap" Margin="0,8" AutomationProperties.AutomationId="RecoveryActivity"/>
             <WrapPanel>
-                <Button x:Name="CancelButton" Content="_Stop / cancel observation" Click="Cancel_Click" Padding="8" AutomationProperties.AutomationId="RecoveryCancel"/>
-                <Button x:Name="CleanupButton" Content="Retry owned staging _cleanup" Click="Cleanup_Click" Padding="8" Margin="8,0" AutomationProperties.AutomationId="RecoveryCleanup"/>
-                <Button Content="_Close (never implies IO completed)" Click="Close_Click" Padding="8" AutomationProperties.AutomationId="RecoveryClose"/>
+                <Button x:Name="CancelButton" Content="_Cancel action" Click="Cancel_Click" Padding="8" AutomationProperties.AutomationId="RecoveryCancel"/>
+                <Button x:Name="CleanupButton" Content="Retry _cleanup" Click="Cleanup_Click" Padding="8" Margin="8,0" AutomationProperties.AutomationId="RecoveryCleanup"/>
+                <Button Content="_Close" Click="Close_Click" Padding="8" AutomationProperties.AutomationId="RecoveryClose"/>
             </WrapPanel>
         </StackPanel>
     </ScrollViewer>

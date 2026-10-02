@@ -53,7 +53,7 @@ internal sealed class LocalVoices : IDisposable
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ContractException)
         {
-            LoadError = $"Could not read {RosterFile}; Martlet starts a new voice list (your hosts may still have a copy).";
+            LoadError = "Couldn't read your saved voices. Martlet will start a new list.";
         }
     }
 
@@ -89,7 +89,7 @@ internal sealed class LocalVoices : IDisposable
     /// <summary>Downloads the engine and the two voice models (pinned sizes and SHA-256) into the speech folder.</summary>
     internal async Task InstallAsync(IProgress<SherpaProgress>? progress, CancellationToken token)
     {
-        var root = Root ?? throw new InvalidOperationException("Voice recognition needs Martlet's data folder, which isn't available.");
+        var root = Root ?? throw new InvalidOperationException("Voice recognition needs Martlet's data folder.");
         await SherpaComponents.InstallAsync(root, SherpaPart.Runtime, progress, token).ConfigureAwait(false);
         await SherpaComponents.InstallAsync(root, SherpaPart.Speakers, progress, token).ConfigureAwait(false);
     }
@@ -207,7 +207,7 @@ internal sealed class LocalVoices : IDisposable
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ContractException)
         {
-            LoadError = $"Could not save {RosterFile}; changes last until Martlet closes.";
+            LoadError = "Couldn't save your voices. Changes last until Martlet closes.";
             ErrorLog.Warn("Saving the voice list failed.", error);
         }
     }

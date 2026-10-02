@@ -7,5 +7,8 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Martlet.Mcp.Protocol\Martlet.Mcp.Protocol.csproj" />
+    <!-- Built alongside so node_link_check can run it as its own process (it needs the ASP.NET Core runtime; the server does not). -->
+    <ProjectReference Include="..\Martlet.NodeLinkCheck\Martlet.NodeLinkCheck.csproj" ReferenceOutputAssembly="false" Private="false"
+                      SkipGetTargetFrameworkProperties="true" />
   </ItemGroup>
 </Project>

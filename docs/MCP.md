@@ -9,7 +9,9 @@ Martlet speaks the Model Context Protocol in both directions:
 
 ## Tools while you talk (MCP client)
 
-Add MCP servers on **Companion > Tools** (*Edit servers (mcp.json)*). The file is
+Add MCP servers on **Companion > Tools**: *Browse MCP directory* finds and
+installs one with a click ([MCP directory](#tools-while-you-talk-mcp-client),
+below), and *Edit servers (mcp.json)* edits the file. The file is
 `mcp.json` in Martlet's data folder and uses the format Claude Desktop, Cursor and
 Cline use (VS Code's `"servers"` key works too; comments and trailing commas are
 accepted), so a server's published configuration can be pasted as is:
@@ -42,6 +44,42 @@ accepted), so a server's published configuration can be pasted as is:
 - `"disabled": true` turns a server off; `"autoApprove"` lists tools that run without
   asking (`true` or `"*"` for every tool of that server). The Tools page edits these
   for you (comments in the file are not kept when it does).
+- `${secret:NAME}` is a value the MCP directory (below) kept in Windows Credential
+  Manager instead of the file; a missing one stops only that server.
+
+**MCP directory.** *Browse MCP directory* on the Tools page finds servers and
+installs them without editing JSON. It searches one of two public directories that
+speak the [MCP Registry API](https://registry.modelcontextprotocol.io/docs)
+(`GET /v0.1/servers?search=&limit=&cursor=&version=latest`): the **GitHub MCP
+Registry** (`api.mcp.github.com`, the default: it opens on the most popular
+servers, by GitHub stars) or the **Official MCP Registry**
+(`registry.modelcontextprotocol.io`, everything published, A to Z; its search
+matches names only and can take up to a minute). Neither API takes a sort
+parameter, so each always lists in that order, search results included; the
+directory chooser shows it. Opening the
+window loads the first page; what you search for is sent to that directory, and
+nothing else is. Choosing a server shows its description, links and how Martlet
+would run it:
+
+- **npm** packages run with `npx -y <package>@<version>`, **PyPI** with
+  `uvx <package>@<version>`, **OCI** images with `docker run -i --rm` (each
+  environment variable passed with `-e`), **NuGet** tools with
+  `dnx <package>@<version> --yes`, and **hosted** streamable HTTP addresses
+  connect directly. A hosted address listed as SSE is offered (as streamable
+  HTTP) only when it doesn't end in `/sse` and no streamable HTTP address is
+  listed. `.mcpb` bundles, local-HTTP packages and other package types aren't
+  installable and the window says why. Whether `npx`, `uvx`, `docker` or `dnx`
+  is on this PC is shown before installing.
+- The entry's environment variables, headers, arguments and `{placeholders}`
+  become fields (required ones first, optional ones in *Optional settings*; empty
+  optional ones are left out). Secret fields are saved in Windows Credential
+  Manager (scoped to this mcp.json) and written as `${secret:<server>.<NAME>}`;
+  typing `${env:NAME}` in any field uses an environment variable instead.
+- *Install and start* adds the entry to mcp.json with `"registry"` (the
+  directory name) and `"version"`, then starts the servers. Installing an entry
+  that is already installed (same `registry`) replaces it; using another
+  server's name asks first. Each mcp.json server on the Tools page has *Remove*,
+  which deletes its entry and the secrets only it used.
 
 **When servers run.** Nothing starts when Martlet starts. Enabled servers start in
 the background when you open a talk window (or press *Start servers now*), and a
@@ -180,7 +218,9 @@ never returns keys, signatures or host addresses and contacts nothing.
 production code: three real gateways (`lab-host-1..3`: Kestrel, pinned TLS,
 volatile credentials, a throwaway certificate) on `127.0.0.1` and two simulated
 desktops driving the desktop's own client (`HostNetwork.cs`) and sync engine
-(`NetworkSync.cs`). Its steps: desktop A pairs with a host by a typed code and
+(`NetworkSync.cs`). Like `node_link_check` it runs `src\Martlet.NodeLinkCheck`
+(mode `network`, `NetworkRehearsal.cs`) as its own process, because the gateway
+needs the ASP.NET Core runtime, and returns `{exitCode, report}`. Its steps: desktop A pairs with a host by a typed code and
 founds a network that binds it; A adds a second host to the same network; B
 pairs with one host and asks to join with a check number; A sees the same
 number, allows B, and B pairs with the other host by itself; A sets up a third
@@ -191,11 +231,38 @@ trusting the network's desktops, and A and B both forget it, B although the
 host no longer answers it); A pairs that host again by a code and it rejoins
 (B pairs with it again by itself); A removes B (every host revokes it, B leaves
 and forgets its hosts and needs a new key). Each desktop's state goes through
-`network.json`'s format between syncs. It returns `ok`, `passed`,
+`network.json`'s format between syncs. The report has `ok`, `passed`,
 `total`, `seconds`, the `scope` and each step's `ok` and `detail`. Nothing
 leaves loopback, nothing is written to disk or Windows Credential Manager, and
 it does not cover the desktop window, `network.json` on a Linux host,
 `martlet-host`, SSH or a real LAN.
+
+`nearby_status` reads whether this PC lets Martlet on the owner's other
+computers [find it](ARCHITECTURE.md#finding-your-other-computers) (optional
+absolute `dataDirectory`, default the current user's): `share` is
+`on (default)` when `nearby.txt` is missing, `on`, or `off` once the owner
+unticked **Let my other computers find this PC**; `port` (9444); and `hosts`
+from `hosts.json` (`state` `none`, `loaded` or `unreadable`; when loaded the
+number `paired` and the `shareable` ones with `hostId` and `reach`
+(`ThisPcDocker`, `SshDocker` or `SshNative`)). This PC's own host service set
+up from the host dashboard is found by the desktop from Docker, not here. It
+never returns addresses, SSH targets or keys and contacts nothing.
+
+`node_link_check` runs [commands between computers](CLUSTER.md#commands-between-your-computers)
+end to end on this PC's loopback and returns `{exitCode, report: {passed,
+steps: [{name, ok, detail}]}}`: the real gateway (Kestrel, pinned TLS with a
+throwaway fixture certificate, pairing, signed requests, the command mailbox
+and its storage), the desktop's real client and agent loop with a fixture
+runner (FIXTURE: it installs nothing), and two fixture devices. Steps check
+that only known commands and arguments are accepted, anonymous requests are
+refused, only the agent's local token takes and reports commands, output and
+outcomes reach the sender, secrets never appear in lists, commands or the saved
+copy, cancel works (waiting and running), commands survive a restart with a new
+token and the queue is bounded. It runs `src\Martlet.NodeLinkCheck` (built with
+`Martlet.Mcp`) as its own process, because the gateway needs the ASP.NET Core
+runtime; it takes no arguments and contacts nothing outside loopback. The same
+program's `live <pairing-code> <container>` mode checks a disposable Linux
+gateway container built from this checkout (not the real host service).
 
 `virtualization_status` reports whether Windows is ready for Docker Desktop's
 WSL 2 engine, from the same read-only checks the desktop runs before it starts
@@ -204,12 +271,17 @@ Docker Desktop (optional absolute `dataDirectory`, default the current user's):
 `firmware`, `hypervisor`, `virtualMachinePlatform` and
 `windowsSubsystemForLinux` (`Enabled`, `Disabled`, `Absent` or `Unknown`),
 `wsl` (version, `none` or null), `virtualMachine`, `summary`,
-`dockerDesktop {installed, running}` and `continueSetup {pending, kind, task,
+`dockerDesktop {installed, running, engine}` (`engine` is what
+`docker desktop status` reports, for example `running`, `starting` or
+`stopped`, or null when Docker Desktop doesn't answer within 15 seconds; a
+run window restarts Docker Desktop once when it is open but its engine stays
+`stopped` at two checks in a row, and always after Martlet changed Windows for
+it) and `continueSetup {pending, kind, task,
 created, startsAtSignIn}`: the setup Martlet continues after a Windows restart
 (`continue-setup.json` in the data directory, and whether the per-user `RunOnce`
 entry that starts Martlet at the next sign-in exists). It runs a CIM query and
-`wsl --version` in a hidden Windows PowerShell, changes nothing and returns no
-paths.
+`wsl --version` in a hidden Windows PowerShell and `docker desktop status`,
+changes nothing and returns no paths.
 
 `logs_tail` reads the last `lines` (1-400, default 100) of one local log under
 `<dataDirectory>\logs` (`log`: `desktop` (default), `avatar-renderer` or
@@ -221,6 +293,28 @@ explanation, followed by a `Reply failed (...)` line naming the route (`Spoken r
 route when the text arrived but speaking it failed), for
 example `{"name":"logs_tail","arguments":{"contains":"failed"}}`. Logs can
 include local paths and provider error text (never keys or conversation content).
+
+`mcp_servers_status` reads `mcp.json` from a data directory (optional absolute
+`dataDirectory`, default the current user's) as the desktop parses it: `state`
+(`none`, `loaded`, `invalid` or `unreadable` with `problem`) and per server its
+`name`, `transport`, `command`, raw `args` (with `${env:...}` and
+`${secret:...}` references, never their values), `host` for HTTP servers, `env`
+and `headers` names, `disabled`, `autoApproveAll`, `autoApprove`, the MCP
+directory `registry` and `registryVersion` it was installed from, the `secrets`
+names it uses and its `problem`. It starts no server and reads no credentials.
+
+`mcp_directory_plan` shows how the MCP directory would install one registry
+entry without fetching, writing or starting anything: pass `server` (a
+server.json object as the v0.1 API returns it, or the whole list item with
+`server` inside), optionally `name` (the mcp.json name; default the suggested
+one) and `values` (input key to text, for example `"env:CONTEXT7_API_KEY"`,
+`"var:api_key"`, `"header:Authorization"`, `"arg:--project-ref"`). It returns
+`name`, `displayName`, `suggestedName`, `version`, `unsupported` (why other ways
+to run it aren't offered) and per option its `kind`, `summary`, `runtime`,
+`runtimeAvailable`, `host`, `inputs` (key, label, required, secret, flag,
+default, choices) and either `plan` (the mcp.json `entry`, the `secrets` names
+it would save and a `preview`) or the `problem` (such as a required field left
+empty). Secret values are never returned.
 
 `logs_timeline` reads this PC's logs as the desktop's
 [Diagnostics page](DIAGNOSTICS.md#diagnostics-page-and-the-log-host) shows
@@ -246,7 +340,7 @@ screen `bounds` (`[x, y, width, height]` in pixels) and, for text controls, the
 alignment can be checked: in the talk window, the empty box's hint
 `LivePlaceholder` must have the same `bounds` position as the `textBounds` of
 text typed into `LiveInput`.
-Status fields include `VisionStatus` (Companion › Vision: whether the Thinking model can see, or has been retired, and the fix), `RepliesNow` (Companion › Replies: that Martlet asks for replies of one or two sentences, the max reply length ceiling in effect and the other saved settings), `SetupCloudHint-Thinking` (the cloud provider's recommended Thinking model, or a retired-model warning), `SetupLocalRecommendation` (the local Ollama model recommended for this PC's graphics card), `SetupOllamaStatus` (whether Ollama is installed or running and which models it has), `SetupLocalModelTest` (Thinking › This PC: the last *Test model* result for the model in the box, or that it isn't tested yet), `SetupProviderHint` (Setup › Jobs prefilled model) and `SetupF5About` (Speaking › This PC: what setting up F5 installs and its licence). `SetupHostThisPc` and `SetupUseLocal-Speaking` start the F5 setup run window straight away (no extra confirmation; installing Docker Desktop still asks for its terms), so they need `--allow-ui-effects`. `SetupTestLocalModel` (Thinking › This PC's *Test model*) starts Ollama if needed, loads the model in the box and sends it one short loopback chat request in a run window, so it needs `--allow-ui-effects` too; read the outcome from `HostRunStatus` and `SetupLocalModelTest`. A run window (`HostRunWindow`, titled `Martlet - <run>`) returns its status line as `HostRunStatus` (for example *Waiting for Docker Desktop to start...* or why it stopped); its output (`HostRunOutput`, which can show a one-use pairing code) is not returned, so read it with `logs_tail` `host-runs`, which also records each status change. `HostRunCancel` cancels a running run (or closes the window afterwards) and needs `--allow-ui-effects`. On a fresh data directory, F5 setup first needs saved settings (*Complete Setup once...*): `SetupUseWindowsVoice` saves them. Setting `DOCKER_HOST` (for example to a local test named pipe) before launching the desktop points its Docker checks away from the real engine. `ui_click` invokes a control by automation ID and `ui_select` selects a named combo-box
+Status fields include `VisionStatus` (Companion › Vision: whether the Thinking model can see, or has been retired, and the fix), `RepliesNow` (Companion › Replies: that Martlet asks for replies of one or two sentences, the max reply length ceiling in effect and the other saved settings), `SetupCloudHint-Thinking` (the cloud provider's recommended Thinking model, or a retired-model warning), `SetupLocalRecommendation` (the local Ollama model recommended for this PC's graphics card), `SetupOllamaStatus` (whether Ollama is installed or running and which models it has), `SetupLocalModelTest` (Thinking › This PC: the last *Test model* result for the model in the box, or that it isn't tested yet), `SetupProviderHint` (Setup › Jobs prefilled model), `AppUpdateStatus` (Settings › App updates: the installed version, the check schedule and the last check or download result) and `SetupF5About` (Speaking › This PC: what the F5 voice is and its non-commercial use restriction). `SetupHostThisPc` and `SetupUseLocal-Speaking` start the F5 setup run window straight away (no extra confirmation; installing Docker Desktop still asks for its terms), so they need `--allow-ui-effects`. `SetupTestLocalModel` (Thinking › This PC's *Test model*) starts Ollama if needed, loads the model in the box and sends it one short loopback chat request in a run window, so it needs `--allow-ui-effects` too; read the outcome from `HostRunStatus` and `SetupLocalModelTest`. A run window (`HostRunWindow`, titled `Martlet - <run>`) returns its status line as `HostRunStatus` (for example *Waiting for Docker Desktop to start...* or why it stopped); its output (`HostRunOutput`, which can show a one-use pairing code) is not returned, so read it with `logs_tail` `host-runs`, which also records each status change. `HostRunCancel` cancels a running run (or closes the window afterwards) and needs `--allow-ui-effects`. On a fresh data directory, F5 setup first needs saved settings (*Complete Setup first.*): `SetupUseWindowsVoice` saves them. Setting `DOCKER_HOST` (for example to a local test named pipe) before launching the desktop points its Docker checks away from the real engine. `ui_click` invokes a control by automation ID and `ui_select` selects a named combo-box
 option. By default only passive navigation and
 diagnostics controls can be clicked. The main window is split into pages, and a
 page's controls are only visible after you open it: click `NavHome`,
@@ -261,7 +355,7 @@ dismisses the welcome tour, and `TourBegin` and `TourBack` step through it
 for example `CompanionTab-People`) and `OpenPeople` (on Listening) are passive
 navigation too. People shows `PeopleStatus`, `PeopleSyncStatus` and
 `PeopleVoiceCount`, and Listening shows `ListenParakeetStatus`; snapshots return
-these status texts, as does the talk window's `LiveStatus` (the line under "Martlet": what it is doing, or why the last reply failed, naming the job that failed: *Martlet couldn't speak: ...* for the voice, and *Your Martlet host <ID> didn't run ...* when the job runs on a paired host). Each voice's controls are numbered by voice (`PeopleName-3`,
+these status texts, as does the talk window's `LiveStatus` (the line under "Martlet": what it is doing, or why the last reply failed, naming the job that failed: *Martlet couldn't speak. ...* for the voice, and *Your Martlet host <ID> didn't answer ...* when the job runs on a paired host). Each voice's controls are numbered by voice (`PeopleName-3`,
 `PeopleOtherNames-3`, `PeopleSave-3`, `PeopleOwner-3`, `PeopleMergeTarget-3`,
 `PeopleMerge-3`, `PeopleForget-3`); like `PeopleInstall`, `PeopleRecognize`,
 `PeopleShare`, `PeopleSync`, `PeopleForgetAll` and `SetupListenParakeet`, they
@@ -292,6 +386,29 @@ paired hosts, so it is not a passive click), each computer's row title
 Turn down change the network and need `--allow-ui-effects` (then
 `ConfirmationYes`); Allow also hands that computer access to every host, so
 keep it to disposable lab networks.
+
+A paired host's `DeviceReachSection` holds `HostReachNow` (*Reached via: ...*,
+status text), `HostReachMethod` (a combo box: *Through Martlet on that computer
+(paired connection)*, *SSH, with Docker there*, *SSH, native Ubuntu*, *This
+PC, with Docker Desktop*; `ui_select` needs `--allow-ui-effects`),
+`HostReachHint` (status text), `HostReachSsh` and `HostReachSave`. Host
+actions (`NodeAction-UpdateHost`, `NodeAction-HostStatus`, roles) on a host
+reached through Martlet there open a run window (`HostRunStatus`) that sends
+the command through its gateway; on a disposable data directory without a
+stored pairing secret it stops at *This PC's pairing secret is missing*.
+Settings › *Your other computers* has `AllowNodeCommands` (checked by default;
+`ui_toggle` needs `--allow-ui-effects` and saves `node-commands.txt`) and
+`NodeAgentStatus` (status text: off, no host service on this PC, ready, the
+last command it ran, or the update of its own host service). The same card
+has `NearbyShare` (*Let my other computers find this PC and ask to use its
+hosts*, checked by default; unticking it needs `--allow-ui-effects` and saves
+`off` in `nearby.txt`), `NearbyShareStatus` (returned: off, nothing to share,
+the port in use, *Checking Windows Firewall...*, Windows Firewall or a Public
+network keeping other computers out (then only Martlet on this PC can find
+it), or on with the hosts it offers; then *Last request:* allowed, denied,
+withdrawn or stopped) and `NearbyFirewall` (*Let my other computers reach this
+PC*, shown only when blocked: an administrator prompt, never part of
+verification).
 Home and host-dashboard steps have their buttons as `Step-<step>-<n>` and their
 detail line as `StepDetail-<step>` (status text): on the host dashboard,
 `StepDetail-docker` says whether Docker Desktop runs or why Windows can't start
@@ -315,15 +432,46 @@ shows a code) and the `HostCommandSection`, `PairCommandSection` and
 passive clicks. Snapshots return `HostStatus` (the wizard's status line: what
 pairing did, or why it was refused, such as *That code doesn't match...* or *No
 Martlet host answered at ...*), `PairedHost`, and `PairCodeTitle`/`PairCodeHelp`
-(*Type the code the host shows* when Martlet can't reach the host, *Or type a
-code the host shows* next to `PairConsole` otherwise). `PairAddress` and
+(*Enter the code shown on the host* when Martlet can't reach the host, *Or enter a
+code from the host* next to `PairConsole` otherwise). `PairAddress` and
 `PairingCode` take the host's address and short code (`ui_set_text`, so
 `--allow-ui-effects`), and `PairHost` pairs; a successful pairing stores a
 device secret in Windows Credential Manager, so verification stops at refused
 codes. On the host dashboard, *Show a pairing code* (`Step-pair-0`) shows the
 address (`HostRunPairAddress`, returned) and the one-use code (`HostRunPairCode`,
 never returned) in the run window's `HostRunPairing` panel; the host-runs log
-masks codes.
+masks codes. `StepDetail-pair` also tells the owner to find this PC from the
+main PC (*Martlet on your network*), and when Windows Firewall keeps other
+computers out it says so and `Step-pair-1` (*Let my other computers find this
+PC*, an administrator prompt) appears.
+
+*Martlet on your network* ([how it works](ARCHITECTURE.md#finding-your-other-computers))
+is the first card of the wizard's *Where it runs* step. Opening the wizard on
+that step (so `AddComputer`) and `NearbyFind` (*Find again*) send Martlet's
+discovery query to port 9444 on loopback and the local network's broadcast
+addresses and list who answers; they pair nothing and change nothing, so they
+are passive clicks. `NearbyStatus` (returned) says what was found (*Found 1
+computer with a host this PC doesn't use yet.*, *No other Martlet
+answered...*), what a request is doing or why it stopped (*DIVA denied the
+request (or it expired there).*, *Stopped asking DIVA.*, the sharing
+computer's reason, *Paired with ... through ...*). Each found computer is a row
+with `NearbyItem-<n>` (returned: *<name> (<address or this PC>): <hosts> ·
+Martlet <version>*) and `NearbyConnect-<n>`, which starts a request and needs
+`--allow-ui-effects`. While asking, `NearbyNumber` returns the check number and
+`NearbyCancel` (*Stop asking*) withdraws the request (passive). On the
+computer asked, a separate window `JoinRequestWindow` (*Martlet - <name> wants
+to use your hosts*) returns `JoinRequestTitle`, `JoinRequestText` (who, from
+which address, which hosts), `JoinRequestNumber` (must equal the asking side's
+`NearbyNumber`) and `JoinRequestExpiry`; `JoinAllow` and `JoinDeny` need
+`--allow-ui-effects`. Allow opens a run window (`HostRunWindow`, *Martlet - Let
+<name> use your hosts*) that asks each host for a one-use code; its
+`HostRunStatus` and the host-runs log show progress, never the codes. To
+exercise it on one PC, run two desktops on disposable data directories with
+`DOCKER_HOST` pointed at a missing pipe (so neither finds this PC's real host
+service): give the sharing one a `hosts.json` with an SSH host that refuses
+(for example `martlet@127.0.0.1:1`), so it answers on loopback, Allow reaches
+the run window and the request fails with that host's reason on both sides
+before any real code or credential exists.
 Use `ui_snapshot` again to observe asynchronous effects. Modal
 actions may return `completed: false` while their dialog remains open; this
 means the invoke is still pending, not that the action finished.
@@ -372,11 +520,11 @@ and `LogSource-<computer>` (`all`, this PC's device ID such as
 report which is chosen in `selected`. `LogSearch` needs `ui_set_text` (and so
 `--allow-ui-effects`). `LogsRefresh` reads the logs again and sends nothing, so
 it is passive; `LogsCopy` (clipboard) and `LogsOpenFolder` (Explorer) are not.
-`LogHostChoice` returns the chosen log host (*Nobody: each computer keeps its
-own*, a host ID, or *<host> (not paired with this PC)*); changing it with
+`LogHostChoice` returns the chosen log host (*None (each computer keeps its
+own)*, a host ID, or *<host> (not paired with this PC)*); changing it with
 `ui_select` changes the shared plan and needs `--allow-ui-effects`.
-`LogHostStatus` says what this PC last sent to the log host, what it passed on
-and which hosts didn't answer or run an older Martlet. To see lines on a
+`LogHostStatus` says what this PC last sent to the log host and which hosts
+didn't answer or need a Martlet update. To see lines on a
 disposable data directory, write `logs\desktop.log` (lines like
 `2026-10-01 22:15:44.974 -07:00 WARN [1] message`), `logs\avatar-renderer.log`
 or `logs\host-runs.log` before launching. Home's `HealthOpen-errors-diagnostics`
@@ -423,6 +571,33 @@ with "· chosen" or "· in use" when it is. Its controls are `F5VoicePlay-<key>`
 instead of the key, and its name is not returned. Use and Remove change the
 voice list and need `--allow-ui-effects`; Play plays audio and is not for
 automated verification. `f5_voices` reads the same list headlessly.
+
+On Companion › Tools (`CompanionTab-Tools`), each server has
+`ToolsServerState-<name>`, `ToolsServerOn-<name>`, `ToolsServerTrust-<name>`,
+`ToolsRestart-<name>` and, for mcp.json servers, `ToolsRemove-<name>` (asks with
+`ConfirmationYes`/`ConfirmationNo`, then edits mcp.json). `ToolsBrowseDirectory`
+opens the MCP directory (`McpDirectoryWindow`), which loads a page from a public
+directory at once, so it needs `--allow-ui-effects`, as do `McpDirectorySource`
+(choosing a directory searches it), `McpDirectorySearch` with
+`McpDirectorySearchButton`, `McpDirectoryMore`, `McpDirectoryRepository` and
+`McpDirectoryWebsite` (open a browser) and `McpDirectoryInstall` (writes
+mcp.json and Windows Credential Manager, then starts the server). Passive:
+`McpDirectoryClose`, the `McpDirectoryOptional` expander and each result
+`McpDirectoryResult-<registry name>` (for example
+`McpDirectoryResult-io.github.upstash/context7`), which only shows that server.
+Snapshots return `McpDirectoryStatus` (loading, how many found and in what
+order, for example *The 20 most popular servers on the GitHub MCP Registry (by
+GitHub stars); ...*, why a search failed, or what was installed;
+`ui_select` on `McpDirectorySource` takes the plain directory name, such as
+`Official MCP Registry`), `McpDirectoryNoSelection`, and for the selected
+server `McpDirectoryDetailTitle`, `McpDirectoryDetailName` (registry name,
+version, stars), `McpDirectorySummary` (the chosen way to run it),
+`McpDirectoryNeeds` (whether its runtime is on this PC, or which host it
+connects to), `McpDirectoryInstalled` and `McpDirectoryCantInstall`. The form's
+`McpDirectoryOption`, `McpDirectoryName` and `McpDirectoryInput-<input key>`
+fields and the `McpDirectoryRuns` preview are not returned; `mcp_directory_plan`
+shows the same plan headlessly and `mcp_servers_status` what was installed. A
+running server shows in Home's `HealthCheck-tools` (*1 of 1 server ready*).
 
 On Thinking, Voice, Listening and Lip-sync, each "Where it runs" option
 (`Place-<page>-<place>`, for example `Place-Voice-Computer` or
@@ -512,7 +687,7 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `logs_tail` and `virtualization_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status` and `mcp_servers_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

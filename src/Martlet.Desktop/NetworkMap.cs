@@ -120,9 +120,9 @@ internal static class NetworkMap
 
     internal static string RoleName(SetupRole role) => role switch
     {
-        SetupRole.Stt => "Listening (speech-to-text)",
-        SetupRole.Llm => "Thinking (conversation model)",
-        _ => "Speaking (voice)"
+        SetupRole.Stt => "Listening",
+        SetupRole.Llm => "Thinking",
+        _ => "Speaking"
     };
 
     internal static string RoleChip(SetupRole role) => role switch
@@ -143,8 +143,8 @@ internal static class NetworkMap
     private static string RouteDetail(SetupRoute route)
     {
         var text = route.RouteType == SetupRouteType.LocalWindowsTts ? WindowsVoices.DisplayName(route.VoiceId)
-            : route.VoiceId is { } voice ? $"{route.ModelId}, voice {voice}"
-            : route.Reference is { } reference ? $"{route.ModelId}, voice {reference.PresetName}" : route.ModelId;
+            : route.VoiceId is { } voice ? $"Voice {voice}"
+            : route.Reference is { } reference ? $"Voice {reference.PresetName}" : "Ready";
         if (route.Enabled == false) text += " (turned off)";
         else if (route.Consent is null) text += " (review in Companion)";
         return text;
@@ -162,13 +162,13 @@ internal static class NetworkMap
             (Uri.TryCreate(route.Origin, UriKind.Absolute, out var endpoint)
                 ? IsLoopback(endpoint.Host) ? "A local server on this PC" : endpoint.Host
                 : "Your endpoint"),
-        SetupRouteType.GatewayOllama => "Ollama on your Martlet host",
-        SetupRouteType.GatewayF5 => "F5 on your Martlet host",
-        SetupRouteType.GatewayStt => "whisper on your Martlet host",
+        SetupRouteType.GatewayOllama => "Your Martlet host",
+        SetupRouteType.GatewayF5 => "Your Martlet host",
+        SetupRouteType.GatewayStt => "Your Martlet host",
         SetupRouteType.LocalWindowsStt => "Windows speech",
         SetupRouteType.LocalWindowsTts => "Windows voice",
-        SetupRouteType.LocalWhisper => "whisper.cpp on this PC",
-        SetupRouteType.LocalParakeet => "Parakeet on this PC",
+        SetupRouteType.LocalWhisper => "Speech recognition on this PC",
+        SetupRouteType.LocalParakeet => "Speech recognition on this PC",
         _ => "OpenAI"
     };
 
@@ -190,7 +190,7 @@ internal static class NetworkMap
         if (inputs.Role == DeviceRole.Host)
         {
             thisPc.Roles.Add(new("Host", "Martlet host service", machine.DockerRunning
-                ? "Docker Desktop is running; desktops connect on port 9443"
+                ? "Ready for paired computers"
                 : machine.DockerInstalled ? "Docker Desktop is installed but not running" : "Needs Docker Desktop", DeviceComponent.HostService));
             if (!machine.DockerRunning) thisPc.Worsen(NodeHealth.Attention, machine.DockerInstalled ? "Docker not running" : "Needs Docker");
         }
@@ -209,11 +209,11 @@ internal static class NetworkMap
                     break;
                 case SetupRouteType.LocalWhisper:
                     target = thisPc;
-                    role = role with { Detail = "whisper.cpp on this PC: " + RouteDetail(route) };
+                    role = role with { Detail = "Speech recognition on this PC: " + RouteDetail(route) };
                     break;
                 case SetupRouteType.LocalParakeet:
                     target = thisPc;
-                    role = role with { Detail = "Parakeet on this PC: " + RouteDetail(route) };
+                    role = role with { Detail = "Speech recognition on this PC: " + RouteDetail(route) };
                     break;
                 case SetupRouteType.GatewayOllama or SetupRouteType.GatewayF5 or SetupRouteType.GatewayStt when route.Gateway is { } gateway:
                     var host = new Uri(gateway.Origin).Host;
@@ -222,15 +222,14 @@ internal static class NetworkMap
                         : Node("host:" + gateway.HostId, NodeKind.Host, gateway.HostId, host, ComputerGlyph);
                     role = role with { Detail = route.RouteType switch
                     {
-                        SetupRouteType.GatewayOllama => "Ollama: ",
-                        SetupRouteType.GatewayStt => "whisper: ",
-                        _ => "F5 voice: "
+                        SetupRouteType.GatewayOllama => "Conversation model: ",
+                        SetupRouteType.GatewayStt => "Speech recognition: ",
+                        _ => "Voice: "
                     } + RouteDetail(route) };
                     if (target != thisPc && target.Facts.Count == 0)
                     {
                         target.Facts.Add(new("Address", gateway.Origin));
-                        target.Facts.Add(new("Host ID", gateway.HostId));
-                        target.Facts.Add(new("Identity", "Pinned TLS " + Short(gateway.SpkiFingerprint)));
+                        target.Facts.Add(new("Host", gateway.HostId));
                         AddHardware(target, inputs, gateway.HostId);
                     }
                     break;
@@ -238,7 +237,7 @@ internal static class NetworkMap
                     if (IsLoopback(endpoint.Host))
                     {
                         target = thisPc;
-                        role = role with { Detail = $"Local server {endpoint.Authority}: " + RouteDetail(route) };
+                        role = role with { Detail = "Local server: " + RouteDetail(route) };
                     }
                     else if (IPAddress.TryParse(endpoint.Host, out var lan) && HostSetupCommands.IsPrivate(lan))
                     {
@@ -266,10 +265,10 @@ internal static class NetworkMap
             else if (route.Consent is null) target.Worsen(NodeHealth.Attention, "Needs review in Companion");
             if (target.Kind == NodeKind.Cloud)
             {
-                target.Facts.Add(new(RoleChip(route.Role), route.CredentialId is null ? "No key saved" : "Key saved in Windows Credential Manager"));
+                target.Facts.Add(new(RoleChip(route.Role), route.CredentialId is null ? "No key saved" : "Key saved"));
                 target.Notes.Add(route.Role switch
                 {
-                    SetupRole.Stt => "Your recorded push-to-talk audio is sent here.",
+                    SetupRole.Stt => "Your speech is sent here.",
                     SetupRole.Llm => "Your messages and recent conversation are sent here.",
                     _ => "Reply text is sent here to be spoken."
                 });
@@ -280,7 +279,7 @@ internal static class NetworkMap
         {
             var missing = Node("missing:brain", NodeKind.Missing, "Conversation model", "Not chosen yet", CloudGlyph);
             missing.Worsen(NodeHealth.Attention, "Choose one");
-            missing.Roles.Add(new("Thinks", "Thinking (conversation model)", "Pick a cloud model (OpenRouter, NVIDIA Build, OpenAI) or one on your own computers.",
+            missing.Roles.Add(new("Thinks", "Thinking", "Choose a cloud model or one on your own computers.",
                 DeviceComponent.Job(SetupRole.Llm)));
             missing.Commands.Add(new(NodeAction.Companion, "Set up thinking in Companion", true, nameof(SetupRole.Llm), DeviceComponent.Job(SetupRole.Llm)));
             missing.Commands.Add(new(NodeAction.Advisor, "Get a recommendation", Component: DeviceComponent.Job(SetupRole.Llm)));
@@ -313,33 +312,31 @@ internal static class NetworkMap
             {
                 var model = check?.Offers?.GetValueOrDefault(role.Kind);
                 if (role.Kind == HostRoles.Audio2Face && inCharge)
-                    target.Roles.Add(new(role.Chip, role.Name, "In charge of lip-sync. " +
-                        (check?.Text ?? "Use Check connection to see whether it runs Audio2Face."), DeviceComponent.LipSync));
+                    target.Roles.Add(new(role.Chip, role.Name, "Handles lip-sync. " +
+                        (check?.Text ?? "Use Check connection to see whether it's ready."), DeviceComponent.LipSync));
                 // Thinking, listening and speaking are listed with their routes when this host does them.
                 else if (model is not null && !(role.Kind == HostRoles.Ollama && thinks) && !(role.Kind == HostRoles.Stt && listens) &&
                     !(role.Kind == HostRoles.F5 && speaks))
-                    target.Roles.Add(new(role.Chip, role.Name, $"Installed (model {model}), standing by. Hand it {role.Job} to use it.",
+                    target.Roles.Add(new(role.Chip, role.Name, $"Ready. Assign {role.Job} to use it.",
                         DeviceComponent.Standby(role.Kind)));
             }
-            if (local) thisPc.Roles.Add(new("Host", "Martlet host service (Docker)", $"Paired as {paired.HostId} on {paired.Pairing.Origin}",
+            if (local) thisPc.Roles.Add(new("Host", "Martlet host service", $"Paired as {paired.HostId}",
                 DeviceComponent.HostService));
             else
             {
                 if (target.Roles.Count == before)
-                    target.Roles.Add(new("Host", "Martlet host", check?.Text ?? "Paired. Nothing is handed to it yet; use Check connection to see what it runs.",
+                    target.Roles.Add(new("Host", "Martlet host", check?.Text ?? "Paired. Check connection to see what it can do.",
                         DeviceComponent.Host));
                 if (target.Facts.All(f => f.Label != "Address"))
                 {
                     target.Facts.Insert(0, new("Address", paired.Pairing.Origin));
-                    target.Facts.Add(new("Identity", "Pinned TLS " + Short(paired.Pairing.SpkiFingerprint)));
                 }
-                target.Facts.Add(new("This PC as", paired.Pairing.DeviceId));
-                target.Facts.Add(new("Reached via", paired.Reach));
+                target.Facts.Add(new("Connection", paired.Reach));
                 AddHardware(target, inputs, paired.HostId);
                 if (check is null) target.Worsen(NodeHealth.Unknown, "Paired, not checked yet");
                 else if (check.Reachable == false) target.Worsen(NodeHealth.Attention, "Not reachable");
                 else if (check.Reachable is null) target.Worsen(NodeHealth.Unknown, "Checking...");
-                else if (target.Health == NodeHealth.Ready) target.HealthText = inCharge ? "Connected, in charge of lip-sync" : "Connected";
+                else if (target.Health == NodeHealth.Ready) target.HealthText = inCharge ? "Connected, handling lip-sync" : "Connected";
             }
 
             var id = paired.HostId;
@@ -349,9 +346,9 @@ internal static class NetworkMap
             var known = check?.Reachable == true || reported is not null;
             var outdated = known && AppVersions.IsOlder(reported, app);
             target.Facts.Add(new(local ? "Host service" : "Martlet", !known ? "Version not reported yet. Use Check connection."
-                : reported is null ? $"0.2.0 or older; this PC runs {app}. Update it."
-                : outdated ? $"{reported}; this PC runs {app}. Update it."
-                : reported == app ? $"{reported}, same as this PC" : $"{reported}, newer than this PC ({app}). Update this PC."));
+                : reported is null ? $"Needs update. This PC runs {app}."
+                : outdated ? $"Needs update from {reported} to {app}."
+                : reported == app ? $"{reported}, up to date" : $"{reported}. Update this PC to {app}."));
             if (outdated && !local) target.Worsen(NodeHealth.Attention, "Update available");
             if (inputs.HostUpdates?.GetValueOrDefault(id) is { } update) target.Notes.Insert(0, update);
             var offersFace = check?.Offers?.ContainsKey(HostRoles.Audio2Face) == true;
@@ -368,21 +365,21 @@ internal static class NetworkMap
             var hostService = local ? DeviceComponent.HostService : null;
             target.Commands.Insert(0, new(NodeAction.CheckHost, "Check connection", !local && check?.Reachable != true, id, hostService));
             if (managed)
-                target.Commands.Add(new(NodeAction.UpdateHost, local ? "Update this PC's host service" : outdated ? $"Update it to Martlet {app}" : "Update host",
+                target.Commands.Add(new(NodeAction.UpdateHost, local ? "Update this PC's host service" : outdated ? $"Update to Martlet {app}" : "Update host",
                     outdated && check?.Reachable == true, id, hostService));
             // Handing a job to a role it already runs configures that role's row; otherwise it gives the device a new job.
             string? Ready(string kind) => check?.Offers?.ContainsKey(kind) == true ? DeviceComponent.Standby(kind) : null;
             if (companion && !inCharge && Can(HostRoles.Audio2Face))
-                target.Commands.Add(new(NodeAction.UseForLipSync, local ? "Hand lip-sync to this PC's host service" : "Hand lip-sync to this computer",
+                target.Commands.Add(new(NodeAction.UseForLipSync, local ? "Use this PC's host service for lip-sync" : "Use this computer for lip-sync",
                     offersFace, id, Ready(HostRoles.Audio2Face)));
             if (companion && !thinks && Can(HostRoles.Ollama))
-                target.Commands.Add(new(NodeAction.UseForThinking, local ? "Hand thinking to this PC's host service" : "Hand thinking to this computer",
+                target.Commands.Add(new(NodeAction.UseForThinking, local ? "Use this PC's host service for thinking" : "Use this computer for thinking",
                     offersThinking, id, Ready(HostRoles.Ollama)));
             if (companion && !listens && Can(HostRoles.Stt))
-                target.Commands.Add(new(NodeAction.UseForListening, local ? "Hand listening to this PC's host service" : "Hand listening to this computer",
+                target.Commands.Add(new(NodeAction.UseForListening, local ? "Use this PC's host service for listening" : "Use this computer for listening",
                     check?.Offers?.ContainsKey(HostRoles.Stt) == true, id, Ready(HostRoles.Stt)));
             if (companion && !speaks && Can(HostRoles.F5))
-                target.Commands.Add(new(NodeAction.UseForSpeaking, local ? "Hand speaking to this PC's host service" : "Hand speaking to this computer",
+                target.Commands.Add(new(NodeAction.UseForSpeaking, local ? "Use this PC's host service for speaking" : "Use this computer for speaking",
                     check?.Offers?.ContainsKey(HostRoles.F5) == true, id, Ready(HostRoles.F5)));
             foreach (var role in HostRoles.All)
             {
@@ -395,17 +392,17 @@ internal static class NetworkMap
                     continue;
                 }
                 if (!offered)
-                    target.Commands.Add(new(NodeAction.InstallRole, local ? $"Install {role.Name} in this PC's host service" : $"Install {role.Name} there",
+                    target.Commands.Add(new(NodeAction.InstallRole, local ? $"Install {role.Name} here" : $"Install {role.Name}",
                         Argument: id + "/" + role.Kind));
                 if (check is null || offered)
-                    target.Commands.Add(new(NodeAction.RemoveRole, local ? $"Remove {role.Name} from this PC's host service" : $"Remove {role.Name} from it",
+                    target.Commands.Add(new(NodeAction.RemoveRole, local ? $"Remove {role.Name} here" : $"Remove {role.Name}",
                         Argument: id + "/" + role.Kind, Component: offered ? RoleComponent(role.Kind) : null));
             }
             if (managed) target.Commands.Add(new(NodeAction.HostStatus, "Show its status", Argument: id, Component: hostService));
             if (!local && managed && paired.Method != HostSetupMethod.ThisPcDocker)
             {
                 // Linux computers: set them up and power them from here (martlet-prepare over SSH, Wake-on-LAN).
-                target.Commands.Add(new(NodeAction.PrepareHost, "Prepare this computer (drivers, Docker, GPU, tools)", Argument: id));
+                target.Commands.Add(new(NodeAction.PrepareHost, "Prepare this computer", Argument: id));
                 if (paired.WakeMac is { } mac)
                 {
                     target.Commands.Add(new(NodeAction.WakeHost, "Wake it up", check?.Reachable == false, id));
@@ -417,10 +414,12 @@ internal static class NetworkMap
                     target.Commands.Add(new(NodeAction.ShutdownHost, "Shut it down", Argument: id));
                 }
             }
-            target.Commands.Add(new(NodeAction.ManageHost, "Pair again or change its setup", Argument: id, Component: hostService));
+            target.Commands.Add(new(NodeAction.ManageHost, "Pair or change setup", Argument: id, Component: hostService));
             target.Commands.Add(new(NodeAction.ForgetHost, "Forget this host", Argument: id, Component: hostService));
             if (!paired.CanLaunch && !local && managed)
-                target.Notes.Add("Tell Martlet how to reach it (below) to install or remove roles from here; otherwise it shows the command to run there.");
+                target.Notes.Add("Set the connection method below to install or remove roles from here.");
+            else if (paired.Method == HostSetupMethod.Agent && !local && managed)
+                target.Notes.Add("Martlet on that computer runs what you ask here (updates, roles, status) over the paired connection.");
         }
 
         if (companion)
@@ -430,18 +429,17 @@ internal static class NetworkMap
                 : "Hiyori (built-in)";
             thisPc.Roles.Add(new("Character", "Character", $"{character}, {(inputs.CharacterShowing ? "on your desktop now" : "hidden")}",
                 DeviceComponent.Character));
-            var endpoint = new Uri(inputs.Avatar?.Endpoint ?? AvatarProfile.DefaultEndpoint).Authority;
             switch (lipSync)
             {
                 case LipSyncHandler.ThisPc:
                     thisPc.Roles.Add(new("Lip-sync", "Lip-sync", inputs.Avatar?.LipSync == AvatarLipSync.Audio2Face
-                        ? "In charge: explicit Audio2Face activation from Character settings"
-                        : $"In charge: this PC's Audio2Face service at {endpoint} when it runs, otherwise voice loudness", DeviceComponent.LipSync));
+                        ? "Using the lip-sync service from Character settings"
+                        : "Using this PC's lip-sync service when available; otherwise voice loudness", DeviceComponent.LipSync));
                     break;
                 case LipSyncHandler.Loudness:
-                    thisPc.Roles.Add(new("Lip-sync", "Lip-sync", "In charge: the mouth follows the voice's loudness (Audio2Face is off)",
+                    thisPc.Roles.Add(new("Lip-sync", "Lip-sync", "The mouth follows the voice loudness.",
                         DeviceComponent.LipSync));
-                    thisPc.Commands.Add(new(NodeAction.Companion, "Set up Audio2Face lip-sync here", Argument: "LipSync", Component: DeviceComponent.LipSync));
+                    thisPc.Commands.Add(new(NodeAction.Companion, "Set up lip-sync here", Argument: "LipSync", Component: DeviceComponent.LipSync));
                     break;
                 default:
                     thisPc.Commands.Add(new(NodeAction.LipSyncThisPc, "Take lip-sync back to this PC"));
@@ -460,7 +458,7 @@ internal static class NetworkMap
         if (machine.MemoryGb is { } ram) thisPc.Facts.Add(new("Memory", $"{ram:0} GB"));
         if (machine.Gpus.Count == 0) thisPc.Facts.Add(new("Graphics", "No dedicated GPU found"));
         foreach (var gpu in machine.Gpus) thisPc.Facts.Add(new("Graphics", gpu.Describe()));
-        thisPc.Facts.Add(new("Network", machine.LanAddress ?? "No private network address found"));
+        thisPc.Facts.Add(new("Network", machine.LanAddress ?? "No local network address found"));
         thisPc.Facts.Add(new("Docker Desktop", machine.DockerRunning ? "Running" : machine.DockerInstalled ? "Installed, not running" : "Not installed"));
         thisPc.Notes.AddRange(machine.Capabilities());
         if (inputs.Role == DeviceRole.Host)
@@ -478,13 +476,13 @@ internal static class NetworkMap
             thisPc.Commands.Add(new(NodeAction.Prerequisites, "Prerequisites"));
         }
 
-        var add = new Draft("add", NodeKind.Add, "Add a computer", "Lend a GPU PC to Martlet", AddGlyph) { Health = NodeHealth.Unknown, HealthText = "" };
-        add.Roles.Add(new("Host", "Martlet host", "A spare or gaming PC runs heavy parts, such as thinking, listening or lip-sync, for this PC.",
+        var add = new Draft("add", NodeKind.Add, "Add a computer", "Use another computer", AddGlyph) { Health = NodeHealth.Unknown, HealthText = "" };
+        add.Roles.Add(new("Host", "Martlet host", "Another computer can help with thinking, speech or lip-sync.",
             DeviceComponent.Offer));
-        add.Notes.Add("Hosts listen only on your private network and are paired once with a one-use code.");
+        add.Notes.Add("Pair once with a one-use code on your private network.");
         add.Commands.Add(new(NodeAction.AddComputer, "Add a computer", true));
         add.Commands.Add(new(NodeAction.HostThisPc, "Or run host services on this PC"));
-        add.Commands.Add(new(NodeAction.PrepareComputer, "Prepare a Linux computer over SSH"));
+        add.Commands.Add(new(NodeAction.PrepareComputer, "Prepare a Linux computer"));
         order.Add(add);
 
         return order.Select(draft => draft.Build()).ToArray();
@@ -496,7 +494,7 @@ internal static class NetworkMap
         if (target.Facts.Any(f => f.Label is "Hardware" or "Graphics")) return;
         if (inputs.HostHardware?.FirstOrDefault(h => h.HostId == hostId) is not { } report)
         {
-            target.Facts.Add(new("Hardware", "Not reported yet. Use Check connection; older hosts need updating first."));
+            target.Facts.Add(new("Hardware", "Not reported yet. Use Check connection."));
             return;
         }
         if (report.Gpus.Count == 0) target.Facts.Add(new("Graphics", "No dedicated GPU reported"));
@@ -505,13 +503,12 @@ internal static class NetworkMap
             var text = gpu.Driver is { } driver ? $"{gpu.Describe()}, driver {driver}" : gpu.Describe();
             target.Facts.Add(new("Graphics", gpu.DescribePower() is { } power ? $"{text}, {power}" : text));
         }
-        if (report.Cuda is { } cuda) target.Facts.Add(new("CUDA", $"up to {cuda} (driver)"));
+        if (report.Cuda is { } cuda) target.Facts.Add(new("CUDA", $"Up to {cuda}"));
         if (report.Processor is { } cpu)
             target.Facts.Add(new("Processor", report.ProcessorThreads is { } threads ? $"{cpu} ({threads} threads)" : cpu));
         if (report.MemoryGb is { } memory) target.Facts.Add(new("Memory", $"{memory:0} GB"));
-        target.Facts.Add(new("System", report.Kernel is { } kernel ? $"{report.OperatingSystem} (kernel {kernel})" : report.OperatingSystem));
-        target.Facts.Add(new("Runs Martlet", report.Method == "docker"
-            ? $"In Docker ({report.ContainerRuntime ?? "Docker"})" : "Natively (systemd user service)"));
+        target.Facts.Add(new("System", report.OperatingSystem));
+        target.Facts.Add(new("Runs Martlet", report.Method == "docker" ? "In Docker" : "Natively"));
         target.Facts.Add(new("Reported", report.CollectedAt.ToLocalTime().ToString("g", System.Globalization.CultureInfo.CurrentCulture)));
         target.Notes.AddRange(report.Capabilities());
     }
@@ -530,6 +527,4 @@ internal static class NetworkMap
     private static string? BundledLive2DName(string path) =>
         BundledLive2D.IsBuiltIn(path) ? path[BundledLive2D.Prefix.Length..] + " (built-in)" : null;
 
-    private static string Short(string fingerprint) =>
-        fingerprint.Length > 19 ? fingerprint[..19] + "\u2026" : fingerprint;
 }

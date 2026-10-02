@@ -20,7 +20,7 @@ public sealed class AudioSetupOperation
     public AudioDeviceList? Devices { get; internal set; }
     public CaptureSnapshot? CaptureSnapshot { get; internal set; }
     public SetupOperation Worker { get; internal set; } = null!;
-    internal AudioSetupOperation(AudioSetupAction action) => status = new(action, "Starting");
+    internal AudioSetupOperation(AudioSetupAction action) => status = new(action, "Starting...");
     internal void Publish(AudioTestStatus value) => Volatile.Write(ref status, value);
     public void Stop() => Worker.RequestCancellation();
 }
@@ -83,7 +83,7 @@ public sealed class AudioSetupService
                     WindowsAudioDeviceCatalog.Validate(view.Devices.Inputs);
                     WindowsAudioDeviceCatalog.Validate(view.Devices.Outputs);
                     original.ThrowIfCancellationRequested();
-                    view.Publish(new(action, "Enumerated only - capture permission and audibility UNVERIFIED", true, true, true));
+                    view.Publish(new(action, "Devices listed.", true, true, true));
                 }
                 else if (action == AudioSetupAction.Microphone)
                     await CaptureAsync(view, choice!, original, authorizedAt, timestamp).ConfigureAwait(false);
@@ -93,24 +93,24 @@ public sealed class AudioSetupService
             }
             catch (OperationCanceledException) when (original.IsCancellationRequested)
             {
-                view.Publish(new(action, "Canceled; no replacement started", true, Released: true));
+                view.Publish(new(action, "Canceled.", true, Released: true));
                 return new SetupWorkResult(SetupWorkOutcome.Canceled);
             }
             catch (AudioDiscoveryException error)
             {
-                view.Publish(new(action, "Discovery failed", true, Released: error.Released, Error: error.Code));
+                view.Publish(new(action, "Could not list devices", true, Released: error.Released, Error: error.Code));
                 if (!error.Released) await quarantine.Task.ConfigureAwait(false);
                 return new SetupWorkResult(SetupWorkOutcome.Failed);
             }
             catch (CaptureDeviceException error)
             {
-                view.Publish(new(action, "Input authorization or device failed", true, Released: error.ResourcesReleased, Error: error.Code));
+                view.Publish(new(action, "Microphone could not start", true, Released: error.ResourcesReleased, Error: error.Code));
                 if (!error.ResourcesReleased) await quarantine.Task.ConfigureAwait(false);
                 return new SetupWorkResult(SetupWorkOutcome.Failed);
             }
             catch (ContractException error)
             {
-                view.Publish(new(action, "Local audio request rejected", true, Released: true, Error: error.Code));
+                view.Publish(new(action, "Audio request could not start", true, Released: true, Error: error.Code));
                 return new SetupWorkResult(SetupWorkOutcome.Failed);
             }
         });
@@ -141,7 +141,7 @@ public sealed class AudioSetupService
             await foreach (var item in run.Events.ReadAllAsync().ConfigureAwait(false))
             {
                 if (!original.IsCancellationRequested)
-                    view.Publish(new(AudioSetupAction.Microphone, item.Kind == CaptureEventKind.Meter ? "Receiving selected-input PCM (amplitude, NOT VAD)" : item.Kind.ToString(),
+                    view.Publish(new(AudioSetupAction.Microphone, item.Kind == CaptureEventKind.Meter ? "Receiving sound..." : item.Kind.ToString(),
                         Peak: item.Peak, Rms: item.Rms, Samples: item.Snapshot.CanonicalSamples));
             }
             var terminal = await run.Completion.ConfigureAwait(false);
@@ -151,7 +151,7 @@ public sealed class AudioSetupService
             using (var utterance = run.TakeUtterance())
                 amplitude = terminal.State == CaptureState.Completed && utterance is { SampleCount: > 0 }
                     ? utterance.MeasureAmplitude(DetectableRms) : null;
-            view.Publish(new(AudioSetupAction.Microphone, "Capture ended; waiting for actual native/callback release",
+            view.Publish(new(AudioSetupAction.Microphone, "Finishing microphone test...",
                 Samples: terminal.CanonicalSamples, Error: terminal.Error?.Code));
             var released = await run.DeviceRelease.ConfigureAwait(false);
             var withinLifetime = HasTimeRemaining(authorizedAt, timestamp, TimeSpan.FromSeconds(20));
@@ -173,16 +173,16 @@ public sealed class AudioSetupService
             if (failure is null && !withinLifetime) failure = ErrorCode.DeadlineExceeded;
             if (failure is null && !released.Released) failure = ErrorCode.AudioCaptureFailed;
             view.Publish(new(AudioSetupAction.Microphone,
-                nativeFailure is not null ? "Microphone capture or release failed; no checkpoint" :
-                !withinLifetime ? "Microphone test authorization expired; no checkpoint" :
-                original.IsCancellationRequested ? "Canceled; no checkpoint" :
-                failure is not null ? "Microphone capture or release failed; no checkpoint" : signal switch
+                nativeFailure is not null ? "Microphone test failed." :
+                !withinLifetime ? "Microphone test expired." :
+                original.IsCancellationRequested ? "Microphone test canceled." :
+                failure is not null ? "Microphone test failed." : signal switch
                 {
-                    AudioInputSignal.DetectableAmplitude => "Samples received and discarded; detectable amplitude in the up-to-5-second test (1% full-scale RMS, at least 4 seconds of PCM and 1.25 seconds above threshold), NOT speech/VAD, quality or readiness",
-                    AudioInputSignal.BelowAdvisoryThreshold => "PCM received below 1% full-scale RMS advisory threshold; no checkpoint",
-                    AudioInputSignal.InsufficientFrames => "Fewer than 4 seconds of PCM frames received in the 5-second test; no checkpoint",
-                    AudioInputSignal.IntermittentAmplitude => "PCM level too intermittent for the 5-second advisory (fewer than 1.25 seconds above 1% full-scale); no checkpoint",
-                    AudioInputSignal.NoFrames => "No microphone PCM frames received; no checkpoint",
+                    AudioInputSignal.DetectableAmplitude => "Microphone test passed. Sound was received and discarded.",
+                    AudioInputSignal.BelowAdvisoryThreshold => "Sound was too quiet.",
+                    AudioInputSignal.InsufficientFrames => "Not enough sound was received.",
+                    AudioInputSignal.IntermittentAmplitude => "Sound was too brief or uneven.",
+                    AudioInputSignal.NoFrames => "No sound was received.",
                     _ => terminal.State.ToString()
                 },
                 true, succeeded, released.Released,
@@ -217,7 +217,7 @@ public sealed class AudioSetupService
             authorizedAt.AddSeconds(5)), original);
         try
         {
-            view.Publish(new(AudioSetupAction.Output, "Opening selected output; no fallback"));
+            view.Publish(new(AudioSetupAction.Output, "Opening selected speakers..."));
             if (await run.Ready.ConfigureAwait(false) is not null && !original.IsCancellationRequested)
             {
                 foreach (var frame in SyntheticTone.Frames(ids, nextEpoch))
@@ -229,15 +229,15 @@ public sealed class AudioSetupService
                 run.CompleteInput(SyntheticTone.SampleCount);
             }
             var terminal = await run.Completion.ConfigureAwait(false);
-            view.Publish(new(AudioSetupAction.Output, "Tone ended; waiting for actual native release", Error: terminal.Error?.Code));
+            view.Publish(new(AudioSetupAction.Output, "Finishing speaker test...", Error: terminal.Error?.Code));
             var error = await AwaitOutputReleaseAsync(run).ConfigureAwait(false);
             var released = OutputReleased(run, factory);
             var failure = factory.ExpiredOpenReleased ? ErrorCode.DeadlineExceeded : error?.Code ?? terminal.Error?.Code;
             var succeeded = terminal.State == PlaybackState.Completed && terminal.DeviceDrainObserved &&
                 terminal.DeviceConsumedSamples == SyntheticTone.SampleCount && released && failure is null && !original.IsCancellationRequested;
             view.Publish(new(AudioSetupAction.Output, factory.ExpiredOpenReleased
-                    ? "Output authorization expired; returned native device cleanup completed"
-                    : succeeded ? "200 ms tone drained; audibility UNCONFIRMED" : terminal.State.ToString(),
+                    ? "Speaker test expired."
+                    : succeeded ? "Test sound played. Confirm if you heard it." : terminal.State.ToString(),
                 true, succeeded, released, Samples: terminal.DeviceConsumedSamples, Error: failure,
                 Checkpoint: succeeded ? new() { ConfigurationRevision = choice.ConfigurationRevision, TestedAt = clock.GetUtcNow(), Outcome = LocalAudioOutcome.ToneDrained } : null));
         }
@@ -271,7 +271,7 @@ public sealed class AudioSetupService
     {
         original.ThrowIfCancellationRequested();
         if (!HasTimeRemaining(authorizedAt, timestamp, lifetime))
-            throw new ContractException(ErrorCode.DeadlineExceeded, "Local test authorization expired. Request a fresh test.");
+            throw new ContractException(ErrorCode.DeadlineExceeded, "This test expired. Start it again.");
     }
 
     private bool HasTimeRemaining(DateTimeOffset authorizedAt, long timestamp, TimeSpan lifetime) =>

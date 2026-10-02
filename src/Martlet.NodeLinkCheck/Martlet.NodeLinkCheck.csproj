@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Developer check run by Martlet.Mcp's node_link_check tool: the node-to-node command protocol end to end on loopback. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Martlet.Gateway\Martlet.Gateway.csproj" />
+    <ProjectReference Include="..\Martlet.Avatar.Audio2Face\Martlet.Avatar.Audio2Face.csproj" />
+  </ItemGroup>
+</Project>

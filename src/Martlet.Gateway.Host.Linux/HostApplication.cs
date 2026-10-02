@@ -130,9 +130,37 @@ internal sealed class ControlNetworkStorage(LinuxControlDirectory directory) : I
     }
 }
 
+/// <summary>Keeps the commands paired computers sent through this host in commands.json beside host.json (0600, service
+/// owner; never their secrets). Not part of the approved configuration.</summary>
+internal sealed class ControlCommandStorage(LinuxControlDirectory directory) : IGatewayCommandStorage
+{
+    private readonly object gate = new();
+
+    public byte[]? Load()
+    {
+        lock (gate) return directory.Read(LinuxControlDirectory.Commands, LinuxControlDirectory.MaximumCommandsBytes);
+    }
+
+    public void Save(byte[] bytes)
+    {
+        lock (gate) directory.WriteCommands(bytes);
+    }
+}
+
 internal static class HostApplication
 {
     private static DurableGatewayHost? retainedOwner;
+
+    /// <summary>Starts the command mailbox with a fresh agent token in agent.token (0600, service owner), which only the host
+    /// computer itself can read: the Martlet app there presents it to take this host's commands. Without it the gateway
+    /// still serves everything else.</summary>
+    private static void AttachCommands(DurableGatewayHost owner, LinuxControlDirectory directory)
+    {
+        var token = System.Buffers.Text.Base64Url.EncodeToString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+        try { directory.WriteAgentToken(System.Text.Encoding.ASCII.GetBytes(token)); }
+        catch (GatewayPersistenceException) { return; }
+        owner.AttachCommands(new ControlCommandStorage(directory), token);
+    }
 
     internal static async Task<int> RunAsync(string[] args, TextWriter output,
         CancellationToken cancellation = default, IHostPlatform? platform = null)
@@ -205,6 +233,7 @@ internal static class HostApplication
                         "removed" => $"Removed from Martlet network {networkId}; a member desktop that pairs again adds it back.",
                         _ => "In no Martlet network yet: the first desktop that pairs adds this host to its network."
                     });
+                    AttachCommands(owner, directory);
                     owner.RecordActivity("INFO", config.Roles.Count == 0 ? "Serving with no roles (for example as the log host)."
                         : "Serving roles: " + string.Join(", ", config.Roles.Select(r => $"{r.Kind} ({r.Model})")) + ".");
                 }

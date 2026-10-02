@@ -133,7 +133,7 @@ public partial class MainWindow
         }
         catch (System.Runtime.InteropServices.ExternalException)
         {
-            ActionText.Text = "Another app is using the clipboard; try Copy shown again.";
+            ActionText.Text = "Another app is using the clipboard. Try again.";
         }
     }
 
@@ -171,7 +171,7 @@ public partial class MainWindow
         try
         {
             LogHostChoice.Items.Clear();
-            var none = new ComboBoxItem { Content = "Nobody: each computer keeps its own", Tag = null };
+            var none = new ComboBoxItem { Content = "None (each computer keeps its own)", Tag = null };
             LogHostChoice.Items.Add(none);
             var selected = none;
             foreach (var (hostId, roles) in hosts)
@@ -204,7 +204,7 @@ public partial class MainWindow
         ErrorLog.Info(hostId is null ? "Log host cleared: each computer keeps only its own logs."
             : $"Log host set to {hostId}: companion PCs send it their logs and pass on every other host's log.");
         ActionText.Text = hostId is null ? "Each computer keeps only its own logs now."
-            : $"{hostId} now collects the logs of all your computers. This PC sends its logs now and every 30 seconds.";
+            : $"{hostId} now collects logs from all your computers.";
         ShowLogHostStatus();
         ShipLogsAsync().Forget();
         RefreshLogsAsync().Forget();
@@ -214,9 +214,9 @@ public partial class MainWindow
     {
         var host = LogHostId;
         LogHostStatus.Text = store is null ? "Unavailable without a local data folder."
-            : host is null ? "Nobody collects logs: this page shows this PC's logs and each paired host's own log. Choose a host to also see your other companion PCs' logs here."
+            : host is null ? "No log host. Showing logs from this PC and its paired hosts."
             : logShipStatus.Length > 0 ? logShipStatus
-            : $"{host} collects the logs of all your computers. This PC sends its logs within 30 seconds.";
+            : $"{host} collects logs from all your computers.";
     }
 
     /// <summary>Sends this PC's new log lines to the log host and passes on each other paired host's own new lines, starting
@@ -235,7 +235,7 @@ public partial class MainWindow
         var hosts = NetworkMap.Hosts(Inputs());
         if (hosts.FirstOrDefault(h => h.HostId == hostId) is not { } target)
         {
-            logShipStatus = $"{hostId} collects your logs, but it isn't paired with this PC, so this PC's logs stay here. Pair it on this PC (Devices › Add a computer) to send them.";
+            logShipStatus = $"{hostId} isn't paired with this PC, so this PC's logs stay here. Pair it in Devices › Add a computer.";
             ShowLogHostStatus();
             return;
         }
@@ -302,22 +302,21 @@ public partial class MainWindow
                 foreach (var mark in updated) marks[mark.Source + "/" + mark.Component] = mark.Seq;
             }
             var waiting = pending.Sum(p => p.Count) - entries.Count;
-            logShipStatus = $"{hostId} collects the logs of all your computers. Checked {DateTime.Now:t}: sent {accepted:N0} new line{(accepted == 1 ? "" : "s")}" +
-                (others.Length > 0 ? $", including {others.Length - unreachable.Count - older.Count} other host{(others.Length == 1 ? "" : "s")}' own log" : "") + "." +
-                (waiting > 0 ? $" {waiting:N0} more go with the next send." : "") +
-                (unreachable.Count > 0 ? $" {string.Join(", ", unreachable)} didn't answer; {(unreachable.Count == 1 ? "its" : "their")} lines follow when {(unreachable.Count == 1 ? "it answers" : "they answer")}." : "") +
-                (older.Count > 0 ? $" {string.Join(", ", older)} {(older.Count == 1 ? "runs" : "run")} an older Martlet without a shared log; update {(older.Count == 1 ? "it" : "them")}." : "");
+            logShipStatus = $"{hostId} collects logs from all your computers. Sent {accepted:N0} new line{(accepted == 1 ? "" : "s")} at {DateTime.Now:t}." +
+                (waiting > 0 ? $" {waiting:N0} more will follow." : "") +
+                (unreachable.Count > 0 ? $" Waiting for {string.Join(", ", unreachable)}." : "") +
+                (older.Count > 0 ? $" Update {string.Join(", ", older)} to share {(older.Count == 1 ? "its" : "their")} logs." : "");
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         catch (Audio2FaceHostException error) when (error.Code is "request.invalid" or "request.not_found" or "route.not_found")
         {
             logMarks = null;
-            logShipStatus = $"{hostId} runs an older Martlet that can't collect logs. Update it (Devices › {hostId} › Update host), or choose another host.";
+            logShipStatus = $"{hostId} needs a Martlet update to collect logs. Update it on Devices, or choose another host.";
         }
         catch (Exception error) when (error is OperationCanceledException || ClusterSync.IsHostFailure(error))
         {
             logMarks = null;
-            logShipStatus = $"{hostId} didn't take this PC's logs at {DateTime.Now:t} ({error.Message.TrimEnd('.')}). They stay on this PC and are sent when it answers again.";
+            logShipStatus = $"Couldn't send logs to {hostId} at {DateTime.Now:t}. Martlet will try again.";
         }
         finally
         {
@@ -400,7 +399,7 @@ public partial class MainWindow
             }
             if (hosts.FirstOrDefault(h => h.HostId == hostId) is not { } target)
             {
-                logReadNote = $"{hostId} collects the logs but isn't paired with this PC, so only this PC's logs are shown.";
+                logReadNote = $"{hostId} isn't paired with this PC, so only this PC's logs are shown.";
                 return;
             }
             try
@@ -418,11 +417,11 @@ public partial class MainWindow
             catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
             catch (Audio2FaceHostException error) when (error.Code is "request.invalid" or "request.not_found" or "route.not_found")
             {
-                logReadNote = $"{hostId} runs an older Martlet that can't collect logs; update it. Only this PC's logs are shown.";
+                logReadNote = $"{hostId} needs a Martlet update to collect logs. Showing this PC's logs.";
             }
             catch (Exception error) when (error is OperationCanceledException || ClusterSync.IsHostFailure(error))
             {
-                logReadNote = $"{hostId} didn't answer ({error.Message.TrimEnd('.')}); showing this PC's logs and what was read from it before.";
+                logReadNote = $"{hostId} didn't answer. Showing this PC's logs and anything read earlier.";
             }
             return;
         }
@@ -446,7 +445,7 @@ public partial class MainWindow
             catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
             catch (Audio2FaceHostException error) when (error.Code is "request.invalid" or "request.not_found" or "route.not_found")
             {
-                problems.Add($"{host.HostId} runs an older Martlet without a log");
+                problems.Add($"{host.HostId} needs an update");
             }
             catch (Exception error) when (error is OperationCanceledException || ClusterSync.IsHostFailure(error))
             {
@@ -454,7 +453,7 @@ public partial class MainWindow
             }
         }
         foreach (var gone in hostOwnLogs.Keys.Where(k => hosts.All(h => h.HostId != k)).ToArray()) hostOwnLogs.Remove(gone);
-        logReadNote = hosts.Count == 0 ? "No Martlet host is paired, so only this PC's logs are shown."
+        logReadNote = hosts.Count == 0 ? null
             : $"Includes each paired host's own log." + (problems.Count > 0 ? $" {string.Join("; ", problems)}." : "");
     }
 

@@ -13,13 +13,13 @@ public sealed class RecoveryException : Exception
     public string? RetainedFile { get; }
     internal RecoveryException(RecoveryFailure failure, string? retainedFile = null) : base(failure switch
     {
-        RecoveryFailure.InvalidBackup => "Invalid, ambiguous, oversized or damaged configuration snapshot. Select an intact Martlet configuration snapshot; no settings were replaced.",
-        RecoveryFailure.Incompatible => "Unsupported application or schema version. Use a compatible Martlet build. Diagnostic bundles and raw historical settings files are not configuration envelopes.",
-        RecoveryFailure.WrongProfile => "This snapshot belongs to another profile. V07a supports only same-profile recovery into an existing valid profile. Reconfigure a new profile explicitly; do not copy foreign identities.",
-        RecoveryFailure.Conflict => "The source, preview or destination revision changed, or approval was already used. Read a fresh preview and review it again; no replacement was authorized.",
-        RecoveryFailure.CleanupPending => "Owned staging cleanup failed. Keep the retained file and retry owned cleanup after checking access and free space. A completed replacement is not rolled back.",
-        RecoveryFailure.CleanupCapacity => "Restore would exceed sixteen owned credential cleanup references. Open Setup and explicitly remove selected detached keys first, then read a fresh restore preview. No reference was discarded or key automatically deleted.",
-        _ => "Cannot access local recovery storage. Check free space, permissions, existing output and other Martlet writers. Preserve originals; do not elevate. Missing, corrupt or newer destination settings require separate manual recovery, not overwrite."
+        RecoveryFailure.InvalidBackup => "This is not a valid Martlet configuration snapshot. Choose another file.",
+        RecoveryFailure.Incompatible => "This snapshot needs a different Martlet version. Update Martlet or choose another snapshot.",
+        RecoveryFailure.WrongProfile => "This snapshot belongs to another Martlet profile. Reconfigure this profile instead.",
+        RecoveryFailure.Conflict => "The restore preview is out of date. Preview the snapshot again.",
+        RecoveryFailure.CleanupPending => "The restore finished, but cleanup needs attention. Check access and free space, then try cleanup again.",
+        RecoveryFailure.CleanupCapacity => "Too many credential cleanups are pending. Remove old detached keys in Setup, then preview again.",
+        _ => "Martlet could not access recovery storage. Check free space, permissions and the destination."
     })
     { Failure = failure; RetainedFile = retainedFile; }
 }
@@ -73,10 +73,8 @@ internal sealed record SnapshotEnvelope : IContract
 public static class ConfigurationSnapshot
 {
     public const int MaximumBytes = 262_144;
-    public const string Scope = "LOCAL configuration only; NOT encrypted or a sanitized support bundle. " +
-        "Includes exact settings, profile/route/model/device preferences, memory enable/path policy, opaque credential references and cleanup metadata. " +
-        "Device identifiers and configuration may be personal. Excludes secret values/OS vault, environment, conversations, audio, " +
-        "memory facts/store/exports, models, arbitrary files, crash dumps and optional support journal/logs. No upload or cloud storage.";
+    public const string Scope = "Configuration snapshots are local files for restoring Martlet settings. " +
+        "They are not encrypted, so keep them private. They do not include secrets, conversations, audio, memory data or logs. No upload is performed.";
 
     // Envelope consistency only: callers still own freshness, source lifetime and authorization.
     public static ConfigurationSnapshotInspection Inspect(ReadOnlyMemory<byte> bytes)
@@ -188,35 +186,44 @@ public sealed class ConfigurationRestorePlan
         CandidateDigest = ConfigurationSnapshot.Hash(candidate);
         var lines = new List<string>
         {
-            $"Compatible Martlet configuration format 1; source settings v{snapshot.Manifest.SettingsSchemaVersion} -> current settings v{AppSettings.CurrentSchemaVersion}.",
-            $"Snapshot: {snapshot.Manifest.SnapshotId}; created {snapshot.Manifest.CreatedUtc:O}; producer {snapshot.Manifest.ProducerVersion}.",
-            $"Snapshot SHA-256: {SnapshotDigest}", $"Source file SHA-256: {SourceFileDigest}",
-            $"Same profile only: {ProfileId}", $"Destination: {Destination}", $"Current revision: {ExpectedRevision}",
-            $"Exact candidate SHA-256: {CandidateDigest}",
-            $"Profile choice: {current.Profile.Kind} -> {restored.Profile.Kind}; setup checkpoint -> Destinations.",
-            "ALL saved destination acknowledgments and audio checkpoints are invalidated. Capture and logging are NOT enabled.",
-            "ALL imported credential IDs and imported cleanup markers remain historical only; no key is read, rebound or deleted.",
-            "Version 3+ persona profiles and style weights are restored when present; older snapshots preserve the current companion profiles.",
-            "Memory facts, store files and exports are NOT backed up or restored. Memory is forced OFF; a version 4+ storage policy is retained for explicit review and re-enablement.",
-            "Self-host routes are forced OFF; action permissions, probe, package and reference evidence are cleared. Only CURRENT exact host/pin/device/role credential associations survive. Snapshot credential references are never imported.",
-            "Saved pairing retained; a mismatched route is not connected. Explicitly reconnect the current exact binding. Restore never reads a vault, re-pairs a device or changes server device authority.",
-            $"Current legacy references retained unchanged: {current.Profile.Credentials.Count}. Current owned cleanup references retained/queued: {restored.Setup!.PendingRemovals.Count}.",
-            "Imported legacy references are NOT restored. Reconfigure keys and review destinations/devices explicitly.",
-            "Support journal, secrets and voice/model databases are NOT restorable here. The separately owned memory fact store is excluded.",
-            "An exact pre-replacement raw settings snapshot is kept under a new settings.recovery.*.bak name. Historical v1 snapshots remain untouched."
+            $"Snapshot created {snapshot.Manifest.CreatedUtc:g}.",
+            $"Settings will be updated from version {snapshot.Manifest.SettingsSchemaVersion} to {AppSettings.CurrentSchemaVersion}.",
+            $"Profile choice: {current.Profile.Kind} -> {restored.Profile.Kind}.",
+            "Saved provider approvals and audio checks will be cleared.",
+            "Secrets are not included. Re-enter keys and reconnect hosts if needed.",
+            "Memory facts, conversations, audio, logs and support data are not restored.",
+            "Self-host routes are turned off until you review them again.",
+            "Martlet will keep a backup of the current settings before replacing them."
         };
         foreach (var role in Enum.GetValues<SetupRole>())
-            lines.Add($"{role}: {Describe(current.Setup?.Routes.SingleOrDefault(r => r.Role == role))} -> " +
-                $"{Describe(restored.Setup.Routes.SingleOrDefault(r => r.Role == role))}; imported key unbound; only an exact current gateway pairing may remain; selection must be renewed.");
-        lines.Add($"Input: {Describe(current.Audio?.Input)} -> {Describe(restored.Audio?.Input)}; unqualified.");
-        lines.Add($"Output: {Describe(current.Audio?.Output)} -> {Describe(restored.Audio?.Output)}; unqualified.");
+            lines.Add($"{RoleName(role)}: {Describe(current.Setup?.Routes.SingleOrDefault(r => r.Role == role))} -> " +
+                $"{Describe(restored.Setup!.Routes.SingleOrDefault(r => r.Role == role))}.");
+        lines.Add($"Microphone: {Describe(current.Audio?.Input)} -> {Describe(restored.Audio?.Input)}.");
+        lines.Add($"Speakers: {Describe(current.Audio?.Output)} -> {Describe(restored.Audio?.Output)}.");
         Summary = string.Join(Environment.NewLine, lines);
     }
 
     private static string Describe(SetupRoute? route) => route is null ? "not configured" :
-        $"{route.ProviderAlias} / {route.Origin} / {route.ModelId} / {route.VoiceId ?? "(no voice)"}";
+        route.RouteType switch
+        {
+            null or SetupRouteType.OpenAi => "OpenAI",
+            SetupRouteType.ChatCompletions => "custom chat endpoint",
+            SetupRouteType.LocalWindowsStt => "Windows speech recognition",
+            SetupRouteType.LocalWindowsTts => "Windows voice",
+            SetupRouteType.LocalWhisper or SetupRouteType.LocalParakeet => "local speech recognition",
+            SetupRouteType.GatewayOllama => "paired-host model",
+            SetupRouteType.GatewayF5 => "paired-host voice",
+            SetupRouteType.GatewayStt => "paired-host speech recognition",
+            _ => "selected route"
+        };
     private static string Describe(AudioChoice? choice) => choice is null ? "not selected" :
-        $"{choice.DisplayName} [{choice.EndpointId ?? "Windows default policy"}]";
+        choice.DisplayName;
+    private static string RoleName(SetupRole role) => role switch
+    {
+        SetupRole.Stt => "Listening",
+        SetupRole.Llm => "Thinking",
+        _ => "Voice"
+    };
     internal byte[] CandidateBytes() => candidate.ToArray();
 
     public ConfigurationRestoreApproval Approve(string snapshotDigest, string destination, string currentRevision)

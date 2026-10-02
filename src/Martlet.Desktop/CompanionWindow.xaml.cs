@@ -70,8 +70,8 @@ public partial class CompanionWindow : ThemedWindow
             draft = loaded.Error is null ? CompanionSettings.Begin(loaded.Settings) : null;
             ResultText.Text = loaded.Error?.Summary ?? loaded.Settings?.SchemaVersion switch
             {
-                1 or 2 => $"Settings version {loaded.Settings.SchemaVersion} loaded unchanged. Save will migrate it with an atomic original-file snapshot.",
-                _ => "Companion settings loaded. No model, provider or microphone was accessed."
+                1 or 2 => "Older companion settings loaded. Save to update them.",
+                _ => "Companion settings loaded."
             };
             RenderPersonas();
         });
@@ -81,7 +81,7 @@ public partial class CompanionWindow : ThemedWindow
     {
         if (closed) return false;
         if (!busy && !operations.IsRunning) return true;
-        ResultText.Text = "Another setup, audio, conversation or companion action still owns the app worker. Wait for actual cleanup before retrying.";
+        ResultText.Text = "Another Martlet action is still finishing. Wait a moment and try again.";
         return false;
     }
 
@@ -97,8 +97,8 @@ public partial class CompanionWindow : ThemedWindow
             if (result.Outcome != SetupWorkOutcome.Completed)
             {
                 ResultText.Text = result.Outcome == SetupWorkOutcome.Canceled
-                    ? "Companion action canceled. Reload before editing; cancellation is not proof of rollback."
-                    : "Companion action failed. Reload and review saved settings; no success is assumed.";
+                    ? "Companion action canceled. Reload before editing."
+                    : "Companion action failed. Reload before editing.";
                 draft = null;
                 return false;
             }
@@ -119,8 +119,8 @@ public partial class CompanionWindow : ThemedWindow
         EditorPanel.IsEnabled = !active && draft?.Companion is not null;
         ReloadButton.IsEnabled = !active;
         ActivityText.Text = active
-            ? "Companion settings worker active. No overlapping app effect can start."
-            : "Idle. Changes are local drafts until Apply and Save; fresh explicit turns use the saved active persona.";
+            ? "Working on companion settings..."
+            : "Idle. Apply and save changes before using them.";
     }
 
     private void RenderPersonas(Guid? selected = null)
@@ -156,7 +156,7 @@ public partial class CompanionWindow : ThemedWindow
         if (rendering || draft?.Companion is not { } companion ||
             PersonaChoice.SelectedItem is not PersonaProfile persona) return;
         if (editorDirty)
-            ResultText.Text = "Unapplied persona edits were discarded when changing profiles. Apply edits before switching.";
+            ResultText.Text = "Unapplied edits were discarded. Apply edits before switching personas.";
         draft = draft with { Companion = companion.Select(persona.Id) };
         RenderEditor();
     }
@@ -199,7 +199,7 @@ public partial class CompanionWindow : ThemedWindow
         {
             draft = draft with { Companion = companion.Update(selected.Id, PersonaName.Text, PersonaText.Text, Styles()) };
             editorDirty = false;
-            ResultText.Text = "Persona edits applied to the local draft. Save to persist them; no runtime prompt or permission changed.";
+            ResultText.Text = "Persona edits applied. Save to keep them.";
             RenderPersonas(selected.Id);
             return true;
         }
@@ -221,7 +221,7 @@ public partial class CompanionWindow : ThemedWindow
         {
             var updated = companion.Add(UniqueName(companion, "New persona"));
             draft = draft with { Companion = updated };
-            ResultText.Text = "New persona added to the local draft. Apply edits and Save to persist it.";
+            ResultText.Text = "New persona added. Save to keep it.";
             RenderPersonas(updated.ActivePersonaId);
         }
         catch (ContractException error) { ResultText.Text = error.Message; }
@@ -237,7 +237,7 @@ public partial class CompanionWindow : ThemedWindow
         {
             var updated = companion.Add(UniqueName(companion, selected.Name + " copy"), selected);
             draft = draft with { Companion = updated };
-            ResultText.Text = "Persona duplicated in the local draft. Save to persist it.";
+            ResultText.Text = "Persona duplicated. Save to keep it.";
             RenderPersonas(updated.ActivePersonaId);
         }
         catch (ContractException error) { ResultText.Text = error.Message; }
@@ -251,7 +251,7 @@ public partial class CompanionWindow : ThemedWindow
             var updated = companion.Remove(selected.Id);
             pendingLore.Remove(selected.Id);
             draft = draft with { Companion = updated };
-            ResultText.Text = "Persona removed from the local draft. Save to persist the deletion.";
+            ResultText.Text = "Persona removed. Save to make it permanent.";
             RenderPersonas(updated.ActivePersonaId);
         }
         catch (ContractException error) { ResultText.Text = error.Message; }
@@ -315,7 +315,7 @@ public partial class CompanionWindow : ThemedWindow
     {
         if (draft?.Companion is not { } companion) return "Reload before importing a character card.";
         if (companion.Personas.Count >= CompanionSettings.MaximumPersonas)
-            return $"At most {CompanionSettings.MaximumPersonas} personas are supported. Delete one, or update an existing persona from the card instead.";
+            return $"At most {CompanionSettings.MaximumPersonas} personas are supported. Delete one, or update an existing persona.";
         var (characters, bytes) = CardRoom(companion, except: null);
         if (characters < MinimumCardCharacters) return NoRoom;
         var persona = card.ToPersona(Path.GetFileNameWithoutExtension(path), characters, bytes);
@@ -326,7 +326,7 @@ public partial class CompanionWindow : ThemedWindow
             var updated = added.Update(added.ActivePersonaId, name, persona.Text, ResponseStyleWeights.HelpfulOnly());
             draft = draft with { Companion = updated };
             RenderPersonas(updated.ActivePersonaId);
-            return $"Added {Describe(card)} as the new persona \"{name}\" in the local draft. Review it, then Save to keep it." +
+            return $"Added \"{name}\" from the character card. Review it, then save." +
                 Fitting(card, persona, KeepCardLore(card, updated.ActivePersonaId));
         }
         catch (ContractException error) { return error.Message; }
@@ -344,14 +344,14 @@ public partial class CompanionWindow : ThemedWindow
             PersonaName.Text = UniqueName(companion, persona.Name, except: selected.Id);
             PersonaText.Text = persona.Text;
             editorDirty = true;
-            return $"Loaded {Describe(card)} into the editor for \"{selected.Name}\"; its response-style weights are unchanged. " +
-                "Review it, then Apply and Save." + Fitting(card, persona, KeepCardLore(card, selected.Id));
+            return $"Loaded the card into \"{selected.Name}\". Response styles are unchanged. Review, apply and save." +
+                Fitting(card, persona, KeepCardLore(card, selected.Id));
         }
         catch (ContractException error) { return error.Message; }
     }
 
     private const string NoRoom =
-        "All persona texts together are near the 16,384-character limit. Shorten or delete another persona, then import the card again.";
+        "There isn't enough room for this card. Shorten or delete another persona, then try again.";
 
     /// <summary>Room for a card's persona text: the per-persona limit, or less when the other personas' texts leave less of
     /// the combined settings limit.</summary>
@@ -364,20 +364,17 @@ public partial class CompanionWindow : ThemedWindow
                 CompanionSettings.MaximumAggregateTextUtf8Bytes - others.Sum(persona => Encoding.UTF8.GetByteCount(persona.Text))));
     }
 
-    private static string Describe(CharacterCard card) =>
-        $"{card.FormatName} \"{card.DisplayName}\"" + (card.Creator.Length > 0 ? $" by {card.Creator}" : "");
-
     private static string Fitting(CharacterCard card, CharacterCardPersona persona, Lorebook? lore)
     {
         var notes = new List<string>();
-        if (persona.Shortened.Count > 0) notes.Add("Shortened to fit: " + string.Join(", ", persona.Shortened) + ".");
-        if (persona.LeftOut.Count > 0) notes.Add("Left out to fit: " + string.Join(", ", persona.LeftOut) + ".");
+        if (persona.Shortened.Count > 0) notes.Add("Some card text was shortened to fit: " + string.Join(", ", persona.Shortened) + ".");
+        if (persona.LeftOut.Count > 0) notes.Add("Some card text was left out: " + string.Join(", ", persona.LeftOut) + ".");
         if (lore is not null)
-            notes.Add($"Its {lore.Entries.Count} keyword-triggered lorebook " + (lore.Entries.Count == 1 ? "entry goes" : "entries go") +
-                $" to the lorebook \"{lore.Name}\", used only with this persona, when you Save (always-on entries are in the persona text).");
+            notes.Add($"{lore.Entries.Count} lorebook " + (lore.Entries.Count == 1 ? "entry will" : "entries will") +
+                " be saved for this persona.");
         else if (card.KeywordLoreEntries > 0)
-            notes.Add($"Not imported: {card.KeywordLoreEntries} keyword-triggered lorebook " +
-                (card.KeywordLoreEntries == 1 ? "entry" : "entries") + " (lorebooks are unavailable here; always-on entries are included).");
+            notes.Add($"{card.KeywordLoreEntries} lorebook " +
+                (card.KeywordLoreEntries == 1 ? "entry wasn't" : "entries weren't") + " imported here.");
         return notes.Count == 0 ? "" : " " + string.Join(" ", notes);
     }
 
@@ -437,19 +434,19 @@ public partial class CompanionWindow : ThemedWindow
             var saved = result.Saved!;
             ResultText.Text = saved.Save.Saved
                 ? saved.Save.MigratedFromSchemaVersion is { } previous
-                    ? $"Companion settings saved. Version {previous} was migrated with an atomic original-file snapshot."
-                    : "Companion settings saved. No model, capture or provider action was authorized."
+                    ? "Companion settings saved. Older settings were updated."
+                    : "Companion settings saved."
                 : saved.Save.Error!.Summary;
             if (saved.Save.Saved)
             {
                 if (loreSaved is { Saved: true })
                 {
                     ResultText.Text += " " + string.Join(" ", lore.Select(book =>
-                        $"The lorebook \"{book.Name}\" ({book.Entries.Count} keyword {(book.Entries.Count == 1 ? "entry" : "entries")}) is saved and used with its persona; change it on Companion > Lorebook."));
+                        $"Lorebook \"{book.Name}\" saved for this persona."));
                     pendingLore.Clear();
                 }
                 else if (loreSaved is { } failed)
-                    ResultText.Text += " The character card's lorebook was not saved: " + failed.Error + " Save again to retry.";
+                    ResultText.Text += " The card's lorebook wasn't saved: " + failed.Error + " Save again to retry.";
                 draft = saved.Settings;
                 revision = saved.Save.Revision;
                 RenderPersonas();
@@ -477,7 +474,7 @@ public partial class CompanionWindow : ThemedWindow
                 continue;
             }
             ContractRules.Require(library.Books.Count < LorebookLibrary.MaximumBooks,
-                $"At most {LorebookLibrary.MaximumBooks} lorebooks are supported. Delete one on Companion > Lorebook.");
+                $"At most {LorebookLibrary.MaximumBooks} lorebooks are supported. Delete one in Lorebooks.");
             library = library with { Books = library.Books.Append(book with { Name = library.UniqueName(book.Name) }).ToArray() };
         }
         library.Validate();
@@ -512,7 +509,7 @@ public partial class CompanionWindow : ThemedWindow
         var dialog = new OpenFileDialog
         {
             Title = "Import persona text",
-            Filter = "UTF-8 text (*.txt)|*.txt|All files (*.*)|*.*",
+            Filter = "Text files (*.txt)|*.txt|All files (*.*)|*.*",
             CheckFileExists = true,
             Multiselect = false
         };
@@ -535,8 +532,8 @@ public partial class CompanionWindow : ThemedWindow
     {
         var dialog = new SaveFileDialog
         {
-            Title = "Export persona text to a new file",
-            Filter = "UTF-8 text (*.txt)|*.txt|All files (*.*)|*.*",
+            Title = "Export persona text",
+            Filter = "Text files (*.txt)|*.txt|All files (*.*)|*.*",
             DefaultExt = ".txt",
             AddExtension = true,
             OverwritePrompt = false

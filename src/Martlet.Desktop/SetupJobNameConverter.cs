@@ -9,9 +9,9 @@ public sealed class SetupJobNameConverter : IValueConverter
 {
     internal static string Name(SetupRole role) => role switch
     {
-        SetupRole.Llm => "Thinking (conversation model)",
-        SetupRole.Stt => "Listening (speech to text)",
-        SetupRole.Tts => "Speaking (text to voice)",
+        SetupRole.Llm => "Thinking",
+        SetupRole.Stt => "Listening",
+        SetupRole.Tts => "Speaking",
         _ => role.ToString()
     };
 

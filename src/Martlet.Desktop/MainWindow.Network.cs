@@ -28,6 +28,10 @@ public partial class MainWindow
     private IReadOnlyList<HostJoinRequest> networkJoins = [];
     private IReadOnlyDictionary<string, string> networkNotes = new Dictionary<string, string>();
     private readonly HashSet<string> networkAnnounced = new(StringComparer.Ordinal);
+    /// <summary>Computers the owner allowed from Add a computer › Martlet on your network (device ID → until when): their
+    /// request to join the network is approved without a second Allow.</summary>
+    private readonly Dictionary<string, DateTimeOffset> networkPreapproved = new(StringComparer.Ordinal);
+    private static readonly TimeSpan NetworkPreapproval = TimeSpan.FromMinutes(15);
     private DateTimeOffset? networkCheckedAt;
     private string? networkProblem;
     private bool networkBusy;
@@ -124,6 +128,16 @@ public partial class MainWindow
             networkCheckedAt = DateTimeOffset.Now;
             foreach (var line in result.Events) ErrorLog.Info("Martlet network: " + line);
             var messages = result.Events.ToList();
+            foreach (var stale in networkPreapproved.Where(p => p.Value <= DateTimeOffset.Now).Select(p => p.Key).ToArray())
+                networkPreapproved.Remove(stale);
+            if (state.Roster is not null && result.Joins.FirstOrDefault(j => networkPreapproved.ContainsKey(j.DeviceId)) is { } allowed)
+            {
+                networkPreapproved.Remove(allowed.DeviceId);
+                networkJoins = networkJoins.Where(j => j.DeviceId != allowed.DeviceId).ToArray();
+                ChangeNetwork((engine, current) => engine.Approve(current, allowed),
+                    $"{allowed.DisplayName} joined your Martlet network (you allowed it with check number {allowed.CheckNumber}); it pairs with your other hosts automatically.");
+                messages.Clear();
+            }
             if (result.Joins.FirstOrDefault(j => networkAnnounced.Add(j.DeviceId + "|" + j.Key)) is { } fresh)
             {
                 ErrorLog.Info($"Martlet network: {fresh.DeviceId} ({fresh.DisplayName}) asks to join (check number {fresh.CheckNumber}).");
@@ -209,6 +223,15 @@ public partial class MainWindow
         {
             ErrorLog.Warn($"Could not note that {hostId} was forgotten in {NetworkLocalState.FileName}: {error.Message}");
         }
+    }
+
+    /// <summary>Notes that the owner just allowed <paramref name="deviceId"/> (Add a computer › Martlet on your network): when it
+    /// asks to join the network in the next minutes, this PC approves it without asking again.</summary>
+    private void PreapproveNetworkJoin(string deviceId, string name)
+    {
+        networkPreapproved[deviceId] = DateTimeOffset.Now + NetworkPreapproval;
+        ErrorLog.Info($"Martlet network: {deviceId} ({name}) was allowed from Add a computer; its request to join will be approved here.");
+        QueueNetworkSync();
     }
 
     /// <summary>Signs a change to the roster with this PC's network key, saves it and shares it on the next sync.</summary>

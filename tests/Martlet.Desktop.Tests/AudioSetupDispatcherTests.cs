@@ -26,13 +26,13 @@ public sealed class AudioSetupDispatcherTests
         try
         {
             await Ready(window);
-            Assert.Contains("never tested", Text(window, "StatusText"));
+            Assert.Contains("not tested", Text(window, "StatusText"));
             await Wait(() => Control<TextBlock>(window, "MicBadge").Text == "Ready" && Control<TextBlock>(window, "OutputBadge").Text == "Ready");
             Assert.Equal(1, fixture.Catalog.Calls);
             Assert.False(Directory.Exists(fixture.Directory));
             Click(window, "MicButton");
             Click(window, "OutputButton");
-            Assert.Contains("Permission declined", Text(window, "ResultText"));
+            Assert.Contains("Test canceled", Text(window, "ResultText"));
             Assert.Equal(1, fixture.Catalog.Calls);
             Assert.Equal(0, fixture.Capture.Opens);
             Assert.Equal(0, fixture.Output.Opens);
@@ -56,7 +56,7 @@ public sealed class AudioSetupDispatcherTests
         try
         {
             await Ready(window);
-            await Wait(() => Text(window, "ResultText").Contains("Found 1 input", StringComparison.Ordinal));
+            await Wait(() => Text(window, "ResultText").Contains("Found 1 microphone", StringComparison.Ordinal));
             Assert.NotEqual(Environment.CurrentManagedThreadId, fixture.Catalog.Thread);
             // Picking applies: both changes save, even when the second is made while the first is saving.
             Control<ComboBox>(window, "InputChoice").SelectedIndex = 1;
@@ -105,21 +105,21 @@ public sealed class AudioSetupDispatcherTests
         {
             await Ready(window);
             Click(window, "MicButton");
-            await Wait(() => Text(window, "LevelText").Contains("peak 0.5000", StringComparison.Ordinal));
-            Assert.Contains("NOT VAD", Text(window, "LevelText"));
+            await Wait(() => Text(window, "LevelText").Contains("Live microphone check", StringComparison.Ordinal));
+            Assert.Contains("not speech recognition", Text(window, "LevelText"));
             Assert.False(Control<Button>(window, "OutputButton").IsEnabled);
             Click(window, "OutputButton");
             Assert.Equal(0, fixture.Output.Opens);
             Assert.Equal(InputPolicy.FollowDefaultOnNextPress, fixture.Capture.Selected!.Policy);
             fixture.Capture.Packet(count: 49);
-            await Wait(() => Text(window, "ResultText").Contains("Samples received and discarded", StringComparison.Ordinal));
-            Assert.Contains("Whole-test selected PCM: peak 0.500000; RMS 0.500000; canonical samples 80000", Text(window, "LevelText"));
-            Assert.Contains("Samples at/above 1% full-scale: 80000", Text(window, "LevelText"));
-            Assert.Contains("1% full-scale", Text(window, "LevelText"));
+            await Wait(() => Text(window, "ResultText").Contains("Sound was received and discarded", StringComparison.Ordinal));
+            Assert.Contains("Final microphone check", Text(window, "LevelText"));
+            Assert.DoesNotContain("samples", Text(window, "LevelText"), StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("Level is strong enough", Text(window, "LevelText"));
             var saved = await Saved(fixture, audio => audio.Input.Checkpoint is not null);
             Assert.Equal(LocalAudioOutcome.SamplesReceived, saved.Input.Checkpoint!.Outcome);
             Assert.Null(saved.Output.Checkpoint);
-            Assert.Contains("UNVERIFIED", Text(window, "StatusText"));
+            Assert.Contains("Sound was received", Text(window, "StatusText"));
             Assert.DoesNotContain("PRIVATE", Text(window, "StatusText"));
             Assert.Equal(1, fixture.Capture.Disposals);
             Assert.Equal(0, fixture.Output.Opens);
@@ -171,11 +171,11 @@ public sealed class AudioSetupDispatcherTests
         {
             await Ready(window);
             Click(window, "MicButton");
-            await Wait(() => Text(window, "ResultText").Contains("below 1% full-scale", StringComparison.Ordinal));
+            await Wait(() => Text(window, "ResultText").Contains("Sound was too quiet", StringComparison.Ordinal));
             Assert.Contains("hardware mute", Text(window, "ResultText"));
             Assert.Contains("privacy", Text(window, "ResultText"));
-            Assert.Contains("Whole-test selected PCM", Text(window, "LevelText"));
-            Assert.Contains("no checkpoint", Text(window, "LevelText"));
+            Assert.Contains("Final microphone check", Text(window, "LevelText"));
+            Assert.Contains("Too quiet", Text(window, "LevelText"), StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("SamplesReceived", Text(window, "StatusText"));
             Assert.Null((await Saved(fixture, audio => audio.Input.Checkpoint is null)).Input.Checkpoint);
             Assert.Equal(1, fixture.Capture.Opens);
@@ -196,9 +196,9 @@ public sealed class AudioSetupDispatcherTests
             Click(window, "MicButton");
             await Wait(() => fixture.Capture.Reads > 0);
             fixture.Clock.Advance(TimeSpan.FromSeconds(5));
-            await Wait(() => Text(window, "ResultText").Contains("No microphone PCM frames", StringComparison.Ordinal));
-            Assert.Contains("selected microphone or changed default", Text(window, "ResultText"));
-            Assert.Contains("No PCM frames received in this test", Text(window, "LevelText"));
+            await Wait(() => Text(window, "ResultText").Contains("No sound was received", StringComparison.Ordinal));
+            Assert.Contains("selected microphone", Text(window, "ResultText"));
+            Assert.Contains("No sound was received in this test", Text(window, "LevelText"));
             Assert.Null((await Saved(fixture, audio => audio.Input.Checkpoint is null)).Input.Checkpoint);
         }
         finally { window.Close(); }
@@ -214,14 +214,14 @@ public sealed class AudioSetupDispatcherTests
         {
             await Ready(window);
             Click(window, "MicButton");
-            await Wait(() => Text(window, "LevelText").Contains("Live selected PCM: peak 0.5000", StringComparison.Ordinal));
+            await Wait(() => Text(window, "LevelText").Contains("Live microphone check", StringComparison.Ordinal));
             fixture.Capture.Packet(count: 49);
-            await Wait(() => Text(window, "ResultText").Contains("Samples received and discarded", StringComparison.Ordinal));
+            await Wait(() => Text(window, "ResultText").Contains("Sound was received and discarded", StringComparison.Ordinal));
             Assert.Equal(LocalAudioOutcome.SamplesReceived, (await Saved(fixture, audio => audio.Input.Checkpoint is not null)).Input.Checkpoint!.Outcome);
 
             fixture.Capture.Packet(0, count: 50);
             Click(window, "MicButton");
-            await Wait(() => Text(window, "ResultText").Contains("below 1% full-scale", StringComparison.Ordinal));
+            await Wait(() => Text(window, "ResultText").Contains("Sound was too quiet", StringComparison.Ordinal));
             Assert.DoesNotContain("SamplesReceived", Text(window, "StatusText"));
             Assert.Null((await Saved(fixture, audio => audio.Input.Checkpoint is null)).Input.Checkpoint);
         }
@@ -289,12 +289,12 @@ public sealed class AudioSetupDispatcherTests
                 fixture.Capture.Packet(i % (50 / loudPackets) == 0 && i / (50 / loudPackets) < loudPackets
                     ? (short)16384 : (short)0);
             Click(window, "MicButton");
-            await Wait(() => Text(window, "ResultText").Contains("level too intermittent", StringComparison.Ordinal) ||
-                Text(window, "ResultText").Contains("Samples received and discarded", StringComparison.Ordinal));
+            await Wait(() => Text(window, "ResultText").Contains("Sound was too brief", StringComparison.Ordinal) ||
+                Text(window, "ResultText").Contains("Sound was received and discarded", StringComparison.Ordinal));
             var lowCoverage = expected == AudioInputSignal.IntermittentAmplitude;
-            Assert.Contains(lowCoverage ? "brief click" : "Samples received and discarded", Text(window, "ResultText"), StringComparison.OrdinalIgnoreCase);
-            Assert.Contains($"Samples at/above 1% full-scale: {loudPackets * 1600}", Text(window, "LevelText"));
-            Assert.Contains("canonical samples 80000", Text(window, "LevelText"));
+            Assert.Contains(lowCoverage ? "brief click" : "Sound was received and discarded", Text(window, "ResultText"), StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(lowCoverage ? "Needs more steady sound" : "Level is strong enough", Text(window, "LevelText"));
+            Assert.DoesNotContain("samples", Text(window, "LevelText"), StringComparison.OrdinalIgnoreCase);
             var checkpoint = (await Saved(fixture, audio => lowCoverage ? audio.Input.Checkpoint is null : audio.Input.Checkpoint is not null)).Input.Checkpoint;
             if (lowCoverage) Assert.Null(checkpoint);
             else Assert.Equal(LocalAudioOutcome.SamplesReceived, checkpoint!.Outcome);
@@ -317,11 +317,11 @@ public sealed class AudioSetupDispatcherTests
             await Ready(window);
             Click(window, "MicButton");
             await fixture.Entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
-            await Wait(() => Text(window, "LevelText").Contains("Live selected PCM: peak 0.5000", StringComparison.Ordinal));
+            await Wait(() => Text(window, "LevelText").Contains("Live microphone check", StringComparison.Ordinal));
             fixture.Release.Set();
-            await Wait(() => Text(window, "ResultText").Contains("Local action failed", StringComparison.Ordinal));
-            Assert.Contains("No replacement", Text(window, "ResultText"));
-            Assert.Contains("earlier live level is not a valid test result", Text(window, "LevelText"));
+            await Wait(() => Text(window, "ResultText").Contains("Audio action could not finish", StringComparison.Ordinal));
+            Assert.Contains("Reconnect", Text(window, "ResultText"));
+            Assert.Contains("Test stopped before a final level was measured", Text(window, "LevelText"));
             Assert.DoesNotContain("0.5000", Text(window, "LevelText"));
             Assert.Equal(1, fixture.Capture.Opens);
             Assert.Equal(0, fixture.Capture.PacketCount);
@@ -330,8 +330,8 @@ public sealed class AudioSetupDispatcherTests
             fixture.Capture.FailureAfterPacket = false;
             fixture.Capture.Packet(0, count: 50);
             Click(window, "MicButton");
-            await Wait(() => Text(window, "ResultText").Contains("below 1% full-scale", StringComparison.Ordinal));
-            Assert.Contains("Whole-test selected PCM: peak 0.000000; RMS 0.000000", Text(window, "LevelText"));
+            await Wait(() => Text(window, "ResultText").Contains("Sound was too quiet", StringComparison.Ordinal));
+            Assert.Contains("Final microphone check", Text(window, "LevelText"));
             Assert.Equal(2, fixture.Capture.Opens);
             Assert.DoesNotContain("PRIVATE", Text(window, "StatusText") + Text(window, "ResultText"));
             Assert.Null((await Saved(fixture, audio => audio.Input.Checkpoint is null)).Input.Checkpoint);
@@ -349,9 +349,9 @@ public sealed class AudioSetupDispatcherTests
         {
             await Ready(window);
             Click(window, "MicButton");
-            await Wait(() => Text(window, "LevelText").Contains("Live selected PCM: peak 0.5000", StringComparison.Ordinal));
+            await Wait(() => Text(window, "LevelText").Contains("Live microphone check", StringComparison.Ordinal));
             Click(window, "StopButton");
-            await Wait(() => Text(window, "ResultText").Contains("Observation stopped", StringComparison.Ordinal));
+            await Wait(() => Text(window, "ResultText").Contains("Audio action stopped", StringComparison.Ordinal));
             await Wait(() => !fixture.Runner.IsRunning);
             Assert.True(Text(window, "LevelText").Contains("no longer live", StringComparison.Ordinal) ||
                 Text(window, "LevelText").Contains("not a valid test result", StringComparison.Ordinal));
@@ -359,7 +359,7 @@ public sealed class AudioSetupDispatcherTests
             Assert.DoesNotContain("SamplesReceived", Text(window, "StatusText"));
             fixture.Capture.Packet(0, count: 50);
             Click(window, "MicButton");
-            await Wait(() => Text(window, "ResultText").Contains("below 1% full-scale", StringComparison.Ordinal));
+            await Wait(() => Text(window, "ResultText").Contains("Sound was too quiet", StringComparison.Ordinal));
             Assert.Equal(2, fixture.Capture.Opens);
             Assert.Equal(2, fixture.Confirmations);
             Assert.Null((await Saved(fixture, audio => audio.Input.Checkpoint is null)).Input.Checkpoint);
@@ -375,7 +375,7 @@ public sealed class AudioSetupDispatcherTests
         try
         {
             await Ready(window);
-            await Wait(() => Text(window, "ResultText").Contains("Found 1 input", StringComparison.Ordinal));
+            await Wait(() => Text(window, "ResultText").Contains("Found 1 microphone", StringComparison.Ordinal));
             Control<ComboBox>(window, "OutputChoice").SelectedIndex = 1;
             Assert.False(Control<Button>(window, "HeardButton").IsEnabled);
             Click(window, "HeardButton");
@@ -386,7 +386,7 @@ public sealed class AudioSetupDispatcherTests
             Assert.Equal("PRIVATE-output", fixture.Output.Selected.EndpointId);
             var ids = new CorrelationIds { SessionId = Guid.NewGuid(), TurnId = Guid.NewGuid(), RequestId = Guid.NewGuid() };
             Assert.Equal(SyntheticTone.Frames(ids, 0).SelectMany(frame => frame.Data.ToArray()).ToArray(), fixture.Output.Bytes.ToArray());
-            Assert.Contains("audibility UNCONFIRMED", Text(window, "ResultText"));
+            Assert.Contains("Confirm if you heard it", Text(window, "ResultText"));
             Click(window, "HeardButton");
             Assert.Equal(LocalAudioOutcome.Heard, (await Saved(fixture, audio => audio.Output.Checkpoint?.Outcome == LocalAudioOutcome.Heard)).Output.Checkpoint!.Outcome);
             Control<ComboBox>(window, "OutputChoice").SelectedIndex = 0;
@@ -448,7 +448,7 @@ public sealed class AudioSetupDispatcherTests
                 if (block is not ("CaptureCallback" or "OutputCallback")) Click(window, action);
                 Click(window, "StopButton");
             }
-            await Wait(() => Text(window, "ResultText").Contains("Observation stopped", StringComparison.Ordinal));
+            await Wait(() => Text(window, "ResultText").Contains("Audio action stopped", StringComparison.Ordinal));
             var oldText = Text(window, "ResultText");
             var oldStatus = Text(window, "StatusText");
             window.Close();
@@ -494,7 +494,7 @@ public sealed class AudioSetupDispatcherTests
             await Ready(window);
             var input = Control<ComboBox>(window, "InputChoice");
             input.IsDropDownOpen = true;
-            await Wait(() => Text(window, "ResultText").Contains("Found 1 input", StringComparison.Ordinal));
+            await Wait(() => Text(window, "ResultText").Contains("Found 1 microphone", StringComparison.Ordinal));
             input.IsDropDownOpen = false;
             Assert.Equal(2, input.Items.Count);
             Assert.Equal(2, fixture.Catalog.Calls);
@@ -522,7 +522,7 @@ public sealed class AudioSetupDispatcherTests
             await Wait(() => Control<Button>(window, "MicButton").IsEnabled);
             Assert.Equal(1, fixture.Capture.Opens);
             Assert.Equal(0, fixture.Output.Opens);
-            Assert.Contains("Observation stopped", Text(window, "ResultText"));
+            Assert.Contains("Audio action stopped", Text(window, "ResultText"));
         }
         finally { window.Close(); }
     });
@@ -544,7 +544,7 @@ public sealed class AudioSetupDispatcherTests
             await Wait(() => fixture.Capture.Reads > 0);
             SendMessage(handle, 0x0006, IntPtr.Zero, IntPtr.Zero);
             await Wait(() => !fixture.Runner.IsRunning);
-            await Wait(() => Text(window, "ResultText").Contains("Observation stopped", StringComparison.Ordinal));
+            await Wait(() => Text(window, "ResultText").Contains("Audio action stopped", StringComparison.Ordinal));
             Assert.Contains("no longer live", Text(window, "LevelText"));
             Assert.Equal(1, fixture.Capture.Opens);
         }
@@ -591,7 +591,7 @@ public sealed class AudioSetupDispatcherTests
         {
             await Ready(window);
             Click(window, "OutputButton");
-            await Wait(() => Text(window, "ResultText").Contains("Local action failed", StringComparison.Ordinal));
+            await Wait(() => Text(window, "ResultText").Contains("Audio action could not finish", StringComparison.Ordinal));
             Assert.False(Control<Button>(window, "HeardButton").IsEnabled);
             Assert.Equal(1, fixture.Output.Opens);
             Assert.Equal(0, fixture.Capture.Opens);
@@ -678,13 +678,13 @@ public sealed class AudioSetupDispatcherTests
         var run = fixture.Audio.Start(AudioSetupAction.Output, AudioChoice.Default(false), true)!;
         try
         {
-            await Wait(() => run.Status.Stage.StartsWith("Opening selected output", StringComparison.Ordinal));
+            await Wait(() => run.Status.Stage.StartsWith("Opening selected speakers", StringComparison.Ordinal));
             fixture.Clock.Advance(TimeSpan.FromSeconds(6));
             await fixture.Entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
             await Wait(() =>
             {
                 fixture.Clock.Advance(TimeSpan.FromMilliseconds(100));
-                return run.Status.Stage.Contains("waiting for actual native release", StringComparison.Ordinal);
+                return run.Status.Stage.Contains("Finishing speaker test", StringComparison.Ordinal);
             });
             Assert.True(fixture.Runner.IsRunning);
             Assert.False(run.Worker.Completion.IsCompleted);
@@ -751,7 +751,7 @@ public sealed class AudioSetupDispatcherTests
         try
         {
             await Ready(window);
-            await Wait(() => Text(window, "ResultText").Contains("Found 1 input", StringComparison.Ordinal));
+            await Wait(() => Text(window, "ResultText").Contains("Found 1 microphone", StringComparison.Ordinal));
             var concurrent = SetupSettings.SelectRoute(SetupSettings.Begin(null), SetupRole.Llm, "new-model", null);
             Assert.True((await fixture.Store.SaveAsync(concurrent, null)).Saved);
             var bytes = await File.ReadAllBytesAsync(fixture.Store.FilePath);
@@ -769,10 +769,10 @@ public sealed class AudioSetupDispatcherTests
 
     [Theory]
     [InlineData(ErrorCode.AudioAccessDenied, "Privacy")]
-    [InlineData(ErrorCode.AudioDeviceBusy, "competing")]
+    [InlineData(ErrorCode.AudioDeviceBusy, "Another app")]
     [InlineData(ErrorCode.AudioDeviceUnavailable, "Reconnect")]
     [InlineData(ErrorCode.AudioDeviceLost, "Reconnect")]
-    [InlineData(ErrorCode.AudioDeviceChanged, "No replacement")]
+    [InlineData(ErrorCode.AudioDeviceChanged, "Reconnect")]
     [InlineData(ErrorCode.AudioFormatUnsupported, "format")]
     public Task InputFailureHasSpecificRemedyAndNeverRearms(ErrorCode code, string remedy) => OnDispatcher(async () =>
     {
@@ -783,12 +783,12 @@ public sealed class AudioSetupDispatcherTests
         {
             await Ready(window);
             Click(window, "MicButton");
-            await Wait(() => Text(window, "ResultText").Contains("Local action failed", StringComparison.Ordinal));
+            await Wait(() => Text(window, "ResultText").Contains("Audio action could not finish", StringComparison.Ordinal));
             Assert.Contains(remedy, Text(window, "ResultText"), StringComparison.OrdinalIgnoreCase);
             Assert.False(Control<Button>(window, "HeardButton").IsEnabled);
             Assert.Equal(1, fixture.Capture.Opens);
             Assert.Equal(0, fixture.Output.Opens);
-            Assert.Contains("Capture failed or canceled", Text(window, "LevelText"));
+            Assert.Contains("Test stopped before a final level was measured", Text(window, "LevelText"));
             Assert.DoesNotContain("SamplesReceived", Text(window, "StatusText"));
             Assert.DoesNotContain("PRIVATE", Text(window, "StatusText"));
         }

@@ -14,7 +14,7 @@ public partial class SetupAdvisorWindow : ThemedWindow
     private const int ResultIndex = 3;
     private static readonly string[] GpuNames = Enum.GetValues<AdvisorGpu>().Select(SetupAdvisor.GpuName).ToArray();
     private static readonly string[] MachineCounts =
-        ["None", "1 other computer", "2 other computers", "3 other computers", "4 other computers", "5 other computers"];
+        ["No other computers", "1 other computer", "2 other computers", "3 other computers", "4 other computers", "5 other computers"];
     private const string TaskManagerHint = "Find it in Task Manager > Performance > GPU, under Dedicated GPU memory.";
 
     /// <summary>One "other computer" row; keeps its answer while the count changes.</summary>
@@ -63,8 +63,7 @@ public partial class SetupAdvisorWindow : ThemedWindow
             OtherComputers = (pairedHosts ?? []).Take(SetupAdvisor.MaxOtherComputers).ToArray()
         };
         if (pairedHosts is { Count: > 0 })
-            ExtraMachinesHint.Text = $"Your paired Martlet host{(pairedHosts.Count == 1 ? " is" : "s are")} filled in with the hardware " +
-                "they reported. Add other computers you plan to use and pick their GPU; if you have more than five, list your five strongest.";
+            ExtraMachinesHint.Text = $"Your paired Martlet host{(pairedHosts.Count == 1 ? " is" : "s are")} filled in with the hardware they reported. Add any other computers you plan to use.";
         Load(Answers);
         ShowStep(0);
     }
@@ -120,7 +119,7 @@ public partial class SetupAdvisorWindow : ThemedWindow
         for (var i = 0; i < panels.Length; i++) panels[i].Visibility = i == step ? Visibility.Visible : Visibility.Collapsed;
         StepText.Text = step == ResultIndex ? "Your recommended setup" : $"Step {step + 1} of 3";
         BackButton.IsEnabled = step > 0;
-        NextButton.Content = step switch { 2 => "_See my setup", ResultIndex => "_Start over", _ => "_Next" };
+        NextButton.Content = step switch { 2 => "_See setup", ResultIndex => "_Start over", _ => "_Next" };
         if (step == ResultIndex) BuildResult();
         Scroller.ScrollToTop();
     }
@@ -175,14 +174,14 @@ public partial class SetupAdvisorWindow : ThemedWindow
             row.NameBox = new TextBox { Text = row.Name, MinHeight = 30, VerticalContentAlignment = VerticalAlignment.Center, MaxLength = 48 };
             AutomationProperties.SetAutomationId(row.NameBox, $"OtherComputerName{number}");
             AutomationProperties.SetName(row.NameBox, $"Name of computer {number} (optional)");
-            row.NameBox.ToolTip = $"Optional name. Left empty, the plan calls it Computer {number}.";
+            row.NameBox.ToolTip = $"Optional name. If left blank, this will be Computer {number}.";
             row.GpuBox = new ComboBox { ItemsSource = GpuNames, SelectedIndex = (int)row.Gpu, MinHeight = 30 };
             AutomationProperties.SetAutomationId(row.GpuBox, $"OtherComputerGpu{number}");
             AutomationProperties.SetName(row.GpuBox, $"Graphics card in computer {number}");
             Grid.SetColumn(row.GpuBox, 2);
             grid.Children.Add(row.NameBox);
             grid.Children.Add(row.GpuBox);
-            var label = new TextBlock { Text = $"Computer {number}: name (optional) and GPU", Margin = new Thickness(0, 8, 0, 0) };
+            var label = new TextBlock { Text = $"Computer {number}", Margin = new Thickness(0, 8, 0, 0) };
             OtherComputersPanel.Children.Add(label);
             OtherComputersPanel.Children.Add(grid);
             if (row.Initial.Detected is { } reported)
@@ -190,8 +189,7 @@ public partial class SetupAdvisorWindow : ThemedWindow
         }
         if (count > 0)
             OtherComputersPanel.Children.Add(Muted(
-                "Not sure? Choose \"Has a GPU, not sure which\". On Windows see Task Manager > Performance > GPU; on Linux run nvidia-smi. " +
-                "Once a computer is a paired Martlet host, it reports its GPU to Martlet automatically.", new Thickness(0, 8, 0, 0)));
+                "Not sure? Choose \"Has a GPU, not sure which\". Paired Martlet hosts can fill this in automatically.", new Thickness(0, 8, 0, 0)));
     }
 
     private void BuildResult()
@@ -231,7 +229,7 @@ public partial class SetupAdvisorWindow : ThemedWindow
         }
 
         Add(Heading("Your computers"));
-        Add(Muted("What each computer should be used for.", new Thickness(0, 0, 0, 4)));
+        Add(Muted("How to use each computer.", new Thickness(0, 0, 0, 4)));
         foreach (var machine in advice.Machines)
         {
             var name = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 2) };
@@ -247,8 +245,7 @@ public partial class SetupAdvisorWindow : ThemedWindow
         foreach (var note in advice.Notes) Add(Bullet(note));
 
         Add(Heading("Next steps"));
-        Add(Muted("Work through them in order. Nothing changes until you save or confirm in each window; an Install button " +
-            "downloads only the items it names, from their publishers.", new Thickness(0, 0, 0, 8)));
+        Add(Muted("Work through these steps in order. Nothing changes until you save or confirm in each window.", new Thickness(0, 0, 0, 8)));
         var actions = new WrapPanel();
         foreach (var next in advice.NextSteps)
         {
@@ -321,12 +318,12 @@ public partial class SetupAdvisorWindow : ThemedWindow
 
     internal static string NextStepLabel(AdvisorNextStep next) => next switch
     {
-        AdvisorNextStep.Setup => "Set up thinking in Companion (model and key)",
-        AdvisorNextStep.AudioSetup => "Open Audio setup (microphone and speakers)",
-        AdvisorNextStep.Hosts => "Open Martlet hosts (GPU computers and Docker)",
-        AdvisorNextStep.VoiceLibrary => "Open Voice (add your own voices)",
-        AdvisorNextStep.Prerequisites => "Install what this plan needs on this PC",
-        _ => "Open Character settings"
+        AdvisorNextStep.Setup => "Set up thinking",
+        AdvisorNextStep.AudioSetup => "Choose microphone and speakers",
+        AdvisorNextStep.Hosts => "Set up Martlet hosts",
+        AdvisorNextStep.VoiceLibrary => "Add voices",
+        AdvisorNextStep.Prerequisites => "Install required Windows features",
+        _ => "Open character settings"
     };
 
     internal static string PlanText(SetupAdvice plan)

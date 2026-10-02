@@ -23,6 +23,7 @@ internal sealed partial class GatewayHttpApplication
     private volatile GatewayMachineReport? machine;
 
     internal GatewayMachineReport? Machine { get => machine; set => machine = value; }
+    internal DateTimeOffset Now => clock.GetUtcNow();
     internal GatewayHttpApplication(
         GatewayHostIdentity identity,
         IGatewayPairingExchange pairing,
@@ -113,6 +114,11 @@ internal sealed partial class GatewayHttpApplication
             if (rawTarget == VoicesPath)
             {
                 await InvokeVoicesAsync(context).ConfigureAwait(false);
+                return;
+            }
+            if (rawTarget == CommandsPath || rawTarget!.StartsWith(CommandsPath + "/", StringComparison.Ordinal))
+            {
+                await InvokeCommandsAsync(context, rawTarget).ConfigureAwait(false);
                 return;
             }
             if (IsLogsTarget(rawTarget!))

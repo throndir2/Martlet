@@ -15,21 +15,21 @@ public sealed class SupportException(SupportFailure failure) : Exception(Message
 
     private static string MessageFor(SupportFailure failure) => failure switch
     {
-        SupportFailure.InvalidData => "Unsupported support metadata. Supply only the documented typed fields and catalog IDs.",
-        SupportFailure.UnsupportedVersion => "Use a compatible support schema version; preserve the original evidence.",
-        SupportFailure.InvalidPath => "Choose an explicit absolute local directory without links, alternate streams or network paths.",
-        SupportFailure.Busy => "This support scope is in use. Wait for its owner to close; no record was queued.",
-        SupportFailure.Closed => "This resource is closed or faulted. Close it and explicitly reopen the scope before retrying.",
-        SupportFailure.LimitExceeded => "The support size or count limit was reached. Select a smaller range or a new owned scope.",
-        SupportFailure.CorruptJournal => "Journal evidence is corrupt or incomplete. Preserve the scope; do not delete unrelated files. Only a truncated active tail can be recovered.",
-        SupportFailure.AccessDenied => "Support storage access was denied. Choose an accessible local scope; do not elevate or disable protection.",
-        SupportFailure.Canceled => "The action was canceled. No successful result is claimed; a journal write may need recovery.",
-        SupportFailure.DeadlineExceeded => "The action exceeded its deadline. An in-flight IO call must finish before ownership is released.",
-        SupportFailure.ConsentMismatch => "Preview this exact snapshot and destination again before explicitly approving export.",
+        SupportFailure.InvalidData => "Troubleshooting data is invalid.",
+        SupportFailure.UnsupportedVersion => "This troubleshooting data needs a newer Martlet.",
+        SupportFailure.InvalidPath => "Choose a local folder on this PC.",
+        SupportFailure.Busy => "Troubleshooting is busy. Try again in a moment.",
+        SupportFailure.Closed => "Troubleshooting was closed. Reopen it and try again.",
+        SupportFailure.LimitExceeded => "The selected troubleshooting range is too large.",
+        SupportFailure.CorruptJournal => "Troubleshooting records are damaged. Keep the folder for review.",
+        SupportFailure.AccessDenied => "Troubleshooting storage access was denied. Choose a folder you can write to.",
+        SupportFailure.Canceled => "The action was canceled.",
+        SupportFailure.DeadlineExceeded => "The action took too long. Try again.",
+        SupportFailure.ConsentMismatch => "Preview the export again before approving it.",
         SupportFailure.ConsentConsumed => "This approval was already used. Review and approve a fresh local export.",
         SupportFailure.DestinationExists => "The selected output already exists. Choose a new filename; nothing was overwritten.",
-        SupportFailure.CleanupPending => "An owned partial export still needs cleanup. Keep this snapshot alive and retry cleanup before another export or disposal.",
-        _ => "Local support IO failed. Preserve existing evidence, check available storage and access, then retry explicitly."
+        SupportFailure.CleanupPending => "A previous troubleshooting export still needs cleanup.",
+        _ => "Troubleshooting storage failed. Check the location and try again."
     };
 }
 

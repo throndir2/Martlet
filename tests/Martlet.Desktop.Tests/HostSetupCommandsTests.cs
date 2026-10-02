@@ -76,7 +76,7 @@ public sealed class HostSetupCommandsTests
         var ollama = HostRemote.ParseRole(["role.choice=OLLAMA_MODEL|Model|llama3.2:3b qwen2.5:7b|llama3.2:3b", "role.suggested=OLLAMA_MODEL", "role.accelerator=gpu cpu"]);
         Assert.True(Assert.Single(ollama.Choices).Suggested && ollama.GpuOrCpu);
         var probe = new HostProbe(false, false, "password", "Ubuntu 24.04.1 LTS", "x86_64", "192.168.1.20", "gpu");
-        Assert.Contains("Docker is the one thing", HostRemote.Blocker(HostSetupMethod.SshDocker, probe, "me@gpu"));
+        Assert.Contains("Docker is not installed", HostRemote.Blocker(HostSetupMethod.SshDocker, probe, "me@gpu"));
         Assert.Null(HostRemote.Blocker(HostSetupMethod.SshNative, probe, "me@gpu"));
         Assert.True(HostRemote.NeedsSudo(HostSetupMethod.SshDocker, probe with { Docker = true }));
         Assert.False(HostRemote.NeedsSudo(HostSetupMethod.SshDocker, probe with { Docker = true, DockerAccess = true }));
@@ -169,8 +169,11 @@ public sealed class HostSetupCommandsTests
         Assert.Contains("-Direction Inbound -Action Allow -Protocol TCP -LocalPort 9443 -Profile Private,Domain -RemoteAddress LocalSubnet", script);
         Assert.DoesNotContain("Set-NetConnectionProfile", script);
         Assert.Contains("Set-NetConnectionProfile -InterfaceIndex 14 -NetworkCategory Private;", WindowsFirewall.ApplyScript(14));
+        Assert.Contains("-Direction Inbound -Action Allow -Protocol UDP -LocalPort 9444 -Profile Private,Domain -RemoteAddress LocalSubnet", script);
+        Assert.Contains("-Direction Inbound -Action Allow -Protocol TCP -LocalPort 9444 -Profile Private,Domain -RemoteAddress LocalSubnet", script);
+        Assert.DoesNotContain("Martlet-Host-Gateway", WindowsFirewall.ApplyScript(null, gateway: false));
         Assert.Throws<InvalidOperationException>(() => WindowsFirewall.ProbeScript("192.168.1.2'; calc; '"));
-        Assert.Equal(new WindowsFirewall.State(true, "Public", 7, false), WindowsFirewall.Parse("True|Public|7|False\r\n"));
+        Assert.Equal(new WindowsFirewall.State(true, "Public", 7, false, true), WindowsFirewall.Parse("True|Public|7|False|True\r\n"));
         Assert.Equal(new WindowsFirewall.State(false, null, null, false), WindowsFirewall.Parse("unexpected"));
     }
 }

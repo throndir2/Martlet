@@ -1,7 +1,9 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Martlet.Core.Installation;
 using Martlet.Doctor;
+using Martlet.Mcp.Client;
 
 namespace Martlet.Mcp;
 
@@ -99,12 +101,39 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "127.0.0.1 (pinned TLS, volatile credentials) and two simulated desktops using the desktop's network client and sync " +
             "engine (found, bind hosts, join with a check number, pair every member with every host by itself, refuse forged keys " +
             "and rosters, remove a desktop and a host). Loopback only; writes nothing to disk or the credential vault.", new { }),
-        Tool("virtualization_status", "Read whether Windows is ready for Docker Desktop's WSL 2 engine (virtualization in the firmware, " +
-            "the Windows hypervisor, Virtual Machine Platform, Windows Subsystem for Linux, the WSL version), whether Docker Desktop is " +
-            "installed and running, and any setup Martlet continues after a Windows restart. Read-only; changes nothing.", new
+        Tool("nearby_status", "Read whether this PC lets Martlet on the owner's other computers find it and ask to use its hosts " +
+            "(on by default, \"off\" only after the owner turned it off) and which paired hosts it could share from hosts.json (hosts " +
+            "it runs or reaches over SSH; this PC's own host service set up from the host dashboard is found from Docker by the " +
+            "desktop, not here). Read-only; contacts nothing and returns no addresses, SSH targets or keys.", new
         {
             dataDirectory = new { type = "string" }
-        })
+        }),
+        Tool("virtualization_status", "Read whether Windows is ready for Docker Desktop's WSL 2 engine (virtualization in the firmware, " +
+            "the Windows hypervisor, Virtual Machine Platform, Windows Subsystem for Linux, the WSL version), whether Docker Desktop is " +
+            "installed and running and its engine state, and any setup Martlet continues after a Windows restart. Read-only; changes nothing.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("node_link_check", "Run commands between Martlet computers end to end on this PC's loopback: the real gateway (pinned TLS, " +
+            "pairing, signed requests, the command mailbox and its storage), the desktop's real client and agent loop with a fixture " +
+            "runner, two fixture devices. Checks that only known commands are accepted, only the host's agent (local token) takes them, " +
+            "output and outcomes reach the sender, secrets never appear in lists or saved copies, cancel works and commands survive a " +
+            "restart. Contacts nothing outside loopback and touches no real credentials, Docker or installs.", new { }),
+        Tool("mcp_servers_status", "Read the MCP servers in a data directory's mcp.json as Martlet parses them: each server's name, " +
+            "transport, program and raw arguments (with ${env:...} and ${secret:...} references, never their values), environment and " +
+            "header names, on/off, auto-approve, the MCP directory entry it was installed from and the secret names it uses. " +
+            "Read-only; starts no server and reads no credentials.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("mcp_directory_plan", "Show how Martlet's MCP directory would install one MCP Registry entry (a server.json object, as " +
+            "the registry's v0.1 API returns it under \"server\"): the ways to run it, the inputs each needs, and with values (by input " +
+            "key) the exact mcp.json entry and secret names it would write. Local only: fetches, writes and starts nothing.", new
+        {
+            server = new { type = "object" },
+            name = new { type = "string", maxLength = 64 },
+            values = new { type = "object", additionalProperties = new { type = "string", maxLength = 4096 } }
+        }, ["server"])
     ];
 
     private static object Tool(string name, string description, object properties, string[]? required = null) =>
@@ -184,8 +213,12 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "f5_voices" => F5Voices(arguments),
                 "cluster_status" => ClusterStatus(arguments),
                 "network_status" => NetworkStatus(arguments),
-                "network_selftest" => await NetworkSelfTest.RunAsync(cancellation),
+                "network_selftest" => await NodeLinkCheckAsync(cancellation, "network"),
+                "nearby_status" => NearbyStatus(arguments),
                 "virtualization_status" => await VirtualizationStatusAsync(arguments, cancellation),
+                "node_link_check" => await NodeLinkCheckAsync(cancellation),
+                "mcp_servers_status" => McpServersStatus(arguments),
+                "mcp_directory_plan" => McpDirectoryPlan(arguments),
                 _ => throw new ArgumentException($"Unknown tool '{name}'.")
             };
             return new { content = new[] { new { type = "text", text = JsonSerializer.Serialize(result) } } };
@@ -243,6 +276,139 @@ internal sealed class McpServer(DesktopAutomation desktop)
         };
     }
 
+    /// <summary>Runs Martlet.NodeLinkCheck (built next to this server, in the same configuration) with <paramref name="arguments"/>
+    /// and returns its JSON report. A separate process, because the in-process gateway needs the ASP.NET Core runtime and this
+    /// server does not.</summary>
+    private static async Task<object> NodeLinkCheckAsync(CancellationToken cancellation, params string[] arguments)
+    {
+        var output = new DirectoryInfo(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar));
+        var configuration = output.Parent?.Name ?? "Release";
+        var source = output.Parent?.Parent?.Parent?.Parent?.FullName
+            ?? throw new InvalidOperationException("Run node_link_check from a Martlet source checkout's build.");
+        var program = Path.Combine(source, "Martlet.NodeLinkCheck", "bin", configuration, "net10.0", "Martlet.NodeLinkCheck.exe");
+        if (!File.Exists(program))
+            throw new InvalidOperationException($"Build src\\Martlet.NodeLinkCheck ({configuration}) first; building Martlet.Mcp builds it too.");
+        var start = new System.Diagnostics.ProcessStartInfo(program)
+        {
+            UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true
+        };
+        foreach (var argument in arguments) start.ArgumentList.Add(argument);
+        using var process = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("Could not start Martlet.NodeLinkCheck.");
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+        limit.CancelAfter(TimeSpan.FromMinutes(2));
+        var report = process.StandardOutput.ReadToEndAsync(limit.Token);
+        var errors = process.StandardError.ReadToEndAsync(limit.Token);
+        try { await process.WaitForExitAsync(limit.Token); }
+        catch (OperationCanceledException)
+        {
+            process.Kill(entireProcessTree: true);
+            throw new InvalidOperationException("Martlet.NodeLinkCheck did not finish within two minutes.");
+        }
+        var text = (await report).Trim();
+        try
+        {
+            using var document = JsonDocument.Parse(text);
+            return new { exitCode = process.ExitCode, report = document.RootElement.Clone() };
+        }
+        catch (JsonException)
+        {
+            throw new InvalidOperationException($"Martlet.NodeLinkCheck exited {process.ExitCode} without a report: {(await errors).Trim()}");
+        }
+    }
+
+    /// <summary>mcp.json in a data directory as the desktop's McpToolService parses it (the file name matches). Arguments are
+    /// the raw ones from the file, so ${env:...} and ${secret:...} stay references; no server starts and no credential is read.</summary>
+    private static object McpServersStatus(JsonElement arguments)
+    {
+        var path = Path.Combine(DataDirectory(arguments), "mcp.json");
+        if (!File.Exists(path)) return new { state = "none" };
+        string text;
+        try
+        {
+            if (new FileInfo(path).Length > McpConfiguration.MaxFileBytes) return new { state = "invalid", problem = "mcp.json is larger than 1 MB." };
+            text = File.ReadAllText(path);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return new { state = "unreadable", problem = error.Message };
+        }
+        McpConfiguration configuration;
+        try { configuration = McpConfiguration.Parse(text, secrets: _ => ""); }
+        catch (McpConfigurationException error) { return new { state = "invalid", problem = error.Message }; }
+        return new
+        {
+            state = "loaded",
+            servers = configuration.Servers.Select(server =>
+            {
+                var raw = McpConfiguration.FindServer(text, server.Name);
+                return new
+                {
+                    name = server.Name,
+                    transport = server.Transport.ToString().ToLowerInvariant(),
+                    command = (raw?["command"] as JsonValue)?.ToString(),
+                    args = (raw?["args"] as JsonArray)?.Select(a => a?.ToString()).ToArray() ?? [],
+                    host = server.Url?.Host,
+                    env = server.Env.Keys.ToArray(),
+                    headers = server.Headers.Keys.ToArray(),
+                    disabled = server.Disabled,
+                    autoApproveAll = server.AutoApproveAll,
+                    autoApprove = server.AutoApprove,
+                    registry = server.Registry,
+                    registryVersion = server.RegistryVersion,
+                    secrets = server.Secrets,
+                    problem = server.Problem
+                };
+            }).ToArray()
+        };
+    }
+
+    /// <summary>How the desktop's MCP directory would install one registry entry. Secret values are never returned, only the
+    /// ${secret:...} names the entry would use.</summary>
+    private static object McpDirectoryPlan(JsonElement arguments)
+    {
+        if (arguments.ValueKind != JsonValueKind.Object || !arguments.TryGetProperty("server", out var given) ||
+            given.ValueKind != JsonValueKind.Object)
+            throw new ArgumentException("Missing object 'server'.");
+        var node = JsonNode.Parse(given.GetRawText()) as JsonObject ?? throw new ArgumentException("Missing object 'server'.");
+        if (node["server"] is JsonObject wrapped) node = wrapped;
+        McpDirectoryEntry entry;
+        try { entry = McpDirectoryEntry.Parse(node); }
+        catch (FormatException error) { throw new ArgumentException(error.Message); }
+        var name = OptionalString(arguments, "name") ?? entry.SuggestedName;
+        var values = new Dictionary<string, string?>(StringComparer.Ordinal);
+        if (arguments.TryGetProperty("values", out var given2) && given2.ValueKind == JsonValueKind.Object)
+            foreach (var value in given2.EnumerateObject())
+                values[value.Name] = value.Value.ValueKind == JsonValueKind.String ? value.Value.GetString()
+                    : throw new ArgumentException($"values.{value.Name} must be a string.");
+        return new
+        {
+            name = entry.Name, displayName = entry.DisplayName, suggestedName = entry.SuggestedName, version = entry.Version,
+            unsupported = entry.Unsupported,
+            options = entry.Options.Select(option =>
+            {
+                object? plan = null;
+                string? problem = null;
+                try
+                {
+                    var built = option.Build(name, values);
+                    plan = new { entry = built.Entry, secrets = built.Secrets.Keys.ToArray(), preview = built.Preview };
+                }
+                catch (McpConfigurationException error) { problem = error.Message; }
+                return new
+                {
+                    kind = option.Kind.ToString(), summary = option.Summary, runtime = option.Runtime,
+                    runtimeAvailable = option.RuntimeAvailable(), host = option.Host,
+                    inputs = option.Inputs.Select(input => new
+                    {
+                        key = input.Key, label = input.Label, required = input.Required, secret = input.Secret, flag = input.Flag,
+                        isPath = input.IsPath, @default = input.Default, placeholder = input.Placeholder, choices = input.Choices
+                    }).ToArray(),
+                    plan, problem
+                };
+            }).ToArray()
+        };
+    }
+
     /// <summary>The optional absolute dataDirectory argument, or the current user's Martlet directory.</summary>
     private static string DataDirectory(JsonElement arguments)
     {
@@ -293,7 +459,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             {
                 installed = File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
                     "Docker", "Docker", "Docker Desktop.exe")),
-                running = Running("com.docker.backend") || Running("Docker Desktop")
+                running = Running("com.docker.backend") || Running("Docker Desktop"),
+                engine = await DockerDesktopStatus.ReadAsync(cancellation)
             },
             continueSetup = new
             {
@@ -442,6 +609,47 @@ internal sealed class McpServer(DesktopAutomation desktop)
             ignored = local.Ignored,
             removedFrom = local.RemovedFrom
         };
+    }
+
+    /// <summary>"Let my other computers find this PC" as the desktop keeps it (the file names match Martlet.Desktop's Nearby and
+    /// HostRegistry): the choice, on unless nearby.txt says "off", and the paired hosts this PC could share (those it runs, saved
+    /// as ThisPcDocker, or reaches over SSH). Host IDs and how each is reached only: no addresses, SSH targets or keys.</summary>
+    private static object NearbyStatus(JsonElement arguments)
+    {
+        var directory = DataDirectory(arguments);
+        string? choice;
+        try { choice = File.ReadAllText(Path.Combine(directory, "nearby.txt")).Trim(); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { choice = null; }
+        object hosts;
+        var path = Path.Combine(directory, "hosts.json");
+        if (!File.Exists(path)) hosts = new { state = "none", paired = 0, shareable = Array.Empty<object>() };
+        else
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(File.ReadAllBytes(path));
+                var list = document.RootElement.GetProperty("hosts").EnumerateArray().Select(host =>
+                {
+                    var method = host.TryGetProperty("method", out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : "OnHost";
+                    var ssh = host.TryGetProperty("sshTarget", out var target) && target.ValueKind == JsonValueKind.String &&
+                        !string.IsNullOrWhiteSpace(target.GetString());
+                    var id = host.GetProperty("pairing").GetProperty("hostId").GetString();
+                    var shareable = method == "ThisPcDocker" || method is "SshDocker" or "SshNative" && ssh;
+                    return (id, method, shareable);
+                }).ToArray();
+                hosts = new
+                {
+                    state = "loaded", paired = list.Length,
+                    shareable = list.Where(h => h.shareable).Select(h => new { hostId = h.id, reach = h.method }).ToArray()
+                };
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException or
+                InvalidOperationException)
+            {
+                hosts = new { state = "unreadable" };
+            }
+        }
+        return new { share = choice switch { "off" => "off", null => "on (default)", _ => "on" }, port = 9444, hosts };
     }
 
     private static async Task<object> DoctorAsync(string[] args, JsonElement arguments, CancellationToken cancellation)

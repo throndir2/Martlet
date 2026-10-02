@@ -44,7 +44,7 @@ internal sealed partial class SshHostShell(string? dataDirectory) : IHostShell
     internal static void Validate(string sshTarget, IReadOnlyList<string> arguments)
     {
         if (!TargetPattern().IsMatch(sshTarget))
-            throw new InvalidOperationException("Enter the SSH target as user@computer (for example me@192.168.1.20 or me@gpu-pc).");
+            throw new InvalidOperationException("Enter the SSH target as user@computer, for example me@gpu-pc.");
         foreach (var argument in arguments)
             if (!ArgumentPattern().IsMatch(argument)) throw new InvalidOperationException($"Unexpected script argument '{argument}'.");
     }
@@ -114,7 +114,7 @@ internal static partial class PrepareScript
     private static string Load()
     {
         using var stream = typeof(PrepareScript).Assembly.GetManifestResourceStream("Martlet.Desktop.martlet-prepare") ??
-            throw new InvalidOperationException("This Martlet build does not include martlet-prepare.");
+            throw new InvalidOperationException("Martlet is missing a setup component. Reinstall Martlet.");
         using var reader = new StreamReader(stream, Encoding.UTF8);
         return reader.ReadToEnd().Replace("\r\n", "\n", StringComparison.Ordinal);
     }
@@ -124,7 +124,7 @@ internal static partial class PrepareScript
     internal static IReadOnlyList<string> Arguments(PrepareRequest request)
     {
         var items = request.Items.Distinct().ToArray();
-        if (items.Length == 0) throw new InvalidOperationException("Tick at least one thing to do.");
+        if (items.Length == 0) throw new InvalidOperationException("Select at least one item.");
         if (items.Except(Items).FirstOrDefault() is { } unknown) throw new InvalidOperationException($"Unknown item '{unknown}'.");
         var arguments = new List<string>(items);
         if (items.Contains("headless") && request.Boot is { } boot)
@@ -156,7 +156,7 @@ internal static partial class PrepareScript
         if (items.Contains("tools"))
         {
             var tools = request.Tools.Distinct().ToArray();
-            if (tools.Length == 0) throw new InvalidOperationException("Tick at least one developer tool, or untick Developer tools.");
+            if (tools.Length == 0) throw new InvalidOperationException("Select at least one developer tool, or clear Developer tools.");
             if (tools.Except(Tools).FirstOrDefault() is { } tool) throw new InvalidOperationException($"Unknown tool '{tool}'.");
             arguments.AddRange(["--tools", string.Join(',', tools)]);
         }
@@ -280,10 +280,10 @@ internal sealed record PrepareTools
 
     internal static string Label(string tool) => tool switch
     {
-        "cuda" => "CUDA toolkit (nvcc)",
-        "python" => "Python 3 with pip and venv",
-        "node" => "Node.js LTS",
-        "build" => "Build tools (gcc, make)",
+        "cuda" => "CUDA toolkit",
+        "python" => "Python 3",
+        "node" => "Node.js",
+        "build" => "Build tools",
         _ => tool
     };
 }

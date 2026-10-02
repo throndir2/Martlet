@@ -11,9 +11,9 @@ public sealed class SetupAdvisorTests
     {
         var advice = SetupAdvisor.Recommend(new() { ThisPcGpu = AdvisorGpu.Nvidia16, GamesOnThisPc = true, Character = true });
 
-        Assert.Equal("Online", Role(advice, "Conversation").Where);
-        Assert.Equal(AdvisorAvailability.Available, Role(advice, "Conversation").Availability);
-        Assert.NotNull(Role(advice, "Conversation").HowTo);
+        Assert.Equal("Online", Role(advice, "Thinking").Where);
+        Assert.Equal(AdvisorAvailability.Available, Role(advice, "Thinking").Availability);
+        Assert.NotNull(Role(advice, "Thinking").HowTo);
         Assert.Equal("This PC (CPU)", Role(advice, "Speech-to-text").Where);
         Assert.Equal("Online", Role(advice, "Voice").Where);
         Assert.Equal("Loudness lip-sync", Role(advice, "Lip-sync").Choice);
@@ -25,9 +25,9 @@ public sealed class SetupAdvisorTests
     {
         var advice = SetupAdvisor.Recommend(new() { Goal = AdvisorGoal.Fastest, ThisPcGpu = AdvisorGpu.Nvidia24, Character = true });
 
-        Assert.Equal("This PC (GPU)", Role(advice, "Conversation").Where);
-        Assert.Equal(AdvisorAvailability.Available, Role(advice, "Conversation").Availability);
-        Assert.Contains("12-14B Q4", Role(advice, "Conversation").Choice, StringComparison.Ordinal);
+        Assert.Equal("This PC (GPU)", Role(advice, "Thinking").Where);
+        Assert.Equal(AdvisorAvailability.Available, Role(advice, "Thinking").Availability);
+        Assert.Contains("medium", Role(advice, "Thinking").Choice, StringComparison.Ordinal);
         Assert.Equal("Windows installed voices", Role(advice, "Voice").Choice);
         Assert.Equal("Loudness lip-sync", Role(advice, "Lip-sync").Choice);
     }
@@ -41,7 +41,7 @@ public sealed class SetupAdvisorTests
             OtherComputers = [new(AdvisorGpu.Nvidia24), new(AdvisorGpu.Nvidia24)]
         });
 
-        Assert.Equal("Computer 2 (GPU)", Role(advice, "Conversation").Where);
+        Assert.Equal("Computer 2 (GPU)", Role(advice, "Thinking").Where);
         Assert.Equal("Computer 3 (GPU)", Role(advice, "Voice").Where);
         Assert.Equal("Computer 3 (GPU)", Role(advice, "Lip-sync").Where);
         Assert.Contains(AdvisorNextStep.Hosts, advice.NextSteps);
@@ -52,8 +52,8 @@ public sealed class SetupAdvisorTests
     {
         var advice = SetupAdvisor.Recommend(new() { Goal = AdvisorGoal.Private, ThisPcGpu = AdvisorGpu.Nvidia16, GamesOnThisPc = true });
 
-        Assert.Equal("This PC (GPU)", Role(advice, "Conversation").Where);
-        Assert.Contains(advice.Notes, n => n.Contains("frame rates", StringComparison.Ordinal));
+        Assert.Equal("This PC (GPU)", Role(advice, "Thinking").Where);
+        Assert.Contains(advice.Notes, n => n.Contains("slow games", StringComparison.Ordinal));
         Assert.DoesNotContain(advice.Roles, r => r.Where == "Online");
     }
 
@@ -66,7 +66,7 @@ public sealed class SetupAdvisorTests
             CustomVoice = true, OtherComputers = Enumerable.Repeat(new AdvisorComputer(AdvisorGpu.Nvidia32Plus), 5).ToArray()
         });
 
-        Assert.Equal("Computer 2 (GPU)", Role(advice, "Conversation").Where);
+        Assert.Equal("Computer 2 (GPU)", Role(advice, "Thinking").Where);
         Assert.Equal("Computer 3 (GPU)", Role(advice, "Speech-to-text").Where);
         Assert.Equal("Computer 3 (GPU)", Role(advice, "Voice").Where);
         Assert.Equal("Computer 4 (GPU)", Role(advice, "Lip-sync").Where);
@@ -93,8 +93,8 @@ public sealed class SetupAdvisorTests
             OtherComputers = [new(AdvisorGpu.Nvidia8, "old-laptop"), new(AdvisorGpu.Nvidia24, "gpu-box"), new(AdvisorGpu.None, "nas")]
         });
 
-        Assert.Equal("gpu-box (GPU)", Role(advice, "Conversation").Where);
-        Assert.Contains("12-14B", Role(advice, "Conversation").Choice, StringComparison.Ordinal);
+        Assert.Equal("gpu-box (GPU)", Role(advice, "Thinking").Where);
+        Assert.Contains("large", Role(advice, "Thinking").Choice, StringComparison.Ordinal);
         Assert.Equal("old-laptop (GPU)", Role(advice, "Voice").Where);
         Assert.Equal("NVIDIA, 24 GB", advice.Machines.Single(m => m.Name == "gpu-box").Hardware);
         Assert.StartsWith("Not needed", advice.Machines.Single(m => m.Name == "nas").Runs[0], StringComparison.Ordinal);
@@ -109,7 +109,7 @@ public sealed class SetupAdvisorTests
             Goal = AdvisorGoal.Fastest, OtherComputers = [new(AdvisorGpu.Nvidia16), new(AdvisorGpu.OtherVendor)]
         });
 
-        Assert.Equal("Computer 3 (GPU)", Role(advice, "Conversation").Where);
+        Assert.Equal("Computer 3 (GPU)", Role(advice, "Thinking").Where);
         Assert.Equal("Computer 2 (GPU)", Role(advice, "Voice").Where);
     }
 
@@ -121,7 +121,7 @@ public sealed class SetupAdvisorTests
             Goal = AdvisorGoal.Private, OtherComputers = [new(AdvisorGpu.Unknown)]
         });
 
-        Assert.Equal("Computer 2 (GPU)", Role(advice, "Conversation").Where);
+        Assert.Equal("Computer 2 (GPU)", Role(advice, "Thinking").Where);
         Assert.Contains(advice.Notes, n => n.Contains("not sure which GPU is in Computer 2", StringComparison.Ordinal));
     }
 

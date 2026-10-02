@@ -23,8 +23,7 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
     {
         Content = new TextBlock
         {
-            Text = "I confirm I may use this voice to generate speech with AI: it is my own voice, or its speaker gave me explicit " +
-                "permission. The words above are exactly what the recording says.",
+            Text = "I have permission to use this voice with AI, and the transcript matches the recording.",
             TextWrapping = TextWrapping.Wrap
         },
         Margin = new Thickness(0, 10, 0, 0)
@@ -52,9 +51,8 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         root.Children.Add(heading);
         root.Children.Add(new TextBlock
         {
-            Text = "F5 copies a voice from a short recording, with no training: a mono 16-bit PCM WAV of 1 to 30 seconds (5 to 12 " +
-                "seconds of clear speech works best) and the exact words it says. Martlet keeps its own copy on this PC, so you " +
-                "can move or delete the original afterwards, and sends it with each reply only to the computer that speaks.",
+            Text = "Choose a clear WAV recording (1 to 30 seconds, mono 16-bit PCM) and type its exact words. Martlet keeps a copy on this PC " +
+                "and sends it only to the computer that speaks.",
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 6)
         });
 
@@ -84,7 +82,7 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         root.Children.Add(pick);
         root.Children.Add(new Label { Content = "_Name", Target = name, Padding = new Thickness(0, 8, 0, 4) });
         root.Children.Add(name);
-        root.Children.Add(new Label { Content = "_What the recording says, word for word", Target = transcript, Padding = new Thickness(0, 8, 0, 4) });
+        root.Children.Add(new Label { Content = "_Transcript", Target = transcript, Padding = new Thickness(0, 8, 0, 4) });
         root.Children.Add(transcript);
         root.Children.Add(new Label { Content = "W_hose voice is it?", Target = basis, Padding = new Thickness(0, 8, 0, 4) });
         basis.Items.Add(new ComboBoxItem { Content = "My own voice", Tag = F5VoiceRightsBasis.OwnVoice });
