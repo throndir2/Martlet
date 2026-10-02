@@ -57,8 +57,10 @@ preinstalled .NET required by Martlet. The app bundles its selected .NET runtime
 and necessary redistributable native dependencies. No desktop inference GPU is
 required for P1. Windows 24H2 is a compatibility candidate only while its edition
 is serviced; it is close to Home/Pro end-of-servicing at the research date
-([S03](RESEARCH.md#s03)). ARM64, Windows 10, Linux/macOS desktop, and enterprise
-deployment tooling are not initial support claims.
+([S03](RESEARCH.md#s03)). The installer accepts any x64 Windows 10 2004
+(build 19041) or newer so current Windows 10 and 11 PCs can install, but ARM64,
+Windows 10, Linux/macOS desktop, and enterprise deployment tooling are not
+initial qualified support claims.
 
 **Packaging:** unsigned per-user Inno Setup EXE (code signing is not required
 for this personal project), normal install/uninstall

@@ -777,7 +777,7 @@ if ($lines.Count -ne $manifest.files.Count + 2 -or @($lines | Where-Object { $_ 
 $script:cases++
 $authoring = Get-Content -LiteralPath "$PSScriptRoot\Martlet.iss" -Raw
 foreach ($required in @('PrivilegesRequired=lowest', 'UsePreviousAppDir=no', 'ArchitecturesAllowed=x64os',
-        'MinVersion=10.0.26200', 'CloseApplications=no', 'RestartApplications=no',
+        'MinVersion=10.0.19041', 'CloseApplications=no', 'RestartApplications=no',
         'DefaultDirName={localappdata}\Programs\Martlet Internal', 'INTERNAL DEVELOPMENT ONLY',
         'AppId={{CDFDFAB4-DAF1-4A6D-8823-A55E0A12CD86}')) {
     if (-not $authoring.Contains($required)) { throw "Installer safety invariant missing: $required" }

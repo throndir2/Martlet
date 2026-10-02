@@ -4,7 +4,8 @@ The installer is not code-signed, so Windows may show an unknown-publisher
 warning. A checksum from the GitHub release page detects download corruption.
 Do not disable system security protections to install Martlet.
 
-Supported platform: Windows 11 25H2 x64 (build 26200 or newer).
+Requires 64-bit (x64) Windows 10 version 2004 (build 19041) or newer, including
+any current Windows 11. Mainly tested on Windows 11 25H2.
 This per-user installer provides a self-contained Desktop app, a Doctor CLI,
 dependency notices, a prerequisites tool, and an uninstaller. Setup asks no
 questions and installs nothing else. When Martlet first starts, its welcome

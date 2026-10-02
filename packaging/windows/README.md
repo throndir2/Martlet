@@ -303,9 +303,11 @@ internal channel. The distinct unsigned public channel uses AppId
 `%LocalAppData%\Programs\Martlet`. No registration is created by merely
 compiling either installer.
 
-Only native x64 Windows, build 26200 (Windows 11 25H2) or later, is allowed by
-authoring. That minimum is a target/preflight, **not** an assurance about future
-Windows versions or a passed OS support matrix. ARM64 emulation is excluded.
+Only native x64 Windows, build 19041 (Windows 10 2004) or later, is allowed by
+authoring. That floor matches the avatar renderer's Windows SDK target so any
+current Windows 10 or 11 installs; Windows 11 25H2 remains the main test target.
+It is **not** an assurance about future Windows versions or a passed OS support
+matrix. ARM64 emulation is excluded.
 `PrivilegesRequired=lowest` has no elevation override. Command-line `/DIR`
 overrides and previous installer locations cannot redirect the installation.
 
