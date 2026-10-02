@@ -1,17 +1,26 @@
 # Martlet Copilot instructions
 
 Read and follow [the repository agent instructions](../AGENTS.md) for every
-task. They are the canonical autonomous engineering, parallel ownership,
-prototype-speed and serial merge policy.
+task. They are the canonical autonomous engineering, MCP verification,
+parallel ownership, prototype-speed and serial merge policy.
 
 **Highest priority: work autonomously, autopilot style.** Make the decisions,
 do the work and finish it end to end without routine confirmation, plan
 approval or choice questions. Stop only for a genuine blocker or an action that
 needs explicit authorization.
 
-Martlet is developed at prototype speed: local test suites, build/package/smoke
-gates and independent review agents are not required and should not be run by
-default.
+**Verify every feature or behavior change through Martlet's own MCP server**
+on this dev machine whenever possible: build it and drive the actual feature
+with `scripts\Invoke-MartletMcp.ps1` (Doctor tools headless, `-Desktop` for UI)
+on a disposable data directory. **Always extend the MCP server in the same
+change** so new controls, status and capabilities are reachable and observable
+(automation IDs, `SafeClicks`/`SafeValues`, new tools or Doctor probes,
+`docs/MCP.md`). Report anything this machine cannot exercise as NOT RUN with
+the reason. See AGENTS.md and `docs/MCP.md`.
+
+Martlet is developed at prototype speed: apart from MCP verification, local
+test suites, build/package/smoke gates and independent review agents are not
+required and should not be run by default.
 Use at most a quick targeted build or test when it directly helps finish the
 change, and never claim an unrun check passed.
 

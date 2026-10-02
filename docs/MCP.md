@@ -163,8 +163,74 @@ desktop's own per-action confirmations, spending/data disclosures, or Stop
 controls. This opt-in can allow the LLM to approve chargeable provider calls,
 audio capture/playback, credential actions and file operations by manipulating
 the UI; only enable it for an attended, isolated test with the intended
-permissions and budget. Do not use a real profile or provide this flag to an
-untrusted MCP client. UI Automation needs an unlocked interactive desktop and
+permissions and budget (agent verification with a disposable data directory and
+no real credentials counts; see below). Do not use a real profile or provide
+this flag to an untrusted MCP client. UI Automation needs an unlocked interactive desktop and
 can fail in an unattended/headless session; use Doctor's headless tools there.
 An automation click is not proof of actual microphone, speaker or provider
 readiness.
+
+## Verifying changes with Martlet MCP
+
+Every new feature or behavior change is verified on the dev machine through
+this server before merge, whenever the machine can exercise it (the policy is
+in [AGENTS.md](../AGENTS.md#verify-changes-through-martlet-mcp)).
+`scripts\Invoke-MartletMcp.ps1` runs this checkout's `Martlet.Mcp`, sends a list
+of tool calls in order and prints one JSON array of results; it exits 1 if any
+call fails or an `until` is not met.
+
+```powershell
+# Headless: Doctor against a fresh disposable data directory
+.\scripts\Invoke-MartletMcp.ps1 -Build -Calls '[{"name":"doctor_status"}]'
+
+# UI: launch a disposable desktop, connect, navigate and poll until it shows
+.\scripts\Invoke-MartletMcp.ps1 -Build -Desktop -Calls '[
+  {"name":"ui_click","arguments":{"id":"TourSkip"}},
+  {"name":"ui_click","arguments":{"id":"NavSettings"}},
+  {"name":"ui_snapshot","until":"AutomaticUpdateCheck"}]'
+```
+
+- Each call is `{"name", "arguments"}` plus optional `waitMs` (pause after it;
+  `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
+  seconds until its result text contains that string). `-Calls` also takes a
+  path to a JSON file.
+- Doctor calls without a `dataDirectory` get the script's disposable data
+  directory, which `-Desktop` also uses, so Doctor sees the desktop's settings.
+  The directory and the desktop are removed at the end.
+- `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
+  and `-DataDirectory` for follow-up runs; stop it and delete the directory
+  when done.
+- `-AllowUiEffects` passes `--allow-ui-effects` (disposable data and no real
+  credentials only; it never authorizes spending, provider requests, credential
+  handling, audio capture/playback or data disclosure).
+- `-Build` builds `Martlet.Mcp` (and `Martlet.Desktop` with `-Desktop`) in
+  `-Configuration` (default Release); the `dotnet` on `PATH` must provide the
+  SDK pinned in `global.json`.
+
+Check the outcome the change should produce (status values, control states,
+Doctor probes), not only that calls succeeded. What the machine cannot exercise
+(locked desktop, missing hardware, credentials, paid services, another OS) is
+reported as NOT RUN with the reason.
+
+## Extending the server
+
+New features extend the server in the same change, so that MCP can reach and
+observe them:
+
+- **Controls:** give every new interactive control and status field a stable,
+  unique `AutomationProperties.AutomationId` (`ui_snapshot` lists controls by
+  ID; duplicates fail as ambiguous).
+- **Passive clicks:** add navigation, open/close, refresh and expand controls
+  that start no work to `SafeClicks` in
+  `src\Martlet.Mcp.Protocol\DesktopAutomation.cs`. Anything that sends,
+  records, plays, spends, writes files or handles credentials stays behind
+  `--allow-ui-effects`.
+- **Status:** add read-only, non-secret status fields to `SafeValues` so
+  snapshots return their text. Never expose editable fields, credentials,
+  personal data or file paths.
+- **Headless capabilities:** add a tool to `Tools` and `CallAsync` in
+  `src\Martlet.Mcp.Protocol\McpServer.cs` (strict input schema, bounded
+  arguments, ID-based results), or a Doctor probe that `doctor_run` reaches.
+  Keep tools local, read-only by default and free of network, audio and
+  credential effects unless gated like `--allow-ui-effects`.
+- **Docs:** update this page with the new tools, IDs and status fields.

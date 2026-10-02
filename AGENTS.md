@@ -76,12 +76,42 @@ cannot responsibly be resolved from the user's goal and available evidence.
 - Do not force-push, rewrite shared history, amend without permission, or delete
   branches/worktrees containing unmerged or unrelated work.
 
-## Prototype speed: no local gates
+## Verify changes through Martlet MCP
+
+Every new feature or behavior change must be shown working on the current dev
+machine through Martlet's own MCP server (`src\Martlet.Mcp`) before merge,
+whenever this machine can exercise it. This is the one required local check.
+See [Verifying changes with Martlet MCP](docs/MCP.md#verifying-changes-with-martlet-mcp).
+
+- Build what the change needs, then drive the actual feature with
+  `scripts\Invoke-MartletMcp.ps1`: Doctor tools for headless behavior and
+  `-Desktop` for UI behavior, always on a disposable data directory, never the
+  real profile. Check the expected outcome (status values, control state,
+  Doctor report), not merely that a call returned.
+- **Always extend the MCP server with the feature.** In the same change, make
+  everything new reachable and observable through MCP: stable automation IDs
+  on new controls, passive navigation in `SafeClicks`, non-secret status
+  fields in `SafeValues`, and new or extended tools (or Doctor probes) for new
+  headless capabilities, with [MCP](docs/MCP.md) updated to match. A feature
+  MCP cannot reach or observe is not finished.
+- `--allow-ui-effects` is allowed for this verification only with a disposable
+  data directory and no real credentials. It never authorizes spending, real
+  provider requests, credential handling, audio capture/playback or data
+  disclosure; stop at those steps.
+- When full verification is impossible here (locked or headless desktop,
+  missing hardware, credentials or paid services, another OS), verify
+  everything reachable up to that boundary and report the rest as **NOT RUN**
+  with the exact reason. Never claim unrun or partial verification passed.
+  Documentation-only changes need no verification.
+- State in the PR description what was verified through MCP and what was not.
+
+## Prototype speed: no other local gates
 
 Martlet is developed at prototype speed (a development pace, not a release
-label). Speed matters more than gates. Local test suites,
-build/package/smoke gates and independent review agents are **not required**
-and should not be run by default. Run at most a quick, targeted build or test
+label). Speed matters more than gates. Apart from MCP verification above,
+local test suites, build/package/smoke gates and independent review agents
+are **not required** and should not be run by default. Build what MCP
+verification needs; otherwise run at most a quick, targeted build or test
 when it directly helps you finish or debug the change. Do not add
 test-coverage, review or evidence-recording steps to satisfy process.
 
