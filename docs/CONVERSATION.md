@@ -63,9 +63,11 @@ comment; it needs a Thinking model that can see images. See
    Martlet's replies as they stream in. A refusal is shown as such and never
    spoken as ordinary speech; a stopped or failed reply keeps its text with a
    *Cut short* note. Replies are kept short by asking, not by cutting: every
-   reply to what you type or say carries a fixed instruction to answer in about
-   one to three sentences (longer only when you ask for detail) and to finish
-   its last sentence. The max reply length (Companion › Replies, 1,024 tokens
+   reply to what you type or say ends its instructions (after persona, lore and
+   memory) with a fixed instruction to answer in one or two short sentences at
+   most, with no lists, second paragraph or closing offers (longer only when
+   you explicitly ask for detail, steps or a list), and to finish its last
+   sentence. The max reply length (Companion › Replies, 1,024 tokens
    by default) is only a ceiling against a runaway answer. When a spoken reply
    outgrows the speech budget below, Martlet stops saying it aloud but still
    shows all of it, with an *Only the start was said aloud* note.
