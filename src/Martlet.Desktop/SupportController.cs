@@ -63,11 +63,10 @@ internal sealed class SupportWork
             _ = completed.Exception;
             _ = cancellation.Exception;
             var result = completed.IsCompletedSuccessfully ? completed.Result :
-                new SupportResult("Support boundary failed. No successful operation is claimed; retry owned cleanup.",
+                new SupportResult("Troubleshooting failed. Retry cleanup.",
                     SupportFailure.IoFailure);
             if (cancellation.IsFaulted)
-                result = result with { Message = result.Message + "\nCancellation callbacks failed; retry owned cleanup. " +
-                    "An already committed local export is not rolled back.", Failure = SupportFailure.IoFailure };
+                result = result with { Message = result.Message + "\nCleanup failed. Retry cleanup.", Failure = SupportFailure.IoFailure };
             stop.Dispose();
             release(result);
             return result;
@@ -93,8 +92,8 @@ internal sealed class SupportController
     private long dropped, omitted;
     private long revision;
     private DoctorReport? report;
-    private string message = "Recording OFF. No journal opened; no support files read.";
-    private string liveStatus = "Conversation: NOT RUN / no app observation. No provider or device readiness implied.";
+    private string message = "Recording is off. No troubleshooting records have been opened.";
+    private string liveStatus = "No conversation activity recorded yet.";
     private string lastExport = "";
     internal string? Location { get; }
     internal bool IsBusy { get { lock (gate) return active is not null; } }
@@ -111,17 +110,16 @@ internal sealed class SupportController
         var finding = DiagnosticCatalog.Finding(value.Code);
         lock (gate)
         {
-            liveStatus = $"Last conversation observation: {value.TimestampUtc:O}; {value.Stage}; {value.State}; " +
-                $"{value.Provenance}; freshness at observation: {value.Freshness}. This is historical stage evidence, not current readiness.\n" +
-                $"{value.Code}: {finding.Summary}\n{value.ActionId}: {DiagnosticCatalog.Remedy(value.ActionId).Guidance}";
+            liveStatus = $"Last conversation activity: {value.TimestampUtc:O}; {value.Stage}; {value.State}.\n" +
+                $"{finding.Summary}\nSuggested action: {DiagnosticCatalog.Remedy(value.ActionId).Guidance}";
             Interlocked.Increment(ref revision);
         }
     }
     internal SupportPreview? Preview { get { lock (gate) return preview; } }
     internal DoctorReport? Report { get { lock (gate) return report; } }
-    internal string Status { get { lock (gate) return $"{message}\nRecording: {(recording ? "ON (local metadata only)" : "OFF")}; " +
-        $"worker: {(active is null ? "idle" : "IO/cancellation still owned")}; cleanup pending: {cleanupPending}.\n" +
-        $"Dropped (busy/transition bound): {Dropped}; omitted (unsupported metadata): {Omitted}. No raw fallback or automatic retry.\n{lastExport}"; } }
+    internal string Status { get { lock (gate) return $"{message}\nRecording: {(recording ? "on" : "off")}. " +
+        $"Status: {(active is null ? "idle" : "working")}. Cleanup needed: {(cleanupPending ? "yes" : "no")}.\n" +
+        $"Dropped: {Dropped}; omitted: {Omitted}.\n{lastExport}"; } }
 
     internal SupportController(string? dataDirectory, SupportBackend? backend = null)
     {
@@ -150,7 +148,7 @@ internal sealed class SupportController
     internal void Omit()
     {
         Interlocked.Increment(ref omitted);
-        lock (gate) message = "Unsupported/stale metadata omitted. No raw content was recorded; inspect the shared stage status.";
+        lock (gate) message = "Some troubleshooting details were skipped. No conversation text was recorded.";
     }
 
     internal void Record(IReadOnlyList<DiagnosticEvent> events)
@@ -165,7 +163,7 @@ internal sealed class SupportController
             {
                 foreach (var value in copy) { backend.Append(journal!, value, token); acknowledged++; }
                 Interlocked.Increment(ref revision);
-                return new($"Recorded {acknowledged} metadata observations. No conversation content.");
+                return new($"Recorded {acknowledged} troubleshooting event(s). Conversation text was not included.");
             }
             finally
             {
@@ -181,8 +179,7 @@ internal sealed class SupportController
         if (journal is not null) throw new SupportException(SupportFailure.Closed);
         var owned = backend.Start(Location, token);
         lock (gate) { journal = owned; recording = !retire; Interlocked.Increment(ref revision); }
-        return new($"Local recording started. Recovery: {owned.Recovery.TruncatedTailBytes} truncated tail bytes; " +
-            $"{owned.Recovery.AbandonedReservations} abandoned reservations. No earlier collection is implied.");
+        return new("Troubleshooting recording started.");
     });
 
     internal SupportWork? StopRecording()
@@ -196,7 +193,7 @@ internal sealed class SupportController
         {
             journal?.Close();
             lock (gate) journal = null;
-            return new("Recording stopped; the journal owner closed. Existing metadata remains under the stated retention policy.");
+            return new("Troubleshooting recording stopped. Existing records stay on this PC.");
         });
     }
 
@@ -222,9 +219,9 @@ internal sealed class SupportController
                 finally { CryptographicOperations.ZeroMemory(bytes); }
             }
             lock (gate) preview = new(frozen.Id, frozen.Digest, frozen.FrozenAtUtc, frozen.SelectedRange, frozen.Files,
-                contents.AsReadOnly(), "Shared local Doctor report" +
-                (includeLogs ? "; selected journal receipt range (mixed provenance retained)" : "; NO log records selected/collected for this snapshot"));
-            return new("Exact snapshot frozen. Review ALL five files. No export or approval has occurred.");
+                contents.AsReadOnly(), "Status report" +
+                (includeLogs ? " and selected troubleshooting records" : " only"));
+            return new("Preview ready. Review the files before exporting.");
         });
     }
 
@@ -235,11 +232,10 @@ internal sealed class SupportController
         // The original owned token reaches both irreversible engine boundaries, not a linked substitute.
         var consent = snapshot.Approve(id, digest, destination, token);
         var receipt = backend.Export(snapshot, consent, destination, token);
-        return new($"Exported locally to {Path.GetFullPath(destination)}\nSnapshot {receipt.SnapshotId}; SHA-256 {receipt.Digest}; " +
-            $"{receipt.ZipBytes} archive bytes. NOT sent or received by a maintainer. No support contact/upload channel is configured.", Exported: true);
+        return new($"Exported locally to {Path.GetFullPath(destination)}\n{receipt.ZipBytes} bytes. Nothing was uploaded.", Exported: true);
     });
 
-    internal SupportWork? ClosePreview() => Begin(_ => { ClearSnapshot(); return new("Preview cleared. No export approval retained."); });
+    internal SupportWork? ClosePreview() => Begin(_ => { ClearSnapshot(); return new("Preview cleared."); });
     internal void CancelAndClose()
     {
         SupportWork? work;
@@ -249,7 +245,7 @@ internal sealed class SupportController
             retire = true;
             preview = null;
             work = active;
-            message = "Cancellation/close requested. IO and callbacks must finish; no cleanup or rollback is assumed.";
+            message = "Stopping troubleshooting. Cleanup may take a moment.";
             if (work is null) StartRetirement();
         }
         work?.Cancel();
@@ -257,7 +253,7 @@ internal sealed class SupportController
     internal SupportWork? RetryCleanup() => Begin(_ =>
     {
         CloseResources();
-        return new("Owned cleanup finished. Recording remains OFF; explicitly start a new action.");
+        return new("Cleanup finished. Recording is off.");
     }, cleanup: true);
 
     private void ClearSnapshot()
@@ -274,7 +270,7 @@ internal sealed class SupportController
     private void StartRetirement()
     {
         retire = false;
-        _ = Begin(_ => { CloseResources(); return new("Troubleshooting closed; owned IO and cleanup finished. Recording OFF."); }, cleanup: true);
+        _ = Begin(_ => { CloseResources(); return new("Troubleshooting closed. Recording is off."); }, cleanup: true);
     }
     private SupportWork? Begin(Func<CancellationToken, SupportResult> action, bool requireRecording = false, bool cleanup = false)
     {
@@ -282,7 +278,7 @@ internal sealed class SupportController
         {
             if (active is not null || cleanupPending && !cleanup || requireRecording && !recording)
             {
-                if (!requireRecording) message = "Support is busy or awaiting cleanup. Nothing queued. Wait or retry owned cleanup.";
+                if (!requireRecording) message = "Troubleshooting is busy or waiting for cleanup. Wait or retry cleanup.";
                 return null;
             }
             var work = new SupportWork();

@@ -69,8 +69,8 @@ public partial class AvatarWindow : ThemedWindow
         if (captions is null || showingSpeechDisplay) return;
         var saved = captions.Update(new(SpeechBubbleChoice.IsChecked == true, SubtitleChoice.IsChecked == true));
         SpeechDisplayStatus.Text = saved
-            ? "Saved. Changes apply from Martlet's next sentence."
-            : "Applied for this session, but speech-display.json could not be saved. Check access to your data directory.";
+            ? "Saved. Changes apply the next time Martlet speaks."
+            : "Changes applied for now, but couldn't be saved. Check your data folder.";
     }
     private async void Reload_Click(object sender, RoutedEventArgs e) => await ActionAsync(ReloadAsync);
     private void Window_Closed(object? sender, EventArgs e)
@@ -108,7 +108,7 @@ public partial class AvatarWindow : ThemedWindow
         if (loaded.Settings is null)
         {
             profileId = Guid.Empty;
-            ResultText.Text = "Show character works now. Complete Setup once to save character choices.";
+            ResultText.Text = "You can show the character now. Finish Setup once to save choices.";
             return;
         }
         profileId = loaded.Settings.Profile.Id;
@@ -145,7 +145,7 @@ public partial class AvatarWindow : ThemedWindow
         InspectPermission.IsChecked = AnalysisPermission.IsChecked = false;
         ResultText.Text = BundledLive2D.Available
             ? "Choices loaded. Press Show character to open the character on your desktop."
-            : "Choices loaded. This build does not include the bundled Live2D runtime; choose a VRM model or an SDK override.";
+            : "Choices loaded. Choose your own model or select a Live2D SDK folder.";
     }
 
     private AvatarProfile Selected() => new()
@@ -167,8 +167,8 @@ public partial class AvatarWindow : ThemedWindow
     private AvatarRemoteHost? remoteHost;
 
     private void ShowRemoteHost() => HostStatusText.Text = remoteHost is { } host
-        ? $"Lip-sync is handed to Martlet host {host.HostId} at {host.Origin} (Audio2Face), with this PC's own service and voice loudness as fallbacks. Switch it from the Lip-sync row on the Devices page."
-        : "No Martlet host handles lip-sync. Pair one, then hand it lip-sync on the Devices page.";
+        ? $"Lip-sync can use host {host.HostId}. Change this on the Devices page."
+        : "No host is selected for lip-sync. Set one up from the Devices page.";
 
     private async void Hosts_Click(object sender, RoutedEventArgs e)
     {
@@ -188,7 +188,7 @@ public partial class AvatarWindow : ThemedWindow
 
     private async void Show_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
     {
-        if (operations.IsRunning) throw new InvalidOperationException("Finish the current voice/setup action before changing the character.");
+        if (operations.IsRunning) throw new InvalidOperationException("Wait for the current setup or voice action to finish before changing the character.");
         var selected = Selected() with { ResourceRevision = null };
         if (profileId == Guid.Empty) selected = selected with { ProfileId = Guid.NewGuid() };
         else revision = await profiles.SaveAsync(selected, revision, lifetime.Token);
@@ -206,15 +206,15 @@ public partial class AvatarWindow : ThemedWindow
 
     private async void Inspect_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
     {
-        if (operations.IsRunning) throw new InvalidOperationException("Finish the current voice/setup action before changing avatar resources.");
-        if (InspectPermission.IsChecked != true) throw new InvalidOperationException("Explicit local rendering permission is required.");
+        if (operations.IsRunning) throw new InvalidOperationException("Wait for the current setup or voice action to finish before changing the character.");
+        if (InspectPermission.IsChecked != true) throw new InvalidOperationException("Allow local model inspection first.");
         await controller.InspectAsync(Selected(), lifetime.Token);
         TargetChoice.ItemsSource = controller.Capabilities!.Parameters;
         TargetChoice.SelectedIndex = 0;
         CapabilityText.Text = string.Join(Environment.NewLine, controller.Capabilities.Parameters.Select(p =>
             $"{p.Id}: {p.Minimum} .. {p.Maximum}; neutral {p.Neutral}; {string.Join(", ", p.Aspects)}"));
         InspectPermission.IsChecked = false;
-        ResultText.Text = "Actual model controls inspected. No A2F inference performed.";
+        ResultText.Text = "Model controls inspected.";
     });
 
     private void AddMapping_Click(object sender, RoutedEventArgs e)
@@ -222,11 +222,11 @@ public partial class AvatarWindow : ThemedWindow
         try
         {
             if (TargetChoice.SelectedItem is not RendererParameter target || SourceChoice.SelectedItem is not string source)
-                throw new InvalidOperationException("Inspect a model and select an actual target first.");
+                throw new InvalidOperationException("Inspect a model and choose a model control first.");
             var channel = new ChannelReference { Blendshape = source };
             var aspect = AvatarChannels.Aspect(channel);
             if (!target.Aspects.Contains(aspect.ToString(), StringComparer.Ordinal))
-                throw new InvalidOperationException("This channel and authored target belong to different aspects.");
+                throw new InvalidOperationException("This source channel doesn't match the selected model control.");
             var prior = ReadConfiguration();
             var mappings = prior.MappingProfiles.SelectMany(p => p.Mappings)
                 .Where(m => m.TargetParameterId != target.Id).Append(new ChannelMapping
@@ -245,7 +245,7 @@ public partial class AvatarWindow : ThemedWindow
                 Assignments = aspects.Select(a => new AspectAssignment { Aspect = a, SourceId = AvatarController.SourceId,
                     MappingId = "user-mapping", AcceptReduced = ReducedChoice.IsChecked == true }).ToArray()
             });
-            ResultText.Text = "Mapping staged; all other aspects explicitly omitted. Review JSON and save before activation.";
+            ResultText.Text = "Mapping added. Review and save before activating.";
         }
         catch (Exception error) when (error is ContractException or InvalidOperationException) { ResultText.Text = error.Message; }
     }
@@ -272,7 +272,7 @@ public partial class AvatarWindow : ThemedWindow
                 lines.Add($"{assignment.Aspect}: {result.Compatibility}; {string.Join(" ", result.Issues.Select(i => i.Summary))}");
             }
             ResultText.Text = string.Join(Environment.NewLine, lines) +
-                "\nPreview uses allowed A2F schema, not verified channels. The actual backend subset must satisfy every mapping at runtime.";
+                "\nValidation checks the saved mapping; final lip-sync depends on what Audio2Face returns.";
         }
         catch (Exception error) when (error is ContractException or InvalidOperationException or ArgumentException)
         { ResultText.Text = error.Message; }
@@ -280,9 +280,9 @@ public partial class AvatarWindow : ThemedWindow
 
     private async void Save_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
     {
-        if (controller.IsActive) throw new InvalidOperationException("STOP avatar before saving revised configuration.");
+        if (controller.IsActive) throw new InvalidOperationException("Hide the character before saving new settings.");
         revision = await profiles.SaveAsync(Selected(), revision, lifetime.Token);
-        ResultText.Text = "Avatar document atomically saved. No activation permission persisted.";
+        ResultText.Text = "Avatar settings saved.";
     });
 
     private async void Export_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
@@ -292,19 +292,19 @@ public partial class AvatarWindow : ThemedWindow
         var bytes = await LocalAvatarFiles.ReadBoundedAsync(profiles.FilePath, AvatarProfile.MaximumBytes, lifetime.Token);
         await using var destination = new FileStream(dialog.FileName, FileMode.CreateNew, FileAccess.Write, FileShare.None);
         await destination.WriteAsync(bytes, lifetime.Token);
-        ResultText.Text = "Avatar document exported locally; no assets, credentials, audio or activation permission included.";
+        ResultText.Text = "Avatar settings exported. Model files and activation permission aren't included.";
     });
 
     private async void Activate_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
     {
         var currentSettings = await settings.LoadAsync(lifetime.Token);
         if (currentSettings.Settings?.Profile.Id != profileId)
-            throw new InvalidOperationException("Application profile changed. Reload and inspect before activation.");
+            throw new InvalidOperationException("Your profile changed. Reload and inspect again.");
         var selected = Selected();
         var saved = await profiles.LoadAsync(profileId, lifetime.Token);
         if (saved.Profile is null || saved.Revision != revision ||
             !ContractJson.Write(saved.Profile, AvatarProfile.MaximumBytes).SequenceEqual(ContractJson.Write(selected, AvatarProfile.MaximumBytes)))
-            throw new InvalidOperationException("Save these exact reviewed choices before activation.");
+            throw new InvalidOperationException("Save these reviewed choices before activation.");
         lifetime.Token.ThrowIfCancellationRequested();
         await controller.ActivateAsync(selected, AnalysisPermission.IsChecked == true, CancellationToken.None);
         AnalysisPermission.IsChecked = false;
@@ -312,17 +312,17 @@ public partial class AvatarWindow : ThemedWindow
 
     private async void Restore_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
     {
-        if (operations.IsRunning) throw new InvalidOperationException("Finish current voice/setup work before restoring avatar choices.");
+        if (operations.IsRunning) throw new InvalidOperationException("Wait for the current setup or voice action to finish before restoring avatar settings.");
         var dialog = new OpenFileDialog { Filter = "Avatar JSON|*.json", CheckFileExists = true };
         if (dialog.ShowDialog(this) != true) return;
         var bytes = await LocalAvatarFiles.ReadBoundedAsync(dialog.FileName, AvatarProfile.MaximumBytes, lifetime.Token);
         var candidate = ContractJson.Read<AvatarProfile>(bytes, AvatarProfile.MaximumBytes);
-        if (candidate.ProfileId != profileId) throw new InvalidOperationException("This avatar document belongs to a different application profile.");
+        if (candidate.ProfileId != profileId) throw new InvalidOperationException("These avatar settings belong to a different profile.");
         var prior = File.Exists(profiles.FilePath)
             ? await LocalAvatarFiles.ReadBoundedAsync(profiles.FilePath, AvatarProfile.MaximumBytes, lifetime.Token) : null;
         if (!ConfirmationDialog.Confirm(this,
-            "Restore these avatar-only choices? Existing bytes are retained as a local backup. Activation stays OFF and resources need fresh inspection.",
-            "Explicit avatar recovery")) return;
+            "Restore these avatar settings? Martlet keeps a local backup. Inspect and activate lip-sync again afterward.",
+            "Restore avatar settings")) return;
         await controller.StopAsync();
         await profiles.RestoreAsync(candidate, prior is null ? null : Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(prior)), lifetime.Token);
         await ReloadAsync();
@@ -346,7 +346,7 @@ public partial class AvatarWindow : ThemedWindow
         if (busy && !allowBusy) { ResultText.Text = "Another avatar operation is still finishing."; return; }
         busy = true;
         try { await action(); }
-        catch (OperationCanceledException) { ResultText.Text = "Avatar action canceled; no completed cleanup or rollback assumed."; }
+        catch (OperationCanceledException) { ResultText.Text = "Avatar action canceled. Reload if the window looks out of date."; }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ContractException or
             InvalidOperationException or ArgumentException or JsonException or TimeoutException or System.ComponentModel.Win32Exception)
         { ResultText.Text = error.Message; }

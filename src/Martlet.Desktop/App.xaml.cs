@@ -52,7 +52,7 @@ public partial class App : Application
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException or InvalidOperationException)
         {
-            error = "Cannot open the data directory. Launch without arguments, or use --data-directory with an accessible absolute path. Do not run as administrator.";
+            error = "Martlet can't open its data folder. Launch normally, or choose an accessible folder.";
         }
         var crashedLastTime = ErrorLog.Initialize(ErrorLog.DefaultDirectory(store?.DataDirectory), "desktop");
         CrashedLastTime = crashedLastTime && !afterUpdate;
@@ -81,8 +81,8 @@ public partial class App : Application
         catch (Exception ex)
         {
             ErrorLog.Error("Martlet failed to start", ex);
-            MessageBox.Show($"Martlet could not start.\n\n{ex.GetType().Name}: {ex.Message}\n\nDetails were saved to:\n" +
-                $"{ErrorLog.CurrentFile ?? "(log unavailable)"}", "Martlet - startup failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show($"Martlet couldn't start.\n\n{ex.Message}\n\nDetails were saved to:\n" +
+                $"{ErrorLog.CurrentFile ?? "(log unavailable)"}", "Martlet couldn't start", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(1);
             return;
         }

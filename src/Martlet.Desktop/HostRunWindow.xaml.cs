@@ -61,7 +61,7 @@ public partial class HostRunWindow : ThemedWindow
         {
             var summary = await job(this);
             Status(summary);
-            Append("Done. " + summary);
+            Append("Finished. " + summary);
             ErrorLog.Info($"Host run finished: {title}: {summary}");
             return summary;
         }
@@ -137,7 +137,7 @@ internal static class HostActions
         HostSetupMethod.SshDocker or HostSetupMethod.SshNative =>
             RunOverSshAsync(owner, dataDirectory, target, pinnedHostKey, action, answers, recommended),
         HostSetupMethod.ThisPcDocker => RunOnThisPcAsync(owner, target, action, answers, recommended),
-        _ => throw new InvalidOperationException("Martlet does not know how to reach this host; run the command on it instead.")
+        _ => throw new InvalidOperationException("Martlet can't reach this host from here. Run the command on the host instead.")
     };
 
     private static (string Engine, string? Role, bool Add) Parse(HostAction action)
@@ -152,7 +152,14 @@ internal static class HostActions
     {
         var (engine, role, add) = Parse(action);
         var ssh = HostShellTarget.Parse(target.SshTarget);
-        var title = role is null ? $"{ssh}: martlet-host {engine}" : $"{(add ? "Add" : "Remove")} {role} on {ssh}";
+        var title = role is null ? action.Verb switch
+        {
+            HostVerb.Status => $"Check {ssh}",
+            HostVerb.Update => $"Update {ssh}",
+            HostVerb.Setup => $"Set up {ssh}",
+            HostVerb.Pair => $"Pair with {ssh}",
+            _ => $"Work on {ssh}"
+        } : $"{(add ? "Add" : "Remove")} {role} on {ssh}";
         return HostRunWindow.RunAsync(owner, title, async run =>
         {
             var remote = new HostRemote(new HostShell(dataDirectory, run.Prompts));
@@ -162,22 +169,22 @@ internal static class HostActions
             var input = answers;
             if (role is not null && add && input is null)
             {
-                run.Status($"Reading what {role} needs...");
+                run.Status($"Checking what {role} needs...");
                 var inputs = await remote.DescribeAsync(target, role, sudo, hostKey, run.Output, run.Token);
                 input = HostInputDialog.ForRole(run, ssh.ToString(), role, inputs, recommended) ?? throw new OperationCanceledException();
             }
             else if (role is not null && !add && !ConfirmationDialog.Confirm(run,
-                         $"Stop {role} on {ssh} and remove it from the gateway? Its data volumes are kept, so adding it again is quick.",
+                         $"Remove {role} from {ssh}? Its saved data stays so you can add it again later.",
                          "Remove role"))
                 throw new OperationCanceledException();
-            run.Status(role is null ? $"Running {engine} on {ssh}..." :
-                add ? $"Installing {role} on {ssh}. Large downloads can take a while; this PC picks the role up when it runs."
+            run.Status(role is null ? $"Working on {ssh}..." :
+                add ? $"{role} is installing on {ssh}. This can take a while..."
                     : $"Removing {role} from {ssh}...");
             var result = await remote.RunAsync(target, engine, action == HostAction.Setup, sudo, input, hostKey, run.Output, run.Token);
             if (result.ExitCode != 0)
-                throw new InvalidOperationException($"martlet-host {engine} stopped on {ssh} (exit {result.ExitCode}). The output shows why.");
-            return role is null ? $"Finished {engine} on {ssh}."
-                : add ? $"{role} is running on {ssh} and published through its gateway. Check the host to see it here."
+                throw new InvalidOperationException($"The host action did not finish on {ssh} (exit {result.ExitCode}). Check the output for details.");
+            return role is null ? $"Finished on {ssh}."
+                : add ? $"{role} is ready on {ssh}."
                 : $"{role} was removed from {ssh}.";
         });
     }
@@ -188,46 +195,46 @@ internal static class HostActions
         var (engine, role, add) = Parse(action);
         var title = action.Verb switch
         {
-            HostVerb.Add => $"Add {role} to this PC's host service",
-            HostVerb.Remove => $"Remove {role} from this PC's host service",
-            HostVerb.Setup => "Set up this PC's host service",
-            HostVerb.Update => "Update this PC's host service",
-            HostVerb.Status => "This PC's host service",
-            _ => $"This PC's host service: {engine}"
+            HostVerb.Add => $"Add {role} to this PC",
+            HostVerb.Remove => $"Remove {role} from this PC",
+            HostVerb.Setup => "Set up this PC as a host",
+            HostVerb.Update => "Update this PC's host",
+            HostVerb.Status => "Check this PC's host",
+            _ => "Work on this PC's host"
         };
-        if (action.Verb == HostVerb.Pair) throw new InvalidOperationException("Pair a desktop from Martlet's pairing step instead.");
+        if (action.Verb == HostVerb.Pair) throw new InvalidOperationException("Use the Pair step to pair a desktop.");
         return HostRunWindow.RunAsync(owner, title, async run =>
         {
             var input = answers;
             if (role is not null && !add && !ConfirmationDialog.Confirm(run,
-                    $"Stop {role} in this PC's host service and remove it from the gateway? Its data volumes are kept, so adding it again is quick.",
+                    $"Remove {role} from this PC? Its saved data stays so you can add it again later.",
                     "Remove role"))
                 throw new OperationCanceledException();
             await HostLocal.EnsureDockerAsync(run, action.Verb == HostVerb.Setup ? ContinueSetupKind.HostService : ContinueSetupKind.Docker);
             await HostLocal.EnsureImageAsync(target, run.Status, run.Output, run.Token);
             if (role is not null && add && input is null)
             {
-                run.Status($"Reading what {role} needs...");
+                run.Status($"Checking what {role} needs...");
                 var inputs = await HostLocal.DescribeAsync(target, role, run.Output, run.Token);
                 input = HostInputDialog.ForRole(run, "this PC", role, inputs, recommended, local: true) ?? throw new OperationCanceledException();
             }
             run.Status(action.Verb switch
             {
-                HostVerb.Add => $"Installing {role} on this PC. Large downloads can take a while; Martlet picks the role up when it runs.",
-                HostVerb.Remove => $"Removing {role} from this PC's host service...",
-                HostVerb.Setup => "Setting up the host service on this PC...",
-                HostVerb.Update => "Updating this PC's host service. Its pairings and roles stay...",
-                _ => $"Running {engine} on this PC..."
+                HostVerb.Add => $"{role} is installing on this PC. This can take a while...",
+                HostVerb.Remove => $"Removing {role} from this PC...",
+                HostVerb.Setup => "Setting up this PC as a host...",
+                HostVerb.Update => "Updating this PC's host. Pairings and roles stay...",
+                _ => "Working on this PC..."
             });
             var exit = await HostLocal.EngineAsync(target, engine.Split(' '), run.Output, run.Token, answers: input);
-            if (exit != 0) throw new InvalidOperationException($"martlet-host {engine} stopped on this PC (exit {exit}). The output shows why.");
+            if (exit != 0) throw new InvalidOperationException($"The host action did not finish on this PC (exit {exit}). Check the output for details.");
             return action.Verb switch
             {
-                HostVerb.Add => $"{role} is running in this PC's host service.",
-                HostVerb.Remove => $"{role} was removed from this PC's host service.",
-                HostVerb.Setup => "This PC's host service is set up. Pair your main PC next.",
-                HostVerb.Update => "This PC's host service is up to date.",
-                _ => $"Finished {engine} on this PC."
+                HostVerb.Add => $"{role} is ready on this PC.",
+                HostVerb.Remove => $"{role} was removed from this PC.",
+                HostVerb.Setup => "This PC is set up as a host. Pair your main PC next.",
+                HostVerb.Update => "This PC's host is up to date.",
+                _ => "Finished on this PC."
             };
         });
     }
@@ -236,32 +243,32 @@ internal static class HostActions
     /// code (copied to the clipboard, never logged) and waits up to five minutes for that desktop to use it.</summary>
     internal static Task<string?> PairOtherDesktopAsync(Window owner, HostSetupTarget target)
     {
-        var dialog = new HostInputDialog("Pair your main PC", "Pair your main PC with this PC's host service",
-            "On your main PC open Devices > Add a computer > Pair and copy its device ID. Martlet then shows a one-use code here " +
-            "(also copied to the clipboard) to paste on the main PC within five minutes.", "_Show the code");
-        dialog.AddText("device", "Main PC's device ID", "", "It looks like desktop-main-pc.");
+        var dialog = new HostInputDialog("Pair your main PC", "Pair your main PC with this host",
+            "On your main PC, open Devices > Add a computer > Pair and copy its device ID. Martlet will show a one-use code to paste there within five minutes.",
+            "_Show code");
+        dialog.AddText("device", "Main PC's device ID", "", "For example, desktop-main-pc.");
         dialog.AddText("name", "A name for it", "Main PC");
         if (dialog.Ask(owner) is not { } values) return Task.FromResult<string?>(null);
         return HostRunWindow.RunAsync(owner, "Pair your main PC", async run =>
         {
             await HostLocal.EnsureDockerAsync(run, ContinueSetupKind.Docker);
             await HostLocal.EnsureImageAsync(target, run.Status, run.Output, run.Token);
-            run.Status("Asking this PC's host service for a one-use pairing code...");
+            run.Status("Getting a pairing code...");
             var shown = false;
             var exit = await HostLocal.PairOtherAsync(target, values["device"], values["name"], code => run.Dispatcher.Invoke(() =>
             {
                 shown = true;
                 try { Clipboard.SetText(code); }
                 catch (System.Runtime.InteropServices.ExternalException) { }
-                run.Reveal("Pairing code (copied to the clipboard): " + code);
-                run.Status("Paste the code on your main PC (Devices > Add a computer > Pair) within five minutes. Waiting for it...");
+                run.Reveal("Pairing code copied to the clipboard: " + code);
+                run.Status("Paste the code on your main PC within five minutes. Waiting...");
             }), new LineSink(line =>
             {
                 if (!line.Contains("martlet-pair-v1.", StringComparison.Ordinal)) run.Output.Report(line);
             }), run.Token);
-            if (!shown) throw new InvalidOperationException($"This PC's host service did not show a pairing code (exit {exit}). The output shows why.");
-            if (exit != 0) throw new InvalidOperationException($"Pairing did not complete (exit {exit}). Show the code again and paste it within five minutes.");
-            return $"{values["name"]} is paired with this PC's host service.";
+            if (!shown) throw new InvalidOperationException($"Couldn't get a pairing code (exit {exit}). Check the output for details.");
+            if (exit != 0) throw new InvalidOperationException($"Pairing didn't finish (exit {exit}). Show a new code and paste it within five minutes.");
+            return $"{values["name"]} is paired with this host.";
         });
     }
 }

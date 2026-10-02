@@ -113,7 +113,7 @@ public sealed class AvatarHostingTests
         {
             Assert.False(controller.Observer.IsEnabled);
             Assert.False(controller.IsActive);
-            Assert.Contains("OFF", controller.Status);
+            Assert.Contains("Character hidden", controller.Status);
         }
         Assert.Equal(0, starts);
     }

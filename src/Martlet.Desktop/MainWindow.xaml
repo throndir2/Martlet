@@ -25,8 +25,6 @@
                                    AutomationProperties.AutomationId="DeviceRoleSummary"/>
                     </StackPanel>
                 </StackPanel>
-                <TextBlock DockPanel.Dock="Bottom" x:Name="RailHint" FontSize="12" Style="{DynamicResource Muted}" Margin="8,12,4,0"
-                           Text="Nothing listens or connects on launch. You approve each action."/>
                 <StackPanel AutomationProperties.Name="Sections">
                     <RadioButton x:Name="NavHome" GroupName="Nav" Style="{DynamicResource NavItem}" Tag="&#xE80F;" Content="Home"
                                  IsChecked="True" Checked="Nav_Checked" AutomationProperties.AutomationId="NavHome"/>
@@ -66,20 +64,20 @@
                                                 AutomationProperties.AutomationId="PrimaryStageAction"/>
                                         <Button x:Name="ConversationButton" Content="Start _talking" Click="Conversation_Click" Padding="20,12" FontSize="15" Margin="0,0,12,8"
                                                 AutomationProperties.AutomationId="OpenLiveConversation"
-                                                AutomationProperties.Name="Start talking: open the conversation, which listens and looks as chosen in Companion"/>
+                                                AutomationProperties.Name="Start talking"/>
                                         <Button x:Name="CharacterButton" Content="Show _character" Click="Character_Click" Padding="16,12" Margin="0,0,12,8"
                                                 AutomationProperties.AutomationId="ToggleCharacter" AutomationProperties.Name="Show or hide the animated desktop character"/>
                                         <Button x:Name="ResetCharacterButton" Content="_Reset character position" Click="ResetCharacter_Click" Padding="16,12" Margin="0,0,12,8"
-                                                Visibility="Collapsed" ToolTip="Bring the character back to the lower-right of your main screen at its default size and zoom"
-                                                AutomationProperties.AutomationId="ResetCharacterPosition" AutomationProperties.Name="Reset the desktop character's position, size and zoom"/>
+                                                Visibility="Collapsed" ToolTip="Move the character back to its default position"
+                                                AutomationProperties.AutomationId="ResetCharacterPosition" AutomationProperties.Name="Reset character position"/>
                                         <Button x:Name="ResetCharacterZoomButton" Content="Reset character _zoom" Click="ResetCharacterZoom_Click" Padding="16,12" Margin="0,0,12,8"
-                                                Visibility="Collapsed" ToolTip="Return the character to its default size and zoom without moving it. Mouse wheel over the character zooms; right-click it for more zoom options."
-                                                AutomationProperties.AutomationId="ResetCharacterZoom" AutomationProperties.Name="Reset the desktop character's size and zoom"/>
+                                                Visibility="Collapsed" ToolTip="Return the character to its default zoom"
+                                                AutomationProperties.AutomationId="ResetCharacterZoom" AutomationProperties.Name="Reset character zoom"/>
                                     </WrapPanel>
                                     <WrapPanel Margin="0,4,0,0">
-                                        <Button x:Name="AdvisorButton" Style="{DynamicResource LinkButton}" Content="Not sure what you need? Get a recommendation"
+                                        <Button x:Name="AdvisorButton" Style="{DynamicResource LinkButton}" Content="Get a setup recommendation"
                                                 Click="Advisor_Click" AutomationProperties.AutomationId="OpenSetupAdvisor"
-                                                AutomationProperties.Name="Which setup is right for me? Get a recommended setup; saves and contacts nothing"/>
+                                                AutomationProperties.Name="Get a setup recommendation"/>
                                     </WrapPanel>
                                 </StackPanel>
                                 <Viewbox Grid.Column="1" Width="190" Height="190" Margin="20,0,0,0" IsHitTestVisible="False" Focusable="False"
@@ -107,7 +105,7 @@
                                 <DockPanel Margin="0,0,0,10">
                                     <Button x:Name="HealthRecheckButton" DockPanel.Dock="Right" Content="Check _again" Click="HealthRecheck_Click"
                                             VerticalAlignment="Center" Margin="12,0,0,0" AutomationProperties.AutomationId="HealthRecheck"
-                                            AutomationProperties.Name="Check again: re-reads settings, devices and this PC's own services; contacts no other computer"/>
+                                            AutomationProperties.Name="Check again"/>
                                     <StackPanel>
                                         <TextBlock x:Name="HealthTitle" Text="Needs attention" Style="{DynamicResource SectionHeading}" Margin="0,0,0,2"
                                                    AutomationProperties.AutomationId="HealthTitle"/>
@@ -124,7 +122,7 @@
                             <StackPanel>
                                 <TextBlock Text="Health" Style="{DynamicResource SectionHeading}" Margin="0,0,0,2"/>
                                 <TextBlock Style="{DynamicResource Muted}" Margin="0,0,0,10" TextWrapping="Wrap"
-                                           Text="Every part Martlet checks, from what this PC already knows. Select one to see or change it."/>
+                                           Text="Select a part of Martlet to see or change it."/>
                                 <UniformGrid x:Name="HealthChecks" Columns="3" SizeChanged="HealthChecks_SizeChanged"
                                              AutomationProperties.Name="Health checks" AutomationProperties.AutomationId="HealthChecks"/>
                             </StackPanel>
@@ -139,7 +137,7 @@
                                     <TextBlock Style="{DynamicResource Eyebrow}" Text="HOST SERVICE"/>
                                     <TextBlock Style="{DynamicResource HeroTitle}" Margin="0,6,0,0" Text="This PC is a Martlet host"/>
                                     <TextBlock Style="{DynamicResource Muted}" FontSize="15" Margin="0,8,0,14" MaxWidth="560" HorizontalAlignment="Left"
-                                               Text="It lends its graphics card to your main Martlet PC, for example for lip-sync. Desktops on your home network connect to:"/>
+                                               Text="Use this PC for heavier Martlet tasks from your main PC. Connect to:"/>
                                     <Border Style="{DynamicResource Chip}" HorizontalAlignment="Left" Padding="12,6" Margin="0,0,0,18">
                                         <TextBlock x:Name="HostAddressText" FontFamily="Consolas" FontSize="15" TextWrapping="NoWrap"
                                                    AutomationProperties.AutomationId="HostServiceAddress"/>
@@ -168,16 +166,16 @@
                             <StackPanel>
                                 <TextBlock Text="Get this host running" Style="{DynamicResource SectionHeading}"/>
                                 <TextBlock Style="{DynamicResource Muted}" Margin="0,0,0,10"
-                                           Text="Do these once, in order. Martlet runs each step on this PC and shows its progress; nothing to type."/>
+                                           Text="Complete these steps once."/>
                                 <StackPanel x:Name="HostStepsPanel" AutomationProperties.Name="Host setup steps"/>
                             </StackPanel>
                         </Border>
                         <Border Style="{DynamicResource CardStyle}">
                             <StackPanel>
                                 <TextBlock Text="Good to know" Style="{DynamicResource SectionHeading}"/>
-                                <TextBlock Style="{DynamicResource Muted}" Margin="0,0,0,4" Text="&#x2022; The host listens only on your private network, on TCP 9443. Each desktop is paired once with a one-use code."/>
-                                <TextBlock Style="{DynamicResource Muted}" Margin="0,0,0,4" Text="&#x2022; Only the main PC's generated voice is sent here for lip-sync. No microphone audio, keys or files."/>
-                                <TextBlock Style="{DynamicResource Muted}" Margin="0,0,0,10" Text="&#x2022; GPU roles need an NVIDIA graphics card with a current driver and Docker Desktop's WSL 2 GPU support."/>
+                                <TextBlock Style="{DynamicResource Muted}" Margin="0,0,0,4" Text="&#x2022; Paired computers connect only on your private network."/>
+                                <TextBlock Style="{DynamicResource Muted}" Margin="0,0,0,4" Text="&#x2022; Lip-sync may send generated voice here. Microphone audio and files stay on your main PC."/>
+                                <TextBlock Style="{DynamicResource Muted}" Margin="0,0,0,10" Text="&#x2022; GPU tasks need an NVIDIA graphics card, current drivers and Docker Desktop."/>
                                 <WrapPanel>
                                     <Button Style="{DynamicResource LinkButton}" Content="Use this PC as a companion instead" Click="UseCompanion_Click"
                                             AutomationProperties.AutomationId="SwitchToCompanion"/>
@@ -201,7 +199,7 @@
                         <StackPanel>
                             <TextBlock Text="Your devices" Style="{DynamicResource PageTitle}"/>
                             <TextBlock Style="{DynamicResource Muted}" Margin="0,4,12,0"
-                                       Text="Every computer and service Martlet uses. Select one on the map to see what it does and change it."/>
+                                       Text="Select a computer or service to see details."/>
                         </StackPanel>
                     </DockPanel>
                     <Border x:Name="MapHost" CornerRadius="24" Background="{DynamicResource SoftBrush}" BorderBrush="{DynamicResource BorderBrush}"
@@ -232,8 +230,8 @@
                             <Border Background="{DynamicResource CanvasBrush}" CornerRadius="14" Padding="16,12">
                                 <StackPanel>
                                     <CheckBox x:Name="ClusterSyncChoice" Checked="ClusterSync_Changed" Unchecked="ClusterSync_Changed"
-                                              Content="Keep who does what in sync on all my computers (checks hosts every 15 seconds)"
-                                              ToolTip="On by default. While Martlet runs, this PC checks each paired host over its pinned pairing and keeps the shared plan on every host. A job changed on another of your computers changes here too: it moves to another of your paired hosts or back to this PC's Setup choice. Nothing moves to a cloud provider by itself, and the plan holds no keys or conversation data."
+                                              Content="Keep device roles in sync"
+                                              ToolTip="Paired computers use the same plan while Martlet is open. No keys or conversations are shared."
                                               AutomationProperties.AutomationId="ClusterSync"/>
                                     <TextBlock x:Name="ClusterStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="24,2,0,0"
                                                AutomationProperties.AutomationId="ClusterStatus" AutomationProperties.LiveSetting="Polite"/>
@@ -300,8 +298,8 @@
                         <StackPanel>
                             <TextBlock Text="App updates" Style="{DynamicResource SectionHeading}"/>
                             <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap"
-                                       Text="Martlet updates from its public GitHub Releases. Checks run only when you turn them on or press Check now. Installers are not code-signed; each download is checked against GitHub's SHA-256 digest before it runs."/>
-                            <CheckBox x:Name="AutomaticUpdateCheck" Content="Check GitHub for new versions automatically"
+                                       Text="Martlet can check for updates and install them when you choose."/>
+                            <CheckBox x:Name="AutomaticUpdateCheck" Content="Check for updates automatically"
                                       Margin="0,10,0,6" Checked="UpdateCheckSetting_Changed" Unchecked="UpdateCheckSetting_Changed"
                                       AutomationProperties.AutomationId="AutomaticUpdateCheck" />
                             <StackPanel Orientation="Horizontal" Margin="24,0,0,6">
@@ -311,20 +309,20 @@
                             </StackPanel>
                             <CheckBox x:Name="AutomaticUpdateInstall" Margin="0,4,0,6" Checked="UpdatePreference_Changed" Unchecked="UpdatePreference_Changed"
                                       AutomationProperties.AutomationId="AutomaticUpdateInstall">
-                                <TextBlock TextWrapping="Wrap" Text="Download and install updates automatically (while the character is hidden and no conversation or window is open, otherwise when you exit Martlet)"/>
+                                <TextBlock TextWrapping="Wrap" Text="Install updates automatically"/>
                             </CheckBox>
                             <CheckBox x:Name="AutomaticHostUpdate" Margin="0,4,0,8" Checked="UpdatePreference_Changed" Unchecked="UpdatePreference_Changed"
                                       AutomationProperties.AutomationId="AutomaticHostUpdate">
-                                <TextBlock TextWrapping="Wrap" Text="Keep my Martlet hosts on this PC's version (updates them in the background over their SSH key or Docker Desktop; others show Update host on the Devices map)"/>
+                                <TextBlock TextWrapping="Wrap" Text="Update paired hosts automatically"/>
                             </CheckBox>
                             <WrapPanel>
                                 <Button x:Name="CheckForUpdatesButton" Content="Check _for updates now" Click="CheckForUpdates_Click"
                                         Margin="0,4,12,4" AutomationProperties.AutomationId="CheckForAppUpdates"/>
                                 <Button x:Name="DownloadUpdateButton" Content="_Install update" Click="DownloadUpdate_Click" Style="{DynamicResource PrimaryButton}"
                                         Margin="0,4,12,4" Visibility="Collapsed" AutomationProperties.AutomationId="InstallAppUpdate"/>
-                                <Button x:Name="ReviewUpdateButton" Content="_View release details" Click="ReviewUpdate_Click"
+                                <Button x:Name="ReviewUpdateButton" Content="View release _notes" Click="ReviewUpdate_Click"
                                         Margin="0,4,12,4" Visibility="Collapsed" AutomationProperties.AutomationId="ViewAppRelease"/>
-                                <Button x:Name="UpdateHostsButton" Content="Update _hosts now" Click="UpdateHosts_Click"
+                                <Button x:Name="UpdateHostsButton" Content="Update _hosts" Click="UpdateHosts_Click"
                                         Margin="0,4,0,4" AutomationProperties.AutomationId="UpdateHostsNow"/>
                             </WrapPanel>
                             <TextBlock x:Name="UpdateStatusText" Style="{DynamicResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap"
@@ -336,45 +334,45 @@
                         <StackPanel>
                             <TextBlock Text="Tools" Style="{DynamicResource SectionHeading}"/>
                             <WrapPanel>
-                                <Button Content="Open _Troubleshooting" Click="Troubleshooting_Click" Margin="0,4,12,4"
-                                        AutomationProperties.AutomationId="OpenTroubleshooting" AutomationProperties.Name="Open passive troubleshooting and local support preview" />
-                                <Button Content="Configuration backup / restore" Click="Recovery_Click" Margin="0,4,12,4"
-                                        AutomationProperties.AutomationId="OpenConfigurationRecovery" AutomationProperties.Name="Open passive local configuration backup and restore"/>
-                                <Button Content="Prere_quisites (check / install)" Click="Prerequisites_Click" Margin="0,4,12,4"
-                                        AutomationProperties.AutomationId="OpenPrerequisites" AutomationProperties.Name="Check and install Windows prerequisites such as WebView2, Windows speech, Ollama and Docker Desktop" />
-                                <Button Content="Martlet _hosts" Click="Hosts_Click" Margin="0,4,12,4"
-                                        AutomationProperties.AutomationId="OpenHosts" AutomationProperties.Name="Set up and pair Martlet hosts on this PC or other computers" />
+                                <Button Content="_Troubleshooting" Click="Troubleshooting_Click" Margin="0,4,12,4"
+                                        AutomationProperties.AutomationId="OpenTroubleshooting" AutomationProperties.Name="Open troubleshooting" />
+                                <Button Content="Backup / restore" Click="Recovery_Click" Margin="0,4,12,4"
+                                        AutomationProperties.AutomationId="OpenConfigurationRecovery" AutomationProperties.Name="Open backup and restore"/>
+                                <Button Content="Prere_quisites" Click="Prerequisites_Click" Margin="0,4,12,4"
+                                        AutomationProperties.AutomationId="OpenPrerequisites" AutomationProperties.Name="Check prerequisites" />
+                                <Button Content="_Hosts" Click="Hosts_Click" Margin="0,4,12,4"
+                                        AutomationProperties.AutomationId="OpenHosts" AutomationProperties.Name="Set up hosts" />
                             </WrapPanel>
                         </StackPanel>
                     </Border>
 
                     <Border Style="{DynamicResource CardStyle}">
-                        <Expander Header="Diagnostics and local status" AutomationProperties.AutomationId="DiagnosticsSection">
+                        <Expander Header="Diagnostics" AutomationProperties.AutomationId="DiagnosticsSection">
                             <StackPanel Margin="0,8,0,0">
-                                <TextBlock Style="{DynamicResource Muted}" Text="Local diagnostics and honest status."/>
+                                <TextBlock Style="{DynamicResource Muted}" Text="Detailed local status."/>
                                 <TextBlock x:Name="ActivityText" Style="{DynamicResource Muted}" Margin="0,4,0,0"
                                            AutomationProperties.Name="Diagnostic activity" AutomationProperties.LiveSetting="Polite" />
                                 <Label Target="{Binding ElementName=PipelineText}" Content="_Pipeline status" />
                                 <TextBox x:Name="PipelineText" IsReadOnly="True" TextWrapping="Wrap" Height="160" VerticalScrollBarVisibility="Auto"
                                          AutomationProperties.AutomationId="PipelineStatus"
-                                         AutomationProperties.Name="Mic VAD STT policy LLM TTS playback and optional host status" />
-                                <Label Target="{Binding ElementName=StatusText}" Content="_Status details" />
+                                         AutomationProperties.Name="Conversation status" />
+                                <Label Target="{Binding ElementName=StatusText}" Content="_Status" />
                                 <TextBox x:Name="StatusText" IsReadOnly="True" TextWrapping="Wrap" MinHeight="180" MaxHeight="360" VerticalScrollBarVisibility="Auto"
                                          AutomationProperties.Name="Foundation status details" AutomationProperties.AutomationId="FoundationStatus" />
                                 <TextBlock x:Name="DataPathText" Style="{DynamicResource Muted}" Margin="0,10,0,0" AutomationProperties.Name="Local settings location" />
-                                <Label Content="Local audio setup _evidence (separate from provider status)" Target="{Binding ElementName=AudioStatusText}" />
+                                <Label Content="Audio setup _status" Target="{Binding ElementName=AudioStatusText}" />
                                 <TextBox x:Name="AudioStatusText" IsReadOnly="True" TextWrapping="Wrap" Height="100" VerticalScrollBarVisibility="Auto"
-                                         AutomationProperties.AutomationId="LocalAudioStatus" AutomationProperties.Name="Local audio setup stages and historical evidence" />
+                                         AutomationProperties.AutomationId="LocalAudioStatus" AutomationProperties.Name="Audio setup status" />
                                 <WrapPanel Margin="0,10,0,0">
                                     <Button x:Name="RefreshButton" Content="_Refresh local status" Margin="0,4,12,4" Click="Refresh_Click"
                                             AutomationProperties.AutomationId="RefreshDiagnostics" AutomationProperties.Name="Refresh local status" />
                                     <Button x:Name="StopButton" Content="S_top diagnostics" Margin="0,4,12,4" IsEnabled="False" Click="Stop_Click"
                                             AutomationProperties.AutomationId="StopDiagnostics" AutomationProperties.Name="Stop diagnostics" />
-                                    <Button x:Name="CreateButton" Content="_Create unconfigured local profile" Margin="0,4,12,4" IsEnabled="False" Click="Create_Click"
-                                            AutomationProperties.AutomationId="CreateProfile" AutomationProperties.Name="Create unconfigured local profile" />
+                                    <Button x:Name="CreateButton" Content="_Create profile" Margin="0,4,12,4" IsEnabled="False" Click="Create_Click"
+                                            AutomationProperties.AutomationId="CreateProfile" AutomationProperties.Name="Create profile" />
                                 </WrapPanel>
                                 <TextBlock Style="{DynamicResource Muted}" Margin="0,10,0,0"
-                                           Text="Creating a profile saves unconfigured settings only. It grants no consent. Tone output binds the Windows default once at explicit start, never follows a changed default or falls back to room speakers. Tone accounting is not proof of audibility. Closing exits Martlet; there is no background tray process." />
+                                           Text="Creating a profile saves starter settings. Closing exits Martlet completely." />
                             </StackPanel>
                         </Expander>
                     </Border>
@@ -382,7 +380,7 @@
                     <DockPanel Margin="0,0,0,8">
                         <Button DockPanel.Dock="Right" Content="E_xit Martlet" Click="Exit_Click" AutomationProperties.Name="Exit Martlet"/>
                         <TextBlock Style="{DynamicResource Muted}" VerticalAlignment="Center"
-                                   Text="Nothing listens on launch. Network stays idle except for update checks (on by default) and host updates you enabled; real conversations need your configured routes and explicit permission for each action."/>
+                                   Text="Martlet closes completely when you exit."/>
                     </DockPanel>
                 </StackPanel>
             </ScrollViewer>
@@ -424,7 +422,7 @@
                             </Viewbox>
                             <TextBlock Text="Hi! I'm Martlet." Style="{DynamicResource HeroTitle}" TextAlignment="Center" Margin="0,14,0,0"/>
                             <TextBlock Style="{DynamicResource Muted}" FontSize="15" TextAlignment="Center" Margin="0,10,0,24"
-                                       Text="A little companion for your desktop. I can chat with you, talk out loud and show an animated character. Let's get you set up; it only takes a few minutes."/>
+                                       Text="A desktop companion that can chat, speak and show an animated character. Let's get set up."/>
                             <Button Style="{DynamicResource PrimaryButton}" Content="Let's begin" HorizontalAlignment="Center" Padding="28,12" FontSize="15"
                                     Click="TourBegin_Click" AutomationProperties.AutomationId="TourBegin"/>
                         </StackPanel>
@@ -443,14 +441,14 @@
                                     AutomationProperties.AutomationId="TourHost">
                                 <StackPanel>
                                     <TextBlock Text="Lend this PC to Martlet" FontSize="17" FontWeight="SemiBold"/>
-                                    <TextBlock Style="{DynamicResource Muted}" Text="A spare or gaming PC with a good graphics card. It runs heavy parts, like lip-sync, for your main PC and shows a host dashboard here."/>
+                                    <TextBlock Style="{DynamicResource Muted}" Text="Use another PC for heavier Martlet tasks and manage it here."/>
                                 </StackPanel>
                             </Button>
                         </StackPanel>
 
                         <StackPanel x:Name="TourStart" Visibility="Collapsed">
                             <TextBlock Text="How would you like to start?" Style="{DynamicResource HeroTitle}" FontSize="26"/>
-                            <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,20" Text="Nothing is installed, sent or saved until you confirm it in the next window."/>
+                            <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,20" Text="You'll confirm any install, upload or setup change."/>
                             <Button Style="{DynamicResource CardButton}" Tag="&#xE82F;" Margin="0,0,0,12" Click="TourAdvisor_Click"
                                     AutomationProperties.AutomationId="TourAdvisor">
                                 <StackPanel>
@@ -462,7 +460,7 @@
                                     AutomationProperties.AutomationId="TourSetup">
                                 <StackPanel>
                                     <TextBlock Text="I know what I want" FontSize="17" FontWeight="SemiBold"/>
-                                    <TextBlock Style="{DynamicResource Muted}" Text="Pick a cloud or local conversation model and add its key."/>
+                                    <TextBlock Style="{DynamicResource Muted}" Text="Choose a conversation model and add any needed key."/>
                                 </StackPanel>
                             </Button>
                         </StackPanel>

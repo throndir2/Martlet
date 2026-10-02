@@ -187,12 +187,20 @@ internal sealed class LiveConversationConfiguration
             : new(OpenAiSetup.Alias(SetupRole.Tts), route.ModelId, route.VoiceId!, SpeechOutputFormat.Pcm24KhzMono16Le);
     }
 
+    private static string RoleName(SetupRole role) => role switch
+    {
+        SetupRole.Llm => "Thinking",
+        SetupRole.Stt => "Listening",
+        SetupRole.Tts => "Voice",
+        _ => role.ToString()
+    };
+
     internal static string LlmDestinationName(SetupRoute route) =>
-        IsHost(route) && route.Gateway is { } gateway ? $"your Martlet host {gateway.HostId} ({gateway.Origin}, Ollama, pinned TLS)"
-        : !IsChat(route) ? OpenAiSetup.Origin :
+        IsHost(route) && route.Gateway is { } gateway ? $"your Martlet host {gateway.HostId}"
+        : !IsChat(route) ? "OpenAI" :
         ChatCompletionsEndpointCatalog.Named(route.Origin) is { } named
-            ? $"{named.Name} ({route.Origin}, Chat Completions)"
-            : $"{route.Origin} (OpenAI-compatible Chat Completions{(route.CredentialId is null ? ", no API key" : "")})";
+            ? $"{named.Name} ({route.Origin})"
+            : $"the endpoint at {route.Origin}";
 
     internal string? Unavailable(bool voice, bool microphone)
     {
@@ -200,57 +208,52 @@ internal sealed class LiveConversationConfiguration
         {
             if (role == SetupRole.Stt && !microphone || role == SetupRole.Tts && !voice) continue;
             var route = Routes.SingleOrDefault(r => r.Role == role);
-            if (route is null) return $"{role}: missing route. Open Setup / resume.";
+            if (route is null) return $"Finish {RoleName(role)} setup in Companion.";
             if (role == SetupRole.Llm && IsHost(route) && route.Enabled == true)
             {
-                if (route.Consent != route.Selection()) return $"{role}: destination choice missing or changed. Hand thinking to your host again on the Devices page.";
+                if (route.Consent != route.Selection()) return "Review the Thinking host on Devices.";
                 if (HostTarget() is null || route.GatewaySnapshot is null)
-                    return $"{role}: the Martlet host pairing or its Ollama route is incomplete. Hand thinking to your host again on the Devices page.";
+                    return "Reconnect the Thinking host on Devices.";
                 continue;
             }
             if (role == SetupRole.Tts && IsHostVoice(route) && route.Enabled == true)
             {
-                if (route.Consent != route.Selection()) return $"{role}: destination choice missing or changed. Hand speaking to your host again on the Devices page.";
+                if (route.Consent != route.Selection()) return "Review the Voice host on Devices.";
                 if (HostSpeechTarget() is null || route.GatewaySnapshot is null)
-                    return $"{role}: the Martlet host pairing, its F5 route or the chosen voice is incomplete. Hand speaking to your host again on the Devices page.";
+                    return "Reconnect the Voice host on Devices.";
                 continue;
             }
             if (role == SetupRole.Tts && IsWindowsVoice(route) && route.Enabled == true)
             {
-                if (route.Consent != route.Selection()) return $"{role}: voice choice missing or changed. Choose the Windows voice again on Its voice.";
-                if (WindowsVoiceTarget() is null) return $"{role}: no Windows voice is chosen. Choose one on Its voice.";
+                if (route.Consent != route.Selection()) return "Choose the Windows voice again in Companion › Voice.";
+                if (WindowsVoiceTarget() is null) return "Choose a Windows voice in Companion › Voice.";
                 continue;
             }
             if (role == SetupRole.Llm && IsChat(route) && route.Enabled == true)
             {
-                if (route.Consent != route.Selection()) return $"{role}: destination choice missing or changed. Review it in Setup.";
+                if (route.Consent != route.Selection()) return "Review Thinking in Setup.";
                 if (route.CredentialId is null && ChatCompletionsEndpointCatalog.Named(route.Origin) is { } named)
-                    return $"{role}: missing credential reference. Store your {named.Name} API key explicitly in Setup.";
+                    return $"Add your {named.Name} API key in Setup.";
                 if (ChatCompletionsEndpointCatalog.RetiredOn(route.Origin, route.ModelId) is { } retired)
-                    return $"{role}: {retired.Name} has retired {route.ModelId}, so it no longer answers. " +
-                        $"Choose another model in Companion › Thinking (recommended: {retired.DefaultModelId}).";
+                    return $"{retired.Name} retired this Thinking model. Choose {retired.DefaultModelId} in Companion › Thinking.";
                 continue;
             }
             if (role == SetupRole.Stt && IsHostStt(route) && route.Enabled == true)
             {
-                if (route.Consent != route.Selection()) return $"{role}: destination choice missing or changed. Hand listening to your host again on the Devices page.";
+                if (route.Consent != route.Selection()) return "Review the Listening host on Devices.";
                 if (SttHostTarget() is null || route.GatewaySnapshot is null)
-                    return $"{role}: the Martlet host pairing or its speech-to-text route is incomplete. Hand listening to your host again on the Devices page.";
+                    return "Reconnect the Listening host on Devices.";
                 continue;
             }
             if (role == SetupRole.Stt && IsLocalStt(route) && route.Enabled == true)
             {
-                if (route.Consent != route.Selection()) return $"{role}: listening choice missing or changed. Choose Parakeet again on Companion › Listening.";
+                if (route.Consent != route.Selection()) return "Choose local listening again in Companion › Listening.";
                 continue;
             }
             if (route.RouteType is not (null or SetupRouteType.OpenAi) || route.Enabled == false)
-                return $"{role}: this Desktop build supports enabled OpenAI routes only" +
-                    (role == SetupRole.Llm ? " (or an enabled OpenRouter, NVIDIA Build or OpenAI-compatible Chat Completions LLM route, or Ollama on a paired Martlet host)"
-                        : role == SetupRole.Stt ? " (or whisper on a paired Martlet host, or Parakeet on this PC)"
-                        : role == SetupRole.Tts ? " (or F5 on a paired Martlet host, or a Windows voice on this PC)" : "") +
-                    "; the saved self-host choice is retained, not dispatched.";
-            if (route.Consent != route.Selection()) return $"{role}: destination choice missing or changed. Review it in Setup.";
-            if (route.CredentialId is null) return $"{role}: missing credential reference. Store a key explicitly in Setup.";
+                return $"Review {RoleName(role)} in Companion. This setup isn't available in this app.";
+            if (route.Consent != route.Selection()) return $"Review {RoleName(role)} in Setup.";
+            if (route.CredentialId is null) return "Add an API key in Setup.";
             var supported = role switch
             {
                 SetupRole.Llm => OpenAiTextGenerationCatalog.SupportsModel(route.ModelId),
@@ -258,88 +261,60 @@ internal sealed class LiveConversationConfiguration
                 _ => OpenAiSpeechSynthesisCatalog.SupportsModel(route.ModelId) &&
                     OpenAiSpeechSynthesisCatalog.SupportsVoice(route.VoiceId)
             };
-            if (!supported) return $"{role}: unsupported model/voice. Choose one of the displayed adapter catalog IDs in Setup; there is no fallback.";
+            if (!supported) return role == SetupRole.Tts ? "Choose a supported voice in Setup." : "Choose a supported model in Setup.";
         }
         return null;
     }
 
     internal string Disclosure(bool voice)
     {
-        string Selection(SetupRole role)
-        {
-            var route = Routes.SingleOrDefault(r => r.Role == role);
-            // Chat Completions and Martlet host model IDs are validated ASCII identifiers; OpenAI ones must be catalog-approved.
-            if (role == SetupRole.Llm && (IsChat(route) || IsHost(route)) || role == SetupRole.Stt && (IsHostStt(route) || IsLocalStt(route)))
-                return route!.ModelId;
-            // Only catalog-approved identifiers may appear here, never arbitrary entered model/voice strings.
-            bool supported = role switch
-            {
-                SetupRole.Llm => OpenAiTextGenerationCatalog.SupportsModel(route?.ModelId),
-                SetupRole.Stt => OpenAiTranscriptionCatalog.SupportsModel(route?.ModelId),
-                _ => OpenAiSpeechSynthesisCatalog.SupportsModel(route?.ModelId) &&
-                    OpenAiSpeechSynthesisCatalog.SupportsVoice(route?.VoiceId)
-            };
-            return supported ? $"{route!.ModelId}{(role == SetupRole.Tts ? " / voice " + route.VoiceId : "")}"
-                : "not configured / unsupported";
-        }
         var llm = Routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
         var chat = IsChat(llm);
         var stt = Routes.SingleOrDefault(r => r.Role == SetupRole.Stt);
         var sttHost = IsHostStt(stt) && stt!.Gateway is { } sttGateway ? sttGateway : null;
-        string SpeechDisclosure()
+        var lines = new List<string>();
+
+        if (LocalOllama)
+            lines.Add("Your messages stay on this PC in Ollama. The first reply may take a moment while the model starts.");
+        else
+            lines.Add($"Your messages and recent conversation go to {(llm is null ? "OpenAI" : LlmDestinationName(llm))}.");
+
+        if (IsHost(llm))
+            lines.Add("That host's owner controls its logs.");
+        else if (chat && llm!.Origin == ChatCompletionsEndpointCatalog.OpenRouterBaseUrl)
+            lines.Add("OpenRouter may forward requests to a model provider. Privacy and pricing depend on that provider.");
+        else if (chat)
+            lines.Add("The endpoint operator controls processing, retention and costs.");
+
+        if (IsLocalStt(stt))
+            lines.Add("If you speak, transcription happens on this PC.");
+        else if (sttHost is not null)
+            lines.Add($"If you speak, audio goes to your Martlet host {sttHost.HostId} for transcription. Martlet doesn't store recordings.");
+        else
+            lines.Add("If you speak, audio goes to OpenAI for transcription.");
+
+        if (voice)
         {
             var tts = Routes.SingleOrDefault(r => r.Role == SetupRole.Tts);
             if (IsWindowsVoice(tts))
-                return $"Response -> TTS: the Windows voice '{WindowsVoices.DisplayName(tts!.VoiceId)}' on this PC. Each reply segment is spoken " +
-                    "locally by Windows; nothing is sent anywhere, there is no key and no per-request charge.";
-            if (!IsHostVoice(tts) || tts!.Gateway is not { } gateway)
-                return $"Response -> TTS: {OpenAiSetup.Origin}, {Selection(SetupRole.Tts)}.";
-            return $"Response -> TTS: your Martlet host {gateway.HostId} ({gateway.Origin}, F5 {tts.ModelId}, pinned TLS), " +
-                $"voice '{tts.Reference?.PresetName ?? "not chosen"}'. Each reply segment's text and your chosen reference recording " +
-                "(with its transcript) go only to that paired computer; no cloud voice provider receives them and there is no per-request charge. " +
-                "The voice is cloned from that recording, which you confirmed you may use; the F5 model is licensed for non-commercial use.";
+                lines.Add($"Replies are spoken by Windows on this PC through {Audio.Output.DisplayName}.");
+            else if (!IsHostVoice(tts) || tts!.Gateway is not { } gateway)
+                lines.Add($"Reply text goes to OpenAI for speech. Audio plays through {Audio.Output.DisplayName}.");
+            else
+                lines.Add($"Reply text and the selected reference voice go to your Martlet host {gateway.HostId}. Audio plays through {Audio.Output.DisplayName}.");
+            lines.Add("The voice is AI-generated.");
         }
-        return $"Text -> LLM: {(llm is null ? OpenAiSetup.Origin : LlmDestinationName(llm))}, {Selection(SetupRole.Llm)}.\n" +
-            (IsHost(llm)
-                ? "Your own Martlet host runs this model: the text goes only to that paired computer over its pinned TLS gateway, no cloud provider receives it and there is no per-request charge. The host's owner controls its logs.\n"
-                : "") +
-            (!chat ? "" : (LocalOllama
-                ? "Ollama on this PC runs the model: the text stays on this PC and there is no per-request charge. Ollama loads the model on the first reply after it was idle, which can take up to a couple of minutes. "
-                : llm!.Origin == ChatCompletionsEndpointCatalog.OpenRouterBaseUrl
-                ? "OpenRouter forwards the text to an upstream provider it selects for this model (fallback to other providers is disabled); upstream privacy, retention and pricing vary by provider. "
-                : llm.Origin == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl
-                    ? "NVIDIA Build hosts the selected model; rate limits, credits and model availability are set by NVIDIA. "
-                    : "The endpoint's operator controls processing, retention and cost. ") +
-                (GenerationSupport.SendsReplyBudget(llm!.Origin, Generation)
-                    ? "Reasoning/thinking traces are never spoken or shown, but count toward the reply token budget.\n"
-                    : "Reasoning/thinking traces are never spoken or shown; there is no reply token budget unless you set a max reply length on Companion > Replies.\n")) +
-            (IsLocalStt(stt)
-                ? $"Spoken audio -> STT: NVIDIA Parakeet TDT 0.6B v3 on this PC ({Selection(SetupRole.Stt)}). Your recorded speech is transcribed in memory here; nothing is sent anywhere and there is no charge.\n"
-                : sttHost is null
-                ? $"Spoken audio -> STT: {OpenAiSetup.Origin}, {Selection(SetupRole.Stt)}.\n"
-                : $"Spoken audio -> STT: your Martlet host {sttHost.HostId} ({sttHost.Origin}, whisper, pinned TLS), {Selection(SetupRole.Stt)}. " +
-                    "Your recorded speech goes only to that paired computer over its pinned TLS gateway and is transcribed in memory there, not stored; no cloud provider receives it and there is no per-request charge.\n") +
-            (voice ? SpeechDisclosure() + $" AI-generated voice, not a human. Output: {Audio.Output.DisplayName}; fixed at start, no fallback.\n"
-                : "Text-only: NO TTS requests and NO output device. Voice is separately selected.\n") +
-            "One action expires within 150 s, including scheduling, recording and authorization. PTT: <=25 s, mono 16 kHz PCM16, <=800,000 PCM bytes; original local permission <=30 s including cleanup/transfer. STT: <=1 request, <=800,044 WAV bytes, <=30 s, <=4096 transcript characters.\n" +
-            (Persona is null
-                ? "LLM: <=1 request, <=4096 user-input characters / 16,384 UTF-8 bytes / <=16,640 input-token reservation (not measured tokens). This legacy settings profile has no persona; no persona/style instructions are uploaded until settings v3 is explicitly saved. A fixed instruction to answer in one or two sentences is included.\n"
-                : $"LLM: <=1 request, <=4096 user-input characters; the selected persona '{Persona.Name}', one weighted response style and a fixed instruction to answer in one or two sentences are included in the same <=16,384 UTF-8 byte / <=16,640 input-token reservation (not measured tokens). Persona revision is fixed for this action.\n") +
-            "Up to eight completed explicit exchanges from the last two minutes may be included from volatile in-memory context only. Oldest exchanges are omitted until current input, persona, style and context fit the same LLM byte/token reservation. Pause, lock, configuration reload/change, Stop or closing the conversation clears context; it is not persisted.\n" +
-            "Lorebooks: entries of the lorebooks you turned on (Companion > Lorebook, saved on this PC in lorebooks.json) are added to the LLM instructions when their keywords appear in what was just said (always-on entries every time), up to the lorebook budget and inside the same byte/token reservation. With no lorebook on, nothing is added.\n" +
-            (Memory is { Enabled: true }
-                ? $"Memory is ON (change it in Memory). Each reply may include up to {DesktopMemoryService.MaximumRecalledFacts} facts saved on this PC (the best matches for what you said, then the newest) inside the same LLM input budget; the complete store is never uploaded and recalled facts are background data, not instructions. After each completed reply, Martlet sends that exchange (with the previous exchange and up to {MemoryCapture.MaximumShownFacts} related saved facts) once more to the same Thinking model in one extra text-only request of <={TextLimits.MaxOutputTokens} output tokens, so it can pick out lasting things worth remembering; they are saved on this PC only and listed in Memory, where you can edit or delete them. Screen glances are not remembered. Lock, pause, mute or a configuration change cancels pending remembering.\n"
-                : "Memory is OFF: nothing is recalled or remembered and the memory store is not opened. Turn it on in Memory.\n") +
-            (LocalOllama && Generation?.MaxReplyTokens is null
-                ? $"LLM output: no reply token budget, <=16,384 response characters, <={TextLimits.MaxRequestTime.TotalSeconds:0} s.\n"
-                : $"LLM output: <={TextLimits.MaxOutputTokens} tokens as a ceiling (max reply length on Companion > Replies), <=16,384 response characters, <={TextLimits.MaxRequestTime.TotalSeconds:0} s.\n") +
-            $"Runtime <={Turn(false).TurnTimeout.TotalSeconds:0} s. Voice: <=8 requests/segments, <=1536 UTF-8 bytes each / 12,288 total, <=10 s / 240,000 samples per segment, <=80 s / 1,920,000 reserved samples total, <=20 s per request; past that the reply is shown but not said aloud. Refusal/unsupported markup is not ordinary speech.\n" +
-            "Prices, quota, account/model access and invoice cost are UNKNOWN, not zero or a guaranteed hard currency cap. Failed/canceled requests can still cost money; earlier speech may already have played. No automatic retry.\n" +
-            "Typed input, push-to-talk, or always listening while the talk window is open, as chosen in Companion › Listening (each detected utterance is one action within this envelope; always listening keeps listening while Martlet thinks and holds off only while it speaks, and the Thinking model may answer [pass] to stay quiet when what it heard wasn't meant for it). Wake words, name/group listening and remote participant capture are OFF; vision is OFF unless turned on in Companion › Vision. Optional Voice ID compares speech with your saved voiceprint on this PC before upload; non-matching audio is discarded, never uploaded. When voice recognition is on (Companion > People), each utterance is also compared on this PC with the voices Martlet knows (voiceprints only; audio is never kept), the LLM is told who spoke by name or voice tag, and after a reply the exchange may be sent once more to the same Thinking model in one extra text-only request so it can pick up the names people go by. Memory recall and remembering follow the memory setting described above." +
-            (Memory is { Enabled: true }
-                ? " Conversation content stays bounded in memory, not logs/files; only the short facts picked out for Memory are saved."
-                : " Content stays bounded in memory, not logs/files.") +
-            " Stop, Esc, locking Windows or closing the talk window revokes this action.";
+        else lines.Add("Replies are shown as text only.");
+
+        lines.Add(Persona is null
+            ? "No companion persona is included until you save current settings."
+            : "The selected persona, matching lorebooks and recent conversation may be included.");
+        lines.Add(Memory is { Enabled: true }
+            ? "Memory may add saved facts and save new ones on this PC. You can edit or delete them in Memory."
+            : "Memory is off.");
+        lines.Add("Provider requests may use quota or cost money, even if stopped.");
+        lines.Add("Stop, Esc, locking Windows or closing this window stops the current action.");
+        return string.Join("\n", lines);
     }
 
     internal ConversationRequest Request(BoundedTextInput input, bool voice, ResponseStyle? style,
@@ -447,29 +422,23 @@ internal sealed class LiveConversationConfiguration
 
     internal static string VisionAdvice(SetupRoute? route)
     {
-        if (route is null) return "Thinking is not set up yet. Choose a Thinking model in Companion first.";
-        var local = VisionModelCatalog.DescribeLocalOptions();
+        if (route is null) return "Set up Thinking before turning on vision.";
         if (IsChat(route) && ChatCompletionsEndpointCatalog.RetiredOn(route.Origin, route.ModelId) is { } retired)
-            return $"{retired.Name} has retired your Thinking model {route.ModelId}, so Martlet can't talk or see with it. " +
-                $"Choose {retired.DefaultModelId} in Companion › Thinking: it talks, sees your screen and uses tools.";
+            return $"{retired.Name} retired this Thinking model. Choose {retired.DefaultModelId} in Companion › Thinking.";
         return Vision(route) switch
         {
             VisionSupport.Supported =>
-                $"Your Thinking model {route.ModelId} can see images, so Martlet can look at your screen and comment. Pictures go to {LlmDestinationName(route)}.",
+                $"This Thinking model can use vision. Pictures go to {LlmDestinationName(route)}.",
             VisionSupport.Unsupported when IsHost(route) =>
-                $"Your Thinking model {route.ModelId} on your Martlet host is text-only, so Martlet can't see your screen with it. " +
-                $"To turn this on, give the host a model that also sees: on the Devices page, add the host's Thinking (Ollama) role again and choose one of {local}. " +
-                "Or switch Thinking to OpenAI gpt-4.1-mini in Companion. Talking keeps working either way.",
+                "This Thinking model is text-only. Choose a vision-capable model for the host on Devices, or choose one in Companion › Thinking.",
             VisionSupport.Unsupported when IsChat(route) =>
-                $"Your Thinking model {route.ModelId} is text-only, so Martlet can't see your screen with it. Pick a vision model on the same endpoint" +
-                (ChatCompletionsEndpointCatalog.Named(route.Origin) is { } named ? $", like {named.Name}'s recommended {named.DefaultModelId}" : "") +
-                " (names with vl or vision, gemma-3 or gemma-4, gpt-4o/4.1/5, gemini, claude, pixtral...), or run one on this PC in Ollama or LM Studio " +
-                $"({local}) and point Chat Completions at it. Talking keeps working either way.",
+                ChatCompletionsEndpointCatalog.Named(route.Origin) is { } named
+                    ? $"This Thinking model is text-only. Choose {named.DefaultModelId} in Companion › Thinking, or another vision-capable model on the same endpoint."
+                    : "This Thinking model is text-only. Choose a vision-capable model on this endpoint or in Companion › Thinking.",
             VisionSupport.Unsupported =>
-                $"Your Thinking model {route.ModelId} is text-only, so Martlet can't see your screen with it. Choose OpenAI gpt-4.1-mini in Companion, or a local vision model: {local}.",
+                "This Thinking model is text-only. Choose a vision-capable model in Companion › Thinking.",
             _ =>
-                $"Martlet can't tell whether {route.ModelId} on {LlmDestinationName(route)} accepts images. You can try it: " +
-                $"if the model rejects the first picture, Martlet stops looking and tells you. Local models that do see: {local}."
+                "Martlet can't tell whether this Thinking model can see images. Try vision, or choose a known vision model in Companion › Thinking."
         };
     }
 
@@ -480,29 +449,21 @@ internal sealed class LiveConversationConfiguration
     internal static string ScreenDisclosure(SetupRoute? route, Chattiness chattiness, WatchSource source)
     {
         var tuning = ScreenCommentaryPacer.For(chattiness);
-        var destination = route is null ? "the Thinking model" : LlmDestinationName(route) + ", " + route.ModelId;
+        var destination = route is null ? "the Thinking model" : LlmDestinationName(route);
         if (!source.IsScreen)
-            return "While vision is on and the talk window is open, Martlet " +
-                (source.Kind == WatchKind.Camera
-                    ? $"opens {source.Label} through Windows Media Foundation (its light is on exactly then) and reads a frame"
-                    : $"fetches one picture from {source.Label} (a snapshot or the first frame of an MJPEG stream; rtsp:// streams and video files are read through Media Foundation)") +
-                $" every {ScreenCommentaryPacer.Tick.TotalSeconds:0} s, downscaled and kept only in memory. " +
-                $"Now and then it sends ONE picture (JPEG, at most {ScreenGlancer.MaximumEdge} px)" +
-                (source.Kind == WatchKind.Camera ? " with the camera name" : "") + $", your persona, triggered lorebook entries and recent conversation to {destination}: " +
-                $"at most {tuning.LooksPerHour} looks per hour ({chattiness}). Most looks end in silence; with a cloud provider each look is a request " +
-                "that may cost money (a paired host has no per-request charge). The model is told never to identify people or comment on anyone's looks. " +
-                "Anyone in view of the camera is seen; tell them. Pictures are never saved, logged or added to memory, and a password in the address is never saved. " +
-                "Locking Windows, Stop, Esc or closing the talk window ends it; the vision button there pauses it.";
-        return "While vision is on and the talk window is open, Martlet captures your " +
-            (source.Scope == ScreenScope.ActiveWindow ? "active window" : "whole screen (the monitor your active window is on)") +
-            $" on this PC every {ScreenCommentaryPacer.Tick.TotalSeconds:0} s (full-screen games too, without touching the game), downscaled and kept only in memory. " +
-            $"Now and then it sends ONE screenshot (JPEG, at most {ScreenGlancer.MaximumEdge} px) with the window title, your persona, triggered lorebook entries and recent conversation to " +
-            $"{destination}: at most {tuning.LooksPerHour} looks per hour ({chattiness}). " +
-            "Most looks end in silence; with a cloud provider each look is a request that may cost money (a paired host has no per-request charge). " +
-            "While a Martlet window is in front, it looks at the window behind it instead. " +
-            "Martlet's own windows are painted out of every picture; minimized windows, password managers and private/incognito browser windows are never captured; " +
-            "protected video and windows that block capture read back black and are skipped. Screenshots are never saved, logged or added to memory. " +
-            "Locking Windows, Stop, Esc or closing the talk window ends it; the vision button there pauses it.";
+            return $"When vision is on, Martlet checks {source.Label} every {ScreenCommentaryPacer.Tick.TotalSeconds:0} seconds and may send up to " +
+                $"{tuning.LooksPerHour} images per hour to {destination}. " +
+                (source.Kind == WatchKind.Camera ? "The camera light may turn on. " : "") +
+                "Anyone in view may be seen; tell them. " +
+                "Images are never saved or added to Memory. Provider requests may use quota or cost money. " +
+                (source.Kind == WatchKind.Url ? "Passwords in camera addresses are never saved. " : "") +
+                "Stop, Esc, locking Windows or closing the talk window stops vision.";
+        return "When vision is on, Martlet checks your " +
+            (source.Scope == ScreenScope.ActiveWindow ? "active window" : "screen") +
+            $" every {ScreenCommentaryPacer.Tick.TotalSeconds:0} seconds and may send up to {tuning.LooksPerHour} screenshots per hour to {destination}. " +
+            "Screenshots include the window title, persona, matching lorebooks and recent conversation. " +
+            "Martlet skips password managers, private windows, minimized windows and protected video. Screenshots are never saved or added to Memory. " +
+            "Provider requests may use quota or cost money. Stop, Esc, locking Windows or closing the talk window stops vision.";
     }
     internal static string CommentaryInstructions(Chattiness chattiness, bool camera = false) =>
         (camera

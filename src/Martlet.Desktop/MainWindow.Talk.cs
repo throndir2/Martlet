@@ -21,8 +21,8 @@ public partial class MainWindow
     private IReadOnlyList<(HomeCamera Camera, Uri Snapshot)>? homeCameras;
     private bool findingCameras, findingHomeCameras;
 
-    private static readonly string[] PauseChoices = ["a short pause (0.5 s)", "a normal pause (0.8 s)", "a long pause (1.2 s)"];
-    private static readonly string[] ChattinessChoices = ["Quiet: only the big moments", "Normal", "Chatty"];
+    private static readonly string[] PauseChoices = ["Short (0.5 s)", "Normal (0.8 s)", "Long (1.2 s)"];
+    private static readonly string[] ChattinessChoices = ["Quiet", "Normal", "Chatty"];
 
     private TalkPreferences Talk => talk ??= TalkPreferences.Load(store?.DataDirectory);
 
@@ -30,7 +30,7 @@ public partial class MainWindow
     {
         talk = next;
         if (!next.Save(store?.DataDirectory))
-            ActionText.Text = "Couldn't save your talk choices to talk-preferences.json; they apply until Martlet closes.";
+            ActionText.Text = "Couldn't save your talk choices. They apply until Martlet closes.";
         if (render) RenderTab();
     }
 
@@ -42,10 +42,10 @@ public partial class MainWindow
     {
         var prefs = Talk;
         var always = Choice("TalkMode", "Always listening (recommended)",
-            "While the talk window is open, Martlet hears you whenever you speak and replies when you pause. The mic button there " +
-            "pauses it. It uses the microphone above; testing it there is optional.", prefs.HandsFree, "TalkModeAlways");
+            "Martlet listens while the talk window is open and replies when you pause. Use the mic button to pause listening.",
+            prefs.HandsFree, "TalkModeAlways");
         var push = Choice("TalkMode", "Push-to-talk",
-            "Martlet hears you only while you hold the talk button (or Space on it) in the talk window.", !prefs.HandsFree, "TalkModePushToTalk");
+            "Hold the talk button, or Space, when you want Martlet to listen.", !prefs.HandsFree, "TalkModePushToTalk");
         always.Checked += (_, _) => { if (!Talk.HandsFree) SaveTalk(Talk with { HandsFree = true }, render: true); };
         push.Checked += (_, _) => { if (Talk.HandsFree) SaveTalk(Talk with { HandsFree = false }, render: true); };
         var children = new List<UIElement> { Heading("How you talk"), always, push };
@@ -70,20 +70,20 @@ public partial class MainWindow
 
             children.Add(Labeled("Sensitivity", scale));
             children.Add(Labeled("Reply after", pause));
-            children.Add(Note("It waits for each reply to finish before listening again. Locking Windows, Stop, Esc or closing the talk window " +
-                "ends listening.", new Thickness(0, 8, 0, 0)));
+            children.Add(Note("Martlet listens again after each reply. Stop, Esc, locking Windows or closing the talk window ends listening.",
+                new Thickness(0, 8, 0, 0)));
         }
 
-        var voiceId = new CheckBox { Content = "Only respond to my voice (Voice ID)", IsChecked = prefs.VoiceId, Margin = new Thickness(0, 16, 0, 4) };
+        var voiceId = new CheckBox { Content = "Only answer my voice", IsChecked = prefs.VoiceId, Margin = new Thickness(0, 16, 0, 4) };
         AutomationProperties.SetAutomationId(voiceId, "TalkVoiceId");
         voiceId.Checked += (_, _) => SaveTalk(Talk with { VoiceId = true }, render: true);
         voiceId.Unchecked += (_, _) => SaveTalk(Talk with { VoiceId = false }, render: true);
         children.Add(voiceId);
         var enrolled = voiceIdentity.Current;
         var status = voiceIdentity.LoadError ?? (enrolled is not null
-            ? $"Your voice is enrolled ({enrolled.CreatedAt.LocalDateTime:d}). Martlet checks it on this PC before anything is sent; other voices, TV and games are ignored."
-            : prefs.VoiceId ? "Not set up yet: enroll your voice (about 20 seconds), or turn this off. Until then Martlet can't listen."
-            : "Optional. Enroll your voice once (about 20 seconds) so Martlet ignores other people, TV and games.");
+            ? $"Your voice is enrolled ({enrolled.CreatedAt.LocalDateTime:d}). Martlet checks it on this PC and ignores other voices."
+            : prefs.VoiceId ? "Set up Voice ID to use this."
+            : "Optional. Set up Voice ID so Martlet ignores other voices.");
         children.Add(prefs.VoiceId && enrolled is null ? Warning(status) : Note(status, new Thickness(0, 0, 0, 0)));
         children.Add(Row(PageButton(enrolled is null ? "Set up Voice ID" : "Set up Voice ID again", SetUpVoiceId,
             primary: prefs.VoiceId && enrolled is null, id: "SetupVoiceId")));
@@ -94,7 +94,7 @@ public partial class MainWindow
     {
         if (closing) return;
         if (setupOperations.IsRunning) { ActionText.Text = "Martlet is busy with another task. Try again when it finishes."; return; }
-        if (voiceIdentity.DataDirectory is null) { ActionText.Text = "Voice ID needs Martlet's data folder, which isn't available."; return; }
+        if (voiceIdentity.DataDirectory is null) { ActionText.Text = "Voice ID needs Martlet's data folder."; return; }
         new VoiceIdWindow(voiceIdentity, setupOperations, audioSessionEvents, homeSettings?.Audio?.Input) { Owner = this }.ShowDialog();
         RenderTab();
     }
@@ -108,8 +108,8 @@ public partial class MainWindow
         speak.Checked += (_, _) => SaveTalk(Talk with { SpeakReplies = true });
         speak.Unchecked += (_, _) => SaveTalk(Talk with { SpeakReplies = false });
         return Card(Heading("In conversations"), speak,
-            Note("Martlet speaks each reply with the voice above (an AI-generated voice, not a human) and also shows it in the talk window. " +
-                "Turn this off for text-only replies.", new Thickness(0, 6, 0, 0)));
+            Note("Martlet speaks each reply and shows it in the talk window. Turn this off for text-only replies.",
+                new Thickness(0, 6, 0, 0)));
     }
 
     // ---------- Vision ----------
@@ -140,7 +140,7 @@ public partial class MainWindow
             new TextBlock
             {
                 Text = prefs.Watch
-                    ? $"On. While the talk window is open, Martlet looks at {source.Label} now and then ({chattiness}) and sometimes says something."
+                    ? $"On. Martlet looks at {source.Label} occasionally. Comments: {chattiness}."
                     : "Off. Martlet doesn't look at your screen or cameras.",
                 FontSize = 15, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6)
             }
@@ -155,11 +155,10 @@ public partial class MainWindow
         var looks = new List<UIElement> { Heading("What Martlet looks at") };
         foreach (var (kind, title, detail) in new[]
         {
-            (WatchKind.ActiveWindow, "My active window", "The window you're using, like your game or browser. Martlet's own windows, password managers " +
-                "and private browser windows are never captured."),
+            (WatchKind.ActiveWindow, "My active window", "The window you're using. Martlet skips its own windows, password managers and private browsers."),
             (WatchKind.ActiveScreen, "My whole screen", "The monitor your active window is on."),
             (WatchKind.Camera, "A camera", "A webcam, a capture card or your phone connected as a webcam."),
-            (WatchKind.Url, "A phone or network camera address", "A snapshot or MJPEG address from a phone camera app on your Wi-Fi, an rtsp:// stream or a video file.")
+            (WatchKind.Url, "A phone or network camera address", "A snapshot or video stream address on your network.")
         })
         {
             var option = Choice("VisionSource", title, detail, source.Kind == kind, "VisionSource-" + kind);
@@ -192,8 +191,8 @@ public partial class MainWindow
             row.Children.Add(box);
             row.Children.Add(find);
             looks.Add(row);
-            looks.Add(Note(cameras.Count == 0 ? "Find cameras lists the cameras Windows offers to apps. No camera is opened until Martlet looks."
-                : "The camera opens only while Martlet looks (its light is on exactly then).", new Thickness(28, 0, 0, 0)));
+            looks.Add(Note(cameras.Count == 0 ? "Find cameras to choose one. Nothing opens until Martlet looks."
+                : "The camera opens only while Martlet looks.", new Thickness(28, 0, 0, 0)));
         }
         else if (source.Kind == WatchKind.Url)
         {
@@ -209,7 +208,7 @@ public partial class MainWindow
                 if (toggle is not null && !Talk.Watch) toggle.IsEnabled = canSee && typed.Length > 0;
             };
             looks.Add(address);
-            looks.Add(Note("For example http://192.168.1.20:8080/shot.jpg. A password in the address is used until Martlet closes and is never saved.",
+            looks.Add(Note("Example: http://192.168.1.20:8080/shot.jpg. Passwords are used for this session only and aren't saved.",
                 new Thickness(28, 0, 0, 0)));
             if (smartHome.Connected)
             {
@@ -244,15 +243,15 @@ public partial class MainWindow
         AutomationProperties.SetName(chatty, "How often Martlet comments");
         AutomationProperties.SetAutomationId(chatty, "VisionChattiness");
         chatty.SelectionChanged += (_, _) => { if (chatty.SelectedIndex >= 0) SaveTalk(Talk with { ScreenChattiness = chatty.SelectedIndex }, render: true); };
-        page.Children.Add(Card(Heading("How chatty"),
-            Note("Like a friend in the room: most looks end in silence, and Martlet never interrupts while you're talking.", new Thickness(0, 0, 0, 8)),
+        page.Children.Add(Card(Heading("How often it comments"),
+            Note("Most looks end silently. Martlet won't interrupt while you're talking.", new Thickness(0, 0, 0, 8)),
             chatty));
 
         toggle = PageButton(prefs.Watch ? "Turn vision off" : "Turn vision on", () =>
         {
             var on = !Talk.Watch;
             SaveTalk(Talk with { Watch = on }, render: true);
-            ActionText.Text = on ? "Vision is on. Martlet starts looking the next time you open the talk window." : "Vision is off.";
+            ActionText.Text = on ? "Vision is on. Open the talk window to start." : "Vision is off.";
         }, primary: !prefs.Watch, id: "VisionToggle");
         toggle.IsEnabled = prefs.Watch || canSee && chosen;
         page.Children.Add(Card(Heading(prefs.Watch ? "Vision is on" : "Let Martlet see"),
@@ -271,7 +270,7 @@ public partial class MainWindow
             var cameras = await Task.Run(() => new VideoInput().Cameras());
             visionCameras = cameras;
             ActionText.Text = cameras.Count == 0
-                ? "Windows offers no cameras to apps. Plug in a webcam, connect your phone as a webcam (Phone Link on Windows 11, DroidCam, Camo, iVCam) or use an address."
+                ? "Windows doesn't see any cameras. Connect a camera or enter a camera address."
                 : $"Found {cameras.Count} camera{(cameras.Count == 1 ? "" : "s")}.";
             if (cameras.FirstOrDefault(c => c.Id == Talk.CameraId) is { } same) SaveTalk(Talk with { CameraName = same.Name });
             else if (cameras.FirstOrDefault() is { } first) SaveTalk(Talk with { CameraId = first.Id, CameraName = first.Name });
@@ -294,7 +293,7 @@ public partial class MainWindow
         {
             homeCameras = await smartHome.CamerasAsync(lifetime.Token);
             ActionText.Text = homeCameras.Count == 0 ? "Home Assistant has no cameras."
-                : $"Home Assistant has {homeCameras.Count} camera{(homeCameras.Count == 1 ? "" : "s")}. Pick one under What Martlet looks at.";
+                : $"Home Assistant has {homeCameras.Count} camera{(homeCameras.Count == 1 ? "" : "s")}. Pick one above.";
         }
         catch (HomeAssistantException error) { ActionText.Text = error.Message; }
         catch (Exception error) when (error is HttpRequestException or TaskCanceledException or IOException)

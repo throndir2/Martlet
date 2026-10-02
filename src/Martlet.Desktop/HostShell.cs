@@ -25,7 +25,7 @@ internal sealed partial record HostShellTarget(string User, string Host, int Por
         var match = Pattern().Match(text?.Trim() ?? "");
         var port = match.Groups["port"].Success ? int.Parse(match.Groups["port"].Value, System.Globalization.CultureInfo.InvariantCulture) : 22;
         if (!match.Success || port is < 1 or > 65535)
-            throw new InvalidOperationException("Enter the SSH target as user@computer (for example me@192.168.1.20 or me@gpu-pc).");
+            throw new InvalidOperationException("Enter the SSH target as user@computer, for example me@gpu-pc.");
         return new(match.Groups["user"].Value, match.Groups["host"].Value, port);
     }
 
@@ -133,7 +133,7 @@ internal sealed partial class HostShell(string dataDirectory, IHostShellPrompts 
             try { await execute; }
             catch (OperationCanceledException)
             {
-                output?.Report("Canceled. The host may finish the step it was on.");
+                output?.Report("Canceled. The host may finish its current step.");
                 throw;
             }
             finally
@@ -232,8 +232,7 @@ internal sealed partial class HostShell(string dataDirectory, IHostShellPrompts 
             catch (SshAuthenticationException) when (attempt < 2) { continue; }
             catch (SshAuthenticationException error)
             {
-                throw new HostShellException($"{target} did not accept that password. If it does not allow password sign-in at all, add " +
-                    $"Martlet's public key ({KeyPath}.pub) to ~/.ssh/authorized_keys there once, then try again.", error);
+                throw new HostShellException($"{target} did not accept that password. Enable password sign-in or add Martlet's SSH key, then try again.", error);
             }
             catch (Exception error) when (error is not OperationCanceledException) { throw trust.Explain(error, target); }
             using var install = first.CreateCommand("sh -c " + Quote(
@@ -241,7 +240,7 @@ internal sealed partial class HostShell(string dataDirectory, IHostShellPrompts 
                 $"(grep -qxF {Quote(key.Public)} ~/.ssh/authorized_keys || printf '%s\\n' {Quote(key.Public)} >> ~/.ssh/authorized_keys)"));
             await install.ExecuteAsync(token);
             if (install.ExitStatus != 0)
-                throw new HostShellException($"Martlet could not add its key to ~/.ssh/authorized_keys on {target}: {install.Error.Trim()}");
+                throw new HostShellException($"Martlet could not set up SSH access on {target}: {install.Error.Trim()}");
             break;
         }
 
@@ -254,8 +253,7 @@ internal sealed partial class HostShell(string dataDirectory, IHostShellPrompts 
         catch (SshAuthenticationException error)
         {
             client.Dispose();
-            throw new HostShellException($"Martlet added its key on {target}, but the SSH server did not accept it. Check that it " +
-                "allows public-key sign-in (PubkeyAuthentication yes) and that your home folder is not writable by others.", error);
+            throw new HostShellException($"Martlet added its SSH key on {target}, but the computer did not accept it. Check SSH public-key sign-in there.", error);
         }
         catch (Exception error) when (error is not OperationCanceledException)
         {
@@ -307,13 +305,12 @@ internal sealed partial class HostShell(string dataDirectory, IHostShellPrompts 
 
         internal Exception Explain(Exception error, HostShellTarget target) =>
             mismatch is not null
-                ? new HostShellException($"{target.Host}'s SSH host key changed (Martlet pinned {mismatch}, it now shows {Seen}). " +
-                    "Martlet refused to connect. If that computer was reinstalled, use Reset SSH trust and connect again.", error)
-                : declined ? new OperationCanceledException("Host key not trusted.", error)
+                ? new HostShellException($"{target.Host}'s SSH identity changed. Martlet refused to connect. If that computer was reinstalled, reset SSH trust and connect again.", error)
+                : declined ? new OperationCanceledException("Computer not trusted.", error)
                 : error switch
                 {
                     System.Net.Sockets.SocketException or SshOperationTimeoutException =>
-                        new HostShellException($"Could not reach {target.Host}:{target.Port} over SSH ({error.Message}). Check that it is on, " +
+                        new HostShellException($"Could not reach {target.Host} over SSH ({error.Message}). Check that it is on, " +
                             "on your network and runs an SSH server.", error),
                     SshException or IOException or ProxyException => new HostShellException($"SSH to {target} failed: {error.Message}", error),
                     _ => error
@@ -344,7 +341,7 @@ internal sealed partial class HostShell(string dataDirectory, IHostShellPrompts 
                 var answer = prompts.SudoPassword(target, attempt > 0);
                 if (answer is null)
                 {
-                    output?.Report("No sudo password given; steps that need sudo will stop.");
+                    output?.Report("No sudo password entered. Steps that need administrator rights will stop.");
                     return null;
                 }
                 (password, remember) = (answer.Password, answer.Remember);
@@ -370,7 +367,7 @@ internal sealed partial class HostShell(string dataDirectory, IHostShellPrompts 
                 lock (sudoPasswords) sudoPasswords.Remove(target.Account);
             }
         }
-        throw new HostShellException($"sudo on {target} did not accept that password.");
+        throw new HostShellException($"The sudo password for {target} did not work.");
     }
 
     private static void Remember(WindowsCredentialStore store, HostShellTarget target, string password)
@@ -589,7 +586,7 @@ internal sealed partial class HostShell(string dataDirectory, IHostShellPrompts 
         catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException) { return new(StringComparer.Ordinal); }
         catch (JsonException error)
         {
-            throw new HostShellException($"{KnownHostsPath} could not be read ({error.Message}). Fix or delete it.", error);
+            throw new HostShellException($"Martlet could not read its saved SSH trust ({error.Message}). Reset SSH trust and try again.", error);
         }
     }
 

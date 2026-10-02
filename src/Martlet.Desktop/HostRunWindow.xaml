@@ -16,6 +16,6 @@
         </DockPanel>
         <TextBox x:Name="OutputText" IsReadOnly="True" TextWrapping="Wrap" FontFamily="Consolas" FontSize="12"
                  VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,8,0,0"
-                 AutomationProperties.Name="Output from the host" AutomationProperties.AutomationId="HostRunOutput"/>
+                 AutomationProperties.Name="Host output" AutomationProperties.AutomationId="HostRunOutput"/>
     </DockPanel>
 </local:ThemedWindow>

@@ -39,10 +39,10 @@ internal sealed record PairedHost
 
     internal string Reach => Method switch
     {
-        HostSetupMethod.ThisPcDocker => "This PC, with Docker Desktop",
-        HostSetupMethod.SshDocker => $"SSH to {SshTarget ?? "(not set)"}, Docker there",
-        HostSetupMethod.SshNative => $"SSH to {SshTarget ?? "(not set)"}, native Ubuntu",
-        _ => "Not set: you run its commands on that computer"
+        HostSetupMethod.ThisPcDocker => "This PC with Docker Desktop",
+        HostSetupMethod.SshDocker => $"SSH to {SshTarget ?? "(not set)"} (Docker)",
+        HostSetupMethod.SshNative => $"SSH to {SshTarget ?? "(not set)"} (Ubuntu)",
+        _ => "Run commands on that computer"
     };
 }
 
@@ -64,23 +64,18 @@ internal static class HostRoles
 
     internal static readonly IReadOnlyList<HostRoleInfo> All =
     [
-        new(Audio2Face, "Lip-sync", "Lip-sync (Audio2Face)", "an NVIDIA GPU with 4 GB+ and a free NVIDIA NGC API key",
+        new(Audio2Face, "Lip-sync", "Lip-sync", "an NVIDIA GPU with at least 4 GB and an NVIDIA API key",
             Audio2FaceHostClient.RouteId, "lip-sync",
-            "Moves the character's face in time with Martlet's generated voice. Needs an NVIDIA GPU with 4 GB+ and a free " +
-            "NVIDIA NGC API key on the host. Only the generated voice is sent, over pinned TLS."),
-        new(Ollama, "Thinks", "Thinking (Ollama)", "Docker; an NVIDIA GPU makes replies fast (small models also run on the CPU)",
+            "Moves the character's face with Martlet's voice. Generated voice audio goes to that host."),
+        new(Ollama, "Thinks", "Thinking", "Docker; an NVIDIA GPU is recommended",
             HostRoute.OllamaChatRouteId, "thinking",
-            "Runs the conversation model (the bot's thinking) on the host instead of a cloud provider. An NVIDIA GPU makes " +
-            "replies fast; small models also run on the CPU. Your messages and recent conversation go only to that host, over pinned TLS."),
-        new(Stt, "Listens", "Listening (whisper)", "Docker; an NVIDIA GPU makes it fast (whisper also runs well on the CPU)",
+            "Runs the conversation model on that host. Your messages and recent conversation go there."),
+        new(Stt, "Listens", "Listening", "Docker; an NVIDIA GPU is recommended",
             Audio2FaceHostConnection.TranscriptionRouteId, "listening",
-            "Turns what you say into text (the bot's hearing) with whisper.cpp on the host instead of a cloud provider. An NVIDIA " +
-            "GPU makes it fast; it also runs well on the CPU. Your recorded speech goes only to that host, over pinned TLS, and is not stored."),
-        new(F5, "Speaks", "Speaking (F5 voice)", "an NVIDIA GPU with 6 GB+ (Docker and the NVIDIA Container Toolkit are set up too)",
+            "Turns speech into text on that host. Your recorded speech goes there and is not stored."),
+        new(F5, "Speaks", "Speaking", "an NVIDIA GPU with at least 6 GB",
             HostRoute.F5RouteId, "speaking",
-            "Speaks Martlet's replies with F5-TTS on the host, in a voice cloned from a reference recording you choose " +
-            "(yours, or one you have permission to use). The model is non-commercial (CC-BY-NC-4.0). Reply text and the " +
-            "reference recording go only to that host, over pinned TLS.")
+            "Speaks replies on that host. Reply text and the selected voice sample go there.")
     ];
 
     internal static HostRoleInfo Get(string kind) => All.FirstOrDefault(r => r.Kind == kind) ??
@@ -122,16 +117,16 @@ internal static class HostRegistry
             var bytes = File.ReadAllBytes(path);
             if (bytes.Length > MaximumBytes) throw new InvalidDataException($"{FileName} is too large.");
             var document = JsonSerializer.Deserialize<Document>(bytes, Json) ?? throw new InvalidDataException($"{FileName} is empty.");
-            if (document.Version != 1) throw new InvalidDataException($"{FileName} was written by a newer Martlet.");
+            if (document.Version != 1) throw new InvalidDataException("Saved hosts were written by a newer Martlet.");
             hosts = [.. document.Hosts];
             foreach (var host in hosts) host.Pairing.Validate();
             if (hosts.Select(h => h.HostId).Distinct(StringComparer.Ordinal).Count() != hosts.Count)
-                throw new InvalidDataException($"{FileName} lists a host twice.");
+                throw new InvalidDataException("A saved host is listed twice.");
         }
         catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException) { hosts = []; }
         catch (Exception error) when (error is JsonException or ContractException or NotSupportedException or ArgumentException)
         {
-            throw new InvalidDataException($"{FileName} could not be read ({error.Message}). Fix or delete it, then pair again.", error);
+            throw new InvalidDataException($"Saved hosts couldn't be read ({error.Message}). Pair again.", error);
         }
         if (thisPcAddress is not null)
             for (var i = 0; i < hosts.Count; i++)
@@ -183,7 +178,7 @@ internal sealed class HostPairings(string dataDirectory, AvatarProfileStore prof
     internal async Task<(AvatarProfile Profile, string? Revision)> LoadProfileAsync(CancellationToken token)
     {
         var loaded = await settings.LoadAsync(token);
-        if (loaded.Settings is null) throw new InvalidOperationException("Complete Setup once so Martlet can save its hosts and who handles lip-sync.");
+        if (loaded.Settings is null) throw new InvalidOperationException("Complete Setup first.");
         var id = loaded.Settings.Profile.Id;
         var saved = await profiles.LoadAsync(id, token);
         return (saved.Profile ?? AvatarProfile.BuiltIn(id), saved.Revision);
@@ -284,16 +279,16 @@ internal static class HostControl
 {
     /// <summary>Which Martlet roles (and models) a reachable host runs, in words.</summary>
     internal static string Describe(IReadOnlyDictionary<string, string> offers) => offers.Count == 0
-        ? "Reachable. Runs no Martlet role yet."
-        : "Reachable. Runs " + string.Join(", ", HostRoles.All.Where(r => offers.ContainsKey(r.Kind))
-            .Select(r => $"{r.Name} (model {offers[r.Kind]})")) + ".";
+        ? "Connected. No host roles installed."
+        : "Connected. Runs " + string.Join(", ", HostRoles.All.Where(r => offers.ContainsKey(r.Kind))
+            .Select(r => r.Name)) + ".";
 
     /// <summary>Reads which roles a paired host currently offers this PC, and saves the hardware it reports.</summary>
     internal static async Task<HostCheck> CheckAsync(AvatarRemoteHost host, HostHardwareStore? hardware, CancellationToken token)
     {
         using var read = new WindowsCredentialStore().ReadAvatarHostSecret(host.HostId, host.CredentialId);
         if (read.Error != CredentialError.None || read.Secret is null)
-            return new(false, "This PC's pairing secret is missing; pair again.");
+            return new(false, "Pair this host again.");
         Audio2FaceHostConnection? connection = null;
         try
         {
@@ -315,7 +310,7 @@ internal static class HostControl
                 HttpRequestException or InvalidOperationException) { }
             return new(true, text, offers, version, routes);
         }
-        catch (OperationCanceledException) when (!token.IsCancellationRequested) { return new(false, "Did not answer in time."); }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested) { return new(false, "Didn't respond in time."); }
         catch (Exception error) when (error is Audio2FaceHostException or IOException or UnauthorizedAccessException or ContractException or
             InvalidOperationException or ArgumentException or JsonException or TimeoutException or HttpRequestException)
         {

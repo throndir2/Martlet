@@ -196,10 +196,10 @@ public sealed class HomeAssistantClient : IDisposable
             var status = (int)response.StatusCode;
             if (status is >= 300 and <= 399)
                 throw new HomeAssistantException(HomeAssistantFailure.Redirected,
-                    "Home Assistant answered with a redirect. Enter the exact address you open it with in the browser, including https:// if it uses it.");
+                    "Home Assistant redirected Martlet. Enter the exact address you open in the browser.");
             if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
                 throw new HomeAssistantException(HomeAssistantFailure.Unauthorized,
-                    "Home Assistant rejected the access token. In Home Assistant open your profile, then Security, create a long-lived access token and paste it here.");
+                    "Home Assistant rejected the access token. Create a new long-lived access token and paste it here.");
             if (response.StatusCode == HttpStatusCode.NotFound) throw NotHomeAssistant();
             if (status >= 500)
                 throw new HomeAssistantException(HomeAssistantFailure.ServerError,
@@ -228,7 +228,7 @@ public sealed class HomeAssistantClient : IDisposable
         catch (HttpRequestException error)
         {
             throw new HomeAssistantException(HomeAssistantFailure.Unreachable,
-                $"Couldn't reach Home Assistant ({error.HttpRequestError}). Check the address and port (usually 8123) and that this PC is on the same network.");
+                $"Couldn't reach Home Assistant ({error.HttpRequestError}). Check the address and that this PC is on the same network.");
         }
         catch (IOException)
         {
@@ -237,7 +237,7 @@ public sealed class HomeAssistantClient : IDisposable
     }
 
     private static HomeAssistantException NotHomeAssistant() => new(HomeAssistantFailure.NotHomeAssistant,
-        "That address answered, but not like Home Assistant's API. Check the address and port (usually 8123).");
+        "That address answered, but not like Home Assistant. Check the address.");
 
     private static HomeAssistantException TooLarge() => new(HomeAssistantFailure.BadResponse, "Home Assistant's answer was too large.");
 

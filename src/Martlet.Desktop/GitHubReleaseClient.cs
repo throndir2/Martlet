@@ -10,8 +10,8 @@ namespace Martlet.Desktop;
 internal sealed record GitHubUpdate(
     Version Version, string Tag, string AssetName, long AssetId, long Bytes, string Sha256, Uri ReleasePage);
 
-internal sealed class UpdateCleanupException(string path, Exception inner)
-    : IOException($"Could not remove incomplete update file {path}. Resolve file access and remove only that file before retrying.", inner)
+internal sealed class UpdateCleanupException(Exception inner)
+    : IOException("Couldn't clean up the incomplete update. Close Martlet's updates folder, then try again.", inner)
 { }
 
 internal sealed class GitHubReleaseClient(HttpClient client)
@@ -39,10 +39,10 @@ internal sealed class GitHubReleaseClient(HttpClient client)
         timeout.CancelAfter(TimeSpan.FromSeconds(30));
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
         if (response.StatusCode == HttpStatusCode.NotFound)
-            throw new InvalidDataException("Martlet's GitHub Releases are unavailable. The repository may be private or moved.");
+            throw new InvalidDataException("Updates are unavailable right now.");
         response.EnsureSuccessStatusCode();
         if (response.Content.Headers.ContentLength is > MaximumMetadataBytes)
-            throw new InvalidDataException("GitHub Release metadata exceeds the supported size.");
+            throw new InvalidDataException("Update information is larger than expected.");
         await using var stream = await response.Content.ReadAsStreamAsync(timeout.Token);
         var bytes = new byte[MaximumMetadataBytes + 1];
         var count = 0;
@@ -53,7 +53,7 @@ internal sealed class GitHubReleaseClient(HttpClient client)
             count += read;
         }
         if (count > MaximumMetadataBytes)
-            throw new InvalidDataException("GitHub Release metadata exceeds the supported size.");
+            throw new InvalidDataException("Update information is larger than expected.");
         try
         {
             using var document = JsonDocument.Parse(bytes.AsMemory(0, count), new JsonDocumentOptions { MaxDepth = 12 });
@@ -61,7 +61,7 @@ internal sealed class GitHubReleaseClient(HttpClient client)
         }
         catch (JsonException)
         {
-            throw new InvalidDataException("GitHub Release metadata is malformed.");
+            throw new InvalidDataException("Update information couldn't be read.");
         }
     }
 
@@ -71,9 +71,9 @@ internal sealed class GitHubReleaseClient(HttpClient client)
         ArgumentException.ThrowIfNullOrWhiteSpace(destination);
         if (!Path.IsPathFullyQualified(destination) ||
             !string.Equals(Path.GetFileName(destination), update.AssetName, StringComparison.Ordinal))
-            throw new ArgumentException("Select the original installer filename in an absolute destination directory.", nameof(destination));
+            throw new ArgumentException("The update couldn't be saved to that location.", nameof(destination));
         var path = Path.GetFullPath(destination);
-        if (File.Exists(path)) throw new IOException("An installer already exists at that location. Choose a new directory.");
+        if (File.Exists(path)) throw new IOException("The update file already exists. Try again.");
         var temporary = Path.Combine(Path.GetDirectoryName(path)!, $".{update.AssetName}.{Guid.NewGuid():N}.part");
         var assetUri = new Uri($"https://api.github.com/repos/throndir2/Martlet/releases/assets/{update.AssetId}");
         try
@@ -87,7 +87,7 @@ internal sealed class GitHubReleaseClient(HttpClient client)
                 {
                     if (first.Headers.Location is not { IsAbsoluteUri: true } location ||
                         !IsReleaseAssetUri(location))
-                        throw new InvalidDataException("GitHub did not return a trusted release-asset redirect.");
+                        throw new InvalidDataException("The update download link wasn't valid.");
                     using var downloadRequest = Request(location, "application/octet-stream");
                     redirected = await client.SendAsync(downloadRequest, HttpCompletionOption.ResponseHeadersRead, token);
                 }
@@ -95,7 +95,7 @@ internal sealed class GitHubReleaseClient(HttpClient client)
                 response.EnsureSuccessStatusCode();
                 if (response.StatusCode != HttpStatusCode.OK ||
                     response.Content.Headers.ContentLength is { } length && length != update.Bytes)
-                    throw new InvalidDataException("Release asset size differs from its GitHub metadata.");
+                    throw new InvalidDataException("The update download didn't match its release information.");
                 await using var input = await response.Content.ReadAsStreamAsync(token);
                 await using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None,
                     81920, FileOptions.Asynchronous | FileOptions.SequentialScan))
@@ -109,13 +109,13 @@ internal sealed class GitHubReleaseClient(HttpClient client)
                         if (read == 0) break;
                         total += read;
                         if (total > update.Bytes || total > MaximumInstallerBytes)
-                            throw new InvalidDataException("Release asset exceeds its declared size.");
+                            throw new InvalidDataException("The update download was larger than expected.");
                         digest.AppendData(buffer, 0, read);
                         await output.WriteAsync(buffer.AsMemory(0, read), token);
                     }
                     if (total != update.Bytes ||
                         !Convert.ToHexString(digest.GetHashAndReset()).Equals(update.Sha256, StringComparison.OrdinalIgnoreCase))
-                        throw new InvalidDataException("Release asset is incomplete or differs from its GitHub SHA-256 digest.");
+                        throw new InvalidDataException("The update download didn't match its release information.");
                     output.Flush(flushToDisk: true);
                 }
             }
@@ -133,7 +133,7 @@ internal sealed class GitHubReleaseClient(HttpClient client)
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
-                throw new UpdateCleanupException(temporary, error);
+                throw new UpdateCleanupException(error);
             }
         }
     }
@@ -141,7 +141,7 @@ internal sealed class GitHubReleaseClient(HttpClient client)
     private static GitHubUpdate? Parse(JsonElement root, Version installed)
     {
         if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() > 100)
-            throw new InvalidDataException("GitHub Release metadata has an invalid release list.");
+            throw new InvalidDataException("Update information couldn't be read.");
         var current = new Version(installed.Major, installed.Minor,
             Math.Max(installed.Build, 0), Math.Max(installed.Revision, 0));
         JsonElement? newest = null;
@@ -165,25 +165,25 @@ internal sealed class GitHubReleaseClient(HttpClient client)
         var expectedName = $"Martlet-{tag.TrimStart('v')}-win-x64.exe";
         var assets = ReadProperty(selected, "assets");
         if (assets.ValueKind != JsonValueKind.Array || assets.GetArrayLength() > 64)
-            throw new InvalidDataException("GitHub Release has an invalid asset list.");
+            throw new InvalidDataException("Update information couldn't be read.");
         GitHubUpdate? found = null;
         foreach (var asset in assets.EnumerateArray())
         {
             if (asset.ValueKind != JsonValueKind.Object || ReadString(asset, "name") != expectedName) continue;
-            if (found is not null) throw new InvalidDataException("GitHub Release has duplicate installer assets.");
+            if (found is not null) throw new InvalidDataException("Update information couldn't be read.");
             if (ReadString(asset, "state") != "uploaded")
-                throw new InvalidDataException("GitHub Release installer is not ready.");
+                throw new InvalidDataException("The update isn't ready yet.");
             var id = ReadInt64(asset, "id");
             var size = ReadInt64(asset, "size");
             var digest = ReadString(asset, "digest");
             if (id <= 0 || size is <= 0 or > MaximumInstallerBytes ||
                 !digest.StartsWith("sha256:", StringComparison.Ordinal) ||
                 digest.Length != 71 || !digest.AsSpan(7).ToArray().All(IsLowerHex))
-                throw new InvalidDataException("GitHub Release installer lacks a valid bounded SHA-256 digest.");
+                throw new InvalidDataException("Update information is incomplete.");
             found = new(releaseVersion, tag, expectedName, id, size, digest[7..],
                 new Uri($"https://github.com/throndir2/Martlet/releases/tag/{tag}"));
         }
-        return found ?? throw new InvalidDataException("The newest Martlet release has no matching win-x64 installer asset.");
+        return found ?? throw new InvalidDataException("The newest Martlet update isn't available for this PC yet.");
     }
 
     private static bool TryParseVersion(string tag, out Version version)
@@ -221,27 +221,27 @@ internal sealed class GitHubReleaseClient(HttpClient client)
 
     private static JsonElement ReadProperty(JsonElement element, string name) =>
         element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) ? value :
-            throw new InvalidDataException($"GitHub Release metadata is missing {name}.");
+            throw new InvalidDataException("Update information is incomplete.");
 
     private static string ReadString(JsonElement element, string name)
     {
         var value = ReadProperty(element, name);
         return value.ValueKind == JsonValueKind.String && value.GetString() is { } text ? text :
-            throw new InvalidDataException($"GitHub Release metadata has invalid {name}.");
+            throw new InvalidDataException("Update information couldn't be read.");
     }
 
     private static bool ReadBoolean(JsonElement element, string name)
     {
         var value = ReadProperty(element, name);
         return value.ValueKind is JsonValueKind.True or JsonValueKind.False ? value.GetBoolean() :
-            throw new InvalidDataException($"GitHub Release metadata has invalid {name}.");
+            throw new InvalidDataException("Update information couldn't be read.");
     }
 
     private static long ReadInt64(JsonElement element, string name)
     {
         var value = ReadProperty(element, name);
         return value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var number) ? number :
-            throw new InvalidDataException($"GitHub Release metadata has invalid {name}.");
+            throw new InvalidDataException("Update information couldn't be read.");
     }
 
     private static bool IsLowerHex(char value) => value is >= '0' and <= '9' or >= 'a' and <= 'f';

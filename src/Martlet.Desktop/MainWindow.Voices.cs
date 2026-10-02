@@ -25,10 +25,8 @@ public partial class MainWindow
         var stack = new List<UIElement>
         {
             Heading("Voices"),
-            Note("F5 speaks in the voice of any short recording, with no training. Martlet comes with ten voices that are free to " +
-                "use and share (public domain or CMU ARCTIC recordings), and you can add your own. Switch between them any time. " +
-                "Martlet keeps each recording on this PC and sends it with each reply only to the computer that speaks." +
-                (f5 is null ? " The chosen voice speaks once F5 does the speaking, on this PC or another of your computers." : ""),
+            Note("F5 copies a voice from a short recording. Use an included voice or add your own; recordings stay on this PC and go only " +
+                "to the computer that speaks." + (f5 is null ? " The chosen voice will be used when F5 speaks." : ""),
                 new Thickness(0, 0, 0, 10))
         };
         IReadOnlyList<F5ReferenceSnapshot> voices = [];
@@ -49,7 +47,7 @@ public partial class MainWindow
         var status = Note($"{F5BundledVoices.All.Count} included voices, {own.Length} of yours. " + (chosenVoice is null
                 ? $"None {mark} yet; F5 starts with {F5BundledVoices.Default.Name}."
                 : F5Voices.Bundled(chosenVoice) is { } bundledInUse ? $"{Capitalized(mark)}: {bundledInUse.Name}."
-                : F5Voices.IsRetiredSample(chosenVoice) ? $"{Capitalized(mark)}: the retired F5-TTS sample; switch to another voice."
+                : F5Voices.IsRetiredSample(chosenVoice) ? $"{Capitalized(mark)}: old sample voice. Switch to another voice."
                 : $"{Capitalized(mark)}: one of your voices."),
             new Thickness(0, 0, 0, 10));
         AutomationProperties.SetAutomationId(status, "F5VoicesStatus");
@@ -70,8 +68,7 @@ public partial class MainWindow
         {
             var inUse = voice.PresetId == chosen;
             var detail = F5Voices.IsRetiredSample(voice)
-                ? "Earlier versions of Martlet included this clip from F5-TTS's examples. It is no longer included because where its " +
-                  "recording comes from couldn't be confirmed. Switch to another voice, then remove it."
+                ? "This old sample is no longer included. Switch to another voice, then remove it."
                 : $"{voice.AudioFormat.DurationMilliseconds / 1000d:0.#} second recording, added {voice.CreatedAtUtc.ToLocalTime():d}.";
             stack.Add(VoiceRow(voice.PresetName, detail, inUse, mark, voice.PresetId.ToString("N"), status: false,
                 () => PlayVoiceAsync(voice, voice.PresetName), () => UseVoiceAsync(voice),
@@ -133,13 +130,13 @@ public partial class MainWindow
             voicePlayer?.Stop();
             voicePlayer = new SoundPlayer(new MemoryStream(audio));
             voicePlayer.Play();
-            ActionText.Text = $"Playing '{name}' on Windows' default speakers.";
+            ActionText.Text = $"Playing '{name}'...";
         }
         catch (OperationCanceledException) { }
         catch (F5Exception error) { ActionText.Text = F5Voices.Describe(error); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)
         {
-            ActionText.Text = $"'{name}' can't be played: {error.Message}";
+            ActionText.Text = $"Couldn't play '{name}': {error.Message}";
         }
     }
 
@@ -168,7 +165,7 @@ public partial class MainWindow
                 voice = await F5Voices.BundledAsync(voices, store.DataDirectory, destination, bundled ?? F5BundledVoices.Default, token);
             }
             if (voice.Rights.ProcessingDestinationId != destination)
-                throw new InvalidOperationException($"'{voice.PresetName}' was added for another F5 destination. Add its recording again.");
+                throw new InvalidOperationException($"Add '{voice.PresetName}' again for the computer that will speak it.");
             var reference = await F5Voices.ApplyAsync(store.DataDirectory, voice, token);
             if (f5 is not null)
             {
@@ -176,10 +173,10 @@ public partial class MainWindow
                 var saved = await setupService.SaveAsync(next, loaded.Revision, token);
                 if (!saved.Save.Saved) throw new InvalidOperationException(saved.Summary);
                 homeSettings = next;
-                ActionText.Text = $"Martlet now speaks with the voice '{voice.PresetName}'. An open conversation window picks it up on Reload.";
+                ActionText.Text = $"Martlet now uses the voice '{voice.PresetName}'. Reload any open conversation to use it.";
             }
             else
-                ActionText.Text = $"'{voice.PresetName}' is your F5 voice. Martlet speaks with it once F5 does the speaking, on this PC or another of your computers.";
+                ActionText.Text = $"'{voice.PresetName}' is your F5 voice.";
         }
         catch (OperationCanceledException) { }
         catch (F5Exception error) { ActionText.Text = F5Voices.Describe(error); }
@@ -226,8 +223,8 @@ public partial class MainWindow
                 voice = await F5Voices.BundledAsync(voices, store.DataDirectory, destination, F5BundledVoices.Default, token);
             }
             var reference = await F5Voices.ApplyAsync(store.DataDirectory, voice, token);
-            var moved = $"The retired F5-TTS sample is no longer used; F5 now speaks with {F5BundledVoices.Default.Name}, " +
-                "Martlet's default voice. Pick another under Companion › Voice › Voices.";
+            var moved = $"An old sample voice is no longer used. F5 now uses {F5BundledVoices.Default.Name}. " +
+                "Pick another under Companion › Voice › Voices.";
             if (!speaking)
             {
                 ActionText.Text = moved;
@@ -243,13 +240,13 @@ public partial class MainWindow
         catch (OperationCanceledException) { return null; }
         catch (F5Exception error)
         {
-            ActionText.Text = "Martlet couldn't move off the retired F5-TTS sample: " + F5Voices.Describe(error);
+            ActionText.Text = "Couldn't switch from the old sample voice: " + F5Voices.Describe(error);
             return null;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or
             ContractException or JsonException)
         {
-            ActionText.Text = "Martlet couldn't move off the retired F5-TTS sample: " + error.Message;
+            ActionText.Text = "Couldn't switch from the old sample voice: " + error.Message;
             return null;
         }
         finally { assigningRole = false; }
@@ -267,8 +264,8 @@ public partial class MainWindow
     private async Task RemoveVoiceAsync(F5ReferenceSnapshot voice)
     {
         if (store is null || closing) return;
-        if (!ConfirmationDialog.Confirm(this, $"Remove the voice '{voice.PresetName}'? Martlet deletes its copy of the recording on this " +
-                "PC. Your original file isn't touched.", "Remove voice"))
+        if (!ConfirmationDialog.Confirm(this, $"Remove '{voice.PresetName}'?\n\nMartlet deletes its copy on this PC. Your original file isn't touched.",
+                "Remove voice"))
             return;
         try
         {

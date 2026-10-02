@@ -31,7 +31,7 @@ internal sealed class AvatarController : IAsyncDisposable
     private CancellationTokenSource? loudness;
     private Task? loudnessWorker;
     private Task? worker;
-    private string status = "Avatar OFF. No renderer or analysis has run.";
+    private string status = "Character hidden.";
     private long generation;
     internal GeneratedSpeechObserver Observer => observer;
     internal string Status => Volatile.Read(ref status);
@@ -111,7 +111,7 @@ internal sealed class AvatarController : IAsyncDisposable
                 throw new InvalidOperationException("The character window closed before it finished loading.");
             if (selected.LipSync == AvatarLipSync.Audio2Face)
             {
-                Publish("Character showing with idle animation. Audio2Face-only lip-sync needs a reviewed mapping and explicit activation below.");
+                Publish("Character is showing. Review and activate Audio2Face below to start lip-sync.");
                 return;
             }
             AutoAudio2Face? automatic = null;
@@ -128,19 +128,18 @@ internal sealed class AvatarController : IAsyncDisposable
             StartCharacter(current, automatic);
             if (automatic is null)
                 Publish(selected.LipSync == AvatarLipSync.Auto
-                    ? "Character showing. This model has no mouth control Audio2Face can drive; mouth follows Martlet's voice loudness."
-                    : "Character showing. Idle animation on; mouth follows Martlet's voice (local loudness lip-sync).");
+                    ? "Character is showing. No compatible mouth controls were found."
+                    : "Character is showing. Mouth movement follows Martlet's voice.");
             else if (hostLink is { } assigned && await assigned.ReadyAsync(token))
-                Publish($"Character showing. Audio2Face on Martlet host {assigned.Authority}; lip-sync uses it, falling back to voice loudness.");
+                Publish($"Character is showing. Lip-sync is using host {assigned.Authority}.");
             else if (await Audio2FaceProbe.IsListeningAsync(automatic.Options, TimeSpan.FromMilliseconds(300), token))
-                Publish($"Character showing. Audio2Face service detected at {automatic.Options.Endpoint.Authority}; lip-sync uses it, falling back to voice loudness.");
+                Publish($"Character is showing. Lip-sync is using Audio2Face at {automatic.Options.Endpoint.Authority}.");
             else if (hostLink is { } host)
-                Publish($"Character showing. Martlet host {host.Authority} is not offering Audio2Face right now; lip-sync uses voice loudness and checks again later.");
+                Publish($"Character is showing. Host {host.Authority} isn't ready, so mouth movement follows Martlet's voice.");
             else if (selected.RemoteHost is not null)
-                Publish("Character showing. The paired Martlet host's credential is missing; pair again in Character settings. Lip-sync uses voice loudness.");
+                Publish("Character is showing. Pair the host again to use it for lip-sync.");
             else
-                Publish($"Character showing. Audio2Face isn't running on this PC (nothing answers at {automatic.Options.Endpoint.Authority}), " +
-                    "so the mouth follows the voice's loudness. Install it in Companion › Lip-sync; Martlet checks again whenever it speaks.");
+                Publish("Character is showing. Audio2Face isn't running, so mouth movement follows Martlet's voice.");
         }
         finally { changes.Release(); }
     }
@@ -284,9 +283,9 @@ internal sealed class AvatarController : IAsyncDisposable
                     OperationCanceledException or TimeoutException)
                 {
                     if (error is Audio2FaceHostException) host?.Invalidate();
-                    Publish($"Audio2Face unavailable for this sentence ({(error is Audio2FaceException a ? a.Failure.ToString() :
+                    Publish($"Audio2Face wasn't available: {(error is Audio2FaceException a ? a.Failure.ToString() :
                         error is Audio2FaceHostException h ? h.Message : error is AvatarOperationException reason ? reason.Message :
-                        "service or mapping failure")}); mouth follows voice loudness.");
+                        "service or mapping failure")}. Mouth movement follows Martlet's voice.");
                 }
             }
             await Task.WhenAll(tee, present);
@@ -439,7 +438,7 @@ internal sealed class AvatarController : IAsyncDisposable
                 await target.SendAsync("apply", new RendererParameters(identity, frame.Sequence, frame.SampleOffset,
                     position.SampleOffset, automatic.Config.ModelRevision, automatic.Config.MappingRevision, parameters), stop.Token);
                 if (Volatile.Read(ref lastAudio2FaceApply) == 0 || !Audio2FaceAnimating)
-                    Publish($"Lip-sync: Audio2Face at {where} (voice loudness fallback ready).");
+                    Publish($"Lip-sync is using Audio2Face at {where}.");
                 Volatile.Write(ref lastAudio2FaceApply, Stopwatch.GetTimestamp());
             }
         }
@@ -474,12 +473,12 @@ internal sealed class AvatarController : IAsyncDisposable
             {
                 CheckAttempt(attempt, version);
                 profile = selected with { ResourceRevision = snapshot.Revision };
-                Publish("Renderer/model inspected locally. Analysis OFF; Audio2Face runtime NOT RUN. Review exact target mappings.");
+                Publish("Model controls inspected. Review the mappings before activating Audio2Face.");
             }
         }
         catch
         {
-            Publish("Avatar inspection failed; check local model, prepared SDK/Core, and installed WebView2 (Settings > Tools > Prerequisites installs it). Voice is unaffected.");
+            Publish("Couldn't inspect the model. Check the model file, SDK folder and WebView2, then try again.");
             if (entered)
             {
                 if (renderer is { } failed) await failed.DisposeAsync();
@@ -497,7 +496,7 @@ internal sealed class AvatarController : IAsyncDisposable
 
     internal async Task ActivateAsync(AvatarProfile selected, bool approved, CancellationToken token)
     {
-        if (!approved) throw new InvalidOperationException("Explicit session permission for local generated speech analysis is required.");
+        if (!approved) throw new InvalidOperationException("Allow Audio2Face for this session first.");
         var (attempt, version) = BeginAttempt(token, replace: false);
         var entered = false;
         try
@@ -506,19 +505,19 @@ internal sealed class AvatarController : IAsyncDisposable
             entered = true;
             CheckAttempt(attempt, version);
             if (worker is { IsCompleted: false } || activation is not null)
-                throw new InvalidOperationException("Stop the current avatar activation and await cleanup.");
+                throw new InvalidOperationException("Stop the current lip-sync action and wait a moment.");
             if (renderer is null || renderer.HasExited || profile is null || selected.ProfileId != profile.ProfileId ||
                 selected.ResourceRevision != profile.ResourceRevision)
-                throw new InvalidOperationException("Inspect the selected resources before activation.");
+                throw new InvalidOperationException("Inspect this model before activating lip-sync.");
             var snapshot = await LocalAvatarFiles.SnapshotAsync(selected, attempt.Token);
             CheckAttempt(attempt, version);
             if (snapshot.Revision != selected.ResourceRevision)
-                throw new InvalidOperationException("Selected resources changed. Inspect and review them again.");
+                throw new InvalidOperationException("The model changed. Inspect it again.");
             var settings = selected.Settings with { Enabled = true };
             if (settings.Assignments.Any(a => a.SourceId != SourceId) ||
                 settings.RequestedAspects.Except(settings.OmittedAspects).Any(a => a is not (AvatarAspect.Mouth or AvatarAspect.Expression)))
-                throw new InvalidOperationException("Only the implemented Audio2Face mouth/expression route can activate; explicitly omit unavailable aspects.");
-            if (settings.Assignments.Count == 0) throw new InvalidOperationException("Select at least one mapped aspect.");
+                throw new InvalidOperationException("Only mouth and expression mappings can be activated. Omit the rest.");
+            if (settings.Assignments.Count == 0) throw new InvalidOperationException("Add at least one mapping first.");
             var targets = Targets(settings);
             var mappingRevision = Convert.ToHexString(SHA256.HashData(AvatarJson.WriteConfiguration(settings)));
             var config = new RendererConfiguration(SourceId, snapshot.Revision, mappingRevision,
@@ -533,7 +532,7 @@ internal sealed class AvatarController : IAsyncDisposable
                 pending = null;
                 observer.Enable();
                 worker = RunAsync(settings, targets, config, version, renderer, activation.Token);
-                Publish("Avatar armed for generated speech in this session. Audio2Face runtime awaiting its first real response; no microphone feed.");
+                Publish("Audio2Face is ready for this session. It will start when Martlet speaks.");
             }
         }
         finally
@@ -549,7 +548,7 @@ internal sealed class AvatarController : IAsyncDisposable
         {
             token.ThrowIfCancellationRequested();
             if (pending is not null || !replace && activation is not null)
-                throw new InvalidOperationException("An avatar action still owns resources. STOP and wait for cleanup.");
+                throw new InvalidOperationException("Another avatar action is still finishing. Wait a moment and try again.");
             if (replace) Revoke();
             pending = CancellationTokenSource.CreateLinkedTokenSource(token);
             return (pending, ++generation);
@@ -562,7 +561,7 @@ internal sealed class AvatarController : IAsyncDisposable
         {
             attempt.Token.ThrowIfCancellationRequested();
             if (!ReferenceEquals(pending, attempt) || generation != version)
-                throw new OperationCanceledException("Avatar action was superseded.", attempt.Token);
+                throw new OperationCanceledException("Avatar action was replaced.", attempt.Token);
         }
     }
 
@@ -582,19 +581,19 @@ internal sealed class AvatarController : IAsyncDisposable
         foreach (var assignment in settings.Assignments)
         {
             var mapping = settings.MappingProfiles.SingleOrDefault(p => p.Id == assignment.MappingId)
-                ?? throw new InvalidOperationException("Each aspect needs an explicit mapping profile.");
+                ?? throw new InvalidOperationException("Each aspect needs a mapping.");
             foreach (var item in mapping.Mappings.Where(m => AvatarChannels.Aspect(m.Source) == assignment.Aspect))
             {
                 var target = capabilities.Parameters.SingleOrDefault(p => p.Id == item.TargetParameterId)
-                    ?? throw new InvalidOperationException("Mapping target is absent from the inspected model.");
+                    ?? throw new InvalidOperationException("The selected model control is no longer available.");
                 if (!target.Aspects.Contains(assignment.Aspect.ToString(), StringComparer.Ordinal))
-                    throw new InvalidOperationException("Mapping aspect is not supported by this authored target.");
+                    throw new InvalidOperationException("That model control doesn't support this mapping.");
                 result.Add(new() { Id = target.Id, Aspect = assignment.Aspect, Minimum = target.Minimum,
                     Maximum = target.Maximum, Neutral = target.Neutral });
             }
         }
         if (result.Select(p => p.Id).Distinct(StringComparer.Ordinal).Count() != result.Count)
-            throw new InvalidOperationException("A model parameter cannot have multiple writers.");
+            throw new InvalidOperationException("A model control can't be used by more than one mapping.");
         return result;
     }
 
@@ -617,9 +616,9 @@ internal sealed class AvatarController : IAsyncDisposable
                     InvalidOperationException or OperationCanceledException or TimeoutException)
                 {
                     if (token.IsCancellationRequested) break;
-                    Publish($"Segment animation unavailable ({(error is Audio2FaceException a ? a.Failure.ToString() :
+                    Publish($"Audio2Face couldn't animate this speech: {(error is Audio2FaceException a ? a.Failure.ToString() :
                         error is AvatarOperationException reason ? reason.Message :
-                        segment.Failure != SpeechObservationFailure.None ? segment.Failure.ToString() : "runtime or mapping failure")}). Voice continues; no fallback.");
+                        segment.Failure != SpeechObservationFailure.None ? segment.Failure.ToString() : "runtime or mapping failure")}. Voice continues.");
                 }
                 finally
                 {
@@ -632,7 +631,7 @@ internal sealed class AvatarController : IAsyncDisposable
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         catch (Exception error) when (error is IOException or InvalidOperationException or OperationCanceledException or TimeoutException)
         {
-            Publish("Avatar renderer/transport unavailable. Voice continues; deactivate and inspect before an explicit retry.");
+            Publish("Character lip-sync stopped. Voice continues; inspect again before retrying.");
             runtimeFailed = true;
             observer.Disable();
             lock (stateGate) if (activation is { } currentActivation) currentActivation.CancelAsync().Forget();
@@ -646,11 +645,11 @@ internal sealed class AvatarController : IAsyncDisposable
                 try { await ownedRenderer.SendAsync("stop", new { }, clear.Token); }
                 catch (Exception error) when (error is IOException or InvalidOperationException or OperationCanceledException)
                 {
-                    Publish("Avatar could not acknowledge neutral controls; stopping the isolated renderer. Voice continues.");
+                    Publish("Couldn't reset the character, so Martlet stopped the renderer. Voice continues.");
                     await ownedRenderer.DisposeAsync();
                 }
             }
-            if (token.IsCancellationRequested && !runtimeFailed) Publish("Avatar revoked; analysis and pose delivery stopped. STOP releases renderer resources before reactivation.");
+            if (token.IsCancellationRequested && !runtimeFailed) Publish("Audio2Face stopped. Show the character again to restart it.");
         }
     }
 
@@ -695,11 +694,11 @@ internal sealed class AvatarController : IAsyncDisposable
                     if (position is null)
                     {
                         if (segment.Playback.DeviceClock.State != PlaybackClockState.Waiting)
-                            throw new AvatarOperationException("actual source device clock unavailable: " + segment.Playback.DeviceClock.State);
+                            throw new AvatarOperationException("playback timing isn't available");
                     }
                     else if (frame.SampleOffset <= position.SampleOffset) break;
                     else if (frame.SampleOffset - position.SampleOffset > segment.Format.SampleRate)
-                        throw new AvatarOperationException("animation exceeds the bounded future window");
+                        throw new AvatarOperationException("animation is too far ahead of playback");
                     await Task.Delay(10, stop.Token);
                 }
                 var composed = composition.Compose(frame, gate, position);
@@ -707,7 +706,7 @@ internal sealed class AvatarController : IAsyncDisposable
                     throw new AvatarOperationException("frame cannot be synchronized: " + composed.Disposition);
                 await ownedRenderer.SendAsync("apply", new RendererParameters(identity, frame.Sequence, frame.SampleOffset,
                     position.SampleOffset, config.ModelRevision, config.MappingRevision, composed.Parameters), stop.Token);
-                Publish("Avatar responding on observed device playback position. Physical synchronization is not yet qualified.");
+                Publish("Audio2Face lip-sync is active.");
             }
 
             await ingress;
@@ -774,7 +773,7 @@ internal sealed class AvatarController : IAsyncDisposable
         {
             Revoke();
             await CleanupAsync();
-            Publish("Avatar OFF. Configuration and user assets preserved; voice unaffected.");
+            Publish("Character hidden. Voice continues.");
         }
         finally { changes.Release(); }
     }
@@ -795,12 +794,12 @@ internal sealed class AvatarController : IAsyncDisposable
             if (!IsShowing) return;
             if (next is not null)
                 Publish(await next.ReadyAsync(token)
-                    ? $"Lip-sync handed to Martlet host {next.Authority} (Audio2Face); voice loudness stays as the fallback."
-                    : $"Lip-sync handed to Martlet host {next.Authority}. It is not offering Audio2Face yet; voice loudness until it does (checked every 30 s).");
+                    ? $"Lip-sync uses host {next.Authority}."
+                    : $"Host {next.Authority} isn't ready; mouth movement follows Martlet's voice for now.");
             else if (remote is not null)
-                Publish("The paired Martlet host's credential is missing; pair it again. Lip-sync uses this PC's Audio2Face or voice loudness.");
+                Publish("Pair the host again to use it for lip-sync.");
             else
-                Publish("Lip-sync handed to this PC: its own Audio2Face service when running, otherwise voice loudness.");
+                Publish("Lip-sync uses this PC when Audio2Face is available; otherwise it follows Martlet's voice.");
         }
         finally { changes.Release(); }
     }

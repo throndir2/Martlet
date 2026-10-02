@@ -7,12 +7,12 @@
         WindowStartupLocation="CenterOwner" Loaded="Window_Loaded" Closing="Window_Closing"
         AllowDrop="True" PreviewDragOver="Window_PreviewDragOver" PreviewDrop="Window_PreviewDrop"
         AutomationProperties.AutomationId="LorebookWindow"
-        AutomationProperties.Name="Edit lorebooks: world and character lore added when its keywords come up">
+        AutomationProperties.Name="Edit lorebooks">
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="20">
             <TextBlock Text="Lorebooks" FontSize="24" FontWeight="SemiBold"/>
             <TextBlock TextWrapping="Wrap" Margin="0,8"
-                       Text="World Info like SillyTavern: each entry has keywords, and when one comes up in the conversation its text is added to what Martlet knows for that reply. Always-on entries are added every time. Lorebooks are saved on this PC (lorebooks.json); triggered entries go to your Thinking model with the persona. Import SillyTavern World Info JSON, or the lorebook inside a character card (PNG, JSON or CHARX), by button or by dropping the file here."/>
+                       Text="Lorebooks add saved background details when matching keywords come up. They stay on this PC and can be imported from JSON or character cards."/>
             <TextBox x:Name="ResultText" IsReadOnly="True" TextWrapping="Wrap" MinHeight="40" Margin="0,4,0,8"
                      AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="LorebookResult"
                      AutomationProperties.Name="Lorebook status"/>
@@ -26,10 +26,10 @@
                             AutomationProperties.AutomationId="LorebookNew"/>
                     <Button Content="_Import..." Click="Import_Click" Padding="10,6" Margin="0,0,8,6"
                             AutomationProperties.AutomationId="LorebookImport"
-                            ToolTip="SillyTavern World Info JSON, or a character card (PNG, JSON or CHARX) with a lorebook"/>
+                            ToolTip="World Info JSON, or a character card with a lorebook"/>
                     <Button x:Name="ExportButton" Content="_Export for SillyTavern..." Click="Export_Click" Padding="10,6" Margin="0,0,8,6"
                             AutomationProperties.AutomationId="LorebookExport"/>
-                    <Button x:Name="DeleteBookButton" Content="Delete lorebook" Click="DeleteBook_Click" Padding="10,6" Margin="0,0,8,6"
+                    <Button x:Name="DeleteBookButton" Content="_Delete lorebook" Click="DeleteBook_Click" Padding="10,6" Margin="0,0,8,6"
                             AutomationProperties.AutomationId="LorebookDelete"/>
                 </WrapPanel>
 
@@ -42,7 +42,7 @@
                               AutomationProperties.AutomationId="LorebookActivation">
                         <ComboBoxItem Content="Off"/>
                         <ComboBoxItem Content="With every persona"/>
-                        <ComboBoxItem Content="Only with the personas checked below"/>
+                        <ComboBoxItem Content="Only with selected personas"/>
                     </ComboBox>
                     <ItemsControl ItemsSource="{Binding Personas}" IsEnabled="{Binding PersonasEnabled}" Margin="0,6,0,0"
                                   AutomationProperties.AutomationId="LorebookPersonas" AutomationProperties.Name="Personas that use this lorebook">
@@ -77,10 +77,10 @@
                     <TextBlock x:Name="EntryCount" TextWrapping="Wrap" Margin="0,4,0,0"/>
 
                     <StackPanel x:Name="EntryPanel" DataContext="{Binding SelectedItem, ElementName=EntryList}" Margin="0,8,0,0">
-                        <Label Target="{Binding ElementName=EntryTitle}" Content="Entry _title (only for you)"/>
+                        <Label Target="{Binding ElementName=EntryTitle}" Content="Entry _title"/>
                         <TextBox x:Name="EntryTitle" MaxLength="256" Text="{Binding Title, UpdateSourceTrigger=PropertyChanged}"
                                  AutomationProperties.AutomationId="LorebookEntryTitle"/>
-                        <Label Target="{Binding ElementName=EntryKeys}" Content="_Keywords (comma-separated; /regex/i works too)"/>
+                        <Label Target="{Binding ElementName=EntryKeys}" Content="_Keywords (comma-separated)"/>
                         <TextBox x:Name="EntryKeys" Text="{Binding Keys, UpdateSourceTrigger=PropertyChanged}"
                                  AutomationProperties.AutomationId="LorebookEntryKeys"/>
                         <Grid Margin="0,4,0,0">
@@ -105,7 +105,7 @@
                                 </ComboBox>
                             </StackPanel>
                         </Grid>
-                        <Label Target="{Binding ElementName=EntryContent}" Content="_Content (added to the instructions when triggered)"/>
+                        <Label Target="{Binding ElementName=EntryContent}" Content="_Content (added when triggered)"/>
                         <TextBox x:Name="EntryContent" Text="{Binding Content, UpdateSourceTrigger=PropertyChanged}"
                                  AcceptsReturn="True" AcceptsTab="False" TextWrapping="Wrap" Height="170" VerticalScrollBarVisibility="Auto"
                                  AutomationProperties.AutomationId="LorebookEntryContent"/>
@@ -113,7 +113,7 @@
                         <WrapPanel>
                             <CheckBox Content="_Enabled" IsChecked="{Binding Enabled}" Margin="0,4,16,4" VerticalAlignment="Center"
                                       AutomationProperties.AutomationId="LorebookEntryEnabled"/>
-                            <CheckBox Content="Always _on (no keyword needed)" IsChecked="{Binding Constant}" Margin="0,4,16,4" VerticalAlignment="Center"
+                            <CheckBox Content="Always _on" IsChecked="{Binding Constant}" Margin="0,4,16,4" VerticalAlignment="Center"
                                       AutomationProperties.AutomationId="LorebookEntryConstant"/>
                             <Label Content="Placement" VerticalAlignment="Center"/>
                             <ComboBox SelectedIndex="{Binding PositionIndex}" MinWidth="150" Margin="0,0,16,4"
@@ -124,14 +124,14 @@
                             <Label Content="Order" VerticalAlignment="Center"/>
                             <TextBox Text="{Binding Order, UpdateSourceTrigger=PropertyChanged}" Width="70" Margin="0,0,16,4" VerticalAlignment="Center"
                                      AutomationProperties.AutomationId="LorebookEntryOrder" AutomationProperties.Name="Order"
-                                     ToolTip="Higher orders win the budget first and sit closer to the reply."/>
+                                     ToolTip="Higher-order entries are used first."/>
                             <Label Content="Chance %" VerticalAlignment="Center"/>
                             <TextBox Text="{Binding Probability, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,0,4" VerticalAlignment="Center"
                                      AutomationProperties.AutomationId="LorebookEntryProbability" AutomationProperties.Name="Chance percent"/>
                         </WrapPanel>
                         <Expander Header="More entry options" Margin="0,6,0,0" AutomationProperties.AutomationId="LorebookEntryMore">
                             <StackPanel Margin="0,6,0,0">
-                                <TextBlock TextWrapping="Wrap" Text="A filled box overrides the scan settings below for this entry; an indeterminate box or empty depth uses them."/>
+                                <TextBlock TextWrapping="Wrap" Text="Filled boxes override the scan settings below for this entry."/>
                                 <WrapPanel Margin="0,4,0,0">
                                     <CheckBox Content="Case-sensitive" IsThreeState="True" IsChecked="{Binding CaseSensitive}" Margin="0,4,16,4"
                                               AutomationProperties.AutomationId="LorebookEntryCase"/>
@@ -141,9 +141,9 @@
                                     <TextBox Text="{Binding ScanDepth, UpdateSourceTrigger=PropertyChanged}" Width="50" VerticalAlignment="Center"
                                              AutomationProperties.AutomationId="LorebookEntryScanDepth" AutomationProperties.Name="Entry scan depth"/>
                                 </WrapPanel>
-                                <CheckBox Content="Only the conversation can trigger it (not other entries)" IsChecked="{Binding ExcludeRecursion}" Margin="0,4"
+                                <CheckBox Content="Only messages can trigger this" IsChecked="{Binding ExcludeRecursion}" Margin="0,4"
                                           AutomationProperties.AutomationId="LorebookEntryExcludeRecursion"/>
-                                <CheckBox Content="Its content never triggers other entries" IsChecked="{Binding PreventRecursion}" Margin="0,4"
+                                <CheckBox Content="This entry can't trigger others" IsChecked="{Binding PreventRecursion}" Margin="0,4"
                                           AutomationProperties.AutomationId="LorebookEntryPreventRecursion"/>
                             </StackPanel>
                         </Expander>
@@ -155,9 +155,9 @@
                     <Label Target="{Binding ElementName=ScanDepth}" Content="_Scan depth (messages)" VerticalAlignment="Center"/>
                     <TextBox x:Name="ScanDepth" Width="50" Margin="0,0,16,4" VerticalAlignment="Center" AutomationProperties.AutomationId="LorebookScanDepth"
                              ToolTip="How many of the latest messages are searched for keywords, counting the one being answered."/>
-                    <Label Target="{Binding ElementName=Budget}" Content="_Budget (UTF-8 bytes per reply)" VerticalAlignment="Center"/>
+                    <Label Target="{Binding ElementName=Budget}" Content="_Budget per reply" VerticalAlignment="Center"/>
                     <TextBox x:Name="Budget" Width="70" Margin="0,0,16,4" VerticalAlignment="Center" AutomationProperties.AutomationId="LorebookBudget"
-                             ToolTip="Most entry text added to one reply: 256 to 12,288 bytes. Higher-order entries win when it runs out."/>
+                             ToolTip="Maximum entry text added to one reply. Higher-order entries are used first."/>
                 </WrapPanel>
                 <WrapPanel>
                     <CheckBox x:Name="Recursive" Content="Triggered entries can trigger other entries" Margin="0,4,16,4"
@@ -169,9 +169,9 @@
                 </WrapPanel>
 
                 <TextBlock Text="Try it" FontSize="18" FontWeight="SemiBold" Margin="0,16,0,4"/>
-                <TextBlock TextWrapping="Wrap" Text="Type something you might say to see which entries it triggers with your unsaved changes. Nothing is sent anywhere."/>
+                <TextBlock TextWrapping="Wrap" Text="Type a sample message to see which entries would be added. Nothing is sent."/>
                 <DockPanel Margin="0,6,0,0">
-                    <Button DockPanel.Dock="Right" Content="Sho_w what triggers" Click="Test_Click" Padding="10,5" Margin="8,0,0,0"
+                    <Button DockPanel.Dock="Right" Content="Sho_w matches" Click="Test_Click" Padding="10,5" Margin="8,0,0,0"
                             AutomationProperties.AutomationId="LorebookTest"/>
                     <ComboBox x:Name="TestPersona" DockPanel.Dock="Right" MinWidth="160" Margin="8,0,0,0" DisplayMemberPath="Name"
                               AutomationProperties.AutomationId="LorebookTestPersona" AutomationProperties.Name="Persona to test with"/>
