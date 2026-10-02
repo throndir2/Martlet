@@ -167,11 +167,16 @@ pipelines, including GitHub Actions with self-hosted runners. Do not restore
 Actions billing, increase spending limits or use another hosted service to
 obtain validation evidence.
 
-Martlet is a prototype. Local test suites, build/package/smoke gates and
-independent review are **not required** before commit, PR or merge and should
-not be run by default. Run at most a quick targeted build or test when it
-directly helps finish or debug a change. Existing tests and scripts remain
-available for manual use. `CI=true` remains a local MSBuild setting for locked
+Martlet is a prototype. The one required local check is functional: every new
+feature or behavior change is verified working on the dev machine through
+Martlet's own MCP server where that machine can exercise it, and the MCP
+server is extended in the same change so it can reach and observe the feature
+(see [Verifying changes with Martlet MCP](docs/MCP.md#verifying-changes-with-martlet-mcp)).
+Otherwise, local test suites, build/package/smoke gates and independent review
+are **not required** before commit, PR or merge and should not be run by
+default. Run at most a quick targeted build or test when it directly helps
+finish or debug a change. Existing tests and scripts remain available for
+manual use. `CI=true` remains a local MSBuild setting for locked
 restore and deterministic build metadata; it does not require a remote runner.
 
 The only permitted remote workflow is a **minimal build/package/release**:

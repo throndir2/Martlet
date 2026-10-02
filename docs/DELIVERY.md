@@ -343,8 +343,12 @@ against current repository instructions and coordinate ownership of shared
 files. Use established decisions for routine work; decide consequential unresolved
 questions autonomously where evidence allows rather than reopening accepted
 choices. During the prototype phase a PR needs only a short description of the
-change; tests, package/smoke gates and independent review are optional and not
-run by default. Never fabricate check statuses or claim unrun gates passed.
+change and what was verified through Martlet MCP: feature and behavior changes
+are exercised on the dev machine through `Martlet.Mcp` where possible, and the
+MCP server is extended in the same change to reach them (see
+[Verifying changes with Martlet MCP](MCP.md#verifying-changes-with-martlet-mcp)).
+Tests, package/smoke gates and independent review are optional and not run by
+default. Never fabricate check statuses or claim unrun gates passed.
 
 The product owner's distribution/cloud choices and restricted-model/SDK rights
 remain real decisions. Releases do not require code signing; a spending
