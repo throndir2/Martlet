@@ -5,7 +5,9 @@ research and plan. Every device result is NOT RUN.** The owner asked whether
 Martlet can support smart home technology such as Matter, which other stacks
 exist, whether IP security cameras fit, and how a user can optionally let the
 companion act as a smart home assistant ("turn the lights down", "is the
-garage open?", "who's at the door?"), then asked to add it.
+garage open?", "who's at the door?"), then asked to add it. Whether Martlet
+can also install, onboard and manage Home Assistant is researched in
+[Installing and managing Home Assistant](#installing-and-managing-home-assistant-research-2026-10-01).
 
 This is a separate post-MVP track, like the [iOS plan](IOS.md). It touches an
 MVP non-goal, **general tool execution**
@@ -296,6 +298,11 @@ flowchart LR
 | SH06 | Host `home` role: go2rtc and matterjs-server containers; multi-admin Matter pairing from a shared code | SH02, host roles |
 | SH07 | Direct adapters only if users lack HA: Hue CLIP v2, Shelly RPC, MQTT | SH03 |
 | SH08 | iOS track: HomeKit read/control through the Home framework | [iOS plan](IOS.md) |
+| SH09 | Proposed. Find Home Assistant over mDNS and sign in through the browser to mint the token (existing installs, the largest group) | SH00 |
+| SH10 | Proposed. "Home Assistant found these devices": discovered flows, one-click confirms, simple forms, Ignore, Open in HA, expose new comfort devices to Assist | SH09, owner decision |
+| SH11 | Proposed. `home-assistant` host role (Container, host network, radios, inventory of existing services) with automatic onboarding; Devices card with Update, Restart, Back up and Logs through `martlet-host` | SH09, host roles |
+| SH12 | Proposed. HA OS management from the desktop through `supervisor/api` (updates, backups, apps such as Matter Server, Mosquitto, Z-Wave JS); companion roles for Container installs (with SH06) | SH10 |
+| SH13 | Proposed, optional. Martlet app for HA OS, gateway relay of conversation and MCP with a host-held control token, HA OS in Hyper-V on Windows | SH11 |
 
 SH00 delivers "my waifu turns off the lights" for anyone with Home Assistant;
 SH02-SH03 add free-form requests on tool-capable models.
@@ -311,6 +318,97 @@ SH02-SH03 add free-form requests on tool-capable models.
 - **Default host vision model** moved from `gemma3`/`qwen2.5vl` to vision +
   tools models (`gemma4`, with `qwen3-vl:8b` for on-screen text) on 2026-10-01,
   on the host role, Companion › Thinking › This PC and the prerequisites tool.
+- **Pending (2026-10-01), from the install research below:** whether setup
+  screens may create the Home Assistant owner account, add integrations, expose
+  entities, install apps and run updates on the owner's explicit click (today
+  Martlet never does); what to recommend to users without a Linux machine; and
+  whether a host may hold a control token and relay it to every paired desktop.
+
+## Installing and managing Home Assistant (research, 2026-10-01)
+
+The owner asked whether Martlet can install Home Assistant itself, configure
+it automatically (find devices and services already on the network) and use a
+Martlet host on the Home Assistant machine to manage Home Assistant remotely,
+while smart home commands keep going to the Home Assistant endpoint.
+**Short answer: yes, mostly through Home Assistant's own APIs; how it gets
+installed depends on the machine.** Nothing here is built or exercised against
+a real Home Assistant.
+
+### Verified upstream facts
+
+| Fact | Consequence for Martlet |
+| --- | --- |
+| Only **Home Assistant OS** and **Container** are supported; Core (Python venv) and Supervised lost support with 2025.12, and 32-bit builds ended. Opt-in analytics on 2026-09-30: 551k OS (80%) and 121k Container (17%) of 692k installs | Martlet installs Container on a Linux Docker host, or HA OS in a VM or on a dedicated device. Most existing users run HA OS, where Martlet need not install anything |
+| Container needs Docker **Engine** 23+, `network_mode: host`, `privileged` (or mapped `/dev/tty*` radios), `/run/dbus:ro` for Bluetooth and a 60 s stop grace period; HA's docs say **Docker Desktop will not work** | A `home-assistant` host role breaks the role pattern (loopback only, shared gateway namespace): it needs host networking and LAN port 8123. No *This PC* Docker Desktop route |
+| Container has **no apps** (formerly add-ons) and no Supervisor: no app store, no install-managed updates or backups, and the Matter Server must run separately | Martlet roles can stand in for the common apps (Matter Server, Mosquitto, Z-Wave JS, Zigbee2MQTT) and `martlet-host update` for the Supervisor's updater, a real gap Martlet fills |
+| Windows: HA OS images for Hyper-V (`.vhdx`), VirtualBox and VMware; UEFI and a **bridged** network | Automatable with the Hyper-V PowerShell module (administrator, Windows Pro/Enterprise, an external switch), but Hyper-V has no USB passthrough (no Zigbee/Z-Wave sticks) and a sleeping desktop takes the home hub down |
+| **Onboarding is an HTTP API.** Unauthenticated `GET /api/onboarding` (steps done) and `POST /api/onboarding/users` (`name`, `username`, `password`, `client_id`, `language`) create the owner (administrator) and return an `auth_code`; `POST /auth/token` exchanges it; authenticated `POST /api/onboarding/core_config`, `/analytics` and `/integration` finish it; admin WebSocket `config/core/update` sets location, time zone, units and country | Martlet can finish onboarding without a browser right after installing. Until then anyone on the LAN can claim the instance, so onboarding must follow readiness immediately |
+| WebSocket `auth/long_lived_access_token` (`client_name`, `lifespan` in days) | Martlet mints its own token |
+| HA's IndieAuth accepts a loopback or private-address `client_id` whose `redirect_uri` has the same scheme, host and port | For an **existing** HA: "Sign in with Home Assistant" in the browser with a `http://127.0.0.1:<port>/` callback, then mint the token; replaces pasting one |
+| HA advertises itself over mDNS as `_home-assistant._tcp.local.` with `uuid`, `version`, `internal_url` and `base_url` | "Find my Home Assistant": one opt-in service-type browse, not a subnet scan |
+| HA discovers devices itself (zeroconf, SSDP, DHCP, Bluetooth, USB, HomeKit); each becomes an in-progress config flow. Admin WebSocket `config_entries/flow/progress` and `config_entries/flow/subscribe` list them, REST `POST /api/config/config_entries/flow[/<flow_id>]` starts or continues one, `config_entries/ignore_flow` dismisses one, and `homeassistant/expose_entity` exposes entities to Assist | Martlet never scans: it shows what HA found ("Hue bridge, 2 Sonos, 3 Cast devices") and walks through each flow. Confirm-only steps are one click; Hue's link button is "press it, then Continue"; OAuth/cloud flows open HA |
+| On HA OS, admin WebSocket `supervisor/api` forwards any Supervisor endpoint (apps, backups, Core/OS updates, host reboot), plus `hassio/update/core` and `hassio/update/addon` | Full remote management of HA OS from the desktop with an admin token, **no Martlet host needed** |
+| HA OS apps can declare `host_network`, `hassio_api` with `hassio_role` (`manager`/`admin`), `homeassistant_api` and `ingress` | A **Martlet app** for HA OS is possible: the gateway on the HA box, paired and on the Devices map. GPU roles do not fit there |
+
+### By situation
+
+| The user has | Install | Configure | Manage remotely |
+| --- | --- | --- | --- |
+| HA OS already (most) | Nothing | Find over mDNS, browser sign-in, then the discovered-devices list | Desktop to HA WebSocket (`supervisor/api`) with an admin token; optional Martlet app |
+| HA Container already | Nothing | Same | The user's own; adopting it into a Martlet role is an explicit migration |
+| A Linux computer with Docker (a Martlet host or a new one over SSH) | `martlet-host add home-assistant` | Automatic onboarding, discovered devices, optional companion roles | `martlet-host` update, restart, backup and logs over the owner's SSH channel; HA API for configuration |
+| Only this Windows PC | Advanced: HA OS in Hyper-V; otherwise recommend a dedicated device | Same once it runs | Hyper-V cmdlets locally, then as HA OS |
+| Nothing | Recommend an always-on HA OS device (Home Assistant Green, Raspberry Pi, mini PC); Martlet finds and onboards it | Same | As HA OS |
+
+### Proposed design
+
+1. **Find** (opt-in): browse `_home-assistant._tcp`; list name, version and
+   address; the user picks. An instance whose onboarding is not done offers
+   **Set up this Home Assistant**.
+2. **Connect:** browser sign-in mints Martlet's token into Credential Manager;
+   pasting a token stays as a fallback.
+3. **Install on a Linux host:** a `home-assistant` role with host networking,
+   LAN port 8123, the host's time zone, a `martlet-home-assistant-config`
+   volume, a pinned image tag, no `privileged` by default but detected radios
+   from `/dev/serial/by-id` and `/run/dbus:ro` mapped. An inventory step first
+   reports what already runs (HA, Mosquitto, Zigbee2MQTT, Z-Wave JS, Frigate,
+   go2rtc containers; ports 8123 and 1883 in use; USB radios; Bluetooth) so
+   Martlet reuses rather than duplicates. Needs new `role.conf` keys for host
+   networking, LAN ports and devices; the gateway still gets no Docker socket.
+4. **Onboard** at readiness with an owner name and password the user chooses
+   (the account is the user's; the password is never stored), location, time
+   zone and units from Windows, analytics left off unless the user opts in,
+   then mint the token.
+5. **Devices found:** a list from `config_entries/flow/progress` with one-click
+   confirm steps, a small form renderer for simple fields, **Ignore**, and
+   **Open in Home Assistant** for anything else; then offer to expose the new
+   lights, switches, climate and media to Assist (sensitive domains stay
+   unexposed, as today).
+6. **Manage:** a Home Assistant card on the host's Devices entry: version,
+   update available, last backup, **Update**, **Restart**, **Back up**,
+   **Logs**, **Open**. Container on a Martlet host goes through `martlet-host`;
+   HA OS through `supervisor/api`.
+7. **Optional relay:** a `home-assistant` gateway kind relaying only
+   `/api/conversation/process` and `/api/mcp` over pinned TLS with a control
+   token held by the host, so every paired desktop gets smart home control
+   after pairing and the token never crosses the LAN over plain HTTP. Admin
+   endpoints are never relayed.
+
+**Safety.** Two tokens: a control token for every turn (ideally a separate
+non-admin HA user) and an admin token used only by owner clicks in setup and
+management, never offered to the model. HA has only admin and non-admin users;
+a non-admin token can still call any service over REST, because exposure limits
+Assist and MCP only. The admin token stays in Credential Manager and never
+enters prompts, support bundles or the cluster plan.
+
+**Risks.** Discovery needs the HA machine on the same network segment as the
+devices: VLANs, guest Wi-Fi or client isolation, multicast-filtering mesh
+routers and Docker Desktop or WSL NAT hide them. Onboarding, config-flow and
+`supervisor/api` are frontend APIs without a stability promise, so pin tested
+HA versions and fall back to opening HA. Matter commissioning needs Bluetooth
+on the HA machine (and a Thread border router for Thread devices); Zigbee and
+Z-Wave need a USB or network coordinator. First starts download large images,
+so progress must stay visible.
 
 ## Not planned
 
@@ -348,3 +446,21 @@ Accessed 2026-09-30. Summary in the
 - Apple HomeKit: <https://developer.apple.com/documentation/homekit>
 - Ollama model capabilities: <https://ollama.com/library/qwen3-vl>,
   <https://ollama.com/library/gemma4>, <https://ollama.com/library/gemma3>
+
+Install and management research, accessed 2026-10-01
+([S50](RESEARCH.md#s50-installing-and-managing-home-assistant-2026-10-01)):
+
+- Installation types and deprecations:
+  <https://www.home-assistant.io/installation/linux>,
+  <https://www.home-assistant.io/installation/windows>,
+  <https://www.home-assistant.io/blog/2025/05/22/deprecating-core-and-supervised-installation-methods-and-32-bit-systems/>
+- Install analytics: <https://analytics.home-assistant.io/current_data.json>
+- Onboarding, auth, IndieAuth, zeroconf, config flows, exposure, core config
+  and Supervisor WebSocket (Home Assistant Core `dev` branch):
+  `homeassistant/components/onboarding/views.py`, `auth/__init__.py`,
+  `auth/indieauth.py`, `zeroconf/const.py`, `config/config_entries.py`,
+  `homeassistant/exposed_entities.py`, `config/core.py`,
+  `hassio/websocket_api.py` at <https://github.com/home-assistant/core>
+- Data entry flows: <https://developers.home-assistant.io/docs/data_entry_flow_index/>
+- App configuration: <https://developers.home-assistant.io/docs/apps/configuration>
+- Matter Server for Container installs: <https://www.home-assistant.io/integrations/matter/>
