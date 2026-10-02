@@ -29,6 +29,8 @@ public sealed record McpServerDefinition
     public IReadOnlyList<string> AutoApprove { get; init; } = [];
     /// <summary>Why this server cannot start as configured (for example a missing environment variable).</summary>
     public string? Problem { get; init; }
+    /// <summary>The Martlet feature that manages this server (for example Smart home), or null for one from mcp.json.</summary>
+    public string? ManagedBy { get; init; }
 
     public bool AutoApproves(string tool) => AutoApproveAll || AutoApprove.Contains(tool, StringComparer.Ordinal);
 

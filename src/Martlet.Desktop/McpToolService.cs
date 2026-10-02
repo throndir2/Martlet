@@ -11,8 +11,12 @@ namespace Martlet.Desktop;
 
 internal enum ToolApprovalChoice { Deny, AllowOnce, AlwaysAllow }
 
+/// <summary>What the feature that manages a server decides about one call. Default follows the normal rules (mcp.json's
+/// autoApprove, then asking with Always allow offered); AskEveryTime asks without offering Always allow; Deny blocks.</summary>
+internal enum ToolApprovalPolicy { Default, AutoApprove, AskEveryTime, Deny }
+
 /// <summary>A tool call waiting for the user's answer in the talk window. Unanswered requests are declined.</summary>
-internal sealed class ToolApprovalRequest(string server, string tool, string arguments, DateTimeOffset expires)
+internal sealed class ToolApprovalRequest(string server, string tool, string arguments, DateTimeOffset expires, bool allowAlways = true)
 {
     private readonly TaskCompletionSource<ToolApprovalChoice> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal string Server { get; } = server;
@@ -20,6 +24,8 @@ internal sealed class ToolApprovalRequest(string server, string tool, string arg
     /// <summary>The arguments as indented JSON, cut to a readable length.</summary>
     internal string Arguments { get; } = arguments;
     internal DateTimeOffset Expires { get; } = expires;
+    /// <summary>Whether Always allow is offered (never for managed servers or calls their owner wants asked every time).</summary>
+    internal bool AllowAlways { get; } = allowAlways;
     internal Task<ToolApprovalChoice> Answer => answer.Task;
     internal void Resolve(ToolApprovalChoice choice) => answer.TrySetResult(choice);
     public override string ToString() => $"{nameof(ToolApprovalRequest)} {Server}/{Tool}";
@@ -28,9 +34,10 @@ internal sealed class ToolApprovalRequest(string server, string tool, string arg
 /// <summary>One entry of the in-memory tool log on the Tools page (never written to disk).</summary>
 internal sealed record ToolActivity(DateTimeOffset At, string Server, string Tool, string Outcome, string Arguments, bool Problem);
 
-/// <summary>The MCP servers Martlet may call while you talk: the user's mcp.json in the data directory, one session per
-/// enabled server (started only when a conversation or the Tools page needs them), per-call confirmations and a short
-/// in-memory log. Tools are offered only to user-started replies, never to screen glances or memory requests.</summary>
+/// <summary>The MCP servers Martlet may call while you talk: the user's mcp.json in the data directory plus servers other
+/// Martlet features manage (<see cref="SetManagedServer"/>), one session per enabled server (started only when a
+/// conversation or the Tools page needs them), per-call confirmations and a short in-memory log. Tools are offered only to
+/// user-started replies, never to screen glances or memory requests.</summary>
 internal sealed class McpToolService : IAsyncDisposable
 {
     internal const string FileName = "mcp.json";
@@ -43,6 +50,8 @@ internal sealed class McpToolService : IAsyncDisposable
     private readonly HashSet<string> unsupportedModels = new(StringComparer.Ordinal);
     private readonly TimeProvider clock;
     private McpConfiguration configuration = McpConfiguration.Empty;
+    private readonly Dictionary<string, (McpServerDefinition Definition, Func<string, JsonObject, ToolApprovalPolicy>? Policy)> managed =
+        new(StringComparer.Ordinal);
     private ToolApprovalRequest? pending;
     private bool loaded, started, disposed;
 
@@ -73,7 +82,73 @@ internal sealed class McpToolService : IAsyncDisposable
         }
     }
 
-    internal bool HasEnabledServers => Configuration.Servers.Any(s => !s.Disabled);
+    internal bool HasEnabledServers => Servers.Any(s => !s.Disabled);
+
+    /// <summary>Every server Martlet runs: mcp.json's, then managed ones whose name mcp.json doesn't already use.</summary>
+    internal IReadOnlyList<McpServerDefinition> Servers
+    {
+        get
+        {
+            var user = Configuration.Servers;
+            lock (gate)
+                return [.. user, .. managed.Values.Select(m => m.Definition)
+                    .Where(d => !user.Any(u => string.Equals(u.Name, d.Name, StringComparison.OrdinalIgnoreCase)))];
+        }
+    }
+
+    /// <summary>Servers another feature manages that can't run because mcp.json uses the same name.</summary>
+    internal IReadOnlyList<McpServerDefinition> ManagedConflicts
+    {
+        get
+        {
+            var user = Configuration.Servers;
+            lock (gate)
+                return managed.Values.Select(m => m.Definition)
+                    .Where(d => user.Any(u => string.Equals(u.Name, d.Name, StringComparison.OrdinalIgnoreCase))).ToArray();
+        }
+    }
+
+    /// <summary>Adds, replaces or (with null) removes a server another Martlet feature manages, such as Smart home's Home
+    /// Assistant MCP endpoint. It is never written to mcp.json. <paramref name="policy"/> decides each call before the normal
+    /// rules (an exception counts as AskEveryTime); managed servers never offer Always allow. A running set follows at once.</summary>
+    internal void SetManagedServer(string name, McpServerDefinition? definition,
+        Func<string, JsonObject, ToolApprovalPolicy>? policy = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        if (definition is not null)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(definition.ManagedBy, nameof(definition));
+            if (definition.Name != name) throw new ArgumentException("The definition's name must match.", nameof(definition));
+        }
+        EnsureLoaded();
+        bool apply;
+        lock (gate)
+        {
+            if (disposed) return;
+            if (definition is null) managed.Remove(name);
+            else managed[name] = (definition, policy);
+            apply = started;
+        }
+        if (apply) Hub.Apply(Servers);
+        Changed?.Invoke();
+    }
+
+    /// <summary>The managing feature's decision about one call; Default for mcp.json's servers.</summary>
+    internal ToolApprovalPolicy PolicyFor(string server, string tool, JsonObject arguments)
+    {
+        Func<string, JsonObject, ToolApprovalPolicy>? policy;
+        lock (gate) policy = managed.TryGetValue(server, out var entry) ? entry.Policy : null;
+        if (policy is null) return ToolApprovalPolicy.Default;
+        try
+        {
+            var decision = policy(tool, (JsonObject)arguments.DeepClone());
+            return Enum.IsDefined(decision) ? decision : ToolApprovalPolicy.AskEveryTime;
+        }
+        catch (Exception)
+        {
+            return ToolApprovalPolicy.AskEveryTime;
+        }
+    }
 
     internal string ReadText()
     {
@@ -109,7 +184,7 @@ internal sealed class McpToolService : IAsyncDisposable
             loaded = true;
             apply = started;
         }
-        if (apply) Hub.Apply(next.Servers);
+        if (apply) Hub.Apply(Servers);
         Changed?.Invoke();
     }
 
@@ -141,16 +216,14 @@ internal sealed class McpToolService : IAsyncDisposable
     internal void EnsureStarted(bool retry = false, bool retryNow = false)
     {
         EnsureLoaded();
-        McpConfiguration current;
         bool first;
         lock (gate)
         {
             if (disposed) return;
             first = !started;
             started = true;
-            current = configuration;
         }
-        if (first) Hub.Apply(current.Servers);
+        if (first) Hub.Apply(Servers);
         else if (retry || retryNow) Hub.Retry(retryNow);
     }
 
@@ -173,13 +246,14 @@ internal sealed class McpToolService : IAsyncDisposable
 
     internal bool AutoApproves(McpServerDefinition server, string tool)
     {
-        var current = Configuration.Servers.FirstOrDefault(s => s.Name == server.Name) ?? server;
+        var current = Servers.FirstOrDefault(s => s.Name == server.Name) ?? server;
         return current.AutoApproves(tool);
     }
 
-    internal async Task<ToolApprovalChoice> RequestApprovalAsync(string server, string tool, string arguments, CancellationToken token)
+    internal async Task<ToolApprovalChoice> RequestApprovalAsync(string server, string tool, string arguments, CancellationToken token,
+        bool allowAlways = true)
     {
-        var request = new ToolApprovalRequest(server, tool, arguments, clock.GetUtcNow() + ApprovalTimeout);
+        var request = new ToolApprovalRequest(server, tool, arguments, clock.GetUtcNow() + ApprovalTimeout, allowAlways);
         lock (gate)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
@@ -193,7 +267,8 @@ internal sealed class McpToolService : IAsyncDisposable
             var expired = Task.Delay(ApprovalTimeout, clock, token);
             var first = await Task.WhenAny(request.Answer, expired).ConfigureAwait(false);
             token.ThrowIfCancellationRequested();
-            return first == request.Answer ? await request.Answer.ConfigureAwait(false) : ToolApprovalChoice.Deny;
+            var choice = first == request.Answer ? await request.Answer.ConfigureAwait(false) : ToolApprovalChoice.Deny;
+            return choice == ToolApprovalChoice.AlwaysAllow && !allowAlways ? ToolApprovalChoice.AllowOnce : choice;
         }
         finally
         {
@@ -317,9 +392,22 @@ internal sealed class DesktopToolset : IConversationToolHost
             return new("The arguments must be one JSON object that matches the tool's parameters.", true);
         }
         var shown = Readable(arguments);
-        if (!service.AutoApproves(server, tool.Name))
+        var policy = service.PolicyFor(server.Name, tool.Name, arguments);
+        if (policy == ToolApprovalPolicy.Deny)
         {
-            var choice = await service.RequestApprovalAsync(server.Name, tool.Name, shown, token).ConfigureAwait(false);
+            service.Record(server.Name, tool.Name, $"blocked by {server.ManagedBy ?? "your settings"}", Preview(shown), false);
+            return new("This action is blocked by the user's settings. Tell the user it's blocked and where to allow it; don't retry.", true);
+        }
+        var ask = policy switch
+        {
+            ToolApprovalPolicy.AutoApprove => false,
+            ToolApprovalPolicy.AskEveryTime => true,
+            _ => !service.AutoApproves(server, tool.Name)
+        };
+        if (ask)
+        {
+            var allowAlways = policy == ToolApprovalPolicy.Default && server.ManagedBy is null;
+            var choice = await service.RequestApprovalAsync(server.Name, tool.Name, shown, token, allowAlways).ConfigureAwait(false);
             if (choice == ToolApprovalChoice.Deny)
             {
                 service.Record(server.Name, tool.Name, "declined", Preview(shown), false);

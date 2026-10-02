@@ -51,7 +51,7 @@ public partial class McpConfigWindow : ThemedWindow
             service.Save(Editor.Text);
             saved = Editor.Text;
             service.EnsureStarted(retryNow: true);
-            var servers = service.Configuration.Servers;
+            var servers = service.Servers;
             StatusText.Text = servers.Count == 0
                 ? "Saved. No servers are set up, so Martlet won't offer tools."
                 : $"Saved. Starting {string.Join(", ", servers.Where(s => !s.Disabled).Select(s => s.Name))}; see Companion > Tools for each server's state.";
