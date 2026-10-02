@@ -44,6 +44,22 @@
                         </DockPanel>
                     </Border>
 
+                    <!-- Smart home confirmation: inline, because a dialog would deactivate this window and revoke the turn. -->
+                    <Border x:Name="HomeQuestionPanel" Style="{DynamicResource CardStyle}" Visibility="Collapsed" Margin="0,0,0,16"
+                            AutomationProperties.AutomationId="LiveHomeQuestion">
+                        <StackPanel>
+                            <TextBlock Text="Smart home: review this request" Style="{DynamicResource SectionHeading}"/>
+                            <TextBlock x:Name="HomeQuestionText" TextWrapping="Wrap" Margin="0,4,0,10"
+                                       AutomationProperties.LiveSetting="Assertive" AutomationProperties.AutomationId="LiveHomeQuestionText"/>
+                            <StackPanel Orientation="Horizontal">
+                                <Button x:Name="HomeNoButton" Content="No, leave it" Click="HomeNo_Click" MinWidth="110" Margin="0,0,12,0"
+                                        AutomationProperties.AutomationId="LiveHomeNo"/>
+                                <Button x:Name="HomeYesButton" Content="Yes, send it" Click="HomeYes_Click" MinWidth="110"
+                                        Style="{DynamicResource PrimaryButton}" AutomationProperties.AutomationId="LiveHomeYes"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
                     <StackPanel HorizontalAlignment="Right" MinWidth="240" MaxWidth="520" Margin="48,0,0,14">
                         <Label Target="{Binding ElementName=TranscriptText}" Content="You said (push-to-talk _transcript and evidence)" Padding="0,0,0,4"
                                HorizontalAlignment="Right" Foreground="{DynamicResource MutedBrush}" FontSize="12"/>
