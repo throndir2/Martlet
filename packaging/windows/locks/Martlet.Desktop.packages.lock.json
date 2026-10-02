@@ -50,7 +50,7 @@
       "martlet.audio": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.9.0, )",
+          "Martlet.Core": "[0.12.0, )",
           "NAudio.Wasapi": "[3.1.0, )"
         }
       },
@@ -59,28 +59,28 @@
         "dependencies": {
           "Google.Protobuf": "[3.36.2, )",
           "Grpc.Net.Client": "[2.84.0, )",
-          "Martlet.Avatars": "[0.9.0, )",
-          "Martlet.Core": "[0.9.0, )"
+          "Martlet.Avatars": "[0.12.0, )",
+          "Martlet.Core": "[0.12.0, )"
         }
       },
       "martlet.avatar.hosting": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Avatars": "[0.9.0, )"
+          "Martlet.Avatars": "[0.12.0, )"
         }
       },
       "martlet.avatars": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.9.0, )"
+          "Martlet.Core": "[0.12.0, )"
         }
       },
       "martlet.conversation": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Audio": "[0.9.0, )",
-          "Martlet.Core": "[0.9.0, )",
-          "Martlet.Providers": "[0.9.0, )"
+          "Martlet.Audio": "[0.12.0, )",
+          "Martlet.Core": "[0.12.0, )",
+          "Martlet.Providers": "[0.12.0, )"
         }
       },
       "martlet.core": {
@@ -89,20 +89,29 @@
       "martlet.credentials.windows": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.9.0, )"
+          "Martlet.Core": "[0.12.0, )"
         }
       },
       "martlet.diagnostics": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.9.0, )"
+          "Martlet.Core": "[0.12.0, )"
         }
       },
       "martlet.f5": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.9.0, )"
+          "Martlet.Core": "[0.12.0, )"
         }
+      },
+      "martlet.home": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Core": "[0.12.0, )"
+        }
+      },
+      "martlet.mcp.client": {
+        "type": "Project"
       },
       "martlet.memory": {
         "type": "Project"
@@ -113,13 +122,13 @@
       "martlet.providers": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.9.0, )"
+          "Martlet.Core": "[0.12.0, )"
         }
       },
       "martlet.support": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Diagnostics": "[0.9.0, )"
+          "Martlet.Diagnostics": "[0.12.0, )"
         }
       },
       "Google.Protobuf": {
