@@ -144,7 +144,20 @@ page's controls are only visible after you open it: click `NavHome`,
 `NavDevices`, `NavCompanion` or `NavSettings` first (for example
 `NavCompanion` before `OpenSetup`). On Settings, click `DiagnosticsSection` to
 expand the pipeline and status fields. On a fresh data directory, `TourSkip`
-dismisses the welcome tour. Use `ui_snapshot` again to observe asynchronous effects. Modal
+dismisses the welcome tour. On Devices, `Node-<id>` selects a device on the map
+(`Node-this-pc`, `Node-host:<host ID>`, `Node-cloud:<server>`, `Node-add`,
+`Node-missing:brain`) and `CoverageShow-<job>` selects the device doing a job;
+both only show details, so they are passive clicks, as are the
+`DeviceFactsSection`, `DeviceRolesSection` and `DeviceReachSection` expanders.
+`SelectedDevice` and `SelectedDeviceHealth` return the selected device's name
+and status, and each row title `DeviceComponent-<part>` (`job-Llm`, `job-Stt`,
+`job-Tts`, `lipsync`, `character`, `audio`, `host-service`, `host`,
+`role-<role>`, `offer`) returns the job's name. Job owners are
+`ThinkingOwner`, `ListeningOwner`, `SpeakingOwner` and `LipSyncOwner`, device
+commands `NodeAction-<action>` (`NodeAction-InstallRole-<role>` and
+`NodeAction-RemoveRole-<role>` for host roles), and Settings for all devices
+holds `CheckHosts`, `ClusterSync`, `ClusterStatus` (returned as text) and
+`RoleSetup-<role>` for jobs nobody does. Use `ui_snapshot` again to observe asynchronous effects. Modal
 actions may return `completed: false` while their dialog remains open; this
 means the invoke is still pending, not that the action finished.
 
@@ -222,11 +235,13 @@ observe them:
   ID; duplicates fail as ambiguous).
 - **Passive clicks:** add navigation, open/close, refresh and expand controls
   that start no work to `SafeClicks` in
-  `src\Martlet.Mcp.Protocol\DesktopAutomation.cs`. Anything that sends,
+  `src\Martlet.Mcp.Protocol\DesktopAutomation.cs` (or `SafeClickPrefixes` for a
+  family of generated IDs such as `Node-`). Anything that sends,
   records, plays, spends, writes files or handles credentials stays behind
   `--allow-ui-effects`.
-- **Status:** add read-only, non-secret status fields to `SafeValues` so
-  snapshots return their text. Never expose editable fields, credentials,
+- **Status:** add read-only, non-secret status fields to `SafeValues` (or
+  `SafeValuePrefixes`) so snapshots return their text: a value pattern's value,
+  or a text block's text. Never expose editable fields, credentials,
   personal data or file paths.
 - **Headless capabilities:** add a tool to `Tools` and `CallAsync` in
   `src\Martlet.Mcp.Protocol\McpServer.cs` (strict input schema, bounded

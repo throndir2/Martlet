@@ -13,14 +13,27 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "OpenConfigurationRecovery", "RefreshDiagnostics",
         "SetupClose", "AudioClose", "CloseLive", "SupportClose",
         "RecoveryClose", "SupportFreeze", "SupportClear",
-        "NavHome", "NavDevices", "NavCompanion", "NavSettings", "TourSkip", "DiagnosticsSection"
+        "NavHome", "NavDevices", "NavCompanion", "NavSettings", "TourSkip", "DiagnosticsSection",
+        "DeviceFactsSection", "DeviceReachSection", "DeviceRolesSection"
     };
+    /// <summary>Devices map nodes ("Node-this-pc", "Node-host:gpu-1") and the problem card's Show buttons: they only select
+    /// a device and show its details.</summary>
+    private static readonly string[] SafeClickPrefixes = ["Node-", "CoverageShow-"];
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
         "FoundationStatus", "PipelineStatus", "LocalAudioStatus",
-        "LiveStatus", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult"
+        "LiveStatus", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
+        "SelectedDevice", "SelectedDeviceHealth", "ClusterStatus"
     };
+    /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)").</summary>
+    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-"];
     private int? processId;
+
+    private static bool IsSafeClick(string id) =>
+        SafeClicks.Contains(id) || SafeClickPrefixes.Any(prefix => id.StartsWith(prefix, StringComparison.Ordinal));
+
+    private static bool IsSafeValue(string id) =>
+        SafeValues.Contains(id) || SafeValuePrefixes.Any(prefix => id.StartsWith(prefix, StringComparison.Ordinal));
 
     internal object Connect(int pid)
     {
@@ -46,8 +59,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
             {
                 var (window, element) = control;
                 var id = element.Current.AutomationId;
-                var value = SafeValues.Contains(id) && element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern)
-                    ? ((ValuePattern)pattern).Current.Value : null;
+                // Read-only status text: a value pattern's value, or a text block's accessible name (its text).
+                var value = !IsSafeValue(id) ? null
+                    : element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern) ? ((ValuePattern)pattern).Current.Value
+                    : element.Current.ControlType == ControlType.Text ? element.Current.Name : null;
                 return new
                 {
                     window = window.Current.Name,
@@ -64,7 +79,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
 
     internal async Task<object> ClickAsync(string id)
     {
-        if (!allowEffects && !SafeClicks.Contains(id))
+        if (!allowEffects && !IsSafeClick(id))
             throw new InvalidOperationException("This control requires an operator to start MCP with --allow-ui-effects.");
         var element = Find(id);
         if (!element.Current.IsEnabled) throw new InvalidOperationException($"Control '{id}' is disabled.");

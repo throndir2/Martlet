@@ -9,7 +9,7 @@ using Martlet.Core.Settings;
 namespace Martlet.Desktop;
 
 /// <summary>What still works: each job's coverage from what this PC already knows (saved routes, the last host checks,
-/// shared who-does-what and failover), shown at the top of Home and Who does what with the effect and a fix; and the
+/// shared who-does-what and failover), shown at the top of Home and under the Devices map with the effect and a fix; and the
 /// platform guardrails that keep impossible choices off the menus. Contacts nothing by itself.</summary>
 public partial class MainWindow
 {
@@ -107,7 +107,7 @@ public partial class MainWindow
         return coverage;
     }
 
-    /// <summary>Re-renders Home and Who does what when a job's coverage changed (after a background check).</summary>
+    /// <summary>Re-renders Home and Devices when a job's coverage changed (after a background check).</summary>
     private void RefreshCoverage()
     {
         if (closing || Role != DeviceRole.Companion) return;
@@ -118,9 +118,12 @@ public partial class MainWindow
         if (DevicesPage.IsVisible) RenderMap();
     }
 
-    private void ShowCoverage(Panel target, bool devices)
+    /// <summary>The "What isn't working" card. On Devices (<paramref name="showNode"/> names the map node doing a job) it is
+    /// compact: one line per job, its fixes and a button that selects that device; it also lists jobs not checked yet.</summary>
+    private void ShowCoverage(Panel target, Func<string, string?>? showNode = null)
     {
         target.Children.Clear();
+        var devices = showNode is not null;
         var problems = coverage.Where(c => c.IsProblem).ToList();
         var unknown = devices ? coverage.Where(c => c.State == CoverageState.Unknown).ToList() : [];
         if (problems.Count == 0 && unknown.Count == 0) return;
@@ -134,11 +137,11 @@ public partial class MainWindow
             title.Children.Add(new TextBlock { Text = headline, FontSize = 16, FontWeight = FontWeights.SemiBold });
             panel.Children.Add(title);
         }
-        foreach (var job in problems.Concat(unknown)) panel.Children.Add(CoverageRow(job, devices));
+        foreach (var job in problems.Concat(unknown)) panel.Children.Add(CoverageRow(job, showNode));
         var card = new Border
         {
             Child = panel, Padding = new Thickness(16, 12, 16, 12), CornerRadius = new CornerRadius(16),
-            BorderThickness = new Thickness(problems.Count > 0 ? 1.5 : 1), Margin = devices ? new Thickness(0, 12, 0, 0) : new Thickness(0, 0, 0, 16)
+            BorderThickness = new Thickness(problems.Count > 0 ? 1.5 : 1), Margin = new Thickness(0, 0, 0, devices ? 18 : 16)
         };
         card.SetResourceReference(Border.BorderBrushProperty, problems.Count > 0 ? "WarningBrush" : "BorderBrush");
         card.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
@@ -149,23 +152,19 @@ public partial class MainWindow
         target.Children.Add(card);
     }
 
-    private FrameworkElement CoverageRow(JobCoverage job, bool devices)
+    private FrameworkElement CoverageRow(JobCoverage job, Func<string, string?>? showNode)
     {
-        var row = new StackPanel { Margin = new Thickness(0, 4, 0, 6) };
+        var compact = showNode is not null;
         var state = job.State switch
         {
             CoverageState.Unavailable => "not working",
             CoverageState.Limited => "working in a reduced way",
             _ => "not checked yet"
         };
-        row.Children.Add(new TextBlock { Text = $"{job.Title}: {state}", FontWeight = FontWeights.SemiBold });
-        var detail = new TextBlock { Text = (job.Problem + " " + job.Effect).Trim(), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) };
-        detail.SetResourceReference(StyleProperty, "Muted");
-        row.Children.Add(detail);
-        var actions = new WrapPanel { Margin = new Thickness(0, 6, 0, 0) };
+        var actions = new WrapPanel { Margin = compact ? new Thickness(12, 0, 0, 0) : new Thickness(0, 6, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         foreach (var fix in job.Fixes)
         {
-            if (fix == CoverageFix.OpenDevices && devices) continue;
+            if (fix == CoverageFix.OpenDevices && compact) continue;
             var label = fix switch
             {
                 CoverageFix.UseFallback => job.Job == ClusterJobs.LipSync ? "Take lip-sync back to this PC" : $"Use {job.Fallback} instead",
@@ -180,6 +179,34 @@ public partial class MainWindow
             button.Click += (_, _) => RunCoverageFix(current, fix);
             actions.Children.Add(button);
         }
+        if (showNode?.Invoke(job.Job) is { } nodeId)
+        {
+            var show = new Button { Content = "Show", Margin = new Thickness(0, 0, 0, 4), Padding = new Thickness(12, 6, 12, 6) };
+            AutomationProperties.SetAutomationId(show, $"CoverageShow-{job.Job}");
+            AutomationProperties.SetName(show, $"Show the device doing {job.Job}");
+            show.Click += (_, _) => SelectNode(nodeId, animate: true);
+            actions.Children.Add(show);
+        }
+
+        if (compact)
+        {
+            var line = new DockPanel { Margin = new Thickness(0, 4, 0, 4) };
+            DockPanel.SetDock(actions, Dock.Right);
+            line.Children.Add(actions);
+            var text = new TextBlock { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
+            text.Inlines.Add(new System.Windows.Documents.Run($"{job.Title}: {state}") { FontWeight = FontWeights.SemiBold });
+            var problem = new System.Windows.Documents.Run("  " + job.Problem);
+            problem.SetResourceReference(System.Windows.Documents.TextElement.ForegroundProperty, "MutedBrush");
+            text.Inlines.Add(problem);
+            line.Children.Add(text);
+            return line;
+        }
+
+        var row = new StackPanel { Margin = new Thickness(0, 4, 0, 6) };
+        row.Children.Add(new TextBlock { Text = $"{job.Title}: {state}", FontWeight = FontWeights.SemiBold });
+        var detail = new TextBlock { Text = (job.Problem + " " + job.Effect).Trim(), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) };
+        detail.SetResourceReference(StyleProperty, "Muted");
+        row.Children.Add(detail);
         if (actions.Children.Count > 0) row.Children.Add(actions);
         return row;
     }

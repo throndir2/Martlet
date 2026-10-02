@@ -181,9 +181,9 @@ Right-click: *Start talking*, *Show/Hide character*, *Mute microphone*,
 
 | Setting | Canonical home | Shortcuts (all jump to the home) |
 | --- | --- | --- |
-| Where thinking runs, model, key | Companion › Thinking | Home Now line, Devices tile, Fix card, conversation Thinking chip ▾ › *Change…* |
-| Where voice runs, voice, speakers | Companion › Voice | Home Now line, Devices tile, Fix card, conversation 🔊 › *Voice settings* |
-| Where listening runs, mic, talk mode, Voice ID | Companion › Listening | Home Now line, Devices tile, Fix card, conversation 🎤 › *Listening settings* |
+| Where thinking runs, model, key | Companion › Thinking | Home Now line, Devices job row, Fix card, conversation Thinking chip ▾ › *Change…* |
+| Where voice runs, voice, speakers | Companion › Voice | Home Now line, Devices job row, Fix card, conversation 🔊 › *Voice settings* |
+| Where listening runs, mic, talk mode, Voice ID | Companion › Listening | Home Now line, Devices job row, Fix card, conversation 🎤 › *Listening settings* |
 | Where lip-sync runs | Companion › Lip-sync | Home Now line (when it isn't working), Devices tile |
 | Character model, size, position | Companion › Character | Home Now line, Devices tile, ☺ long-press/right-click, tray |
 | Personas, style mix, character cards | Companion › Personality | conversation ☺ menu |
@@ -517,7 +517,7 @@ All entry points land on **Companion › Thinking** (R1):
 | Home › Thinking Now line | 1 |
 | Companion › Thinking tab | 2 |
 | Home › Fix card › *More options* (when broken) | 1 |
-| Devices › *Who does what* › Thinking tile | 2 |
+| Devices › device doing Thinking › *Done by* | 2 |
 | Devices › machine panel › Thinking › *Change* | 3 |
 | Conversation › Thinking chip ▾ › *Change…* | 2 |
 
@@ -655,7 +655,7 @@ All entry points land on **Companion › Voice**:
 | Home › Voice Now line | 1 |
 | Companion › Voice tab | 2 |
 | Home › Fix card › *More options* | 1 |
-| Devices › *Who does what* › Voice tile | 2 |
+| Devices › device doing Speaking › *Done by* | 2 |
 | Conversation › 🔊 chip ▾ › *Voice settings* | 2 |
 
 The Voice tab, top to bottom:
@@ -746,7 +746,7 @@ All entry points land on **Companion › Listening**:
 | Home › Listening Now line | 1 |
 | Companion › Listening tab | 2 |
 | Home › Fix card › *More options* | 1 |
-| Devices › *Who does what* › Listening tile | 2 |
+| Devices › device doing Listening › *Done by* | 2 |
 | Conversation › 🎤 chip ▾ › *Listening settings* | 2 |
 
 The Listening tab:
@@ -873,8 +873,8 @@ Advanced ▸   mapping, renderer, model files
 
 #### F7. Change who does lip-sync
 
-- **Entry points**: Companion › Lip-sync; Devices › *Who does what* ›
-  Lip-sync tile; Home's Now line when lip-sync isn't working.
+- **Entry points**: Companion › Lip-sync; Devices › device doing
+  lip-sync › *Done by*; Home's Now line when lip-sync isn't working.
 - **Flow**: P2 with **Voice loudness** as the third card instead of cloud.
   Choosing a machine without Audio2Face offers **Set up Audio2Face on
   GAMING-PC** inline (P5). The mouth follows voice loudness until ready.
@@ -1011,7 +1011,7 @@ it.*
 
 #### I2. Move a job to another machine
 
-- **Entry points**: Devices › *Who does what* tile › machine; Devices ›
+- **Entry points**: Devices › a job row's *Done by* › machine; Devices ›
   machine › *Can do* › **Move Thinking here**; job tabs › *Another of my
   computers*.
 - **Flow**: picking a machine that is ready switches immediately with undo;

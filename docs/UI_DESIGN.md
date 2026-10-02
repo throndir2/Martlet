@@ -111,86 +111,101 @@ becomes "Martlet can't reply right now". The rules are in
 
 ### 3. Devices (hardware map)
 
-This page answers "what do I have, and what is each machine doing?"
+This page answers "what do I have, and what is each machine doing?" From top
+to bottom: the **map**, the **selected device** with what it does, and
+**Settings for all devices**.
 
 ```text
-            [OpenAI]          [OpenRouter]
-                 \              /
-                  \            /
-   [Add a computer] - - [ This PC ] - - [gpu-pc-host]
-                         (center)
+   [NVIDIA Build] ~~.                   .~~ [gpu-pc-host]
+                     >~~ [ This PC ] ~~<
+ [Add a computer] ~~'                   '~~ [laptop]
 ```
 
-- **Nodes** are *This PC* (center), each paired Martlet host or self-hosted
-  gateway, each cloud destination grouped by origin, and a ghost *Add a
-  computer* node. When no conversation model is chosen, a ghost *Conversation
-  model* node points to Companion › *Thinking*. Every paired host appears, whether or not it has
-  a job yet.
-- **Who does what** (above the map, companion mode) has one tile per job:
-  *Thinking*, *Listening*, *Speaking* and *Lip-sync (Audio2Face)*. Each tile
-  names the computer or service in charge (select it to show that node).
-  Thinking and listening also switch from a drop-down once a host is paired:
-  the Setup choice or any paired host (with its model, or "not installed");
-  handing the job to a host checks it, offers to install the role (Ollama or
-  whisper) there and switches over once it is ready, and the Setup choice comes
-  back without re-entering a key. Each tile's *Change in Companion* opens that
-  job's page (lip-sync's opens *Lip-sync*); speaking changes there, because it needs a model and consent. **Lip-sync switches on the spot**
-  from a drop-down once a host is paired: *This PC*,
-  any paired host, or *Nobody (mouth follows voice loudness)*. A showing
-  character keeps showing; the next sentence uses the new computer.
-  Handing lip-sync to a host first checks it over its pinned pairing. If it
-  does not run Audio2Face yet, Martlet offers to install it there in the same
-  step and keeps the mouth on voice loudness until the host is ready. The host
-  in charge goes first; this PC's own Audio2Face service and voice loudness
-  are the fallbacks. *Check hosts* reads every host's roles (explicit only).
-  The same card as on Home sits at the top of the board, also listing jobs
-  whose host hasn't been checked since Martlet started. A host that can't run
-  an engine at all (F5 without a 6 GB NVIDIA GPU, Ollama on an iPhone) appears
-  in the drop-down as *can't take it now* with the reason, and its install
-  command is replaced by that reason on the map. Phones and tablets have no
-  install, remove, update or SSH commands; their roles are switched on on the
-  device.
-- **Keep who does what in sync on all my computers** (under the board, OFF by
-  default) shares the assignments with every paired host and your other
-  computers ([details](CLUSTER.md)): every 15 seconds it checks the hosts,
-  follows changes made elsewhere and pushes changes made here. A status line
-  says how many hosts hold the current plan and which need an update. Each
-  tile then offers **Fail over to another host**: when its host stops
-  answering for about 30 seconds the job moves to another paired host that runs
-  the same engine, and the tile says where it moved from. Tiles also explain
-  when this PC cannot follow the plan (host not paired here, no voice chosen).
+- **The map** fills the top of the page. *This PC* sits in the middle; cloud
+  services (and a ghost *Conversation model* node while no thinking model is
+  chosen, pointing to Companion › *Thinking*) sit on its left, and your paired
+  Martlet hosts and self-hosted gateways on its right, each column on a gentle
+  arc. The ghost *Add a computer* node joins the side with fewer devices, and
+  This PC moves toward an empty side so the map stays balanced. Soft curves
+  join each device to This PC, edge to edge; animated dashes show which way
+  data flows and turn amber for a device that needs attention. Every paired
+  host appears, whether or not it has a job yet. The map grows taller when a
+  side holds many devices, and a narrow window scales the whole map down
+  instead of squeezing devices together.
 - **Cards** show an icon, name, address, up to three role chips ("Thinks",
-  "Listens", "Speaks", "Lip-sync", "Character") and a status dot. Ready nodes
-  pulse, and animated dashes on the connections show which way data flows.
-  Cloud services sit on the upper arc, computers and *Add a computer* on the
-  lower arc. When the window is narrow, the details panel moves under the map.
-- **Select a node** to open the detail panel with a slide-in:
-  - *What it runs*: each hosted role and its model or voice.
-  - *Hardware* for This PC, read locally from the registry and Windows: CPU,
-    threads, memory, each GPU with VRAM, Windows version, LAN address, and
-    whether Docker Desktop is installed or running. It adds capability hints,
-    for example "NVIDIA 4 GB+: can run Audio2Face lip-sync". Remote hosts do not
-    report hardware yet, and the panel says so.
-  - *Connection* for remote hosts: address, pinned TLS identity, this PC's
-    device ID, how Martlet reaches it, and a *Check connection* button that
-    uses the existing pinned pairing and shows which roles it runs.
-  - *Roles on a host*: *Hand lip-sync to this computer*, *Install Audio2Face
-    there* and *Remove Audio2Face from it*, *Show its status*, *Update host*,
-    *Pair again* and *Forget this host*. Install, remove, update and status run the same
-    `martlet-host` engine on that computer the way Martlet reaches it (SSH with
-    Docker, SSH native Ubuntu, or this PC's Docker Desktop), in a Martlet run
-    window with live output and *Cancel* (never a console window); the owner's
-    click is the confirmation. On this PC, roles with a GPU-or-CPU choice
-    preselect the suggestion from the graphics card's free memory. The desktop never gets a shell,
-    Docker socket or admin rights on the host. *How Martlet reaches it* sets
-    that route; without one, Martlet copies the command to run on the host.
-  - *Martlet version* for hosts: the release the host's gateway reports on
-    *Check connection*, compared with this PC's. An older host shows *Update
-    available* and a primary *Update it to Martlet x.y.z*.
-  - *Cloud*: address, key storage, data sent and a "may cost money" note.
-  - *Actions* for the node: Audio setup, Character, Prerequisites, *Host
-    services on this PC*, *Change thinking in Companion* (one per job a cloud
-    service or computer does), *Manage host* and similar.
+  "Listens", "Speaks", "Lip-sync", "Character", "+2" for more) and a status
+  dot. Ready nodes pulse. Selecting a card highlights it and shows its
+  details below (scrolling just enough on a short window).
+- **What isn't working** (companion mode) sits under the map when a job is
+  down or its host hasn't been checked since Martlet started: one line per
+  job with its one-click fixes and **Show**, which selects the device doing
+  that job.
+- **The selected device** opens with its name, address and status (plus
+  *Check connection* for a host) and these parts:
+  - **What it does**: one row per job or part it runs, each with an icon, its
+    model or voice and the controls that change it right there. *Thinking*,
+    *Listening*, *Speaking* and *Lip-sync* rows have **Done by** once a host is
+    paired: thinking, listening and speaking go to the Setup choice or any
+    paired host (with its model, or "not installed"); handing a job to a host
+    checks it, offers to install the role (Ollama, whisper or F5) there and
+    switches over once it is ready, and the Setup choice comes back without
+    re-entering a key. **Lip-sync switches on the spot**: *This PC*, any paired
+    host, or *Nobody (mouth follows voice loudness)*; a showing character
+    keeps showing and the next sentence uses the new computer. Handing
+    lip-sync to a host first checks it over its pinned pairing; if it does not
+    run Audio2Face yet, Martlet offers to install it there in the same step and
+    keeps the mouth on voice loudness until the host is ready. The host in
+    charge goes first; this PC's own Audio2Face service and voice loudness are
+    the fallbacks. A host that can't run an engine at all (F5 without a 6 GB
+    NVIDIA GPU, Ollama on an iPhone) appears in *Done by* as *can't take it
+    now* with the reason. Each job row has *Change in Companion* (lip-sync's
+    opens *Lip-sync*; speaking's model and voice change there, because they
+    need consent), shows the job's problem in amber when it isn't working, and
+    adds *Remove ... from it* when a host runs it. *Character* (show or hide,
+    settings), *Microphone and speakers* (*Choose and test*) and this PC's
+    *Martlet host service* (check, update, status, pair again, forget) have
+    their own rows; a role installed on a host but doing no job yet shows as
+    *standing by* with *Hand ... to this computer* and *Remove*.
+  - **Give it more to do**: hand the device a job it doesn't do yet (*Hand
+    thinking to this computer*...), *Run host services on this PC* or *Take
+    lip-sync back to this PC*. *Install or remove roles* (collapsed) holds a
+    host's install and remove commands; an impossible role is explained in
+    *Details* instead. Phones and tablets have no install, remove, update or
+    SSH commands; their roles are switched on on the device.
+  - **Manage**: *Update host* (primary *Update it to Martlet x.y.z* when it is
+    older than this PC), *Show its status*, *Prepare this computer*, *Wake it
+    up*, *Restart it*, *Shut it down*, *Pair again or change its setup* and
+    *Forget this host*; *Prerequisites* for This PC. Install, remove, update
+    and status run the same `martlet-host` engine on that computer the way
+    Martlet reaches it (SSH with Docker, SSH native Ubuntu, or this PC's Docker
+    Desktop), in a Martlet run window with live output and *Cancel* (never a
+    console window); the owner's click is the confirmation. On this PC, roles
+    with a GPU-or-CPU choice preselect the suggestion from the graphics card's
+    free memory. The desktop never gets a shell, Docker socket or admin rights
+    on the host.
+  - **Hardware and details** (collapsed): for This PC, read locally from the
+    registry and Windows: CPU, threads, memory, each GPU with VRAM, Windows
+    version, LAN address and whether Docker Desktop is installed or running,
+    with capability hints such as "NVIDIA 4 GB+: can run Audio2Face lip-sync".
+    For a host: address, pinned TLS identity, this PC's device ID, how Martlet
+    reaches it, the Martlet version its gateway reported on *Check connection*
+    (compared with this PC's) and the hardware it reported. For a cloud
+    service: address, key storage, data sent and a "may cost money" note.
+  - **How Martlet reaches it** (hosts, open while no route is set) sets the
+    SSH or Docker Desktop route; without one, Martlet copies the command to
+    run on the host.
+- **Settings for all devices** (companion mode) closes the page: **Check all
+  hosts** reads every host's roles (explicit only), and **Keep who does what
+  in sync on all my computers** (OFF by default) shares the assignments with
+  every paired host and your other computers ([details](CLUSTER.md)): every
+  15 seconds it checks the hosts, follows changes made elsewhere and pushes
+  changes made here. A status line says how many hosts hold the current plan
+  and which need an update. While it is on, each job row offers **Fail over
+  to another host**: when its host stops answering for about 30 seconds the
+  job moves to another paired host that runs the same engine, and the row
+  says where it moved from or why this PC cannot follow the plan (host not
+  paired here, no voice chosen). Jobs nobody does yet are listed here with
+  *Set up in Companion*.
 
 Reading hardware is local only. It opens no port, starts no process and makes
 no network request.
@@ -232,7 +247,7 @@ The long form became a four-step wizard with a step rail:
    Pairing adds the host to `hosts.json` (every paired host and how Martlet
    reaches it; nonsecret, secrets stay in Windows Credential Manager). Pairing
    hands the host no job (re-pairing keeps the ones it had): it stands by
-   until you hand it a job under *Who does what*. Lip-sync goes to a host only
+   until you hand it a job from a job row's *Done by* on the Devices page. Lip-sync goes to a host only
    once it runs Audio2Face, or with its install in the same step.
 4. **Roles**: role cards (Audio2Face today; planned roles shown as coming soon),
    with *Add*, *Remove* and *Host status*.
