@@ -447,7 +447,7 @@ public partial class LiveConversationWindow : ThemedWindow
         micProblem = null;
         if (speech.Text?.Trim() is not { Length: > 0 } text)
         {
-            notice = ListenOutcome(status) ?? notice;
+            notice = ListenOutcome(status, controller.Configuration) ?? notice;
             return;
         }
         var bubble = Add(ChatRole.User, text, speech.Voices?.Speaker?.Voice is { } voice
@@ -468,10 +468,12 @@ public partial class LiveConversationWindow : ThemedWindow
         _ => "Martlet can't open the microphone chosen in Companion › Listening (unplugged, disabled or missing?)."
     };
 
-    private static string? ListenOutcome(LiveConversationStatus status)
+    private static string? ListenOutcome(LiveConversationStatus status, LiveConversationConfiguration? configuration)
     {
         if (status.Quarantined) return Remedy("conversation.cleanup_quarantined");
-        if (status.ProviderFailure is { } provider) return "Speech-to-text: " + ProviderRemedy(provider);
+        if (status.ProviderFailure is { } provider)
+            return configuration?.SttHostTarget() is { } host && HostRemedy(provider, host.HostId, ProviderRole.Stt) is { } remedy
+                ? remedy : "Speech-to-text: " + ProviderRemedy(provider);
         return status.Code is "listen.heard" or "listen.held" or "mic.no_speech" or "stt.NoSpeech" or "speaker.not_user" or
             "speaker.too_short" or "conversation.canceled" or "conversation.revoked" or "conversation.expired" ? null : Remedy(status.Code);
     }
@@ -592,13 +594,18 @@ public partial class LiveConversationWindow : ThemedWindow
         notice = Outcome(done) ?? (code is "runtime.Completed" or "listen.passed" ? null : notice);
     }
 
+    /// <summary>Which job's request failed: the reply's own record, or speech-to-text for a failed transcription.</summary>
+    private static ProviderRole? FailedJob(LiveConversationOperation done) =>
+        done.Turn?.Snapshot is { ProviderFailure: not null } snapshot ? snapshot.FailedProvider
+        : done.Status.Code.StartsWith("stt.", StringComparison.Ordinal) ? ProviderRole.Stt : null;
+
     private static string? Outcome(LiveConversationOperation done)
     {
         var status = done.Status;
         if (done.Authorization.CredentialFailure is { } credential) return CredentialMessages.Describe(credential);
         if (status.AudioFailure is { } audio) return AudioSetupDiagnostics.Remedy(audio) + " You can still type.";
         if ((done.Turn?.Snapshot.ProviderFailure ?? status.ProviderFailure) is { } provider)
-            return ProviderRemedy(provider, done.Authorization.Configuration);
+            return ProviderRemedy(provider, done.Authorization.Configuration, FailedJob(done));
         if (status.Quarantined) return Remedy("conversation.cleanup_quarantined");
         return status.Code switch
         {
@@ -1139,12 +1146,15 @@ public partial class LiveConversationWindow : ThemedWindow
         // No automatic retry of a failing request: stop and say what to change.
         var selected = controller.Configuration;
         var provider = done.Turn?.Snapshot.ProviderFailure ?? status.ProviderFailure;
-        StopWatching(provider == ProviderFailureCode.InputLimit
+        var job = FailedJob(done);
+        StopWatching(job == ProviderRole.Tts
+            ? "Martlet stopped looking because it couldn't speak: " + ProviderRemedy(provider!.Value, done.Authorization.Configuration, job)
+            : provider == ProviderFailureCode.InputLimit
             ? "The picture didn't fit the Thinking route. If Thinking runs on your Martlet host, update the host so its gateway accepts images."
             : provider is not (null or ProviderFailureCode.ModelRetired or ProviderFailureCode.ModelNotFound) &&
                 selected is not null && selected.Vision() != VisionSupport.Supported
             ? $"The Thinking model rejected the picture ({provider}); it most likely can't see images. {selected.VisionAdvice()}"
-            : "Martlet stopped looking: " + (provider is { } code ? ProviderRemedy(code, done.Authorization.Configuration) : Remedy(status.Code)));
+            : "Martlet stopped looking: " + (provider is { } code ? ProviderRemedy(code, done.Authorization.Configuration, job) : Remedy(status.Code)));
     }
 
     /// <summary>Stops looking and frees the screen capture, camera or stream. A <paramref name="problem"/> is shown and keeps
@@ -1310,9 +1320,53 @@ public partial class LiveConversationWindow : ThemedWindow
 
     // ---------- plain-language messages ----------
 
-    /// <summary>The remedy for a failed reply, in Ollama's terms when Thinking runs in Ollama on this PC.</summary>
-    internal static string ProviderRemedy(ProviderFailureCode code, LiveConversationConfiguration? configuration) =>
-        configuration is { LocalOllama: true } local && LocalOllamaRemedy(code, local) is { } remedy ? remedy : ProviderRemedy(code);
+    /// <summary>The remedy for a failed reply. <paramref name="job"/> is the job whose request failed (null when unknown): a job
+    /// handed to a paired Martlet host gets the host's remedy, Thinking in Ollama on this PC gets Ollama's, and a voice failure
+    /// says so, since the reply's text may already be on screen.</summary>
+    internal static string ProviderRemedy(ProviderFailureCode code, LiveConversationConfiguration? configuration, ProviderRole? job = null)
+    {
+        var host = job switch
+        {
+            ProviderRole.Tts => configuration?.HostSpeechTarget()?.HostId,
+            ProviderRole.Stt => configuration?.SttHostTarget()?.HostId,
+            _ => configuration?.HostTarget()?.HostId
+        };
+        if (host is not null && HostRemedy(code, host, job ?? ProviderRole.Llm) is { } hosted) return hosted;
+        if (job != ProviderRole.Tts && configuration is { LocalOllama: true } local && LocalOllamaRemedy(code, local) is { } remedy) return remedy;
+        return job switch
+        {
+            ProviderRole.Tts when code is ProviderFailureCode.ModelUnsupported or ProviderFailureCode.ModelNotFound or ProviderFailureCode.VoiceUnsupported =>
+                "Martlet couldn't speak: that voice isn't available (no longer installed, or not offered to this account). Choose another in Companion › Voice.",
+            ProviderRole.Tts => "Martlet couldn't speak: " + ProviderRemedy(code),
+            ProviderRole.Stt => "Speech-to-text: " + ProviderRemedy(code),
+            _ => ProviderRemedy(code)
+        };
+    }
+
+    /// <summary>The job's process on that computer, not a provider account, is at fault when a paired Martlet host fails:
+    /// the gateway answers that the worker is unavailable (stopped, still starting, or cut off from the gateway) as ModelNotFound.</summary>
+    internal static string? HostRemedy(ProviderFailureCode code, string hostId, ProviderRole job)
+    {
+        var (what, page) = job switch
+        {
+            ProviderRole.Tts => ("its voice (F5)", "Companion › Voice"),
+            ProviderRole.Stt => ("its speech-to-text (whisper)", "Companion › Listening"),
+            _ => ("its Thinking model (Ollama)", "Companion › Thinking")
+        };
+        return code switch
+        {
+            ProviderFailureCode.ModelNotFound or ProviderFailureCode.ModelUnsupported or ProviderFailureCode.Server =>
+                $"Your Martlet host {hostId} didn't run {what}: it may still be starting, or it stopped. Try again in a minute. " +
+                $"If it keeps happening, update or set up that computer's host service again in Martlet (Devices), or choose another in {page}.",
+            ProviderFailureCode.Network =>
+                $"Couldn't reach your Martlet host {hostId} for {what}. Check that the computer is on and Docker is running, then try again.",
+            ProviderFailureCode.VoiceUnsupported when job == ProviderRole.Tts =>
+                $"Martlet couldn't read the voice your host {hostId} speaks with on this PC. Choose a voice again in Companion › Voice.",
+            ProviderFailureCode.CredentialUnavailable or ProviderFailureCode.Authentication or ProviderFailureCode.PermissionDenied =>
+                $"Martlet couldn't use this PC's pairing with your host {hostId}. Pair this PC with it again on Devices.",
+            _ => null
+        };
+    }
 
     internal static string? LocalOllamaRemedy(ProviderFailureCode code, LiveConversationConfiguration local)
     {
