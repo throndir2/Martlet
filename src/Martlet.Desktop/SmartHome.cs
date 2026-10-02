@@ -94,7 +94,7 @@ internal sealed class SmartHome : IDisposable
     internal bool ControlEnabled => Connected && Preferences.Control;
     internal IReadOnlyList<HomeAction> RecentActions { get { lock (gate) return actions.Reverse().ToArray(); } }
 
-    /// <summary>Asks the user (on screen) whether to send a sensitive request; false or cancellation means no.</summary>
+    /// <summary>Asks the user in the talk window whether to send a sensitive request; false or cancellation means no.</summary>
     internal Func<string, CancellationToken, Task<bool>>? Confirm { get; set; }
 
     /// <summary>Raised off the UI thread when the connection, settings or action list change.</summary>

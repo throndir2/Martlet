@@ -41,8 +41,9 @@ address; plain `http` is accepted only for local-network addresses). With
    door, garage, gate, alarm or valve (common words in English, German,
    French, Spanish, Italian and Dutch) and is not a status question is
    **never sent** unless **Also locks, doors, garage doors, gates, alarms and
-   valves** is on, and then only after the user clicks **Yes** in a dialog
-   (No is the default; 30 s or Stop means no). Status questions ("is the front
+   valves** is on, and then only after the user clicks **Yes, send it** in
+   the talk window (inline, so a dialog taking focus cannot revoke the turn;
+   30 s, Stop or Close means no). Status questions ("is the front
    door locked?") always go through. Longer sentences that merely mention a
    door are treated as chat and not sent. If Home Assistant still reports
    operating such a device without confirmation, the summary says so and
@@ -268,7 +269,7 @@ flowchart LR
 | SH00 | **Delivered 2026-10-01.** HA connection page, vaulted token, built-in Assist on user turns for every model, safety tier with click confirmation, action list, persona context, HA camera snapshot addresses in Watch | - |
 | SH01 | Opt-in tool calling in the chat encoders + streamed tool-call parsing + `ToolModelCatalog`; default unchanged (owned by the MCP client session, `Martlet.Mcp.Client`) | - |
 | SH02 | HA `/api/mcp` registered as a Smart home-managed server in the shared MCP client (no second client), for fuzzy requests ("make it cozy"); Assist pre-step off on those turns to avoid double actions | SH01 |
-| SH03 | Per-tool approval hook on managed servers: comfort tools auto-approved, lock/door/garage/gate/alarm/valve tools ask every time or are denied; tools only on user-started turns; spoken result | SH02 |
+| SH03 | Per-tool approval hook on managed servers (not yet in `Martlet.Mcp.Client`; the MCP session uses inline per-call approvals): comfort tools auto-approved, lock/door/garage/gate/alarm/valve tools ask every time or are denied; tools only on user-started turns; spoken result | SH02 |
 | SH04 | HA cameras listed as Vision sources; "Look at the front door" on request | video source input, SH00 |
 | SH05 | Event-triggered looks/remarks from HA WebSocket and optional Frigate MQTT (doorbell, person detected); announcements; never actions | SH04 |
 | SH06 | Host `home` role: go2rtc and matterjs-server containers; multi-admin Matter pairing from a shared code | SH02, host roles |
