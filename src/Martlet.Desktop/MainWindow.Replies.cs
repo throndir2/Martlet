@@ -37,8 +37,9 @@ public partial class MainWindow
     [
         new(GenerationSetting.MaxReplyTokens, "RepliesMaxReplyTokens", "_Max reply length",
             $"tokens, {GenerationSettings.MinimumReplyTokens}-{GenerationSettings.MaximumReplyTokens}; empty = {GenerationSettings.DefaultMaxReplyTokens}",
-            "The longest reply it may write. Raise it for reasoning/thinking models, which spend part of it on hidden thinking. " +
-            "Longer replies take longer to write and say; a spoken reply stops after about 80 seconds of speech.", true),
+            "A safety ceiling, not how long replies are: Martlet already asks the model to keep replies short. A reply that reaches " +
+            "it stops mid-sentence, so keep it roomy; reasoning/thinking models spend part of it on hidden thinking. A long spoken " +
+            "reply is shown in full, but only about its first 80 seconds are said aloud.", true),
         new(GenerationSetting.Temperature, "RepliesTemperature", "_Temperature", "0-2",
             "Higher is more varied and surprising, lower is more focused and predictable. Empty uses the model's default " +
             $"(a paired host's Ollama uses {GenerationSettings.DefaultHostTemperature.ToString(CultureInfo.CurrentCulture)}).", false),
@@ -66,6 +67,8 @@ public partial class MainWindow
         var saved = homeSettings?.Generation;
         var place = route is null ? null : PlaceName(route);
 
+        var described = Note(DescribeGeneration(saved), new Thickness(0, 2, 0, 0));
+        AutomationProperties.SetAutomationId(described, "RepliesNow");
         var now = new List<UIElement>
         {
             Heading("Now"),
@@ -74,7 +77,7 @@ public partial class MainWindow
                 Text = route is null ? "Thinking isn't set up yet." : $"Replies come from {place}, model {route.ModelId}.",
                 FontSize = 15, TextWrapping = TextWrapping.Wrap
             },
-            Note(DescribeGeneration(saved), new Thickness(0, 2, 0, 0))
+            described
         };
         if (route is null) now.Add(Row(PageButton("Set up thinking", () => OpenCompanion(CompanionTab.Thinking), primary: true, id: "RepliesSetUpThinking")));
         page.Children.Add(Card([.. now]));
@@ -155,12 +158,15 @@ public partial class MainWindow
 
     internal static string DescribeGeneration(GenerationSettings? settings)
     {
-        if (settings is null) return $"Every setting is at the model's default; replies are up to {GenerationSettings.DefaultMaxReplyTokens} tokens.";
+        const string brief = "Martlet asks the model to keep replies short";
+        if (settings is null)
+            return $"{brief}; a reply stops only if it reaches {GenerationSettings.DefaultMaxReplyTokens} tokens. Every setting is at the model's default.";
         var parts = new List<string>();
         foreach (var setting in ReplySettings.Skip(1))
             if (setting.Read(settings) is { } value)
                 parts.Add($"{char.ToLower(setting.Name[0], CultureInfo.CurrentCulture)}{setting.Name[1..]} {setting.Format(value)}");
-        return $"Replies are up to {settings.ReplyTokens} tokens" + (parts.Count == 0 ? "; every other setting is at the model's default." : "; " + string.Join(", ", parts) + ".");
+        return $"{brief}; a reply stops only if it reaches {settings.ReplyTokens} tokens" +
+            (parts.Count == 0 ? ". Every other setting is at the model's default." : "; " + string.Join(", ", parts) + ".");
     }
 
     private void SaveRepliesFrom(IReadOnlyDictionary<GenerationSetting, TextBox> boxes)
