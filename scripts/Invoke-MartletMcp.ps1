@@ -4,8 +4,8 @@ Runs a sequence of Martlet MCP tool calls against this checkout's build.
 
 .DESCRIPTION
 Starts src\Martlet.Mcp from this checkout, sends initialize and each call in
-order, and prints one JSON array of results. Doctor, voices_status, f5_voices, cluster_status, logs_tail and
-virtualization_status calls
+order, and prints one JSON array of results. Doctor, voices_status, f5_voices, cluster_status, logs_tail,
+virtualization_status and mcp_servers_status calls
 without an explicit dataDirectory get a disposable one. -Desktop launches Martlet.Desktop with the
 same disposable data directory and connects ui_* tools to it first.
 
@@ -111,6 +111,7 @@ try {
     $start.RedirectStandardInput = $true
     $start.RedirectStandardOutput = $true
     $start.RedirectStandardError = $true
+    $start.StandardInputEncoding = [System.Text.UTF8Encoding]::new($false)
     $start.StandardOutputEncoding = [System.Text.UTF8Encoding]::new($false)
     $start.StandardErrorEncoding = [System.Text.UTF8Encoding]::new($false)
     $mcp = [System.Diagnostics.Process]::Start($start)
@@ -138,7 +139,7 @@ try {
     foreach ($call in $requested) {
         $arguments = $call.arguments
         if ($call.name -like 'doctor_*' -or $call.name -like 'voices_*' -or $call.name -like 'logs_*' -or $call.name -like 'f5_*' -or
-            $call.name -like 'cluster_*' -or $call.name -like 'virtualization_*') {
+            $call.name -like 'cluster_*' -or $call.name -like 'virtualization_*' -or $call.name -eq 'mcp_servers_status') {
             if ($null -eq $arguments) { $arguments = [pscustomobject]@{} }
             if ($null -eq $arguments.PSObject.Properties['dataDirectory']) {
                 $arguments | Add-Member -NotePropertyName dataDirectory -NotePropertyValue $data

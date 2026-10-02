@@ -16,6 +16,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "RecoveryClose", "SupportFreeze", "SupportClear",
         "NavHome", "NavDevices", "NavCompanion", "NavSettings", "TourSkip", "TourBegin", "TourBack", "DiagnosticsSection",
         "OpenPeople", "DeviceFactsSection", "DeviceReachSection", "DeviceRolesSection", "HealthRecheck",
+        // The MCP directory's Close and its optional-settings section only close or expand; opening it, searching and Load more
+        // send a request to the directory, and Install writes mcp.json and starts a server, so those need --allow-ui-effects.
+        "McpDirectoryClose", "McpDirectoryOptional",
         // The talk window's Stop (Esc) only stops work (a reply, a recording, vision); it starts nothing and never pauses listening.
         "LiveStop"
     };
@@ -23,8 +26,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// "Node-host:gpu-1") and the problem card's Show buttons only select a device and show its details; a job's
     /// "Where it runs" options ("Place-Voice-Computer") only show that place's choices, which their own buttons commit. Home's
     /// Health tiles ("HealthCheck-thinking") and its passive fixes ("HealthOpen-voice-setup-open-voice", "HealthOpen-crash-dismiss")
-    /// only open the page where something changes, or hide the item.</summary>
-    private static readonly string[] SafeClickPrefixes = ["CompanionTab-", "Node-", "CoverageShow-", "Place-", "HealthCheck-", "HealthOpen-"];
+    /// only open the page where something changes, or hide the item. An MCP directory result
+    /// ("McpDirectoryResult-io.github.upstash/context7") only shows that server's details.</summary>
+    private static readonly string[] SafeClickPrefixes = ["CompanionTab-", "Node-", "CoverageShow-", "Place-", "HealthCheck-", "HealthOpen-",
+        "McpDirectoryResult-"];
     // Read-only status text. Text blocks and buttons have no value, so their accessible name (a text block's text) is returned.
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
@@ -34,7 +39,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "LipSyncNow", "LipSyncNowProblem", "LipSyncOwnTitle", "LipSyncOwnState", "SelectedDevice", "SelectedDeviceHealth", "ClusterStatus",
         "VisionStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "SetupF5About", "F5VoicesStatus",
         "SetupOllamaStatus", "SetupLocalModelTest", "HostRunStatus", "RepliesNow",
-        "StageTitle", "StageText", "HealthTitle", "HealthSummary", "HealthAllClear"
+        "StageTitle", "StageText", "HealthTitle", "HealthSummary", "HealthAllClear",
+        // The MCP directory's status line and the selected server's public directory facts (never what was typed into its fields).
+        "McpDirectoryStatus", "McpDirectoryNoSelection", "McpDirectoryDetailTitle", "McpDirectoryDetailName", "McpDirectorySummary",
+        "McpDirectoryNeeds", "McpDirectoryInstalled", "McpDirectoryCantInstall"
     };
     /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)");
     /// Companion › Voice's included F5 voices ("F5VoiceRow-arctic-slt" reads "SLT (US female)", with "· in use" when it is);

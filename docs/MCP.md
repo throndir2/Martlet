@@ -9,7 +9,9 @@ Martlet speaks the Model Context Protocol in both directions:
 
 ## Tools while you talk (MCP client)
 
-Add MCP servers on **Companion > Tools** (*Edit servers (mcp.json)*). The file is
+Add MCP servers on **Companion > Tools**: *Browse MCP directory* finds and
+installs one with a click ([MCP directory](#tools-while-you-talk-mcp-client),
+below), and *Edit servers (mcp.json)* edits the file. The file is
 `mcp.json` in Martlet's data folder and uses the format Claude Desktop, Cursor and
 Cline use (VS Code's `"servers"` key works too; comments and trailing commas are
 accepted), so a server's published configuration can be pasted as is:
@@ -42,6 +44,39 @@ accepted), so a server's published configuration can be pasted as is:
 - `"disabled": true` turns a server off; `"autoApprove"` lists tools that run without
   asking (`true` or `"*"` for every tool of that server). The Tools page edits these
   for you (comments in the file are not kept when it does).
+- `${secret:NAME}` is a value the MCP directory (below) kept in Windows Credential
+  Manager instead of the file; a missing one stops only that server.
+
+**MCP directory.** *Browse MCP directory* on the Tools page finds servers and
+installs them without editing JSON. It searches one of two public directories that
+speak the [MCP Registry API](https://registry.modelcontextprotocol.io/docs)
+(`GET /v0.1/servers?search=&limit=&cursor=&version=latest`): the **GitHub MCP
+Registry** (`api.mcp.github.com`, popular servers, most-starred first; the
+default) or the **Official MCP Registry** (`registry.modelcontextprotocol.io`,
+everything published, by name; its search can take up to a minute). Opening the
+window loads the first page; what you search for is sent to that directory, and
+nothing else is. Choosing a server shows its description, links and how Martlet
+would run it:
+
+- **npm** packages run with `npx -y <package>@<version>`, **PyPI** with
+  `uvx <package>@<version>`, **OCI** images with `docker run -i --rm` (each
+  environment variable passed with `-e`), **NuGet** tools with
+  `dnx <package>@<version> --yes`, and **hosted** streamable HTTP addresses
+  connect directly. A hosted address listed as SSE is offered (as streamable
+  HTTP) only when it doesn't end in `/sse` and no streamable HTTP address is
+  listed. `.mcpb` bundles, local-HTTP packages and other package types aren't
+  installable and the window says why. Whether `npx`, `uvx`, `docker` or `dnx`
+  is on this PC is shown before installing.
+- The entry's environment variables, headers, arguments and `{placeholders}`
+  become fields (required ones first, optional ones in *Optional settings*; empty
+  optional ones are left out). Secret fields are saved in Windows Credential
+  Manager (scoped to this mcp.json) and written as `${secret:<server>.<NAME>}`;
+  typing `${env:NAME}` in any field uses an environment variable instead.
+- *Install and start* adds the entry to mcp.json with `"registry"` (the
+  directory name) and `"version"`, then starts the servers. Installing an entry
+  that is already installed (same `registry`) replaces it; using another
+  server's name asks first. Each mcp.json server on the Tools page has *Remove*,
+  which deletes its entry and the secrets only it used.
 
 **When servers run.** Nothing starts when Martlet starts. Enabled servers start in
 the background when you open a talk window (or press *Start servers now*), and a
@@ -191,6 +226,28 @@ route when the text arrived but speaking it failed), for
 example `{"name":"logs_tail","arguments":{"contains":"failed"}}`. Logs can
 include local paths and provider error text (never keys or conversation content).
 
+`mcp_servers_status` reads `mcp.json` from a data directory (optional absolute
+`dataDirectory`, default the current user's) as the desktop parses it: `state`
+(`none`, `loaded`, `invalid` or `unreadable` with `problem`) and per server its
+`name`, `transport`, `command`, raw `args` (with `${env:...}` and
+`${secret:...}` references, never their values), `host` for HTTP servers, `env`
+and `headers` names, `disabled`, `autoApproveAll`, `autoApprove`, the MCP
+directory `registry` and `registryVersion` it was installed from, the `secrets`
+names it uses and its `problem`. It starts no server and reads no credentials.
+
+`mcp_directory_plan` shows how the MCP directory would install one registry
+entry without fetching, writing or starting anything: pass `server` (a
+server.json object as the v0.1 API returns it, or the whole list item with
+`server` inside), optionally `name` (the mcp.json name; default the suggested
+one) and `values` (input key to text, for example `"env:CONTEXT7_API_KEY"`,
+`"var:api_key"`, `"header:Authorization"`, `"arg:--project-ref"`). It returns
+`name`, `displayName`, `suggestedName`, `version`, `unsupported` (why other ways
+to run it aren't offered) and per option its `kind`, `summary`, `runtime`,
+`runtimeAvailable`, `host`, `inputs` (key, label, required, secret, flag,
+default, choices) and either `plan` (the mcp.json `entry`, the `secrets` names
+it would save and a `preview`) or the `problem` (such as a required field left
+empty). Secret values are never returned.
+
 To drive the visible desktop, start `Martlet.Desktop.exe` yourself in the **same
 interactive Windows session** (ideally with a disposable `--data-directory`).
 Call `ui_connect` with that process ID. `ui_snapshot` returns window accessible names,
@@ -312,6 +369,30 @@ instead of the key, and its name is not returned. Use and Remove change the
 voice list and need `--allow-ui-effects`; Play plays audio and is not for
 automated verification. `f5_voices` reads the same list headlessly.
 
+On Companion › Tools (`CompanionTab-Tools`), each server has
+`ToolsServerState-<name>`, `ToolsServerOn-<name>`, `ToolsServerTrust-<name>`,
+`ToolsRestart-<name>` and, for mcp.json servers, `ToolsRemove-<name>` (asks with
+`ConfirmationYes`/`ConfirmationNo`, then edits mcp.json). `ToolsBrowseDirectory`
+opens the MCP directory (`McpDirectoryWindow`), which loads a page from a public
+directory at once, so it needs `--allow-ui-effects`, as do `McpDirectorySource`
+(choosing a directory searches it), `McpDirectorySearch` with
+`McpDirectorySearchButton`, `McpDirectoryMore`, `McpDirectoryRepository` and
+`McpDirectoryWebsite` (open a browser) and `McpDirectoryInstall` (writes
+mcp.json and Windows Credential Manager, then starts the server). Passive:
+`McpDirectoryClose`, the `McpDirectoryOptional` expander and each result
+`McpDirectoryResult-<registry name>` (for example
+`McpDirectoryResult-io.github.upstash/context7`), which only shows that server.
+Snapshots return `McpDirectoryStatus` (loading, how many found, why a search
+failed, or what was installed), `McpDirectoryNoSelection`, and for the selected
+server `McpDirectoryDetailTitle`, `McpDirectoryDetailName` (registry name,
+version, stars), `McpDirectorySummary` (the chosen way to run it),
+`McpDirectoryNeeds` (whether its runtime is on this PC, or which host it
+connects to), `McpDirectoryInstalled` and `McpDirectoryCantInstall`. The form's
+`McpDirectoryOption`, `McpDirectoryName` and `McpDirectoryInput-<input key>`
+fields and the `McpDirectoryRuns` preview are not returned; `mcp_directory_plan`
+shows the same plan headlessly and `mcp_servers_status` what was installed. A
+running server shows in Home's `HealthCheck-tools` (*1 of 1 server ready*).
+
 On Thinking, Voice, Listening and Lip-sync, each "Where it runs" option
 (`Place-<page>-<place>`, for example `Place-Voice-Computer` or
 `Place-LipSync-Loudness`) only shows that place's choices, so clicking it is
@@ -400,7 +481,7 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `logs_tail` and `virtualization_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `logs_tail`, `virtualization_status` and `mcp_servers_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

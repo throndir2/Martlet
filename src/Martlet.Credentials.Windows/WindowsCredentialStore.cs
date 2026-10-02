@@ -140,4 +140,54 @@ public sealed class WindowsCredentialStore(ICredentialNative native) : ICredenti
             : native.IsSupported ? Map(native.Delete(HomeAssistantTarget(credentialId))) : CredentialError.UnsupportedPlatform;
 
     private static string HomeAssistantTarget(Guid credentialId) => $"Martlet/v3/home-assistant/{credentialId:N}";
+
+    // A value an MCP server in mcp.json needs (an API key for its environment or headers), referenced there as ${secret:NAME}.
+    // The scope is one mcp.json file; the value is kept base64url-encoded so any text fits the credential format.
+    public const int MaxMcpSecretBytes = SecretLease.MaximumLength / 4 * 3;
+
+    public CredentialError WriteMcpSecret(string scope, string name, string value)
+    {
+        if (!McpSecretScope(scope, name) || value.Length == 0 || System.Text.Encoding.UTF8.GetByteCount(value) > MaxMcpSecretBytes)
+            return CredentialError.InvalidInput;
+        if (!native.IsSupported) return CredentialError.UnsupportedPlatform;
+        var bytes = System.Text.Encoding.UTF8.GetBytes(value);
+        var encoded = System.Buffers.Text.Base64Url.EncodeToChars(bytes);
+        try { return Map(native.Write(McpSecretTarget(scope, name), encoded)); }
+        finally
+        {
+            System.Security.Cryptography.CryptographicOperations.ZeroMemory(bytes);
+            Array.Clear(encoded);
+        }
+    }
+
+    public CredentialError ReadMcpSecret(string scope, string name, out string? value)
+    {
+        value = null;
+        if (!McpSecretScope(scope, name)) return CredentialError.InvalidInput;
+        if (!native.IsSupported) return CredentialError.UnsupportedPlatform;
+        var result = Map(native.Read(McpSecretTarget(scope, name), out var secret));
+        using (secret)
+        {
+            if (result != CredentialError.None) return result;
+            if (secret is null) return CredentialError.Unavailable;
+            string? decoded = null;
+            secret.Use(chars =>
+            {
+                try { decoded = System.Text.Encoding.UTF8.GetString(System.Buffers.Text.Base64Url.DecodeFromChars(chars)); }
+                catch (FormatException) { decoded = null; }
+            });
+            value = decoded;
+            return decoded is null ? CredentialError.Unavailable : CredentialError.None;
+        }
+    }
+
+    public CredentialError DeleteMcpSecret(string scope, string name) =>
+        !McpSecretScope(scope, name) ? CredentialError.InvalidInput
+            : native.IsSupported ? Map(native.Delete(McpSecretTarget(scope, name))) : CredentialError.UnsupportedPlatform;
+
+    private static bool McpSecretScope(string scope, string name) =>
+        scope is { Length: 16 } && scope.All(char.IsAsciiHexDigitLower) &&
+        name is { Length: > 0 and <= 128 } && name.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-');
+
+    private static string McpSecretTarget(string scope, string name) => $"Martlet/v3/mcp/{scope}/{name}";
 }
