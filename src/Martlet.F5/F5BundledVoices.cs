@@ -88,6 +88,12 @@ public static class F5BundledVoices
 
     public static IReadOnlyList<F5BundledVoice> All { get; } =
     [
+        new("librivox-annie-anime", "Annie (cute anime girl)", true, true,
+            "Annie Coleman Rothenberg's chatty Anne of Green Gables for LibriVox, lifted to a high anime pitch. Public domain.",
+            "Public domain", AnnieAnne, "fff92da85f9126c6887a3ed264d9490513a64b6bd0c89f3828292b8777d02380"),
+        new("librivox-annie", "Annie (cute, chatty)", true, true,
+            "Annie Coleman Rothenberg's chatty Anne of Green Gables for LibriVox, as read. Public domain.", "Public domain", AnnieAnne,
+            "d6726dc5b0b57825fe603d03159c4a41f11288842e4364f68d312446202e8a88"),
         new("librivox-woollybee-anime", "Bee (cute anime girl)", true, true,
             "WoollyBee's Anne of Green Gables for LibriVox, lifted to a high, bright anime pitch. Public domain (CC0).",
             "Public domain (CC0)", WoollyBeeAnime, "3aaf7c78e363e5c3d1a6e8f2a2c2574e1d92a6185e5326180c45be819eef0c9f"),
@@ -95,12 +101,6 @@ public static class F5BundledVoices
             "WoollyBee's high, bubbly Anne of Green Gables for LibriVox, as read. Public domain (CC0).", "Public domain (CC0)",
             "It isn't heavy. I've got all my worldly goods in it, but it isn't heavy. And if it isn't carried in just a certain way the handle pulls out, so I'd better keep it because I know the exact knack of it.",
             "5996d313f84e4db81b999f2ef97c7a014952f9bd0e759738d2ed7a2f1991475e"),
-        new("librivox-annie-anime", "Annie (cute anime girl)", true, true,
-            "Annie Coleman Rothenberg's chatty Anne of Green Gables for LibriVox, lifted to a high anime pitch. Public domain.",
-            "Public domain", AnnieAnne, "fff92da85f9126c6887a3ed264d9490513a64b6bd0c89f3828292b8777d02380"),
-        new("librivox-annie", "Annie (cute, chatty)", true, true,
-            "Annie Coleman Rothenberg's chatty Anne of Green Gables for LibriVox, as read. Public domain.", "Public domain", AnnieAnne,
-            "d6726dc5b0b57825fe603d03159c4a41f11288842e4364f68d312446202e8a88"),
         new("lj-speech", "LJ (female narrator)", true, false, "Female narrator from the LJ Speech dataset, a LibriVox reading. Public domain.",
             "Public domain", "Printing, then, for our purpose, may be considered as the art of making books by means of movable types.",
             "d54f23016ad2cd288c276960b3366fe09e3bd3983a2089ede0d09e57ff3fedf4"),
@@ -127,7 +127,7 @@ public static class F5BundledVoices
             "5453f3e6a8b335dac1eff29d91f2981d7064cbb97a6f236e790f574caa584695")
     ];
 
-    /// <summary>The voice F5 speaks with until the owner chooses another: the first cute, female voice (Bee, the anime
+    /// <summary>The voice F5 speaks with until the owner chooses another: the     first cute, female voice (Annie, the anime
     /// one), so F5's default sounds high and cute.</summary>
     public static F5BundledVoice Default { get; } = All.First(voice => voice is { Cute: true, Female: true });
 

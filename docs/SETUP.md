@@ -505,7 +505,7 @@ F5 copies a voice from a short recording; nothing is trained. **Companion >
 Voice > Voices** lists Martlet's fourteen included voices, then every voice you
 added, with **Play**, **Use** and **Remove** on each. **Cute voices** come first:
 two LibriVox readers voicing Anne of Green Gables' excitable young heroine, each
-as read and lifted to a high, anime-like pitch; F5 starts with *Bee (cute anime
+as read and lifted to a high, anime-like pitch; F5 starts with *Annie (cute anime
 girl)*. **More included voices** are LJ Speech, two more LibriVox narrators and
 seven CMU ARCTIC speakers (US, Scottish, Canadian and Indian English). All are
 free to use and share: the cute voices and LibriVox readings are public domain

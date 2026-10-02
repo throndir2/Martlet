@@ -182,7 +182,7 @@ Martlet includes (key, name, `female`, `cute`, description, licence, transcript,
 SHA-256, sample rate and duration; each clip is checked against its SHA-256 and the
 reference store's audio, name and transcript rules, `valid` or the failure), the
 `default` key, `defaultName`, `defaultFemale` and `defaultCute` (both always true;
-the default is the first cute voice, `librivox-woollybee-anime`) and `cute`, the
+the default is the first cute voice, `librivox-annie-anime`) and `cute`, the
 keys of the cute, high-pitched voices listed first. From a data
 directory (optional absolute `dataDirectory`, default the current user's) it reads
 the `f5-voices` list: `state` (`none`, `loaded`, `busy` while the desktop holds it,
