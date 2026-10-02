@@ -29,6 +29,9 @@ public sealed record AppSettings : IContract
     /// <summary>Optional second Thinking destination used when a reply's Thinking request fails (Companion › Thinking).</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ThinkingFallbackSettings? ThinkingFallback { get; init; }
+    /// <summary>Optional edits to Martlet's internal prompts (Companion › Prompts); absent while every prompt is built in.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PromptSettings? Prompts { get; init; }
 
     public static AppSettings CreateUnconfigured() => new()
     {
@@ -62,6 +65,9 @@ public sealed record AppSettings : IContract
             "Generation settings are saved as absent when every value is the model default.");
         Generation?.Validate();
         ThinkingFallback?.Validate();
+        ContractRules.Require(Prompts is null || !Prompts.IsDefault,
+            "Prompt settings are saved as absent when every prompt is built in.");
+        Prompts?.Validate();
         if (Setup is not null)
         {
             var legacy = Profile.Credentials.Select(item => item.CredentialId).ToHashSet();

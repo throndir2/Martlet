@@ -64,7 +64,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             id = new { type = "string" }, item = new { type = "string" }
         }, ["id", "item"]),
-        Tool("ui_set_text", "Enter text into an editable control (requires --allow-ui-effects).", new
+        Tool("ui_set_text", "Enter text into an editable control; an empty text clears it (requires --allow-ui-effects).", new
         {
             id = new { type = "string" }, text = new { type = "string" }
         }, ["id", "text"]),
@@ -176,6 +176,14 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             seconds = new { type = "number", minimum = 1, maximum = 10 }
         }),
+        Tool("prompts_status", "Read Companion > Prompts from a data directory's settings.json: every internal prompt Martlet sends " +
+            "to the Thinking model (id, group, title, placeholders) and whether it uses the built-in text, is edited or is emptied " +
+            "(sent as nothing), with its character count. With id, also returns that one prompt's effective text (the saved edit or " +
+            "the built-in text) exactly as Martlet uses it. Read-only.", new
+        {
+            dataDirectory = new { type = "string" },
+            id = new { type = "string", maxLength = 64 }
+        }),
         Tool("smart_home_status", "Read Companion > Smart home's saved connection from a data directory: the Home Assistant address, " +
             "name and version, whether a token is saved (never the token), the control, locks and flexible-request settings, and whether " +
             "the connection is shared through the paired hosts (shared revision, which host it came from). Read-only.", new
@@ -255,7 +263,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "ui_snapshot" => desktop.Snapshot(OptionalBool(arguments, "layout") ?? false),
                 "ui_click" => await desktop.ClickAsync(RequiredString(arguments, "id")),
                 "ui_select" => desktop.Select(RequiredString(arguments, "id"), RequiredString(arguments, "item")),
-                "ui_set_text" => desktop.SetText(RequiredString(arguments, "id"), RequiredString(arguments, "text")),
+                "ui_set_text" => desktop.SetText(RequiredString(arguments, "id"),
+                    OptionalString(arguments, "text") ?? throw new ArgumentException("Missing string 'text'.")),
                 "ui_toggle" => desktop.Toggle(RequiredString(arguments, "id")),
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status"),
                 "voices_status" => VoicesStatus(arguments),
@@ -275,6 +284,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "home_assistant_probe" => await HomeAssistantProbeAsync(arguments, cancellation),
                 "home_assistant_find" => await HomeAssistantFindAsync(arguments, cancellation),
                 "smart_home_status" => SmartHomeStatus(arguments),
+                "prompts_status" => await PromptsStatusAsync(arguments, cancellation),
                 _ => throw new ArgumentException($"Unknown tool '{name}'.")
             };
             return new { content = new[] { new { type = "text", text = JsonSerializer.Serialize(result) } } };
@@ -768,6 +778,35 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             service = Martlet.Home.HomeAssistantDiscovery.ServiceType, listenedSeconds = seconds, count = found.Count,
             found = found.Select(f => new { name = f.Name, address = Martlet.Home.HomeAssistantEndpoint.Display(f.Address), version = f.Version })
+        };
+    }
+
+    /// <summary>Companion › Prompts as saved in a data directory's settings.json: each prompt's state, and one prompt's
+    /// effective text on request.</summary>
+    private static async Task<object> PromptsStatusAsync(JsonElement arguments, CancellationToken cancellation)
+    {
+        var id = OptionalString(arguments, "id");
+        if (id is not null && Martlet.Core.Settings.PromptCatalog.Find(id) is null) throw new ArgumentException($"Unknown prompt '{id}'.");
+        var loaded = await new Martlet.Core.Settings.SettingsStore(DataDirectory(arguments)).LoadAsync(cancellation);
+        var prompts = loaded.Settings?.Prompts;
+        var state = loaded.State switch
+        {
+            Martlet.Core.Settings.SettingsLoadState.Loaded => "loaded",
+            Martlet.Core.Settings.SettingsLoadState.FirstRun => "none",
+            _ => "unreadable"
+        };
+        string Of(string prompt) => prompts?.Overrides.TryGetValue(prompt, out var text) != true ? "builtin"
+            : string.IsNullOrWhiteSpace(text) ? "empty" : "edited";
+        var list = Martlet.Core.Settings.PromptCatalog.All.Select(p => new
+        {
+            id = p.Id, group = p.Group, title = p.Title, placeholders = p.Placeholders, state = Of(p.Id),
+            characters = Martlet.Core.Settings.PromptSettings.Text(prompts, p.Id).Length
+        }).ToArray();
+        return new
+        {
+            state, problem = loaded.Error?.Summary, total = list.Length,
+            edited = list.Count(p => p.state == "edited"), emptied = list.Count(p => p.state == "empty"), prompts = list,
+            prompt = id is null ? null : new { id, state = Of(id), text = Martlet.Core.Settings.PromptSettings.Text(prompts, id) }
         };
     }
 

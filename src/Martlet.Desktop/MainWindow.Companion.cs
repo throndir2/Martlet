@@ -21,7 +21,7 @@ namespace Martlet.Desktop;
 /// <summary>The Companion page's pages: the one place each choice that shapes Martlet is made, listed by group in a side list.
 /// Home and Devices link here. A new page adds its value here (in list order) and one arm each in GroupOf, TabTitle, TabGlyph,
 /// TabIntro and RenderTab.</summary>
-internal enum CompanionTab { Thinking, Voice, Listening, Vision, LipSync, Character, Personality, Lorebook, Memory, People, Replies, Tools, SmartHome }
+internal enum CompanionTab { Thinking, Voice, Listening, Vision, LipSync, Character, Personality, Prompts, Lorebook, Memory, People, Replies, Tools, SmartHome }
 
 /// <summary>The side list's groups, in order: how it works (where each job runs), who it is (look, personality, what it knows)
 /// and what it does (how it answers and acts). A group with no pages yet is not shown.</summary>
@@ -104,7 +104,7 @@ public partial class MainWindow
     private static CompanionGroup GroupOf(CompanionTab section) => section switch
     {
         CompanionTab.Thinking or CompanionTab.Voice or CompanionTab.Listening or CompanionTab.Vision or CompanionTab.LipSync => CompanionGroup.HowItWorks,
-        CompanionTab.Character or CompanionTab.Personality or CompanionTab.Lorebook or CompanionTab.Memory or CompanionTab.People => CompanionGroup.WhoItIs,
+        CompanionTab.Character or CompanionTab.Personality or CompanionTab.Prompts or CompanionTab.Lorebook or CompanionTab.Memory or CompanionTab.People => CompanionGroup.WhoItIs,
         CompanionTab.Replies => CompanionGroup.WhatItDoes,
         CompanionTab.Tools => CompanionGroup.WhatItDoes,
         CompanionTab.SmartHome => CompanionGroup.WhatItDoes,
@@ -127,6 +127,7 @@ public partial class MainWindow
         CompanionTab.LipSync => "Lip-sync",
         CompanionTab.Character => "Character",
         CompanionTab.Personality => "Personality",
+        CompanionTab.Prompts => "Prompts",
         CompanionTab.Lorebook => "Lorebook",
         CompanionTab.Memory => "Memory",
         CompanionTab.People => "People",
@@ -146,6 +147,7 @@ public partial class MainWindow
         CompanionTab.LipSync => "\uE8BD",
         CompanionTab.Character => "\uE77B",
         CompanionTab.Personality => "\uE76E",
+        CompanionTab.Prompts => "\uE943",
         CompanionTab.Lorebook => "\uE736",
         CompanionTab.Memory => "\uE8F1",
         CompanionTab.People => "\uE716",
@@ -165,6 +167,7 @@ public partial class MainWindow
         CompanionTab.LipSync => "Choose what moves the character's mouth.",
         CompanionTab.Character => "Choose Martlet's character, size, position and motion.",
         CompanionTab.Personality => "Edit Martlet's personas and response style.",
+        CompanionTab.Prompts => "Every instruction Martlet sends to the Thinking model. Edit any of them; your text is used instead of the built-in one.",
         CompanionTab.Lorebook => "Add lore entries Martlet can use when keywords come up.",
         CompanionTab.Memory => "Facts Martlet remembers about you between conversations.",
         CompanionTab.People => "Teach Martlet whose voices it hears and the names they use.",
@@ -314,6 +317,7 @@ public partial class MainWindow
             case CompanionTab.LipSync: RenderLipSyncTab(body); break;
             case CompanionTab.Character: RenderCharacterTab(body); break;
             case CompanionTab.Personality: RenderPersonalityTab(body); break;
+            case CompanionTab.Prompts: RenderPromptsTab(body); break;
             case CompanionTab.Lorebook: RenderLorebookTab(body); break;
             case CompanionTab.Memory: RenderMemoryTab(body); break;
             case CompanionTab.People: RenderPeopleTab(body); break;
@@ -1434,6 +1438,11 @@ public partial class MainWindow
         page.Children.Add(Card(Heading("Character cards"),
             Note("Import a PNG, JSON or CHARX character card to create a persona.", new Thickness(0, 0, 0, 8)),
             Row(PageButton("Import a character card", () => OpenCompanionWindowAsync(importCard: true).Forget(), id: "ImportCharacterCard"))));
+
+        page.Children.Add(Card(Heading("Prompts"),
+            Note("The persona is wrapped in Martlet's own instructions, along with lore, memory, reply length and more. See and edit every one of them.",
+                new Thickness(0, 0, 0, 8)),
+            Row(PageButton("Edit prompts", () => OpenCompanion(CompanionTab.Prompts), id: "OpenPrompts"))));
     }
 
     // ---------- lip-sync: where it runs, like every job ----------

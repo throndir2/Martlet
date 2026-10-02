@@ -382,7 +382,7 @@ internal sealed class SmartHome : IDisposable
     }
 
     /// <summary>A tool-capable turn that offers Home Assistant's tools skips the Assist step, so nothing runs twice.</summary>
-    internal HomeTurn ToolsTurn() => new(HomeTurnKind.Tools, HomeAssistantContext.ToolsOffered(Preferences.AllowSensitive), null);
+    internal HomeTurn ToolsTurn(PromptSettings? prompts = null) => new(HomeTurnKind.Tools, HomeAssistantContext.ToolsOffered(Preferences.AllowSensitive, prompts), null);
 
     /// <summary>Reads which of Home Assistant's entities can open the home (at most every 5 minutes) so tool calls that
     /// name one are held back. A failure keeps the previous list; with none, calls that address devices by name ask first.</summary>
@@ -472,26 +472,26 @@ internal sealed class SmartHome : IDisposable
 
     /// <summary>The smart home step for one user-started turn. Never throws for Home Assistant problems: the reply goes
     /// ahead and the persona is told nothing changed.</summary>
-    internal async Task<HomeTurn> HandleAsync(string text, CancellationToken cancellationToken)
+    internal async Task<HomeTurn> HandleAsync(string text, CancellationToken cancellationToken, PromptSettings? prompts = null)
     {
         var saved = Preferences;
         if (!ControlEnabled || string.IsNullOrWhiteSpace(text)) return HomeTurn.Skipped;
         var risk = HomeCommandGuard.Assess(text);
-        if (risk == HomeCommandRisk.NotACommand) return new(HomeTurnKind.NotRecognized, HomeAssistantContext.NotRecognized(), null);
+        if (risk == HomeCommandRisk.NotACommand) return new(HomeTurnKind.NotRecognized, HomeAssistantContext.NotRecognized(prompts), null);
         var confirmed = false;
         if (risk == HomeCommandRisk.Sensitive)
         {
             if (!saved.AllowSensitive)
             {
                 Record("Not sent: smart-home settings don't allow locks, doors, garage doors, gates, alarms or valves.");
-                return new(HomeTurnKind.Blocked, HomeAssistantContext.Blocked(),
+                return new(HomeTurnKind.Blocked, HomeAssistantContext.Blocked(prompts),
                     "Not sent to Home Assistant: locks, doors, garages, gates, alarms and valves are off in Smart home settings.");
             }
             confirmed = await AskAsync(text, cancellationToken).ConfigureAwait(false);
             if (!confirmed)
             {
                 Record("Not sent: you declined a request about a lock, door, garage, gate, alarm or valve.");
-                return new(HomeTurnKind.Declined, HomeAssistantContext.Declined(), "Not sent to Home Assistant.");
+                return new(HomeTurnKind.Declined, HomeAssistantContext.Declined(prompts), "Not sent to Home Assistant.");
             }
         }
         try
@@ -501,17 +501,17 @@ internal sealed class SmartHome : IDisposable
             var token = read.Secret ?? throw new HomeAssistantException(HomeAssistantFailure.Unauthorized,
                 "The saved access token couldn't be read. Connect again in Smart home.");
             var result = await client.ProcessAsync(baseUri, token, text, cancellationToken).ConfigureAwait(false);
-            if (!result.Recognized) return new(HomeTurnKind.NotRecognized, HomeAssistantContext.NotRecognized(), null);
+            if (!result.Recognized) return new(HomeTurnKind.NotRecognized, HomeAssistantContext.NotRecognized(prompts), null);
             var summary = Describe(result);
             if (result.Kind == HomeResponseKind.ActionDone && !confirmed && result.Succeeded.Any(HomeCommandGuard.IsSensitive))
                 summary += " It affected a lock, door, garage, gate, alarm or valve. Hide that device from Home Assistant voice assistants to block it.";
             if (result.Kind != HomeResponseKind.QueryAnswer) Record(summary);
-            return new(HomeTurnKind.Handled, HomeAssistantContext.Handled(result), "Home Assistant: " + summary);
+            return new(HomeTurnKind.Handled, HomeAssistantContext.Handled(result, prompts), "Home Assistant: " + summary);
         }
         catch (HomeAssistantException error)
         {
             Record("Couldn't reach Home Assistant: " + error.Message);
-            return new(HomeTurnKind.Unreachable, HomeAssistantContext.Unreachable(), "Home Assistant: " + error.Message);
+            return new(HomeTurnKind.Unreachable, HomeAssistantContext.Unreachable(prompts), "Home Assistant: " + error.Message);
         }
     }
 
