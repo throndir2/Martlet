@@ -467,6 +467,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
             var text = turn.Content.Text;
             var passed = terminal.State == ConversationState.Completed && IsSilentReply(text);
             operation.Passed = passed;
+            if (IsFailure(terminal))
+                LogFailure(camera ? "Camera glance" : "Screen glance", operation.Authorization.Configuration, SetupRole.Llm, Describe(terminal));
             if (terminal.State == ConversationState.Completed && !passed)
             {
                 lock (gate)
@@ -608,6 +610,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 operation.Transcription = result;
                 if (result.Outcome != TranscriptionOutcome.Completed)
                 {
+                    if (result.Outcome != TranscriptionOutcome.NoSpeech)
+                        LogFailure("Transcription", operation.Authorization.Configuration, SetupRole.Stt,
+                            $"outcome {result.Outcome}" + (result.Failure?.Code is { } sttCode ? $", provider {sttCode}" : ""));
                     operation.Publish(new("stt." + result.Outcome, Finished: true, ProviderFailure: result.Failure?.Code));
                     return new(result.Outcome == TranscriptionOutcome.NoSpeech ? SetupWorkOutcome.Completed : SetupWorkOutcome.Failed);
                 }
@@ -704,7 +709,13 @@ internal sealed class LiveConversationController : IAsyncDisposable
             }
             var terminal = await turn.Completion.ConfigureAwait(false);
             // A model that rejected tools is asked without them from now on (this app session).
-            if (terminal.ToolsRejected) tools?.MarkUnsupported(configured.ToolModelKey());
+            if (terminal.ToolsRejected)
+            {
+                tools?.MarkUnsupported(configured.ToolModelKey());
+                ErrorLog.Info($"The Thinking model {configured.Route(SetupRole.Llm).ModelId} rejected the request with tools; " +
+                    "Martlet asked again without tools and stops offering them to it until it restarts.");
+            }
+            if (IsFailure(terminal)) LogFailure("Reply", configured, SetupRole.Llm, Describe(terminal));
             if (terminal.State == ConversationState.Completed && !string.IsNullOrWhiteSpace(turn.Content.Text))
             {
                 lock (gate)
@@ -816,6 +827,26 @@ internal sealed class LiveConversationController : IAsyncDisposable
         });
     }
 
+    private static bool IsFailure(ConversationSnapshot terminal) =>
+        terminal.State is ConversationState.Failed or ConversationState.Partial || terminal.ProviderFailure is not null;
+
+    private static string Describe(ConversationSnapshot terminal) =>
+        $"state {terminal.State}, failure {terminal.Failure}" +
+        (terminal.ProviderFailure is { } provider ? $", provider {provider}" : "") +
+        (terminal.SequenceFailure is { } sequence ? $", stream {sequence.Issue}" : "") +
+        (terminal.Playback?.Error?.Code is { } audio ? $", audio {audio}" : "") +
+        (terminal.ToolCalls > 0 ? $", {terminal.ToolCalls} tool call(s)" : "") +
+        (terminal.ToolsRejected ? ", tools rejected" : "");
+
+    // One local log line per failed request naming the route it used, never what was said. The provider's own
+    // explanation (HTTP status and message) is logged just before it by ProviderDiagnostics.
+    private static void LogFailure(string what, LiveConversationConfiguration configured, SetupRole role, string outcome)
+    {
+        var route = configured.Routes.SingleOrDefault(r => r.Role == role);
+        ErrorLog.Warn($"{what} failed ({outcome}). {role} route: {route?.RouteType?.ToString() ?? "OpenAi"}, " +
+            $"{route?.Origin ?? "no destination"}, model {route?.ModelId ?? "none"}.");
+    }
+
     // Lorebooks help but are never required: if lorebooks.json can't be used right now, the reply goes ahead without lore.
     private async Task<LorebookScanResult?> ScanLoreAsync(LiveConversationOperation operation, string current,
         IReadOnlyList<TextHistoryMessage> history, PersonaProfile? persona, CancellationToken worker)
@@ -921,7 +952,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
             var expected = job.Configuration.Memory!;
             var known = await memory!.KnownFactsAsync(expected, job.User, MemoryCapture.MaximumShownFacts, token).ConfigureAwait(false);
             var prompt = MemoryCapture.Prompt(job.EarlierUser, job.EarlierReply, job.User, job.Reply, known.Facts);
-            var (answer, failure) = await AskAsync(job.Configuration, prompt.Input, token).ConfigureAwait(false);
+            var (answer, failure) = await AskAsync("Remembering", job.Configuration, prompt.Input, token).ConfigureAwait(false);
             if (answer is null) return token.IsCancellationRequested || failure is null ? null : new(Failure: failure);
             var operations = MemoryCapture.Parse(answer, prompt.ShownFacts);
             if (operations.Count == 0) return null;
@@ -951,8 +982,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
 
     /// <summary>One extra text-only request to the Thinking model on the background runtime (after a reply, never during
     /// one): the answer, or null with why it failed.</summary>
-    private async Task<(string? Answer, string? Failure)> AskAsync(LiveConversationConfiguration configuration, BoundedTextInput input,
-        CancellationToken token)
+    private async Task<(string? Answer, string? Failure)> AskAsync(string purpose, LiveConversationConfiguration configuration,
+        BoundedTextInput input, CancellationToken token)
     {
         var request = configuration.MemoryCaptureRequest(input);
         var capture = CaptureRuntime();
@@ -967,6 +998,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
             await turn.OwnershipRelease.ConfigureAwait(false);
             if (turn.Snapshot.Quarantined)
                 lock (gate) captureQuarantined = true;
+            if (!token.IsCancellationRequested && IsFailure(terminal))
+                LogFailure(purpose, configuration, SetupRole.Llm, Describe(terminal));
             return terminal.State == ConversationState.Completed ? (turn.Content.Text, null)
                 : (null, terminal.ProviderFailure?.ToString() ?? "runtime." + terminal.State);
         }
@@ -1022,7 +1055,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         {
             token.ThrowIfCancellationRequested();
             var prompt = VoiceNaming.Prompt(job.Heard, job.EarlierUser, job.EarlierReply, job.User, job.Reply);
-            var (answer, _) = await AskAsync(job.Configuration, prompt.Input, token).ConfigureAwait(false);
+            var (answer, _) = await AskAsync("Learning names", job.Configuration, prompt.Input, token).ConfigureAwait(false);
             if (answer is null || voices is null) return null;
             var learned = new List<(Martlet.Core.Speakers.KnownVoice, string)>();
             var persona = job.Configuration.Persona?.Name;

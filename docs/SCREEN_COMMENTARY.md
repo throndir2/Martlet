@@ -142,7 +142,7 @@ foundations remain unwired; this feature does not use them.
 | OpenAI `gpt-4.1-mini` / `gpt-4.1` | Yes |
 | Host Ollama `gemma3:4b`, `qwen2.5vl:7b`, `gemma3:12b`, `gemma3:27b` | Yes (now the suggested host models) |
 | Host Ollama `llama3.2:3b`, `qwen2.5:7b`, `llama3.1:8b`, `qwen2.5:14b` | **No, text-only** |
-| Chat Completions | Depends on the model: names with `vl`/`vision`, `gemma-3` (4B+), `gpt-4o`/`4.1`/`5`, `gemini`, `claude`, `pixtral`, `llama-4`... are recognized; others are *unknown* |
+| Chat Completions | Depends on the model: names with `vl`/`vision`, `gemma-3` (4B+), `gemma-4`, `gpt-4o`/`4.1`/`5`, `gemini`, `claude`, `pixtral`, `llama-4`... are recognized; others are *unknown* |
 
 `VisionModelCatalog` classifies the configured model as **Supported**,
 **Unsupported** or **Unknown**. There is no shared capability-discovery API

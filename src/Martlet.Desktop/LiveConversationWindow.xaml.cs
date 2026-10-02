@@ -825,7 +825,8 @@ public partial class LiveConversationWindow : ThemedWindow
         var provider = done.Turn?.Snapshot.ProviderFailure ?? status.ProviderFailure;
         StopWatching(provider == ProviderFailureCode.InputLimit
             ? "The picture didn't fit the Thinking route. If Thinking runs on your Martlet host, update the host so its gateway accepts images."
-            : provider is not null && selected is not null && selected.Vision() != VisionSupport.Supported
+            : provider is not (null or ProviderFailureCode.ModelRetired or ProviderFailureCode.ModelNotFound) &&
+                selected is not null && selected.Vision() != VisionSupport.Supported
             ? $"The Thinking model rejected the picture ({provider}); it most likely can't see images. {selected.VisionAdvice()}"
             : "Martlet stopped looking: " + (provider is { } code ? ProviderRemedy(code) : Remedy(status.Code)));
     }
@@ -995,6 +996,8 @@ public partial class LiveConversationWindow : ThemedWindow
         ProviderFailureCode.RateLimited => "The provider is limiting requests right now. Wait a moment, then try again.",
         ProviderFailureCode.ModelUnsupported or ProviderFailureCode.ModelNotFound or ProviderFailureCode.VoiceUnsupported =>
             "The provider doesn't offer that model or voice to this account. Choose another in Companion.",
+        ProviderFailureCode.ModelRetired =>
+            "The provider has retired this model, so it no longer answers. Choose another model in Companion › Thinking.",
         ProviderFailureCode.ConsentExpired or ProviderFailureCode.DeadlineExceeded or ProviderFailureCode.FirstDeltaTimeout or
             ProviderFailureCode.FirstAudioTimeout or ProviderFailureCode.IdleTimeout =>
             "The provider took too long to answer. Try again.",

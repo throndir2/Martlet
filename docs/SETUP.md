@@ -39,7 +39,7 @@ For Thinking, **Provider** selects one of (the recommended model is prefilled):
 | --- | --- | --- | --- |
 | OpenAI (Responses API) | `https://api.openai.com` | `gpt-4.1-mini-2025-04-14` | Required |
 | OpenRouter | `https://openrouter.ai/api/v1` | `meta-llama/llama-3.3-70b-instruct` | Required (OpenRouter key) |
-| NVIDIA Build | `https://integrate.api.nvidia.com/v1` | `meta/llama-3.3-70b-instruct` | Required (`nvapi-...` key from build.nvidia.com) |
+| NVIDIA Build | `https://integrate.api.nvidia.com/v1` | `google/gemma-4-31b-it` | Required (`nvapi-...` key from build.nvidia.com) |
 | Custom OpenAI-compatible endpoint | Any canonical HTTPS base such as `https://api.groq.com/openai/v1`, or a loopback server such as `http://127.0.0.1:1234/v1` (LM Studio), `http://127.0.0.1:8080/v1` (llama.cpp) or `http://127.0.0.1:11434/v1` (Ollama) | none (enter the model your server serves) | Optional |
 
 Listening prefills `gpt-4o-mini-transcribe`; Speaking prefills

@@ -136,7 +136,12 @@ public sealed class OpenAiTranscriptionAdapter : IDisposable
             EnsureActive();
             // An unreadable optional error body must not replace the known HTTP failure or advice.
             if (!success)
-                return Failed(context, OpenAiResponseParser.Classify(response.StatusCode, bytes), OpenAiTransport.RetryAdvice(response, clock));
+            {
+                var code = OpenAiResponseParser.Classify(response.StatusCode, bytes);
+                ProviderDiagnostics.Report("OpenAI transcription", request.RequestUri, upstreamModelId, code, response,
+                    ProviderDiagnostics.Enabled ? ProviderDiagnostics.Describe(bytes) : null);
+                return Failed(context, code, OpenAiTransport.RetryAdvice(response, clock));
+            }
             if (readFailure is { } bodyFailure)
                 return Failed(context, bodyFailure);
             if (response.Content.Headers.ContentType?.MediaType != "application/json" ||

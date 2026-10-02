@@ -306,7 +306,10 @@ internal sealed class SpeechSynthesisOperation(
             catch (HttpRequestException) { }
             catch (IOException) { }
             EnsureActive();
-            return Fail(OpenAiResponseParser.Classify(response.StatusCode, bytes), OpenAiTransport.RetryAdvice(response, clock));
+            var code = OpenAiResponseParser.Classify(response.StatusCode, bytes);
+            ProviderDiagnostics.Report("OpenAI speech", request.RequestUri, selection.UpstreamModelId, code, response,
+                ProviderDiagnostics.Enabled ? ProviderDiagnostics.Describe(bytes) : null);
+            return Fail(code, OpenAiTransport.RetryAdvice(response, clock));
         }
         var declared = SpeechResponseHeaders.Validate(response.Content);
         if (declared > limits.MaxSamples * 2)

@@ -10,6 +10,8 @@ public sealed class VisionModelCatalogTests
     [InlineData("gemma3-4b", VisionSupport.Supported)]
     [InlineData("gemma3:12b", VisionSupport.Supported)]
     [InlineData("google/gemma-3-27b-it", VisionSupport.Supported)]
+    [InlineData("google/gemma-4-31b-it", VisionSupport.Supported)]
+    [InlineData("gemma4:e4b", VisionSupport.Supported)]
     [InlineData("qwen2.5vl-7b", VisionSupport.Supported)]
     [InlineData("qwen/qwen2.5-vl-72b-instruct", VisionSupport.Supported)]
     [InlineData("llama3.2-vision-11b", VisionSupport.Supported)]

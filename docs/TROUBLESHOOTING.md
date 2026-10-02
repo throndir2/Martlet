@@ -15,6 +15,15 @@ Martlet always keeps a small local error log; it is never uploaded.
   task and unexpected avatar-renderer exit, with full exception type, message
   and stack trace. Exception messages can include local paths or provider error
   text; review a log before sharing it.
+- Failed provider requests (Thinking, Listening, Voice, screen glances and
+  Memory, cloud or Martlet host) add a `WARN` line with the endpoint, model, HTTP
+  status and the provider's own short explanation (at most 400 characters,
+  key-like strings redacted), then a line such as `Reply failed (...)`,
+  `Transcription failed (...)` or `Remembering failed (...)` naming the route
+  and failure codes. Request content, headers, keys and what you said are never
+  logged. For example a model the provider retired shows `HTTP 410 Gone ...
+  has reached its end of life`; the talk window then says to choose another
+  model in Companion › Thinking.
 - Behaviour: an unexpected error on the UI thread is logged and shown once in a
   dialog, and Martlet keeps running instead of closing. Failures that cannot be
   recovered (out of memory, stack overflow, native access violations) are

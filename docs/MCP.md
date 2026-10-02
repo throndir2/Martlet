@@ -139,6 +139,16 @@ Parakeet are downloaded, and counts from `voices.json` (voices, named, owner, wi
 learned names, merged, tombstones). It never returns names, voiceprints or audio and
 runs no model.
 
+`logs_tail` reads the last `lines` (1-400, default 100) of one local log under
+`<dataDirectory>\logs` (`log`: `desktop` (default), `avatar-renderer` or
+`host-runs`), optionally only lines that `contains` some text (case-insensitive,
+at most 200 characters). It returns `{log, exists, truncated, lines}` and never
+writes, rotates or deletes a log. Failed provider requests appear in the desktop
+log with their endpoint, model, HTTP status and the provider's own short
+explanation, followed by a `Reply failed (...)` line naming the route, for
+example `{"name":"logs_tail","arguments":{"contains":"failed"}}`. Logs can
+include local paths and provider error text (never keys or conversation content).
+
 To drive the visible desktop, start `Martlet.Desktop.exe` yourself in the **same
 interactive Windows session** (ideally with a disposable `--data-directory`).
 Call `ui_connect` with that process ID. `ui_snapshot` returns window accessible names,
@@ -155,7 +165,7 @@ dismisses the welcome tour. Companion's side list items (`CompanionTab-<Page>`,
 for example `CompanionTab-People`) and `OpenPeople` (on Listening) are passive
 navigation too. People shows `PeopleStatus`, `PeopleSyncStatus` and
 `PeopleVoiceCount`, and Listening shows `ListenParakeetStatus`; snapshots return
-these status texts. Each voice's controls are numbered by voice (`PeopleName-3`,
+these status texts, as does the talk window's `LiveStatus` (the line under "Martlet": what it is doing, or why the last reply failed). Each voice's controls are numbered by voice (`PeopleName-3`,
 `PeopleOtherNames-3`, `PeopleSave-3`, `PeopleOwner-3`, `PeopleMergeTarget-3`,
 `PeopleMerge-3`, `PeopleForget-3`); like `PeopleInstall`, `PeopleRecognize`,
 `PeopleShare`, `PeopleSync`, `PeopleForgetAll` and `SetupListenParakeet`, they
@@ -225,9 +235,9 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- Doctor calls without a `dataDirectory` get the script's disposable data
-  directory, which `-Desktop` also uses, so Doctor sees the desktop's settings.
-  The directory and the desktop are removed at the end.
+- Doctor, `voices_status` and `logs_tail` calls without a `dataDirectory` get the script's disposable data
+  directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
+  and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
   and `-DataDirectory` for follow-up runs; stop it and delete the directory
   when done.
