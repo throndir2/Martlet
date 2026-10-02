@@ -30,8 +30,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "HostRunStatus"
     };
     /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)");
-    /// Companion › Voice's included F5 voices ("F5VoiceRow-arctic-slt" reads "SLT (US female)", with "· in use" when it is).</summary>
-    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "F5VoiceRow-"];
+    /// Companion › Voice's included F5 voices ("F5VoiceRow-arctic-slt" reads "SLT (US female)", with "· in use" when it is);
+    /// each home or host-dashboard step's detail line ("StepDetail-docker" says whether Docker Desktop runs, or why it can't start).</summary>
+    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "F5VoiceRow-", "StepDetail-"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>

@@ -160,6 +160,20 @@ unticked **Keep who does what in sync**; `plan` is this PC's `cluster.json`
 `updatedBy` and `updatedAt`, and each host's ID, roles and `removed`). It never
 returns host addresses or keys and contacts nothing.
 
+`virtualization_status` reports whether Windows is ready for Docker Desktop's
+WSL 2 engine, from the same read-only checks the desktop runs before it starts
+Docker Desktop (optional absolute `dataDirectory`, default the current user's):
+`ready`, `firmwareOff`, `needsWindowsChanges`, `problems` (plain words),
+`firmware`, `hypervisor`, `virtualMachinePlatform` and
+`windowsSubsystemForLinux` (`Enabled`, `Disabled`, `Absent` or `Unknown`),
+`wsl` (version, `none` or null), `virtualMachine`, `summary`,
+`dockerDesktop {installed, running}` and `continueSetup {pending, kind, task,
+created, startsAtSignIn}`: the setup Martlet continues after a Windows restart
+(`continue-setup.json` in the data directory, and whether the per-user `RunOnce`
+entry that starts Martlet at the next sign-in exists). It runs a CIM query and
+`wsl --version` in a hidden Windows PowerShell, changes nothing and returns no
+paths.
+
 `logs_tail` reads the last `lines` (1-400, default 100) of one local log under
 `<dataDirectory>\logs` (`log`: `desktop` (default), `avatar-renderer` or
 `host-runs`), optionally only lines that `contains` some text (case-insensitive,
@@ -209,6 +223,17 @@ and `LipSyncOwner`, device commands `NodeAction-<action>`
 roles), and Settings for all devices holds `CheckHosts`, `ClusterSync` (checked by
 default; unticking it needs `--allow-ui-effects` and saves `off`),
 `ClusterStatus` (returned as text) and `RoleSetup-<role>` for jobs nobody does.
+Home and host-dashboard steps have their buttons as `Step-<step>-<n>` and their
+detail line as `StepDetail-<step>` (status text): on the host dashboard,
+`StepDetail-docker` says whether Docker Desktop runs or why Windows can't start
+it yet (virtualization off in the firmware, Virtual Machine Platform or Windows
+Subsystem for Linux off, WSL missing, hypervisor not running), and
+`Step-docker-0` then reads *Turn on virtualization* or *Turn on Windows
+features* (administrator prompt and possibly a restart, so it needs
+`--allow-ui-effects` and is never part of verification). After a restart for
+virtualization, Martlet opens a run window by itself (`HostRunWindow`) that
+continues the setup; `continueSetup` in `virtualization_status` shows what is
+pending.
 Use `ui_snapshot` again to observe asynchronous effects. Modal
 actions may return `completed: false` while their dialog remains open; this
 means the invoke is still pending, not that the action finished.
@@ -290,7 +315,7 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status` and `logs_tail` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `logs_tail` and `virtualization_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

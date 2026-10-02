@@ -3,6 +3,7 @@ using System.IO;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.Core.Installation;
 
 namespace Martlet.Desktop;
 
@@ -34,25 +35,54 @@ internal static partial class HostLocal
     internal sealed record EngineProbe(bool Answered, string? Version, string? Error, bool UnableToStart);
 
     /// <summary>Starts Docker Desktop when needed and waits (up to ten minutes) until its engine answers, showing each check,
-    /// what Docker Desktop reports and its own warnings and errors in the run window. Stops at once when Docker Desktop
-    /// says it is unable to start.</summary>
-    internal static async Task EnsureDockerAsync(Action<string> status, IProgress<string> output, CancellationToken token)
+    /// what Docker Desktop reports and its own warnings and errors in the run window. When the engine doesn't answer it first
+    /// makes sure Windows can run it (virtualization and WSL 2, <see cref="WindowsVirtualizationSetup"/>): what is off gets
+    /// turned on, and when Windows must restart, <paramref name="resume"/> continues after the next sign-in. Stops at once
+    /// when Docker Desktop says it is unable to start although Windows is ready.</summary>
+    internal static async Task EnsureDockerAsync(HostRunWindow run, ContinueSetupKind resume)
     {
+        Action<string> status = run.Status;
+        var (output, token) = (run.Output, run.Token);
         if (!MachineInfo.DockerDesktopInstalled())
             throw new InvalidOperationException("Docker Desktop isn't installed on this PC yet. Install it, start it once, then try again.");
         status("Checking Docker Desktop...");
         output.Report($"Checking Docker Desktop's engine (docker info, up to {ProbeTimeout.TotalSeconds:0} seconds)...");
         var desktop = new DockerDesktopLog();
         var probe = await ProbeEngineAsync(token);
-        if (!probe.Answered && !probe.UnableToStart) probe = await WaitForEngineAsync(probe, desktop, status, output, token);
+        if (!probe.Answered)
+        {
+            if (probe.UnableToStart) output.Report("Docker Desktop's engine answered: " + probe.Error);
+            // Docker Desktop's WSL 2 engine can't start until Windows' virtualization is on.
+            if (await WindowsVirtualizationSetup.EnsureReadyAsync(run, resume) && probe.UnableToStart)
+            {
+                await RestartDockerDesktopAsync(output, token);
+                probe = probe with { UnableToStart = false };
+            }
+            if (!probe.UnableToStart) probe = await WaitForEngineAsync(probe, desktop, status, output, token);
+            else probe = probe with { Error = null };
+        }
         if (probe.UnableToStart)
         {
-            output.Report("Docker Desktop's engine answered: " + probe.Error);
+            if (probe.Error is not null) output.Report("Docker Desktop's engine answered: " + probe.Error);
             await desktop.ReportAsync(output, token);
-            throw new InvalidOperationException("Docker Desktop reports that it is unable to start on this PC. Its messages above show why " +
-                "(often virtualization or WSL 2 isn't turned on yet). Fix that in Docker Desktop, make sure it says it is running, then try again.");
+            throw new InvalidOperationException("Docker Desktop reports that it is unable to start on this PC, and Martlet found nothing " +
+                "missing in Windows (virtualization and WSL 2). Its messages above show why. Use Docker Desktop's Troubleshoot page " +
+                "(Restart, or Reset to factory defaults), or restart Windows, then try again.");
         }
+        HostSetupResume.Clear();
         output.Report($"Docker Desktop is running (engine {probe.Version}).");
+    }
+
+    /// <summary>Restarts Docker Desktop after Windows was changed for it without a restart (it stays failed otherwise),
+    /// waiting up to three minutes. Older Docker Desktops without "docker desktop" are left as they are.</summary>
+    private static async Task RestartDockerDesktopAsync(IProgress<string> output, CancellationToken token)
+    {
+        if (!MachineInfo.DockerDesktopRunning()) return;
+        output.Report("Restarting Docker Desktop so it picks up the change: docker desktop restart");
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(token);
+        limit.CancelAfter(TimeSpan.FromMinutes(3));
+        try { await RunAsync(["desktop", "restart"], output, limit.Token); }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested) { output.Report("Docker Desktop is still restarting."); }
     }
 
     /// <summary>Starts Docker Desktop unless it is already running, then checks its engine every few seconds until it answers
@@ -203,7 +233,7 @@ internal static partial class HostLocal
         var exit = await LocalProcess.RunAsync(winget, args, output, token);
         if (!MachineInfo.DockerDesktopInstalled())
             throw new InvalidOperationException($"Docker Desktop was not installed (winget exit {exit}). The output shows why.");
-        output.Report("Docker Desktop is installed. If it asks you to restart or sign out, do that, then press the same button again.");
+        output.Report("Docker Desktop is installed.");
     }
 
     /// <summary>Builds martlet-host:&lt;version&gt; from this version's source (falling back to main) unless it exists.</summary>

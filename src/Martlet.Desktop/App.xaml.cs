@@ -63,6 +63,7 @@ public partial class App : Application
             {
                 (SelectedTheme, AppearanceNotice) = Appearance.LoadForStartup(store.DataDirectory);
                 HostShells.Current = new SshHostShell(store.DataDirectory);
+                HostSetupResume.Initialize(store.DataDirectory, DataDirectoryArgument);
             }
             ApplyTheme(SelectedTheme);
             SystemParameters.StaticPropertyChanged += SystemAppearanceChanged;
