@@ -355,10 +355,14 @@ public partial class MainWindow
             Grid.SetColumn(text, 1);
             grid.Children.Add(text);
 
-            var actions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
+            // Many buttons wrap on their own line under the text, so they never squeeze the title and detail to nothing.
+            var below = step.Commands.Count > 2 || step.Commands.Sum(c => c.Label.Length) > 32;
+            Panel actions = below
+                ? new WrapPanel { Margin = new Thickness(0, 10, 0, 0) }
+                : new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
             foreach (var command in step.Commands)
             {
-                var button = new Button { Content = command.Label, Margin = new Thickness(8, 0, 0, 0), MinWidth = 86 };
+                var button = new Button { Content = command.Label, Margin = below ? new Thickness(0, 0, 8, 8) : new Thickness(8, 0, 0, 0), MinWidth = 86 };
                 if (command.Primary && ReferenceEquals(step, current)) button.SetResourceReference(StyleProperty, "PrimaryButton");
                 AutomationProperties.SetName(button, $"{command.Label}: {step.Title}");
                 AutomationProperties.SetAutomationId(button, $"Step-{step.Id}-{actions.Children.Count}");
@@ -366,7 +370,15 @@ public partial class MainWindow
                 button.Click += (_, _) => run();
                 actions.Children.Add(button);
             }
-            Grid.SetColumn(actions, 2);
+            if (below)
+            {
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                Grid.SetRow(actions, 1);
+                Grid.SetColumn(actions, 1);
+                Grid.SetColumnSpan(actions, 2);
+            }
+            else Grid.SetColumn(actions, 2);
             grid.Children.Add(actions);
             row.Child = grid;
             AutomationProperties.SetName(row, $"{step.Title}: {(step.Done ? "done" : "to do")}. {step.Detail}");
