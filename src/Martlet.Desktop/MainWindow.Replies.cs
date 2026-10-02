@@ -37,7 +37,7 @@ public partial class MainWindow
     [
         new(GenerationSetting.MaxReplyTokens, "RepliesMaxReplyTokens", "_Max reply length",
             $"tokens, {GenerationSettings.MinimumReplyTokens}-{GenerationSettings.MaximumReplyTokens}; empty = {GenerationSettings.DefaultMaxReplyTokens}",
-            "A safety ceiling, not how long replies are: Martlet already asks the model to keep replies short. A reply that reaches " +
+            "A safety ceiling, not how long replies are: Martlet already asks the model to answer in one or two sentences. A reply that reaches " +
             "it stops mid-sentence, so keep it roomy; reasoning/thinking models spend part of it on hidden thinking. A long spoken " +
             "reply is shown in full, but only about its first 80 seconds are said aloud.", true),
         new(GenerationSetting.Temperature, "RepliesTemperature", "_Temperature", "0-2",
@@ -165,7 +165,7 @@ public partial class MainWindow
 
     internal static string DescribeGeneration(GenerationSettings? settings, SetupRoute? route = null)
     {
-        const string brief = "Martlet asks the model to keep replies short";
+        const string brief = "Martlet asks the model to answer in one or two sentences";
         // Ollama on this PC gets no reply token budget unless a max reply length is set.
         var stop = settings?.MaxReplyTokens is null && IsLocalOllama(route) ? "there is no reply length limit"
             : $"a reply stops only if it reaches {settings?.ReplyTokens ?? GenerationSettings.DefaultMaxReplyTokens} tokens";
