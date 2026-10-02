@@ -405,25 +405,29 @@ window ends it.
     Manager, then the confirmed choice.
 
   Lip-sync on its own page uses the same **Where it runs** chooser and
-  cards, with *Voice loudness* in place of a cloud provider. The recommended
-  place follows the hardware: *This PC* with an NVIDIA graphics card of 4 GB or
-  more, otherwise another computer that can run Audio2Face, otherwise voice
-  loudness. Each card's button commits the choice, which switches right away,
-  even while the character talks:
+  cards, with two places: *This PC* and *Another of your computers* (there is
+  no cloud provider). Voice loudness is worked out on this PC, so it is one of
+  *This PC*'s ways rather than a place. The recommended place is *This PC*
+  unless this PC lacks an NVIDIA graphics card of 4 GB or more and another
+  computer can run Audio2Face. Each card's button commits the choice, which
+  switches right away, even while the character talks:
 
-  - *This PC*: two choices, the one in use first, like the voice. **Audio2Face,
+  - *This PC*: two ways, the one in use first, like the voice. **Audio2Face,
     with Docker** (*Set up Audio2Face with Docker* sets up and pairs Martlet's
     host service on this PC, then hands lip-sync to it, installing Audio2Face
     with its NGC key; once the host service exists, *Use Audio2Face on this
-    PC* and *Check it*) or **Your own Audio2Face service** at the character's
-    loopback endpoint (*Use my own service*). The own service is Martlet's
-    default: it only looks for a service there before each sentence, so it is
-    marked *in use* only when one answers and *not running* (the mouth follows
-    the voice's loudness) when nothing does; it never implies Audio2Face is
-    installed.
+    PC* and *Check it*; recommended with an NVIDIA graphics card of 4 GB or
+    more) or **Voice loudness, no setup** (*Use voice loudness* turns
+    Audio2Face off; recommended otherwise). Below them, an advanced **Your own
+    Audio2Face service** line covers an Audio2Face service you run yourself at
+    the character's loopback endpoint (*Use my own service*). That is
+    Martlet's default: it only looks for a service there before each sentence,
+    so voice loudness is marked *in use* and the line says *not running* when
+    nothing answers; only when one answers (or Audio2Face-only is activated)
+    does it become a full option marked *in use*. It never implies Audio2Face
+    is installed.
   - *Another of your computers*: the same host list as the job tabs, with *Use
     it*, *Add a computer*, *Check hosts* and the Devices map.
-  - *Voice loudness*: *Use voice loudness* turns Audio2Face off.
 
   *Advanced setup* at the bottom of each job tab opens the full Setup window on
   that job, for every route type and stored or detached keys. Microphone and

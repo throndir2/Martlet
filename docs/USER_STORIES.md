@@ -903,7 +903,8 @@ Advanced ▸   mapping, renderer, model files
 
 - **Entry points**: Companion › Lip-sync; Devices › device doing
   lip-sync › *Done by*; Home's Now line when lip-sync isn't working.
-- **Flow**: P2 with **Voice loudness** as the third card instead of cloud.
+- **Flow**: P2 with two places, *This PC* and *Another of your computers*;
+  *This PC* offers **Audio2Face, with Docker** or **Voice loudness, no setup**.
   Choosing a machine without Audio2Face offers **Set up Audio2Face on
   GAMING-PC** inline (P5). The mouth follows voice loudness until ready.
 - **Clicks**: 2.
