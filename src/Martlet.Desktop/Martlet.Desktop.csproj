@@ -9,8 +9,6 @@
     <Resource Include="Assets\Martlet.ico" />
     <!-- Resemblyzer GE2E voice encoder (Apache-2.0), converted by scripts\Convert-SpeakerEncoder.py for local Voice ID. -->
     <EmbeddedResource Include="Assets\SpeakerEncoder.bin" LogicalName="Martlet.Desktop.SpeakerEncoder.bin" />
-    <!-- F5-TTS's published English reference clip (SWivid/F5-TTS, MIT): the voice F5 speaks with until the owner picks one. -->
-    <EmbeddedResource Include="Assets\F5SampleVoice.wav" LogicalName="Martlet.Desktop.F5SampleVoice.wav" />
     <!-- Streamed over SSH by Prepare this computer; the Linux computer needs no Martlet checkout. -->
     <EmbeddedResource Include="..\..\deploy\host\martlet-prepare" LogicalName="Martlet.Desktop.martlet-prepare" Link="Assets\martlet-prepare" />
     <InternalsVisibleTo Include="Martlet.Desktop.Tests" />

@@ -641,7 +641,7 @@ public partial class MainWindow
     }
 
     /// <summary>Its voice on this PC: two ways, each set up by one click. F5 in Docker (through this PC's host service, with
-    /// F5-TTS's published sample voice so it speaks right away) or an installed Windows voice (no Docker, no host service).
+    /// Martlet's included voices so it speaks right away) or an installed Windows voice (no Docker, no host service).
     /// The one in use, otherwise the one this PC's hardware suits, comes first.</summary>
     private Border LocalVoiceCard(HostJob job, SetupRoute? route, PairedHost? thisPc)
     {
@@ -651,8 +651,8 @@ public partial class MainWindow
         var windowsInUse = route?.RouteType == SetupRouteType.LocalWindowsTts;
         var nothingHere = !f5InUse && !windowsInUse;
 
-        var f5About = Note("A natural voice copied from a short recording. It comes ready with F5-TTS's published English sample voice " +
-            "(MIT licence), and you can choose another voice or record your own later. Setting it up installs F5-TTS (MIT source; a large " +
+        var f5About = Note("A natural voice copied from a short recording. It comes with ten voices that are free to use and share " +
+            "(public domain or CMU ARCTIC recordings), and you can add your own later. Setting it up installs F5-TTS (MIT source; a large " +
             "download) with the F5TTS_v1_Base model, licensed for non-commercial use only (CC-BY-NC-4.0). Reply text and voice recordings " +
             "stay on this PC.", new Thickness(0, 2, 0, 6));
         AutomationProperties.SetAutomationId(f5About, "SetupF5About");

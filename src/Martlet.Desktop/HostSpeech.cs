@@ -13,49 +13,45 @@ namespace Martlet.Desktop;
 
 /// <summary>The reference voices F5 clones, in Martlet.F5's reference preset store (f5-voices next to the other local
 /// preferences). Each voice keeps its own copy of the recording, its transcript and the owner's voice-rights confirmation,
-/// so the original file can be moved or deleted after it is added.</summary>
+/// so the original file can be moved or deleted after it is added. Martlet's bundled voices (<see cref="F5BundledVoices"/>)
+/// join the list when they are first used.</summary>
 internal static class F5Voices
 {
     internal const string DirectoryName = "f5-voices";
-    internal const string SampleName = "F5 sample voice (English)";
-    internal const string SampleTranscript = "Some call me nature, others call me mother nature.";
-    private const string SampleDirectoryName = "f5-sample-voice";
-    private const string SampleFileName = "f5-sample-en.wav";
-    private static readonly Lazy<byte[]> sample = new(() =>
-    {
-        using var stream = typeof(F5Voices).Assembly.GetManifestResourceStream("Martlet.Desktop.F5SampleVoice.wav") ??
-            throw new InvalidOperationException("Martlet's sample voice is missing from this build.");
-        using var copy = new MemoryStream();
-        stream.CopyTo(copy);
-        return copy.ToArray();
-    });
-    private static readonly Lazy<string> sampleSha256 = new(() => Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(sample.Value)));
+    private const string BundledDirectoryName = "f5-bundled-voices";
+    // Earlier versions staged the retired F5-TTS example clip here.
+    private const string RetiredSampleDirectoryName = "f5-sample-voice";
 
-    /// <summary>The WAV bytes of F5-TTS's published English reference clip, bundled as the voice to start with.</summary>
-    internal static byte[] SampleBytes => sample.Value;
+    internal static F5BundledVoice? Bundled(F5ReferenceSnapshot snapshot) => F5BundledVoices.ForAudio(snapshot.AudioSha256);
 
-    internal static bool IsSample(F5ReferenceSnapshot snapshot) =>
-        string.Equals(snapshot.AudioSha256, sampleSha256.Value, StringComparison.OrdinalIgnoreCase);
+    /// <summary>The F5-TTS example clip earlier versions bundled; Martlet no longer ships it or starts with it.</summary>
+    internal static bool IsRetiredSample(F5ReferenceSnapshot snapshot) => F5BundledVoices.IsRetiredSample(snapshot.AudioSha256);
 
     internal static string Directory(string dataDirectory) => Path.Combine(dataDirectory, DirectoryName);
 
     internal static F5ReferencePresetStore Open(string dataDirectory) => F5ReferencePresetStore.Open(Directory(dataDirectory));
 
-    /// <summary>Writes the sample voice next to the preferences so the store can copy it, and returns its path.</summary>
-    internal static string EnsureSample(string dataDirectory)
+    /// <summary>Writes a bundled voice's clip next to the preferences so the store can copy it, and returns its path.</summary>
+    internal static string EnsureBundled(string dataDirectory, F5BundledVoice voice)
     {
-        var folder = Path.Combine(dataDirectory, SampleDirectoryName);
-        var path = Path.Combine(folder, SampleFileName);
-        if (File.Exists(path) && File.ReadAllBytes(path).AsSpan().SequenceEqual(SampleBytes)) return path;
-        System.IO.Directory.CreateDirectory(folder);
-        var staged = path + ".tmp";
-        File.WriteAllBytes(staged, SampleBytes);
-        File.Move(staged, path, overwrite: true);
+        var bytes = voice.ReadAudio();
+        var folder = Path.Combine(dataDirectory, BundledDirectoryName);
+        var path = Path.Combine(folder, voice.Key + ".wav");
+        if (!File.Exists(path) || !File.ReadAllBytes(path).AsSpan().SequenceEqual(bytes))
+        {
+            System.IO.Directory.CreateDirectory(folder);
+            var staged = path + ".tmp";
+            File.WriteAllBytes(staged, bytes);
+            File.Move(staged, path, overwrite: true);
+        }
+        try { System.IO.Directory.Delete(Path.Combine(dataDirectory, RetiredSampleDirectoryName), recursive: true); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         return path;
     }
 
     /// <summary>The voice F5 speaks with when the owner has not picked one for <paramref name="destination"/>: the applied or
-    /// most recent voice already chosen for it, otherwise the bundled sample voice.</summary>
+    /// most recent voice already chosen for it, otherwise Martlet's first bundled voice. The retired F5-TTS example clip is
+    /// never chosen this way.</summary>
     internal static async Task<F5ReferenceSnapshot> DefaultAsync(string dataDirectory, string destination, CancellationToken token)
     {
         using var store = Open(dataDirectory);
@@ -63,10 +59,11 @@ internal static class F5Voices
         return inspection.Presets
                 .Select(p => p.Snapshots.LastOrDefault(s => s.Rights.ProcessingDestinationId == destination))
                 .OfType<F5ReferenceSnapshot>()
+                .Where(s => !IsRetiredSample(s))
                 .OrderByDescending(s => s.PresetId == inspection.AppliedPresetId)
                 .ThenByDescending(s => s.CreatedAtUtc)
                 .FirstOrDefault()
-            ?? await SampleAsync(store, dataDirectory, destination, token);
+            ?? await BundledAsync(store, dataDirectory, destination, F5BundledVoices.Default, token);
     }
 
     /// <summary>Every voice in the list for <paramref name="destination"/> (each voice's latest recording), oldest first,
@@ -91,19 +88,19 @@ internal static class F5Voices
         await store.DeleteAsync(presetId, token);
     }
 
-    /// <summary>The bundled sample voice's snapshot for <paramref name="destination"/>, added to the voice list if needed.</summary>
-    internal static async Task<F5ReferenceSnapshot> SampleAsync(F5ReferencePresetStore store, string dataDirectory, string destination,
-        CancellationToken token)
+    /// <summary>A bundled voice's snapshot for <paramref name="destination"/>, added to the voice list if needed.</summary>
+    internal static async Task<F5ReferenceSnapshot> BundledAsync(F5ReferencePresetStore store, string dataDirectory, string destination,
+        F5BundledVoice voice, CancellationToken token)
     {
-        var path = EnsureSample(dataDirectory);
+        var path = EnsureBundled(dataDirectory, voice);
         if (store.Inspect().Presets.SelectMany(p => p.Snapshots)
-                .FirstOrDefault(s => IsSample(s) && s.Rights.ProcessingDestinationId == destination) is { } existing)
+                .FirstOrDefault(s => Bundled(s) == voice && s.Rights.ProcessingDestinationId == destination) is { } existing)
             return existing;
         return await store.SnapshotAsync(new()
         {
-            PresetName = SampleName,
+            PresetName = voice.Name,
             AbsoluteSourcePath = path,
-            Transcript = SampleTranscript,
+            Transcript = voice.Transcript,
             Rights = new()
             {
                 AcknowledgementId = Guid.NewGuid(),

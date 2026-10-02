@@ -1,0 +1,178 @@
+Martlet bundled F5 reference voices - sources and notices
+==========================================================
+
+Martlet includes ten short reference recordings (src/Martlet.F5/BundledVoices) that
+F5 can copy a voice from. Each is public domain or covered by the CMU ARCTIC licence
+below, which allows any use, including commercial use and redistribution. They were
+cut from the upstream recordings named here by scripts/Build-F5BundledVoices.py.
+
+Modifications (all ten clips): the spoken passage was cut out at its silences (the two
+CMU ARCTIC sentences joined by 0.3 s of silence), DC offset and rumble below 50 Hz were
+removed, the level was set to -20 dBFS speech RMS (peaks at most -1 dBFS), 10 ms fades
+were applied at each cut, LibriVox MP3s were decoded and resampled to 24 kHz, and each
+clip was written as mono 16-bit PCM WAV. The words and voices are otherwise unchanged.
+
+These licences cover the recordings. Speech Martlet generates in these voices is not
+said or endorsed by the original speakers.
+
+
+Public domain recordings
+------------------------
+
+lj-speech.wav ("LJ (female narrator)")
+  The LJ Speech Dataset 1.1 (https://keithito.com/LJ-Speech-Dataset/), wavs/LJ001-0009.wav
+  (SHA-256 d003373f9c769b17995cfff2a99818e720a56f3376678b27fc6c9c27539c3f75), from
+  LJSpeech-1.1.tar.bz2 (SHA-256 be1a30453f28eb8dd26af4101ae40cbf2c50413b1bb21936cbcdc6fae3de8aa5).
+  "The texts ... are in the public domain. The audio was recorded in 2016-17 by the
+  LibriVox project and is also in the public domain."
+  Transcript: "Printing, then, for our purpose, may be considered as the art of making
+  books by means of movable types."
+
+librivox-cori-samuel.wav ("Cori (female narrator)")
+  LibriVox recording of Frankenstein; or, The Modern Prometheus (1818) by Mary Wollstonecraft
+  Shelley, read by Cori Samuel (https://archive.org/details/frankenstein_cs_librivox,
+  dedicated to the public domain, CC0 1.0), frankenstein_01_shelley.mp3
+  (SHA-256 96068a62c2549a698a35e986c8425368d0fbd4ad757bad9a5b5690c4e2b4b951), 105.24-113.87 s.
+  Transcript: "I have thus endeavoured to preserve the truth of the elementary principles
+  of human nature, while I have not scrupled to innovate upon their combinations."
+
+librivox-helen-taylor.wav ("Helen (female narrator)")
+  LibriVox recording of Love at Second Sight by Ada Leverson, read by Helen Taylor
+  (https://archive.org/details/lovesecondsight_1604_librivox, public domain mark 1.0),
+  secondsight_01_leverson.mp3
+  (SHA-256 b49193791e6090b0623caeac494c6f57596a9ef0c1d9d4f621de97286480898a), 110.88-117.93 s.
+  Transcript: "She was a slim, fair, pretty woman, with more vividness and character than
+  usually goes with her type."
+
+
+CMU ARCTIC recordings
+---------------------
+
+From the CMU ARCTIC databases (http://www.festvox.org/cmu_arctic/), Language Technologies
+Institute, Carnegie Mellon University. Each clip joins arctic_a0058.wav and
+arctic_a0039.wav of one speaker:
+
+  arctic-slt.wav  "SLT (US female)"            cmu_us_slt_arctic  Copyright (c) 2003
+  arctic-clb.wav  "CLB (US female)"            cmu_us_clb_arctic  Copyright (c) 2005
+  arctic-bdl.wav  "BDL (US male)"              cmu_us_bdl_arctic  Copyright (c) 2003
+  arctic-rms.wav  "RMS (US male)"              cmu_us_rms_arctic  Copyright (c) 2004
+  arctic-awb.wav  "AWB (Scottish male)"        cmu_us_awb_arctic  Copyright (c) 2003
+  arctic-jmk.wav  "JMK (Canadian male)"        cmu_us_jmk_arctic  Copyright (c) 2003
+  arctic-ksp.wav  "KSP (Indian English male)"  cmu_us_ksp_arctic  Copyright (c) 2005
+
+Transcript: "I came for information more out of curiosity than anything else. The ship
+should be in within a week or ten days."
+
+Source SHA-256 (arctic_a0058.wav, arctic_a0039.wav):
+  slt 08f5ad6bfdbcc9327bc9b558b0dd753d110273ccb6d367499ef9ae24c2257498 4d2df5a499114499467289b26898d8e7e6ea12f5d3acc99592e194afa27b80fa
+  clb 9570562f6f0c8130a57c4a9274c2d3ff9c9d05fb4d9311a84a251c097012b61f d59f629e47146a8d4e5e1135fbb449a76e567f3c44765876a0259ba72bf44673
+  bdl cedcfe39c544f6facf42d791c0d5bc72fff6e5b912c9365a0fdd21f88c71b7d2 6c2d5d014826053e4dfbfd3760725214809ab181245f1a8b2609f6326c4e857b
+  rms e7dbe8f7688bc6242cbeb0044ac6bbfa04322656fb94f254fd9a93b4178ed74f bdaf4c3d81972c3ac0c49a2fe2f3b897b98de542a9901f03857e0a637fc0c9cd
+  awb ee2545275996be9154a222ad16188fe2462b9575b99c17fd6bfb117472e96c94 2efa2819b0ec3e48d31067f68693c3c6d4c269bd5a179ac2e925e5ca2dc20bad
+  jmk 5b9a18e71097597582c223fd1c2abed63b40568b6ac36c5ea9e04847fd883c44 031cde96d8eeab53ccc213f945f9a19d3d2deefb23712a59b80a30233b24376d
+  ksp 04790d7ee04e8873aec54a156b52e9831d1437894f20fabefd858b91173d280f e94c2905772c8625239b8868943766a63a2c55e51ca17258bf283f72dfaa2d0c
+
+The COPYING files of these databases, unchanged (only the copyright year differs):
+
+cmu_us_slt_arctic/COPYING (identical in cmu_us_bdl_arctic, cmu_us_awb_arctic and cmu_us_jmk_arctic):
+
+This voice is free for use for any purpose (commercial or otherwise)
+subject to the pretty light restrictions detailed below.
+
+############################################################################
+###                                                                       ##
+###                     Carnegie Mellon University                        ##
+###                         Copyright (c) 2003                            ##
+###                        All Rights Reserved.                           ##
+###                                                                       ##
+###  Permission to use, copy, modify,  and licence this software and its  ##
+###  documentation for any purpose, is hereby granted without fee,        ##
+###  subject to the following conditions:                                 ##
+###   1. The code must retain the above copyright notice, this list of    ##
+###      conditions and the following disclaimer.                         ##
+###   2. Any modifications must be clearly marked as such.                ##
+###   3. Original authors' names are not deleted.                         ##
+###                                                                       ##
+###  THE AUTHORS OF THIS WORK DISCLAIM ALL WARRANTIES WITH REGARD TO      ##
+###  THIS SOFTWARE, INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY   ##
+###  AND FITNESS, IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY         ##
+###  SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES            ##
+###  WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN   ##
+###  AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,          ##
+###  ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF       ##
+###  THIS SOFTWARE.                                                       ##
+###                                                                       ##
+############################################################################
+###                                                                       ##
+###  See http://www.festvox.org/cmu_arctic/ for more details              ##
+###                                                                       ##
+############################################################################
+
+cmu_us_rms_arctic/COPYING:
+
+This voice is free for use for any purpose (commercial or otherwise)
+subject to the pretty light restrictions detailed below.
+
+############################################################################
+###                                                                       ##
+###                     Carnegie Mellon University                        ##
+###                         Copyright (c) 2004                            ##
+###                        All Rights Reserved.                           ##
+###                                                                       ##
+###  Permission to use, copy, modify,  and licence this software and its  ##
+###  documentation for any purpose, is hereby granted without fee,        ##
+###  subject to the following conditions:                                 ##
+###   1. The code must retain the above copyright notice, this list of    ##
+###      conditions and the following disclaimer.                         ##
+###   2. Any modifications must be clearly marked as such.                ##
+###   3. Original authors' names are not deleted.                         ##
+###                                                                       ##
+###  THE AUTHORS OF THIS WORK DISCLAIM ALL WARRANTIES WITH REGARD TO      ##
+###  THIS SOFTWARE, INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY   ##
+###  AND FITNESS, IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY         ##
+###  SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES            ##
+###  WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN   ##
+###  AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,          ##
+###  ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF       ##
+###  THIS SOFTWARE.                                                       ##
+###                                                                       ##
+############################################################################
+###                                                                       ##
+###  See http://www.festvox.org/cmu_arctic/ for more details              ##
+###                                                                       ##
+############################################################################
+
+cmu_us_clb_arctic/COPYING (identical in cmu_us_ksp_arctic):
+
+This voice is free for use for any purpose (commercial or otherwise)
+subject to the pretty light restrictions detailed below.
+
+############################################################################
+###                                                                       ##
+###                     Carnegie Mellon University                        ##
+###                         Copyright (c) 2005                            ##
+###                        All Rights Reserved.                           ##
+###                                                                       ##
+###  Permission to use, copy, modify,  and licence this software and its  ##
+###  documentation for any purpose, is hereby granted without fee,        ##
+###  subject to the following conditions:                                 ##
+###   1. The code must retain the above copyright notice, this list of    ##
+###      conditions and the following disclaimer.                         ##
+###   2. Any modifications must be clearly marked as such.                ##
+###   3. Original authors' names are not deleted.                         ##
+###                                                                       ##
+###  THE AUTHORS OF THIS WORK DISCLAIM ALL WARRANTIES WITH REGARD TO      ##
+###  THIS SOFTWARE, INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY   ##
+###  AND FITNESS, IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY         ##
+###  SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES            ##
+###  WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN   ##
+###  AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,          ##
+###  ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF       ##
+###  THIS SOFTWARE.                                                       ##
+###                                                                       ##
+############################################################################
+###                                                                       ##
+###  See http://www.festvox.org/cmu_arctic/ for more details              ##
+###                                                                       ##
+############################################################################
+

@@ -161,16 +161,30 @@ invalidation, and preview separation. It opens no network or audio device.
 
 ## Desktop voices and playback
 
-Martlet.Desktop bundles F5-TTS's published English reference clip
-(`basic_ref_en.wav`, MIT; see `packaging\windows\DEPENDENCIES.txt`) with its
-upstream transcript. When Speaking is first handed to an F5 host, Desktop uses
-the voice already chosen for that destination, otherwise this sample, with no
-picker. The sample is snapshotted with the `PublishedSample` rights basis.
+Martlet includes ten reference voices that are free to use and share
+(`Martlet.F5.F5BundledVoices`, clips in `src\Martlet.F5\BundledVoices`): LJ
+Speech (public domain), Cori Samuel's and Helen Taylor's LibriVox readings
+(public domain) and seven CMU ARCTIC speakers (slt, clb, bdl, rms, awb, jmk, ksp;
+free for any use with the notice kept). `BundledVoices\NOTICES.txt` lists each
+source file with its SHA-256, transcript and the marked modifications, and
+`scripts\Build-F5BundledVoices.py` rebuilds the clips from the pinned sources.
+Each clip is 6.5-8.5 seconds of speech with its exact transcript; an embedded
+clip is verified against its SHA-256 before use. When Speaking is first handed
+to an F5 host, Desktop uses the voice already chosen for that destination,
+otherwise the first included voice (LJ), with no picker. An included voice is
+snapshotted with the `PublishedSample` rights basis when first used.
 
-**Companion > Voice > Voices** is the voice library: every stored voice plus
-the sample, each with **Play** (the stored copy, locally), **Use** and
-**Remove**, and **Add a voice...** (recording, name, exact transcript, whose
-voice and the rights confirmation). **Use** applies the voice in the store and,
+Earlier versions bundled F5-TTS's English example clip (`basic_ref_en.wav`).
+Its transcript matches a line from a 2014 celebrity-narrated campaign film
+and upstream does not identify the speaker, so it is no longer included. A copy
+already in a voice list is shown as retired and is never chosen automatically;
+the owner switches away and removes it.
+
+**Companion > Voice > Voices** is the voice library: the included voices, then
+every stored voice of the owner's, each with **Play** (the stored copy or the
+included clip, locally), **Use** and **Remove**, and **Add a voice...**
+(recording, name, exact transcript, whose voice and the rights confirmation).
+**Use** applies the voice in the store and,
 when F5 speaks, records it on the speaking route with a refreshed selection, so
 the next conversation speaks with it. The speech client reads the exact
 preset/revision the route records. The voice in use cannot be removed. The
