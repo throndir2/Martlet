@@ -154,7 +154,7 @@ internal sealed class McpToolService : IAsyncDisposable
     {
         if (FilePath is null || !File.Exists(FilePath)) return "";
         var info = new FileInfo(FilePath);
-        if (info.Length > McpConfiguration.MaxFileBytes) throw new McpConfigurationException("mcp.json is larger than 1 MB.");
+        if (info.Length > McpConfiguration.MaxFileBytes) throw new McpConfigurationException("MCP server settings are larger than 1 MB.");
         return File.ReadAllText(FilePath);
     }
 
@@ -173,7 +173,7 @@ internal sealed class McpToolService : IAsyncDisposable
         catch (Exception problem) when (problem is McpConfigurationException or IOException or UnauthorizedAccessException)
         {
             next = McpConfiguration.Empty;
-            error = problem is McpConfigurationException ? problem.Message : $"mcp.json couldn't be read: {problem.Message}";
+            error = problem is McpConfigurationException ? problem.Message : $"MCP server settings couldn't be read: {problem.Message}";
         }
         bool apply;
         lock (gate)
@@ -192,7 +192,7 @@ internal sealed class McpToolService : IAsyncDisposable
     internal void Save(string json)
     {
         _ = McpConfiguration.Parse(json);
-        if (FilePath is null) throw new McpConfigurationException("Martlet has no data folder to save mcp.json in.");
+        if (FilePath is null) throw new McpConfigurationException("Martlet has no data folder to save MCP server settings.");
         Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
         var temporary = FilePath + $".{Guid.NewGuid():N}.tmp";
         try

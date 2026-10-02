@@ -52,13 +52,13 @@ public partial class MainWindow
             {
                 Job = job.Job, Doer = JobDoer.ThisDevice, DoerName = name, Enabled = enabled, Reviewed = reviewed,
                 NotConnected = store is not null && Martlet.Sherpa.ParakeetEngine.Installed(LocalVoices.SpeechRoot(store.DataDirectory)) ? null
-                    : "the Parakeet model isn't downloaded on this PC. Choose Parakeet again on Companion › Listening to download it"
+                    : "Parakeet isn't downloaded. Choose Parakeet again in Listening to download it"
             };
         if (route.RouteType is SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWhisper)
             return new()
             {
                 Job = job.Job, Doer = JobDoer.ThisDevice, DoerName = name, Enabled = enabled, Reviewed = reviewed,
-                NotConnected = "it can be saved in Setup, but conversations in this version don't use it yet. Choose OpenAI or one of your hosts"
+                NotConnected = "this option can be saved, but conversations don't use it yet. Choose OpenAI or one of your hosts"
             };
         var keyMissing = route.CredentialId is null && (route.RouteType is null or SetupRouteType.OpenAi ||
             route.RouteType == SetupRouteType.ChatCompletions && ChatCompletionsEndpointCatalog.Named(route.Origin) is not null);
@@ -114,10 +114,9 @@ public partial class MainWindow
     /// <summary>What this PC's own lip-sync does right now, for the places that show who handles lip-sync.</summary>
     private string OwnLipSyncState() => ownLipSyncAnswers switch
     {
-        true => $"Audio2Face answers at {OwnLipSyncEndpoint().Authority}.",
-        false => $"Audio2Face isn't installed or running on this PC (nothing answers at {OwnLipSyncEndpoint().Authority}), so the mouth " +
-            "follows the voice's loudness. Install it in Companion › Lip-sync.",
-        _ => "Its own Audio2Face service when running, otherwise voice loudness."
+        true => "Lifelike lip-sync is running on this PC.",
+        false => "Lifelike lip-sync is not running on this PC. Set it up in Companion › Lip-sync.",
+        _ => "Lifelike lip-sync when available. Otherwise, basic mouth movement."
     };
 
     /// <summary>The freshest thing this PC knows about a host: the background sync check when sync is on, otherwise the
@@ -289,7 +288,7 @@ public partial class MainWindow
     {
         var device = PlatformDevice.FromHost(hostId, HardwareStore?.Find(hostId));
         if (!PlatformCatalog.ManagesRolesRemotely(device))
-            return $"switch on {job} in Martlet on {hostId} first; this PC can't install roles on a {PlatformCatalog.Name(device.Platform)} device.";
+            return $"turn on {job} in Martlet on {hostId} first. This PC can't set it up there.";
         return HostCan(hostId, roleKind) is { Allowed: false } cannot ? cannot.Reason : null;
     }
 
@@ -321,7 +320,7 @@ public partial class MainWindow
         var lines = JobCoverageRules.RemoveRoleImpact(situation, host.HostId, shared);
         var handBack = JobCoverageRules.HandBackFirst(situation, host.HostId);
         if (lines.Count > 0 && !ConfirmationDialog.Confirm(this,
-                $"{host.HostId} does the {job} right now. Remove {role.Name} from it? " + string.Join(" ", lines),
+                $"Remove {role.Name} from {host.HostId}? " + string.Join(" ", lines),
                 handBack ? "Hand back and remove" : "Remove role"))
             return;
         if (handBack && HostJob.All.First(j => j.Job == job) is var hostJob &&
@@ -333,7 +332,7 @@ public partial class MainWindow
             catch (Exception error) when (error is System.IO.IOException or UnauthorizedAccessException or InvalidOperationException or
                 Martlet.Core.Contracts.ContractException or ArgumentException)
             {
-                ActionText.Text = $"{role.Name} stays on {host.HostId}: {hostJob.Job} could not go back first ({error.Message}).";
+                ActionText.Text = $"{role.Name} stayed on {host.HostId}. {hostJob.Job} couldn't move back first ({error.Message}).";
                 return;
             }
             finally { assigningRole = false; }

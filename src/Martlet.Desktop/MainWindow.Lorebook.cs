@@ -31,17 +31,16 @@ public partial class MainWindow
         page.Children.Add(PageNowCard(lore.Error ?? (library.Books.Count == 0
             ? "No lorebooks yet. Import one from SillyTavern or a character card, or write your own."
             : active.Length == 0
-                ? $"{library.Books.Count} {(library.Books.Count == 1 ? "lorebook" : "lorebooks")}, none on for {persona?.Name ?? "this persona"}."
-                : $"{active.Length} of {library.Books.Count} {(library.Books.Count == 1 ? "lorebook" : "lorebooks")} on for {persona?.Name ?? "this persona"}: " +
+                ? $"{library.Books.Count} {(library.Books.Count == 1 ? "lorebook" : "lorebooks")}, none enabled for {persona?.Name ?? "this persona"}."
+                : $"{active.Length} of {library.Books.Count} {(library.Books.Count == 1 ? "lorebook" : "lorebooks")} enabled for {persona?.Name ?? "this persona"}. " +
                   $"{entries.Length} {(entries.Length == 1 ? "entry" : "entries")}" +
                   (entries.Count(entry => entry.Constant) is var constant and > 0 ? $", {constant} always on" : "") + "."), null));
 
         var books = new List<UIElement>
         {
             Heading("Lorebooks"),
-            Note("When a keyword from an entry comes up in what you or Martlet just said, that entry's text is added to what " +
-                "Martlet knows for the reply, within a budget; always-on entries are added every time. Lorebooks are saved on this PC and go " +
-                "to your Thinking model only as triggered entries.", new Thickness(0, 0, 0, 8))
+            Note("Lore entries are added to replies when their keywords come up. Triggered entries are sent to the Thinking model.",
+                new Thickness(0, 0, 0, 8))
         };
         if (lore.Loaded)
             foreach (var book in library.Books)
@@ -52,10 +51,7 @@ public partial class MainWindow
         page.Children.Add(Card(books.ToArray()));
 
         page.Children.Add(Card(Heading("From SillyTavern"),
-            Note("Import SillyTavern World Info files (JSON) or the lorebook inside a SillyTavern or Chub character card (PNG, JSON or " +
-                "CHARX), and export any lorebook back as World Info. Keywords, filter keywords and rules, always-on entries, order, " +
-                "placement before or after the persona, chance, scan depth, whole-word and case options, /regex/ keys and recursion " +
-                "carry over. A character card imported as a persona brings its keyword entries along as a lorebook for that persona.",
+            Note("Import SillyTavern World Info or character cards. You can also export any lorebook back to World Info.",
                 new Thickness(0, 0, 0, 4))));
     }
 
@@ -96,7 +92,7 @@ public partial class MainWindow
             }).ToArray()
         });
         homeLore = saved.Saved ? new(saved.Library, saved.Revision, null) : null;
-        if (!saved.Saved && !closing) ActionText.Text = "The lorebook was not changed. " + saved.Error;
+        if (!saved.Saved && !closing) ActionText.Text = "Couldn't update the lorebook. " + saved.Error;
         if (!closing && openTab == CompanionTab.Lorebook) RenderTab();
     }
 

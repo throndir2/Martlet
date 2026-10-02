@@ -38,7 +38,7 @@ internal sealed class VoiceSampleRecording
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
-                recording.Error = "Recording canceled; nothing was kept.";
+                recording.Error = "Recording canceled.";
                 return new SetupWorkResult(SetupWorkOutcome.Canceled);
             }
             catch (CaptureDeviceException error)
@@ -53,7 +53,7 @@ internal sealed class VoiceSampleRecording
             }
             catch (InvalidOperationException)
             {
-                recording.Error = "The microphone is muted, paused or still busy. Try again in a moment.";
+                recording.Error = "The microphone is muted or busy. Try again in a moment.";
                 return new SetupWorkResult(SetupWorkOutcome.Failed);
             }
         });
@@ -172,7 +172,7 @@ public partial class VoiceIdWindow : ThemedWindow
         recording = VoiceSampleRecording.Start(operations, devices, input, clock);
         if (recording is null)
         {
-            StatusText.Text = "Another Martlet action is using the microphone or app slot. Stop it and try again.";
+            StatusText.Text = "Another Martlet action is using the microphone. Stop it and try again.";
             return;
         }
         testing = test;
@@ -192,7 +192,7 @@ public partial class VoiceIdWindow : ThemedWindow
         LevelMeter.Value = 0;
         if (active.Pcm is not { } pcm)
         {
-            StatusText.Text = active.Error ?? "Recording failed; nothing was kept.";
+            StatusText.Text = active.Error ?? "Recording failed. Try again.";
             Render();
             return;
         }
@@ -202,8 +202,8 @@ public partial class VoiceIdWindow : ThemedWindow
             else AddSample(pcm);
         }
         catch (VoiceIdentityException error) { StatusText.Text = error.Message; }
-        catch (IOException) { StatusText.Text = "Could not write voice-id.json. Check folder access and try again."; }
-        catch (UnauthorizedAccessException) { StatusText.Text = "Could not write voice-id.json. Check folder access and try again."; }
+        catch (IOException) { StatusText.Text = "Couldn't save your voiceprint. Check folder access and try again."; }
+        catch (UnauthorizedAccessException) { StatusText.Text = "Couldn't save your voiceprint. Check folder access and try again."; }
         finally { if (testing) active.Clear(); }
         Render();
     }
@@ -216,13 +216,13 @@ public partial class VoiceIdWindow : ThemedWindow
         if (seconds < 1.5)
         {
             CryptographicOperations.ZeroMemory(pcm);
-            StatusText.Text = $"Only {seconds:F1} s of speech was heard. Move closer or speak up, then record that phrase again.";
+            StatusText.Text = $"Only {seconds:F1} s of speech was heard. Move closer or speak up, then try again.";
             return;
         }
         samples.Add(pcm);
         if (samples.Count < Phrases.Length)
         {
-            StatusText.Text = $"Phrase {samples.Count} recorded ({seconds:F1} s of speech). Next phrase.";
+            StatusText.Text = $"Phrase {samples.Count} recorded. Next phrase.";
             return;
         }
         var enrollment = SpeakerVerifier.Enroll(VoiceIdentity.Encoder, samples);
@@ -233,8 +233,8 @@ public partial class VoiceIdWindow : ThemedWindow
         ThresholdSlider.Value = enrollment.SuggestedThreshold;
         initializing = false;
         StatusText.Text = enrollment.Consistency < 0.75f
-            ? $"Voiceprint saved, but your three phrases sounded quite different ({enrollment.Consistency:F2}). If tests miss you, start over somewhere quieter."
-            : $"Voiceprint saved (consistency {enrollment.Consistency:F2}). Recordings were discarded. Try the test below.";
+            ? "Voiceprint saved, but the phrases sounded different. If tests miss you, start over somewhere quieter."
+            : "Voiceprint saved. Try the test below.";
     }
 
     private void ShowTest(byte[] pcm)
@@ -244,9 +244,9 @@ public partial class VoiceIdWindow : ThemedWindow
         TestResultText.Text = check.Verdict switch
         {
             SpeakerVerdict.User when check.OtherVoiceDetected =>
-                $"That's you (score {check.Similarity:F2}), but part of it sounded like someone else (lowest {check.LowestPartialSimilarity:F2}).",
-            SpeakerVerdict.User => $"That's you. Score {check.Similarity:F2} (threshold {print.Threshold:F2}).",
-            SpeakerVerdict.OtherSpeaker => $"Not recognized as you. Score {check.Similarity:F2} is below the threshold {print.Threshold:F2}.",
+                $"Recognized you, but another voice may be present. Score {check.Similarity:F2}.",
+            SpeakerVerdict.User => $"Recognized you. Score {check.Similarity:F2} (threshold {print.Threshold:F2}).",
+            SpeakerVerdict.OtherSpeaker => $"Not recognized. Score {check.Similarity:F2} is below threshold {print.Threshold:F2}.",
             _ => $"Too little speech to decide ({check.SpeechAnalyzed.TotalSeconds:F1} s). Speak for at least a second."
         };
         StatusText.Text = "Test recording discarded.";
@@ -255,7 +255,7 @@ public partial class VoiceIdWindow : ThemedWindow
     private void Restart_Click(object sender, RoutedEventArgs e)
     {
         ClearSamples();
-        StatusText.Text = "Enrollment restarted. Your saved voiceprint (if any) is unchanged until you finish three phrases.";
+        StatusText.Text = "Enrollment restarted. Your saved voiceprint won't change until you finish all three phrases.";
         Render();
     }
 
@@ -268,7 +268,7 @@ public partial class VoiceIdWindow : ThemedWindow
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            StatusText.Text = "Could not delete voice-id.json. Check folder access.";
+            StatusText.Text = "Couldn't delete your voiceprint. Check folder access.";
         }
         Render();
     }
@@ -281,7 +281,7 @@ public partial class VoiceIdWindow : ThemedWindow
         try { identity.SetThreshold((float)ThresholdSlider.Value); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            StatusText.Text = "Could not save the threshold to voice-id.json.";
+            StatusText.Text = "Couldn't save the threshold. Check folder access.";
         }
         Render();
     }
@@ -307,7 +307,7 @@ public partial class VoiceIdWindow : ThemedWindow
         DeleteButton.IsEnabled = !busy && identity.Current is not null;
         ThresholdSlider.IsEnabled = identity.Current is not null;
         VoiceprintText.Text = identity.LoadError ?? (identity.Current is { } print
-            ? $"Voiceprint saved {print.CreatedAt.LocalDateTime:g} from {print.SpeechSeconds:F0} s of speech (consistency {print.Consistency:F2})."
+            ? $"Voiceprint saved {print.CreatedAt.LocalDateTime:g}. Speech used: {print.SpeechSeconds:F0} s. Consistency: {print.Consistency:F2}."
             : "No voiceprint yet. Finish step 1 to create one.");
     }
 

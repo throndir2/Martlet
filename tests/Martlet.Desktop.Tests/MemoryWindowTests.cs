@@ -25,7 +25,7 @@ public sealed class MemoryWindowTests
             memory,
             runner,
             chooseExport: () => scope.Export,
-            confirm: (_, _, title) => title == "Delete local memory fact" && allowDelete)
+            confirm: (_, _, title) => title == "Delete remembered fact" && allowDelete)
         {
             ShowActivated = false,
             ShowInTaskbar = false
@@ -34,7 +34,7 @@ public sealed class MemoryWindowTests
         try
         {
             await Until(() => Text(window, "ConfigurationStatus").Contains(
-                "Legacy settings loaded", StringComparison.Ordinal));
+                "Older memory settings loaded", StringComparison.Ordinal));
             Assert.False(Directory.Exists(scope.Memory));
             Assert.True(Check(window, "MemoryEnable").IsChecked);
             Assert.Equal("MemoryReload", AutomationProperties.GetAutomationId(
@@ -48,8 +48,8 @@ public sealed class MemoryWindowTests
                 $"runner={runner.IsRunning}; enable={Check(window, "MemoryEnable").IsChecked}");
             Click(window, "MemorySaveConfiguration");
             await Until(() => !runner.IsRunning && Text(window, "ConfigurationStatus").Contains(
-                "Memory is ON", StringComparison.Ordinal) && Text(window, "FactStatus").Contains(
-                "0 fact(s) remembered", StringComparison.Ordinal),
+                "Memory is on", StringComparison.Ordinal) && Text(window, "FactStatus").Contains(
+                "0 facts remembered", StringComparison.Ordinal),
                 () => $"runner={runner.IsRunning}; status={Text(window, "ConfigurationStatus")}; settings={File.ReadAllText(store.FilePath)}");
             var configured = await store.LoadAsync();
             Assert.True(configured.Settings!.Memory!.Enabled);
@@ -66,18 +66,20 @@ public sealed class MemoryWindowTests
 
             var list = Control<ListBox>(window, "FactsList");
             list.SelectedIndex = 0;
-            Assert.Contains("Created from: saved by the user", Text(window, "FactDetails"));
-            Assert.Contains("expires at", Text(window, "FactDetails"));
+            Assert.Contains("Created:", Text(window, "FactDetails"));
+            Assert.Contains("saved by the user", Text(window, "FactDetails"));
+            Assert.Contains("expires", Text(window, "FactDetails"));
             Control<TextBox>(window, "FactContent").Text = "Preferred server region is north-west.";
             Click(window, "MemoryEditFact");
             await Until(() => !runner.IsRunning && list.Items.Cast<MemoryFact>().Single().Content.Contains(
                 "north-west", StringComparison.Ordinal));
             list.SelectedIndex = 0;
-            Assert.Contains("Last changed: saved by the user", Text(window, "FactDetails"));
+            Assert.Contains("Updated:", Text(window, "FactDetails"));
+            Assert.Contains("saved by the user", Text(window, "FactDetails"));
 
             Click(window, "MemoryCreateExportPreview");
             await Until(() => !runner.IsRunning && Text(window, "ExportSummary").Contains(
-                "Export approval default: NO", StringComparison.Ordinal));
+                "Preview ready", StringComparison.Ordinal));
             Assert.False(Check(window, "MemoryAcceptExport").IsChecked);
             var exactPreview = Control<TextBox>(window, "ExportPreviewText").Text;
             using (var json = JsonDocument.Parse(exactPreview))
@@ -88,7 +90,7 @@ public sealed class MemoryWindowTests
             Control<TextBox>(window, "ExportDestination").Text = scope.Export;
             Click(window, "MemoryExport");
             Assert.False(File.Exists(scope.Export));
-            Assert.Contains("remains NO", Text(window, "ExportStatus"));
+            Assert.Contains("Review the preview", Text(window, "ExportStatus"));
 
             Check(window, "MemoryAcceptExport").IsChecked = true;
             Click(window, "MemoryExport");
@@ -107,7 +109,7 @@ public sealed class MemoryWindowTests
 
             Click(window, "MemoryPurgeExpired");
             await Until(() => !runner.IsRunning && Text(window, "FactStatus").Contains(
-                "Purged 0", StringComparison.Ordinal));
+                "Deleted 0 expired facts", StringComparison.Ordinal));
         }
         finally
         {
@@ -142,7 +144,7 @@ public sealed class MemoryWindowTests
         try
         {
             await Until(() => !runner.IsRunning && Text(window, "ConfigurationStatus").Contains(
-                "Memory is ON", StringComparison.Ordinal) &&
+                "Memory is on", StringComparison.Ordinal) &&
                 Control<ListBox>(window, "FactsList").Items.Count == 1);
             Click(window, "MemoryCreateExportPreview");
             await Until(() => !runner.IsRunning &&
@@ -264,12 +266,12 @@ public sealed class MemoryWindowTests
         window.Show();
         try
         {
-            await Until(() => !runner.IsRunning && Text(window, "ConfigurationStatus").Contains("Memory is ON", StringComparison.Ordinal) &&
+            await Until(() => !runner.IsRunning && Text(window, "ConfigurationStatus").Contains("Memory is on", StringComparison.Ordinal) &&
                 Control<ListBox>(window, "FactsList").Items.Count == 1);
             if (export)
             {
                 Click(window, "MemoryCreateExportPreview");
-                await Until(() => !runner.IsRunning && Text(window, "ExportSummary").Contains("NO", StringComparison.Ordinal));
+                await Until(() => !runner.IsRunning && Text(window, "ExportSummary").Contains("Preview ready", StringComparison.Ordinal));
                 Control<TextBox>(window, "ExportDestination").Text = scope.Export;
                 Check(window, "MemoryAcceptExport").IsChecked = true;
             }

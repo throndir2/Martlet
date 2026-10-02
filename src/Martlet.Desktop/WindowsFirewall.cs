@@ -19,7 +19,7 @@ internal static class WindowsFirewall
 
     internal static string ProbeScript(string address)
     {
-        if (!HostSetupCommands.IsPrivate(address)) throw new InvalidOperationException("Enter this PC's private LAN IPv4 address.");
+        if (!HostSetupCommands.IsPrivate(address)) throw new InvalidOperationException("Enter this PC's private network address.");
         return "$ErrorActionPreference='SilentlyContinue';$ProgressPreference='SilentlyContinue';" +
             $"$r=[bool](Get-NetFirewallRule -Name '{RuleName}');" +
             $"$p=Get-NetIPAddress -IPAddress '{address}' | Get-NetConnectionProfile | Select-Object -First 1;" +
@@ -43,8 +43,8 @@ internal static class WindowsFirewall
     {
         var script = new StringBuilder("$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';");
         script.Append($"Remove-NetFirewallRule -Name '{RuleName}' -ErrorAction SilentlyContinue;");
-        script.Append($"New-NetFirewallRule -Name '{RuleName}' -DisplayName 'Martlet host gateway (TCP {Port})' ");
-        script.Append("-Description 'Lets Martlet desktops on your private network reach the Martlet host on this PC. Added by Martlet hosts; delete it to close the port.' ");
+        script.Append($"New-NetFirewallRule -Name '{RuleName}' -DisplayName 'Martlet host' ");
+        script.Append("-Description 'Lets Martlet desktops on your private network reach this PC as a host. Added by Martlet.' ");
         script.Append($"-Direction Inbound -Action Allow -Protocol TCP -LocalPort {Port} -Profile Private,Domain -RemoteAddress LocalSubnet | Out-Null;");
         if (makePrivateInterface is { } index)
             script.Append($"Set-NetConnectionProfile -InterfaceIndex {index} -NetworkCategory Private;");

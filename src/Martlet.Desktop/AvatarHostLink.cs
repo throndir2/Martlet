@@ -39,7 +39,7 @@ internal sealed class GatewayAvatarHostLink(Audio2FaceHostConnection connection,
 
     public IAsyncEnumerable<RemoteFaceFrame> AnimateAsync(CorrelationIds ids, long epoch, int sampleRate,
         ReadOnlyMemory<byte> pcm, CancellationToken token) =>
-        connection.AnimateAsync(Volatile.Read(ref route) ?? throw new InvalidOperationException("The host route is not ready."),
+        connection.AnimateAsync(Volatile.Read(ref route) ?? throw new InvalidOperationException("The host isn't ready."),
             ids, epoch, sampleRate, pcm, token);
 
     public void Invalidate()

@@ -17,15 +17,15 @@ internal static class Prerequisites
     private const string MicrophoneConsent = @"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone";
 
     internal static Prerequisite WebView2 { get; } = new("WebView2", "Microsoft Edge WebView2 Runtime",
-        "Needed to show the desktop character. Downloaded from Microsoft.");
+        "Needed to show the desktop character.");
     internal static Prerequisite Microphone { get; } = new("Microphone", "Let desktop apps use the microphone",
         "Needed for push-to-talk. Opens Windows Settings, where you turn it on.");
     internal static Prerequisite WindowsSpeech { get; } = new("WindowsSpeech", "Windows offline speech for your language",
-        "Speech recognition and voices from Windows Update. Asks for administrator approval.");
+        "Adds Windows speech recognition and voices. Windows may ask for administrator approval.");
     internal static Prerequisite Ollama { get; } = new("Ollama", "Ollama",
-        "Runs a conversation model on this PC (ollama.com via winget, MIT license). Offers a model sized to your GPU afterwards.");
+        "Runs a local conversation model on this PC.");
     internal static Prerequisite DockerDesktop { get; } = new("DockerDesktop", "WSL 2 and Docker Desktop",
-        "Hosts Audio2Face and other GPU roles on this PC (free for personal use). Also turns on Windows' virtualization features; asks for administrator approval, and after a restart Martlet continues by itself.");
+        "Runs GPU features on this PC. Free for personal use. Turns on Windows virtualization and may need a restart.");
 
     internal static IReadOnlyList<Prerequisite> All { get; } = [WebView2, Microphone, WindowsSpeech, Ollama, DockerDesktop];
 
@@ -71,11 +71,11 @@ internal static class Prerequisites
         var scripted = items.Where(i => !ReferenceEquals(i, DockerDesktop)).ToArray();
         var docker = scripted.Length != items.Count;
         if (scripted.Length > 0 && !File.Exists(script))
-            return $"The prerequisites tool is installed with Martlet but was not found at {script}. From a source checkout, run packaging\\windows\\Install-Prerequisites.ps1.";
+            return "Could not find Martlet's prerequisites installer. Reinstall Martlet, then try again.";
         var titles = string.Join(", ", items.Select(i => i.Title));
         var summary = await HostRunWindow.RunAsync(owner, items.Count == 1 ? $"Install {items.First().Title}" : "Install prerequisites", async run =>
         {
-            run.Status($"Installing {titles}. Each comes from its publisher; Windows may ask for administrator approval...");
+            run.Status($"Installing {titles}. Windows may ask for administrator approval...");
             if (scripted.Length > 0)
             {
                 var powershell = Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe");
@@ -83,7 +83,7 @@ internal static class Prerequisites
                     "-Install", string.Join(",", scripted.Select(i => i.Id)) };
                 if (!string.IsNullOrWhiteSpace(ollamaModel)) args.AddRange(["-OllamaModel", ollamaModel.Trim()]);
                 var exit = await LocalProcess.RunAsync(powershell, args, run.Output, run.Token, workingDirectory: Path.GetDirectoryName(script));
-                if (exit != 0) throw new InvalidOperationException($"The prerequisites tool stopped (exit {exit}). The output shows why.");
+                if (exit != 0) throw new InvalidOperationException($"Installation stopped with exit code {exit}. The output shows what happened.");
             }
             if (docker)
             {
@@ -91,10 +91,10 @@ internal static class Prerequisites
                 await WindowsVirtualizationSetup.EnsureReadyAsync(run, ContinueSetupKind.Docker);
             }
             var still = items.Where(i => i.Id != Microphone.Id && IsMissing(i)).ToArray();
-            return still.Length == 0 ? $"Done: {titles}."
-                : $"Finished, but {string.Join(", ", still.Select(i => i.Title))} still isn't installed. The output shows why.";
+            return still.Length == 0 ? $"Installed: {titles}."
+                : $"Finished, but {string.Join(", ", still.Select(i => i.Title))} is still missing. The output shows what happened.";
         });
-        return summary ?? $"{titles} were not installed. The run window shows why.";
+        return summary ?? $"Installation did not finish for: {titles}. The run window shows what happened.";
     }
 
     /// <summary>The prerequisites checklist in Martlet: what is installed and what is missing, with the missing items to
@@ -103,10 +103,10 @@ internal static class Prerequisites
     {
         var missing = Missing();
         var installed = All.Where(i => !missing.Contains(i)).ToArray();
-        var dialog = new HostInputDialog("Prerequisites", "Windows prerequisites for Martlet",
+        var dialog = new HostInputDialog("Prerequisites", "Set up Windows features",
             (installed.Length == 0 ? "" : $"Already on this PC: {string.Join(", ", installed.Select(i => i.Title))}.\n\n") +
             (missing.Count == 0 ? "Everything Martlet can install is already here."
-                : "Tick what to install. Each item comes from its publisher and keeps its own license terms; Martlet shows the progress."),
+                : "Choose what to install. Each item uses its publisher's license terms."),
             missing.Count == 0 ? "_Close" : "_Install selected");
         foreach (var item in missing)
             dialog.AddCheck(item.Id, $"{item.Title}: {item.Detail}", ReferenceEquals(item, WebView2) || ReferenceEquals(item, Microphone));

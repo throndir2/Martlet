@@ -57,9 +57,9 @@ internal static partial class HostSetupCommands
         _ = Engine(action);
         if (!VersionPattern().IsMatch(target.Version)) throw new InvalidOperationException("Unexpected Martlet version.");
         if (target.Method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative && !SshTargetPattern().IsMatch(target.SshTarget))
-            throw new InvalidOperationException("Enter the SSH target as user@computer (for example me@192.168.1.20 or me@gpu-pc).");
+            throw new InvalidOperationException("Enter the SSH target as user@computer.");
         if (action == HostAction.Setup && !IsPrivate(target.Address))
-            throw new InvalidOperationException("Enter the host's private LAN IPv4 address (10.x, 172.16-31.x or 192.168.x).");
+            throw new InvalidOperationException("Enter the host's private network address.");
         if (target.HostId is { } id && !Regex.IsMatch(id, @"\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z"))
             throw new InvalidOperationException("Invalid host ID.");
     }
@@ -137,7 +137,7 @@ internal static partial class HostSetupCommands
         Validate(target, action);
         if (target.Method != HostSetupMethod.ThisPcDocker)
             throw new InvalidOperationException(target.Method == HostSetupMethod.OnHost
-                ? "Run the shown commands on the host itself." : "SSH hosts run inside Martlet, not in a console window.");
+                ? "Run the shown commands on the host." : "Martlet runs SSH host commands for you.");
         var lines = new StringBuilder("@echo off\r\n");
         lines.Append($"title Martlet host - {Engine(action)}\r\n");
         var image = Image(target);
@@ -162,10 +162,10 @@ internal static partial class HostSetupCommands
     {
         HostSetupMethod.OnHost =>
             "On a Docker host (Linux, or Windows/macOS with Docker Desktop):\r\n  " +
-            DockerShell(target, action) + "\r\n\r\nOn Ubuntu without Docker for the gateway (native):\r\n  " +
+            DockerShell(target, action) + "\r\n\r\nOn Ubuntu without Docker:\r\n  " +
             NativeShell(target, action),
         HostSetupMethod.SshDocker or HostSetupMethod.SshNative =>
-            $"Martlet runs this on {target.SshTarget} over SSH (no console; you confirm here):\r\n  " +
+            $"Martlet will run this on {target.SshTarget}:\r\n  " +
             RemoteShell(target, Engine(action), action == HostAction.Setup),
         _ => string.Join("\r\n", Script(target, action).Split("\r\n")
             .Where(line => line.StartsWith("docker image ", StringComparison.Ordinal) ||
@@ -199,7 +199,7 @@ internal static partial class HostSetupCommands
                 lines.Append($"ssh {SshUnattended} {target.SshTarget} \"{NativeShell(target, action)}\"\r\n");
                 break;
             default:
-                throw new InvalidOperationException("Martlet does not know how to reach this host; run the command on it instead.");
+                throw new InvalidOperationException("Choose the connection method, or run the command on the host.");
         }
         lines.Append("exit /b %errorlevel%\r\n");
         return lines.ToString();
@@ -221,7 +221,7 @@ internal static partial class HostSetupCommands
             return (await RunQuietlyOverSshAsync(target, action, dataDirectory, pinnedHostKey, log, token), log);
         File.WriteAllText(script, UnattendedScript(target, action), Encoding.ASCII);
         using var process = Process.Start(new ProcessStartInfo("cmd.exe", $"/d /s /c \"\"{script}\" > \"{log}\" 2>&1\"")
-            { UseShellExecute = false, CreateNoWindow = true }) ?? throw new InvalidOperationException("Could not start the host update.");
+            { UseShellExecute = false, CreateNoWindow = true }) ?? throw new InvalidOperationException("Couldn't start the host update.");
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(token);
         limit.CancelAfter(TimeSpan.FromMinutes(45));
         try { await process.WaitForExitAsync(limit.Token); }
@@ -254,7 +254,7 @@ internal static partial class HostSetupCommands
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
         {
-            sink.Report("Stopped: it needed an answer (SSH password, new host key or sudo password) or took over 45 minutes.");
+            sink.Report("Stopped: SSH needed a password or took too long.");
             return -1;
         }
         catch (Exception error) when (error is HostShellException or Renci.SshNet.Common.SshException or IOException or

@@ -215,7 +215,7 @@ screen `bounds` (`[x, y, width, height]` in pixels) and, for text controls, the
 alignment can be checked: in the talk window, the empty box's hint
 `LivePlaceholder` must have the same `bounds` position as the `textBounds` of
 text typed into `LiveInput`.
-Status fields include `VisionStatus` (Companion › Vision: whether the Thinking model can see, or has been retired, and the fix), `RepliesNow` (Companion › Replies: that Martlet asks for replies of one or two sentences, the max reply length ceiling in effect and the other saved settings), `SetupCloudHint-Thinking` (the cloud provider's recommended Thinking model, or a retired-model warning), `SetupLocalRecommendation` (the local Ollama model recommended for this PC's graphics card), `SetupOllamaStatus` (whether Ollama is installed or running and which models it has), `SetupLocalModelTest` (Thinking › This PC: the last *Test model* result for the model in the box, or that it isn't tested yet), `SetupProviderHint` (Setup › Jobs prefilled model) and `SetupF5About` (Speaking › This PC: what setting up F5 installs and its licence). `SetupHostThisPc` and `SetupUseLocal-Speaking` start the F5 setup run window straight away (no extra confirmation; installing Docker Desktop still asks for its terms), so they need `--allow-ui-effects`. `SetupTestLocalModel` (Thinking › This PC's *Test model*) starts Ollama if needed, loads the model in the box and sends it one short loopback chat request in a run window, so it needs `--allow-ui-effects` too; read the outcome from `HostRunStatus` and `SetupLocalModelTest`. A run window (`HostRunWindow`, titled `Martlet - <run>`) returns its status line as `HostRunStatus` (for example *Waiting for Docker Desktop to start...* or why it stopped); its output (`HostRunOutput`, which can show a one-use pairing code) is not returned, so read it with `logs_tail` `host-runs`, which also records each status change. `HostRunCancel` cancels a running run (or closes the window afterwards) and needs `--allow-ui-effects`. On a fresh data directory, F5 setup first needs saved settings (*Complete Setup once...*): `SetupUseWindowsVoice` saves them. Setting `DOCKER_HOST` (for example to a local test named pipe) before launching the desktop points its Docker checks away from the real engine. `ui_click` invokes a control by automation ID and `ui_select` selects a named combo-box
+Status fields include `VisionStatus` (Companion › Vision: whether the Thinking model can see, or has been retired, and the fix), `RepliesNow` (Companion › Replies: that Martlet asks for replies of one or two sentences, the max reply length ceiling in effect and the other saved settings), `SetupCloudHint-Thinking` (the cloud provider's recommended Thinking model, or a retired-model warning), `SetupLocalRecommendation` (the local Ollama model recommended for this PC's graphics card), `SetupOllamaStatus` (whether Ollama is installed or running and which models it has), `SetupLocalModelTest` (Thinking › This PC: the last *Test model* result for the model in the box, or that it isn't tested yet), `SetupProviderHint` (Setup › Jobs prefilled model), `AppUpdateStatus` (Settings › App updates: the installed version, the check schedule and the last check or download result) and `SetupF5About` (Speaking › This PC: what the F5 voice is and its non-commercial use restriction). `SetupHostThisPc` and `SetupUseLocal-Speaking` start the F5 setup run window straight away (no extra confirmation; installing Docker Desktop still asks for its terms), so they need `--allow-ui-effects`. `SetupTestLocalModel` (Thinking › This PC's *Test model*) starts Ollama if needed, loads the model in the box and sends it one short loopback chat request in a run window, so it needs `--allow-ui-effects` too; read the outcome from `HostRunStatus` and `SetupLocalModelTest`. A run window (`HostRunWindow`, titled `Martlet - <run>`) returns its status line as `HostRunStatus` (for example *Waiting for Docker Desktop to start...* or why it stopped); its output (`HostRunOutput`, which can show a one-use pairing code) is not returned, so read it with `logs_tail` `host-runs`, which also records each status change. `HostRunCancel` cancels a running run (or closes the window afterwards) and needs `--allow-ui-effects`. On a fresh data directory, F5 setup first needs saved settings (*Complete Setup first.*): `SetupUseWindowsVoice` saves them. Setting `DOCKER_HOST` (for example to a local test named pipe) before launching the desktop points its Docker checks away from the real engine. `ui_click` invokes a control by automation ID and `ui_select` selects a named combo-box
 option. By default only passive navigation and
 diagnostics controls can be clicked. The main window is split into pages, and a
 page's controls are only visible after you open it: click `NavHome`,
@@ -230,7 +230,7 @@ dismisses the welcome tour, and `TourBegin` and `TourBack` step through it
 for example `CompanionTab-People`) and `OpenPeople` (on Listening) are passive
 navigation too. People shows `PeopleStatus`, `PeopleSyncStatus` and
 `PeopleVoiceCount`, and Listening shows `ListenParakeetStatus`; snapshots return
-these status texts, as does the talk window's `LiveStatus` (the line under "Martlet": what it is doing, or why the last reply failed, naming the job that failed: *Martlet couldn't speak: ...* for the voice, and *Your Martlet host <ID> didn't run ...* when the job runs on a paired host). Each voice's controls are numbered by voice (`PeopleName-3`,
+these status texts, as does the talk window's `LiveStatus` (the line under "Martlet": what it is doing, or why the last reply failed, naming the job that failed: *Martlet couldn't speak. ...* for the voice, and *Your Martlet host <ID> didn't answer ...* when the job runs on a paired host). Each voice's controls are numbered by voice (`PeopleName-3`,
 `PeopleOtherNames-3`, `PeopleSave-3`, `PeopleOwner-3`, `PeopleMergeTarget-3`,
 `PeopleMerge-3`, `PeopleForget-3`); like `PeopleInstall`, `PeopleRecognize`,
 `PeopleShare`, `PeopleSync`, `PeopleForgetAll` and `SetupListenParakeet`, they
@@ -272,8 +272,8 @@ shows a code) and the `HostCommandSection`, `PairCommandSection` and
 passive clicks. Snapshots return `HostStatus` (the wizard's status line: what
 pairing did, or why it was refused, such as *That code doesn't match...* or *No
 Martlet host answered at ...*), `PairedHost`, and `PairCodeTitle`/`PairCodeHelp`
-(*Type the code the host shows* when Martlet can't reach the host, *Or type a
-code the host shows* next to `PairConsole` otherwise). `PairAddress` and
+(*Enter the code shown on the host* when Martlet can't reach the host, *Or enter a
+code from the host* next to `PairConsole` otherwise). `PairAddress` and
 `PairingCode` take the host's address and short code (`ui_set_text`, so
 `--allow-ui-effects`), and `PairHost` pairs; a successful pairing stores a
 device secret in Windows Credential Manager, so verification stops at refused
@@ -329,11 +329,11 @@ and `LogSource-<computer>` (`all`, this PC's device ID such as
 report which is chosen in `selected`. `LogSearch` needs `ui_set_text` (and so
 `--allow-ui-effects`). `LogsRefresh` reads the logs again and sends nothing, so
 it is passive; `LogsCopy` (clipboard) and `LogsOpenFolder` (Explorer) are not.
-`LogHostChoice` returns the chosen log host (*Nobody: each computer keeps its
-own*, a host ID, or *<host> (not paired with this PC)*); changing it with
+`LogHostChoice` returns the chosen log host (*None (each computer keeps its
+own)*, a host ID, or *<host> (not paired with this PC)*); changing it with
 `ui_select` changes the shared plan and needs `--allow-ui-effects`.
-`LogHostStatus` says what this PC last sent to the log host, what it passed on
-and which hosts didn't answer or run an older Martlet. To see lines on a
+`LogHostStatus` says what this PC last sent to the log host and which hosts
+didn't answer or need a Martlet update. To see lines on a
 disposable data directory, write `logs\desktop.log` (lines like
 `2026-10-01 22:15:44.974 -07:00 WARN [1] message`), `logs\avatar-renderer.log`
 or `logs\host-runs.log` before launching. Home's `HealthOpen-errors-diagnostics`

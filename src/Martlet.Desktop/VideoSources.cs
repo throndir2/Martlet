@@ -156,7 +156,7 @@ internal sealed class VideoInput : IVideoInput
     private (byte[] Pixels, int Width, int Height) ReadAddress(string address)
     {
         var text = address.Trim().Trim('"');
-        if (text.Length == 0) throw new VideoSourceException("Type the camera's address first (for example http://192.168.1.20:8080/shot.jpg).");
+        if (text.Length == 0) throw new VideoSourceException("Enter a camera address in Companion › Vision.");
         if (Uri.TryCreate(text, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" && !mediaAddress)
         {
             var picture = Snapshot(uri);
@@ -178,17 +178,16 @@ internal sealed class VideoInput : IVideoInput
         using var response = Http.Send(request, HttpCompletionOption.ResponseHeadersRead);
         if (response.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden &&
             WatchSource.IsHomeAssistantCamera(uri))
-            throw new VideoSourceException("Home Assistant refused the camera picture. Connect Home Assistant in Companion > Smart home " +
+            throw new VideoSourceException("Home Assistant refused the camera picture. Connect Home Assistant in Companion › Smart home " +
                 "with this same address, then try again.");
         if (response.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden)
-            throw new VideoSourceException("The camera asked for a password. Put it in the address as http://user:password@host:port/... " +
-                "(the password stays in this window and is never saved).");
+            throw new VideoSourceException("The camera needs a password. Include it in the address; Martlet won't save it.");
         if (!response.IsSuccessStatusCode)
-            throw new VideoSourceException($"The camera address answered {(int)response.StatusCode} {response.ReasonPhrase}. Check the path (for example /shot.jpg).");
+            throw new VideoSourceException($"The camera returned {(int)response.StatusCode} {response.ReasonPhrase}. Check the address.");
         var type = response.Content.Headers.ContentType?.MediaType?.ToLowerInvariant() ?? "";
         if (type.StartsWith("video/") || type.Contains("mpegurl") || type == "application/octet-stream" && LooksLikeVideo(uri)) return null;
         if (type.StartsWith("text/html"))
-            throw new VideoSourceException("That address is a web page, not a picture. Use the camera app's snapshot (.jpg) or MJPEG video address.");
+            throw new VideoSourceException("That address opens a web page, not a camera picture. Use a snapshot or MJPEG address.");
         using var stream = response.Content.ReadAsStream();
         var bytes = type.StartsWith("multipart/") ? FirstJpeg(stream) : ReadAll(stream);
         try { return Decode(bytes); }
@@ -205,7 +204,7 @@ internal sealed class VideoInput : IVideoInput
         int read;
         while ((read = stream.Read(buffer)) > 0)
         {
-            if (copy.Length + read > MaximumDownload) throw new VideoSourceException("The picture at that address is too large (over 12 MB).");
+            if (copy.Length + read > MaximumDownload) throw new VideoSourceException("The picture at that address is over 12 MB. Use a smaller snapshot.");
             copy.Write(buffer, 0, read);
         }
         return copy.ToArray();
@@ -230,7 +229,7 @@ internal sealed class VideoInput : IVideoInput
             scanned = length;
             if (length > MaximumDownload) break;
         }
-        throw new VideoSourceException("The stream at that address didn't contain a JPEG picture. Use an MJPEG or snapshot (.jpg) address.");
+        throw new VideoSourceException("That stream didn't send a picture. Use a snapshot or MJPEG address.");
     }
 
     internal static (byte[] Pixels, int Width, int Height) Decode(byte[] bytes)
@@ -243,7 +242,7 @@ internal sealed class VideoInput : IVideoInput
         }
         catch (Exception error) when (error is NotSupportedException or FileFormatException or ArgumentException or ExternalException)
         {
-            throw new VideoSourceException("The address didn't return a picture Windows can read (JPEG or PNG). Use the camera app's snapshot or MJPEG address.");
+            throw new VideoSourceException("That address didn't return a JPEG or PNG picture. Use a snapshot or MJPEG address.");
         }
         var scale = Math.Min(1.0, (double)ScreenGlancer.MaximumEdge / Math.Max(frame.PixelWidth, frame.PixelHeight));
         if (scale < 1.0) frame = new TransformedBitmap(frame, new ScaleTransform(scale, scale));
@@ -256,9 +255,9 @@ internal sealed class VideoInput : IVideoInput
 
     private static string Describe(Exception error, WatchSource source)
     {
-        if (error is TaskCanceledException) return "The camera address didn't answer in time. Check that the phone and this PC are on the same network and the camera app is running.";
-        if (error is HttpRequestException http)
-            return $"Couldn't reach the camera address ({http.HttpRequestError}). Check the address, that the camera app is running, and that the phone is on the same network.";
+        if (error is TaskCanceledException) return "The camera didn't answer in time. Check that it is on the same network and try again.";
+        if (error is HttpRequestException)
+            return "Couldn't reach the camera. Check the address and network, then try again.";
         var code = error is ExternalException external ? external.HResult : error.HResult;
         return MediaReader.Explain(code, source.Kind == WatchKind.Camera);
     }
@@ -304,7 +303,7 @@ internal sealed class MediaReader : IDisposable
                 stride = Call<GetUInt32>(current, 7)(current, ref strideKey, out var value) >= 0 ? unchecked((int)value) : width * 4;
             }
             finally { Marshal.Release(current); }
-            if (width <= 0 || height <= 0 || Math.Abs(stride) < width * 4) throw new VideoSourceException("The video source reported an unusable picture size.");
+            if (width <= 0 || height <= 0 || Math.Abs(stride) < width * 4) throw new VideoSourceException("The video source sent an unusable picture. Choose another source.");
             duration = activate != 0 ? 0 : Duration();
             // Cameras adjust exposure and focus for about a second after they start; skip those frames.
             if (activate != 0)
@@ -338,8 +337,8 @@ internal sealed class MediaReader : IDisposable
             return true;
         });
         if (chosen == 0)
-            throw new VideoSourceException(link.Length == 0 ? "No camera found. Plug one in (or connect your phone as a webcam), then choose it under Find cameras."
-                : "That camera isn't connected right now. Plug it back in, or choose another under Find cameras.");
+            throw new VideoSourceException(link.Length == 0 ? "No camera found. Connect one, then choose it in Companion › Vision."
+                : "That camera isn't connected right now. Reconnect it, or choose another in Companion › Vision.");
         try
         {
             var iid = MediaSourceIid;
@@ -386,7 +385,7 @@ internal sealed class MediaReader : IDisposable
             for (var tries = 0; tries < 30 && sample == 0; tries++)
                 if (!ReadSample(out sample)) break;
         }
-        if (sample == 0) throw new VideoSourceException("The video source ended or sent no picture.");
+        if (sample == 0) throw new VideoSourceException("The video source didn't send a picture. Reconnect it and start watching again.");
         try
         {
             Check(Call<ConvertToContiguousBuffer>(sample, 41)(sample, out var buffer));
@@ -396,7 +395,7 @@ internal sealed class MediaReader : IDisposable
                 try
                 {
                     if (length < (long)Math.Abs(stride) * (height - 1) + width * 4)
-                        throw new VideoSourceException("The video source sent an incomplete picture.");
+                        throw new VideoSourceException("The video source sent an incomplete picture. Reconnect it and start watching again.");
                     var scale = Math.Min(1.0, (double)ScreenGlancer.MaximumEdge / Math.Max(width, height));
                     int outWidth = Math.Max(1, (int)Math.Round(width * scale)), outHeight = Math.Max(1, (int)Math.Round(height * scale));
                     var pixels = new byte[outWidth * outHeight * 4];
@@ -428,13 +427,13 @@ internal sealed class MediaReader : IDisposable
     /// <summary>Plain-language advice for a Media Foundation failure.</summary>
     internal static string Explain(int code, bool camera) => unchecked((uint)code) switch
     {
-        0x80070005 => "Windows blocked camera access. Open Settings > Privacy & security > Camera and turn on both Camera access and Let desktop apps access your camera, then start watching again.",
-        0xC00D3704 or 0x800700AA or 0xC00D3EA3 or 0x80070020 => "The camera is busy: another app (a video call, the Camera app, OBS) is probably using it. Close that app or pick another camera.",
-        0xC00D36C3 or 0xC00D36C4 or 0xC00D36C2 => "Windows can't open that kind of address. Use an http snapshot (.jpg) or MJPEG address from the camera app, or a webcam route (see the help text).",
-        0xC00D36B4 or 0xC00D5212 => "Windows can't decode this video format. Use an MJPEG or snapshot (.jpg) address, or an H.264 video.",
+        0x80070005 => "Windows is blocking camera access. Allow desktop apps to use the camera in Windows Settings.",
+        0xC00D3704 or 0x800700AA or 0xC00D3EA3 or 0x80070020 => "Another app is using the camera. Close it or choose another camera.",
+        0xC00D36C3 or 0xC00D36C4 or 0xC00D36C2 => "Windows can't open that address. Use a snapshot, MJPEG address, or webcam source.",
+        0xC00D36B4 or 0xC00D5212 => "Windows can't read this video format. Use MJPEG, a snapshot, or H.264 video.",
         0x80070002 or 0x80070003 => camera ? "That camera isn't connected right now." : "Nothing was found at that address or file path.",
-        0x80072EE7 or 0x80072EFD or 0x80072EE2 or 0xC00D2EE0 => "Couldn't reach that address. Check it, and that the camera and this PC are on the same network.",
-        _ => (camera ? "The camera couldn't be read" : "The video source couldn't be read") + $" (Windows error 0x{code:X8}). Try unplugging and reconnecting it, or pick another source."
+        0x80072EE7 or 0x80072EFD or 0x80072EE2 or 0xC00D2EE0 => "Couldn't reach that address. Check the address and network.",
+        _ => (camera ? "The camera couldn't be read" : "The video source couldn't be read") + $". Reconnect it or choose another source."
     };
 
     private void Seek(long position)
@@ -468,7 +467,7 @@ internal sealed class MediaReader : IDisposable
     private bool ReadSample(out nint sample)
     {
         Check(Call<ReadSampleCall>(reader, 9)(reader, FirstVideoStream, 0, out _, out var flags, out _, out sample));
-        if ((flags & ReaderError) != 0) throw new VideoSourceException("The video source stopped with an error. Reconnect it and start watching again.");
+        if ((flags & ReaderError) != 0) throw new VideoSourceException("The video source stopped. Reconnect it and start watching again.");
         return (flags & EndOfStream) == 0 || sample != 0;
     }
 

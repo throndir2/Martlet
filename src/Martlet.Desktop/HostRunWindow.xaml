@@ -17,7 +17,7 @@
         <Border x:Name="PairingPanel" DockPanel.Dock="Top" Visibility="Collapsed" Style="{DynamicResource CardStyle}" Margin="0,12,0,0"
                 AutomationProperties.AutomationId="HostRunPairing">
             <StackPanel>
-                <TextBlock Text="On your main PC, open Devices &gt; Add a computer &gt; Enter a pairing code and type:" TextWrapping="Wrap"/>
+                <TextBlock Text="On your main PC, go to Devices &gt; Add a computer &gt; Enter a pairing code and enter:" TextWrapping="Wrap"/>
                 <Grid Margin="0,12,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
@@ -35,11 +35,11 @@
                                AutomationProperties.AutomationId="HostRunPairCode"/>
                 </Grid>
                 <TextBlock Style="{DynamicResource Muted}" Margin="0,10,0,0" TextWrapping="Wrap"
-                           Text="The code works once and expires in five minutes. This window finishes by itself when your main PC is paired; Cancel withdraws the code."/>
+                           Text="The code works once and expires in five minutes."/>
             </StackPanel>
         </Border>
         <TextBox x:Name="OutputText" IsReadOnly="True" TextWrapping="Wrap" FontFamily="Consolas" FontSize="12"
                  VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,8,0,0"
-                 AutomationProperties.Name="Output from the host" AutomationProperties.AutomationId="HostRunOutput"/>
+                 AutomationProperties.Name="Host output" AutomationProperties.AutomationId="HostRunOutput"/>
     </DockPanel>
 </local:ThemedWindow>

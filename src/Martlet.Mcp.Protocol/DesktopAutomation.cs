@@ -41,7 +41,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "SetupCharacterNow", "SetupCharacterNowProblem",
         "LipSyncNow", "LipSyncNowProblem", "LipSyncOwnTitle", "LipSyncOwnState", "SelectedDevice", "SelectedDeviceHealth", "ClusterStatus",
         "VisionStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "SetupF5About", "F5VoicesStatus",
-        "SetupOllamaStatus", "SetupLocalModelTest", "HostRunStatus", "RepliesNow",
+        "SetupOllamaStatus", "SetupLocalModelTest", "HostRunStatus", "RepliesNow", "AppUpdateStatus",
         "StageTitle", "StageText", "HealthTitle", "HealthSummary", "HealthAllClear",
         "LogSummary", "LogHostStatus", "LogHostChoice", "LogDetail",
         "HostStatus", "PairedHost", "PairCodeTitle", "PairCodeHelp", "HostRunPairAddress"

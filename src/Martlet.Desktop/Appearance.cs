@@ -16,7 +16,7 @@ internal static class Appearance
         try { return (Load(directory), null); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
         {
-            return (PinkTheme.Light, "Could not read appearance.txt. Using pink light for now; choose a theme to save a new preference. Profile settings were not changed.");
+            return (PinkTheme.Light, "Couldn't load your theme. Using pink light for now.");
         }
     }
 

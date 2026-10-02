@@ -2,7 +2,6 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
 using System.Runtime.CompilerServices;
-using System.Text;
 using Martlet.Core.Contracts;
 using Martlet.Core.Lorebooks;
 using Martlet.Core.Settings;
@@ -61,7 +60,7 @@ internal sealed class LorebookEntryItem : EditorItem
 
     public string Label => Title.Trim().Length > 0 ? Title.Trim() : Keys.Trim().Length > 0 ? Keys.Trim() : "(new entry)";
     public string Display => (Enabled ? "" : "[off] ") + (Constant ? "[always] " : "") + Label;
-    public string Size => $"{Content.Length:N0} characters, {Encoding.UTF8.GetByteCount(Content):N0} UTF-8 bytes";
+    public string Size => $"{Content.Length:N0} characters";
 
     public bool Matches(string search) =>
         Title.Contains(search, StringComparison.OrdinalIgnoreCase) || Keys.Contains(search, StringComparison.OrdinalIgnoreCase) ||

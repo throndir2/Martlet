@@ -19,10 +19,10 @@ public partial class MemoryWindow : ThemedWindow
 
     private static readonly RetentionOption[] NewRetentionOptions =
     [
-        new("Until I explicitly delete it", null),
-        new("Expire 30 days after this save/edit", TimeSpan.FromDays(30)),
-        new("Expire 90 days after this save/edit", TimeSpan.FromDays(90)),
-        new("Expire 365 days after this save/edit", TimeSpan.FromDays(365))
+        new("Until I delete it", null),
+        new("Delete after 30 days", TimeSpan.FromDays(30)),
+        new("Delete after 90 days", TimeSpan.FromDays(90)),
+        new("Delete after 1 year", TimeSpan.FromDays(365))
     ];
 
     private readonly DesktopMemoryService service;
@@ -63,7 +63,7 @@ public partial class MemoryWindow : ThemedWindow
     {
         SettingsLoadResult? loaded = null;
         await RunAsync(async token => loaded = await service.LoadAsync(token).ConfigureAwait(false),
-            "Memory settings load failed or was canceled. No fact store was opened.");
+            "Couldn't load memory settings. No facts were opened.");
         if (closed || loaded is null)
             return;
         if (loaded.State != SettingsLoadState.Loaded || loaded.Error is not null || loaded.Settings is null)
@@ -71,7 +71,7 @@ public partial class MemoryWindow : ThemedWindow
             loadedSettings = null;
             loadedRevision = null;
             ConfigurationStatus.Text = loaded.Error?.Summary ??
-                "Create or complete a local profile before configuring memory. No fact store was opened.";
+                "Finish Setup before configuring memory.";
             RenderActions();
             return;
         }
@@ -103,8 +103,8 @@ public partial class MemoryWindow : ThemedWindow
         FactDetails.Clear();
         RetentionChoice.SelectedIndex = -1;
         ConfigurationStatus.Text = memory is null
-            ? "Legacy settings loaded. Saving migrates them (keeping an exact copy of the original file) and turns memory on."
-            : $"Memory is {(memory.Enabled ? "ON" : "OFF")}.";
+            ? "Older memory settings loaded. Save to update them and turn memory on."
+            : $"Memory is {(memory.Enabled ? "on" : "off")}.";
         RenderResolvedDirectory();
         RenderActions();
         if (memory is { Enabled: true } && !closed)
@@ -116,7 +116,7 @@ public partial class MemoryWindow : ThemedWindow
         if (loadedSettings is null)
             return;
         MemoryConfigurationSaveResult? result = null;
-        ConfigurationStatus.Text = "Validating the selected local memory scope; no store is opened by this configuration action.";
+        ConfigurationStatus.Text = "Checking memory settings...";
         var policy = CustomChoice.IsChecked == true
             ? MemoryStoragePolicy.CustomLocalDirectory
             : MemoryStoragePolicy.AppLocalData;
@@ -131,13 +131,13 @@ public partial class MemoryWindow : ThemedWindow
                 policy,
                 customDirectory,
                 token).ConfigureAwait(false);
-        }, "Memory configuration was not saved. Existing settings and memory data were preserved.");
+        }, "Couldn't save memory settings. Existing settings and facts were preserved.");
         if (closed || result is null)
             return;
         if (!result.Save.Save.Saved)
         {
             ConfigurationStatus.Text = result.Save.Save.Error?.Summary ??
-                "Memory configuration was not saved. Reload and review the current settings.";
+                "Couldn't save memory settings. Reload and try again.";
             return;
         }
         loadedSettings = result.Settings;
@@ -146,8 +146,8 @@ public partial class MemoryWindow : ThemedWindow
         DisposeExportPreview();
         FactsList.ItemsSource = null;
         ConfigurationStatus.Text = result.Settings.Memory.Enabled
-            ? "Memory is ON. Martlet remembers lasting things you talk about and recalls them in later conversations."
-            : "Memory is OFF. Nothing is recalled or remembered; facts already saved stay on this PC (turn memory on to review or delete them).";
+            ? "Memory is on. Martlet will remember and recall lasting facts."
+            : "Memory is off. Saved facts stay on this PC; turn memory on to review or delete them.";
         RenderResolvedDirectory();
         RenderActions();
         if (result.Settings.Memory.Enabled && !closed)
@@ -163,11 +163,11 @@ public partial class MemoryWindow : ThemedWindow
         MemoryInspection? inspection = null;
         await RunAsync(async token =>
             inspection = await service.InspectAsync(configurationRevision, token).ConfigureAwait(false),
-            "Fact inspection failed. No success is assumed.");
+            "Couldn't refresh facts.");
         if (closed || inspection is null)
             return;
         FactsList.ItemsSource = inspection.Facts.OrderByDescending(fact => fact.UpdatedAtUtc).ToArray();
-        FactStatus.Text = $"{inspection.Facts.Count} fact(s) remembered (store revision {inspection.StoreRevision}).";
+        FactStatus.Text = inspection.Facts.Count == 1 ? "1 fact remembered." : $"{inspection.Facts.Count} facts remembered.";
         RenderActions();
     }
 
@@ -180,20 +180,20 @@ public partial class MemoryWindow : ThemedWindow
         var content = FactContent.Text;
         if (retention is null)
         {
-            FactStatus.Text = "Choose explicit retention before saving a fact.";
+            FactStatus.Text = "Choose retention before saving.";
             return;
         }
         await RunAsync(async token =>
             receipt = await service.SaveFactAsync(
                 configurationRevision, content, retention, token).ConfigureAwait(false),
-            "Fact save failed. No saved fact is claimed.");
+            "Couldn't save the fact.");
         if (closed || receipt is null)
             return;
         DisposeExportPreview();
         FactContent.Clear();
         RetentionChoice.SelectedIndex = -1;
         await RefreshFactsAsync();
-        FactStatus.Text = $"Fact saved at store revision {receipt.StoreRevision}.";
+        FactStatus.Text = "Fact saved.";
     }
 
     private async void EditFact_Click(object sender, RoutedEventArgs e)
@@ -207,18 +207,18 @@ public partial class MemoryWindow : ThemedWindow
         var content = FactContent.Text;
         if (retention is null)
         {
-            FactStatus.Text = "Choose explicit retention before editing the selected fact.";
+            FactStatus.Text = "Choose retention before saving changes.";
             return;
         }
         await RunAsync(async token =>
             receipt = await service.EditFactAsync(
                 configurationRevision, fact, content, retention, token).ConfigureAwait(false),
-            "Fact edit failed. Reload the current fact; no edit is claimed.");
+            "Couldn't edit the fact. Reload and try again.");
         if (closed || receipt is null)
             return;
         DisposeExportPreview();
         await RefreshFactsAsync();
-        FactStatus.Text = $"Fact edited explicitly at store revision {receipt.StoreRevision}; creation and last-modified provenance remain visible.";
+        FactStatus.Text = "Fact updated.";
     }
 
     private async void DeleteFact_Click(object sender, RoutedEventArgs e)
@@ -227,18 +227,18 @@ public partial class MemoryWindow : ThemedWindow
             return;
         if (FactsList.SelectedItem is not MemoryFact fact ||
             !confirm(this,
-                $"Delete fact {fact.Id} revision {fact.Revision}? This removes it from the local source, lexical index and cache. Existing user-created exports or storage remnants are outside immediate erasure.",
-                "Delete local memory fact"))
+                $"Delete this remembered fact?\n\n\"{PreviewFact(fact.Content)}\"",
+                "Delete remembered fact"))
             return;
         MemoryDeleteReceipt? receipt = null;
         await RunAsync(async token =>
             receipt = await service.DeleteFactAsync(configurationRevision, fact, token).ConfigureAwait(false),
-            "Fact deletion failed. Reload the current facts; no deletion is claimed.");
+            "Couldn't delete the fact. Reload and try again.");
         if (closed || receipt is null)
             return;
         DisposeExportPreview();
         await RefreshFactsAsync();
-        FactStatus.Text = $"Fact {receipt.FactId} deleted at store revision {receipt.StoreRevision}. In-flight app retrieval was invalidated.";
+        FactStatus.Text = "Fact deleted.";
     }
 
     private async void PurgeExpired_Click(object sender, RoutedEventArgs e)
@@ -248,12 +248,12 @@ public partial class MemoryWindow : ThemedWindow
         MemoryExpiryReceipt? receipt = null;
         await RunAsync(async token =>
             receipt = await service.PurgeExpiredAsync(configurationRevision, token).ConfigureAwait(false),
-            "Expiry purge failed. Reload current facts; no deletion is claimed.");
+            "Couldn't delete expired facts. Reload and try again.");
         if (closed || receipt is null)
             return;
         DisposeExportPreview();
         await RefreshFactsAsync();
-        FactStatus.Text = $"Purged {receipt.DeletedFacts} expired fact(s); store revision {receipt.StoreRevision}.";
+        FactStatus.Text = receipt.DeletedFacts == 1 ? "Deleted 1 expired fact." : $"Deleted {receipt.DeletedFacts} expired facts.";
     }
 
     private async void CreateExportPreview_Click(object sender, RoutedEventArgs e)
@@ -263,17 +263,17 @@ public partial class MemoryWindow : ThemedWindow
         MemoryExportPreview? preview = null;
         await RunAsync(async token =>
             preview = await service.CreateExportPreviewAsync(configurationRevision, token).ConfigureAwait(false),
-            "Export preview failed. No export was authorized or created.");
+            "Couldn't prepare the export. No file was created.");
         if (closed || preview is null)
             return;
         DisposeExportPreview();
         exportPreview = preview;
         ExportPreviewText.Text = Encoding.UTF8.GetString(preview.Preview());
-        ExportSummary.Text = $"Frozen preview {preview.Id}; store revision {preview.StoreRevision}; facts {preview.FactCount}; bytes {preview.Bytes}; SHA-256 {preview.Sha256}. Export approval default: {(preview.ExportApprovedByDefault ? "YES" : "NO")}.";
+        ExportSummary.Text = preview.FactCount == 1 ? "Preview ready: 1 fact." : $"Preview ready: {preview.FactCount} facts.";
         rendering = true;
         AcceptExport.IsChecked = false;
         rendering = false;
-        ExportStatus.Text = "Review the exact frozen JSON. Nothing was exported.";
+        ExportStatus.Text = "Review the preview. Nothing has been exported.";
         RenderActions();
     }
 
@@ -283,7 +283,7 @@ public partial class MemoryWindow : ThemedWindow
             return;
         if (exportPreview is null || AcceptExport.IsChecked != true)
         {
-            ExportStatus.Text = "Export remains NO. Review the exact frozen JSON and explicitly authorize this destination.";
+            ExportStatus.Text = "Review the preview and choose a destination before exporting.";
             return;
         }
         MemoryExportReceipt? receipt = null;
@@ -296,7 +296,7 @@ public partial class MemoryWindow : ThemedWindow
                 receipt = await service.ExportAsync(
                     configurationRevision, exportPreview, authorization,
                     destination, token).ConfigureAwait(false),
-                "Memory export failed. No created export is claimed.");
+                "Couldn't create the export. No file was created.");
         }
         catch (Exception error) when (error is MemoryException or ArgumentException or NotSupportedException)
         {
@@ -304,7 +304,7 @@ public partial class MemoryWindow : ThemedWindow
         }
         if (closed || receipt is null)
             return;
-        ExportStatus.Text = $"Created reviewed local export {receipt.PreviewId}; revision {receipt.StoreRevision}; bytes {receipt.Bytes}; SHA-256 {receipt.Sha256}. It was not uploaded.";
+        ExportStatus.Text = "Memory export created. It was not uploaded.";
         DisposeExportPreview();
         RenderActions();
     }
@@ -319,13 +319,11 @@ public partial class MemoryWindow : ThemedWindow
         }
         FactContent.Text = fact.Content;
         RetentionChoice.ItemsSource = NewRetentionOptions.Append(
-            new RetentionOption("Keep the selected fact's current retention exactly", null, KeepCurrent: true));
+            new RetentionOption("Keep current retention", null, KeepCurrent: true));
         RetentionChoice.SelectedIndex = NewRetentionOptions.Length;
         FactDetails.Text =
-            $"Fact ID: {fact.Id}; revision: {fact.Revision}\n" +
-            $"Created: {fact.CreatedAtUtc:O}; updated: {fact.UpdatedAtUtc:O}\n" +
-            $"Created from: {MemoryPromptContext.Source(fact.CreatedFrom.SourceKind)}; consent: {fact.CreatedFrom.ConsentId}; observed: {fact.CreatedFrom.ObservedAtUtc:O}\n" +
-            $"Last changed: {MemoryPromptContext.Source(fact.LastModifiedBy.SourceKind)}; consent: {fact.LastModifiedBy.ConsentId}; observed: {fact.LastModifiedBy.ObservedAtUtc:O}\n" +
+            $"Created: {When(fact.CreatedAtUtc)} ({MemoryPromptContext.Source(fact.CreatedFrom.SourceKind)})\n" +
+            $"Updated: {When(fact.UpdatedAtUtc)} ({MemoryPromptContext.Source(fact.LastModifiedBy.SourceKind)})\n" +
             $"Retention: {RetentionText(fact.Retention)}";
         RenderActions();
     }
@@ -364,8 +362,8 @@ public partial class MemoryWindow : ThemedWindow
         if (ResolvedDirectoryText is null)
             return;
         ResolvedDirectoryText.Text = CustomChoice.IsChecked == true
-            ? $"Selected custom scope: {CustomDirectory.Text}"
-            : $"App-owned scope: {service.DefaultDirectory}";
+            ? $"Custom folder: {CustomDirectory.Text}"
+            : $"Folder: {service.DefaultDirectory}";
         CustomDirectory.IsEnabled = CustomChoice.IsChecked == true;
         BrowseDirectoryButton.IsEnabled = CustomChoice.IsChecked == true && !operations.IsRunning;
     }
@@ -405,7 +403,7 @@ public partial class MemoryWindow : ThemedWindow
         if (closed) return;
         if (operations.IsRunning)
         {
-            ConfigurationStatus.Text = "Another app effect still owns resources or cleanup. Wait for actual release; no memory action was queued.";
+            ConfigurationStatus.Text = "Another Martlet action is still finishing. Wait a moment and try again.";
             while (!closed && operations.IsRunning)
             {
                 RenderActions();
@@ -464,9 +462,7 @@ public partial class MemoryWindow : ThemedWindow
         var busy = operations.IsRunning;
         RetryCleanupButton.IsEnabled = service.HasPendingCleanup;
         if (service.HasPendingCleanup)
-            ConfigurationStatus.Text = "Private memory cleanup is pending. The store and app effect slot remain owned. " +
-                "Resolve local file access, then Retry owned cleanup. Closing this window does not release ownership; " +
-                "exiting Martlet may leave private partial bytes on disk.";
+            ConfigurationStatus.Text = "Memory cleanup is pending. Check folder access, then retry cleanup.";
         var enabled = ConfigurationMatchesPersisted() &&
             loadedSettings?.Memory is { Enabled: true } memory &&
             memory.ConfigurationRevision == configurationRevision;
@@ -514,7 +510,7 @@ public partial class MemoryWindow : ThemedWindow
             loadedSettings?.Memory is { Enabled: true } memory &&
             memory.ConfigurationRevision == configurationRevision)
             return true;
-        status.Text = "Save or reload the displayed memory configuration before using the fact store. No store action was started.";
+        status.Text = "Save or reload memory settings before changing facts.";
         return false;
     }
 
@@ -528,7 +524,7 @@ public partial class MemoryWindow : ThemedWindow
         RetentionChoice.ItemsSource = NewRetentionOptions;
         RetentionChoice.SelectedIndex = -1;
         DisposeExportPreview();
-        FactStatus.Text = "Memory configuration has an unsaved scope change. Store actions are disabled until Save or Reload.";
+        FactStatus.Text = "Memory settings changed. Save or reload before changing facts.";
     }
 
     private void DisposeExportPreview()
@@ -549,14 +545,22 @@ public partial class MemoryWindow : ThemedWindow
         DesktopMemoryException app => app.Message,
         MemoryException memory => memory.Message,
         ContractException contract => contract.Message,
-        OperationCanceledException => "Memory action canceled. No unverified completion is claimed; reload current settings/facts.",
-        _ => "Local memory storage is unavailable. Check the selected local path, access and free space; do not elevate or use network/link storage."
+        OperationCanceledException => "Memory action canceled. Reload if the window looks out of date.",
+        _ => "Memory storage is unavailable. Check the selected folder and free space."
     };
 
     private static string RetentionText(MemoryRetention retention) =>
         retention.Kind == MemoryRetentionKind.UntilDeleted
-            ? "until explicitly deleted"
-            : $"expires at {retention.ExpiresAtUtc:O}";
+            ? "kept until you delete it"
+            : $"expires {When(retention.ExpiresAtUtc!.Value)}";
+
+    private static string When(DateTimeOffset value) => value.LocalDateTime.ToString("g");
+
+    private static string PreviewFact(string content)
+    {
+        var oneLine = string.Join(' ', content.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return oneLine.Length <= 160 ? oneLine : oneLine[..157] + "...";
+    }
 
     private static bool Confirm(Window owner, string text, string title) =>
         ConfirmationDialog.Confirm(owner, text, title);

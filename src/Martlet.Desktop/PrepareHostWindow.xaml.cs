@@ -25,15 +25,15 @@ public partial class PrepareHostWindow : ThemedWindow
 
     private static readonly Dictionary<string, string> Titles = new(StringComparer.Ordinal)
     {
-        ["updates"] = "Install system updates (apt upgrade)",
-        ["docker"] = "Docker Engine and Compose",
-        ["nvidia-driver"] = "NVIDIA driver (the one Ubuntu recommends)",
-        ["nvidia-toolkit"] = "NVIDIA Container Toolkit (GPUs inside Docker)",
-        ["headless"] = "Run without a screen: SSH on, never sleep",
-        ["virtual-display"] = "Virtual display (screen spoofing)",
-        ["gpu-power"] = "GPU persistence mode and power limits",
+        ["updates"] = "System updates",
+        ["docker"] = "Docker",
+        ["nvidia-driver"] = "NVIDIA driver",
+        ["nvidia-toolkit"] = "NVIDIA support for Docker",
+        ["headless"] = "Run without a monitor",
+        ["virtual-display"] = "Virtual display",
+        ["gpu-power"] = "GPU power settings",
         ["tools"] = "Developer tools",
-        ["wol"] = "Wake-on-LAN (start it from this PC)",
+        ["wol"] = "Wake-on-LAN",
         ["reboot"] = "Restart",
         ["shutdown"] = "Shut down"
     };
@@ -81,7 +81,7 @@ public partial class PrepareHostWindow : ThemedWindow
             case PrepareStart.Shutdown: await PowerAsync(reboot: false); break;
             default:
                 if (host?.SshTarget is not null) await WorkAsync(ReadStatusAsync);
-                else StatusText.Text = "Enter how to reach it over SSH as user@computer, then press Read status.";
+                else StatusText.Text = "Enter user@computer, then choose Read status.";
                 break;
         }
     }
@@ -91,7 +91,7 @@ public partial class PrepareHostWindow : ThemedWindow
         var target = TargetText.Text.Trim();
         SshHostShell.Validate(target, []);
         if (!target.Contains('@') || target.StartsWith("user@", StringComparison.Ordinal))
-            throw new InvalidOperationException("Enter the SSH target as user@computer, with your Linux user name (for example me@192.168.1.20).");
+            throw new InvalidOperationException("Enter the SSH target as user@computer, with your Linux user name.");
         return target;
     }
 
@@ -126,7 +126,7 @@ public partial class PrepareHostWindow : ThemedWindow
         RunButton.IsEnabled = MissingButton.IsEnabled = Checklist.IsEnabled = !busy && ready;
         RebootButton.IsEnabled = ShutdownButton.IsEnabled = !busy;
         WakeButton.IsEnabled = !busy && Mac() is not null;
-        WakeButton.ToolTip = Mac() is { } mac ? $"Sends a Wake-on-LAN packet to {mac}" : "Read its status while it is on so Martlet learns its network card";
+        WakeButton.ToolTip = Mac() is { } mac ? $"Send a wake-up signal to {mac}" : "Read its status while it is on so Martlet can learn its network card";
         StopButton.IsEnabled = busy;
         if (Reasons().Count > 0) RebootButton.SetResourceReference(StyleProperty, "PrimaryButton");
         else RebootButton.ClearValue(StyleProperty);
@@ -201,14 +201,14 @@ public partial class PrepareHostWindow : ThemedWindow
     private async Task ReadStatusAsync(CancellationToken token)
     {
         var target = Target();
-        StatusText.Text = $"Reading {target}...";
+        StatusText.Text = $"Reading status from {target}...";
         var run = await RunScriptAsync(target, PrepareScript.Status, sudo: false, token);
         var found = PrepareStatus.Find(run.Output) ?? throw new InvalidOperationException(run.ExitCode == 255
-            ? $"Could not sign in to {target} over SSH. Check the user and address and that its SSH server is on (see Output)."
-            : $"{target} did not report its status (exit {run.ExitCode}); see Output.");
+            ? $"Couldn't sign in to {target}. Check the user, address and SSH server. See Output for details."
+            : $"Couldn't read status from {target} (exit {run.ExitCode}). See Output.");
         await ShowStatusAsync(found, token);
         StatusText.Text = found.Supported
-            ? $"Read {found.Hostname ?? target}. Tick what to set up (or Tick what is missing), then press Run selected."
+            ? $"Read {found.Hostname ?? target}. Select what to set up, or choose Select missing."
             : found.Reason ?? "This computer is not supported.";
     }
 
@@ -228,7 +228,7 @@ public partial class PrepareHostWindow : ThemedWindow
         try { host = await pairings.SaveMacAsync(host.HostId, normalized, token) ?? host; }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException)
         {
-            Append($"(Could not save its MAC address for Wake it up: {error.Message})\n");
+            Append($"(Couldn't save its Wake-on-LAN address: {error.Message})\n");
         }
     }
 
@@ -243,8 +243,8 @@ public partial class PrepareHostWindow : ThemedWindow
         var target = Target();
         var list = string.Join("\n", request.Items.Select(i => "\u2022 " + Describe(i, request)));
         if (!ConfirmationDialog.Confirm(this,
-                $"Run these on {target} with administrator rights (sudo)?\n\n{list}\n\nInstalls can take several minutes; keep this window open " +
-                "until it finishes.", "Prepare this computer"))
+                $"Make these changes on {target}?\n\n{list}\n\nMartlet uses administrator rights on that computer. Some installs can take several minutes.",
+                "Run selected changes"))
         {
             StatusText.Text = "Nothing was changed.";
             return;
@@ -254,7 +254,7 @@ public partial class PrepareHostWindow : ThemedWindow
 
     private static string Describe(string item, PrepareRequest request) => item switch
     {
-        "headless" when request.Boot is { } boot => Titles[item] + (boot == "text" ? "; start in text mode" : "; start the desktop"),
+        "headless" when request.Boot is { } boot => Titles[item] + (boot == "text" ? ": start in text mode" : ": start the desktop"),
         "virtual-display" => request.RemoveVirtualDisplay ? "Remove the virtual display" : $"{Titles[item]}: {request.Resolution}",
         "gpu-power" => request.ResetPower ? "Return every GPU to its default power limit"
             : Titles[item] + (request.PowerLimits.Count == 0 ? "" : ": " + string.Join(", ", request.PowerLimits.Values.Select(w => $"{w} W"))),
@@ -264,7 +264,7 @@ public partial class PrepareHostWindow : ThemedWindow
 
     private async Task<PrepareOutcome?> ApplyAsync(string target, IReadOnlyList<string> arguments, CancellationToken token)
     {
-        StatusText.Text = $"Working on {target}. Output streams on the right.";
+        StatusText.Text = $"Working on {target}...";
         var run = await RunScriptAsync(target, arguments, sudo: true, token);
         var outcome = PrepareOutcome.Find(run.Output);
         if (outcome is not null)
@@ -277,8 +277,8 @@ public partial class PrepareHostWindow : ThemedWindow
         else { RenderBanner(); UpdateButtons(); }
         if (outcome is null)
         {
-            StatusText.Text = run.ExitCode == 255 ? $"Could not sign in to {target} over SSH (see Output)."
-                : $"The run ended without a result (exit {run.ExitCode}); see Output.";
+            StatusText.Text = run.ExitCode == 255 ? $"Couldn't sign in to {target}. See Output."
+                : $"Couldn't confirm the result (exit {run.ExitCode}). See Output.";
             return null;
         }
         StatusText.Text = Summary(outcome);
@@ -301,7 +301,7 @@ public partial class PrepareHostWindow : ThemedWindow
         var text = (outcome.Ok ? "Finished: " : "Finished with problems: ") + string.Join(", ", parts) + ".";
         foreach (var failed in outcome.Items.Where(i => i.State == "failed"))
             text += $" {Titles.GetValueOrDefault(failed.Item, failed.Item)}: {failed.Message}";
-        if (outcome.RebootRequired) text += " Restart it to finish (Restart it).";
+        if (outcome.RebootRequired) text += " Restart it to finish.";
         return text;
     }
 
@@ -333,47 +333,46 @@ public partial class PrepareHostWindow : ThemedWindow
     {
         var target = Target();
         if (!ConfirmationDialog.Confirm(this, reboot
-                ? $"Restart {target} now? Anything running on it (including Martlet roles) stops until it is back, usually in one to three minutes."
-                : $"Shut down {target} now? To start it again from here, Wake-on-LAN must be set up (Wake it up); otherwise press its power button.",
+                ? $"Restart {target} now? Work running on it, including Martlet jobs, will stop until it comes back."
+                : $"Shut down {target} now? Wake-on-LAN must be set up to start it from Martlet again.",
                 reboot ? "Restart computer" : "Shut down computer"))
             return;
         var outcome = await ApplyAsync(target, [reboot ? "reboot" : "shutdown"], token);
         if (outcome?.Restarting is null) return;
         pendingReasons.Clear();
         RenderBanner();
-        StatusText.Text = reboot ? $"{target} is restarting. Waiting for it to go down..." : $"{target} is shutting down...";
+        StatusText.Text = reboot ? $"{target} is restarting..." : $"{target} is shutting down...";
         var down = await HostPower.WaitDownAsync(target, TimeSpan.FromMinutes(3), token);
         if (!reboot)
         {
-            StatusText.Text = down ? $"{target} is off." + (Mac() is null ? "" : " Press Wake it up to start it again.")
-                : $"{target} still answers SSH; it may be finishing work before it powers off.";
+            StatusText.Text = down ? $"{target} is off." + (Mac() is null ? "" : " Choose Wake it up to start it again.")
+                : $"{target} is still online. It may still be shutting down.";
             return;
         }
         StatusText.Text = $"Waiting for {target} to come back (up to 10 minutes)...";
         if (!await HostPower.WaitUpAsync(target, TimeSpan.FromMinutes(10), token))
         {
-            StatusText.Text = $"{target} has not answered SSH for 10 minutes. Check it has power and network, then press Read status.";
+            StatusText.Text = $"{target} did not come back within 10 minutes. Check power and network, then choose Read status.";
             return;
         }
         await Task.Delay(TimeSpan.FromSeconds(5), token);
         await ReadStatusAsync(token);
-        StatusText.Text = "It is back after the restart. " + StatusText.Text;
+        StatusText.Text = "It's back after the restart. " + StatusText.Text;
     });
 
     private async Task WakeAsync(CancellationToken token)
     {
         var mac = Mac() ?? throw new InvalidOperationException(
-            "Martlet does not know this computer's network card yet. While it is on, read its status (and set up Wake-on-LAN).");
+            "Martlet doesn't know this computer's network card yet. Read its status while it is on and set up Wake-on-LAN.");
         var sent = await HostPower.WakeAsync(mac, token);
-        Append($"\n> Wake-on-LAN magic packet for {mac} ({sent} sent)\n");
+        Append($"\n> Sent Wake-on-LAN signal to {mac} ({sent} packets)\n");
         string target;
         try { target = Target(); }
-        catch (InvalidOperationException) { StatusText.Text = $"Sent a wake-up packet to {mac}."; return; }
-        StatusText.Text = $"Sent a wake-up packet to {mac}. Waiting for {target} to answer (up to 5 minutes)...";
+        catch (InvalidOperationException) { StatusText.Text = $"Sent a wake-up signal to {mac}."; return; }
+        StatusText.Text = $"Sent a wake-up signal to {mac}. Waiting for {target} to answer...";
         if (!await HostPower.WaitUpAsync(target, TimeSpan.FromMinutes(5), token))
         {
-            StatusText.Text = $"{target} did not answer within 5 minutes. Wake-on-LAN must be allowed in its BIOS/UEFI and on in Linux " +
-                "(tick Wake-on-LAN while it is on), and it must be on this network by cable.";
+            StatusText.Text = $"{target} did not answer within 5 minutes. Check that it is connected by cable and that Wake-on-LAN is enabled.";
             return;
         }
         await Task.Delay(TimeSpan.FromSeconds(5), token);
@@ -441,20 +440,20 @@ public partial class PrepareHostWindow : ThemedWindow
     {
         var reasons = Reasons();
         RebootBanner.Visibility = reasons.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        RebootText.Text = $"Restart needed to finish: {string.Join(", ", reasons)}. Press Restart it; Martlet waits until it is back and reads it again.";
+        RebootText.Text = $"Restart required to finish {string.Join(", ", reasons)}. Choose Restart it; Martlet waits and reads status again.";
     }
 
     private static string Facts(PrepareStatus s)
     {
         var sudo = s.Sudo switch
         {
-            "root" => "signed in as root",
-            "passwordless" => "sudo needs no password",
-            "password" => "sudo asks for the password",
-            _ => "this user may not use sudo, so changes will fail"
+            "root" => "signed in as administrator",
+            "passwordless" => "administrator access is ready",
+            "password" => "administrator password needed",
+            _ => "this user may not be able to make changes"
         };
-        var gpus = s.Gpus.Count switch { 0 => s.Nvidia.Present ? "NVIDIA GPU (driver not working)" : "no NVIDIA GPU", 1 => "1 NVIDIA GPU", var n => $"{n} NVIDIA GPUs" };
-        return $"{s.Hostname}: {s.Os.Name}, kernel {s.Os.Kernel}; {gpus}; {s.User}, {sudo}.";
+        var gpus = s.Gpus.Count switch { 0 => s.Nvidia.Present ? "NVIDIA GPU, driver needs attention" : "no NVIDIA GPU", 1 => "1 NVIDIA GPU", var n => $"{n} NVIDIA GPUs" };
+        return $"{s.Hostname}: {s.Os.Name}; {gpus}; {sudo}.";
     }
 
     private void RenderChecklist()
@@ -474,61 +473,62 @@ public partial class PrepareHostWindow : ThemedWindow
             Checklist.Children.Add(Text(s.Reason ?? "This computer is not supported.", margin: new Thickness(0, 0, 0, 8)));
             return;
         }
-        const string pending = "Read its status first.";
+        const string pending = "Read status first.";
 
         var upgradable = s?.Updates.Upgradable;
         Block("updates", s is null ? pending : upgradable switch
         {
             null => "Unknown.",
-            0 => "No updates waiting as of its last package refresh (Run refreshes the lists first).",
+            0 => "No updates waiting.",
             1 => "1 update waiting.",
             var n => $"{n} updates waiting."
         }, true, upgradable == 0);
 
         var docker = s?.Docker;
         Block("docker", s is null ? pending : !docker!.Installed ? "Not installed." :
-            $"Docker {docker.Version}, Compose {docker.Compose ?? "missing"}; {(docker.Running ? "running" : "not running")}, " +
-            $"{(docker.Enabled ? "starts at boot" : "not started at boot")}; {s.User} {(docker.UserInGroup ? "is" : "is not")} in the docker group.",
+            docker is { Running: true, Enabled: true, UserInGroup: true, Compose: not null } ? "Installed and ready." :
+            "Installed, but setup is not complete.",
             true, docker is { Installed: true, Running: true, Enabled: true, UserInGroup: true, Compose: not null });
 
         var nvidia = s?.Nvidia;
         var driverText = s is null ? pending : !nvidia!.Present ? "No NVIDIA graphics card found."
-            : nvidia.Working ? $"Driver {nvidia.Driver} ({nvidia.DriverPackage ?? "installed"}) is running, CUDA {nvidia.Cuda ?? "unknown"}. " +
-                $"Ubuntu recommends {nvidia.Recommended ?? "(unknown until ubuntu-drivers is installed)"}."
-            : nvidia.DriverPackage is { } package ? $"{package} is installed but not running; restart the computer."
-            : $"Not installed. Ubuntu recommends {nvidia.Recommended ?? "(found when you run this)"}.";
-        if (nvidia?.SecureBoot == true) driverText += " Secure Boot is on; if the driver does not load after a restart, turn Secure Boot off.";
+            : nvidia.Working ? nvidia.Recommended is not null && nvidia.Recommended != nvidia.DriverPackage
+                ? "A driver is running, but Ubuntu recommends a different one."
+                : "Driver is running."
+            : nvidia.DriverPackage is { } ? "Driver is installed but needs a restart."
+            : "Driver is not installed.";
+        if (nvidia?.SecureBoot == true) driverText += " Secure Boot may prevent the driver from loading.";
         Block("nvidia-driver", driverText, nvidia?.Present != false,
             nvidia is { Present: true, Working: true } && (nvidia.Recommended is null || nvidia.Recommended == nvidia.DriverPackage) &&
             !Reasons().Contains("NVIDIA driver"));
 
         Block("nvidia-toolkit", s is null ? pending : !nvidia!.Present ? "Needs an NVIDIA GPU."
-            : nvidia.Toolkit is null ? "Not installed. Martlet's GPU roles run in Docker and need it."
-            : $"Installed ({nvidia.Toolkit}); Docker {(nvidia.ToolkitConfigured ? "uses it" : "is not set up to use it yet")}.",
+            : nvidia.Toolkit is null ? "Not installed."
+            : nvidia.ToolkitConfigured ? "Installed and ready." : "Installed, but Docker is not using it yet.",
             nvidia?.Present != false, nvidia is { Toolkit: not null, ToolkitConfigured: true });
 
         var headless = s?.Headless;
         var headlessBlock = Block("headless", s is null ? pending :
-            $"SSH server {(headless!.SshServer ? headless.SshEnabled ? "on at boot" : "installed but not on at boot" : "not installed")}; " +
-            $"sleep and suspend {(headless.SleepMasked ? "off" : "can still happen")}; starts " +
-            $"{headless.DefaultTarget switch { "multi-user.target" => "in text mode (no desktop)", "graphical.target" => "the desktop", _ => "(unknown)" }}.",
+            $"SSH {(headless!.SshServer ? headless.SshEnabled ? "starts at boot" : "is installed but not set to start" : "is not installed")}. " +
+            $"Sleep {(headless.SleepMasked ? "is off" : "can still happen")}. Starts " +
+            $"{headless.DefaultTarget switch { "multi-user.target" => "in text mode", "graphical.target" => "with the desktop", _ => "in an unknown mode" }}.",
             true, headless is { SshServer: true, SshEnabled: true, SleepMasked: true });
         var headlessOptions = Options(headlessBlock);
-        bootChoice = Choice("How it starts", [("Keep how it starts", null), ("Text mode: no desktop, frees GPU memory", "text"),
-            ("Start the desktop (graphical)", "graphical")], null);
+        bootChoice = Choice("How it starts", [("Keep current startup", null), ("Text mode (no desktop)", "text"),
+            ("Desktop mode", "graphical")], null);
         AutomationProperties.SetAutomationId(bootChoice, "PrepareBoot");
         headlessOptions.Children.Add(bootChoice);
 
         var display = s?.VirtualDisplay;
         var displayText = s is null ? pending : display!.Configured
-            ? $"On: {display.Resolution} ({(display.Kind == "nvidia" ? "NVIDIA, reports a connected monitor" : "dummy video driver")})."
-            : "None. For a GPU with no monitor attached when you still want a desktop, remote desktop or game streaming.";
-        if (headless?.DefaultTarget == "multi-user.target") displayText += " It starts in text mode, so no desktop uses it until it starts the desktop.";
+            ? $"Virtual display is on at {display.Resolution}."
+            : "No virtual display. Use this only if you need a desktop with no monitor attached.";
+        if (headless?.DefaultTarget == "multi-user.target") displayText += " It won't be used while the computer starts in text mode.";
         var displayOptions = Options(Block("virtual-display", displayText, true, display?.Configured == true));
         resolutionChoice = Choice("Virtual display resolution", PrepareScript.Resolutions.Select(r => (r, (string?)r)),
             PrepareScript.Resolutions.Contains(display?.Resolution) ? display!.Resolution : "1920x1080");
         AutomationProperties.SetAutomationId(resolutionChoice, "PrepareResolution");
-        removeDisplay = new CheckBox { Content = "Remove the virtual display instead", IsEnabled = display?.Configured == true };
+        removeDisplay = new CheckBox { Content = "Remove virtual display", IsEnabled = display?.Configured == true };
         AutomationProperties.SetAutomationId(removeDisplay, "PrepareRemoveDisplay");
         displayOptions.Children.Add(resolutionChoice);
         displayOptions.Children.Add(removeDisplay);
@@ -537,21 +537,20 @@ public partial class PrepareHostWindow : ThemedWindow
         var powerAvailable = nvidia is { Working: true } && gpus.Count > 0;
         var powerBlock = Block("gpu-power", s is null ? pending : !powerAvailable
                 ? nvidia!.Present ? "Needs the NVIDIA driver running." : "Needs an NVIDIA GPU."
-                : "Persistence mode keeps the driver loaded so GPU jobs start faster. A lower power limit cuts heat, noise and power for a " +
-                  "small speed cost. Martlet reapplies both at every boot (martlet-gpu-power.service).",
+                : "Persistence mode keeps GPU jobs ready. Lower power limits can reduce heat and noise.",
             powerAvailable, powerAvailable && gpus.All(g => g.Persistence) && s!.GpuPower.Service);
         if (powerAvailable)
         {
             var powerOptions = Options(powerBlock);
             foreach (var gpu in gpus) powerOptions.Children.Add(PowerRow(gpu));
-            resetPower = new CheckBox { Content = "Return every GPU to its default limit instead", Margin = new Thickness(0, 4, 0, 0) };
+            resetPower = new CheckBox { Content = "Reset every GPU to its default limit", Margin = new Thickness(0, 4, 0, 0) };
             AutomationProperties.SetAutomationId(resetPower, "PrepareResetPower");
             powerOptions.Children.Add(resetPower);
         }
 
         var tools = s?.Tools ?? new PrepareTools();
         bool Wanted(string tool) => tool != "cuda" || nvidia?.Present == true;
-        var toolsBlock = Block("tools", s is null ? pending : "CUDA, Python, Node.js and handy command-line tools. Tick the ones you want:",
+        var toolsBlock = Block("tools", s is null ? pending : "Choose the developer tools to install.",
             true, s is not null && PrepareScript.Tools.Where(Wanted).All(t => tools.Of(t) is not null));
         var toolOptions = Options(toolsBlock);
         var toolGrid = new WrapPanel();
@@ -573,10 +572,9 @@ public partial class PrepareHostWindow : ThemedWindow
 
         var wol = s?.Wol;
         var wolAvailable = wol is { Interface: not null, Wireless: false };
-        Block("wol", s is null ? pending : wol!.Interface is null ? "No network card with a default route was found."
-            : wol.Wireless ? $"{wol.Interface} is Wi-Fi; Wake-on-LAN needs the computer on a network cable."
-            : $"{wol.Interface} ({wol.Mac}): {(wol.Enabled ? "on" : "off")}{(wol.Persistent ? ", kept across restarts" : "")}; " +
-              $"the card supports: {wol.Supports ?? "unknown until you run this"}. Its BIOS/UEFI setting must allow waking too.",
+        Block("wol", s is null ? pending : wol!.Interface is null ? "No wired network card was found."
+            : wol.Wireless ? $"{wol.Interface} is on Wi-Fi. Wake-on-LAN needs a wired connection."
+            : $"Wired card {wol.Interface} ({wol.Mac}) is {(wol.Enabled ? "on" : "off")}{(wol.Persistent ? " and stays on after restart" : "")}.",
             wolAvailable || s is null, wol is { Enabled: true, Persistent: true });
     }
 
@@ -589,7 +587,7 @@ public partial class PrepareHostWindow : ThemedWindow
         row.Children.Add(Text(name));
         if (!power.Adjustable)
         {
-            row.Children.Add(Text("This GPU does not report an adjustable power limit.", muted: true));
+            row.Children.Add(Text("This GPU's power limit can't be changed.", muted: true));
             return row;
         }
         var value = new TextBlock { Width = 380, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
@@ -602,8 +600,8 @@ public partial class PrepareHostWindow : ThemedWindow
         slider.Value = Math.Round(power.Saved ?? power.Current ?? power.Default ?? slider.Maximum);
         AutomationProperties.SetName(slider, $"Power limit for GPU {gpu.Index} in watts");
         AutomationProperties.SetAutomationId(slider, $"PreparePower-{gpu.Index}");
-        void Show() => value.Text = $"{Math.Round(slider.Value):0} W   (now {power.Current:0} W, default {power.Default:0} W, " +
-            $"allowed {power.Min:0}-{power.Max:0} W{(power.Saved is { } saved ? $", saved {saved:0} W" : "")})";
+        void Show() => value.Text = $"{Math.Round(slider.Value):0} W (current {power.Current:0} W, default {power.Default:0} W" +
+            $"{(power.Saved is { } saved ? $", saved {saved:0} W" : "")})";
         slider.ValueChanged += (_, _) => Show();
         Show();
         powerChoices[gpu.Uuid] = slider;
@@ -623,8 +621,8 @@ public partial class PrepareHostWindow : ThemedWindow
     {
         foreach (var (id, box) in items) box.IsChecked = box.IsEnabled && missing.GetValueOrDefault(id);
         StatusText.Text = items.Values.Any(b => b.IsChecked == true)
-            ? "Ticked what is not set up yet. Review it, then press Run selected."
-            : "Everything Martlet checks is already in place.";
+            ? "Selected missing items. Review them, then choose Run selected."
+            : "Everything Martlet checks is already set up.";
     }
 
     private async void Reboot_Click(object sender, RoutedEventArgs e) => await PowerAsync(reboot: true);
@@ -638,8 +636,8 @@ public partial class PrepareHostWindow : ThemedWindow
     private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         if (busy && !ConfirmationDialog.Confirm(this,
-                "Martlet is still working on this computer. Stop and close? Stopping in the middle of an install can leave it half done; " +
-                "running the same item again finishes it.", "Stop and close"))
+                "Martlet is still working on this computer. Stop and close? Stopping during setup can leave work half done. " +
+                "Running the same item again usually finishes it.", "Stop and close"))
         {
             e.Cancel = true;
             return;

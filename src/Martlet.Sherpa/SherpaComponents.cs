@@ -81,17 +81,6 @@ public static class SherpaComponents
     /// <summary>The bytes downloaded to install <paramref name="part"/> (not counting the runtime it needs).</summary>
     public static long DownloadBytes(SherpaPart part) => Downloads(part).Sum(d => d.Bytes);
 
-    /// <summary>What the owner is told before a part is downloaded: what it is, its source and its license.</summary>
-    public static string Disclosure(SherpaPart part) => part switch
-    {
-        SherpaPart.Runtime => $"sherpa-onnx {Version} (Apache-2.0) with ONNX Runtime (MIT), from the official NuGet package " +
-            $"org.k2fsa.sherpa.onnx.runtime.win-x64 ({Megabytes(DownloadBytes(SherpaPart.Runtime))})",
-        SherpaPart.Speakers => "the WeSpeaker ResNet34-LM voice model (CC BY 4.0, WeSpeaker authors, sherpa-onnx export from GitHub) and the " +
-            $"pyannote segmentation 3.0 model (MIT, CNRS, from Hugging Face) ({Megabytes(DownloadBytes(SherpaPart.Speakers))})",
-        _ => "NVIDIA Parakeet TDT 0.6B v3 (CC BY 4.0, NVIDIA; int8 ONNX export by the sherpa-onnx project, from Hugging Face) " +
-            $"({Megabytes(DownloadBytes(SherpaPart.Parakeet))})"
-    };
-
     public static string Megabytes(long bytes) => $"{bytes / 1_000_000.0:N0} MB";
 
     public static string RuntimeDirectory(string root) => Path.Combine(root, "runtime", RuntimeFolder);
@@ -162,7 +151,7 @@ public static class SherpaComponents
                 response.EnsureSuccessStatusCode();
                 if (response.RequestMessage?.RequestUri?.Scheme != Uri.UriSchemeHttps ||
                     response.Content.Headers.ContentLength is { } length && length != download.Bytes)
-                    throw new InvalidDataException($"The download from {download.Source.Host} is not the expected file.");
+                    throw new InvalidDataException("The download was not the expected file.");
                 await using var input = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
                 await using var output = new FileStream(partial, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 16, true);
                 var buffer = new byte[1 << 16];
@@ -171,7 +160,7 @@ public static class SherpaComponents
                 while ((read = await input.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) != 0)
                 {
                     count += read;
-                    if (count > download.Bytes) throw new InvalidDataException($"The download from {download.Source.Host} is larger than expected.");
+                    if (count > download.Bytes) throw new InvalidDataException("The download was larger than expected.");
                     await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
                     if (count - reported >= 1 << 20 || count == download.Bytes)
                     {
@@ -179,7 +168,7 @@ public static class SherpaComponents
                         report(count);
                     }
                 }
-                if (count != download.Bytes) throw new InvalidDataException($"The download from {download.Source.Host} was cut short.");
+                if (count != download.Bytes) throw new InvalidDataException("The download was cut short.");
             }
             await VerifyAsync(partial, download.Bytes, download.Sha256, cancellationToken).ConfigureAwait(false);
             if (download.Files is [{ Entry: null } single])
@@ -190,8 +179,8 @@ public static class SherpaComponents
             using var archive = ZipFile.OpenRead(partial);
             foreach (var file in download.Files)
             {
-                var entry = archive.GetEntry(file.Entry!) ?? throw new InvalidDataException($"The package has no {file.Entry}.");
-                if (entry.Length != file.Bytes) throw new InvalidDataException($"{file.Entry} in the package has an unexpected size.");
+                var entry = archive.GetEntry(file.Entry!) ?? throw new InvalidDataException("The download did not contain an expected file.");
+                if (entry.Length != file.Bytes) throw new InvalidDataException("The download contained an unexpected file.");
                 var staged = Path.Combine(folder, Guid.NewGuid().ToString("N") + ".partial");
                 try
                 {
@@ -224,7 +213,7 @@ public static class SherpaComponents
         await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16, true);
         if (stream.Length != bytes) throw new InvalidDataException("A downloaded file has an unexpected size.");
         var hash = Convert.ToHexStringLower(await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false));
-        if (hash != sha256) throw new InvalidDataException("A downloaded file did not match its pinned SHA-256 and was deleted.");
+        if (hash != sha256) throw new InvalidDataException("A downloaded file didn't match what Martlet expected.");
     }
 
     private static string Notice(SherpaPart part) => part switch
