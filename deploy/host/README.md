@@ -137,7 +137,12 @@ or over `ssh -t user@host`. How it fits together:
   the gateway and every role container share, so role services still listen on
   `127.0.0.1` only. When it (re)starts, for example after a reboot, it restarts
   the containers that joined it, because Docker does not order restarts of
-  shared-namespace containers.
+  shared-namespace containers. Docker pins each role container to the holder's
+  container ID, so when `setup` replaces the holder (a new image or address)
+  the roles would stay on the old, unreachable network and desktops would get
+  `worker.unavailable`. `setup` and `update` recreate any installed role that
+  is missing or still on an old holder (its data volumes are kept). `status`
+  flags such roles.
 - Every command runs in a fresh engine container as the unprivileged `martlet`
   user (uid 1000) inside that network, named `martlet-host-<command>-<UTC time>-<n>`.
   `-u 0` only lets the launcher reach the Docker socket.

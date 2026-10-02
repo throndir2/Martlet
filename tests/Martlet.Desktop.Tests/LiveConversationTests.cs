@@ -49,10 +49,11 @@ public sealed class LiveConversationTests
         TextHistoryMessage[] history = [new(TextHistoryRole.User, long_), new(TextHistoryRole.Assistant, long_),
             new(TextHistoryRole.User, long_), new(TextHistoryRole.Assistant, long_)];
         var request = configuration.Request(new("Tell me about the castle"), false, ResponseStyle.Helpful, history, null, lore,
-            out var usedHistory, out _, out var usedLore);
+            out var usedHistory, out _, out var usedLore, closingInstructions: LiveConversationConfiguration.ReplyLengthInstructions);
         Assert.Equal(2, usedLore);
         Assert.True(usedHistory < history.Length);
         var instructions = request.Input.Personality!;
+        Assert.EndsWith(LiveConversationConfiguration.ReplyLengthInstructions, instructions);
         var before = instructions.IndexOf("The castle is Mab's.", StringComparison.Ordinal);
         var persona = instructions.IndexOf("Companion name:", StringComparison.Ordinal);
         var after = instructions.IndexOf("fears the castle.", StringComparison.Ordinal);
