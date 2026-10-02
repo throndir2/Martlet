@@ -24,12 +24,16 @@ public partial class MainWindow
         if (toolsNotice is { } notice) servers.Add(ToolsAlert(notice));
         if (service.ConfigurationError is { } error)
             servers.Add(ToolsAlert($"mcp.json has a problem, so no servers run until it's fixed: {error}"));
-        else if (configuration.Servers.Count == 0)
+        else if (service.Servers.Count == 0)
             servers.Add(Note("No servers yet. Add them in mcp.json, the same format Claude Desktop, Cursor and VS Code use, so you can paste " +
                 "a server's configuration from its instructions. Insert example adds a server for your Documents folder.", new Thickness(0, 0, 0, 4)));
-        foreach (var server in configuration.Servers)
+        // Every server Martlet runs: mcp.json's first, then ones other features manage (Smart home's, for example).
+        foreach (var server in service.Servers)
             servers.Add(ServerBlock(service, server, statuses.GetValueOrDefault(server.Name)));
-        var anyOn = configuration.Servers.Any(s => !s.Disabled);
+        foreach (var conflict in service.ManagedConflicts)
+            servers.Add(ToolsAlert($"{conflict.ManagedBy} wants to add a server named \"{conflict.Name}\", but mcp.json already has one. " +
+                "Rename or remove that entry in mcp.json to use it."));
+        var anyOn = service.HasEnabledServers;
         servers.Add(Row(
             PageButton("Edit servers (mcp.json)", OpenMcpEditor, primary: configuration.Servers.Count == 0, id: "ToolsEditConfig"),
             anyOn ? PageButton(service.Started ? "Restart stopped servers" : "Start servers now", () =>
@@ -89,20 +93,24 @@ public partial class MainWindow
         block.Children.Add(stateText);
         block.Children.Add(Note((server.Transport == McpTransportKind.Http ? "Address: " : "Runs: ") + server.Describe(), new Thickness(0, 2, 0, 0)));
         if (server.Problem is { } problem) block.Children.Add(Note(problem, new Thickness(0, 2, 0, 0)));
+        if (server.ManagedBy is { } owner)
+            block.Children.Add(Note($"Managed by {owner}: turn it on or off and choose what it may do there. {owner} decides which " +
+                "of its calls run, need your OK each time or are blocked.", new Thickness(0, 2, 0, 0)));
         if (status is { State: McpServerState.Failed, Diagnostics: { } output })
             block.Children.Add(Note("What it printed: " + output, new Thickness(0, 2, 0, 0)));
 
-        var on = new CheckBox { Content = "On", IsChecked = !server.Disabled, Margin = new Thickness(0, 8, 18, 0) };
+        var editable = server.ManagedBy is null;
+        var on = new CheckBox { Content = "On", IsChecked = !server.Disabled, Margin = new Thickness(0, 8, 18, 0), IsEnabled = editable };
         AutomationProperties.SetAutomationId(on, "ToolsServerOn-" + server.Name);
         on.Click += (_, _) => EditToolServer(service, server.Name, entry => McpConfiguration.SetDisabled(entry, on.IsChecked != true));
         var trust = new CheckBox
         {
-            Content = "Run its tools without asking me first", IsChecked = server.AutoApproveAll, IsEnabled = !server.Disabled,
+            Content = "Run its tools without asking me first", IsChecked = server.AutoApproveAll, IsEnabled = editable && !server.Disabled,
             Margin = new Thickness(0, 8, 0, 0)
         };
         AutomationProperties.SetAutomationId(trust, "ToolsServerTrust-" + server.Name);
         trust.Click += (_, _) => EditToolServer(service, server.Name, entry => McpConfiguration.SetAutoApproveAll(entry, trust.IsChecked == true));
-        block.Children.Add(new WrapPanel { Children = { on, trust } });
+        if (editable) block.Children.Add(new WrapPanel { Children = { on, trust } });
 
         if (status is { State: McpServerState.Ready, Tools.Count: > 0 })
         {
@@ -110,7 +118,7 @@ public partial class MainWindow
             AutomationProperties.SetName(tools, $"Tools of {server.Name}");
             foreach (var tool in status.Tools)
             {
-                var allowed = !server.AutoApproveAll && server.AutoApprove.Contains(tool.Name, StringComparer.Ordinal);
+                var allowed = editable && !server.AutoApproveAll && server.AutoApprove.Contains(tool.Name, StringComparer.Ordinal);
                 var label = new TextBlock
                 {
                     Text = tool.Name + (allowed ? " (always allowed)" : ""), Margin = new Thickness(0, 2, allowed ? 4 : 14, 2),

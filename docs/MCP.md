@@ -66,6 +66,15 @@ The model, not you, chooses what to pass, and text a tool reads (a web page, fil
 or email) can try to steer it, so only skip confirmation for tools whose effects
 you are comfortable with.
 
+**Servers other features manage.** A Martlet feature can add its own server with
+`McpToolService.SetManagedServer(name, definition with ManagedBy, policy)` (for example a Home
+Assistant MCP endpoint). It is never written to mcp.json, appears on the Tools page as
+managed by that feature, and loses to an mcp.json entry with the same name. Its
+`policy(tool, arguments)` decides each call first: `AutoApprove`, `AskEveryTime` (no
+*Always allow*), `Deny` (the model is told it's blocked) or `Default` (the normal
+rules); a policy that throws counts as `AskEveryTime`. Managed servers never offer
+*Always allow*.
+
 **What is sent where.** Tool names, descriptions and parameter schemas go to the
 Thinking model with each reply that offers tools; each tool result (cut to 12,000
 characters, and to the reply's 64 KB tool budget) goes to the same model. The model

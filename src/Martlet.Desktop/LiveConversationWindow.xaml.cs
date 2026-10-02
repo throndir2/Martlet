@@ -950,6 +950,7 @@ public partial class LiveConversationWindow : ThemedWindow
         if (ReferenceEquals(shownApproval, request)) return;
         shownApproval = request;
         ToolApprovalArguments.Text = request.Arguments;
+        ToolAlwaysButton.Visibility = request.AllowAlways ? Visibility.Visible : Visibility.Collapsed;
         ToolApprovalPanel.Visibility = Visibility.Visible;
         Motion.Enter(ToolApprovalPanel, dy: 10);
     }

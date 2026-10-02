@@ -51,7 +51,7 @@
                         <DockPanel>
                             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                                 <Button Content="De_ny" Click="ToolDeny_Click" MinWidth="80" Margin="12,0,8,0" AutomationProperties.AutomationId="LiveToolDeny"/>
-                                <Button Content="Always allo_w" Click="ToolAlways_Click" MinWidth="104" Margin="0,0,8,0"
+                                <Button x:Name="ToolAlwaysButton" Content="Always allo_w" Click="ToolAlways_Click" MinWidth="104" Margin="0,0,8,0"
                                         AutomationProperties.AutomationId="LiveToolAlways"/>
                                 <Button Content="Allow _once" Click="ToolAllow_Click" MinWidth="104" Style="{DynamicResource PrimaryButton}"
                                         AutomationProperties.AutomationId="LiveToolAllow"/>
