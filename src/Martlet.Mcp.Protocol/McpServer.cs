@@ -90,9 +90,27 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("network_status", "Read this PC's Martlet network from a data directory (network.json and whether its network key " +
+            "exists): member, waiting for approval (with the check number) or in no network; the network ID; each desktop and host " +
+            "in the roster (ID, name, removed, who changed it last); hosts paired on purpose (adopt) and forgotten here (ignored). " +
+            "Read-only; contacts nothing and returns no keys or addresses.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("network_selftest", "Rehearse the Martlet network end to end with the production code: three real gateways on " +
+            "127.0.0.1 (pinned TLS, volatile credentials) and two simulated desktops using the desktop's network client and sync " +
+            "engine (found, bind hosts, join with a check number, pair every member with every host by itself, refuse forged keys " +
+            "and rosters, remove a desktop and a host). Loopback only; writes nothing to disk or the credential vault.", new { }),
+        Tool("nearby_status", "Read whether this PC lets Martlet on the owner's other computers find it and ask to use its hosts " +
+            "(on by default, \"off\" only after the owner turned it off) and which paired hosts it could share from hosts.json (hosts " +
+            "it runs or reaches over SSH; this PC's own host service set up from the host dashboard is found from Docker by the " +
+            "desktop, not here). Read-only; contacts nothing and returns no addresses, SSH targets or keys.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
         Tool("virtualization_status", "Read whether Windows is ready for Docker Desktop's WSL 2 engine (virtualization in the firmware, " +
             "the Windows hypervisor, Virtual Machine Platform, Windows Subsystem for Linux, the WSL version), whether Docker Desktop is " +
-            "installed and running, and any setup Martlet continues after a Windows restart. Read-only; changes nothing.", new
+            "installed and running and its engine state, and any setup Martlet continues after a Windows restart. Read-only; changes nothing.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -194,6 +212,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "voices_status" => VoicesStatus(arguments),
                 "f5_voices" => F5Voices(arguments),
                 "cluster_status" => ClusterStatus(arguments),
+                "network_status" => NetworkStatus(arguments),
+                "network_selftest" => await NodeLinkCheckAsync(cancellation, "network"),
+                "nearby_status" => NearbyStatus(arguments),
                 "virtualization_status" => await VirtualizationStatusAsync(arguments, cancellation),
                 "node_link_check" => await NodeLinkCheckAsync(cancellation),
                 "mcp_servers_status" => McpServersStatus(arguments),
@@ -255,9 +276,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
         };
     }
 
-    /// <summary>Runs Martlet.NodeLinkCheck (built next to this server, in the same configuration) and returns its JSON report.
-    /// A separate process, because the in-process gateway needs the ASP.NET Core runtime and this server does not.</summary>
-    private static async Task<object> NodeLinkCheckAsync(CancellationToken cancellation)
+    /// <summary>Runs Martlet.NodeLinkCheck (built next to this server, in the same configuration) with <paramref name="arguments"/>
+    /// and returns its JSON report. A separate process, because the in-process gateway needs the ASP.NET Core runtime and this
+    /// server does not.</summary>
+    private static async Task<object> NodeLinkCheckAsync(CancellationToken cancellation, params string[] arguments)
     {
         var output = new DirectoryInfo(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar));
         var configuration = output.Parent?.Name ?? "Release";
@@ -266,10 +288,12 @@ internal sealed class McpServer(DesktopAutomation desktop)
         var program = Path.Combine(source, "Martlet.NodeLinkCheck", "bin", configuration, "net10.0", "Martlet.NodeLinkCheck.exe");
         if (!File.Exists(program))
             throw new InvalidOperationException($"Build src\\Martlet.NodeLinkCheck ({configuration}) first; building Martlet.Mcp builds it too.");
-        using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(program)
+        var start = new System.Diagnostics.ProcessStartInfo(program)
         {
             UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true
-        }) ?? throw new InvalidOperationException("Could not start Martlet.NodeLinkCheck.");
+        };
+        foreach (var argument in arguments) start.ArgumentList.Add(argument);
+        using var process = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("Could not start Martlet.NodeLinkCheck.");
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         limit.CancelAfter(TimeSpan.FromMinutes(2));
         var report = process.StandardOutput.ReadToEndAsync(limit.Token);
@@ -435,7 +459,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             {
                 installed = File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
                     "Docker", "Docker", "Docker Desktop.exe")),
-                running = Running("com.docker.backend") || Running("Docker Desktop")
+                running = Running("com.docker.backend") || Running("Docker Desktop"),
+                engine = await DockerDesktopStatus.ReadAsync(cancellation)
             },
             continueSetup = new
             {
@@ -553,6 +578,78 @@ internal sealed class McpServer(DesktopAutomation desktop)
             }
         }
         return new { sync = choice switch { "off" => "off", null => "on (default)", _ => "on" }, plan };
+    }
+
+    /// <summary>The Martlet network as the desktop keeps it in a data directory (network.json and network\device_ecdsa, the
+    /// names Martlet.Desktop's NetworkIdentity uses). No keys, signatures or addresses are returned.</summary>
+    private static object NetworkStatus(JsonElement arguments)
+    {
+        var directory = DataDirectory(arguments);
+        var key = File.Exists(Path.Combine(directory, "network", "device_ecdsa"));
+        var path = Path.Combine(directory, Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.FileName);
+        if (!File.Exists(path)) return new { state = "none", key };
+        Martlet.Avatar.Audio2Face.Remote.NetworkLocalState local;
+        try { local = Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.Parse(File.ReadAllBytes(path)); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
+        {
+            return new { state = "unreadable", key };
+        }
+        var roster = local.Roster;
+        return new
+        {
+            state = roster is not null ? "member" : local.Waiting is not null ? "waiting" : "none",
+            key,
+            networkId = roster?.NetworkId ?? local.Waiting?.NetworkId,
+            revision = roster?.Revision,
+            founder = roster?.Founder?.Id,
+            waiting = local.Waiting is { } wait ? new { hostId = wait.HostId, checkNumber = wait.CheckNumber, since = wait.Since } : null,
+            desktops = roster?.Members.Where(m => m.IsDesktop).Select(m => new { id = m.Id, name = m.Name, removed = m.Removed, updatedBy = m.UpdatedBy, changedAt = m.ChangedAt }).ToArray(),
+            hosts = roster?.Members.Where(m => m.IsHost).Select(m => new { id = m.Id, name = m.Name, removed = m.Removed, updatedBy = m.UpdatedBy, changedAt = m.ChangedAt }).ToArray(),
+            adopt = local.Adopt,
+            ignored = local.Ignored,
+            removedFrom = local.RemovedFrom
+        };
+    }
+
+    /// <summary>"Let my other computers find this PC" as the desktop keeps it (the file names match Martlet.Desktop's Nearby and
+    /// HostRegistry): the choice, on unless nearby.txt says "off", and the paired hosts this PC could share (those it runs, saved
+    /// as ThisPcDocker, or reaches over SSH). Host IDs and how each is reached only: no addresses, SSH targets or keys.</summary>
+    private static object NearbyStatus(JsonElement arguments)
+    {
+        var directory = DataDirectory(arguments);
+        string? choice;
+        try { choice = File.ReadAllText(Path.Combine(directory, "nearby.txt")).Trim(); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { choice = null; }
+        object hosts;
+        var path = Path.Combine(directory, "hosts.json");
+        if (!File.Exists(path)) hosts = new { state = "none", paired = 0, shareable = Array.Empty<object>() };
+        else
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(File.ReadAllBytes(path));
+                var list = document.RootElement.GetProperty("hosts").EnumerateArray().Select(host =>
+                {
+                    var method = host.TryGetProperty("method", out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : "OnHost";
+                    var ssh = host.TryGetProperty("sshTarget", out var target) && target.ValueKind == JsonValueKind.String &&
+                        !string.IsNullOrWhiteSpace(target.GetString());
+                    var id = host.GetProperty("pairing").GetProperty("hostId").GetString();
+                    var shareable = method == "ThisPcDocker" || method is "SshDocker" or "SshNative" && ssh;
+                    return (id, method, shareable);
+                }).ToArray();
+                hosts = new
+                {
+                    state = "loaded", paired = list.Length,
+                    shareable = list.Where(h => h.shareable).Select(h => new { hostId = h.id, reach = h.method }).ToArray()
+                };
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException or
+                InvalidOperationException)
+            {
+                hosts = new { state = "unreadable" };
+            }
+        }
+        return new { share = choice switch { "off" => "off", null => "on (default)", _ => "on" }, port = 9444, hosts };
     }
 
     private static async Task<object> DoctorAsync(string[] args, JsonElement arguments, CancellationToken cancellation)

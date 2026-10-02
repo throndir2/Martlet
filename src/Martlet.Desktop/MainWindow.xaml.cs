@@ -115,6 +115,8 @@ public partial class MainWindow : ThemedWindow
         }
         InitializeShell();
         InitializeCluster();
+        InitializeNetwork();
+        InitializeNearby();
         InitializeVoiceSync();
         InitializeNodeAgent();
         InitializeLogs();
@@ -155,6 +157,7 @@ public partial class MainWindow : ThemedWindow
         if (!closing) ContinueSetupAsync().Forget();
         await ShowSavedCharacterAsync(onlyIfAutoShow: true);
         StartCluster();
+        StartNetwork();
         StartVoiceSync();
         StartNodeAgent();
         StartLogShipping();
@@ -602,7 +605,9 @@ public partial class MainWindow : ThemedWindow
         characterTimer.Stop();
         updateTimer.Stop();
         clusterTimer.Stop();
+        networkTimer.Stop();
         voiceSyncTimer.Stop();
+        StopNearby();
         StopLogs();
         audioSessionEvents.LockedChanged -= audioSetup.SetSessionLocked;
         audioSessionEvents.LockedChanged -= AvatarSessionLocked;

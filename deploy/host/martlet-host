@@ -12,6 +12,7 @@
 #                               pair that desktop without a console: prints one "pairing-code: martlet-pair-v1..."
 #                               line, waits up to five minutes for the desktop to redeem it, then restarts the gateway
 #   martlet-host console        the gateway console: list paired desktops and revoke one
+#   martlet-host network-reset  leave this host's Martlet network (pairings stay); the next desktop that pairs adds it to its own
 #   martlet-host status         show the gateway and every installed role
 #   martlet-host machine        report this machine's hardware (GPUs, CPU, memory) to paired desktops
 #   martlet-host update         update the gateway to this engine's Martlet version (keeps identity, pairings and roles)
@@ -756,6 +757,19 @@ cmd_pair() {
   say "Paired. The gateway is serving again."
 }
 
+# Leaves this host's Martlet network (network.json); pairings stay. The next desktop that pairs adds the host to its own
+# network. For a host whose network's desktops are all gone, or to move it to another network.
+cmd_network_reset() {
+  require_setup
+  ask "Leave this host's Martlet network? Paired desktops keep their pairings (revoke them with martlet-host console)." ||
+    fail "Nothing changed."
+  local status=0
+  owner_operation owner-network-reset --config "${GW_CONFIG}" || status=$?
+  service_start
+  [[ ${status} == 0 ]] || fail "The network was not reset."
+  say "This host is in no Martlet network now."
+}
+
 # The gateway's interactive console: list and revoke paired desktops (and the older pasted-card pairing).
 cmd_console() {
   require_setup
@@ -1107,12 +1121,12 @@ cmd_status() {
 
 if [[ "${MODE}" == docker && "${MARTLET_ENGINE:-launcher}" != inner ]]; then
   case "${1:-help}" in
-    setup|roles|describe|add|remove|pair|console|status|config|machine|update) docker_launch "$@" ;;
+    setup|roles|describe|add|remove|pair|console|network-reset|status|config|machine|update) docker_launch "$@" ;;
   esac
 fi
 
 case "${1:-help}" in
-  setup|add|remove|pair|console|machine|update)
+  setup|add|remove|pair|console|network-reset|machine|update)
     JOURNAL_ON=1
     if [[ "${MODE}" == docker ]]; then JOURNAL_SESSION="${MARTLET_ENGINE_NAME:-engine} ${IMAGE}"
     else JOURNAL_SESSION="native/$$ $(git -C "${REPO}" describe --tags --always 2>/dev/null || printf 'source')"; fi
@@ -1128,6 +1142,7 @@ case "${1:-help}" in
   remove) shift; cmd_remove "$@" ;;
   pair) shift; cmd_pair "$@" ;;
   console) cmd_console ;;
+  network-reset) cmd_network_reset ;;
   status) cmd_status ;;
   machine) cmd_machine ;;
   update) cmd_update ;;

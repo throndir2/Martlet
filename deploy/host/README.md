@@ -46,6 +46,7 @@ pair --device-id <id> --name <name>
                     pair that desktop without a console: prints one "pairing-code: martlet-pair-v1..." line,
                     waits up to five minutes for it to be redeemed, then restarts the gateway (Martlet uses this itself)
 console             the gateway console: list paired desktops and revoke one
+network-reset       leave this host's Martlet network (pairings stay); the next desktop that pairs adds it to its own network
 roles               what this host can run
 describe <role>     a role's terms, secrets (stored or missing, never values), choices and GPU/CPU option, machine-readable
 add <role>          install a role, e.g. add ollama, add stt, add f5 or add audio2face (same flow for every role)
@@ -127,6 +128,10 @@ holds no keys and the host never acts on it. See
 `agent.token` (written fresh at each start; only Martlet on the host computer
 reads it, to take those commands). See
 [Commands between your computers](../../docs/CLUSTER.md#commands-between-your-computers).
+`network.json` holds the [Martlet network](../../docs/NETWORK.md) roster the
+host accepted (member desktops' public keys and the network's hosts); the host
+uses it to let member desktops pair by themselves and to revoke removed ones.
+`martlet-host network-reset` removes it.
 
 ### Docker (any Docker host, including Windows)
 
@@ -211,6 +216,15 @@ Missing Docker, NVIDIA driver or NVIDIA Container Toolkit are installed only aft
 a `yes`.
 
 ## Pairing
+
+**Pair once for all your computers.** Every desktop and host belongs to the
+owner's [Martlet network](../../docs/NETWORK.md). The first desktop you pair a
+host with adds that host to its network, and every other computer in the
+network then pairs with it by itself within a minute (no code, no console, no
+SSH login of its own). A new desktop joins by pairing with any one host of the
+network and being allowed on one of your other computers (check number on both
+screens). So for a Linux machine you set up over SSH from one PC, the whole
+network can use it right away.
 
 **SSH hosts** pair by themselves: **Add this computer** (or **Pair over SSH** on
 the Pair step) runs `martlet-host --yes pair --device-id <this PC>

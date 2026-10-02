@@ -240,8 +240,12 @@ service on this PC:
   1. *Docker Desktop*: installed or running, read locally. Installs it with
      winget in a run window.
   2. *Host service*: set up the gateway, including the one-time firewall prompt.
-  3. *Pair a desktop*: *Show a pairing code* shows this PC's address and a short
-     one-use code in large type in a run window, to type on the main PC.
+  3. *Pair a desktop*: the main PC finds this PC under Add a computer ›
+     *Martlet on your network*; *Allow* here when both show the same check
+     number. *Show a pairing code* still shows this PC's address and a short
+     one-use code in large type in a run window, to type on the main PC. When
+     Windows Firewall keeps other computers from finding this PC, *Let my
+     other computers find this PC* adds the rule (one administrator prompt).
   4. *Roles*: add or remove Audio2Face lip-sync, and show host status.
   5. *Keep it up to date*: rebuilds the host service from this app's version
      (`martlet-host update`); done when its gateway image matches the app.
@@ -253,7 +257,15 @@ service on this PC:
 
 The long form became a four-step wizard with a step rail:
 
-1. **Where it runs**: large cards for *This PC (Docker Desktop)*, *Another
+1. **Where it runs**: first a *Martlet on your network* card. Opening the
+   wizard sends Martlet's discovery query and lists the owner's other
+   computers that can share a host this PC isn't paired with yet (*GAMING-PC
+   (192.168.1.31): gaming-pc-host · Martlet 0.17.0* with *Connect*), plus
+   *Find again*. *Connect* shows a large check number and *Stop asking*; the
+   other computer asks *Allow* or *Deny* with the same number, then sends a
+   one-use code for each host and this PC pairs with them by itself
+   ([how](ARCHITECTURE.md#finding-your-other-computers)). Below it, large cards
+   for *This PC (Docker Desktop)*, *Another
    computer over SSH (Docker)*, *Another computer over SSH (Ubuntu, native)*
    and *I'll type the commands myself*, plus *Enter a pairing code* for a host
    that is already set up (straight to Pair).
@@ -433,7 +445,14 @@ window ends it.
   none is found or the chosen one isn't connected.
 - **Settings**: palette, this PC's role and the tour, app updates (automatic
   checks and their interval, automatic installs, keeping hosts on this PC's
-  version, *Check for updates now*, *Install*, *Update hosts now*), tools
+  version, *Check for updates now*, *Install*, *Update hosts now*), *Your
+  other computers* (whether they may send this PC commands, and **Let my
+  other computers find this PC and ask to use its hosts**: ON by default,
+  unticking it saves `off` in `nearby.txt`; when this PC runs a host or
+  reaches one over SSH it answers *Martlet on your network*, and its status
+  line names the hosts it offers, the last request, and when Windows Firewall
+  or a Public network keeps other computers out, with *Let my other computers
+  reach this PC*, one administrator prompt), tools
   (Troubleshooting, Backup and restore, Prerequisites, Martlet hosts), and
   *Diagnostics* (pipeline, status details, local audio
   evidence, refresh and stop, create profile). Exit is also here.

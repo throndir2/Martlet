@@ -33,6 +33,20 @@ Martlet always keeps a small local error log; it is never uploaded.
   closed unexpectedly last time, with *Open Diagnostics* and *Open the logs
   folder*. Unexpected errors while Martlet runs also show on Home with the
   latest one and the same buttons.
+- Native crashes that bypass .NET (for example an access violation inside a
+  Windows DLL on one of its own threads, which leaves no managed stack) can't
+  be logged by the crashing process. On the next launch Martlet reads how
+  Windows recorded that run's end from the Application event log (`Application
+  Error` and `.NET Runtime` entries for the run's process ID) and writes a
+  `WARN` line such as `Windows recorded how the previous run (pid 43136,
+  started ...) ended: Martlet.Desktop.exe 0.17.0.0: an access violation
+  (0xc0000005) in MMDevApi.dll 10.0.22621.5547 at offset 0x20103 (Windows
+  report ...).`, followed by the runtime's own text (with the managed stack
+  when there is one). Home's crash notice then names the exception and module.
+  When Windows has no record, an `INFO` line says the run was probably ended by
+  Task Manager, a sign-out, a shutdown or power loss, or that Windows Error
+  Reporting is off. Each process (`desktop`, `avatar-renderer`) checks its own
+  previous run. Nothing is uploaded.
 - Read every log in one list, filtered by level, part, computer and text, on
   the **Diagnostics** page; with a log host it also shows your other computers'
   and hosts' logs. See [Diagnostics page and the log host](DIAGNOSTICS.md#diagnostics-page-and-the-log-host).
@@ -40,8 +54,8 @@ Martlet always keeps a small local error log; it is never uploaded.
   line (`Status: ...`) and hosts that stop or start answering again.
 - Open the folder any time from **Troubleshooting > Open crash / error logs**.
 
-Native crashes that bypass .NET are also listed in Windows Event Viewer >
-Windows Logs > Application (sources `.NET Runtime` and `Application Error`).
+Native crashes are also listed in Windows Event Viewer > Windows Logs >
+Application (sources `.NET Runtime` and `Application Error`).
 
 ## Missing prerequisites (character, microphone, Windows speech, local LLM, Docker)
 
@@ -75,7 +89,10 @@ and shows the result in the run window (`Windows: ...`). When something is off:
 
 - **Features or WSL**: one administrator prompt turns on both features (with
   their parent features), sets the Windows hypervisor to start with Windows when
-  its boot entry turned it off, and installs or updates WSL from Microsoft.
+  its boot entry turned it off, and installs WSL from Microsoft
+  (`wsl --install --no-distribution`, falling back to `wsl --update`) or
+  updates it. When WSL itself says Windows must restart to finish installing,
+  Martlet treats it like any other restart below.
 - **Restart**: when Windows must restart, Martlet asks first (save your work in
   other apps), then restarts. It leaves `continue-setup.json` in its data folder
   and a one-time sign-in entry (`MartletContinueSetup` under the current user's
@@ -89,9 +106,14 @@ and shows the result in the run window (`Windows: ...`). When something is off:
   and exit; the setup then continues after you sign in.
 
 The host dashboard's Docker Desktop step says the same thing (*Turn on Windows
-features* or *Turn on virtualization*). If Windows is ready and Docker Desktop
-still reports that it is unable to start, use Docker Desktop's *Troubleshoot*
-page (*Restart*, or *Reset to factory defaults*) and try again.
+features* or *Turn on virtualization*). A Docker Desktop that was already open
+while Martlet changed Windows doesn't notice the new WSL by itself, so Martlet
+restarts it. Martlet also restarts it once when it is open but keeps reporting
+its engine `stopped` (its log says *backend is not running*), for example
+because it started before WSL was installed. If Windows is ready and Docker
+Desktop still reports that it is unable to start, or never gets past
+`stopped`, restart Windows, or use Docker Desktop's *Troubleshoot* page
+(*Restart*, or *Reset to factory defaults*), and try again.
 
 ## A local model doesn't answer (Ollama on this PC)
 
