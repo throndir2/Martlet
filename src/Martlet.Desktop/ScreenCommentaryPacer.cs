@@ -2,7 +2,7 @@ namespace Martlet.Desktop;
 
 internal enum Chattiness { Quiet, Normal, Chatty }
 
-internal enum PacerVerdict { Look, Busy, WarmingUp, AfterConversation, AfterComment, AfterLook, HourlyLimit, UserAway, NothingNew }
+internal enum PacerVerdict { Look, Busy, WarmingUp, AfterConversation, AfterComment, AfterLook, HourlyLimit, UserAway, NothingNew, BackingOff }
 
 /// <summary>Decides when Martlet takes a look at the screen, the way a friend in the room would: not while you are
 /// talking to it, not right after it said something, more likely when the picture just changed, rarely when nothing
@@ -31,6 +31,8 @@ internal sealed class ScreenCommentaryPacer
     private long? lastLook, lastComment, lastConversation;
     private TimeSpan jitter;
     private double novelty;
+    private int backoffs;
+    private (long At, TimeSpan Wait)? backoffUntil;
 
     internal ScreenCommentaryPacer(Chattiness chattiness, TimeProvider? clock = null, Func<double>? random = null)
     {
@@ -60,14 +62,34 @@ internal sealed class ScreenCommentaryPacer
         lastLook = now;
         looks.Enqueue(now);
         novelty = 0;
+        backoffs = 0;
+        backoffUntil = null;
         if (!commented) return;
         lastComment = now;
         jitter = Settings.AfterComment * (random() * 0.5);
     }
 
+    /// <summary>The provider limited the look's request or didn't answer it (the Thinking fallback too, when there is one).
+    /// Looking waits a minute, then two, four and up to ten in a row, instead of stopping vision; a look that gets an answer
+    /// resets it. Returns the wait.</summary>
+    internal TimeSpan NoteBackoff()
+    {
+        var now = clock.GetTimestamp();
+        lastLook = now;
+        looks.Enqueue(now);
+        var wait = TimeSpan.FromMinutes(Math.Min(10, Math.Pow(2, Math.Min(backoffs, 4))));
+        backoffs++;
+        backoffUntil = (now, wait);
+        return wait;
+    }
+
+    internal TimeSpan? BackoffLeft => backoffUntil is { } until && clock.GetElapsedTime(until.At) < until.Wait
+        ? until.Wait - clock.GetElapsedTime(until.At) : null;
+
     internal PacerVerdict Decide(bool busy, TimeSpan userIdle)
     {
         if (busy) return PacerVerdict.Busy;
+        if (BackoffLeft is not null) return PacerVerdict.BackingOff;
         if (clock.GetElapsedTime(started) < Warmup) return PacerVerdict.WarmingUp;
         if (lastConversation is { } talked && clock.GetElapsedTime(talked) < Settings.AfterConversation)
             return PacerVerdict.AfterConversation;

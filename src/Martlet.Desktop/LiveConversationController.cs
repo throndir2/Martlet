@@ -721,6 +721,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 operation.Attach(turn);
             }
             var terminal = await turn.Completion.ConfigureAwait(false);
+            NoteFallback(camera ? "Camera glance" : "Screen glance", operation.Authorization.Configuration, terminal);
             var text = turn.Content.Text;
             var passed = terminal.State == ConversationState.Completed && IsSilentReply(text);
             operation.Passed = passed;
@@ -937,6 +938,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 operation.Attach(turn);
             }
             var terminal = await turn.Completion.ConfigureAwait(false);
+            NoteFallback("Reply", configured, terminal);
             // A model that rejected tools is asked without them from now on (this app session).
             if (terminal.ToolsRejected)
             {
@@ -1128,7 +1130,19 @@ internal sealed class LiveConversationController : IAsyncDisposable
         (terminal.SequenceFailure is { } sequence ? $", stream {sequence.Issue}" : "") +
         (terminal.Playback?.Error?.Code is { } audio ? $", audio {audio}" : "") +
         (terminal.ToolCalls > 0 ? $", {terminal.ToolCalls} tool call(s)" : "") +
-        (terminal.ToolsRejected ? ", tools rejected" : "");
+        (terminal.ToolsRejected ? ", tools rejected" : "") +
+        (terminal.FellBackAfter is { } after ? $", Thinking fallback asked after {after}" : "");
+
+    // A reply the fallback answered: Thinking itself failed, so say so in the log (the provider's own explanation is
+    // logged just before it by ProviderDiagnostics); the reply still counts as working.
+    private static void NoteFallback(string what, LiveConversationConfiguration configured, ConversationSnapshot terminal)
+    {
+        if (terminal.FellBackAfter is not { } after || configured.Fallback is not { } fallback) return;
+        var route = configured.Route(SetupRole.Llm);
+        var answered = terminal.State is ConversationState.Completed or ConversationState.Refused;
+        ErrorLog.Warn($"{what}: Thinking failed ({after}) on {route.Origin}, model {route.ModelId}; the Thinking fallback " +
+            $"{fallback.Origin}, model {fallback.ModelId}, {(answered ? "answered instead" : "failed too")}.");
+    }
 
     // One local log line per failed request naming the route it used, never what was said. The provider's own
     // explanation (HTTP status and message) is logged just before it by ProviderDiagnostics.
@@ -1297,6 +1311,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
             var turn = capture.Start(request, authorization, token);
             var terminal = await turn.Completion.ConfigureAwait(false);
             await turn.OwnershipRelease.ConfigureAwait(false);
+            NoteFallback(purpose, configuration, terminal);
             if (turn.Snapshot.Quarantined)
                 lock (gate) captureQuarantined = true;
             if (!token.IsCancellationRequested && IsFailure(terminal))

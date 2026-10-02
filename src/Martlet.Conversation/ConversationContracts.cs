@@ -60,6 +60,14 @@ public sealed record ChatCompletionsTarget(string BaseUrl, bool Keyless = false)
     public override string ToString() => nameof(ChatCompletionsTarget);
 }
 
+// A second Chat Completions destination and model for the LLM stage. A reply whose request to the selected destination fails
+// before any of its text arrived (an error, a rate limit or no answer in time) is asked once more here; the request is
+// separately authorized with this model, whose alias is ChatCompletionsSetup.FallbackAlias.
+public sealed record TextFallback(ChatCompletionsTarget Chat, TextModelSelection Model)
+{
+    public override string ToString() => nameof(TextFallback);
+}
+
 // A new instance is explicit input, not a stored provider thread or automatic conversation history.
 // Host selects a paired Martlet host's own conversation model (Ollama) instead of a cloud destination;
 // HostSpeech selects a paired host's own F5 voice for the spoken reply and WindowsVoice an installed Windows voice on
@@ -71,7 +79,7 @@ public sealed class ConversationRequest(
     BoundedTextInput input, TextModelSelection model, TextGenerationLimits textLimits,
     ConversationLimits limits, SpeechOutput? speech = null, ChatCompletionsTarget? chat = null, HostTextTarget? host = null,
     HostSpeechTarget? hostSpeech = null, string? silentReply = null, WindowsVoiceTarget? windowsVoice = null,
-    GenerationSettings? generation = null, IConversationToolHost? tools = null)
+    GenerationSettings? generation = null, IConversationToolHost? tools = null, TextFallback? fallback = null)
 {
     [JsonIgnore] public BoundedTextInput Input { get; } = input;
     public TextModelSelection Model { get; } = model;
@@ -85,6 +93,7 @@ public sealed class ConversationRequest(
     [JsonIgnore] public string? SilentReply { get; } = silentReply;
     public GenerationSettings? Generation { get; } = generation;
     [JsonIgnore] public IConversationToolHost? Tools { get; } = tools;
+    public TextFallback? Fallback { get; } = fallback;
 
     internal void Validate()
     {
@@ -122,6 +131,15 @@ public sealed class ConversationRequest(
         else
             ContractRules.Require(OpenAiTextGenerationCatalog.SupportsModel(Model.UpstreamModelId),
                 "Select a supported text model.", ErrorCode.ProviderCapability);
+        if (Fallback is { } fallback)
+        {
+            ArgumentNullException.ThrowIfNull(fallback.Chat);
+            ArgumentNullException.ThrowIfNull(fallback.Model);
+            _ = ChatCompletionsSetup.BaseUri(fallback.Chat.BaseUrl);
+            ChatCompletionsSetup.ModelId(fallback.Model.UpstreamModelId);
+            ContractRules.Require(fallback.Model.ModelAlias == ChatCompletionsSetup.FallbackAlias,
+                "A Thinking fallback requires its own model alias.", ErrorCode.ProviderCapability);
+        }
         ContractRules.Require(Input.Utf8Bytes <= TextLimits.MaxInputBytes &&
             Input.InputTokenReservation <= TextLimits.MaxInputTokens, "Text input exceeds the selected limits.");
         if (Speech is { } voice)
@@ -207,10 +225,13 @@ public sealed record ConversationSnapshot(
     long AcceptedSamples, long SubmittedSamples, long DeviceConsumedSamples, bool MayHavePlayed,
     bool OwnershipReleased, bool Quarantined, long DroppedEvents, PlaybackSnapshot? Playback,
     Guid? RetryOf, bool EarlierTurnMayHavePlayed, int ToolCalls = 0, string? ActiveTool = null, bool ToolsRejected = false,
-    bool SpeechLimitReached = false, ProviderRole? FailedProvider = null)
+    bool SpeechLimitReached = false, ProviderRole? FailedProvider = null, string? FellBackAfter = null)
 {
     public decimal? EstimatedCost => null;
     public long? AudibleSamples => null;
+    /// <summary>Whether the reply was asked of the Thinking fallback after the selected destination failed (FellBackAfter
+    /// names how: a provider failure code, a stream issue or a conversation failure).</summary>
+    public bool FellBack => FellBackAfter is not null;
 }
 
 public sealed record SequenceIssueInfo(Martlet.Core.Streaming.SequenceIssue Issue);

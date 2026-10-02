@@ -24,7 +24,7 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
     private readonly DateTimeOffset acceptedAt;
     private readonly Dictionary<ProviderRole, int> credentialTickets = [];
     private readonly HashSet<Guid> requests = [];
-    private int revoked, textRequests, sttRequests, speechRequests, speechBytes;
+    private int revoked, textRequests, sttRequests, speechRequests, speechBytes, fallbackTickets;
     private long speechSamples;
     private BoundedTextInput? exactInput;
     private int maxTextRequests = 1;
@@ -61,7 +61,9 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
         lock (gate)
         {
             exactInput = input;
-            maxTextRequests = input.Tools.Count > 0 ? Math.Max(toolRounds + 1, 2) : 1;
+            // A Thinking fallback may ask once more, and once more without tools if it rejects them.
+            maxTextRequests = (input.Tools.Count > 0 ? Math.Max(toolRounds + 1, 2) : 1) +
+                (Configuration.Fallback is null ? 0 : 2);
         }
     }
     internal void Revoke() => Interlocked.Exchange(ref revoked, 1);
@@ -100,7 +102,7 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
             latest.Unavailable(Voice, Microphone) is not null ||
             !latest.Routes.SequenceEqual(Configuration.Routes) || latest.Audio != Configuration.Audio ||
             latest.Persona != Configuration.Persona || latest.Memory != Configuration.Memory ||
-            latest.Generation != Configuration.Generation)
+            latest.Generation != Configuration.Generation || latest.Fallback != Configuration.Fallback)
         {
             Revoke();
             throw new LiveActionException("conversation.configuration_changed");
@@ -124,6 +126,7 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
     {
         await ValidateSettingsAsync(token).ConfigureAwait(false);
         var selection = Configuration.TextSelection();
+        var fallback = Configuration.FallbackSelection() is { } second && action.Model == second;
         var expected = new OperationBudget(action.Context.Ids, action.Context.Epoch, ProviderRole.Llm, 1,
             action.Input.Utf8Bytes, action.Input.InputTokenReservation, Configuration.TextLimits.MaxOutputTokens, 0);
         var expiry = Min(action.Context.Deadline, Deadline(Configuration.TextLimits.MaxRequestTime));
@@ -131,15 +134,20 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
         {
             Check(token);
             var continues = exactInput is { Tools.Count: > 0 } && ReferenceEquals(action.Input.Origin, exactInput);
-            if (!ReferenceEquals(action.Input, exactInput) && !continues || action.Model != selection ||
+            if (!ReferenceEquals(action.Input, exactInput) && !continues || action.Model != selection && !fallback ||
                 action.Limits != Configuration.TextLimits || action.Budget != expected ||
                 textRequests >= maxTextRequests || !requests.Add(action.Context.Ids.RequestId)) return null;
             textRequests++;
-            Ticket(ProviderRole.Llm);
+            if (fallback) fallbackTickets++;
+            else Ticket(ProviderRole.Llm);
         }
-        return new(new(Binding(SetupRole.Llm), action.Model, action.Context.Ids, action.Context.Epoch,
+        return new(new(fallback ? FallbackBinding() : Binding(SetupRole.Llm), action.Model, action.Context.Ids, action.Context.Epoch,
             action.Limits, expiry, true, true, allowImageDisclosure: Screen && action.Input.Image is not null), new(action.Budget, expiry));
     }
+
+    // The fallback's key is bound to its exact base URL and model, like a Chat Completions Thinking key.
+    private ProviderCredentialBinding FallbackBinding() =>
+        new(ChatCompletionsSetup.BaseUri(Configuration.Fallback!.Origin), ProviderRole.Llm, Configuration.Fallback.ModelId);
 
     public async ValueTask<AuthorizedSpeechOperation?> AuthorizeSpeechAsync(SpeechAuthorizationAction action, CancellationToken token)
     {
@@ -196,6 +204,8 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
             ProviderRole.Tts => SetupRole.Tts, _ => throw new CredentialUnavailableException() };
         if (role == SetupRole.Stt && !Microphone || role == SetupRole.Tts && !Voice)
             throw new CredentialUnavailableException();
+        if (role == SetupRole.Llm && Configuration.Fallback is { } fallback && binding == FallbackBinding() && binding != Binding(role))
+            return await ResolveFallbackAsync(fallback, binding, token).ConfigureAwait(false);
         lock (gate)
         {
             if (binding != Binding(role) || credentialTickets.GetValueOrDefault(binding.Role) != 1)
@@ -206,6 +216,29 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
         var route = Configuration.Route(role);
         if (route.CredentialId is not { } credentialId) throw new CredentialUnavailableException();
         var scope = CredentialBinding.For(Configuration.Profile, route, credentialId);
+        return await ReadAsync(scope, binding, token).ConfigureAwait(false);
+    }
+
+    private async Task<BoundProviderCredential?> ResolveFallbackAsync(ThinkingFallbackSettings fallback,
+        ProviderCredentialBinding binding, CancellationToken token)
+    {
+        lock (gate)
+        {
+            if (fallbackTickets != 1) throw new CredentialUnavailableException();
+            fallbackTickets = 0;
+        }
+        await ValidateSettingsAsync(token).ConfigureAwait(false);
+        var thinking = Configuration.Route(SetupRole.Llm);
+        // Its own key, or the Thinking route's key when both use the same Chat Completions endpoint.
+        var scope = fallback.CredentialId is { } own ? fallback.Binding(Configuration.Profile, own)
+            : fallback.UsesThinkingKey(thinking) ? CredentialBinding.For(Configuration.Profile, thinking, thinking.CredentialId!.Value)
+            : throw new CredentialUnavailableException();
+        return await ReadAsync(scope, binding, token).ConfigureAwait(false);
+    }
+
+    private async Task<BoundProviderCredential?> ReadAsync(CredentialBinding scope, ProviderCredentialBinding binding,
+        CancellationToken token)
+    {
         scope.Validate();
         // Native work is owned here, not by a window or cancellation observer. Always clear its lease.
         using var result = vault.Read(scope);

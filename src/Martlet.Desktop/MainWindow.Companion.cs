@@ -368,6 +368,8 @@ public partial class MainWindow
             _ => CloudCard(section, job, route)
         });
 
+        if (role == SetupRole.Llm) page.Children.Add(FallbackCard());
+
         // Voices F5 copies from your recordings. They show wherever F5 can speak: this PC or another of your computers.
         // A cloud provider has its own voices.
         if (section == CompanionTab.Voice && place != JobPlace.Cloud)

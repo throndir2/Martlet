@@ -1295,6 +1295,7 @@ public partial class LiveConversationWindow : ThemedWindow
             {
                 PacerVerdict.UserAway => "Waiting until you're back.",
                 PacerVerdict.HourlyLimit => "Taking a break from looking.",
+                PacerVerdict.BackingOff => "The provider is busy; waiting before the next look.",
                 PacerVerdict.AfterConversation => "You're talking; not interrupting.",
                 PacerVerdict.Busy when commentary is not { OwnershipReleased: false } => "You're talking; not interrupting.",
                 _ => null
@@ -1363,10 +1364,21 @@ public partial class LiveConversationWindow : ThemedWindow
             lookNote = status.Code == "runtime.Refused" ? $"Last look {at}: no comment." : $"Last look {at}: stopped.";
             return;
         }
-        // No automatic retry of a failing request: stop and say what to change.
         var selected = controller.Configuration;
         var provider = done.Turn?.Snapshot.ProviderFailure ?? status.ProviderFailure;
         var job = FailedJob(done);
+        // A busy or slow provider (NVIDIA Build's free endpoints limit requests often) is waited out, not a reason to stop vision.
+        if (job != ProviderRole.Tts && provider is ProviderFailureCode.RateLimited or ProviderFailureCode.Server or
+            ProviderFailureCode.Network or ProviderFailureCode.FirstDeltaTimeout or ProviderFailureCode.IdleTimeout or
+            ProviderFailureCode.DeadlineExceeded && pacer is not null)
+        {
+            var wait = pacer!.NoteBackoff();
+            lookNote = $"Last look {at}: " + (provider == ProviderFailureCode.RateLimited
+                ? "the provider is limiting requests." : "the provider didn't answer.") +
+                $" Looking again in {(int)wait.TotalMinutes} minute{(wait.TotalMinutes >= 2 ? "s" : "")}.";
+            return;
+        }
+        // No automatic retry of a failing request: stop and say what to change.
         StopWatching(job == ProviderRole.Tts
             ? "Martlet stopped vision. " + ProviderRemedy(provider!.Value, done.Authorization.Configuration, job)
             : provider == ProviderFailureCode.InputLimit
