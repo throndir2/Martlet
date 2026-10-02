@@ -53,7 +53,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
         "FoundationStatus", "PipelineStatus", "LocalAudioStatus",
-        "LiveStatus", "LiveMic", "LiveVision", "LiveVisionStatus", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
+        "LiveStatus", "LiveMic", "LiveVision", "LiveVisionStatus", "LiveContext", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
         // Home's Start talking reads "Show conversation" while a conversation runs (the talk window open, or hidden while Martlet
         // listens); Home's Start listening / Stop listening button and its listening indicator ("Listening. Just start talking.",
         // "Hearing you…", "Not listening" or why Martlet can't listen).

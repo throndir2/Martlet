@@ -389,7 +389,7 @@ public partial class LiveConversationWindow : ThemedWindow
         if (reloadReason is { } reason)
         {
             reloadReason = null;
-            if (Messages.Count > 0) AddNote(reason + " Martlet started a fresh conversation.");
+            if (Messages.Count > 0) AddNote(reason + " Martlet picked it up and carries on.");
             LoadAsync().Forget();
             return;
         }
@@ -1130,6 +1130,9 @@ public partial class LiveConversationWindow : ThemedWindow
         var visionLine = VisionLine();
         VisionStatusText.Text = visionLine;
         VisionStatusText.Visibility = VisionChip.Visibility == Visibility.Visible && visionLine.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        var turns = controller.ContextTurns;
+        ContextText.Text = turns == 1 ? "Keeps the last exchange in mind." : $"Keeps the last {turns} exchanges in mind.";
+        ContextText.Visibility = turns > 0 ? Visibility.Visible : Visibility.Collapsed;
 
         // Stop quiets Martlet; listening is paused only from its own button.
         StopButton.IsEnabled = owned is { OwnershipReleased: false } || commentary is { OwnershipReleased: false } ||

@@ -24,6 +24,7 @@ public sealed class OllamaRelayWorker : IOllamaGatewayInferenceWorker, IAsyncDis
     private const int MaximumResponseBytes = 4 * 1024 * 1024;
     private static readonly UTF8Encoding Utf8 = new(false, false);
     private readonly Uri chat;
+    private readonly Uri create;
     private readonly string model;
     private readonly HttpClient http;
     private readonly CancellationTokenSource lifetime = new();
@@ -37,6 +38,7 @@ public sealed class OllamaRelayWorker : IOllamaGatewayInferenceWorker, IAsyncDis
             !IPAddress.IsLoopback(address) || endpoint.AbsolutePath != "/")
             throw new ArgumentException("The Ollama relay only reaches a loopback http://127.0.0.1:<port>/ server.", nameof(endpoint));
         chat = new Uri(endpoint, "api/chat");
+        create = new Uri(endpoint, OllamaDraftHead.CreatePath.TrimStart('/'));
         this.model = model;
         var selection = new OllamaChatModelSelection(Alias(model), model);
         Route = GatewayInferenceRoute.OllamaChat(destinationId, workerId, selection, "ollama",
@@ -173,17 +175,18 @@ public sealed class OllamaRelayWorker : IOllamaGatewayInferenceWorker, IAsyncDis
             writer.WriteEndObject();
             writer.WriteEndObject();
         }
-        using var request = new HttpRequestMessage(HttpMethod.Post, chat) { Content = new ByteArrayContent(body.ToArray()) };
-        request.Content.Headers.ContentType = new("application/json") { CharSet = "utf-8" };
-        HttpResponseMessage response;
-        try
+        var bytes = body.ToArray();
+        var response = await PostAsync(chat, bytes, token).ConfigureAwait(false);
+        if (response is null) return (null, "worker.unavailable");
+        if (response.StatusCode != HttpStatusCode.OK && await DraftFailedAsync(response, token).ConfigureAwait(false))
         {
-            response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
-        }
-        catch (HttpRequestException)
-        {
-            token.ThrowIfCancellationRequested();
-            return (null, "worker.unavailable");
+            // Gemma 4's bundled draft model didn't fit next to it on the GPU: save draft_num_predict 0 on the model and retry.
+            response.Dispose();
+            using (var repair = await PostAsync(create, Encoding.UTF8.GetBytes(OllamaDraftHead.DisableRequest(model)), token)
+                .ConfigureAwait(false))
+                if (repair is not { IsSuccessStatusCode: true }) return (null, "worker.failed");
+            response = await PostAsync(chat, bytes, token).ConfigureAwait(false);
+            if (response is null) return (null, "worker.unavailable");
         }
         if (response.StatusCode == HttpStatusCode.OK) return (response, null);
         // 404 is Ollama's "model not found": the model was removed or never pulled on this host.
@@ -191,6 +194,31 @@ public sealed class OllamaRelayWorker : IOllamaGatewayInferenceWorker, IAsyncDis
             ? "worker.unavailable" : "worker.failed";
         response.Dispose();
         return (null, failure);
+    }
+
+    private async Task<HttpResponseMessage?> PostAsync(Uri target, byte[] body, CancellationToken token)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, target) { Content = new ByteArrayContent(body) };
+        request.Content.Headers.ContentType = new("application/json") { CharSet = "utf-8" };
+        try
+        {
+            return await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
+        }
+        catch (HttpRequestException)
+        {
+            token.ThrowIfCancellationRequested();
+            return null;
+        }
+    }
+
+    private static async Task<bool> DraftFailedAsync(HttpResponseMessage response, CancellationToken token)
+    {
+        try
+        {
+            var text = await response.Content.ReadAsStringAsync(token).ConfigureAwait(false);
+            return OllamaDraftHead.FailedToLoad(text.Length <= MaximumLineBytes ? text : text[..MaximumLineBytes]);
+        }
+        catch (Exception error) when (error is HttpRequestException or IOException) { return false; }
     }
 
     private static void Message(Utf8JsonWriter writer, string role, string content)

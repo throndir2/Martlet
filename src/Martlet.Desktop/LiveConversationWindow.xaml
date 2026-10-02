@@ -42,6 +42,9 @@
                     <!-- While vision is on: what Martlet is watching, how its last look went and why it is holding off. -->
                     <TextBlock x:Name="VisionStatusText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"
                                Visibility="Collapsed" AutomationProperties.AutomationId="LiveVisionStatus"/>
+                    <!-- How many recent exchanges the next reply sees as context (kept across settings changes). -->
+                    <TextBlock x:Name="ContextText" Style="{DynamicResource Muted}" FontSize="12" Margin="0,2,0,0"
+                               Visibility="Collapsed" AutomationProperties.AutomationId="LiveContext"/>
                 </StackPanel>
             </DockPanel>
         </Border>
