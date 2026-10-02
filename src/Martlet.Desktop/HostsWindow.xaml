@@ -73,6 +73,17 @@
                             <TextBlock Style="{DynamicResource Muted}" Text="Martlet shows the exact commands to run in a terminal there."/>
                         </StackPanel>
                     </RadioButton>
+                    <Border Style="{DynamicResource CardStyle}" Background="{DynamicResource SoftBrush}" Margin="0,10,0,0">
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Content="_Enter a pairing code" Click="EnterCode_Click" VerticalAlignment="Center"
+                                    Margin="16,0,0,0" AutomationProperties.AutomationId="HostsEnterCode"/>
+                            <StackPanel>
+                                <TextBlock Text="Already set up a host?" FontWeight="SemiBold" FontSize="15"/>
+                                <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                           Text="Pair with it using the address and short code it shows (martlet-host pair on the host, or Show a pairing code on a Windows host's Home page)."/>
+                            </StackPanel>
+                        </DockPanel>
+                    </Border>
                 </StackPanel>
 
                 <StackPanel x:Name="InstallStep" Visibility="Collapsed">
@@ -116,37 +127,56 @@
                 <StackPanel x:Name="PairStep" Visibility="Collapsed">
                     <TextBlock Text="Pair this PC with the host" Style="{DynamicResource PageTitle}"/>
                     <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,18"
-                               Text="Pairing happens once. The host shows a one-use code, and this PC keeps the resulting secret in Windows Credential Manager."/>
-                    <Border Style="{DynamicResource CardStyle}">
-                        <StackPanel>
-                            <TextBlock Text="1. Copy this PC's device ID" FontWeight="SemiBold" FontSize="15"/>
-                            <DockPanel Margin="0,8,0,0">
-                                <Button Content="_Copy" Click="CopyDeviceId_Click" DockPanel.Dock="Right" Margin="8,0,0,0"/>
-                                <TextBox x:Name="DeviceIdText" AutomationProperties.AutomationId="DeviceId" AutomationProperties.Name="This PC's device ID"/>
-                            </DockPanel>
-                        </StackPanel>
-                    </Border>
-                    <Border Style="{DynamicResource CardStyle}">
-                        <StackPanel>
-                            <TextBlock Text="2. Get a pairing code from the host" FontWeight="SemiBold" FontSize="15"/>
-                            <TextBlock x:Name="PairConsoleText" Style="{DynamicResource Muted}" Margin="0,4,0,10" TextWrapping="Wrap"/>
-                            <Button x:Name="PairConsoleButton" Content="_Open pairing console" Click="PairConsole_Click" HorizontalAlignment="Left"
+                               Text="Pairing happens once. Afterwards this PC reconnects by itself and keeps the secret in Windows Credential Manager."/>
+                    <Border x:Name="PairAutoCard" Style="{DynamicResource CardStyle}">
+                        <DockPanel>
+                            <Button x:Name="PairConsoleButton" DockPanel.Dock="Right" Content="_Pair automatically" Click="PairConsole_Click"
+                                    Style="{DynamicResource PrimaryButton}" VerticalAlignment="Center" Margin="16,0,0,0"
                                     AutomationProperties.AutomationId="PairConsole"/>
-                        </StackPanel>
+                            <StackPanel>
+                                <TextBlock Text="Pair automatically" FontWeight="SemiBold" FontSize="15"/>
+                                <TextBlock x:Name="PairConsoleText" Style="{DynamicResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </DockPanel>
                     </Border>
                     <Border Style="{DynamicResource CardStyle}">
                         <StackPanel>
-                            <TextBlock Text="3. Or paste a code the host showed you" FontWeight="SemiBold" FontSize="15"/>
-                            <PasswordBox x:Name="PairingCodeBox" Margin="0,8,0,10" AutomationProperties.AutomationId="PairingCode"
-                                         AutomationProperties.Name="Pairing code from the host"/>
-                            <Button Content="Pair with _host" Click="Pair_Click" Style="{DynamicResource PrimaryButton}" HorizontalAlignment="Left"
-                                    AutomationProperties.AutomationId="PairHost"/>
+                            <TextBlock x:Name="PairCodeTitle" FontWeight="SemiBold" FontSize="15" AutomationProperties.AutomationId="PairCodeTitle"/>
+                            <TextBlock x:Name="PairCodeHelp" Style="{DynamicResource Muted}" Margin="0,4,0,12" TextWrapping="Wrap"
+                                       AutomationProperties.AutomationId="PairCodeHelp"/>
+                            <Expander x:Name="PairCommandSection" Header="Show the command to run on the host" Margin="0,0,0,12"
+                                      AutomationProperties.AutomationId="PairCommandSection">
+                                <TextBox x:Name="PairCommandText" IsReadOnly="True" TextWrapping="Wrap" FontFamily="Consolas" Margin="0,8,0,0"
+                                         AutomationProperties.AutomationId="PairCommand"/>
+                            </Expander>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="16"/>
+                                    <ColumnDefinition Width="220"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <Label Target="{Binding ElementName=PairAddressText}" Content="Host _address" Padding="0,0,0,4"/>
+                                    <TextBox x:Name="PairAddressText" FontSize="16" AutomationProperties.AutomationId="PairAddress"
+                                             AutomationProperties.Name="Host address shown with the code"
+                                             ToolTip="The address the host shows next to its code, for example 192.168.1.20"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <Label Target="{Binding ElementName=PairingCodeBox}" Content="C_ode" Padding="0,0,0,4"/>
+                                    <TextBox x:Name="PairingCodeBox" FontSize="16" FontFamily="Consolas" MaxLength="2048" KeyDown="PairingCode_KeyDown"
+                                             AutomationProperties.AutomationId="PairingCode" AutomationProperties.Name="Pairing code from the host"
+                                             ToolTip="The 8-character code the host shows, like K7QM-4XPA (an older host's long martlet-pair-v1 code also works)"/>
+                                </StackPanel>
+                            </Grid>
+                            <Button x:Name="PairHostButton" Content="Pair with _host" Click="Pair_Click" Style="{DynamicResource PrimaryButton}"
+                                    HorizontalAlignment="Left" Margin="0,14,0,0" AutomationProperties.AutomationId="PairHost"/>
                         </StackPanel>
                     </Border>
                     <Border Style="{DynamicResource CardStyle}" Background="{DynamicResource SoftBrush}">
                         <StackPanel>
-                            <TextBlock Text="Current pairing" FontWeight="SemiBold" FontSize="15"/>
-                            <TextBlock x:Name="PairedText" Style="{DynamicResource Muted}" Margin="0,4,0,10" AutomationProperties.AutomationId="PairedHost"/>
+                            <TextBlock Text="Paired host" FontWeight="SemiBold" FontSize="15"/>
+                            <TextBlock x:Name="PairedText" Style="{DynamicResource Muted}" Margin="0,4,0,10" TextWrapping="Wrap"
+                                       AutomationProperties.AutomationId="PairedHost"/>
                             <WrapPanel>
                                 <Button Content="Chec_k host" Click="Check_Click" Margin="0,0,10,0" AutomationProperties.AutomationId="CheckHost"/>
                                 <Button Content="_Update host" Click="UpdateHost_Click" Margin="0,0,10,0" AutomationProperties.AutomationId="UpdateHost"
@@ -155,6 +185,16 @@
                             </WrapPanel>
                         </StackPanel>
                     </Border>
+                    <Expander Header="This PC's device ID" Margin="0,4,0,0" AutomationProperties.AutomationId="DeviceIdSection">
+                        <StackPanel Margin="0,8,0,0">
+                            <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,0,0,8"
+                                       Text="How the host lists this PC among its paired desktops (martlet-host console). Martlet sends it when it pairs; you never need to type it on the host."/>
+                            <DockPanel>
+                                <Button Content="Cop_y" Click="CopyDeviceId_Click" DockPanel.Dock="Right" Margin="8,0,0,0"/>
+                                <TextBox x:Name="DeviceIdText" AutomationProperties.AutomationId="DeviceId" AutomationProperties.Name="This PC's device ID"/>
+                            </DockPanel>
+                        </StackPanel>
+                    </Expander>
                 </StackPanel>
 
                 <StackPanel x:Name="RolesStep" Visibility="Collapsed">

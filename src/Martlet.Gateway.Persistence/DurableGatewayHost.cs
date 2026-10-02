@@ -276,6 +276,11 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         CancellationToken cancellationToken = default) =>
         Local(() => server!.Pairing.OpenWindow(approval), cancellationToken);
 
+    /// <summary>Opens a short-code pairing window (the host shows its address and an XXXX-XXXX code to type on a desktop).</summary>
+    public GatewayCodePairingCard OpenCodePairing(GatewayCodePairingApproval approval,
+        CancellationToken cancellationToken = default) =>
+        Local(() => server!.Pairing.OpenCodeWindow(approval), cancellationToken);
+
     public IssuedDeviceCredential Rotate(string credentialId, TimeSpan overlap,
         CancellationToken cancellationToken = default) =>
         Local(() => server!.Credentials.Rotate(credentialId, overlap, cancellationToken), cancellationToken);

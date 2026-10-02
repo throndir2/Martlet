@@ -18,9 +18,11 @@ internal sealed record HostOptions(string Command, string ConfigPath)
         by Martlet desktop over the owner's SSH session, whose explicit click is the confirmation):
           owner-init     create this new host identity and approve unattended serve of this configuration
           owner-approve  open the existing identity and approve unattended serve of this configuration
-          owner-pair     ... --device-id <id> --name <display name> [--roles voice]: start the listener, print one
-                         "pairing-code: martlet-pair-v1..." line, wait (bounded, 5 minutes) for that device to
-                         register, then close. A "cancel" line on stdin stops waiting.
+          owner-pair     ... [--roles voice]: start the listener, show this host's address and a one-use XXXX-XXXX code
+                         to type on a desktop (Devices > Add a computer > Pair), wait (bounded, 5 minutes) for one
+                         desktop to redeem it, then close. A "cancel" line on stdin stops waiting.
+          owner-pair     ... --device-id <id> --name <display name> [--roles voice]: as above, but for exactly that
+                         device, printing one machine-readable "pairing-code: martlet-pair-v1..." line instead.
         Config alone grants no authority. Never put secrets in arguments, environment or logs.
         Permanent pairing is not connectivity or an inference/action permission.
         Empty worker registry: no models, inference, downloads, service or firewall installation.
@@ -55,7 +57,8 @@ internal sealed record HostOptions(string Command, string ConfigPath)
                 _ => throw new HostInputException()
             };
         }
-        if (options.DeviceId is null || options.Name is null) throw new HostInputException();
+        // Neither --device-id nor --name: a short typed code that any desktop can redeem once.
+        if ((options.DeviceId is null) != (options.Name is null)) throw new HostInputException();
         _ = HostApplication.Roles(options.Roles);
         return options;
     }

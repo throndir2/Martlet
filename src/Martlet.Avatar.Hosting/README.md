@@ -46,8 +46,9 @@ the `audio2face` role: this PC through Docker Desktop, another computer over SSH
 (Docker or native Ubuntu), or by running the same
 [`martlet-host setup`, `pair` and `add audio2face`](../../deploy/host/README.md)
 commands on the host yourself. It starts the NIM on the host's loopback and
-publishes the gateway's Audio2Face relay route. Pair this PC by pasting the
-one-use `martlet-pair-v1...` code the host's `pair` console shows. The device
+publishes the gateway's Audio2Face relay route. Pair this PC by typing the
+address and short one-use code (like `K7QM-4XPA`) that `martlet-host pair` shows
+on the host into **Enter a pairing code**. The device
 secret is stored in Windows Credential Manager; `avatar.json` keeps only the
 nonsecret `RemoteHost` identity of the host that handles lip-sync, and
 `hosts.json` lists every paired host. Hand lip-sync to another host, back to

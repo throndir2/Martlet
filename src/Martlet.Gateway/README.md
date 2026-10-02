@@ -228,6 +228,37 @@ proof must repeat the out-of-band host ID, pin and approved device ID. A valid
 proof consumes the window atomically; expired, failed-limit and previously used
 windows cannot be revived.
 
+### Short typed codes
+
+`GatewayPairingService.OpenCodeWindow` (local host code only, like
+`OpenWindow`) opens a window that a person redeems by typing instead of pasting
+a card: the host shows its address and an 8-character code such as `K7QM-4XPA`
+(32 symbols without `I`, `O`, `0` or `1`: 40 bits), one use, at most five
+minutes, at most two such windows open. The owner approves only the roles; the
+desktop that proves the code names itself (device ID and display name) when it
+redeems it. `GatewayPairingCode` defines the exchange, and desktops implement
+the same derivation:
+
+1. The desktop connects to the typed address without a pin (`GET /health/live`)
+   and notes the SPKI fingerprint that answered; later connections in the same
+   attempt must present that key.
+2. It derives `K = PBKDF2-SHA256(code, "martlet-pair-code-v1\n" + fingerprint +
+   "\n" + nonce, 100,000)` with a fresh 16-byte nonce and sends
+   `POST /martlet/v1/pair/code` with `device_id`, `display_name`,
+   `client_nonce` and `proof = HMAC(K, "martlet-pair-code-v1 client\n" +
+   device + "\n" + name + "\n" + nonce)`.
+3. The host derives `K` from each open code and its **own** fingerprint. A match
+   issues the credential and adds `host_proof = HMAC(K, "martlet-pair-code-v1
+   host\n" + host ID + "\n" + device + "\n" + credential ID + "\n" + secret +
+   "\n" + nonce)` to the usual pairing response. A miss counts against every
+   open code window (each closes after five).
+4. The desktop pins the fingerprint only when `host_proof` verifies.
+
+A key swapped in on the network changes `K`, so the real host refuses the proof
+and the impostor cannot answer without the code; one observed attempt leaves
+only an offline search of 2^40 codes at 100,000 PBKDF2 iterations each against
+a five-minute window.
+
 Pairing returns a random 16-byte credential ID and one 32-byte device secret.
 The clear secret is returned once and is excluded from all registration,
 audit, status, error and `ToString` surfaces. The host retains a SHA-256
@@ -294,6 +325,7 @@ the same request returns `auth.replay`.
 | --- | --- | --- |
 | `GET /health/live` | None | Exact `{"status":"live"}`; no host ID, version, worker or system data |
 | `POST /martlet/v1/pair` | Locally opened one-use proof | One scoped credential; 8 KiB strict JSON with required fields, duplicate/unknown rejection |
+| `POST /martlet/v1/pair/code` | Proof of a locally opened short code ([short typed codes](#short-typed-codes)) | One scoped credential plus `host_proof`; same 8 KiB strict JSON rules |
 | `GET /martlet/v1/version` | Signed scoped device request | Protocol `2.0`, gateway `0.2.0`, host ID, authorized role and explicit `credential_lifetime` (`paired` or retiring old key with deadline) |
 | `GET /martlet/v1/capabilities` | Signed scoped device request | Registry `martlet.gateway.inference-routes` `1.0`, at most 8 fixed routes and 16 status workers, filtered by role |
 | `GET /martlet/v1/status` | Signed scoped device request | Two-second cooperative cancellation for status reads for only that role |

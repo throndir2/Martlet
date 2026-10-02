@@ -414,7 +414,8 @@ public partial class MainWindow
                     : "Sets up the gateway once. Windows asks once to allow TCP 9443 from your private network.",
                 hostServiceReachable == true, false, [new("Set up host service", () => SetUpHostServiceAsync().Forget(), true)]),
             new("pair", "Pair your main PC",
-                "Martlet shows a one-use code here (and copies it). On your main PC, go to Devices > Add a computer > Pair and paste it.",
+                "Martlet shows this PC's address and a short one-use code here. On your main PC, open Devices > Add a computer > " +
+                "Enter a pairing code and type them.",
                 false, false, [new("Show a pairing code", () => LaunchHost(HostAction.Pair), true)]),
             new("roles", "Add roles",
                 string.Join(" ", HostRoles.All.Select(r => $"{r.Name} needs {r.Needs}.")) + " " + nvidia,
@@ -1029,7 +1030,7 @@ public partial class MainWindow
         if (!ConfirmationDialog.Confirm(this,
                 $"Forget {host.HostId} on this PC? Martlet stops using it and this PC's pairing secret is deleted." +
                 (impact.Count > 0 ? $" It does jobs for this PC: {string.Join(" ", impact)}" : "") +
-                $" To remove this PC from the host too, revoke {host.Pairing.DeviceId} in its pairing console.",
+                $" To remove this PC from the host too, run martlet-host console there and revoke {host.Pairing.DeviceId}.",
                 "Forget host"))
             return;
         var inCharge = homeAvatar?.RemoteHost?.HostId == host.HostId;
@@ -1050,7 +1051,7 @@ public partial class MainWindow
                 RecordClusterJob(ClusterJobs.LipSync, new(null, false));
                 if (avatar.IsShowing) await avatar.UseHostAsync(null, token);
             }
-            ActionText.Text = $"Forgot {host.HostId}. Revoke {host.Pairing.DeviceId} in its pairing console to finish." +
+            ActionText.Text = $"Forgot {host.HostId}. To finish, run martlet-host console on it and revoke {host.Pairing.DeviceId}." +
                 (stranded.Count > 0 ? $" Nobody does the {string.Join(" or ", stranded)} now; choose another in Companion or on the Devices page." : "");
         });
         await RefreshHomeAsync();

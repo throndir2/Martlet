@@ -156,7 +156,7 @@ public sealed partial class OwnerTests : NativeTest
         Assert.DoesNotContain(typeof(DurableGatewayHost).GetMethods(), method =>
             method.Name.Contains("Import", StringComparison.Ordinal) || method.Name.Contains("Export", StringComparison.Ordinal));
         Assert.Equal(["Authenticate"], typeof(IGatewayRequestCredentials).GetMethods().Select(method => method.Name).ToArray());
-        Assert.Equal(["Exchange"], typeof(IGatewayPairingExchange).GetMethods().Select(method => method.Name).ToArray());
+        Assert.Equal(["Exchange"], typeof(IGatewayPairingExchange).GetMethods().Select(method => method.Name).Distinct().ToArray());
         Assert.DoesNotContain(typeof(DurableGatewayHost).Assembly.GetReferencedAssemblies(),
             assembly => assembly.Name == "Martlet.Gateway.Trust");
     }

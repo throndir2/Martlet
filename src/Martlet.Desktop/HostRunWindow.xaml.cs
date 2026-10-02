@@ -102,6 +102,14 @@ public partial class HostRunWindow : ThemedWindow
     /// <summary>Shows a line that must not reach the run log (for example a one-use pairing code).</summary>
     internal void Reveal(string line) => Show(line);
 
+    /// <summary>Shows the address and one-use code another desktop types to pair (never logged); null hides them.</summary>
+    internal void ShowPairingCode(string? address, string? code)
+    {
+        PairingAddressText.Text = address ?? "";
+        PairingCodeText.Text = code ?? "";
+        PairingPanel.Visibility = code is null ? Visibility.Collapsed : Visibility.Visible;
+    }
+
     private void Show(string line)
     {
         OutputText.AppendText(line + Environment.NewLine);
@@ -232,36 +240,28 @@ internal static class HostActions
         });
     }
 
-    /// <summary>Lets another desktop pair with this PC's host service: asks for its device ID, shows the one-use pairing
-    /// code (copied to the clipboard, never logged) and waits up to five minutes for that desktop to use it.</summary>
-    internal static Task<string?> PairOtherDesktopAsync(Window owner, HostSetupTarget target)
-    {
-        var dialog = new HostInputDialog("Pair your main PC", "Pair your main PC with this PC's host service",
-            "On your main PC open Devices > Add a computer > Pair and copy its device ID. Martlet then shows a one-use code here " +
-            "(also copied to the clipboard) to paste on the main PC within five minutes.", "_Show the code");
-        dialog.AddText("device", "Main PC's device ID", "", "It looks like desktop-main-pc.");
-        dialog.AddText("name", "A name for it", "Main PC");
-        if (dialog.Ask(owner) is not { } values) return Task.FromResult<string?>(null);
-        return HostRunWindow.RunAsync(owner, "Pair your main PC", async run =>
+    /// <summary>Lets another desktop pair with this PC's host service: shows this PC's address and a short one-use code
+    /// (never logged) and waits up to five minutes for that desktop to type them.</summary>
+    internal static Task<string?> PairOtherDesktopAsync(Window owner, HostSetupTarget target) =>
+        HostRunWindow.RunAsync(owner, "Pair your main PC", async run =>
         {
             await HostLocal.EnsureDockerAsync(run, ContinueSetupKind.Docker);
             await HostLocal.EnsureImageAsync(target, run.Status, run.Output, run.Token);
             run.Status("Asking this PC's host service for a one-use pairing code...");
             var shown = false;
-            var exit = await HostLocal.PairOtherAsync(target, values["device"], values["name"], code => run.Dispatcher.Invoke(() =>
+            int exit;
+            try
             {
-                shown = true;
-                try { Clipboard.SetText(code); }
-                catch (System.Runtime.InteropServices.ExternalException) { }
-                run.Reveal("Pairing code (copied to the clipboard): " + code);
-                run.Status("Paste the code on your main PC (Devices > Add a computer > Pair) within five minutes. Waiting for it...");
-            }), new LineSink(line =>
-            {
-                if (!line.Contains("martlet-pair-v1.", StringComparison.Ordinal)) run.Output.Report(line);
-            }), run.Token);
+                exit = await HostLocal.PairOtherAsync(target, (address, code) => run.Dispatcher.Invoke(() =>
+                {
+                    shown = true;
+                    run.ShowPairingCode(address, code);
+                    run.Status("Type the address and code on your main PC within five minutes. Waiting for it...");
+                }), run.Output, run.Token);
+            }
+            finally { run.Dispatcher.Invoke(() => run.ShowPairingCode(null, null)); }
             if (!shown) throw new InvalidOperationException($"This PC's host service did not show a pairing code (exit {exit}). The output shows why.");
-            if (exit != 0) throw new InvalidOperationException($"Pairing did not complete (exit {exit}). Show the code again and paste it within five minutes.");
-            return $"{values["name"]} is paired with this PC's host service.";
+            if (exit != 0) throw new InvalidOperationException($"Pairing did not complete (exit {exit}). Show a new code and type it within five minutes.");
+            return "Your main PC is paired with this PC's host service.";
         });
-    }
 }
