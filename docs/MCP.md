@@ -227,12 +227,17 @@ Docker Desktop (optional absolute `dataDirectory`, default the current user's):
 `firmware`, `hypervisor`, `virtualMachinePlatform` and
 `windowsSubsystemForLinux` (`Enabled`, `Disabled`, `Absent` or `Unknown`),
 `wsl` (version, `none` or null), `virtualMachine`, `summary`,
-`dockerDesktop {installed, running}` and `continueSetup {pending, kind, task,
+`dockerDesktop {installed, running, engine}` (`engine` is what
+`docker desktop status` reports, for example `running`, `starting` or
+`stopped`, or null when Docker Desktop doesn't answer within 15 seconds; a
+run window restarts Docker Desktop once when it is open but its engine stays
+`stopped` at two checks in a row, and always after Martlet changed Windows for
+it) and `continueSetup {pending, kind, task,
 created, startsAtSignIn}`: the setup Martlet continues after a Windows restart
 (`continue-setup.json` in the data directory, and whether the per-user `RunOnce`
 entry that starts Martlet at the next sign-in exists). It runs a CIM query and
-`wsl --version` in a hidden Windows PowerShell, changes nothing and returns no
-paths.
+`wsl --version` in a hidden Windows PowerShell and `docker desktop status`,
+changes nothing and returns no paths.
 
 `logs_tail` reads the last `lines` (1-400, default 100) of one local log under
 `<dataDirectory>\logs` (`log`: `desktop` (default), `avatar-renderer` or

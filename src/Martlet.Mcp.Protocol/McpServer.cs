@@ -92,7 +92,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
         }),
         Tool("virtualization_status", "Read whether Windows is ready for Docker Desktop's WSL 2 engine (virtualization in the firmware, " +
             "the Windows hypervisor, Virtual Machine Platform, Windows Subsystem for Linux, the WSL version), whether Docker Desktop is " +
-            "installed and running, and any setup Martlet continues after a Windows restart. Read-only; changes nothing.", new
+            "installed and running and its engine state, and any setup Martlet continues after a Windows restart. Read-only; changes nothing.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -435,7 +435,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             {
                 installed = File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
                     "Docker", "Docker", "Docker Desktop.exe")),
-                running = Running("com.docker.backend") || Running("Docker Desktop")
+                running = Running("com.docker.backend") || Running("Docker Desktop"),
+                engine = await DockerDesktopStatus.ReadAsync(cancellation)
             },
             continueSetup = new
             {
