@@ -400,8 +400,9 @@ internal static class NetworkMap
                     break;
             }
             var audio = inputs.Settings?.Audio is { } devices
-                ? devices.Input.Checkpoint is not null && devices.Output.Checkpoint is not null ? "Tested" : "Chosen, not tested yet"
-                : "Windows defaults, not tested";
+                ? devices.Input.Checkpoint is not null && devices.Output.Checkpoint is not null ? "Tested"
+                    : devices.Input.EndpointId is null && devices.Output.EndpointId is null ? "Windows defaults" : "Chosen devices"
+                : "Windows defaults";
             thisPc.Roles.Add(new("Audio", "Microphone and speakers", audio));
         }
 

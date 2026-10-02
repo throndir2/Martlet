@@ -19,7 +19,7 @@ namespace Martlet.Desktop.Tests;
 public sealed class AudioSetupDispatcherTests
 {
     [Fact]
-    public Task OpeningDecliningAndSavingNeverAccessesDevicesOrVault() => OnDispatcher(async () =>
+    public Task OpeningListsDevicesButDecliningAndSavingNeverOpensThemOrTheVault() => OnDispatcher(async () =>
     {
         using var fixture = new Fixture();
         var window = fixture.Open(approve: false);
@@ -27,11 +27,13 @@ public sealed class AudioSetupDispatcherTests
         {
             await Ready(window);
             Assert.Contains("never tested", Text(window, "StatusText"));
+            await Wait(() => Control<TextBlock>(window, "MicBadge").Text == "Ready" && Control<TextBlock>(window, "OutputBadge").Text == "Ready");
+            Assert.Equal(1, fixture.Catalog.Calls);
             Assert.False(Directory.Exists(fixture.Directory));
             Click(window, "MicButton");
             Click(window, "OutputButton");
             Assert.Contains("Permission declined", Text(window, "ResultText"));
-            Assert.Equal(0, fixture.Catalog.Calls);
+            Assert.Equal(1, fixture.Catalog.Calls);
             Assert.Equal(0, fixture.Capture.Opens);
             Assert.Equal(0, fixture.Output.Opens);
             Assert.Equal(2, fixture.Confirmations);
@@ -41,20 +43,19 @@ public sealed class AudioSetupDispatcherTests
             await Ready(window);
             Assert.Equal(0, fixture.Capture.Opens);
             Assert.Equal(0, fixture.Output.Opens);
-            Assert.Equal(0, fixture.Catalog.Calls);
+            Assert.Equal(2, fixture.Catalog.Calls);
         }
         finally { window.Close(); }
     });
 
     [Fact]
-    public Task FindDevicesRunsOffDispatcherAndFixedChoicePersistsWithoutOpening() => OnDispatcher(async () =>
+    public Task DevicesAreListedOnOpenOffDispatcherAndFixedChoicePersistsWithoutOpening() => OnDispatcher(async () =>
     {
         using var fixture = new Fixture();
         var window = fixture.Open();
         try
         {
             await Ready(window);
-            Click(window, "FindButton");
             await Wait(() => Text(window, "ResultText").Contains("Found 1 input", StringComparison.Ordinal));
             Assert.NotEqual(Environment.CurrentManagedThreadId, fixture.Catalog.Thread);
             // Picking applies: both changes save, even when the second is made while the first is saving.
@@ -66,6 +67,30 @@ public sealed class AudioSetupDispatcherTests
             Assert.DoesNotContain("PRIVATE", Text(window, "StatusText"));
             Assert.Equal(0, fixture.Capture.Opens);
             Assert.Equal(0, fixture.Output.Opens);
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
+    public Task PluggedInMicrophoneAppearsWhenTheListOpensAgain() => OnDispatcher(async () =>
+    {
+        using var fixture = new Fixture();
+        fixture.Catalog.Devices = new([], [new("PRIVATE-output", "Headset", true)]);
+        var window = fixture.Open();
+        try
+        {
+            await Ready(window);
+            await Wait(() => Control<TextBlock>(window, "MicBadge").Text == "Not found");
+            var input = Control<ComboBox>(window, "InputChoice");
+            Assert.Single(input.Items);
+            fixture.Catalog.Devices = new([new("PRIVATE-input", "Microphone", true)], [new("PRIVATE-output", "Headset", true)]);
+            input.IsDropDownOpen = true;
+            await Wait(() => input.Items.Count == 2);
+            input.IsDropDownOpen = false;
+            await Wait(() => Control<TextBlock>(window, "MicBadge").Text == "Ready");
+            Assert.Equal(2, fixture.Catalog.Calls);
+            Assert.Equal(0, fixture.Capture.Opens);
+            Assert.False(Directory.Exists(fixture.Directory));
         }
         finally { window.Close(); }
     });
@@ -350,7 +375,6 @@ public sealed class AudioSetupDispatcherTests
         try
         {
             await Ready(window);
-            Click(window, "FindButton");
             await Wait(() => Text(window, "ResultText").Contains("Found 1 input", StringComparison.Ordinal));
             Control<ComboBox>(window, "OutputChoice").SelectedIndex = 1;
             Assert.False(Control<Button>(window, "HeardButton").IsEnabled);
@@ -390,9 +414,14 @@ public sealed class AudioSetupDispatcherTests
         AudioSetupWindow? reopened = null;
         try
         {
-            await Ready(window);
-            var action = block == "Discovery" ? "FindButton" : block.StartsWith("Output", StringComparison.Ordinal) ? "OutputButton" : "MicButton";
-            Click(window, action);
+            var discovery = block == "Discovery";
+            var action = block.StartsWith("Output", StringComparison.Ordinal) ? "OutputButton" : "MicButton";
+            // Opening the window lists devices on its own; tests start from their buttons.
+            if (!discovery)
+            {
+                await Ready(window);
+                Click(window, action);
+            }
             if (block == "CaptureDispose")
             {
                 await Wait(() => fixture.Capture.Reads > 0);
@@ -406,8 +435,19 @@ public sealed class AudioSetupDispatcherTests
             await fixture.Entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
             await Heartbeat();
             Assert.True(fixture.Runner.IsRunning);
-            if (block is not ("CaptureCallback" or "OutputCallback")) Click(window, action);
-            Click(window, "StopButton");
+            if (discovery)
+            {
+                // Reopening a list while the listing is stuck starts nothing new; the listing times out instead.
+                var input = Control<ComboBox>(window, "InputChoice");
+                input.IsDropDownOpen = true;
+                input.IsDropDownOpen = false;
+                fixture.Clock.Advance(TimeSpan.FromSeconds(6));
+            }
+            else
+            {
+                if (block is not ("CaptureCallback" or "OutputCallback")) Click(window, action);
+                Click(window, "StopButton");
+            }
             await Wait(() => Text(window, "ResultText").Contains("Observation stopped", StringComparison.Ordinal));
             var oldText = Text(window, "ResultText");
             var oldStatus = Text(window, "StatusText");
@@ -415,7 +455,7 @@ public sealed class AudioSetupDispatcherTests
             Assert.True(fixture.Runner.IsRunning);
             reopened = fixture.Open();
             await Heartbeat();
-            Assert.False(Control<Button>(reopened, "FindButton").IsEnabled);
+            Assert.False(Control<Button>(reopened, "MicButton").IsEnabled);
             fixture.Release.Set();
             await Wait(() => !fixture.Runner.IsRunning);
             await Heartbeat();
@@ -423,7 +463,7 @@ public sealed class AudioSetupDispatcherTests
             Assert.Equal(oldStatus, Text(window, "StatusText"));
             if (block == "CaptureOpen") Assert.Equal(0, fixture.Capture.Starts);
             if (block == "OutputOpen") Assert.Equal(0, fixture.Output.Starts);
-            Assert.Equal(block == "Discovery" ? 1 : 0, fixture.Catalog.Calls);
+            Assert.Equal(1, fixture.Catalog.Calls);
         }
         finally
         {
@@ -442,8 +482,6 @@ public sealed class AudioSetupDispatcherTests
         var window = fixture.Open();
         try
         {
-            await Ready(window);
-            Click(window, "FindButton");
             await fixture.Entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
             fixture.Clock.Advance(TimeSpan.FromSeconds(6));
             await Wait(() => Text(window, "ResultText").Contains("timed out", StringComparison.Ordinal));
@@ -453,9 +491,13 @@ public sealed class AudioSetupDispatcherTests
             await Wait(() => !fixture.Runner.IsRunning);
             Assert.Single(Control<ComboBox>(window, "InputChoice").Items);
             fixture.Catalog.Block = false;
-            Click(window, "FindButton");
+            await Ready(window);
+            var input = Control<ComboBox>(window, "InputChoice");
+            input.IsDropDownOpen = true;
             await Wait(() => Text(window, "ResultText").Contains("Found 1 input", StringComparison.Ordinal));
-            Assert.Equal(2, Control<ComboBox>(window, "InputChoice").Items.Count);
+            input.IsDropDownOpen = false;
+            Assert.Equal(2, input.Items.Count);
+            Assert.Equal(2, fixture.Catalog.Calls);
         }
         finally { fixture.Release.Set(); window.Close(); }
     });
@@ -709,7 +751,6 @@ public sealed class AudioSetupDispatcherTests
         try
         {
             await Ready(window);
-            Click(window, "FindButton");
             await Wait(() => Text(window, "ResultText").Contains("Found 1 input", StringComparison.Ordinal));
             var concurrent = SetupSettings.SelectRoute(SetupSettings.Begin(null), SetupRole.Llm, "new-model", null);
             Assert.True((await fixture.Store.SaveAsync(concurrent, null)).Saved);
@@ -721,7 +762,7 @@ public sealed class AudioSetupDispatcherTests
             Assert.Equal(bytes, await File.ReadAllBytesAsync(fixture.Store.FilePath));
             Click(window, "ReloadButton");
             await Ready(window);
-            Assert.Equal(1, fixture.Catalog.Calls);
+            Assert.Equal(2, fixture.Catalog.Calls);
         }
         finally { window.Close(); }
     });
@@ -777,7 +818,8 @@ public sealed class AudioSetupDispatcherTests
     private static T Control<T>(Window window, string name) => Assert.IsType<T>(window.FindName(name));
     private static string Text(Window window, string name) => Control<TextBox>(window, name).Text;
     private static void Click(Window window, string name) => Control<Button>(window, name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-    private static Task Ready(Window window) => Wait(() => Control<Button>(window, "FindButton").IsEnabled);
+    // The window lists devices as it opens; tests become available once that listing finishes.
+    private static Task Ready(Window window) => Wait(() => Control<Button>(window, "MicButton").IsEnabled);
     private static async Task<AudioSettings> Saved(Fixture fixture, Func<AudioSettings, bool> condition)
     {
         var deadline = DateTime.UtcNow.AddSeconds(5);
@@ -881,13 +923,14 @@ public sealed class AudioSetupDispatcherTests
     {
         public bool Block;
         public int Calls, Thread;
+        public volatile AudioDeviceList Devices = new([new("PRIVATE-input", "Microphone", true)], [new("PRIVATE-output", "Headset", true)]);
         public AudioDeviceList Discover(CancellationToken token)
         {
             Interlocked.Increment(ref Calls);
             Thread = Environment.CurrentManagedThreadId;
             if (Block) { entered.TrySetResult(); release.Wait(); }
             token.ThrowIfCancellationRequested();
-            return new([new("PRIVATE-input", "Microphone", true)], [new("PRIVATE-output", "Headset", true)]);
+            return Devices;
         }
     }
 

@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using Martlet.Audio;
 using Martlet.Audio.Windows;
 using Martlet.Core.Contracts;
+using Martlet.Core.Settings;
 using NAudio.CoreAudioApi;
 
 namespace Martlet.Desktop;
@@ -11,12 +12,43 @@ public sealed record AudioEndpoint(string EndpointId, string DisplayName, bool I
     public override string ToString() => DisplayName + (IsDefault ? " (Windows default)" : "");
 }
 
-public sealed record AudioDeviceList(IReadOnlyList<AudioEndpoint> Inputs, IReadOnlyList<AudioEndpoint> Outputs);
+public sealed record AudioDeviceList(IReadOnlyList<AudioEndpoint> Inputs, IReadOnlyList<AudioEndpoint> Outputs)
+{
+    public bool SameAs(AudioDeviceList? other) =>
+        other is not null && Inputs.SequenceEqual(other.Inputs) && Outputs.SequenceEqual(other.Outputs);
+
+    /// <summary>Whether the chosen device is connected: the Windows default counts when any device of that kind exists.</summary>
+    public static bool? Present(AudioChoice? choice, IReadOnlyList<AudioEndpoint>? found) =>
+        found is null ? null : choice?.EndpointId is { } id ? found.Any(item => item.EndpointId == id) : found.Count > 0;
+}
 
 public interface IAudioDeviceCatalog
 {
-    // Called only by the explicit Find devices worker. Return only after releasing enumeration resources.
+    // Lists endpoint names only, never opening one. Return only after releasing enumeration resources.
     AudioDeviceList Discover(CancellationToken token);
+}
+
+/// <summary>Checks off the UI thread which microphones and speakers are plugged in, for status pages. A failed or slow
+/// check reports nothing, and callers then assume the Windows defaults work.</summary>
+public sealed class AudioDevicePresence
+{
+    private readonly IAudioDeviceCatalog catalog;
+    private Task<AudioDeviceList?>? running;
+    public AudioDevicePresence(IAudioDeviceCatalog? catalog = null) => this.catalog = catalog ?? new WindowsAudioDeviceCatalog();
+    public AudioDeviceList? Last { get; private set; }
+
+    public async Task<AudioDeviceList?> CheckAsync(CancellationToken token)
+    {
+        // One check at a time: a stuck driver call keeps its one thread, never a growing pile of them.
+        running = running is { IsCompleted: false } busy ? busy : Task.Run(() =>
+        {
+            try { return catalog.Discover(token); }
+            catch (Exception) { return null; }
+        }, CancellationToken.None);
+        try { Last = await running.WaitAsync(TimeSpan.FromSeconds(3), token); }
+        catch (Exception error) when (error is TimeoutException or OperationCanceledException) { Last = null; }
+        return Last;
+    }
 }
 
 public sealed class AudioDiscoveryException(ErrorCode code, bool released = true) : Exception

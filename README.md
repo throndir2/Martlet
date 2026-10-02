@@ -255,6 +255,11 @@ a browser favicon into. Regenerate the PNG/ICO locally after artwork changes wit
 `.\scripts\Generate-AppIcon.ps1` on Windows with PowerShell 7; no downloads or
 third-party image tooling are needed.
 
+The same bird is the in-app **Martlet mascot**: the navigation rail logo, the Home
+hero, the welcome tour, and the Talk header and reply avatar draw it as a round
+badge from the `MascotImage` vector in `src\Martlet.Desktop\Themes\Controls.xaml`.
+Copy bird artwork changes from the SVG into that resource too.
+
 Doctor `status` currently exits **2 (incomplete)** on first run or a valid
 unconfigured profile, not success. Exit 3 means invalid invocation/settings;
 exit 1 is reserved for reported probe failures; exit 0 means requested required

@@ -27,19 +27,10 @@
             <StackPanel Margin="22,18,22,18">
                 <TextBlock Text="Microphone and speakers" Style="{DynamicResource PageTitle}" />
                 <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,16"
-                           Text="Pick what Martlet listens to and plays through, then run a quick test. Choices save as you go. Tests stay on this PC: nothing is recorded or sent." />
+                           Text="Pick what Martlet listens to and plays through. Your Windows defaults work as they are; test them any time. Choices save as you go. Tests stay on this PC: nothing is recorded or sent." />
 
-                <DockPanel Margin="0,0,0,14">
-                    <Button x:Name="FindButton" DockPanel.Dock="Right" Click="Find_Click" Padding="12,7" Margin="12,0,0,0" VerticalAlignment="Center"
-                            AutomationProperties.AutomationId="AudioFind" AutomationProperties.Name="Find microphones and speakers on this PC">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Style="{DynamicResource Icon}" Text="&#xE72C;" FontSize="14" Margin="0,0,8,0" />
-                            <AccessText Text="_Find devices" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </Button>
-                    <TextBlock x:Name="DevicesText" Style="{DynamicResource Muted}" VerticalAlignment="Center" AutomationProperties.AutomationId="AudioDevices"
-                               Text="Martlet uses your Windows defaults. Find devices to pick a specific one." />
-                </DockPanel>
+                <TextBlock x:Name="DevicesText" Style="{DynamicResource Muted}" Margin="0,0,0,14" TextWrapping="Wrap" AutomationProperties.AutomationId="AudioDevices"
+                           AutomationProperties.LiveSetting="Polite" Text="Looking for microphones and speakers..." />
 
                 <!-- 1. Microphone -->
                 <Border Style="{DynamicResource CardStyle}" Padding="20,16" Margin="0,0,0,14">
@@ -51,7 +42,7 @@
                             <TextBlock Style="{DynamicResource Icon}" Text="&#xE720;" FontSize="20" Foreground="{DynamicResource AccentBrush}" Margin="0,0,10,0" />
                             <TextBlock Text="Microphone" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
                         </DockPanel>
-                        <ComboBox x:Name="InputChoice" Margin="0,12,0,0" MinHeight="34" SelectionChanged="Choice_Changed"
+                        <ComboBox x:Name="InputChoice" Margin="0,12,0,0" MinHeight="34" SelectionChanged="Choice_Changed" DropDownOpened="Choice_DropDownOpened"
                                   AutomationProperties.AutomationId="AudioInput" AutomationProperties.Name="Microphone" />
                         <DockPanel Margin="0,12,0,0">
                             <Button x:Name="MicButton" DockPanel.Dock="Left" Content="_Test microphone" Click="Mic_Click" Padding="14,8"
@@ -74,7 +65,7 @@
                             <TextBlock Style="{DynamicResource Icon}" Text="&#xE767;" FontSize="20" Foreground="{DynamicResource AccentBrush}" Margin="0,0,10,0" />
                             <TextBlock Text="Speakers or headphones" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
                         </DockPanel>
-                        <ComboBox x:Name="OutputChoice" Margin="0,12,0,0" MinHeight="34" SelectionChanged="Choice_Changed"
+                        <ComboBox x:Name="OutputChoice" Margin="0,12,0,0" MinHeight="34" SelectionChanged="Choice_Changed" DropDownOpened="Choice_DropDownOpened"
                                   AutomationProperties.AutomationId="AudioOutput" AutomationProperties.Name="Speakers or headphones" />
                         <WrapPanel Margin="0,12,0,0">
                             <Button x:Name="OutputButton" Content="Play test _sound" Click="Output_Click" Padding="14,8" Margin="0,0,10,0"
@@ -91,7 +82,7 @@
                 <Expander Header="Details" Margin="0,4,0,0" AutomationProperties.AutomationId="AudioDetails">
                     <StackPanel Margin="0,8,0,0">
                         <TextBlock Style="{DynamicResource Muted}" FontSize="12" Margin="0,0,0,8"
-                                   Text="Opening this window doesn't list or open any device. Each test asks first, runs only on this PC and keeps nothing: no recording is saved and no provider, network or key is used. A microphone pass means sound came through, not that speech was recognized; a played beep counts as heard only when you confirm it. Saved choices never start a test or listening on their own, and Martlet never changes your volume or Windows defaults." />
+                                   Text="Opening this window lists your microphones and speakers by name, and opening a device list checks again for anything you just plugged in. Listing never opens a device. Martlet uses your Windows defaults until you pick others. Each test asks first, runs only on this PC and keeps nothing: no recording is saved and no provider, network or key is used. A microphone pass means sound came through, not that speech was recognized; a played beep counts as heard only when you confirm it. Saved choices never start a test or listening on their own, and Martlet never changes your volume or Windows defaults." />
                         <Button Style="{DynamicResource LinkButton}" HorizontalAlignment="Left" Content="Troubleshooting" Click="Troubleshooting_Click"
                                 AutomationProperties.AutomationId="AudioTroubleshooting" />
                         <TextBlock x:Name="ActivityText" TextWrapping="Wrap" FontSize="12" Margin="0,8,0,0" AutomationProperties.LiveSetting="Polite"

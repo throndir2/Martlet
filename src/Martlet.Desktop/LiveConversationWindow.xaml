@@ -16,12 +16,7 @@
                             AutomationProperties.HelpText="Discard recording and revoke this action or unused permissions. Escape works anywhere in this conversation window. Does not close the window or send audio." />
                     <Button Content="_Close" Click="Close_Click" Margin="8,0,0,0" AutomationProperties.AutomationId="CloseLive" />
                 </StackPanel>
-                <Grid x:Name="TalkMark" DockPanel.Dock="Left" Width="48" Height="48" Margin="0,0,14,0" IsHitTestVisible="False">
-                    <Ellipse Fill="{DynamicResource SurfaceBrush}" Stroke="{DynamicResource BorderBrush}"/>
-                    <Viewbox Margin="10" x:Name="TalkHeart" RenderTransformOrigin="0.5,0.5">
-                        <Path Data="M 39 66 C 33 59 14 48 19 34 C 23 23 35 26 39 33 C 45 23 58 24 62 34 C 68 47 48 61 39 66 Z" Fill="{DynamicResource AccentBrush}"/>
-                    </Viewbox>
-                </Grid>
+                <Image x:Name="TalkMascot" Style="{DynamicResource Mascot}" DockPanel.Dock="Left" Width="48" Height="48" Margin="0,0,14,0"/>
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock Text="Talk with Martlet" FontSize="21" FontWeight="SemiBold"/>
                     <TextBlock Style="{DynamicResource Muted}" FontSize="12"
@@ -57,12 +52,7 @@
                     </StackPanel>
 
                     <DockPanel Margin="0,0,32,14">
-                        <Grid DockPanel.Dock="Left" Width="34" Height="34" VerticalAlignment="Top" Margin="0,22,10,0" IsHitTestVisible="False">
-                            <Ellipse Fill="{DynamicResource AccentBrush}"/>
-                            <Viewbox Margin="8">
-                                <Path Data="M 39 66 C 33 59 14 48 19 34 C 23 23 35 26 39 33 C 45 23 58 24 62 34 C 68 47 48 61 39 66 Z" Fill="{DynamicResource OnAccentBrush}"/>
-                            </Viewbox>
-                        </Grid>
+                        <Image DockPanel.Dock="Left" Style="{DynamicResource Mascot}" Width="34" Height="34" VerticalAlignment="Top" Margin="0,22,10,0"/>
                         <StackPanel>
                             <Label Target="{Binding ElementName=AnswerText}" Content="Martlet's reply (response _text, kept even if audio fails)" Padding="0,0,0,4"
                                    Foreground="{DynamicResource MutedBrush}" FontSize="12"/>

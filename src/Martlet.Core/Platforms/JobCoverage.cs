@@ -60,7 +60,7 @@ public sealed record JobSituation
 public enum CoverageState { Ready, Unknown, NotChosen, Limited, Unavailable }
 
 /// <summary>A fix the app can offer next to a coverage problem.</summary>
-public enum CoverageFix { UseFallback, CheckHost, OpenSetup, OpenDevices }
+public enum CoverageFix { UseFallback, CheckHost, OpenSetup, OpenDevices, InstallRole }
 
 public sealed record JobCoverage(string Job, CoverageState State, string Problem, string Effect, IReadOnlyList<CoverageFix> Fixes,
     string? HostId = null, string? Fallback = null)
@@ -132,8 +132,8 @@ public static class JobCoverageRules
                 (host.ForegroundOnly ? " (it hosts only while Martlet is open on its screen)." : ".") + Failover(),
                 [CoverageFix.CheckHost, .. fallback, CoverageFix.OpenDevices]);
         if (host.Reachable == true && host.Serves == false)
-            return Result(down, $"{host.HostId} answers but no longer runs {host.Engine}." + Failover(),
-                [.. fallback, CoverageFix.OpenDevices]);
+            return Result(down, $"{host.HostId} answers but doesn't run {host.Engine}: it isn't installed there." + Failover(),
+                [CoverageFix.InstallRole, .. fallback, CoverageFix.OpenDevices]);
         if (host.Reachable is null)
             return Result(CoverageState.Unknown, $"{host.HostId} hasn't been checked since Martlet started.", CoverageFix.CheckHost);
         return Result(CoverageState.Ready, "");

@@ -184,8 +184,8 @@ internal sealed class HostPairings(string dataDirectory, AvatarProfileStore prof
         return (HostRegistry.Load(dataDirectory, profile.RemoteHost, HostSetupCommands.ThisPcAddress()), profile);
     }
 
-    /// <summary>Saves a new pairing. The first host paired takes over lip-sync unless lip-sync is turned off; later hosts
-    /// stand by until you hand them a role on the Devices page. Re-pairing a host keeps its role.</summary>
+    /// <summary>Saves a new pairing. Pairing hands the host no job: it stands by until you hand it one (handing it lip-sync
+    /// checks it runs Audio2Face, or installs it in the same step). Re-pairing a host keeps its role.</summary>
     internal async Task<(PairedHost Host, bool LipSync)> AddAsync(AvatarRemoteHost pairing, HostSetupMethod method, string? sshTarget,
         CancellationToken token, string? sshHostKey = null)
     {
@@ -203,8 +203,7 @@ internal sealed class HostPairings(string dataDirectory, AvatarProfileStore prof
             host = host with { Method = previous.Method, SshTarget = previous.SshTarget, SshHostKey = previous.SshHostKey };
         if (previous is not null) host = host with { WakeMac = previous.WakeMac };
         HostRegistry.Save(dataDirectory, HostRegistry.Upsert(hosts, host));
-        var lipSync = profile.RemoteHost?.HostId == pairing.HostId ||
-            profile.RemoteHost is null && profile.LipSync != AvatarLipSync.Loudness && hosts.All(h => h.HostId == pairing.HostId);
+        var lipSync = profile.RemoteHost?.HostId == pairing.HostId;
         if (lipSync) await profiles.SaveAsync(profile with { RemoteHost = pairing }, revision, token);
         var store = new WindowsCredentialStore();
         foreach (var old in new[] { previous?.Pairing, profile.RemoteHost?.HostId == pairing.HostId ? profile.RemoteHost : null })

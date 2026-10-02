@@ -14,7 +14,8 @@ obvious next step at every stage, and a living map of the user's computers.
    there"), and the button says what happens next ("Set up thinking").
    Exact legal, cost and data wording stays available, one click away, and is
    never removed.
-3. **The companion is the hero.** An animated Martlet mark greets you. The Live2D
+3. **The companion is the hero.** The animated Martlet mascot, the cream bird
+   from the app icon, greets you. The Live2D
    or VRM character is one toggle away on every main surface.
 4. **Show the hardware as a map.** The *Devices* page shows every computer and
    cloud service, what each one runs, and what it has. Select a node to
@@ -93,10 +94,11 @@ Below the hero, **Now** has one line per job: *Thinking*, *Voice*,
 needs attention or not working, grey not set up), what Martlet uses now in one
 sentence, and one button (*Set up*, *Review* or *Change*) that opens that
 job's Companion tab. Only Thinking is required; while it is missing its line
-is highlighted and its button is primary. The Listening line also says
-*Microphone not set up yet* (amber, with *Set up mic* once listening itself is
-ready) until a microphone test passes, and the Listening tab's **Now** card
-says the same.
+is highlighted and its button is primary. The Windows default microphone is
+assumed to work: the Listening line says *No microphone found* or *Your chosen
+microphone isn't connected* (amber, with *Fix mic* once listening itself is
+ready) only when this PC has no microphone or the chosen one is unplugged, and
+the Listening tab's **Now** card says the same. A microphone test is optional.
 
 When a chosen job stops working (its host isn't answering, its role was
 removed, its key was deleted, or Setup saved a route this version can't use),
@@ -227,9 +229,10 @@ The long form became a four-step wizard with a step rail:
    automatically* (*Pair automatically over SSH* for SSH hosts), the pasted
    code and *Pair*, plus *Check* and *Forget*.
    Pairing adds the host to `hosts.json` (every paired host and how Martlet
-   reaches it; nonsecret, secrets stay in Windows Credential Manager). The
-   first host paired takes over lip-sync; later hosts stand by until you hand
-   them a job under *Who does what*.
+   reaches it; nonsecret, secrets stay in Windows Credential Manager). Pairing
+   hands the host no job (re-pairing keeps the ones it had): it stands by
+   until you hand it a job under *Who does what*. Lip-sync goes to a host only
+   once it runs Audio2Face, or with its install in the same step.
 4. **Roles**: role cards (Audio2Face today; planned roles shown as coming soon),
    with *Add*, *Remove* and *Host status*.
 
@@ -237,7 +240,7 @@ The long form became a four-step wizard with a step rail:
 
 The conversation window puts the chat first:
 
-- **Header**: companion mark, title, and **Stop (Esc)** always visible. Links
+- **Header**: Martlet mascot, title, and **Stop (Esc)** always visible. Links
   to Reload, Setup, Audio, Character and Troubleshooting.
 - **Conversation (left)**: the result line, a *You said* bubble for the
   push-to-talk transcript, the reply bubble, a separate refusal bubble, and a
@@ -323,14 +326,18 @@ The conversation window puts the chat first:
   memory facts still open their own windows from their tabs.
 
   **Microphone and speakers** is one short page with two cards. Each card has
-  the device picker (Windows default first; *Find devices* lists the rest), one
-  test button and a state chip with one plain sentence: *Not set up*,
-  *Testing*, *Working*, *Needs attention* (with the fix, such as "Too quiet.
-  Check that the microphone isn't muted...") or *Did you hear it?* (with *Yes,
-  I heard it*). The microphone test is the primary button until it passes,
-  then *Done*. Picking and finished tests save on their own; there is no Save
-  button. Each test still asks first, and the exact evidence and
-  *Troubleshooting* sit under *Details*.
+  the device picker (Windows default first; the list refreshes on its own when
+  the window opens and each time it is opened, so a newly plugged-in device
+  appears), one test button and a state chip with one plain sentence: *Ready*
+  (the Windows default or chosen device is connected and assumed to work),
+  *Not found* (no device, or the chosen one isn't connected), *Testing*,
+  *Working*, *Needs attention* (with the fix, such as "Too quiet. Check that
+  the microphone isn't muted...") or *Did you hear it?* (with *Yes, I heard
+  it*). Testing is optional and *Done* is the primary button. Picking and
+  finished tests save on their own; there is no Save button. Each test still
+  asks first, and the exact evidence and *Troubleshooting* sit under
+  *Details*. Home and the Listening tab warn about the microphone only when
+  none is found or the chosen one isn't connected.
 - **Settings**: palette, this PC's role and the tour, app updates (automatic
   checks and their interval, automatic installs, keeping hosts on this PC's
   version, *Check for updates now*, *Install*, *Update hosts now*), tools
@@ -355,9 +362,9 @@ in [COMPONENTS.md](COMPONENTS.md).
 | Motion | Where | Spec |
 | --- | --- | --- |
 | Page enter | nav changes, tour steps, wizard steps, Setup steps | opacity 0 to 1 and Y +14 to 0, 260 ms, cubic ease-out |
-| Float | hero mark | Y ±5, 3.2 s, sine, forever |
+| Float | hero mascot | Y ±5, 3.2 s, sine, forever |
 | Twinkle | sparkles | opacity 0.35 to 1, 1.6 s, staggered |
-| Heartbeat | mark heart | scale 1 to 1.08 to 1, 1.8 s |
+| Sway | Martlet mascot (hero, tour, Talk header) | rotate ±4° (±3° in Talk), 3.6 s (4 s in Talk), sine, forever |
 | Check pop | completed host step | scale 0.4 to 1, 320 ms, back ease |
 | Pulse ring | online nodes, host status | scale 1 to 1.9 and opacity 0.6 to 0, 2 s, forever |
 | Flow | map connections | dash offset, 1.2 s, linear, forever |

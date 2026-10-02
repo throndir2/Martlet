@@ -83,6 +83,8 @@ public sealed class PlatformCatalogTests
             Job = ClusterJobs.LipSync, Doer = JobDoer.Host, Host = new() { HostId = "gpu-1", Reachable = true, Serves = false, Engine = "Audio2Face" }
         });
         Assert.Equal(CoverageState.Limited, lipSync.State);
+        Assert.Contains("gpu-1 answers but doesn't run Audio2Face", lipSync.Problem, StringComparison.Ordinal);
+        Assert.Equal([CoverageFix.InstallRole, CoverageFix.OpenDevices], lipSync.Fixes);
     }
 
     [Fact]

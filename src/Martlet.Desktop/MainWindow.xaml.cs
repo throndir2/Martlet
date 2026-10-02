@@ -230,6 +230,8 @@ public partial class MainWindow : ThemedWindow
         new AudioSetupWindow(setupService!, setupOperations, audioSetup,
             observe: text => { if (!closing) AudioStatusText.Text = text; }, sessionEvents: audioSessionEvents)
             { Owner = this, Troubleshooting = OpenTroubleshooting }.ShowDialog();
+        // Closing can leave its last save or device listing finishing; a refresh now would be skipped and show stale status.
+        for (var i = 0; i < 50 && setupOperations.IsRunning && !closing; i++) await Task.Delay(100);
         await RefreshAsync();
     }
 

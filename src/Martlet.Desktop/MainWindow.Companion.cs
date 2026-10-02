@@ -314,12 +314,14 @@ public partial class MainWindow
             warning.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
             now.Children.Add(warning);
         }
-        if (section == CompanionTab.Listening && homeSettings?.Audio?.Input.Checkpoint is null)
+        if (section == CompanionTab.Listening && AudioMissing(output: false))
         {
-            var mic = new TextBlock { Text = "Microphone not set up yet. Test it below so Martlet can hear you; you can still type.",
+            var mic = new TextBlock { Text = homeSettings?.Audio?.Input.EndpointId is null
+                    ? "No microphone found. Plug one in so Martlet can hear you; you can still type."
+                    : "Your chosen microphone isn't connected. Plug it in or pick another below; you can still type.",
                 TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
             mic.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
-            AutomationProperties.SetAutomationId(mic, "ListeningMicNotSetUp");
+            AutomationProperties.SetAutomationId(mic, "ListeningMicMissing");
             now.Children.Add(mic);
         }
         return Card(now);
@@ -354,17 +356,25 @@ public partial class MainWindow
 
     private Border AudioCard(bool output)
     {
-        var audio = homeSettings?.Audio;
-        var checkpoint = output ? audio?.Output.Checkpoint : audio?.Input.Checkpoint;
+        var choice = output ? homeSettings?.Audio?.Output : homeSettings?.Audio?.Input;
+        var checkpoint = choice?.Checkpoint;
+        var missing = AudioMissing(output);
         var what = output ? "Speakers" : "Microphone";
-        var text = checkpoint is not null ? $"Set up and tested on {checkpoint.TestedAt.ToLocalTime():d}."
-            : output ? "Not tested yet. Martlet uses your Windows default speakers until you pick others."
-            : "Not set up yet. Pick your microphone and run a quick 5-second test.";
-        return Card(Heading(what),
-            Note(text + (output ? " Martlet plays its voice here." : " Martlet listens only while you hold to talk or turn on hands-free."),
-                new Thickness(0, 0, 0, 8)),
-            Row(PageButton(checkpoint is not null ? $"Change {what.ToLowerInvariant()}" : $"Set up {what.ToLowerInvariant()}",
-                () => RunNodeAction(NodeAction.AudioSetup), primary: checkpoint is null, id: "OpenAudioSetup")));
+        var device = choice?.EndpointId is null
+            ? output ? "your Windows default speakers" : "your Windows default microphone"
+            : $"\"{choice.DisplayName}\"";
+        var text = missing
+            ? choice?.EndpointId is null
+                ? output ? "No speakers or headset found. Plug them in or turn them on in Windows Sound settings."
+                    : "No microphone found. Plug one in or turn it on in Windows Sound settings."
+                : $"{device} isn't connected. Plug it in or pick another."
+            : $"Using {device}" + (checkpoint is not null ? $", tested on {checkpoint.TestedAt.ToLocalTime():d}." : ".");
+        var line = Note(text + (output ? " Martlet plays its voice here." : " Martlet listens only while you hold to talk or turn on hands-free."),
+            new Thickness(0, 0, 0, 8));
+        if (missing) line.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
+        return Card(Heading(what), line,
+            Row(PageButton(missing ? $"Fix {what.ToLowerInvariant()}" : $"Test or change {what.ToLowerInvariant()}",
+                () => RunNodeAction(NodeAction.AudioSetup), primary: missing, id: "OpenAudioSetup")));
     }
 
     private Border VoicesCard() => Card(Heading("Voice Library"),
@@ -1059,12 +1069,14 @@ public partial class MainWindow
             (JobPlace.Loudness, Label(JobPlace.Loudness, "Voice loudness"),
                 "No Audio2Face: the mouth opens and closes with the voice's loudness. Works with any character on any PC, with nothing to set up.")));
 
+        var ownerMissing = owner is not null && HostServes(owner, ClusterJobs.LipSync, HostRoles.Get(HostRoles.Audio2Face).RouteId) == false;
         page.Children.Add(place switch
         {
             JobPlace.ThisPc => LocalLipSyncCard(thisPc, handler, owner, fits),
             JobPlace.Computer => ComputersCard(ClusterJobs.LipSync, "Audio2Face", HostRoles.Audio2Face, owner,
-                $"Does the lip-sync now (Audio2Face{(hostChecks.GetValueOrDefault(owner ?? "")?.Offers?.GetValueOrDefault(HostRoles.Audio2Face) is { } model ? " " + model : "")}).",
-                null, AssignLipSyncAsync,
+                ownerMissing ? "Has the lip-sync, but Audio2Face isn't installed there yet, so the mouth follows the voice's loudness."
+                    : $"Does the lip-sync now (Audio2Face{(hostChecks.GetValueOrDefault(owner ?? "")?.Offers?.GetValueOrDefault(HostRoles.Audio2Face) is { } model ? " " + model : "")}).",
+                ownerMissing ? "Install Audio2Face" : null, AssignLipSyncAsync,
                 "Only Martlet's generated voice then goes to that computer, over its pinned TLS gateway; no microphone audio, keys or files. " +
                 "Audio2Face there needs an NVIDIA graphics card with 4 GB or more and a free NVIDIA NGC key. Until it is ready, and whenever it " +
                 "doesn't answer, the mouth follows the voice's loudness.", thisPc),
@@ -1080,10 +1092,12 @@ public partial class MainWindow
         var gpu = machine.BestGpu;
         var dockerInUse = handler == LipSyncHandler.Host && thisPc is not null && owner == thisPc.HostId;
         var ownInUse = handler == LipSyncHandler.ThisPc;
+        // Lip-sync can be handed to this PC's host service before Audio2Face is installed there (or after it was removed).
+        var notInstalled = dockerInUse && HostServes(thisPc!.HostId, ClusterJobs.LipSync, HostRoles.Get(HostRoles.Audio2Face).RouteId) == false;
 
         var docker = new List<UIElement>
         {
-            OptionTitle("Audio2Face, with Docker", dockerInUse ? "in use" : fits ? "recommended for this PC" : null),
+            OptionTitle("Audio2Face, with Docker", notInstalled ? "chosen, not installed yet" : dockerInUse ? "in use" : fits ? "recommended for this PC" : null),
             Note("NVIDIA Audio2Face-3D moves the mouth and face in time with Martlet's generated voice. It runs in Martlet's host service " +
                 "on this PC, inside Docker Desktop, and needs a free NVIDIA NGC API key, which you enter when it installs. Until it is " +
                 "ready, the mouth follows the voice's loudness.", new Thickness(0, 2, 0, 6)),
@@ -1104,13 +1118,16 @@ public partial class MainWindow
         else
         {
             var model = hostChecks.GetValueOrDefault(thisPc.HostId)?.Offers?.GetValueOrDefault(HostRoles.Audio2Face);
-            docker.Add(Note(dockerInUse ? $"In use: Audio2Face in this PC's host service ({thisPc.HostId}){(model is null ? "" : $", model {model}")}."
+            docker.Add(Note(notInstalled
+                    ? $"Lip-sync is handed to this PC's host service ({thisPc.HostId}), but Audio2Face isn't installed in it yet, so the " +
+                      "mouth follows the voice's loudness. Install it to finish; Martlet asks for your NVIDIA NGC API key and switches over by itself."
+                : dockerInUse ? $"In use: Audio2Face in this PC's host service ({thisPc.HostId}){(model is null ? "" : $", model {model}")}."
                 : model is not null ? $"This PC's host service runs Audio2Face ({model})."
                 : $"This PC's host service ({thisPc.HostId}) is set up. If it doesn't run Audio2Face yet, Martlet installs it and switches over by itself.",
                 new Thickness(0, 0, 0, 8)));
             docker.Add(Row(
-                PageButton(dockerInUse ? "Set up Audio2Face again" : "Use Audio2Face on this PC",
-                    () => AssignLipSyncAsync("host:" + thisPc.HostId).Forget(), primary: fits && !dockerInUse, id: "SetupLipSyncUseLocal"),
+                PageButton(notInstalled ? "Install Audio2Face" : dockerInUse ? "Set up Audio2Face again" : "Use Audio2Face on this PC",
+                    () => AssignLipSyncAsync("host:" + thisPc.HostId).Forget(), primary: notInstalled || fits && !dockerInUse, id: "SetupLipSyncUseLocal"),
                 PageButton("Check it", () => RunNodeAction(NodeAction.CheckHost, thisPc.HostId), id: "SetupLipSyncCheckLocal")));
         }
 

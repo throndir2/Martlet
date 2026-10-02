@@ -711,8 +711,9 @@ updates *Where it runs* automatically (and offers to install it).
 - **Flow**: pick from the drop-down (applies immediately); **Play test
   sound**.
 - **Clicks**: 2.
-- **Today**: Microphone and speakers window: optional *Find devices*, pick
-  (saves at once), *Play test sound* (confirm the beep), *Yes, I heard it*.
+- **Today**: Microphone and speakers window: open the list (it refreshes, so
+  a just-plugged-in device appears), pick (saves at once), optionally *Play
+  test sound* (confirm the beep), *Yes, I heard it*.
 
 #### D6. Turn speaking on or off
 

@@ -43,9 +43,14 @@ public partial class MainWindow
     private bool? hostServiceReachable;
     private bool refreshingHome;
     private bool hostBusy;
+    private readonly AudioDevicePresence audioPresence = new();
     private DependencyPropertyDescriptor? actionTextDescriptor;
 
     private DeviceRole Role => deviceRole ?? DeviceRole.Companion;
+
+    /// <summary>Microphones and speakers are assumed to work unless the last check found the chosen one missing.</summary>
+    private bool AudioMissing(bool output) => AudioDeviceList.Present(output ? homeSettings?.Audio?.Output : homeSettings?.Audio?.Input,
+        output ? audioPresence.Last?.Outputs : audioPresence.Last?.Inputs) == false;
 
     private void InitializeShell()
     {
@@ -62,13 +67,13 @@ public partial class MainWindow
     private void StartAmbientMotion()
     {
         Motion.Float(HeroFloat);
-        Motion.Heartbeat(HeroHeart);
+        Motion.Sway(HeroMascot);
         Motion.Breathe(HeroGlow);
         Motion.Twinkle(Sparkle1, 1.6);
         Motion.Twinkle(Sparkle2, 2.1, 0.5);
         Motion.Twinkle(Sparkle3, 1.8, 1.0);
         Motion.Float(TourFloat);
-        Motion.Heartbeat(TourHeart);
+        Motion.Sway(TourMascot);
         Motion.Twinkle(TourSparkle, 1.7);
         Motion.Float(TourBlob1, 18, 9);
         Motion.Float(TourBlob2, 14, 11);
@@ -313,6 +318,7 @@ public partial class MainWindow
             homeAvatar = loaded.Settings is { } settings
                 ? (await new AvatarProfileStore(store.DataDirectory).LoadAsync(settings.Profile.Id, lifetime.Token)).Profile
                 : null;
+            await audioPresence.CheckAsync(lifetime.Token);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or
             ContractException or JsonException or OperationCanceledException) { }
@@ -354,8 +360,8 @@ public partial class MainWindow
         var listeningProblem = Problem(ClusterJobs.Listening);
         var lipSyncProblem = Problem(ClusterJobs.LipSync);
         static string Pending(SetupRoute route) => route.Enabled == false ? "Turned off." : "Chosen, not confirmed yet. Review it to finish.";
-        var micTested = audio?.Input.Checkpoint is not null;
-        var micNote = micTested ? "" : " Microphone not set up yet.";
+        var micMissing = AudioMissing(output: false);
+        var micNote = !micMissing ? "" : audio?.Input.EndpointId is null ? " No microphone found." : " Your chosen microphone isn't connected.";
         var persona = homeSettings?.Companion?.ActivePersona.Name ?? "default";
 
         var now = new List<NowLine>
@@ -370,8 +376,8 @@ public partial class MainWindow
                 : tts is not null ? new NowLine(CompanionTab.Voice, NodeHealth.Attention, Pending(tts), "Review")
                 : new NowLine(CompanionTab.Voice, NodeHealth.Unknown, "Optional. Not set up, so Martlet replies in text.", "Set up"),
             listeningProblem is not null ? new NowLine(CompanionTab.Listening, NodeHealth.Attention, $"Not working now: {listeningProblem.Problem}{micNote}", "Change")
-                : NetworkMap.IsReady(stt) ? new NowLine(CompanionTab.Listening, micTested ? NodeHealth.Ready : NodeHealth.Attention,
-                    $"{PlaceName(stt!)}{(micTested ? "" : "." + micNote)}", micTested ? "Change" : "Set up mic")
+                : NetworkMap.IsReady(stt) ? new NowLine(CompanionTab.Listening, micMissing ? NodeHealth.Attention : NodeHealth.Ready,
+                    $"{PlaceName(stt!)}{(micMissing ? "." + micNote : "")}", micMissing ? "Fix mic" : "Change")
                 : stt is not null ? new NowLine(CompanionTab.Listening, NodeHealth.Attention, Pending(stt) + micNote, "Review")
                 : new NowLine(CompanionTab.Listening, NodeHealth.Unknown, "Optional. Not set up; you can always type." + micNote, "Set up"),
             new NowLine(CompanionTab.Character, lipSyncProblem is not null ? NodeHealth.Attention : homeAvatar is not null || avatar.IsShowing ? NodeHealth.Ready : NodeHealth.Unknown,
