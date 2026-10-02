@@ -355,8 +355,10 @@ window ends it.
 
   - *This PC*: thinking uses Ollama at `http://127.0.0.1:11434/v1` (*Install
     Ollama and use it* installs Ollama with the suggested model sized to the
-    graphics card and switches to it; *Download model* shows Ollama's progress
-    in a run window, *Check Ollama* over loopback on request, *Use Ollama on this
+    graphics card, switches to it and tests it; *Download model* shows Ollama's progress
+    in a run window, *Check Ollama* over loopback on request, *Test model* loads
+    the chosen model and asks it for a short streamed reply the way replies do,
+    in a run window, and shows the result under the buttons; *Use Ollama on this
     PC*). Voice offers two one-click choices, the one in use (or the one this
     PC's hardware suits) first: **F5 voice, with Docker** (*Set up F5 with
     Docker* sets up and pairs Martlet's host service on this PC, so this PC

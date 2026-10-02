@@ -40,6 +40,7 @@ public partial class MainWindow
     private readonly Dictionary<Panel, HashSet<string>> previousDone = [];
     private int tourStep;
     private bool? hostServiceReachable;
+    private WindowsVirtualization? virtualization;
     private bool refreshingHome;
     private bool hostBusy;
     private readonly AudioDevicePresence audioPresence = new();
@@ -89,6 +90,14 @@ public partial class MainWindow
         catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException or
             System.ComponentModel.Win32Exception) { }
         if (closing) return;
+        // The host dashboard says why Docker Desktop can't start when Windows is the reason (virtualization, WSL 2).
+        if (Role == DeviceRole.Host && machine.DockerInstalled && !machine.DockerRunning)
+        {
+            try { virtualization = await WindowsVirtualization.ProbeAsync(lifetime.Token); }
+            catch (OperationCanceledException) { return; }
+            if (closing) return;
+        }
+        else virtualization = null;
         RenderHome();
         if (DevicesPage.IsVisible) RenderMap();
     }
@@ -327,6 +336,7 @@ public partial class MainWindow
             text.Children.Add(title);
             var detail = new TextBlock { Text = step.Detail, Margin = new Thickness(0, 2, 0, 0) };
             detail.SetResourceReference(StyleProperty, "Muted");
+            AutomationProperties.SetAutomationId(detail, $"StepDetail-{step.Id}");
             text.Children.Add(detail);
             Grid.SetColumn(text, 1);
             grid.Children.Add(text);
@@ -379,12 +389,20 @@ public partial class MainWindow
             HostPulse.Opacity = 0;
         }
         var nvidia = machine.BestGpu is { IsNvidia: true } gpu ? $"This PC has {gpu.Describe()}." : "No NVIDIA graphics card was found on this PC.";
+        var windowsBlocks = !machine.DockerRunning && machine.DockerInstalled && virtualization is { } windows &&
+            (windows.FirmwareOff || windows.NeedsChanges);
         var steps = new List<HomeStep>
         {
             new("docker", "Docker Desktop",
-                machine.DockerRunning ? "Running." : machine.DockerInstalled ? "Installed, but not running." : "Runs the host service in containers. Free for personal use.",
+                machine.DockerRunning ? "Running."
+                    : windowsBlocks ? $"Can't start yet: {string.Join(", ", virtualization!.Problems())}. " + (virtualization.FirmwareOff
+                        ? "Turn it on in the firmware settings; Martlet can restart into them and continue afterwards."
+                        : "Martlet turns these on (one administrator prompt; usually a restart, then it continues by itself).")
+                    : machine.DockerInstalled ? "Installed, but not running." : "Runs the host service in containers. Free for personal use.",
                 machine.DockerRunning, false,
-                machine.DockerRunning ? [] : machine.DockerInstalled
+                machine.DockerRunning ? []
+                    : windowsBlocks ? [new(virtualization!.FirmwareOff ? "Turn on virtualization" : "Turn on Windows features", PrepareWindows, true)]
+                    : machine.DockerInstalled
                     ? [new("Start Docker Desktop", StartDocker, true)]
                     : [new("Install Docker Desktop", InstallDocker, true)]),
             new("service", "Host service",
@@ -470,7 +488,65 @@ public partial class MainWindow
 
     private async void InstallDocker()
     {
-        if (await HostsWindow.InstallDockerDesktopAsync(this) is { } status && !closing) ActionText.Text = status;
+        if ((await HostsWindow.InstallDockerDesktopAsync(this)).Status is { } status && !closing) ActionText.Text = status;
+        if (!closing) await ReadMachineAsync();
+    }
+
+    /// <summary>Turns on what Docker Desktop needs from Windows (virtualization features and WSL) in a run window; a restart,
+    /// when needed, continues by starting Docker Desktop after the next sign-in.</summary>
+    private async void PrepareWindows()
+    {
+        if (hostBusy || closing) return;
+        hostBusy = true;
+        try
+        {
+            var done = await HostRunWindow.RunAsync(this, "Get Windows ready for Docker Desktop", async run =>
+            {
+                await WindowsVirtualizationSetup.EnsureReadyAsync(run, ContinueSetupKind.Docker);
+                return "Windows is ready for Docker Desktop. Start it next.";
+            });
+            if (!closing) ActionText.Text = done ?? "Windows isn't ready for Docker Desktop yet. The run window shows why.";
+        }
+        finally { hostBusy = false; }
+        if (!closing) await ReadMachineAsync();
+    }
+
+    /// <summary>After Windows restarted to finish turning on virtualization, continues the setup that asked for it
+    /// (<see cref="HostSetupResume"/>): this PC's host service and its pairing, the host dashboard's host service, or
+    /// starting Docker Desktop so the owner can repeat the step that needed it.</summary>
+    private async Task ContinueSetupAsync()
+    {
+        if (closing || store is null || HostSetupResume.Take() is not { } note) return;
+        ErrorLog.Info($"Continuing after a Windows restart: {note.Kind} ({note.Task})");
+        ActionText.Text = $"Windows restarted. Continuing: {note.Task}...";
+        switch (note.Kind)
+        {
+            case ContinueSetupKind.HostService when Role == DeviceRole.Host:
+                await SetUpHostServiceAsync();
+                break;
+            case ContinueSetupKind.ThisPc when ThisPcHost() is null:
+                await SetUpThisPcHostAsync();
+                break;
+            default:
+                await StartDockerAfterRestartAsync(note.Task);
+                break;
+        }
+    }
+
+    private async Task StartDockerAfterRestartAsync(string task)
+    {
+        if (hostBusy || closing) return;
+        hostBusy = true;
+        try
+        {
+            var done = await HostRunWindow.RunAsync(this, "Start Docker Desktop", async run =>
+            {
+                await HostLocal.EnsureDockerAsync(run, ContinueSetupKind.Docker);
+                return $"Docker Desktop is running. Continue where you left off: {task}.";
+            });
+            if (!closing) ActionText.Text = done ?? "Docker Desktop did not start. The run window shows why.";
+        }
+        finally { hostBusy = false; }
         if (!closing) await ReadMachineAsync();
     }
 

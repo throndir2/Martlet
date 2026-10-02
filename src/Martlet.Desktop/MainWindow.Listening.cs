@@ -296,7 +296,7 @@ public partial class MainWindow
             async Task<string> Continue(HostRunWindow run, PairedHost host)
             {
                 var target = host.Target(Version);
-                await HostLocal.EnsureDockerAsync(run.Status, run.Output, run.Token);
+                await HostLocal.EnsureDockerAsync(run, Martlet.Core.Installation.ContinueSetupKind.Docker);
                 await HostLocal.EnsureImageAsync(target, run.Status, run.Output, run.Token);
                 run.Status($"Installing {job.Engine} on this PC. The first time downloads its model; this can take a while...");
                 var exit = await HostLocal.EngineAsync(target, ["add", job.HostRoleKind], run.Output, run.Token, answers: answers);

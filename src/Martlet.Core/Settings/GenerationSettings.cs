@@ -11,7 +11,9 @@ namespace Martlet.Core.Settings;
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record GenerationSettings : IContract
 {
-    public const int DefaultMaxReplyTokens = 256;
+    /// <summary>A safety ceiling, not how long replies are: each reply is asked to stay short (see the conversation's reply
+    /// length instruction), so this only stops a runaway answer and leaves room for a reasoning model's hidden thinking.</summary>
+    public const int DefaultMaxReplyTokens = 1_024;
     public const int MinimumReplyTokens = 16;
     public const int MaximumReplyTokens = 2_048;
     /// <summary>The temperature a paired host's Ollama uses when it is left unset.</summary>
@@ -118,6 +120,12 @@ public static class GenerationSupport
                 ? GenerationSettingUse.Used : GenerationSettingUse.ServerDependent
             : GenerationSettingUse.Unused;
     }
+
+    /// <summary>Whether a Chat Completions request carries a reply token budget (max_tokens). Ollama on this PC gets none
+    /// unless a max reply length is set on Companion › Replies: it costs nothing per token, and thinking models spend the
+    /// budget on hidden reasoning before they say anything.</summary>
+    public static bool SendsReplyBudget(string? chatBaseUrl, GenerationSettings? settings) =>
+        settings?.MaxReplyTokens is not null || !string.Equals(chatBaseUrl, LocalOllamaChatBaseUrl, StringComparison.Ordinal);
 
     /// <summary>Whether top K, min P and repetition penalty are sent to a Chat Completions server: not to OpenAI, which
     /// rejects them, nor to Ollama's OpenAI-compatible endpoint, which ignores them.</summary>

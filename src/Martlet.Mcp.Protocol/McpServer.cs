@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using Martlet.Core.Installation;
 using Martlet.Doctor;
 
 namespace Martlet.Mcp;
@@ -68,6 +69,12 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("cluster_status", "Read shared \"who does what\" sync from a data directory: whether sync is on (on by default, " +
             "\"off\" only after the owner turned it off) and this PC's copy of the plan (each job's host, failover and which device " +
             "changed it last; each host's roles). Read-only; contacts nothing and returns no addresses or keys.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("virtualization_status", "Read whether Windows is ready for Docker Desktop's WSL 2 engine (virtualization in the firmware, " +
+            "the Windows hypervisor, Virtual Machine Platform, Windows Subsystem for Linux, the WSL version), whether Docker Desktop is " +
+            "installed and running, and any setup Martlet continues after a Windows restart. Read-only; changes nothing.", new
         {
             dataDirectory = new { type = "string" }
         })
@@ -147,6 +154,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "voices_status" => VoicesStatus(arguments),
                 "f5_voices" => F5Voices(arguments),
                 "cluster_status" => ClusterStatus(arguments),
+                "virtualization_status" => await VirtualizationStatusAsync(arguments, cancellation),
                 _ => throw new ArgumentException($"Unknown tool '{name}'.")
             };
             return new { content = new[] { new { type = "text", text = JsonSerializer.Serialize(result) } } };
@@ -204,6 +212,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
         };
     }
 
+    /// <summary>The optional absolute dataDirectory argument, or the current user's Martlet directory.</summary>
     private static string DataDirectory(JsonElement arguments)
     {
         var directory = arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty("dataDirectory", out var given)
@@ -211,6 +220,59 @@ internal sealed class McpServer(DesktopAutomation desktop)
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Martlet");
         if (!Path.IsPathFullyQualified(directory)) throw new ArgumentException("dataDirectory must be an absolute path.");
         return directory;
+    }
+
+    /// <summary>Whether Windows can run Docker Desktop (the desktop's WindowsVirtualizationSetup reads the same facts), whether
+    /// Docker Desktop is installed and running, and the setup Martlet continues after a restart. Never returns paths.</summary>
+    private static async Task<object> VirtualizationStatusAsync(JsonElement arguments, CancellationToken cancellation)
+    {
+        var directory = DataDirectory(arguments);
+        var state = await WindowsVirtualization.ProbeAsync(cancellation);
+        var note = ContinueSetup.Read(directory, DateTimeOffset.Now);
+        bool startsAtSignIn;
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\RunOnce");
+            startsAtSignIn = key?.GetValue("MartletContinueSetup") is string;
+        }
+        catch (Exception error) when (error is System.Security.SecurityException or UnauthorizedAccessException or IOException)
+        {
+            startsAtSignIn = false;
+        }
+        static bool Running(string name)
+        {
+            var processes = System.Diagnostics.Process.GetProcessesByName(name);
+            try { return processes.Length > 0; }
+            finally { foreach (var process in processes) process.Dispose(); }
+        }
+        return new
+        {
+            ready = state.Ready,
+            firmwareOff = state.FirmwareOff,
+            needsWindowsChanges = state.NeedsChanges,
+            problems = state.Problems(),
+            firmware = state.Firmware,
+            hypervisor = state.Hypervisor,
+            virtualMachinePlatform = state.MachinePlatform.ToString(),
+            windowsSubsystemForLinux = state.Subsystem.ToString(),
+            wsl = state.Wsl,
+            virtualMachine = state.VirtualMachine,
+            summary = state.Describe(),
+            dockerDesktop = new
+            {
+                installed = File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                    "Docker", "Docker", "Docker Desktop.exe")),
+                running = Running("com.docker.backend") || Running("Docker Desktop")
+            },
+            continueSetup = new
+            {
+                pending = note is not null,
+                kind = note?.Kind.ToString(),
+                task = note?.Task,
+                created = note?.Created,
+                startsAtSignIn
+            }
+        };
     }
 
     /// <summary>F5's included reference voices, each checked, and the data directory's F5 voice list (the "f5-voices" store

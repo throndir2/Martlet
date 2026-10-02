@@ -1301,7 +1301,7 @@ prompt per run.
 | Ollama | Thinking on this PC | Silent install, then the model download, load and test. |
 | Model files (LLM, whisper, F5) | The job that uses them | Downloaded in the runner; resumable. |
 | Windows speech languages | Windows speech chosen and the language is missing | Installed through Windows features in the runner. |
-| WSL 2 | A job on this PC that needs the host service | `wsl --install --no-distribution` in the runner; if Windows needs a restart, Martlet resumes setup after sign-in. |
+| WSL 2 | A job on this PC that needs the host service | Done: before Docker Desktop starts, the runner turns on Virtual Machine Platform, Windows Subsystem for Linux, the hypervisor and WSL 2.1.5+ in one UAC step; if Windows needs a restart, Martlet asks, restarts and resumes setup after sign-in. Firmware virtualization: an offered restart into the firmware settings. |
 | Docker Desktop | Same | Silent install with its licence accepted on the user's behalf after the terms sheet; started automatically; no sign-in. |
 | Firewall rule (TCP 9443) | Only when this PC helps other computers | Part of the same single elevation; no separate Public-to-Private dialog. |
 | NVIDIA driver | GPU jobs | Detected. If missing or too old, a Fix card links to the driver download (drivers can't be installed silently and reliably). The plan falls back to CPU or cloud until then. |

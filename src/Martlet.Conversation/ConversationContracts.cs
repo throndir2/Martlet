@@ -206,7 +206,8 @@ public sealed record ConversationSnapshot(
     Guid? ActiveSpeechRequestId, EvidenceProvenance? TextProvenance, EvidenceProvenance? SpeechProvenance,
     long AcceptedSamples, long SubmittedSamples, long DeviceConsumedSamples, bool MayHavePlayed,
     bool OwnershipReleased, bool Quarantined, long DroppedEvents, PlaybackSnapshot? Playback,
-    Guid? RetryOf, bool EarlierTurnMayHavePlayed, int ToolCalls = 0, string? ActiveTool = null, bool ToolsRejected = false)
+    Guid? RetryOf, bool EarlierTurnMayHavePlayed, int ToolCalls = 0, string? ActiveTool = null, bool ToolsRejected = false,
+    bool SpeechLimitReached = false)
 {
     public decimal? EstimatedCost => null;
     public long? AudibleSamples => null;

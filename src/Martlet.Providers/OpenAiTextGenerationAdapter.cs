@@ -344,7 +344,7 @@ internal sealed class TextGenerationOperation(
         EnsureActive();
         reader = new(body, limits, EnsureActive, response.Content.Headers.ContentLength);
         if (chatBaseUri is null) normalizer = new(limits, model.UpstreamModelId, input.Tools.Count > 0);
-        else chatNormalizer = new(limits, input.Tools.Count > 0);
+        else chatNormalizer = new(limits, input.Tools.Count > 0, GenerationSupport.SendsReplyBudget(chatBaseUri.AbsoluteUri, generation));
         return null;
     }
 
@@ -459,7 +459,8 @@ internal sealed class TextGenerationOperation(
             writer.WriteStartObject();
             writer.WriteString("model", model.UpstreamModelId);
             writer.WriteBoolean("stream", true);
-            writer.WriteNumber("max_tokens", limits.MaxOutputTokens);
+            if (GenerationSupport.SendsReplyBudget(chatBaseUri!.AbsoluteUri, generation))
+                writer.WriteNumber("max_tokens", limits.MaxOutputTokens);
             if (generation is { } sampling)
             {
                 if (sampling.Temperature is { } temperature) writer.WriteNumber("temperature", temperature);

@@ -17,25 +17,30 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "OpenPeople", "DeviceFactsSection", "DeviceReachSection", "DeviceRolesSection", "HealthRecheck"
     };
     /// <summary>Choosing a Companion page in its side list only shows that page; Devices map nodes ("Node-this-pc",
-    /// "Node-host:gpu-1") and the problem card's Show buttons only select a device and show its details. Home's Health tiles
-    /// ("HealthCheck-thinking") and its passive fixes ("HealthOpen-voice-setup-open-voice", "HealthOpen-crash-dismiss") only
-    /// open the page where something changes, or hide the item.</summary>
-    private static readonly string[] SafeClickPrefixes = ["CompanionTab-", "Node-", "CoverageShow-", "HealthCheck-", "HealthOpen-"];
+    /// "Node-host:gpu-1") and the problem card's Show buttons only select a device and show its details; a job's
+    /// "Where it runs" options ("Place-Voice-Computer") only show that place's choices, which their own buttons commit. Home's
+    /// Health tiles ("HealthCheck-thinking") and its passive fixes ("HealthOpen-voice-setup-open-voice", "HealthOpen-crash-dismiss")
+    /// only open the page where something changes, or hide the item.</summary>
+    private static readonly string[] SafeClickPrefixes = ["CompanionTab-", "Node-", "CoverageShow-", "Place-", "HealthCheck-", "HealthOpen-"];
     // Read-only status text. Text blocks and buttons have no value, so their accessible name (a text block's text) is returned.
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
         "FoundationStatus", "PipelineStatus", "LocalAudioStatus",
-        "LiveStatus", "LiveMic", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
+        "LiveStatus", "LiveMic", "LiveVision", "LiveVisionStatus", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
         "PeopleStatus", "PeopleSyncStatus", "PeopleVoiceCount", "ListenParakeetStatus", "SetupCharacterView",
         "LipSyncNow", "LipSyncNowProblem", "LipSyncOwnTitle", "LipSyncOwnState", "SelectedDevice", "SelectedDeviceHealth", "ClusterStatus",
         "VisionStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "SetupF5About", "F5VoicesStatus",
-        "HostRunStatus", "StageTitle", "StageText", "HealthTitle", "HealthSummary", "HealthAllClear"
+        "SetupOllamaStatus", "SetupLocalModelTest", "HostRunStatus", "RepliesNow",
+        "StageTitle", "StageText", "HealthTitle", "HealthSummary", "HealthAllClear"
     };
     /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)");
     /// Companion › Voice's included F5 voices ("F5VoiceRow-arctic-slt" reads "SLT (US female)", with "· in use" when it is);
-    /// Home's items ("HealthIssue-ollama" reads "Problem: Ollama isn't running on this PC. ...") and Health tiles
-    /// ("HealthCheck-microphone" reads "Microphone: OK. Windows default").</summary>
-    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "F5VoiceRow-", "HealthIssue-", "HealthCheck-"];
+    /// each home or host-dashboard step's detail line ("StepDetail-docker" says whether Docker Desktop runs, or why it can't start);
+    /// the paired computers a job can be handed to ("HostChoice-speaking-gpu-pc" reads "gpu-pc: Runs F5 (f5tts-v1-base).")
+    /// and why none are listed or which can't run it ("HostChoices-speaking", "HostChoicesUnable-speaking"); Home's items
+    /// ("HealthIssue-ollama" reads "Problem: Ollama isn't running on this PC. ...") and Health tiles ("HealthCheck-microphone"
+    /// reads "Microphone: OK. Windows default").</summary>
+    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "F5VoiceRow-", "StepDetail-", "HostChoice", "HealthIssue-", "HealthCheck-"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>

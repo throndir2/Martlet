@@ -25,7 +25,7 @@ internal static class Prerequisites
     internal static Prerequisite Ollama { get; } = new("Ollama", "Ollama",
         "Runs a conversation model on this PC (ollama.com via winget, MIT license). Offers a model sized to your GPU afterwards.");
     internal static Prerequisite DockerDesktop { get; } = new("DockerDesktop", "WSL 2 and Docker Desktop",
-        "Hosts Audio2Face and other GPU roles on this PC (free for personal use). Asks for administrator approval; a restart may follow.");
+        "Hosts Audio2Face and other GPU roles on this PC (free for personal use). Also turns on Windows' virtualization features; asks for administrator approval, and after a restart Martlet continues by itself.");
 
     internal static IReadOnlyList<Prerequisite> All { get; } = [WebView2, Microphone, WindowsSpeech, Ollama, DockerDesktop];
 
@@ -60,25 +60,37 @@ internal static class Prerequisites
     }
 
     /// <summary>Installs <paramref name="items"/> with the bundled prerequisites tool in a run window: PowerShell runs hidden
-    /// (-NoPrompt), so no console appears; installers and Windows' administrator prompt show their own windows.
+    /// (-NoPrompt), so no console appears; installers and Windows' administrator prompt show their own windows. Docker
+    /// Desktop is installed by Martlet itself in the same window, which also turns on what it needs from Windows and, when
+    /// Windows must restart, continues after the next sign-in.
     /// <paramref name="ollamaModel"/> also downloads that model once Ollama is installed. Returns a status line.</summary>
     internal static async Task<string> InstallAsync(Window owner, IReadOnlyCollection<Prerequisite> items, string? ollamaModel = null)
     {
         if (items.Count == 0) return "Nothing to install.";
         var script = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "prerequisites", "Install-Prerequisites.ps1"));
-        if (!File.Exists(script))
+        var scripted = items.Where(i => !ReferenceEquals(i, DockerDesktop)).ToArray();
+        var docker = scripted.Length != items.Count;
+        if (scripted.Length > 0 && !File.Exists(script))
             return $"The prerequisites tool is installed with Martlet but was not found at {script}. From a source checkout, run packaging\\windows\\Install-Prerequisites.ps1.";
         var titles = string.Join(", ", items.Select(i => i.Title));
         var summary = await HostRunWindow.RunAsync(owner, items.Count == 1 ? $"Install {items.First().Title}" : "Install prerequisites", async run =>
         {
-            var powershell = Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe");
-            var args = new List<string> { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, "-NoPrompt",
-                "-Install", string.Join(",", items.Select(i => i.Id)) };
-            if (!string.IsNullOrWhiteSpace(ollamaModel)) args.AddRange(["-OllamaModel", ollamaModel.Trim()]);
             run.Status($"Installing {titles}. Each comes from its publisher; Windows may ask for administrator approval...");
-            var exit = await LocalProcess.RunAsync(powershell, args, run.Output, run.Token, workingDirectory: Path.GetDirectoryName(script));
+            if (scripted.Length > 0)
+            {
+                var powershell = Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe");
+                var args = new List<string> { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, "-NoPrompt",
+                    "-Install", string.Join(",", scripted.Select(i => i.Id)) };
+                if (!string.IsNullOrWhiteSpace(ollamaModel)) args.AddRange(["-OllamaModel", ollamaModel.Trim()]);
+                var exit = await LocalProcess.RunAsync(powershell, args, run.Output, run.Token, workingDirectory: Path.GetDirectoryName(script));
+                if (exit != 0) throw new InvalidOperationException($"The prerequisites tool stopped (exit {exit}). The output shows why.");
+            }
+            if (docker)
+            {
+                if (!MachineInfo.DockerDesktopInstalled()) await HostLocal.InstallDockerDesktopAsync(run.Status, run.Output, run.Token);
+                await WindowsVirtualizationSetup.EnsureReadyAsync(run, ContinueSetupKind.Docker);
+            }
             var still = items.Where(i => i.Id != Microphone.Id && IsMissing(i)).ToArray();
-            if (exit != 0) throw new InvalidOperationException($"The prerequisites tool stopped (exit {exit}). The output shows why.");
             return still.Length == 0 ? $"Done: {titles}."
                 : $"Finished, but {string.Join(", ", still.Select(i => i.Title))} still isn't installed. The output shows why.";
         });
