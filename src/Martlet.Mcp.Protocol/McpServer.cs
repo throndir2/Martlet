@@ -64,6 +64,12 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "Plays nothing and contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
+        }),
+        Tool("cluster_status", "Read shared \"who does what\" sync from a data directory: whether sync is on (on by default, " +
+            "\"off\" only after the owner turned it off) and this PC's copy of the plan (each job's host, failover and which device " +
+            "changed it last; each host's roles). Read-only; contacts nothing and returns no addresses or keys.", new
+        {
+            dataDirectory = new { type = "string" }
         })
     ];
 
@@ -140,6 +146,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "ui_toggle" => desktop.Toggle(RequiredString(arguments, "id")),
                 "voices_status" => VoicesStatus(arguments),
                 "f5_voices" => F5Voices(arguments),
+                "cluster_status" => ClusterStatus(arguments),
                 _ => throw new ArgumentException($"Unknown tool '{name}'.")
             };
             return new { content = new[] { new { type = "text", text = JsonSerializer.Serialize(result) } } };
@@ -250,6 +257,41 @@ internal sealed class McpServer(DesktopAutomation desktop)
             catch (Martlet.F5.F5Exception error) { list = new { state = error.Failure == Martlet.F5.F5Failure.Busy ? "busy" : "unreadable", problem = error.Failure.ToString() }; }
         }
         return new { @default = Martlet.F5.F5BundledVoices.Default.Key, included, list };
+    }
+
+    /// <summary>Shared "who does what" as the desktop keeps it in a data directory (the file names match Martlet.Desktop's
+    /// ClusterSync): the sync choice, on unless cluster-sync.txt says "off", and cluster.json without host addresses.</summary>
+    private static object ClusterStatus(JsonElement arguments)
+    {
+        var directory = DataDirectory(arguments);
+        string? choice;
+        try { choice = File.ReadAllText(Path.Combine(directory, "cluster-sync.txt")).Trim(); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { choice = null; }
+        object plan;
+        var path = Path.Combine(directory, "cluster.json");
+        if (!File.Exists(path)) plan = new { state = "none" };
+        else
+        {
+            try
+            {
+                var copy = Martlet.Core.Cluster.ClusterPlan.Parse(File.ReadAllBytes(path));
+                plan = new
+                {
+                    state = "loaded", revision = copy.Revision,
+                    jobs = copy.Assignments.Select(a => new
+                    {
+                        job = a.Job, host = a.HostId, off = a.Off, failover = a.Failover, movedFrom = a.MovedFrom,
+                        updatedBy = a.UpdatedBy, updatedAt = a.UpdatedAt
+                    }).ToArray(),
+                    hosts = copy.Nodes.Select(n => new { hostId = n.HostId, removed = n.Removed, roles = n.Roles.Select(r => r.Kind).ToArray() }).ToArray()
+                };
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
+            {
+                plan = new { state = "unreadable" };
+            }
+        }
+        return new { sync = choice switch { "off" => "off", null => "on (default)", _ => "on" }, plan };
     }
 
     private static async Task<object> DoctorAsync(string[] args, JsonElement arguments, CancellationToken cancellation)

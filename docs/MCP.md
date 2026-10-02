@@ -151,6 +151,15 @@ retired F5-TTS example clip is still there and the applied voice (an included
 key, `own`, `retired-sample` or null). It never returns own voices' names,
 transcripts or audio, plays nothing and contacts nothing.
 
+`cluster_status` reads [shared who does what](CLUSTER.md) from a data directory
+(optional absolute `dataDirectory`, default the current user's): `sync` is
+`on (default)` when `cluster-sync.txt` is missing, `on`, or `off` once the owner
+unticked **Keep who does what in sync**; `plan` is this PC's `cluster.json`
+(`state` `none`, `loaded` or `unreadable`; when loaded its revision, each job's
+`host` (null for this PC's own choice), `off`, `failover`, `movedFrom`,
+`updatedBy` and `updatedAt`, and each host's ID, roles and `removed`). It never
+returns host addresses or keys and contacts nothing.
+
 `logs_tail` reads the last `lines` (1-400, default 100) of one local log under
 `<dataDirectory>\logs` (`log`: `desktop` (default), `avatar-renderer` or
 `host-runs`), optionally only lines that `contains` some text (case-insensitive,
@@ -197,7 +206,8 @@ return the selected device's name and status, and each row title
 job's name. Job owners are `ThinkingOwner`, `ListeningOwner`, `SpeakingOwner`
 and `LipSyncOwner`, device commands `NodeAction-<action>`
 (`NodeAction-InstallRole-<role>` and `NodeAction-RemoveRole-<role>` for host
-roles), and Settings for all devices holds `CheckHosts`, `ClusterSync`,
+roles), and Settings for all devices holds `CheckHosts`, `ClusterSync` (checked by
+default; unticking it needs `--allow-ui-effects` and saves `off`),
 `ClusterStatus` (returned as text) and `RoleSetup-<role>` for jobs nobody does.
 Use `ui_snapshot` again to observe asynchronous effects. Modal
 actions may return `completed: false` while their dialog remains open; this
@@ -280,7 +290,7 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- Doctor, `voices_status`, `f5_voices` and `logs_tail` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status` and `logs_tail` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

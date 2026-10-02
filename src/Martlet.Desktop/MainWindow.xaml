@@ -226,8 +226,9 @@
                             </DockPanel>
                             <Border Background="{DynamicResource CanvasBrush}" CornerRadius="14" Padding="16,12">
                                 <StackPanel>
-                                    <CheckBox x:Name="ClusterSyncChoice" Click="ClusterSync_Click"
+                                    <CheckBox x:Name="ClusterSyncChoice" Checked="ClusterSync_Changed" Unchecked="ClusterSync_Changed"
                                               Content="Keep who does what in sync on all my computers (checks hosts every 15 seconds)"
+                                              ToolTip="On by default. While Martlet runs, this PC checks each paired host over its pinned pairing and keeps the shared plan on every host. A job changed on another of your computers changes here too: it moves to another of your paired hosts or back to this PC's Setup choice. Nothing moves to a cloud provider by itself, and the plan holds no keys or conversation data."
                                               AutomationProperties.AutomationId="ClusterSync"/>
                                     <TextBlock x:Name="ClusterStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="24,2,0,0"
                                                AutomationProperties.AutomationId="ClusterStatus" AutomationProperties.LiveSetting="Polite"/>
