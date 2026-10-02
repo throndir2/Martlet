@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows.Automation;
+using System.Windows.Automation.Text;
 
 namespace Martlet.Mcp;
 
@@ -64,7 +65,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         return new { processId = pid, windows = windows.Select(window => window.Current.Name).ToArray() };
     }
 
-    internal object Snapshot()
+    internal object Snapshot(bool layout = false)
     {
         var windows = ConnectedWindows();
         return new
@@ -79,18 +80,48 @@ internal sealed class DesktopAutomation(bool allowEffects)
                 var value = !IsSafeValue(id) ? null
                     : element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern) ? ((ValuePattern)pattern).Current.Value
                     : element.Current.ControlType == ControlType.Text || element.Current.ControlType == ControlType.Button ? element.Current.Name : null;
-                return new
+                var entry = new Dictionary<string, object?>
                 {
-                    window = window.Current.Name,
-                    id,
-                    kind = element.Current.ControlType.ProgrammaticName,
-                    enabled = element.Current.IsEnabled,
-                    value,
-                    checkedState = element.TryGetCurrentPattern(TogglePattern.Pattern, out var toggle)
+                    ["window"] = window.Current.Name,
+                    ["id"] = id,
+                    ["kind"] = element.Current.ControlType.ProgrammaticName,
+                    ["enabled"] = element.Current.IsEnabled,
+                    ["value"] = value,
+                    ["checkedState"] = element.TryGetCurrentPattern(TogglePattern.Pattern, out var toggle)
                         ? ((TogglePattern)toggle).Current.ToggleState.ToString() : null
                 };
+                if (layout)
+                {
+                    entry["bounds"] = Box(element.Current.BoundingRectangle);
+                    entry["textBounds"] = FirstLineBounds(element);
+                }
+                return entry;
             }).Take(200).ToArray()
         };
+    }
+
+    /// <summary>Screen pixels as [x, y, width, height], or null when the element has no on-screen area.</summary>
+    private static int[]? Box(System.Windows.Rect rect) =>
+        rect.IsEmpty || rect.Width <= 0 || rect.Height <= 0 ? null
+            : [(int)Math.Round(rect.X), (int)Math.Round(rect.Y), (int)Math.Round(rect.Width), (int)Math.Round(rect.Height)];
+
+    /// <summary>Where a text control's first line of text is drawn (for checking alignment, e.g. a hint against typed text).
+    /// Geometry only: the text itself is never read.</summary>
+    private static int[]? FirstLineBounds(AutomationElement element)
+    {
+        try
+        {
+            if (!element.TryGetCurrentPattern(TextPattern.Pattern, out var pattern)) return null;
+            var line = ((TextPattern)pattern).DocumentRange.Clone();
+            line.MoveEndpointByRange(TextPatternRangeEndpoint.End, line, TextPatternRangeEndpoint.Start);
+            line.ExpandToEnclosingUnit(TextUnit.Line);
+            var rects = line.GetBoundingRectangles();
+            return rects.Length == 0 ? null : Box(rects[0]);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or COMException or ElementNotAvailableException)
+        {
+            return null;
+        }
     }
 
     internal async Task<object> ClickAsync(string id)
