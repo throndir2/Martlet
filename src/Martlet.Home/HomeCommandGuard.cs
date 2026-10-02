@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.Json.Nodes;
 
 namespace Martlet.Home;
 
@@ -22,16 +23,37 @@ public static class HomeCommandGuard
     /// <summary>Home Assistant commands are short; longer sentences that mention a door or lock are conversation.</summary>
     public const int MaximumCommandWords = 12;
 
-    private static readonly string[] SensitiveStems =
+    // Whole words, word beginnings and compound endings that name something able to open the home. Short words are matched
+    // whole so "portable heater", "torch lamp" or "ventilator" stay ordinary.
+    private static readonly HashSet<string> SensitiveWords = new(StringComparer.Ordinal)
+    {
+        "lock", "locks", "locked", "locking", "door", "doors", "gate", "gates", "alarm", "alarms", "valve", "valves",
+        "tor", "tore", "tür", "türe", "türen", "tuer", "tueren", "schloss", "ventil", "ventile",
+        "porte", "portes", "vanne", "vannes", "alarme", "alarmes",
+        "puerta", "puertas", "alarma", "alarmas", "porta", "allarme", "cancello", "cancelli",
+        "deur", "deuren", "slot", "sloten", "poort", "poorten"
+    };
+
+    private static readonly string[] SensitivePrefixes =
     [
-        "lock", "unlock", "deadbolt", "padlock", "door", "garage", "gate", "alarm", "disarm", "security", "valve",
-        "schloss", "schließ", "schliess", "verriegel", "entriegel", "tür", "tuer", "tor", "garag", "ventil",
-        "serrure", "verrou", "déverrouill", "deverrouill", "porte", "portail", "vanne",
-        "cerradura", "cerrojo", "puerta", "portón", "porton", "válvula", "valvula",
-        "serratura", "porta", "cancell", "allarm", "valvol",
-        "slot", "deur", "poort"
+        "unlock", "deadbolt", "padlock", "garag", "disarm",
+        "verriegel", "entriegel", "abschlie", "aufschlie", "zuschlie", "alarmanlage", "haustür", "haustuer",
+        "serrure", "verrou", "déverrouill", "deverrouill", "portail",
+        "portón", "porton", "cerradura", "cerrojo", "válvul", "valvul",
+        "serratura", "portone", "allarm", "valvol",
+        "vergrendel", "ontgrendel"
     ];
 
+    private static readonly string[] SensitiveSuffixes = ["tür", "türe", "türen", "tuer", "schloss", "deur", "deuren"];
+
+    /// <summary>Whether one lower-case word names a lock, door, garage, gate, alarm or valve.</summary>
+    public static bool IsSensitiveWord(string word) =>
+        SensitiveWords.Contains(word) ||
+        SensitivePrefixes.Any(prefix => word.StartsWith(prefix, StringComparison.Ordinal)) ||
+        word.Length > 5 && SensitiveSuffixes.Any(suffix => word.EndsWith(suffix, StringComparison.Ordinal));
+
+    /// <summary>Whether any word of <paramref name="text"/> names a lock, door, garage, gate, alarm or valve.</summary>
+    public static bool MentionsSensitive(string text) => Words(text, keepGreeting: true).Any(IsSensitiveWord);
     private static readonly HashSet<string> QuestionWords = new(StringComparer.Ordinal)
     {
         "is", "are", "was", "were", "did", "does", "do", "has", "have", "had", "what", "whats", "which", "where", "wheres",
@@ -46,7 +68,7 @@ public static class HomeCommandGuard
     public static HomeCommandRisk Assess(string text)
     {
         var words = Words(text);
-        if (!words.Any(word => SensitiveStems.Any(stem => word.StartsWith(stem, StringComparison.Ordinal))))
+        if (!words.Any(IsSensitiveWord))
             return HomeCommandRisk.Normal;
         if (words.Count > MaximumCommandWords) return HomeCommandRisk.NotACommand;
         return words.Count > 0 && QuestionWords.Contains(words[0]) ? HomeCommandRisk.Normal : HomeCommandRisk.Sensitive;
@@ -63,12 +85,20 @@ public static class HomeCommandGuard
             target.Type is "domain" && id is "lock" or "alarm_control_panel" or "valve";
     }
 
-    internal static List<string> Words(string text)
+    internal static List<string> Words(string text, bool keepGreeting = false)
     {
         var words = new List<string>();
         var current = new StringBuilder();
+        var previous = '\0';
         foreach (var c in text.Normalize(NormalizationForm.FormC))
         {
+            // Tool and script names split at camel case too ("HassUnlockDoor", "open_garage").
+            if (char.IsUpper(c) && char.IsLower(previous) && current.Length > 0)
+            {
+                words.Add(current.ToString());
+                current.Clear();
+            }
+            previous = c;
             if (char.IsLetterOrDigit(c)) current.Append(char.ToLower(c, CultureInfo.InvariantCulture));
             else if (c is '\'' or '’') continue;
             else if (current.Length > 0)
@@ -79,8 +109,63 @@ public static class HomeCommandGuard
         }
         if (current.Length > 0) words.Add(current.ToString());
         // A leading greeting or the companion's name is not the first word of the request ("hey Martlet, is the door locked?").
-        while (words.Count > 1 && words[0] is "hey" or "hi" or "ok" or "okay" or "please" or "martlet" or "so" or "and" or "um" or "uh")
+        while (!keepGreeting && words.Count > 1 && words[0] is "hey" or "hi" or "ok" or "okay" or "please" or "martlet" or "so" or "and" or "um" or "uh")
             words.RemoveAt(0);
         return words;
     }
+
+    private static readonly HashSet<string> ReadOnlyTools = new(StringComparer.Ordinal)
+    {
+        "GetLiveContext", "GetDateTime", "HassGetState", "HassGetWeather", "HassGetCurrentDate", "HassGetCurrentTime",
+        "HassTimerStatus", "todo_get_items", "calendar_get_events"
+    };
+
+    private static readonly HashSet<string> SensitiveDomains = new(StringComparer.Ordinal) { "lock", "alarm_control_panel", "valve" };
+    private static readonly HashSet<string> SensitiveDeviceClasses = new(StringComparer.Ordinal) { "garage", "garage_door", "gate", "door" };
+
+    /// <summary>How a Home Assistant MCP tool call should be treated. Status tools are read-only; Home Assistant's built-in
+    /// intents (Hass*) on ordinary devices are comfort actions; anything naming a lock, door, garage, gate, alarm or valve
+    /// (in the tool name, its arguments, a domain or device class, or a name in <paramref name="sensitiveNames"/>) is
+    /// sensitive; other tools, such as exposed scripts, are unknown. Without <paramref name="sensitiveNames"/> (Home
+    /// Assistant's entity list could not be read) a device addressed only by name is unknown too.</summary>
+    public static HomeToolRisk AssessTool(string tool, JsonObject arguments, IReadOnlyCollection<string>? sensitiveNames)
+    {
+        ArgumentNullException.ThrowIfNull(tool);
+        ArgumentNullException.ThrowIfNull(arguments);
+        if (ReadOnlyTools.Contains(tool)) return HomeToolRisk.ReadOnly;
+        if (Words(tool, keepGreeting: true).Any(IsSensitiveWord)) return HomeToolRisk.Sensitive;
+        var values = new List<(string Key, string Value)>();
+        Collect(null, arguments, values, 0);
+        foreach (var (key, value) in values)
+        {
+            var normalized = value.Trim().ToLowerInvariant();
+            if (key == "domain" && SensitiveDomains.Contains(normalized) ||
+                key == "device_class" && SensitiveDeviceClasses.Contains(normalized) ||
+                MentionsSensitive(value) ||
+                sensitiveNames is not null && sensitiveNames.Contains(value.Trim()))
+                return HomeToolRisk.Sensitive;
+        }
+        if (!tool.StartsWith("Hass", StringComparison.Ordinal)) return HomeToolRisk.Unknown;
+        var targetsByName = values.Any(v => v.Key is "name" or "area" or "floor") && !values.Any(v => v.Key == "domain");
+        return sensitiveNames is null && targetsByName ? HomeToolRisk.Unknown : HomeToolRisk.Comfort;
+    }
+
+    private static void Collect(string? key, JsonNode? node, List<(string, string)> values, int depth)
+    {
+        if (node is null || depth > 6 || values.Count >= 64) return;
+        switch (node)
+        {
+            case JsonObject obj:
+                foreach (var (name, child) in obj) Collect(name, child, values, depth + 1);
+                break;
+            case JsonArray array:
+                foreach (var child in array) Collect(key, child, values, depth + 1);
+                break;
+            case JsonValue value when value.TryGetValue<string>(out var text):
+                values.Add((key ?? "", text.Length > 256 ? text[..256] : text));
+                break;
+        }
+    }
 }
+
+public enum HomeToolRisk { ReadOnly, Comfort, Sensitive, Unknown }

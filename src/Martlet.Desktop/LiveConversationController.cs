@@ -623,16 +623,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 history = context.Snapshot();
             }
 
-            // Only the user's own typed or spoken words ever reach Home Assistant (glances use RunCommentaryAsync).
-            HomeTurn? home = null;
-            if (smartHome is { ControlEnabled: true } house)
-            {
-                operation.Publish(new("home.asking"));
-                home = await house.HandleAsync(input!.UserText, worker).ConfigureAwait(false);
-                operation.Authorization.Check(worker);
-                operation.HomeSummary = home.Summary;
-                operation.Publish(new(home.Code));
-            }
+            // Keeps Smart home's list of locks, doors and garages current before the model may call Home Assistant's tools.
+            if (smartHome is { ModelToolsEnabled: true } safety) await safety.RefreshSafetyAsync(worker).ConfigureAwait(false);
 
             DesktopMemoryRecall? memoryResult = null;
             if (operation.MemoryRequested)
@@ -654,6 +646,24 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 toolset = await tools.PrepareAsync(worker).ConfigureAwait(false);
                 operation.Authorization.Check(worker);
                 operation.Toolset = toolset;
+            }
+
+            // Only the user's own typed or spoken words ever reach Home Assistant (glances use RunCommentaryAsync). When the
+            // reply is offered Home Assistant's own tools, the model acts through them instead of Assist, so nothing runs twice.
+            HomeTurn? home = null;
+            if (smartHome is { ControlEnabled: true } house)
+            {
+                if (house.ModelToolsEnabled && toolset?.Servers.Contains(SmartHome.ServerName) == true &&
+                    tools!.ManagedConflicts.All(s => s.Name != SmartHome.ServerName))
+                    home = house.ToolsTurn();
+                else
+                {
+                    operation.Publish(new("home.asking"));
+                    home = await house.HandleAsync(input!.UserText, worker).ConfigureAwait(false);
+                    operation.Authorization.Check(worker);
+                }
+                operation.HomeSummary = home.Summary;
+                operation.Publish(new(home.Code));
             }
 
             lock (gate)

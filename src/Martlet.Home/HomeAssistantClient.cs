@@ -99,8 +99,37 @@ public sealed class HomeAssistantClient : IDisposable
         return cameras.OrderBy(c => c.Name, StringComparer.CurrentCultureIgnoreCase).ToArray();
     }
 
+    /// <summary>The names of entities that can open the home (locks, alarm panels, valves, and garage doors, gates and doors
+    /// among covers), as entity ids and friendly names, so tool calls that name one can be held back.</summary>
+    public async Task<IReadOnlyCollection<string>> SensitiveNamesAsync(Uri baseUri, SecretLease token, CancellationToken cancellationToken)
+    {
+        using var document = await SendAsync(HttpMethod.Get, baseUri, "api/states", token, null, MaximumStatesResponse,
+            cancellationToken).ConfigureAwait(false);
+        if (document.RootElement.ValueKind != JsonValueKind.Array) throw NotHomeAssistant();
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var state in document.RootElement.EnumerateArray())
+        {
+            if (state.ValueKind != JsonValueKind.Object || Text(state, "entity_id") is not { Length: <= 255 } id) continue;
+            var dot = id.IndexOf('.');
+            if (dot <= 0) continue;
+            var attributes = state.TryGetProperty("attributes", out var found) && found.ValueKind == JsonValueKind.Object ? found : default;
+            var deviceClass = attributes.ValueKind == JsonValueKind.Object ? Text(attributes, "device_class") : null;
+            var sensitive = HomeCommandGuard.IsSensitive(new HomeTarget("", "entity", id)) ||
+                id[..dot] == "cover" && deviceClass is "garage" or "gate" or "door";
+            if (!sensitive) continue;
+            names.Add(id);
+            names.Add(id[(dot + 1)..].Replace('_', ' '));
+            if (attributes.ValueKind == JsonValueKind.Object && Clean(Text(attributes, "friendly_name"), 120) is { Length: > 0 } name)
+                names.Add(name);
+        }
+        return names;
+    }
+
     /// <summary>The snapshot address of a camera entity, for Watch's network camera source.</summary>
     public static Uri CameraSnapshot(Uri baseUri, string entityId) => new(baseUri, "api/camera_proxy/" + entityId);
+
+    /// <summary>Home Assistant's Model Context Protocol Server endpoint (its Assist tools for language models).</summary>
+    public static Uri McpEndpoint(Uri baseUri) => new(baseUri, "api/mcp");
 
     internal static HomeCommandResult ParseConversation(JsonElement root)
     {
