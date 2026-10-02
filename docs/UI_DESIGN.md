@@ -195,7 +195,7 @@ to bottom: the **map**, the **selected device** with what it does, and
     run on the host.
 - **Settings for all devices** (companion mode) closes the page: **Check all
   hosts** reads every host's roles (explicit only), and **Keep who does what
-  in sync on all my computers** (OFF by default) shares the assignments with
+  in sync on all my computers** (ON by default; unticking it saves `off`) shares the assignments with
   every paired host and your other computers ([details](CLUSTER.md)): every
   15 seconds it checks the hosts, follows changes made elsewhere and pushes
   changes made here. A status line says how many hosts hold the current plan
