@@ -715,6 +715,7 @@ UNIT
   collect_machine
   show_machine
   if [[ ${CONFIG_CHANGED} == 1 ]] || ! approval_matches; then reapprove; else service_start; fi
+  reconnect_roles
   say "Host ready. Next: 'pair' to connect a desktop, and 'add <role>' (see 'roles')."
 }
 
@@ -780,6 +781,48 @@ role_compose() {
   # Present only when the role was added to run on the NVIDIA GPU (role.conf gpu=optional|<overlay>).
   if [[ -f "${project}/compose.gpu.yaml" ]]; then files+=(-f compose.gpu.yaml); fi
   ( cd "${project}" && env "${secret_env[@]}" "${DOCKER[@]}" compose -p "martlet-${role}" --env-file .env "${files[@]}" "$@" )
+}
+
+installed_roles() {
+  local file
+  for file in "${CONF}/roles"/*.role; do
+    [[ -e "${file}" ]] && basename "${file}" .role
+  done
+  return 0
+}
+
+# Docker method: whether an installed role's containers are missing or outside the current network holder's namespace.
+# Docker pins network_mode container:martlet-host-net to the holder's container ID when it creates a container, so after
+# setup replaces the holder (a new image or address) the role keeps running in the old namespace, which the gateway can
+# no longer reach (desktops then get worker.unavailable), and the new holder's restart pass does not touch it.
+role_detached() {
+  local role="$1" holder container mode found=0
+  holder="$(docker container inspect -f '{{.Id}}' "${NET}" 2>/dev/null)" || return 1
+  while IFS= read -r container; do
+    [[ -n "${container}" ]] || continue
+    found=1
+    mode="$(docker container inspect -f '{{.HostConfig.NetworkMode}}' "${container}" 2>/dev/null || true)"
+    [[ "${mode}" == "container:${holder}" || "${mode}" == "container:${NET}" ]] || return 0
+  done < <(docker ps -aq --filter "label=com.docker.compose.project=martlet-${role}" 2>/dev/null || true)
+  [[ ${found} == 0 ]]
+}
+
+# Recreates installed roles that role_detached finds outside the gateway's network (their data volumes are kept).
+reconnect_roles() {
+  [[ "${MODE}" == docker ]] || return 0
+  local role
+  while IFS= read -r role; do
+    [[ -n "${role}" ]] && role_detached "${role}" || continue
+    note "Reconnecting ${role} to the gateway network (it was left on the network an earlier setup replaced)..."
+    journal "reconnecting ${role} to the current network holder"
+    if role_compose "${role}" up -d --force-recreate --no-build >/dev/null 2>&1 ||
+       role_compose "${role}" up -d --force-recreate; then
+      note "Reconnected ${role}; it is starting again."
+    else
+      journal "could not reconnect ${role}"
+      note "Could not reconnect ${role}. Add it again: martlet-host add ${role}"
+    fi
+  done < <(installed_roles)
 }
 
 cmd_add() {
@@ -1013,6 +1056,7 @@ cmd_update() {
   fi
   collect_machine
   apply_config
+  reconnect_roles
   if [[ "${MODE}" == docker ]]; then
     # Older martlet-host images still in use (for example by the network holder) are kept.
     docker image ls martlet-host --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | grep -vxF "${IMAGE}" |
@@ -1047,6 +1091,9 @@ cmd_status() {
     port="$(conf_value "${file}" endpoint | sed -E 's#.*:([0-9]+)/$#\1#')"
     say "Role ${role}"
     if (exec 3<>"/dev/tcp/127.0.0.1/${port}") 2>/dev/null; then note "listening on 127.0.0.1:${port}"; else note "NOT listening on 127.0.0.1:${port}"; fi
+    if [[ "${MODE}" == docker ]] && role_detached "${role}"; then
+      note "Not in the gateway's network (missing, or left on the network an earlier setup replaced), so the gateway can't reach it. Reconnect it: martlet-host update (Update host in Martlet)"
+    fi
     role_compose "${role}" ps 2>/dev/null || true
   done
 }
