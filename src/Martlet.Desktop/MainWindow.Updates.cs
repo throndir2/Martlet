@@ -317,14 +317,14 @@ public partial class MainWindow
     }
 
     /// <summary>Closes Martlet; the installer runs once it has exited and then starts Martlet again (minimized after an
-    /// automatic install, so it does not take focus from what you are doing).</summary>
+    /// automatic install, so it does not take focus from what you are doing, and in the notification area when it was there).</summary>
     private void InstallNow(bool quiet)
     {
         if (readyUpdate is not { } ready || closing) return;
         installOnExit = (ready.Path, ready.Update.Version, true, quiet);
         UpdateStatusText.Text = ActionText.Text =
             $"Installing Martlet {ready.Update.Version.ToString(3)}. Martlet will restart when it's done.";
-        Close();
+        ExitMartlet();
     }
 
     /// <summary>At exit: runs the requested install, or a downloaded automatic update without restarting Martlet.</summary>
@@ -336,7 +336,7 @@ public partial class MainWindow
         try
         {
             AppUpdateInstaller.Launch(run.Installer, run.Version, store.DataDirectory, run.Relaunch, run.Quiet,
-                (Application.Current as App)?.DataDirectoryArgument);
+                (Application.Current as App)?.DataDirectoryArgument, inTray);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or Win32Exception or InvalidOperationException) { }
     }

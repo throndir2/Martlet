@@ -26,6 +26,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "AddComputer", "OpenHosts", "HostsStepWhere", "HostsStepInstall", "HostsStepPair", "HostsStepRoles", "HostsBack", "HostsNext",
         "HostsClose", "HostsEnterCode", "HostMethodThisPc", "HostMethodSshDocker", "HostMethodSshNative", "HostMethodOnHost",
         "HostCommandSection", "PairCommandSection", "DeviceIdSection",
+        // The notification-area menu (ui_tray "menu"): Open Martlet only shows the window, Talk to Martlet opens the talk window
+        // like OpenLiveConversation, Pause Martlet only stops work and End the conversation closes the talk window like CloseLive.
+        // Start listening, Resume Martlet, the character, the startup and closing choices and Exit need --allow-ui-effects.
+        "TrayOpen", "TrayTalk", "TrayPause", "TrayEndTalk",
         // Martlet on your network: Find again only sends Martlet's own discovery query (port 9444) on the local network and
         // lists who answers; Stop asking only withdraws this PC's own request. Connect, Allow and Deny do the work.
         "NearbyFind", "NearbyCancel"
@@ -61,7 +65,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "McpDirectoryNeeds", "McpDirectoryInstalled", "McpDirectoryCantInstall",
         // Settings › Your other computers (whether Martlet here runs commands your other computers send, and what it last did)
         // and a paired host's How Martlet reaches it (the saved route in words, and what each route means).
-        "NodeAgentStatus", "HostReachNow", "HostReachHint"
+        "NodeAgentStatus", "HostReachNow", "HostReachHint",
+        // Settings › Startup and closing (what closing does and whether Windows starts Martlet), and the notification-area menu's
+        // status line (Martlet is running, listening, paused or watching).
+        "BackgroundStatus", "TrayStatus"
     };
     /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)");
     /// Companion › Voice's included F5 voices ("F5VoiceRow-arctic-slt" reads "SLT (US female)", with "· in use" when it is);
@@ -91,10 +98,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         if (!string.Equals(process.ProcessName, "Martlet.Desktop", StringComparison.OrdinalIgnoreCase))
             throw new ArgumentException("The process is not Martlet.Desktop.");
         var windows = Windows(pid);
-        if (!windows.Any(window => window.Current.AutomationId == "MartletMainWindow"))
+        // A Martlet in the notification area (closed to it, or started with Windows) has no visible window but its icon's window.
+        if (!windows.Any(window => window.Current.AutomationId == "MartletMainWindow") && TrayWindow(pid) == 0)
             throw new InvalidOperationException("The Martlet desktop window is not visible in this interactive session.");
         processId = pid;
-        return new { processId = pid, windows = windows.Select(window => window.Current.Name).ToArray() };
+        return new { processId = pid, windows = windows.Select(window => window.Current.Name).ToArray(), inTray = !MainWindowVisible(windows) };
     }
 
     internal object Snapshot(bool layout = false)
@@ -119,7 +127,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
                 var value = !IsSafeValue(id) ? null
                     : element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern) ? ((ValuePattern)pattern).Current.Value
                     : element.Current.ControlType == ControlType.Text || element.Current.ControlType == ControlType.Button ||
-                        element.Current.ControlType == ControlType.ListItem ? element.Current.Name
+                        element.Current.ControlType == ControlType.ListItem || element.Current.ControlType == ControlType.MenuItem
+                        ? element.Current.Name
                     // A combo box without a value pattern reads as its selected option.
                     : element.TryGetCurrentPattern(SelectionPattern.Pattern, out var choice)
                         ? ((SelectionPattern)choice).Current.GetSelection().FirstOrDefault()?.Current.Name : null;
@@ -269,10 +278,98 @@ internal sealed class DesktopAutomation(bool allowEffects)
         if (!string.Equals(process.ProcessName, "Martlet.Desktop", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("The attached Martlet process exited.");
         var windows = Windows(pid);
-        if (!windows.Any(window => window.Current.AutomationId == "MartletMainWindow"))
+        if (!MainWindowVisible(windows) && TrayWindow(pid) == 0)
             throw new InvalidOperationException("The Martlet window is no longer visible.");
         return windows;
     }
+
+    private static bool MainWindowVisible(AutomationElement[] windows) =>
+        windows.Any(window => window.Current.AutomationId == "MartletMainWindow");
+
+    // ---------- the notification-area icon (Martlet.Desktop's TrayIcon) ----------
+
+    private const string TrayWindowTitle = "Martlet notification area";
+    private const string TrayAddedProperty = "MartletTrayIconAdded";
+    private const int TrayCallbackMessage = 0x8000 + 0x4D;
+    private const int TrayIconId = 1;
+    private const int NinSelect = 0x400, WmContextMenu = 0x7B;
+    internal static readonly string[] TrayActions = ["status", "open", "menu", "close"];
+
+    /// <summary>Martlet's notification-area icon: "status" reads whether the icon is shown and the main window visible; "open"
+    /// and "menu" send the icon exactly what Explorer sends for a left click (show Martlet) and a right click (its menu, at the
+    /// mouse pointer), then ui_snapshot lists the menu's Tray* items; "close" presses the main window's close button, which
+    /// hides Martlet in the notification area by default and exits it when Keep running when closed is off, so it needs
+    /// --allow-ui-effects.</summary>
+    internal object Tray(string action)
+    {
+        if (!TrayActions.Contains(action)) throw new ArgumentException($"Unknown ui_tray action '{action}'.");
+        if (action == "close" && !allowEffects)
+            throw new InvalidOperationException("Closing Martlet's window can exit it, so it requires --allow-ui-effects.");
+        if (action == "status" && processId is int exited && !Running(exited))
+            return new { processId = exited, running = false, trayIcon = false, mainWindowVisible = false, inTray = false };
+        var windows = ConnectedWindows();
+        var pid = processId!.Value;
+        var icon = TrayWindow(pid);
+        switch (action)
+        {
+            case "open" or "menu":
+                if (icon == 0) throw new InvalidOperationException("Martlet has no notification-area icon.");
+                GetCursorPos(out var pointer);
+                var at = (nint)((pointer.Y & 0xFFFF) << 16 | (pointer.X & 0xFFFF));
+                if (!PostMessage(icon, TrayCallbackMessage, at, TrayIconId << 16 | (action == "open" ? NinSelect : WmContextMenu)))
+                    throw new Win32Exception(Marshal.GetLastWin32Error());
+                break;
+            case "close":
+                var main = windows.FirstOrDefault(window => window.Current.AutomationId == "MartletMainWindow")
+                    ?? throw new InvalidOperationException("Martlet's window is already hidden.");
+                ((WindowPattern)main.GetCurrentPattern(WindowPattern.Pattern)).Close();
+                break;
+        }
+        if (action != "status") Thread.Sleep(500);
+        if (!Running(pid)) return new { processId = pid, running = false, trayIcon = false, mainWindowVisible = false, inTray = false };
+        var visible = MainWindowVisible(Windows(pid));
+        icon = TrayWindow(pid);
+        return new { processId = pid, running = true, trayIcon = icon != 0 && GetProp(icon, TrayAddedProperty) != 0, mainWindowVisible = visible,
+            inTray = icon != 0 && !visible };
+    }
+
+    private static bool Running(int pid)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(pid);
+            return !process.HasExited;
+        }
+        catch (ArgumentException) { return false; }
+    }
+
+    /// <summary>The attached process's (hidden) notification-area window, or 0.</summary>
+    private static nint TrayWindow(int pid)
+    {
+        nint found = 0;
+        EnumWindows((handle, _) =>
+        {
+            GetWindowThreadProcessId(handle, out var owner);
+            if (owner != pid || GetWindowTextLength(handle) != TrayWindowTitle.Length) return true;
+            var title = new System.Text.StringBuilder(TrayWindowTitle.Length + 1);
+            GetWindowText(handle, title, title.Capacity);
+            if (title.ToString() != TrayWindowTitle) return true;
+            found = handle;
+            return false;
+        }, 0);
+        return found;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint { public int X, Y; }
+
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool GetCursorPos(out NativePoint point);
+    [DllImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PostMessage(nint window, int message, nint wParam, nint lParam);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern nint GetProp(nint window, string name);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowTextLength(nint window);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowText(nint window, System.Text.StringBuilder text, int count);
 
     private static AutomationElement[] Windows(int pid)
     {

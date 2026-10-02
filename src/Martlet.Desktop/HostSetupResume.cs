@@ -49,6 +49,9 @@ internal static class HostSetupResume
         }
     }
 
+    /// <summary>A setup waits to continue after a Windows restart (so Martlet opens its window rather than starting hidden).</summary>
+    internal static bool Pending => dataDirectory is not null && File.Exists(ContinueSetup.PathIn(dataDirectory));
+
     /// <summary>What to continue now (read once and forgotten), or null.</summary>
     internal static ContinueSetup? Take()
     {

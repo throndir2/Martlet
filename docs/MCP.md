@@ -625,7 +625,8 @@ the state: *Not listening* until it is pressed, then *Listening*, *Can't
 listen* or *Mic unavailable* with the reason; while Martlet speaks it reads
 *Not listening while Martlet speaks*. Clicking it opens the microphone, so it
 needs `--allow-ui-effects`; errors, Stop and `LiveStop` never stop listening,
-and listening that can't start yet, such as Voice ID not set up, reads *Can't
+only the button or *Pause Martlet* in the notification-area menu does, and
+listening that can't start yet, such as Voice ID not set up, reads *Can't
 listen* and keeps retrying), Home's `OpenLiveConversation` (*Start talking*,
 or *Show conversation* while the talk window is open),
 `LiveVision` (*Watching*, *Looking*, *Vision paused* or *Can't see*, with when
@@ -666,9 +667,46 @@ Window discovery uses visible top-level native handles filtered to the attached
 process, then verifies ownership around each UI Automation handle lookup.
 This avoids transient omissions from UI Automation's desktop-root enumeration
 when unrelated WPF windows close. The Martlet main-window automation ID is
-still required on every operation; hidden, closed or changed-owner windows
-fail rather than falling back to another process. Same-process dialogs remain
-available, and duplicate control IDs still fail as ambiguous.
+still required on every operation, unless the window is hidden in the
+notification area and the process still has its icon's (hidden) window;
+closed or changed-owner windows fail rather than falling back to another
+process. Same-process dialogs remain available, and duplicate control IDs
+still fail as ambiguous.
+
+**Notification area.** Closing the main window keeps Martlet running in the
+notification area by default, and Martlet started with `--tray` (Start with
+Windows) shows no window, so `ui_connect` also attaches when only the icon's
+window exists (it returns `inTray`). `ui_tray` drives the icon:
+`{"name":"ui_tray"}` (or `"action":"status"`) returns `running`, `trayIcon`
+(the icon is in the notification area), `mainWindowVisible` and `inTray`;
+`"action":"open"` and `"action":"menu"` post the icon exactly what Explorer
+sends for a left click (show Martlet) and a right click (its menu at the mouse
+pointer), so they need no flag; `"action":"close"` presses the main window's
+close button, which hides Martlet or (with *Keep running when closed* off) exits
+it, so it needs `--allow-ui-effects`. While the menu is open `ui_snapshot` lists
+`TrayMenu` and its items: `TrayStatus` (status text: *Martlet is running*,
+*Martlet is listening*, *Martlet is paused*, *Martlet is watching* or *Martlet:
+talk window open*), `TrayOpen`, `TrayTalk` (*Talk to Martlet*, or *Show the
+talk window* while it is open), and while the talk window is open `TrayPause` or
+`TrayResume` and `TrayEndTalk`, then `TrayCharacter`, the checkable
+`TrayCloseToTray` and `TrayStartWithWindows` (their `checkedState` is the
+current choice) and `TrayExit`. `TrayOpen`, `TrayTalk` (like
+`OpenLiveConversation`), `TrayPause` (it only stops work) and `TrayEndTalk`
+(like `CloseLive`) are passive clicks; `TrayResume`, `TrayCharacter`, the two
+choices and `TrayExit` need `--allow-ui-effects`. While another Martlet dialog
+(Setup, Companion...) is open, `TrayTalk` and `TrayCharacter` are disabled and
+`TrayExit` shows Martlet instead of exiting. Settings › *Startup and closing* has
+`CloseToTray` (checked by default; saves `background.json`), `StartWithWindows`
+(the per-user Run entry `Martlet`: this executable, the same `--data-directory`
+and `--tray` when `StartInTray` is checked; verify with a disposable data
+directory and turn it off again afterwards), `StartInTray` and `BackgroundStatus`
+(status text: what closing does, and whether Windows starts Martlet, including
+when Windows' own Startup apps switch turned it off). A second start with the
+same data directory shows the running Martlet and exits (with `--tray` it only
+exits); a different `--data-directory` runs beside it, so disposable
+verification desktops never reach your own Martlet. `-DesktopArguments '--tray'`
+on `scripts\Invoke-MartletMcp.ps1` starts the disposable desktop in the
+notification area.
 
 For broader **explicitly authorized** live UI testing, start the MCP server
 with `--allow-ui-effects`. This unlocks arbitrary ID-based `ui_click` and
@@ -713,7 +751,8 @@ call fails or an `until` is not met.
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
   and `-DataDirectory` for follow-up runs; stop it and delete the directory
-  when done.
+  when done. `-DesktopArguments` adds launch flags after the data directory
+  (for example `'--tray'` to start in the notification area).
 - `-AllowUiEffects` passes `--allow-ui-effects` (disposable data and no real
   credentials only; it never authorizes spending, provider requests, credential
   handling, audio capture/playback or data disclosure).

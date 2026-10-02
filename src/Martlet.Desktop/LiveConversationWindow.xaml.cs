@@ -200,9 +200,21 @@ public partial class LiveConversationWindow : ThemedWindow
                 ? "Set up Thinking in Companion, then come back to talk." : null);
             Warm();
             StartLive();
+            if (listenWhenReady && preferences.HandsFree && listenPaused && Available) Mic_Click(this, new RoutedEventArgs());
         }
         else notice = "Couldn't load settings. Close this window and try again.";
+        listenWhenReady = false;
         RenderActions();
+    }
+
+    private bool listenWhenReady;
+
+    /// <summary>Opened by Start listening in the notification-area menu: listening starts as soon as the window is ready, as if
+    /// its own Start listening button were pressed.</summary>
+    internal void ListenWhenReady()
+    {
+        if (!ready || loading is not null) listenWhenReady = true;
+        else if (listenPaused) Mic_Click(this, new RoutedEventArgs());
     }
 
     private bool Voice => preferences.SpeakReplies && controller.Configuration is { } selected && selected.Unavailable(true, false) is null;
@@ -795,6 +807,7 @@ public partial class LiveConversationWindow : ThemedWindow
             listenRetryAt = 0;
             if (MicrophoneUsable)
             {
+                pausedWith = null;
                 listenPaused = false;
                 listening = true;
             }
@@ -819,6 +832,7 @@ public partial class LiveConversationWindow : ThemedWindow
         }
         else
         {
+            pausedWith = null;
             watchPaused = false;
             StartWatching();
         }
@@ -826,6 +840,91 @@ public partial class LiveConversationWindow : ThemedWindow
     }
 
     private void Stop_Click(object sender, RoutedEventArgs e) => StopAll("conversation.canceled");
+
+    // ---------- Pause and Resume Martlet (the notification-area menu) ----------
+
+    /// <summary>What Pause Martlet stopped (always listening, vision), restored by Resume; null while not paused.</summary>
+    private (bool Listening, bool Watching)? pausedWith;
+    internal bool Paused => pausedWith is not null;
+    internal bool IsListening => listening;
+    internal bool IsWatching => watching;
+    /// <summary>Always listening is chosen (the window's Start listening / Stop listening button shows).</summary>
+    internal bool HandsFree => preferences.HandsFree;
+    /// <summary>Start listening was pressed and listening hasn't been stopped since.</summary>
+    internal bool ListeningStarted => !listenPaused;
+
+    /// <summary>Start listening / Stop listening, as the window's own button.</summary>
+    internal void ToggleListening() => Mic_Click(this, new RoutedEventArgs());
+
+    /// <summary>Pause Martlet: stops a reply, a recording and vision like Stop, and also stops listening, until Resume.</summary>
+    internal void Pause()
+    {
+        if (closed) return;
+        pausedWith ??= (!listenPaused, preferences.Watch && !watchPaused);
+        StopAll("conversation.canceled");
+        listening = false;
+        listenPaused = true;
+        StopListening(keepHeard: false);
+        watchPaused = true;
+        notice = "Paused. Martlet isn't listening or looking until you resume it from its notification-area icon.";
+        RenderActions();
+    }
+
+    /// <summary>Resume Martlet: listening and vision come back if Pause stopped them, as their buttons would start them.</summary>
+    internal void Resume()
+    {
+        if (closed || pausedWith is not { } was) return;
+        pausedWith = null;
+        notice = null;
+        if (was.Listening && preferences.HandsFree && listenPaused)
+        {
+            listenRetryAt = 0;
+            if (MicrophoneUsable)
+            {
+                listenPaused = false;
+                listening = true;
+            }
+            else notice = ListeningProblem();
+        }
+        if (was.Watching && preferences.Watch && !watching)
+        {
+            watchPaused = false;
+            StartWatching();
+        }
+        RenderActions();
+    }
+
+    private bool ownTaskbarButton;
+
+    /// <summary>While Martlet's main window is hidden in the notification area the talk window gets its own taskbar button, so
+    /// it can't get lost behind other windows.</summary>
+    internal void UseOwnTaskbarButton()
+    {
+        ownTaskbarButton = true;
+        if (PresentationSource.FromVisual(this) is not System.Windows.Interop.HwndSource source || !AddAppWindowStyle(source.Handle) ||
+            !IsVisible) return;
+        // The taskbar reads the style when a window shows.
+        Hide();
+        Show();
+    }
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        if (ownTaskbarButton && PresentationSource.FromVisual(this) is System.Windows.Interop.HwndSource source) AddAppWindowStyle(source.Handle);
+    }
+
+    private static bool AddAppWindowStyle(nint window)
+    {
+        const int GWL_EXSTYLE = -20, WS_EX_APPWINDOW = 0x40000;
+        var style = GetWindowLongPtrW(window, GWL_EXSTYLE);
+        if ((style & WS_EX_APPWINDOW) != 0) return false;
+        SetWindowLongPtrW(window, GWL_EXSTYLE, style | WS_EX_APPWINDOW);
+        return true;
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern nint GetWindowLongPtrW(nint window, int index);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern nint SetWindowLongPtrW(nint window, int index, nint value);
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {

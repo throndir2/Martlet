@@ -132,6 +132,8 @@ public partial class MainWindow
         if (ReferenceEquals(page, CompanionPage)) ShowCompanionTab(entering: true);
         else Motion.Enter(page);
         if (ReferenceEquals(page, DevicesPage)) RenderMap();
+        // Windows' own Startup apps switch can change while Martlet runs.
+        if (ReferenceEquals(page, SettingsPage)) RenderBackground();
         if (ReferenceEquals(page, DiagnosticsPage)) EnterDiagnostics();
         else LeaveDiagnostics();
     }
