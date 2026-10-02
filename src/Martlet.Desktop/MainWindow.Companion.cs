@@ -354,7 +354,6 @@ public partial class MainWindow
                 ? "OpenAI, OpenRouter, NVIDIA Build or any OpenAI-compatible server, with your API key. May cost money."
                 : "OpenAI, with your API key. May cost money.")));
 
-        var otherHosts = NetworkMap.Hosts(Inputs()).Where(h => h.HostId != thisPc?.HostId).ToArray();
         page.Children.Add(place switch
         {
             JobPlace.ThisPc when role == SetupRole.Llm => LocalThinkingCard(route),
@@ -364,11 +363,10 @@ public partial class MainWindow
             _ => CloudCard(section, job, route)
         });
 
-        // The Voice Library prepares recordings for self-hosted voices, so it shows only where F5 speaks: this PC's F5 or
-        // another of your computers. A cloud provider and a Windows voice have their own voices.
-        if (section == CompanionTab.Voice && (place == JobPlace.Computer && otherHosts.Length > 0 ||
-                place == JobPlace.ThisPc && route?.RouteType == SetupRouteType.GatewayF5 && thisPc is not null && route.Gateway?.HostId == thisPc.HostId))
-            page.Children.Add(VoicesCard());
+        // Voices F5 copies from your recordings. They show wherever F5 can speak: this PC or another of your computers.
+        // A cloud provider has its own voices.
+        if (section == CompanionTab.Voice && place != JobPlace.Cloud)
+            page.Children.Add(VoicesCard(route));
 
         if (section == CompanionTab.Voice) page.Children.Add(AudioCard(output: true));
         if (section == CompanionTab.Voice) page.Children.Add(SpeakRepliesCard());
@@ -473,12 +471,6 @@ public partial class MainWindow
             Row(PageButton(missing ? $"Fix {what.ToLowerInvariant()}" : $"Test or change {what.ToLowerInvariant()}",
                 () => RunNodeAction(NodeAction.AudioSetup), primary: missing, id: "OpenAudioSetup")));
     }
-
-    private Border VoicesCard() => Card(Heading("Voice Library"),
-        Note("F5 speaks in the voice of a short recording. It starts with F5-TTS's published English sample voice, so it works right away; " +
-            "Choose another voice hears the voices or records your own. The Voice Library keeps recordings for self-hosted voices on this PC.",
-            new Thickness(0, 0, 0, 8)),
-        Row(PageButton("Open the Voice Library", () => VoiceLibrary_Click(this, new RoutedEventArgs()), id: "OpenVoiceLibrary")));
 
     // ---------- this PC: Ollama for thinking ----------
 
@@ -620,8 +612,7 @@ public partial class MainWindow
             : $"This PC's host service ({thisPc.HostId}) is set up. If it doesn't run {job.Engine} yet, Martlet installs it and switches over by itself.",
             new Thickness(0, 0, 0, 8)));
         steps.Add(Row(
-            PageButton(inUse ? "Choose another voice" : "Use F5 on this PC",
-                () => (inUse ? AssignJobAsync(job, "host:" + thisPc.HostId) : UseF5HereAsync()).Forget(), primary: primary && !inUse, id: "SetupUseLocal-" + job.Job),
+            inUse ? null : PageButton("Use F5 on this PC", () => UseF5HereAsync().Forget(), primary: primary, id: "SetupUseLocal-" + job.Job),
             PageButton("Check it", () => RunNodeAction(NodeAction.CheckHost, thisPc.HostId), id: "SetupCheckLocal-" + job.Job)));
         return steps;
     }
@@ -786,7 +777,7 @@ public partial class MainWindow
     private Border ComputersCard(HostJob job, SetupRoute? route, PairedHost? exclude) =>
         ComputersCard(job.Job, job.Engine, job.HostRoleKind, NetworkMap.JobHost(homeSettings, job.Role),
             $"Does the {job.Job} now ({job.Engine} {route?.ModelId}).",
-            job.RouteType == SetupRouteType.GatewayF5 ? "Choose another voice" : null,
+            null,
             key => AssignJobAsync(job, key), job.Disclosure, exclude);
 
     /// <summary>Every paired host (except <paramref name="exclude"/>) with what it runs and <i>Use it</i>, plus <i>Add a

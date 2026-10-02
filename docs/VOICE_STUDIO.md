@@ -8,12 +8,13 @@ training/fine-tuning from the later self-hosted feature's non-goals. It does
 not add training to the API MVP or authorize downloads, host changes, paid
 services, publication, or use of someone else's voice.
 
-**First implementation slice (VS01):** local Desktop Voice Library with all
-five research targets, explicit WAV import, transcripts, reference/training
-purpose, local rights acknowledgment, persistent inspect/delete and
-engine-specific preparation guidance. This is preparation, not synthesis,
-training, upload, runtime installation or a conversation route. The existing
-OpenAI conversation and isolated F5 foundation retain their current boundaries.
+**First implementation slice (VS01), now replaced:** the passive five-engine
+Voice Library window never reached a voice route, so it was removed. The
+working voice library is F5's: Companion > Voice > Voices adds recordings with
+their transcripts and rights, plays them, switches the active voice in one click
+and removes voices, keeping Martlet's own copy of each recording. Other engines
+add to that one list when they run. The existing OpenAI conversation and F5
+route retain their current boundaries.
 
 ## Research: implementation, not marketing compatibility
 
@@ -149,9 +150,13 @@ at least two qualified workers; VS05 can proceed per engine after its runtime
 closure. Never badge the overall feature "supports five engines" on the
 strength of VS01's catalog/import alone. No remote CI/training is authorized.
 
-## VS01 local implementation evidence
+## VS01 local implementation evidence (historical)
 
-The implementation uses existing Core/Desktop projects, the app-shared
+VS01's window, Core library and their tests were removed when the F5 voice
+list replaced them; only the shared PCM16 WAV inspector (`PcmWaveInfo`) remains.
+The record below describes the removed slice.
+
+The implementation used existing Core/Desktop projects, the app-shared
 `SetupOperationRunner`, local-path guards and strict JSON validation. F5 and
 Voice Library share the managed PCM16 WAV inspector; F5's narrower limits and
 private store are preserved. No new external package or model is installed.

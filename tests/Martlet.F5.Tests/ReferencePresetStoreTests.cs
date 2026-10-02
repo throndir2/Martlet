@@ -145,21 +145,18 @@ public sealed class ReferencePresetStoreTests
     }
 
     [Fact]
-    public async Task Same_path_replacement_is_detected_and_requires_new_snapshot_and_apply()
+    public async Task Stored_copy_keeps_speaking_after_the_original_is_replaced()
     {
         using var scope = new F5TestScope();
         F5TestData.WriteWav(scope.SourcePath, seed: 1);
+        var original = await File.ReadAllBytesAsync(scope.SourcePath);
         using var store = scope.OpenStore();
         var first = await F5TestData.SnapshotAsync(store, scope.SourcePath);
         await F5TestData.ApplyAsync(store, first);
 
         F5TestData.WriteWav(scope.SourcePath, seed: 2);
-        var status = await store.CheckSourceAsync(first.PresetId, first.ReferenceRevision);
-        Assert.Equal(F5ReferenceSourceState.Changed, status.State);
-        await F5TestData.FailureAsync(F5Failure.SourceChanged, async () =>
-        {
-            using var _ = await store.AcquireAppliedAsync(first.ReferenceRevision);
-        });
+        using (var kept = await store.AcquireAppliedAsync(first.ReferenceRevision))
+            Assert.Equal(original, kept.Reference.Audio.ToArray());
 
         var second = await F5TestData.SnapshotAsync(store, scope.SourcePath,
             presetId: first.PresetId);
@@ -172,7 +169,7 @@ public sealed class ReferencePresetStoreTests
     }
 
     [Fact]
-    public async Task Missing_external_source_does_not_destroy_or_hide_persisted_preset()
+    public async Task Deleted_original_does_not_stop_applying_or_using_the_voice()
     {
         using var scope = new F5TestScope();
         F5TestData.WriteWav(scope.SourcePath);
@@ -184,9 +181,35 @@ public sealed class ReferencePresetStoreTests
         using var reopened = scope.OpenStore();
         Assert.Equal(snapshot.ReferenceRevision,
             Assert.Single(Assert.Single(reopened.Inspect().Presets).Snapshots).ReferenceRevision);
-        var status = await reopened.CheckSourceAsync(
-            snapshot.PresetId, snapshot.ReferenceRevision);
-        Assert.Equal(F5ReferenceSourceState.Missing, status.State);
+        await F5TestData.ApplyAsync(reopened, snapshot);
+        using var lease = await reopened.AcquireAppliedAsync(snapshot.ReferenceRevision);
+        Assert.Equal(snapshot.AudioSha256, lease.Reference.AudioSha256);
+    }
+
+    [Fact]
+    public async Task Delete_removes_an_unapplied_voice_and_its_copies_but_not_the_applied_one()
+    {
+        using var scope = new F5TestScope();
+        var other = Path.Combine(scope.Root, "other.wav");
+        F5TestData.WriteWav(scope.SourcePath, seed: 1);
+        F5TestData.WriteWav(other, seed: 2);
+        using var store = scope.OpenStore();
+        var kept = await F5TestData.SnapshotAsync(store, scope.SourcePath);
+        await F5TestData.ApplyAsync(store, kept);
+        var removed = await F5TestData.SnapshotAsync(store, other, name: "Other");
+        var folder = Path.Combine(scope.StoreDirectory, "audio", removed.PresetId.ToString("N"));
+        Assert.True(Directory.Exists(folder));
+
+        await F5TestData.FailureAsync(F5Failure.Conflict, () => store.DeleteAsync(kept.PresetId));
+        await store.DeleteAsync(removed.PresetId);
+
+        Assert.Equal(kept.PresetId, Assert.Single(store.Inspect().Presets).Id);
+        Assert.False(Directory.Exists(folder));
+        Assert.True(File.Exists(other));
+        await F5TestData.FailureAsync(F5Failure.NotFound, () => store.DeleteAsync(removed.PresetId));
+        store.Dispose();
+        using var reopened = scope.OpenStore();
+        Assert.Equal(kept.PresetId, Assert.Single(reopened.Inspect().Presets).Id);
     }
 
     [Fact]
@@ -230,7 +253,7 @@ public sealed class ReferencePresetStoreTests
     }
 
     [Fact]
-    public async Task Changed_source_blocks_apply_and_preserves_previous_selection()
+    public async Task Changed_original_after_snapshot_still_applies_the_stored_copy()
     {
         using var scope = new F5TestScope();
         var other = Path.Combine(scope.Root, "other.wav");
@@ -244,10 +267,10 @@ public sealed class ReferencePresetStoreTests
             second.PresetId, second.ReferenceRevision);
         F5TestData.WriteWav(other, seed: 3);
 
-        await F5TestData.FailureAsync(F5Failure.SourceChanged, async () =>
-            await store.ApplyAsync(preview,
-                preview.Authorize(F5ApplyDecision.Allow)));
-        Assert.Equal(first.ReferenceRevision, store.Inspect().AppliedReferenceRevision);
+        await store.ApplyAsync(preview, preview.Authorize(F5ApplyDecision.Allow));
+        Assert.Equal(second.ReferenceRevision, store.Inspect().AppliedReferenceRevision);
+        using var lease = await store.AcquireAppliedAsync(second.ReferenceRevision);
+        Assert.Equal(second.AudioSha256, lease.Reference.AudioSha256);
     }
 
     [Theory]

@@ -137,19 +137,13 @@ public partial class MainWindow
                 ActionText.Text = $"{job.Title} stays where it is: {cannot}";
                 return;
             }
-            // F5 clones a reference voice. Handing Speaking to a host starts with the voice already chosen for it, else the
-            // bundled sample voice; "Choose another voice" (the host already speaks) opens the picker.
+            // F5 copies a reference voice. Handing Speaking to a host keeps the voice already chosen for it, else the bundled
+            // sample voice; Companion › Voice › Voices adds voices and switches between them.
             F5ReferenceSnapshot? voice = null;
             if (job.RouteType == SetupRouteType.GatewayF5)
-            {
-                var destination = route?.DestinationId ?? F5Destination;
-                voice = NetworkMap.JobHost(homeSettings, job.Role) == host.HostId
-                    ? F5VoiceDialog.Choose(this, store.DataDirectory, host.HostId, destination)
-                    : await F5Voices.DefaultAsync(store.DataDirectory, destination, lifetime.Token);
-                if (voice is null) return;
-            }
+                voice = await F5Voices.DefaultAsync(store.DataDirectory, route?.DestinationId ?? F5Destination, lifetime.Token);
             var withVoice = voice is null ? "" : $" in the voice '{voice.PresetName}'";
-            var changeVoice = voice is null ? "" : " You can hear and change the voice later with Choose another voice.";
+            var changeVoice = voice is null ? "" : " You can add voices and switch between them any time on Companion › Voice.";
             if (route is null)
             {
                 var role = HostRoles.Get(job.HostRoleKind);

@@ -258,7 +258,7 @@ public static class SetupAdvisor
                         ? "Use an OpenAI voice until the engine runs."
                         : "OpenAI voices work today in Setup / resume.",
                     Local,
-                    answers.CustomVoice ? "Import your voice samples and transcripts in Voice Library now, so they are ready." : null));
+                    answers.CustomVoice ? "Add your voice recordings with their transcripts under Companion › Voice › Voices; F5 copies them with no training." : null));
             }
             else if (goal is AdvisorGoal.Fastest or AdvisorGoal.Private)
             {

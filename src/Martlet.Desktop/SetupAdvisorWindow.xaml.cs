@@ -324,7 +324,7 @@ public partial class SetupAdvisorWindow : ThemedWindow
         AdvisorNextStep.Setup => "Set up thinking in Companion (model and key)",
         AdvisorNextStep.AudioSetup => "Open Audio setup (microphone and speakers)",
         AdvisorNextStep.Hosts => "Open Martlet hosts (GPU computers and Docker)",
-        AdvisorNextStep.VoiceLibrary => "Open Voice Library (your voice samples)",
+        AdvisorNextStep.VoiceLibrary => "Open Voice (add your own voices)",
         AdvisorNextStep.Prerequisites => "Install what this plan needs on this PC",
         _ => "Open Character settings"
     };

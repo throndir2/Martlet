@@ -946,6 +946,8 @@ public sealed record SetupSettings : IContract
         });
     }
 
+    /// <summary>Switches the F5 route to another applied reference voice, keeping its host and enabled state. A route whose
+    /// selection was confirmed stays confirmed with the new voice, which the owner chose explicitly.</summary>
     public static AppSettings ApplyF5Reference(AppSettings settings, F5ReferenceSettings reference)
     {
         settings.Validate();
@@ -955,13 +957,13 @@ public sealed record SetupSettings : IContract
         ContractRules.Require(route.RouteType == SetupRouteType.GatewayF5 &&
             route.GatewaySnapshot?.DestinationId == reference.ProcessingDestinationId,
             "The applied F5 reference does not match the probed processing destination.");
-        return ReplaceRoute(settings, route with
+        var changed = route with
         {
-            Enabled = false,
             Reference = reference,
             Consent = null,
             ConfigurationRevision = Guid.NewGuid()
-        });
+        };
+        return ReplaceRoute(settings, changed with { Consent = route.Consent is null ? null : changed.Selection() });
     }
 
     public static AppSettings ConfigureLocalStt(AppSettings settings, LocalSttPackageSettings package)

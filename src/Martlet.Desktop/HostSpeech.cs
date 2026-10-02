@@ -12,8 +12,8 @@ using Martlet.Providers;
 namespace Martlet.Desktop;
 
 /// <summary>The reference voices F5 clones, in Martlet.F5's reference preset store (f5-voices next to the other local
-/// preferences). Each snapshot keeps a copy of the recording, its transcript and the owner's voice-rights confirmation;
-/// the original recording must stay where it was chosen, as the store re-checks it before every use.</summary>
+/// preferences). Each voice keeps its own copy of the recording, its transcript and the owner's voice-rights confirmation,
+/// so the original file can be moved or deleted after it is added.</summary>
 internal static class F5Voices
 {
     internal const string DirectoryName = "f5-voices";
@@ -41,8 +41,7 @@ internal static class F5Voices
 
     internal static F5ReferencePresetStore Open(string dataDirectory) => F5ReferencePresetStore.Open(Directory(dataDirectory));
 
-    /// <summary>Writes the sample voice next to the preferences (the store re-reads a voice's original file before every
-    /// use, so it must live somewhere stable across updates) and returns its path.</summary>
+    /// <summary>Writes the sample voice next to the preferences so the store can copy it, and returns its path.</summary>
     internal static string EnsureSample(string dataDirectory)
     {
         var folder = Path.Combine(dataDirectory, SampleDirectoryName);
@@ -68,6 +67,28 @@ internal static class F5Voices
                 .ThenByDescending(s => s.CreatedAtUtc)
                 .FirstOrDefault()
             ?? await SampleAsync(store, dataDirectory, destination, token);
+    }
+
+    /// <summary>Every voice in the list for <paramref name="destination"/> (each voice's latest recording), oldest first,
+    /// and the applied voice's preset.</summary>
+    internal static (IReadOnlyList<F5ReferenceSnapshot> Voices, Guid? Applied) List(string dataDirectory, string destination)
+    {
+        if (!System.IO.Directory.Exists(Directory(dataDirectory))) return ([], null);
+        using var store = Open(dataDirectory);
+        var inspection = store.Inspect();
+        var voices = inspection.Presets
+            .Select(p => p.Snapshots.LastOrDefault(s => s.Rights.ProcessingDestinationId == destination))
+            .OfType<F5ReferenceSnapshot>()
+            .OrderBy(s => s.CreatedAtUtc)
+            .ToArray();
+        return (voices, inspection.AppliedPresetId);
+    }
+
+    /// <summary>Deletes a voice and Martlet's copy of its recording. The original file is not touched.</summary>
+    internal static async Task RemoveAsync(string dataDirectory, Guid presetId, CancellationToken token)
+    {
+        using var store = Open(dataDirectory);
+        await store.DeleteAsync(presetId, token);
     }
 
     /// <summary>The bundled sample voice's snapshot for <paramref name="destination"/>, added to the voice list if needed.</summary>
@@ -98,7 +119,6 @@ internal static class F5Voices
     /// <summary>The exact recording a voice snapshot keeps, for playing it back.</summary>
     internal static async Task<byte[]> ReadAudioAsync(string dataDirectory, F5ReferenceSnapshot snapshot, CancellationToken token)
     {
-        if (IsSample(snapshot)) EnsureSample(dataDirectory);
         using var store = Open(dataDirectory);
         using var lease = await store.AcquireForPreviewAsync(snapshot.PresetId, snapshot.ReferenceRevision, token);
         return lease.Reference.Audio.ToArray();
@@ -107,7 +127,6 @@ internal static class F5Voices
     /// <summary>Applies a snapshot as the voice to speak with and returns the settings record the TTS route keeps.</summary>
     internal static async Task<F5ReferenceSettings> ApplyAsync(string dataDirectory, F5ReferenceSnapshot snapshot, CancellationToken token)
     {
-        if (IsSample(snapshot)) EnsureSample(dataDirectory);
         using var store = Open(dataDirectory);
         var preview = await store.CreateApplyPreviewAsync(snapshot.PresetId, snapshot.ReferenceRevision, token);
         var receipt = await store.ApplyAsync(preview, preview.Authorize(F5ApplyDecision.Allow), token);
@@ -125,17 +144,20 @@ internal static class F5Voices
 
     internal static string Describe(F5Exception error) => error.Failure switch
     {
-        F5Failure.SourceMissing => "The voice's original recording is no longer where you chose it. Put it back or choose the voice again.",
-        F5Failure.SourceChanged => "The voice's original recording changed since you chose it. Choose the voice again.",
+        F5Failure.SourceMissing => "That recording is no longer where you chose it. Choose it again.",
+        F5Failure.SourceChanged => "That recording changed while Martlet was reading it. Try again.",
         F5Failure.InvalidAudio => "The recording must be a mono 16-bit PCM WAV of 1 to 30 seconds (16, 22.05, 24, 44.1 or 48 kHz), at most 4 MB.",
         F5Failure.RightsRequired => "Confirm that you may use this voice.",
         F5Failure.Busy => "The voice list is in use by another Martlet window; try again in a moment.",
-        F5Failure.LimitExceeded => "The voice list is full (16 voices).",
+        F5Failure.LimitExceeded => "The voice list is full (16 voices). Remove one you no longer use first.",
+        F5Failure.Conflict => "Martlet speaks with this voice now. Switch to another voice first, then remove it.",
+        F5Failure.NotFound => "That voice is no longer in your list.",
+        F5Failure.CorruptStore => "Martlet's copy of this voice is damaged. Remove it and add the recording again.",
         _ => $"The voice could not be used ({error.Failure})."
     };
 }
 
-/// <summary>Speaks reply segments with a paired host's F5 voice through its pinned gateway: reads the applied reference
+/// <summary>Speaks reply segments with a paired host's F5 voice through its pinned gateway: reads the route's reference
 /// voice from the F5 preset store and the pairing secret from Windows Credential Manager for each segment.</summary>
 internal sealed class HostSpeechClient(string dataDirectory) : IHostSpeechClient
 {
@@ -157,10 +179,10 @@ internal sealed class HostSpeechClient(string dataDirectory) : IHostSpeechClient
     {
         try
         {
-            F5Voices.EnsureSample(dataDirectory);
+            // The route names the exact voice it was saved with, so a failed settings save after switching voices keeps
+            // speaking with the voice the route still records.
             using var store = F5Voices.Open(dataDirectory);
-            using var lease = await store.AcquireAppliedAsync(target.ReferenceRevision, token).ConfigureAwait(false);
-            if (lease.PresetId != target.PresetId) throw new HostTextException(ProviderFailureCode.VoiceUnsupported);
+            using var lease = await store.AcquireForPreviewAsync(target.PresetId, target.ReferenceRevision, token).ConfigureAwait(false);
             var reference = lease.Reference;
             return new(reference.PresetId, reference.ReferenceRevision, reference.AudioSha256, reference.Transcript,
                 reference.TranscriptRevision, reference.Audio.ToArray());

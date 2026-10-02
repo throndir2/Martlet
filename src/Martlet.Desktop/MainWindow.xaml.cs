@@ -14,7 +14,6 @@ using Martlet.Audio;
 using Martlet.Audio.Windows;
 using Martlet.Credentials.Windows;
 using Martlet.Avatar.Hosting;
-using Martlet.Core.Voices;
 
 namespace Martlet.Desktop;
 
@@ -45,7 +44,6 @@ public partial class MainWindow : ThemedWindow
     private bool saving;
     private bool closing;
     private bool mayClose;
-    private SetupOperation? voiceOperation;
     private CancellationTokenSource? updateCheckCancellation;
     private CancellationTokenSource? updateDownloadCancellation;
     private TaskCompletionSource? updateDrain;
@@ -281,14 +279,7 @@ public partial class MainWindow : ThemedWindow
         await RefreshAsync();
     }
 
-    private void VoiceLibrary_Click(object sender, RoutedEventArgs e)
-    {
-        if (store is null || closing || saving || model?.IsRunning == true) return;
-        new VoiceLibraryWindow(new VoiceLibrary(System.IO.Path.Combine(store.DataDirectory, "voice-library")), setupOperations)
-            { Owner = this, OperationStarted = ObserveVoiceOperation }.ShowDialog();
-    }
-
-    internal void ObserveVoiceOperation(SetupOperation operation) => voiceOperation = operation;
+    private void VoiceLibrary_Click(object sender, RoutedEventArgs e) => OpenCompanion(CompanionTab.Voice);
 
     private void Troubleshooting_Click(object sender, RoutedEventArgs e) => OpenTroubleshooting(this);
     private AdvisorAnswers? advisorAnswers;
@@ -499,12 +490,6 @@ public partial class MainWindow : ThemedWindow
         e.Cancel = true;
         if (closing)
             return;
-        if (voiceOperation is { Completion.IsCompleted: false } pendingVoice)
-        {
-            pendingVoice.RequestCancellation();
-            ActionText.Text = "Exit is waiting for Voice Library IO and owned staging cleanup. Keep Martlet open, then Exit again after the local operation finishes.";
-            return;
-        }
         if (recovery?.HasResources == true)
         {
             recovery.StopObserving();
