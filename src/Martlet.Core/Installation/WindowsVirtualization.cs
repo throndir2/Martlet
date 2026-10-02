@@ -162,14 +162,16 @@ public sealed record WindowsVirtualization(bool? Firmware, bool? Hypervisor, Win
 
     /// <summary>The administrator step (one UAC prompt): turns on Virtual Machine Platform and Windows Subsystem for Linux
     /// (with their parent features), sets the Windows hypervisor to start with Windows when its boot entry turned it off,
-    /// and installs or updates WSL from Microsoft when it is missing or older than <see cref="MinimumWsl"/>. Each step is
-    /// written to <paramref name="log"/>. Exits 0 when done, <see cref="RestartExitCode"/> when Windows must restart,
-    /// 2 when WSL could not be installed and 1 on another failure. Nothing it changes needs a decision.</summary>
+    /// and installs WSL from Microsoft when it is missing (<c>wsl --install --no-distribution</c>, then <c>wsl --update</c>)
+    /// or updates it when older than <see cref="MinimumWsl"/>. wsl.exe's help text (an option this wsl.exe lacks) is not
+    /// logged, and when wsl.exe says Windows must restart (exit 3010, 1641 or Windows' restart message) the script asks for
+    /// the restart. Each step is written to <paramref name="log"/>. Exits 0 when done, <see cref="RestartExitCode"/> when
+    /// Windows must restart, 2 when WSL could not be installed and 1 on another failure. Nothing it changes needs a decision.</summary>
     public static string FixScript(string log) =>
         "$ErrorActionPreference='Continue';$ProgressPreference='SilentlyContinue';" +
         $"$log='{log.Replace("'", "''", StringComparison.Ordinal)}';" +
         "function Say([string]$t){if($t){try{Add-Content -LiteralPath $log -Value $t -Encoding UTF8}catch{}}};" +
-        "$restart=$false;" +
+        "$restart=$false;$wr=$false;" +
         "try{" +
         "foreach($n in @('VirtualMachinePlatform','Microsoft-Windows-Subsystem-Linux')){" +
         "$f=Get-WindowsOptionalFeature -Online -FeatureName $n -ErrorAction Stop;" +
@@ -186,14 +188,21 @@ public sealed record WindowsVirtualization(bool? Firmware, bool? Hypervisor, Win
         "$x=Join-Path $env:SystemRoot 'System32\\wsl.exe';$env:WSL_UTF8='1';" +
         "function V{if(Test-Path -LiteralPath $x){$o=(& $x --version 2>$null|Out-String) -replace \"`0\",'';" +
         "if($LASTEXITCODE -eq 0 -and $o -match '(\\d+\\.\\d+\\.\\d+)'){[version]$Matches[1]}}};" +
-        "$v=V;" +
-        "if(-not $v -or $v -lt [version]'" + MinimumWsl + "'){" +
-        "Say 'Installing the current WSL from Microsoft (wsl --update). This can take a few minutes...';" +
-        "Say (((& $x --update 2>&1|Out-String) -replace \"`0\",'').Trim());$v=V;" +
-        "if(-not $v){Say 'Installing WSL (wsl --install --no-distribution)...';" +
-        "Say (((& $x --install --no-distribution 2>&1|Out-String) -replace \"`0\",'').Trim());$v=V};" +
-        "if($v){Say \"WSL $v is installed.\"}elseif(-not $restart){Say 'WSL could not be installed.';exit 2}" +
-        "else{Say 'WSL finishes installing after the restart.'}}" +
+        // W runs wsl.exe and logs its output as plain text; true when wsl.exe says Windows must restart to finish.
+        "function W([string[]]$a){if(-not(Test-Path -LiteralPath $x)){Say 'wsl.exe is missing.';return $false};" +
+        "$o=((& $x @a 2>&1|ForEach-Object{\"$_\"}|Out-String) -replace \"`0\",'').Trim();$c=$LASTEXITCODE;" +
+        "if($o -match '(?m)^\\s*Usage:'){Say \"This wsl.exe doesn't support wsl $($a -join ' ').\"}else{Say $o};" +
+        "return ($c -in 3010,1641,-2147021886 -or $o -match 'until the system is rebooted')};" +
+        "$m=[version]'" + MinimumWsl + "';$v=V;" +
+        "if(-not $v -or $v -lt $m){" +
+        "if(-not $v){Say 'Installing WSL from Microsoft (wsl --install --no-distribution). This can take a few minutes...';" +
+        "if(W @('--install','--no-distribution')){$restart=$true;$wr=$true};$v=V};" +
+        "if(-not $v -or $v -lt $m){Say 'Updating WSL from Microsoft (wsl --update). This can take a few minutes...';" +
+        "if(W @('--update')){$restart=$true;$wr=$true};$v=V};" +
+        "if($v -and $v -ge $m){Say \"WSL $v is installed.\"};" +
+        "if($wr){Say 'WSL says Windows must restart to finish installing it.'}" +
+        "elseif(-not $v -or $v -lt $m){if($restart){Say 'WSL finishes installing after Windows restarts.'}" +
+        "elseif($v){Say \"WSL $v is older than $m and couldn't be updated.\";exit 2}else{Say 'WSL could not be installed.';exit 2}}}" +
         "else{Say \"WSL $v is installed.\"}" +
         "}catch{Say ('Stopped: '+$_.Exception.Message);exit 1};" +
         "if($restart){exit " + RestartExitCode + "};exit 0";
