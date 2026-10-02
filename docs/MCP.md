@@ -140,16 +140,22 @@ learned names, merged, tombstones). It never returns names, voiceprints or audio
 runs no model.
 
 `f5_voices` lists the [F5 reference voices](F5_VOICE.md#desktop-voices-and-playback)
-Martlet includes (key, name, description, licence, transcript, SHA-256, sample
-rate and duration; each clip is checked against its SHA-256 and the reference
-store's audio, name and transcript rules, `valid` or the failure) and the
-`default` key. From a data directory (optional absolute `dataDirectory`, default
-the current user's) it reads the `f5-voices` list: `state` (`none`, `loaded`,
-`busy` while the desktop holds it, or `unreadable`), the number of voices, the
-keys of included voices in it, the count of the owner's own voices, whether the
-retired F5-TTS example clip is still there and the applied voice (an included
-key, `own`, `retired-sample` or null). It never returns own voices' names,
-transcripts or audio, plays nothing and contacts nothing.
+Martlet includes (key, name, `female`, description, licence, transcript, SHA-256,
+sample rate and duration; each clip is checked against its SHA-256 and the
+reference store's audio, name and transcript rules, `valid` or the failure), the
+`default` key, `defaultName` and `defaultFemale` (always true). From a data
+directory (optional absolute `dataDirectory`, default the current user's) it reads
+the `f5-voices` list: `state` (`none`, `loaded`, `busy` while the desktop holds it,
+or `unreadable`), the number of voices, the keys of included voices in it, the
+count of the owner's own voices, whether the retired F5-TTS example clip is still
+there and the applied voice (an included key, `own`, `retired-sample` or null).
+`speaking` reads `settings.json`: `state` (`none`, `loaded` or `unreadable` with
+the settings rule it broke or the error type as `problem`), the
+speaking route's type (for example `GatewayF5`, null without one) and the voice it
+records (an included key, `own`, `retired-sample` or null). After the desktop
+loads settings, a route or applied voice that was `retired-sample` reads
+`lj-speech`. It never returns own voices' names, transcripts or audio, plays
+nothing and contacts nothing.
 
 `cluster_status` reads [shared who does what](CLUSTER.md) from a data directory
 (optional absolute `dataDirectory`, default the current user's): `sync` is
