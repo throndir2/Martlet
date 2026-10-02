@@ -490,7 +490,10 @@ withdrawn or stopped) and `NearbyFirewall` (*Let my other computers reach this
 PC*, shown only when blocked: an administrator prompt, never part of
 verification).
 Home and host-dashboard steps have their buttons as `Step-<step>-<n>` and their
-detail line as `StepDetail-<step>` (status text): on the host dashboard,
+detail line as `StepDetail-<step>` (status text). A step with more than two
+buttons (or long labels, like `Step-roles-<n>`) wraps them on rows under its
+detail, so with `layout` the buttons' `bounds` start at the detail's left edge
+and stay inside the window. On the host dashboard,
 `StepDetail-docker` says whether Docker Desktop runs or why Windows can't start
 it yet (virtualization off in the firmware, Virtual Machine Platform or Windows
 Subsystem for Linux off, WSL missing, hypervisor not running), and
