@@ -303,7 +303,9 @@ over and needs `--allow-ui-effects`.
 Status fields include the talk window's `LiveStatus` (its status line),
 `LiveMic` (*Listening*, *Listening paused*, *Can't listen* or *Mic unavailable*
 with the reason; while Martlet speaks it reads *Not listening while Martlet
-speaks*),
+speaks*; *Listening paused* only ever follows a click on it: errors, Stop and
+`LiveStop` never pause listening, and listening that can't start yet, such as
+Voice ID not set up, reads *Can't listen* and keeps retrying),
 `LiveVision` (*Watching*, *Looking*, *Vision paused* or *Can't see*, with when
 it last checked the screen; it checks every 3 s), `LiveVisionStatus` (while
 vision is on: what it sees, for example *Watching the window behind Martlet*,
@@ -323,7 +325,8 @@ Opening the talk window with always
 listening on opens the microphone; for verification, save a fixed microphone
 that does not exist in the disposable data directory, so listening starts,
 fails without capturing real audio and shows *Mic unavailable* while it keeps
-retrying (it never pauses by itself).
+retrying (it never pauses by itself). The talk window's `LiveStop` (Stop, Esc)
+is a passive click: it only stops a reply, recording or vision.
 
 Window discovery uses visible top-level native handles filtered to the attached
 process, then verifies ownership around each UI Automation handle lookup.

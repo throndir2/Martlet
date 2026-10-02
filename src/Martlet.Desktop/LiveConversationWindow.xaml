@@ -29,7 +29,7 @@
                     </Button>
                     <Button x:Name="StopButton" Content="S_top (Esc)" Click="Stop_Click" IsEnabled="False" Padding="14,6" MinHeight="34"
                             AutomationProperties.AutomationId="LiveStop" AutomationProperties.AcceleratorKey="Esc"
-                            AutomationProperties.HelpText="Stops Martlet's reply, any recording, listening and vision. Escape works anywhere in this window. The conversation is kept." />
+                            AutomationProperties.HelpText="Stops Martlet's reply, any recording and vision. Listening carries on; the mic button pauses it. Escape works anywhere in this window. The conversation is kept." />
                 </StackPanel>
                 <Image x:Name="TalkMascot" Style="{DynamicResource Mascot}" DockPanel.Dock="Left" Width="40" Height="40" Margin="0,0,12,0"/>
                 <StackPanel VerticalAlignment="Center">

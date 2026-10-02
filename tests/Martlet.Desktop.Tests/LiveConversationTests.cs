@@ -220,11 +220,16 @@ public sealed class LiveConversationTests
             Assert.Equal(0, fixture.Tts.Calls);
             // What always listening hears goes to the model, which may answer [pass] to stay quiet.
             Assert.Contains("[pass]", Encoding.UTF8.GetString(fixture.Llm.Body));
-            // Listening ran beside the reply and goes on; Esc pauses it and the mic button shows that.
+            // Listening ran beside the reply and goes on; Esc quiets Martlet but never pauses it: only the mic button does.
             var live = Assert.IsType<LiveListener>(window.Listener);
             Assert.True(live.Running);
             Assert.Equal("Listening", Control<TextBlock>(window, "MicText").Text);
             Escape(window, "InputText");
+            await Heartbeat();
+            Assert.Same(live, window.Listener);
+            Assert.True(live.Running);
+            Assert.Equal("Listening", Control<TextBlock>(window, "MicText").Text);
+            Click(window, "MicChip");
             await fixture.Advance(() => !live.Running && !fixture.Runner.IsRunning);
             Assert.Null(window.Listener);
             Assert.Equal("Listening paused", Control<TextBlock>(window, "MicText").Text);
