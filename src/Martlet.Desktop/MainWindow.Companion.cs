@@ -806,17 +806,27 @@ public partial class MainWindow
             null,
             key => AssignJobAsync(job, key), job.Disclosure, exclude);
 
-    /// <summary>Every paired host (except <paramref name="exclude"/>) with what it runs and <i>Use it</i>, plus <i>Add a
-    /// computer</i>, <i>Check hosts</i> and the Devices map. <paramref name="again"/> labels the owner's button when using it
-    /// again does something (choosing another voice); otherwise the owner shows <i>In use</i>.</summary>
+    /// <summary>Every paired host (except <paramref name="exclude"/>) that can run the job, with what it runs and <i>Use it</i>,
+    /// plus <i>Add a computer</i>, <i>Check hosts</i> and the Devices map; hosts whose platform or hardware can't run it are
+    /// named underneath with why. <paramref name="again"/> labels the owner's button when using it again does something
+    /// (choosing another voice); otherwise the owner shows <i>In use</i>.</summary>
     private Border ComputersCard(string job, string engine, string roleKind, string? owner, string ownerDetail, string? again,
         Func<string, Task> assign, string disclosure, PairedHost? exclude)
     {
         var stack = new List<UIElement> { Heading("Your computers") };
-        var hosts = NetworkMap.Hosts(Inputs()).Where(h => h.HostId != exclude?.HostId).ToArray();
+        var paired = NetworkMap.Hosts(Inputs()).Where(h => h.HostId != exclude?.HostId).ToArray();
+        bool Runs(PairedHost host) => hostChecks.GetValueOrDefault(host.HostId)?.Offers?.ContainsKey(roleKind) == true;
+        var unable = paired.Where(h => h.HostId != owner && !Runs(h) && HostCan(h.HostId, roleKind) is { Allowed: false }).ToArray();
+        var hosts = paired.Except(unable).ToArray();
         if (hosts.Length == 0)
-            stack.Add(Note("No other Martlet host is paired yet. Add a computer with a graphics card, such as a gaming PC, then hand " +
-                $"{job} to it here. Martlet installs {engine} there when you do.", new Thickness(0, 0, 0, 8)));
+        {
+            var add = $"Add a computer with a graphics card, such as a gaming PC, then hand {job} to it here. Martlet installs {engine} there when you do.";
+            var none = Note(unable.Length > 0 ? $"None of your paired computers can run {engine}. {add}"
+                : exclude is not null ? $"Only this PC's own host service ({exclude.HostId}) is paired, and it is the This PC choice above. {add}"
+                : $"No other Martlet host is paired yet. {add}", new Thickness(0, 0, 0, 8));
+            AutomationProperties.SetAutomationId(none, "HostChoices-" + job);
+            stack.Add(none);
+        }
         foreach (var host in hosts)
         {
             var check = hostChecks.GetValueOrDefault(host.HostId);
@@ -829,7 +839,10 @@ public partial class MainWindow
                 : check?.Reachable == false ? "Not reachable right now." : "Not checked yet.";
             var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             text.Children.Add(new TextBlock { Text = host.HostId, FontSize = 15, FontWeight = FontWeights.SemiBold });
-            text.Children.Add(Note(detail, new Thickness(0, 2, 0, 0)));
+            var line = Note(detail, new Thickness(0, 2, 0, 0));
+            AutomationProperties.SetName(line, $"{host.HostId}: {detail}");
+            AutomationProperties.SetAutomationId(line, $"HostChoice-{job}-{host.HostId}");
+            text.Children.Add(line);
             var use = PageButton(owner == host.HostId ? again ?? "In use" : "Use it",
                 () => assign("host:" + host.HostId).Forget(), primary: owner != host.HostId && cannot is null, id: $"SetupUseHost-{job}-{host.HostId}");
             use.IsEnabled = cannot is null && !(owner == host.HostId && again is null);
@@ -839,9 +852,16 @@ public partial class MainWindow
             row.Children.Add(text);
             stack.Add(row);
         }
+        if (unable.Length > 0)
+        {
+            var why = Note(string.Join(" ", unable.Select(h => $"{h.HostId} can't run {engine}: {HostCan(h.HostId, roleKind)!.Reason}")),
+                new Thickness(0, 0, 0, 8));
+            AutomationProperties.SetAutomationId(why, "HostChoicesUnable-" + job);
+            stack.Add(why);
+        }
         stack.Add(Row(
             PageButton("Add a computer", () => RunNodeAction(NodeAction.AddComputer), primary: hosts.Length == 0, id: "SetupAddComputer-" + job),
-            hosts.Length == 0 ? null : PageButton("Check hosts", () => RunNodeAction(NodeAction.CheckHost), id: "SetupCheckHosts-" + job),
+            paired.Length == 0 ? null : PageButton("Check hosts", () => RunNodeAction(NodeAction.CheckHost), id: "SetupCheckHosts-" + job),
             PageButton("Open the Devices map", () => Navigate(NavDevices), id: "SetupOpenMap-" + job)));
         stack.Add(Note(disclosure, new Thickness(0, 8, 0, 0)));
         return Card([.. stack]);

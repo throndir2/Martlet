@@ -452,7 +452,11 @@ public partial class HostsWindow : ThemedWindow
         await pairings.LoadProfileAsync(lifetime.Token);
         var (pairing, secret) = await code.PairAsync(device, lifetime.Token);
         PairingCodeBox.Clear();
-        var host = await SavePairingAsync(pairing, secret, Method, Ssh ? SshTargetText.Text.Trim() : null, PinnedHostKey);
+        // A code shown by another computer (its host dashboard or pairing console) pairs that computer, even while the wizard
+        // still shows This PC; Martlet then doesn't know how to reach it to run commands there.
+        var method = Method == HostSetupMethod.ThisPcDocker && !HostRegistry.IsThisPc(new Uri(pairing.Origin).Host, HostSetupCommands.ThisPcAddress())
+            ? HostSetupMethod.OnHost : Method;
+        var host = await SavePairingAsync(pairing, secret, method, Ssh ? SshTargetText.Text.Trim() : null, PinnedHostKey);
         StatusText.Text += Method == HostSetupMethod.OnHost ? " In the host console press a key, then type stop and confirm." : "";
         // The pairing listener is still open, so read what the host is like right away for the map and the advisor.
         try { StatusText.Text += " " + await CheckAsync(host.Pairing, Hardware, _ => { }, lifetime.Token); }
