@@ -9,7 +9,7 @@
     <DockPanel Margin="24,20,24,18">
         <TextBlock DockPanel.Dock="Top" Text="MCP servers" Style="{DynamicResource SectionHeading}"/>
         <TextBlock DockPanel.Dock="Top" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,0,0,10"
-                   Text="Paste a server's &quot;mcpServers&quot; JSON from its setup guide. Martlet saves this as plain text, so use environment variables for secrets."/>
+                   Text="Paste a server's &quot;mcpServers&quot; JSON from its setup guide, or install one with Browse MCP directory on the Tools page. Martlet saves this as plain text, so use environment variables (or the directory's saved secrets) for secrets."/>
         <StackPanel DockPanel.Dock="Bottom">
             <TextBlock x:Name="StatusText" TextWrapping="Wrap" Margin="0,10,0,10" AutomationProperties.LiveSetting="Polite"
                        AutomationProperties.AutomationId="McpConfigStatus"/>

@@ -24,7 +24,7 @@ public partial class MainWindow
         if (service.ConfigurationError is { } error)
             servers.Add(ToolsAlert($"Server settings have a problem, so no servers will run: {error}"));
         else if (service.Servers.Count == 0)
-            servers.Add(Note("No servers yet. Add them in mcp.json, or insert the Documents example.", new Thickness(0, 0, 0, 4)));
+            servers.Add(Note("No servers yet. Browse the MCP directory to install one, or add them in mcp.json.", new Thickness(0, 0, 0, 4)));
         // Every server Martlet runs: mcp.json's first, then ones other features manage (Smart home's, for example).
         foreach (var server in service.Servers)
             servers.Add(ServerBlock(service, server, statuses.GetValueOrDefault(server.Name)));
@@ -33,7 +33,8 @@ public partial class MainWindow
                 "Rename or remove that entry in mcp.json to use it."));
         var anyOn = service.HasEnabledServers;
         servers.Add(Row(
-            PageButton("Edit servers", OpenMcpEditor, primary: configuration.Servers.Count == 0, id: "ToolsEditConfig"),
+            PageButton("Browse MCP directory", OpenMcpDirectory, primary: configuration.Servers.Count == 0, id: "ToolsBrowseDirectory"),
+            PageButton("Edit servers", OpenMcpEditor, id: "ToolsEditConfig"),
             anyOn ? PageButton(service.Started ? "Restart stopped servers" : "Start servers now", () =>
             {
                 toolsNotice = null;
@@ -87,6 +88,10 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(stateText, "ToolsServerState-" + server.Name);
         block.Children.Add(stateText);
         block.Children.Add(Note((server.Transport == McpTransportKind.Http ? "Address: " : "Runs: ") + server.Describe(), new Thickness(0, 2, 0, 0)));
+        if (server.Registry is { } registry)
+            block.Children.Add(Note($"From the MCP directory: {registry}{(server.RegistryVersion is { } version ? $" {version}" : "")}" +
+                (server.Secrets.Count > 0 ? $"; {server.Secrets.Count} secret value{(server.Secrets.Count == 1 ? " is" : "s are")} kept in " +
+                    "Windows Credential Manager." : "."), new Thickness(0, 2, 0, 0)));
         if (server.Problem is { } problem) block.Children.Add(Note(problem, new Thickness(0, 2, 0, 0)));
         if (server.ManagedBy is { } owner)
             block.Children.Add(Note($"Managed by {owner}. Change its tool permissions there.", new Thickness(0, 2, 0, 0)));
@@ -130,6 +135,7 @@ public partial class MainWindow
             }
             block.Children.Add(tools);
         }
+        var actions = new WrapPanel();
         if (!server.Disabled && status is not null)
         {
             var restart = PageButton("Restart", () =>
@@ -137,10 +143,30 @@ public partial class MainWindow
                 toolsNotice = null;
                 service.Hub.Restart(server.Name);
             }, link: true, id: "ToolsRestart-" + server.Name);
-            restart.HorizontalAlignment = HorizontalAlignment.Left;
-            block.Children.Add(restart);
+            restart.Margin = new Thickness(0, 0, 16, 0);
+            actions.Children.Add(restart);
         }
+        if (editable)
+            actions.Children.Add(PageButton("Remove", () => RemoveToolServer(service, server.Name), link: true, id: "ToolsRemove-" + server.Name));
+        if (actions.Children.Count > 0) block.Children.Add(actions);
         return block;
+    }
+
+    private void RemoveToolServer(McpToolService service, string server)
+    {
+        if (!ConfirmationDialog.Confirm(this, $"Remove the MCP server \"{server}\" from mcp.json? Secrets Martlet kept for it are " +
+                "forgotten too.", "Martlet - MCP servers"))
+            return;
+        try
+        {
+            service.Remove(server);
+            toolsNotice = $"Removed \"{server}\".";
+        }
+        catch (Exception error) when (error is McpConfigurationException or System.IO.IOException or UnauthorizedAccessException)
+        {
+            toolsNotice = $"Couldn't change mcp.json: {error.Message}";
+        }
+        RenderTab();
     }
 
     private void EditToolServer(McpToolService service, string server, Action<System.Text.Json.Nodes.JsonObject> edit)
@@ -161,6 +187,14 @@ public partial class MainWindow
     {
         if (closing) return;
         new McpConfigWindow(mcpTools) { Owner = this }.ShowDialog();
+        toolsNotice = null;
+        if (openTab == CompanionTab.Tools) RenderTab();
+    }
+
+    private void OpenMcpDirectory()
+    {
+        if (closing) return;
+        new McpDirectoryWindow(mcpTools) { Owner = this }.ShowDialog();
         toolsNotice = null;
         if (openTab == CompanionTab.Tools) RenderTab();
     }

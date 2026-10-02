@@ -1,0 +1,55 @@
+<local:ThemedWindow x:Class="Martlet.Desktop.McpDirectoryWindow"
+        xmlns:local="clr-namespace:Martlet.Desktop"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Style="{DynamicResource AppWindowStyle}"
+        Title="Martlet - MCP directory" Width="1040" Height="760" MinWidth="720" MinHeight="480"
+        WindowStartupLocation="CenterOwner" Loaded="Window_Loaded" Closed="Window_Closed"
+        AutomationProperties.AutomationId="McpDirectoryWindow"
+        AutomationProperties.Name="MCP directory: find MCP servers and install them">
+    <DockPanel Margin="24,20,24,18">
+        <TextBlock DockPanel.Dock="Top" Text="MCP directory" Style="{DynamicResource SectionHeading}"/>
+        <TextBlock DockPanel.Dock="Top" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,0,0,10"
+                   Text="Find an MCP server, fill in what it needs and install it: Martlet adds it to mcp.json for you and starts it. Searches go to the directory you choose (what you type is sent to it). A server runs on this PC with your permissions, or is a service you connect to, so install only ones you trust."/>
+        <Grid DockPanel.Dock="Top" Margin="0,0,0,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <ComboBox x:Name="SourceChoice" Grid.Column="0" MinWidth="230" Margin="0,0,10,0" SelectionChanged="SourceChoice_Changed"
+                      AutomationProperties.AutomationId="McpDirectorySource" AutomationProperties.Name="Directory"/>
+            <TextBox x:Name="SearchBox" Grid.Column="1" MaxLength="100" VerticalContentAlignment="Center" KeyDown="SearchBox_KeyDown"
+                     AutomationProperties.AutomationId="McpDirectorySearch" AutomationProperties.Name="Search the directory"/>
+            <Button x:Name="SearchButton" Grid.Column="2" Content="_Search" Margin="10,0,0,0" Click="Search_Click"
+                    AutomationProperties.AutomationId="McpDirectorySearchButton"/>
+        </Grid>
+        <StackPanel DockPanel.Dock="Bottom">
+            <TextBlock x:Name="StatusText" TextWrapping="Wrap" Margin="0,10,0,10" AutomationProperties.LiveSetting="Polite"
+                       AutomationProperties.AutomationId="McpDirectoryStatus"/>
+            <WrapPanel>
+                <Button Content="_Edit mcp.json" Click="EditConfig_Click" Margin="0,0,10,6" AutomationProperties.AutomationId="McpDirectoryEditConfig"/>
+                <Button Content="_Close" Click="Close_Click" IsCancel="True" Margin="0,0,0,6" AutomationProperties.AutomationId="McpDirectoryClose"/>
+            </WrapPanel>
+        </StackPanel>
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*" MinWidth="260"/>
+                <ColumnDefinition Width="16"/>
+                <ColumnDefinition Width="3*"/>
+            </Grid.ColumnDefinitions>
+            <DockPanel Grid.Column="0">
+                <Button x:Name="MoreButton" DockPanel.Dock="Bottom" Content="Load _more" Margin="0,8,0,0" HorizontalAlignment="Left"
+                        Visibility="Collapsed" Click="More_Click" AutomationProperties.AutomationId="McpDirectoryMore"/>
+                <ListBox x:Name="Results" SelectionChanged="Results_Changed" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         HorizontalContentAlignment="Stretch" VirtualizingPanel.IsVirtualizing="False"
+                         AutomationProperties.AutomationId="McpDirectoryResults" AutomationProperties.Name="MCP servers found"/>
+            </DockPanel>
+            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                          AutomationProperties.AutomationId="McpDirectoryDetailsScroll">
+                <StackPanel x:Name="Details" Margin="0,0,8,0" AutomationProperties.AutomationId="McpDirectoryDetails"
+                            AutomationProperties.Name="Selected server"/>
+            </ScrollViewer>
+        </Grid>
+    </DockPanel>
+</local:ThemedWindow>

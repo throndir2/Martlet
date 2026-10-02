@@ -66,8 +66,9 @@ IP camera address) or other video sources. See
 
 **Tools (MCP)** let Martlet use MCP servers on this PC while you talk: your files, a
 browser, a calendar and anything else with an MCP server. Add servers on
-**Companion > Tools** (the standard `mcpServers` format); the talk window asks before
-each tool call unless you always allow it. See [MCP](docs/MCP.md).
+**Companion > Tools**: browse and search the GitHub or official MCP Registry and
+install one with a click, or edit mcp.json (the standard `mcpServers` format); the
+talk window asks before each tool call unless you always allow it. See [MCP](docs/MCP.md).
 
 **Voices (F5)**: add your own voice recordings on **Companion > Voice >
 Voices** and switch between them in one click. F5 copies a voice from a short

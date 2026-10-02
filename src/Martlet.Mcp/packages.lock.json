@@ -18,7 +18,7 @@
       "martlet.audio": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.14.0, )",
+          "Martlet.Core": "[0.16.1, )",
           "NAudio.Wasapi": "[3.1.0, )"
         }
       },
@@ -28,28 +28,32 @@
       "martlet.diagnostics": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.14.0, )"
+          "Martlet.Core": "[0.16.1, )"
         }
       },
       "martlet.doctor": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Audio": "[0.14.0, )",
-          "Martlet.Diagnostics": "[0.14.0, )"
+          "Martlet.Audio": "[0.16.1, )",
+          "Martlet.Diagnostics": "[0.16.1, )"
         }
       },
       "martlet.f5": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.14.0, )"
+          "Martlet.Core": "[0.16.1, )"
         }
+      },
+      "martlet.mcp.client": {
+        "type": "Project"
       },
       "martlet.mcp.protocol": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Doctor": "[0.14.0, )",
-          "Martlet.F5": "[0.14.0, )",
-          "Martlet.Sherpa": "[0.14.0, )"
+          "Martlet.Doctor": "[0.16.1, )",
+          "Martlet.F5": "[0.16.1, )",
+          "Martlet.Mcp.Client": "[0.16.1, )",
+          "Martlet.Sherpa": "[0.16.1, )"
         }
       },
       "martlet.sherpa": {
