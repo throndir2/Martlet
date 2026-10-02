@@ -258,6 +258,20 @@ instead of the key, and its name is not returned. Use and Remove change the
 voice list and need `--allow-ui-effects`; Play plays audio and is not for
 automated verification. `f5_voices` reads the same list headlessly.
 
+On Thinking, Voice, Listening and Lip-sync, each "Where it runs" option
+(`Place-<page>-<place>`, for example `Place-Voice-Computer` or
+`Place-LipSync-Loudness`) only shows that place's choices, so clicking it is
+passive; the card's own buttons commit. Under *Another of your computers*, each
+paired computer that can run the job (every one except this PC's own host
+service on Voice, Listening and Lip-sync; a host saved as *This PC* whose
+address is another computer counts as that other computer) is listed with
+`HostChoice-<job>-<host ID>` (for example `HostChoice-speaking-diva-host`),
+which reads the host ID and what it does or could do. `HostChoices-<job>` says
+why none are listed (none paired, only this PC's own host service, or none can
+run it) and `HostChoicesUnable-<job>` names paired computers whose platform or
+hardware can't run it, with why. `SetupUseHost-<job>-<host ID>` hands the job
+over and needs `--allow-ui-effects`.
+
 Status fields include the talk window's `LiveStatus` (its status line) and
 `LiveMic` (*Listening*, *Listening paused* or *Can't listen* with the reason),
 and Companion › Lip-sync's `LipSyncNow` and `LipSyncNowProblem` (whether this

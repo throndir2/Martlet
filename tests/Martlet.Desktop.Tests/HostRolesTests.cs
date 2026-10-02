@@ -30,6 +30,20 @@ public sealed class HostRolesTests
     }
 
     [Fact]
+    public void Registry_treats_a_this_pc_pairing_on_another_address_as_that_other_computer()
+    {
+        using var scope = new AvatarHostingTests.Scope();
+        var here = new PairedHost { Pairing = Remote("here-host", "192.168.1.10"), Method = HostSetupMethod.ThisPcDocker };
+        var pasted = new PairedHost { Pairing = Remote("gaming-host", "192.168.1.50"), Method = HostSetupMethod.ThisPcDocker };
+        HostRegistry.Save(scope.DirectoryPath, [here, pasted]);
+        var loaded = HostRegistry.Load(scope.DirectoryPath, thisPcAddress: "192.168.1.10");
+        Assert.Equal(HostSetupMethod.ThisPcDocker, loaded[0].Method);
+        Assert.Equal(HostSetupMethod.OnHost, loaded[1].Method);
+        Assert.False(loaded[1].CanLaunch);
+        Assert.All(HostRegistry.Load(scope.DirectoryPath), h => Assert.Equal(HostSetupMethod.ThisPcDocker, h.Method));
+    }
+
+    [Fact]
     public void Map_shows_who_handles_lip_sync_and_offers_to_hand_it_to_other_hosts()
     {
         using var scope = new AvatarHostingTests.Scope();
