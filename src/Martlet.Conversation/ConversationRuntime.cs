@@ -86,14 +86,24 @@ public sealed class ConversationRuntime : IAsyncDisposable
     // One passive adapter per exact destination; the turn's authorization still binds base URL, model and key.
     // Input is the request's input or a continuation of it after tool calls.
     internal ITextGenerationStream StreamText(ProviderRequestContext context, ConversationRequest request,
-        BoundedTextInput input, TextDisclosureAuthorization consent, CancellationToken caller)
+        BoundedTextInput input, TextDisclosureAuthorization consent, CancellationToken caller, bool fallback = false)
     {
+        if (fallback)
+        {
+            var second = request.Fallback ?? throw new InvalidOperationException("This request has no Thinking fallback.");
+            return ChatAdapter(second.Chat).Stream(context, second.Model, input, request.TextLimits, consent, caller, request.Generation);
+        }
         if (request.Host is { } host)
             return new HostTextGenerationStream(HostText ?? throw new InvalidOperationException(
                 "This runtime was not composed with a Martlet host text client."), host, context, request.Model,
                 input, request.TextLimits, consent, Clock, caller, request.Generation);
         if (request.Chat is not { } target)
             return Text.Stream(context, request.Model, input, request.TextLimits, consent, caller, request.Generation);
+        return ChatAdapter(target).Stream(context, request.Model, input, request.TextLimits, consent, caller, request.Generation);
+    }
+
+    private ChatCompletionsTextGenerationAdapter ChatAdapter(ChatCompletionsTarget target)
+    {
         ChatCompletionsTextGenerationAdapter? adapter;
         lock (Sync)
         {
@@ -105,7 +115,7 @@ public sealed class ConversationRuntime : IAsyncDisposable
                 chatAdapters[target] = adapter;
             }
         }
-        return adapter.Stream(context, request.Model, input, request.TextLimits, consent, caller, request.Generation);
+        return adapter;
     }
 
     // This is the explicit new-turn operation. It neither interrupts nor queues behind existing ownership.

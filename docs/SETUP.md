@@ -64,6 +64,31 @@ a saved route on one is refused before sending, and Thinking and Vision name the
 new default as the fix. A 410 from any provider is reported as `ModelRetired`,
 so the talk window says the model was retired and to choose another.
 
+### Thinking fallback
+
+Companion › Thinking › **If Thinking fails** saves an optional second
+destination: any OpenAI-compatible Chat Completions endpoint (OpenRouter, NVIDIA
+Build, OpenAI's `https://api.openai.com/v1`, Ollama on this PC or a custom
+server) and model, with an optional key of its own (bound to that base URL;
+leave it empty to reuse Thinking's key on the same endpoint). When a Thinking
+request fails before any of its text arrived (an error, a rate limit, no first
+token within 15 seconds, or a broken stream), Martlet asks the fallback once
+for that reply instead. This covers replies, screen and camera glances, and
+memory requests. Ticking its box is the consent to send messages, recent
+conversation and any glance image there when that happens; the talk window's
+disclosure names it. A reply that already started is never restarted
+elsewhere. It must differ from Thinking, and should see images if you use
+vision. Each fallback use is logged (*Reply: Thinking failed (RateLimited) on
+... the Thinking fallback ... answered instead.*). *Turn off* removes it and
+its key. A settings restore drops the fallback and lists its key for removal.
+
+NVIDIA Build's free tier allows about 40 requests a minute per key (shared
+across models) and 5 at once, and it also limits requests when its free capacity
+is busy, so a 429 can arrive well below that. Martlet's vision sends at most 45
+glances an hour. When a glance is rate-limited or doesn't get an answer (after
+the fallback, if there is one), vision keeps watching and waits 1, 2, 4, 8 and
+then 10 minutes before the next look instead of stopping.
+
 For each job, review the displayed boundary and apply the route:
 
 | Role | Disclosed data destination |

@@ -6,6 +6,9 @@ namespace Martlet.Core.Settings;
 public static class ChatCompletionsSetup
 {
     public const string Alias = "chat-completions";
+    /// <summary>The model alias of the Thinking fallback, so its one-use permission can never stand in for the Thinking route's
+    /// (the two may name the same upstream model).</summary>
+    public const string FallbackAlias = "chat-completions-fallback";
 
     public static Uri BaseUri(string value)
     {

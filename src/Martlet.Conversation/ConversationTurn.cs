@@ -48,7 +48,7 @@ public sealed class ConversationTurn
     private bool invalidated, userStopped, workFinished, released, quarantined, textComplete, refused, terminal, toolsRejected;
     private bool speechLimitReached;
     private int peakQueued, committed, suppressed, reservedBytes, toolCalls;
-    private string? activeTool;
+    private string? activeTool, fellBackAfter;
     private long reservedSamples, accepted, submitted, consumed, eventSequence, dropped;
     private bool mayHavePlayed;
 
@@ -180,6 +180,20 @@ public sealed class ConversationTurn
 
     private enum RoundEnd { Completed, Refused, Failed, Invalid }
 
+    // Switches the rest of this reply to the Thinking fallback when there is one and nothing of the failed answer was said.
+    private bool FallBack(int textBefore, string reason)
+    {
+        if (request.Fallback is null) return false;
+        lock (Sync)
+        {
+            if (invalidated || stop.IsCancellationRequested || whole.Expired || text.Length != textBefore) return false;
+            textWindow = null;
+            fellBackAfter = reason;
+            Emit(ConversationEventKind.State);
+            return true;
+        }
+    }
+
     private sealed record RoundResult(RoundEnd End, string Text, IReadOnlyList<TextToolCall> Calls,
         ProviderFailureCode? Failure = null, SequenceIssue? Issue = null, string? Refusal = null);
 
@@ -193,10 +207,24 @@ public sealed class ConversationTurn
         {
             var input = request.Input;
             var rounds = new List<TextToolRound>();
-            bool retried = false;
+            bool retried = false, fallback = false;
             for (var attempt = 0; ; attempt++)
             {
-                var result = await RequestAsync(input, attempt == 0 ? TextIds : NewIds(), segmenter).ConfigureAwait(false);
+                int before;
+                lock (Sync) before = text.Length;
+                RoundResult result;
+                try
+                {
+                    result = await RequestAsync(input, attempt == 0 ? TextIds : NewIds(), segmenter, fallback).ConfigureAwait(false);
+                }
+                // The selected destination failed without answering (no reply in time or a broken stream): ask the fallback.
+                catch (Exception error) when (error is ConversationException { Failure: ConversationFailure.DeadlineExceeded or
+                    ConversationFailure.InvalidStream or ConversationFailure.DependencyFailed } or ContractException &&
+                    !fallback && FallBack(before, error is ConversationException failed ? failed.Failure.ToString() : nameof(ConversationFailure.InvalidStream)))
+                {
+                    fallback = true;
+                    continue;
+                }
                 if (result.End is RoundEnd.Failed or RoundEnd.Invalid)
                 {
                     // A model without tool support (many local models) rejects the request before answering; ask once more
@@ -208,9 +236,17 @@ public sealed class ConversationTurn
                         lock (Sync)
                         {
                             CheckActive();
-                            toolsRejected = true;
+                            // Only the selected Thinking model is remembered as rejecting tools.
+                            if (!fallback) toolsRejected = true;
                         }
                         input = request.Input.WithoutTools();
+                        continue;
+                    }
+                    // Nothing of this answer arrived yet, so the fallback can give it instead.
+                    if (!fallback && result.Text.Length == 0 &&
+                        FallBack(before, result.Failure?.ToString() ?? result.Issue?.ToString() ?? result.End.ToString()))
+                    {
+                        fallback = true;
                         continue;
                     }
                     Fail(result.End == RoundEnd.Failed ? ConversationFailure.ProviderFailed : ConversationFailure.InvalidStream,
@@ -273,15 +309,17 @@ public sealed class ConversationTurn
         }
     }
 
-    private async Task<RoundResult> RequestAsync(BoundedTextInput input, CorrelationIds ids, SpeechSegmenter? segmenter)
+    private async Task<RoundResult> RequestAsync(BoundedTextInput input, CorrelationIds ids, SpeechSegmenter? segmenter,
+        bool fallback = false)
     {
+        var model = fallback ? request.Fallback!.Model : request.Model;
         var window = new MonotonicWindow(Clock, request.TextLimits.MaxRequestTime);
         lock (Sync) textWindow = window;
         Check(window);
         var context = new ProviderRequestContext { Ids = ids, Epoch = Epoch, Deadline = Deadline(window) };
         var budget = new OperationBudget(ids, Epoch, ProviderRole.Llm, 1, input.Utf8Bytes,
             input.InputTokenReservation, request.TextLimits.MaxOutputTokens, 0);
-        var action = new TextAuthorizationAction(context, input, request.Model, request.TextLimits, budget);
+        var action = new TextAuthorizationAction(context, input, model, request.TextLimits, budget);
         var permission = await authorization.AuthorizeTextAsync(action, stop.Token).ConfigureAwait(false);
         Check(window);
         if (permission?.Authorization is not { } consent)
@@ -291,7 +329,7 @@ public sealed class ConversationTurn
         Check(window);
         // Clamp to remaining ORIGINAL stage/turn budgets after a potentially slow authorization callback.
         context = context with { Deadline = Deadline(window) };
-        var stream = Owner.StreamText(context, request, input, consent, originalCaller);
+        var stream = Owner.StreamText(context, request, input, consent, originalCaller, fallback);
         using var validator = new ProviderSequenceValidator(new()
         {
             Ids = ids, Epoch = Epoch, Capabilities = stream.Capabilities
@@ -660,6 +698,6 @@ public sealed class ConversationTurn
             consumed + (currentPlayback?.DeviceConsumedSamples ?? 0), mayHavePlayed || currentPlayback?.MayHavePlayed == true,
             released, quarantined || (currentPlayback is { State: PlaybackState.Failed, DeviceReleased: false }),
             Interlocked.Read(ref dropped), currentPlayback ?? lastPlayback, retryOf, earlierSpeech, toolCalls, activeTool, toolsRejected,
-            speechLimitReached, failedProvider);
+            speechLimitReached, failedProvider, fellBackAfter);
     }
 }

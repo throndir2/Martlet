@@ -175,7 +175,16 @@ public sealed partial class SettingsStore
             {
                 Role = route.Role, CredentialId = route.CredentialId!.Value,
                 Scope = route.RouteType == SetupRouteType.ChatCompletions ? CredentialScopeSettings.From(route) : null
-            })).ToArray();
+            }))
+            // The Thinking fallback is not restored; its own key is listed for removal like a replaced Thinking key.
+            .Concat(current.ThinkingFallback is { CredentialId: { } fallbackKey } fallback
+                ? [new PendingCredentialRemoval
+                {
+                    Role = SetupRole.Llm, CredentialId = fallbackKey,
+                    Scope = new() { SchemaVersion = 1, RouteType = SetupRouteType.ChatCompletions,
+                        ProviderAlias = ChatCompletionsSetup.Alias, Origin = fallback.Origin }
+                }]
+                : []).ToArray();
         if (pending.Length > 16)
             throw new RecoveryException(RecoveryFailure.CleanupCapacity);
         restored = restored with
@@ -194,7 +203,8 @@ public sealed partial class SettingsStore
                 Output = audio.Output with { ConfigurationRevision = Guid.NewGuid(), Checkpoint = null }
             },
             Companion = importedCompanion ?? current.Companion ?? CompanionSettings.Create(),
-            Memory = (importedMemory ?? current.Memory ?? MemorySettings.Create()).DisableForRestore()
+            Memory = (importedMemory ?? current.Memory ?? MemorySettings.Create()).DisableForRestore(),
+            ThinkingFallback = null
         };
         restored.Validate();
         return restored;
@@ -330,7 +340,7 @@ public sealed partial class SettingsStore
             !current.Profile.Credentials.SequenceEqual(settings.Profile.Credentials))
             throw new RecoveryException(RecoveryFailure.Conflict);
         ValidateCredentialTransition(SetupSettings.Begin(current).Setup!, settings.Setup!, null);
-        if (settings.Memory?.Enabled != false)
+        if (settings.Memory?.Enabled != false || settings.ThinkingFallback is not null)
             throw new RecoveryException(RecoveryFailure.Conflict);
         var owned = (current.Setup?.RetainedGatewayCredentials ?? []).Concat(
             (current.Setup?.Routes ?? []).Where(route => route.CredentialId is not null &&
