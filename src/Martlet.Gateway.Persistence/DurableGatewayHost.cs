@@ -378,6 +378,23 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         server!.AttachVoiceStorage(storage);
     }
 
+    /// <summary>Keeps the Martlet network roster this host accepted in <paramref name="storage"/>.</summary>
+    public void AttachNetwork(IGatewayNetworkStorage storage)
+    {
+        RequireOpen();
+        server!.AttachNetworkStorage(storage);
+    }
+
+    /// <summary>This host's network state ("unbound", "bound" or "removed") and network ID.</summary>
+    public (string State, string? NetworkId) NetworkState
+    {
+        get
+        {
+            RequireOpen();
+            return server!.NetworkState;
+        }
+    }
+
     /// <summary>Keeps the commands paired computers send through this host in <paramref name="storage"/> and accepts
     /// <paramref name="agentToken"/> from the Martlet app on this host that runs them.</summary>
     public void AttachCommands(IGatewayCommandStorage storage, string agentToken)

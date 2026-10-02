@@ -214,6 +214,29 @@
                     <Border x:Name="DetailCard" Style="{DynamicResource CardStyle}" Padding="26,22">
                         <StackPanel x:Name="DetailContent" AutomationProperties.Name="Selected device" AutomationProperties.LiveSetting="Polite"/>
                     </Border>
+                    <!-- Your Martlet network: the owner's computers that trust each other (MainWindow.Network.cs) -->
+                    <Border x:Name="NetworkCard" Style="{DynamicResource CardStyle}" Padding="26,22" AutomationProperties.Name="Your Martlet network">
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,12">
+                                <Button x:Name="NetworkCheckButton" DockPanel.Dock="Right" Content="Check now" Click="NetworkCheck_Click" VerticalAlignment="Top"
+                                        AutomationProperties.AutomationId="NetworkCheck" AutomationProperties.Name="Check your Martlet network now"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,12,0">
+                                    <Border Width="40" Height="40" CornerRadius="20" Background="{DynamicResource SoftBrush}" Margin="0,0,14,0" VerticalAlignment="Top">
+                                        <TextBlock Style="{DynamicResource Icon}" FontSize="18" Text="&#xE968;" Foreground="{DynamicResource AccentBrush}"/>
+                                    </Border>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="Your Martlet network" FontSize="18" FontWeight="SemiBold"/>
+                                        <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap"
+                                                   Text="Pair a host once: every computer in your network can use it and pairs with it by itself."/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </DockPanel>
+                            <TextBlock x:Name="NetworkStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap"
+                                       AutomationProperties.AutomationId="NetworkStatus" AutomationProperties.LiveSetting="Polite"/>
+                            <StackPanel x:Name="NetworkJoinsPanel" AutomationProperties.Name="Computers asking to join"/>
+                            <StackPanel x:Name="NetworkMembersPanel" AutomationProperties.Name="Computers in your network"/>
+                        </StackPanel>
+                    </Border>
                     <Border x:Name="RolesCard" Style="{DynamicResource CardStyle}" Padding="26,22" AutomationProperties.Name="Settings for all devices">
                         <StackPanel>
                             <DockPanel Margin="0,0,0,12">

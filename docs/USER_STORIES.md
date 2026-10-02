@@ -416,13 +416,16 @@ don't redo everything, and tell the network what this PC can do.*
 - **Done when**: a second PC becomes a working member with the network's
   configuration and its abilities advertised, without copying codes,
   consoles or per-host pairing.
-- **Today**: partly. Add a computer › *Martlet on your network* lists the
+- **Today**: mostly. Add a computer › *Martlet on your network* lists the
   owner's other computers that run a host or reach one over SSH; *Connect*
   shows a check number, the other computer asks *Allow* with the same number
   and this PC is paired with its hosts without typing anything
-  ([how](ARCHITECTURE.md#finding-your-other-computers)). Pairing is still per
-  desktop and host (no network-wide trust yet), cloud keys are re-entered and
-  who-does-what sync is on by default.
+  ([how](ARCHITECTURE.md#finding-your-other-computers)). It then joins the
+  [Martlet network](NETWORK.md) with no second Allow, so it also pairs with
+  every host added later, on any member. Pairing with any one host of the
+  network (a code or SSH) works too: it asks to join and a member allows it
+  under Devices › Your Martlet network. Not yet: combining setups, cloud keys
+  travelling with it; who-does-what sync is on by default.
 
 #### B2. Approve a joining machine
 
@@ -439,8 +442,12 @@ don't redo everything, and tell the network what this PC can do.*
   matches the joining screen.
 - **Today**: a computer that shares its hosts shows *<name> wants to use this
   PC's hosts* with the check number, **Allow** and **Deny** (Deny is the
-  default); the request expires after 2 minutes. Not yet: notifications in
-  the tray, a Devices ghost node or blocking after repeated denials.
+  default); the request expires after 2 minutes. A computer that paired with
+  a network host another way asks to join the network: Devices › Your Martlet
+  network lists the request with its check number (**Allow**, **Turn down**),
+  the main window's status line announces it and hosts keep it for an hour.
+  Not yet: notifications in the tray, a Devices ghost node or blocking after
+  repeated denials.
 
 #### B3. Join a network after setting up alone
 
@@ -504,7 +511,9 @@ offer machines that work.*
   shown.
 - **Today**: Hosts wizard 4 steps (Where it runs › Install › Pair › Roles),
   plus PrepareHostWindow for Ubuntu prerequisites with a separate checklist
-  and *Run selected*.
+  and *Run selected*. The host joins this PC's [Martlet network](NETWORK.md)
+  on the next sync, and every other member desktop pairs with it by itself
+  (no code, no SSH of their own).
 
 #### B7. Remove a machine or leave the network
 
@@ -515,6 +524,12 @@ offer machines that work.*
 - **Clicks**: 2.
 - **Edge cases**: removing the only machine that can run a job moves the job
   to its fallback (cloud if configured, else *not set*) and Home says so.
+- **Today**: Devices › Your Martlet network › **Remove from network** (one
+  confirmation) for any other desktop or host: hosts revoke a removed desktop,
+  which forgets the network's hosts; a removed host stops trusting the
+  network's desktops and they forget it. Not yet: *Leave network* on the
+  machine itself, the list of jobs that move. A host whose network is gone
+  leaves it with `martlet-host network-reset`.
 
 ### C. Thinking
 

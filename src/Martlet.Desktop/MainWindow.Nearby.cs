@@ -264,6 +264,8 @@ public partial class MainWindow
             var summary = await HostRunWindow.RunAsync(this, $"Let {name} use your hosts", run => ShareHostsAsync(run, session, hosts));
             nearbyLast = summary is null ? $"sharing with {name} stopped at {DateTime.Now:t}; the run window shows why." : $"{summary} ({DateTime.Now:t})";
             if (!closing) ActionText.Text = summary ?? $"Sharing hosts with {name} stopped. The run window shows why.";
+            // The owner already allowed this computer (same check number), so its request to join the network needs no second Allow.
+            if (summary is not null) PreapproveNetworkJoin(session.Device, name);
         }
         catch (Exception error) when (error is IOException or SocketException or ObjectDisposedException or OperationCanceledException)
         {
