@@ -27,6 +27,7 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
     private int revoked, textRequests, sttRequests, speechRequests, speechBytes;
     private long speechSamples;
     private BoundedTextInput? exactInput;
+    private int maxTextRequests = 1;
     internal LiveConversationConfiguration Configuration { get; }
     internal bool Voice { get; }
     internal bool Microphone { get; }
@@ -53,7 +54,16 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
     }
 
     internal void BindWorker(CancellationToken token) => worker = token;
-    internal void BindInput(BoundedTextInput input) => exactInput = input;
+    // A reply that offers tools may make one request per tool round plus the final answer (or one retry without tools when the
+    // model rejects them); each continues this exact input.
+    internal void BindInput(BoundedTextInput input, int toolRounds = 0)
+    {
+        lock (gate)
+        {
+            exactInput = input;
+            maxTextRequests = input.Tools.Count > 0 ? Math.Max(toolRounds + 1, 2) : 1;
+        }
+    }
     internal void Revoke() => Interlocked.Exchange(ref revoked, 1);
     internal bool IsCanceled => Volatile.Read(ref revoked) != 0 || caller.IsCancellationRequested ||
         worker.IsCancellationRequested || !current();
@@ -120,9 +130,10 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
         lock (gate)
         {
             Check(token);
-            if (!ReferenceEquals(action.Input, exactInput) || action.Model != selection ||
+            var continues = exactInput is { Tools.Count: > 0 } && ReferenceEquals(action.Input.Origin, exactInput);
+            if (!ReferenceEquals(action.Input, exactInput) && !continues || action.Model != selection ||
                 action.Limits != Configuration.TextLimits || action.Budget != expected ||
-                textRequests != 0 || !requests.Add(action.Context.Ids.RequestId)) return null;
+                textRequests >= maxTextRequests || !requests.Add(action.Context.Ids.RequestId)) return null;
             textRequests++;
             Ticket(ProviderRole.Llm);
         }

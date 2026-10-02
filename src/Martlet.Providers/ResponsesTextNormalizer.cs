@@ -4,25 +4,36 @@ using Martlet.Core.Contracts;
 
 namespace Martlet.Providers;
 
-internal sealed class ResponsesTextNormalizer(TextGenerationLimits limits, string model)
+// Output items arrive in index order: assistant messages (text or refusal) and, when tools were offered, function calls.
+// Function calls are accepted only when the request offered tools; events that echo the request's tool schemas can nest
+// deeply, so tool requests read events with a deeper JSON limit.
+internal sealed class ResponsesTextNormalizer(TextGenerationLimits limits, string model, bool toolsOffered = false)
 {
+    private const int MaxItems = TextToolRound.MaxCalls + 2;
+
+    private sealed class OutputItem(string id, bool message)
+    {
+        public string Id { get; } = id;
+        public bool IsMessage { get; } = message;
+        public string? CallId, Name, PartType, DoneStatus;
+        public readonly StringBuilder Arguments = new();
+        public readonly StringBuilder Text = new();
+        public bool TextDone, PartDone, Done;
+    }
+
+    private readonly List<OutputItem> items = [];
     private string? responseId;
-    private string? itemId;
-    private string? partType;
     private int lastSequence = -1;
+    private int characters;
     private bool inProgress;
-    private bool textDone;
-    private bool partDone;
-    private bool itemDone;
-    private string? itemDoneStatus;
-    private readonly StringBuilder text = new();
     public bool HasContentDelta { get; private set; }
 
     public TextStreamStep? Accept(ResponsesSseEvent value)
     {
         if (value.Data.Span.SequenceEqual("[DONE]"u8))
             throw new ResponseProtocolException(ProviderFailureCode.ResponseTruncated);
-        var e = ContractJson.Read<EventEnvelope>(value.Data, limits.MaxEventBytes);
+        var e = ContractJson.Read<EventEnvelope>(value.Data, limits.MaxEventBytes,
+            toolsOffered ? ContractJson.DeepMaxDepth : ContractJson.DefaultMaxDepth);
         Require(value.EventType is null || value.EventType == e.Type);
         // Responses sequence numbers are not Core sequence numbers. No reconnect/replay is attempted.
         Require(e.SequenceNumber > lastSequence);
@@ -41,59 +52,108 @@ internal sealed class ResponsesTextNormalizer(TextGenerationLimits limits, strin
         switch (e.Type)
         {
             case "response.in_progress":
-                Require(!inProgress && itemId is null);
+                Require(!inProgress && items.Count == 0);
                 ValidateResponse(e.Response, "in_progress", initial: true);
                 inProgress = true;
                 return null;
             case "response.output_item.added":
-                Require(itemId is null && e.OutputIndex == 0);
-                RequireMessage(e.Item);
-                Require(String(e.Item, "status") == "in_progress");
-                Require(Array(e.Item, "content").GetArrayLength() == 0);
-                itemId = Id(e.Item, "id");
+                Require(e.OutputIndex == items.Count && items.Count < MaxItems);
+                if (String(e.Item, "type") == "function_call")
+                {
+                    if (!toolsOffered) throw new ResponseProtocolException(ProviderFailureCode.UnsupportedOutput);
+                    Require(OptionalString(e.Item, "status") is null or "in_progress");
+                    var call = new OutputItem(Id(e.Item, "id"), message: false) { CallId = CallId(e.Item), Name = ToolName(e.Item) };
+                    AppendArguments(call, OptionalString(e.Item, "arguments") ?? "");
+                    items.Add(call);
+                }
+                else
+                {
+                    RequireMessage(e.Item);
+                    Require(String(e.Item, "status") == "in_progress");
+                    Require(Array(e.Item, "content").GetArrayLength() == 0);
+                    items.Add(new(Id(e.Item, "id"), message: true));
+                }
+                Require(items.Select(i => i.Id).Distinct(StringComparer.Ordinal).Count() == items.Count);
                 return null;
             case "response.content_part.added":
-                MatchPart(e);
-                Require(partType is null);
-                partType = String(e.Part, "type");
-                RequireSupportedPart(partType);
-                Require(PartText(e.Part).Length == 0);
+            {
+                var item = Message(e);
+                Require(item.PartType is null);
+                item.PartType = String(e.Part, "type");
+                RequireSupportedPart(item.PartType);
+                Require(PartText(e.Part, item).Length == 0);
                 return null;
+            }
             case "response.output_text.delta":
             case "response.refusal.delta":
-                MatchPart(e);
-                Require(partType == (e.Type == "response.refusal.delta" ? "refusal" : "output_text") && !textDone);
+            {
+                var item = Message(e);
+                Require(item.PartType == (e.Type == "response.refusal.delta" ? "refusal" : "output_text") && !item.TextDone);
                 Require(e.Delta is { Length: > 0 });
-                if (e.Delta!.Length > limits.MaxTextCharacters - text.Length)
+                if (e.Delta!.Length > limits.MaxTextCharacters - characters)
                     throw new ResponseProtocolException(ProviderFailureCode.ResponseTooLarge);
                 ContractRules.Text(e.Delta, limits.MaxTextCharacters);
-                text.Append(e.Delta);
+                item.Text.Append(e.Delta);
+                characters += e.Delta.Length;
                 HasContentDelta = true;
-                return partType == "output_text" ? new(Text: e.Delta) : null;
+                return item.PartType == "output_text" ? new(Text: e.Delta) : null;
+            }
             case "response.output_text.done":
             case "response.refusal.done":
-                MatchPart(e);
-                Require(partType == (e.Type == "response.refusal.done" ? "refusal" : "output_text") && !textDone);
-                Require((partType == "refusal" ? e.Refusal : e.Text) == text.ToString());
-                textDone = true;
+            {
+                var item = Message(e);
+                Require(item.PartType == (e.Type == "response.refusal.done" ? "refusal" : "output_text") && !item.TextDone);
+                Require((item.PartType == "refusal" ? e.Refusal : e.Text) == item.Text.ToString());
+                item.TextDone = true;
                 return null;
+            }
             case "response.content_part.done":
-                MatchPart(e);
-                Require(textDone && !partDone && PartText(e.Part) == text.ToString());
-                partDone = true;
+            {
+                var item = Message(e);
+                Require(item.TextDone && !item.PartDone && PartText(e.Part, item) == item.Text.ToString());
+                item.PartDone = true;
                 return null;
+            }
+            case "response.function_call_arguments.delta":
+            {
+                var call = Call(e);
+                Require(e.Delta is not null);
+                AppendArguments(call, e.Delta!);
+                HasContentDelta = true;
+                return null;
+            }
+            case "response.function_call_arguments.done":
+            {
+                var call = Call(e);
+                Require(e.Arguments == call.Arguments.ToString());
+                return null;
+            }
             case "response.output_item.done":
-                Require(e.OutputIndex == 0 && partDone && !itemDone);
-                ValidateItem(e.Item, allowIncomplete: true);
-                itemDoneStatus = String(e.Item, "status");
-                Require(itemDoneStatus is "completed" or "incomplete");
-                itemDone = true;
+            {
+                Require(e.OutputIndex is { } index && index >= 0 && index < items.Count);
+                var item = items[e.OutputIndex!.Value];
+                Require(!item.Done && (!item.IsMessage || item.PartDone));
+                ValidateItem(e.Item, item, allowIncomplete: true);
+                item.DoneStatus = OptionalString(e.Item, "status") ?? "completed";
+                Require(item.DoneStatus is "completed" or "incomplete");
+                item.Done = true;
                 return null;
+            }
             case "response.completed":
+            {
                 ValidateResponse(e.Response, "completed");
-                Require(textDone && partDone && itemDone && !string.IsNullOrWhiteSpace(text.ToString()));
-                return new(Outcome: partType == "refusal" ? TextGenerationOutcome.Refused : TextGenerationOutcome.Completed,
-                    Usage: Usage(e.Response), Refusal: partType == "refusal" ? text.ToString() : null);
+                Require(items.Count > 0 && items.All(i => i.Done));
+                var usage = Usage(e.Response);
+                var refusals = items.Where(i => i.PartType == "refusal").Select(i => i.Text.ToString()).ToArray();
+                if (refusals.Length > 0)
+                    return new(Outcome: TextGenerationOutcome.Refused, Usage: usage, Refusal: string.Join("\n", refusals));
+                var calls = items.Where(i => !i.IsMessage)
+                    .Select(i => new TextToolCall(i.CallId!, i.Name!, i.Arguments.ToString())).ToArray();
+                Require(calls.Length > 0 || items.Any(i => i.IsMessage && !string.IsNullOrWhiteSpace(i.Text.ToString())));
+                Require(calls.Length <= TextToolRound.MaxCalls &&
+                    calls.Select(c => c.CallId).Distinct(StringComparer.Ordinal).Count() == calls.Length);
+                return new(Outcome: TextGenerationOutcome.Completed, Usage: usage, ToolCalls: calls.Length == 0 ? null : calls);
+            }
             case "response.incomplete":
                 ValidateResponse(e.Response, "incomplete");
                 string? reason = null;
@@ -121,6 +181,29 @@ internal sealed class ResponsesTextNormalizer(TextGenerationLimits limits, strin
         }
     }
 
+    private OutputItem Message(EventEnvelope e)
+    {
+        Require(e.OutputIndex is { } index && index >= 0 && index < items.Count);
+        var item = items[e.OutputIndex!.Value];
+        Require(item.IsMessage && e.ItemId == item.Id && e.ContentIndex == 0 && !item.Done);
+        return item;
+    }
+
+    private OutputItem Call(EventEnvelope e)
+    {
+        Require(e.OutputIndex is { } index && index >= 0 && index < items.Count);
+        var item = items[e.OutputIndex!.Value];
+        Require(!item.IsMessage && e.ItemId == item.Id && !item.Done);
+        return item;
+    }
+
+    private static void AppendArguments(OutputItem call, string delta)
+    {
+        if (delta.Length > ContractRules.MaxTextCharacters - call.Arguments.Length)
+            throw new ResponseProtocolException(ProviderFailureCode.ResponseTooLarge);
+        call.Arguments.Append(delta);
+    }
+
     private void ValidateResponse(JsonElement response, string status, bool initial = false)
     {
         Require(response.ValueKind == JsonValueKind.Object);
@@ -136,28 +219,41 @@ internal sealed class ResponsesTextNormalizer(TextGenerationLimits limits, strin
             Require(output.GetArrayLength() == 0);
             return;
         }
-        Require(output.GetArrayLength() == (itemId is null ? 0 : 1));
-        if (itemId is not null)
-            ValidateItem(output[0], allowIncomplete: status != "completed");
+        Require(output.GetArrayLength() == items.Count);
+        for (var i = 0; i < items.Count; i++)
+            ValidateItem(output[i], items[i], allowIncomplete: status != "completed");
         if (status == "completed")
         {
-            Require(itemId is not null);
+            Require(items.Count > 0);
             Require(!response.TryGetProperty("error", out var error) || error.ValueKind == JsonValueKind.Null);
             Require(!response.TryGetProperty("incomplete_details", out var details) || details.ValueKind == JsonValueKind.Null);
         }
     }
 
-    private void ValidateItem(JsonElement item, bool allowIncomplete)
+    private void ValidateItem(JsonElement element, OutputItem item, bool allowIncomplete)
     {
-        RequireMessage(item);
-        Require(Id(item, "id") == itemId);
-        var status = String(item, "status");
+        if (item.IsMessage)
+        {
+            RequireMessage(element);
+            Require(Id(element, "id") == item.Id);
+        }
+        else
+        {
+            Require(String(element, "type") == "function_call" && Id(element, "id") == item.Id &&
+                CallId(element) == item.CallId && ToolName(element) == item.Name);
+        }
+        var status = item.IsMessage ? String(element, "status") : OptionalString(element, "status") ?? "completed";
         Require(status == "completed" || (allowIncomplete && status is "incomplete" or "in_progress"));
-        Require(itemDoneStatus is null || status == itemDoneStatus);
-        var content = Array(item, "content");
-        Require(content.GetArrayLength() == (partType is null ? 0 : 1));
-        if (partType is not null)
-            Require(PartText(content[0]) == text.ToString());
+        Require(item.DoneStatus is null || status == item.DoneStatus);
+        if (!item.IsMessage)
+        {
+            if (status == "completed") Require(String(element, "arguments") == item.Arguments.ToString());
+            return;
+        }
+        var content = Array(element, "content");
+        Require(content.GetArrayLength() == (item.PartType is null ? 0 : 1));
+        if (item.PartType is not null)
+            Require(PartText(content[0], item) == item.Text.ToString());
     }
 
     private static void RequireMessage(JsonElement item)
@@ -170,11 +266,11 @@ internal sealed class ResponsesTextNormalizer(TextGenerationLimits limits, strin
             throw new ResponseProtocolException(ProviderFailureCode.UnsupportedOutput);
     }
 
-    private string PartText(JsonElement part)
+    private string PartText(JsonElement part, OutputItem item)
     {
         var type = String(part, "type");
         RequireSupportedPart(type);
-        Require(type == partType);
+        Require(type == item.PartType);
         if (type == "output_text")
         {
             var annotations = Array(part, "annotations");
@@ -191,9 +287,6 @@ internal sealed class ResponsesTextNormalizer(TextGenerationLimits limits, strin
         if (type is not "output_text" and not "refusal")
             throw new ResponseProtocolException(ProviderFailureCode.UnsupportedOutput);
     }
-
-    private void MatchPart(EventEnvelope e) =>
-        Require(itemId is not null && e.ItemId == itemId && e.OutputIndex == 0 && e.ContentIndex == 0 && !itemDone);
 
     private TextGenerationUsage Usage(JsonElement response)
     {
@@ -233,11 +326,33 @@ internal sealed class ResponsesTextNormalizer(TextGenerationLimits limits, strin
         return id;
     }
 
+    private static string CallId(JsonElement value)
+    {
+        var id = String(value, "call_id");
+        Require(id.Length is > 0 and <= TextToolCall.MaxCallIdLength && !id.Any(char.IsControl));
+        return id;
+    }
+
+    private static string ToolName(JsonElement value)
+    {
+        var name = String(value, "name");
+        Require(name.Length is > 0 and <= TextToolCall.MaxNameLength && !name.Any(char.IsControl));
+        return name;
+    }
+
     private static string String(JsonElement value, string name)
     {
         Require(value.ValueKind == JsonValueKind.Object && value.TryGetProperty(name, out var property) &&
             property.ValueKind == JsonValueKind.String);
         return value.GetProperty(name).GetString()!;
+    }
+
+    private static string? OptionalString(JsonElement value, string name)
+    {
+        Require(value.ValueKind == JsonValueKind.Object);
+        if (!value.TryGetProperty(name, out var property) || property.ValueKind == JsonValueKind.Null) return null;
+        Require(property.ValueKind == JsonValueKind.String);
+        return property.GetString();
     }
 
     private static JsonElement Object(JsonElement value, string name)
@@ -281,6 +396,7 @@ internal sealed class ResponsesTextNormalizer(TextGenerationLimits limits, strin
         public string? Delta { get; init; }
         public string? Text { get; init; }
         public string? Refusal { get; init; }
+        public string? Arguments { get; init; }
         public string? Code { get; init; }
         public void Validate() => Require(Type is { Length: > 0 and <= 128 } && SequenceNumber >= 0);
     }

@@ -44,8 +44,9 @@ public sealed class ConversationTurn
     private EvidenceProvenance? textProvenance, speechProvenance;
     private Guid? speechRequest;
     private string? refusal;
-    private bool invalidated, userStopped, workFinished, released, quarantined, textComplete, refused, terminal;
-    private int peakQueued, committed, suppressed, reservedBytes;
+    private bool invalidated, userStopped, workFinished, released, quarantined, textComplete, refused, terminal, toolsRejected;
+    private int peakQueued, committed, suppressed, reservedBytes, toolCalls;
+    private string? activeTool;
     private long reservedSamples, accepted, submitted, consumed, eventSequence, dropped;
     private bool mayHavePlayed;
 
@@ -173,95 +174,86 @@ public sealed class ConversationTurn
         }
     }
 
+    private enum RoundEnd { Completed, Refused, Failed, Invalid }
+
+    private sealed record RoundResult(RoundEnd End, string Text, IReadOnlyList<TextToolCall> Calls,
+        ProviderFailureCode? Failure = null, SequenceIssue? Issue = null, string? Refusal = null);
+
+    // One reply may take several requests: each tool round sends the calls and their results back to the model, until it
+    // answers in text. Every request is separately authorized; text from every round is shown and spoken in order.
     private async Task GenerateAsync()
     {
-        var window = new MonotonicWindow(Clock, request.TextLimits.MaxRequestTime);
-        lock (Sync) textWindow = window;
+        var segmenter = request.Speech is { } voice
+            ? new SpeechSegmenter(voice.Limits.MaxInputBytes, request.TextLimits.MaxTextCharacters, request.SilentReply) : null;
         try
         {
-            Check(window);
-            var context = new ProviderRequestContext { Ids = TextIds, Epoch = Epoch, Deadline = Deadline(window) };
-            var budget = new OperationBudget(TextIds, Epoch, ProviderRole.Llm, 1, request.Input.Utf8Bytes,
-                request.Input.InputTokenReservation, request.TextLimits.MaxOutputTokens, 0);
-            var action = new TextAuthorizationAction(context, request.Input, request.Model, request.TextLimits, budget);
-            var permission = await authorization.AuthorizeTextAsync(action, stop.Token).ConfigureAwait(false);
-            Check(window);
-            if (permission?.Authorization is not { } consent)
-                throw new ConversationException(ConversationFailure.AuthorizationUnavailable);
-            window = ValidateReservation(permission.Reservation, budget, consent.ExpiresAt, context.Deadline, window);
-            lock (Sync) textWindow = window;
-            Check(window);
-            // Clamp to remaining ORIGINAL stage/turn budgets after a potentially slow authorization callback.
-            context = context with { Deadline = Deadline(window) };
-            var stream = Owner.StreamText(context, request, consent, originalCaller);
-            using var validator = new ProviderSequenceValidator(new()
+            var input = request.Input;
+            var rounds = new List<TextToolRound>();
+            bool retried = false;
+            for (var attempt = 0; ; attempt++)
             {
-                Ids = TextIds, Epoch = Epoch, Capabilities = stream.Capabilities
-            }, new()
-            {
-                MaxIngressEvents = request.TextLimits.MaxEvents + 2,
-                MaxTextCharacters = request.TextLimits.MaxTextCharacters, MaxQueuedChunks = 1,
-                FirstEventTimeout = request.TextLimits.FirstDeltaTimeout, IdleTimeout = request.TextLimits.IdleTimeout,
-                TotalTimeout = request.TextLimits.MaxRequestTime
-            }, Clock, stop.Token);
-            var segmenter = request.Speech is { } voice
-                ? new SpeechSegmenter(voice.Limits.MaxInputBytes, request.TextLimits.MaxTextCharacters, request.SilentReply) : null;
-            lock (Sync)
-            {
-                CheckActive();
-                segmentation = segmenter;
-                textProvenance = stream.Capabilities.Provenance;
-                SetState(ConversationState.Generating);
-            }
-            await using var enumeration = stream.GetAsyncEnumerator(stop.Token);
-            while (true)
-            {
-                Check(window);
-                bool moved = await enumeration.MoveNextAsync().ConfigureAwait(false);
-                Check(window);
-                if (!moved) break;
-                var item = enumeration.Current;
-                var update = validator.Accept(item);
-                if (update.Snapshot.Result?.Outcome == TurnOutcome.Failed)
+                var result = await RequestAsync(input, attempt == 0 ? TextIds : NewIds(), segmenter).ConfigureAwait(false);
+                if (result.End is RoundEnd.Failed or RoundEnd.Invalid)
                 {
-                    Fail(ConversationFailure.ProviderFailed, stream.Result?.Failure?.Code, update.Snapshot.Issue);
+                    // A model without tool support (many local models) rejects the request before answering; ask once more
+                    // without tools so the conversation keeps working.
+                    if (!retried && rounds.Count == 0 && input.Tools.Count > 0 && result.Text.Length == 0 &&
+                        result.Failure == ProviderFailureCode.RequestRejected)
+                    {
+                        retried = true;
+                        lock (Sync)
+                        {
+                            CheckActive();
+                            toolsRejected = true;
+                        }
+                        input = request.Input.WithoutTools();
+                        continue;
+                    }
+                    Fail(result.End == RoundEnd.Failed ? ConversationFailure.ProviderFailed : ConversationFailure.InvalidStream,
+                        result.Failure, result.Issue);
                     return;
                 }
-                while (validator.TryReadText(out var chunk))
+                if (result.End == RoundEnd.Refused)
                 {
-                    Check(window);
                     lock (Sync)
                     {
                         CheckActive();
-                        text.Append(chunk!.Text);
-                        Emit(ConversationEventKind.Text, chunk.Text);
+                        refused = true;
+                        refusal = result.Refusal;
                     }
-                    if (segmenter is not null) await StageAsync(segmenter.Push(chunk!.Text), window).ConfigureAwait(false);
+                    return;
                 }
-            }
-            Check(window);
-            var end = validator.EndOfInput().Snapshot;
-            if (end.Result?.Outcome == TurnOutcome.Completed)
-            {
+                if (result.Calls.Count > 0 && input.ToolCallsAllowed && request.Tools is { } tools)
+                {
+                    if (!string.IsNullOrWhiteSpace(result.Text))
+                    {
+                        // Say what was written so far while the tools run.
+                        lock (Sync)
+                        {
+                            CheckActive();
+                            text.Append('\n');
+                            Emit(ConversationEventKind.Text, "\n");
+                        }
+                        if (segmenter is not null) await StageAsync(segmenter.Push("\n"), whole).ConfigureAwait(false);
+                    }
+                    var results = await CallToolsAsync(tools, result.Calls, rounds).ConfigureAwait(false);
+                    rounds.Add(new(result.Text, result.Calls, results));
+                    input = request.Input.WithToolRounds(rounds, callsAllowed: rounds.Count < request.Limits.MaxToolRounds);
+                    continue;
+                }
+                // Calls the model makes when no more are allowed are ignored; it still has to have answered in text.
+                if (string.IsNullOrWhiteSpace(result.Text))
+                {
+                    Fail(ConversationFailure.InvalidStream, null, SequenceIssue.EmptyCompletion);
+                    return;
+                }
                 lock (Sync)
                 {
                     CheckActive();
                     textComplete = true;
                 }
-                if (segmenter is not null) await StageAsync(segmenter.Finish(), window).ConfigureAwait(false);
-            }
-            else if (end.Result?.Outcome == TurnOutcome.Refused)
-            {
-                lock (Sync)
-                {
-                    CheckActive();
-                    refused = true;
-                    refusal = validator.RefusalText;
-                }
-            }
-            else
-            {
-                Fail(ConversationFailure.InvalidStream, stream.Result?.Failure?.Code, end.Issue);
+                if (segmenter is not null) await StageAsync(segmenter.Finish(), whole).ConfigureAwait(false);
+                return;
             }
         }
         finally
@@ -271,11 +263,117 @@ public sealed class ConversationTurn
                 segmentation?.Clear();
                 segmentation = null;
                 textWindow = null;
+                activeTool = null;
             }
             segments.Writer.TryComplete();
         }
     }
 
+    private async Task<RoundResult> RequestAsync(BoundedTextInput input, CorrelationIds ids, SpeechSegmenter? segmenter)
+    {
+        var window = new MonotonicWindow(Clock, request.TextLimits.MaxRequestTime);
+        lock (Sync) textWindow = window;
+        Check(window);
+        var context = new ProviderRequestContext { Ids = ids, Epoch = Epoch, Deadline = Deadline(window) };
+        var budget = new OperationBudget(ids, Epoch, ProviderRole.Llm, 1, input.Utf8Bytes,
+            input.InputTokenReservation, request.TextLimits.MaxOutputTokens, 0);
+        var action = new TextAuthorizationAction(context, input, request.Model, request.TextLimits, budget);
+        var permission = await authorization.AuthorizeTextAsync(action, stop.Token).ConfigureAwait(false);
+        Check(window);
+        if (permission?.Authorization is not { } consent)
+            throw new ConversationException(ConversationFailure.AuthorizationUnavailable);
+        window = ValidateReservation(permission.Reservation, budget, consent.ExpiresAt, context.Deadline, window);
+        lock (Sync) textWindow = window;
+        Check(window);
+        // Clamp to remaining ORIGINAL stage/turn budgets after a potentially slow authorization callback.
+        context = context with { Deadline = Deadline(window) };
+        var stream = Owner.StreamText(context, request, input, consent, originalCaller);
+        using var validator = new ProviderSequenceValidator(new()
+        {
+            Ids = ids, Epoch = Epoch, Capabilities = stream.Capabilities
+        }, new()
+        {
+            MaxIngressEvents = request.TextLimits.MaxEvents + 2,
+            MaxTextCharacters = request.TextLimits.MaxTextCharacters, MaxQueuedChunks = 1,
+            FirstEventTimeout = request.TextLimits.FirstDeltaTimeout, IdleTimeout = request.TextLimits.IdleTimeout,
+            TotalTimeout = request.TextLimits.MaxRequestTime, AllowEmptyCompletion = input.Tools.Count > 0
+        }, Clock, stop.Token);
+        lock (Sync)
+        {
+            CheckActive();
+            segmentation = segmenter;
+            textProvenance = stream.Capabilities.Provenance;
+            SetState(ConversationState.Generating);
+        }
+        var said = new StringBuilder();
+        await using (var enumeration = stream.GetAsyncEnumerator(stop.Token))
+        {
+            while (true)
+            {
+                Check(window);
+                bool moved = await enumeration.MoveNextAsync().ConfigureAwait(false);
+                Check(window);
+                if (!moved) break;
+                var update = validator.Accept(enumeration.Current);
+                if (update.Snapshot.Result?.Outcome == TurnOutcome.Failed)
+                    return new(RoundEnd.Failed, said.ToString(), [], stream.Result?.Failure?.Code, update.Snapshot.Issue);
+                while (validator.TryReadText(out var chunk))
+                {
+                    Check(window);
+                    lock (Sync)
+                    {
+                        CheckActive();
+                        text.Append(chunk!.Text);
+                        Emit(ConversationEventKind.Text, chunk.Text);
+                    }
+                    said.Append(chunk.Text);
+                    if (segmenter is not null) await StageAsync(segmenter.Push(chunk.Text), window).ConfigureAwait(false);
+                }
+            }
+        }
+        Check(window);
+        var end = validator.EndOfInput().Snapshot;
+        lock (Sync) textWindow = null;
+        return end.Result?.Outcome switch
+        {
+            TurnOutcome.Completed => new(RoundEnd.Completed, said.ToString(), stream.Result?.ToolCalls ?? []),
+            TurnOutcome.Refused => new(RoundEnd.Refused, said.ToString(), [], Refusal: validator.RefusalText),
+            _ => new(RoundEnd.Invalid, said.ToString(), [], stream.Result?.Failure?.Code, end.Issue)
+        };
+    }
+
+    // Tool calls run one at a time; each result is cut to its share of what is left of the reply's tool budget.
+    private async Task<IReadOnlyList<TextToolResult>> CallToolsAsync(IConversationToolHost tools, IReadOnlyList<TextToolCall> calls,
+        IReadOnlyList<TextToolRound> earlier)
+    {
+        var available = BoundedTextInput.RemainingToolExchangeBytes(earlier) - calls.Sum(c => c.Utf8Bytes) - 4096;
+        var share = Math.Max(256, available / calls.Count);
+        var results = new List<TextToolResult>(calls.Count);
+        foreach (var call in calls)
+        {
+            lock (Sync)
+            {
+                CheckActive();
+                textWindow = null;
+                activeTool = call.Name;
+                toolCalls++;
+                Emit(ConversationEventKind.State);
+            }
+            ConversationToolResult outcome;
+            try { outcome = await tools.CallAsync(call, stop.Token).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (stop.IsCancellationRequested) { throw; }
+            // A tool host boundary can fail arbitrarily; the model hears that the tool failed, never the exception text.
+            catch (Exception) { outcome = new("The tool failed on this PC.", true); }
+            lock (Sync) CheckActive();
+            results.Add(new(call.CallId, TextToolResult.Bound((outcome.IsError ? "Error: " : "") + outcome.Output, share)));
+        }
+        lock (Sync)
+        {
+            activeTool = null;
+            Emit(ConversationEventKind.State);
+        }
+        return results;
+    }
     private async Task StageAsync(IEnumerable<SpeechPiece> pieces, MonotonicWindow window)
     {
         using var iterator = pieces.GetEnumerator();
@@ -549,6 +647,6 @@ public sealed class ConversationTurn
             accepted + (currentPlayback?.AcceptedSamples ?? 0), submitted + (currentPlayback?.SubmittedSamples ?? 0),
             consumed + (currentPlayback?.DeviceConsumedSamples ?? 0), mayHavePlayed || currentPlayback?.MayHavePlayed == true,
             released, quarantined || (currentPlayback is { State: PlaybackState.Failed, DeviceReleased: false }),
-            Interlocked.Read(ref dropped), currentPlayback ?? lastPlayback, retryOf, earlierSpeech);
+            Interlocked.Read(ref dropped), currentPlayback ?? lastPlayback, retryOf, earlierSpeech, toolCalls, activeTool, toolsRejected);
     }
 }

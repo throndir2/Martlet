@@ -27,6 +27,8 @@
     <!-- The renderer is a separate executable, not an assembly loaded by Desktop. -->
     <ProjectReference Include="..\Martlet.Avatar.RendererHost\Martlet.Avatar.RendererHost.csproj" ReferenceOutputAssembly="false" Private="false" SkipGetTargetFrameworkProperties="true" />
     <ProjectReference Include="..\Martlet.Memory\Martlet.Memory.csproj" />
+    <!-- MCP client: tools from MCP servers on this PC for user-started replies (McpToolService). -->
+    <ProjectReference Include="..\Martlet.Mcp.Client\Martlet.Mcp.Client.csproj" />
     <ProjectReference Include="..\Martlet.Home\Martlet.Home.csproj" />
     <!-- In-app SSH to Linux Martlet hosts (HostShell). -->
     <PackageReference Include="SSH.NET" />

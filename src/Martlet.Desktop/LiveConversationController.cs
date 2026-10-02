@@ -62,6 +62,8 @@ internal sealed class LiveConversationOperation
     internal string? LoreProblem { get; set; }
     /// <summary>What Home Assistant did or answered for this turn, shown above the reply. Never logged or saved.</summary>
     [JsonIgnore] internal string? HomeSummary { get; set; }
+    /// <summary>The MCP tools offered to this turn's reply, if any.</summary>
+    internal DesktopToolset? Toolset { get; set; }
     internal ListeningOptions? Listening { get; init; }
     internal Voiceprint? Voiceprint { get; init; }
     internal SpeakerCheck? SpeakerCheck { get; set; }
@@ -148,6 +150,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private readonly LorebookStore? lorebooks;
     private readonly VoiceIdentity? voiceIdentity;
     private readonly SmartHome? smartHome;
+    private readonly McpToolService? tools;
     private readonly TaskCompletionSource quarantine = new(TaskCreationOptions.RunContinuationsAsynchronously);
     // What Martlet said while watching the screen (last 30 minutes), so it does not repeat itself. In memory only.
     private readonly Queue<(long At, string Text)> remarks = new();
@@ -177,6 +180,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
     internal Task MemoryCaptureIdle { get { lock (gate) return captureTail; } }
     /// <summary>The Home Assistant connection consulted on user-started turns while its control is on.</summary>
     internal SmartHome? Home => smartHome;
+    /// <summary>The MCP servers whose tools user-started replies may call.</summary>
+    internal McpToolService? Tools => tools;
     internal LiveConversationController(SetupOperationRunner operations, ISetupService settings, ICredentialStore vault,
         ICaptureDeviceFactory captureDevices, IPlaybackDeviceFactory playbackDevices, TimeProvider? clock = null,
         Func<IProviderCredentialSource, TimeProvider, ConversationRuntime>? runtimeFactory = null,
@@ -185,7 +190,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         DesktopMemoryService? memory = null,
         GeneratedSpeechObserver? generatedSpeech = null, Action? revokeAvatar = null, VoiceIdentity? voiceIdentity = null,
         IHostTranscriptionClient? hostListener = null, string? dataDirectory = null, SpokenTextFeed? spokenText = null,
-        SmartHome? smartHome = null, LorebookStore? lorebooks = null)
+        SmartHome? smartHome = null, LorebookStore? lorebooks = null, McpToolService? tools = null)
 
     {
         this.operations = operations;
@@ -199,6 +204,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         this.lorebooks = lorebooks;
         this.voiceIdentity = voiceIdentity;
         this.smartHome = smartHome;
+        this.tools = tools;
         this.runtimeFactory = runtimeFactory;
         context = new(this.clock);
         captureCredentials = new(() => Volatile.Read(ref captureAuthorization));
@@ -229,6 +235,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
         }
         if (changed) revokeAvatar?.Invoke();
         stop?.Cancel("conversation.configuration_changed");
+        // Opening the talk window starts the MCP servers in the background, so their tools are ready by the first reply.
+        if (next is { SupportsTools: true } && tools is { HasEnabledServers: true }) tools.EnsureStarted(retry: true);
     }
 
     internal void SetControls(bool pause, bool mute, bool sessionLocked)
@@ -637,12 +645,23 @@ internal sealed class LiveConversationController : IAsyncDisposable
             }
             var lore = await ScanLoreAsync(operation, input!.UserText, history, persona, worker).ConfigureAwait(false);
 
+            // Tools from MCP servers on this PC, only for the user's own turns and routes that do function calling.
+            DesktopToolset? toolset = null;
+            var configured = operation.Authorization.Configuration;
+            if (tools is { HasEnabledServers: true } && configured.SupportsTools && !tools.IsUnsupported(configured.ToolModelKey()))
+            {
+                operation.Publish(new("tools.preparing"));
+                toolset = await tools.PrepareAsync(worker).ConfigureAwait(false);
+                operation.Authorization.Check(worker);
+                operation.Toolset = toolset;
+            }
+
             lock (gate)
             {
                 operation.Authorization.Check(worker);
                 var request = operation.Authorization.Configuration.Request(
                     input!, operation.Authorization.Voice, style, history, memoryResult, lore,
-                    out var usedHistory, out var usedMemory, out var usedLore, extraInstructions: home?.Instructions);
+                    out var usedHistory, out var usedMemory, out var usedLore, extraInstructions: home?.Instructions, tools: toolset);
                 operation.PersonaRevision = persona?.ConfigurationRevision;
                 operation.ResponseStyle = style;
                 operation.ContextMessages = usedHistory;
@@ -650,12 +669,14 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 operation.MemoryFactsUsed = usedMemory;
                 operation.MemoryFactsOmitted = (memoryResult?.Facts.Count ?? 0) - usedMemory;
                 RecordLore(operation, lore, usedLore);
-                operation.Authorization.BindInput(request.Input);
+                operation.Authorization.BindInput(request.Input, request.Limits.MaxToolRounds);
                 // Exact-content commit, pause/consent state and immediate Start share this short, non-awaiting gate.
                 turn = runtime.Start(request, operation.Authorization, operation.OriginalCaller);
                 operation.Attach(turn);
             }
             var terminal = await turn.Completion.ConfigureAwait(false);
+            // A model that rejected tools is asked without them from now on (this app session).
+            if (terminal.ToolsRejected) tools?.MarkUnsupported(configured.ToolModelKey());
             if (terminal.State == ConversationState.Completed && !string.IsNullOrWhiteSpace(turn.Content.Text))
             {
                 lock (gate)

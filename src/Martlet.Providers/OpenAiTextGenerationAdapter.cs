@@ -138,7 +138,7 @@ public sealed class TextGenerationStream : ITextGenerationStream
                 var next = await operation.NextAsync().ConfigureAwait(false);
                 if (next.Outcome is { } outcome)
                 {
-                    Result = new(context, provenance, outcome, next.Usage, next.Failure, next.Refusal);
+                    Result = new(context, provenance, outcome, next.Usage, next.Failure, next.Refusal, next.ToolCalls);
                     operation.Dispose();
                     yield return Event(outcome switch
                     {
@@ -169,7 +169,8 @@ public sealed class TextGenerationStream : ITextGenerationStream
 }
 
 internal sealed record TextStreamStep(string? Text = null, TextGenerationOutcome? Outcome = null,
-    TextGenerationUsage? Usage = null, ProviderFailure? Failure = null, string? Refusal = null)
+    TextGenerationUsage? Usage = null, ProviderFailure? Failure = null, string? Refusal = null,
+    IReadOnlyList<TextToolCall>? ToolCalls = null)
 {
     public override string ToString() => nameof(TextStreamStep);
 }
@@ -341,8 +342,8 @@ internal sealed class TextGenerationOperation(
         abortBody = Token.Register(body.Dispose);
         EnsureActive();
         reader = new(body, limits, EnsureActive, response.Content.Headers.ContentLength);
-        if (chatBaseUri is null) normalizer = new(limits, model.UpstreamModelId);
-        else chatNormalizer = new(limits);
+        if (chatBaseUri is null) normalizer = new(limits, model.UpstreamModelId, input.Tools.Count > 0);
+        else chatNormalizer = new(limits, input.Tools.Count > 0);
         return null;
     }
 
@@ -362,10 +363,32 @@ internal sealed class TextGenerationOperation(
             writer.WriteBoolean("stream", true);
             writer.WriteBoolean("store", false);
             writer.WriteBoolean("background", false);
-            writer.WriteStartArray("tools");
-            writer.WriteEndArray();
-            writer.WriteString("tool_choice", "none");
-            writer.WriteBoolean("parallel_tool_calls", false);
+            if (input.Tools.Count == 0)
+            {
+                writer.WriteStartArray("tools");
+                writer.WriteEndArray();
+                writer.WriteString("tool_choice", "none");
+                writer.WriteBoolean("parallel_tool_calls", false);
+            }
+            else
+            {
+                writer.WriteStartArray("tools");
+                foreach (var tool in input.Tools)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("type", "function");
+                    writer.WriteString("name", tool.Name);
+                    writer.WriteString("description", tool.Description);
+                    writer.WritePropertyName("parameters");
+                    writer.WriteRawValue(tool.ParametersJson);
+                    // MCP schemas are not strict-mode schemas; the Responses API defaults to strict.
+                    writer.WriteBoolean("strict", false);
+                    writer.WriteEndObject();
+                }
+                writer.WriteEndArray();
+                writer.WriteString("tool_choice", input.ToolCallsAllowed ? "auto" : "none");
+                writer.WriteBoolean("parallel_tool_calls", true);
+            }
             writer.WriteString("truncation", "disabled");
             writer.WriteNumber("max_output_tokens", limits.MaxOutputTokens);
             if (generation?.Temperature is { } temperature) writer.WriteNumber("temperature", temperature);
@@ -398,6 +421,27 @@ internal sealed class TextGenerationOperation(
                 writer.WriteEndObject();
             }
             else WriteMessage(writer, "user", input.UserText);
+            foreach (var round in input.ToolRounds)
+            {
+                if (round.Text.Trim().Length > 0) WriteMessage(writer, "assistant", round.Text);
+                foreach (var call in round.Calls)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("type", "function_call");
+                    writer.WriteString("call_id", call.CallId);
+                    writer.WriteString("name", call.Name);
+                    writer.WriteString("arguments", call.ArgumentsJson);
+                    writer.WriteEndObject();
+                }
+                foreach (var result in round.Results)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("type", "function_call_output");
+                    writer.WriteString("call_id", result.CallId);
+                    writer.WriteString("output", result.Output);
+                    writer.WriteEndObject();
+                }
+            }
             writer.WriteEndArray();
             writer.WriteEndObject();
         }
@@ -460,7 +504,54 @@ internal sealed class TextGenerationOperation(
                 writer.WriteEndObject();
             }
             else WriteMessage(writer, "user", input.UserText);
+            foreach (var round in input.ToolRounds)
+            {
+                writer.WriteStartObject();
+                writer.WriteString("role", "assistant");
+                if (round.Text.Trim().Length > 0) writer.WriteString("content", round.Text);
+                else writer.WriteNull("content");
+                writer.WriteStartArray("tool_calls");
+                foreach (var call in round.Calls)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("id", call.CallId);
+                    writer.WriteString("type", "function");
+                    writer.WriteStartObject("function");
+                    writer.WriteString("name", call.Name);
+                    writer.WriteString("arguments", call.ArgumentsJson);
+                    writer.WriteEndObject();
+                    writer.WriteEndObject();
+                }
+                writer.WriteEndArray();
+                writer.WriteEndObject();
+                foreach (var result in round.Results)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("role", "tool");
+                    writer.WriteString("tool_call_id", result.CallId);
+                    writer.WriteString("content", result.Output);
+                    writer.WriteEndObject();
+                }
+            }
             writer.WriteEndArray();
+            if (input.Tools.Count > 0)
+            {
+                writer.WriteStartArray("tools");
+                foreach (var tool in input.Tools)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("type", "function");
+                    writer.WriteStartObject("function");
+                    writer.WriteString("name", tool.Name);
+                    writer.WriteString("description", tool.Description);
+                    writer.WritePropertyName("parameters");
+                    writer.WriteRawValue(tool.ParametersJson);
+                    writer.WriteEndObject();
+                    writer.WriteEndObject();
+                }
+                writer.WriteEndArray();
+                writer.WriteString("tool_choice", input.ToolCallsAllowed ? "auto" : "none");
+            }
             writer.WriteEndObject();
         }
         var content = new ByteArrayContent(bytes.ToArray());

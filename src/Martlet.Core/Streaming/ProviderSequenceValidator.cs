@@ -141,7 +141,8 @@ public sealed class ProviderSequenceValidator : IDisposable
         // A completed payload is the sole response, not a replay of previous deltas.
         if (value.Kind == ProviderEventKind.Completed && value.Text is { Length: > 0 } && characters > 0)
             return Fail(SequenceIssue.InvalidOrder, ErrorCode.InvalidContract);
-        if (value.Kind == ProviderEventKind.Completed && !hasNonWhitespaceText && string.IsNullOrWhiteSpace(value.Text))
+        if (value.Kind == ProviderEventKind.Completed && !hasNonWhitespaceText && string.IsNullOrWhiteSpace(value.Text) &&
+            !limits.AllowEmptyCompletion)
             return Fail(SequenceIssue.EmptyCompletion, ErrorCode.InvalidContract);
 
         var addedCharacters = value.Text?.Length ?? 0;
