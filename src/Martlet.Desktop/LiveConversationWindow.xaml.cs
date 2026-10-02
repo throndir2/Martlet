@@ -125,6 +125,7 @@ public partial class LiveConversationWindow : ThemedWindow
         timer.Start();
         sessionEvents.LockedChanged += SessionSwitch;
         controller.MemoryCaptured += MemoryCaptured;
+        controller.VoicesNamed += VoicesNamed;
         if (controller.Home is { } smartHome) smartHome.Confirm = ConfirmHomeAsync;
         RenderActions();
     }
@@ -539,7 +540,8 @@ public partial class LiveConversationWindow : ThemedWindow
             heard = home = reply = null;
         }
         if (heard is null && operation.Transcript is { } said && !string.IsNullOrWhiteSpace(said))
-            heard = Add(ChatRole.User, said.Trim(), "You (spoken)");
+            heard = Add(ChatRole.User, said.Trim(), operation.Heard?.Speaker?.Voice is { } voice
+                ? $"{voice.DisplayName}{(voice.Owner ? " (you)" : "")} (spoken)" : "You (spoken)");
         // What Home Assistant did or answered for this turn, above the reply.
         if (home is null && operation.HomeSummary is { } summary && !string.IsNullOrWhiteSpace(summary))
             home = Add(ChatRole.Note, summary.Trim(), "");
@@ -631,7 +633,7 @@ public partial class LiveConversationWindow : ThemedWindow
     {
         "mic.hearing_speech" => "Hearing you… pause when you're done.",
         "speaker.checking" => "Checking it's you…",
-        "speaker.verified" or "mic.transferred_and_cleared" or "stt.uploading" => "Got it. Transcribing…",
+        "speaker.verified" or "mic.transferred_and_cleared" or "stt.uploading" or "voices.recognized" => "Got it. Transcribing…",
         "home.asking" => "Checking with Home Assistant…",
         "tools.preparing" => Replying(live),
         var code when code.StartsWith("runtime.", StringComparison.Ordinal) => Replying(live),
@@ -886,6 +888,15 @@ public partial class LiveConversationWindow : ThemedWindow
         else AddNote(text);
     });
 
+    // Raised off the dispatcher once names were picked up for voices from an exchange.
+    private void VoicesNamed(IReadOnlyList<(Martlet.Core.Speakers.KnownVoice Voice, string Name)> learned) => Dispatcher.BeginInvoke(() =>
+    {
+        if (closed) return;
+        var text = string.Join("  ", learned.Select(l => $"Learned: {l.Voice.Tag.Replace("V", "voice ")} is {l.Name}."));
+        if (lastReply is not null) lastReply.AddNote(text);
+        else AddNote(text);
+    });
+
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
         StopAll("conversation.closed", keepContext: false);
@@ -896,6 +907,7 @@ public partial class LiveConversationWindow : ThemedWindow
         timer.Stop();
         sessionEvents.LockedChanged -= SessionSwitch;
         controller.MemoryCaptured -= MemoryCaptured;
+        controller.VoicesNamed -= VoicesNamed;
         homeQuestion?.TrySetResult(false);
         if (controller.Home is { } smartHome && smartHome.Confirm == ConfirmHomeAsync) smartHome.Confirm = null;
     }

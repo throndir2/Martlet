@@ -13,6 +13,9 @@ internal sealed class LinuxControlDirectory : IDisposable
     internal const string Staging = "service-approval.staging";
     /// <summary>The shared cluster plan the gateway keeps for paired desktops (not part of the approved configuration).</summary>
     internal const string Cluster = "cluster.json", ClusterStaging = "cluster.staging";
+    /// <summary>The shared voice list (voiceprints and names) the gateway keeps for paired desktops.</summary>
+    internal const string Voices = "voices.json", VoicesStaging = "voices.staging";
+    internal const int MaximumVoicesBytes = 1_048_576;
     internal uint UserId => fs.UserId;
     internal uint GroupId => fs.GroupId;
 
@@ -72,7 +75,7 @@ internal sealed class LinuxControlDirectory : IDisposable
 
     internal byte[]? Read(string name, int maximum)
     {
-        if (name is not (Config or Approval or Machine or Cluster)) throw Error(GatewayPersistenceFailure.InvalidPath);
+        if (name is not (Config or Approval or Machine or Cluster or Voices)) throw Error(GatewayPersistenceFailure.InvalidPath);
         Validate();
         var before = fs.StatAt(DirectoryFd, name);
         if (before is null) return null;
@@ -113,6 +116,19 @@ internal sealed class LinuxControlDirectory : IDisposable
             fs.Unlink(DirectoryFd, ClusterStaging);
         }
         Replace(Cluster, ClusterStaging, bytes, 65_536);
+    }
+
+    /// <summary>Atomically replaces voices.json (0600, service owner). A staging file left by an interrupted write is removed first.</summary>
+    internal void WriteVoices(byte[] bytes)
+    {
+        if (bytes.Length is < 1 or > MaximumVoicesBytes) throw Error(GatewayPersistenceFailure.InvalidState);
+        Validate();
+        if (fs.StatAt(DirectoryFd, VoicesStaging) is { } stale)
+        {
+            LinuxOwnedDirectory.CheckFile(fs, stale, chain[^1].Identity);
+            fs.Unlink(DirectoryFd, VoicesStaging);
+        }
+        Replace(Voices, VoicesStaging, bytes, MaximumVoicesBytes);
     }
 
     private void Replace(string name, string staging, byte[] bytes, int maximum)

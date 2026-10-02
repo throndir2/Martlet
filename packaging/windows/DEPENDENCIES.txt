@@ -86,6 +86,25 @@ audio samples are unchanged. Upstream does not identify the speaker. It is the
 voice F5 speaks with until the owner chooses another one.
 notices\F5-TTS-LICENSE.txt: the complete upstream MIT license from that commit.
 
+Voice recognition and Parakeet (optional, downloaded on request, never bundled):
+Desktop includes authored Martlet.Sherpa and Martlet.Home (BCL-only, no NuGet
+package or native binary). Only when the owner asks (Companion > People, or
+Companion > Listening > Parakeet) Martlet downloads into its data folder's
+speech\ directory, checking exact sizes and SHA-256 before use:
+- sherpa-onnx 1.13.8 (Apache-2.0, Xiaomi Corporation / Next-gen Kaldi) and
+  ONNX Runtime (MIT, Microsoft): sherpa-onnx-c-api.dll and onnxruntime.dll from
+  the unmodified NuGet package org.k2fsa.sherpa.onnx.runtime.win-x64 1.13.8.
+- WeSpeaker ResNet34-LM speaker embedding model (CC BY 4.0, WeSpeaker authors;
+  sherpa-onnx ONNX export, unmodified bytes).
+- pyannote segmentation 3.0 ONNX export (MIT, CNRS; its LICENSE is downloaded
+  with it).
+- NVIDIA Parakeet TDT 0.6B v3, int8 ONNX export by sherpa-onnx (CC BY 4.0,
+  NVIDIA).
+Each download writes a NOTICE file with attribution and license links beside
+the files. Martlet binds the sherpa-onnx C API with authored P/Invoke code; no
+managed sherpa-onnx package is redistributed. These components are not part of
+this payload or its SBOM.
+
 Installer: built with Inno Setup 7.1.0 x64, copyright Jordan Russell / Martijn
 Laan. https://jrsoftware.org/ . The compiler is NOT installed with Martlet.
 Inno's built-in copyright/about notices are unchanged; its license is packaged

@@ -366,6 +366,13 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         server!.AttachClusterStorage(storage);
     }
 
+    /// <summary>Keeps the shared voice list paired desktops sync through this host in <paramref name="storage"/>.</summary>
+    public void AttachVoices(IGatewayVoiceStorage storage)
+    {
+        RequireOpen();
+        server!.AttachVoiceStorage(storage);
+    }
+
     public ValueTask CloseCleanlyAsync(CancellationToken cancellationToken = default) =>
         StopAsync(clean: true, cancellationToken);
 

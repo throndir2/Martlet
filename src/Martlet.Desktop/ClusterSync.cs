@@ -164,7 +164,7 @@ internal static class ClusterSync
         catch (Exception error) when (IsHostFailure(error)) { return null; }
     }
 
-    private static async Task<T> WithConnectionAsync<T>(AvatarRemoteHost host, Func<Audio2FaceHostConnection, Task<T>> action)
+    internal static async Task<T> WithConnectionAsync<T>(AvatarRemoteHost host, Func<Audio2FaceHostConnection, Task<T>> action)
     {
         Audio2FaceHostConnection? connection = null;
         using (var read = new WindowsCredentialStore().ReadAvatarHostSecret(host.HostId, host.CredentialId))
@@ -177,6 +177,6 @@ internal static class ClusterSync
         finally { connection!.Dispose(); }
     }
 
-    private static bool IsHostFailure(Exception error) => error is Audio2FaceHostException or IOException or UnauthorizedAccessException or
+    internal static bool IsHostFailure(Exception error) => error is Audio2FaceHostException or IOException or UnauthorizedAccessException or
         ContractException or InvalidOperationException or ArgumentException or JsonException or TimeoutException or HttpRequestException;
 }

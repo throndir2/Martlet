@@ -79,6 +79,23 @@ internal sealed class ControlClusterStorage(LinuxControlDirectory directory) : I
     }
 }
 
+/// <summary>Keeps the gateway's copy of the shared voice list in voices.json beside host.json (0600, service owner). Like
+/// cluster.json it is not part of the approved configuration.</summary>
+internal sealed class ControlVoiceStorage(LinuxControlDirectory directory) : IGatewayVoiceStorage
+{
+    private readonly object gate = new();
+
+    public byte[]? Load()
+    {
+        lock (gate) return directory.Read(LinuxControlDirectory.Voices, LinuxControlDirectory.MaximumVoicesBytes);
+    }
+
+    public void Save(byte[] bytes)
+    {
+        lock (gate) directory.WriteVoices(bytes);
+    }
+}
+
 internal static class HostApplication
 {
     private static DurableGatewayHost? retainedOwner;
@@ -132,7 +149,11 @@ internal static class HostApplication
                 owner = platform.OpenHost("serve", config, approval, cancellation);
                 CheckApproval(directory, config, approval);
                 PublishMachine(owner, directory, output);
-                if (owner.Enabled) owner.AttachCluster(new ControlClusterStorage(directory));
+                if (owner.Enabled)
+                {
+                    owner.AttachCluster(new ControlClusterStorage(directory));
+                    owner.AttachVoices(new ControlVoiceStorage(directory));
+                }
                 await owner.StartAsync(cancellation);
                 CheckApproval(directory, config, approval);
                 output.WriteLine("serving: approved gateway listener; empty worker registry; no model readiness claim.");
