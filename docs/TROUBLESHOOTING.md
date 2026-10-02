@@ -92,7 +92,7 @@ On **Companion › Thinking › This PC**, choose **Test model**. It starts Olla
 if it is installed but not running, checks the model is downloaded, loads it
 and asks it for a short streamed reply through the same endpoint and reply
 budget as Martlet's replies, all over loopback. The run window shows each step
-(Ollama's version, the model's size and whether it sees images and uses tools,
+(Ollama's version, the model's parameters and whether it sees images and uses tools,
 how long loading took, whether it sits on the graphics card or the processor,
 and the reply), with Ollama's own error text when something fails (for example
 not enough memory, or a model that needs a newer Ollama). The result stays under

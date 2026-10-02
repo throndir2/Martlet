@@ -261,10 +261,10 @@ internal static class LocalOllama
             if (!entry.TryGetProperty("size", out var s) || !s.TryGetInt64(out var size) || size <= 0) return null;
             var vram = entry.TryGetProperty("size_vram", out var v) && v.TryGetInt64(out var onGpu) ? onGpu : 0;
             var share = (int)Math.Round(100.0 * Math.Min(vram, size) / size);
-            return $"It uses {size / 1e9:0.0} GB, " + share switch
+            return "It runs " + share switch
             {
                 >= 100 => "all on the graphics card.",
-                <= 0 => "all on the processor (slower than a graphics card).",
+                <= 0 => "on the processor (slower than a graphics card).",
                 _ => $"{share}% on the graphics card and the rest on the processor (slower)."
             };
         }
