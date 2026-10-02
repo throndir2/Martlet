@@ -51,7 +51,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "HostStatus", "PairedHost", "PairCodeTitle", "PairCodeHelp", "HostRunPairAddress",
         // The MCP directory's status line and the selected server's public directory facts (never what was typed into its fields).
         "McpDirectoryStatus", "McpDirectoryNoSelection", "McpDirectoryDetailTitle", "McpDirectoryDetailName", "McpDirectorySummary",
-        "McpDirectoryNeeds", "McpDirectoryInstalled", "McpDirectoryCantInstall"
+        "McpDirectoryNeeds", "McpDirectoryInstalled", "McpDirectoryCantInstall",
+        // Settings › Your other computers (whether Martlet here runs commands your other computers send, and what it last did)
+        // and a paired host's How Martlet reaches it (the saved route in words, and what each route means).
+        "NodeAgentStatus", "HostReachNow", "HostReachHint"
     };
     /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)");
     /// Companion › Voice's included F5 voices ("F5VoiceRow-arctic-slt" reads "SLT (US female)", with "· in use" when it is);

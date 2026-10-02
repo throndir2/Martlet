@@ -115,6 +115,7 @@ public partial class MainWindow : ThemedWindow
         InitializeShell();
         InitializeCluster();
         InitializeVoiceSync();
+        InitializeNodeAgent();
         InitializeLogs();
     }
 
@@ -154,6 +155,7 @@ public partial class MainWindow : ThemedWindow
         await ShowSavedCharacterAsync(onlyIfAutoShow: true);
         StartCluster();
         StartVoiceSync();
+        StartNodeAgent();
         StartLogShipping();
         // Parakeet takes a few seconds to load; do it now rather than on the first thing said.
         if (homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Stt)?.RouteType == SetupRouteType.LocalParakeet)

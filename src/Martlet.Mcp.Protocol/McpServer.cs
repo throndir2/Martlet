@@ -96,6 +96,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("node_link_check", "Run commands between Martlet computers end to end on this PC's loopback: the real gateway (pinned TLS, " +
+            "pairing, signed requests, the command mailbox and its storage), the desktop's real client and agent loop with a fixture " +
+            "runner, two fixture devices. Checks that only known commands are accepted, only the host's agent (local token) takes them, " +
+            "output and outcomes reach the sender, secrets never appear in lists or saved copies, cancel works and commands survive a " +
+            "restart. Contacts nothing outside loopback and touches no real credentials, Docker or installs.", new { }),
         Tool("mcp_servers_status", "Read the MCP servers in a data directory's mcp.json as Martlet parses them: each server's name, " +
             "transport, program and raw arguments (with ${env:...} and ${secret:...} references, never their values), environment and " +
             "header names, on/off, auto-approve, the MCP directory entry it was installed from and the secret names it uses. " +
@@ -190,6 +195,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "f5_voices" => F5Voices(arguments),
                 "cluster_status" => ClusterStatus(arguments),
                 "virtualization_status" => await VirtualizationStatusAsync(arguments, cancellation),
+                "node_link_check" => await NodeLinkCheckAsync(cancellation),
                 "mcp_servers_status" => McpServersStatus(arguments),
                 "mcp_directory_plan" => McpDirectoryPlan(arguments),
                 _ => throw new ArgumentException($"Unknown tool '{name}'.")
@@ -247,6 +253,43 @@ internal sealed class McpServer(DesktopAutomation desktop)
             },
             roster
         };
+    }
+
+    /// <summary>Runs Martlet.NodeLinkCheck (built next to this server, in the same configuration) and returns its JSON report.
+    /// A separate process, because the in-process gateway needs the ASP.NET Core runtime and this server does not.</summary>
+    private static async Task<object> NodeLinkCheckAsync(CancellationToken cancellation)
+    {
+        var output = new DirectoryInfo(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar));
+        var configuration = output.Parent?.Name ?? "Release";
+        var source = output.Parent?.Parent?.Parent?.Parent?.FullName
+            ?? throw new InvalidOperationException("Run node_link_check from a Martlet source checkout's build.");
+        var program = Path.Combine(source, "Martlet.NodeLinkCheck", "bin", configuration, "net10.0", "Martlet.NodeLinkCheck.exe");
+        if (!File.Exists(program))
+            throw new InvalidOperationException($"Build src\\Martlet.NodeLinkCheck ({configuration}) first; building Martlet.Mcp builds it too.");
+        using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(program)
+        {
+            UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true
+        }) ?? throw new InvalidOperationException("Could not start Martlet.NodeLinkCheck.");
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+        limit.CancelAfter(TimeSpan.FromMinutes(2));
+        var report = process.StandardOutput.ReadToEndAsync(limit.Token);
+        var errors = process.StandardError.ReadToEndAsync(limit.Token);
+        try { await process.WaitForExitAsync(limit.Token); }
+        catch (OperationCanceledException)
+        {
+            process.Kill(entireProcessTree: true);
+            throw new InvalidOperationException("Martlet.NodeLinkCheck did not finish within two minutes.");
+        }
+        var text = (await report).Trim();
+        try
+        {
+            using var document = JsonDocument.Parse(text);
+            return new { exitCode = process.ExitCode, report = document.RootElement.Clone() };
+        }
+        catch (JsonException)
+        {
+            throw new InvalidOperationException($"Martlet.NodeLinkCheck exited {process.ExitCode} without a report: {(await errors).Trim()}");
+        }
     }
 
     /// <summary>mcp.json in a data directory as the desktop's McpToolService parses it (the file name matches). Arguments are

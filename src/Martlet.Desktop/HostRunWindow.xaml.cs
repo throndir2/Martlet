@@ -132,20 +132,25 @@ public partial class HostRunWindow : ThemedWindow
 }
 
 /// <summary>Runs martlet-host actions (setup, status, update, add or remove a role) on a host Martlet reaches, from anywhere
-/// in the desktop, in a run window: over SSH, or on this PC's Docker Desktop. Never in a console window.</summary>
+/// in the desktop, in a run window: over SSH, on this PC's Docker Desktop, or through Martlet on that computer (commands
+/// sent over its paired gateway, <see cref="HostAgentRun"/>). Never in a console window.</summary>
 internal static class HostActions
 {
     /// <summary>Runs <paramref name="action"/>. <paramref name="answers"/> are role answers the owner already chose in Martlet
     /// (then no role dialog is shown); otherwise adding a role asks for its secrets and choices, preselecting
-    /// <paramref name="recommended"/>. Returns a summary, or null when it stopped (the window shows why).</summary>
+    /// <paramref name="recommended"/>. <paramref name="pairing"/> is the host's pairing, which the Martlet-on-that-computer
+    /// route uses. Returns a summary, or null when it stopped (the window shows why).</summary>
     internal static Task<string?> RunAsync(Window owner, string dataDirectory, HostSetupTarget target, string? pinnedHostKey,
         HostAction action, IReadOnlyDictionary<string, string>? answers = null,
-        IReadOnlyDictionary<string, (string Value, string Why)>? recommended = null) => target.Method switch
+        IReadOnlyDictionary<string, (string Value, string Why)>? recommended = null,
+        Martlet.Avatar.Hosting.AvatarRemoteHost? pairing = null) => target.Method switch
     {
         HostSetupMethod.SshDocker or HostSetupMethod.SshNative =>
             RunOverSshAsync(owner, dataDirectory, target, pinnedHostKey, action, answers, recommended),
         HostSetupMethod.ThisPcDocker => RunOnThisPcAsync(owner, target, action, answers, recommended),
-        _ => throw new InvalidOperationException("Martlet can't reach this host from here. Run the command on the host instead.")
+        HostSetupMethod.Agent or HostSetupMethod.OnHost when pairing is not null =>
+            HostAgentRun.RunAsync(owner, pairing, target.Version, action, answers, recommended),
+        _ => throw new InvalidOperationException("Pair this host first; then Martlet reaches it through Martlet on that computer.")
     };
 
     private static (string Engine, string? Role, bool Add) Parse(HostAction action)

@@ -17,7 +17,7 @@ internal sealed record PairedHost
 {
     public required AvatarRemoteHost Pairing { get; init; }
     [JsonConverter(typeof(JsonStringEnumConverter<HostSetupMethod>))]
-    public HostSetupMethod Method { get; init; } = HostSetupMethod.OnHost;
+    public HostSetupMethod Method { get; init; } = HostSetupMethod.Agent;
     /// <summary>user@computer for the SSH methods.</summary>
     public string? SshTarget { get; init; }
     /// <summary>The SSH host key Martlet pinned for it ("ssh-ed25519 SHA256:..."); runs refuse a different key.</summary>
@@ -32,7 +32,7 @@ internal sealed record PairedHost
 
     internal bool CanLaunch => Method switch
     {
-        HostSetupMethod.ThisPcDocker => true,
+        HostSetupMethod.ThisPcDocker or HostSetupMethod.Agent => true,
         HostSetupMethod.SshDocker or HostSetupMethod.SshNative => !string.IsNullOrWhiteSpace(SshTarget),
         _ => false
     };
@@ -42,7 +42,7 @@ internal sealed record PairedHost
         HostSetupMethod.ThisPcDocker => "This PC with Docker Desktop",
         HostSetupMethod.SshDocker => $"SSH to {SshTarget ?? "(not set)"} (Docker)",
         HostSetupMethod.SshNative => $"SSH to {SshTarget ?? "(not set)"} (Ubuntu)",
-        _ => "Run commands on that computer"
+        _ => "Martlet on that computer (paired connection)"
     };
 }
 
@@ -107,7 +107,8 @@ internal static class HostRegistry
 
     /// <summary>The saved hosts plus the lip-sync host from the avatar profile when it predates this list. A host saved as
     /// "this PC, with Docker Desktop" that answers on another computer's address (a pairing code from that computer pasted
-    /// while the Add a computer wizard still showed This PC) is that other computer, whose commands run there.</summary>
+    /// while the Add a computer wizard still showed This PC) is that other computer, reached through Martlet there; so is a
+    /// host saved by an older Martlet as "I run its commands on it myself".</summary>
     internal static IReadOnlyList<PairedHost> Load(string directory, AvatarRemoteHost? assigned = null, string? thisPcAddress = null)
     {
         var path = Path.Combine(directory, FileName);
@@ -128,15 +129,15 @@ internal static class HostRegistry
         {
             throw new InvalidDataException($"Saved hosts couldn't be read ({error.Message}). Pair again.", error);
         }
-        if (thisPcAddress is not null)
-            for (var i = 0; i < hosts.Count; i++)
-                if (hosts[i].Method == HostSetupMethod.ThisPcDocker && !IsThisPc(hosts[i].Address, thisPcAddress))
-                    hosts[i] = hosts[i] with { Method = HostSetupMethod.OnHost };
+        for (var i = 0; i < hosts.Count; i++)
+            if (hosts[i].Method == HostSetupMethod.OnHost ||
+                thisPcAddress is not null && hosts[i].Method == HostSetupMethod.ThisPcDocker && !IsThisPc(hosts[i].Address, thisPcAddress))
+                hosts[i] = hosts[i] with { Method = HostSetupMethod.Agent };
         if (assigned is not null && hosts.All(h => h.HostId != assigned.HostId))
             hosts.Add(new()
             {
                 Pairing = assigned,
-                Method = new Uri(assigned.Origin).Host == thisPcAddress ? HostSetupMethod.ThisPcDocker : HostSetupMethod.OnHost
+                Method = new Uri(assigned.Origin).Host == thisPcAddress ? HostSetupMethod.ThisPcDocker : HostSetupMethod.Agent
             });
         return hosts;
     }
@@ -198,6 +199,7 @@ internal sealed class HostPairings(string dataDirectory, AvatarProfileStore prof
         var (profile, revision) = await LoadProfileAsync(token);
         var hosts = HostRegistry.Load(dataDirectory, profile.RemoteHost, HostSetupCommands.ThisPcAddress());
         var previous = hosts.FirstOrDefault(h => h.HostId == pairing.HostId);
+        if (method == HostSetupMethod.OnHost) method = HostSetupMethod.Agent;
         var ssh = method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative;
         var host = new PairedHost
         {
@@ -205,7 +207,8 @@ internal sealed class HostPairings(string dataDirectory, AvatarProfileStore prof
             SshTarget = ssh ? sshTarget : null,
             SshHostKey = ssh ? sshHostKey ?? (previous?.SshTarget == sshTarget ? previous?.SshHostKey : null) : null
         };
-        if (previous is not null && method == HostSetupMethod.OnHost)
+        // Re-pairing with a code keeps how Martlet already reaches it (for example over SSH).
+        if (previous is not null && method == HostSetupMethod.Agent)
             host = host with { Method = previous.Method, SshTarget = previous.SshTarget, SshHostKey = previous.SshHostKey };
         if (previous is not null) host = host with { WakeMac = previous.WakeMac };
         HostRegistry.Save(dataDirectory, HostRegistry.Upsert(hosts, host));
@@ -238,6 +241,7 @@ internal sealed class HostPairings(string dataDirectory, AvatarProfileStore prof
     {
         var (hosts, _) = await LoadAsync(token);
         var host = hosts.FirstOrDefault(h => h.HostId == hostId) ?? throw new InvalidOperationException("That host is no longer paired.");
+        if (method == HostSetupMethod.OnHost) method = HostSetupMethod.Agent;
         var ssh = method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative;
         var target = ssh ? sshTarget?.Trim() : null;
         var updated = host with { Method = method, SshTarget = target, SshHostKey = target == host.SshTarget ? host.SshHostKey : null };

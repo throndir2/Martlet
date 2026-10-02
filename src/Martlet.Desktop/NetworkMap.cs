@@ -418,6 +418,8 @@ internal static class NetworkMap
             target.Commands.Add(new(NodeAction.ForgetHost, "Forget this host", Argument: id, Component: hostService));
             if (!paired.CanLaunch && !local && managed)
                 target.Notes.Add("Set the connection method below to install or remove roles from here.");
+            else if (paired.Method == HostSetupMethod.Agent && !local && managed)
+                target.Notes.Add("Martlet on that computer runs what you ask here (updates, roles, status) over the paired connection.");
         }
 
         if (companion)

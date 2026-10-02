@@ -887,7 +887,7 @@ public partial class MainWindow
                     var role = HostRoles.Get(HostRoles.Audio2Face);
                     if (!ConfirmationDialog.Confirm(this,
                             $"Install lip-sync support on {host.HostId}? " +
-                            (host.CanLaunch ? "Martlet will set it up and show progress. " : "Martlet will copy the command to run there. ") +
+                            (host.CanLaunch ? "Martlet will set it up and show progress. " : "Set how Martlet reaches it on the Devices map first. ") +
                             $"It needs {role.Needs}. Until it is ready, the mouth uses basic movement.",
                             "Install lip-sync"))
                         return;
@@ -961,8 +961,8 @@ public partial class MainWindow
     }
 
     /// <summary>Runs a martlet-host command on a paired host the way this PC reaches it, in Martlet with its output and Cancel
-    /// in a run window (over SSH, or on this PC's Docker Desktop); never in a console. Without a known route it copies the
-    /// command instead.</summary>
+    /// in a run window: over SSH, on this PC's Docker Desktop, or through Martlet on that computer (its paired connection).
+    /// Never in a console, and never by asking you to type it there.</summary>
     private void LaunchOnHost(PairedHost host, HostAction action, IReadOnlyDictionary<string, string>? answers = null) =>
         RunHostActionAsync(host, action, answers).Forget();
 
@@ -971,22 +971,21 @@ public partial class MainWindow
     {
         try
         {
-            if (!host.CanLaunch || store is null)
+            if (store is null) return null;
+            if (!host.CanLaunch)
             {
-                var command = HostSetupCommands.Preview(host.Target(Version) with { Method = HostSetupMethod.OnHost }, action);
-                try { Clipboard.SetText(command); }
-                catch (System.Runtime.InteropServices.ExternalException) { }
-                ActionText.Text = $"The command for {host.HostId} was copied. " +
-                    "Choose how Martlet reaches this computer to run it from here.";
+                ActionText.Text = $"Set how Martlet signs in to {host.HostId} over SSH on the Devices map, or choose Through Martlet on that computer.";
+                ShowDevice("host:" + host.HostId);
                 return null;
             }
             var local = host.Method == HostSetupMethod.ThisPcDocker;
-            ActionText.Text = $"Running {HostSetupCommands.Engine(action)} on {(local ? "this PC" : host.HostId)}. " +
-                "The progress window shows details.";
+            ActionText.Text = $"Running {HostSetupCommands.Engine(action)} on {(local ? "this PC" : host.HostId)}" +
+                (host.Method == HostSetupMethod.Agent ? " through Martlet there" : "") + ". The progress window shows details.";
             // Adding a role on this PC preselects what suits it (for example whisper on the processor when the graphics card is full).
             var recommended = answers is null && local && action.Verb == HostVerb.Add && action.Role == HostRoles.Stt
                 ? (await ListeningAdviceAsync()).Answers() : null;
-            var done = await HostActions.RunAsync(this, store.DataDirectory, host.Target(Version), host.SshHostKey, action, answers, recommended);
+            var done = await HostActions.RunAsync(this, store.DataDirectory, host.Target(Version), host.SshHostKey, action, answers, recommended,
+                host.Pairing);
             if (closing) return done;
             ActionText.Text = done is null ? $"{HostSetupCommands.Engine(action)} on {host.HostId} stopped. See the progress window for details." : $"{host.HostId}: {done}";
             if (done is not null && action != HostAction.Status) CheckHostsAsync([host]).Forget();

@@ -57,7 +57,7 @@ and conformance fixtures before adapters are built independently.
 | Host gateway | ASP.NET Core in dedicated non-root Linux image, host team | Paired TLS/auth, capability/readiness reporting, authenticated job transport, bounded scheduling; no Docker socket or arbitrary commands |
 | Inference workers | One pinned image/runtime per engine, runtime team | Ollama candidate LLM; dedicated Python F5 worker; optional STT/VLM/OCR/detection/reranker; private container networks |
 | Host lifecycle tool | Reviewed packaged host utility, host/release team | Local preflight, installation journal, Compose reconciliation, backup/repair; explicit local administrative boundary |
-| Setup coordinator / host setup UI | Windows setup coordinator plus local Ubuntu host UI and headless CLI, client + host teams | One feature/role/destination plan; shared host planning/probe/journal engine, local privileged approval, clear managed versus external ownership; no remote shell or Docker administration through pairing |
+| Setup coordinator / host setup UI | Windows setup coordinator plus local Ubuntu host UI and headless CLI, client + host teams | One feature/role/destination plan; shared host planning/probe/journal engine, local privileged approval, clear managed versus external ownership; no remote shell or Docker administration through pairing (only the closed set of commands between computers, run by the host's own Martlet) |
 | Optional memory service | Single-owner SQLite database plus replaceable retrieval adapters, memory team | Consent, source provenance, retention, export/delete; embeddings/index are derived data, not a second authority |
 | Optional avatar process | Independent Live2D or VRM renderer, avatar team | Validated mapped animation/playback events only; bounded IPC; no credentials, scripts or remote assets; crash cannot interrupt voice |
 | Optional speech-animation adapter | Audio2Face first/preferred; amplitude baseline planned, avatar team | Explicitly authorized outgoing speech PCM to the selected analyzer, bounded timestamped facial frames; independent readiness and no silent fallback |
@@ -199,7 +199,12 @@ Display cloud retention links; "not used for training by default" is not
    the client must use protected storage. The canonical HMAC host's SHA-256
    verifier is itself a signing key and requires protected key custody.
    Bind to host ID and least-privilege roles: voice, perception, or memory.
-   Pairing never grants host administration or shell execution.
+   Pairing never grants shell execution or Docker access. A paired device may
+   send only the closed set of [commands between computers](CLUSTER.md#commands-between-your-computers)
+   (update Martlet, add/remove a role, status) to the host's mailbox; only the
+   Martlet app on the host computer, which proves it runs there with the token
+   the gateway writes to its local configuration at each start, takes and runs
+   them, and the owner can turn that off there.
 5. **Paired devices never expire.** Pairing survives normal process restart,
    OS reboot, updates and recoverable interruption until explicit unpair/revoke
    or actual identity loss. Offline, clock and recovery errors mean unavailable,

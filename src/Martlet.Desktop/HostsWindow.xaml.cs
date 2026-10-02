@@ -36,7 +36,7 @@ public partial class HostsWindow : ThemedWindow
         {
             HostSetupMethod.SshDocker => SshDockerMethod,
             HostSetupMethod.SshNative => SshNativeMethod,
-            HostSetupMethod.OnHost => OnHostMethod,
+            HostSetupMethod.OnHost or HostSetupMethod.Agent => OnHostMethod,
             _ => ThisPcMethod
         }).IsChecked = true;
         if (manage is not null)
@@ -82,7 +82,7 @@ public partial class HostsWindow : ThemedWindow
         BackButton.IsEnabled = step > 0;
         NextButton.Content = step == steps.Length - 1 ? "_Done" : "_Next";
         MethodSummaryText.Text = Method == HostSetupMethod.OnHost
-            ? "Enter the host's address, then run the command shown below on that computer."
+            ? "On that PC, choose Use as a Martlet host in Martlet: it sets itself up. Then pair this PC with the code it shows."
             : Ssh
                 ? "Enter user@computer, then choose Add this computer. Martlet signs in once and sets up the host."
                 : Method == HostSetupMethod.ThisPcDocker
@@ -92,7 +92,7 @@ public partial class HostsWindow : ThemedWindow
             ? "Add or remove jobs over SSH. Martlet asks for anything each job needs and shows progress."
             : Method == HostSetupMethod.ThisPcDocker
                 ? "Add or remove jobs on this PC. Martlet asks for anything each job needs and shows progress."
-                : "Add or remove jobs on the host itself. Martlet shows a command for each job.";
+                : "Add or remove jobs from here once it is paired: Martlet on that computer runs them and shows progress here.";
         SetupButton.Content = Ssh ? "_Add this computer" : "Set _up host";
         var byCode = Method == HostSetupMethod.OnHost;
         PairAutoCard.Visibility = byCode ? Visibility.Collapsed : Visibility.Visible;
@@ -103,7 +103,7 @@ public partial class HostsWindow : ThemedWindow
             : "Martlet gets a one-use code from this PC's host service and pairs automatically.";
         PairCodeTitle.Text = byCode ? "Enter the code shown on the host" : "Or enter a code from the host";
         PairCodeHelp.Text = byCode
-            ? "On the host, run the command below, or choose Show a pairing code on a Windows host's Home page. " +
+            ? "On a Windows PC with Martlet, choose Show a pairing code on its Home page. " +
               "Enter the address and code it shows within five minutes."
             : "If Martlet can't reach the host, show a pairing code on the host and enter its address and code here.";
         if (byCode) PairCommandText.Text = CommandFor(HostAction.Pair);
@@ -118,8 +118,8 @@ public partial class HostsWindow : ThemedWindow
         catch (InvalidOperationException error) { return error.Message; }
     }
 
-    /// <summary>Straight to pairing with a code a host already shows: Martlet can't reach that host to run commands, so the
-    /// pairing is saved as one it reaches only through its gateway.</summary>
+    /// <summary>Straight to pairing with a code a host already shows: the pairing is saved as one Martlet reaches through its
+    /// gateway, where Martlet on that computer runs its commands.</summary>
     private void EnterCode_Click(object sender, RoutedEventArgs e)
     {
         choosingCode = true;
@@ -189,10 +189,29 @@ public partial class HostsWindow : ThemedWindow
         ShowCommand(action);
         if (Method == HostSetupMethod.OnHost)
         {
-            StatusText.Text = "Run the command shown in Install on the host.";
+            // A paired PC with Martlet runs its commands there; setting it up and pairing start on that PC.
+            if (paired is { } host && action.Verb is not (HostVerb.Setup or HostVerb.Pair))
+                RunThroughAgentAsync(host, action).Forget();
+            else
+                StatusText.Text = action.Verb == HostVerb.Pair
+                    ? "On that PC, choose Show a pairing code on Martlet's Home page, then enter its address and code below."
+                    : "On that PC, install Martlet and choose Use as a Martlet host; it sets itself up. Then pair this PC with the code it shows.";
             return;
         }
         RunInMartletAsync(action).Forget();
+    }
+
+    private async Task RunThroughAgentAsync(PairedHost host, HostAction action)
+    {
+        if (busy) { StatusText.Text = "Another host action is still finishing."; return; }
+        busy = true;
+        try
+        {
+            StatusText.Text = await HostActions.RunAsync(this, pairings.DataDirectory, host.Target(version) with { Method = HostSetupMethod.Agent },
+                null, action, pairing: host.Pairing) ?? "Stopped. The run window shows why.";
+        }
+        catch (InvalidOperationException error) { StatusText.Text = error.Message; }
+        finally { busy = false; }
     }
 
     /// <summary>SSH hosts and this PC run in Martlet: setup and pairing as one flow, other actions in a run window.
@@ -495,9 +514,9 @@ public partial class HostsWindow : ThemedWindow
         var shown = new Uri(pairing.Origin);
         PairAddressText.Text = shown.Port == HostPairingInput.DefaultPort ? shown.Host : shown.Authority;
         // A code shown by another computer (its host dashboard or martlet-host pair) pairs that computer, even while the wizard
-        // still shows This PC; Martlet then doesn't know how to reach it to run commands there.
+        // still shows This PC; Martlet then reaches it through Martlet on that computer.
         var method = Method == HostSetupMethod.ThisPcDocker && !HostRegistry.IsThisPc(new Uri(pairing.Origin).Host, HostSetupCommands.ThisPcAddress())
-            ? HostSetupMethod.OnHost : Method;
+            ? HostSetupMethod.Agent : Method;
         var host = await SavePairingAsync(pairing, secret, method, Ssh ? SshTargetText.Text.Trim() : null, PinnedHostKey);
         // An older host's pairing console stays open until it is stopped there.
         StatusText.Text += card && Method == HostSetupMethod.OnHost ? " To close the pairing console on the host, press a key, type stop and confirm." : "";

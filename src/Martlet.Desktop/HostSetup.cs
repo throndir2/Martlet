@@ -8,8 +8,10 @@ using System.Text.RegularExpressions;
 
 namespace Martlet.Desktop;
 
-/// <summary>How the desktop reaches the machine that becomes a Martlet host. Every method runs the same martlet-host engine.</summary>
-internal enum HostSetupMethod { ThisPcDocker, SshDocker, SshNative, OnHost }
+/// <summary>How the desktop reaches the machine that becomes a Martlet host. Every method runs the same martlet-host engine.
+/// <see cref="Agent"/> sends the commands through the host's paired gateway to the Martlet app on that computer, which runs
+/// them there; <see cref="OnHost"/> is only the Add a computer wizard's install-by-hand choice (saved hosts use Agent).</summary>
+internal enum HostSetupMethod { ThisPcDocker, SshDocker, SshNative, OnHost, Agent }
 
 internal enum HostVerb { Setup, Pair, Add, Status, Remove, Update }
 
@@ -136,8 +138,8 @@ internal static partial class HostSetupCommands
     {
         Validate(target, action);
         if (target.Method != HostSetupMethod.ThisPcDocker)
-            throw new InvalidOperationException(target.Method == HostSetupMethod.OnHost
-                ? "Run the shown commands on the host." : "Martlet runs SSH host commands for you.");
+            throw new InvalidOperationException(target.Method is HostSetupMethod.OnHost or HostSetupMethod.Agent
+                ? "Martlet on that computer runs its commands." : "Martlet runs SSH host commands for you.");
         var lines = new StringBuilder("@echo off\r\n");
         lines.Append($"title Martlet host - {Engine(action)}\r\n");
         var image = Image(target);
@@ -160,10 +162,12 @@ internal static partial class HostSetupCommands
     /// <summary>The commands a method runs (without console chatter), or what to type on the host itself.</summary>
     internal static string Preview(HostSetupTarget target, HostAction action) => target.Method switch
     {
+        HostSetupMethod.Agent =>
+            $"Martlet sends \"{Engine(action)}\" to Martlet on {target.HostId ?? target.Address} through its paired host service; " +
+            "Martlet there runs it and its output shows here.",
         HostSetupMethod.OnHost =>
-            "On a Docker host (Linux, or Windows/macOS with Docker Desktop):\r\n  " +
-            DockerShell(target, action) + "\r\n\r\nOn Ubuntu without Docker:\r\n  " +
-            NativeShell(target, action),
+            "Nothing to type on that PC: install Martlet there and choose Use as a Martlet host. Once paired, this PC sends \"" +
+            Engine(action) + "\" and other commands to Martlet there, which runs them.",
         HostSetupMethod.SshDocker or HostSetupMethod.SshNative =>
             $"Martlet will run this on {target.SshTarget}:\r\n  " +
             RemoteShell(target, Engine(action), action == HostAction.Setup),
@@ -199,7 +203,7 @@ internal static partial class HostSetupCommands
                 lines.Append($"ssh {SshUnattended} {target.SshTarget} \"{NativeShell(target, action)}\"\r\n");
                 break;
             default:
-                throw new InvalidOperationException("Choose the connection method, or run the command on the host.");
+                throw new InvalidOperationException("Commands for this host go through Martlet on that computer, not a script.");
         }
         lines.Append("exit /b %errorlevel%\r\n");
         return lines.ToString();

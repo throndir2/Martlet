@@ -436,6 +436,20 @@
 
                     <Border Style="{DynamicResource CardStyle}">
                         <StackPanel>
+                            <TextBlock Text="Your other computers" Style="{DynamicResource SectionHeading}"/>
+                            <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap"
+                                       Text="Your paired Martlet computers send commands through this PC's host service over the pinned, signed connection you paired. Martlet here runs only these: update Martlet and the host service (official GitHub Releases only), install or remove a role, show status. It also keeps this PC's host service on this PC's version."/>
+                            <CheckBox x:Name="AllowNodeCommands" Margin="0,10,0,6" Checked="AllowNodeCommands_Changed" Unchecked="AllowNodeCommands_Changed"
+                                      AutomationProperties.AutomationId="AllowNodeCommands">
+                                <TextBlock TextWrapping="Wrap" Text="Let my other paired computers update Martlet here and manage this PC's host service"/>
+                            </CheckBox>
+                            <TextBlock x:Name="NodeAgentStatus" Style="{DynamicResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap"
+                                       AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="NodeAgentStatus"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{DynamicResource CardStyle}">
+                        <StackPanel>
                             <TextBlock Text="Tools" Style="{DynamicResource SectionHeading}"/>
                             <WrapPanel>
                                 <Button Content="_Troubleshooting" Click="Troubleshooting_Click" Margin="0,4,12,4"

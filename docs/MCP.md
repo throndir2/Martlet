@@ -204,6 +204,22 @@ unticked **Keep who does what in sync**; `plan` is this PC's `cluster.json`
 `updatedBy` and `updatedAt`, and each host's ID, roles and `removed`). It never
 returns host addresses or keys and contacts nothing.
 
+`node_link_check` runs [commands between computers](CLUSTER.md#commands-between-your-computers)
+end to end on this PC's loopback and returns `{exitCode, report: {passed,
+steps: [{name, ok, detail}]}}`: the real gateway (Kestrel, pinned TLS with a
+throwaway fixture certificate, pairing, signed requests, the command mailbox
+and its storage), the desktop's real client and agent loop with a fixture
+runner (FIXTURE: it installs nothing), and two fixture devices. Steps check
+that only known commands and arguments are accepted, anonymous requests are
+refused, only the agent's local token takes and reports commands, output and
+outcomes reach the sender, secrets never appear in lists, commands or the saved
+copy, cancel works (waiting and running), commands survive a restart with a new
+token and the queue is bounded. It runs `src\Martlet.NodeLinkCheck` (built with
+`Martlet.Mcp`) as its own process, because the gateway needs the ASP.NET Core
+runtime; it takes no arguments and contacts nothing outside loopback. The same
+program's `live <pairing-code> <container>` mode checks a disposable Linux
+gateway container built from this checkout (not the real host service).
+
 `virtualization_status` reports whether Windows is ready for Docker Desktop's
 WSL 2 engine, from the same read-only checks the desktop runs before it starts
 Docker Desktop (optional absolute `dataDirectory`, default the current user's):
@@ -309,6 +325,19 @@ and `LipSyncOwner`, device commands `NodeAction-<action>`
 roles), and Settings for all devices holds `CheckHosts`, `ClusterSync` (checked by
 default; unticking it needs `--allow-ui-effects` and saves `off`),
 `ClusterStatus` (returned as text) and `RoleSetup-<role>` for jobs nobody does.
+A paired host's `DeviceReachSection` holds `HostReachNow` (*Reached via: ...*,
+status text), `HostReachMethod` (a combo box: *Through Martlet on that computer
+(paired connection)*, *SSH, with Docker there*, *SSH, native Ubuntu*, *This
+PC, with Docker Desktop*; `ui_select` needs `--allow-ui-effects`),
+`HostReachHint` (status text), `HostReachSsh` and `HostReachSave`. Host
+actions (`NodeAction-UpdateHost`, `NodeAction-HostStatus`, roles) on a host
+reached through Martlet there open a run window (`HostRunStatus`) that sends
+the command through its gateway; on a disposable data directory without a
+stored pairing secret it stops at *This PC's pairing secret is missing*.
+Settings › *Your other computers* has `AllowNodeCommands` (checked by default;
+`ui_toggle` needs `--allow-ui-effects` and saves `node-commands.txt`) and
+`NodeAgentStatus` (status text: off, no host service on this PC, ready, the
+last command it ran, or the update of its own host service).
 Home and host-dashboard steps have their buttons as `Step-<step>-<n>` and their
 detail line as `StepDetail-<step>` (status text): on the host dashboard,
 `StepDetail-docker` says whether Docker Desktop runs or why Windows can't start

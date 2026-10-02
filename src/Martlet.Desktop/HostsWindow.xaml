@@ -67,10 +67,11 @@
                         </StackPanel>
                     </RadioButton>
                     <RadioButton x:Name="OnHostMethod" GroupName="Method" Style="{DynamicResource ChoiceCard}" Tag="&#xE756;" Checked="Method_Changed"
-                                 AutomationProperties.AutomationId="HostMethodOnHost" AutomationProperties.Name="Another computer, I will type the commands myself">
+                                 AutomationProperties.AutomationId="HostMethodOnHost" AutomationProperties.Name="Another computer: pair with the code it shows">
                         <StackPanel>
-                            <TextBlock Text="I'll type the commands on the host myself" FontSize="16" FontWeight="SemiBold"/>
-                            <TextBlock Style="{DynamicResource Muted}" Text="Martlet shows commands you can run on that computer."/>
+                            <TextBlock Text="Another computer: pair with its code" FontSize="16" FontWeight="SemiBold"/>
+                            <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap"
+                                       Text="A Windows PC with Martlet (Use as a Martlet host) sets itself up and shows a pairing code. Once paired, this PC updates it and installs roles there through Martlet on that PC; nothing to type there."/>
                         </StackPanel>
                     </RadioButton>
                     <Border Style="{DynamicResource CardStyle}" Background="{DynamicResource SoftBrush}" Margin="0,10,0,0">

@@ -161,12 +161,14 @@ internal sealed class HostInputDialog : ThemedWindow
     /// <paramref name="recommended"/> preselects answers Martlet worked out for this machine (for example GPU or CPU from
     /// what already runs on its graphics card), each with its reason.</summary>
     internal static Dictionary<string, string>? ForRole(Window owner, string host, string role, HostRoleInputs inputs,
-        IReadOnlyDictionary<string, (string Value, string Why)>? recommended = null, bool local = false)
+        IReadOnlyDictionary<string, (string Value, string Why)>? recommended = null, bool local = false, bool agent = false)
     {
         var message = $"{inputs.Title}\n\nNeeds: {inputs.Requires}." +
             (inputs.Terms.Length > 0 ? $"\n\n{inputs.Terms}" : "") +
             (local
                 ? "\n\nMartlet installs it on this PC's host. Secrets stay on this PC."
+                : agent
+                ? $"\n\nMartlet on {host} installs it. Secrets go over its paired connection, are held only in memory until Martlet there takes them, and are saved there."
                 : "\n\nMartlet installs it on the host. Secrets are sent over SSH and saved there.");
         var dialog = new HostInputDialog($"Add {role}", $"Add {role} on {host}", message, "_Install");
         foreach (var secret in inputs.Secrets)

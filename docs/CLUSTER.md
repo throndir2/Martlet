@@ -115,3 +115,88 @@ serves `GET`/`POST /martlet/v1/voices`; desktops merge every 30 seconds while
 sharing is on (its own choice, on by default, independent of the who-does-what
 sync). Each voice is a last-writer-wins entry with the same hybrid revisions;
 forgotten and merged voices leave tombstones. See [VOICES](VOICES.md#sharing-between-your-computers).
+
+## Commands between your computers
+
+Any paired computer can ask a host to **update**, **install or remove a role**
+or **show its status**, without SSH and without anyone typing a command on
+that computer. The host's gateway is a mailbox; the **Martlet app on the host
+computer** (a PC set up with *Use as a Martlet host*) is its **agent** and
+runs the commands there. On the Devices map such a host is reached
+*Through Martlet on that computer (paired connection)*, which replaced the old
+*I run its commands on it myself*; hosts saved that way are moved over
+automatically. Linux computers without Martlet keep using SSH.
+
+```mermaid
+sequenceDiagram
+    participant Main as Main PC (Martlet)
+    participant GW as Host's gateway (mailbox)
+    participant Agent as Martlet on the host PC
+    Main->>GW: POST /martlet/v1/commands (signed, pinned TLS)
+    loop every 5 s
+        Agent->>GW: POST /commands/agent (agent token)
+    end
+    GW-->>Agent: the command (and its secrets, once)
+    Agent->>Agent: runs martlet-host / installs the update
+    Agent->>GW: POST /commands/{id}/report (output, outcome)
+    Main->>GW: GET /commands/{id} (follows output in a run window)
+```
+
+| Endpoint (all over the paired, pinned, signed connection) | Who | What |
+| --- | --- | --- |
+| `GET /martlet/v1/commands` | any paired device | the agent (device, last seen, Martlet version, kinds it runs) and recent commands |
+| `POST /martlet/v1/commands` | any paired device | send a command; the same one while it waits or runs returns that one |
+| `GET /martlet/v1/commands/{id}` | any paired device | one command with the last 120 lines of its output |
+| `POST /martlet/v1/commands/{id}/cancel` | any paired device | withdraw a waiting command, or ask the agent to stop a running one |
+| `POST /martlet/v1/commands/agent` | the agent (token) | take the next command, or resume one it took before restarting |
+| `POST /martlet/v1/commands/{id}/report` | the agent (token) | add output and, at the end, the outcome |
+
+Commands (`Martlet.Core.Nodes`, checked on both ends; anything else is
+refused with `request.invalid`):
+
+| Kind | Arguments | What the agent does |
+| --- | --- | --- |
+| `martlet.update` | `version` | Updates Martlet itself to at least that version from its GitHub Release (checked against GitHub's SHA-256 digest, installed when Martlet is idle, then restarts and continues), then the host service to Martlet's version |
+| `host.status` | none | `martlet-host status` |
+| `host.describe-role` | `role` | `martlet-host describe <role>` (its terms, secrets and choices, for the sender's install dialog) |
+| `host.add-role` | `role`, `choice.<VAR>`; secrets `secret.<name>` | `martlet-host add <role>` with the answers on stdin |
+| `host.remove-role` | `role` | `martlet-host remove <role>` |
+
+Security:
+
+- Sending needs a paired device's signed request (HMAC with nonce and clock
+  window, pinned TLS); anonymous and replayed requests are refused.
+- Only the agent can take or report commands: at each start the gateway writes
+  a fresh random token to `agent.token` beside `host.json` (0600, service
+  owner), which only the host computer itself can read (Martlet reads it with
+  `docker exec martlet-host-gateway cat ...`). The previous start's token stops
+  working. A paired computer elsewhere never sees it.
+- Secrets (for example an NGC API key) stay in the gateway's memory until the
+  agent takes the command, are handed over once and never appear in command
+  lists, output or `commands.json`. A waiting command's secrets are dropped
+  after 15 minutes; a gateway restart fails a waiting command that had them.
+- The gateway runs nothing. The agent runs only the kinds above, through the
+  same `martlet-host` engine as every other route; updates come only from
+  official releases. The owner can turn it off on the host PC: **Settings ›
+  Your other computers › Let my other paired computers update Martlet here
+  and manage this PC's host service** (on by default; `node-commands.txt`
+  holds `off`). Commands then wait.
+- Bounds: 8 waiting or running commands, 24 kept, 120 output lines of at most
+  1,000 characters each; waiting commands expire after a day, running ones
+  that stop reporting after two hours. `commands.json` keeps state and the last
+  20 output lines, so commands survive a gateway restart (including the
+  gateway's own update) and the agent finishes them afterwards.
+
+The agent also keeps its own host service on its Martlet version, so a host
+service from before commands existed (for example 0.14.1) is updated by itself
+the next time Martlet runs on that PC; from then on the main PC updates and
+manages it from here. With *Keep my Martlet hosts on this PC's version* on, the
+main PC sends `martlet.update` to such hosts in the background; it runs as soon
+as Martlet runs there.
+
+Checked locally: `node_link_check` (MCP) runs the protocol end to end on
+loopback with the real gateway, desktop client and agent loop; the same client
+and agent ran against a real Linux gateway container built from this source
+(token read with `docker exec`, `commands.json` without secrets, a new token
+after restart). The desktop's own runner on a real host PC (installing an
+update, `martlet-host` runs) and two real computers are **NOT RUN**.

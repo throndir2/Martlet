@@ -4,6 +4,7 @@ using System.IO;
 using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
+using NodeCommandKinds = Martlet.Core.Nodes.NodeCommandKinds;
 
 namespace Martlet.Desktop;
 
@@ -372,7 +373,7 @@ public partial class MainWindow
         if (store is null || closing || hostUpdatesRunning) return;
         hostUpdatesRunning = true;
         UpdateHostsButton.IsEnabled = false;
-        int updated = 0, failed = 0, current = 0, unreachable = 0;
+        int updated = 0, failed = 0, current = 0, unreachable = 0, asked = 0;
         var hosts = NetworkMap.Hosts(Inputs());
         try
         {
@@ -386,9 +387,15 @@ public partial class MainWindow
                 if (check.Reachable != true) { unreachable++; continue; }
                 if (!AppVersions.IsOlder(check.MartletVersion, Version)) { current++; continue; }
                 if (automatic && !hostUpdateAttempts.Add(host.HostId + "@" + Version)) continue;
+                if (host.Method == HostSetupMethod.Agent)
+                {
+                    if (await AskHostToUpdateAsync(host)) asked++;
+                    else failed++;
+                    continue;
+                }
                 if (!host.CanLaunch)
                 {
-                    hostUpdateNotes[host.HostId] = "This host needs an update. Choose how Martlet reaches it, or use Update host to copy the command.";
+                    hostUpdateNotes[host.HostId] = "This host needs an update. Set how Martlet signs in over SSH, or choose Through Martlet on that computer.";
                     failed++;
                     continue;
                 }
@@ -426,13 +433,40 @@ public partial class MainWindow
                 if (DevicesPage.IsVisible) RenderMap();
             }
         }
-        if (closing || automatic && updated + failed == 0) return;
+        if (closing || automatic && updated + failed + asked == 0) return;
         if (!automatic && hosts.Count == 0 && Role != DeviceRole.Host) return;
         var summary = $"Host updates: {updated} updated to Martlet {Version}, {current} already current" +
+            (asked > 0 ? $", {asked} asked to update through Martlet there" : "") +
             (failed > 0 ? $", {failed} need you (see their cards on the Devices map)" : "") +
             (unreachable > 0 ? $", {unreachable} not reachable" : "") + ".";
         UpdateStatusText.Text = summary;
         if (automatic || failed > 0) ActionText.Text = summary;
+    }
+
+    /// <summary>Asks Martlet on a host reached through its paired connection to bring itself to this PC's version (app and host
+    /// service). The command waits there until Martlet runs; asking again while it waits changes nothing.</summary>
+    private async Task<bool> AskHostToUpdateAsync(PairedHost host)
+    {
+        try
+        {
+            var command = await ClusterSync.WithConnectionAsync(host.Pairing, connection => connection.SendCommandAsync(NodeCommandKinds.Update,
+                new Dictionary<string, string> { ["version"] = Version }, null, lifetime.Token));
+            hostUpdateNotes[host.HostId] = command.State == Martlet.Core.Nodes.NodeCommandState.Running
+                ? $"Martlet on {host.HostId} is updating to {Version}."
+                : $"Asked Martlet on {host.HostId} to update to {Version} ({DateTime.Now:t}); it does when Martlet runs there.";
+            return true;
+        }
+        catch (Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostException error) when (error.Code == "request.invalid")
+        {
+            hostUpdateNotes[host.HostId] = $"Its host service is older than commands between computers. Open Martlet on {host.HostId} once: " +
+                "it brings its host service up to date by itself, and from then on this PC updates it from here.";
+            return false;
+        }
+        catch (Exception error) when (ClusterSync.IsHostFailure(error))
+        {
+            hostUpdateNotes[host.HostId] = $"Could not ask Martlet on {host.HostId} to update: {error.Message}";
+            return false;
+        }
     }
 
     private async Task<bool> UpdateHostQuietlyAsync(string id, HostSetupTarget target, string reach, string? sshHostKey = null)
