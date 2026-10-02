@@ -126,10 +126,10 @@ internal sealed class SmartHome : IDisposable
             {
                 if (saved.CredentialId == Guid.Empty || !SameAddress(saved.Address, baseUri))
                     throw new HomeAssistantException(HomeAssistantFailure.Unauthorized,
-                        "Paste a long-lived access token from Home Assistant (your profile, then Security) first.");
+                        "Enter a Home Assistant long-lived access token first.");
                 read = vault.ReadHomeAssistantToken(saved.CredentialId);
                 lease = read.Secret ?? throw new HomeAssistantException(HomeAssistantFailure.Unauthorized,
-                    "The saved access token couldn't be read from Windows Credential Manager. Paste it again.");
+                    "The saved access token couldn't be read. Enter it again.");
             }
             var info = await client.GetInfoAsync(baseUri, lease, cancellationToken).ConfigureAwait(false);
             var credentialId = saved.CredentialId;
@@ -139,7 +139,7 @@ internal sealed class SmartHome : IDisposable
                 var error = vault.WriteHomeAssistantToken(fresh, token);
                 if (error != CredentialError.None)
                     throw new HomeAssistantException(HomeAssistantFailure.Unauthorized,
-                        $"Home Assistant accepted the token, but Windows Credential Manager couldn't save it ({error}). Nothing was changed.");
+                        $"Home Assistant accepted the token, but Martlet couldn't save it ({error}).");
                 if (credentialId != Guid.Empty) vault.DeleteHomeAssistantToken(credentialId);
                 credentialId = fresh;
             }
@@ -231,9 +231,9 @@ internal sealed class SmartHome : IDisposable
             _ => ToolApprovalPolicy.AskEveryTime
         };
         if (policy == ToolApprovalPolicy.Deny)
-            Record($"Blocked {tool}: it named a lock, door, garage, gate, alarm or valve, which Smart home settings don't allow.");
+            Record($"Blocked {tool}: smart-home settings don't allow locks, doors, garage doors, gates, alarms or valves.");
         else if (risk != HomeToolRisk.ReadOnly)
-            Record($"The Thinking model asked Home Assistant to run {tool}{(policy == ToolApprovalPolicy.AskEveryTime ? " (you are asked first)" : "")}.");
+            Record($"Home Assistant tool requested: {tool}{(policy == ToolApprovalPolicy.AskEveryTime ? " (asked first)" : "")}.");
         return policy;
     }
 
@@ -285,15 +285,15 @@ internal sealed class SmartHome : IDisposable
         {
             if (!saved.AllowSensitive)
             {
-                Record("Not sent: it mentioned a lock, door, garage, gate, alarm or valve, which Smart home settings don't allow.");
+                Record("Not sent: smart-home settings don't allow locks, doors, garage doors, gates, alarms or valves.");
                 return new(HomeTurnKind.Blocked, HomeAssistantContext.Blocked(),
-                    "Not sent to Home Assistant: locks, doors, garages, gates, alarms and valves are turned off in Smart home settings.");
+                    "Not sent to Home Assistant: locks, doors, garages, gates, alarms and valves are off in Smart home settings.");
             }
             confirmed = await AskAsync(text, cancellationToken).ConfigureAwait(false);
             if (!confirmed)
             {
                 Record("Not sent: you declined a request about a lock, door, garage, gate, alarm or valve.");
-                return new(HomeTurnKind.Declined, HomeAssistantContext.Declined(), "Not sent to Home Assistant: you said no.");
+                return new(HomeTurnKind.Declined, HomeAssistantContext.Declined(), "Not sent to Home Assistant.");
             }
         }
         try
@@ -301,13 +301,12 @@ internal sealed class SmartHome : IDisposable
             var baseUri = HomeAssistantEndpoint.Normalize(saved.Address);
             using var read = vault.ReadHomeAssistantToken(saved.CredentialId);
             var token = read.Secret ?? throw new HomeAssistantException(HomeAssistantFailure.Unauthorized,
-                "The saved access token couldn't be read from Windows Credential Manager. Connect again in Smart home.");
+                "The saved access token couldn't be read. Connect again in Smart home.");
             var result = await client.ProcessAsync(baseUri, token, text, cancellationToken).ConfigureAwait(false);
             if (!result.Recognized) return new(HomeTurnKind.NotRecognized, HomeAssistantContext.NotRecognized(), null);
             var summary = Describe(result);
             if (result.Kind == HomeResponseKind.ActionDone && !confirmed && result.Succeeded.Any(HomeCommandGuard.IsSensitive))
-                summary += " It operated a lock, door, garage, gate, alarm or valve that Martlet's word check didn't catch; " +
-                    "stop exposing it to voice assistants in Home Assistant to prevent that.";
+                summary += " It affected a lock, door, garage, gate, alarm or valve. Hide that device from Home Assistant voice assistants to block it.";
             if (result.Kind != HomeResponseKind.QueryAnswer) Record(summary);
             return new(HomeTurnKind.Handled, HomeAssistantContext.Handled(result), "Home Assistant: " + summary);
         }
@@ -341,7 +340,7 @@ internal sealed class SmartHome : IDisposable
         var baseUri = HomeAssistantEndpoint.Normalize(saved.Address);
         using var read = vault.ReadHomeAssistantToken(saved.CredentialId);
         var token = read.Secret ?? throw new HomeAssistantException(HomeAssistantFailure.Unauthorized,
-            "The saved access token couldn't be read from Windows Credential Manager. Connect again in Smart home.");
+            "The saved access token couldn't be read. Connect again in Smart home.");
         var cameras = await client.CamerasAsync(baseUri, token, cancellationToken).ConfigureAwait(false);
         return cameras.Select(camera => (camera, HomeAssistantClient.CameraSnapshot(baseUri, camera.EntityId))).ToArray();
     }
@@ -356,8 +355,8 @@ internal sealed class SmartHome : IDisposable
         try
         {
             return await ask($"Send this to Home Assistant?\n\n\"{request}\"\n\nIt mentions a lock, door, garage, gate, alarm or valve. " +
-                "If Home Assistant recognizes it as a command, it carries it out right away. Martlet asks every time; " +
-                $"no answer within {ConfirmTimeout.TotalSeconds:0} seconds means no.", timeout.Token).ConfigureAwait(false);
+                "It may run right away if Home Assistant recognizes it. No answer within " +
+                $"{ConfirmTimeout.TotalSeconds:0} seconds means No.", timeout.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return false; }
     }

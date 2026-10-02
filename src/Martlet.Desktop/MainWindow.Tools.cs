@@ -18,16 +18,13 @@ public partial class MainWindow
         var statuses = service.Started ? service.Hub.Status.ToDictionary(s => s.Name, StringComparer.Ordinal) : new Dictionary<string, McpServerStatus>(StringComparer.Ordinal);
 
         var servers = new List<UIElement> { Heading("MCP servers") };
-        servers.Add(Note("MCP servers give Martlet tools: your files, a browser, a calendar, notes, developer tools and many more. " +
-            "Each runs as a program on this PC with your permissions (or is an address you set). Martlet starts them when you open " +
-            "a talk window, and while you talk the Thinking model decides when a tool would help.", new Thickness(0, 0, 0, 8)));
+        servers.Add(Note("Connect tool servers so Martlet can use files, browsers, calendars and more while you talk. Servers run on this PC or at an address you set.",
+            new Thickness(0, 0, 0, 8)));
         if (toolsNotice is { } notice) servers.Add(ToolsAlert(notice));
         if (service.ConfigurationError is { } error)
-            servers.Add(ToolsAlert($"mcp.json has a problem, so no servers run until it's fixed: {error}"));
+            servers.Add(ToolsAlert($"Server settings have a problem, so no servers will run: {error}"));
         else if (service.Servers.Count == 0)
-            servers.Add(Note("No servers yet. Browse the MCP directory to find one and install it with a click, or add servers in " +
-                "mcp.json, the same format Claude Desktop, Cursor and VS Code use, so you can paste a server's configuration from its " +
-                "instructions.", new Thickness(0, 0, 0, 4)));
+            servers.Add(Note("No servers yet. Browse the MCP directory to install one, or add them in mcp.json.", new Thickness(0, 0, 0, 4)));
         // Every server Martlet runs: mcp.json's first, then ones other features manage (Smart home's, for example).
         foreach (var server in service.Servers)
             servers.Add(ServerBlock(service, server, statuses.GetValueOrDefault(server.Name)));
@@ -37,7 +34,7 @@ public partial class MainWindow
         var anyOn = service.HasEnabledServers;
         servers.Add(Row(
             PageButton("Browse MCP directory", OpenMcpDirectory, primary: configuration.Servers.Count == 0, id: "ToolsBrowseDirectory"),
-            PageButton("Edit servers (mcp.json)", OpenMcpEditor, id: "ToolsEditConfig"),
+            PageButton("Edit servers", OpenMcpEditor, id: "ToolsEditConfig"),
             anyOn ? PageButton(service.Started ? "Restart stopped servers" : "Start servers now", () =>
             {
                 toolsNotice = null;
@@ -51,15 +48,12 @@ public partial class MainWindow
         page.Children.Add(Card([.. servers]));
 
         page.Children.Add(Card(Heading("Confirmations"),
-            Note("Before each tool call, the talk window shows the tool, its server and exactly what it will be given, with Allow once, " +
-                "Always allow this tool and Deny. Without an answer in 60 seconds the call is declined. Always allow and Run its tools " +
-                "without asking are saved in mcp.json (\"autoApprove\"), where you can review or undo them, or here.", new Thickness(0, 0, 0, 6)),
-            Note("Only let tools run without asking when you're comfortable with anything they can do: the model, not you, chooses what to " +
-                "pass, and text a tool reads (a web page, a file, an email) can try to steer it.", new Thickness(0, 0, 0, 6)),
-            Note("Tools are offered only to replies to what you say or type, never to screen or camera looks or to memory. Tool descriptions " +
-                "and what tools return go to your Thinking model with your message. A reply may use up to four tool rounds, each one more " +
-                "LLM request. Tools aren't available while Thinking runs on a Martlet host; a model that doesn't support tools is asked " +
-                "again without them.", new Thickness(0, 0, 0, 0))));
+            Note("Before a tool runs, Martlet shows what it wants to do. You can allow once, always allow or deny.",
+                new Thickness(0, 0, 0, 6)),
+            Note("Only skip confirmations for servers you trust. Tool input and results are sent to your Thinking model.",
+                new Thickness(0, 0, 0, 6)),
+            Note("Tools are used only for replies to what you say or type, not for screen, camera or memory work.",
+                new Thickness(0, 0, 0, 0))));
 
         var recent = service.Log;
         var log = new List<UIElement> { Heading("Recent tool use") };
@@ -81,10 +75,10 @@ public partial class MainWindow
         AutomationProperties.SetName(block, $"MCP server {server.Name}");
         block.Children.Add(new TextBlock { Text = server.Name, FontSize = 15, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
         var state = server.Disabled ? "Off."
-            : status is null ? "Not started yet; it starts when you open a talk window or press Start servers now."
+            : status is null ? "Not started yet. It starts when you open a talk window or press Start servers now."
             : status.State switch
             {
-                McpServerState.Starting => "Starting... (the first start of an npx server downloads it, which can take a minute)",
+                McpServerState.Starting => "Starting... first start may take a minute.",
                 McpServerState.Ready => $"Running{(status.ServerName is { } name && name != server.Name ? $" ({name})" : "")}, " +
                     (status.Tools.Count == 1 ? "1 tool." : $"{status.Tools.Count} tools."),
                 McpServerState.Failed => "Stopped: " + status.Error,
@@ -100,8 +94,7 @@ public partial class MainWindow
                     "Windows Credential Manager." : "."), new Thickness(0, 2, 0, 0)));
         if (server.Problem is { } problem) block.Children.Add(Note(problem, new Thickness(0, 2, 0, 0)));
         if (server.ManagedBy is { } owner)
-            block.Children.Add(Note($"Managed by {owner}: turn it on or off and choose what it may do there. {owner} decides which " +
-                "of its calls run, need your OK each time or are blocked.", new Thickness(0, 2, 0, 0)));
+            block.Children.Add(Note($"Managed by {owner}. Change its tool permissions there.", new Thickness(0, 2, 0, 0)));
         if (status is { State: McpServerState.Failed, Diagnostics: { } output })
             block.Children.Add(Note("What it printed: " + output, new Thickness(0, 2, 0, 0)));
 
@@ -111,7 +104,7 @@ public partial class MainWindow
         on.Click += (_, _) => EditToolServer(service, server.Name, entry => McpConfiguration.SetDisabled(entry, on.IsChecked != true));
         var trust = new CheckBox
         {
-            Content = "Run its tools without asking me first", IsChecked = server.AutoApproveAll, IsEnabled = editable && !server.Disabled,
+            Content = "Run without asking", IsChecked = server.AutoApproveAll, IsEnabled = editable && !server.Disabled,
             Margin = new Thickness(0, 8, 0, 0)
         };
         AutomationProperties.SetAutomationId(trust, "ToolsServerTrust-" + server.Name);
@@ -185,7 +178,7 @@ public partial class MainWindow
         }
         catch (Exception error) when (error is McpConfigurationException or System.IO.IOException or UnauthorizedAccessException)
         {
-            toolsNotice = $"Couldn't change mcp.json: {error.Message}";
+            toolsNotice = $"Couldn't save server settings: {error.Message}";
         }
         RenderTab();
     }

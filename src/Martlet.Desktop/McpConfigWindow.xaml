@@ -3,18 +3,18 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Style="{DynamicResource AppWindowStyle}"
-        Title="Martlet - MCP servers (mcp.json)" Width="880" Height="700" MinWidth="560" MinHeight="420"
+        Title="Martlet - MCP servers" Width="880" Height="700" MinWidth="560" MinHeight="420"
         WindowStartupLocation="CenterOwner" Closing="Window_Closing"
         AutomationProperties.AutomationId="McpConfigWindow">
     <DockPanel Margin="24,20,24,18">
         <TextBlock DockPanel.Dock="Top" Text="MCP servers" Style="{DynamicResource SectionHeading}"/>
         <TextBlock DockPanel.Dock="Top" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,0,0,10"
-                   Text="Paste a server's configuration from its instructions: the same &quot;mcpServers&quot; format Claude Desktop, Cursor and Cline use (VS Code's &quot;servers&quot; works too), or install one from Browse MCP directory on the Tools page without editing. A server runs a &quot;command&quot; with &quot;args&quot; and optional &quot;env&quot; on this PC, or connects to a streamable HTTP &quot;url&quot; with optional &quot;headers&quot;. Use ${env:NAME} to read a secret from an environment variable instead of saving it here; ${secret:NAME} values are ones the directory saved in Windows Credential Manager. mcp.json is plain text in your Martlet data folder. Optional per server: &quot;disabled&quot;: true, and &quot;autoApprove&quot;: a list of tools (or true) that run without asking."/>
+                   Text="Paste a server's &quot;mcpServers&quot; JSON from its setup guide, or install one with Browse MCP directory on the Tools page. Martlet saves this as plain text, so use environment variables (or the directory's saved secrets) for secrets."/>
         <StackPanel DockPanel.Dock="Bottom">
             <TextBlock x:Name="StatusText" TextWrapping="Wrap" Margin="0,10,0,10" AutomationProperties.LiveSetting="Polite"
                        AutomationProperties.AutomationId="McpConfigStatus"/>
             <WrapPanel>
-                <Button x:Name="SaveButton" Content="_Save and start servers" Style="{DynamicResource PrimaryButton}" Click="Save_Click"
+                <Button x:Name="SaveButton" Content="_Save and start" Style="{DynamicResource PrimaryButton}" Click="Save_Click"
                         Margin="0,0,10,6" AutomationProperties.AutomationId="McpConfigSave"/>
                 <Button Content="Insert _example" Click="Example_Click" Margin="0,0,10,6" AutomationProperties.AutomationId="McpConfigExample"/>
                 <Button Content="_Open folder" Click="Folder_Click" Margin="0,0,10,6" AutomationProperties.AutomationId="McpConfigFolder"/>
@@ -23,6 +23,6 @@
         </StackPanel>
         <TextBox x:Name="Editor" AcceptsReturn="True" AcceptsTab="True" FontFamily="Consolas" FontSize="13" TextWrapping="NoWrap"
                  HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" Padding="10,8" TextChanged="Editor_TextChanged"
-                 AutomationProperties.Name="mcp.json" AutomationProperties.AutomationId="McpConfigEditor"/>
+                 AutomationProperties.Name="MCP server JSON" AutomationProperties.AutomationId="McpConfigEditor"/>
     </DockPanel>
 </local:ThemedWindow>

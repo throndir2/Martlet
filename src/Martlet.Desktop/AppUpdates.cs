@@ -144,9 +144,8 @@ internal static class AppUpdateInstaller
             if (parts.Length != 2) return null;
             if (parts[0] == "0" && !AppVersions.IsOlder(running, parts[1])) return ($"Martlet updated to {running}.", null);
             if (parts[0] == "wait")
-                return ($"The update to {parts[1]} did not start because Martlet took too long to close. Press Install to try again.", parts[1]);
-            return ($"The update to {parts[1]} did not finish (installer exit code {parts[0]}). Press Install to try again; details: " +
-                Path.Combine(directory, "install.log"), parts[1]);
+                return ($"The update to {parts[1]} couldn't start. Press Install to try again.", parts[1]);
+            return ($"The update to {parts[1]} didn't finish. Press Install to try again.", parts[1]);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return null; }
     }

@@ -5,7 +5,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Martlet - Microphone and speakers" Width="640" Height="760" MinWidth="480" MinHeight="420"
         WindowStartupLocation="CenterOwner"
-        AutomationProperties.AutomationId="AudioSetupWindow" AutomationProperties.Name="Microphone and speakers, tested on this PC only"
+        AutomationProperties.AutomationId="AudioSetupWindow" AutomationProperties.Name="Microphone and speakers"
         Loaded="Window_Loaded" Closing="Window_Closing" Deactivated="Window_Deactivated">
     <DockPanel>
         <Border DockPanel.Dock="Bottom" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="20,12">
@@ -27,7 +27,7 @@
             <StackPanel Margin="22,18,22,18">
                 <TextBlock Text="Microphone and speakers" Style="{DynamicResource PageTitle}" />
                 <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,16"
-                           Text="Pick what Martlet listens to and plays through. Your Windows defaults work as they are; test them any time. Choices save as you go. Tests stay on this PC: nothing is recorded or sent." />
+                           Text="Choose what Martlet listens to and plays through. Windows defaults work unless you pick something else." />
 
                 <TextBlock x:Name="DevicesText" Style="{DynamicResource Muted}" Margin="0,0,0,14" TextWrapping="Wrap" AutomationProperties.AutomationId="AudioDevices"
                            AutomationProperties.LiveSetting="Polite" Text="Looking for microphones and speakers..." />
@@ -82,20 +82,20 @@
                 <Expander Header="Details" Margin="0,4,0,0" AutomationProperties.AutomationId="AudioDetails">
                     <StackPanel Margin="0,8,0,0">
                         <TextBlock Style="{DynamicResource Muted}" FontSize="12" Margin="0,0,0,8"
-                                   Text="Opening this window lists your microphones and speakers by name, and opening a device list checks again for anything you just plugged in. Listing never opens a device. Martlet uses your Windows defaults until you pick others. Each test asks first, runs only on this PC and keeps nothing: no recording is saved and no provider, network or key is used. A microphone pass means sound came through, not that speech was recognized; a played beep counts as heard only when you confirm it. Saved choices never start a test or listening on their own, and Martlet never changes your volume or Windows defaults." />
+                                   Text="Martlet lists device names without opening them. Tests run only after you approve them. No recording is saved or sent, and Martlet won't change your volume or Windows defaults." />
                         <Button Style="{DynamicResource LinkButton}" HorizontalAlignment="Left" Content="Troubleshooting" Click="Troubleshooting_Click"
                                 AutomationProperties.AutomationId="AudioTroubleshooting" />
                         <TextBlock x:Name="ActivityText" TextWrapping="Wrap" FontSize="12" Margin="0,8,0,0" AutomationProperties.LiveSetting="Polite"
                                    AutomationProperties.Name="Local audio action and ownership" />
                         <Label Content="Microphone _level" Target="{Binding ElementName=LevelText}" Padding="0,8,0,4" FontSize="12" />
-                        <TextBox x:Name="LevelText" IsReadOnly="True" TextWrapping="Wrap" FontSize="12" Text="No PCM received."
-                                 AutomationProperties.AutomationId="AudioLevel" AutomationProperties.Name="Actual selected input whole-test peak RMS and sample count" />
+                        <TextBox x:Name="LevelText" IsReadOnly="True" TextWrapping="Wrap" FontSize="12" Text="No sound received."
+                                 AutomationProperties.AutomationId="AudioLevel" AutomationProperties.Name="Microphone test level" />
                         <Label Content="Last _result" Target="{Binding ElementName=ResultText}" Padding="0,8,0,4" FontSize="12" />
                         <TextBox x:Name="ResultText" IsReadOnly="True" TextWrapping="Wrap" MinHeight="54" MaxHeight="160" VerticalScrollBarVisibility="Auto" FontSize="12"
                                  AutomationProperties.AutomationId="AudioResult" AutomationProperties.Name="Audio action result and remedy" />
                         <Label Content="Test _history" Target="{Binding ElementName=StatusText}" Padding="0,8,0,4" FontSize="12" />
                         <TextBox x:Name="StatusText" IsReadOnly="True" TextWrapping="Wrap" MinHeight="90" MaxHeight="230" VerticalScrollBarVisibility="Auto" FontSize="12"
-                                 AutomationProperties.AutomationId="AudioStatus" AutomationProperties.Name="Local microphone and output outcomes, not provider readiness" />
+                                 AutomationProperties.AutomationId="AudioStatus" AutomationProperties.Name="Microphone and speaker test history" />
                     </StackPanel>
                 </Expander>
             </StackPanel>

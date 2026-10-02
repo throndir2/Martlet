@@ -38,7 +38,7 @@ public sealed class AppearanceTests
             Assert.Throws<InvalidDataException>(() => Appearance.Load(directory));
             var startup = Appearance.LoadForStartup(directory);
             Assert.Equal(PinkTheme.Light, startup.Theme);
-            Assert.Contains("Could not read appearance.txt", startup.Notice);
+            Assert.Contains("Couldn't load your theme", startup.Notice);
             Assert.Equal(new string('x', 10000), File.ReadAllText(Path.Combine(directory, "appearance.txt")));
             File.WriteAllText(Path.Combine(directory, "appearance.txt"), "");
             Assert.Equal(PinkTheme.Light, Appearance.LoadForStartup(directory).Theme);

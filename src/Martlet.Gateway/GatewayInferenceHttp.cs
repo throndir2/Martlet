@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Martlet.Core.Logs;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 
@@ -43,7 +44,12 @@ internal sealed partial class GatewayHttpApplication
             request.Payload.Clear();
             throw;
         }
-        await StreamInferenceAsync(context, traceId, job).ConfigureAwait(false);
+        context.Items[RouteItem] = route.RouteId;
+        context.Items[DeviceItem] = principal.DeviceId;
+        var started = clock.GetTimestamp();
+        if (await StreamInferenceAsync(context, traceId, job).ConfigureAwait(false) is null)
+            Logs.Own(LogLevels.Info, $"{route.RouteId} request from {principal.DeviceId} finished in " +
+                $"{clock.GetElapsedTime(started).TotalMilliseconds:0} ms.");
     }
 
     private async ValueTask InvokeInferenceCancellationAsync(
@@ -81,7 +87,9 @@ internal sealed partial class GatewayHttpApplication
         }).ConfigureAwait(false);
     }
 
-    private async ValueTask StreamInferenceAsync(
+    /// <summary>Streams the job's events; returns null when it finished normally, otherwise the failure code already
+    /// written to the stream (a failure before the response started is thrown).</summary>
+    private async ValueTask<string?> StreamInferenceAsync(
         HttpContext context,
         Guid traceId,
         GatewayInferenceRouteRegistry.GatewayInferenceJob job)
@@ -366,16 +374,19 @@ internal sealed partial class GatewayHttpApplication
                     quarantineWorker)
                     .ConfigureAwait(false);
                 completed = true;
+                var abortCode = failureCode ?? "job.canceled";
+                var abortStatus = failureCode is null
+                    ? 499
+                    : GatewayFailures.Get(failureCode).HttpStatus;
                 audit.Record(new()
                 {
                     TraceId = traceId,
-                    Code = failureCode ?? "job.canceled",
-                    HttpStatus = failureCode is null
-                        ? 499
-                        : GatewayFailures.Get(failureCode).HttpStatus
+                    Code = abortCode,
+                    HttpStatus = abortStatus
                 });
+                LogFailure(context, traceId, abortCode, abortStatus);
                 context.Abort();
-                return;
+                return abortCode;
             }
 
             var healthy = await job.CompleteAsync(
@@ -411,7 +422,7 @@ internal sealed partial class GatewayHttpApplication
                         request,
                         publishedSequence,
                         failureCode);
-                RecordStreamFailure(traceId, failureCode);
+                RecordStreamFailure(context, traceId, failureCode);
                 var serialized = SerializeInferenceEvent(
                     failureEvent,
                     traceId);
@@ -422,7 +433,7 @@ internal sealed partial class GatewayHttpApplication
                     startResponse: false,
                     job: job,
                     failure: true).ConfigureAwait(false);
-                return;
+                return failureCode;
             }
 
             GatewayRules.Require(terminal is not null, "stream.truncated");
@@ -441,6 +452,7 @@ internal sealed partial class GatewayHttpApplication
                 startResponse: !responseStarted,
                 job: job,
                 validatePublication: streamState.ValidatePublication).ConfigureAwait(false);
+            return null;
         }
         catch (GatewayProtocolException error)
         {
@@ -467,7 +479,7 @@ internal sealed partial class GatewayHttpApplication
             if (!await job.ReleaseAsync().ConfigureAwait(false))
             {
                 if (failureCode != "stream.cleanup")
-                    RecordStreamFailure(traceId, "stream.cleanup");
+                    RecordStreamFailure(context, traceId, "stream.cleanup");
                 if (failureCode is null)
                     context.Abort();
             }
@@ -613,7 +625,7 @@ internal sealed partial class GatewayHttpApplication
             .ConfigureAwait(false);
     }
 
-    private void RecordStreamFailure(Guid traceId, string code)
+    private void RecordStreamFailure(HttpContext context, Guid traceId, string code)
     {
         var failure = GatewayFailures.Get(code);
         audit.Record(new()
@@ -622,6 +634,7 @@ internal sealed partial class GatewayHttpApplication
             Code = code,
             HttpStatus = failure.HttpStatus
         });
+        LogFailure(context, traceId, code, failure.HttpStatus);
     }
 
     private static bool IsIntegrityFailure(string? code) =>

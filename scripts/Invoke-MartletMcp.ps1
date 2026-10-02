@@ -4,7 +4,7 @@ Runs a sequence of Martlet MCP tool calls against this checkout's build.
 
 .DESCRIPTION
 Starts src\Martlet.Mcp from this checkout, sends initialize and each call in
-order, and prints one JSON array of results. Doctor, voices_status, f5_voices, cluster_status, logs_tail,
+order, and prints one JSON array of results. Doctor, voices_status, f5_voices, cluster_status, logs_tail, logs_timeline,
 virtualization_status and mcp_servers_status calls
 without an explicit dataDirectory get a disposable one. -Desktop launches Martlet.Desktop with the
 same disposable data directory and connects ui_* tools to it first.

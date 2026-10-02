@@ -16,13 +16,16 @@ internal static partial class HostRunLog
     [GeneratedRegex(@"martlet-pair-v1\.[A-Za-z0-9_-]+")]
     private static partial Regex PairingCodePattern();
 
+    [GeneratedRegex(@"\b[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}\b")]
+    private static partial Regex ShortCodePattern();
+
     internal static string? Path => ErrorLog.Directory is { } directory ? System.IO.Path.Combine(directory, "host-runs.log") : null;
 
     internal static void Write(string run, string line)
     {
         if (Path is not { } path) return;
         var text = $"{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff zzz} [{run}] " +
-            PairingCodePattern().Replace(line, "martlet-pair-v1.(hidden)") + Environment.NewLine;
+            ShortCodePattern().Replace(PairingCodePattern().Replace(line, "martlet-pair-v1.(hidden)"), "(code hidden)") + Environment.NewLine;
         lock (gate)
         {
             try

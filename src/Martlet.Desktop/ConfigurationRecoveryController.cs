@@ -12,7 +12,7 @@ internal sealed class ConfigurationRecoveryController(SettingsStore store, Setup
     private ConfigurationRecoveryReceipt? receipt;
     private string? cleanup;
     private long presentation;
-    private string message = "No backup read or written. Choose an explicit local path and action. Capture/logging remain OFF.";
+    private string message = "No backup has been read or written. Choose a local file and action.";
     internal bool IsBusy => operations.IsRunning;
     internal bool HasResources { get { lock (gate) return active is { Completion.IsCompleted: false } || cleanup is not null; } }
     internal bool NeedsCleanup { get { lock (gate) return cleanup is not null; } }
@@ -20,7 +20,7 @@ internal sealed class ConfigurationRecoveryController(SettingsStore store, Setup
     internal ConfigurationRecoveryReceipt? Receipt { get { lock (gate) return receipt; } }
     internal string Message { get { lock (gate) return message +
         (active is { Completion.IsCompletedSuccessfully: true } && active.Completion.Result.Outcome == SetupWorkOutcome.Failed
-            ? "\nWorker/cancellation outcome: failed. Any retained receipt describes committed IO only; it does not claim rollback or successful cleanup." : ""); } }
+            ? "\nThe last action failed. Review the result before trying again." : ""); } }
 
     internal void ClearPreview()
     {
@@ -30,7 +30,7 @@ internal sealed class ConfigurationRecoveryController(SettingsStore store, Setup
     internal SetupOperation? Backup(string destination) => Start(async token =>
     {
         var saved = await store.CreateConfigurationSnapshotAsync(destination, token).ConfigureAwait(false);
-        lock (gate) { receipt = saved; message = $"LOCAL snapshot created (not uploaded): {saved.Path}\nFile SHA-256: {saved.Revision}"; }
+        lock (gate) { receipt = saved; message = $"Settings backup created: {saved.Path}"; }
     });
 
     internal SetupOperation? ReadPreview(string source)
@@ -45,7 +45,7 @@ internal sealed class ConfigurationRecoveryController(SettingsStore store, Setup
             {
                 if (presentation != version || token.IsCancellationRequested) return;
                 preview = plan;
-                message = "Exact inert configuration preview ready. Nothing restored. Review all candidate JSON and changes, then explicitly confirm (default No).";
+                message = "Restore preview ready. Nothing has been changed.";
             }
         });
     }
@@ -67,8 +67,7 @@ internal sealed class ConfigurationRecoveryController(SettingsStore store, Setup
             lock (gate)
             {
                 receipt = restored;
-                message = $"Configuration restored locally. Reload Setup and review destinations, keys and devices; capture/logging remain OFF.\n" +
-                    $"Original retained byte-exact: {restored.OriginalSnapshot}\nCurrent revision: {restored.Revision}";
+                message = "Settings restored. Reload setup and review destinations, keys and devices.";
             }
         });
     }
@@ -79,7 +78,7 @@ internal sealed class ConfigurationRecoveryController(SettingsStore store, Setup
         lock (gate) path = cleanup;
         if (path is null) throw new RecoveryException(RecoveryFailure.Conflict);
         store.RetryRecoveryCleanup(path);
-        lock (gate) { cleanup = null; message = "Owned staging cleanup finished. Read a fresh preview before retrying. Historical recovery snapshots were not removed."; }
+        lock (gate) { cleanup = null; message = "Cleanup finished. Read a fresh preview before trying again."; }
         return Task.CompletedTask;
     }, isCleanup: true);
 
@@ -88,14 +87,14 @@ internal sealed class ConfigurationRecoveryController(SettingsStore store, Setup
         // This predicate observes the existing support owner only; it never starts/stops the journal.
         if (mayUseStorage?.Invoke() == false)
         {
-            lock (gate) message = "Stop/close Troubleshooting and finish its owned cleanup first. Configuration recovery requires recording OFF and no support IO.";
+            lock (gate) message = "Close Troubleshooting before using backup and restore.";
             return null;
         }
         lock (gate)
         {
             if (operations.IsRunning || (cleanup is not null && !isCleanup))
             {
-                message = "Another app action still owns IO, or owned staging cleanup is pending. Stop the action and wait for actual release; then retry cleanup or read a fresh preview.";
+                message = "Another action is still finishing, or cleanup is pending. Wait, then retry cleanup or read a fresh preview.";
                 return null;
             }
             active = operations.TryStart(async token =>
@@ -111,14 +110,14 @@ internal sealed class ConfigurationRecoveryController(SettingsStore store, Setup
                     {
                         preview = null;
                         cleanup = error.RetainedFile ?? cleanup;
-                        message = $"{error.Failure}: {error.Message}" +
-                            (cleanup is null ? "" : $"\nOwned staging file retained: {cleanup}");
+                        message = error.Message +
+                            (cleanup is null ? "" : "\nCleanup is needed before trying again.");
                     }
                     return new(SetupWorkOutcome.Failed);
                 }
                 catch (OperationCanceledException) when (token.IsCancellationRequested)
                 {
-                    lock (gate) { preview = null; message = "Recovery canceled. Original/recovery files are retained; cancellation does not prove rollback. Read a fresh preview after release."; }
+                    lock (gate) { preview = null; message = "Recovery canceled. Wait for the action to finish, then read a fresh preview."; }
                     return new(SetupWorkOutcome.Canceled);
                 }
             });

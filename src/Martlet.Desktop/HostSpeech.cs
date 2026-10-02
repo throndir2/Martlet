@@ -143,14 +143,14 @@ internal static class F5Voices
     {
         F5Failure.SourceMissing => "That recording is no longer where you chose it. Choose it again.",
         F5Failure.SourceChanged => "That recording changed while Martlet was reading it. Try again.",
-        F5Failure.InvalidAudio => "The recording must be a mono 16-bit PCM WAV of 1 to 30 seconds (16, 22.05, 24, 44.1 or 48 kHz), at most 4 MB.",
+        F5Failure.InvalidAudio => "Use a mono 16-bit PCM WAV from 1 to 30 seconds, up to 4 MB.",
         F5Failure.RightsRequired => "Confirm that you may use this voice.",
-        F5Failure.Busy => "The voice list is in use by another Martlet window; try again in a moment.",
-        F5Failure.LimitExceeded => "The voice list is full (16 voices). Remove one you no longer use first.",
+        F5Failure.Busy => "Another Martlet window is using voices. Try again in a moment.",
+        F5Failure.LimitExceeded => "The voice list is full. Remove one you no longer use first.",
         F5Failure.Conflict => "Martlet speaks with this voice now. Switch to another voice first, then remove it.",
         F5Failure.NotFound => "That voice is no longer in your list.",
         F5Failure.CorruptStore => "Martlet's copy of this voice is damaged. Remove it and add the recording again.",
-        _ => $"The voice could not be used ({error.Failure})."
+        _ => $"Couldn't use this voice ({error.Failure})."
     };
 }
 
@@ -165,7 +165,7 @@ internal sealed class HostSpeechClient(string dataDirectory) : IHostSpeechClient
         using var connection = Connect(target);
         var routes = await Guard(() => connection.ReadRoutesAsync(cancellationToken), cancellationToken).ConfigureAwait(false);
         var route = routes.FirstOrDefault(r => r.RouteId == HostRoute.F5RouteId && r.ModelId == target.ModelId) ??
-            throw HostTextClient.Failed("voice", ProviderFailureCode.ModelNotFound, $"the host offers no F5 route for model {target.ModelId}");
+            throw HostTextClient.Failed("voice", ProviderFailureCode.ModelNotFound, "the host isn't ready for speaking");
         await using var frames = connection.StreamSpeechAsync(route, ids, epoch, deadline, reference, input.Text, cancellationToken)
             .GetAsyncEnumerator(cancellationToken);
         while (await Guard(() => frames.MoveNextAsync().AsTask(), cancellationToken).ConfigureAwait(false))

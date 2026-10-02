@@ -3,7 +3,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Style="{DynamicResource AppWindowStyle}"
-        Title="Martlet - which setup is right for me?" Width="900" Height="760" MinWidth="520" MinHeight="420"
+        Title="Martlet - Setup advisor" Width="900" Height="760" MinWidth="520" MinHeight="420"
         WindowStartupLocation="CenterOwner"
         AutomationProperties.AutomationId="SetupAdvisorWindow">
     <DockPanel>
@@ -23,20 +23,20 @@
         </Border>
         <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Auto">
             <StackPanel Margin="24" MaxWidth="900">
-                <TextBlock Text="Which setup is right for me?" FontSize="24" FontWeight="SemiBold"/>
+                <TextBlock Text="Find your setup" FontSize="24" FontWeight="SemiBold"/>
                 <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,6,0,16"
-                    Text="Answer three quick questions. Martlet suggests where each part should run and explains what it does. Nothing is installed, saved, tested or contacted until you press a button in your plan."/>
+                    Text="Answer three quick questions. Martlet will suggest a setup. Nothing changes until you choose an action."/>
 
                 <StackPanel x:Name="GoalStep">
                     <TextBlock Text="1. What matters most to you?" Style="{DynamicResource SectionHeading}"/>
                     <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,10"
-                        Text="The conversation model (the part that thinks of replies) is the biggest choice: a large hosted model is smarter, while a local model on a GPU of its own starts talking sooner and keeps your words at home."/>
+                        Text="The conversation model is the biggest choice: hosted models are usually smarter, while local models keep your words on your computers."/>
                     <RadioButton x:Name="BalancedGoal" GroupName="Goal" Margin="0,4,0,10" AutomationProperties.AutomationId="GoalBalanced"
                                  AutomationProperties.Name="Balanced, recommended">
                         <StackPanel>
                             <TextBlock Text="Balanced (recommended)" FontWeight="SemiBold"/>
                             <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}"
-                                Text="Smart hosted answers from OpenRouter or NVIDIA Build, with any spare GPU spent on your voice and the character's face."/>
+                                Text="Use a hosted model for good replies and keep your GPU free for voice and animation."/>
                         </StackPanel>
                     </RadioButton>
                     <RadioButton x:Name="SmartestGoal" GroupName="Goal" Margin="0,4,0,10" AutomationProperties.AutomationId="GoalSmartest"
@@ -44,7 +44,7 @@
                         <StackPanel>
                             <TextBlock Text="Smartest answers" FontWeight="SemiBold"/>
                             <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}"
-                                Text="The biggest hosted model you are willing to pay for. Best replies; each request may cost money."/>
+                                Text="Use a larger hosted model for the best replies. Costs may apply."/>
                         </StackPanel>
                     </RadioButton>
                     <RadioButton x:Name="FastestGoal" GroupName="Goal" Margin="0,4,0,10" AutomationProperties.AutomationId="GoalFastest"
@@ -52,7 +52,7 @@
                         <StackPanel>
                             <TextBlock Text="Fastest replies" FontWeight="SemiBold"/>
                             <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}"
-                                Text="A conversation model on a GPU of its own, so replies start as soon as possible. Smaller local models are less capable."/>
+                                Text="Run the conversation model on a dedicated GPU for quicker replies."/>
                         </StackPanel>
                     </RadioButton>
                     <RadioButton x:Name="PrivateGoal" GroupName="Goal" Margin="0,4,0,10" AutomationProperties.AutomationId="GoalPrivate"
@@ -60,7 +60,7 @@
                         <StackPanel>
                             <TextBlock Text="Private and offline" FontWeight="SemiBold"/>
                             <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}"
-                                Text="Everything runs on your own computers. Works best with a good GPU; local models are less capable than large hosted ones."/>
+                                Text="Run everything on your own computers. Works best with a strong GPU."/>
                         </StackPanel>
                     </RadioButton>
                 </StackPanel>
@@ -68,21 +68,21 @@
                 <StackPanel x:Name="FeatureStep" Visibility="Collapsed">
                     <TextBlock Text="2. What should Martlet do?" Style="{DynamicResource SectionHeading}"/>
                     <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,10"
-                        Text="Each choice adds one part. With nothing selected you simply type and read replies."/>
+                        Text="Choose how you want to use Martlet. You can also just type and read replies."/>
                     <CheckBox x:Name="VoiceInputChoice" Margin="0,4,0,0" AutomationProperties.AutomationId="FeatureVoiceInput"
-                              Content="Talk to it with my microphone (hold push-to-talk)"/>
+                              Content="Talk with my microphone"/>
                     <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="24,0,0,10"
-                        Text="Adds speech-to-text, which turns your voice into text."/>
+                        Text="Turns your voice into text."/>
                     <CheckBox x:Name="SpokenRepliesChoice" Margin="0,4,0,0" AutomationProperties.AutomationId="FeatureSpokenReplies"
-                              Content="Hear its replies spoken aloud" Unchecked="SpokenReplies_Unchecked"/>
+                              Content="Hear spoken replies" Unchecked="SpokenReplies_Unchecked"/>
                     <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="24,0,0,10"
-                        Text="Adds a voice (text-to-speech) and uses your speakers or headphones."/>
+                        Text="Uses a voice and your speakers or headphones."/>
                     <CheckBox x:Name="CharacterChoice" Margin="0,4,0,0" AutomationProperties.AutomationId="FeatureCharacter"
                               Content="Show an animated character"/>
                     <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="24,0,0,10"
                         Text="A Live2D or VRM companion on your desktop that moves its mouth when it speaks."/>
                     <CheckBox x:Name="CustomVoiceChoice" Margin="0,4,0,0" AutomationProperties.AutomationId="FeatureCustomVoice"
-                              Content="Use a custom or cloned voice" Checked="CustomVoice_Checked"/>
+                              Content="Use a custom voice" Checked="CustomVoice_Checked"/>
                     <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="24,0,0,10"
                         Text="Needs an NVIDIA GPU. Only use voices you have permission to use."/>
                 </StackPanel>
@@ -90,7 +90,7 @@
                 <StackPanel x:Name="HardwareStep" Visibility="Collapsed">
                     <TextBlock Text="3. Your computers" Style="{DynamicResource SectionHeading}"/>
                     <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,10"
-                        Text="Martlet recommends what each computer should do, based on its graphics card (GPU)."/>
+                        Text="Martlet recommends where each part should run based on available GPUs."/>
                     <Label Target="{Binding ElementName=ThisPcGpuChoice}" Content="_Graphics card (GPU) in this PC"/>
                     <ComboBox x:Name="ThisPcGpuChoice" MinHeight="30" AutomationProperties.AutomationId="ThisPcGpu"
                               SelectionChanged="ThisPcGpu_Changed" AutomationProperties.Name="Graphics card in this PC"/>
@@ -105,7 +105,7 @@
                     <ComboBox x:Name="ExtraMachinesChoice" MinHeight="30" SelectionChanged="ExtraMachines_Changed"
                               AutomationProperties.AutomationId="ExtraMachines" AutomationProperties.Name="Other computers I can dedicate to Martlet"/>
                     <TextBlock x:Name="ExtraMachinesHint" TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,10"
-                        Text="Other computers on your home network run parts of Martlet through Martlet hosts. They can run Linux or Windows. Pick each one's GPU below; if you have more than five, list your five strongest."/>
+                        Text="Add computers you can dedicate to Martlet. If you have more than five, list the strongest."/>
                     <StackPanel x:Name="OtherComputersPanel" AutomationProperties.AutomationId="OtherComputers"/>
                 </StackPanel>
 

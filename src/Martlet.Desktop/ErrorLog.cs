@@ -107,11 +107,11 @@ internal static class ErrorLog
             try
             {
                 var choice = MessageBox.Show(
-                    $"{productName} hit an unexpected error and recovered. The last action may not have finished.\n\n" +
-                    $"{e.Exception.GetType().Name}: {e.Exception.Message}\n\n" +
+                    $"{productName} recovered from an unexpected error. The last action may not have finished.\n\n" +
+                    $"Error: {e.Exception.Message}\n\n" +
                     $"Details were saved locally to:\n{CurrentFile ?? "(log unavailable)"}\n\n" +
                     "Open the logs folder now?",
-                    $"{productName} - unexpected error", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                    $"{productName} - Unexpected error", MessageBoxButton.YesNo, MessageBoxImage.Warning);
                 if (choice == MessageBoxResult.Yes) OpenFolder();
             }
             catch (Exception ex) when (!IsFatal(ex)) { Error("Error dialog failed", ex); }

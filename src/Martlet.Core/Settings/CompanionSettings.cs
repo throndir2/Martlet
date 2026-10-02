@@ -286,7 +286,7 @@ public sealed class CompanionSettingsService(SettingsStore store) : ICompanionSe
             var text = StrictUtf8.GetString(bytes, offset, length - offset);
             PersonaProfile.ValidateText(text);
             return new(PersonaTextFileOutcome.Imported, text,
-                "Persona text imported into the unsaved draft. Review, apply and save it.");
+                "Persona text imported. Review it, then save.");
         }
         catch (DecoderFallbackException) { return Invalid("Persona text must be valid UTF-8."); }
         catch (ContractException error) { return Invalid(error.Message); }
@@ -325,7 +325,7 @@ public sealed class CompanionSettingsService(SettingsStore store) : ICompanionSe
                     File.Delete(temporary);
             }
             return new(PersonaTextFileOutcome.Exported, null,
-                "Persona text exported as UTF-8. The file contains persona content; store it appropriately.");
+                "Persona text exported. Keep the file private.");
         }
         catch (ContractException error) { return Invalid(error.Message); }
         catch (IOException) when (File.Exists(path))
@@ -351,7 +351,7 @@ public sealed class CompanionSettingsService(SettingsStore store) : ICompanionSe
             using var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 81_920);
             var card = CharacterCardReader.Read(input, token);
             return Task.FromResult(new CharacterCardFileResult(PersonaTextFileOutcome.Imported, card,
-                $"Read {card.FormatName} \"{card.DisplayName}\"."));
+                $"Read \"{card.DisplayName}\"."));
         }
         catch (CharacterCardException error) { return Task.FromResult(InvalidCard(error.Message)); }
         catch (Exception error) when (error is InvalidDataException or System.Text.Json.JsonException or DecoderFallbackException or FormatException)

@@ -48,14 +48,6 @@ internal static class ClusterSync
 
     internal static string Title(string job) => job == ClusterJobs.LipSync ? "Lip-sync" : char.ToUpperInvariant(job[0]) + job[1..];
 
-    internal static string Engine(string job) => job switch
-    {
-        ClusterJobs.Thinking => "Ollama",
-        ClusterJobs.Listening => "whisper",
-        ClusterJobs.Speaking => "F5",
-        _ => "Audio2Face"
-    };
-
     internal static LocalJob Local(string job, AppSettings? settings, AvatarProfile? avatar) => job switch
     {
         ClusterJobs.LipSync => NetworkMap.LipSync(avatar) switch
@@ -74,7 +66,7 @@ internal static class ClusterSync
 
     /// <summary>Who does a job, in words: a host, nobody (lip-sync by voice loudness) or this PC's own choice.</summary>
     internal static string Who(string job, string? hostId, bool off) =>
-        off ? "nobody (voice loudness)" : hostId ?? (job == ClusterJobs.LipSync ? "this PC" : "this PC's Setup choice");
+        off ? "voice loudness" : hostId ?? (job == ClusterJobs.LipSync ? "this PC" : "the Setup choice");
 
     /// <summary>The host that takes over <paramref name="job"/> from <paramref name="failed"/>: one that answered this
     /// check and runs the job's engine, preferring hosts with the fewest other jobs, then the most GPU memory, then the
@@ -153,7 +145,7 @@ internal static class ClusterSync
                 }
             });
         }
-        catch (OperationCanceledException) when (!token.IsCancellationRequested) { return new(host.HostId, false, "Did not answer in time."); }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested) { return new(host.HostId, false, "Didn't respond in time."); }
         catch (Exception error) when (IsHostFailure(error)) { return new(host.HostId, false, error.Message); }
     }
 
@@ -171,7 +163,7 @@ internal static class ClusterSync
         using (var read = new WindowsCredentialStore().ReadAvatarHostSecret(host.HostId, host.CredentialId))
         {
             if (read.Error != CredentialError.None || read.Secret is null)
-                throw new InvalidOperationException("This PC's pairing secret is missing; pair again.");
+                throw new InvalidOperationException("Pair this host again.");
             read.Secret.Use(secret => connection = new Audio2FaceHostConnection(GatewayAvatarHostLink.Pairing(host), secret));
         }
         try { return await action(connection!); }

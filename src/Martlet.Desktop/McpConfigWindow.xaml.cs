@@ -25,12 +25,12 @@ public partial class McpConfigWindow : ThemedWindow
         {
             saved = service.ReadText();
             Editor.Text = saved.Trim().Length == 0 ? Empty.Replace("\n", Environment.NewLine) : saved;
-            StatusText.Text = service.FilePath is { } path ? $"File: {path}" : "Martlet has no data folder, so mcp.json can't be saved.";
+            StatusText.Text = service.FilePath is { } path ? $"Saved in: {path}" : "Martlet has no data folder, so MCP servers can't be saved.";
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or McpConfigurationException)
         {
             Editor.Text = Empty.Replace("\n", Environment.NewLine);
-            StatusText.Text = $"mcp.json couldn't be read: {error.Message}";
+            StatusText.Text = $"MCP server settings couldn't be read: {error.Message}";
         }
         finally { loading = false; }
         SaveButton.IsEnabled = service.FilePath is not null;
@@ -53,8 +53,8 @@ public partial class McpConfigWindow : ThemedWindow
             service.EnsureStarted(retryNow: true);
             var servers = service.Servers;
             StatusText.Text = servers.Count == 0
-                ? "Saved. No servers are set up, so Martlet won't offer tools."
-                : $"Saved. Starting {string.Join(", ", servers.Where(s => !s.Disabled).Select(s => s.Name))}; see Companion > Tools for each server's state.";
+                ? "Saved. No servers are set up."
+                : $"Saved. Starting {string.Join(", ", servers.Where(s => !s.Disabled).Select(s => s.Name))}. See Tools for status.";
         }
         catch (Exception error) when (error is McpConfigurationException or IOException or UnauthorizedAccessException)
         {
@@ -81,8 +81,7 @@ public partial class McpConfigWindow : ThemedWindow
             {
                 WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
             });
-            StatusText.Text = $"Added \"{name}\": it lets Martlet read and write files in your Documents folder (it needs Node.js for npx). " +
-                "Change the folder if you like, then save.";
+            StatusText.Text = $"Added \"{name}\". It lets Martlet use files in your Documents folder and requires Node.js. Change the folder if needed, then save.";
         }
         catch (Exception error) when (error is JsonException or McpConfigurationException)
         {
@@ -101,7 +100,7 @@ public partial class McpConfigWindow : ThemedWindow
 
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
-        if (Dirty && !ConfirmationDialog.Confirm(this, "Close without saving your changes to mcp.json?", "Martlet - MCP servers"))
+        if (Dirty && !ConfirmationDialog.Confirm(this, "Close without saving your MCP server changes?", "MCP servers"))
             e.Cancel = true;
     }
 }

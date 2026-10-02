@@ -68,7 +68,7 @@ public partial class MainWindow
         var hosts = NetworkMap.Hosts(Inputs());
         if (hosts.Count == 0)
         {
-            voiceSyncStatus = "No paired Martlet host yet: the list stays on this PC until you add one.";
+            voiceSyncStatus = "No other computers are paired yet.";
             return;
         }
         voiceSyncBusy = true;
@@ -97,8 +97,8 @@ public partial class MainWindow
             }));
             var ok = results.Count(r => r.Ok);
             var old = results.Where(r => r.Old).Select(r => r.HostId).ToArray();
-            voiceSyncStatus = $"Synced with {ok} of {results.Length} host{(results.Length == 1 ? "" : "s")} at {DateTime.Now:t}." +
-                (old.Length > 0 ? $" {string.Join(", ", old)} {(old.Length == 1 ? "is" : "are")} older than voice sharing; update {(old.Length == 1 ? "it" : "them")}." : "");
+            voiceSyncStatus = $"Synced with {ok} of {results.Length} computer{(results.Length == 1 ? "" : "s")} at {DateTime.Now:t}." +
+                (old.Length > 0 ? $" Update {string.Join(", ", old)} to sync voices there." : "");
         }
         catch (OperationCanceledException) { }
         finally
@@ -120,7 +120,7 @@ public partial class MainWindow
 
     private Border RecognitionCard()
     {
-        var children = new List<UIElement> { Heading("Recognize who is talking") };
+        var children = new List<UIElement> { Heading("Recognize voices") };
         if (!localVoices.Available)
         {
             children.Add(Warning("Voice recognition needs Martlet's data folder, which isn't available."));
@@ -130,17 +130,14 @@ public partial class MainWindow
             ? 0 : SherpaComponents.DownloadBytes(SherpaPart.Runtime)) + SherpaComponents.DownloadBytes(SherpaPart.Speakers));
         var status = new TextBlock
         {
-            Text = localVoices.Active ? "On. Martlet recognizes voices in every conversation and learns the names people go by."
-                : localVoices.Installed ? "Off. Martlet doesn't check who is talking."
-                : "Off. Martlet can tell people apart by their voices, like AudioTranscriber does.",
+            Text = localVoices.Active ? "On. Martlet learns voices and names during conversations."
+                : localVoices.Installed ? "Off. Martlet isn't checking who is talking."
+                : "Off. Martlet can learn who is speaking by voice.",
             FontSize = 15, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6)
         };
         AutomationProperties.SetAutomationId(status, "PeopleStatus");
         children.Add(status);
-        children.Add(Note("Each thing said to Martlet is compared on this PC with the voices it knows: a known voice is named to the Thinking " +
-            "model (\"Sam is speaking\"), a new one is added as Voice 1, Voice 2... and, after a reply, the Thinking model picks up the " +
-            "names people use (\"I'm Sam\", \"thanks, Sam\"), so a voice collects every name it goes by. Only voiceprints (256 numbers per " +
-            "sample) and names are kept, never recordings. It is a convenience, not proof of who someone is.", new Thickness(0, 0, 0, 8)));
+        children.Add(Note("Martlet learns people's voices and names as you talk. Recordings are never saved.", new Thickness(0, 0, 0, 8)));
         if (localVoices.LoadError is { } error) children.Add(Warning(error));
         if (voiceInstallProgress is { } progress) children.Add(Note(progress, new Thickness(0, 0, 0, 6)));
         if (!localVoices.Installed)
@@ -148,9 +145,7 @@ public partial class MainWindow
             var install = PageButton(installingVoices ? "Downloading..." : "Download and turn on", () => InstallVoicesAsync().Forget(),
                 primary: true, id: "PeopleInstall");
             install.IsEnabled = !installingVoices;
-            children.Add(Note($"The first time, Martlet downloads {SherpaComponents.Disclosure(SherpaPart.Runtime)} and " +
-                $"{SherpaComponents.Disclosure(SherpaPart.Speakers)}: {size} in all, checked against pinned SHA-256 hashes.",
-                new Thickness(0, 0, 0, 0)));
+            children.Add(Note($"Voice recognition needs a one-time {size} download.", new Thickness(0, 0, 0, 0)));
             children.Add(Row(install));
         }
         else
@@ -169,12 +164,12 @@ public partial class MainWindow
         try
         {
             localVoices.SetEnabled(on);
-            ActionText.Text = on ? "Voice recognition is on. An open conversation window uses it from the next thing you say."
-                : "Voice recognition is off. The voices Martlet knows are kept until you forget them.";
+            ActionText.Text = on ? "Voice recognition is on. Open conversations use it from your next message."
+                : "Voice recognition is off. Saved voices are kept.";
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)
         {
-            ActionText.Text = $"Couldn't save {LocalVoices.EnabledFile}: {error.Message}";
+            ActionText.Text = $"Couldn't save your choice: {error.Message}";
         }
         RenderTab();
     }
@@ -184,9 +179,7 @@ public partial class MainWindow
         if (installingVoices || closing) return;
         var total = SherpaComponents.Megabytes(SherpaComponents.DownloadBytes(SherpaPart.Runtime) + SherpaComponents.DownloadBytes(SherpaPart.Speakers));
         if (!ConfirmationDialog.Confirm(this,
-                $"Download voice recognition ({total})? Martlet downloads {SherpaComponents.Disclosure(SherpaPart.Runtime)} and " +
-                $"{SherpaComponents.Disclosure(SherpaPart.Speakers)} into its data folder, checks every file against a pinned SHA-256 and " +
-                "then recognizes voices on this PC. Nothing you say is uploaded for this; only voiceprints and names are saved.",
+                $"Download and turn on voice recognition?\n\nThe download is {total}. Voice matching happens on this PC. Recordings are never uploaded or saved.",
                 "Download"))
             return;
         installingVoices = true;
@@ -195,19 +188,19 @@ public partial class MainWindow
         {
             await localVoices.InstallAsync(new Progress<SherpaProgress>(p =>
             {
-                voiceInstallProgress = $"Downloading {p.Part}: {p.Received * 100 / Math.Max(1, p.Total)}% of {SherpaComponents.Megabytes(p.Total)}...";
+                voiceInstallProgress = $"Downloading voice recognition... {p.Received * 100 / Math.Max(1, p.Total)}% of {SherpaComponents.Megabytes(p.Total)}";
                 ActionText.Text = voiceInstallProgress;
             }), lifetime.Token);
             localVoices.SetEnabled(true);
             voiceInstallProgress = null;
-            ActionText.Text = "Voice recognition is downloaded and on. Talk to Martlet and the voices it hears appear here.";
+            ActionText.Text = "Voice recognition is on. Voices Martlet hears will appear here.";
         }
         catch (OperationCanceledException) { voiceInstallProgress = null; }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or
             System.Net.Http.HttpRequestException or InvalidOperationException)
         {
             voiceInstallProgress = null;
-            ActionText.Text = "Downloading voice recognition stopped: " + error.Message;
+            ActionText.Text = "Couldn't download voice recognition: " + error.Message;
         }
         finally
         {
@@ -218,19 +211,17 @@ public partial class MainWindow
 
     private Border SharingCard()
     {
-        var share = new CheckBox { Content = "Keep this list on my paired Martlet hosts, so any of my computers recognizes these people",
+        var share = new CheckBox { Content = "Sync across my computers",
             IsChecked = localVoices.Sharing, IsEnabled = localVoices.Available };
         AutomationProperties.SetAutomationId(share, "PeopleShare");
         share.Checked += (_, _) => SetSharing(true);
         share.Unchecked += (_, _) => SetSharing(false);
         var sync = PageButton(voiceSyncBusy ? "Syncing..." : "Sync now", () => SyncVoicesAsync().Forget(), link: true, id: "PeopleSync");
         sync.IsEnabled = localVoices.Sharing && !voiceSyncBusy;
-        var syncStatus = Note(localVoices.Sharing ? voiceSyncStatus : "Off: the list stays on this PC only.", new Thickness(0, 6, 0, 0));
+        var syncStatus = Note(localVoices.Sharing ? voiceSyncStatus : "Off. This list stays on this PC.", new Thickness(0, 6, 0, 0));
         AutomationProperties.SetAutomationId(syncStatus, "PeopleSyncStatus");
-        return Card(Heading("On all my computers"), share,
-            Note("While Martlet runs, this PC merges its list with each paired host's copy every 30 seconds over the pinned pairing " +
-                "(the hosts only keep it). Switch which computer is your companion and it already knows everyone. Changes, renames, merges " +
-                "and forgotten voices reach every computer; the newest change wins.", new Thickness(0, 6, 0, 0)),
+        return Card(Heading("Your computers"), share,
+            Note("When Martlet is running, your paired computers keep the same voice list.", new Thickness(0, 6, 0, 0)),
             syncStatus,
             Row(sync));
     }
@@ -244,7 +235,7 @@ public partial class MainWindow
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)
         {
-            ActionText.Text = $"Couldn't save {LocalVoices.SharingFile}: {error.Message}";
+            ActionText.Text = $"Couldn't save sharing: {error.Message}";
         }
         RenderTab();
     }
@@ -258,12 +249,10 @@ public partial class MainWindow
         var children = new List<UIElement> { heading };
         if (voices.Length == 0)
         {
-            children.Add(Note("None yet. Turn recognition on and talk with Martlet; each new voice appears here, and its names fill in as " +
-                "people are named in conversation. You can also name them yourself.", new Thickness(0, 0, 0, 0)));
+            children.Add(Note("None yet. Turn recognition on and talk to Martlet. New voices will appear here.", new Thickness(0, 0, 0, 0)));
             return Card([.. children]);
         }
-        children.Add(Note("Give a voice its name, add the other names it goes by (comma-separated), merge two entries that are the " +
-            "same person, or forget one. A voice that is merged or forgotten stays that way on all your computers.", new Thickness(0, 0, 0, 4)));
+        children.Add(Note("Name voices, add other names, merge duplicates, or forget voices. Changes sync to your computers.", new Thickness(0, 0, 0, 4)));
         foreach (var voice in voices) children.Add(VoiceEntry(voice, voices));
         children.Add(Row(PageButton("Forget all voices", ForgetAllVoices, link: true, id: "PeopleForgetAll")));
         return Card([.. children]);
@@ -310,7 +299,7 @@ public partial class MainWindow
         mergeRow.Children.Add(Labeled("Same person as", merge, 110));
         var mergeButton = PageButton("Merge", () =>
         {
-            if (merge.SelectedIndex < 0) { ActionText.Text = "Choose who this voice also is, then Merge."; return; }
+            if (merge.SelectedIndex < 0) { ActionText.Text = "Choose another voice to merge."; return; }
             MergeVoices(voice, targets[merge.SelectedIndex]);
         }, id: "PeopleMerge-" + voice.Number);
         mergeButton.Margin = new Thickness(10, 0, 0, 0);
@@ -346,7 +335,7 @@ public partial class MainWindow
         var typed = name.Trim();
         if (typed.Length > 0 && VoiceRoster.CleanName(typed) is null)
         {
-            ActionText.Text = $"\"{typed}\" can't be used as a name: start with a letter and use at most {VoiceRoster.MaximumNameLength} characters.";
+            ActionText.Text = $"Names must start with a letter and use at most {VoiceRoster.MaximumNameLength} characters.";
             return;
         }
         var list = others.Split([',', ';', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -365,8 +354,7 @@ public partial class MainWindow
     private void MergeVoices(KnownVoice from, KnownVoice into)
     {
         if (!ConfirmationDialog.Confirm(this,
-                $"Merge {from.DisplayName} into {into.DisplayName}? Martlet then treats both voices as one person: the names and voiceprints " +
-                $"combine under {into.DisplayName} on all your computers. This can't be split again; if you're unsure, rename instead.",
+                $"Merge {from.DisplayName} into {into.DisplayName}?\n\nMartlet will treat them as one person on all your computers. This can't be undone.",
                 "Merge"))
             return;
         localVoices.Join(from.Id, into.Id);
@@ -377,8 +365,8 @@ public partial class MainWindow
     private void ForgetVoice(KnownVoice voice)
     {
         if (!ConfirmationDialog.Confirm(this,
-                $"Forget {voice.DisplayName}? Its voiceprint and names are deleted here and from your other computers. If Martlet hears " +
-                "this voice again, it starts over as a new voice.", "Forget"))
+                $"Forget {voice.DisplayName}?\n\nIts saved voice and names will be deleted from all your computers. If Martlet hears it again, it will appear as new.",
+                "Forget"))
             return;
         localVoices.Forget(voice.Id);
         ActionText.Text = $"Forgot {voice.DisplayName}.";
@@ -388,8 +376,8 @@ public partial class MainWindow
     private void ForgetAllVoices()
     {
         if (!ConfirmationDialog.Confirm(this,
-                "Forget every voice Martlet knows? All voiceprints and names are deleted here and from your other computers. " +
-                "Recognition stays on (turn it off above) and starts over.", "Forget all"))
+                "Forget every voice?\n\nSaved voices and names will be deleted from all your computers. Recognition stays on and starts over.",
+                "Forget all"))
             return;
         localVoices.ForgetAll();
         ActionText.Text = "Martlet forgot every voice.";

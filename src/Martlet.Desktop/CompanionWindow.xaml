@@ -7,12 +7,12 @@
         WindowStartupLocation="CenterOwner" Loaded="Window_Loaded" Closing="Window_Closing"
         AllowDrop="True" PreviewDragOver="Window_PreviewDragOver" PreviewDrop="Window_PreviewDrop"
         AutomationProperties.AutomationId="CompanionWindow"
-        AutomationProperties.Name="Edit local companion personas and response style weights">
+        AutomationProperties.Name="Edit companion personas and response styles">
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="20">
             <TextBlock Text="Companion personas" FontSize="24" FontWeight="SemiBold"/>
             <TextBlock TextWrapping="Wrap" Margin="0,8"
-                       Text="Edit local persona text and response-style weights. Opening, importing or saving does not start capture, contact a provider, run a model or authorize a request. Fresh explicit typed/PTT turns use the saved active revision; automatic listening is not enabled."/>
+                       Text="Edit personas and response styles. Changes stay local until you apply and save them."/>
             <StackPanel x:Name="EditorPanel">
                 <Label Target="{Binding ElementName=PersonaChoice}" Content="_Named persona"/>
                 <ComboBox x:Name="PersonaChoice" MinHeight="30" DisplayMemberPath="Name"
@@ -27,11 +27,11 @@
                 </WrapPanel>
                 <TextBlock Text="Character cards" FontWeight="SemiBold" Margin="0,6,0,2"/>
                 <TextBlock TextWrapping="Wrap"
-                           Text="Bring in a character from SillyTavern, Chub (CharacterHub), RisuAI or another Tavern-compatible app: a PNG card image, a JSON card or a CHARX file (Character Card V1, V2 or V3). Its name, description, personality, scenario and example dialogue become the persona. You can also drop a card onto this window to add it."/>
+                           Text="Import a character card to create or update a persona. Choose a PNG, JSON or CHARX file, or drop it here."/>
                 <WrapPanel Margin="0,8">
-                    <Button Content="Ne_w persona from a character card..." Click="CardNew_Click" Padding="10,6" Margin="0,0,8,0"
+                    <Button Content="Ne_w from card..." Click="CardNew_Click" Padding="10,6" Margin="0,0,8,0"
                             AutomationProperties.AutomationId="CompanionCardNew"/>
-                    <Button Content="_Update this persona from a character card..." Click="CardUpdate_Click" Padding="10,6"
+                    <Button Content="_Update from card..." Click="CardUpdate_Click" Padding="10,6"
                             AutomationProperties.AutomationId="CompanionCardUpdate"/>
                 </WrapPanel>
                 <Label Target="{Binding ElementName=PersonaName}" Content="Persona _name"/>
@@ -42,12 +42,12 @@
                          Height="220" VerticalScrollBarVisibility="Auto" TextChanged="Editor_Changed"
                          AutomationProperties.AutomationId="CompanionText"/>
                 <WrapPanel Margin="0,8">
-                    <Button Content="_Import UTF-8 text..." Click="Import_Click" Padding="10,6" Margin="0,0,8,0"
+                    <Button Content="_Import text..." Click="Import_Click" Padding="10,6" Margin="0,0,8,0"
                             AutomationProperties.AutomationId="CompanionImport"/>
-                    <Button Content="_Export applied text to a new file..." Click="Export_Click" Padding="10,6"
+                    <Button Content="_Export text..." Click="Export_Click" Padding="10,6"
                             AutomationProperties.AutomationId="CompanionExport"/>
                 </WrapPanel>
-                <TextBlock Text="Response-style weights (relative long-run mix; these do not change permission or response frequency)" TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,10,0,4"/>
+                <TextBlock Text="Response style" TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,10,0,4"/>
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="130"/>
@@ -73,12 +73,12 @@
                     <Slider x:Name="TeasingWeight" Grid.Row="4" Grid.Column="1" Minimum="0" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="Weight_Changed" AutomationProperties.AutomationId="CompanionTeasing"/>
                     <TextBlock x:Name="TeasingValue" Grid.Row="4" Grid.Column="2" VerticalAlignment="Center" TextAlignment="Right"/>
                 </Grid>
-                <Button Content="_Apply edits to draft" Click="Apply_Click" Padding="10,7" Margin="0,10,0,0"
+                <Button Content="_Apply edits" Click="Apply_Click" Padding="10,7" Margin="0,10,0,0"
                         AutomationProperties.AutomationId="CompanionApply"/>
                 <WrapPanel Margin="0,10">
-                    <Button Content="_Save companion settings" Click="Save_Click" Padding="10,7" Margin="0,0,8,0"
+                    <Button Content="_Save" Click="Save_Click" Padding="10,7" Margin="0,0,8,0"
                             AutomationProperties.AutomationId="CompanionSave"/>
-                    <Button x:Name="ReloadButton" Content="_Reload saved settings" Click="Reload_Click" Padding="10,7" Margin="0,0,8,0"
+                    <Button x:Name="ReloadButton" Content="_Reload" Click="Reload_Click" Padding="10,7" Margin="0,0,8,0"
                             AutomationProperties.AutomationId="CompanionReload"/>
                     <Button Content="_Close" Click="Close_Click" Padding="10,7"
                             AutomationProperties.AutomationId="CompanionClose"/>

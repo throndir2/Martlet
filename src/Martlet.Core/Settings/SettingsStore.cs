@@ -57,8 +57,8 @@ public sealed partial class SettingsStore
             return new(SettingsLoadState.Invalid, null, null, Failure(
                 ex.Code == ErrorCode.UnsupportedVersion ? ErrorCode.UnsupportedVersion : ErrorCode.SettingsMalformed,
                 ex.Code == ErrorCode.UnsupportedVersion
-                    ? "Settings use an unsupported version. Use a compatible Martlet build or restore a compatible backup; the file was not changed."
-                    : "Settings are malformed or exceed supported limits. Back up the file, then correct it or restore a compatible backup; it was not changed.",
+                    ? "Settings were saved by a newer Martlet. Update Martlet or restore a compatible backup."
+                    : "Settings are damaged or too large. Restore a compatible backup, or fix the settings file.",
                 "settings.restore"));
         }
         catch (UnauthorizedAccessException) { return Inaccessible(); }
@@ -82,11 +82,11 @@ public sealed partial class SettingsStore
                 return new(false, null, existing.Error);
             if (!string.Equals(existing.Revision, expectedRevision, StringComparison.Ordinal))
                 return new(false, null, Failure(ErrorCode.SettingsConflict,
-                    "Settings changed since they were loaded. Reload and review the current profile before saving.", "settings.reload"));
+                    "Settings changed since you opened them. Reload, review and save again.", "settings.reload"));
 
             if (existing.Settings is { } existingSettings && existingSettings.SchemaVersion > settings.SchemaVersion)
                 return new(false, null, Failure(ErrorCode.UnsupportedVersion,
-                    "Settings cannot be downgraded. Keep the existing file or restore a compatible snapshot.", "settings.restore"));
+                    "Settings cannot be saved by this older Martlet. Update Martlet or restore a compatible backup.", "settings.restore"));
             if (existing.Settings is { } prior && settings.SchemaVersion >= 2 &&
                 (prior.Profile.Id != settings.Profile.Id ||
                  !prior.Profile.Credentials.SequenceEqual(settings.Profile.Credentials)))
@@ -113,7 +113,7 @@ public sealed partial class SettingsStore
         }
         catch (ContractException ex)
         {
-            return new(false, null, Failure(ex.Code, "Settings are invalid or unsupported. Correct the profile before saving; existing settings were preserved.", "settings.correct"));
+            return new(false, null, Failure(ex.Code, "Settings are invalid. Correct them and try saving again.", "settings.correct"));
         }
         catch (UnauthorizedAccessException) { return new(false, null, StorageError()); }
         catch (IOException) { return new(false, null, StorageError()); }
@@ -153,7 +153,7 @@ public sealed partial class SettingsStore
 
     private static SettingsSaveResult AttachmentFailure(SettingsSaveResult prepared) => new(false, prepared.Revision,
         Failure(ErrorCode.SettingsConflict,
-            "The metadata checkpoint was saved, but the new key was not attached. Reload Setup and review the pending owned reference; explicitly retry removal before adding another key.",
+            "The key was not saved. Reload Setup and remove the pending key before adding another.",
             "settings.reload"), prepared.MigratedFromSchemaVersion, prepared.SnapshotFileName);
 
     private static void ValidateCredentialTransition(SetupSettings prior, SetupSettings next, Guid? removed)
@@ -278,7 +278,7 @@ public sealed partial class SettingsStore
             var save = await SaveCoreAsync(updated, current.Revision, lockHeld: true, CancellationToken.None, removal.CredentialId);
             if (!save.Saved)
                 save = save with { Error = Failure(save.Error!.Code,
-                    "The selected key is removed or already missing, but cleanup metadata was not saved. Reload and retry this pending removal; missing is a safe cleanup result.",
+                    "The key was removed, but Martlet could not save the cleanup. Reload and retry the pending removal.",
                     "settings.reload") };
             return new(save, save.Saved ? updated : current.Settings);
         }
@@ -287,7 +287,7 @@ public sealed partial class SettingsStore
         catch (ContractException)
         {
             return new(new(false, null, Failure(ErrorCode.InvalidContract,
-                "Review and correct the checkpoint before removing credentials. No invalid configuration can authorize removal.", "settings.correct")), settings);
+                "Review and correct Setup before removing credentials.", "settings.correct")), settings);
         }
     }
 
@@ -314,7 +314,7 @@ public sealed partial class SettingsStore
     }
 
     private static MartletError StorageError() => Failure(ErrorCode.SettingsInaccessible,
-        "Settings cannot be accessed. Check the data directory permissions, free disk space and other Martlet processes, then retry. Do not run as administrator.",
+        "Settings cannot be accessed. Check your data folder permissions, free space and other Martlet windows.",
         "settings.check_access");
     private static MartletError Failure(ErrorCode code, string summary, string action) =>
         new() { Code = code, Stage = Stage.Settings, Retryable = code == ErrorCode.SettingsInaccessible, Summary = summary, ActionId = action };

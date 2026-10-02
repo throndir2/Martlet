@@ -248,6 +248,19 @@ default, choices) and either `plan` (the mcp.json `entry`, the `secrets` names
 it would save and a `preview`) or the `problem` (such as a required field left
 empty). Secret values are never returned.
 
+`logs_timeline` reads this PC's logs as the desktop's
+[Diagnostics page](DIAGNOSTICS.md#diagnostics-page-and-the-log-host) shows
+them (optional absolute `dataDirectory`, default the current user's):
+`desktop`, `avatar-renderer` and `host-runs` with their rotated copies, parsed
+into one timeline, newest first, of `{at, level, component, seq, message}`
+(a stack trace or output lines stay in their line's `message`). Optional
+filters: `level` (`all`, `warnings`, `errors`), `component`, `contains` (at
+most 200 characters) and `lines` (1-1000, default 200). It also returns
+`device` (this PC's ID as a log source), `logsFolder`, `total`, `errors`,
+`warnings`, per-`components` counts, `matching`, and `logHost` (the `logs`
+entry of `cluster.json`, null when nobody collects logs; `plan` is `none`,
+`loaded` or `unreadable`). Read-only; it contacts no host.
+
 To drive the visible desktop, start `Martlet.Desktop.exe` yourself in the **same
 interactive Windows session** (ideally with a disposable `--data-directory`).
 Call `ui_connect` with that process ID. `ui_snapshot` returns window accessible names,
@@ -259,11 +272,11 @@ screen `bounds` (`[x, y, width, height]` in pixels) and, for text controls, the
 alignment can be checked: in the talk window, the empty box's hint
 `LivePlaceholder` must have the same `bounds` position as the `textBounds` of
 text typed into `LiveInput`.
-Status fields include `VisionStatus` (Companion › Vision: whether the Thinking model can see, or has been retired, and the fix), `RepliesNow` (Companion › Replies: that Martlet asks for replies of one or two sentences, the max reply length ceiling in effect and the other saved settings), `SetupCloudHint-Thinking` (the cloud provider's recommended Thinking model, or a retired-model warning), `SetupLocalRecommendation` (the local Ollama model recommended for this PC's graphics card), `SetupOllamaStatus` (whether Ollama is installed or running and which models it has), `SetupLocalModelTest` (Thinking › This PC: the last *Test model* result for the model in the box, or that it isn't tested yet), `SetupProviderHint` (Setup › Jobs prefilled model) and `SetupF5About` (Speaking › This PC: what setting up F5 installs and its licence). `SetupHostThisPc` and `SetupUseLocal-Speaking` start the F5 setup run window straight away (no extra confirmation; installing Docker Desktop still asks for its terms), so they need `--allow-ui-effects`. `SetupTestLocalModel` (Thinking › This PC's *Test model*) starts Ollama if needed, loads the model in the box and sends it one short loopback chat request in a run window, so it needs `--allow-ui-effects` too; read the outcome from `HostRunStatus` and `SetupLocalModelTest`. A run window (`HostRunWindow`, titled `Martlet - <run>`) returns its status line as `HostRunStatus` (for example *Waiting for Docker Desktop to start...* or why it stopped); its output (`HostRunOutput`, which can show a one-use pairing code) is not returned, so read it with `logs_tail` `host-runs`, which also records each status change. `HostRunCancel` cancels a running run (or closes the window afterwards) and needs `--allow-ui-effects`. On a fresh data directory, F5 setup first needs saved settings (*Complete Setup once...*): `SetupUseWindowsVoice` saves them. Setting `DOCKER_HOST` (for example to a local test named pipe) before launching the desktop points its Docker checks away from the real engine. `ui_click` invokes a control by automation ID and `ui_select` selects a named combo-box
+Status fields include `VisionStatus` (Companion › Vision: whether the Thinking model can see, or has been retired, and the fix), `RepliesNow` (Companion › Replies: that Martlet asks for replies of one or two sentences, the max reply length ceiling in effect and the other saved settings), `SetupCloudHint-Thinking` (the cloud provider's recommended Thinking model, or a retired-model warning), `SetupLocalRecommendation` (the local Ollama model recommended for this PC's graphics card), `SetupOllamaStatus` (whether Ollama is installed or running and which models it has), `SetupLocalModelTest` (Thinking › This PC: the last *Test model* result for the model in the box, or that it isn't tested yet), `SetupProviderHint` (Setup › Jobs prefilled model), `AppUpdateStatus` (Settings › App updates: the installed version, the check schedule and the last check or download result) and `SetupF5About` (Speaking › This PC: what the F5 voice is and its non-commercial use restriction). `SetupHostThisPc` and `SetupUseLocal-Speaking` start the F5 setup run window straight away (no extra confirmation; installing Docker Desktop still asks for its terms), so they need `--allow-ui-effects`. `SetupTestLocalModel` (Thinking › This PC's *Test model*) starts Ollama if needed, loads the model in the box and sends it one short loopback chat request in a run window, so it needs `--allow-ui-effects` too; read the outcome from `HostRunStatus` and `SetupLocalModelTest`. A run window (`HostRunWindow`, titled `Martlet - <run>`) returns its status line as `HostRunStatus` (for example *Waiting for Docker Desktop to start...* or why it stopped); its output (`HostRunOutput`, which can show a one-use pairing code) is not returned, so read it with `logs_tail` `host-runs`, which also records each status change. `HostRunCancel` cancels a running run (or closes the window afterwards) and needs `--allow-ui-effects`. On a fresh data directory, F5 setup first needs saved settings (*Complete Setup first.*): `SetupUseWindowsVoice` saves them. Setting `DOCKER_HOST` (for example to a local test named pipe) before launching the desktop points its Docker checks away from the real engine. `ui_click` invokes a control by automation ID and `ui_select` selects a named combo-box
 option. By default only passive navigation and
 diagnostics controls can be clicked. The main window is split into pages, and a
 page's controls are only visible after you open it: click `NavHome`,
-`NavDevices`, `NavCompanion` or `NavSettings` first (for example
+`NavDevices`, `NavCompanion`, `NavDiagnostics` or `NavSettings` first (for example
 `NavCompanion` before `OpenSetup`). On Settings, click `DiagnosticsSection` to
 expand the pipeline and status fields. On a fresh data directory, `TourSkip`
 dismisses the welcome tour, and `TourBegin` and `TourBack` step through it
@@ -274,7 +287,7 @@ dismisses the welcome tour, and `TourBegin` and `TourBack` step through it
 for example `CompanionTab-People`) and `OpenPeople` (on Listening) are passive
 navigation too. People shows `PeopleStatus`, `PeopleSyncStatus` and
 `PeopleVoiceCount`, and Listening shows `ListenParakeetStatus`; snapshots return
-these status texts, as does the talk window's `LiveStatus` (the line under "Martlet": what it is doing, or why the last reply failed, naming the job that failed: *Martlet couldn't speak: ...* for the voice, and *Your Martlet host <ID> didn't run ...* when the job runs on a paired host). Each voice's controls are numbered by voice (`PeopleName-3`,
+these status texts, as does the talk window's `LiveStatus` (the line under "Martlet": what it is doing, or why the last reply failed, naming the job that failed: *Martlet couldn't speak. ...* for the voice, and *Your Martlet host <ID> didn't answer ...* when the job runs on a paired host). Each voice's controls are numbered by voice (`PeopleName-3`,
 `PeopleOtherNames-3`, `PeopleSave-3`, `PeopleOwner-3`, `PeopleMergeTarget-3`,
 `PeopleMerge-3`, `PeopleForget-3`); like `PeopleInstall`, `PeopleRecognize`,
 `PeopleShare`, `PeopleSync`, `PeopleForgetAll` and `SetupListenParakeet`, they
@@ -304,6 +317,27 @@ features* (administrator prompt and possibly a restart, so it needs
 virtualization, Martlet opens a run window by itself (`HostRunWindow`) that
 continues the setup; `continueSetup` in `virtualization_status` shows what is
 pending.
+Devices' `AddComputer` (and Settings' `OpenHosts`) opens the *Add a computer*
+wizard (`HostsWindow`, titled *Martlet - add a computer*; the click may return
+`completed: false` while that dialog stays open). Its rail steps
+(`HostsStepWhere`, `HostsStepInstall`, `HostsStepPair`, `HostsStepRoles`),
+`HostsBack`, `HostsNext`, `HostsClose`, the method cards (`HostMethodThisPc`,
+`HostMethodSshDocker`, `HostMethodSshNative`, `HostMethodOnHost`; choosing one
+moves on to Install), `HostsEnterCode` (straight to Pair for a host that already
+shows a code) and the `HostCommandSection`, `PairCommandSection` and
+`DeviceIdSection` expanders only change what the wizard shows, so they are
+passive clicks. Snapshots return `HostStatus` (the wizard's status line: what
+pairing did, or why it was refused, such as *That code doesn't match...* or *No
+Martlet host answered at ...*), `PairedHost`, and `PairCodeTitle`/`PairCodeHelp`
+(*Enter the code shown on the host* when Martlet can't reach the host, *Or enter a
+code from the host* next to `PairConsole` otherwise). `PairAddress` and
+`PairingCode` take the host's address and short code (`ui_set_text`, so
+`--allow-ui-effects`), and `PairHost` pairs; a successful pairing stores a
+device secret in Windows Credential Manager, so verification stops at refused
+codes. On the host dashboard, *Show a pairing code* (`Step-pair-0`) shows the
+address (`HostRunPairAddress`, returned) and the one-use code (`HostRunPairCode`,
+never returned) in the run window's `HostRunPairing` panel; the host-runs log
+masks codes.
 Use `ui_snapshot` again to observe asynchronous effects. Modal
 actions may return `completed: false` while their dialog remains open; this
 means the invoke is still pending, not that the action finished.
@@ -337,10 +371,45 @@ passive. To see a problem on a disposable data directory, put invalid JSON in
 (*crash*), or choose Ollama on this PC in Companion › Thinking while Ollama
 isn't running (*ollama*).
 
+The Diagnostics page (`NavDiagnostics`) lists log lines newest first. Each
+shown line is a list item `LogEntry-<n>` (`LogEntry-0` is the newest shown)
+whose value reads *<time> <level> <computer> · <part>: <first line>*;
+clicking one only selects it, and `LogDetail` then returns the whole line
+(time, level, computer, part, who passed it on and every following line).
+`LogSummary` says how many lines are shown of how many, from how many
+computers, the last 24 hours' errors and warnings and where remote lines came
+from (the log host, each paired host's own log, or why not). The filters are
+pills that only filter: `LogLevel-all`, `LogLevel-warnings`, `LogLevel-errors`,
+`LogPart-<part>` (`all`, `desktop`, `avatar-renderer`, `host-runs`, `gateway`)
+and `LogSource-<computer>` (`all`, this PC's device ID such as
+`LogSource-desktop-diva`, or a host ID); all are passive clicks, and snapshots
+report which is chosen in `selected`. `LogSearch` needs `ui_set_text` (and so
+`--allow-ui-effects`). `LogsRefresh` reads the logs again and sends nothing, so
+it is passive; `LogsCopy` (clipboard) and `LogsOpenFolder` (Explorer) are not.
+`LogHostChoice` returns the chosen log host (*None (each computer keeps its
+own)*, a host ID, or *<host> (not paired with this PC)*); changing it with
+`ui_select` changes the shared plan and needs `--allow-ui-effects`.
+`LogHostStatus` says what this PC last sent to the log host and which hosts
+didn't answer or need a Martlet update. To see lines on a
+disposable data directory, write `logs\desktop.log` (lines like
+`2026-10-01 22:15:44.974 -07:00 WARN [1] message`), `logs\avatar-renderer.log`
+or `logs\host-runs.log` before launching. Home's `HealthOpen-errors-diagnostics`
+and `HealthOpen-crash-diagnostics` open this page.
+
+`ui_snapshot` reports `selected` (true or false) for controls that are chosen
+rather than ticked (navigation, Companion's side list, radio buttons and
+filter pills, list items), and a combo box in the status fields reads as its
+chosen option.
+
 For the desktop character, open `CompanionTab-Character`; with
 `--allow-ui-effects`, `SetupCharacterToggle` shows or hides it and
 `SetupCharacterZoomIn`, `SetupCharacterZoomOut` and `SetupCharacterResetZoom`
-zoom its overlay. The `SetupCharacterView` status then reports the overlay's
+zoom its overlay. `SetupCharacterNow` returns the page's Now line (the model,
+then *on your desktop* or *hidden*), and `SetupCharacterNowProblem` appears when
+the character's last stop did not finish cleanly (pressing Show or Hide
+character retries; details go to the `desktop` log). Exiting never waits on the
+character: Settings' `ExitMartlet` (needs `--allow-ui-effects`) closes Martlet
+even then, and Windows ends the renderer with it. After a zoom, the `SetupCharacterView` status reports the overlay's
 size, its distance from the top of the screen, the camera zoom and where the
 top of the character's head sits relative to the overlay's top edge (it must
 stay in view at every zoom).
@@ -481,7 +550,7 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `logs_tail`, `virtualization_status` and `mcp_servers_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `logs_tail`, `logs_timeline`, `virtualization_status` and `mcp_servers_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
