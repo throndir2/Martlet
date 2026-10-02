@@ -44,8 +44,10 @@ public sealed class ClusterSyncTests
     public void Plan_copy_and_choice_are_kept_next_to_the_other_preferences()
     {
         using var scope = new AvatarHostingTests.Scope();
-        Assert.False(ClusterSync.LoadEnabled(scope.DirectoryPath));
+        Assert.True(ClusterSync.LoadEnabled(scope.DirectoryPath));
         Assert.Same(ClusterPlan.Empty, ClusterSync.LoadPlan(scope.DirectoryPath));
+        ClusterSync.SaveEnabled(scope.DirectoryPath, false);
+        Assert.False(ClusterSync.LoadEnabled(scope.DirectoryPath));
         ClusterSync.SaveEnabled(scope.DirectoryPath, true);
         var plan = ClusterPlan.Empty.Assign(ClusterJobs.Speaking, "gpu-a", false, true, "gpu-b", "desktop-a", Now);
         ClusterSync.SavePlan(scope.DirectoryPath, plan);

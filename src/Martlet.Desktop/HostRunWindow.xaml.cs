@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Windows;
+using Martlet.Core.Installation;
 
 namespace Martlet.Desktop;
 
@@ -25,13 +26,22 @@ public partial class HostRunWindow : ThemedWindow
 
     private readonly string title;
 
+    /// <summary>What this run does, as its window shows it (for example "Set up this PC's host service").</summary>
+    internal string Heading => title;
+
     /// <summary>Remote output lines; posts to this window.</summary>
     internal IProgress<string> Output { get; }
     /// <summary>Password, sudo and host-key questions, asked over this window.</summary>
     internal IHostShellPrompts Prompts { get; }
     internal CancellationToken Token => cancel.Token;
 
-    internal void Status(string text) => StatusText.Text = text;
+    /// <summary>Sets the status line; each change is also written to the run log, so a run that stalls shows its last step.</summary>
+    internal void Status(string text)
+    {
+        if (StatusText.Text == text) return;
+        StatusText.Text = text;
+        HostRunLog.Write(title, "status: " + text);
+    }
 
     /// <summary>Opens a run window over <paramref name="owner"/> and runs <paramref name="job"/> (on the UI thread; await
     /// the runner). Returns the job's summary, or null when it failed or was canceled (the reason is shown).</summary>
@@ -60,6 +70,13 @@ public partial class HostRunWindow : ThemedWindow
             Status("Canceled.");
             HostRunLog.Write(title, "--- canceled");
             ErrorLog.Info($"Host run canceled: {title}");
+            return null;
+        }
+        catch (PausedForRestartException paused)
+        {
+            Status(paused.Message);
+            Append("Paused: " + paused.Message);
+            ErrorLog.Info($"Host run paused for a Windows restart: {title}");
             return null;
         }
         catch (Exception error) when (error is not OutOfMemoryException)
@@ -186,7 +203,7 @@ internal static class HostActions
                     $"Stop {role} in this PC's host service and remove it from the gateway? Its data volumes are kept, so adding it again is quick.",
                     "Remove role"))
                 throw new OperationCanceledException();
-            await HostLocal.EnsureDockerAsync(run.Status, run.Output, run.Token);
+            await HostLocal.EnsureDockerAsync(run, action.Verb == HostVerb.Setup ? ContinueSetupKind.HostService : ContinueSetupKind.Docker);
             await HostLocal.EnsureImageAsync(target, run.Status, run.Output, run.Token);
             if (role is not null && add && input is null)
             {
@@ -227,7 +244,7 @@ internal static class HostActions
         if (dialog.Ask(owner) is not { } values) return Task.FromResult<string?>(null);
         return HostRunWindow.RunAsync(owner, "Pair your main PC", async run =>
         {
-            await HostLocal.EnsureDockerAsync(run.Status, run.Output, run.Token);
+            await HostLocal.EnsureDockerAsync(run, ContinueSetupKind.Docker);
             await HostLocal.EnsureImageAsync(target, run.Status, run.Output, run.Token);
             run.Status("Asking this PC's host service for a one-use pairing code...");
             var shown = false;

@@ -90,7 +90,7 @@ None of them finishes the job alone.
 
 Every desktop pairs with every host on its own. A second PC cannot "join";
 it repeats setup, pairing and keys. The shared *cluster plan* syncs only
-routing and is off by default (Devices › *Keep who does what in sync on all
+routing and is on by default (Devices › *Keep who does what in sync on all
 my computers*).
 
 ---
@@ -415,7 +415,7 @@ don't redo everything, and tell the network what this PC can do.*
   configuration and its abilities advertised, without copying codes,
   consoles or per-host pairing.
 - **Today**: not possible. Each desktop pairs each host separately via the
-  Hosts wizard; cloud keys are re-entered; sync is a separate opt-in.
+  Hosts wizard; cloud keys are re-entered; who-does-what sync is on by default.
 
 #### B2. Approve a joining machine
 
@@ -1028,7 +1028,8 @@ it.*
   failover is on by default for jobs another machine can run. Home shows
   "*Thinking moved from GAMING-PC to DESKTOP-01 (GAMING-PC stopped
   answering).* **Move back**". Without an alternative: Fix card.
-- **Today**: sync and failover are separate opt-ins on Devices.
+- **Today**: sync is on by default (a Devices toggle turns it off); failover
+  is a per-job opt-in on Devices.
 
 #### I4. Change what this PC is for
 
@@ -1298,7 +1299,7 @@ prompt per run.
 | Ollama | Thinking on this PC | Silent install, then the model download, load and test. |
 | Model files (LLM, whisper, F5) | The job that uses them | Downloaded in the runner; resumable. |
 | Windows speech languages | Windows speech chosen and the language is missing | Installed through Windows features in the runner. |
-| WSL 2 | A job on this PC that needs the host service | `wsl --install --no-distribution` in the runner; if Windows needs a restart, Martlet resumes setup after sign-in. |
+| WSL 2 | A job on this PC that needs the host service | Done: before Docker Desktop starts, the runner turns on Virtual Machine Platform, Windows Subsystem for Linux, the hypervisor and WSL 2.1.5+ in one UAC step; if Windows needs a restart, Martlet asks, restarts and resumes setup after sign-in. Firmware virtualization: an offered restart into the firmware settings. |
 | Docker Desktop | Same | Silent install with its licence accepted on the user's behalf after the terms sheet; started automatically; no sign-in. |
 | Firewall rule (TCP 9443) | Only when this PC helps other computers | Part of the same single elevation; no separate Public-to-Private dialog. |
 | NVIDIA driver | GPU jobs | Detected. If missing or too old, a Fix card links to the driver download (drivers can't be installed silently and reliably). The plan falls back to CPU or cloud until then. |
@@ -1353,6 +1354,6 @@ Each flow below asks for a step Martlet could do itself.
 | 13 | Firewall | Separate *make network Private* confirmation, then UAC | Inside the single elevation, only when helping others | `HostsWindow.xaml.cs:308-320`, `WindowsFirewall.cs` |
 | 14 | Memory | Storage choice, enable checkbox, *Save memory configuration* | One switch | `MemoryWindow.xaml(.cs)` |
 | 15 | Updates | Four separate preferences | All on by default | `MainWindow.Updates.cs`, `UpdateCheckPreferences.cs` |
-| 16 | Devices sync and failover | Two opt-in toggles | Always on inside a network | `MainWindow.Cluster.cs` |
+| 16 | Devices sync and failover | Sync on by default with a toggle; failover opt-in per job | Always on inside a network | `MainWindow.Cluster.cs` |
 | 17 | Add a voice | Done: the passive Voice Library window is gone; *Add a voice...* on *Voices* takes the file, name, exact transcript and whose voice, then uses it | Record in place and fill the transcript from Listening (D3) | `F5AddVoiceDialog.cs` |
 | 18 | Setup advisor | Three question pages, then a plan the user still carries out by hand | Hardware-based plan that sets itself up (A1) | `SetupAdvisorWindow.xaml(.cs)` |

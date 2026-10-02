@@ -70,6 +70,9 @@ public partial class MainWindow
     private bool tabEdited;
     private bool savingTab;
     private IReadOnlyList<string>? ollamaModels;
+    private LocalModelTestOutcome? localModelTest;
+    private Action? showLocalTest;
+    private bool testingLocalModel;
     private IReadOnlyList<WindowsVoice>? windowsVoices;
     private readonly Dictionary<CompanionTab, JobPlace> tabPlace = [];
 
@@ -518,14 +521,31 @@ public partial class MainWindow
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
 
         string ModelId() => (model.Text ?? "").Trim();
+        var tested = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 10, 0, 0) };
+        AutomationProperties.SetAutomationId(tested, "SetupLocalModelTest");
+        AutomationProperties.SetLiveSetting(tested, AutomationLiveSetting.Polite);
+        void ShowTest()
+        {
+            var last = localModelTest is { } outcome && outcome.Model == ModelId() ? outcome : null;
+            tested.Text = last?.Text ?? (ModelId().Length == 0 ? "" : $"{ModelId()} isn't tested yet. Test model loads it in Ollama and asks it to say hello, " +
+                "the way Martlet's replies do, so you know it runs on this PC before you talk.");
+            tested.SetResourceReference(TextBlock.ForegroundProperty, last is null ? "MutedBrush" : last.Passed && !last.Warning ? "SuccessBrush"
+                : "WarningBrush");
+        }
+        ShowTest();
+        showLocalTest = ShowTest;
+        model.TextChanged += (_, _) => ShowTest();
+        var test = PageButton("Test model", () => TestLocalModelAsync(ModelId()).Forget(), id: "SetupTestLocalModel");
         // Until Ollama is installed, installing it (with the chosen model, then switching to it) is the only step that does anything.
         var buttons = installed
             ? Row(
                 PageButton("Download model", () => PullOllamaModelAsync(ModelId()).Forget(), id: "SetupPullModel"),
                 PageButton("Check Ollama", () => CheckOllamaAsync().Forget(), id: "SetupCheckOllama"),
+                test,
                 PageButton("Use Ollama on this PC", () => SaveLocalThinkingAsync(ModelId()).Forget(), primary: true, id: "SetupUseLocalThinking"))
             : Row(
                 PageButton("Install Ollama and use it", () => InstallOllamaAsync(ModelId()).Forget(), primary: true, id: "SetupInstallOllama"),
+                test,
                 PageButton("Use Ollama on this PC", () => SaveLocalThinkingAsync(ModelId()).Forget(), id: "SetupUseLocalThinking"));
 
         var suggestion = Note($"Recommended here: {recommended.Id} ({recommended.Size}). Every suggestion talks, sees your screen " +
@@ -542,7 +562,64 @@ public partial class MainWindow
             picks,
             suggestion,
             Note(gpu + " Prefer instruct/chat models.", new Thickness(0, 8, 0, 10)),
-            buttons);
+            buttons,
+            tested);
+    }
+
+    /// <summary>The last model test on this PC's Ollama: which model, what it found, and whether it worked.</summary>
+    private sealed record LocalModelTestOutcome(string Model, string Text, bool Passed, bool Warning);
+
+    /// <summary>Loads <paramref name="model"/> in this PC's Ollama and asks it for a short streamed reply, the way Martlet's
+    /// replies do, so a model that won't run here shows up while it is being set up rather than on the first message.</summary>
+    private async Task TestLocalModelAsync(string model)
+    {
+        try { ChatCompletionsSetup.ModelId(model); }
+        catch (ContractException error) { ActionText.Text = error.Message; return; }
+        if (testingLocalModel)
+        {
+            ActionText.Text = "A model test is already running; its window shows how far it got.";
+            return;
+        }
+        testingLocalModel = true;
+        ActionText.Text = $"Testing {model} in Ollama on this PC; the run window shows each step.";
+        // Like a reply on this route: no reply budget unless a max reply length is set, and the local route's first-answer wait.
+        int? replyTokens = GenerationSupport.SendsReplyBudget(GenerationSupport.LocalOllamaChatBaseUrl, homeSettings?.Generation)
+            ? homeSettings!.Generation!.ReplyTokens : null;
+        LocalModelTestResult? result = null;
+        string? failure = null;
+        try
+        {
+            await HostRunWindow.RunAsync(this, $"Test {model}", async run =>
+            {
+                try
+                {
+                    result = await LocalOllama.TestAsync(model, replyTokens, LiveConversationConfiguration.LocalOllamaTextLimits.FirstDeltaTimeout,
+                        run.Status, run.Output, run.Token);
+                    return result.Summary;
+                }
+                catch (InvalidOperationException error)
+                {
+                    failure = error.Message;
+                    throw;
+                }
+            });
+        }
+        finally { testingLocalModel = false; }
+        if (closing) return;
+        var route = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var inUse = IsLocalOllama(route) && route!.ModelId == model;
+        if (result is not null)
+        {
+            localModelTest = new(model, result.Summary, true, result.Warning);
+            ActionText.Text = result.Summary + (inUse ? "" : " Choose Use Ollama on this PC to think with it.");
+        }
+        else if (failure is not null)
+        {
+            localModelTest = new(model, $"Test failed: {failure}", false, false);
+            ActionText.Text = localModelTest.Text;
+        }
+        else ActionText.Text = $"Testing {model} stopped before it finished.";
+        showLocalTest?.Invoke();
     }
 
     /// <summary>Downloads a model into this PC's Ollama in a run window (no console), then refreshes what Ollama has.</summary>
@@ -554,14 +631,15 @@ public partial class MainWindow
         var done = await HostRunWindow.RunAsync(this, $"Download {model}", async run =>
         {
             await LocalOllama.PullAsync(model, run.Status, run.Output, run.Token);
-            return $"{model} is downloaded. Choose Use Ollama on this PC to think with it.";
+            return $"{model} is downloaded. Choose Test model to check it runs on this PC, then Use Ollama on this PC to think with it.";
         });
         if (closing) return;
         ActionText.Text = done ?? $"{model} was not downloaded. The run window shows why.";
         if (done is not null) await CheckOllamaAsync();
     }
 
-    /// <summary>One click: installs Ollama with the chosen model (no console) and, once it is there, thinks with it.</summary>
+    /// <summary>One click: installs Ollama with the chosen model (no console), thinks with it once it is there, then tests it so
+    /// a model that won't run on this PC shows up now rather than on the first message.</summary>
     private async Task InstallOllamaAsync(string model)
     {
         try { ChatCompletionsSetup.ModelId(model); }
@@ -575,8 +653,13 @@ public partial class MainWindow
         }
         await CheckOllamaAsync();
         if (closing) return;
-        if (ollamaModels?.Contains(model, StringComparer.Ordinal) == true) await SaveLocalThinkingAsync(model);
-        else ActionText.Text = $"Ollama is installed, but {model} isn't downloaded yet: choose Download model.";
+        if (ollamaModels?.Contains(model, StringComparer.Ordinal) != true)
+        {
+            ActionText.Text = $"Ollama is installed, but {model} isn't downloaded yet: choose Download model.";
+            return;
+        }
+        await SaveLocalThinkingAsync(model);
+        if (!closing) await TestLocalModelAsync(model);
     }
 
     /// <summary>Asks the local Ollama (loopback only, on request) which models it has.</summary>
@@ -806,17 +889,27 @@ public partial class MainWindow
             null,
             key => AssignJobAsync(job, key), job.Disclosure, exclude);
 
-    /// <summary>Every paired host (except <paramref name="exclude"/>) with what it runs and <i>Use it</i>, plus <i>Add a
-    /// computer</i>, <i>Check hosts</i> and the Devices map. <paramref name="again"/> labels the owner's button when using it
-    /// again does something (choosing another voice); otherwise the owner shows <i>In use</i>.</summary>
+    /// <summary>Every paired host (except <paramref name="exclude"/>) that can run the job, with what it runs and <i>Use it</i>,
+    /// plus <i>Add a computer</i>, <i>Check hosts</i> and the Devices map; hosts whose platform or hardware can't run it are
+    /// named underneath with why. <paramref name="again"/> labels the owner's button when using it again does something
+    /// (choosing another voice); otherwise the owner shows <i>In use</i>.</summary>
     private Border ComputersCard(string job, string engine, string roleKind, string? owner, string ownerDetail, string? again,
         Func<string, Task> assign, string disclosure, PairedHost? exclude)
     {
         var stack = new List<UIElement> { Heading("Your computers") };
-        var hosts = NetworkMap.Hosts(Inputs()).Where(h => h.HostId != exclude?.HostId).ToArray();
+        var paired = NetworkMap.Hosts(Inputs()).Where(h => h.HostId != exclude?.HostId).ToArray();
+        bool Runs(PairedHost host) => hostChecks.GetValueOrDefault(host.HostId)?.Offers?.ContainsKey(roleKind) == true;
+        var unable = paired.Where(h => h.HostId != owner && !Runs(h) && HostCan(h.HostId, roleKind) is { Allowed: false }).ToArray();
+        var hosts = paired.Except(unable).ToArray();
         if (hosts.Length == 0)
-            stack.Add(Note("No other Martlet host is paired yet. Add a computer with a graphics card, such as a gaming PC, then hand " +
-                $"{job} to it here. Martlet installs {engine} there when you do.", new Thickness(0, 0, 0, 8)));
+        {
+            var add = $"Add a computer with a graphics card, such as a gaming PC, then hand {job} to it here. Martlet installs {engine} there when you do.";
+            var none = Note(unable.Length > 0 ? $"None of your paired computers can run {engine}. {add}"
+                : exclude is not null ? $"Only this PC's own host service ({exclude.HostId}) is paired, and it is the This PC choice above. {add}"
+                : $"No other Martlet host is paired yet. {add}", new Thickness(0, 0, 0, 8));
+            AutomationProperties.SetAutomationId(none, "HostChoices-" + job);
+            stack.Add(none);
+        }
         foreach (var host in hosts)
         {
             var check = hostChecks.GetValueOrDefault(host.HostId);
@@ -829,7 +922,10 @@ public partial class MainWindow
                 : check?.Reachable == false ? "Not reachable right now." : "Not checked yet.";
             var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             text.Children.Add(new TextBlock { Text = host.HostId, FontSize = 15, FontWeight = FontWeights.SemiBold });
-            text.Children.Add(Note(detail, new Thickness(0, 2, 0, 0)));
+            var line = Note(detail, new Thickness(0, 2, 0, 0));
+            AutomationProperties.SetName(line, $"{host.HostId}: {detail}");
+            AutomationProperties.SetAutomationId(line, $"HostChoice-{job}-{host.HostId}");
+            text.Children.Add(line);
             var use = PageButton(owner == host.HostId ? again ?? "In use" : "Use it",
                 () => assign("host:" + host.HostId).Forget(), primary: owner != host.HostId && cannot is null, id: $"SetupUseHost-{job}-{host.HostId}");
             use.IsEnabled = cannot is null && !(owner == host.HostId && again is null);
@@ -839,9 +935,16 @@ public partial class MainWindow
             row.Children.Add(text);
             stack.Add(row);
         }
+        if (unable.Length > 0)
+        {
+            var why = Note(string.Join(" ", unable.Select(h => $"{h.HostId} can't run {engine}: {HostCan(h.HostId, roleKind)!.Reason}")),
+                new Thickness(0, 0, 0, 8));
+            AutomationProperties.SetAutomationId(why, "HostChoicesUnable-" + job);
+            stack.Add(why);
+        }
         stack.Add(Row(
             PageButton("Add a computer", () => RunNodeAction(NodeAction.AddComputer), primary: hosts.Length == 0, id: "SetupAddComputer-" + job),
-            hosts.Length == 0 ? null : PageButton("Check hosts", () => RunNodeAction(NodeAction.CheckHost), id: "SetupCheckHosts-" + job),
+            paired.Length == 0 ? null : PageButton("Check hosts", () => RunNodeAction(NodeAction.CheckHost), id: "SetupCheckHosts-" + job),
             PageButton("Open the Devices map", () => Navigate(NavDevices), id: "SetupOpenMap-" + job)));
         stack.Add(Note(disclosure, new Thickness(0, 8, 0, 0)));
         return Card([.. stack]);

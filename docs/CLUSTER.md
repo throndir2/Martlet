@@ -3,9 +3,9 @@
 Martlet can keep **who does what** (which computer handles thinking,
 listening, speaking and lip-sync) the same on every computer you own, move
 jobs between computers on the spot, and move a job to another host when its
-host stops answering. It is opt-in: **Devices > Settings for all devices > Keep who does
-what in sync on all my computers**, plus a per-job **Fail over to another
-host** choice.
+host stops answering. Sync is **on by default** (turn it off in **Devices >
+Settings for all devices > Keep who does what in sync on all my computers**);
+failover stays a per-job **Fail over to another host** choice.
 
 ## Model
 
@@ -34,7 +34,7 @@ host** choice.
 | Copy | Location | Written by |
 | --- | --- | --- |
 | Each host | `cluster.json` beside `host.json` (0600, gateway service owner). Not part of the approved configuration, so role changes never need re-approval | The gateway, when a paired desktop merges into it |
-| Each desktop | `cluster.json` in Martlet's data folder; the on/off choice in `cluster-sync.txt` | Martlet |
+| Each desktop | `cluster.json` in Martlet's data folder; the on/off choice in `cluster-sync.txt` (missing means on; only `off` turns sync off) | Martlet |
 
 The gateway serves `GET /martlet/v1/cluster` (its copy) and
 `POST /martlet/v1/cluster` (merge a copy in, return the merged result) to any
@@ -60,7 +60,9 @@ hosts**) the desktop:
 
 Changes made on this PC (the Devices page, Setup, forgetting a host, failover
 choices) are recorded immediately, even while sync is off, so turning sync on
-later keeps whichever change is actually newest.
+later keeps whichever change is actually newest. The same holds for computers
+updated from a version where sync was off by default: on their first check
+they adopt the newest change from any computer.
 
 ## Failover
 

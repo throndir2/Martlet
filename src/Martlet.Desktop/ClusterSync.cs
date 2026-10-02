@@ -26,7 +26,7 @@ internal sealed record ClusterProbe(string HostId, bool Reachable, string Text, 
 
 /// <summary>The rules behind shared "who does what": which host role each job needs, what this PC does now, which host
 /// takes over a job whose host stopped answering, and this PC's copy of the plan (cluster.json) and on/off choice
-/// (cluster-sync.txt) next to the other local preferences.</summary>
+/// (cluster-sync.txt, on unless the owner turned it off) next to the other local preferences.</summary>
 internal static class ClusterSync
 {
     internal const string PlanFile = "cluster.json";
@@ -101,10 +101,11 @@ internal static class ClusterSync
         .OrderBy(role => role.Kind, StringComparer.Ordinal)
         .ToArray();
 
+    /// <summary>Whether sync is on: on by default, off only after the owner turned it off on this PC.</summary>
     internal static bool LoadEnabled(string directory)
     {
-        try { return File.ReadAllText(Path.Combine(directory, PreferenceFile)).Trim() == "on"; }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }
+        try { return File.ReadAllText(Path.Combine(directory, PreferenceFile)).Trim() != "off"; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return true; }
     }
 
     internal static void SaveEnabled(string directory, bool enabled)

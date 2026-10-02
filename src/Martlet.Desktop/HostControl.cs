@@ -105,7 +105,14 @@ internal static class HostRegistry
         public required IReadOnlyList<PairedHost> Hosts { get; init; }
     }
 
-    /// <summary>The saved hosts plus the lip-sync host from the avatar profile when it predates this list.</summary>
+    /// <summary>Whether a host address is this PC: its LAN address (<paramref name="thisPcAddress"/>) or a loopback address.</summary>
+    internal static bool IsThisPc(string address, string? thisPcAddress) =>
+        address == thisPcAddress || address.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
+        System.Net.IPAddress.TryParse(address, out var ip) && System.Net.IPAddress.IsLoopback(ip);
+
+    /// <summary>The saved hosts plus the lip-sync host from the avatar profile when it predates this list. A host saved as
+    /// "this PC, with Docker Desktop" that answers on another computer's address (a pairing code from that computer pasted
+    /// while the Add a computer wizard still showed This PC) is that other computer, whose commands run there.</summary>
     internal static IReadOnlyList<PairedHost> Load(string directory, AvatarRemoteHost? assigned = null, string? thisPcAddress = null)
     {
         var path = Path.Combine(directory, FileName);
@@ -126,6 +133,10 @@ internal static class HostRegistry
         {
             throw new InvalidDataException($"{FileName} could not be read ({error.Message}). Fix or delete it, then pair again.", error);
         }
+        if (thisPcAddress is not null)
+            for (var i = 0; i < hosts.Count; i++)
+                if (hosts[i].Method == HostSetupMethod.ThisPcDocker && !IsThisPc(hosts[i].Address, thisPcAddress))
+                    hosts[i] = hosts[i] with { Method = HostSetupMethod.OnHost };
         if (assigned is not null && hosts.All(h => h.HostId != assigned.HostId))
             hosts.Add(new()
             {

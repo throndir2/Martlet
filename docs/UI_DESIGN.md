@@ -195,7 +195,7 @@ to bottom: the **map**, the **selected device** with what it does, and
     run on the host.
 - **Settings for all devices** (companion mode) closes the page: **Check all
   hosts** reads every host's roles (explicit only), and **Keep who does what
-  in sync on all my computers** (OFF by default) shares the assignments with
+  in sync on all my computers** (ON by default; unticking it saves `off`) shares the assignments with
   every paired host and your other computers ([details](CLUSTER.md)): every
   15 seconds it checks the hosts, follows changes made elsewhere and pushes
   changes made here. A status line says how many hosts hold the current plan
@@ -335,8 +335,10 @@ window ends it.
 
   - *This PC*: thinking uses Ollama at `http://127.0.0.1:11434/v1` (*Install
     Ollama and use it* installs Ollama with the suggested model sized to the
-    graphics card and switches to it; *Download model* shows Ollama's progress
-    in a run window, *Check Ollama* over loopback on request, *Use Ollama on this
+    graphics card, switches to it and tests it; *Download model* shows Ollama's progress
+    in a run window, *Check Ollama* over loopback on request, *Test model* loads
+    the chosen model and asks it for a short streamed reply the way replies do,
+    in a run window, and shows the result under the buttons; *Use Ollama on this
     PC*). Voice offers two one-click choices, the one in use (or the one this
     PC's hardware suits) first: **F5 voice, with Docker** (*Set up F5 with
     Docker* sets up and pairs Martlet's host service on this PC, so this PC

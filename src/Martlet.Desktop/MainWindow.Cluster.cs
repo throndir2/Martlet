@@ -13,7 +13,7 @@ using Martlet.F5;
 namespace Martlet.Desktop;
 
 /// <summary>Shared "who does what". This PC keeps a copy of the cluster plan, records every job change made here,
-/// and, while "Keep in sync" is on, checks every paired host every 15 seconds: it merges the hosts' copies, follows
+/// and, while "Keep in sync" is on (the default), checks every paired host every 15 seconds: it merges the hosts' copies, follows
 /// changes made on the owner's other computers, moves a job whose host stopped answering to another host that runs
 /// the same engine (failover, per job) and pushes the result to every host with an older copy.</summary>
 public partial class MainWindow
@@ -55,21 +55,12 @@ public partial class MainWindow
         SyncClusterAsync().Forget();
     }
 
-    private void ClusterSync_Click(object sender, RoutedEventArgs e)
+    /// <summary>Checked/Unchecked rather than Click, so UI Automation's toggle (MCP ui_toggle) changes the choice too.
+    /// Setting the box to the current choice (at start, or after a failed save) changes nothing.</summary>
+    private void ClusterSync_Changed(object sender, RoutedEventArgs e)
     {
-        if (store is null) return;
         var on = ClusterSyncChoice.IsChecked == true;
-        if (on && !ConfirmationDialog.Confirm(this,
-                "Keep who does what in sync on all your computers? While Martlet runs, this PC checks each paired host every " +
-                "15 seconds over its pinned pairing and keeps the shared plan on every host. When a job changes on another of " +
-                "your computers it changes here too: it can move to another of your paired hosts or back to this PC's Setup " +
-                "choice. Jobs you set to fail over move to another paired host that runs the same engine when their host stops " +
-                "answering. Nothing moves to a cloud provider by itself, and the plan holds no keys or conversation data.",
-                "Keep in sync"))
-        {
-            ClusterSyncChoice.IsChecked = false;
-            return;
-        }
+        if (store is null || on == clusterEnabled) return;
         try { ClusterSync.SaveEnabled(store.DataDirectory, on); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {

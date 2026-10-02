@@ -148,6 +148,7 @@ public partial class MainWindow : ThemedWindow
         StartAmbientMotion();
         ReadMachineAsync().Forget();
         await RefreshAsync();
+        if (!closing) ContinueSetupAsync().Forget();
         await ShowSavedCharacterAsync(onlyIfAutoShow: true);
         StartCluster();
         StartVoiceSync();
