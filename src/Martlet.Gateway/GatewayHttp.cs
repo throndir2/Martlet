@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Martlet.Core.Logs;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 
@@ -42,6 +43,7 @@ internal sealed partial class GatewayHttpApplication
         this.clock = clock;
         this.crypto = crypto;
         this.audit = audit;
+        Logs = new(identity.HostId, clock);
     }
 
     internal async Task InvokeAsync(HttpContext context)
@@ -74,18 +76,18 @@ internal sealed partial class GatewayHttpApplication
             }
             if (context.Request.Method == HttpMethods.Post && rawTarget == "/martlet/v1/pair")
             {
-                var proof = await ReadPairingProofAsync(context.Request, context.RequestAborted).ConfigureAwait(false);
+                var proof = await ReadPairingAsync<GatewayPairingProof>(context.Request, context.RequestAborted).ConfigureAwait(false);
                 var credential = pairing.Exchange(proof, context.RequestAborted);
-                await WriteJsonAsync(context, 201, new PairingResponseDocument
-                {
-                    ProtocolVersion = GatewayProtocolVersion.Current,
-                    HostId = identity.HostId,
-                    CredentialId = credential.CredentialId,
-                    CredentialSecret = credential.Secret.Reveal(),
-                    DeviceId = credential.DeviceId,
-                    Roles = credential.Roles,
-                    Lifetime = credential.Lifetime
-                }).ConfigureAwait(false);
+                LogPaired(credential);
+                await WritePairingAsync(context, credential, null).ConfigureAwait(false);
+                return;
+            }
+            if (context.Request.Method == HttpMethods.Post && rawTarget == GatewayPairingCode.Path)
+            {
+                var proof = await ReadPairingAsync<GatewayCodePairingProof>(context.Request, context.RequestAborted).ConfigureAwait(false);
+                var result = pairing.Exchange(proof, context.RequestAborted);
+                LogPaired(result.Credential);
+                await WritePairingAsync(context, result.Credential, result.HostProof).ConfigureAwait(false);
                 return;
             }
 
@@ -97,6 +99,11 @@ internal sealed partial class GatewayHttpApplication
             if (rawTarget == VoicesPath)
             {
                 await InvokeVoicesAsync(context).ConfigureAwait(false);
+                return;
+            }
+            if (IsLogsTarget(rawTarget!))
+            {
+                await InvokeLogsAsync(context, rawTarget!).ConfigureAwait(false);
                 return;
             }
 
@@ -208,9 +215,25 @@ internal sealed partial class GatewayHttpApplication
             !request.Headers.ContainsKey("Transfer-Encoding"), "request.invalid");
     }
 
-    private static async ValueTask<GatewayPairingProof> ReadPairingProofAsync(
+    private void LogPaired(IssuedDeviceCredential credential) =>
+        Logs.Own(LogLevels.Info, $"Paired device {credential.DeviceId} (roles: {string.Join(", ", credential.Roles).ToLowerInvariant()}).");
+
+    private ValueTask WritePairingAsync(HttpContext context, IssuedDeviceCredential credential, string? hostProof) =>
+        WriteJsonAsync(context, 201, new PairingResponseDocument
+        {
+            ProtocolVersion = GatewayProtocolVersion.Current,
+            HostId = identity.HostId,
+            CredentialId = credential.CredentialId,
+            CredentialSecret = credential.Secret.Reveal(),
+            DeviceId = credential.DeviceId,
+            Roles = credential.Roles,
+            Lifetime = credential.Lifetime,
+            HostProof = hostProof
+        });
+
+    private static async ValueTask<T> ReadPairingAsync<T>(
         HttpRequest request,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken) where T : class
     {
         GatewayRules.Require(request.ContentType is "application/json" or
             "application/json; charset=utf-8", "request.invalid");
@@ -234,7 +257,7 @@ internal sealed partial class GatewayHttpApplication
         {
             using var document = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 8 });
             InspectJson(document.RootElement);
-            var proof = document.Deserialize<GatewayPairingProof>(Json);
+            var proof = document.Deserialize<T>(Json);
             GatewayRules.Require(proof is not null, "request.invalid");
             return proof!;
         }
@@ -281,6 +304,7 @@ internal sealed partial class GatewayHttpApplication
             Code = failure.Code,
             HttpStatus = failure.HttpStatus
         });
+        LogFailure(context, traceId, failure.Code, failure.HttpStatus);
         if (context.Response.HasStarted)
         {
             context.Abort();
@@ -347,6 +371,8 @@ internal sealed partial class GatewayHttpApplication
         public required string DeviceId { get; init; }
         public required IReadOnlyList<GatewayRole> Roles { get; init; }
         public required GatewayCredentialLifetime Lifetime { get; init; }
+        /// <summary>Short-code pairing only: the host's proof that it knows the typed code (see <see cref="GatewayPairingCode"/>).</summary>
+        public string? HostProof { get; init; }
     }
 
     private sealed record VersionDocument

@@ -326,28 +326,36 @@ internal static partial class HostLocal
         return HostRemote.ParseRole(lines);
     }
 
-    /// <summary>Lets another desktop (for example the main PC) pair with this PC's host: runs "pair --device-id ... --name ..."
-    /// and shows its one-use code, which <paramref name="code"/> also receives (for the clipboard). The engine waits up to
-    /// five minutes for that desktop to redeem it; canceling withdraws the code.</summary>
-    internal static async Task<int> PairOtherAsync(HostSetupTarget target, string deviceId, string name, Action<string> code,
+    /// <summary>Lets another desktop (for example the main PC) pair with this PC's host: runs "pair", which shows this PC's
+    /// address and a short one-use code; <paramref name="shown"/> receives both. The code never reaches
+    /// <paramref name="output"/> (or the run log). The engine waits up to five minutes for that desktop to type it;
+    /// canceling withdraws the code.</summary>
+    internal static async Task<int> PairOtherAsync(HostSetupTarget target, Action<string, string> shown,
         IProgress<string> output, CancellationToken token)
     {
-        if (!DeviceIdPattern().IsMatch(deviceId)) throw new InvalidOperationException("Enter the other PC's device ID (for example desktop-main-pc).");
-        var label = new string(name.Where(c => c is >= ' ' and <= '~').Take(64).ToArray()).Trim();
-        if (label.Length == 0 || label[0] == '-') label = "Martlet desktop";
         var withdraw = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
         using var registration = token.Register(() => withdraw.TrySetResult("cancel\n"));
+        string? address = null;
         var sink = new LineSink(line =>
         {
-            if (PairingCodePattern().Match(line) is { Success: true } match) code(match.Value);
-            output.Report(line);
+            if (ShownAddressPattern().Match(line) is { Success: true } where) address = where.Groups[1].Value;
+            if (ShownCodePattern().Match(line) is { Success: true } code)
+            {
+                output.Report("    Code:     (shown above)");
+                shown(address ?? HostSetupCommands.ThisPcAddress() ?? target.Address, code.Groups[1].Value);
+                return;
+            }
+            if (!line.Contains("martlet-pair-v1.", StringComparison.Ordinal)) output.Report(line);
         });
-        try { return await EngineAsync(target, ["pair", "--device-id", deviceId, "--name", label], sink, token, withdraw.Task); }
+        try { return await EngineAsync(target, ["pair"], sink, token, withdraw.Task); }
         finally { withdraw.TrySetResult(null); }
     }
 
-    [GeneratedRegex(@"\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z")]
-    private static partial Regex DeviceIdPattern();
+    [GeneratedRegex(@"^\s*Address:\s+(\S+)\s*$")]
+    private static partial Regex ShownAddressPattern();
+
+    [GeneratedRegex(@"^\s*Code:\s+([2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4})\s*$")]
+    private static partial Regex ShownCodePattern();
 
     private static Task<int> RunAsync(IEnumerable<string> args, IProgress<string>? output, CancellationToken token,
         string? input = null, Task<string?>? moreInput = null) =>

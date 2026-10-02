@@ -13,6 +13,10 @@ public static class ClusterJobs
     public const string Speaking = "speaking";
     public const string LipSync = "lip-sync";
     public static readonly IReadOnlyList<string> All = [Thinking, Listening, Speaking, LipSync];
+
+    /// <summary>Not a role: the paired host that collects every computer's logs (the log host). No host means each
+    /// computer keeps only its own logs. Older desktops ignore it, and it never moves or fails over.</summary>
+    public const string Logs = "logs";
 }
 
 /// <summary>Who does one job. <see cref="HostId"/> null means each desktop uses its own choice (its Setup route, or this

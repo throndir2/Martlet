@@ -49,4 +49,5 @@ internal interface IGatewayAdmissionStatus
 internal interface IGatewayPairingExchange
 {
     IssuedDeviceCredential Exchange(GatewayPairingProof proof, CancellationToken cancellationToken);
+    GatewayCodePairingResult Exchange(GatewayCodePairingProof proof, CancellationToken cancellationToken);
 }

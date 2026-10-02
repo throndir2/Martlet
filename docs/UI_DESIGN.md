@@ -240,8 +240,8 @@ service on this PC:
   1. *Docker Desktop*: installed or running, read locally. Installs it with
      winget in a run window.
   2. *Host service*: set up the gateway, including the one-time firewall prompt.
-  3. *Pair a desktop*: *Show a pairing code* asks for the main PC's device ID
-     and shows the one-use code in a run window (copied to the clipboard).
+  3. *Pair a desktop*: *Show a pairing code* shows this PC's address and a short
+     one-use code in large type in a run window, to type on the main PC.
   4. *Roles*: add or remove Audio2Face lip-sync, and show host status.
   5. *Keep it up to date*: rebuilds the host service from this app's version
      (`martlet-host update`); done when its gateway image matches the app.
@@ -255,14 +255,17 @@ The long form became a four-step wizard with a step rail:
 
 1. **Where it runs**: large cards for *This PC (Docker Desktop)*, *Another
    computer over SSH (Docker)*, *Another computer over SSH (Ubuntu, native)*
-   and *I'll type the commands myself*.
+   and *I'll type the commands myself*, plus *Enter a pairing code* for a host
+   that is already set up (straight to Pair).
 2. **Install**: only the fields that method needs, *Set up host* (*Add this
    computer* for SSH: connect, check Docker, set up, pair and read the machine
    report in a run window with live output and *Cancel*), and the exact command
    in a *Show the command* expander.
-3. **Pair**: three numbered mini-steps, the device ID with *Copy*, *Pair
-   automatically* (*Pair automatically over SSH* for SSH hosts), the pasted
-   code and *Pair*, plus *Check* and *Forget*.
+3. **Pair**: *Pair automatically* (*Pair over SSH* for SSH hosts) when Martlet
+   can reach the host; otherwise (or as the alternative) the host's address and
+   the short code it shows, then *Pair with host*. The command to run on the
+   host is in an expander, *Check*, *Update* and *Forget* act on the paired
+   host, and this PC's device ID sits in a collapsed expander (nothing to copy).
    Pairing adds the host to `hosts.json` (every paired host and how Martlet
    reaches it; nonsecret, secrets stay in Windows Credential Manager). Pairing
    hands the host no job (re-pairing keeps the ones it had): it stands by

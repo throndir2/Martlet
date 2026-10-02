@@ -46,8 +46,9 @@ the `audio2face` role: this PC through Docker Desktop, another computer over SSH
 (Docker or native Ubuntu), or by running the same
 [`martlet-host setup`, `pair` and `add audio2face`](../../deploy/host/README.md)
 commands on the host yourself. It starts the NIM on the host's loopback and
-publishes the gateway's Audio2Face relay route. Pair this PC by pasting the
-one-use `martlet-pair-v1...` code the host's `pair` console shows. The device
+publishes the gateway's Audio2Face relay route. Pair this PC by typing the
+address and short one-use code (like `K7QM-4XPA`) that `martlet-host pair` shows
+on the host into **Enter a pairing code**. The device
 secret is stored in Windows Credential Manager; `avatar.json` keeps only the
 nonsecret `RemoteHost` identity of the host that handles lip-sync, and
 `hosts.json` lists every paired host. Hand lip-sync to another host, back to
@@ -108,6 +109,13 @@ the same. Voice continues. Closing the configuration window does not hide the
 character or revoke explicit A2F activation; app exit, relevant configuration/
 control changes, session lock (A2F only) and explicit Stop do. A2F activation is
 never restored after restart.
+
+Stopping removes the renderer's temporary WebView2 cache when Windows releases
+its files, retrying in the background; a leftover cache never blocks stopping.
+If the renderer itself cannot be stopped cleanly, **Show/Hide character** retries
+and the reason goes to the desktop log. Exiting (including to install an update)
+never waits on it: the renderer runs in a kill-on-close job object, so Windows
+ends it with Martlet.
 
 ## Draggable desktop character
 

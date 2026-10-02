@@ -198,7 +198,7 @@ itself or from the desktop's **Martlet hosts** window (this PC via Docker Deskto
 another computer over SSH with Docker or native Ubuntu). Over SSH the desktop
 drives everything itself (Martlet's own key after one password, pinned host key,
 unattended `martlet-host --yes` with the owner's click as the confirmation) and
-pairs automatically; elsewhere pairing uses one pasted `martlet-pair-v1` code. The Docker method was run end to end on Windows Docker
+pairs automatically; elsewhere the host shows its address and a short one-use code (`martlet-host pair`) that the owner types in Martlet. The Docker method was run end to end on Windows Docker
 Desktop with a stand-in role; it is not yet the graphical/journaled coordinator
 described above and has not been run on a real GPU with the Audio2Face NIM.
 

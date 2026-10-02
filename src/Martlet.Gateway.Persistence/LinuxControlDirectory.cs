@@ -16,6 +16,9 @@ internal sealed class LinuxControlDirectory : IDisposable
     /// <summary>The shared voice list (voiceprints and names) the gateway keeps for paired desktops.</summary>
     internal const string Voices = "voices.json", VoicesStaging = "voices.staging";
     internal const int MaximumVoicesBytes = 1_048_576;
+    /// <summary>The gateway's log: its own activity and, as the owner's log host, the lines paired desktops send.</summary>
+    internal const string Logs = "logs.json", LogsStaging = "logs.staging";
+    internal const int MaximumLogsBytes = 2_097_152;
     internal uint UserId => fs.UserId;
     internal uint GroupId => fs.GroupId;
 
@@ -75,7 +78,7 @@ internal sealed class LinuxControlDirectory : IDisposable
 
     internal byte[]? Read(string name, int maximum)
     {
-        if (name is not (Config or Approval or Machine or Cluster or Voices)) throw Error(GatewayPersistenceFailure.InvalidPath);
+        if (name is not (Config or Approval or Machine or Cluster or Voices or Logs)) throw Error(GatewayPersistenceFailure.InvalidPath);
         Validate();
         var before = fs.StatAt(DirectoryFd, name);
         if (before is null) return null;
@@ -129,6 +132,19 @@ internal sealed class LinuxControlDirectory : IDisposable
             fs.Unlink(DirectoryFd, VoicesStaging);
         }
         Replace(Voices, VoicesStaging, bytes, MaximumVoicesBytes);
+    }
+
+    /// <summary>Atomically replaces logs.json (0600, service owner). A staging file left by an interrupted write is removed first.</summary>
+    internal void WriteLogs(byte[] bytes)
+    {
+        if (bytes.Length is < 1 or > MaximumLogsBytes) throw Error(GatewayPersistenceFailure.InvalidState);
+        Validate();
+        if (fs.StatAt(DirectoryFd, LogsStaging) is { } stale)
+        {
+            LinuxOwnedDirectory.CheckFile(fs, stale, chain[^1].Identity);
+            fs.Unlink(DirectoryFd, LogsStaging);
+        }
+        Replace(Logs, LogsStaging, bytes, MaximumLogsBytes);
     }
 
     private void Replace(string name, string staging, byte[] bytes, int maximum)

@@ -32,6 +32,17 @@ internal sealed class McpServer(DesktopAutomation desktop)
             contains = new { type = "string", maxLength = LogTail.MaximumFilterLength },
             dataDirectory = new { type = "string" }
         }),
+        Tool("logs_timeline", "Read this PC's logs as the desktop's Diagnostics page shows them: desktop, avatar-renderer and host-runs " +
+            "(with rotated copies) parsed into one timeline of {at, level, component, seq, message}, newest first, with counts of " +
+            "errors and warnings and the log host chosen in the shared plan. Filters: level (all, warnings, errors), component, " +
+            "contains. Read-only; contacts no host.", new
+        {
+            level = new { type = "string", @enum = LogTimeline.Levels },
+            component = new { type = "string", @enum = Martlet.Core.Logs.LogComponents.Local },
+            contains = new { type = "string", maxLength = LogTail.MaximumFilterLength },
+            lines = new { type = "integer", minimum = 1, maximum = LogTimeline.MaximumLines },
+            dataDirectory = new { type = "string" }
+        }),
 
         Tool("ui_connect", "Attach to an already-running Martlet.Desktop process in this interactive session.", new
         {
@@ -149,6 +160,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     ["run", .. RequiredStrings(arguments, "probes"), "--json"], arguments, cancellation),
                 "logs_tail" => LogTail.Read(OptionalString(arguments, "dataDirectory"), OptionalString(arguments, "log"),
                     OptionalInt(arguments, "lines"), OptionalString(arguments, "contains")),
+                "logs_timeline" => LogTimeline.Read(OptionalString(arguments, "dataDirectory"), OptionalString(arguments, "level"),
+                    OptionalString(arguments, "component"), OptionalString(arguments, "contains"), OptionalInt(arguments, "lines")),
 
                 "ui_connect" => desktop.Connect(RequiredInt(arguments, "pid")),
                 "ui_snapshot" => desktop.Snapshot(OptionalBool(arguments, "layout") ?? false),

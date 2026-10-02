@@ -115,6 +115,7 @@ public partial class MainWindow : ThemedWindow
         InitializeShell();
         InitializeCluster();
         InitializeVoiceSync();
+        InitializeLogs();
     }
 
     private async void Theme_Changed(object sender, SelectionChangedEventArgs e)
@@ -153,6 +154,7 @@ public partial class MainWindow : ThemedWindow
         await ShowSavedCharacterAsync(onlyIfAutoShow: true);
         StartCluster();
         StartVoiceSync();
+        StartLogShipping();
         // Parakeet takes a few seconds to load; do it now rather than on the first thing said.
         if (homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Stt)?.RouteType == SetupRouteType.LocalParakeet)
             parakeet?.WarmAsync().Forget();
@@ -459,6 +461,7 @@ public partial class MainWindow : ThemedWindow
             // Without a completed Setup profile the bundled character still shows; its choices are simply not saved.
             var profile = saved ?? AvatarProfile.BuiltIn(loaded.Settings?.Profile.Id ?? Guid.NewGuid());
             await avatar.ShowAsync(profile with { ResourceRevision = null }, lifetime.Token);
+            characterCleanupProblem = null;
             ActionText.Text = avatar.Status;
         }
         catch (Exception error) when (error is System.IO.IOException or InvalidOperationException or TimeoutException or
@@ -482,13 +485,22 @@ public partial class MainWindow : ThemedWindow
         // Revocation ends privileged Audio2Face analysis; the character itself and local lip-sync stay available.
         if (locked) avatar.Revoke();
     }
+    /// <summary>Why the character's last stop did not finish, or null. Shown on Companion › Character until a stop succeeds.</summary>
+    private string? characterCleanupProblem;
     private async Task<bool> StopAvatarSafelyAsync()
     {
-        try { await avatar.StopAsync(); return true; }
+        try
+        {
+            await avatar.StopAsync();
+            characterCleanupProblem = null;
+            return true;
+        }
         catch (Exception error) when (error is System.IO.IOException or InvalidOperationException or TimeoutException or
             System.ComponentModel.Win32Exception or UnauthorizedAccessException)
         {
-            ActionText.Text = "Couldn't hide the character. Try again before changing character settings.";
+            ErrorLog.Warn("The character could not be stopped cleanly.", error);
+            characterCleanupProblem = "The character didn't close cleanly. Press Hide or Show character to try again.";
+            if (!closing) ActionText.Text = characterCleanupProblem;
             return false;
         }
     }
@@ -563,6 +575,7 @@ public partial class MainWindow : ThemedWindow
         updateTimer.Stop();
         clusterTimer.Stop();
         voiceSyncTimer.Stop();
+        StopLogs();
         audioSessionEvents.LockedChanged -= audioSetup.SetSessionLocked;
         audioSessionEvents.LockedChanged -= AvatarSessionLocked;
         if (conversation is not null) audioSessionEvents.LockedChanged -= conversation.SetSessionLocked;
@@ -576,13 +589,13 @@ public partial class MainWindow : ThemedWindow
         // Ends every MCP server Martlet started (they also end with Martlet's process through its job object).
         await Task.Run(async () => await mcpTools.DisposeAsync());
         captions.Dispose();
+        // The renderer runs in a kill-on-close job object, so Windows ends it with Martlet even when its cleanup cannot
+        // finish: a stuck character never keeps Martlet open or holds back an update.
         if (!await StopAvatarSafelyAsync())
-        {
-            closing = false;
-            IsEnabled = true;
-            return;
-        }
-        await avatar.DisposeAsync();
+            ErrorLog.Warn("Exiting with the character's cleanup unfinished; Windows ends its renderer with Martlet.");
+        try { await avatar.DisposeAsync(); }
+        catch (Exception error) when (error is System.IO.IOException or InvalidOperationException or TimeoutException or
+            System.ComponentModel.Win32Exception or UnauthorizedAccessException) { }
         memory?.Dispose();
         LaunchPendingInstall();
         // WPF OnMainWindowClose exits the process, including any non-cooperative in-process callback.

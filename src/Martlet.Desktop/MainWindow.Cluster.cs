@@ -111,7 +111,15 @@ public partial class MainWindow
     private void ForgetClusterHost(string hostId)
     {
         clusterProbes.Remove(hostId);
-        if (store is null || clusterPlan.Node(hostId) is not { Removed: false }) return;
+        if (store is null) return;
+        if (clusterPlan.For(ClusterJobs.Logs)?.HostId == hostId)
+        {
+            clusterPlan = clusterPlan.Assign(ClusterJobs.Logs, null, false, false, null, ClusterDevice, DateTimeOffset.UtcNow);
+            ErrorLog.Info($"Log host {hostId} was forgotten, so nobody collects logs now.");
+            SaveClusterPlan();
+            QueueClusterSync();
+        }
+        if (clusterPlan.Node(hostId) is not { Removed: false }) return;
         clusterPlan = clusterPlan.Observe(hostId, null, [], true, ClusterDevice, DateTimeOffset.UtcNow);
         SaveClusterPlan();
         QueueClusterSync();
@@ -209,6 +217,7 @@ public partial class MainWindow
                 if (events.Count > 0) ActionText.Text = string.Join(" ", events);
                 if (followed) RenderHome();
                 ShowClusterStatus();
+                if (DiagnosticsPage.IsVisible) RenderLogHostChoice();
                 var signature = ClusterSignature();
                 if (followed || signature != clusterSignature)
                 {
@@ -230,6 +239,10 @@ public partial class MainWindow
             else clusterMisses[key] = Math.Min(clusterMisses.GetValueOrDefault(key) + 1, 1000);
         }
         var previous = hostChecks.GetValueOrDefault(probe.HostId);
+        if (previous?.Reachable != false && !probe.Reachable)
+            ErrorLog.Warn($"Host {probe.HostId} {(previous is null ? "didn't answer" : "stopped answering")}: {probe.Text}");
+        else if (previous?.Reachable == false && probe.Reachable)
+            ErrorLog.Info($"Host {probe.HostId} answers again.");
         if (!probe.Reachable)
         {
             hostChecks[probe.HostId] = new(false, probe.Text, null, previous?.MartletVersion);

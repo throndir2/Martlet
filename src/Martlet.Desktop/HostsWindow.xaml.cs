@@ -20,6 +20,7 @@ public partial class HostsWindow : ThemedWindow
     private readonly string version = typeof(App).Assembly.GetName().Version is { } v ? v.ToString(3) : "0.0.0";
     private PairedHost? paired;
     private bool busy;
+    private bool choosingCode;
     private int step;
 
     internal HostsWindow(AvatarProfileStore profiles, ISetupService settings, HostSetupMethod? method = null, int startStep = 0,
@@ -42,6 +43,7 @@ public partial class HostsWindow : ThemedWindow
         {
             SshTargetText.Text = manage.SshTarget ?? "";
             AddressText.Text = manage.Address;
+            PairAddressText.Text = manage.Address;
         }
         ShowStep(Math.Clamp(startStep, 0, 3), animate: false);
     }
@@ -92,14 +94,40 @@ public partial class HostsWindow : ThemedWindow
                 ? "Add or remove jobs on this PC. Martlet asks for anything each job needs and shows progress."
                 : "Add or remove jobs on the host itself. Martlet shows a command for each job.";
         SetupButton.Content = Ssh ? "_Add this computer" : "Set _up host";
-        PairConsoleButton.Content = Ssh ? "_Pair automatically over SSH" : Method == HostSetupMethod.ThisPcDocker ? "_Pair automatically" : "_Open pairing tool";
+        var byCode = Method == HostSetupMethod.OnHost;
+        PairAutoCard.Visibility = byCode ? Visibility.Collapsed : Visibility.Visible;
+        PairCommandSection.Visibility = byCode ? Visibility.Visible : Visibility.Collapsed;
+        PairConsoleButton.Content = Ssh ? "_Pair over SSH" : "_Pair automatically";
         PairConsoleText.Text = Ssh
             ? "Martlet gets a one-use code over SSH and pairs this PC automatically."
-            : Method == HostSetupMethod.ThisPcDocker
-                ? "Martlet gets a one-use code from this PC's host and pairs automatically."
-                : "On the host, run the pairing command with this PC's device ID, then paste the code it shows.";
+            : "Martlet gets a one-use code from this PC's host service and pairs automatically.";
+        PairCodeTitle.Text = byCode ? "Enter the code shown on the host" : "Or enter a code from the host";
+        PairCodeHelp.Text = byCode
+            ? "On the host, run the command below, or choose Show a pairing code on a Windows host's Home page. " +
+              "Enter the address and code it shows within five minutes."
+            : "If Martlet can't reach the host, show a pairing code on the host and enter its address and code here.";
+        if (byCode) PairCommandText.Text = CommandFor(HostAction.Pair);
+        if (PairAddressText.Text.Length == 0 && Method != HostSetupMethod.ThisPcDocker) PairAddressText.Text = AddressText.Text.Trim();
         Scroller.ScrollToTop();
         if (animate) Motion.Enter(steps[step], dx: 28, dy: 0, milliseconds: 280);
+    }
+
+    private string CommandFor(HostAction action)
+    {
+        try { return HostSetupCommands.Preview(Target(), action); }
+        catch (InvalidOperationException error) { return error.Message; }
+    }
+
+    /// <summary>Straight to pairing with a code a host already shows: Martlet can't reach that host to run commands, so the
+    /// pairing is saved as one it reaches only through its gateway.</summary>
+    private void EnterCode_Click(object sender, RoutedEventArgs e)
+    {
+        choosingCode = true;
+        try { OnHostMethod.IsChecked = true; }
+        finally { choosingCode = false; }
+        ShowStep(2);
+        Dispatcher.BeginInvoke(() => (PairAddressText.Text.Length == 0 ? PairAddressText : PairingCodeBox).Focus(),
+            System.Windows.Threading.DispatcherPriority.Input);
     }
 
     private void Rail_Checked(object sender, RoutedEventArgs e)
@@ -130,7 +158,7 @@ public partial class HostsWindow : ThemedWindow
         if (Method == HostSetupMethod.ThisPcDocker) AddressText.Text = HostSetupCommands.ThisPcAddress() ?? "";
         else if (AddressText.Text == HostSetupCommands.ThisPcAddress()) AddressText.Text = "";
         ShowCommand();
-        if (IsLoaded && step == 0) Dispatcher.BeginInvoke(() => ShowStep(1), System.Windows.Threading.DispatcherPriority.Background);
+        if (IsLoaded && step == 0 && !choosingCode) Dispatcher.BeginInvoke(() => ShowStep(1), System.Windows.Threading.DispatcherPriority.Background);
     }
 
     // ---------- install ----------
@@ -432,23 +460,50 @@ public partial class HostsWindow : ThemedWindow
         StatusText.Text = paired is null ? "No Martlet host paired." : $"Showing {paired.HostId}.";
     }
 
+    private void PairingCode_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key != System.Windows.Input.Key.Enter) return;
+        e.Handled = true;
+        Pair_Click(sender, e);
+    }
+
+    /// <summary>Pairs with the address and short code a host shows, or with an older host's whole pasted
+    /// martlet-pair-v1 card.</summary>
     private async void Pair_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
     {
-        var code = HostPairingCode.Parse(PairingCodeBox.Password);
+        var text = PairingCodeBox.Text;
         var device = DeviceIdText.Text.Trim();
-        StatusText.Text = $"Pairing with {code.HostId}...";
-        await pairings.LoadProfileAsync(lifetime.Token);
-        var (pairing, secret) = await code.PairAsync(device, lifetime.Token);
+        var card = HostPairingInput.IsCard(text);
+        Audio2FaceHostPairing pairing;
+        string secret;
+        if (card)
+        {
+            var code = HostPairingCode.Parse(text);
+            StatusText.Text = $"Pairing with {code.HostId} at {code.Origin}...";
+            await pairings.LoadProfileAsync(lifetime.Token);
+            (pairing, secret) = await code.PairAsync(device, lifetime.Token);
+        }
+        else
+        {
+            var origin = HostPairingInput.Origin(PairAddressText.Text);
+            HostPairingInput.NormalizeCode(text);
+            StatusText.Text = $"Pairing with the host at {new Uri(origin).Authority}...";
+            await pairings.LoadProfileAsync(lifetime.Token);
+            (pairing, secret) = await Audio2FaceHostClient.PairWithCodeAsync(origin, text, device, Environment.MachineName, lifetime.Token);
+        }
         PairingCodeBox.Clear();
-        // A code shown by another computer (its host dashboard or pairing console) pairs that computer, even while the wizard
+        var shown = new Uri(pairing.Origin);
+        PairAddressText.Text = shown.Port == HostPairingInput.DefaultPort ? shown.Host : shown.Authority;
+        // A code shown by another computer (its host dashboard or martlet-host pair) pairs that computer, even while the wizard
         // still shows This PC; Martlet then doesn't know how to reach it to run commands there.
         var method = Method == HostSetupMethod.ThisPcDocker && !HostRegistry.IsThisPc(new Uri(pairing.Origin).Host, HostSetupCommands.ThisPcAddress())
             ? HostSetupMethod.OnHost : Method;
         var host = await SavePairingAsync(pairing, secret, method, Ssh ? SshTargetText.Text.Trim() : null, PinnedHostKey);
-        StatusText.Text += Method == HostSetupMethod.OnHost ? " Close the pairing tool on the host when you're done." : "";
-        // The pairing listener is still open, so read what the host is like right away for the map and the advisor.
+        // An older host's pairing console stays open until it is stopped there.
+        StatusText.Text += card && Method == HostSetupMethod.OnHost ? " To close the pairing console on the host, press a key, type stop and confirm." : "";
+        // Read what the host is like for the map and the advisor; a host that restarts its gateway after pairing may not answer yet.
         try { StatusText.Text += " " + await CheckAsync(host.Pairing, Hardware, _ => { }, lifetime.Token); }
-        catch (Exception error) when (error is InvalidOperationException or OperationCanceledException) { }
+        catch (Exception error) when (error is InvalidOperationException or OperationCanceledException or Audio2FaceHostException) { }
     });
 
     /// <summary>Keeps a new pairing: the secret in Windows Credential Manager, the host in hosts.json (with how Martlet
@@ -594,7 +649,7 @@ public partial class HostsWindow : ThemedWindow
         var (hosts, profile) = await pairings.LoadAsync(lifetime.Token);
         paired = hosts.FirstOrDefault(h => h.HostId == profile.RemoteHost?.HostId) ?? hosts.LastOrDefault();
         ShowPaired(hosts.Count);
-        StatusText.Text = $"Forgot {host.HostId} on this PC. To block it completely, revoke {host.Pairing.DeviceId} on the host.";
+        StatusText.Text = $"Forgot {host.HostId} on this PC. To remove this PC from the host too, revoke {host.Pairing.DeviceId} in the host console.";
     });
 
     private async Task ActionAsync(Func<Task> action)

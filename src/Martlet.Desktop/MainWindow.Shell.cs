@@ -108,6 +108,7 @@ public partial class MainWindow
     {
         var visible = !string.IsNullOrWhiteSpace(ActionText.Text);
         if (!visible) { StatusBar.Visibility = Visibility.Collapsed; return; }
+        LogStatusLine(ActionText.Text);
         StatusBar.Visibility = Visibility.Visible;
         Motion.Enter(StatusBar, dy: 10, milliseconds: 200);
     }
@@ -118,18 +119,21 @@ public partial class MainWindow
 
     private void Nav_Checked(object sender, RoutedEventArgs e)
     {
-        if (HomePage is null || DevicesPage is null || CompanionPage is null || SettingsPage is null) return;
+        if (HomePage is null || DevicesPage is null || CompanionPage is null || DiagnosticsPage is null || SettingsPage is null) return;
         if (sender is RadioButton { IsChecked: false }) return;
         FrameworkElement page = ReferenceEquals(sender, NavDevices) ? DevicesPage
             : ReferenceEquals(sender, NavCompanion) ? CompanionPage
+            : ReferenceEquals(sender, NavDiagnostics) ? DiagnosticsPage
             : ReferenceEquals(sender, NavSettings) ? SettingsPage
             : HomePage;
         openTab = null;
-        foreach (var candidate in new FrameworkElement[] { HomePage, DevicesPage, CompanionPage, SettingsPage })
+        foreach (var candidate in new FrameworkElement[] { HomePage, DevicesPage, CompanionPage, DiagnosticsPage, SettingsPage })
             candidate.Visibility = ReferenceEquals(candidate, page) ? Visibility.Visible : Visibility.Collapsed;
         if (ReferenceEquals(page, CompanionPage)) ShowCompanionTab(entering: true);
         else Motion.Enter(page);
         if (ReferenceEquals(page, DevicesPage)) RenderMap();
+        if (ReferenceEquals(page, DiagnosticsPage)) EnterDiagnostics();
+        else LeaveDiagnostics();
     }
 
     private void Navigate(RadioButton item)
@@ -410,7 +414,7 @@ public partial class MainWindow
                     : "Sets up the host service. Windows may ask to allow private-network access.",
                 hostServiceReachable == true, false, [new("Set up host service", () => SetUpHostServiceAsync().Forget(), true)]),
             new("pair", "Pair your main PC",
-                "Shows a one-time code to enter on your main PC.",
+                "Shows this PC's address and a one-time code. On your main PC, choose Devices > Add a computer > Enter a pairing code.",
                 false, false, [new("Show a pairing code", () => LaunchHost(HostAction.Pair), true)]),
             new("roles", "Add roles",
                 "Add tasks this host can handle. " + nvidia,
@@ -1023,7 +1027,7 @@ public partial class MainWindow
         if (!ConfirmationDialog.Confirm(this,
                 $"Forget {host.HostId}? Martlet will stop using it on this PC and remove its pairing." +
                 (impact.Count > 0 ? $" It handles: {string.Join(" ", impact)}" : "") +
-                " Remove this PC from that host separately.",
+                $" To remove this PC from the host too, revoke {host.Pairing.DeviceId} in the host console.",
                 "Forget host"))
             return;
         var inCharge = homeAvatar?.RemoteHost?.HostId == host.HostId;

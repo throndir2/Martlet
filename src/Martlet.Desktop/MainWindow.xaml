@@ -32,6 +32,8 @@
                                  Checked="Nav_Checked" AutomationProperties.AutomationId="NavDevices"/>
                     <RadioButton x:Name="NavCompanion" GroupName="Nav" Style="{DynamicResource NavItem}" Tag="&#xE76E;" Content="Companion"
                                  Checked="Nav_Checked" AutomationProperties.AutomationId="NavCompanion"/>
+                    <RadioButton x:Name="NavDiagnostics" GroupName="Nav" Style="{DynamicResource NavItem}" Tag="&#xE9D9;" Content="Diagnostics"
+                                 Checked="Nav_Checked" AutomationProperties.AutomationId="NavDiagnostics"/>
                     <RadioButton x:Name="NavSettings" GroupName="Nav" Style="{DynamicResource NavItem}" Tag="&#xE713;" Content="Settings"
                                  Checked="Nav_Checked" AutomationProperties.AutomationId="NavSettings"/>
                 </StackPanel>
@@ -260,6 +262,108 @@
                 </ScrollViewer>
             </Grid>
 
+            <!-- Diagnostics: every part's activity, warnings and errors, from this PC and (with a log host) all the owner's computers (MainWindow.Logs.cs) -->
+            <Grid x:Name="DiagnosticsPage" Visibility="Collapsed" Margin="36,30,36,16" AutomationProperties.AutomationId="DiagnosticsPage">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*" MinHeight="120"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <DockPanel Margin="0,0,0,14">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
+                        <Button x:Name="LogsRefreshButton" Content="_Refresh" Click="LogsRefresh_Click" Margin="0,0,10,0"
+                                AutomationProperties.AutomationId="LogsRefresh" AutomationProperties.Name="Refresh the logs"/>
+                        <Button Content="_Copy shown" Click="LogsCopy_Click" Margin="0,0,10,0"
+                                AutomationProperties.AutomationId="LogsCopy" AutomationProperties.Name="Copy the shown log lines"/>
+                        <Button Content="Open logs _folder" Click="LogsOpenFolder_Click"
+                                AutomationProperties.AutomationId="LogsOpenFolder" AutomationProperties.Name="Open this PC's logs folder"/>
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Text="Diagnostics" Style="{DynamicResource PageTitle}"/>
+                        <TextBlock Style="{DynamicResource Muted}" Margin="0,4,12,0"
+                                   Text="Activity, warnings and errors from Martlet and your paired computers."/>
+                    </StackPanel>
+                </DockPanel>
+                <Border Grid.Row="1" Style="{DynamicResource CardStyle}" Padding="20,14" AutomationProperties.Name="Log host">
+                    <StackPanel>
+                        <DockPanel>
+                            <ComboBox x:Name="LogHostChoice" DockPanel.Dock="Right" MinWidth="260" VerticalAlignment="Center"
+                                      SelectionChanged="LogHost_Changed" AutomationProperties.AutomationId="LogHostChoice"
+                                      AutomationProperties.Name="Computer that collects the logs of all your computers"/>
+                            <StackPanel Margin="0,0,14,0">
+                                <TextBlock Text="Collect logs from all my computers on" FontWeight="SemiBold"/>
+                                <TextBlock Style="{DynamicResource Muted}" FontSize="12" Margin="0,2,0,0"
+                                           Text="Choose a paired host to keep everyone's logs in one place."/>
+                            </StackPanel>
+                        </DockPanel>
+                        <TextBlock x:Name="LogHostStatus" Style="{DynamicResource Muted}" Margin="0,8,0,0"
+                                   AutomationProperties.AutomationId="LogHostStatus" AutomationProperties.LiveSetting="Polite"/>
+                    </StackPanel>
+                </Border>
+                <StackPanel Grid.Row="2" Margin="0,2,0,6">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top" Margin="12,0,0,6">
+                            <Label Content="_Search" Target="{Binding ElementName=LogSearch}" Padding="0,0,8,0" VerticalAlignment="Center"/>
+                            <TextBox x:Name="LogSearch" Width="220" TextChanged="LogSearch_Changed" MaxLength="200" VerticalAlignment="Center"
+                                     AutomationProperties.AutomationId="LogSearch" AutomationProperties.Name="Show only lines containing"/>
+                        </StackPanel>
+                        <WrapPanel>
+                            <WrapPanel x:Name="LogLevelFilters" Margin="0,0,18,0" AutomationProperties.Name="Show lines of"/>
+                            <WrapPanel x:Name="LogPartFilters" AutomationProperties.Name="Show lines written by"/>
+                        </WrapPanel>
+                    </DockPanel>
+                    <WrapPanel x:Name="LogSourceFilters" AutomationProperties.Name="Show lines from"/>
+                </StackPanel>
+                <TextBlock Grid.Row="3" x:Name="LogSummary" Style="{DynamicResource Muted}" Margin="0,4,0,6"
+                           AutomationProperties.AutomationId="LogSummary" AutomationProperties.LiveSetting="Polite"/>
+                <ListBox Grid.Row="4" x:Name="LogList" SelectionChanged="LogList_SelectionChanged" BorderThickness="1"
+                         VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         AutomationProperties.AutomationId="LogList" AutomationProperties.Name="Log lines, newest first">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                            <Setter Property="Padding" Value="8,3"/>
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                            <Setter Property="AutomationProperties.AutomationId" Value="{Binding AutomationId}"/>
+                            <Setter Property="AutomationProperties.Name" Value="{Binding Text}"/>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="128"/>
+                                    <ColumnDefinition Width="58"/>
+                                    <ColumnDefinition Width="230"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding Time}" FontFamily="Consolas" FontSize="12" TextWrapping="NoWrap" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="Level" Grid.Column="1" Text="{Binding Level}" FontSize="12" FontWeight="SemiBold" TextWrapping="NoWrap" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="{Binding Where}" FontSize="12" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                <TextBlock Grid.Column="3" Text="{Binding Headline}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                            </Grid>
+                            <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding Severity}" Value="1">
+                                    <Setter TargetName="Level" Property="Foreground" Value="{DynamicResource WarningBrush}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Severity}" Value="2">
+                                    <Setter TargetName="Level" Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Severity}" Value="3">
+                                    <Setter TargetName="Level" Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+                                </DataTrigger>
+                            </DataTemplate.Triggers>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                <TextBox Grid.Row="5" x:Name="LogDetail" IsReadOnly="True" TextWrapping="Wrap" Height="130" Margin="0,8,0,0" Visibility="Collapsed"
+                         VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="12"
+                         AutomationProperties.AutomationId="LogDetail" AutomationProperties.Name="The selected log line in full"/>
+            </Grid>
+
             <!-- Settings: appearance, role, updates, tools and diagnostics -->
             <ScrollViewer x:Name="SettingsPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
                 <StackPanel Margin="36,30,36,24" MaxWidth="1000">
@@ -378,7 +482,8 @@
                     </Border>
 
                     <DockPanel Margin="0,0,0,8">
-                        <Button DockPanel.Dock="Right" Content="E_xit Martlet" Click="Exit_Click" AutomationProperties.Name="Exit Martlet"/>
+                        <Button DockPanel.Dock="Right" Content="E_xit Martlet" Click="Exit_Click" AutomationProperties.Name="Exit Martlet"
+                                AutomationProperties.AutomationId="ExitMartlet"/>
                         <TextBlock Style="{DynamicResource Muted}" VerticalAlignment="Center"
                                    Text="Martlet closes completely when you exit."/>
                     </DockPanel>

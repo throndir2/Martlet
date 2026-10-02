@@ -191,6 +191,19 @@ route when the text arrived but speaking it failed), for
 example `{"name":"logs_tail","arguments":{"contains":"failed"}}`. Logs can
 include local paths and provider error text (never keys or conversation content).
 
+`logs_timeline` reads this PC's logs as the desktop's
+[Diagnostics page](DIAGNOSTICS.md#diagnostics-page-and-the-log-host) shows
+them (optional absolute `dataDirectory`, default the current user's):
+`desktop`, `avatar-renderer` and `host-runs` with their rotated copies, parsed
+into one timeline, newest first, of `{at, level, component, seq, message}`
+(a stack trace or output lines stay in their line's `message`). Optional
+filters: `level` (`all`, `warnings`, `errors`), `component`, `contains` (at
+most 200 characters) and `lines` (1-1000, default 200). It also returns
+`device` (this PC's ID as a log source), `logsFolder`, `total`, `errors`,
+`warnings`, per-`components` counts, `matching`, and `logHost` (the `logs`
+entry of `cluster.json`, null when nobody collects logs; `plan` is `none`,
+`loaded` or `unreadable`). Read-only; it contacts no host.
+
 To drive the visible desktop, start `Martlet.Desktop.exe` yourself in the **same
 interactive Windows session** (ideally with a disposable `--data-directory`).
 Call `ui_connect` with that process ID. `ui_snapshot` returns window accessible names,
@@ -206,7 +219,7 @@ Status fields include `VisionStatus` (Companion › Vision: whether the Thinking
 option. By default only passive navigation and
 diagnostics controls can be clicked. The main window is split into pages, and a
 page's controls are only visible after you open it: click `NavHome`,
-`NavDevices`, `NavCompanion` or `NavSettings` first (for example
+`NavDevices`, `NavCompanion`, `NavDiagnostics` or `NavSettings` first (for example
 `NavCompanion` before `OpenSetup`). On Settings, click `DiagnosticsSection` to
 expand the pipeline and status fields. On a fresh data directory, `TourSkip`
 dismisses the welcome tour, and `TourBegin` and `TourBack` step through it
@@ -247,6 +260,27 @@ features* (administrator prompt and possibly a restart, so it needs
 virtualization, Martlet opens a run window by itself (`HostRunWindow`) that
 continues the setup; `continueSetup` in `virtualization_status` shows what is
 pending.
+Devices' `AddComputer` (and Settings' `OpenHosts`) opens the *Add a computer*
+wizard (`HostsWindow`, titled *Martlet - add a computer*; the click may return
+`completed: false` while that dialog stays open). Its rail steps
+(`HostsStepWhere`, `HostsStepInstall`, `HostsStepPair`, `HostsStepRoles`),
+`HostsBack`, `HostsNext`, `HostsClose`, the method cards (`HostMethodThisPc`,
+`HostMethodSshDocker`, `HostMethodSshNative`, `HostMethodOnHost`; choosing one
+moves on to Install), `HostsEnterCode` (straight to Pair for a host that already
+shows a code) and the `HostCommandSection`, `PairCommandSection` and
+`DeviceIdSection` expanders only change what the wizard shows, so they are
+passive clicks. Snapshots return `HostStatus` (the wizard's status line: what
+pairing did, or why it was refused, such as *That code doesn't match...* or *No
+Martlet host answered at ...*), `PairedHost`, and `PairCodeTitle`/`PairCodeHelp`
+(*Enter the code shown on the host* when Martlet can't reach the host, *Or enter a
+code from the host* next to `PairConsole` otherwise). `PairAddress` and
+`PairingCode` take the host's address and short code (`ui_set_text`, so
+`--allow-ui-effects`), and `PairHost` pairs; a successful pairing stores a
+device secret in Windows Credential Manager, so verification stops at refused
+codes. On the host dashboard, *Show a pairing code* (`Step-pair-0`) shows the
+address (`HostRunPairAddress`, returned) and the one-use code (`HostRunPairCode`,
+never returned) in the run window's `HostRunPairing` panel; the host-runs log
+masks codes.
 Use `ui_snapshot` again to observe asynchronous effects. Modal
 actions may return `completed: false` while their dialog remains open; this
 means the invoke is still pending, not that the action finished.
@@ -280,10 +314,45 @@ passive. To see a problem on a disposable data directory, put invalid JSON in
 (*crash*), or choose Ollama on this PC in Companion › Thinking while Ollama
 isn't running (*ollama*).
 
+The Diagnostics page (`NavDiagnostics`) lists log lines newest first. Each
+shown line is a list item `LogEntry-<n>` (`LogEntry-0` is the newest shown)
+whose value reads *<time> <level> <computer> · <part>: <first line>*;
+clicking one only selects it, and `LogDetail` then returns the whole line
+(time, level, computer, part, who passed it on and every following line).
+`LogSummary` says how many lines are shown of how many, from how many
+computers, the last 24 hours' errors and warnings and where remote lines came
+from (the log host, each paired host's own log, or why not). The filters are
+pills that only filter: `LogLevel-all`, `LogLevel-warnings`, `LogLevel-errors`,
+`LogPart-<part>` (`all`, `desktop`, `avatar-renderer`, `host-runs`, `gateway`)
+and `LogSource-<computer>` (`all`, this PC's device ID such as
+`LogSource-desktop-diva`, or a host ID); all are passive clicks, and snapshots
+report which is chosen in `selected`. `LogSearch` needs `ui_set_text` (and so
+`--allow-ui-effects`). `LogsRefresh` reads the logs again and sends nothing, so
+it is passive; `LogsCopy` (clipboard) and `LogsOpenFolder` (Explorer) are not.
+`LogHostChoice` returns the chosen log host (*None (each computer keeps its
+own)*, a host ID, or *<host> (not paired with this PC)*); changing it with
+`ui_select` changes the shared plan and needs `--allow-ui-effects`.
+`LogHostStatus` says what this PC last sent to the log host and which hosts
+didn't answer or need a Martlet update. To see lines on a
+disposable data directory, write `logs\desktop.log` (lines like
+`2026-10-01 22:15:44.974 -07:00 WARN [1] message`), `logs\avatar-renderer.log`
+or `logs\host-runs.log` before launching. Home's `HealthOpen-errors-diagnostics`
+and `HealthOpen-crash-diagnostics` open this page.
+
+`ui_snapshot` reports `selected` (true or false) for controls that are chosen
+rather than ticked (navigation, Companion's side list, radio buttons and
+filter pills, list items), and a combo box in the status fields reads as its
+chosen option.
+
 For the desktop character, open `CompanionTab-Character`; with
 `--allow-ui-effects`, `SetupCharacterToggle` shows or hides it and
 `SetupCharacterZoomIn`, `SetupCharacterZoomOut` and `SetupCharacterResetZoom`
-zoom its overlay. The `SetupCharacterView` status then reports the overlay's
+zoom its overlay. `SetupCharacterNow` returns the page's Now line (the model,
+then *on your desktop* or *hidden*), and `SetupCharacterNowProblem` appears when
+the character's last stop did not finish cleanly (pressing Show or Hide
+character retries; details go to the `desktop` log). Exiting never waits on the
+character: Settings' `ExitMartlet` (needs `--allow-ui-effects`) closes Martlet
+even then, and Windows ends the renderer with it. After a zoom, the `SetupCharacterView` status reports the overlay's
 size, its distance from the top of the screen, the camera zoom and where the
 top of the character's head sits relative to the overlay's top edge (it must
 stay in view at every zoom).

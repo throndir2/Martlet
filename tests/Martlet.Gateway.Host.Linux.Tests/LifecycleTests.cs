@@ -306,6 +306,47 @@ public sealed class LifecycleTests
         Assert.Equal(3, await platform.Run("serve", output));
     }
 
+    [Fact]
+    public async Task Owner_pair_shows_a_short_code_that_a_desktop_types_to_pair()
+    {
+        using var platform = new FixturePlatform();
+        using var output = new StringWriter();
+        platform.Terminal = new() { Interactive = false };
+        Assert.Equal(0, await platform.Run("owner-init", output));
+
+        using var pairing = new WatchingWriter("");
+        var run = HostApplication.RunAsync(["owner-pair", "--config", "/srv/martlet/host.json"], pairing, default, platform);
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (!pairing.ToString().Contains("Waiting for the desktop", StringComparison.Ordinal) && DateTime.UtcNow < deadline)
+            await Task.Delay(50);
+        var shown = pairing.ToString();
+        Assert.DoesNotContain("martlet-pair-v1.", shown);
+        var code = System.Text.RegularExpressions.Regex.Match(shown, @"Code:\s+([2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4})").Groups[1].Value;
+        var address = System.Text.RegularExpressions.Regex.Match(shown, @"Address:\s+(\S+)").Groups[1].Value;
+        Assert.Equal(9, code.Length);
+        var origin = Martlet.Avatar.Audio2Face.Remote.HostPairingInput.Origin(address);
+        Assert.Equal(platform.Origin.CanonicalOrigin, origin);
+
+        var wrong = (code[0] == '2' ? "3" : "2") + code[1..];
+        var refused = await Assert.ThrowsAsync<Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostException>(() =>
+            Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostClient.PairWithCodeAsync(origin, wrong, "fixture-desktop", "Fixture PC"));
+        Assert.Equal("pairing.invalid", refused.Code);
+        var (paired, secret) = await Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostClient.PairWithCodeAsync(
+            origin, " " + code.ToLowerInvariant().Replace("-", " ") + " ", "fixture-desktop", "Fixture PC");
+        Assert.Equal(platform.Owner!.Identity!.SpkiFingerprint, paired.SpkiFingerprint);
+        Assert.Equal(platform.Owner.Identity.HostId, paired.HostId);
+        Assert.Equal("fixture-desktop", paired.DeviceId);
+        Assert.Equal(43, secret.Length);
+        Assert.Equal(0, await run.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Contains("Paired: fixture-desktop (Fixture PC)", pairing.ToString());
+
+        platform.Terminal = new("yes", "list");
+        using var listed = new StringWriter();
+        Assert.Equal(0, await platform.Run("admin", listed));
+        Assert.Contains("Device: fixture-desktop | Name: Fixture PC", listed.ToString());
+        Assert.Throws<HostInputException>(() => HostOptions.Parse(["owner-pair", "--config", "/srv/martlet/host.json", "--name", "x"]));
+    }
+
     internal static async Task<IssuedDeviceCredential> PairCard(PinnedGatewayClient client, GatewayOrigin origin, GatewayPairingCard card)
     {
         using var response = await Exchange(client, origin, card);
