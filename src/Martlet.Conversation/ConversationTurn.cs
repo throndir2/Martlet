@@ -40,6 +40,7 @@ public sealed class ConversationTurn
     private ConversationState state = ConversationState.Authorizing;
     private ConversationFailure failure;
     private ProviderFailureCode? providerFailure;
+    private ProviderRole? failedProvider;
     private SequenceIssueInfo? sequenceFailure;
     private EvidenceProvenance? textProvenance, speechProvenance;
     private Guid? speechRequest;
@@ -158,7 +159,8 @@ public sealed class ConversationTurn
         catch (Exception) { Fail(ConversationFailure.DependencyFailed); }
     }
 
-    private void Fail(ConversationFailure reason, ProviderFailureCode? provider = null, SequenceIssue? sequence = null)
+    private void Fail(ConversationFailure reason, ProviderFailureCode? provider = null, SequenceIssue? sequence = null,
+        ProviderRole? failedRole = null)
     {
         lock (Sync)
         {
@@ -170,6 +172,7 @@ public sealed class ConversationTurn
             if (invalidated || workFinished) return;
             failure = reason;
             providerFailure = provider;
+            failedProvider = provider is null ? null : failedRole;
             sequenceFailure = sequence is { } issue ? new(issue) : null;
             Invalidate();
         }
@@ -211,7 +214,7 @@ public sealed class ConversationTurn
                         continue;
                     }
                     Fail(result.End == RoundEnd.Failed ? ConversationFailure.ProviderFailed : ConversationFailure.InvalidStream,
-                        result.Failure, result.Issue);
+                        result.Failure, result.Issue, ProviderRole.Llm);
                     return;
                 }
                 if (result.End == RoundEnd.Refused)
@@ -488,7 +491,7 @@ public sealed class ConversationTurn
             Check(window);
             if (stream.Result is not { Outcome: SpeechSynthesisOutcome.Completed, FinalSampleCount: { } samples })
             {
-                Fail(ConversationFailure.ProviderFailed, stream.Result?.Failure?.Code);
+                Fail(ConversationFailure.ProviderFailed, stream.Result?.Failure?.Code, failedRole: ProviderRole.Tts);
                 return;
             }
             if (run is null || !run.CompleteInput(samples))
@@ -657,6 +660,6 @@ public sealed class ConversationTurn
             consumed + (currentPlayback?.DeviceConsumedSamples ?? 0), mayHavePlayed || currentPlayback?.MayHavePlayed == true,
             released, quarantined || (currentPlayback is { State: PlaybackState.Failed, DeviceReleased: false }),
             Interlocked.Read(ref dropped), currentPlayback ?? lastPlayback, retryOf, earlierSpeech, toolCalls, activeTool, toolsRejected,
-            speechLimitReached);
+            speechLimitReached, failedProvider);
     }
 }

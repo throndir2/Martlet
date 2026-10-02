@@ -186,7 +186,8 @@ paths.
 at most 200 characters). It returns `{log, exists, truncated, lines}` and never
 writes, rotates or deletes a log. Failed provider requests appear in the desktop
 log with their endpoint, model, HTTP status and the provider's own short
-explanation, followed by a `Reply failed (...)` line naming the route, for
+explanation, followed by a `Reply failed (...)` line naming the route (`Spoken reply failed (...)` naming the voice
+route when the text arrived but speaking it failed), for
 example `{"name":"logs_tail","arguments":{"contains":"failed"}}`. Logs can
 include local paths and provider error text (never keys or conversation content).
 
@@ -216,7 +217,7 @@ dismisses the welcome tour, and `TourBegin` and `TourBack` step through it
 for example `CompanionTab-People`) and `OpenPeople` (on Listening) are passive
 navigation too. People shows `PeopleStatus`, `PeopleSyncStatus` and
 `PeopleVoiceCount`, and Listening shows `ListenParakeetStatus`; snapshots return
-these status texts, as does the talk window's `LiveStatus` (the line under "Martlet": what it is doing, or why the last reply failed). Each voice's controls are numbered by voice (`PeopleName-3`,
+these status texts, as does the talk window's `LiveStatus` (the line under "Martlet": what it is doing, or why the last reply failed, naming the job that failed: *Martlet couldn't speak: ...* for the voice, and *Your Martlet host <ID> didn't run ...* when the job runs on a paired host). Each voice's controls are numbered by voice (`PeopleName-3`,
 `PeopleOtherNames-3`, `PeopleSave-3`, `PeopleOwner-3`, `PeopleMergeTarget-3`,
 `PeopleMerge-3`, `PeopleForget-3`); like `PeopleInstall`, `PeopleRecognize`,
 `PeopleShare`, `PeopleSync`, `PeopleForgetAll` and `SetupListenParakeet`, they
@@ -259,6 +260,7 @@ title `HealthIssue-<id>` returns its level, title and detail (*Problem: Ollama
 isn't running on this PC. ...*); ids include `data-folder`, `settings`,
 `thinking-setup`, `thinking-retired`, `ollama`, `job-<job>` (coverage, for
 example `job-listening`), `docker`, `failed-thinking`, `failed-listening`,
+`failed-voice` (a reply's text arrived but speaking it failed),
 `microphone`, `microphone-blocked`, `speakers`, `listening-setup`,
 `voice-setup`, `audio2face`, `webview2`, `vision`, `vision-source`,
 `host-<host ID>`, `host-update-<host ID>`, `tools-config`, `tools-<server>`,
