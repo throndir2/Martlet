@@ -29,6 +29,7 @@ public partial class MainWindow : ThemedWindow
     private readonly DesktopMemoryService? memory;
     private readonly LorebookStore? lorebooks;
     private readonly SmartHome smartHome;
+    private readonly McpToolService mcpTools;
     private readonly VoiceIdentity voiceIdentity;
     private readonly ConfigurationRecoveryController? recovery;
     private readonly AudioSetupService audioSetup;
@@ -73,6 +74,8 @@ public partial class MainWindow : ThemedWindow
         memory = store is null ? null : new DesktopMemoryService(store);
         lorebooks = store is null ? null : new LorebookStore(store.DataDirectory);
         smartHome = new(store?.DataDirectory, vault);
+        mcpTools = new(store?.DataDirectory);
+        mcpTools.Changed += ToolsChanged;
         voiceIdentity = new(store?.DataDirectory);
         voiceIdentity.Load();
         recovery = store is null ? null : new(store, setupOperations, () => !support.HasResources);
@@ -81,7 +84,8 @@ public partial class MainWindow : ThemedWindow
         {
             conversation = new(setupOperations, setupService, vault, new WasapiCaptureDeviceFactory(), new WasapiDeviceFactory(),
                 memory: memory, generatedSpeech: avatar.Observer, revokeAvatar: avatar.Revoke, voiceIdentity: voiceIdentity,
-                dataDirectory: store!.DataDirectory, spokenText: captions.Feed, smartHome: smartHome, lorebooks: lorebooks);
+                dataDirectory: store!.DataDirectory, spokenText: captions.Feed, smartHome: smartHome, lorebooks: lorebooks,
+                tools: mcpTools);
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
         }
         audioSessionEvents.LockedChanged += AvatarSessionLocked;
@@ -548,6 +552,8 @@ public partial class MainWindow : ThemedWindow
         if (model is not null)
             await model.CloseAsync();
         if (conversation is not null) await Task.Run(async () => await conversation.DisposeAsync());
+        // Ends every MCP server Martlet started (they also end with Martlet's process through its job object).
+        await Task.Run(async () => await mcpTools.DisposeAsync());
         captions.Dispose();
         if (!await StopAvatarSafelyAsync())
         {

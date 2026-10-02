@@ -59,6 +59,11 @@ screen, a webcam or capture card, a phone camera (phone-as-webcam apps or an
 IP camera address) or other video sources. See
 [screen and camera commentary](docs/SCREEN_COMMENTARY.md).
 
+**Tools (MCP)** let Martlet use MCP servers on this PC while you talk: your files, a
+browser, a calendar and anything else with an MCP server. Add servers on
+**Companion > Tools** (the standard `mcpServers` format); the talk window asks before
+each tool call unless you always allow it. See [MCP](docs/MCP.md).
+
 **Voice Library (local preparation)** now offers all five self-hosted research
 targets (F5-TTS, Qwen3-TTS, Chatterbox, GPT-SoVITS, XTTS-v2), explicit private
 WAV/transcript import for reference or training material, persistent
@@ -100,7 +105,7 @@ There is no remote memory, embedding, vector database or automatic backup.
 | [Prerequisites](docs/PREREQUISITES.md) | Every runtime prerequisite by feature and machine: what is bundled, what the installer and **Martlet prerequisites** tool install on request (WebView2, microphone access, Windows speech, Ollama, WSL 2 + Docker Desktop), what hosts install, and what you supply |
 | [Delivery and release plan](docs/DELIVERY.md) | PR-sized backlog, dependencies, acceptance criteria, release gates, and traceability |
 | [Research and provenance](docs/RESEARCH.md) | Dated primary sources, verified constraints, and unresolved integration questions |
-| [Local MCP control](docs/MCP.md) | Stdio tools for headless diagnostics and interactive desktop UI Automation |
+| [MCP: tools while you talk, and local MCP control](docs/MCP.md) | Martlet as an MCP client: MCP servers on this PC (stdio or streamable HTTP, standard `mcpServers` mcp.json) give replies tools, with per-call confirmations in the talk window and a tool log on Companion > Tools; plus Martlet's own stdio MCP server for headless diagnostics and desktop UI Automation |
 | [Implemented foundation and decisions](docs/FOUNDATION.md) | Accepted/deferred decisions, exact APIs/bounds, current behavior and next ownership |
 | [Resumable setup and local audio](docs/SETUP.md) | V02a configuration/vault actions and V02b explicit local device tests, historical checkpoints, strict migration and remaining live gates |
 | [Explicit API conversation](docs/CONVERSATION.md) | V04b typed/PTT path, hands-free voice activity, local Voice ID, exact supported models and bounds, fresh authorization, Stop/cleanup, troubleshooting and separately authorized live-trial checklist |
