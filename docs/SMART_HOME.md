@@ -13,7 +13,7 @@ MVP non-goal, **general tool execution**
 a narrow, opt-in home surface on the user's own turns, not arbitrary tool or
 command execution.
 
-## What works now (SH00)
+## What works now (SH00-SH03)
 
 **Companion > Smart home** connects one Home Assistant (address + long-lived
 access token; the token is kept in Windows Credential Manager under
@@ -57,12 +57,33 @@ address; plain `http` is accepted only for local-network addresses). With
    (`<address>/api/camera_proxy/camera.front_door`) works as a phone or
    network camera source in Watch; Martlet adds the saved token itself and
    names the source after the entity. Companion › Vision › **Use a Home Assistant camera** lists the camera entities (`SmartHome.CamerasAsync`) and fills in the chosen one's address.
+6. **Free-form requests (SH02-SH03):** with **Let the Thinking model use Home
+   Assistant's tools** on, Smart home registers Home Assistant's
+   [MCP Server](https://www.home-assistant.io/integrations/mcp_server/)
+   (`<address>/api/mcp`, the same vaulted token as a Bearer header) as a
+   managed server named `home-assistant` in the shared MCP client
+   (`McpToolService.SetManagedServer`, shown read-only on the Tools page). On a
+   user-started turn whose toolset includes it (OpenAI or Chat Completions
+   routes with tool calling), the Assist step is skipped so nothing runs twice,
+   and the persona is told to act only on what the user asked; otherwise
+   Assist runs as in 1. Every call passes `SmartHome.Policy`
+   (`HomeCommandGuard.AssessTool`): status tools (`GetLiveContext`,
+   `GetDateTime`, ...) and Home Assistant intents (`Hass*`) on ordinary devices
+   run at once; anything naming a lock, door, garage, gate, alarm or valve in
+   the tool name, its arguments, a `domain`/`device_class`, or a name of such
+   an entity read from `/api/states` (refreshed at most every 5 minutes) is
+   blocked or asks every time per the setting above; other tools (exposed
+   scripts) ask every time; Always allow is never offered. If the entity list
+   can't be read, intents that address a device only by name ask first.
+   Requires Home Assistant's Model Context Protocol Server integration.
 
 Code: `src/Martlet.Home` (endpoint rules, REST client, guard, persona
 context), `src/Martlet.Desktop/SmartHome.cs` (connection, preferences in
-`smart-home.json`, turn step), `MainWindow.SmartHome.cs` (page). Not yet done:
-fuzzy commands through LLM tool calling, events, live camera requests ("look at
-the front door") and native Matter (slices below).
+`smart-home.json`, turn step, managed MCP server and its approval policy),
+`MainWindow.SmartHome.cs` (page). Not yet done: events, live camera requests
+("look at the front door") and native Matter (slices below). Device aliases
+defined only in Home Assistant's voice settings are not in the sensitive-name
+list; leave locks and garage doors unexposed to be safe.
 
 ## Short answer (research, 2026-09-30)
 
@@ -266,18 +287,17 @@ flowchart LR
 | Slice | Outcome | Depends on |
 | --- | --- | --- |
 | SH00 | **Delivered 2026-10-01.** HA connection page, vaulted token, built-in Assist on user turns for every model, safety tier with click confirmation, action list, persona context, HA camera snapshot addresses in Watch | - |
-| SH01 | Opt-in tool calling in the chat encoders + streamed tool-call parsing + `ToolModelCatalog`; default unchanged (owned by the MCP client session, `Martlet.Mcp.Client`) | - |
-| SH02 | HA `/api/mcp` registered as a Smart home-managed server in the shared MCP client (no second client), for fuzzy requests ("make it cozy"); Assist pre-step off on those turns to avoid double actions | SH01 |
-| SH03 | Per-tool approval hook on managed servers (not yet in `Martlet.Mcp.Client`; the MCP session uses inline per-call approvals): comfort tools auto-approved, lock/door/garage/gate/alarm/valve tools ask every time or are denied; tools only on user-started turns; spoken result | SH02 |
-| SH04 | HA cameras listed as Vision sources; "Look at the front door" on request | video source input, SH00 |
+| SH01 | **Delivered 2026-10-01 (MCP session).** Opt-in tool calling in the chat encoders, streamed tool-call parsing and the shared `Martlet.Mcp.Client` | - |
+| SH02 | **Delivered 2026-10-01.** HA `/api/mcp` as a Smart home-managed server in the shared MCP client, for free-form requests ("make it cozy"); Assist step skipped on those turns | SH01 |
+| SH03 | **Delivered 2026-10-01.** Per-call policy on the managed server: status and ordinary devices auto-approved, lock/door/garage/gate/alarm/valve calls ask every time or are blocked, other tools ask; tools only on user-started turns | SH02 |
+| SH04 | **Delivered 2026-10-01 (talk panel session).** HA cameras listed as Vision sources; still to do: "Look at the front door" on request | video source input, SH00 |
 | SH05 | Event-triggered looks/remarks from HA WebSocket and optional Frigate MQTT (doorbell, person detected); announcements; never actions | SH04 |
 | SH06 | Host `home` role: go2rtc and matterjs-server containers; multi-admin Matter pairing from a shared code | SH02, host roles |
 | SH07 | Direct adapters only if users lack HA: Hue CLIP v2, Shelly RPC, MQTT | SH03 |
 | SH08 | iOS track: HomeKit read/control through the Home framework | [iOS plan](IOS.md) |
 
-SH00 delivers "my waifu turns off the lights" for anyone with Home Assistant.
-SH01-SH03 add free-form requests on tool-capable models. SH04 is the camera
-overlap and should land with the Vision page's source list.
+SH00 delivers "my waifu turns off the lights" for anyone with Home Assistant;
+SH02-SH03 add free-form requests on tool-capable models.
 
 ## Owner decisions
 

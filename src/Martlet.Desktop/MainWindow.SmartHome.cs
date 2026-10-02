@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.Home;
+using Martlet.Mcp.Client;
 
 namespace Martlet.Desktop;
 
@@ -83,10 +84,23 @@ public partial class MainWindow
             }
         };
         AutomationProperties.SetAutomationId(sensitive, "SmartHomeSensitive");
-        control.Checked += (_, _) => SaveSmartHomeControl(true, false);
-        control.Unchecked += (_, _) => SaveSmartHomeControl(false, false);
-        sensitive.Checked += (_, _) => SaveSmartHomeControl(true, true);
-        sensitive.Unchecked += (_, _) => SaveSmartHomeControl(true, false);
+        var modelTools = new CheckBox
+        {
+            IsChecked = saved.ModelTools && saved.Control && connected, IsEnabled = connected && saved.Control,
+            Margin = new Thickness(0, 4, 0, 6),
+            Content = new TextBlock
+            {
+                TextWrapping = TextWrapping.Wrap,
+                Text = "Let the Thinking model use Home Assistant's tools for anything I ask, not just exact commands"
+            }
+        };
+        AutomationProperties.SetAutomationId(modelTools, "SmartHomeModelTools");
+        control.Checked += (_, _) => SaveSmartHomeControl(true, false, saved.ModelTools);
+        control.Unchecked += (_, _) => SaveSmartHomeControl(false, false, false);
+        sensitive.Checked += (_, _) => SaveSmartHomeControl(true, true, saved.ModelTools);
+        sensitive.Unchecked += (_, _) => SaveSmartHomeControl(true, false, saved.ModelTools);
+        modelTools.Checked += (_, _) => SaveSmartHomeControl(true, saved.AllowSensitive, true);
+        modelTools.Unchecked += (_, _) => SaveSmartHomeControl(true, saved.AllowSensitive, false);
 
         page.Children.Add(Card(Heading("What Martlet may do"),
             control,
@@ -104,6 +118,19 @@ public partial class MainWindow
                 "built-in Assist. It runs on your Home Assistant (no AI model, no cloud), acts only on commands it recognizes in its own " +
                 "language, and Martlet then replies in its own voice. Screen and camera looks never control your home, and nobody else's " +
                 "words reach it unless they talk to Martlet (turn on Voice ID to answer only you).", new Thickness(0, 8, 0, 0))));
+
+        page.Children.Add(Card(Heading("Free-form requests"),
+            modelTools,
+            new TextBlock { Text = SmartHomeToolsStatus(saved), FontSize = 14, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0) },
+            Note("Assist only understands set phrases. With this on, Martlet's Thinking model can also handle requests like \"make it cozy " +
+                "in here\", \"I'm going to bed\" or \"is anything still on downstairs?\" by calling Home Assistant's own tools: it sees your " +
+                "exposed devices, their areas and states, and acts on them. Status and ordinary devices run right away; locks, doors, " +
+                "garage doors, gates, alarms and valves follow the setting above (blocked, or you click Yes each time), and anything else, " +
+                "such as an exposed script, asks you first. Every call is listed here and on the Tools page.", new Thickness(0, 8, 0, 0)),
+            Note("Needs: Home Assistant's \"Model Context Protocol Server\" integration (in Home Assistant: Settings > Devices & services > " +
+                "Add integration), and a Thinking model that can call tools on OpenAI or an OpenAI-compatible server (such as gpt-4.1-mini, " +
+                "qwen3 or llama3.1 in Ollama). Otherwise, or if Home Assistant's tools aren't reachable, Martlet uses Assist as before. " +
+                "Your devices' names, areas and states go to the Thinking model whenever it looks.", new Thickness(0, 8, 0, 0))));
 
         var recent = smartHome.RecentActions;
         var log = new List<UIElement> { Heading("Recent actions") };
@@ -151,15 +178,37 @@ public partial class MainWindow
         RenderTab();
     }
 
-    private void SaveSmartHomeControl(bool control, bool allowSensitive)
+    private void SaveSmartHomeControl(bool control, bool allowSensitive, bool modelTools)
     {
         var current = smartHome.Preferences;
-        if (current.Control == control && current.AllowSensitive == allowSensitive) return;
-        var saved = smartHome.SetControl(control, allowSensitive);
+        if (current.Control == control && current.AllowSensitive == allowSensitive && current.ModelTools == modelTools) return;
+        var saved = smartHome.SetControl(control, allowSensitive, modelTools);
+        if (saved && modelTools && control) mcpTools.EnsureStarted(retry: true);
         ActionText.Text = !saved ? "Couldn't save the smart home setting. Check access to your data directory."
             : !control ? "Martlet won't use Home Assistant now."
+            : modelTools != current.ModelTools
+                ? modelTools
+                    ? "The Thinking model can now use Home Assistant's tools when you ask. An open talk window picks it up on Reload."
+                    : "The Thinking model no longer gets Home Assistant's tools; Martlet uses Assist for your commands."
             : allowSensitive ? "Martlet may now also operate locks, doors, garage doors, gates, alarms and valves, after you click Yes each time."
             : "Martlet now controls and checks your home through Home Assistant when you ask.";
         RenderTab();
+    }
+
+    /// <summary>Whether Home Assistant's MCP server is running among the conversation's tools, in words.</summary>
+    private string SmartHomeToolsStatus(HomePreferences saved)
+    {
+        if (!smartHome.ModelToolsEnabled) return saved.Control ? "Off: Martlet uses Assist." : "Off.";
+        var status = mcpTools.Hub.Status.FirstOrDefault(s => s.Name == SmartHome.ServerName);
+        if (mcpTools.ManagedConflicts.Any(s => s.Name == SmartHome.ServerName))
+            return "Not used: your mcp.json already has a server named \"home-assistant\", and that one is used instead.";
+        return status?.State switch
+        {
+            McpServerState.Ready => $"Ready: Home Assistant offers {status.Tools.Count} tools.",
+            McpServerState.Starting => "Connecting to Home Assistant's tools...",
+            McpServerState.Failed => $"Home Assistant's tools aren't reachable ({status.Error}). Add the Model Context Protocol Server " +
+                "integration in Home Assistant; until then Martlet uses Assist.",
+            _ => "On: connects when you open a talk window."
+        };
     }
 }
