@@ -618,6 +618,16 @@ public partial class LiveConversationWindow : ThemedWindow
         RenderActions();
     }
 
+    /// <summary>Puts the "Message Martlet" hint where typed text starts. A TextBox applies its padding inside its content host
+    /// as well as through the theme's template, so the caret's own position is the only reliable offset.</summary>
+    private void Input_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (InputText.Text.Length > 0) return;
+        var start = InputText.GetRectFromCharacterIndex(0);
+        if (start.IsEmpty) return;
+        Placeholder.Margin = new Thickness(start.Left, start.Top, start.Left, 0);
+    }
+
     private void Input_KeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key != Key.Enter || (Keyboard.Modifiers & ModifierKeys.Shift) != 0) return;

@@ -37,7 +37,12 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             pid = new { type = "integer", minimum = 1 }
         }, ["pid"]),
-        Tool("ui_snapshot", "Inspect automation IDs, enabled state and selected non-secret status fields of attached Martlet windows.", new { }),
+        Tool("ui_snapshot", "Inspect automation IDs, enabled state and selected non-secret status fields of attached Martlet windows. " +
+            "With layout, each control also returns its screen bounds and, for text, where its first line of text sits " +
+            "(geometry only, never the text).", new
+        {
+            layout = new { type = "boolean" }
+        }),
         Tool("ui_click", "Invoke an automation-ID control. Only safe navigation controls work without --allow-ui-effects.", new
         {
             id = new { type = "string" }
@@ -146,7 +151,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalInt(arguments, "lines"), OptionalString(arguments, "contains")),
 
                 "ui_connect" => desktop.Connect(RequiredInt(arguments, "pid")),
-                "ui_snapshot" => desktop.Snapshot(),
+                "ui_snapshot" => desktop.Snapshot(OptionalBool(arguments, "layout") ?? false),
                 "ui_click" => await desktop.ClickAsync(RequiredString(arguments, "id")),
                 "ui_select" => desktop.Select(RequiredString(arguments, "id"), RequiredString(arguments, "item")),
                 "ui_set_text" => desktop.SetText(RequiredString(arguments, "id"), RequiredString(arguments, "text")),
@@ -399,6 +404,19 @@ internal sealed class McpServer(DesktopAutomation desktop)
             return null;
         return value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number)
             ? number : throw new ArgumentException($"'{property}' must be an integer.");
+    }
+
+    private static bool? OptionalBool(JsonElement element, string property)
+    {
+        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(property, out var value) ||
+            value.ValueKind == JsonValueKind.Null)
+            return null;
+        return value.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            _ => throw new ArgumentException($"'{property}' must be a boolean.")
+        };
     }
 
     private static string[] RequiredStrings(JsonElement element, string property)
