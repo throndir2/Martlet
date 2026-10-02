@@ -937,8 +937,9 @@ it.*
 
 - **Entry points**: conversation **Stop** (Esc); tray › *Stop everything*;
   global hotkey.
-- **Behaviour**: stops speech, listening, screen watching and the current
-  reply. Doesn't change settings.
+- **Behaviour**: stops speech, screen watching and the current reply.
+  Listening carries on, so Martlet never misses what you say next; only the
+  *Listening* toggle pauses it. Doesn't change settings.
 - **Clicks**: 1.
 
 ### H. Talking

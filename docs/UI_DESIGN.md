@@ -297,8 +297,9 @@ Opening the window starts what Companion chose: **always listening** (the
 default, with the chosen or Windows default microphone; no test needed) and **vision** (off by
 default). Typing while Martlet listens hands the microphone over for the typed
 message, and listening resumes after the reply. **Stop (Esc)** stops the reply,
-any recording, listening and vision at once and keeps the conversation;
-locking Windows does the same and starts a fresh conversation, and closing the
+any recording and vision at once and keeps the conversation; listening carries
+on (only its own button pauses it). Locking Windows stops listening and vision
+and starts a fresh conversation (both resume on unlock), and closing the
 window ends it.
 
 ### 7. Companion and Settings pages
