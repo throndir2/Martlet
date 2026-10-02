@@ -199,6 +199,9 @@ internal sealed class LiveConversationConfiguration
                 if (route.Consent != route.Selection()) return $"{role}: destination choice missing or changed. Review it in Setup.";
                 if (route.CredentialId is null && ChatCompletionsEndpointCatalog.Named(route.Origin) is { } named)
                     return $"{role}: missing credential reference. Store your {named.Name} API key explicitly in Setup.";
+                if (ChatCompletionsEndpointCatalog.RetiredOn(route.Origin, route.ModelId) is { } retired)
+                    return $"{role}: {retired.Name} has retired {route.ModelId}, so it no longer answers. " +
+                        $"Choose another model in Companion › Thinking (recommended: {retired.DefaultModelId}).";
                 continue;
             }
             if (role == SetupRole.Stt && IsHostStt(route) && route.Enabled == true)
@@ -389,7 +392,9 @@ internal sealed class LiveConversationConfiguration
     internal VisionSupport Vision() => Vision(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm));
 
     internal static VisionSupport Vision(SetupRoute? thinking) =>
-        thinking is null ? VisionSupport.Unknown : VisionModelCatalog.Classify(thinking.ModelId);
+        thinking is null ? VisionSupport.Unknown
+        : IsChat(thinking) && ChatCompletionsEndpointCatalog.RetiredOn(thinking.Origin, thinking.ModelId) is not null ? VisionSupport.Unsupported
+        : VisionModelCatalog.Classify(thinking.ModelId);
 
     /// <summary>Whether the Thinking model can see, and exactly what to change when it cannot.</summary>
     internal string VisionAdvice() => VisionAdvice(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm));
@@ -398,6 +403,9 @@ internal sealed class LiveConversationConfiguration
     {
         if (route is null) return "Thinking is not set up yet. Choose a Thinking model in Companion first.";
         var local = VisionModelCatalog.DescribeLocalOptions();
+        if (IsChat(route) && ChatCompletionsEndpointCatalog.RetiredOn(route.Origin, route.ModelId) is { } retired)
+            return $"{retired.Name} has retired your Thinking model {route.ModelId}, so Martlet can't talk or see with it. " +
+                $"Choose {retired.DefaultModelId} in Companion › Thinking: it talks, sees your screen and uses tools.";
         return Vision(route) switch
         {
             VisionSupport.Supported =>
@@ -407,8 +415,9 @@ internal sealed class LiveConversationConfiguration
                 $"To turn this on, give the host a model that also sees: on the Devices page, add the host's Thinking (Ollama) role again and choose one of {local}. " +
                 "Or switch Thinking to OpenAI gpt-4.1-mini in Companion. Talking keeps working either way.",
             VisionSupport.Unsupported when IsChat(route) =>
-                $"Your Thinking model {route.ModelId} is text-only, so Martlet can't see your screen with it. Pick a vision model on the same endpoint " +
-                "(names with vl or vision, gemma-3, gpt-4o/4.1/5, gemini, claude, pixtral...), or run one on this PC in Ollama or LM Studio " +
+                $"Your Thinking model {route.ModelId} is text-only, so Martlet can't see your screen with it. Pick a vision model on the same endpoint" +
+                (ChatCompletionsEndpointCatalog.Named(route.Origin) is { } named ? $", like {named.Name}'s recommended {named.DefaultModelId}" : "") +
+                " (names with vl or vision, gemma-3 or gemma-4, gpt-4o/4.1/5, gemini, claude, pixtral...), or run one on this PC in Ollama or LM Studio " +
                 $"({local}) and point Chat Completions at it. Talking keeps working either way.",
             VisionSupport.Unsupported =>
                 $"Your Thinking model {route.ModelId} is text-only, so Martlet can't see your screen with it. Choose OpenAI gpt-4.1-mini in Companion, or a local vision model: {local}.",

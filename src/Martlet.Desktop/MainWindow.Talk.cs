@@ -147,7 +147,9 @@ public partial class MainWindow
         };
         if (prefs.Watch && !chosen) now.Add(Warning(source.Kind == WatchKind.Camera ? "Choose a camera below." : "Enter the camera address below."));
         var advice = LiveConversationConfiguration.VisionAdvice(thinking);
-        now.Add(canSee ? Note(advice, new Thickness(0, 0, 0, 0)) : Warning(advice));
+        var adviceText = canSee ? Note(advice, new Thickness(0, 0, 0, 0)) : Warning(advice);
+        AutomationProperties.SetAutomationId(adviceText, "VisionStatus");
+        now.Add(adviceText);
         page.Children.Add(Card([.. now]));
 
         var looks = new List<UIElement> { Heading("What Martlet looks at") };

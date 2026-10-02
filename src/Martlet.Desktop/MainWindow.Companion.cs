@@ -46,12 +46,14 @@ public partial class MainWindow
 
     internal const string LocalOllamaBaseUrl = "http://127.0.0.1:11434/v1";
 
+    // Every suggestion also sees (screen watching) and calls tools; the last one a card fits is recommended.
     internal static readonly IReadOnlyList<LocalChatModel> LocalChatModels =
     [
-        new("llama3.2:3b", "2.0 GB", "any PC", 0),
-        new("qwen2.5:7b", "4.7 GB", "a graphics card with 8 GB or more", 8),
-        new("llama3.1:8b", "4.9 GB", "a graphics card with 8 GB or more", 8),
-        new("gemma3:12b", "8.1 GB", "a graphics card with 12 GB or more", 12)
+        new("gemma4:e2b", "4.6 GB", "any PC", 0),
+        new("qwen3-vl:8b", "6.1 GB", "a graphics card with 8 GB or more", 8),
+        new("gemma4:e4b", "6.6 GB", "a graphics card with 8 GB or more", 8),
+        new("gemma4:12b", "8.0 GB", "a graphics card with 12 GB or more", 12),
+        new("gemma4:26b", "18.7 GB", "a graphics card with 24 GB or more", 24)
     ];
 
     private static readonly CloudProvider OpenAiCloud = new("OpenAI", null, false, null, true);
@@ -177,9 +179,9 @@ public partial class MainWindow
         _ => ""
     };
 
-    /// <summary>Recommended local model: the largest in the list this PC's graphics card fits.</summary>
+    /// <summary>Recommended local model: the largest in the list this PC's graphics card fits (a "12 GB" card reports a little less).</summary>
     internal static LocalChatModel RecommendedLocalModel(double? vramGb) =>
-        LocalChatModels.Where(m => m.MinimumVramGb <= (vramGb ?? 0)).OrderBy(m => m.MinimumVramGb).LastOrDefault() ?? LocalChatModels[0];
+        LocalChatModels.Where(m => m.MinimumVramGb <= (vramGb ?? 0) + 0.5).OrderBy(m => m.MinimumVramGb).LastOrDefault() ?? LocalChatModels[0];
 
     internal static bool IsLocalOllama(SetupRoute? route) =>
         route?.RouteType == SetupRouteType.ChatCompletions && route.Origin == LocalOllamaBaseUrl;
@@ -526,6 +528,10 @@ public partial class MainWindow
                 PageButton("Install Ollama and use it", () => InstallOllamaAsync(ModelId()).Forget(), primary: true, id: "SetupInstallOllama"),
                 PageButton("Use Ollama on this PC", () => SaveLocalThinkingAsync(ModelId()).Forget(), id: "SetupUseLocalThinking"));
 
+        var suggestion = Note($"Recommended here: {recommended.Id} ({recommended.Size}). Every suggestion talks, sees your screen " +
+            "(Companion › Vision) and uses tools.", new Thickness(0, 6, 0, 0));
+        AutomationProperties.SetAutomationId(suggestion, "SetupLocalRecommendation");
+
         return Card(Heading("Ollama on this PC"),
             Note($"Martlet talks to Ollama at {LocalOllamaBaseUrl}. Your messages, persona and any memory facts you allow stay on this PC; " +
                 "there is no key and no per-request charge. Ollama is free (MIT license) and installs from ollama.com through winget.", new Thickness(0, 0, 0, 8)),
@@ -534,6 +540,7 @@ public partial class MainWindow
             model,
             new Label { Content = "_Suggestions", Target = picks, Padding = new Thickness(0, 8, 0, 4) },
             picks,
+            suggestion,
             Note(gpu + " Prefer instruct/chat models.", new Thickness(0, 8, 0, 10)),
             buttons);
     }
@@ -886,6 +893,7 @@ public partial class MainWindow
         }
         var keyStatus = Note("", new Thickness(0, 4, 0, 0));
         var hint = Note("", new Thickness(0, 4, 0, 0));
+        AutomationProperties.SetAutomationId(hint, "SetupCloudHint-" + section);
         var consent = new CheckBox { Margin = new Thickness(0, 12, 0, 8) };
         AutomationProperties.SetAutomationId(consent, "SetupCloudConsent-" + section);
         var consentText = new TextBlock { TextWrapping = TextWrapping.Wrap };
@@ -927,10 +935,12 @@ public partial class MainWindow
             keyStatus.Text = saved ? $"Your {p.Name} key is saved in Windows Credential Manager. For security it isn't shown here. Leave this empty to keep it, or paste a new one to replace it."
                 : p.NeedsKey ? $"Paste your {p.Name} API key. It is kept in Windows Credential Manager, never in settings."
                 : "Optional: only if your server needs a key.";
-            hint.Text = p == OpenAiCloud ? (role == SetupRole.Llm ? $"Recommended: {OpenAiTextGenerationCatalog.DefaultModelId}." : "The recommended model is prefilled.")
-                : p.BaseUrl == ChatCompletionsEndpointCatalog.OpenRouterBaseUrl ? $"Recommended: {p.DefaultModel}. Any exact OpenRouter model ID works (':free' variants use its free tier). OpenRouter picks the upstream provider; fallback is off."
-                : p.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl ? $"Recommended: {p.DefaultModel}. Any model ID shown on build.nvidia.com works; keys start with nvapi-."
-                : "For example https://api.groq.com/openai/v1, or a local server such as http://127.0.0.1:1234/v1 (LM Studio). HTTP is allowed only for a loopback IP. Enter the exact model ID it serves.";
+            var retired = SameAsSaved(p) && p.Chat ? ChatCompletionsEndpointCatalog.RetiredOn(p.BaseUrl, cloudRoute!.ModelId) : null;
+            hint.Text = (retired is null ? "" : $"{retired.Name} has retired {cloudRoute!.ModelId}, so it no longer answers. Choose another model and save. ") +
+                (p == OpenAiCloud ? (role == SetupRole.Llm ? $"Recommended: {OpenAiTextGenerationCatalog.DefaultModelId}." : "The recommended model is prefilled.")
+                : p.BaseUrl == ChatCompletionsEndpointCatalog.OpenRouterBaseUrl ? $"Recommended: {p.DefaultModel} (talks, sees your screen and uses tools). Any exact OpenRouter model ID works (':free' variants use its free tier). OpenRouter picks the upstream provider; fallback is off."
+                : p.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl ? $"Recommended: {p.DefaultModel} (a fast Free Endpoint that talks, sees your screen and uses tools). Any model ID shown on build.nvidia.com works; models marked Free Endpoint there cost nothing. Keys start with nvapi-."
+                : "For example https://api.groq.com/openai/v1, or a local server such as http://127.0.0.1:1234/v1 (LM Studio). HTTP is allowed only for a loopback IP. Enter the exact model ID it serves.");
             consentText.Text = $"I choose {p.Name} for {job.Job}. {job.Sent} go to it, and requests may cost money there. " +
                 $"{OpenAiSetup.Boundary(role)} This isn't permission to record or send anything yet.";
             consent.IsChecked = SameAsSaved(p) && cloudRoute!.Consent is not null && keepModel;

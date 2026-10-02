@@ -144,7 +144,8 @@ The last column shows what else fits if you want the LLM local too.
 | 32 GB+ | Local GPU | Local GPU | Audio2Face | Local possible | 14B+ Q4, or 24B+ without local vision |
 
 **Recommended hybrid:** LLM on OpenRouter or NVIDIA Build (any model you
-like), local CPU STT, local GPU TTS with your voice, and local Audio2Face.
+like; the prefilled defaults also see your screen, and NVIDIA Build's
+`google/diffusiongemma-26b-a4b-it` is a fast Free Endpoint), local CPU STT, local GPU TTS with your voice, and local Audio2Face.
 Microphone audio and your voice stay at home, and the GPU goes where it helps most.
 
 **Fastest responses on one PC:** give the whole GPU to the LLM, and serve it

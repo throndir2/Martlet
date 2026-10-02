@@ -25,7 +25,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "FoundationStatus", "PipelineStatus", "LocalAudioStatus",
         "LiveStatus", "LiveMic", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
         "PeopleStatus", "PeopleSyncStatus", "PeopleVoiceCount", "ListenParakeetStatus", "SetupCharacterView",
-        "LipSyncNow", "LipSyncNowProblem", "SelectedDevice", "SelectedDeviceHealth", "ClusterStatus"
+        "LipSyncNow", "LipSyncNowProblem", "SelectedDevice", "SelectedDeviceHealth", "ClusterStatus",
+        "VisionStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint"
     };
     /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)").</summary>
     private static readonly string[] SafeValuePrefixes = ["DeviceComponent-"];

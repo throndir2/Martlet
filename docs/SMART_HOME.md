@@ -208,16 +208,17 @@ ollama.com on 2026-09-30:
 
 | Ollama tag | Vision | Tools |
 | --- | --- | --- |
-| `gemma3` (`gemma3:4b` is today's suggested easy default) | Yes | **No** |
+| `gemma3` | Yes | **No** |
 | `qwen2.5vl` | Yes | **No** |
 | `qwen3-vl` | Yes | Yes |
-| `gemma4` | Yes | Yes |
+| `gemma4` (`gemma4:e2b` is today's suggested easy default) | Yes | Yes |
 
-OpenAI `gpt-4.1`/`gpt-4.1-mini` support both. A `ToolModelCatalog` (same
-curated Supported/Unsupported/Unknown pattern as `VisionModelCatalog`) must
-drive the same kind of "can't control your home yet" warning that screen
-watching shows for text-only models, and the host model suggestions should
-move to a model that sees **and** calls tools.
+OpenAI `gpt-4.1`/`gpt-4.1-mini` support both, as do the named Chat Completions
+defaults (NVIDIA Build `google/diffusiongemma-26b-a4b-it`, checked with a tool
+call on 2026-10-01, and OpenRouter `google/gemma-4-26b-a4b-it`). A
+`ToolModelCatalog` (same curated Supported/Unsupported/Unknown pattern as
+`VisionModelCatalog`) must drive the same kind of "can't control your home yet"
+warning that screen watching shows for text-only models.
 
 ## Proposed architecture
 
@@ -307,8 +308,9 @@ SH02-SH03 add free-form requests on tool-capable models.
 - **The "general tool execution" non-goal** stays: SH00 sends only the user's
   own words to HA's sentence matcher; SH02-SH03 add a narrow, user-turn-only
   tool surface through the shared MCP client.
-- **Default host vision model** change from `gemma3`/`qwen2.5vl` to a
-  vision + tools model (`qwen3-vl` or `gemma4`) once SH01 lands.
+- **Default host vision model** moved from `gemma3`/`qwen2.5vl` to vision +
+  tools models (`gemma4`, with `qwen3-vl:8b` for on-screen text) on 2026-10-01,
+  on the host role, Companion › Thinking › This PC and the prerequisites tool.
 
 ## Not planned
 

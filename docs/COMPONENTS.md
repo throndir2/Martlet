@@ -20,7 +20,7 @@ model and key. The later phases are the agreed direction.
 | Term | Meaning | Examples |
 | --- | --- | --- |
 | **Job** | One thing Martlet needs done in a conversation. | Thinking, Listening, Speaking, Lip-sync, later Seeing (vision) |
-| **Engine** | A provider + model (+ voice) that can do a job. | OpenAI `gpt-4.1-mini`, OpenRouter `meta-llama/llama-3.3-70b-instruct`, Ollama `llama3.2:3b`, F5 voice, Whisper |
+| **Engine** | A provider + model (+ voice) that can do a job. | OpenAI `gpt-4.1-mini`, NVIDIA Build `google/diffusiongemma-26b-a4b-it`, Ollama `gemma4:e2b`, F5 voice, Whisper |
 | **Place** | Where the engine runs. | Cloud API, This PC, a paired Martlet host |
 | **Audio devices** | Local hardware only: which microphone and speakers this PC uses. | Headset mic, desktop speakers |
 | **Credential** | A key bound to one provider origin, reused by every job that uses that provider. | One OpenAI key for Thinking, Listening and Speaking |
@@ -32,7 +32,7 @@ aliases); only the user-facing words change.
 
 ```text
 Home: Now
-  Thinking   ->  [Cloud: OpenRouter llama-3.3-70b]   (Change)
+  Thinking   ->  [Cloud: NVIDIA Build diffusiongemma]  (Change)
   Listening  ->  [Cloud: OpenAI gpt-4o-mini-transcribe] (Change)
   Speaking   ->  [gpu-pc: F5 voice "Ava"]            (Change)
   Lip-sync   ->  [gpu-pc: Audio2Face]                 (Change)
@@ -68,13 +68,16 @@ removing detached keys.
   applies and consents; no network probe checks the model.
 - Custom endpoints have no default (Martlet cannot know what the server serves).
 
-Current defaults (phase 1): OpenAI Thinking `gpt-4.1-mini-2025-04-14`, OpenRouter
-`meta-llama/llama-3.3-70b-instruct`, NVIDIA Build `google/gemma-4-31b-it` (NVIDIA
-retired `meta/llama-3.3-70b-instruct` on 2026-08-26; a retired model answers HTTP 410
-and Martlet reports `ModelRetired`),
+Current defaults: OpenAI Thinking `gpt-4.1-mini-2025-04-14`, OpenRouter
+`google/gemma-4-26b-a4b-it`, NVIDIA Build `google/diffusiongemma-26b-a4b-it`
+(every Thinking default also sees images and calls tools; NVIDIA retired
+`meta/llama-3.3-70b-instruct` on 2026-08-26, a retired model answers HTTP 410 and
+Martlet reports `ModelRetired`), local Ollama
+suggestions `gemma4:e2b` up to `gemma4:26b` by graphics card memory,
 Listening `gpt-4o-mini-transcribe`, Speaking `gpt-4o-mini-tts-2025-12-15` with
 voice `alloy`. They live next to their catalogs
-(`ChatCompletionsEndpointCatalog`, `OpenAi*Catalog.DefaultModelId`).
+(`ChatCompletionsEndpointCatalog`, `OpenAi*Catalog.DefaultModelId`,
+`MainWindow.LocalChatModels`, `VisionModelCatalog.LocalRecommendations`).
 
 ## Phases
 

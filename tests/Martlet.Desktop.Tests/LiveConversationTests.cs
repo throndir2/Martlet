@@ -102,7 +102,7 @@ public sealed class LiveConversationTests
             (request.Host!.HostId, request.Host.Origin, HostPairingCredential.FromGuid(request.Host.CredentialId)));
         // llama3.2:3b is text-only: screen watching is refused with a concrete fix (a vision model on the host).
         Assert.Equal(VisionSupport.Unsupported, configuration.Vision());
-        Assert.Contains("gemma3:4b", configuration.VisionAdvice());
+        Assert.Contains("gemma4:e2b", configuration.VisionAdvice());
         var image = new BoundedImage([0xFF, 0xD8, 0xFF, .. new byte[32]], ImageMediaType.Jpeg, 4, 4);
         var glance = configuration.Request(new("(Screen glance.)"), false, ResponseStyle.Helpful, [], null, null, out _, out _, out _, image,
             LiveConversationConfiguration.CommentaryInstructions(Chattiness.Normal), LiveConversationConfiguration.SilentReply);
@@ -652,7 +652,7 @@ public sealed class LiveConversationTests
 
     [Theory]
     [InlineData(ChatCompletionsEndpointCatalog.OpenRouterBaseUrl, "meta-llama/llama-3.3-70b-instruct:free", true)]
-    [InlineData(ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, "meta/llama-3.3-70b-instruct", true)]
+    [InlineData(ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, "google/diffusiongemma-26b-a4b-it", true)]
     [InlineData("https://api.groq.com/openai/v1", "llama-3.3-70b-versatile", true)]
     [InlineData("http://127.0.0.1:1234/v1", "local-model", false)]
     public async Task ChatCompletionsLlmRouteReachesItsExactEndpointWithScopedKey(string baseUrl, string model, bool keyed)
@@ -704,11 +704,29 @@ public sealed class LiveConversationTests
         var loaded = await fixture.Store.LoadAsync();
         var old = loaded.Settings!.Setup!.Routes.Single(item => item.Role == SetupRole.Llm);
         var changed = SetupSettings.QueueReplacedCredential(ChatCompletionsSetup.SelectRoute(
-            loaded.Settings!, ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, "meta/llama-3.3-70b-instruct"), old);
+            loaded.Settings!, ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, "google/diffusiongemma-26b-a4b-it"), old);
         var route = changed.Setup!.Routes.Single(item => item.Role == SetupRole.Llm);
         changed = SetupSettings.ReplaceRoute(changed, route with { Consent = route.Selection() });
         await fixture.Save(changed);
         Assert.Contains("NVIDIA Build API key", fixture.Controller.Configuration!.Unavailable(false, false));
+        fixture.NoEffects();
+    }
+
+    [Fact]
+    public async Task RetiredNvidiaModelIsRefusedWithTheVisionDefaultAsTheFix()
+    {
+        await using var fixture = await LiveFixture.Create();
+        var loaded = await fixture.Store.LoadAsync();
+        var old = loaded.Settings!.Setup!.Routes.Single(item => item.Role == SetupRole.Llm);
+        var changed = SetupSettings.QueueReplacedCredential(ChatCompletionsSetup.SelectRoute(
+            loaded.Settings!, ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, "meta/llama-3.3-70b-instruct"), old);
+        var route = changed.Setup!.Routes.Single(item => item.Role == SetupRole.Llm).WithCredential(Guid.NewGuid());
+        changed = SetupSettings.ReplaceRoute(changed, route with { Consent = route.Selection() });
+        await fixture.Save(changed);
+        var configuration = fixture.Controller.Configuration!;
+        Assert.Contains("retired meta/llama-3.3-70b-instruct", configuration.Unavailable(false, false));
+        Assert.Equal(VisionSupport.Unsupported, configuration.Vision());
+        Assert.Contains("google/diffusiongemma-26b-a4b-it", configuration.VisionAdvice());
         fixture.NoEffects();
     }
 

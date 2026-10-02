@@ -38,8 +38,8 @@ For Thinking, **Provider** selects one of (the recommended model is prefilled):
 | Provider | API base URL | Prefilled model | Key |
 | --- | --- | --- | --- |
 | OpenAI (Responses API) | `https://api.openai.com` | `gpt-4.1-mini-2025-04-14` | Required |
-| OpenRouter | `https://openrouter.ai/api/v1` | `meta-llama/llama-3.3-70b-instruct` | Required (OpenRouter key) |
-| NVIDIA Build | `https://integrate.api.nvidia.com/v1` | `google/gemma-4-31b-it` | Required (`nvapi-...` key from build.nvidia.com) |
+| OpenRouter | `https://openrouter.ai/api/v1` | `google/gemma-4-26b-a4b-it` (talks, sees, calls tools) | Required (OpenRouter key) |
+| NVIDIA Build | `https://integrate.api.nvidia.com/v1` | `google/diffusiongemma-26b-a4b-it` (a fast Free Endpoint that talks, sees and calls tools) | Required (`nvapi-...` key from build.nvidia.com) |
 | Custom OpenAI-compatible endpoint | Any canonical HTTPS base such as `https://api.groq.com/openai/v1`, or a loopback server such as `http://127.0.0.1:1234/v1` (LM Studio), `http://127.0.0.1:8080/v1` (llama.cpp) or `http://127.0.0.1:11434/v1` (Ollama) | none (enter the model your server serves) | Optional |
 
 Listening prefills `gpt-4o-mini-transcribe`; Speaking prefills
@@ -55,6 +55,14 @@ tokens; reasoning/thinking models spend part of that on hidden thinking (never
 spoken or shown), so prefer instruct/chat models.
 A prefilled default is only a suggestion: nothing is saved until you apply the
 job and consent, and saving does not prove that an ID exists or is accessible.
+
+Both named defaults also see images, so Companion › Vision works without
+changing models. NVIDIA retired Martlet's earlier default,
+`meta/llama-3.3-70b-instruct`, on 2026-08-26 (it answers HTTP 410 Gone). Martlet
+knows the retired NVIDIA Build IDs it has seen (`ChatCompletionsEndpointCatalog`):
+a saved route on one is refused before sending, and Thinking and Vision name the
+new default as the fix. A 410 from any provider is reported as `ModelRetired`,
+so the talk window says the model was retired and to choose another.
 
 For each job, review the displayed boundary and apply the route:
 

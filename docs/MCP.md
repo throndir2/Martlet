@@ -153,8 +153,8 @@ To drive the visible desktop, start `Martlet.Desktop.exe` yourself in the **same
 interactive Windows session** (ideally with a disposable `--data-directory`).
 Call `ui_connect` with that process ID. `ui_snapshot` returns window accessible names,
 automation IDs, enabled states, checkbox states, and selected read-only status
-fields (a text block's text, or a button's accessible name); it does not dump arbitrary editable fields or credentials. `ui_click`
-invokes a control by automation ID and `ui_select` selects a named combo-box
+fields (a text block's text, or a button's accessible name); it does not dump arbitrary editable fields or credentials.
+Status fields include `VisionStatus` (Companion › Vision: whether the Thinking model can see, or has been retired, and the fix), `SetupCloudHint-Thinking` (the cloud provider's recommended Thinking model, or a retired-model warning), `SetupLocalRecommendation` (the local Ollama model recommended for this PC's graphics card) and `SetupProviderHint` (Setup › Jobs prefilled model). `ui_click` invokes a control by automation ID and `ui_select` selects a named combo-box
 option. By default only passive navigation and
 diagnostics controls can be clicked. The main window is split into pages, and a
 page's controls are only visible after you open it: click `NavHome`,

@@ -208,6 +208,7 @@ public sealed class TextLifetimeTests
     [InlineData(429, """{"error":{"code":"insufficient_quota","message":"private-echo"}}""", ProviderFailureCode.QuotaExceeded)]
     [InlineData(429, """{"error":{"code":"unknown"}}""", ProviderFailureCode.RateLimited)]
     [InlineData(404, """{"error":{"code":"model_not_found"}}""", ProviderFailureCode.ModelNotFound)]
+    [InlineData(410, """{"status":410,"title":"Gone","detail":"private-echo"}""", ProviderFailureCode.ModelRetired)]
     [InlineData(400, "{}", ProviderFailureCode.RequestRejected)]
     [InlineData(415, "{}", ProviderFailureCode.RequestRejected)]
     [InlineData(500, "{}", ProviderFailureCode.Server)]

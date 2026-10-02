@@ -81,7 +81,8 @@ public partial class SetupWindow : ThemedWindow
 
     private static bool IsAnyDefault(string model) =>
         model.Length == 0 || Jobs.Any(job => DefaultModel(job, false, null) == model)
-        || LlmProviders.Any(provider => provider.DefaultModelId == model);
+        || LlmProviders.Any(provider => provider.DefaultModelId == model)
+        || ChatCompletionsEndpointCatalog.NamedEndpoints.Any(endpoint => endpoint.Retired(model));
 
     public SetupWindow(ISetupService service, SetupOperationRunner operations,
         Func<string, bool>? confirm = null, TimeProvider? clock = null, TimeSpan? observationTimeout = null)
@@ -267,9 +268,9 @@ public partial class SetupWindow : ThemedWindow
         ProviderHint.Text = Role != SetupRole.Llm
             ? $"{SetupJobNameConverter.Name(Role).Split(' ')[0]} uses OpenAI in the cloud (https://api.openai.com) and its own API key. The recommended model is prefilled."
             : provider.BaseUrl == ChatCompletionsEndpointCatalog.OpenRouterBaseUrl
-                ? $"Recommended: {provider.DefaultModelId} (prefilled). You can enter any exact OpenRouter model ID instead, for example openai/gpt-4o-mini (':free' variants use OpenRouter's free tier). Store your OpenRouter API key on Credentials. OpenRouter chooses the upstream provider; fallback to other providers is disabled." + reasoning
+                ? $"Recommended: {provider.DefaultModelId} (prefilled; it talks, sees your screen and uses tools). You can enter any exact OpenRouter model ID instead, for example openai/gpt-4o-mini (':free' variants use OpenRouter's free tier). Store your OpenRouter API key on Credentials. OpenRouter chooses the upstream provider; fallback to other providers is disabled." + reasoning
                 : provider.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl
-                    ? $"Recommended: {provider.DefaultModelId} (prefilled). You can enter any exact model ID shown on build.nvidia.com instead. Store your NVIDIA API key (nvapi-...) on Credentials." + reasoning
+                    ? $"Recommended: {provider.DefaultModelId} (prefilled; a fast Free Endpoint that talks, sees your screen and uses tools). You can enter any exact model ID shown on build.nvidia.com instead; models marked Free Endpoint there cost nothing. Store your NVIDIA API key (nvapi-...) on Credentials." + reasoning
                     : provider.Chat
                         ? "Enter the API base URL without /chat/completions, for example https://api.groq.com/openai/v1, https://api.together.xyz/v1, or a local server such as http://127.0.0.1:1234/v1 (LM Studio), http://127.0.0.1:8080/v1 (llama.cpp) or http://127.0.0.1:11434/v1 (Ollama), and the model ID that server serves. HTTP is allowed only for a literal loopback IP. A key is optional; store one on Credentials if the server requires it." + reasoning
                         : $"Recommended: {OpenAiTextGenerationCatalog.DefaultModelId} (prefilled, fast and inexpensive). Pick the larger model below if you prefer.";
