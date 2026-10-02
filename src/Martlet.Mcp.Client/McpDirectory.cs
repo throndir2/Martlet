@@ -7,14 +7,15 @@ using System.Text.RegularExpressions;
 namespace Martlet.Mcp.Client;
 
 /// <summary>A public MCP server directory that speaks the MCP Registry API (v0.1): GET /v0.1/servers with search, limit and
-/// cursor. Entries use the registry's server.json format (packages to run on this PC, remotes to connect to).</summary>
-public sealed record McpDirectorySource(string Id, string Name, Uri BaseAddress, string About)
+/// cursor. Entries use the registry's server.json format (packages to run on this PC, remotes to connect to). Neither directory
+/// takes a sort parameter: each always lists in its own <see cref="Order"/>, searches included.</summary>
+public sealed record McpDirectorySource(string Id, string Name, Uri BaseAddress, string About, string Order)
 {
     public static McpDirectorySource GitHub { get; } = new("github", "GitHub MCP Registry", new("https://api.mcp.github.com/"),
-        "Popular servers GitHub lists, most-starred first.");
+        "Popular servers GitHub lists, most-starred first.", "most popular first");
     public static McpDirectorySource Official { get; } = new("official", "Official MCP Registry",
         new("https://registry.modelcontextprotocol.io/"),
-        "Every server published to the Model Context Protocol's own registry, A to Z; search matches server names.");
+        "Every server published to the Model Context Protocol's own registry, A to Z; search matches server names.", "A to Z");
     public static IReadOnlyList<McpDirectorySource> All { get; } = [GitHub, Official];
     public override string ToString() => Name;
 }

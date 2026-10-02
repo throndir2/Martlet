@@ -38,7 +38,7 @@ public partial class McpDirectoryWindow : ThemedWindow
         InitializeComponent();
         foreach (var directory in McpDirectorySource.All)
         {
-            var item = new ComboBoxItem { Content = directory.Name, Tag = directory, ToolTip = directory.About };
+            var item = new ComboBoxItem { Content = $"{directory.Name} · {directory.Order}", Tag = directory, ToolTip = directory.About };
             AutomationProperties.SetName(item, directory.Name);
             SourceChoice.Items.Add(item);
         }
@@ -119,8 +119,11 @@ public partial class McpDirectoryWindow : ThemedWindow
                 ? query.Length == 0 ? $"The {directory.Name} didn't list any servers."
                     : $"No servers in the {directory.Name} match \"{query}\"." + (directory == McpDirectorySource.Official
                         ? " It searches server names only; try a shorter word or the GitHub MCP Registry." : " Try a shorter word.")
-                : $"{entries.Count} server{(entries.Count == 1 ? "" : "s")}{(query.Length == 0 ? "" : $" matching \"{query}\"")} from the " +
-                  $"{directory.Name}{(nextCursor is null ? "" : " (Load more shows the next ones)")}. Choose one to see what it needs.";
+                : (query.Length == 0 && directory == McpDirectorySource.GitHub
+                    ? $"The {entries.Count} most popular servers on the {directory.Name} (by GitHub stars)"
+                    : $"{entries.Count} server{(entries.Count == 1 ? "" : "s")}{(query.Length == 0 ? "" : $" matching \"{query}\"")} from the " +
+                      $"{directory.Name}, {directory.Order}") +
+                  $"{(nextCursor is null ? "" : "; Load more shows the next ones")}. Choose one to see what it needs.";
         }
         catch (McpDirectoryException error) when (!run.IsCancellationRequested)
         {

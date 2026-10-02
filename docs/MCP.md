@@ -51,9 +51,12 @@ accepted), so a server's published configuration can be pasted as is:
 installs them without editing JSON. It searches one of two public directories that
 speak the [MCP Registry API](https://registry.modelcontextprotocol.io/docs)
 (`GET /v0.1/servers?search=&limit=&cursor=&version=latest`): the **GitHub MCP
-Registry** (`api.mcp.github.com`, popular servers, most-starred first; the
-default) or the **Official MCP Registry** (`registry.modelcontextprotocol.io`,
-everything published, by name; its search can take up to a minute). Opening the
+Registry** (`api.mcp.github.com`, the default: it opens on the most popular
+servers, by GitHub stars) or the **Official MCP Registry**
+(`registry.modelcontextprotocol.io`, everything published, A to Z; its search
+matches names only and can take up to a minute). Neither API takes a sort
+parameter, so each always lists in that order, search results included; the
+directory chooser shows it. Opening the
 window loads the first page; what you search for is sent to that directory, and
 nothing else is. Choosing a server shows its description, links and how Martlet
 would run it:
@@ -451,8 +454,11 @@ mcp.json and Windows Credential Manager, then starts the server). Passive:
 `McpDirectoryClose`, the `McpDirectoryOptional` expander and each result
 `McpDirectoryResult-<registry name>` (for example
 `McpDirectoryResult-io.github.upstash/context7`), which only shows that server.
-Snapshots return `McpDirectoryStatus` (loading, how many found, why a search
-failed, or what was installed), `McpDirectoryNoSelection`, and for the selected
+Snapshots return `McpDirectoryStatus` (loading, how many found and in what
+order, for example *The 20 most popular servers on the GitHub MCP Registry (by
+GitHub stars); ...*, why a search failed, or what was installed;
+`ui_select` on `McpDirectorySource` takes the plain directory name, such as
+`Official MCP Registry`), `McpDirectoryNoSelection`, and for the selected
 server `McpDirectoryDetailTitle`, `McpDirectoryDetailName` (registry name,
 version, stars), `McpDirectorySummary` (the chosen way to run it),
 `McpDirectoryNeeds` (whether its runtime is on this PC, or which host it

@@ -14,7 +14,7 @@ public partial class MainWindow
     private void RenderToolsTab(Panel page)
     {
         var service = mcpTools;
-        var configuration = service.Configuration;
+        service.EnsureLoaded();
         var statuses = service.Started ? service.Hub.Status.ToDictionary(s => s.Name, StringComparer.Ordinal) : new Dictionary<string, McpServerStatus>(StringComparer.Ordinal);
 
         var servers = new List<UIElement> { Heading("MCP servers") };
@@ -33,7 +33,7 @@ public partial class MainWindow
                 "Rename or remove that entry in mcp.json to use it."));
         var anyOn = service.HasEnabledServers;
         servers.Add(Row(
-            PageButton("Browse MCP directory", OpenMcpDirectory, primary: configuration.Servers.Count == 0, id: "ToolsBrowseDirectory"),
+            PageButton("Browse MCP directory", OpenMcpDirectory, primary: true, id: "ToolsBrowseDirectory"),
             PageButton("Edit servers", OpenMcpEditor, id: "ToolsEditConfig"),
             anyOn ? PageButton(service.Started ? "Restart stopped servers" : "Start servers now", () =>
             {
