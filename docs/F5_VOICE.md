@@ -180,7 +180,7 @@ source file with its SHA-256, transcript and the marked modifications, and
 generator). Each clip is 6.5-11 seconds of speech with its exact transcript; an
 embedded clip is verified against its SHA-256 before use. The default voice is
 cute and female: `F5BundledVoices.Default` is the first included voice marked
-`Cute` and `Female` (Bee, cute anime girl). Owners who already chose a voice
+`Cute` and `Female` (Annie, cute anime girl). Owners who already chose a voice
 keep it.
 When Speaking is first handed to an F5 host, Desktop uses the voice already
 chosen for that destination, otherwise that default, with no picker. An included
