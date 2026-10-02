@@ -62,13 +62,13 @@ public partial class MainWindow
     private void StartAmbientMotion()
     {
         Motion.Float(HeroFloat);
-        Motion.Heartbeat(HeroHeart);
+        Motion.Sway(HeroMascot);
         Motion.Breathe(HeroGlow);
         Motion.Twinkle(Sparkle1, 1.6);
         Motion.Twinkle(Sparkle2, 2.1, 0.5);
         Motion.Twinkle(Sparkle3, 1.8, 1.0);
         Motion.Float(TourFloat);
-        Motion.Heartbeat(TourHeart);
+        Motion.Sway(TourMascot);
         Motion.Twinkle(TourSparkle, 1.7);
         Motion.Float(TourBlob1, 18, 9);
         Motion.Float(TourBlob2, 14, 11);

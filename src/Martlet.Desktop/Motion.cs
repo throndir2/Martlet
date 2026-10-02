@@ -38,6 +38,15 @@ internal static class Motion
         return transform;
     }
 
+    private static RotateTransform Rotate(UIElement element)
+    {
+        if (element.RenderTransform is RotateTransform existing && !existing.IsFrozen) return existing;
+        var transform = new RotateTransform();
+        element.RenderTransform = transform;
+        element.RenderTransformOrigin = new Point(0.5, 0.5);
+        return transform;
+    }
+
     /// <summary>Fades an element in while it slides from an offset to rest.</summary>
     internal static void Enter(UIElement element, double dx = 0, double dy = 14, int milliseconds = 260, int delay = 0)
     {
@@ -105,19 +114,15 @@ internal static class Motion
         });
     }
 
-    /// <summary>A soft double-beat, forever.</summary>
-    internal static void Heartbeat(UIElement element)
+    /// <summary>A gentle side-to-side tilt, forever, for the mascot.</summary>
+    internal static void Sway(UIElement element, double degrees = 4, double seconds = 3.6)
     {
-        var scale = Scale(element);
-        if (!Enabled) return;
-        var beat = new DoubleAnimationUsingKeyFrames { RepeatBehavior = RepeatBehavior.Forever, Duration = TimeSpan.FromSeconds(1.8) };
-        beat.KeyFrames.Add(new EasingDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.Zero)));
-        beat.KeyFrames.Add(new EasingDoubleKeyFrame(1.08, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(180)), Sine));
-        beat.KeyFrames.Add(new EasingDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(360)), Sine));
-        beat.KeyFrames.Add(new EasingDoubleKeyFrame(1.05, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(540)), Sine));
-        beat.KeyFrames.Add(new EasingDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(760)), Sine));
-        scale.BeginAnimation(ScaleTransform.ScaleXProperty, beat);
-        scale.BeginAnimation(ScaleTransform.ScaleYProperty, beat);
+        var rotate = Rotate(element);
+        if (!Enabled) { rotate.BeginAnimation(RotateTransform.AngleProperty, null); rotate.Angle = 0; return; }
+        rotate.BeginAnimation(RotateTransform.AngleProperty, new DoubleAnimation(-degrees, degrees, TimeSpan.FromSeconds(seconds / 2))
+        {
+            AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = Sine
+        });
     }
 
     /// <summary>An expanding, fading ring, forever. The element should be a ring drawn behind a node.</summary>

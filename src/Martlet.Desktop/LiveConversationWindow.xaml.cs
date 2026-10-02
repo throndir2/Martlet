@@ -77,7 +77,7 @@ public partial class LiveConversationWindow : ThemedWindow
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
-        Motion.Breathe(TalkHeart, 3.2);
+        Motion.Sway(TalkMascot, 3, 4);
         await LoadAsync();
     }
     private async void Reload_Click(object sender, RoutedEventArgs e) => await LoadAsync();

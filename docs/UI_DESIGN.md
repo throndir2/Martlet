@@ -14,7 +14,8 @@ obvious next step at every stage, and a living map of the user's computers.
    there"), and the button says what happens next ("Set up thinking").
    Exact legal, cost and data wording stays available, one click away, and is
    never removed.
-3. **The companion is the hero.** An animated Martlet mark greets you. The Live2D
+3. **The companion is the hero.** The animated Martlet mascot, the cream bird
+   from the app icon, greets you. The Live2D
    or VRM character is one toggle away on every main surface.
 4. **Show the hardware as a map.** The *Devices* page shows every computer and
    cloud service, what each one runs, and what it has. Select a node to
@@ -237,7 +238,7 @@ The long form became a four-step wizard with a step rail:
 
 The conversation window puts the chat first:
 
-- **Header**: companion mark, title, and **Stop (Esc)** always visible. Links
+- **Header**: Martlet mascot, title, and **Stop (Esc)** always visible. Links
   to Reload, Setup, Audio, Character and Troubleshooting.
 - **Conversation (left)**: the result line, a *You said* bubble for the
   push-to-talk transcript, the reply bubble, a separate refusal bubble, and a
@@ -355,9 +356,9 @@ in [COMPONENTS.md](COMPONENTS.md).
 | Motion | Where | Spec |
 | --- | --- | --- |
 | Page enter | nav changes, tour steps, wizard steps, Setup steps | opacity 0 to 1 and Y +14 to 0, 260 ms, cubic ease-out |
-| Float | hero mark | Y ±5, 3.2 s, sine, forever |
+| Float | hero mascot | Y ±5, 3.2 s, sine, forever |
 | Twinkle | sparkles | opacity 0.35 to 1, 1.6 s, staggered |
-| Heartbeat | mark heart | scale 1 to 1.08 to 1, 1.8 s |
+| Sway | Martlet mascot (hero, tour, Talk header) | rotate ±4° (±3° in Talk), 3.6 s (4 s in Talk), sine, forever |
 | Check pop | completed host step | scale 0.4 to 1, 320 ms, back ease |
 | Pulse ring | online nodes, host status | scale 1 to 1.9 and opacity 0.6 to 0, 2 s, forever |
 | Flow | map connections | dash offset, 1.2 s, linear, forever |
