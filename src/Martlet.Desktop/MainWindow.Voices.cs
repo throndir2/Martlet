@@ -16,6 +16,7 @@ namespace Martlet.Desktop;
 public partial class MainWindow
 {
     private SoundPlayer? voicePlayer;
+    private bool retiredSampleChecked;
 
     private Border VoicesCard(SetupRoute? route)
     {
@@ -191,6 +192,67 @@ public partial class MainWindow
             assigningRole = false;
             if (!closing) RenderHome();
         }
+    }
+
+    /// <summary>Earlier versions started F5 with the F5-TTS example clip, a male voice Martlet no longer ships, and kept it on
+    /// the speaking route. A route still speaking with it, or a voice list that still applies it, moves to
+    /// <see cref="F5BundledVoices.Default"/> (a female voice); a voice the owner picked is left alone. Returns the saved
+    /// settings when the route moved, otherwise null.</summary>
+    private async Task<AppSettings?> LeaveRetiredSampleAsync(SettingsLoadResult loaded, CancellationToken token)
+    {
+        if (store is null || setupService is null || closing || savingTab || assigningRole || loaded.Settings is not { } settings)
+            return null;
+        var route = settings.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Tts);
+        var f5 = route is { RouteType: SetupRouteType.GatewayF5, GatewaySnapshot: not null } ? route : null;
+        var speaking = f5?.Reference is { } used && F5BundledVoices.IsRetiredSample(used.AudioSha256);
+        // Without a speaking route the voice list's applied voice is the chosen one; read it once per run.
+        if (!speaking && (f5?.Reference is not null || retiredSampleChecked)) return null;
+        retiredSampleChecked = true;
+        if (!speaking && !System.IO.Directory.Exists(F5Voices.Directory(store.DataDirectory))) return null;
+        var destination = f5?.GatewaySnapshot!.DestinationId ?? F5Destination;
+        assigningRole = true;
+        try
+        {
+            F5ReferenceSnapshot voice;
+            using (var voices = F5Voices.Open(store.DataDirectory))
+            {
+                if (!speaking)
+                {
+                    var inspection = voices.Inspect();
+                    var applied = inspection.Presets.FirstOrDefault(p => p.Id == inspection.AppliedPresetId)?.Snapshots
+                        .FirstOrDefault(s => s.ReferenceRevision == inspection.AppliedReferenceRevision);
+                    if (applied is null || !F5Voices.IsRetiredSample(applied)) return null;
+                }
+                voice = await F5Voices.BundledAsync(voices, store.DataDirectory, destination, F5BundledVoices.Default, token);
+            }
+            var reference = await F5Voices.ApplyAsync(store.DataDirectory, voice, token);
+            var moved = $"The retired F5-TTS sample is no longer used; F5 now speaks with {F5BundledVoices.Default.Name}, " +
+                "Martlet's default voice. Pick another under Companion › Voice › Voices.";
+            if (!speaking)
+            {
+                ActionText.Text = moved;
+                return null;
+            }
+            var next = SetupSettings.ApplyF5Reference(settings, reference);
+            var saved = await setupService.SaveAsync(next, loaded.Revision, token);
+            if (!saved.Save.Saved) throw new InvalidOperationException(saved.Summary);
+            ActionText.Text = moved;
+            openConversation?.ReloadWhenIdle("Martlet's voice changed.");
+            return next;
+        }
+        catch (OperationCanceledException) { return null; }
+        catch (F5Exception error)
+        {
+            ActionText.Text = "Martlet couldn't move off the retired F5-TTS sample: " + F5Voices.Describe(error);
+            return null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or
+            ContractException or JsonException)
+        {
+            ActionText.Text = "Martlet couldn't move off the retired F5-TTS sample: " + error.Message;
+            return null;
+        }
+        finally { assigningRole = false; }
     }
 
     /// <summary>Adds a voice from a recording, then switches to it.</summary>

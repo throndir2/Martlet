@@ -55,7 +55,7 @@ public sealed class ChatMessage : INotifyPropertyChanged
 
 /// <summary>The conversation: its history and the message box. How Martlet listens (always or push-to-talk), whether it
 /// speaks and whether it may see (Vision) are chosen in Companion and run while this window is open; the mic and vision buttons
-/// pause and resume them, and Stop (Esc) stops everything at once.</summary>
+/// pause and resume them, and Stop (Esc) stops Martlet's reply, any recording and vision at once (listening carries on).</summary>
 public partial class LiveConversationWindow : ThemedWindow
 {
     internal SupportController? Support { get; init; }
@@ -77,12 +77,13 @@ public partial class LiveConversationWindow : ThemedWindow
     private bool closed, ready, mouseHeld, keyHeld, follow = true;
     private volatile bool locked;
     private long generation;
-    // Always listening runs whenever the window is open and the microphone is set up; the mic button or Stop pauses it. It
-    // runs beside replies (listener) and never pauses by itself: a microphone that can't be opened is tried again shortly.
+    // Always listening runs whenever the window is open and the microphone is set up; only the mic button pauses it (Stop and
+    // Esc quiet Martlet, not the microphone). It runs beside replies (listener) and never pauses by itself: a microphone that
+    // can't be opened, or listening that can't start yet (Voice ID not set up), says why and is tried again shortly.
     private bool listening, listenPaused;
     private LiveListener? listener;
     private long listenRetryAt, lastHeard;
-    private string? listenNote, micProblem;
+    private string? listenNote, micProblem, listenProblem;
     // What always listening heard that waits for a reply, and what the reply in progress answers: talking on before Martlet
     // says anything restarts that reply with everything said.
     private readonly List<HeardEntry> heardQueue = [];
@@ -377,28 +378,32 @@ public partial class LiveConversationWindow : ThemedWindow
         try
         {
             listener = controller.Listen(Listening(true));
+            listenProblem = null;
         }
         catch (LiveActionException error) when (error.Code is "conversation.ownership_busy" or "conversation.controls_blocked")
         {
             listenRetryAt = After(ListenRetry);
         }
-        catch (LiveActionException error)
-        {
-            listening = false;
-            notice = error.Code is "conversation.configuration_unsupported" or "conversation.setup_required" ? ListeningProblem() : Remedy(error.Code);
-        }
-        catch (VoiceIdentityException error)
-        {
-            listening = false;
-            notice = error.Message;
-        }
+        catch (LiveActionException error) { CantListen(ListenFailure(error.Code)); }
+        catch (VoiceIdentityException error) { CantListen(error.Message); }
+    }
+
+    private string ListenFailure(string code) =>
+        code is "conversation.configuration_unsupported" or "conversation.setup_required" ? ListeningProblem() : Remedy(code);
+
+    // Listening can't run right now: it says why and keeps trying, so it carries on by itself once that is fixed.
+    private void CantListen(string problem)
+    {
+        if (problem != listenProblem) notice = problem;
+        listenProblem = problem;
+        listenRetryAt = After(ListenRetry);
     }
 
     private void StopListening(bool keepHeard)
     {
         if (listener is { } live) controller.StopListening(live);
         listener = null;
-        micProblem = null;
+        micProblem = listenProblem = null;
         listenRetryAt = 0;
         if (keepHeard) return;
         foreach (var entry in heardQueue) entry.Bubble.AddNote("Not answered.");
@@ -414,18 +419,14 @@ public partial class LiveConversationWindow : ThemedWindow
         while (live.TryTake(out var speech)) Heard(speech);
         if (live.MicrophoneWorks) micProblem = null;
         if (live.Running) return;
-        // It ended by itself: the setup changed or can't be used. Anything else just starts it again shortly.
+        // It ended by itself: the setup changed (reloaded) or can't be used right now (said, and tried again). Anything else
+        // just starts it again shortly.
         listener = null;
         listenRetryAt = After(ListenRetry);
         switch (live.Ended)
         {
-            case "voiceid.not_enrolled":
-                listening = false;
-                notice = Remedy(live.Ended);
-                break;
-            case "conversation.configuration_unsupported" or "conversation.setup_required":
-                listening = false;
-                notice = ListeningProblem();
+            case "voiceid.not_enrolled" or "conversation.configuration_unsupported" or "conversation.setup_required":
+                CantListen(ListenFailure(live.Ended));
                 break;
             case "conversation.configuration_changed":
                 ReloadWhenIdle("Your setup changed.");
@@ -446,7 +447,7 @@ public partial class LiveConversationWindow : ThemedWindow
         micProblem = null;
         if (speech.Text?.Trim() is not { Length: > 0 } text)
         {
-            notice = ListenOutcome(status) ?? notice;
+            notice = ListenOutcome(status, controller.Configuration) ?? notice;
             return;
         }
         var bubble = Add(ChatRole.User, text, speech.Voices?.Speaker?.Voice is { } voice
@@ -467,10 +468,12 @@ public partial class LiveConversationWindow : ThemedWindow
         _ => "Martlet can't open the microphone chosen in Companion › Listening (unplugged, disabled or missing?)."
     };
 
-    private static string? ListenOutcome(LiveConversationStatus status)
+    private static string? ListenOutcome(LiveConversationStatus status, LiveConversationConfiguration? configuration)
     {
         if (status.Quarantined) return Remedy("conversation.cleanup_quarantined");
-        if (status.ProviderFailure is { } provider) return "Speech-to-text: " + ProviderRemedy(provider);
+        if (status.ProviderFailure is { } provider)
+            return configuration?.SttHostTarget() is { } host && HostRemedy(provider, host.HostId, ProviderRole.Stt) is { } remedy
+                ? remedy : "Speech-to-text: " + ProviderRemedy(provider);
         return status.Code is "listen.heard" or "listen.held" or "mic.no_speech" or "stt.NoSpeech" or "speaker.not_user" or
             "speaker.too_short" or "conversation.canceled" or "conversation.revoked" or "conversation.expired" ? null : Remedy(status.Code);
     }
@@ -591,13 +594,18 @@ public partial class LiveConversationWindow : ThemedWindow
         notice = Outcome(done) ?? (code is "runtime.Completed" or "listen.passed" ? null : notice);
     }
 
+    /// <summary>Which job's request failed: the reply's own record, or speech-to-text for a failed transcription.</summary>
+    private static ProviderRole? FailedJob(LiveConversationOperation done) =>
+        done.Turn?.Snapshot is { ProviderFailure: not null } snapshot ? snapshot.FailedProvider
+        : done.Status.Code.StartsWith("stt.", StringComparison.Ordinal) ? ProviderRole.Stt : null;
+
     private static string? Outcome(LiveConversationOperation done)
     {
         var status = done.Status;
         if (done.Authorization.CredentialFailure is { } credential) return CredentialMessages.Describe(credential);
         if (status.AudioFailure is { } audio) return AudioSetupDiagnostics.Remedy(audio) + " You can still type.";
         if ((done.Turn?.Snapshot.ProviderFailure ?? status.ProviderFailure) is { } provider)
-            return ProviderRemedy(provider, done.Authorization.Configuration);
+            return ProviderRemedy(provider, done.Authorization.Configuration, FailedJob(done));
         if (status.Quarantined) return Remedy("conversation.cleanup_quarantined");
         return status.Code switch
         {
@@ -616,6 +624,16 @@ public partial class LiveConversationWindow : ThemedWindow
     {
         if (InputText.Text.Length > 0) warmup?.Touch();
         RenderActions();
+    }
+
+    /// <summary>Puts the "Message Martlet" hint where typed text starts. A TextBox applies its padding inside its content host
+    /// as well as through the theme's template, so the caret's own position is the only reliable offset.</summary>
+    private void Input_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (InputText.Text.Length > 0) return;
+        var start = InputText.GetRectFromCharacterIndex(0);
+        if (start.IsEmpty) return;
+        Placeholder.Margin = new Thickness(start.Left, start.Top, start.Left, 0);
     }
 
     private void Input_KeyDown(object sender, KeyEventArgs e)
@@ -772,8 +790,9 @@ public partial class LiveConversationWindow : ThemedWindow
         StopAll("conversation.canceled");
     }
 
-    /// <summary>Stop (Esc): Martlet's reply, any recording, listening and vision stop right away. The mic and vision buttons turn
-    /// them back on; the conversation so far is kept unless the window closes.</summary>
+    /// <summary>Stop (Esc): Martlet's reply, any recording and vision stop right away, and what was heard but not yet answered
+    /// is dropped. Always listening carries on, so nothing you say next is missed; only the mic button pauses it. The vision
+    /// button turns vision back on; the conversation so far is kept unless the window closes.</summary>
     private void StopAll(string reason, bool keepContext = true)
     {
         mouseHeld = keyHeld = false;
@@ -783,10 +802,8 @@ public partial class LiveConversationWindow : ThemedWindow
         pendingMessage = null;
         reloadReason = null;
         homeQuestion?.TrySetResult(false);
-        listenNote = null;
-        if (listening) listenPaused = true;
-        listening = false;
-        StopListening(keepHeard: false);
+        foreach (var entry in heardQueue) entry.Bubble.AddNote("Not answered.");
+        heardQueue.Clear();
         answering = null;
         restarts = 0;
         if (watching)
@@ -857,10 +874,12 @@ public partial class LiveConversationWindow : ThemedWindow
         MicChip.Visibility = available && preferences.HandsFree ? Visibility.Visible : Visibility.Collapsed;
         var micUsable = MicrophoneUsable;
         var micDown = listening && micProblem is not null;
+        var cantListen = listening && listenProblem is not null;
         MicChip.IsEnabled = true;
-        MicText.Text = micDown ? "Mic unavailable" : listening ? "Listening" : micUsable ? "Listening paused" : "Can't listen";
-        MicDot.SetResourceReference(Shape.FillProperty, micDown ? "WarningBrush" : listening ? "SuccessBrush" : micUsable ? "MutedBrush" : "WarningBrush");
+        MicText.Text = micDown ? "Mic unavailable" : cantListen ? "Can't listen" : listening ? "Listening" : micUsable ? "Listening paused" : "Can't listen";
+        MicDot.SetResourceReference(Shape.FillProperty, micDown || cantListen ? "WarningBrush" : listening ? "SuccessBrush" : micUsable ? "MutedBrush" : "WarningBrush");
         MicChip.ToolTip = micDown ? $"{micProblem} Martlet tries the microphone again every few seconds. Click to pause listening."
+            : cantListen ? $"{listenProblem} Martlet keeps trying and listens as soon as it can. Click to pause listening."
             : listening ? (listener is { Held: true }
                 ? "Not listening while Martlet speaks, so it never hears itself; it listens again right after. Click to pause listening."
                 : "Martlet hears you whenever you speak, even while it thinks, and decides when to answer. Click to pause listening.")
@@ -893,8 +912,9 @@ public partial class LiveConversationWindow : ThemedWindow
         VisionStatusText.Text = visionLine;
         VisionStatusText.Visibility = VisionChip.Visibility == Visibility.Visible && visionLine.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
 
+        // Stop quiets Martlet; listening is paused only from its own button.
         StopButton.IsEnabled = owned is { OwnershipReleased: false } || commentary is { OwnershipReleased: false } ||
-            pendingText is not null || listening || watching || loading is not null;
+            pendingText is not null || heardQueue.Count > 0 || watching || loading is not null;
         LevelMeter.Visibility = listening ? Visibility.Visible : Visibility.Collapsed;
         Title = watching ? $"Martlet - talk (looking at {watchSource.Label})" : "Martlet - talk";
         ResultText.Text = notice ?? Activity();
@@ -922,6 +942,7 @@ public partial class LiveConversationWindow : ThemedWindow
     }
 
     private string Idle() => !Available ? "" : LocalModelNote(true) ?? (listening && micProblem is not null ? "Type below; Martlet keeps trying the microphone."
+        : listening && listenProblem is not null ? listenProblem
         : listening ? "Listening. Just talk, or type below." + (listenNote is null ? "" : " " + listenNote)
         : !preferences.HandsFree && MicrophoneUsable ? "Type below, or hold the talk button to speak." : "Type a message below.");
 
@@ -1125,12 +1146,15 @@ public partial class LiveConversationWindow : ThemedWindow
         // No automatic retry of a failing request: stop and say what to change.
         var selected = controller.Configuration;
         var provider = done.Turn?.Snapshot.ProviderFailure ?? status.ProviderFailure;
-        StopWatching(provider == ProviderFailureCode.InputLimit
+        var job = FailedJob(done);
+        StopWatching(job == ProviderRole.Tts
+            ? "Martlet stopped looking because it couldn't speak: " + ProviderRemedy(provider!.Value, done.Authorization.Configuration, job)
+            : provider == ProviderFailureCode.InputLimit
             ? "The picture didn't fit the Thinking route. If Thinking runs on your Martlet host, update the host so its gateway accepts images."
             : provider is not (null or ProviderFailureCode.ModelRetired or ProviderFailureCode.ModelNotFound) &&
                 selected is not null && selected.Vision() != VisionSupport.Supported
             ? $"The Thinking model rejected the picture ({provider}); it most likely can't see images. {selected.VisionAdvice()}"
-            : "Martlet stopped looking: " + (provider is { } code ? ProviderRemedy(code, done.Authorization.Configuration) : Remedy(status.Code)));
+            : "Martlet stopped looking: " + (provider is { } code ? ProviderRemedy(code, done.Authorization.Configuration, job) : Remedy(status.Code)));
     }
 
     /// <summary>Stops looking and frees the screen capture, camera or stream. A <paramref name="problem"/> is shown and keeps
@@ -1212,6 +1236,8 @@ public partial class LiveConversationWindow : ThemedWindow
 
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
+        listening = false;
+        StopListening(keepHeard: false);
         StopAll("conversation.closed", keepContext: false);
         Task.Run(glancer.Release).Forget();
         Task.Run(video.Release).Forget();
@@ -1294,9 +1320,53 @@ public partial class LiveConversationWindow : ThemedWindow
 
     // ---------- plain-language messages ----------
 
-    /// <summary>The remedy for a failed reply, in Ollama's terms when Thinking runs in Ollama on this PC.</summary>
-    internal static string ProviderRemedy(ProviderFailureCode code, LiveConversationConfiguration? configuration) =>
-        configuration is { LocalOllama: true } local && LocalOllamaRemedy(code, local) is { } remedy ? remedy : ProviderRemedy(code);
+    /// <summary>The remedy for a failed reply. <paramref name="job"/> is the job whose request failed (null when unknown): a job
+    /// handed to a paired Martlet host gets the host's remedy, Thinking in Ollama on this PC gets Ollama's, and a voice failure
+    /// says so, since the reply's text may already be on screen.</summary>
+    internal static string ProviderRemedy(ProviderFailureCode code, LiveConversationConfiguration? configuration, ProviderRole? job = null)
+    {
+        var host = job switch
+        {
+            ProviderRole.Tts => configuration?.HostSpeechTarget()?.HostId,
+            ProviderRole.Stt => configuration?.SttHostTarget()?.HostId,
+            _ => configuration?.HostTarget()?.HostId
+        };
+        if (host is not null && HostRemedy(code, host, job ?? ProviderRole.Llm) is { } hosted) return hosted;
+        if (job != ProviderRole.Tts && configuration is { LocalOllama: true } local && LocalOllamaRemedy(code, local) is { } remedy) return remedy;
+        return job switch
+        {
+            ProviderRole.Tts when code is ProviderFailureCode.ModelUnsupported or ProviderFailureCode.ModelNotFound or ProviderFailureCode.VoiceUnsupported =>
+                "Martlet couldn't speak: that voice isn't available (no longer installed, or not offered to this account). Choose another in Companion › Voice.",
+            ProviderRole.Tts => "Martlet couldn't speak: " + ProviderRemedy(code),
+            ProviderRole.Stt => "Speech-to-text: " + ProviderRemedy(code),
+            _ => ProviderRemedy(code)
+        };
+    }
+
+    /// <summary>The job's process on that computer, not a provider account, is at fault when a paired Martlet host fails:
+    /// the gateway answers that the worker is unavailable (stopped, still starting, or cut off from the gateway) as ModelNotFound.</summary>
+    internal static string? HostRemedy(ProviderFailureCode code, string hostId, ProviderRole job)
+    {
+        var (what, page) = job switch
+        {
+            ProviderRole.Tts => ("its voice (F5)", "Companion › Voice"),
+            ProviderRole.Stt => ("its speech-to-text (whisper)", "Companion › Listening"),
+            _ => ("its Thinking model (Ollama)", "Companion › Thinking")
+        };
+        return code switch
+        {
+            ProviderFailureCode.ModelNotFound or ProviderFailureCode.ModelUnsupported or ProviderFailureCode.Server =>
+                $"Your Martlet host {hostId} didn't run {what}: it may still be starting, or it stopped. Try again in a minute. " +
+                $"If it keeps happening, update or set up that computer's host service again in Martlet (Devices), or choose another in {page}.",
+            ProviderFailureCode.Network =>
+                $"Couldn't reach your Martlet host {hostId} for {what}. Check that the computer is on and Docker is running, then try again.",
+            ProviderFailureCode.VoiceUnsupported when job == ProviderRole.Tts =>
+                $"Martlet couldn't read the voice your host {hostId} speaks with on this PC. Choose a voice again in Companion › Voice.",
+            ProviderFailureCode.CredentialUnavailable or ProviderFailureCode.Authentication or ProviderFailureCode.PermissionDenied =>
+                $"Martlet couldn't use this PC's pairing with your host {hostId}. Pair this PC with it again on Devices.",
+            _ => null
+        };
+    }
 
     internal static string? LocalOllamaRemedy(ProviderFailureCode code, LiveConversationConfiguration local)
     {

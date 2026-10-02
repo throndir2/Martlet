@@ -36,9 +36,9 @@
             <CheckBox x:Name="AutoShowChoice" Content="Show the character automatically when Martlet starts" Margin="0,10"
                       AutomationProperties.AutomationId="AutoShowCharacter"/>
             <CheckBox x:Name="SpeechBubbleChoice" Content="Show _speech bubbles beside the character while Martlet speaks"
-                      Margin="0,0,0,6" Click="SpeechDisplay_Click" AutomationProperties.AutomationId="SpeechBubbleChoice"/>
+                      Margin="0,0,0,6" Checked="SpeechDisplay_Changed" Unchecked="SpeechDisplay_Changed" AutomationProperties.AutomationId="SpeechBubbleChoice"/>
             <CheckBox x:Name="SubtitleChoice" Content="Show s_ubtitles at the bottom of the active screen while Martlet speaks"
-                      Margin="0,0,0,4" Click="SpeechDisplay_Click" AutomationProperties.AutomationId="SubtitleChoice"/>
+                      Margin="0,0,0,4" Checked="SpeechDisplay_Changed" Unchecked="SpeechDisplay_Changed" AutomationProperties.AutomationId="SubtitleChoice"/>
             <TextBlock x:Name="SpeechDisplayStatus" TextWrapping="Wrap" Margin="0,0,0,10" AutomationProperties.LiveSetting="Polite"
                        Text="Saved immediately. Subtitles follow the screen of the window you are using and appear on top of full-screen games, just like the character. They are hidden from screen capture."/>
             <Expander Header="Audio2Face on another computer (Martlet host)" Margin="0,4,0,10"

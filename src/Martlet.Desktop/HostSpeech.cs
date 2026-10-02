@@ -50,8 +50,8 @@ internal static class F5Voices
     }
 
     /// <summary>The voice F5 speaks with when the owner has not picked one for <paramref name="destination"/>: the applied or
-    /// most recent voice already chosen for it, otherwise Martlet's first bundled voice. The retired F5-TTS example clip is
-    /// never chosen this way.</summary>
+    /// most recent voice already chosen for it, otherwise <see cref="F5BundledVoices.Default"/> (a female voice). The retired
+    /// F5-TTS example clip is never chosen this way.</summary>
     internal static async Task<F5ReferenceSnapshot> DefaultAsync(string dataDirectory, string destination, CancellationToken token)
     {
         using var store = Open(dataDirectory);

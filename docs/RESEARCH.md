@@ -739,6 +739,25 @@ built-in agent through this API so control works with models that lack tool
 calling; HA MCP tools follow through the shared MCP client. Not exercised
 against a real Home Assistant.
 
+## S50: installing and managing Home Assistant, 2026-10-01
+
+Sources are listed with the [smart home plan](SMART_HOME.md#sources).
+**Verified upstream:** only HA OS and Container are supported since 2025.12;
+analytics on 2026-09-30 counted 80% OS and 17% Container. Container needs
+Docker Engine (not Desktop), host networking and has no apps or Supervisor.
+Onboarding is an HTTP API (`/api/onboarding/users` returns an `auth_code`;
+core config, analytics and integration steps follow); WebSocket
+`auth/long_lived_access_token` mints tokens; IndieAuth accepts loopback
+`client_id`s with same-origin redirects; HA advertises
+`_home-assistant._tcp.local.`; discovered devices are in-progress config flows
+listed by admin `config_entries/flow/progress`; admin `supervisor/api` forwards
+Supervisor calls on HA OS; apps can request `hassio_role` `manager`.
+**Consequence:** Martlet can find, sign in to, onboard and manage Home
+Assistant through its own APIs, install Container as a host role on a Linux
+Docker host, and leave device discovery to HA. Hyper-V's lack of USB
+passthrough is from general Hyper-V knowledge, not rechecked. Nothing was run
+against a real Home Assistant.
+
 ## Linux service state custody and durable I/O (H03b3)
 
 **Accessed 2026-09-23.** Primary upstream contracts, not native Martlet evidence:

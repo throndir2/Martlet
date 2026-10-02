@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows.Automation;
+using System.Windows.Automation.Text;
 
 namespace Martlet.Mcp;
 
@@ -14,7 +15,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "SetupClose", "AudioClose", "CloseLive", "SupportClose",
         "RecoveryClose", "SupportFreeze", "SupportClear",
         "NavHome", "NavDevices", "NavCompanion", "NavDiagnostics", "NavSettings", "TourSkip", "TourBegin", "TourBack", "DiagnosticsSection",
-        "OpenPeople", "DeviceFactsSection", "DeviceReachSection", "DeviceRolesSection", "HealthRecheck", "LogsRefresh"
+        "OpenPeople", "DeviceFactsSection", "DeviceReachSection", "DeviceRolesSection", "HealthRecheck", "LogsRefresh",
+        // The talk window's Stop (Esc) only stops work (a reply, a recording, vision); it starts nothing and never pauses listening.
+        "LiveStop"
     };
     /// <summary>Choosing a Companion page in its side list only shows that page; Devices map nodes ("Node-this-pc",
     /// "Node-host:gpu-1") and the problem card's Show buttons only select a device and show its details; a job's
@@ -29,7 +32,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     {
         "FoundationStatus", "PipelineStatus", "LocalAudioStatus",
         "LiveStatus", "LiveMic", "LiveVision", "LiveVisionStatus", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
-        "PeopleStatus", "PeopleSyncStatus", "PeopleVoiceCount", "ListenParakeetStatus", "SetupCharacterView",
+        "PeopleStatus", "PeopleSyncStatus", "PeopleVoiceCount", "ListenParakeetStatus", "SetupCharacterView", "SetupCharacterSpeechDisplay",
         "LipSyncNow", "LipSyncNowProblem", "LipSyncOwnTitle", "LipSyncOwnState", "SelectedDevice", "SelectedDeviceHealth", "ClusterStatus",
         "VisionStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "SetupF5About", "F5VoicesStatus",
         "SetupOllamaStatus", "SetupLocalModelTest", "HostRunStatus", "RepliesNow",
@@ -67,7 +70,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         return new { processId = pid, windows = windows.Select(window => window.Current.Name).ToArray() };
     }
 
-    internal object Snapshot()
+    internal object Snapshot(bool layout = false)
     {
         var windows = ConnectedWindows();
         return new
@@ -87,21 +90,51 @@ internal sealed class DesktopAutomation(bool allowEffects)
                     // A combo box without a value pattern reads as its selected option.
                     : element.TryGetCurrentPattern(SelectionPattern.Pattern, out var choice)
                         ? ((SelectionPattern)choice).Current.GetSelection().FirstOrDefault()?.Current.Name : null;
-                return new
+                var entry = new Dictionary<string, object?>
                 {
-                    window = window.Current.Name,
-                    id,
-                    kind = element.Current.ControlType.ProgrammaticName,
-                    enabled = element.Current.IsEnabled,
-                    value,
-                    checkedState = element.TryGetCurrentPattern(TogglePattern.Pattern, out var toggle)
+                    ["window"] = window.Current.Name,
+                    ["id"] = id,
+                    ["kind"] = element.Current.ControlType.ProgrammaticName,
+                    ["enabled"] = element.Current.IsEnabled,
+                    ["value"] = value,
+                    ["checkedState"] = element.TryGetCurrentPattern(TogglePattern.Pattern, out var toggle)
                         ? ((TogglePattern)toggle).Current.ToggleState.ToString() : null,
                     // Radio buttons, list items and navigation entries are selected rather than checked.
-                    selected = element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var item)
-                        ? ((SelectionItemPattern)item).Current.IsSelected : (bool?)null
+                    ["selected"] = element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var item)
+                        ? ((SelectionItemPattern)item).Current.IsSelected : null
                 };
+                if (layout)
+                {
+                    entry["bounds"] = Box(element.Current.BoundingRectangle);
+                    entry["textBounds"] = FirstLineBounds(element);
+                }
+                return entry;
             }).Take(200).ToArray()
         };
+    }
+
+    /// <summary>Screen pixels as [x, y, width, height], or null when the element has no on-screen area.</summary>
+    private static int[]? Box(System.Windows.Rect rect) =>
+        rect.IsEmpty || rect.Width <= 0 || rect.Height <= 0 ? null
+            : [(int)Math.Round(rect.X), (int)Math.Round(rect.Y), (int)Math.Round(rect.Width), (int)Math.Round(rect.Height)];
+
+    /// <summary>Where a text control's first line of text is drawn (for checking alignment, e.g. a hint against typed text).
+    /// Geometry only: the text itself is never read.</summary>
+    private static int[]? FirstLineBounds(AutomationElement element)
+    {
+        try
+        {
+            if (!element.TryGetCurrentPattern(TextPattern.Pattern, out var pattern)) return null;
+            var line = ((TextPattern)pattern).DocumentRange.Clone();
+            line.MoveEndpointByRange(TextPatternRangeEndpoint.End, line, TextPatternRangeEndpoint.Start);
+            line.ExpandToEnclosingUnit(TextUnit.Line);
+            var rects = line.GetBoundingRectangles();
+            return rects.Length == 0 ? null : Box(rects[0]);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or COMException or ElementNotAvailableException)
+        {
+            return null;
+        }
     }
 
     internal async Task<object> ClickAsync(string id)

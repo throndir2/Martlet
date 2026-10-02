@@ -169,16 +169,21 @@ free for any use with the notice kept). `BundledVoices\NOTICES.txt` lists each
 source file with its SHA-256, transcript and the marked modifications, and
 `scripts\Build-F5BundledVoices.py` rebuilds the clips from the pinned sources.
 Each clip is 6.5-8.5 seconds of speech with its exact transcript; an embedded
-clip is verified against its SHA-256 before use. When Speaking is first handed
-to an F5 host, Desktop uses the voice already chosen for that destination,
-otherwise the first included voice (LJ), with no picker. An included voice is
-snapshotted with the `PublishedSample` rights basis when first used.
+clip is verified against its SHA-256 before use. The default voice is female:
+`F5BundledVoices.Default` is the first included voice marked `Female` (LJ).
+When Speaking is first handed to an F5 host, Desktop uses the voice already
+chosen for that destination, otherwise that default, with no picker. An included
+voice is snapshotted with the `PublishedSample` rights basis when first used.
 
-Earlier versions bundled F5-TTS's English example clip (`basic_ref_en.wav`).
-Its transcript matches a line from a 2014 celebrity-narrated campaign film
-and upstream does not identify the speaker, so it is no longer included. A copy
-already in a voice list is shown as retired and is never chosen automatically;
-the owner switches away and removes it.
+Earlier versions bundled F5-TTS's English example clip (`basic_ref_en.wav`), a
+male voice, and started F5 with it. Its transcript matches a line from a 2014
+celebrity-narrated campaign film and upstream does not identify the speaker, so
+it is no longer included. A copy already in a voice list is shown as retired and
+is never chosen automatically. When Desktop loads settings and the speaking
+route still records it, Desktop applies the default voice and saves it on the
+route (consent carried over as for **Use**); without an F5 speaking route, a
+voice list whose applied voice is the retired clip applies the default instead.
+The owner can then remove the retired copy.
 
 **Companion > Voice > Voices** is the voice library: the included voices, then
 every stored voice of the owner's, each with **Play** (the stored copy or the

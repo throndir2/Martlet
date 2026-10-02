@@ -248,7 +248,7 @@ public partial class MainWindow
         try
         {
             var loaded = await setupService.LoadAsync(lifetime.Token);
-            homeSettings = loaded.Settings;
+            homeSettings = await LeaveRetiredSampleAsync(loaded, lifetime.Token) ?? loaded.Settings;
             homeSettingsState = loaded.State;
             homeSettingsProblem = loaded.Error?.Summary;
             homeAvatar = loaded.Settings is { } settings

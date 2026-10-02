@@ -725,7 +725,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
             var passed = terminal.State == ConversationState.Completed && IsSilentReply(text);
             operation.Passed = passed;
             if (IsFailure(terminal))
-                LogFailure(camera ? "Camera glance" : "Screen glance", operation.Authorization.Configuration, SetupRole.Llm, Describe(terminal));
+                LogReplyFailure(camera ? "Camera glance" : "Screen glance", operation.Authorization.Configuration, terminal);
             else if (terminal.State == ConversationState.Completed) Succeeded(SetupRole.Llm);
             if (terminal.State == ConversationState.Completed && !passed)
             {
@@ -944,7 +944,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 ErrorLog.Info($"The Thinking model {configured.Route(SetupRole.Llm).ModelId} rejected the request with tools; " +
                     "Martlet asked again without tools and stops offering them to it until it restarts.");
             }
-            if (IsFailure(terminal)) LogFailure("Reply", configured, SetupRole.Llm, Describe(terminal));
+            if (IsFailure(terminal)) LogReplyFailure("Reply", configured, terminal);
             else if (terminal.State == ConversationState.Completed) Succeeded(SetupRole.Llm);
             // What always listening heard may not have been meant for Martlet: the model answers [pass] and stays quiet.
             var passed = operation.Spoken && terminal.State == ConversationState.Completed && IsSilentReply(turn.Content.Text);
@@ -1109,6 +1109,18 @@ internal sealed class LiveConversationController : IAsyncDisposable
 
     private static bool IsFailure(ConversationSnapshot terminal) =>
         terminal.State is ConversationState.Failed or ConversationState.Partial || terminal.ProviderFailure is not null;
+
+    // A reply whose voice failed after its text arrived is a Speaking failure: Thinking answered, so it counts as working.
+    private void LogReplyFailure(string what, LiveConversationConfiguration configured, ConversationSnapshot terminal)
+    {
+        if (terminal.FailedProvider != ProviderRole.Tts)
+        {
+            LogFailure(what, configured, SetupRole.Llm, Describe(terminal));
+            return;
+        }
+        LogFailure("Spoken " + what.ToLowerInvariant(), configured, SetupRole.Tts, Describe(terminal));
+        if (terminal.TextComplete) Succeeded(SetupRole.Llm);
+    }
 
     private static string Describe(ConversationSnapshot terminal) =>
         $"state {terminal.State}, failure {terminal.Failure}" +

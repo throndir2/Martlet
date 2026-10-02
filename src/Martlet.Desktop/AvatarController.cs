@@ -89,11 +89,15 @@ internal sealed class AvatarController : IAsyncDisposable
         finally { changes.Release(); }
     }
 
-    /// <summary>Shows (or with null, hides) a speech bubble beside the character. A no-op while the character is hidden.</summary>
-    internal async Task SayAsync(string? text, CancellationToken token)
+    /// <summary>
+    /// Shows (or with null, hides) a speech bubble beside the character. A no-op while the character is hidden. True when the
+    /// character's overlay took the change.
+    /// </summary>
+    internal async Task<bool> SayAsync(string? text, CancellationToken token)
     {
-        if (!IsShowing || renderer is not { HasExited: false } current) return;
+        if (!IsShowing || renderer is not { HasExited: false } current) return false;
         await current.SendAsync("say", new RendererSay(text), token);
+        return true;
     }
 
     /// <summary>Opens the character with idle animation and the profile's lip-sync mode.</summary>
