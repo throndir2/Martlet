@@ -278,6 +278,12 @@ and Companion › Lip-sync's `LipSyncNow` and `LipSyncNowProblem` (whether this
 PC's own Audio2Face service answers), plus, while that own service is the
 setting in effect (Martlet's default), `LipSyncOwnTitle` (its title with *in
 use*, *not running* or *checking*) and `LipSyncOwnState` (what it does now).
+When Thinking runs in Ollama on this PC, the talk window has Ollama load the
+model as it opens (and again on activity after a few quiet minutes), and
+`LiveStatus` says *Ollama is loading <model> on this PC (N s)…* while it loads,
+or why it can't (Ollama not running, model not downloaded, Ollama's own error);
+the desktop log records each load's duration
+(`{"name":"logs_tail","arguments":{"contains":"Ollama on this PC"}}`).
 Opening the talk window with always
 listening on opens the microphone; for verification, save a fixed microphone
 that does not exist in the disposable data directory, so listening starts and

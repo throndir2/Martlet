@@ -100,6 +100,16 @@ the buttons. A model that loads more slowly than Martlet waits for a reply to
 start, or answers too slowly once loaded, passes with a warning. *Install Ollama
 and use it* runs the same test at the end.
 
+Ollama unloads a model after five idle minutes and loading it again takes from
+about 15 seconds to a couple of minutes; it gives up the load if the request
+that started it stops waiting. So with Ollama on this PC, Martlet waits up to
+two minutes for a reply to start, and the talk window has Ollama load the model
+as it opens and again when you start typing or talking after a quiet spell; its
+status line says *Ollama is loading <model> on this PC…* meanwhile, or why
+Ollama can't (not running, model not downloaded, Ollama's own error). Ollama on
+this PC has no reply token budget unless you set **Max reply length** on
+**Companion › Replies**, so thinking models can reason before they answer.
+
 ## Local configuration backup / restore (V07a)
 
 **Configuration backups are NOT support bundles.** The support ZIP described

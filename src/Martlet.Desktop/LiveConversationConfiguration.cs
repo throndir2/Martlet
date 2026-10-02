@@ -46,12 +46,29 @@ internal sealed class LiveConversationConfiguration
         MaxAudioBytes = 480_000, MaxAudioDuration = TimeSpan.FromSeconds(10),
         MaxRequestTime = TimeSpan.FromSeconds(20)
     };
+    /// <summary>The LLM bounds for Ollama on this PC. Ollama loads the model into memory on the first request after it unloaded
+    /// it (by default five idle minutes), which takes 15 s to 2 minutes before the first token, and it abandons the load when
+    /// the request gives up; so a reply waits up to two minutes. There is no reply token budget unless a max reply length is
+    /// set (see <see cref="GenerationSupport.SendsReplyBudget"/>): the output reservation and event count are the contract's
+    /// largest, since thinking models stream their hidden reasoning token by token.</summary>
+    internal static TextGenerationLimits LocalOllamaTextLimits { get; } = DefaultTextLimits with
+    {
+        MaxOutputTokens = 4096, MaxContextTokens = 98_304 + 4096, MaxEvents = 4094,
+        FirstDeltaTimeout = TimeSpan.FromMinutes(2), IdleTimeout = TimeSpan.FromMinutes(2), MaxRequestTime = TimeSpan.FromMinutes(2)
+    };
     internal static ConversationLimits TurnLimits { get; } = new()
     {
         MaxSpeechSegments = 8, MaxSpeechTextBytes = 12_288, MaxReservedSpeechSamples = 1_920_000
     };
     /// <summary>A reply that may use tools: up to four tool rounds and a longer runtime, still inside the 150 s action.</summary>
     internal static ConversationLimits ToolTurnLimits { get; } = TurnLimits with { TurnTimeout = TimeSpan.FromSeconds(140), MaxToolRounds = 4 };
+    /// <summary>A reply from Ollama on this PC may wait for the model to load, so it has the whole 150 s action.</summary>
+    internal static ConversationLimits LocalOllamaTurnLimits { get; } = ToolTurnLimits with { TurnTimeout = ActionLifetime };
+
+    /// <summary>Thinking runs in Ollama on this PC (its OpenAI-compatible endpoint on loopback).</summary>
+    internal bool LocalOllama { get; }
+
+    private ConversationLimits Turn(bool tools) => LocalOllama ? LocalOllamaTurnLimits : tools ? ToolTurnLimits : TurnLimits;
 
     internal const string ToolInstructions =
         "You can use tools on the user's PC: the functions you were given come from MCP servers the user set up. Call one only when " +
@@ -73,7 +90,10 @@ internal sealed class LiveConversationConfiguration
         Persona = settings.Companion?.ActivePersona;
         Memory = settings.Memory;
         Generation = settings.Generation;
-        TextLimits = DefaultTextLimits with { MaxOutputTokens = Generation?.ReplyTokens ?? GenerationSettings.DefaultMaxReplyTokens };
+        LocalOllama = MainWindow.IsLocalOllama(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm));
+        TextLimits = LocalOllama
+            ? LocalOllamaTextLimits with { MaxOutputTokens = Generation?.MaxReplyTokens ?? LocalOllamaTextLimits.MaxOutputTokens }
+            : DefaultTextLimits with { MaxOutputTokens = Generation?.ReplyTokens ?? GenerationSettings.DefaultMaxReplyTokens };
     }
 
     internal static LiveConversationConfiguration? From(SettingsLoadResult loaded)
@@ -282,12 +302,16 @@ internal sealed class LiveConversationConfiguration
             (IsHost(llm)
                 ? "Your own Martlet host runs this model: the text goes only to that paired computer over its pinned TLS gateway, no cloud provider receives it and there is no per-request charge. The host's owner controls its logs.\n"
                 : "") +
-            (!chat ? "" : (llm!.Origin == ChatCompletionsEndpointCatalog.OpenRouterBaseUrl
+            (!chat ? "" : (LocalOllama
+                ? "Ollama on this PC runs the model: the text stays on this PC and there is no per-request charge. Ollama loads the model on the first reply after it was idle, which can take up to a couple of minutes. "
+                : llm!.Origin == ChatCompletionsEndpointCatalog.OpenRouterBaseUrl
                 ? "OpenRouter forwards the text to an upstream provider it selects for this model (fallback to other providers is disabled); upstream privacy, retention and pricing vary by provider. "
                 : llm.Origin == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl
                     ? "NVIDIA Build hosts the selected model; rate limits, credits and model availability are set by NVIDIA. "
                     : "The endpoint's operator controls processing, retention and cost. ") +
-                "Reasoning/thinking traces are never spoken or shown, but count toward the reply token budget.\n") +
+                (GenerationSupport.SendsReplyBudget(llm!.Origin, Generation)
+                    ? "Reasoning/thinking traces are never spoken or shown, but count toward the reply token budget.\n"
+                    : "Reasoning/thinking traces are never spoken or shown; there is no reply token budget unless you set a max reply length on Companion > Replies.\n")) +
             (IsLocalStt(stt)
                 ? $"Spoken audio -> STT: NVIDIA Parakeet TDT 0.6B v3 on this PC ({Selection(SetupRole.Stt)}). Your recorded speech is transcribed in memory here; nothing is sent anywhere and there is no charge.\n"
                 : sttHost is null
@@ -305,8 +329,10 @@ internal sealed class LiveConversationConfiguration
             (Memory is { Enabled: true }
                 ? $"Memory is ON (change it in Memory). Each reply may include up to {DesktopMemoryService.MaximumRecalledFacts} facts saved on this PC (the best matches for what you said, then the newest) inside the same LLM input budget; the complete store is never uploaded and recalled facts are background data, not instructions. After each completed reply, Martlet sends that exchange (with the previous exchange and up to {MemoryCapture.MaximumShownFacts} related saved facts) once more to the same Thinking model in one extra text-only request of <={TextLimits.MaxOutputTokens} output tokens, so it can pick out lasting things worth remembering; they are saved on this PC only and listed in Memory, where you can edit or delete them. Screen glances are not remembered. Lock, pause, mute or a configuration change cancels pending remembering.\n"
                 : "Memory is OFF: nothing is recalled or remembered and the memory store is not opened. Turn it on in Memory.\n") +
-            $"LLM output: <={TextLimits.MaxOutputTokens} tokens as a ceiling (max reply length on Companion > Replies), <=16,384 response characters, <=45 s.\n" +
-            "Runtime <=90 s. Voice: <=8 requests/segments, <=1536 UTF-8 bytes each / 12,288 total, <=10 s / 240,000 samples per segment, <=80 s / 1,920,000 reserved samples total, <=20 s per request; past that the reply is shown but not said aloud. Refusal/unsupported markup is not ordinary speech.\n" +
+            (LocalOllama && Generation?.MaxReplyTokens is null
+                ? $"LLM output: no reply token budget, <=16,384 response characters, <={TextLimits.MaxRequestTime.TotalSeconds:0} s.\n"
+                : $"LLM output: <={TextLimits.MaxOutputTokens} tokens as a ceiling (max reply length on Companion > Replies), <=16,384 response characters, <={TextLimits.MaxRequestTime.TotalSeconds:0} s.\n") +
+            $"Runtime <={Turn(false).TurnTimeout.TotalSeconds:0} s. Voice: <=8 requests/segments, <=1536 UTF-8 bytes each / 12,288 total, <=10 s / 240,000 samples per segment, <=80 s / 1,920,000 reserved samples total, <=20 s per request; past that the reply is shown but not said aloud. Refusal/unsupported markup is not ordinary speech.\n" +
             "Prices, quota, account/model access and invoice cost are UNKNOWN, not zero or a guaranteed hard currency cap. Failed/canceled requests can still cost money; earlier speech may already have played. No automatic retry.\n" +
             "Typed input, push-to-talk, or always listening while the talk window is open, as chosen in Companion › Listening (each detected utterance is one action within this envelope; listening re-arms only after the reply finishes). Wake words, name/group listening and remote participant capture are OFF; vision is OFF unless turned on in Companion › Vision. Optional Voice ID compares speech with your saved voiceprint on this PC before upload; non-matching audio is discarded, never uploaded. When voice recognition is on (Companion > People), each utterance is also compared on this PC with the voices Martlet knows (voiceprints only; audio is never kept), the LLM is told who spoke by name or voice tag, and after a reply the exchange may be sent once more to the same Thinking model in one extra text-only request so it can pick up the names people go by. Memory recall and remembering follow the memory setting described above." +
             (Memory is { Enabled: true }
@@ -349,7 +375,7 @@ internal sealed class LiveConversationConfiguration
                     usedMemoryFacts = memoryCount;
                     usedLoreEntries = loreCount;
                     return new(prompted,
-                        TextSelection(), TextLimits, tools is null ? TurnLimits : ToolTurnLimits,
+                        TextSelection(), TextLimits, Turn(tools is not null),
                         voice ? new(SpeechSelection(),
                             new(Audio!.Output.EndpointId is null ? OutputPolicy.DefaultAtStart : OutputPolicy.FixedEndpoint, Audio.Output.EndpointId),
                             SpeechLimits) : null, ChatTarget(), HostTarget(), voice ? HostSpeechTarget() : null, silentReply,
@@ -389,7 +415,7 @@ internal sealed class LiveConversationConfiguration
     /// model's default sampling (a picking-out task, not a reply) but the same context size, so a host's Ollama does not
     /// reload the model between the reply and this request.</summary>
     internal ConversationRequest MemoryCaptureRequest(BoundedTextInput input) =>
-        new(input, TextSelection(), TextLimits, TurnLimits, null, ChatTarget(), HostTarget(),
+        new(input, TextSelection(), TextLimits, Turn(false), null, ChatTarget(), HostTarget(),
             generation: Generation?.ContextTokens is { } context ? new() { ContextTokens = context } : null);
 
     /// <summary>The word the model answers with to stay quiet after a screen glance; never spoken.</summary>

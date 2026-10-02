@@ -108,11 +108,12 @@ internal static class LocalOllama
     private static readonly TimeSpan AnswerLimit = TimeSpan.FromMinutes(2);
 
     /// <summary>Checks that <paramref name="model"/> loads and answers in this PC's Ollama the way a reply uses it: its
-    /// OpenAI-compatible endpoint, streamed, with the reply budget (<paramref name="replyTokens"/>). Starts Ollama when it is
+    /// OpenAI-compatible endpoint, streamed, with the reply budget (<paramref name="replyTokens"/>; null sends none, like a
+    /// reply without a max reply length). Starts Ollama when it is
     /// installed but not running. Loopback only, so nothing leaves this PC. A model that works but is too slow for a reply's
     /// <paramref name="firstWordsLimit"/> passes with a warning; anything that stops a reply throws
     /// <see cref="InvalidOperationException"/> with what went wrong, in Ollama's own words where it gave any.</summary>
-    internal static async Task<LocalModelTestResult> TestAsync(string model, int replyTokens, TimeSpan firstWordsLimit,
+    internal static async Task<LocalModelTestResult> TestAsync(string model, int? replyTokens, TimeSpan firstWordsLimit,
         Action<string> status, IProgress<string> output, CancellationToken token)
     {
         using var client = new HttpClient(new SocketsHttpHandler { UseProxy = false }) { Timeout = Timeout.InfiniteTimeSpan };
@@ -152,7 +153,8 @@ internal static class LocalOllama
         if (placement is not null) output.Report(placement);
 
         status($"Asking {model} to say hello...");
-        output.Report($"$ POST {Origin}/v1/chat/completions  (model {model}, streamed, up to {replyTokens} tokens)");
+        output.Report($"$ POST {Origin}/v1/chat/completions  (model {model}, streamed, " +
+            (replyTokens is { } budget ? $"up to {budget} tokens)" : "no reply token budget)"));
         var reply = await AskAsync(client, model, replyTokens, output, token);
         output.Report($"First words after {Seconds(reply.FirstWords)}; finished after {Seconds(reply.Total)}.");
         output.Report($"Reply: {reply.Text}");
@@ -173,20 +175,22 @@ internal static class LocalOllama
 
     /// <summary>One streamed Chat Completions request, the shape a reply uses. Like a reply, reasoning counts as the first
     /// words, and an empty or cut-off answer fails.</summary>
-    private static async Task<Reply> AskAsync(HttpClient client, string model, int replyTokens, IProgress<string> output, CancellationToken token)
+    private static async Task<Reply> AskAsync(HttpClient client, string model, int? replyTokens, IProgress<string> output, CancellationToken token)
     {
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(token);
         limit.CancelAfter(AnswerLimit);
         var clock = Stopwatch.StartNew();
         try
         {
+            var payload = new Dictionary<string, object>
+            {
+                ["model"] = model, ["stream"] = true,
+                ["messages"] = new[] { new { role = "user", content = TestPrompt } }
+            };
+            if (replyTokens is { } budget) payload["max_tokens"] = budget;
             using var request = new HttpRequestMessage(HttpMethod.Post, Origin + "/v1/chat/completions")
             {
-                Content = new StringContent(JsonSerializer.Serialize(new
-                {
-                    model, stream = true, max_tokens = replyTokens,
-                    messages = new[] { new { role = "user", content = TestPrompt } }
-                }), Encoding.UTF8, "application/json")
+                Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
             };
             using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, limit.Token);
             if (!response.IsSuccessStatusCode)
@@ -231,8 +235,8 @@ internal static class LocalOllama
             var said = text.ToString().Trim();
             if (!done || finish is null) throw new InvalidOperationException($"{model}'s answer was cut off: Ollama ended the reply early.");
             if (finish == "length")
-                throw new InvalidOperationException($"{model} used its whole reply budget ({replyTokens} tokens) before finishing" +
-                    (thinking ? ", thinking before it answered" : "") + ". Raise Max reply length in Companion › Replies, or choose a chat model.");
+                throw new InvalidOperationException($"{model} used its whole reply budget{(replyTokens is { } cap ? $" ({cap} tokens)" : "")} before finishing" +
+                    (thinking ? ", thinking before it answered" : "") + ". Raise or clear Max reply length in Companion › Replies, or choose a chat model.");
             if (said.Length == 0) throw new InvalidOperationException($"{model} answered with nothing.");
             return new(said.Length > 300 ? said[..300] + "…" : said, first ?? clock.Elapsed, clock.Elapsed);
         }

@@ -97,6 +97,8 @@ public partial class LiveConversationWindow : ThemedWindow
     private LiveConversationOperation? commentary, handledCommentary;
     private long nextGlance;
     private string? watchNote, captureNote, visionProblem;
+    // Thinking in Ollama on this PC: loads the model ahead of replies while this window is open.
+    private LocalOllamaWarmup? warmup;
 
     public ObservableCollection<ChatMessage> Messages { get; } = [];
     internal bool IsReady => ready && loading is null;
@@ -121,7 +123,7 @@ public partial class LiveConversationWindow : ThemedWindow
         locked = controller.Controls.Locked;
         // Pause and mute used to be switches in this window; listening and vision now pause from their own buttons.
         controller.SetControls(false, false, locked);
-        timer.Tick += (_, _) => { Observe(); Watch(); Pump(); RenderActions(); RenderToolApproval(); };
+        timer.Tick += (_, _) => { Observe(); Watch(); Pump(); KeepWarm(); RenderActions(); RenderToolApproval(); };
         timer.Start();
         sessionEvents.LockedChanged += SessionSwitch;
         controller.MemoryCaptured += MemoryCaptured;
@@ -175,6 +177,7 @@ public partial class LiveConversationWindow : ThemedWindow
             ready = loaded.Error is null;
             notice = loaded.Error?.Summary ?? (controller.Configuration is null
                 ? "Set up how Martlet thinks in Companion › Thinking, then come back to talk." : null);
+            Warm();
             StartLive();
         }
         else notice = "Martlet couldn't read your settings. Close this window and open it again.";
@@ -196,6 +199,44 @@ public partial class LiveConversationWindow : ThemedWindow
         if (closed || !Available) return;
         listening = preferences.HandsFree && !listenPaused && MicrophoneUsable;
         if (preferences.Watch && !watchPaused && !watching) StartWatching();
+    }
+
+    /// <summary>When Thinking runs in Ollama on this PC, has it load the model now (and follows a change of model).</summary>
+    private void Warm()
+    {
+        var model = controller.Configuration is { LocalOllama: true } selected ? selected.Route(SetupRole.Llm).ModelId : null;
+        if (warmup?.Model != model)
+        {
+            warmup?.Dispose();
+            warmup = model is null ? null : new(model, clock);
+        }
+        warmup?.Touch();
+    }
+
+    /// <summary>A reply or a look on its way asks Ollama again after a quiet spell, so a model it unloaded is loading already.</summary>
+    private void KeepWarm()
+    {
+        if (warmup is not null && Available &&
+            (owned is { OwnershipReleased: false } live && !IsIdleListen(live) || commentary is { OwnershipReleased: false }))
+            warmup.Touch();
+    }
+
+    /// <summary>What Ollama on this PC is doing with the Thinking model when it matters: still loading it, or why it can't.</summary>
+    private string? LocalModelNote(bool problems)
+    {
+        if (warmup is not { } local) return null;
+        var status = local.Status;
+        return status.State switch
+        {
+            LocalModelState.Loading when status.Elapsed >= TimeSpan.FromSeconds(1) =>
+                $"Ollama is loading {local.Model} on this PC ({status.Elapsed.TotalSeconds:0} s)… the first reply waits for it.",
+            _ when !problems => null,
+            LocalModelState.NotRunning => "Ollama isn't running on this PC. Start Ollama from the Start menu; Martlet notices when it answers.",
+            LocalModelState.MissingModel => $"Ollama on this PC doesn't have {local.Model}. Download it in Companion › Thinking.",
+            LocalModelState.Failed => $"Ollama on this PC couldn't load {local.Model}: {status.Detail}. Choose a smaller model in " +
+                "Companion › Thinking, or close programs that use a lot of memory.",
+            _ => null
+        };
     }
 
     // ---------- the history ----------
@@ -335,7 +376,8 @@ public partial class LiveConversationWindow : ThemedWindow
         var status = done.Status;
         if (done.Authorization.CredentialFailure is { } credential) return CredentialMessages.Describe(credential);
         if (status.AudioFailure is { } audio) return AudioSetupDiagnostics.Remedy(audio) + " You can still type.";
-        if ((done.Turn?.Snapshot.ProviderFailure ?? status.ProviderFailure) is { } provider) return ProviderRemedy(provider);
+        if ((done.Turn?.Snapshot.ProviderFailure ?? status.ProviderFailure) is { } provider)
+            return ProviderRemedy(provider, done.Authorization.Configuration);
         if (status.Quarantined) return Remedy("conversation.cleanup_quarantined");
         return status.Code switch
         {
@@ -349,7 +391,11 @@ public partial class LiveConversationWindow : ThemedWindow
 
     // ---------- typing ----------
 
-    private void Input_Changed(object sender, TextChangedEventArgs e) => RenderActions();
+    private void Input_Changed(object sender, TextChangedEventArgs e)
+    {
+        if (InputText.Text.Length > 0) warmup?.Touch();
+        RenderActions();
+    }
 
     private void Input_KeyDown(object sender, KeyEventArgs e)
     {
@@ -625,8 +671,8 @@ public partial class LiveConversationWindow : ThemedWindow
         return Idle();
     }
 
-    private string Idle() => !Available ? "" : listening ? "Listening. Just talk, or type below." + (listenNote is null ? "" : " " + listenNote)
-        : !preferences.HandsFree && MicrophoneUsable ? "Type below, or hold the talk button to speak." : "Type a message below.";
+    private string Idle() => !Available ? "" : LocalModelNote(true) ?? (listening ? "Listening. Just talk, or type below." + (listenNote is null ? "" : " " + listenNote)
+        : !preferences.HandsFree && MicrophoneUsable ? "Type below, or hold the talk button to speak." : "Type a message below.");
 
     private string Replying(LiveConversationOperation live)
     {
@@ -635,7 +681,7 @@ public partial class LiveConversationWindow : ThemedWindow
         if (snapshot?.ActiveTool is { } tool)
             return controller.Tools?.PendingApproval is { Answer.IsCompleted: false } ask
                 ? $"May Martlet use {ask.Tool}? Answer above the message box." : $"Using {tool}…";
-        return snapshot?.State == ConversationState.Playing ? "Martlet is speaking. Esc stops it." : "Martlet is thinking…";
+        return snapshot?.State == ConversationState.Playing ? "Martlet is speaking. Esc stops it." : LocalModelNote(false) ?? "Martlet is thinking…";
     }
 
     private string? ListeningMessage(LiveConversationOperation live) => live.Status.Code switch
@@ -829,7 +875,7 @@ public partial class LiveConversationWindow : ThemedWindow
             : provider is not (null or ProviderFailureCode.ModelRetired or ProviderFailureCode.ModelNotFound) &&
                 selected is not null && selected.Vision() != VisionSupport.Supported
             ? $"The Thinking model rejected the picture ({provider}); it most likely can't see images. {selected.VisionAdvice()}"
-            : "Martlet stopped looking: " + (provider is { } code ? ProviderRemedy(code) : Remedy(status.Code)));
+            : "Martlet stopped looking: " + (provider is { } code ? ProviderRemedy(code, done.Authorization.Configuration) : Remedy(status.Code)));
     }
 
     /// <summary>Stops looking and frees the screen capture, camera or stream. A <paramref name="problem"/> is shown and keeps
@@ -915,6 +961,8 @@ public partial class LiveConversationWindow : ThemedWindow
         closed = true;
         generation++;
         timer.Stop();
+        warmup?.Dispose();
+        warmup = null;
         sessionEvents.LockedChanged -= SessionSwitch;
         controller.MemoryCaptured -= MemoryCaptured;
         controller.VoicesNamed -= VoicesNamed;
@@ -988,6 +1036,31 @@ public partial class LiveConversationWindow : ThemedWindow
     private void ToolDeny_Click(object sender, RoutedEventArgs e) => AnswerTool(ToolApprovalChoice.Deny);
 
     // ---------- plain-language messages ----------
+
+    /// <summary>The remedy for a failed reply, in Ollama's terms when Thinking runs in Ollama on this PC.</summary>
+    internal static string ProviderRemedy(ProviderFailureCode code, LiveConversationConfiguration? configuration) =>
+        configuration is { LocalOllama: true } local && LocalOllamaRemedy(code, local) is { } remedy ? remedy : ProviderRemedy(code);
+
+    internal static string? LocalOllamaRemedy(ProviderFailureCode code, LiveConversationConfiguration local)
+    {
+        var model = local.Route(SetupRole.Llm).ModelId;
+        return code switch
+        {
+            ProviderFailureCode.DeadlineExceeded or ProviderFailureCode.FirstDeltaTimeout or ProviderFailureCode.IdleTimeout or
+                ProviderFailureCode.ConsentExpired =>
+                $"Ollama on this PC didn't answer within {local.TextLimits.MaxRequestTime.TotalMinutes:0} minutes. It may still be loading " +
+                $"{model}, or the model is too big for this PC's memory. Try again, or choose a smaller model in Companion › Thinking.",
+            ProviderFailureCode.Network => "Couldn't reach Ollama on this PC. Start Ollama from the Start menu, then try again.",
+            ProviderFailureCode.Server => $"Ollama on this PC couldn't run {model}. It may not fit this PC's memory: choose a smaller " +
+                "model in Companion › Thinking, or close programs that use a lot of memory, then try again.",
+            ProviderFailureCode.ModelNotFound or ProviderFailureCode.ModelUnsupported =>
+                $"Ollama on this PC doesn't have {model}. Download it in Companion › Thinking.",
+            ProviderFailureCode.OutputTokenLimit =>
+                "The model used the whole max reply length you set (thinking models spend part of it on hidden reasoning). " +
+                "Raise it, or clear it for no limit, in Companion › Replies.",
+            _ => null
+        };
+    }
 
     internal static string ProviderRemedy(ProviderFailureCode code) => code switch
     {

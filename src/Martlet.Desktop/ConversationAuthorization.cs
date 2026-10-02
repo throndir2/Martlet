@@ -126,7 +126,7 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
         var selection = Configuration.TextSelection();
         var expected = new OperationBudget(action.Context.Ids, action.Context.Epoch, ProviderRole.Llm, 1,
             action.Input.Utf8Bytes, action.Input.InputTokenReservation, Configuration.TextLimits.MaxOutputTokens, 0);
-        var expiry = Min(action.Context.Deadline, Deadline(TimeSpan.FromSeconds(45)));
+        var expiry = Min(action.Context.Deadline, Deadline(Configuration.TextLimits.MaxRequestTime));
         lock (gate)
         {
             Check(token);
