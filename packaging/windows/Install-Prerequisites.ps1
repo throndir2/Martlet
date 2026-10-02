@@ -360,11 +360,13 @@ function Start-OllamaServer([string]$Ollama) {
 }
 
 function Get-SuggestedOllamaModel {
-    # Every suggestion also sees images (screen watching) and calls tools. A "12 GB" card reports 11 GiB here.
+    # Every suggestion also sees images (screen watching) and calls tools, and leaves about 5 GB of the card for a game and
+    # Martlet's character: a model that overfills it is paged out to system memory and stalls.
+    # A "12 GB" card reports 11 GiB here, a "16 GB" one 15 GiB.
     $vram = Get-NvidiaVramGiB
     if ($vram -ge 23) { return [pscustomobject]@{ Tag = 'gemma4:26b'; Size = 'about 19 GB' } }
-    if ($vram -ge 11) { return [pscustomobject]@{ Tag = 'gemma4:12b'; Size = 'about 8 GB' } }
-    if ($vram -ge 7) { return [pscustomobject]@{ Tag = 'gemma4:e4b'; Size = 'about 7 GB' } }
+    if ($vram -ge 15) { return [pscustomobject]@{ Tag = 'gemma4:12b'; Size = 'about 8 GB' } }
+    if ($vram -ge 11) { return [pscustomobject]@{ Tag = 'gemma4:e4b'; Size = 'about 7 GB' } }
     return [pscustomobject]@{ Tag = 'gemma4:e2b'; Size = 'about 5 GB' }
 }
 

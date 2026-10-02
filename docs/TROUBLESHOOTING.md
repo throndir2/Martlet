@@ -139,6 +139,25 @@ Ollama can't (not running, model not downloaded, Ollama's own error). Ollama on
 this PC has no reply token budget unless you set **Max reply length** on
 **Companion › Replies**, so thinking models can reason before they answer.
 
+### "Gemma4Assistant requires ctx_other to be set … error loading model: vector"
+
+Ollama (and its own chat window) shows this as *500 Internal Server Error:
+llama-server process has terminated: exit status 1* when a Gemma 4 model
+doesn't fit in the graphics memory that is free. The *ctx_other* line is a
+harmless warning. Gemma 4 models bring a small draft model for faster replies;
+once the main model fills the card (a game, Martlet's character and other
+programs share it), Windows reports no free graphics memory and Ollama's
+llama.cpp fails to load the draft model with *error loading model: vector*
+(llama.cpp issues [27440](https://github.com/ggml-org/llama.cpp/issues/27440)
+and [28964](https://github.com/ggml-org/llama.cpp/issues/28964)). Martlet's
+*Test model* and talk window then turn the draft model off for that model
+(`draft_num_predict 0`, which then also applies in Ollama's own chat window) and load it
+again. A model that still overfills the card is paged out to system memory and
+replies stall for minutes; *Test model* says it doesn't fit or didn't answer
+and names a smaller model. Choose a smaller one (for example `gemma4:e4b`
+instead of `gemma4:12b` on a 12 GB card while gaming), or close programs that
+use the graphics card.
+
 ## Local configuration backup / restore (V07a)
 
 **Configuration backups are NOT support bundles.** The support ZIP described
