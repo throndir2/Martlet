@@ -143,7 +143,7 @@ To drive the visible desktop, start `Martlet.Desktop.exe` yourself in the **same
 interactive Windows session** (ideally with a disposable `--data-directory`).
 Call `ui_connect` with that process ID. `ui_snapshot` returns window accessible names,
 automation IDs, enabled states, checkbox states, and selected read-only status
-fields; it does not dump arbitrary editable fields or credentials. `ui_click`
+fields (a text block's text, or a button's accessible name); it does not dump arbitrary editable fields or credentials. `ui_click`
 invokes a control by automation ID and `ui_select` selects a named combo-box
 option. By default only passive navigation and
 diagnostics controls can be clicked. The main window is split into pages, and a
@@ -170,6 +170,14 @@ zoom its overlay. The `SetupCharacterView` status then reports the overlay's
 size, its distance from the top of the screen, the camera zoom and where the
 top of the character's head sits relative to the overlay's top edge (it must
 stay in view at every zoom).
+
+Status fields include the talk window's `LiveStatus` (its status line) and
+`LiveMic` (*Listening*, *Listening paused* or *Can't listen* with the reason),
+and Companion › Lip-sync's `LipSyncNow` and `LipSyncNowProblem` (whether this
+PC's own Audio2Face service answers). Opening the talk window with always
+listening on opens the microphone; for verification, save a fixed microphone
+that does not exist in the disposable data directory, so listening starts and
+fails without capturing real audio.
 
 Window discovery uses visible top-level native handles filtered to the attached
 process, then verifies ownership around each UI Automation handle lookup.
@@ -245,11 +253,12 @@ observe them:
   ID; duplicates fail as ambiguous).
 - **Passive clicks:** add navigation, open/close, refresh and expand controls
   that start no work to `SafeClicks` in
-  `src\Martlet.Mcp.Protocol\DesktopAutomation.cs`. Anything that sends,
+  `src\Martlet.Mcp.Protocol\DesktopAutomation.cs` (Companion pages,
+  `CompanionTab-*`, are allowed by prefix). Anything that sends,
   records, plays, spends, writes files or handles credentials stays behind
   `--allow-ui-effects`.
 - **Status:** add read-only, non-secret status fields to `SafeValues` so
-  snapshots return their text (a value pattern's value, or a text block's text).
+  snapshots return their text (a value pattern's value, a text block's text, or a status button's accessible name).
   Never expose editable fields, credentials, personal data or file paths.
 - **Headless capabilities:** add a tool to `Tools` and `CallAsync` in
   `src\Martlet.Mcp.Protocol\McpServer.cs` (strict input schema, bounded

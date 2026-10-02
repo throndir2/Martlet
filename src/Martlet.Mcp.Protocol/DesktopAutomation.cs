@@ -16,11 +16,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "NavHome", "NavDevices", "NavCompanion", "NavSettings", "TourSkip", "DiagnosticsSection",
         "OpenPeople"
     };
+    // Read-only status text. Text blocks and buttons have no value, so their accessible name (a text block's text) is returned.
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
         "FoundationStatus", "PipelineStatus", "LocalAudioStatus",
-        "LiveStatus", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
-        "PeopleStatus", "PeopleSyncStatus", "PeopleVoiceCount", "ListenParakeetStatus", "SetupCharacterView"
+        "LiveStatus", "LiveMic", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
+        "PeopleStatus", "PeopleSyncStatus", "PeopleVoiceCount", "ListenParakeetStatus", "SetupCharacterView",
+        "LipSyncNow", "LipSyncNowProblem"
     };
 
     /// <summary>Choosing a Companion page in its side list only shows that page.</summary>
@@ -51,10 +53,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
             {
                 var (window, element) = control;
                 var id = element.Current.AutomationId;
-                // Status text blocks expose their text as the accessible name rather than a value.
+                // Status text blocks expose their text as the accessible name; a status button's name carries its state.
                 var value = !SafeValues.Contains(id) ? null
                     : element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern) ? ((ValuePattern)pattern).Current.Value
-                    : element.Current.ControlType == ControlType.Text ? element.Current.Name : null;
+                    : element.Current.ControlType == ControlType.Text || element.Current.ControlType == ControlType.Button ? element.Current.Name : null;
                 return new
                 {
                     window = window.Current.Name,

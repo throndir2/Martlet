@@ -169,10 +169,13 @@ public sealed class LiveConversationTests
     }
 
     [Fact]
-    public Task OpeningWindowWithoutTestedMicrophoneHasNoEffects() => DispatcherTest(async () =>
+    public Task OpeningWindowWithoutListeningRouteShowsWhyAndHasNoEffects() => DispatcherTest(async () =>
     {
         await using var fixture = await LiveFixture.Create();
-        // Always listening is the default, but it waits until the microphone was set up and tested in Companion.
+        var settings = (await fixture.Store.LoadAsync()).Settings!;
+        var stt = settings.Setup!.Routes.Single(r => r.Role == SetupRole.Stt);
+        await fixture.Save(SetupSettings.ReplaceRoute(settings, stt with { Consent = null }));
+        // Always listening is the default, but it can't start until listening is set up; the mic button says why.
         var window = fixture.Open(new TalkPreferences());
         try
         {
@@ -180,10 +183,11 @@ public sealed class LiveConversationTests
             Assert.False(Control<Button>(window, "SendButton").IsEnabled);
             Assert.Equal(Visibility.Collapsed, Control<Button>(window, "PttButton").Visibility);
             Assert.Equal(Visibility.Visible, Control<Button>(window, "MicChip").Visibility);
-            Assert.False(Control<Button>(window, "MicChip").IsEnabled);
-            Assert.Equal("Mic not set up", Control<TextBlock>(window, "MicText").Text);
+            Assert.Equal("Can't listen", Control<TextBlock>(window, "MicText").Text);
+            Assert.Contains("Companion › Listening", (string)Control<Button>(window, "MicChip").ToolTip, StringComparison.Ordinal);
             Assert.Empty(window.Messages);
             Click(window, "SendButton"); // An empty message box sends nothing, even through a routed click.
+            Click(window, "MicChip");
             await Heartbeat();
             fixture.NoEffects();
             Assert.False(Directory.Exists(Path.Combine(
@@ -196,10 +200,10 @@ public sealed class LiveConversationTests
     });
 
     [Fact]
-    public Task AlwaysListeningStartsWithTestedMicrophoneAndShowsTheSpokenExchange() => DispatcherTest(async () =>
+    public Task AlwaysListeningStartsWithUntestedDefaultMicrophoneAndShowsTheSpokenExchange() => DispatcherTest(async () =>
     {
         await using var fixture = await LiveFixture.Create();
-        await fixture.TestMicrophone();
+        // No microphone test: the chosen microphone is used as is.
         fixture.Answer("Heard you.");
         EnqueueUtterance(fixture.Capture, quietBefore: 5, speech: 25, quietAfter: 15);
         var window = fixture.Open(new TalkPreferences(SpeakReplies: false));
@@ -1678,16 +1682,6 @@ internal sealed class LiveFixture : IAsyncDisposable
         { ShowActivated = false, ShowInTaskbar = false };
         window.Show();
         return window;
-    }
-    /// <summary>Marks the selected microphone as set up and tested, as the microphone test in Companion does.</summary>
-    internal async Task TestMicrophone()
-    {
-        var settings = (await Store.LoadAsync()).Settings!;
-        var input = settings.Audio!.Input;
-        await Save(settings with { Audio = settings.Audio with { Input = input with { Checkpoint = new()
-        {
-            ConfigurationRevision = input.ConfigurationRevision, TestedAt = DateTimeOffset.UtcNow, Outcome = LocalAudioOutcome.SamplesReceived
-        } } } });
     }
     internal async Task Advance(Func<bool> condition)
     {

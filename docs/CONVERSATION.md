@@ -190,9 +190,12 @@ or **Push-to-talk**. The choice, sensitivity, pause length, Voice ID toggle,
 *Speak replies* and Vision choices are remembered in `talk-preferences.json` in
 the data folder.
 
-- With always listening, opening the talk window opens the microphone once it
-  has been set up and tested in Companion (until then the mic button says *Mic
-  not set up* and you can type). An adaptive energy detector (`EnergyVoiceActivityDetector`,
+- With always listening, opening the talk window opens the microphone chosen in
+  Companion › Listening (the Windows default unless another is picked; testing
+  it there is optional). If listening isn't set up, the mic button says *Can't
+  listen* and why; if the microphone can't be opened (absent, busy, denied),
+  listening pauses and the status line says how to fix it, and you can type.
+  An adaptive energy detector (`EnergyVoiceActivityDetector`,
   20 ms frames read from the capture's own buffer through `TryCopyMonoFrame`)
   waits for speech, then releases the capture after your chosen pause
   (0.5/0.8/1.2 s). Only the detected speech plus 300 ms pre-roll and 200 ms tail

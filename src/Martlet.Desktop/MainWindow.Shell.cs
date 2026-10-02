@@ -333,6 +333,7 @@ public partial class MainWindow
         ObserveLocalJobs();
         RenderHome();
         if (DevicesPage.IsVisible) RenderMap();
+        CheckOwnLipSyncAsync().Forget();
     }
 
     private static string Greeting() => DateTime.Now.Hour switch
@@ -1094,7 +1095,7 @@ public partial class MainWindow
                 LipSyncHandler.Host => (homeAvatar!.RemoteHost!.HostId,
                     hostChecks.GetValueOrDefault(homeAvatar.RemoteHost.HostId)?.Text ?? "Audio2Face over pinned TLS; voice loudness if it is unavailable.",
                     nodes.FirstOrDefault(n => n.PairedHostId == homeAvatar.RemoteHost.HostId)?.Id),
-                _ => ("This PC", hosts.Count == 0
+                _ => ("This PC", ownLipSyncAnswers is not null ? OwnLipSyncState() : hosts.Count == 0
                     ? "Its own Audio2Face service when running, otherwise voice loudness. Add a computer to hand lip-sync to a GPU PC."
                     : "Its own Audio2Face service when running, otherwise voice loudness.", "this-pc")
             };
@@ -1128,17 +1129,19 @@ public partial class MainWindow
             choice.Items.Add(item);
             if (key == current) choice.SelectedItem = item;
         }
-        Option("this-pc", "This PC");
+        Option("this-pc", ownLipSyncAnswers == false ? "This PC's own Audio2Face service (not running)" : "This PC's own Audio2Face service");
+        var local = ThisPcHost()?.HostId;
         foreach (var host in NetworkMap.Hosts(Inputs()))
         {
             var check = hostChecks.GetValueOrDefault(host.HostId);
             var offers = check?.Offers?.ContainsKey(HostRoles.Audio2Face) == true;
+            var name = host.HostId == local ? $"{host.HostId}, this PC's host service" : host.HostId;
             if (!offers && CannotHand(host.HostId, HostRoles.Audio2Face, ClusterJobs.LipSync) is { } cannot)
             {
-                Option("host:" + host.HostId, $"{host.HostId} (can't take it now)", cannot);
+                Option("host:" + host.HostId, $"{name} (can't take it now)", cannot);
                 continue;
             }
-            Option("host:" + host.HostId, host.HostId + (offers ? " (runs Audio2Face)"
+            Option("host:" + host.HostId, name + (offers ? " (runs Audio2Face)"
                 : check?.Reachable == true ? " (Audio2Face not installed)" : check?.Reachable == false ? " (not reachable)" : ""));
         }
         Option("off", "Nobody (mouth follows voice loudness)");
@@ -1245,6 +1248,7 @@ public partial class MainWindow
                 UpdateCharacterButton();
                 RenderHome();
                 if (DevicesPage.IsVisible) RenderMap();
+                CheckOwnLipSyncAsync().Forget();
             }
         }
     }
@@ -1411,7 +1415,8 @@ public partial class MainWindow
         var args = new RoutedEventArgs();
         switch (action)
         {
-            case NodeAction.Companion: OpenCompanion(Enum.TryParse<SetupRole>(argument, out var jobRole) ? TabFor(jobRole) : CompanionTab.Thinking); break;
+            case NodeAction.Companion: OpenCompanion(Enum.TryParse<SetupRole>(argument, out var jobRole) ? TabFor(jobRole)
+                : Enum.TryParse<CompanionTab>(argument, out var tab) ? tab : CompanionTab.Thinking); break;
             case NodeAction.AudioSetup: AudioSetup_Click(this, args); break;
             case NodeAction.Character: Avatar_Click(this, args); break;
             case NodeAction.ToggleCharacter: Character_Click(this, args); break;

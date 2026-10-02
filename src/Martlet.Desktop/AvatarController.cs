@@ -135,7 +135,8 @@ internal sealed class AvatarController : IAsyncDisposable
             else if (selected.RemoteHost is not null)
                 Publish("Character showing. The paired Martlet host's credential is missing; pair again in Character settings. Lip-sync uses voice loudness.");
             else
-                Publish($"Character showing. No Audio2Face service at {automatic.Options.Endpoint.Authority}; lip-sync uses voice loudness and checks again whenever Martlet speaks.");
+                Publish($"Character showing. Audio2Face isn't running on this PC (nothing answers at {automatic.Options.Endpoint.Authority}), " +
+                    "so the mouth follows the voice's loudness. Install it in Companion › Lip-sync; Martlet checks again whenever it speaks.");
         }
         finally { changes.Release(); }
     }
