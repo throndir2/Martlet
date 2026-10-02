@@ -215,7 +215,7 @@ internal sealed partial class GatewayHttpApplication
             !request.Headers.ContainsKey("Transfer-Encoding"), "request.invalid");
     }
 
-    private static void LogPaired(IssuedDeviceCredential credential) =>
+    private void LogPaired(IssuedDeviceCredential credential) =>
         Logs.Own(LogLevels.Info, $"Paired device {credential.DeviceId} (roles: {string.Join(", ", credential.Roles).ToLowerInvariant()}).");
 
     private ValueTask WritePairingAsync(HttpContext context, IssuedDeviceCredential credential, string? hostProof) =>
