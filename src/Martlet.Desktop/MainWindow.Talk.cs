@@ -10,8 +10,8 @@ using Martlet.Providers;
 namespace Martlet.Desktop;
 
 /// <summary>The Companion choices the talk window follows: how you talk (Listening), whether replies are spoken (Voice) and
-/// what Martlet may look at (Vision). They save to talk-preferences.json and apply the next time the talk window opens; the
-/// talk window itself only shows the conversation and pauses or resumes what is on.</summary>
+/// what Martlet may look at (Vision). They save to talk-preferences.json and an open talk window follows them at once; the
+/// talk window itself shows the conversation, starts and stops listening, and pauses or resumes vision.</summary>
 public partial class MainWindow
 {
     private TalkPreferences? talk;
@@ -31,18 +31,20 @@ public partial class MainWindow
         talk = next;
         if (!next.Save(store?.DataDirectory))
             ActionText.Text = "Couldn't save your talk choices. They apply until Martlet closes.";
+        // An open talk window follows the change right away.
+        openConversation?.UsePreferences(next, visionAddress);
         if (render) RenderTab();
     }
 
     // ---------- Listening: how you talk ----------
 
-    /// <summary>Always listening while the talk window is open (the default) or push-to-talk, the voice-activity tuning and
-    /// Voice ID.</summary>
+    /// <summary>Always listening (the default; started from the talk window's Start listening) or push-to-talk, the
+    /// voice-activity tuning and Voice ID.</summary>
     private Border TalkModeCard()
     {
         var prefs = Talk;
         var always = Choice("TalkMode", "Always listening (recommended)",
-            "Martlet listens while the talk window is open and replies when you pause. Use the mic button to pause listening.",
+            "Press Start listening in the talk window and Martlet listens, replying when you pause, until you press Stop listening.",
             prefs.HandsFree, "TalkModeAlways");
         var push = Choice("TalkMode", "Push-to-talk",
             "Hold the talk button, or Space, when you want Martlet to listen.", !prefs.HandsFree, "TalkModePushToTalk");
@@ -70,7 +72,7 @@ public partial class MainWindow
 
             children.Add(Labeled("Sensitivity", scale));
             children.Add(Labeled("Reply after", pause));
-            children.Add(Note("Martlet listens again after each reply. Stop, Esc, locking Windows or closing the talk window ends listening.",
+            children.Add(Note("Martlet listens again after each reply. Stop listening, locking Windows or closing the talk window ends listening.",
                 new Thickness(0, 8, 0, 0)));
         }
 
@@ -251,7 +253,7 @@ public partial class MainWindow
         {
             var on = !Talk.Watch;
             SaveTalk(Talk with { Watch = on }, render: true);
-            ActionText.Text = on ? "Vision is on. Open the talk window to start." : "Vision is off.";
+            ActionText.Text = !on ? "Vision is off." : openConversation is null ? "Vision is on. Open the talk window to start." : "Vision is on.";
         }, primary: !prefs.Watch, id: "VisionToggle");
         toggle.IsEnabled = prefs.Watch || canSee && chosen;
         page.Children.Add(Card(Heading(prefs.Watch ? "Vision is on" : "Let Martlet see"),
