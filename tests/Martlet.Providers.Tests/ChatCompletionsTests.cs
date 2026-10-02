@@ -209,6 +209,7 @@ public sealed class ChatCompletionsTests
     [InlineData(ChatCompletionsEndpointCatalog.OpenRouterBaseUrl, 429, ProviderFailureCode.RateLimited)]
     [InlineData(ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, 402, ProviderFailureCode.QuotaExceeded)]
     [InlineData(ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, 422, ProviderFailureCode.RequestRejected)]
+    [InlineData(ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, 410, ProviderFailureCode.ModelRetired)]
     [InlineData(BaseUrl, 402, ProviderFailureCode.QuotaExceeded)]
     public async Task Named_endpoint_failures_are_actionable_and_do_not_include_provider_body(
         string baseUrl, int status, ProviderFailureCode expected)
@@ -231,6 +232,52 @@ public sealed class ChatCompletionsTests
         Assert.DoesNotContain(privateError, result.Result.Failure.Error.Summary);
         Assert.Equal(1, handler.Calls);
     }
+
+    [Fact]
+    public async Task Retired_model_is_classified_and_its_reason_reaches_only_the_local_diagnostics_sink()
+    {
+        const string reason = "The model 'org/model:q4' has reached its end of life on 2026-08-26T09:00:00Z and is no longer available.";
+        var lines = new List<string>();
+        ProviderDiagnostics.SetSink(line => { lock (lines) lines.Add(line); });
+        try
+        {
+            var context = ProviderFixtures.Context();
+            var limits = new TextGenerationLimits();
+            var handler = new TextRecordingHandler
+            {
+                Respond = (_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.Gone)
+                {
+                    Content = new StringContent(
+                        $"{{\"type\":\"about:blank\",\"title\":\"Gone\",\"status\":410,\"detail\":\"{reason}\"}}",
+                        Encoding.UTF8, "application/problem+json")
+                })
+            };
+            using var adapter = ChatCompletionsTextGenerationAdapter.CreateForFixture(ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl,
+                handler, new FixtureCredentials(), new FixtureClock());
+            var result = await TextFixtures.Collect(adapter.Stream(context, Model, new("Private context"),
+                limits, Authorize(context, limits, ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl)));
+            Assert.Equal(ProviderFailureCode.ModelRetired, result.Result.Failure!.Code);
+            Assert.DoesNotContain("end of life", result.Result.Failure.Error.Summary);
+            string line;
+            lock (lines) line = Assert.Single(lines, l => l.Contains(reason, StringComparison.Ordinal));
+            Assert.Contains("Chat Completions request failed: ModelRetired", line);
+            Assert.Contains("(model org/model:q4)", line);
+            Assert.Contains("https://integrate.api.nvidia.com/v1/chat/completions", line);
+            Assert.Contains("HTTP 410", line);
+            Assert.Contains(reason, line);
+            Assert.DoesNotContain("Private context", line);
+        }
+        finally { ProviderDiagnostics.SetSink(null); }
+    }
+
+    [Theory]
+    [InlineData("{\"error\":{\"message\":\"Incorrect API key provided: nvapi-abcdefghijklmnop1234\",\"code\":\"invalid_api_key\"}}",
+        "[invalid_api_key]; Incorrect API key provided: [redacted]")]
+    [InlineData("{\"detail\":[{\"loc\":[\"body\",\"temperature\"],\"msg\":\"Input should be less than or equal to 1\"}]}",
+        "body.temperature: Input should be less than or equal to 1")]
+    [InlineData("404 page not found\n", "404 page not found")]
+    public void Provider_error_bodies_are_described_on_one_redacted_line(string body, string expected) =>
+        Assert.Equal(expected, ProviderDiagnostics.Describe(Encoding.UTF8.GetBytes(body)));
 
     [Fact]
     public async Task Openrouter_midstream_error_fails_without_disclosing_provider_message()

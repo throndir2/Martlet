@@ -4,8 +4,8 @@ Runs a sequence of Martlet MCP tool calls against this checkout's build.
 
 .DESCRIPTION
 Starts src\Martlet.Mcp from this checkout, sends initialize and each call in
-order, and prints one JSON array of results. Doctor calls without an explicit
-dataDirectory get a disposable one. -Desktop launches Martlet.Desktop with the
+order, and prints one JSON array of results. Doctor, voices_status and logs_tail calls
+without an explicit dataDirectory get a disposable one. -Desktop launches Martlet.Desktop with the
 same disposable data directory and connects ui_* tools to it first.
 
 Each call is {"name": "<tool>", "arguments": {...}} with optional "waitMs"
@@ -136,7 +136,7 @@ try {
 
     foreach ($call in $requested) {
         $arguments = $call.arguments
-        if ($call.name -like 'doctor_*') {
+        if ($call.name -like 'doctor_*' -or $call.name -like 'voices_*' -or $call.name -like 'logs_*') {
             if ($null -eq $arguments) { $arguments = [pscustomobject]@{} }
             if ($null -eq $arguments.PSObject.Properties['dataDirectory']) {
                 $arguments | Add-Member -NotePropertyName dataDirectory -NotePropertyValue $data

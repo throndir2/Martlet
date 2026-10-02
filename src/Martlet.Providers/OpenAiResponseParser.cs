@@ -45,8 +45,8 @@ internal static class OpenAiResponseParser
             HttpStatusCode.TooManyRequests => ProviderFailureCode.RateLimited,
             HttpStatusCode.NotFound when code == "model_not_found" => ProviderFailureCode.ModelNotFound,
             HttpStatusCode.BadRequest when code == "model_not_found" => ProviderFailureCode.ModelNotFound,
-            // Providers answer 410 Gone for a model they have retired (NVIDIA Build: "reached its end of life").
-            HttpStatusCode.Gone => ProviderFailureCode.ModelNotFound,
+            // NVIDIA Build answers 410 Gone once a model reaches its end of life.
+            HttpStatusCode.Gone => ProviderFailureCode.ModelRetired,
             HttpStatusCode.UnsupportedMediaType => ProviderFailureCode.FormatRejected,
             HttpStatusCode.BadRequest when code is "invalid_audio_format" or "unsupported_format" or "invalid_file_format" =>
                 ProviderFailureCode.FormatRejected,

@@ -110,7 +110,7 @@ their plan's slices.
 These rules apply to every Martlet companion. The Windows app implements them
 now. The macOS, iOS and Android apps must implement them the same way.
 
-1. **No impossible choices.** *Who does what* menus, Devices-map commands and
+1. **No impossible choices.** *Done by* menus, Devices-map commands and
    role installs show a device that cannot run an engine as disabled, with the
    reason. Examples: "F5 voice cloning needs an NVIDIA GPU with 6 GB+; gpu-1
    reports Radeon RX 6600 (8 GB)"; "Ollama can't run on iphone (iOS/iPadOS
@@ -121,12 +121,12 @@ now. The macOS, iOS and Android apps must implement them the same way.
    install confirmation names what Martlet could not check.
 3. **Planned means "not built yet".** Planned items carry their slice ID and
    cannot be chosen.
-4. **Loss is visible.** A card at the top of **Home** and **Who does what**
+4. **Loss is visible.** A card at the top of **Home** and under the **Devices** map
    lists every job that is not working or is reduced, with the reason, what it
    means ("Martlet can't hear you; you can still type") and one-click fixes:
    use the Setup choice instead, check the host now, or open Setup or Devices.
    When thinking is down, the Home headline says "Martlet can't reply right
-   now", and each job tile repeats the problem.
+   now", and each job row on the Devices page repeats the problem.
 5. **No surprises before destructive actions.** Before you forget a host or
    remove a role, Martlet lists what each job will do: move by failover to a
    named host, go back to your Setup choice (naming the provider, what it

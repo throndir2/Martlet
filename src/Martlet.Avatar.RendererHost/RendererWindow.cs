@@ -150,8 +150,10 @@ internal sealed class RendererWindow : Window
         Top = Math.Max(area.Top, area.Bottom - Height - 24);
     }
 
-    private const double ZoomStep = 1.1, MaxViewZoom = 16, MinOverlayWidth = 180;
+    private const double ZoomStep = 1.1, MaxViewZoom = 16, MinOverlayWidth = 180, HeadMargin = 0.05;
     private double viewZoom = 1, viewX, viewY;
+    // Top of the character (top of the head) in the renderer's fitted clip space: 1 is the overlay's top edge unzoomed.
+    private double contentTop = double.NaN;
     private Point? panFrom;
 
     private static double MaxOverlayWidth
@@ -186,17 +188,20 @@ internal sealed class RendererWindow : Window
         else ResizeOverlay(Width * factor);
     }
 
-    // Resizes the overlay keeping its bottom-center anchored.
+    // Resizes the overlay keeping its bottom-center anchored, except that growing never pushes its top (and so the
+    // character's head) above the top of the screen's work area; it grows downward from there instead.
     private void ResizeOverlay(double width)
     {
         width = Math.Clamp(width, MinOverlayWidth, MaxOverlayWidth);
         var height = width * 4 / 3;
         var centerX = Left + Width / 2;
         var bottom = Top + Height;
+        var top = bottom - height;
+        if (height > Height && WorkAreaTop() is { } screenTop) top = Math.Max(top, Math.Min(Top, screenTop));
         Width = width;
         Height = height;
         Left = centerX - width / 2;
-        Top = bottom - height;
+        Top = top;
     }
 
     private void ResetZoom()
@@ -211,14 +216,32 @@ internal sealed class RendererWindow : Window
         PlaceOnDesktop();
     }
 
-    // Pan is clamped so the zoomed view never leaves the character's fitted frame.
+    // Pan is clamped so the zoomed view never leaves the character's fitted frame and the top of the head stays in
+    // view: it never rises above the top edge (less a small margin), or above where it sits unzoomed if already cut off.
     private void SetView(double zoom, double x, double y)
     {
         viewZoom = zoom;
         viewX = Math.Clamp(x, 1 - zoom, zoom - 1);
-        viewY = Math.Clamp(y, 1 - zoom, zoom - 1);
+        double minY = 1 - zoom, maxY = zoom - 1;
+        if (double.IsFinite(contentTop))
+        {
+            maxY = Math.Min(maxY, Math.Max(1 - HeadMargin, contentTop) - contentTop * zoom);
+            minY = Math.Min(minY, maxY);
+        }
+        viewY = Math.Clamp(y, minY, maxY);
         SendView();
     }
+
+    private void ApplyContentTop(double top)
+    {
+        contentTop = Math.Clamp(top, -1, 4);
+        SetView(viewZoom, viewX, viewY);
+    }
+
+    /// <summary>The overlay's size, position and camera, and how far the top of the head sits below its top edge.</summary>
+    private RendererView ViewState() => new(Math.Round(Width), Math.Round(Height),
+        WorkAreaTop() is { } screenTop ? Math.Round(Top - screenTop) : null, Math.Round(viewZoom, 3),
+        double.IsFinite(contentTop) ? Math.Round((1 - (contentTop * viewZoom + viewY)) / 2, 4) : null);
 
     private void SendView()
     {
@@ -398,6 +421,15 @@ internal sealed class RendererWindow : Window
                         FailRenderer();
                         return;
                     }
+                    if (document.RootElement.TryGetProperty("bounds", out var bounds))
+                    {
+                        // Unsolicited and never a command reply.
+                        if (bounds.ValueKind != JsonValueKind.Object || !bounds.TryGetProperty("top", out var top) ||
+                            top.ValueKind != JsonValueKind.Number || !double.IsFinite(top.GetDouble()))
+                            throw new InvalidDataException("Browser bounds are invalid.");
+                        ApplyContentTop(top.GetDouble());
+                        return;
+                    }
                     failure.ThrowIfFailed();
                     response?.TrySetResult(document.RootElement.Clone());
                 }
@@ -443,9 +475,10 @@ internal sealed class RendererWindow : Window
                         case "in": Zoom(ZoomStep * ZoomStep, null); break;
                         case "out": Zoom(1 / (ZoomStep * ZoomStep), null); break;
                         case "reset": ResetZoom(); break;
+                        case "status": break;
                         default: throw new InvalidDataException("Zoom action is invalid.");
                     }
-                    await ReplyAsync("ok", new { });
+                    await ReplyAsync("view", ViewState());
                     continue;
                 }
                 if (message.Kind == "theme")
@@ -537,6 +570,30 @@ internal sealed class RendererWindow : Window
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
     private static extern bool GetCursorPos(out CursorPoint point);
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct NativeRect { public int Left, Top, Right, Bottom; }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct MonitorInfo { public int Size; public NativeRect Monitor, Work; public uint Flags; }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr window, uint flags);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool GetMonitorInfoW(IntPtr monitor, ref MonitorInfo info);
+
+    /// <summary>Top of the work area of the screen the overlay is on, in this window's coordinates.</summary>
+    private double? WorkAreaTop()
+    {
+        var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero || PresentationSource.FromVisual(this)?.CompositionTarget is not { } target) return null;
+        var info = new MonitorInfo { Size = System.Runtime.InteropServices.Marshal.SizeOf<MonitorInfo>() };
+        var monitor = MonitorFromWindow(handle, 2);
+        if (monitor == IntPtr.Zero || !GetMonitorInfoW(monitor, ref info)) return null;
+        return target.TransformFromDevice.Transform(new Point(info.Work.Left, info.Work.Top)).Y;
+    }
 
     private Task ReplyAsync<T>(string kind, T data) =>
         RendererProtocol.WriteAsync(output, RendererProtocol.Message(kind, activation, data), lifetime.Token);

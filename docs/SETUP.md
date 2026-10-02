@@ -61,8 +61,8 @@ changing models. NVIDIA retired Martlet's earlier default,
 `meta/llama-3.3-70b-instruct`, on 2026-08-26 (it answers HTTP 410 Gone). Martlet
 knows the retired NVIDIA Build IDs it has seen (`ChatCompletionsEndpointCatalog`):
 a saved route on one is refused before sending, and Thinking and Vision name the
-new default as the fix. A 410 from any provider is reported as "model not
-offered", so the talk window says to choose another model.
+new default as the fix. A 410 from any provider is reported as `ModelRetired`,
+so the talk window says the model was retired and to choose another.
 
 For each job, review the displayed boundary and apply the route:
 

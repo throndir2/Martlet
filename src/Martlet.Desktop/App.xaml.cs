@@ -54,6 +54,8 @@ public partial class App : Application
         }
         var crashedLastTime = ErrorLog.Initialize(ErrorLog.DefaultDirectory(store?.DataDirectory), "desktop");
         ErrorLog.AttachDispatcher(this, "Martlet");
+        // Failed provider requests record their HTTP status and the provider's own short explanation locally.
+        Martlet.Providers.ProviderDiagnostics.SetSink(line => ErrorLog.Warn(line));
         if (error is not null) ErrorLog.Warn(error);
         try
         {

@@ -43,7 +43,7 @@ public partial class MainWindow
         var prefs = Talk;
         var always = Choice("TalkMode", "Always listening (recommended)",
             "While the talk window is open, Martlet hears you whenever you speak and replies when you pause. The mic button there " +
-            "pauses it. It starts once your microphone is set up and tested above.", prefs.HandsFree, "TalkModeAlways");
+            "pauses it. It uses the microphone above; testing it there is optional.", prefs.HandsFree, "TalkModeAlways");
         var push = Choice("TalkMode", "Push-to-talk",
             "Martlet hears you only while you hold the talk button (or Space on it) in the talk window.", !prefs.HandsFree, "TalkModePushToTalk");
         always.Checked += (_, _) => { if (!Talk.HandsFree) SaveTalk(Talk with { HandsFree = true }, render: true); };

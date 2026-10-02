@@ -10,7 +10,7 @@ using Martlet.F5;
 
 namespace Martlet.Desktop;
 
-/// <summary>A conversation job (a Setup role) that "Who does what" can hand to any paired host running
+/// <summary>A conversation job (a Setup role) that the Devices page can hand to any paired host running
 /// <paramref name="HostRoleKind"/>, or back to the route it used before (kept in <paramref name="SavedFile"/>).</summary>
 internal sealed record HostJob(SetupRole Role, SetupRouteType RouteType, string HostRoleKind, string RouteId, string Job,
     string Engine, string Use, string SavedFile, string Sent, string Disclosure)

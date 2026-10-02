@@ -67,6 +67,10 @@ internal sealed class LiveConversationOperation
     internal ListeningOptions? Listening { get; init; }
     internal Voiceprint? Voiceprint { get; init; }
     internal SpeakerCheck? SpeakerCheck { get; set; }
+    /// <summary>Who is being recognized in this utterance (runs alongside speech-to-text).</summary>
+    internal Task<HeardVoices>? Recognition { get; set; }
+    /// <summary>Who spoke, once known; null when voice recognition is off or did not finish in time.</summary>
+    [JsonIgnore] internal HeardVoices? Heard { get; set; }
     /// <summary>An unprompted screen glance rather than a reply to the user.</summary>
     internal bool Commentary { get; init; }
     /// <summary>The glance ended in silence: the model answered [pass].</summary>
@@ -141,6 +145,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private readonly ConversationRuntime runtime;
     private readonly OpenAiTranscriptionAdapter transcription;
     private readonly HostTranscriptionAdapter hostTranscription;
+    private readonly LocalTranscriptionAdapter? localTranscription;
+    private readonly LocalVoices? voices;
     private readonly ParticipationPolicy policy;
     private readonly ConversationContextBuffer context;
     private readonly TimeProvider clock;
@@ -175,6 +181,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
     internal (bool Paused, bool Muted, bool Locked) Controls { get { lock (gate) return (paused, muted, locked); } }
     /// <summary>Raised off the dispatcher after a finished exchange changed memory or could not be remembered.</summary>
     internal event Action<MemoryCaptureReport>? MemoryCaptured;
+    /// <summary>Raised off the dispatcher after names were picked up for voices from a finished exchange.</summary>
+    internal event Action<IReadOnlyList<(Martlet.Core.Speakers.KnownVoice Voice, string Name)>>? VoicesNamed;
     /// <summary>Tests turn background remembering off to inspect only the reply request.</summary>
     internal bool AutoCapture { get; set; } = true;
     internal Task MemoryCaptureIdle { get { lock (gate) return captureTail; } }
@@ -190,7 +198,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
         DesktopMemoryService? memory = null,
         GeneratedSpeechObserver? generatedSpeech = null, Action? revokeAvatar = null, VoiceIdentity? voiceIdentity = null,
         IHostTranscriptionClient? hostListener = null, string? dataDirectory = null, SpokenTextFeed? spokenText = null,
-        SmartHome? smartHome = null, LorebookStore? lorebooks = null, McpToolService? tools = null)
+        SmartHome? smartHome = null, LorebookStore? lorebooks = null, McpToolService? tools = null,
+        LocalVoices? voices = null, ILocalTranscriber? localListener = null)
 
     {
         this.operations = operations;
@@ -203,9 +212,11 @@ internal sealed class LiveConversationController : IAsyncDisposable
         this.memory = memory;
         this.lorebooks = lorebooks;
         this.voiceIdentity = voiceIdentity;
+        this.voices = voices;
         this.smartHome = smartHome;
         this.tools = tools;
         this.runtimeFactory = runtimeFactory;
+        localTranscription = localListener is null ? null : new(localListener, this.clock);
         context = new(this.clock);
         captureCredentials = new(() => Volatile.Read(ref captureAuthorization));
         var credentials = new ConversationCredentialSource(() => Volatile.Read(ref active)?.Authorization);
@@ -456,6 +467,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
             var text = turn.Content.Text;
             var passed = terminal.State == ConversationState.Completed && IsSilentReply(text);
             operation.Passed = passed;
+            if (IsFailure(terminal))
+                LogFailure(camera ? "Camera glance" : "Screen glance", operation.Authorization.Configuration, SetupRole.Llm, Describe(terminal));
             if (terminal.State == ConversationState.Completed && !passed)
             {
                 lock (gate)
@@ -584,6 +597,11 @@ internal sealed class LiveConversationController : IAsyncDisposable
                     result = operation.Authorization.Configuration.SttHostTarget() is { } listener
                         ? await hostTranscription.TranscribeAsync(context, listener, stt.ModelId, audio,
                             LiveConversationConfiguration.TranscriptionLimits, permission, operation.OriginalCaller, worker).ConfigureAwait(false)
+                        // Parakeet on this PC: transcribed in memory here, nothing is sent anywhere.
+                        : operation.Authorization.Configuration.LocalStt()
+                            ? await (localTranscription ?? throw new LiveActionException("conversation.configuration_unsupported"))
+                                .TranscribeAsync(context, stt.ModelId, audio, LiveConversationConfiguration.TranscriptionLimits, permission,
+                                    operation.OriginalCaller, worker).ConfigureAwait(false)
                         : await transcription.TranscribeAsync(context, stt.ModelId, audio,
                             LiveConversationConfiguration.TranscriptionLimits, permission, operation.OriginalCaller, worker).ConfigureAwait(false);
                 }
@@ -592,9 +610,13 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 operation.Transcription = result;
                 if (result.Outcome != TranscriptionOutcome.Completed)
                 {
+                    if (result.Outcome != TranscriptionOutcome.NoSpeech)
+                        LogFailure("Transcription", operation.Authorization.Configuration, SetupRole.Stt,
+                            $"outcome {result.Outcome}" + (result.Failure?.Code is { } sttCode ? $", provider {sttCode}" : ""));
                     operation.Publish(new("stt." + result.Outcome, Finished: true, ProviderFailure: result.Failure?.Code));
                     return new(result.Outcome == TranscriptionOutcome.NoSpeech ? SetupWorkOutcome.Completed : SetupWorkOutcome.Failed);
                 }
+                operation.Heard = await HeardAsync(operation, worker).ConfigureAwait(false);
                 operation.Transcript = result.Text;
                 input = new(result.Text!);
             }
@@ -671,7 +693,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 operation.Authorization.Check(worker);
                 var request = operation.Authorization.Configuration.Request(
                     input!, operation.Authorization.Voice, style, history, memoryResult, lore,
-                    out var usedHistory, out var usedMemory, out var usedLore, extraInstructions: home?.Instructions, tools: toolset);
+                    out var usedHistory, out var usedMemory, out var usedLore,
+                    extraInstructions: Join(home?.Instructions, VoicePromptContext.Instructions(operation.Heard)), tools: toolset);
                 operation.PersonaRevision = persona?.ConfigurationRevision;
                 operation.ResponseStyle = style;
                 operation.ContextMessages = usedHistory;
@@ -686,7 +709,13 @@ internal sealed class LiveConversationController : IAsyncDisposable
             }
             var terminal = await turn.Completion.ConfigureAwait(false);
             // A model that rejected tools is asked without them from now on (this app session).
-            if (terminal.ToolsRejected) tools?.MarkUnsupported(configured.ToolModelKey());
+            if (terminal.ToolsRejected)
+            {
+                tools?.MarkUnsupported(configured.ToolModelKey());
+                ErrorLog.Info($"The Thinking model {configured.Route(SetupRole.Llm).ModelId} rejected the request with tools; " +
+                    "Martlet asked again without tools and stops offering them to it until it restarts.");
+            }
+            if (IsFailure(terminal)) LogFailure("Reply", configured, SetupRole.Llm, Describe(terminal));
             if (terminal.State == ConversationState.Completed && !string.IsNullOrWhiteSpace(turn.Content.Text))
             {
                 lock (gate)
@@ -694,9 +723,14 @@ internal sealed class LiveConversationController : IAsyncDisposable
                     if (ReferenceEquals(active, operation) && !operation.Authorization.IsCanceled)
                     {
                         var earlier = context.Snapshot();
-                        context.Add(input!.UserText, turn.Content.Text);
+                        // Who said it travels with the words, so later replies (and memory) know who said what.
+                        var said = VoicePromptContext.Prefix(operation.Heard) + input!.UserText;
+                        context.Add(said, turn.Content.Text);
                         if (operation.MemoryRequested)
-                            EnqueueCaptureLocked(operation.Authorization.Configuration, earlier, input.UserText, turn.Content.Text);
+                            EnqueueCaptureLocked(operation.Authorization.Configuration, earlier, said, turn.Content.Text);
+                        if (operation.Heard is { Known.Count: > 0 } heard && voices is { Active: true } &&
+                            VoiceNaming.Worth(heard, input.UserText, turn.Content.Text))
+                            EnqueueNamingLocked(operation.Authorization.Configuration, heard, earlier, said, turn.Content.Text);
                     }
                 }
             }
@@ -758,6 +792,60 @@ internal sealed class LiveConversationController : IAsyncDisposable
     }
 
     private CorrelationIds Ids() => new() { SessionId = runtime.SessionId, TurnId = Guid.NewGuid(), RequestId = Guid.NewGuid() };
+
+    private static string? Join(params string?[] parts) =>
+        parts.Where(part => part is not null).ToArray() is { Length: > 0 } present ? string.Join("\n\n", present) : null;
+
+    // Recognition runs alongside speech-to-text and is usually done first; a slow one never holds the reply back for long.
+    private async Task<HeardVoices?> HeardAsync(LiveConversationOperation operation, CancellationToken worker)
+    {
+        if (operation.Recognition is not { } pending) return null;
+        var done = await Task.WhenAny(pending, Task.Delay(TimeSpan.FromSeconds(3), clock)).ConfigureAwait(false);
+        operation.Authorization.Check(worker);
+        if (done != pending) return null;
+        var heard = await pending.ConfigureAwait(false);
+        if (heard.Voices.Count > 0) operation.Publish(new("voices.recognized"));
+        return heard;
+    }
+
+    /// <summary>Starts recognizing who spoke in the utterance on this PC while it is transcribed. The samples are a private
+    /// copy that is cleared when recognition ends; a failure only means nobody is recognized this time.</summary>
+    private void Recognize(LiveConversationOperation operation, ReadOnlySpan<byte> speech)
+    {
+        if (voices is not { Active: true } recognizer || speech.Length < 2) return;
+        var samples = Pcm.ToFloats(speech);
+        operation.Recognition = Task.Run(() =>
+        {
+            try { return recognizer.Recognize(samples); }
+            // Recognition is best effort: any failure (native, model or file) only means nobody is named this time.
+            catch (Exception error)
+            {
+                ErrorLog.Warn("Recognizing who spoke failed.", error);
+                return HeardVoices.None;
+            }
+            finally { Array.Clear(samples); }
+        });
+    }
+
+    private static bool IsFailure(ConversationSnapshot terminal) =>
+        terminal.State is ConversationState.Failed or ConversationState.Partial || terminal.ProviderFailure is not null;
+
+    private static string Describe(ConversationSnapshot terminal) =>
+        $"state {terminal.State}, failure {terminal.Failure}" +
+        (terminal.ProviderFailure is { } provider ? $", provider {provider}" : "") +
+        (terminal.SequenceFailure is { } sequence ? $", stream {sequence.Issue}" : "") +
+        (terminal.Playback?.Error?.Code is { } audio ? $", audio {audio}" : "") +
+        (terminal.ToolCalls > 0 ? $", {terminal.ToolCalls} tool call(s)" : "") +
+        (terminal.ToolsRejected ? ", tools rejected" : "");
+
+    // One local log line per failed request naming the route it used, never what was said. The provider's own
+    // explanation (HTTP status and message) is logged just before it by ProviderDiagnostics.
+    private static void LogFailure(string what, LiveConversationConfiguration configured, SetupRole role, string outcome)
+    {
+        var route = configured.Routes.SingleOrDefault(r => r.Role == role);
+        ErrorLog.Warn($"{what} failed ({outcome}). {role} route: {route?.RouteType?.ToString() ?? "OpenAi"}, " +
+            $"{route?.Origin ?? "no destination"}, model {route?.ModelId ?? "none"}.");
+    }
 
     // Lorebooks help but are never required: if lorebooks.json can't be used right now, the reply goes ahead without lore.
     private async Task<LorebookScanResult?> ScanLoreAsync(LiveConversationOperation operation, string current,
@@ -864,29 +952,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
             var expected = job.Configuration.Memory!;
             var known = await memory!.KnownFactsAsync(expected, job.User, MemoryCapture.MaximumShownFacts, token).ConfigureAwait(false);
             var prompt = MemoryCapture.Prompt(job.EarlierUser, job.EarlierReply, job.User, job.Reply, known.Facts);
-            var request = job.Configuration.MemoryCaptureRequest(prompt.Input);
-            var capture = CaptureRuntime();
-            var authorization = new ConversationAuthorization(job.Configuration, voice: false, microphone: false, clock,
-                () => !token.IsCancellationRequested, settings.LoadAsync, vault, token);
-            authorization.BindInput(request.Input);
-            Volatile.Write(ref captureAuthorization, authorization);
-            string answer;
-            try
-            {
-                var turn = capture.Start(request, authorization, token);
-                var terminal = await turn.Completion.ConfigureAwait(false);
-                await turn.OwnershipRelease.ConfigureAwait(false);
-                if (turn.Snapshot.Quarantined)
-                    lock (gate) captureQuarantined = true;
-                if (terminal.State != ConversationState.Completed)
-                    return token.IsCancellationRequested ? null
-                        : new(Failure: terminal.ProviderFailure?.ToString() ?? "runtime." + terminal.State);
-                answer = turn.Content.Text;
-            }
-            finally
-            {
-                Interlocked.CompareExchange(ref captureAuthorization, null, authorization);
-            }
+            var (answer, failure) = await AskAsync("Remembering", job.Configuration, prompt.Input, token).ConfigureAwait(false);
+            if (answer is null) return token.IsCancellationRequested || failure is null ? null : new(Failure: failure);
             var operations = MemoryCapture.Parse(answer, prompt.ShownFacts);
             if (operations.Count == 0) return null;
             var changes = await memory.RememberAsync(expected.ConfigurationRevision,
@@ -910,6 +977,104 @@ internal sealed class LiveConversationController : IAsyncDisposable
             };
             return token.IsCancellationRequested || code is "memory.disabled" or "memory.configuration_changed" or
                 "conversation.configuration_changed" or "conversation.revoked" ? null : new(Failure: code);
+        }
+    }
+
+    /// <summary>One extra text-only request to the Thinking model on the background runtime (after a reply, never during
+    /// one): the answer, or null with why it failed.</summary>
+    private async Task<(string? Answer, string? Failure)> AskAsync(string purpose, LiveConversationConfiguration configuration,
+        BoundedTextInput input, CancellationToken token)
+    {
+        var request = configuration.MemoryCaptureRequest(input);
+        var capture = CaptureRuntime();
+        var authorization = new ConversationAuthorization(configuration, voice: false, microphone: false, clock,
+            () => !token.IsCancellationRequested, settings.LoadAsync, vault, token);
+        authorization.BindInput(request.Input);
+        Volatile.Write(ref captureAuthorization, authorization);
+        try
+        {
+            var turn = capture.Start(request, authorization, token);
+            var terminal = await turn.Completion.ConfigureAwait(false);
+            await turn.OwnershipRelease.ConfigureAwait(false);
+            if (turn.Snapshot.Quarantined)
+                lock (gate) captureQuarantined = true;
+            if (!token.IsCancellationRequested && IsFailure(terminal))
+                LogFailure(purpose, configuration, SetupRole.Llm, Describe(terminal));
+            return terminal.State == ConversationState.Completed ? (turn.Content.Text, null)
+                : (null, terminal.ProviderFailure?.ToString() ?? "runtime." + terminal.State);
+        }
+        finally
+        {
+            Interlocked.CompareExchange(ref captureAuthorization, null, authorization);
+        }
+    }
+
+    private void EnqueueNamingLocked(LiveConversationConfiguration configured, HeardVoices heard, IReadOnlyList<TextHistoryMessage> earlier,
+        string user, string reply)
+    {
+        if (!AutoCapture || voices is null || disposed || captureQuarantined || capturesPending >= MaximumPendingCaptures)
+            return;
+        capturesPending++;
+        var job = new NamingJob(configured, heard,
+            earlier.LastOrDefault(message => message.Role == TextHistoryRole.User)?.Text,
+            earlier.LastOrDefault(message => message.Role == TextHistoryRole.Assistant)?.Text,
+            user, reply, captureCancel.Token);
+        captureTail = NameAfterAsync(captureTail, job);
+    }
+
+    private sealed record NamingJob(LiveConversationConfiguration Configuration, HeardVoices Heard, string? EarlierUser,
+        string? EarlierReply, string User, string Reply, CancellationToken Token)
+    {
+        public override string ToString() => nameof(NamingJob);
+    }
+
+    private async Task NameAfterAsync(Task previous, NamingJob job)
+    {
+        await previous.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        IReadOnlyList<(Martlet.Core.Speakers.KnownVoice, string)>? learned = null;
+        try
+        {
+            learned = await Task.Run(() => NameAsync(job)).ConfigureAwait(false);
+        }
+        catch (Exception error)
+        {
+            ErrorLog.Warn("Learning names from a conversation exchange failed.", error);
+        }
+        finally
+        {
+            lock (gate) capturesPending--;
+        }
+        if (learned is { Count: > 0 }) VoicesNamed?.Invoke(learned);
+    }
+
+    /// <summary>Asks the Thinking model which names the voices in a finished exchange go by and adds them to those voices.</summary>
+    private async Task<IReadOnlyList<(Martlet.Core.Speakers.KnownVoice, string)>?> NameAsync(NamingJob job)
+    {
+        var token = job.Token;
+        try
+        {
+            token.ThrowIfCancellationRequested();
+            var prompt = VoiceNaming.Prompt(job.Heard, job.EarlierUser, job.EarlierReply, job.User, job.Reply);
+            var (answer, _) = await AskAsync("Learning names", job.Configuration, prompt.Input, token).ConfigureAwait(false);
+            if (answer is null || voices is null) return null;
+            var learned = new List<(Martlet.Core.Speakers.KnownVoice, string)>();
+            var persona = job.Configuration.Persona?.Name;
+            foreach (var (id, name) in VoiceNaming.Parse(answer, prompt.Voices, persona is null ? [] : [persona]))
+            {
+                token.ThrowIfCancellationRequested();
+                voices.AddHeardName(id, name);
+                if (voices.Roster.Resolve(id) is { } voice) learned.Add((voice, name));
+            }
+            return learned;
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            return null;
+        }
+        catch (Exception error) when (error is LiveActionException or ContractException or IOException or UnauthorizedAccessException or
+            InvalidOperationException)
+        {
+            return null;
         }
     }
 
@@ -1013,10 +1178,15 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 heard = await EndpointAsync(operation, run).ConfigureAwait(false);
                 if (heard is null)
                 {
+                    // A microphone that failed (absent, busy, denied) ends the run by itself; say so instead of "no speech",
+                    // which would quietly re-arm listening on a microphone that can't work.
+                    var failed = run.Completion.IsCompleted ? await run.Completion.ConfigureAwait(false) : null;
                     await run.CancelAsync().ConfigureAwait(false);
                     await run.Completion.ConfigureAwait(false);
                     permission.Check();
-                    operation.Publish(new("mic.no_speech", Finished: true));
+                    operation.Publish(failed is { State: CaptureState.Failed }
+                        ? new LiveConversationStatus("mic." + failed.State, Finished: true, AudioFailure: failed.Error?.Code)
+                        : new LiveConversationStatus("mic.no_speech", Finished: true));
                     return null;
                 }
             }
@@ -1052,6 +1222,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                     }
                     operation.Publish(new("speaker.verified"));
                 }
+                Recognize(operation, speech);
                 if (speech.Length >= 2) wave = BoundedWaveAudio.FromPcm(CapturedUtterance.Format, speech);
             }
             finally

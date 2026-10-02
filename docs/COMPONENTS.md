@@ -42,8 +42,8 @@ Home: Now
 Each job row opens one **job editor** with two questions, in this order:
 
 1. **Where should it run?** Cloud API / This PC / a paired host (listed by
-   name, with readiness). This is the same choice the Devices map's
-   *Who does what* makes today; both surfaces edit one source of truth.
+   name, with readiness). This is the same choice each job row's *Done by*
+   menu on the Devices page makes today; both surfaces edit one source of truth.
 2. **Which engine?** Depends on the place:
    - *Cloud API*: provider presets (OpenAI, OpenRouter, NVIDIA Build, Custom
      OpenAI-compatible) with the recommended model prefilled, the key status
@@ -70,7 +70,9 @@ removing detached keys.
 
 Current defaults: OpenAI Thinking `gpt-4.1-mini-2025-04-14`, OpenRouter
 `google/gemma-4-26b-a4b-it`, NVIDIA Build `google/diffusiongemma-26b-a4b-it`
-(every Thinking default also sees images and calls tools), local Ollama
+(every Thinking default also sees images and calls tools; NVIDIA retired
+`meta/llama-3.3-70b-instruct` on 2026-08-26, a retired model answers HTTP 410 and
+Martlet reports `ModelRetired`), local Ollama
 suggestions `gemma4:e2b` up to `gemma4:26b` by graphics card memory,
 Listening `gpt-4o-mini-transcribe`, Speaking `gpt-4o-mini-tts-2025-12-15` with
 voice `alloy`. They live next to their catalogs
@@ -86,7 +88,7 @@ voice `alloy`. They live next to their catalogs
    recommended defaults prefilled, and home steps opening Setup on the matching
    job. The old demo-vs-real setup choice was removed.
 2. **Job editor with placement.** One editor per job combining Setup's route
-   fields with *Who does what* placement; home rows per job; remove the
+   fields with the Devices page's *Done by* placement; home rows per job; remove the
    standalone Jobs picker. Keys shown inline per provider.
 3. **Local engines on This PC.** See the queued local model hosting item below.
 4. **Seeing (vision)** as a fifth job using the same editor and
@@ -104,7 +106,7 @@ Existing pieces to reuse:
 - Host role `deploy\host\roles\ollama` (Docker compose binding
   `127.0.0.1:11434`, GPU variant, `post_start` runs `ollama pull {OLLAMA_MODEL}`).
 - *Hosts* can already install roles on "this PC via Docker Desktop" or over
-  SSH, and the Devices map's *Who does what* offers role installation.
+  SSH, and a host's details on the Devices page offer role installation.
 - `VisionModelCatalog`'s `LocalVisionModel(id, size, description)` pattern for
   a recommended list with download size.
 - The Thinking route can already target a loopback Chat Completions server

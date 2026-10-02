@@ -24,7 +24,7 @@ public partial class MainWindow
     private sealed record HomeStep(string Id, string Title, string Detail, bool Done, bool Optional, IReadOnlyList<StepCommand> Commands);
     private sealed record StepCommand(string Label, Action Run, bool Primary = false);
     private sealed record NowLine(CompanionTab Tab, NodeHealth Health, string Text, string Action, bool Primary = false);
-    private sealed record MapElement(NetworkNode Node, Button Card, Line? Track, Line? Flow, Ellipse? Ring);
+    private sealed record MapElement(NetworkNode Node, Button Card, System.Windows.Shapes.Path? Track, System.Windows.Shapes.Path? Flow, Ellipse? Ring);
 
     private static readonly string Version = AppVersions.Current;
     private DeviceRole? deviceRole;
@@ -333,6 +333,7 @@ public partial class MainWindow
         ObserveLocalJobs();
         RenderHome();
         if (DevicesPage.IsVisible) RenderMap();
+        CheckOwnLipSyncAsync().Forget();
     }
 
     private static string Greeting() => DateTime.Now.Hour switch
@@ -413,7 +414,7 @@ public partial class MainWindow
         }
 
         RenderNow(now);
-        ShowCoverage(HomeCoverage, devices: false);
+        ShowCoverage(HomeCoverage);
 
         DeviceChips.Children.Clear();
         foreach (var node in NetworkMap.Build(Inputs()).Where(n => n.Kind != NodeKind.Add))
@@ -728,41 +729,42 @@ public partial class MainWindow
 
     private void MapHost_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        MapCanvas.Width = Math.Max(MapHost.ActualWidth - 16, 560);
-        MapCanvas.Height = Math.Max(MapHost.ActualHeight - 16, 400);
+        // Narrow windows scale the whole map down rather than squeezing devices into each other.
+        var available = MapHost.ActualWidth - 18;
+        if (available <= 0) return;
+        MapCanvas.Width = Math.Max(available, 760);
+        MapCanvas.Height = Math.Max((MapHost.ActualHeight - 18) * MapCanvas.Width / available, 300);
         LayoutMap();
     }
 
-    /// <summary>Side-by-side map and details when there is room; otherwise the details stack under the map.</summary>
-    private void DevicesPage_SizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        var narrow = DevicesPage.ActualWidth < 880;
-        var height = Math.Max(420, DevicesPage.ActualHeight - 150 - (RolesCard.IsVisible ? RolesCard.ActualHeight + 16 : 0));
-        Grid.SetRow(DetailCard, narrow ? 3 : 2);
-        Grid.SetColumn(DetailCard, narrow ? 0 : 1);
-        Grid.SetColumnSpan(DetailCard, narrow ? 2 : 1);
-        Grid.SetColumnSpan(MapHost, narrow ? 2 : 1);
-        DetailColumn.Width = new GridLength(narrow ? 0 : 320);
-        MapHost.Margin = narrow ? new Thickness(0, 0, 0, 16) : new Thickness(0, 0, 16, 0);
-        MapHost.Height = narrow ? 440 : height;
-        DetailCard.Height = narrow ? double.NaN : height;
-    }
+    /// <summary>The map takes the top of the page, a little under half its height (taller when a side has many devices);
+    /// the selected device's details follow.</summary>
+    private void DevicesPage_SizeChanged(object sender, SizeChangedEventArgs e) => SizeMap();
+
+    private int mapRows = 1;
+
+    private void SizeMap() =>
+        MapHost.Height = Math.Max(Math.Clamp(DevicesPage.ActualHeight * 0.42, 300, 400), mapRows * 104 + 40);
 
     private void RenderMap()
     {
         var nodes = NetworkMap.Build(Inputs());
-        RenderRolesBoard(nodes);
+        RenderDeviceSettings(nodes);
         if (nodes.All(n => n.Id != selectedNode)) selectedNode = "this-pc";
         MapCanvas.Children.Clear();
         mapElements.Clear();
-        mapGlow = new Ellipse { Width = 220, Height = 220, Opacity = 0.55, IsHitTestVisible = false };
+        mapGlow = new Ellipse { Width = 210, Height = 210, Opacity = 0.55, IsHitTestVisible = false };
         mapGlow.SetResourceReference(Shape.FillProperty, "GlowBrush");
         MapCanvas.Children.Add(mapGlow);
         foreach (var node in nodes.Skip(1))
         {
-            var track = new Line { StrokeThickness = 2, Opacity = 0.35, IsHitTestVisible = false };
+            var track = new System.Windows.Shapes.Path { StrokeThickness = 2, Opacity = 0.35, IsHitTestVisible = false };
             track.SetResourceReference(Shape.StrokeProperty, "BorderBrush");
-            var flow = new Line { StrokeThickness = 2.5, StrokeDashArray = [2, 4], StrokeDashCap = PenLineCap.Round, IsHitTestVisible = false, Opacity = node.Kind is NodeKind.Add or NodeKind.Missing ? 0.4 : 0.9 };
+            var flow = new System.Windows.Shapes.Path
+            {
+                StrokeThickness = 2.5, StrokeDashArray = [2, 4], StrokeDashCap = PenLineCap.Round, IsHitTestVisible = false,
+                Opacity = node.Kind is NodeKind.Add or NodeKind.Missing ? 0.4 : 0.9
+            };
             flow.SetResourceReference(Shape.StrokeProperty, node.Health == NodeHealth.Attention ? "WarningBrush" : "AccentBrush");
             MapCanvas.Children.Add(track);
             MapCanvas.Children.Add(flow);
@@ -778,6 +780,9 @@ public partial class MainWindow
             else mapElements.Insert(0, new(node, card, null, null, ring));
             Motion.Enter(card, dy: 0, milliseconds: 360, delay: index++ * 70);
         }
+        var (left, right) = MapSides();
+        mapRows = Math.Max(1, Math.Max(left.Count, right.Count));
+        SizeMap();
         LayoutMap();
         foreach (var element in mapElements)
         {
@@ -788,50 +793,63 @@ public partial class MainWindow
         SelectNode(selectedNode, animate: false);
     }
 
-    private static readonly Dictionary<int, double[]> Spreads = new()
+    /// <summary>Cloud services (and a job nobody does yet) sit left of This PC and your computers right; Add a computer
+    /// joins the side with fewer devices.</summary>
+    private (List<MapElement> Left, List<MapElement> Right) MapSides()
     {
-        [1] = [90], [2] = [130, 50], [3] = [155, 90, 25], [4] = [165, 118, 62, 15]
-    };
+        var left = mapElements.Where(m => m.Node.Kind is NodeKind.Cloud or NodeKind.Missing).ToList();
+        var right = mapElements.Where(m => m.Node.Kind == NodeKind.Host).ToList();
+        (left.Count < right.Count ? left : right).AddRange(mapElements.Where(m => m.Node.Kind == NodeKind.Add));
+        return (left, right);
+    }
 
     private void LayoutMap()
     {
         if (mapElements.Count == 0 || mapGlow is null) return;
-        double width = MapCanvas.Width, height = MapCanvas.Height, cx = width / 2, cy = height / 2;
-        var sizes = new Dictionary<string, Size>(StringComparer.Ordinal);
-        foreach (var element in mapElements)
-        {
-            element.Card.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            sizes[element.Node.Id] = element.Card.DesiredSize;
-        }
-        double rx = width / 2 - 104, ry = height / 2 - 66;
+        var (left, right) = MapSides();
+        double width = MapCanvas.Width, height = MapCanvas.Height, cy = height / 2;
+        // This PC moves toward the empty side, so a map with devices on one side only stays balanced.
+        var cx = left.Count == 0 ? width * 0.36 : right.Count == 0 ? width * 0.64 : width / 2;
         var positions = new Dictionary<string, Point>(StringComparer.Ordinal) { ["this-pc"] = new(cx, cy) };
-        void Place(IReadOnlyList<MapElement> group, bool top)
+        void Place(List<MapElement> side, int direction)
         {
-            var angles = Spreads.TryGetValue(group.Count, out var known) ? known
-                : Enumerable.Range(0, group.Count).Select(i => 170 - 160.0 * i / Math.Max(1, group.Count - 1)).ToArray();
-            for (var i = 0; i < group.Count; i++)
+            var reach = Math.Min((direction < 0 ? cx : width - cx) - 112, 380);
+            var spacing = side.Count <= 1 ? 0 : Math.Min(112, (height - 96) / (side.Count - 1));
+            for (var i = 0; i < side.Count; i++)
             {
-                var radians = angles[i] * Math.PI / 180;
-                positions[group[i].Node.Id] = new(cx + rx * Math.Cos(radians), cy + (top ? -1 : 1) * ry * Math.Sin(radians));
+                // A gentle arc: the outer devices of a column lean in toward This PC.
+                var t = side.Count == 1 ? 0 : 2.0 * i / (side.Count - 1) - 1;
+                positions[side[i].Node.Id] = new(cx + direction * (reach - 40 * t * t), cy + t * spacing * (side.Count - 1) / 2);
             }
         }
-        var others = mapElements.Where(m => m.Node.Kind != NodeKind.ThisPc).ToList();
-        Place(others.Where(m => m.Node.Kind is NodeKind.Cloud or NodeKind.Missing).ToList(), top: true);
-        Place(others.Where(m => m.Node.Kind is NodeKind.Host or NodeKind.Add).OrderBy(m => m.Node.Kind == NodeKind.Add).Reverse().ToList(), top: false);
+        Place(left, -1);
+        Place(right, 1);
+        var hubWidth = mapElements.FirstOrDefault(m => m.Node.Kind == NodeKind.ThisPc)?.Card is { } hub ? hub.Width / 2 : 0;
         foreach (var element in mapElements)
         {
-            var point = positions[element.Node.Id];
-            var size = sizes[element.Node.Id];
+            if (!positions.TryGetValue(element.Node.Id, out var point)) continue;
+            element.Card.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            var size = element.Card.DesiredSize;
             Canvas.SetLeft(element.Card, point.X - size.Width / 2);
             Canvas.SetTop(element.Card, point.Y - size.Height / 2);
-            foreach (var line in new[] { element.Track, element.Flow })
-            {
-                if (line is null) continue;
-                line.X1 = cx; line.Y1 = cy; line.X2 = point.X; line.Y2 = point.Y;
-            }
+            if (element.Track is null && element.Flow is null) continue;
+            // Edge to edge, so a connection never runs through a see-through card.
+            var direction = Math.Sign(point.X - cx);
+            var connector = Connector(new(cx + direction * hubWidth, cy), new(point.X - direction * size.Width / 2, point.Y));
+            if (element.Track is { } track) track.Data = connector;
+            if (element.Flow is { } flow) flow.Data = connector;
         }
         Canvas.SetLeft(mapGlow, cx - mapGlow.Width / 2);
         Canvas.SetTop(mapGlow, cy - mapGlow.Height / 2);
+    }
+
+    /// <summary>A soft S-curve from This PC to a device.</summary>
+    private static PathGeometry Connector(Point from, Point to)
+    {
+        var middle = (from.X + to.X) / 2;
+        var figure = new PathFigure { StartPoint = from };
+        figure.Segments.Add(new BezierSegment(new Point(middle, from.Y), new Point(middle, to.Y), to, true));
+        return new PathGeometry([figure]);
     }
 
     private (Button Card, Ellipse Ring) NodeCard(NetworkNode node)
@@ -862,7 +880,8 @@ public partial class MainWindow
         var content = new StackPanel();
         content.Children.Add(header);
         var chips = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
-        foreach (var chip in node.Roles.Select(r => r.Chip).Distinct().Take(3))
+        var roles = node.Roles.Where(r => r.Component != DeviceComponent.App).Select(r => r.Chip).Distinct().ToList();
+        foreach (var chip in roles.Take(3).Append(roles.Count > 3 ? $"+{roles.Count - 3}" : null).OfType<string>())
         {
             var border = new Border { Child = new TextBlock { Text = chip, FontSize = 11, TextWrapping = TextWrapping.NoWrap } };
             border.SetResourceReference(StyleProperty, "Chip");
@@ -870,7 +889,7 @@ public partial class MainWindow
         }
         if (chips.Children.Count > 0) content.Children.Add(chips);
 
-        var card = new Button { Content = content, Width = node.Kind == NodeKind.ThisPc ? 200 : 184 };
+        var card = new Button { Content = content, Width = node.Kind == NodeKind.ThisPc ? 220 : 204 };
         card.SetResourceReference(StyleProperty, "NodeCard");
         AutomationProperties.SetAutomationId(card, "Node-" + node.Id);
         AutomationProperties.SetName(card, node.Kind == NodeKind.Add ? $"{node.Title}: {node.Subtitle}"
@@ -887,151 +906,12 @@ public partial class MainWindow
             element.Card.Tag = element.Node.Id == id ? "Selected" : element.Node.Kind is NodeKind.Add or NodeKind.Missing ? "Ghost" : null;
         if (mapElements.FirstOrDefault(m => m.Node.Id == id)?.Node is not { } node) return;
         RenderDetail(node);
-        if (animate) Motion.Enter(DetailContent, dx: 24, dy: 0, milliseconds: 240);
-    }
-
-    private void RenderDetail(NetworkNode node)
-    {
-        DetailContent.Children.Clear();
-        var header = new DockPanel { Margin = new Thickness(0, 0, 0, 12) };
-        var bubble = new Border { Width = 52, Height = 52, CornerRadius = new CornerRadius(26), Margin = new Thickness(0, 0, 14, 0) };
-        bubble.SetResourceReference(Border.BackgroundProperty, "SoftBrush");
-        var glyph = Glyph(node.Glyph, 24, default);
-        glyph.SetResourceReference(TextBlock.ForegroundProperty, "AccentBrush");
-        bubble.Child = glyph;
-        DockPanel.SetDock(bubble, Dock.Left);
-        header.Children.Add(bubble);
-        var names = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        names.Children.Add(new TextBlock { Text = node.Title, FontSize = 20, FontWeight = FontWeights.SemiBold });
-        var subtitle = new TextBlock { Text = node.Subtitle };
-        subtitle.SetResourceReference(StyleProperty, "Muted");
-        names.Children.Add(subtitle);
-        header.Children.Add(names);
-        DetailContent.Children.Add(header);
-
-        if (node.Kind != NodeKind.Add)
-        {
-            var pill = new StackPanel { Orientation = Orientation.Horizontal };
-            pill.Children.Add(Dot(node.Health, 9, new Thickness(0, 0, 8, 0)));
-            pill.Children.Add(new TextBlock { Text = node.HealthText, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.NoWrap });
-            var chip = new Border { Child = pill, HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(10, 4, 12, 4), Margin = new Thickness(0, 0, 0, 6) };
-            chip.SetResourceReference(StyleProperty, "Chip");
-            DetailContent.Children.Add(chip);
-        }
-
-        if (node.Roles.Count > 0)
-        {
-            DetailContent.Children.Add(DetailHeading(node.Kind == NodeKind.Add ? "What a host does" : "What it runs"));
-            foreach (var role in node.Roles)
-            {
-                var item = new StackPanel { Margin = new Thickness(0, 0, 0, 8) };
-                item.Children.Add(new TextBlock { Text = role.Name, FontWeight = FontWeights.SemiBold });
-                var detail = new TextBlock { Text = role.Detail };
-                detail.SetResourceReference(StyleProperty, "Muted");
-                item.Children.Add(detail);
-                DetailContent.Children.Add(item);
-            }
-        }
-
-        if (node.Facts.Count > 0)
-        {
-            DetailContent.Children.Add(DetailHeading(node.Kind == NodeKind.ThisPc ? "Hardware" : "Details"));
-            var grid = new Grid();
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(104) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            for (var i = 0; i < node.Facts.Count; i++)
-            {
-                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-                var label = new TextBlock { Text = node.Facts[i].Label, Margin = new Thickness(0, 0, 8, 6) };
-                label.SetResourceReference(StyleProperty, "Muted");
-                var value = new TextBlock { Text = node.Facts[i].Value, Margin = new Thickness(0, 0, 0, 6) };
-                Grid.SetRow(label, i);
-                Grid.SetRow(value, i);
-                Grid.SetColumn(value, 1);
-                grid.Children.Add(label);
-                grid.Children.Add(value);
-            }
-            DetailContent.Children.Add(grid);
-        }
-
-        if (node.Notes.Count > 0)
-        {
-            DetailContent.Children.Add(DetailHeading("Good to know"));
-            foreach (var note in node.Notes.Distinct())
-            {
-                var text = new TextBlock { Text = "\u2022 " + note, Margin = new Thickness(0, 0, 0, 4) };
-                text.SetResourceReference(StyleProperty, "Muted");
-                DetailContent.Children.Add(text);
-            }
-        }
-
-        if (node.PairedHostId is { } pairedId && node.Kind == NodeKind.Host && FindHost(pairedId) is { } paired &&
-            PlatformCatalog.ManagesRolesRemotely(PlatformDevice.FromHost(pairedId, HardwareStore?.Find(pairedId))))
-            RenderReachEditor(paired);
-
-        if (node.Commands.Count > 0)
-        {
-            DetailContent.Children.Add(DetailHeading("Configure"));
-            foreach (var command in node.Commands)
-            {
-                var button = new Button { Content = command.Label, HorizontalAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(0, 0, 0, 8) };
-                if (command.Primary) button.SetResourceReference(StyleProperty, "PrimaryButton");
-                AutomationProperties.SetAutomationId(button, $"NodeAction-{command.Action}");
-                var action = command.Action;
-                var argument = command.Argument;
-                button.Click += (_, _) => RunNodeAction(action, argument);
-                DetailContent.Children.Add(button);
-            }
-        }
-    }
-
-    /// <summary>How this desktop reaches a host to install or remove its roles: SSH (Docker or native Ubuntu), this PC's
-    /// Docker Desktop, or by hand on the host.</summary>
-    private void RenderReachEditor(PairedHost host)
-    {
-        DetailContent.Children.Add(DetailHeading("How Martlet reaches it"));
-        var method = new ComboBox { Margin = new Thickness(0, 0, 0, 8) };
-        AutomationProperties.SetName(method, "How Martlet reaches this host");
-        AutomationProperties.SetAutomationId(method, "HostReachMethod");
-        foreach (var (value, text) in new[]
-        {
-            (HostSetupMethod.SshDocker, "SSH, with Docker there"), (HostSetupMethod.SshNative, "SSH, native Ubuntu"),
-            (HostSetupMethod.ThisPcDocker, "This PC, with Docker Desktop"), (HostSetupMethod.OnHost, "I run its commands on it myself")
-        })
-        {
-            var item = new ComboBoxItem { Content = text, Tag = value };
-            method.Items.Add(item);
-            if (value == host.Method) method.SelectedItem = item;
-        }
-        var label = new TextBlock { Text = "SSH target, for example me@192.168.1.20", Margin = new Thickness(0, 0, 0, 4) };
-        label.SetResourceReference(StyleProperty, "Muted");
-        var ssh = new TextBox { Text = host.SshTarget ?? "", Margin = new Thickness(0, 0, 0, 8) };
-        AutomationProperties.SetName(ssh, "SSH target (user@computer)");
-        AutomationProperties.SetAutomationId(ssh, "HostReachSsh");
-        void Toggle()
-        {
-            var usesSsh = method.SelectedItem is ComboBoxItem { Tag: HostSetupMethod.SshDocker or HostSetupMethod.SshNative };
-            ssh.IsEnabled = label.IsEnabled = usesSsh;
-            if (usesSsh && ssh.Text.Length == 0) ssh.Text = host.Address;
-        }
-        method.SelectionChanged += (_, _) => Toggle();
-        Toggle();
-        var save = new Button { Content = "Save how to reach it", HorizontalAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(0, 0, 0, 8) };
-        AutomationProperties.SetAutomationId(save, "HostReachSave");
-        save.Click += async (_, _) =>
-        {
-            if (method.SelectedItem is not ComboBoxItem { Tag: HostSetupMethod chosen }) return;
-            await HostTaskAsync(async token =>
-            {
-                var updated = await Pairings().SetReachAsync(host.HostId, chosen, ssh.Text, Version, token);
-                homeHosts = HostRegistry.Upsert(homeHosts, updated);
-                ActionText.Text = $"Saved. Martlet reaches {updated.HostId} via: {updated.Reach}.";
-            });
-        };
-        DetailContent.Children.Add(method);
-        DetailContent.Children.Add(label);
-        DetailContent.Children.Add(ssh);
-        DetailContent.Children.Add(save);
+        if (!animate) return;
+        Motion.Enter(DetailContent, dx: 0, dy: 12, milliseconds: 240);
+        // When little of the details shows (a short window), scroll so their top part is in view.
+        var top = DetailCard.TranslatePoint(new Point(0, 0), DevicesPage).Y;
+        if (top > DevicesPage.ViewportHeight - 160)
+            DevicesPage.ScrollToVerticalOffset(DevicesPage.VerticalOffset + top - Math.Max(0, DevicesPage.ViewportHeight - 280));
     }
 
     // ---------- who does what ----------
@@ -1040,68 +920,6 @@ public partial class MainWindow
 
     private PairedHost? FindHost(string? hostId) => hostId is null ? null
         : NetworkMap.Hosts(Inputs()).FirstOrDefault(h => h.HostId == hostId);
-
-    private void RenderRolesBoard(IReadOnlyList<NetworkNode> nodes)
-    {
-        var companion = Role == DeviceRole.Companion;
-        RolesCard.Visibility = companion ? Visibility.Visible : Visibility.Collapsed;
-        if (!companion) return;
-        renderingBoard = true;
-        try
-        {
-            EvaluateCoverage();
-            ShowCoverage(RolesCoverage, devices: true);
-            string? TileProblem(string job) => coverage.FirstOrDefault(c => c.Job == job && c.IsProblem) is { } problem
-                ? $"{(problem.State == CoverageState.Limited ? "Reduced" : "Not working")}: {problem.Problem}" : null;
-            RolesBoard.Children.Clear();
-            foreach (var role in new[] { SetupRole.Llm, SetupRole.Stt, SetupRole.Tts })
-            {
-                var name = NetworkMap.RoleName(role);
-                var owner = nodes.FirstOrDefault(n => n.Kind != NodeKind.Missing && n.Roles.Any(r => r.Name == name));
-                var change = new Button { Content = owner is null ? "Set up in Companion" : "Change in Companion", HorizontalAlignment = HorizontalAlignment.Left };
-                AutomationProperties.SetAutomationId(change, "RoleChange-" + role);
-                var tab = TabFor(role);
-                change.Click += (_, _) => OpenCompanion(tab);
-                FrameworkElement control = change;
-                if (HostJob.For(role) is { } job && NetworkMap.Hosts(Inputs()).Count > 0)
-                {
-                    change.Margin = new Thickness(0, 6, 0, 0);
-                    var controls = new StackPanel { Children = { JobChoice(job), change } };
-                    if (ClusterControls(job.Job) is { } cluster) controls.Children.Add(cluster);
-                    control = controls;
-                }
-                RolesBoard.Children.Add(RoleTile(name, owner?.Title ?? "Not chosen yet",
-                    owner?.Roles.First(r => r.Name == name).Detail ?? "Pick a cloud model or one of your computers in Companion.", control, owner?.Id,
-                    HostJob.For(role) is { } tileJob ? TileProblem(tileJob.Job) : null));
-            }
-
-            var hosts = NetworkMap.Hosts(Inputs());
-            var handler = NetworkMap.LipSync(homeAvatar);
-            var lipSyncChange = new Button { Content = "Change in Companion", HorizontalAlignment = HorizontalAlignment.Left };
-            AutomationProperties.SetAutomationId(lipSyncChange, "RoleChange-LipSync");
-            lipSyncChange.Click += (_, _) => OpenCompanion(CompanionTab.LipSync);
-            FrameworkElement lipSyncControl = lipSyncChange;
-            if (hosts.Count > 0)
-            {
-                lipSyncChange.Margin = new Thickness(0, 6, 0, 0);
-                var controls = new StackPanel { Children = { LipSyncChoice(), lipSyncChange } };
-                if (ClusterControls(ClusterJobs.LipSync) is { } lipSyncCluster) controls.Children.Add(lipSyncCluster);
-                lipSyncControl = controls;
-            }
-            var (who, detail, nodeId) = handler switch
-            {
-                LipSyncHandler.Loudness => ("Nobody", "The mouth follows the voice's loudness on this PC.", (string?)"this-pc"),
-                LipSyncHandler.Host => (homeAvatar!.RemoteHost!.HostId,
-                    hostChecks.GetValueOrDefault(homeAvatar.RemoteHost.HostId)?.Text ?? "Audio2Face over pinned TLS; voice loudness if it is unavailable.",
-                    nodes.FirstOrDefault(n => n.PairedHostId == homeAvatar.RemoteHost.HostId)?.Id),
-                _ => ("This PC", hosts.Count == 0
-                    ? "Its own Audio2Face service when running, otherwise voice loudness. Add a computer to hand lip-sync to a GPU PC."
-                    : "Its own Audio2Face service when running, otherwise voice loudness.", "this-pc")
-            };
-            RolesBoard.Children.Add(RoleTile("Lip-sync (Audio2Face)", who, detail, lipSyncControl, nodeId, TileProblem(ClusterJobs.LipSync)));
-        }
-        finally { renderingBoard = false; }
-    }
 
     /// <summary>Who handles lip-sync: this PC, a paired host (installing Audio2Face there if needed) or nobody.</summary>
     private ComboBox LipSyncChoice()
@@ -1128,17 +946,19 @@ public partial class MainWindow
             choice.Items.Add(item);
             if (key == current) choice.SelectedItem = item;
         }
-        Option("this-pc", "This PC");
+        Option("this-pc", ownLipSyncAnswers == false ? "This PC's own Audio2Face service (not running)" : "This PC's own Audio2Face service");
+        var local = ThisPcHost()?.HostId;
         foreach (var host in NetworkMap.Hosts(Inputs()))
         {
             var check = hostChecks.GetValueOrDefault(host.HostId);
             var offers = check?.Offers?.ContainsKey(HostRoles.Audio2Face) == true;
+            var name = host.HostId == local ? $"{host.HostId}, this PC's host service" : host.HostId;
             if (!offers && CannotHand(host.HostId, HostRoles.Audio2Face, ClusterJobs.LipSync) is { } cannot)
             {
-                Option("host:" + host.HostId, $"{host.HostId} (can't take it now)", cannot);
+                Option("host:" + host.HostId, $"{name} (can't take it now)", cannot);
                 continue;
             }
-            Option("host:" + host.HostId, host.HostId + (offers ? " (runs Audio2Face)"
+            Option("host:" + host.HostId, name + (offers ? " (runs Audio2Face)"
                 : check?.Reachable == true ? " (Audio2Face not installed)" : check?.Reachable == false ? " (not reachable)" : ""));
         }
         Option("off", "Nobody (mouth follows voice loudness)");
@@ -1147,39 +967,6 @@ public partial class MainWindow
             if (!renderingBoard && choice.SelectedItem is ComboBoxItem { Tag: string key } && key != current) AssignLipSyncAsync(key).Forget();
         };
         return choice;
-    }
-
-    private Border RoleTile(string title, string owner, string detail, FrameworkElement control, string? nodeId, string? problem = null)
-    {
-        var tile = new Border { Width = 236, Padding = new Thickness(14, 12, 14, 12), CornerRadius = new CornerRadius(16), Margin = new Thickness(0, 0, 12, 12) };
-        tile.SetResourceReference(Border.BackgroundProperty, "SoftBrush");
-        var stack = new StackPanel();
-        var heading = new TextBlock { Text = title, FontSize = 12 };
-        heading.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
-        stack.Children.Add(heading);
-        if (nodeId is not null)
-        {
-            var link = new Button { Content = owner, HorizontalAlignment = HorizontalAlignment.Left, FontSize = 15, FontWeight = FontWeights.SemiBold };
-            link.SetResourceReference(StyleProperty, "LinkButton");
-            AutomationProperties.SetName(link, $"{title}: {owner}. Show on the map");
-            link.Click += (_, _) => SelectNode(nodeId, animate: true);
-            stack.Children.Add(link);
-        }
-        else stack.Children.Add(new TextBlock { Text = owner, FontSize = 15, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
-        var text = new TextBlock { Text = detail, MaxHeight = 38, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 2, 0, 8), ToolTip = detail };
-        text.SetResourceReference(StyleProperty, "Muted");
-        stack.Children.Add(text);
-        if (problem is not null)
-        {
-            var warning = new TextBlock { Text = problem, TextWrapping = TextWrapping.Wrap, FontSize = 12, Margin = new Thickness(0, -4, 0, 8) };
-            warning.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
-            AutomationProperties.SetAutomationId(warning, "RoleProblem-" + title.Split(' ')[0]);
-            stack.Children.Add(warning);
-        }
-        stack.Children.Add(control);
-        tile.Child = stack;
-        AutomationProperties.SetName(tile, $"{title}: handled by {owner}. {detail}{(problem is null ? "" : " " + problem)}");
-        return tile;
     }
 
     /// <summary>Hands lip-sync to a paired host ("host:ID"), this PC ("this-pc") or nobody ("off"). A host that does not run
@@ -1245,6 +1032,7 @@ public partial class MainWindow
                 UpdateCharacterButton();
                 RenderHome();
                 if (DevicesPage.IsVisible) RenderMap();
+                CheckOwnLipSyncAsync().Forget();
             }
         }
     }
@@ -1401,17 +1189,13 @@ public partial class MainWindow
         }
     }
 
-    private static TextBlock DetailHeading(string text) => new()
-    {
-        Text = text, FontSize = 15, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 14, 0, 8)
-    };
-
     private void RunNodeAction(NodeAction action, string? argument = null)
     {
         var args = new RoutedEventArgs();
         switch (action)
         {
-            case NodeAction.Companion: OpenCompanion(Enum.TryParse<SetupRole>(argument, out var jobRole) ? TabFor(jobRole) : CompanionTab.Thinking); break;
+            case NodeAction.Companion: OpenCompanion(Enum.TryParse<SetupRole>(argument, out var jobRole) ? TabFor(jobRole)
+                : Enum.TryParse<CompanionTab>(argument, out var tab) ? tab : CompanionTab.Thinking); break;
             case NodeAction.AudioSetup: AudioSetup_Click(this, args); break;
             case NodeAction.Character: Avatar_Click(this, args); break;
             case NodeAction.ToggleCharacter: Character_Click(this, args); break;

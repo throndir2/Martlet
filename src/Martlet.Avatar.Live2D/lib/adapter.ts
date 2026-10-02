@@ -100,6 +100,17 @@ function sameIdentity(a: RenderIdentity, b: RenderIdentity): boolean {
     a.sourceId === b.sourceId;
 }
 
+/** Highest vertex of the visible meshes in model units (y up), or undefined when nothing is visible. */
+function visibleTop(model: CubismModel): number | undefined {
+  let top = Number.NEGATIVE_INFINITY;
+  for (let i = 0; i < model.getDrawableCount(); i++) {
+    if (!model.getDrawableDynamicFlagIsVisible(i) || model.getDrawableOpacity(i) < 0.05) continue;
+    const vertices = model.getDrawableVertices(i);
+    for (let v = 1; v < vertices.length; v += 2) top = Math.max(top, vertices[v]!);
+  }
+  return Number.isFinite(top) ? top : undefined;
+}
+
 export class Live2DAdapter {
   readonly #canvas: HTMLCanvasElement;
   readonly #sdk: SdkModules | undefined;
@@ -129,6 +140,7 @@ export class Live2DAdapter {
   #lookTarget = { x: 0, y: 0 };
   #look = { x: 0, y: 0 };
   #view = { zoom: 1, x: 0, y: 0 };
+  #modelTop: number | undefined;
 
   constructor(canvas: HTMLCanvasElement, options: {
     sdk?: SdkModules;
@@ -171,6 +183,12 @@ export class Live2DAdapter {
     finite(x, "view x");
     finite(y, "view y");
     this.#view = { zoom: Math.max(1, Math.min(32, zoom)), x, y };
+  }
+
+  /** Top of the visible character (top of the head) in fitted clip space, before view zoom/pan; 1 is the canvas top. */
+  get contentTop(): number | undefined {
+    const model = this.#resources?.model;
+    return model && this.#modelTop !== undefined && !this.#loading ? this.#modelTop * this.#fitScale(model) : undefined;
   }
 
   playMotion(group: string): boolean {
@@ -272,6 +290,7 @@ export class Live2DAdapter {
       this.#loading = false;
       this.#neutral();
       this.update(0);
+      this.#modelTop = visibleTop(model);
       return this.#plan.capabilities;
     } catch (error) {
       if (this.#resources === resources) this.#release();
@@ -396,11 +415,9 @@ export class Live2DAdapter {
       apply();
     }
     model.update();
-    const width = model.getCanvasWidth();
-    const height = model.getCanvasHeight();
     const aspect = this.#canvas.width / this.#canvas.height;
     const view = this.#view;
-    const scale = Math.min(2 / height, 2 * aspect / width) * view.zoom;
+    const scale = this.#fitScale(model) * view.zoom;
     const matrix = new sdk.CubismMatrix44();
     matrix.setMatrix(new Float32Array([scale / aspect, 0, 0, 0, 0, scale, 0, 0, 0, 0, 1, 0, view.x, view.y, 0, 1]));
     renderer.setMvpMatrix(matrix);
@@ -524,6 +541,11 @@ export class Live2DAdapter {
     return undefined;
   }
 
+  /** Model units to clip space that fits the whole model canvas into the render canvas. */
+  #fitScale(model: CubismModel): number {
+    return Math.min(2 / model.getCanvasHeight(), 2 * (this.#canvas.width / this.#canvas.height) / model.getCanvasWidth());
+  }
+
   #validateCanvas(): void {
     for (const dimension of [this.#canvas.width, this.#canvas.height]) {
       boundedInteger(dimension, LIMITS.canvasDimension, "canvas dimension");
@@ -582,6 +604,7 @@ export class Live2DAdapter {
     this.#lipSyncAge = Number.POSITIVE_INFINITY;
     this.#lookTarget = { x: 0, y: 0 };
     this.#look = { x: 0, y: 0 };
+    this.#modelTop = undefined;
     if (!resources) return;
     const errors: unknown[] = [];
     const release = (action: () => void) => {

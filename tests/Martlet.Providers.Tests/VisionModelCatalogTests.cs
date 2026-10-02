@@ -21,6 +21,7 @@ public sealed class VisionModelCatalogTests
     [InlineData("z-ai/glm-5.3-flash", VisionSupport.Supported)]
     [InlineData("meta/muse-glimmer-30b", VisionSupport.Supported)]
     [InlineData("deepseek-ai/deepseek-v4.1-flash", VisionSupport.Supported)]
+    [InlineData("gemma4:e4b", VisionSupport.Supported)]
     [InlineData("qwen2.5vl-7b", VisionSupport.Supported)]
     [InlineData("qwen/qwen2.5-vl-72b-instruct", VisionSupport.Supported)]
     [InlineData("llama3.2-vision-11b", VisionSupport.Supported)]
