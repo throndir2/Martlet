@@ -98,7 +98,7 @@ public sealed class GatewayAdapterTests
     }
 
     [Fact]
-    public async Task Same_path_replacement_blocks_adapter_before_worker_and_never_falls_back()
+    public async Task Same_path_replacement_keeps_the_snapshot_voice_until_a_new_one_is_applied()
     {
         using var scope = new F5TestScope();
         F5TestData.WriteWav(scope.SourcePath, seed: 1);
@@ -121,8 +121,8 @@ public sealed class GatewayAdapterTests
             request.Authorize(F5ConversationAuthorizationDecision.Allow,
                 F5TestData.Now.AddSeconds(5)), new RecordingPcmSink());
 
-        Assert.Equal(F5Failure.SourceChanged, result.Failure);
-        Assert.Equal(1, worker.StreamCalls);
+        Assert.Equal(F5SynthesisOutcome.Completed, result.Outcome);
+        Assert.Equal(2, worker.StreamCalls);
         var replacement = await F5TestData.SnapshotAsync(
             store, scope.SourcePath, snapshot.PresetId);
         var apply = await store.CreateApplyPreviewAsync(
@@ -135,11 +135,11 @@ public sealed class GatewayAdapterTests
                 F5TestData.Now.AddSeconds(5)), new RecordingPcmSink());
         Assert.Equal(F5SynthesisOutcome.Completed, replacementResult.Outcome);
         Assert.Equal([replacement.ReferenceRevision], worker.CachedReferenceRevisions);
-        Assert.Equal(2, worker.StreamCalls);
+        Assert.Equal(3, worker.StreamCalls);
     }
 
     [Fact]
-    public async Task Missing_source_blocks_adapter_before_worker()
+    public async Task Missing_original_does_not_block_the_stored_voice()
     {
         using var scope = new F5TestScope();
         F5TestData.WriteWav(scope.SourcePath);
@@ -157,8 +157,8 @@ public sealed class GatewayAdapterTests
             request.Authorize(F5ConversationAuthorizationDecision.Allow,
                 F5TestData.Now.AddSeconds(5)), new RecordingPcmSink());
 
-        Assert.Equal(F5Failure.SourceMissing, result.Failure);
-        Assert.Equal(0, worker.StreamCalls);
+        Assert.Equal(F5SynthesisOutcome.Completed, result.Outcome);
+        Assert.Equal(1, worker.StreamCalls);
     }
 
     [Fact]

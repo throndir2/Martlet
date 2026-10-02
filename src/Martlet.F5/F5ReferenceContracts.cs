@@ -109,20 +109,6 @@ public sealed record F5ReferenceSnapshot
         $"F5 reference snapshot {{ PresetId = {PresetId}, ReferenceRevision = {ReferenceRevision}, content and path = omitted }}";
 }
 
-public enum F5ReferenceSourceState
-{
-    Current,
-    Missing,
-    Changed,
-    Invalid
-}
-
-public sealed record F5ReferenceSourceStatus(
-    Guid PresetId,
-    string ReferenceRevision,
-    F5ReferenceSourceState State,
-    F5Failure? Failure);
-
 public sealed class F5ReferencePresetInfo
 {
     internal F5ReferencePresetInfo(Guid id, string name, F5ReferenceSnapshot[] snapshots)

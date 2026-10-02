@@ -141,14 +141,6 @@ try {
     if ($first -notlike '*not ready*') { throw 'First-run diagnostics must remain incomplete.' }
     if (Test-Path -LiteralPath $data) { throw 'Read-only launch unexpectedly created a data directory.' }
     if (-not $CompanionOnly) {
-        Invoke-Control 'OpenVoiceLibrary'
-        $null = Wait-Setup '*Saved assets have not been read*' 'VoiceResult'
-        if ((Find-Control 'VoiceCancel').Current.IsEnabled -or (Find-Control 'VoiceDelete').Current.IsEnabled) {
-            throw 'Voice Library must open without active IO or an inferred asset selection.'
-        }
-        if (Test-Path -LiteralPath $data) { throw 'Opening Voice Library unexpectedly created private data or loaded assets.' }
-        Invoke-Control 'VoiceClose'
-        $null = Wait-Status '*First run:*'
         Invoke-Control 'OpenTroubleshooting'
         $support = Wait-Setup '*Recording: OFF*worker: idle*' 'SupportStatus'
         if ((Find-Control 'SupportExport').Current.IsEnabled -or

@@ -191,8 +191,8 @@ public partial class MainWindow
         }, $"Listen with whisper {where}");
     }
 
-    /// <summary>F5 on this PC: hands speaking over when it already runs here (the voice picker when it already speaks),
-    /// otherwise one confirmation and one run window that sets everything up.</summary>
+    /// <summary>F5 on this PC: hands speaking over when it already runs here, otherwise one confirmation and one run window
+    /// that sets everything up.</summary>
     private async Task UseF5HereAsync()
     {
         if (store is null || setupService is null || closing) return;

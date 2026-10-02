@@ -64,12 +64,12 @@ browser, a calendar and anything else with an MCP server. Add servers on
 **Companion > Tools** (the standard `mcpServers` format); the talk window asks before
 each tool call unless you always allow it. See [MCP](docs/MCP.md).
 
-**Voice Library (local preparation)** now offers all five self-hosted research
-targets (F5-TTS, Qwen3-TTS, Chatterbox, GPT-SoVITS, XTTS-v2), explicit private
-WAV/transcript import for reference or training material, persistent
-inspection/removal and engine-specific guidance. It does not install models,
-upload audio, train, synthesize, preview speech or change the conversation
-voice. Those stages follow the [Voice Studio plan](docs/VOICE_STUDIO.md).
+**Voices (F5)**: add your own voice recordings on **Companion > Voice >
+Voices** and switch between them in one click. F5 copies a voice from a short
+recording with its transcript; nothing is trained. Martlet keeps its own copy of
+each recording on this PC and sends it with each reply only to the computer that
+speaks. See [Voices](docs/SETUP.md#voices-f5) and the
+[Voice Studio plan](docs/VOICE_STUDIO.md) for other engines.
 
 The [planned installation flow](docs/INSTALLATION_SUPPORT.md#feature-first-multi-machine-setup)
 coordinates optional features and mixed API/self-hosted roles across machines.
