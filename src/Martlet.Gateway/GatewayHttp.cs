@@ -46,6 +46,7 @@ internal sealed partial class GatewayHttpApplication
         this.audit = audit;
         Logs = new(identity.HostId, clock);
         Network = new(identity, credentials, clock, (level, message) => Logs.Own(level, message));
+        ApiKeys = new(identity.HostId, clock);
     }
 
     internal async Task InvokeAsync(HttpContext context)
@@ -116,6 +117,11 @@ internal sealed partial class GatewayHttpApplication
                 await InvokeVoicesAsync(context).ConfigureAwait(false);
                 return;
             }
+            if (rawTarget == ApiKeysPath)
+            {
+                await InvokeApiKeysAsync(context).ConfigureAwait(false);
+                return;
+            }
             if (rawTarget == CommandsPath || rawTarget!.StartsWith(CommandsPath + "/", StringComparison.Ordinal))
             {
                 await InvokeCommandsAsync(context, rawTarget).ConfigureAwait(false);
@@ -145,7 +151,10 @@ internal sealed partial class GatewayHttpApplication
                     "/martlet/v1/capabilities" or "/martlet/v1/status" or "/martlet/v1/machine"))
                 throw new GatewayProtocolException("request.invalid");
             EnsureEmptyRequest(context.Request);
-            var principal = authenticator.Authenticate(context.Request);
+            // Any API key may ask who it is and what this host offers (it needs that to call a route); status and hardware
+            // need read access.
+            var principal = Authorize(context.Request, rawTarget is "/martlet/v1/version" or "/martlet/v1/capabilities"
+                ? GatewayApiAccess.AnyKey : GatewayApiAccess.Read);
             if (rawTarget == "/martlet/v1/machine")
             {
                 await WriteJsonAsync(context, 200, new MachineDocument
@@ -166,7 +175,12 @@ internal sealed partial class GatewayHttpApplication
                     GatewayVersion = "0.2.0",
                     HostId = identity.HostId,
                     AuthorizedRole = principal.Role,
-                    CredentialLifetime = principal.CredentialLifetime
+                    CredentialLifetime = principal.CredentialLifetime,
+                    MartletVersion = MartletVersion,
+                    ApiKey = principal.Key is { } key ? new ApiKeyIdentity
+                    {
+                        Id = key.Id, Name = key.Name, Scopes = key.Scopes, ExpiresAt = key.ExpiresAt
+                    } : null
                 }).ConfigureAwait(false);
                 return;
             }
@@ -402,6 +416,17 @@ internal sealed partial class GatewayHttpApplication
         public required string HostId { get; init; }
         public required GatewayRole AuthorizedRole { get; init; }
         public required GatewayCredentialLifetime CredentialLifetime { get; init; }
+        public string? MartletVersion { get; init; }
+        /// <summary>The API key that asked (never its secret); absent for a paired device.</summary>
+        public ApiKeyIdentity? ApiKey { get; init; }
+    }
+
+    private sealed record ApiKeyIdentity
+    {
+        public required string Id { get; init; }
+        public required string Name { get; init; }
+        public required IReadOnlyList<string> Scopes { get; init; }
+        public DateTimeOffset? ExpiresAt { get; init; }
     }
 
     private sealed record CapabilitiesDocument

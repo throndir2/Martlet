@@ -147,6 +147,23 @@ internal sealed class ControlCommandStorage(LinuxControlDirectory directory) : I
     }
 }
 
+/// <summary>Keeps the network's API keys in api-keys.json beside host.json (0600, service owner): names, scopes and SHA-256
+/// verifiers, never a usable key. Not part of the approved configuration.</summary>
+internal sealed class ControlApiKeyStorage(LinuxControlDirectory directory) : IGatewayApiKeyStorage
+{
+    private readonly object gate = new();
+
+    public byte[]? Load()
+    {
+        lock (gate) return directory.Read(LinuxControlDirectory.ApiKeys, LinuxControlDirectory.MaximumApiKeysBytes);
+    }
+
+    public void Save(byte[] bytes)
+    {
+        lock (gate) directory.WriteApiKeys(bytes);
+    }
+}
+
 internal static class HostApplication
 {
     private static DurableGatewayHost? retainedOwner;
@@ -225,6 +242,7 @@ internal static class HostApplication
                 {
                     owner.AttachCluster(new ControlClusterStorage(directory));
                     owner.AttachVoices(new ControlVoiceStorage(directory));
+                    owner.AttachApiKeys(new ControlApiKeyStorage(directory));
                     owner.AttachNetwork(new ControlNetworkStorage(directory));
                     var (networkState, networkId) = owner.NetworkState;
                     owner.RecordActivity("INFO", networkState switch

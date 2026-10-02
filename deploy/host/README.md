@@ -131,7 +131,9 @@ reads it, to take those commands). See
 `network.json` holds the [Martlet network](../../docs/NETWORK.md) roster the
 host accepted (member desktops' public keys and the network's hosts); the host
 uses it to let member desktops pair by themselves and to revoke removed ones.
-`martlet-host network-reset` removes it.
+`martlet-host network-reset` removes it. `api-keys.json` holds the network's
+[API keys](../../docs/API.md) for other apps and scripts (names, scopes and
+SHA-256 verifiers, never a usable key), synced by paired desktops.
 
 ### Docker (any Docker host, including Windows)
 

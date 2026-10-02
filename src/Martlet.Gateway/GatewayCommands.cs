@@ -290,7 +290,7 @@ internal sealed partial class GatewayHttpApplication
         if (get)
         {
             EnsureEmptyRequest(context.Request);
-            _ = authenticator.Authenticate(context.Request);
+            _ = Authorize(context.Request, GatewayApiAccess.ReadOrManage);
             if (parts.Length == 0)
             {
                 var (agent, commands) = Commands.List(now);
@@ -308,7 +308,10 @@ internal sealed partial class GatewayHttpApplication
 
         var bytes = await ReadInferenceBodyAsync(context.Request, NodeCommandRules.MaximumRequestBytes, context.RequestAborted)
             .ConfigureAwait(false);
-        var principal = authenticator.Authenticate(context.Request, crypto.Sha256(bytes));
+        // An API key with manage access may send and cancel commands; taking and reporting them is the host's own agent's.
+        var principal = parts.Length == 0 || parts is [_, "cancel"]
+            ? Authorize(context.Request, crypto.Sha256(bytes), GatewayApiAccess.Manage)
+            : authenticator.Authenticate(context.Request, crypto.Sha256(bytes));
         if (parts.Length == 0)
         {
             var request = ReadCommandBody<SubmitRequest>(bytes);

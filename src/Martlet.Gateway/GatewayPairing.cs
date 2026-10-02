@@ -71,7 +71,7 @@ public sealed record GatewayDeviceRegistration
     public string? RotatedToCredentialId { get; init; }
 }
 
-public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewayAdmissionStatus
+public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewayAdmissionStatus, IGatewayPrincipalAuthority
 {
     public static readonly TimeSpan MaximumRotationOverlap = TimeSpan.FromMinutes(10);
     public const int MaximumRegistrations = 128;
@@ -334,6 +334,9 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
             };
         }
     }
+
+    T IGatewayPrincipalAuthority.WithAuthority<T>(GatewayPrincipal principal, Func<T> operation) =>
+        WithAuthority(principal, operation);
 
     internal T WithAuthority<T>(GatewayPrincipal principal, Func<T> operation)
     {
@@ -953,9 +956,13 @@ internal sealed record GatewayPairingProof
 
 public sealed record GatewayPrincipal
 {
-    internal GatewayCredentialStore? Authority { get; init; }
+    internal IGatewayPrincipalAuthority? Authority { get; init; }
     internal T WithAuthority<T>(Func<T> operation) =>
         (Authority ?? throw new GatewayProtocolException("auth.invalid")).WithAuthority(this, operation);
+    /// <summary>The API key this principal presented; null for a paired device's signed request.</summary>
+    internal Martlet.Core.Access.ApiKey? Key { get; init; }
+    /// <summary>Who made the request, for logs: the device ID or the API key's name.</summary>
+    internal string Caller => Key is { } key ? $"API key \"{key.Name}\"" : DeviceId;
 
     public required string HostId { get; init; }
     public required string CredentialId { get; init; }

@@ -20,6 +20,13 @@ if (args is ["network"])
     Console.WriteLine(JsonSerializer.Serialize(networkReport));
     return networkOk ? 0 : 1;
 }
+// With "api" it rehearses API keys for software outside the network (ApiRehearsal) and prints its report.
+if (args is ["api"])
+{
+    var (apiOk, apiReport) = await Martlet.NodeLinkCheck.ApiRehearsal.RunAsync(CancellationToken.None);
+    Console.WriteLine(JsonSerializer.Serialize(apiReport));
+    return apiOk ? 0 : 1;
+}
 var steps = new List<object>();
 var passed = true;
 void Step(string name, bool ok, string detail)

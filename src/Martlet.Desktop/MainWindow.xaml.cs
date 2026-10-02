@@ -115,6 +115,7 @@ public partial class MainWindow : ThemedWindow
         InitializeShell();
         InitializeCluster();
         InitializeNetwork();
+        InitializeApiKeys();
         InitializeNearby();
         InitializeVoiceSync();
         InitializeNodeAgent();
@@ -157,6 +158,7 @@ public partial class MainWindow : ThemedWindow
         await ShowSavedCharacterAsync(onlyIfAutoShow: true);
         StartCluster();
         StartNetwork();
+        StartApiKeys();
         StartVoiceSync();
         StartNodeAgent();
         StartLogShipping();
@@ -580,6 +582,7 @@ public partial class MainWindow : ThemedWindow
         updateTimer.Stop();
         clusterTimer.Stop();
         networkTimer.Stop();
+        apiKeysTimer.Stop();
         voiceSyncTimer.Stop();
         StopNearby();
         StopLogs();

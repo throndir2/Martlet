@@ -28,6 +28,9 @@ internal sealed class LinuxControlDirectory : IDisposable
     /// <summary>The Martlet network roster this host accepted (not part of the approved configuration).</summary>
     internal const string Network = "network.json", NetworkStaging = "network.staging";
     internal const int MaximumNetworkBytes = 65_536;
+    /// <summary>The network's API keys (names, scopes and SHA-256 verifiers; never a usable secret).</summary>
+    internal const string ApiKeys = "api-keys.json", ApiKeysStaging = "api-keys.staging";
+    internal const int MaximumApiKeysBytes = 65_536;
     internal uint UserId => fs.UserId;
     internal uint GroupId => fs.GroupId;
 
@@ -87,7 +90,7 @@ internal sealed class LinuxControlDirectory : IDisposable
 
     internal byte[]? Read(string name, int maximum)
     {
-        if (name is not (Config or Approval or Machine or Cluster or Voices or Logs or Network or Commands or AgentToken)) throw Error(GatewayPersistenceFailure.InvalidPath);
+        if (name is not (Config or Approval or Machine or Cluster or Voices or Logs or Network or Commands or AgentToken or ApiKeys)) throw Error(GatewayPersistenceFailure.InvalidPath);
         Validate();
         var before = fs.StatAt(DirectoryFd, name);
         if (before is null) return null;
@@ -176,6 +179,9 @@ internal sealed class LinuxControlDirectory : IDisposable
 
     /// <summary>Atomically replaces network.json (0600, service owner).</summary>
     internal void WriteNetwork(byte[] bytes) => ReplaceRecovering(Network, NetworkStaging, bytes, MaximumNetworkBytes);
+
+    /// <summary>Atomically replaces api-keys.json (0600, service owner).</summary>
+    internal void WriteApiKeys(byte[] bytes) => ReplaceRecovering(ApiKeys, ApiKeysStaging, bytes, MaximumApiKeysBytes);
 
     /// <summary>Removes network.json (martlet-host network-reset), so the host is in no Martlet network.</summary>
     internal bool RemoveNetwork()

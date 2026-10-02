@@ -237,6 +237,28 @@
                             <StackPanel x:Name="NetworkMembersPanel" AutomationProperties.Name="Computers in your network"/>
                         </StackPanel>
                     </Border>
+                    <!-- Apps and API keys: keys that software outside the network uses to call your hosts (MainWindow.ApiKeys.cs, docs/API.md) -->
+                    <Border x:Name="ApiKeysCard" Style="{DynamicResource CardStyle}" Padding="26,22" AutomationProperties.Name="Apps and API keys">
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,12">
+                                <Button x:Name="ApiKeyCreateButton" DockPanel.Dock="Right" Content="Create API key" Click="ApiKeyCreate_Click" VerticalAlignment="Top"
+                                        AutomationProperties.AutomationId="ApiKeyCreate" AutomationProperties.Name="Create an API key"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,12,0">
+                                    <Border Width="40" Height="40" CornerRadius="20" Background="{DynamicResource SoftBrush}" Margin="0,0,14,0" VerticalAlignment="Top">
+                                        <TextBlock Style="{DynamicResource Icon}" FontSize="18" Text="&#xE8D7;" Foreground="{DynamicResource AccentBrush}"/>
+                                    </Border>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="Apps and API keys" FontSize="18" FontWeight="SemiBold"/>
+                                        <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap"
+                                                   Text="Let other apps and scripts, such as Home Assistant, use your hosts. Each key works on every host in your network."/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </DockPanel>
+                            <TextBlock x:Name="ApiKeysStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap"
+                                       AutomationProperties.AutomationId="ApiKeysStatus" AutomationProperties.LiveSetting="Polite"/>
+                            <StackPanel x:Name="ApiKeysPanel" AutomationProperties.Name="API keys"/>
+                        </StackPanel>
+                    </Border>
                     <Border x:Name="RolesCard" Style="{DynamicResource CardStyle}" Padding="26,22" AutomationProperties.Name="Settings for all devices">
                         <StackPanel>
                             <DockPanel Margin="0,0,0,12">

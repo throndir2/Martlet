@@ -161,6 +161,7 @@ public partial class MainWindow
                 {
                     await RefreshHomeAsync();
                     QueueClusterSync();
+                    QueueApiKeySync();
                 }
                 RenderNetwork();
                 if (networkQueued)

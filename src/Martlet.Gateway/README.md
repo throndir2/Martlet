@@ -365,6 +365,31 @@ valid replay record and returns `auth.rate` with a four-minute drain remedy.
 Method, path, role or timestamp changes invalidate the signature; replaying
 the same request returns `auth.replay`.
 
+### API keys for software outside the network
+
+Software that is not one of the owner's paired computers sends a network API
+key as `Authorization: Bearer martlet_<id>.<secret>` instead of a signed
+request ([API guide](../../docs/API.md)). `GatewayApiKeyStore`
+(`GatewayApiKeys.cs`) keeps the network's `Martlet.Core.Access.ApiKeyList`
+(saved through `GatewayServer.AttachApiKeyStorage`; names, scopes, expiry and
+SHA-256 verifiers, never a secret) and checks the secret in constant time.
+Endpoints opt in per scope; every other endpoint answers a bearer request with
+`key.scope` (403) before reading anything else, as does a key without the
+scope. Unknown or wrong keys are `key.invalid`, revoked `key.revoked` and
+expired `key.expired` (401). A key's principal (`DeviceId` `api-key-<id>`,
+credential ID = key ID, role from the route, `X-Martlet-Role` or `voice`) is
+vouched for by the key store while an inference job runs, so revoking or
+expiring the key stops it like revoking a device credential. Keys carry no
+nonce: TLS with the pinned host key protects them in transit.
+
+| Scope | Admits |
+| --- | --- |
+| any key | `GET version` (with `api_key`: ID, name, scopes, expiry), `GET capabilities` |
+| `read` | `GET status`, `GET machine`, `GET cluster`, `GET logs`, `GET commands[/{id}]` |
+| `voice` / `perception` | that role's inference routes and `POST inference/cancel` |
+| `manage` | `POST commands`, `POST commands/{id}/cancel`, `GET commands[/{id}]` |
+| never | pairing, `network*`, `voices`, `POST cluster`, `POST logs`, `commands/agent`, `commands/{id}/report`, `api-keys` |
+
 ## Implemented HTTPS surface
 
 | Operation | Authentication | Bounded result |
@@ -377,7 +402,7 @@ the same request returns `auth.replay`.
 | `POST /martlet/v1/network` | Signed device body, any role | Strict schema-1 roster JSON, at most 40 KiB, accepted entry by entry (binding an unbound host); returns the same document as GET and saves `network.json` when a storage is attached |
 | `POST /martlet/v1/network/join` | Signed device body, any role | `display_name` and `key` (ECDSA P-256 SPKI); returns `state` (`pending` or `member`), `network_id` and `check_number` |
 | `POST /martlet/v1/network/deny` | Signed body of an active member desktop | `device_id`; returns `denied` |
-| `GET /martlet/v1/version` | Signed scoped device request | Protocol `2.0`, gateway `0.2.0`, host ID, authorized role and explicit `credential_lifetime` (`paired` or retiring old key with deadline) |
+| `GET /martlet/v1/version` | Signed scoped device request, or any API key | Protocol `2.0`, gateway `0.2.0`, host ID, `martlet_version`, authorized role and explicit `credential_lifetime` (`paired` or retiring old key with deadline); for an API key also `api_key` (`id`, `name`, `scopes`, `expires_at`) |
 | `GET /martlet/v1/capabilities` | Signed scoped device request | Registry `martlet.gateway.inference-routes` `1.0`, at most 8 fixed routes and 16 status workers, filtered by role |
 | `GET /martlet/v1/status` | Signed scoped device request | Two-second cooperative cancellation for status reads for only that role |
 | `GET /martlet/v1/machine` | Signed scoped device request, any role | Host ID, the gateway's Martlet release `martlet_version` (so desktops can offer to update older hosts), plus the host-reported `machine` (method `docker`/`native`/`app`, optional `platform`, `os_version`, `architecture` and `features` ([platform fields](../../docs/PLATFORMS.md#machine-report-platform-fields)), OS, kernel, CPU, threads, memory, container runtime, `nvidia_containers`, driver `cuda` version, at most 16 GPUs with vendor/memory/driver and, for NVIDIA, power limit/default and persistence mode) or no `machine` when none was collected. Informational and unauthenticated by the host itself; grants no authority |
@@ -385,6 +410,8 @@ the same request returns `auth.replay`.
 | `POST /martlet/v1/cluster` | Signed device body, any role | Strict schema-1 plan JSON, at most 16 KiB, merged per job and per host (newest stamp wins) into the host's copy, which is saved to `cluster.json` when a storage is attached (`GatewayServer.AttachClusterStorage`); returns the merged `plan`. Unknown fields, newer schemas and invalid names are `request.invalid` |
 | `GET /martlet/v1/logs?after=N[&limit=L]` | Signed scoped device request, any role | Host ID and a page of this host's [log](../../docs/DIAGNOSTICS.md#diagnostics-page-and-the-log-host), oldest first, after store position `N` (`0` for the oldest): every computer's lines it collected as the log host plus its own activity. Each entry is `{source, component, seq, at, level, message, relayed_by?}`; `next` is the position to continue from and `more` says whether more are waiting. `limit` 1-1000 (default 500); at most about 448 KiB per page |
 | `GET /martlet/v1/logs?own_after=S[&limit=L]` | Signed scoped device request, any role | The same page shape with only this gateway's own lines (`source` = host ID, `component` `gateway`) whose `seq` is after `S`, so a desktop can pass them on to the log host. `after` and `own_after` together, unknown or repeated parameters are `request.invalid` |
+| `GET /martlet/v1/api-keys` | Signed scoped device request, any role (never an API key) | Host ID, this host's copy of the network's API keys (`keys`: schema-1 `ApiKeyList` with names, scopes, expiry, stamps and SHA-256 verifiers) and `used` (key ID → when it was last accepted here since the gateway started) |
+| `POST /martlet/v1/api-keys` | Signed device body, any role (never an API key) | Strict schema-1 `ApiKeyList`, at most 32 KiB, merged per key (a revoked entry always wins, otherwise the newest stamp) into the host's copy, which is saved to `api-keys.json` when a storage is attached; returns the same document as GET |
 | `POST /martlet/v1/logs` | Signed device body, any role | Strict schema-1 `LogBatch` (at most 384 KiB, 1,000 lines, 64 streams): lines from the sending desktop's own logs and lines it relays from other hosts. Per stream (`source`/`component`) only lines with a `seq` newer than the newest kept are stored, so redelivery is harmless; lines whose source is not the sender record `relayed_by`. Returns `accepted` and the `marks` (newest `seq`) of every stream the batch names. Saved to `logs.json` when a storage is attached (`GatewayServer.AttachLogStorage`) |
 | `POST /martlet/v1/inference/ollama-chat` | Signed `voice` body plus action permission | Exact selected native-chat model/revision/artifacts; `input` plus optional `system` and `history` (`user`/`assistant`, at most 16) within one 16,384-byte text budget; bounded UTF-8 text events. `Martlet.Gateway.Ollama` relays it to the host's loopback Ollama (`ollama` host role) |
 | `POST /martlet/v1/inference/f5-synthesis` | Signed `voice` body plus action permission | Exact F5/reference identity, WAV/transcript/chunk bounds and contiguous 24 kHz PCM. `Martlet.Gateway.F5` relays it to the host's loopback F5 service (`f5` host role; route `F5Relay`: pinned model weights, discard-only cancellation) |
