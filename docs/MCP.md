@@ -401,7 +401,13 @@ not set up* with the state, and clicking one only opens its page.
 passive. To see a problem on a disposable data directory, put invalid JSON in
 `settings.json` (*settings*), a stale `logs\desktop.<pid>.running` marker
 (*crash*), or choose Ollama on this PC in Companion › Thinking while Ollama
-isn't running (*ollama*).
+isn't running (*ollama*). After an unclean exit the desktop looks up that
+run's process ID in Windows' Application event log in the background:
+`HealthIssue-crash` then reads *Windows recorded <exception> (0x<code>) in
+<module>* when Windows has a crash record, and `logs_tail` (`contains`:
+`Windows recorded`) returns the full line, or the *no crash* line for a kill or
+power loss (a made-up marker PID gives the latter, about 20 seconds after
+launch).
 
 The Diagnostics page (`NavDiagnostics`) lists log lines newest first. Each
 shown line is a list item `LogEntry-<n>` (`LogEntry-0` is the newest shown)
