@@ -86,6 +86,20 @@ features* or *Turn on virtualization*). If Windows is ready and Docker Desktop
 still reports that it is unable to start, use Docker Desktop's *Troubleshoot*
 page (*Restart*, or *Reset to factory defaults*) and try again.
 
+## A local model doesn't answer (Ollama on this PC)
+
+On **Companion › Thinking › This PC**, choose **Test model**. It starts Ollama
+if it is installed but not running, checks the model is downloaded, loads it
+and asks it for a short streamed reply through the same endpoint and reply
+budget as Martlet's replies, all over loopback. The run window shows each step
+(Ollama's version, the model's parameters and whether it sees images and uses tools,
+how long loading took, whether it sits on the graphics card or the processor,
+and the reply), with Ollama's own error text when something fails (for example
+not enough memory, or a model that needs a newer Ollama). The result stays under
+the buttons. A model that loads more slowly than Martlet waits for a reply to
+start, or answers too slowly once loaded, passes with a warning. *Install Ollama
+and use it* runs the same test at the end.
+
 ## Local configuration backup / restore (V07a)
 
 **Configuration backups are NOT support bundles.** The support ZIP described
