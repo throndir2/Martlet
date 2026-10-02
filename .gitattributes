@@ -1,2 +1,3 @@
 deploy/host/** text eol=lf
 *.bin binary
+*.wav binary

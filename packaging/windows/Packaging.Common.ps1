@@ -251,7 +251,7 @@ function Assert-PublishLayout([string]$Root, [ValidateSet('Internal', 'PublicUns
     }
     foreach ($file in @((Get-PackagingChannel $Channel).help, 'help\TROUBLESHOOTING.md', 'notices\DEPENDENCIES.txt',
             'prerequisites\Install-Prerequisites.ps1', 'notices\NAudio-THIRD-PARTY-NOTICES.txt',
-            'notices\Audio2Face-Protos-LICENSE.txt', 'notices\Audio2Face-THIRD-PARTY-NOTICES.md',
+            'notices\Audio2Face-Protos-LICENSE.txt', 'notices\Audio2Face-THIRD-PARTY-NOTICES.md', 'notices\F5-Voices-NOTICES.txt',
             'notices\Microsoft.WindowsDesktop.App\LICENSE.txt', 'notices\WPF-THIRD-PARTY-NOTICES.txt',
             'notices\WinForms-THIRD-PARTY-NOTICES.txt', 'notices\Inno-Setup-LICENSE.txt')) {
         $null = Get-RequiredFile (Join-Path $Root $file)
@@ -1203,11 +1203,12 @@ function Test-PackageProvenance([string]$Root, $Provenance,
     Test-AvatarBrowserEvidence $Root $Provenance.browser $Provenance.source
     foreach ($notice in @(
         @{ source = 'src\Martlet.Avatar.Audio2Face\THIRD-PARTY-NOTICES.md'; target = 'notices\Audio2Face-THIRD-PARTY-NOTICES.md' },
-        @{ source = 'src\Martlet.Avatar.Audio2Face\Protos\LICENSE-2.0.txt'; target = 'notices\Audio2Face-Protos-LICENSE.txt' })) {
+        @{ source = 'src\Martlet.Avatar.Audio2Face\Protos\LICENSE-2.0.txt'; target = 'notices\Audio2Face-Protos-LICENSE.txt' },
+        @{ source = 'src\Martlet.F5\BundledVoices\NOTICES.txt'; target = 'notices\F5-Voices-NOTICES.txt' })) {
         $sourceNotice = @($Provenance.source.files | Where-Object path -CEQ $notice.source)
         if ($sourceNotice.Count -ne 1 -or -not $fileMap.ContainsKey($notice.target) -or
             $sourceNotice[0].sha256 -cne $fileMap[$notice.target].sha256 -or $sourceNotice[0].bytes -ne $fileMap[$notice.target].bytes) {
-            throw 'Copied Audio2Face protocol notice differs from its source receipt.'
+            throw "Copied notice $($notice.target) differs from its source receipt."
         }
     }
 }

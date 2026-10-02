@@ -26,10 +26,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "LiveStatus", "LiveMic", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
         "PeopleStatus", "PeopleSyncStatus", "PeopleVoiceCount", "ListenParakeetStatus", "SetupCharacterView",
         "LipSyncNow", "LipSyncNowProblem", "SelectedDevice", "SelectedDeviceHealth", "ClusterStatus",
-        "VisionStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "SetupF5About"
+        "VisionStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "SetupF5About", "F5VoicesStatus"
     };
-    /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)").</summary>
-    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-"];
+    /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)");
+    /// Companion › Voice's included F5 voices ("F5VoiceRow-arctic-slt" reads "SLT (US female)", with "· in use" when it is).</summary>
+    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "F5VoiceRow-"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>

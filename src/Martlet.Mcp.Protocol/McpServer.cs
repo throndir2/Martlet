@@ -57,6 +57,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "are installed and counts of known voices (never names, voiceprints or audio). Read-only; no audio, network or models run.", new
         {
             dataDirectory = new { type = "string" }
+        }),
+        Tool("f5_voices", "List the reference voices Martlet includes for F5 (key, name, licence, transcript, format; each clip is " +
+            "checked against its SHA-256 and F5's reference rules) and, from a data directory's F5 voice list, which included voices " +
+            "were added, how many of the owner's own voices there are and which voice is applied (never own voices' names or audio). " +
+            "Plays nothing and contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" }
         })
     ];
 
@@ -132,6 +139,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "ui_set_text" => desktop.SetText(RequiredString(arguments, "id"), RequiredString(arguments, "text")),
                 "ui_toggle" => desktop.Toggle(RequiredString(arguments, "id")),
                 "voices_status" => VoicesStatus(arguments),
+                "f5_voices" => F5Voices(arguments),
                 _ => throw new ArgumentException($"Unknown tool '{name}'.")
             };
             return new { content = new[] { new { type = "text", text = JsonSerializer.Serialize(result) } } };
@@ -148,10 +156,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
     /// names match Martlet.Desktop's LocalVoices). Counts only: names and voiceprints are personal and never returned.</summary>
     private static object VoicesStatus(JsonElement arguments)
     {
-        var directory = arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty("dataDirectory", out var given)
-            ? given.GetString() ?? throw new ArgumentException("Invalid data directory.")
-            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Martlet");
-        if (!Path.IsPathFullyQualified(directory)) throw new ArgumentException("dataDirectory must be an absolute path.");
+        var directory = DataDirectory(arguments);
         string? Choice(string file)
         {
             try { return File.ReadAllText(Path.Combine(directory, file)).Trim(); }
@@ -190,6 +195,61 @@ internal sealed class McpServer(DesktopAutomation desktop)
             },
             roster
         };
+    }
+
+    private static string DataDirectory(JsonElement arguments)
+    {
+        var directory = arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty("dataDirectory", out var given)
+            ? given.GetString() ?? throw new ArgumentException("Invalid data directory.")
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Martlet");
+        if (!Path.IsPathFullyQualified(directory)) throw new ArgumentException("dataDirectory must be an absolute path.");
+        return directory;
+    }
+
+    /// <summary>F5's included reference voices, each checked, and the data directory's F5 voice list (the "f5-voices" store
+    /// Martlet.Desktop keeps). Own voices are counted, never named; an included voice is recognized by its clip's SHA-256.</summary>
+    private static object F5Voices(JsonElement arguments)
+    {
+        var directory = DataDirectory(arguments);
+        var included = Martlet.F5.F5BundledVoices.All.Select(voice =>
+        {
+            try
+            {
+                var format = voice.Check();
+                return (object)new
+                {
+                    key = voice.Key, name = voice.Name, description = voice.Description, licence = voice.Licence, transcript = voice.Transcript,
+                    sha256 = voice.AudioSha256, sampleRate = format.SampleRate, durationMs = format.DurationMilliseconds, valid = true
+                };
+            }
+            catch (Martlet.F5.F5Exception error)
+            {
+                return new { key = voice.Key, name = voice.Name, valid = false, problem = error.Failure.ToString() };
+            }
+        }).ToArray();
+        var storeDirectory = Path.Combine(directory, "f5-voices");
+        object list;
+        if (!File.Exists(Path.Combine(storeDirectory, ".martlet-f5-references.v1.json"))) list = new { state = "none" };
+        else
+        {
+            try
+            {
+                using var store = Martlet.F5.F5ReferencePresetStore.Open(storeDirectory);
+                var inspection = store.Inspect();
+                string Kind(string sha256) => Martlet.F5.F5BundledVoices.ForAudio(sha256)?.Key ??
+                    (Martlet.F5.F5BundledVoices.IsRetiredSample(sha256) ? "retired-sample" : "own");
+                var latest = inspection.Presets.Select(p => (p.Id, Kind: Kind(p.Snapshots.LastOrDefault()?.AudioSha256 ?? ""))).ToArray();
+                list = new
+                {
+                    state = "loaded", voices = latest.Length,
+                    included = latest.Where(p => p.Kind is not ("own" or "retired-sample")).Select(p => p.Kind).Distinct().ToArray(),
+                    own = latest.Count(p => p.Kind == "own"), retiredSample = latest.Any(p => p.Kind == "retired-sample"),
+                    applied = latest.Where(p => p.Id == inspection.AppliedPresetId).Select(p => p.Kind).FirstOrDefault()
+                };
+            }
+            catch (Martlet.F5.F5Exception error) { list = new { state = error.Failure == Martlet.F5.F5Failure.Busy ? "busy" : "unreadable", problem = error.Failure.ToString() }; }
+        }
+        return new { @default = Martlet.F5.F5BundledVoices.Default.Key, included, list };
     }
 
     private static async Task<object> DoctorAsync(string[] args, JsonElement arguments, CancellationToken cancellation)

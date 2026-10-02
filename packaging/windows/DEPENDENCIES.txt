@@ -76,15 +76,17 @@ that commit. The encoder was trained upstream on LibriSpeech and VoxCeleb; no
 recording or training audio is redistributed. Hands-free voice activity is an
 authored energy detector and adds no model.
 
-F5 sample voice: Martlet.Desktop embeds F5-TTS's published English reference
-clip (SWivid/F5-TTS, commit 9c614e9657089213efc6a7421b30630be138a3f5,
-src/f5_tts/infer/examples/basic/basic_ref_en.wav, SHA-256
-b0e22048e72414fcc1e6b6342e47a774d748a195ed34e4a5b3fcf416707f2b71), Copyright
-2024 Yushen CHEN, MIT License. Modification: the RIFF header's chunk-size field
-was corrected to the file's actual length (upstream is 4 bytes short); the
-audio samples are unchanged. Upstream does not identify the speaker. It is the
-voice F5 speaks with until the owner chooses another one.
-notices\F5-TTS-LICENSE.txt: the complete upstream MIT license from that commit.
+F5 voices: Martlet.F5 embeds ten short reference recordings (src\Martlet.F5\
+BundledVoices) that F5 copies a voice from: LJ Speech 1.1 (public domain LibriVox
+audio), two LibriVox readings (Cori Samuel, Frankenstein; Helen Taylor, Love at
+Second Sight; public domain) and seven CMU ARCTIC speakers (slt, clb, bdl, rms,
+awb, jmk, ksp; Carnegie Mellon University, free for any use including commercial,
+notice retained, modifications marked). scripts\Build-F5BundledVoices.py cut,
+level and wrote them from pinned upstream files. notices\F5-Voices-NOTICES.txt
+lists each source, its SHA-256, transcript and the modifications, with the CMU
+ARCTIC COPYING texts unchanged. LJ Speech's reader and the LibriVox and CMU
+ARCTIC speakers do not say or endorse anything Martlet speaks in their voices.
+Earlier versions bundled F5-TTS's English example clip; it is no longer included.
 
 Voice recognition and Parakeet (optional, downloaded on request, never bundled):
 Desktop includes authored Martlet.Sherpa and Martlet.Home (BCL-only, no NuGet

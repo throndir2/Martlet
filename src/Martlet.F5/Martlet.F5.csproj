@@ -3,4 +3,8 @@
     <InternalsVisibleTo Include="Martlet.F5.Tests" />
     <ProjectReference Include="..\Martlet.Core\Martlet.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- The reference voices Martlet bundles for F5 (public domain or CMU ARCTIC); see BundledVoices\NOTICES.txt. -->
+    <EmbeddedResource Include="BundledVoices\*.wav" LogicalName="Martlet.F5.BundledVoices.%(Filename).wav" />
+  </ItemGroup>
 </Project>
