@@ -203,9 +203,10 @@ tracks requested on 2026-09-30 ([iOS](docs/IOS.md), [macOS](docs/MACOS.md),
 [Android](docs/ANDROID.md); what each OS supports is in
 [Platforms](docs/PLATFORMS.md)); they add native apps, not a
 cross-platform desktop. Smart home control and IP cameras are likewise a
-separate post-MVP track requested on 2026-09-30 ([plan](docs/SMART_HOME.md)):
-a narrow, opt-in, user-turn-only home tool surface, not general tool
-execution.
+separate post-MVP track requested on 2026-09-30 ([smart home](docs/SMART_HOME.md)):
+a narrow, opt-in, user-turn-only home surface, not general tool
+execution. Its first slice (Home Assistant's built-in Assist on the user's own
+turns, with a lock/door/garage/alarm safety tier) landed on 2026-10-01.
 
 Training/fine-tuning remains outside the API MVP but is now explicitly in
 scope for the optional self-hosted Voice Studio, where the chosen engine has

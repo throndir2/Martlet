@@ -1,19 +1,70 @@
-# Smart home and cameras: research and plan
+# Smart home and cameras
 
-**Research and plan, 2026-09-30. No smart home or camera code exists yet;
-everything below is dated upstream research and design. Every device result is
-NOT RUN.** The owner asked whether Martlet can support smart home technology
-such as Matter, which other stacks exist, whether IP security cameras fit, and
-how a user can optionally let the companion act as a smart home assistant
-("turn the lights down", "is the garage open?", "who's at the door?").
+**Home Assistant control delivered 2026-10-01 (SH00); the rest is dated
+research and plan. Every device result is NOT RUN.** The owner asked whether
+Martlet can support smart home technology such as Matter, which other stacks
+exist, whether IP security cameras fit, and how a user can optionally let the
+companion act as a smart home assistant ("turn the lights down", "is the
+garage open?", "who's at the door?"), then asked to add it.
 
 This is a separate post-MVP track, like the [iOS plan](IOS.md). It touches an
 MVP non-goal, **general tool execution**
-([non-goals](../DEVELOPMENT_PLAN.md#explicit-non-goals-for-mvp)): the plan
-below adds a narrow, typed, permission-gated home tool surface, not arbitrary
-tool or command execution.
+([non-goals](../DEVELOPMENT_PLAN.md#explicit-non-goals-for-mvp)): Martlet adds
+a narrow, opt-in home surface on the user's own turns, not arbitrary tool or
+command execution.
 
-## Short answer
+## What works now (SH00)
+
+**Companion > Smart home** connects one Home Assistant (address + long-lived
+access token; the token is kept in Windows Credential Manager under
+`Martlet/v3/home-assistant/<id>`, never in settings, and is only sent to that
+address; plain `http` is accepted only for local-network addresses). With
+**Let Martlet control and check my home when I ask** on:
+
+1. On each turn **the user** starts (typed, push-to-talk or hands-free; never a
+   screen or camera look), Martlet sends the user's words to Home Assistant's
+   [Conversation API](https://developers.home-assistant.io/docs/intent_conversation_api/)
+   (`POST /api/conversation/process`, `agent_id: conversation.home_assistant`).
+   That is Home Assistant's **built-in Assist**: local sentence matching on the
+   Home Assistant computer, no AI model, limited to entities exposed to voice
+   assistants. It acts only on whole sentences it recognizes ("turn off the
+   kitchen lights", "set the living room to 21 degrees", "is the garage door
+   open?", "what's the temperature in the bedroom?") in its configured
+   language, so it works with **every Thinking model, including ones without
+   tool calling** (for example `gemma3`).
+2. What Home Assistant did or answered goes to the Thinking model in a labeled
+   block with the user's message (`extraInstructions`), and the persona
+   replies in its own voice ("Done, the kitchen is dark now"). When Home
+   Assistant did not recognize a command, the persona is told nothing changed,
+   so it does not pretend to have acted.
+3. **Safety tier** (`HomeCommandGuard`): a short request that mentions a lock,
+   door, garage, gate, alarm or valve (common words in English, German,
+   French, Spanish, Italian and Dutch) and is not a status question is
+   **never sent** unless **Also locks, doors, garage doors, gates, alarms and
+   valves** is on, and then only after the user clicks **Yes** in a dialog
+   (No is the default; 30 s or Stop means no). Status questions ("is the front
+   door locked?") always go through. Longer sentences that merely mention a
+   door are treated as chat and not sent. If Home Assistant still reports
+   operating such a device without confirmation, the summary says so and
+   recommends unexposing it. Home Assistant's exposed-entities list remains the
+   outer allowlist; it does not expose locks, garage doors or alarms by
+   default.
+4. The talk window shows a **Home Assistant:** line above the reply, its
+   envelope discloses the smart home step, and Smart home lists the last 20
+   actions in memory (never saved).
+5. **Cameras:** a Home Assistant camera snapshot address
+   (`<address>/api/camera_proxy/camera.front_door`) works as a phone or
+   network camera source in Watch; Martlet adds the saved token itself and
+   names the source after the entity. `SmartHome.CamerasAsync` lists camera
+   entities for the Vision page's source list.
+
+Code: `src/Martlet.Home` (endpoint rules, REST client, guard, persona
+context), `src/Martlet.Desktop/SmartHome.cs` (connection, preferences in
+`smart-home.json`, turn step), `MainWindow.SmartHome.cs` (page). Not yet done:
+fuzzy commands through LLM tool calling, events, live camera requests ("look at
+the front door") and native Matter (slices below).
+
+## Short answer (research, 2026-09-30)
 
 1. **Connect to Home Assistant first; do not write a Matter controller.**
    Home Assistant (Apache-2.0) already speaks Matter, Thread, Zigbee, Z-Wave,
@@ -71,6 +122,23 @@ tool or command execution.
 | Google Nest (Device Access/SDM) | Cloud API incl. WebRTC camera streams | Not planned | One-time registration fee (spending); HA already integrates it |
 | openHAB / Hubitat / Homey | Alternative hubs with REST APIs | Later, by demand | Same MCP/REST pattern if they expose one |
 | Wyoming protocol | HA's TCP protocol for wake word/STT/TTS satellites | Reverse direction, later | Could let HA voice satellites use Martlet's voices, or Martlet's listening. Does not give Martlet device control |
+
+### More technologies and integrations worth knowing (2026-10-01)
+
+| Technology | What it gives Martlet | Route |
+| --- | --- | --- |
+| **HA Conversation API + built-in Assist** | Deterministic, local command matching in 50+ languages with no model; HA's own "prefer handling commands locally" pattern | **Delivered (SH00)** |
+| HA notify / webhooks / MQTT into Martlet | Announcements: "the washing machine is done", "someone is at the door" spoken by the persona | Later (SH05), inbound only, never actions |
+| Presence (HA `person`, mmWave sensors such as Aqara FP2, Bermuda BLE) | Greet the user when they come home or sit down; stay quiet when nobody is there | Later, read-only event source |
+| Music Assistant (OHF, Apache-2.0) | One media control surface for Sonos, Chromecast, AirPlay, Spotify Connect speakers | Via HA media intents now |
+| Home Assistant Voice PE / ESPHome voice satellites | Room microphones/speakers that could talk to the Martlet persona (HA conversation agent pointed at Martlet) | Later, reverse direction with Wyoming |
+| Thread 1.4 | Shared Thread credentials across Apple/Google/Amazon border routers, fewer split networks | Indirect, through HA |
+| Matter 1.5 cameras/closures, 1.6 Joint Fabric | Standard cameras and doors/gates across ecosystems | Through HA / matterjs-server (SH06) |
+| Node-RED | Users' own visual automations that can call HA scripts Martlet triggers | Via exposed HA scripts |
+| Scrypted | Bridges cameras into HomeKit/Google with NVR and detection | Snapshot URL like go2rtc |
+| Homebridge | Brings non-HomeKit devices into Apple Home | iOS track (SH08) |
+| Tuya local, TP-Link Kasa/Tapo, LIFX LAN, Govee LAN, WLED, Nanoleaf, Sonos, Google Cast | Local LAN device APIs | Via HA integrations, not direct adapters |
+| IFTTT, SmartThings, Alexa/Google routines | Cloud automations | Not planned (cloud, accounts, fees); HA already bridges most
 
 ### IP security cameras
 
@@ -145,12 +213,13 @@ flowchart LR
     Cams["go2rtc / Frigate / HA snapshots"] --> Glance
 ```
 
-- **`Martlet.Home` library (new):** MCP client over Streamable HTTP (reusing
-  `Martlet.Mcp.Protocol` JSON-RPC types where they fit), tool discovery and
-  caching, the policy gate and a local action log. The HA token lives in the
-  Windows credential vault (`Martlet.Credentials.Windows`), never in prompts,
-  settings exports or support bundles.
-- **Providers:** add an opt-in tools path to the OpenAI Responses, Chat
+- **`Martlet.Home` library (delivered, SH00):** HA REST client (config,
+  conversation, states), endpoint rules, the safety guard and persona context.
+  The HA token lives in the Windows credential vault
+  (`Martlet.Credentials.Windows`), never in prompts, settings exports or
+  support bundles. The MCP route (SH02) reuses the shared `Martlet.Mcp.Client`
+  as a Smart home-managed server instead of a second client.
+- **Providers (SH01, MCP session):** add an opt-in tools path to the OpenAI Responses, Chat
   Completions and Ollama `/api/chat` encoders and parse streamed tool calls;
   the default stays `tool_choice:"none"`. Gateway relay of `tools` to a host's
   Ollama follows the screen-commentary `images` precedent.
@@ -196,26 +265,28 @@ flowchart LR
 
 | Slice | Outcome | Depends on |
 | --- | --- | --- |
-| SH01 | Opt-in tool calling in the three chat encoders + streamed tool-call parsing + `ToolModelCatalog`; default unchanged | - |
-| SH02 | `Martlet.Home` MCP client: connect to HA `/api/mcp` with a vaulted token, list tools, read `GetLiveContext`; Devices page "Smart home" card with connection status | SH01 |
-| SH03 | Policy gate, tiers, confirmation prompt, action log; tools only on user-started turns; spoken result | SH02 |
-| SH04 | Camera frame source (HA camera_proxy, go2rtc, Frigate snapshot) behind the video-source seam; "Look at the front door" on request | video source input, SH02 for HA |
-| SH05 | Event-triggered looks/remarks from HA WebSocket and optional Frigate MQTT (doorbell, person detected); never actions | SH04 |
+| SH00 | **Delivered 2026-10-01.** HA connection page, vaulted token, built-in Assist on user turns for every model, safety tier with click confirmation, action list, persona context, HA camera snapshot addresses in Watch | - |
+| SH01 | Opt-in tool calling in the chat encoders + streamed tool-call parsing + `ToolModelCatalog`; default unchanged (owned by the MCP client session, `Martlet.Mcp.Client`) | - |
+| SH02 | HA `/api/mcp` registered as a Smart home-managed server in the shared MCP client (no second client), for fuzzy requests ("make it cozy"); Assist pre-step off on those turns to avoid double actions | SH01 |
+| SH03 | Per-tool approval hook on managed servers: comfort tools auto-approved, lock/door/garage/gate/alarm/valve tools ask every time or are denied; tools only on user-started turns; spoken result | SH02 |
+| SH04 | HA cameras listed as Vision sources; "Look at the front door" on request | video source input, SH00 |
+| SH05 | Event-triggered looks/remarks from HA WebSocket and optional Frigate MQTT (doorbell, person detected); announcements; never actions | SH04 |
 | SH06 | Host `home` role: go2rtc and matterjs-server containers; multi-admin Matter pairing from a shared code | SH02, host roles |
 | SH07 | Direct adapters only if users lack HA: Hue CLIP v2, Shelly RPC, MQTT | SH03 |
 | SH08 | iOS track: HomeKit read/control through the Home framework | [iOS plan](IOS.md) |
 
-SH01-SH03 deliver "my waifu turns off the lights" for anyone with Home
-Assistant. SH04 is the camera overlap and should land after (or together with)
-the video source abstraction.
+SH00 delivers "my waifu turns off the lights" for anyone with Home Assistant.
+SH01-SH03 add free-form requests on tool-capable models. SH04 is the camera
+overlap and should land with the Vision page's source list.
 
 ## Owner decisions
 
-- **Accept Home Assistant as the hub** for v1 (recommended) rather than a
-  native Matter controller. Users without HA would install HA (or the SH06
-  host role) first.
-- **Relaxing the "general tool execution" non-goal** to this narrow, typed,
-  user-turn-only home tool surface.
+- **Home Assistant is the hub** for v1 (accepted 2026-10-01 by asking to add
+  smart home support) rather than a native Matter controller. Users without HA
+  install HA (or the SH06 host role) first.
+- **The "general tool execution" non-goal** stays: SH00 sends only the user's
+  own words to HA's sentence matcher; SH02-SH03 add a narrow, user-turn-only
+  tool surface through the shared MCP client.
 - **Default host vision model** change from `gemma3`/`qwen2.5vl` to a
   vision + tools model (`qwen3-vl` or `gemma4`) once SH01 lands.
 

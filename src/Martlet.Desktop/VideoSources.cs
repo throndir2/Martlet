@@ -28,10 +28,19 @@ internal sealed record WatchSource(WatchKind Kind, string Id = "", string Name =
         _ => Name.Length > 0 ? $"the camera at {Name}" : "your phone or network camera"
     };
 
-    /// <summary>The host (and port) of an address, without user name, password, path or query.</summary>
+    /// <summary>The host (and port) of an address, without user name, password, path or query; for a Home Assistant
+    /// camera snapshot address, the camera's entity name ("front door").</summary>
     internal static string SafeName(string address) =>
-        Uri.TryCreate(address.Trim(), UriKind.Absolute, out var uri) && !uri.IsFile ? uri.IsDefaultPort ? uri.Host : $"{uri.Host}:{uri.Port}"
+        Uri.TryCreate(address.Trim(), UriKind.Absolute, out var uri) && !uri.IsFile
+            ? IsHomeAssistantCamera(uri) ? uri.Segments[^1].Replace("camera.", "", StringComparison.Ordinal).Replace('_', ' ')
+            : uri.IsDefaultPort ? uri.Host : $"{uri.Host}:{uri.Port}"
         : Path.GetFileName(address.Trim().Trim('"'));
+
+    /// <summary>A Home Assistant camera snapshot address: <c>.../api/camera_proxy/camera.front_door</c>.</summary>
+    internal static bool IsHomeAssistantCamera(Uri uri) =>
+        uri.Scheme is "http" or "https" && uri.Segments.Length >= 3 &&
+        string.Equals(uri.Segments[^2], "camera_proxy/", StringComparison.Ordinal) &&
+        uri.Segments[^1].StartsWith("camera.", StringComparison.Ordinal) && uri.Segments[^1].Length > "camera.".Length;
 
     /// <summary>The address with any user name and password removed, safe to save in preferences.</summary>
     internal static string WithoutCredentials(string address) =>
@@ -65,10 +74,15 @@ internal sealed class VideoInput : IVideoInput
         Timeout = TimeSpan.FromSeconds(8)
     };
     private readonly Lock gate = new();
+    private readonly Func<Uri, AuthenticationHeaderValue?>? authorize;
     private MediaReader? reader;
     private string? openKey;
     private bool mediaAddress;
     private byte[]? previous;
+
+    /// <param name="authorize">Supplies a saved token for addresses that need one (Home Assistant camera snapshots);
+    /// the token is never part of the address or saved with it.</param>
+    internal VideoInput(Func<Uri, AuthenticationHeaderValue?>? authorize = null) => this.authorize = authorize;
 
     public IReadOnlyList<CameraDevice> Cameras() => MediaReader.Cameras();
 
@@ -145,13 +159,19 @@ internal sealed class VideoInput : IVideoInput
     }
 
     // One JPEG/PNG (or the first part of a multipart MJPEG stream); null when the address serves video instead.
-    private static (byte[] Pixels, int Width, int Height)? Snapshot(Uri uri)
+    private (byte[] Pixels, int Width, int Height)? Snapshot(Uri uri)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, uri.UserInfo.Length > 0 ? new UriBuilder(uri) { UserName = "", Password = "" }.Uri : uri);
         if (uri.UserInfo.Length > 0)
             request.Headers.Authorization = new AuthenticationHeaderValue("Basic",
                 Convert.ToBase64String(Encoding.UTF8.GetBytes(Uri.UnescapeDataString(uri.UserInfo))));
+        else if (authorize?.Invoke(uri) is { } saved)
+            request.Headers.Authorization = saved;
         using var response = Http.Send(request, HttpCompletionOption.ResponseHeadersRead);
+        if (response.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden &&
+            WatchSource.IsHomeAssistantCamera(uri))
+            throw new VideoSourceException("Home Assistant refused the camera picture. Connect Home Assistant in Companion > Smart home " +
+                "with this same address, then try again.");
         if (response.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden)
             throw new VideoSourceException("The camera asked for a password. Put it in the address as http://user:password@host:port/... " +
                 "(the password stays in this window and is never saved).");

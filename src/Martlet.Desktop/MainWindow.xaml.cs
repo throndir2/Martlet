@@ -26,6 +26,7 @@ public partial class MainWindow : ThemedWindow
     private readonly ISetupService? setupService;
     private readonly ICompanionSettingsService? companionService;
     private readonly DesktopMemoryService? memory;
+    private readonly SmartHome smartHome;
     private readonly VoiceIdentity voiceIdentity;
     private readonly ConfigurationRecoveryController? recovery;
     private readonly AudioSetupService audioSetup;
@@ -68,6 +69,7 @@ public partial class MainWindow : ThemedWindow
         setupService = store is null ? null : new SetupService(store, vault);
         companionService = store is null ? null : new CompanionSettingsService(store);
         memory = store is null ? null : new DesktopMemoryService(store);
+        smartHome = new(store?.DataDirectory, vault) { Confirm = ConfirmSmartHomeAsync };
         voiceIdentity = new(store?.DataDirectory);
         voiceIdentity.Load();
         recovery = store is null ? null : new(store, setupOperations, () => !support.HasResources);
@@ -76,7 +78,7 @@ public partial class MainWindow : ThemedWindow
         {
             conversation = new(setupOperations, setupService, vault, new WasapiCaptureDeviceFactory(), new WasapiDeviceFactory(),
                 memory: memory, generatedSpeech: avatar.Observer, revokeAvatar: avatar.Revoke, voiceIdentity: voiceIdentity,
-                dataDirectory: store!.DataDirectory, spokenText: captions.Feed);
+                dataDirectory: store!.DataDirectory, spokenText: captions.Feed, smartHome: smartHome);
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
         }
         audioSessionEvents.LockedChanged += AvatarSessionLocked;
