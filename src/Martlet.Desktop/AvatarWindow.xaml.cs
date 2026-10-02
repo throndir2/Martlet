@@ -67,7 +67,10 @@ public partial class AvatarWindow : ThemedWindow
     private void SpeechDisplay_Changed(object sender, RoutedEventArgs e)
     {
         if (captions is null || showingSpeechDisplay) return;
-        var saved = captions.Update(new(SpeechBubbleChoice.IsChecked == true, SubtitleChoice.IsChecked == true));
+        var saved = captions.Update(captions.Preferences with
+        {
+            SpeechBubbles = SpeechBubbleChoice.IsChecked == true, Subtitles = SubtitleChoice.IsChecked == true
+        });
         SpeechDisplayStatus.Text = saved
             ? "Saved. Changes apply the next time Martlet speaks."
             : "Changes applied for now, but couldn't be saved. Check your data folder.";

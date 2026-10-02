@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Net.Http;
 using System.Runtime.InteropServices;
@@ -1253,11 +1254,14 @@ public partial class MainWindow
     }
 
     private CheckBox? speechBubbleChoice, subtitleChoice;
+    private ComboBox? bubblePlacementChoice;
+    private TextBox? bubbleOffsetX, bubbleOffsetY;
     private TextBlock? speechDisplayText;
     private Button? speechPreviewButton;
 
     /// <summary>Companion › Character's speech bubbles (on by default, shown while the character is) and subtitles: the same
-    /// saved choices as the character settings window, applied from Martlet's next sentence.</summary>
+    /// saved choices as the character settings window, applied from Martlet's next sentence. Also where the bubble goes:
+    /// following the character's head (default) or staying in one place, nudged by horizontal and vertical offsets.</summary>
     private Border SpeechDisplayCard()
     {
         var prefs = captions.Preferences;
@@ -1273,6 +1277,35 @@ public partial class MainWindow
         speechBubbleChoice.Unchecked += (_, _) => SaveSpeechDisplay();
         subtitleChoice.Checked += (_, _) => SaveSpeechDisplay();
         subtitleChoice.Unchecked += (_, _) => SaveSpeechDisplay();
+
+        bubblePlacementChoice = new ComboBox
+        {
+            ItemsSource = new[] { BubbleFollows, BubbleStays }, MinHeight = 30, MinWidth = 260, MaxWidth = 420,
+            HorizontalAlignment = HorizontalAlignment.Left, SelectedItem = prefs.StaticBubble ? BubbleStays : BubbleFollows
+        };
+        AutomationProperties.SetName(bubblePlacementChoice, "Bubble position");
+        AutomationProperties.SetAutomationId(bubblePlacementChoice, "SetupCharacterBubblePlacement");
+        bubblePlacementChoice.SelectionChanged += (_, _) => SaveSpeechDisplay();
+        TextBox Offset(string name, string id, double value)
+        {
+            var box = new TextBox { Width = 90, MaxLength = 6, Text = value.ToString("0.##", CultureInfo.CurrentCulture) };
+            AutomationProperties.SetName(box, name);
+            AutomationProperties.SetAutomationId(box, id);
+            box.TextChanged += (_, _) => SaveSpeechDisplay();
+            return box;
+        }
+        bubbleOffsetX = Offset("Bubble horizontal offset", "SetupCharacterBubbleOffsetX", prefs.BubbleOffsetX);
+        bubbleOffsetY = Offset("Bubble vertical offset", "SetupCharacterBubbleOffsetY", prefs.BubbleOffsetY);
+        var offsets = new WrapPanel
+        {
+            Margin = new Thickness(0, 8, 0, 0),
+            Children =
+            {
+                new Label { Content = "_Horizontal offset", Target = bubbleOffsetX, Padding = new Thickness(0, 4, 8, 4) }, bubbleOffsetX,
+                new Label { Content = "_Vertical offset", Target = bubbleOffsetY, Padding = new Thickness(18, 4, 8, 4) }, bubbleOffsetY
+            }
+        };
+
         speechDisplayText = Note("", new Thickness(0, 8, 0, 0));
         AutomationProperties.SetAutomationId(speechDisplayText, "SetupCharacterSpeechDisplay");
         speechPreviewButton = PageButton("Preview a speech bubble", () => PreviewSpeechBubbleAsync().Forget(), id: "SetupCharacterPreviewBubble");
@@ -1280,13 +1313,40 @@ public partial class MainWindow
         return Card(Heading("Speech bubbles and subtitles"), speechBubbleChoice, subtitleChoice,
             Note("Show Martlet's spoken words beside the character or at the bottom of the active screen. Subtitles are hidden from screen capture.",
                 new Thickness(0, 6, 0, 0)),
+            new Label { Content = "Bubble _position", Target = bubblePlacementChoice, Padding = new Thickness(0, 12, 0, 4) },
+            bubblePlacementChoice, offsets,
+            Note("Following the character, the bubble sits beside its head on whichever side has room, and keeps up as you move or zoom; " +
+                "the offsets nudge it (in pixels, positive is right and down). Staying in one place, the offsets are measured from the " +
+                "top-left of the character's screen.", new Thickness(0, 6, 0, 0)),
             speechDisplayText, Row(speechPreviewButton));
     }
+
+    private const string BubbleFollows = "Follows the character", BubbleStays = "Stays in one place";
 
     private void SaveSpeechDisplay()
     {
         if (showingSpeechDisplay || speechBubbleChoice is null || subtitleChoice is null) return;
-        var saved = captions.Update(new(speechBubbleChoice.IsChecked == true, subtitleChoice.IsChecked == true));
+        var prefs = captions.Preferences with
+        {
+            SpeechBubbles = speechBubbleChoice.IsChecked == true, Subtitles = subtitleChoice.IsChecked == true
+        };
+        if (bubblePlacementChoice is not null) prefs = prefs with { StaticBubble = ReferenceEquals(bubblePlacementChoice.SelectedItem, BubbleStays) };
+        static double? Read(TextBox? box) =>
+            box is null ? null
+            : double.TryParse(box.Text.Trim(), NumberStyles.Float, CultureInfo.CurrentCulture, out var value) &&
+              double.IsFinite(value) && Math.Abs(value) <= SpeechDisplayPreferences.MaximumOffset ? value
+            : double.NaN;
+        var x = Read(bubbleOffsetX);
+        var y = Read(bubbleOffsetY);
+        if (x is double.NaN || y is double.NaN)
+        {
+            // Leave the half-typed text alone (such as a lone "-"); just say what's expected.
+            if (speechDisplayText is not null)
+                speechDisplayText.Text = $"Offsets must be numbers of pixels from -{SpeechDisplayPreferences.MaximumOffset:0} to {SpeechDisplayPreferences.MaximumOffset:0}.";
+            return;
+        }
+        prefs = prefs with { BubbleOffsetX = x ?? prefs.BubbleOffsetX, BubbleOffsetY = y ?? prefs.BubbleOffsetY };
+        var saved = captions.Update(prefs);
         if (!saved) ShowSpeechDisplay("Applied for now, but couldn't save your speech display settings.");
     }
 
@@ -1302,23 +1362,40 @@ public partial class MainWindow
         {
             if (speechBubbleChoice is not null) speechBubbleChoice.IsChecked = prefs.SpeechBubbles;
             if (subtitleChoice is not null) subtitleChoice.IsChecked = prefs.Subtitles;
+            if (bubblePlacementChoice is not null) bubblePlacementChoice.SelectedItem = prefs.StaticBubble ? BubbleStays : BubbleFollows;
+            // Only rewrite an offset box when its number differs, so typing in it isn't interrupted.
+            foreach (var (box, value) in new[] { (bubbleOffsetX, prefs.BubbleOffsetX), (bubbleOffsetY, prefs.BubbleOffsetY) })
+                if (box is not null && !(double.TryParse(box.Text.Trim(), NumberStyles.Float, CultureInfo.CurrentCulture, out var shown) && shown == value))
+                    box.Text = value.ToString("0.##", CultureInfo.CurrentCulture);
         }
         finally { showingSpeechDisplay = false; }
         if (speechPreviewButton is not null) speechPreviewButton.IsEnabled = avatar.IsShowing && prefs.SpeechBubbles;
         var bubbles = !prefs.SpeechBubbles ? "Speech bubbles are off."
             : avatar.IsShowing ? "Speech bubbles are on."
             : "Speech bubbles will appear when the character is showing.";
-        speechDisplayText.Text = $"{bubbles} Subtitles are {(prefs.Subtitles ? "on" : "off")}." + (outcome is null ? "" : " " + outcome);
+        var position = prefs.StaticBubble
+            ? $" Bubbles stay in one place, {prefs.BubbleOffsetX:0.##}, {prefs.BubbleOffsetY:0.##} from the top-left of the character's screen."
+            : $" Bubbles follow the character, offset by {prefs.BubbleOffsetX:0.##}, {prefs.BubbleOffsetY:0.##}.";
+        speechDisplayText.Text = $"{bubbles} Subtitles are {(prefs.Subtitles ? "on" : "off")}." + position + (outcome is null ? "" : " " + outcome);
     }
 
     private async Task PreviewSpeechBubbleAsync()
     {
         var shown = await captions.PreviewAsync("Hi! While I talk, what I say shows up here.");
         if (closing) return;
-        ShowSpeechDisplay(shown
-            ? "Preview shown."
-            : "Couldn't show the preview. Show the character and try again.");
+        ShowSpeechDisplay(shown is null ? "Couldn't show the preview. Show the character and try again."
+            : $"Preview shown {BubbleWhere(shown)}.");
     }
+
+    internal static string BubbleWhere(RendererBubble bubble) => bubble.Placement switch
+    {
+        "left" => "to the left of the character's head",
+        "right" => "to the right of the character's head",
+        "above" => "above the character's head",
+        "static" => "in its fixed place",
+        "hidden" => "hidden",
+        _ => "beside the character"
+    } + (bubble.Width > 0 ? $" at {bubble.Left:0}, {bubble.Top:0} ({bubble.Width:0} × {bubble.Height:0})" : "");
 
     // ---------- personality ----------
 
