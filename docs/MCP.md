@@ -389,6 +389,22 @@ directory's `smart-home.json`: `connected`, `address`, `name`, `version`,
 `shared` (this PC follows the connection shared through the hosts), `sharedBy`
 and `sharedRevision`.
 
+`prompts_status` reads Companion › Prompts from a data directory's
+`settings.json` (optional absolute `dataDirectory`, default the current
+user's): `state` (`none`, `loaded` or `unreadable` with `problem`),
+`total`, `edited` and `emptied` counts, and every internal prompt Martlet
+sends to the Thinking model (`id`, `group`, `title`, `placeholders`,
+`state` `builtin`, `edited` or `empty`, and `characters`). With an
+`id` it also returns `prompt` with that prompt's effective `text` (the
+saved edit or the built-in text), exactly what Martlet fills in and sends.
+On the page, `PromptsNow` reads how many prompts are edited or emptied and
+`PromptState-<id>` each prompt's state (*Built-in text.*, *Edited.*, *Empty:
+nothing is sent for this prompt.*, plus *Not saved yet.* for unsaved edits);
+neither returns prompt text. `OpenPrompts` (Personality's *Edit prompts*)
+only opens the page. The editors `Prompt-<id>`, their `PromptReset-<id>`
+buttons, `PromptsDefaults` and `PromptsSave` (which writes settings) need
+`--allow-ui-effects`; `ui_set_text` with an empty `text` empties a prompt.
+
 `logs_timeline` reads this PC's logs as the desktop's
 [Diagnostics page](DIAGNOSTICS.md#diagnostics-page-and-the-log-host) shows
 them (optional absolute `dataDirectory`, default the current user's):
@@ -877,7 +893,7 @@ notification area.
 
 For broader **explicitly authorized** live UI testing, start the MCP server
 with `--allow-ui-effects`. This unlocks arbitrary ID-based `ui_click` and
-`ui_select`, plus `ui_set_text` and `ui_toggle`. It does **not** waive the
+`ui_select`, plus `ui_set_text` (an empty `text` clears a field) and `ui_toggle`. It does **not** waive the
 desktop's own per-action confirmations, spending/data disclosures, or Stop
 controls. This opt-in can allow the LLM to approve chargeable provider calls,
 audio capture/playback, credential actions and file operations by manipulating
@@ -913,7 +929,7 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status` and `smart_home_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status` and `prompts_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

@@ -15,7 +15,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "SetupClose", "AudioClose", "CloseLive", "SupportClose",
         "RecoveryClose", "SupportFreeze", "SupportClear",
         "NavHome", "NavDevices", "NavCompanion", "NavDiagnostics", "NavSettings", "TourSkip", "TourBegin", "TourBack", "DiagnosticsSection",
-        "OpenPeople", "DeviceFactsSection", "DeviceReachSection", "DeviceRolesSection", "HealthRecheck", "LogsRefresh",
+        "OpenPeople", "OpenPrompts", "DeviceFactsSection", "DeviceReachSection", "DeviceRolesSection", "HealthRecheck", "LogsRefresh",
         // The MCP directory's Close and its optional-settings section only close or expand; opening it, searching and Load more
         // send a request to the directory, and Install writes mcp.json and starts a server, so those need --allow-ui-effects.
         "McpDirectoryClose", "McpDirectoryOptional",
@@ -66,6 +66,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "SelectedDevice", "SelectedDeviceHealth", "ClusterStatus",
         "VisionStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "SetupF5About", "F5VoicesStatus",
         "SetupOllamaStatus", "SetupLocalModelTest", "HostRunStatus", "RepliesNow", "AppUpdateStatus",
+        // Companion › Prompts: how many internal prompts are edited or emptied (counts only, never the prompt text).
+        "PromptsNow",
         // Companion › Thinking › If Thinking fails: the saved fallback in words (provider, model, whose key; never the key) and
         // what its key field will do.
         "FallbackNow", "FallbackKeyStatus",
@@ -112,10 +114,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// requests to join ("NetworkJoin-desktop-b" reads "DESKTOP-B asks to join. desktop-b, through gpu-pc. Check number ...");
     /// API keys ("ApiKeyRow-AbC..." reads "Home Assistant. See status and logs. Made on desktop-a 10/2/2026. ... ID AbCdEf.",
     /// never the key or its verifier); a host role's choices in its Add dialog ("HostInput-choice.A2F_ENGINE" reads "local";
-    /// never its secret fields) and the terms that follow a variant choice ("HostInputTerms-A2F_ENGINE").</summary>
+    /// never its secret fields), the terms that follow a variant choice ("HostInputTerms-A2F_ENGINE") and each Companion › Prompts
+    /// prompt's state ("PromptState-reply_length" reads "Edited. Not saved yet."; never the prompt text).</summary>
     private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "F5VoiceRow-", "F5VoiceGroup-", "StepDetail-", "HostChoice",
         "HealthIssue-", "HealthCheck-", "LogEntry-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",
-        "SmartHomeDevice-", "SmartHomeUpdate-", "HostInput-choice.", "HostInputTerms-"];
+        "SmartHomeDevice-", "SmartHomeUpdate-", "HostInput-choice.", "HostInputTerms-", "PromptState-"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>
