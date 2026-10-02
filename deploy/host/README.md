@@ -8,10 +8,10 @@ the tool itself.
 
 ```text
 Windows desktop (Martlet) --pinned TLS, paired once--> host: Martlet gateway :9443 (private LAN address only)
-                                                         | one gateway route per installed role
+                                                         | one gateway route per installed route role
                                                          v
                                                        role services on the host's 127.0.0.1 only
-                                                       (Ollama thinking, whisper listening, F5 speaking and Audio2Face lip-sync today; more roles plug in the same way)
+                                                       (network=host roles instead report machine features and are reached directly on the LAN)
 ```
 
 ## Methods
@@ -47,8 +47,8 @@ pair --device-id <id> --name <name>
                     waits up to five minutes for it to be redeemed, then restarts the gateway (Martlet uses this itself)
 console             the gateway console: list paired desktops and revoke one
 roles               what this host can run
-describe <role>     a role's terms, secrets (stored or missing, never values), choices and GPU/CPU option, machine-readable
-add <role>          install a role, e.g. add ollama, add stt, add f5 or add audio2face (same flow for every role)
+describe <role>     a role's terms, secrets (stored or missing, never values), choices, GPU/CPU option and route-less feature, machine-readable
+add <role>          install a role, e.g. add ollama, add stt, add f5, add audio2face or add home-assistant (same flow for every role)
 remove <role>       stop a role and unpublish it (keeps its data)
 machine             report this machine's hardware to paired desktops (also done by setup, pair, add and remove)
 update              update the gateway to this engine's Martlet version (identity, pairings, roles and data stay)
@@ -90,6 +90,10 @@ command:
 the service approval (in the gateway console, or with `--yes` through
 `owner-approve`), like any configuration change. For SSH hosts **Update host**
 runs `--yes update` in Martlet, so the click is that approval.
+After the gateway is updated, `update` also re-copies changed installed role
+Compose files (and their GPU overlays when used) from the new Martlet version
+and runs `docker compose up -d`, keeping data volumes. This is how pinned role
+image bumps, including Home Assistant, reach existing hosts.
 With *Keep my Martlet hosts on this PC's version* (Settings > App updates) the
 desktop runs `update` in the background for older hosts every check interval,
 without asking anything: for SSH hosts through Martlet's SSH runner (its own key,
@@ -116,6 +120,16 @@ host-reported information, not a measurement, and it grants no authority.
 Martlet also uses it to keep impossible roles off its menus (for example F5 on a
 host without an NVIDIA GPU with 6 GB+) and says why; a host without a report is
 allowed with a note. See [Platforms](../../docs/PLATFORMS.md).
+
+The report also has a `features` array (up to 16 lowercase tokens). The host
+uses it for route-less and smart-home capabilities: `host-network` means this
+method can run LAN host-network roles (native Ubuntu, or Docker on Linux Engine
+but not Docker Desktop); installed route-less roles add their `feature=` value
+such as `home-assistant`; probes add `ha-existing` (something else on port
+8123), `mqtt-broker` (port 1883), smart-home container names (`zigbee2mqtt`,
+`zwave-js`, `frigate`, `go2rtc`, `esphome`, `node-red`, `matter-server`,
+`music-assistant`), USB radio hints (`zigbee-radio`, `zwave-radio`,
+`serial-radio`) and `bluetooth`. Failed probes are ignored.
 
 The gateway also keeps a copy of the shared **who does what** plan in
 `cluster.json` beside `host.json`, written by the gateway when a paired desktop
@@ -301,7 +315,7 @@ Trust model:
 
 | Step | `role.conf` key | What happens |
 | --- | --- | --- |
-| Requirements | `requires` | Shared checks/installs: `gpu` (NVIDIA driver), `docker` (Engine + Compose), `nvidia-toolkit` (native method) |
+| Requirements | `requires` | Shared checks/installs: `gpu` (NVIDIA driver), `docker` (Engine + Compose), `docker-engine` (Linux Docker Engine, not Docker Desktop, for LAN host-network roles), `nvidia-toolkit` (native method) |
 | Terms | `terms` | Shown; continue only on `yes` (or shown in Martlet, whose Install click confirms) |
 | GPU or CPU | `gpu=optional\|<overlay>.yaml`, `gpu=required\|<overlay>.yaml` | Detects NVIDIA GPU memory usable by containers. `optional` asks `gpu` or `cpu` (default: GPU when present; Martlet sends `choice.accelerator` or lets the host decide); `required` always uses the GPU. `gpu` adds the role's Compose overlay (and the NVIDIA requirements); `cpu` runs without it |
 | Secrets | `secret=name\|prompt` | Asked once (or sent by Martlet on stdin), stored in the host config `secrets/<name>` (0600), passed to Compose as environment secret `<NAME>` |
@@ -309,24 +323,27 @@ Trust model:
 | Registry | `registry=host\|user\|secret` | `docker login` with the stored secret |
 | Assets | `asset=url\|path` | Pinned HTTPS downloads (`{VAR}` uses a choice), copied into the role's `martlet-<role>-configs` volume |
 | Loopback | `rewrite=path\|sed`, `expect=path\|text` | Rewrite configs to 127.0.0.1 and verify it |
-| Service | `compose.yaml` | `docker compose up -d` with `network_mode: ${MARTLET_ROLE_NETWORK}` (host natively, the gateway's namespace in Docker); a role can build its image from Martlet's sources under `${MARTLET_SOURCE}` (the checkout natively, `/opt/martlet/source` in the host image) |
-| Readiness | `port`, `ready_timeout_minutes` | Wait until 127.0.0.1:`port` accepts connections |
+| Service | `compose.yaml`, `network=host` | `docker compose up -d` with `network_mode: ${MARTLET_ROLE_NETWORK}` (host natively, the gateway's namespace in Docker), unless the role declares `network=host` and its Compose file intentionally uses the host network on both methods; a role can build its image from Martlet's sources under `${MARTLET_SOURCE}` (the checkout natively, `/opt/martlet/source` in the host image) |
+| Readiness | `port`, `ready_timeout_minutes` | Wait until the service accepts connections (127.0.0.1:`port`, or the host LAN address for Docker `network=host` roles) |
 | Post-start | `post_start=<service>\|<command>` | Runs each command inside that service in order (`docker compose exec`; `{VAR}` uses a choice; plain words only), for example downloading a model; its progress streams to Martlet's run window |
-| Publish | `gateway_kind`, `model_from` | Add `{kind, endpoint, model}` to the gateway's `host.json` `roles` list; renew the service approval (gateway console, or `owner-approve` with `--yes`); restart |
+| Publish | `gateway_kind`, `model_from`, `feature` | Route roles add `{kind, endpoint, model}` to the gateway's `host.json` `roles` list; renew the service approval (gateway console, or `owner-approve` with `--yes`); restart. Route-less roles declare `feature=<token>` instead, write an installed role record with `feature`, `port` and `network=host`, collect `machine.json` and restart the gateway without changing `host.json` |
 
 ## Adding a new role
 
-1. Add `roles/<name>/role.conf` and `roles/<name>/compose.yaml` (services listen on
-   127.0.0.1 and use `network_mode: ${MARTLET_ROLE_NETWORK}`; files come from
-   the external `${MARTLET_ROLE_CONFIGS_VOLUME}` volume; an optional GPU overlay
-   goes next to them).
+1. Add `roles/<name>/role.conf` and `roles/<name>/compose.yaml`. Gateway-routed
+   services listen on 127.0.0.1 and use `network_mode: ${MARTLET_ROLE_NETWORK}`;
+   files come from the external `${MARTLET_ROLE_CONFIGS_VOLUME}` volume; an
+   optional GPU overlay goes next to them. Route-less LAN roles use
+   `network=host`, `feature=<token>` and hard-code host networking in Compose.
 2. Add the gateway relay worker for its `gateway_kind` (see
    `Martlet.Gateway.Ollama`, `Martlet.Gateway.Stt`, `Martlet.Gateway.F5` or `Martlet.Gateway.Audio2Face`) and register the kind in
-   `Martlet.Gateway.Host.Linux` (`HostConfiguration.RoleKinds`, `NativeHostPlatform.RoleWorker`).
+   `Martlet.Gateway.Host.Linux` (`HostConfiguration.RoleKinds`, `NativeHostPlatform.RoleWorker`). Skip this for route-less `feature=` roles.
 3. Add one entry to `HostRoles` in `src/Martlet.Desktop/HostControl.cs` (kind, name, needs and the
    gateway route ID it advertises). The Devices map, the host dashboard and Martlet hosts then offer
    to install, remove and check it on any paired host; teach the desktop to use the route for its job
    (a conversation job is one `HostJob` entry in `src/Martlet.Desktop/MainWindow.HostJobs.cs`).
+   Route-less features instead teach the owning desktop page to read the machine
+   feature and direct service port.
 
 No new install script and no new method work: every method runs the same engine.
 Next in line, with its own relay worker and catalog entry: screen understanding (perception).
@@ -439,9 +456,12 @@ ssh -t me@gpu-pc bash martlet-prepare gpu-power --power 0=250 tools --tools pyth
 | `stt` | Docker; an NVIDIA GPU (NVIDIA Container Toolkit, driver 580+ for CUDA 13) makes it fast, otherwise the CPU; official `ghcr.io/ggml-org/whisper.cpp` release 1.9.4 (CPU or CUDA build), model `base`, `small`, `medium` or `large-v3-turbo` (suggested by GPU memory: `small` on the CPU, `large-v3-turbo` from 4 GB), downloaded on first start from Hugging Face at a pinned revision with its SHA-256 checked into volume `martlet-stt-models`; listens on 127.0.0.1:8178 | Listening: speech-to-text when the desktop hands listening to this host (Devices > the Listening row's *Done by*). Relay `Martlet.Gateway.Stt` sends each utterance (16 kHz mono, at most 30 s) to loopback `/inference` and returns its text without non-speech tags; audio stays in memory |
 | `f5` | NVIDIA GPU (6 GB+) with the NVIDIA Container Toolkit (`gpu=required`); image built on the host from `workers/f5/host/Dockerfile` (`python:3.12.10`, hash-locked PyTorch 2.6.0 CUDA 12.4, `f5-tts` 1.1.22, `vocos` 0.1.0, the bounded `martlet_f5_worker` and its loopback front `martlet_f5_host.py` on 127.0.0.1:50080); `martlet-f5 provision` downloads and verifies the pinned `F5TTS_v1_Base` (CC-BY-NC-4.0) and Vocos (MIT) files into volume `martlet-f5-models`, `martlet-f5 warm` loads them | Speaking: replies in a voice cloned from your reference recording when the desktop hands speaking to this host (Devices > the Speaking row's *Done by*). Relay `Martlet.Gateway.F5` streams the worker's contiguous 24 kHz mono PCM16 frames and chunk completions; cancellation is discard-only |
 | `audio2face` | NVIDIA GPU (4 GB+), free NVIDIA account with an [NGC API key](https://org.ngc.nvidia.com/setup/api-key); NIM `nvcr.io/nim/nvidia/audio2face-3d:1.3`, models `claire`/`mark`/`james` | Automatic lip-sync uses it when the desktop hands lip-sync to this host (Devices > the Lip-sync row's *Done by*) |
+| `home-assistant` | Linux Docker Engine (not Docker Desktop); official `ghcr.io/home-assistant/home-assistant:2026.9.4`; host networking on port 8123, privileged USB/Bluetooth access, `/run/dbus:/run/dbus:ro`, config in volume `martlet-home-assistant-config` | Smart home: Martlet installs and onboards Home Assistant through HA's own HTTP/WebSocket API at `http://<host LAN address>:8123`. It is a route-less `feature=home-assistant` role, not relayed through the Martlet gateway |
 
 On a native host the `ollama` role listens on the host's own 127.0.0.1:11434, so
-stop any Ollama already installed there first; `stt` uses 127.0.0.1:8178.
+stop any Ollama already installed there first; `stt` uses 127.0.0.1:8178. Home
+Assistant uses the host LAN port 8123, so connect an existing HA instance in the
+Smart home page instead of installing another one.
 
 ## Status
 
