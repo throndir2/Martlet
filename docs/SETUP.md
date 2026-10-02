@@ -341,21 +341,27 @@ the shared Windows profile without separate permission.
 Open **Microphone and speakers** from Companion › *Listening* or *Voice* (or
 the Devices map). This is a separate local device-test surface, **not** a
 first-conversation wizard, AI/VAD test, provider capability check, or
-permission to listen on launch. Opening it only loads settings. It does not
-enumerate endpoints, open devices, sample a microphone, play output, resolve a
-key, contact a provider, or write settings. Status remains usable without
-audio hardware.
+permission to listen on launch. Opening it loads settings and lists the
+microphones and speakers Windows reports, by name only. It does not open
+devices, sample a microphone, play output, resolve a key, contact a provider,
+or write settings. Status remains usable without audio hardware.
+
+Martlet assumes the Windows default (or chosen) microphone and speakers work.
+A device needs attention only when it is missing right now: no microphone or
+speakers are found, or a chosen device isn't connected. Home, Companion ›
+*Listening* and *Voice*, and this window check which devices are plugged in
+and say so; a test is optional and never required to use a device.
 
 The window shows one card per device: a picker, one test button and a
-plain-language state (*Not set up*, *Testing*, *Working*, *Needs attention*,
-*Did you hear it?*) with the next step in one sentence. *Test microphone* is
-the primary button until the microphone passes, then *Done*. The exact
-technical evidence (whole-test level, last result with its remedy, test
-history and worker ownership) and *Troubleshooting* sit under **Details**.
+plain-language state (*Ready*, *Checking*, *Not found*, *Testing*, *Working*,
+*Needs attention*, *Did you hear it?*) with the next step in one sentence.
+*Done* is the primary button. The exact technical evidence (whole-test level,
+last result with its remedy, test history and worker ownership) and
+*Troubleshooting* sit under **Details**.
 
 | Action | Actual effect and evidence |
 | --- | --- |
-| **Find devices** | Explicit off-dispatcher Windows capture/render enumeration, at most 128 of each. Uses the existing capture discovery factory and pinned NAudio render API. Lists are local snapshots, not privacy permission, working capture, or audible playback. Refresh only by pressing Find again; no automatic discovery loop. |
+| Device listing | Automatic off-dispatcher Windows capture/render enumeration, at most 128 of each, when the window opens and again each time a device list is opened, so a device plugged in meanwhile appears without a button. Uses the existing capture discovery factory and pinned NAudio render API on the shared setup worker, waiting for any save. Lists are local snapshots, not privacy permission, working capture, or audible playback. No background discovery loop. |
 | Microphone choice | Fixed opaque endpoint identity, or deliberate `FollowDefaultOnNextPress`. Default is resolved on each newly authorized test; a mid-capture default/input/property/format change stops and discards rather than reopening. |
 | Output choice | Fixed identity, or `DefaultAtStart`. The actual output binds once; active playback never follows a changed default or falls back. |
 | **Test microphone** | Default-No confirmation names the selected configuration and local-only boundary. Fresh IDs/epoch; actual `MicrophoneCapture`, at most 5 seconds with at most 20 seconds of consent including cleanup/transfer. The live meter shows transient PCM levels; the final result measures peak, RMS and level coverage over the completed normalized PCM lease without copying it. No frames, insufficient frames, low or intermittent level, device failure and cancellation are distinct non-pass results. This is a local level advisory, not speech/VAD, permission, audio quality or device readiness. |
@@ -375,7 +381,7 @@ physical microphone quality. Zero-valued PCM is different from receiving no
 frames, but neither creates a checkpoint. For low level, review the intended
 input, hardware mute, Windows input level and microphone privacy/desktop-app
 access; for no or too few frames, check the connection or changed default,
-explicitly Find devices and select the intended endpoint. Lost, unavailable,
+reopen the device list and select the intended endpoint. Lost, unavailable,
 busy, denied and changed devices retain their specific error remedies; there
 is no automatic endpoint fallback or retry. Each retest needs fresh permission.
 If input remains unavailable, typed conversation can still be used without

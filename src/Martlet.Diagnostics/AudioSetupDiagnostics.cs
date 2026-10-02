@@ -11,7 +11,7 @@ public static class AudioSetupDiagnostics
         ErrorCode.AudioDeviceBusy => "Close the competing audio client or release exclusive use, then explicitly retry. Do not change drivers or services.",
         ErrorCode.AudioFormatUnsupported => "Select another endpoint or manually review its supported shared PCM format. Bluetooth profile changes can invalidate a test.",
         ErrorCode.AudioDeviceUnavailable or ErrorCode.AudioDeviceLost or ErrorCode.AudioDeviceChanged =>
-            "Reconnect or enable the intended endpoint, then Find devices and select it explicitly. No replacement, room-speaker fallback or replay occurs.",
+            "Reconnect or enable the intended endpoint, then reopen the device list in Microphone and speakers and select it explicitly. No replacement, room-speaker fallback or replay occurs.",
         ErrorCode.DeadlineExceeded => "This action expired. Wait for actual ownership release, review the selection and authorize a fresh bounded test.",
         ErrorCode.AudioCaptureFailed or ErrorCode.AudioPlaybackFailed =>
             "Native work or cleanup failed. Stop and wait for actual release. If ownership remains quarantined, close Martlet; do not start a replacement client.",

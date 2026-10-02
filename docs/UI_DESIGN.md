@@ -93,10 +93,11 @@ Below the hero, **Now** has one line per job: *Thinking*, *Voice*,
 needs attention or not working, grey not set up), what Martlet uses now in one
 sentence, and one button (*Set up*, *Review* or *Change*) that opens that
 job's Companion tab. Only Thinking is required; while it is missing its line
-is highlighted and its button is primary. The Listening line also says
-*Microphone not set up yet* (amber, with *Set up mic* once listening itself is
-ready) until a microphone test passes, and the Listening tab's **Now** card
-says the same.
+is highlighted and its button is primary. The Windows default microphone is
+assumed to work: the Listening line says *No microphone found* or *Your chosen
+microphone isn't connected* (amber, with *Fix mic* once listening itself is
+ready) only when this PC has no microphone or the chosen one is unplugged, and
+the Listening tab's **Now** card says the same. A microphone test is optional.
 
 When a chosen job stops working (its host isn't answering, its role was
 removed, its key was deleted, or Setup saved a route this version can't use),
@@ -323,14 +324,18 @@ The conversation window puts the chat first:
   memory facts still open their own windows from their tabs.
 
   **Microphone and speakers** is one short page with two cards. Each card has
-  the device picker (Windows default first; *Find devices* lists the rest), one
-  test button and a state chip with one plain sentence: *Not set up*,
-  *Testing*, *Working*, *Needs attention* (with the fix, such as "Too quiet.
-  Check that the microphone isn't muted...") or *Did you hear it?* (with *Yes,
-  I heard it*). The microphone test is the primary button until it passes,
-  then *Done*. Picking and finished tests save on their own; there is no Save
-  button. Each test still asks first, and the exact evidence and
-  *Troubleshooting* sit under *Details*.
+  the device picker (Windows default first; the list refreshes on its own when
+  the window opens and each time it is opened, so a newly plugged-in device
+  appears), one test button and a state chip with one plain sentence: *Ready*
+  (the Windows default or chosen device is connected and assumed to work),
+  *Not found* (no device, or the chosen one isn't connected), *Testing*,
+  *Working*, *Needs attention* (with the fix, such as "Too quiet. Check that
+  the microphone isn't muted...") or *Did you hear it?* (with *Yes, I heard
+  it*). Testing is optional and *Done* is the primary button. Picking and
+  finished tests save on their own; there is no Save button. Each test still
+  asks first, and the exact evidence and *Troubleshooting* sit under
+  *Details*. Home and the Listening tab warn about the microphone only when
+  none is found or the chosen one isn't connected.
 - **Settings**: palette, this PC's role and the tour, app updates (automatic
   checks and their interval, automatic installs, keeping hosts on this PC's
   version, *Check for updates now*, *Install*, *Update hosts now*), tools
