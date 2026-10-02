@@ -45,7 +45,7 @@ internal sealed class LiveSupportProjection
             "mic.capturing" or "mic.transferred_and_cleared" or "mic.listening" or "mic.hearing_speech" or
                 "speaker.checking" or "speaker.verified" => ("conversation.running", Stage.Capture, MetadataState.Running),
             "mic.no_speech" or "speaker.not_user" or "speaker.too_short" => ("conversation.suppressed", Stage.Capture, MetadataState.Suppressed),
-            "stt.uploading" => ("conversation.running", Stage.Transcription, MetadataState.Running),
+            "stt.uploading" or "voices.recognized" => ("conversation.running", Stage.Transcription, MetadataState.Running),
             "runtime.Idle" or "runtime.Authorizing" or "runtime.Generating" => ("conversation.running", Stage.Generation, MetadataState.Running),
             "runtime.Synthesizing" => ("conversation.running", Stage.Synthesis, MetadataState.Running),
             "runtime.Playing" => ("conversation.running", Stage.Playback, MetadataState.Running),

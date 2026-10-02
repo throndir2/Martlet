@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- sherpa-onnx speaker recognition and Parakeet speech-to-text on this PC. The native sherpa-onnx/ONNX Runtime libraries
+       and the models are downloaded on the owner's request (pinned sizes and SHA-256), never bundled or fetched by themselves. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Martlet.Desktop" />
+    <InternalsVisibleTo Include="Martlet.Desktop.Tests" />
+  </ItemGroup>
+</Project>

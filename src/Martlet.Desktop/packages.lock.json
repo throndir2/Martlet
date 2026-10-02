@@ -122,6 +122,9 @@
           "Martlet.Core": "[0.9.0, )"
         }
       },
+      "martlet.sherpa": {
+        "type": "Project"
+      },
       "martlet.support": {
         "type": "Project",
         "dependencies": {

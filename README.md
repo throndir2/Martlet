@@ -7,7 +7,10 @@ a message box. By default Martlet listens whenever it is open (once a microphone
 is tested), or push-to-talk; it streams the reply and speaks it with the chosen
 voice. How it listens, speaks and sees is chosen in Companion. Optional local
 **Voice ID** recognizes your enrolled voice and ignores other people before
-anything is uploaded. Each message or utterance is its own bounded action; no
+anything is uploaded. Optional **People** recognition tells everyone at the
+microphone apart, learns the names they go by and shares that list with your
+other computers; **Parakeet** listens on this PC without Docker (see
+[VOICES](docs/VOICES.md)). Each message or utterance is its own bounded action; no
 credentials or audio are accessed on launch; network remains idle except for
 update checks (on by default; can be turned off), host updates or [who-does-what sync](docs/CLUSTER.md) when enabled. Text-only never requests TTS or opens output.
 Actual account/device/first-conversation qualification remains **NOT RUN**.
@@ -104,6 +107,7 @@ There is no remote memory, embedding, vector database or automatic backup.
 | [Implemented foundation and decisions](docs/FOUNDATION.md) | Accepted/deferred decisions, exact APIs/bounds, current behavior and next ownership |
 | [Resumable setup and local audio](docs/SETUP.md) | V02a configuration/vault actions and V02b explicit local device tests, historical checkpoints, strict migration and remaining live gates |
 | [Explicit API conversation](docs/CONVERSATION.md) | V04b typed/PTT path, hands-free voice activity, local Voice ID, exact supported models and bounds, fresh authorization, Stop/cleanup, troubleshooting and separately authorized live-trial checklist |
+| [Recognizing people by voice, and Parakeet](docs/VOICES.md) | Companion › People: AudioTranscriber's sherpa-onnx speaker recognition, names learned from conversation, editing/merging/forgetting voices, sharing the list through paired hosts, and Parakeet speech-to-text on this PC |
 | [Voice Studio research and setup](docs/VOICE_STUDIO.md) | Five-engine implementation research, guided setup, audio imports, A/B previews, training and staged acceptance |
 | [Memory](docs/MEMORY.md) | ON-by-default local memory: automatic recall each turn, remembering lasting facts from conversations, Desktop fact management, privacy/deletion/export and remaining qualification gates |
 | [Lorebooks](docs/LOREBOOKS.md) | SillyTavern-style World Info: keyword-triggered lore added to replies, persona scope, budget and recursion, the editor and its local test, SillyTavern/character card import and export |

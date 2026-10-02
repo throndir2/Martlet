@@ -162,6 +162,8 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
             return HostTextGenerationStream.Binding(host, Configuration.TextSelection());
         if (role == SetupRole.Stt && Configuration.SttHostTarget() is { } listener)
             return HostTranscriptionAdapter.Binding(listener, route.ModelId);
+        if (role == SetupRole.Stt && Configuration.LocalStt())
+            return LocalTranscriptionAdapter.Binding(route.ModelId);
         if (role == SetupRole.Tts && Configuration.HostSpeechTarget() is { } voiceHost)
             return HostSpeechSynthesisStream.Binding(voiceHost);
         if (role == SetupRole.Tts && Configuration.WindowsVoiceTarget() is { } windowsVoice)

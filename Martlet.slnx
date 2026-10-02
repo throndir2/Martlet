@@ -22,6 +22,7 @@
     <Project Path="src/Martlet.Support/Martlet.Support.csproj" />
     <Project Path="src/Martlet.Providers/Martlet.Providers.csproj" />
     <Project Path="src/Martlet.Participation/Martlet.Participation.csproj" />
+    <Project Path="src/Martlet.Sherpa/Martlet.Sherpa.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Martlet.Audio.Tests/Martlet.Audio.Tests.csproj" />

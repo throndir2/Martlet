@@ -30,6 +30,8 @@ public partial class MainWindow : ThemedWindow
     private readonly LorebookStore? lorebooks;
     private readonly SmartHome smartHome;
     private readonly VoiceIdentity voiceIdentity;
+    private readonly LocalVoices localVoices;
+    private readonly ParakeetListener? parakeet;
     private readonly ConfigurationRecoveryController? recovery;
     private readonly AudioSetupService audioSetup;
     private readonly LiveConversationController? conversation;
@@ -75,13 +77,16 @@ public partial class MainWindow : ThemedWindow
         smartHome = new(store?.DataDirectory, vault);
         voiceIdentity = new(store?.DataDirectory);
         voiceIdentity.Load();
+        localVoices = new(store?.DataDirectory);
+        parakeet = store is null ? null : new(LocalVoices.SpeechRoot(store.DataDirectory));
         recovery = store is null ? null : new(store, setupOperations, () => !support.HasResources);
         captions = new(avatar, store?.DataDirectory);
         if (setupService is not null)
         {
             conversation = new(setupOperations, setupService, vault, new WasapiCaptureDeviceFactory(), new WasapiDeviceFactory(),
                 memory: memory, generatedSpeech: avatar.Observer, revokeAvatar: avatar.Revoke, voiceIdentity: voiceIdentity,
-                dataDirectory: store!.DataDirectory, spokenText: captions.Feed, smartHome: smartHome, lorebooks: lorebooks);
+                dataDirectory: store!.DataDirectory, spokenText: captions.Feed, smartHome: smartHome, lorebooks: lorebooks,
+                voices: localVoices, localListener: parakeet);
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
         }
         audioSessionEvents.LockedChanged += AvatarSessionLocked;
@@ -106,6 +111,7 @@ public partial class MainWindow : ThemedWindow
         }
         InitializeShell();
         InitializeCluster();
+        InitializeVoiceSync();
     }
 
     private async void Theme_Changed(object sender, SelectionChangedEventArgs e)
@@ -142,6 +148,10 @@ public partial class MainWindow : ThemedWindow
         await RefreshAsync();
         await ShowSavedCharacterAsync(onlyIfAutoShow: true);
         StartCluster();
+        StartVoiceSync();
+        // Parakeet takes a few seconds to load; do it now rather than on the first thing said.
+        if (homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Stt)?.RouteType == SetupRouteType.LocalParakeet)
+            parakeet?.WarmAsync().Forget();
         if (!closing) await StartUpdatesAsync();
     }
     private async void Refresh_Click(object sender, RoutedEventArgs e) => await RefreshAsync();
@@ -538,6 +548,7 @@ public partial class MainWindow : ThemedWindow
         characterTimer.Stop();
         updateTimer.Stop();
         clusterTimer.Stop();
+        voiceSyncTimer.Stop();
         audioSessionEvents.LockedChanged -= audioSetup.SetSessionLocked;
         audioSessionEvents.LockedChanged -= AvatarSessionLocked;
         if (conversation is not null) audioSessionEvents.LockedChanged -= conversation.SetSessionLocked;

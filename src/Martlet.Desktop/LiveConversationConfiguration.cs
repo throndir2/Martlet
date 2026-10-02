@@ -96,6 +96,10 @@ internal sealed class LiveConversationConfiguration
             ? new(gateway.Origin, gateway.HostId, gateway.SpkiFingerprint, device, credential) : null;
 
     private static bool IsHostStt(SetupRoute? route) => route?.RouteType == SetupRouteType.GatewayStt;
+    private static bool IsLocalStt(SetupRoute? route) => route?.RouteType == SetupRouteType.LocalParakeet;
+
+    /// <summary>Listening runs inside Martlet on this PC (Parakeet), so the utterance is never sent anywhere.</summary>
+    internal bool LocalStt() => IsLocalStt(Route(SetupRole.Stt));
 
     /// <summary>The paired Martlet host whose F5 voice speaks, when Speaking was handed to a host on the Devices page.</summary>
     internal HostSpeechTarget? HostSpeechTarget()
@@ -175,10 +179,15 @@ internal sealed class LiveConversationConfiguration
                     return $"{role}: the Martlet host pairing or its speech-to-text route is incomplete. Hand listening to your host again on the Devices page.";
                 continue;
             }
+            if (role == SetupRole.Stt && IsLocalStt(route) && route.Enabled == true)
+            {
+                if (route.Consent != route.Selection()) return $"{role}: listening choice missing or changed. Choose Parakeet again on Companion › Listening.";
+                continue;
+            }
             if (route.RouteType is not (null or SetupRouteType.OpenAi) || route.Enabled == false)
                 return $"{role}: this Desktop build supports enabled OpenAI routes only" +
                     (role == SetupRole.Llm ? " (or an enabled OpenRouter, NVIDIA Build or OpenAI-compatible Chat Completions LLM route, or Ollama on a paired Martlet host)"
-                        : role == SetupRole.Stt ? " (or whisper on a paired Martlet host)"
+                        : role == SetupRole.Stt ? " (or whisper on a paired Martlet host, or Parakeet on this PC)"
                         : role == SetupRole.Tts ? " (or F5 on a paired Martlet host, or a Windows voice on this PC)" : "") +
                     "; the saved self-host choice is retained, not dispatched.";
             if (route.Consent != route.Selection()) return $"{role}: destination choice missing or changed. Review it in Setup.";
@@ -202,7 +211,7 @@ internal sealed class LiveConversationConfiguration
         {
             var route = Routes.SingleOrDefault(r => r.Role == role);
             // Chat Completions and Martlet host model IDs are validated ASCII identifiers; OpenAI ones must be catalog-approved.
-            if (role == SetupRole.Llm && (IsChat(route) || IsHost(route)) || role == SetupRole.Stt && IsHostStt(route))
+            if (role == SetupRole.Llm && (IsChat(route) || IsHost(route)) || role == SetupRole.Stt && (IsHostStt(route) || IsLocalStt(route)))
                 return route!.ModelId;
             // Only catalog-approved identifiers may appear here, never arbitrary entered model/voice strings.
             bool supported = role switch
@@ -242,7 +251,9 @@ internal sealed class LiveConversationConfiguration
                     ? "NVIDIA Build hosts the selected model; rate limits, credits and model availability are set by NVIDIA. "
                     : "The endpoint's operator controls processing, retention and cost. ") +
                 "Reasoning/thinking traces are never spoken or shown, but count toward the reply token budget.\n") +
-            (sttHost is null
+            (IsLocalStt(stt)
+                ? $"Spoken audio -> STT: NVIDIA Parakeet TDT 0.6B v3 on this PC ({Selection(SetupRole.Stt)}). Your recorded speech is transcribed in memory here; nothing is sent anywhere and there is no charge.\n"
+                : sttHost is null
                 ? $"Spoken audio -> STT: {OpenAiSetup.Origin}, {Selection(SetupRole.Stt)}.\n"
                 : $"Spoken audio -> STT: your Martlet host {sttHost.HostId} ({sttHost.Origin}, whisper, pinned TLS), {Selection(SetupRole.Stt)}. " +
                     "Your recorded speech goes only to that paired computer over its pinned TLS gateway and is transcribed in memory there, not stored; no cloud provider receives it and there is no per-request charge.\n") +
@@ -260,7 +271,7 @@ internal sealed class LiveConversationConfiguration
             $"LLM output: <={TextLimits.MaxOutputTokens} tokens (max reply length on Companion > Replies), <=16,384 response characters, <=45 s.\n" +
             "Runtime <=90 s. Voice: <=8 requests/segments, <=1536 UTF-8 bytes each / 12,288 total, <=10 s / 240,000 samples per segment, <=80 s / 1,920,000 reserved samples total, <=20 s per request. Refusal/unsupported markup is not ordinary speech.\n" +
             "Prices, quota, account/model access and invoice cost are UNKNOWN, not zero or a guaranteed hard currency cap. Failed/canceled requests can still cost money; earlier speech may already have played. No automatic retry.\n" +
-            "Typed input, push-to-talk, or always listening while the talk window is open, as chosen in Companion › Listening (each detected utterance is one action within this envelope; listening re-arms only after the reply finishes). Wake words, name/group listening and remote participant capture are OFF; vision is OFF unless turned on in Companion › Vision. Optional Voice ID compares speech with your saved voiceprint on this PC before upload; non-matching audio is discarded, never uploaded. Memory recall and remembering follow the memory setting described above." +
+            "Typed input, push-to-talk, or always listening while the talk window is open, as chosen in Companion › Listening (each detected utterance is one action within this envelope; listening re-arms only after the reply finishes). Wake words, name/group listening and remote participant capture are OFF; vision is OFF unless turned on in Companion › Vision. Optional Voice ID compares speech with your saved voiceprint on this PC before upload; non-matching audio is discarded, never uploaded. When voice recognition is on (Companion > People), each utterance is also compared on this PC with the voices Martlet knows (voiceprints only; audio is never kept), the LLM is told who spoke by name or voice tag, and after a reply the exchange may be sent once more to the same Thinking model in one extra text-only request so it can pick up the names people go by. Memory recall and remembering follow the memory setting described above." +
             (Memory is { Enabled: true }
                 ? " Conversation content stays bounded in memory, not logs/files; only the short facts picked out for Memory are saved."
                 : " Content stays bounded in memory, not logs/files.") +

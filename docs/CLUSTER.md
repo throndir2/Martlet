@@ -99,3 +99,12 @@ tile says where it came from.
 Merge rules, the endpoint (in-process, including signing and rejection) and
 failover ranking were checked locally. Multi-host failover on real hosts and
 networks is **NOT RUN**.
+
+## The shared voice list
+
+The voices Martlet recognizes (Companion › People) travel the same way, in
+their own document: each host keeps `voices.json` beside `cluster.json` and
+serves `GET`/`POST /martlet/v1/voices`; desktops merge every 30 seconds while
+sharing is on (its own choice, on by default, independent of the who-does-what
+sync). Each voice is a last-writer-wins entry with the same hybrid revisions;
+forgotten and merged voices leave tombstones. See [VOICES](VOICES.md#sharing-between-your-computers).
