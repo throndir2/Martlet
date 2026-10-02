@@ -7,16 +7,18 @@
         WindowStartupLocation="CenterOwner" Loaded="Window_Loaded" Closing="Window_Closing"
         PreviewKeyDown="Window_PreviewKeyDown"
         AutomationProperties.Name="Talk with Martlet">
-    <!-- The talk window is only the conversation: its history and the message box. How Martlet listens, speaks and sees
-         is chosen in Companion; the mic and vision buttons here only pause or resume what is on. -->
+    <!-- The talk window is only the conversation: its history and the message box. It doesn't block the rest of Martlet.
+         How Martlet listens, speaks and sees is chosen in Companion; Start listening turns always listening on here (it is
+         off when the window opens), and the vision button pauses or resumes what is on. -->
     <DockPanel>
         <Border DockPanel.Dock="Top" Background="{DynamicResource SoftBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="18,12">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button x:Name="MicChip" Click="Mic_Click" Padding="12,6" MinHeight="34" Margin="0,0,8,0" Visibility="Collapsed"
+                    <Button x:Name="MicChip" Click="Mic_Click" Padding="14,6" MinHeight="34" Margin="0,0,8,0" Visibility="Collapsed"
                             ToolTipService.ShowOnDisabled="True" AutomationProperties.AutomationId="LiveMic">
                         <StackPanel Orientation="Horizontal">
-                            <Ellipse x:Name="MicDot" Width="8" Height="8" Margin="0,0,7,0" VerticalAlignment="Center" Fill="{DynamicResource MutedBrush}"/>
+                            <Ellipse x:Name="MicDot" Width="8" Height="8" Margin="0,0,7,0" VerticalAlignment="Center" Fill="{DynamicResource MutedBrush}"
+                                     Visibility="Collapsed"/>
                             <TextBlock x:Name="MicText" FontSize="13" TextWrapping="NoWrap" VerticalAlignment="Center"/>
                         </StackPanel>
                     </Button>

@@ -41,6 +41,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
     {
         "FoundationStatus", "PipelineStatus", "LocalAudioStatus",
         "LiveStatus", "LiveMic", "LiveVision", "LiveVisionStatus", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
+        // Home's Start talking reads "Show conversation" while the talk window is open.
+        "OpenLiveConversation",
         "PeopleStatus", "PeopleSyncStatus", "PeopleVoiceCount", "ListenParakeetStatus", "SetupCharacterView", "SetupCharacterSpeechDisplay",
         "SetupCharacterNow", "SetupCharacterNowProblem",
         "LipSyncNow", "LipSyncNowProblem", "LipSyncOwnTitle", "LipSyncOwnState", "SelectedDevice", "SelectedDeviceHealth", "ClusterStatus",
@@ -94,6 +96,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         {
             processId,
             windows = windows.Select(window => window.Current.Name).ToArray(),
+            // A window that is disabled can't take input, as when a modal dialog blocks it; the talk window never blocks Martlet.
+            windowStates = windows.Select(window => new
+            {
+                name = window.Current.Name,
+                enabled = IsWindowEnabled(window.Current.NativeWindowHandle)
+            }).ToArray(),
             controls = Controls(windows).Select(control =>
             {
                 var (window, element) = control;
@@ -302,6 +310,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsWindowVisible(nint window);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowEnabled(nint window);
 
     private static IEnumerable<AutomationElement> Elements(AutomationElement window) =>
         window.FindAll(TreeScope.Descendants,

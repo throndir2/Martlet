@@ -2,11 +2,15 @@
 
 **Internal functional integration, not account/device/release qualification.**
 **Start talking** on Home opens the talk window: the conversation history, what
-you said and a message box, nothing else. How Martlet listens, speaks and sees
-is chosen in Companion (Listening, Voice and Vision); the window starts what was
-chosen there. Opening setup never resolves a key, enumerates devices, records,
-plays, discovers a model or makes an API request. Ordinary Doctor/status remains
-read-only and is not a live connection test.
+you said and a message box, nothing else. It sits beside Martlet rather than
+blocking it, so Home, Companion and Settings stay usable while you talk; Home's
+button reads **Show conversation** while it is open and brings it back to the
+front. How Martlet listens, speaks and sees is chosen in Companion (Listening,
+Voice and Vision), and an open talk window follows a change there at once.
+Always listening starts only when you press **Start listening** in the window
+(and stops with **Stop listening**). Opening setup never resolves a key,
+enumerates devices, records, plays, discovers a model or makes an API request.
+Ordinary Doctor/status remains read-only and is not a live connection test.
 
 The character is shown and hidden from the main window. Its [feature guide](../src/Martlet.Avatar.Hosting/README.md)
 describes separately permitted local renderer inspection and generated-speech
@@ -53,13 +57,14 @@ comment; it needs a Thinking model that can see images. See
    Martlet's replies aloud* is on (Companion › Voice); otherwise they are text
    only, with no TTS request and no output device.
 5. Type and press Enter (Shift+Enter for a new line). With **Always listening**
-   (Companion › Listening, the default once the microphone is tested) just
-   speak; with **Push-to-talk**, hold the talk button with the mouse or Space,
+   (Companion › Listening, the default once the microphone is tested) press
+   **Start listening** and just speak; it keeps listening until you press
+   **Stop listening**. With **Push-to-talk**, hold the talk button with the mouse or Space,
    then release to send (invoking it starts a recording and invoking it again
    sends). **Stop (Esc)** stays in the header at every size: it stops the reply,
    discards a recording instead of sending it, and pauses vision. It never
-   pauses always listening, so Martlet doesn't miss what you say next; only the
-   **Listening** button pauses it.
+   stops always listening, so Martlet doesn't miss what you say next; only
+   **Stop listening** does.
    Escape works anywhere in the window and does not close it or send anything.
 6. The history shows your messages, what you said (the transcript) and
    Martlet's replies as they stream in. A refusal is shown as such and never
@@ -201,12 +206,15 @@ or **Push-to-talk**. The choice, sensitivity, pause length, Voice ID toggle,
 *Speak replies* and Vision choices are remembered in `talk-preferences.json` in
 the data folder.
 
-- With always listening, opening the talk window opens the microphone chosen in
-  Companion › Listening (the Windows default unless another is picked; testing
-  it there is optional). If listening isn't set up, the mic button says *Can't
-  listen* and why. If the microphone can't be opened (absent, busy, denied), the
-  mic button says *Mic unavailable* with the fix, Martlet tries it again every
-  5 seconds, and you can type meanwhile.
+- With always listening, **Start listening** in the talk window opens the
+  microphone chosen in Companion › Listening (the Windows default unless another
+  is picked; testing it there is optional); opening the window alone never does.
+  If listening isn't set up, the button says *Can't listen* and why. If the
+  microphone can't be opened (absent, busy, denied), the button's state is *Mic
+  unavailable* with the fix, Martlet tries it again every
+  5 seconds, and you can type meanwhile. Switching to push-to-talk in Companion
+  while the window is open stops listening; switching back resumes it if you had
+  started it.
   An adaptive energy detector (`EnergyVoiceActivityDetector`,
   20 ms frames read from the capture's own buffer through `TryCopyMonoFrame`)
   waits for speech, then releases the capture after your chosen pause
@@ -278,7 +286,7 @@ Docker. See [Recognizing people by voice, and Parakeet](VOICES.md).
 | Visible condition | Meaning and next action |
 | --- | --- |
 | Setup required / unsupported role | Review the displayed exact catalog IDs; store each role key, reselect its destination and save. No automatic fallback or capability request occurs. |
-| Configuration changed | Loaded revision/role/key/output no longer matches this action. Close and reopen the talk window to use the new choices. External profile editing/copying while running is unsupported. |
+| Configuration changed | Loaded revision/role/key/output no longer matches this action. An open talk window loads the saved change once Martlet is free and starts a fresh conversation. External profile editing/copying while running is unsupported. |
 | Credential missing / access denied | Review the signed-in Windows user and selected role reference. Explicit setup retrieval can check local readability only. Do not elevate or disable protection. |
 | STT no speech | No LLM/TTS followed. Review intended input and local microphone test; start a fresh PTT action or type instead. Silence samples are not VAD evidence. |
 | Hands-free never hears me / triggers on noise | Raise or lower **Sensitivity**; watch the level bar while speaking. Choose a longer pause if it cuts you off mid-sentence (talking on before Martlet answers also merges what you say into one message). |

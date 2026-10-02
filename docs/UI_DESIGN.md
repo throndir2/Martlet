@@ -277,16 +277,21 @@ The long form became a four-step wizard with a step rail:
 ### 6. Talk (conversation)
 
 *Start talking* opens the conversation and nothing else: its history, what you
-said and the message box. Every choice about how Martlet listens, speaks and
-sees is made in Companion; the window has no settings, approvals, cost
-envelopes, timelines or links to other windows.
+said and the message box. It is a separate window beside Martlet, never a
+blocking dialog: Home, Companion and Settings stay usable while it is open,
+and Home's button reads *Show conversation* and brings it to the front. Every
+choice about how Martlet listens, speaks and sees is made in Companion, and an
+open talk window follows a change there right away; the window has no
+settings, approvals, cost envelopes, timelines or links to other windows.
 
 - **Header**: the mascot, *Martlet* and one status line (*Listening. Just
   talk, or type below.*, *Martlet is thinking*, *Martlet is speaking. Esc
-  stops it.*, or what went wrong in plain words). On the right, small toggles
-  for what is on: **Listening** (shown with always listening; click to pause or
-  resume, or *Can't listen* with the reason while listening isn't set up) and **Vision**
-  (shown when vision is on; click to pause or resume), then **Stop (Esc)**.
+  stops it.*, or what went wrong in plain words). On the right: **Start
+  listening** (shown with always listening; a primary button until pressed,
+  then **Stop listening** with a green dot, an amber dot when the microphone
+  can't be opened, or *Can't listen* with the reason while listening isn't set
+  up), **Vision** (shown when vision is on; click to pause or resume), then
+  **Stop (Esc)**.
 - **History**: chat bubbles for the whole conversation while the window is
   open: what you typed, what you said (the transcript, captioned *You
   (spoken)*), Martlet's replies as they stream in, its remarks about your
@@ -296,12 +301,13 @@ envelopes, timelines or links to other windows.
   With push-to-talk chosen, *Hold to talk* (hold the mouse or Space) sits next
   to *Send*; invoking it starts a recording and invoking it again sends.
 
-Opening the window starts what Companion chose: **always listening** (the
-default, with the chosen or Windows default microphone; no test needed) and **vision** (off by
-default). Typing while Martlet listens hands the microphone over for the typed
+Opening the window starts **vision** if Companion turned it on (off by
+default). **Always listening** (the default, with the chosen or Windows
+default microphone; no test needed) starts only when you press *Start
+listening*. Typing while Martlet listens hands the microphone over for the typed
 message, and listening resumes after the reply. **Stop (Esc)** stops the reply,
 any recording and vision at once and keeps the conversation; listening carries
-on (only its own button pauses it). Locking Windows stops listening and vision
+on (only *Stop listening* ends it). Locking Windows stops listening and vision
 and starts a fresh conversation (both resume on unlock), and closing the
 window ends it.
 
@@ -320,7 +326,8 @@ window ends it.
        then *Speak Martlet's replies aloud* (on by default).
     3. *Listening*: the speech-to-text provider, model and key, then the
        microphone, then **How you talk**: *Always listening* (the default;
-       Martlet hears you whenever the talk window is open, with sensitivity
+       once you press *Start listening* in the talk window Martlet hears you
+       until *Stop listening*, with sensitivity
        and how long a pause ends your turn) or *Push-to-talk*, and Voice ID
        (*Only respond to my voice* and *Set up Voice ID*).
     4. *Vision*: whether Martlet may look at your screen or a camera while

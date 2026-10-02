@@ -3,8 +3,9 @@
 **Status: internal explicit API conversation integration; not a qualified release.**
 Desktop now has a [talk window](docs/CONVERSATION.md) that is just the
 conversation: a chat history (what you typed or said and Martlet's replies) and
-a message box. By default Martlet listens whenever it is open (once a microphone
-is tested), or push-to-talk; it streams the reply and speaks it with the chosen
+a message box. It sits beside the rest of Martlet instead of blocking it. By
+default Martlet listens from when you press **Start listening** until **Stop
+listening** (once a microphone is tested), or push-to-talk; it streams the reply and speaks it with the chosen
 voice. How it listens, speaks and sees is chosen in Companion. Optional local
 **Voice ID** recognizes your enrolled voice and ignores other people before
 anything is uploaded. Optional **People** recognition tells everyone at the
@@ -32,7 +33,7 @@ verified connections or spending permission. **Audio setup (local only)** offers
 output selection and separately confirmed bounded local capture/tone tests.
 Opening it does not enumerate or open devices. Historical local checkpoints
 are not device readiness. Always listening runs only while the talk window is
-open, and its **Listening** button pauses it; acoustic wake words,
+open, from its **Start listening** button until **Stop listening**; acoustic wake words,
 automatic name/group listening and supported end-user deployment
 are not available. A PC microphone does not automatically
 capture remote participants.

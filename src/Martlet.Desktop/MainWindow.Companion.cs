@@ -478,7 +478,7 @@ public partial class MainWindow
                     : "No microphone found. Plug one in or turn it on in Windows Sound settings."
                 : $"{device} isn't connected. Plug it in or pick another."
             : $"Using {device}" + (checkpoint is not null ? $", tested on {checkpoint.TestedAt.ToLocalTime():d}." : ".");
-        var line = Note(text + (output ? " Martlet plays its voice here." : " Martlet listens here when the talk window is open."),
+        var line = Note(text + (output ? " Martlet plays its voice here." : " Martlet listens here when you talk in the talk window."),
             new Thickness(0, 0, 0, 8));
         if (missing) line.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
         return Card(Heading(what), line,

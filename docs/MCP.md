@@ -512,11 +512,14 @@ hardware can't run it, with why. `SetupUseHost-<job>-<host ID>` hands the job
 over and needs `--allow-ui-effects`.
 
 Status fields include the talk window's `LiveStatus` (its status line),
-`LiveMic` (*Listening*, *Listening paused*, *Can't listen* or *Mic unavailable*
-with the reason; while Martlet speaks it reads *Not listening while Martlet
-speaks*; *Listening paused* only ever follows a click on it: errors, Stop and
-`LiveStop` never pause listening, and listening that can't start yet, such as
-Voice ID not set up, reads *Can't listen* and keeps retrying),
+`LiveMic` (the Start listening / Stop listening button; its value starts with
+the state: *Not listening* until it is pressed, then *Listening*, *Can't
+listen* or *Mic unavailable* with the reason; while Martlet speaks it reads
+*Not listening while Martlet speaks*. Clicking it opens the microphone, so it
+needs `--allow-ui-effects`; errors, Stop and `LiveStop` never stop listening,
+and listening that can't start yet, such as Voice ID not set up, reads *Can't
+listen* and keeps retrying), Home's `OpenLiveConversation` (*Start talking*,
+or *Show conversation* while the talk window is open),
 `LiveVision` (*Watching*, *Looking*, *Vision paused* or *Can't see*, with when
 it last checked the screen; it checks every 3 s), `LiveVisionStatus` (while
 vision is on: what it sees, for example *Watching the window behind Martlet*,
@@ -532,12 +535,17 @@ model as it opens (and again on activity after a few quiet minutes), and
 or why it can't (Ollama not running, model not downloaded, Ollama's own error);
 the desktop log records each load's duration
 (`{"name":"logs_tail","arguments":{"contains":"Ollama on this PC"}}`).
-Opening the talk window with always
-listening on opens the microphone; for verification, save a fixed microphone
-that does not exist in the disposable data directory, so listening starts,
+The talk window is modeless: `ui_snapshot`'s `windowStates` lists each window
+with `enabled` (false while a modal dialog such as Audio setup blocks it), and
+the main window stays enabled while the talk window is open. Opening the talk
+window never opens the microphone; `LiveMic` does with always listening on. For
+verification, save a fixed microphone that does not exist in the disposable
+data directory, so listening starts after `LiveMic`,
 fails without capturing real audio and shows *Mic unavailable* while it keeps
-retrying (it never pauses by itself). The talk window's `LiveStop` (Stop, Esc)
-is a passive click: it only stops a reply, recording or vision.
+retrying (it never stops by itself). The talk window's `LiveStop` (Stop, Esc)
+is a passive click: it only stops a reply, recording or vision. Changing How
+you talk on Companion › Listening (`TalkModePushToTalk`, `TalkModeAlways`)
+applies to an open talk window at once (`LivePtt` replaces `LiveMic`).
 
 Window discovery uses visible top-level native handles filtered to the attached
 process, then verifies ownership around each UI Automation handle lookup.
