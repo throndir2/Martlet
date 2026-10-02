@@ -34,7 +34,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "LipSyncNow", "LipSyncNowProblem", "LipSyncOwnTitle", "LipSyncOwnState", "SelectedDevice", "SelectedDeviceHealth", "ClusterStatus",
         "VisionStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "SetupF5About", "F5VoicesStatus",
         "SetupOllamaStatus", "SetupLocalModelTest", "HostRunStatus", "RepliesNow",
-        "StageTitle", "StageText", "HealthTitle", "HealthSummary", "HealthAllClear"
+        "StageTitle", "StageText", "HealthTitle", "HealthSummary", "HealthAllClear",
+        // Settings › Your other computers (whether Martlet here runs commands your other computers send, and what it last did)
+        // and a paired host's How Martlet reaches it (the saved route in words, and what each route means).
+        "NodeAgentStatus", "HostReachNow", "HostReachHint"
     };
     /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)");
     /// Companion › Voice's included F5 voices ("F5VoiceRow-arctic-slt" reads "SLT (US female)", with "· in use" when it is);

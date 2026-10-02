@@ -367,24 +367,36 @@ public partial class MainWindow
         return callout;
     }
 
-    /// <summary>How this desktop reaches a host to install or remove its roles: SSH (Docker or native Ubuntu), this PC's
-    /// Docker Desktop, or by hand on the host.</summary>
+    /// <summary>How this desktop reaches a host to install or remove its roles and update it: through Martlet on that computer
+    /// (its paired connection; the default), SSH (Docker or native Ubuntu) or this PC's Docker Desktop.</summary>
     private StackPanel ReachEditor(PairedHost host)
     {
         var panel = new StackPanel { Margin = new Thickness(4, 4, 0, 4), MaxWidth = 520, HorizontalAlignment = HorizontalAlignment.Left };
+        var now = new TextBlock { Text = $"Reached via: {host.Reach}.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8) };
+        AutomationProperties.SetAutomationId(now, "HostReachNow");
+        panel.Children.Add(now);
         var method = new ComboBox { Margin = new Thickness(0, 0, 0, 8) };
         AutomationProperties.SetName(method, "How Martlet reaches this host");
         AutomationProperties.SetAutomationId(method, "HostReachMethod");
         foreach (var (value, text) in new[]
         {
+            (HostSetupMethod.Agent, "Through Martlet on that computer (paired connection)"),
             (HostSetupMethod.SshDocker, "SSH, with Docker there"), (HostSetupMethod.SshNative, "SSH, native Ubuntu"),
-            (HostSetupMethod.ThisPcDocker, "This PC, with Docker Desktop"), (HostSetupMethod.OnHost, "I run its commands on it myself")
+            (HostSetupMethod.ThisPcDocker, "This PC, with Docker Desktop")
         })
         {
             var item = new ComboBoxItem { Content = text, Tag = value };
             method.Items.Add(item);
-            if (value == host.Method) method.SelectedItem = item;
+            if (value == host.Method || value == HostSetupMethod.Agent && host.Method == HostSetupMethod.OnHost) method.SelectedItem = item;
         }
+        var hint = new TextBlock
+        {
+            Text = "Through Martlet on that computer: commands go over the pinned, signed connection you paired, and Martlet there " +
+                "runs them (it needs to be running there; until then they wait). Use SSH for a Linux computer without Martlet.",
+            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8)
+        };
+        hint.SetResourceReference(StyleProperty, "Muted");
+        AutomationProperties.SetAutomationId(hint, "HostReachHint");
         var label = new TextBlock { Text = "SSH target, for example me@192.168.1.20", Margin = new Thickness(0, 0, 0, 4) };
         label.SetResourceReference(StyleProperty, "Muted");
         var ssh = new TextBox { Text = host.SshTarget ?? "", Margin = new Thickness(0, 0, 0, 8) };
@@ -407,10 +419,12 @@ public partial class MainWindow
             {
                 var updated = await Pairings().SetReachAsync(host.HostId, chosen, ssh.Text, Version, token);
                 homeHosts = HostRegistry.Upsert(homeHosts, updated);
+                now.Text = $"Reached via: {updated.Reach}.";
                 ActionText.Text = $"Saved. Martlet reaches {updated.HostId} via: {updated.Reach}.";
             });
         };
         panel.Children.Add(method);
+        panel.Children.Add(hint);
         panel.Children.Add(label);
         panel.Children.Add(ssh);
         panel.Children.Add(save);

@@ -373,6 +373,14 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         server!.AttachVoiceStorage(storage);
     }
 
+    /// <summary>Keeps the commands paired computers send through this host in <paramref name="storage"/> and accepts
+    /// <paramref name="agentToken"/> from the Martlet app on this host that runs them.</summary>
+    public void AttachCommands(IGatewayCommandStorage storage, string agentToken)
+    {
+        RequireOpen();
+        server!.AttachCommandStorage(storage, agentToken);
+    }
+
     public ValueTask CloseCleanlyAsync(CancellationToken cancellationToken = default) =>
         StopAsync(clean: true, cancellationToken);
 

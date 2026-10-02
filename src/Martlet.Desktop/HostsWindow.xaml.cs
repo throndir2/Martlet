@@ -35,7 +35,7 @@ public partial class HostsWindow : ThemedWindow
         {
             HostSetupMethod.SshDocker => SshDockerMethod,
             HostSetupMethod.SshNative => SshNativeMethod,
-            HostSetupMethod.OnHost => OnHostMethod,
+            HostSetupMethod.OnHost or HostSetupMethod.Agent => OnHostMethod,
             _ => ThisPcMethod
         }).IsChecked = true;
         if (manage is not null)
@@ -56,7 +56,7 @@ public partial class HostsWindow : ThemedWindow
     {
         HostSetupMethod.SshDocker => "another computer over SSH, using Docker there",
         HostSetupMethod.SshNative => "another computer over SSH, as a native Ubuntu install",
-        HostSetupMethod.OnHost => "another computer, where you type the commands yourself",
+        HostSetupMethod.OnHost or HostSetupMethod.Agent => "another Windows PC that runs Martlet",
         _ => "this PC, with Docker Desktop"
     };
 
@@ -88,7 +88,8 @@ public partial class HostsWindow : ThemedWindow
         BackButton.IsEnabled = step > 0;
         NextButton.Content = step == steps.Length - 1 ? "_Done" : "_Next";
         MethodSummaryText.Text = $"Installing on {MethodName(Method)}. " + (Method == HostSetupMethod.OnHost
-            ? "Enter the host's address, then run the command shown below in a terminal on that computer."
+            ? "On that PC, install Martlet and choose Use as a Martlet host: it sets its host service up by itself. Then pair this PC " +
+              "on the Pair step with the code it shows. Nothing to type there."
             : Ssh
                 ? "Enter user@computer and press Add this computer. Martlet asks for that account's password once, adds its own SSH key, " +
                   "checks Docker, sets the host up and pairs this PC by itself. You never need to log in there."
@@ -99,14 +100,14 @@ public partial class HostsWindow : ThemedWindow
             ? $"Roles install from here over SSH; Martlet asks for what each role needs and shows the progress. This host runs on {MethodName(Method)}."
             : Method == HostSetupMethod.ThisPcDocker
                 ? $"Roles install from here; Martlet asks for what each role needs and shows the progress. This host runs on {MethodName(Method)}."
-                : $"Roles are added on the host itself, one at a time, with the same flow for every role. This host runs on {MethodName(Method)}.";
+                : $"Roles install from here through Martlet on that PC once it is paired; Martlet there runs them and shows the progress here. This host runs on {MethodName(Method)}.";
         SetupButton.Content = Ssh ? "_Add this computer" : "Set _up host";
-        PairConsoleButton.Content = Ssh ? "_Pair automatically over SSH" : Method == HostSetupMethod.ThisPcDocker ? "_Pair automatically" : "_Open pairing console";
+        PairConsoleButton.Content = Ssh ? "_Pair automatically over SSH" : Method == HostSetupMethod.ThisPcDocker ? "_Pair automatically" : "_How to get the code";
         PairConsoleText.Text = Ssh
             ? "Martlet asks the host for a one-use code over SSH and pairs this PC with it; nothing to type or paste."
             : Method == HostSetupMethod.ThisPcDocker
                 ? "Martlet asks this PC's host service for a one-use code and pairs this PC with it; nothing to type or paste."
-                : "On the host run martlet-host pair, confirm opening it, type start, then pair with the device ID above and role voice. It shows a code starting with martlet-pair-v1.";
+                : "On that PC, Martlet's host dashboard has Show a pairing code: enter the device ID above there, then paste the code it shows below.";
         Scroller.ScrollToTop();
         if (animate) Motion.Enter(steps[step], dx: 28, dy: 0, milliseconds: 280);
     }
@@ -170,10 +171,29 @@ public partial class HostsWindow : ThemedWindow
         ShowCommand(action);
         if (Method == HostSetupMethod.OnHost)
         {
-            StatusText.Text = "Run the command shown under Install on the host itself (for example in a terminal there).";
+            // A paired PC with Martlet runs its commands there; setting it up and pairing start on that PC.
+            if (paired is { } host && action.Verb is not (HostVerb.Setup or HostVerb.Pair))
+                RunThroughAgentAsync(host, action).Forget();
+            else
+                StatusText.Text = action.Verb == HostVerb.Pair
+                    ? "On that PC, open Martlet's host dashboard and press Show a pairing code (with this PC's device ID), then paste the code below."
+                    : "On that PC, install Martlet and choose Use as a Martlet host; it sets itself up. Then pair this PC with the code it shows.";
             return;
         }
         RunInMartletAsync(action).Forget();
+    }
+
+    private async Task RunThroughAgentAsync(PairedHost host, HostAction action)
+    {
+        if (busy) { StatusText.Text = "Another host action is still finishing."; return; }
+        busy = true;
+        try
+        {
+            StatusText.Text = await HostActions.RunAsync(this, pairings.DataDirectory, host.Target(version) with { Method = HostSetupMethod.Agent },
+                null, action, pairing: host.Pairing) ?? "Stopped. The run window shows why.";
+        }
+        catch (InvalidOperationException error) { StatusText.Text = error.Message; }
+        finally { busy = false; }
     }
 
     /// <summary>SSH hosts and this PC run in Martlet: setup and pairing as one flow, other actions in a run window.
@@ -453,11 +473,10 @@ public partial class HostsWindow : ThemedWindow
         var (pairing, secret) = await code.PairAsync(device, lifetime.Token);
         PairingCodeBox.Clear();
         // A code shown by another computer (its host dashboard or pairing console) pairs that computer, even while the wizard
-        // still shows This PC; Martlet then doesn't know how to reach it to run commands there.
+        // still shows This PC; Martlet then reaches it through Martlet on that computer.
         var method = Method == HostSetupMethod.ThisPcDocker && !HostRegistry.IsThisPc(new Uri(pairing.Origin).Host, HostSetupCommands.ThisPcAddress())
-            ? HostSetupMethod.OnHost : Method;
+            ? HostSetupMethod.Agent : Method;
         var host = await SavePairingAsync(pairing, secret, method, Ssh ? SshTargetText.Text.Trim() : null, PinnedHostKey);
-        StatusText.Text += Method == HostSetupMethod.OnHost ? " In the host console press a key, then type stop and confirm." : "";
         // The pairing listener is still open, so read what the host is like right away for the map and the advisor.
         try { StatusText.Text += " " + await CheckAsync(host.Pairing, Hardware, _ => { }, lifetime.Token); }
         catch (Exception error) when (error is InvalidOperationException or OperationCanceledException) { }

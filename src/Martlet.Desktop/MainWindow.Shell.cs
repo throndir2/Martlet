@@ -885,7 +885,9 @@ public partial class MainWindow
                             $"{host.HostId} does not run Audio2Face yet. Hand lip-sync to it and install Audio2Face there now? " +
                             (host.Method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative
                                 ? $"Martlet installs it over SSH ({host.Reach}) and shows its progress. "
-                                : host.CanLaunch ? "Martlet installs it in this PC's host service and shows its progress. " : "Martlet copies the command to run on it. ") +
+                                : host.Method == HostSetupMethod.Agent ? $"Martlet on {host.HostId} installs it and its progress shows here. "
+                                : host.CanLaunch ? "Martlet installs it in this PC's host service and shows its progress. "
+                                : "Enter how Martlet reaches it on the Devices map first. ") +
                             $"It needs {role.Needs}. Until it is ready, the mouth follows the voice's loudness; then it switches over by itself.",
                             "Install and hand over"))
                         return;
@@ -959,8 +961,8 @@ public partial class MainWindow
     }
 
     /// <summary>Runs a martlet-host command on a paired host the way this PC reaches it, in Martlet with its output and Cancel
-    /// in a run window (over SSH, or on this PC's Docker Desktop); never in a console. Without a known route it copies the
-    /// command instead.</summary>
+    /// in a run window: over SSH, on this PC's Docker Desktop, or through Martlet on that computer (its paired connection).
+    /// Never in a console, and never by asking you to type it there.</summary>
     private void LaunchOnHost(PairedHost host, HostAction action, IReadOnlyDictionary<string, string>? answers = null) =>
         RunHostActionAsync(host, action, answers).Forget();
 
@@ -969,22 +971,26 @@ public partial class MainWindow
     {
         try
         {
-            if (!host.CanLaunch || store is null)
+            if (store is null) return null;
+            if (!host.CanLaunch)
             {
-                var command = HostSetupCommands.Preview(host.Target(Version) with { Method = HostSetupMethod.OnHost }, action);
-                try { Clipboard.SetText(command); }
-                catch (System.Runtime.InteropServices.ExternalException) { }
-                ActionText.Text = $"Martlet does not know how to reach {host.HostId} yet, so the command to run on it was copied. " +
-                    "Or choose how Martlet reaches it in its details on the Devices map.";
+                ActionText.Text = $"Enter how Martlet signs in to {host.HostId} over SSH (user@computer) in its details on the Devices map, " +
+                    "or choose Through Martlet on that computer.";
+                ShowDevice("host:" + host.HostId);
                 return null;
             }
             var local = host.Method == HostSetupMethod.ThisPcDocker;
-            ActionText.Text = $"Running {HostSetupCommands.Engine(action)} on {(local ? "this PC's host service" : host.HostId + " over SSH")}; " +
-                "its progress shows in a separate window.";
+            ActionText.Text = $"Running {HostSetupCommands.Engine(action)} on " + host.Method switch
+            {
+                HostSetupMethod.ThisPcDocker => "this PC's host service",
+                HostSetupMethod.Agent => host.HostId + " through Martlet there",
+                _ => host.HostId + " over SSH"
+            } + "; its progress shows in a separate window.";
             // Adding a role on this PC preselects what suits it (for example whisper on the processor when the graphics card is full).
             var recommended = answers is null && local && action.Verb == HostVerb.Add && action.Role == HostRoles.Stt
                 ? (await ListeningAdviceAsync()).Answers() : null;
-            var done = await HostActions.RunAsync(this, store.DataDirectory, host.Target(Version), host.SshHostKey, action, answers, recommended);
+            var done = await HostActions.RunAsync(this, store.DataDirectory, host.Target(Version), host.SshHostKey, action, answers, recommended,
+                host.Pairing);
             if (closing) return done;
             ActionText.Text = done is null ? $"{HostSetupCommands.Engine(action)} on {host.HostId} stopped; its window shows why." : $"{host.HostId}: {done}";
             if (done is not null && action != HostAction.Status) CheckHostsAsync([host]).Forget();

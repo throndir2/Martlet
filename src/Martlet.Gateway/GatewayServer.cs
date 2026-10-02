@@ -53,6 +53,12 @@ public sealed class GatewayServer
     /// and loads the copy saved there.</summary>
     public void AttachVoiceStorage(IGatewayVoiceStorage storage) => application.Voices.Attach(storage);
 
+    /// <summary>Keeps the commands paired computers send this host (served at /martlet/v1/commands) in
+    /// <paramref name="storage"/> and accepts <paramref name="agentToken"/> (32 random bytes, base64url, also written where
+    /// only the host computer itself can read it) from the Martlet app that runs them there.</summary>
+    public void AttachCommandStorage(IGatewayCommandStorage storage, string agentToken) =>
+        application.Commands.Attach(storage, agentToken, application.Now);
+
     public GatewayServer(
         GatewayHostIdentity identity,
         GatewayOrigin origin,

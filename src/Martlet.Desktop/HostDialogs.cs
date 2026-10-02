@@ -162,13 +162,16 @@ internal sealed class HostInputDialog : ThemedWindow
     /// <paramref name="recommended"/> preselects answers Martlet worked out for this machine (for example GPU or CPU from
     /// what already runs on its graphics card), each with its reason.</summary>
     internal static Dictionary<string, string>? ForRole(Window owner, string host, string role, HostRoleInputs inputs,
-        IReadOnlyDictionary<string, (string Value, string Why)>? recommended = null, bool local = false)
+        IReadOnlyDictionary<string, (string Value, string Why)>? recommended = null, bool local = false, bool agent = false)
     {
         var message = $"{inputs.Title}\n\nNeeds: {inputs.Requires}." +
             (inputs.Terms.Length > 0 ? $"\n\n{inputs.Terms}" : "") +
             (local
                 ? "\n\nMartlet installs it now in this PC's host service (Docker Desktop), without further questions or console windows. " +
                   "Secrets are kept in the host service's private config on this PC."
+                : agent
+                ? $"\n\nMartlet on {host} installs it now in its host service, without further questions. Secrets go to {host} over its " +
+                  "pinned, signed connection, are held only in memory until Martlet there takes them, and are kept in its host service's private config."
                 : "\n\nMartlet installs it now without further questions (missing Docker, NVIDIA driver or NVIDIA Container Toolkit " +
                   "are installed too). Secrets go to the host over SSH and are kept there in its private config (0600).");
         var dialog = new HostInputDialog($"Add {role}", $"Add {role} on {host}", message, "_Install");

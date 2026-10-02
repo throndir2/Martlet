@@ -152,7 +152,9 @@ public partial class MainWindow
                 IReadOnlyDictionary<string, string>? answers = null;
                 var how = host.Method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative
                     ? $"Martlet installs it over SSH ({host.Reach}), asks which model and shows its progress. "
-                    : host.CanLaunch ? "Martlet installs it in this PC's host service, asks which model and shows its progress. " : "Martlet copies the command to run on it. ";
+                    : host.Method == HostSetupMethod.Agent ? $"Martlet on {host.HostId} installs it; Martlet asks which model here and shows its progress. "
+                    : host.CanLaunch ? "Martlet installs it in this PC's host service, asks which model and shows its progress. "
+                    : "Enter how Martlet reaches it on the Devices map first. ";
                 if (host.Method == HostSetupMethod.ThisPcDocker && job.Role == SetupRole.Stt)
                 {
                     var advice = await ListeningAdviceAsync();

@@ -420,7 +420,9 @@ internal static class NetworkMap
             target.Commands.Add(new(NodeAction.ManageHost, "Pair again or change its setup", Argument: id, Component: hostService));
             target.Commands.Add(new(NodeAction.ForgetHost, "Forget this host", Argument: id, Component: hostService));
             if (!paired.CanLaunch && !local && managed)
-                target.Notes.Add("Tell Martlet how to reach it (below) to install or remove roles from here; otherwise it shows the command to run there.");
+                target.Notes.Add("Enter how Martlet signs in to it over SSH (below), or choose Through Martlet on that computer, to install or remove roles from here.");
+            else if (paired.Method == HostSetupMethod.Agent && !local && managed)
+                target.Notes.Add("Martlet on that computer runs what you ask here (updates, roles, status), through its paired connection.");
         }
 
         if (companion)
