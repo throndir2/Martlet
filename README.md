@@ -35,8 +35,10 @@ through **Setup / resume**; see [SETUP](docs/SETUP.md). Saved API routes are not
 verified connections or spending permission. **Audio setup (local only)** offers explicit microphone/
 output selection and separately confirmed bounded local capture/tone tests.
 Opening it does not enumerate or open devices. Historical local checkpoints
-are not device readiness. Always listening runs only while the talk window is
-open, from its **Start listening** button until **Stop listening**; acoustic wake words,
+are not device readiness. Always listening runs from **Start listening** on Home (or the notification-area
+menu) until **Stop listening**, with or without the talk window open; Settings ›
+*Startup and closing* can show the character and start listening as Martlet
+starts, including with Windows. Acoustic wake words,
 automatic name/group listening and supported end-user deployment
 are not available. A PC microphone does not automatically
 capture remote participants.

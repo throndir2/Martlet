@@ -7,8 +7,16 @@ blocking it, so Home, Companion and Settings stay usable while you talk; Home's
 button reads **Show conversation** while it is open and brings it back to the
 front. How Martlet listens, speaks and sees is chosen in Companion (Listening,
 Voice and Vision), and an open talk window follows a change there at once.
-Always listening starts only when you press **Start listening** in the window
-(and stops with **Stop listening**). Opening setup never resolves a key,
+Always listening starts only when you press **Start listening** (on Home, in the
+notification-area menu or in the window) and stops with **Stop listening**. It
+doesn't need the talk window: Home's **Start listening** runs the conversation
+hidden, Home's listening indicator says what it is doing (*Listening*, *Hearing
+you…*, *Martlet is replying…* or why it can't listen), **Show conversation**
+shows its history, and closing the window while Martlet listens or watches only
+hides it (**End the conversation** in the notification-area menu ends it). A
+Home Assistant or tool question shows the window. Settings › *Startup and
+closing* › *When Martlet starts, show the character and start listening* does
+both on every start, including Start with Windows in the notification area. Opening setup never resolves a key,
 enumerates devices, records, plays, discovers a model or makes an API request.
 Ordinary Doctor/status remains read-only and is not a live connection test.
 

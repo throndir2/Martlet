@@ -54,8 +54,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
     {
         "FoundationStatus", "PipelineStatus", "LocalAudioStatus",
         "LiveStatus", "LiveMic", "LiveVision", "LiveVisionStatus", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
-        // Home's Start talking reads "Show conversation" while the talk window is open.
-        "OpenLiveConversation",
+        // Home's Start talking reads "Show conversation" while a conversation runs (the talk window open, or hidden while Martlet
+        // listens); Home's Start listening / Stop listening button and its listening indicator ("Listening. Just start talking.",
+        // "Hearing you…", "Not listening" or why Martlet can't listen).
+        "OpenLiveConversation", "HomeListen", "HomeListeningStatus",
         "PeopleStatus", "PeopleSyncStatus", "PeopleVoiceCount", "ListenParakeetStatus", "SetupCharacterView", "SetupCharacterSpeechDisplay",
         "SetupCharacterNow", "SetupCharacterNowProblem",
         "LipSyncNow", "LipSyncNowProblem", "LipSyncOwnTitle", "LipSyncOwnState", "LipSyncDockerTitle", "LipSyncDockerAbout", "LipSyncLoudnessTitle",
