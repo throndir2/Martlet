@@ -4,6 +4,8 @@ using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using Martlet.Logging;
+using Martlet.Providers.Ollama;
 
 namespace Martlet.Desktop;
 
@@ -181,7 +183,18 @@ internal static class LocalOllama
         output.Report($"Loading {model}...");
         var clock = Stopwatch.StartNew();
         using (var load = await SendAsync(client, HttpMethod.Post, "/api/generate", new { model, stream = false }, LoadLimit, token))
-            if (!load.Ok) throw Failure($"Ollama couldn't load {model}", load);
+        {
+            if (!load.Ok && OllamaDraftHead.FailedToLoad(load.Text))
+            {
+                output.Report($"Ollama couldn't fit {model}'s speed-up draft model in graphics memory: {ErrorText(load.Text)}.");
+                output.Report($"Turning off the draft model for {model} and loading it again...");
+                await DisableDraftAsync(client, model, token);
+                clock.Restart();
+                using var retry = await SendAsync(client, HttpMethod.Post, "/api/generate", new { model, stream = false }, LoadLimit, token);
+                if (!retry.Ok) throw Failure($"Ollama couldn't load {model}", retry);
+            }
+            else if (!load.Ok) throw Failure($"Ollama couldn't load {model}", load);
+        }
         var loaded = clock.Elapsed;
         output.Report($"Loaded in {Seconds(loaded)}.");
         var placement = await PlacementAsync(client, model, token);
@@ -199,6 +212,31 @@ internal static class LocalOllama
         if (loaded > firstWordsLimit)
             return new($"{model} works once loaded, but loading took {Seconds(loaded)}. If a reply times out, try again after the model finishes loading.{abilities}", Warning: true);
         return new($"{model} works on this PC. It loaded in {Seconds(loaded)} and answered in {Seconds(reply.Total)}.{abilities}", Warning: false);
+    }
+
+    /// <summary>Saves draft_num_predict 0 on <paramref name="model"/> in this PC's Ollama so it loads without its
+    /// speculative-decoding draft model (see <see cref="OllamaDraftHead"/>).</summary>
+    internal static async Task DisableDraftAsync(HttpClient client, string model, CancellationToken token)
+    {
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(token);
+        limit.CancelAfter(TimeSpan.FromMinutes(1));
+        try
+        {
+            using var content = new StringContent(OllamaDraftHead.DisableRequest(model), Encoding.UTF8, "application/json");
+            using var response = await client.PostAsync(Origin + OllamaDraftHead.CreatePath, content, limit.Token);
+            if (!response.IsSuccessStatusCode)
+                throw new InvalidOperationException($"Ollama couldn't turn off {model}'s draft model (error {(int)response.StatusCode}): " +
+                    $"{ErrorText(await response.Content.ReadAsStringAsync(limit.Token)) ?? "Ollama gave no reason"}.");
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+            throw new InvalidOperationException($"Ollama didn't turn off {model}'s draft model within a minute.");
+        }
+        catch (HttpRequestException error)
+        {
+            throw new InvalidOperationException($"Ollama stopped answering ({error.Message}).");
+        }
+        ErrorLog.Info($"Turned off the speculative-decoding draft model of {model} in Ollama on this PC; it didn't fit in graphics memory.");
     }
 
     private sealed record Reply(string Text, TimeSpan FirstWords, TimeSpan Total);

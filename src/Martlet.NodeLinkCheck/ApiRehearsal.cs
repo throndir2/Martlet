@@ -118,6 +118,13 @@ internal static class ApiRehearsal
             var reply = await Bearer.ChatAsync(h1, assistant!.Token, "Is the washing machine done?", token);
             return (reply.Completed && reply.Text == FixtureOllama.Reply, $"events: {string.Join(" ", reply.Events)}; text: \"{reply.Text}\"");
         });
+        await Run("When the model's speculative-decoding draft doesn't fit on the GPU (Gemma 4 \"requires ctx_other\"), the relay turns the draft off and the reply still arrives (fixture Ollama, NOT AI)", async () =>
+        {
+            h1.Ollama.DraftFails = true;
+            var reply = await Bearer.ChatAsync(h1, assistant!.Token, "Is the dryer done?", token);
+            return (reply.Completed && reply.Text == FixtureOllama.Reply && h1.Ollama.DraftTurnedOff == "fixture-model:1b",
+                $"draft_num_predict 0 saved on: {h1.Ollama.DraftTurnedOff ?? "nothing"}; events: {string.Join(" ", reply.Events)}; text: \"{reply.Text}\"");
+        });
         await Run("It can't send commands, pair, read voiceprints, read or change the network, change the plan or manage keys", async () =>
         {
             var auth = "Bearer " + assistant!.Token;
@@ -339,20 +346,43 @@ internal static class ApiRehearsal
     }
 
     /// <summary>Stands in for Ollama's /api/chat (FIXTURE, NOT AI): streams a canned reply in two chunks, optionally pausing
-    /// between them so a revocation can land mid-reply.</summary>
+    /// between them so a revocation can land mid-reply. With <see cref="DraftFails"/> chat answers Ollama's Gemma 4
+    /// draft-model load failure until /api/create saves draft_num_predict 0 on the model.</summary>
     internal sealed class FixtureOllama : HttpMessageHandler
     {
         internal const string Reply = "Hello from the fixture model.";
+        internal const string DraftError = "llama-server process has terminated: exit status 1: llama_init_from_model: failed to " +
+            "initialize the context: Gemma4Assistant requires ctx_other to be set (this warning is normal during memory fitting) " +
+            "error loading model: vector";
         internal TimeSpan Pause { get; set; }
+        internal bool DraftFails { get; set; }
+        internal string? DraftTurnedOff { get; private set; }
 
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            if (request.RequestUri!.AbsolutePath == "/api/create")
+            {
+                using var create = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken));
+                var root = create.RootElement;
+                if (root.GetProperty("parameters").GetProperty("draft_num_predict").GetInt32() == 0 &&
+                    root.GetProperty("from").GetString() == root.GetProperty("model").GetString())
+                {
+                    DraftTurnedOff = root.GetProperty("model").GetString();
+                    DraftFails = false;
+                }
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("""{"status":"success"}""") };
+            }
+            if (DraftFails)
+                return new HttpResponseMessage(HttpStatusCode.InternalServerError)
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(new { error = DraftError }))
+                };
             var first = Encoding.UTF8.GetBytes("""{"message":{"role":"assistant","content":"Hello "},"done":false}""" + "\n");
             var rest = Encoding.UTF8.GetBytes("""{"message":{"role":"assistant","content":"from the fixture model."},"done":false}""" + "\n" +
                 """{"message":{"role":"assistant","content":""},"done":true}""" + "\n");
             var content = new StreamContent(new PausingStream(first, rest, Pause));
             content.Headers.ContentType = new("application/x-ndjson");
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = content };
         }
     }
 
