@@ -73,7 +73,7 @@ chunk, else `chara`, as base64 UTF-8 JSON; image pixels are never decoded), a
 JSON card or a CHARX archive's `card.json`, in TavernAI V1, Character Card V2
 (`chara_card_v2`) or V3 (`chara_card_v3`) form. **New persona from a character
 card** adds the card as a new draft persona (also by dropping a card onto the
-Companion window, or *Import a character card* on Companion › Character);
+Companion window, or *Import a character card* on Companion › Personality);
 **Update this persona from a character card** loads it into the selected
 persona's editor, keeping its identity and response-style weights. Both stay
 drafts until Save.

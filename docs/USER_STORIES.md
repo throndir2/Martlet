@@ -124,19 +124,27 @@ These are acceptance criteria for every screen.
 ```text
 ┌──────────┬──────────────────────────────────────────────────────────┐
 │ Home     │  Status, Start talking, Now lines, problems, progress    │
-│ Companion│  Tabs: Thinking · Voice · Listening · Character · Memory │
+│ Companion│  How it works: Thinking · Voice · Listening · Vision ·   │
+│          │    Lip-sync                                              │
+│          │  Who it is: Character · Personality · Lorebook · Memory  │
+│          │  What it does: Replies · Tools · Smart home              │
 │ Devices  │  Network map, machines, who does what                    │
 │ Settings │  General · Privacy · Network · Updates · Help            │
 └──────────┴──────────────────────────────────────────────────────────┘
 ```
 
 - **Home**: hero (*Start talking*, *Show character*), four **Now lines**
-  (one per job, each a link to its tab), the *Fix* card when something is
+  (one per job, each a link to its page), the *Fix* card when something is
   broken, and any running task's progress.
-- **Companion**: the four job pages plus Memory, as tabs. Personality lives
-  on the Character tab. This replaces the Companion card grid, the setup
-  section pages, the legacy Setup window, Audio setup, Avatar, Companion
-  (persona), Voice Library, Voice ID, F5 voice dialog and Memory windows.
+- **Companion**: a side list of pages in three groups. *How it works* holds
+  the job pages (each asks where the job runs); *Who it is* holds the look,
+  the personality and what it knows; *What it does* holds how it answers and
+  acts. A page gets its own entry only if it has its own *Where it runs*
+  choice, its own consent or data destination, or its own list to edit;
+  anything else is a card on an existing page. This replaces the Companion
+  card grid, the setup section pages, the legacy Setup window, Audio setup,
+  Avatar, Companion (persona), Voice Library, Voice ID, F5 voice dialog and
+  Memory windows.
 - **Devices**: the map. Selecting a machine opens its panel (what it runs,
   what it can run, hardware, actions). *Add a computer* lives here.
 - **Settings**:
@@ -176,7 +184,9 @@ Right-click: *Start talking*, *Show/Hide character*, *Mute microphone*,
 | Where thinking runs, model, key | Companion › Thinking | Home Now line, Devices tile, Fix card, conversation Thinking chip ▾ › *Change…* |
 | Where voice runs, voice, speakers | Companion › Voice | Home Now line, Devices tile, Fix card, conversation 🔊 › *Voice settings* |
 | Where listening runs, mic, talk mode, Voice ID | Companion › Listening | Home Now line, Devices tile, Fix card, conversation 🎤 › *Listening settings* |
-| Character, personality, lip-sync | Companion › Character | Home Now line, Devices tile, ☺ long-press/right-click, tray |
+| Where lip-sync runs | Companion › Lip-sync | Home Now line (when it isn't working), Devices tile |
+| Character model, size, position | Companion › Character | Home Now line, Devices tile, ☺ long-press/right-click, tray |
+| Personas, style mix, character cards | Companion › Personality | conversation ☺ menu |
 | Memory | Companion › Memory | conversation 🧠 › *Manage memory* |
 | Permissions | Settings › Privacy | every header chip's menu |
 | Machines and roles | Devices | Machine pickers on job pages (*Manage on Devices*) |
@@ -796,24 +806,22 @@ Microphone is first because it is the most common thing to change.
 
 #### F1. Change the character (overview of every way)
 
-All entry points land on **Companion › Character**:
+All entry points land on **Companion › Character** (personality and lip-sync
+have their own pages, *Personality* and *Lip-sync*, next to it):
 
 | Entry point | Clicks |
 | --- | ---: |
 | Home › Character Now line | 1 |
-| Companion › Character tab | 2 |
-| Devices › *Who does what* › Lip-sync tile | 2 |
+| Companion › Character page | 2 |
 | Right-click the character on the desktop › *Character settings* | 2 |
 | Conversation ☺ right-click › *Character settings* | 2 |
 
-The Character tab:
+The Character page:
 
 ```text
-Now: Hiyori · showing · lip-sync on GAMING-PC (Audio2Face)   [ Hide character ]
+Now: Hiyori · showing                                          [ Hide character ]
 
 Character   [Hiyori (built-in)] [My VRM]  [ + Import ]
-Personality  Name [Martlet]  About  [ … ]   Style: helpful ━━●━ playful ━●━━ …   [Persona ▾]
-Lip-sync     [ This PC ] [ Another of my computers  Current ] [ Voice loudness ]
 On screen    Subtitles [On]   [ Reset position ]  [ Reset size ]
 Advanced ▸   mapping, renderer, model files
 ```
@@ -824,7 +832,7 @@ Advanced ▸   mapping, renderer, model files
 
 #### F2. Show or hide the character
 
-- **Entry points**: Home hero; Character tab; conversation ☺; tray;
+- **Entry points**: Home hero; Character page; conversation ☺; tray;
   right-click the character › *Hide*.
 - **Labels**: always *Show character* / *Hide character*.
 - **Clicks**: 1.
@@ -852,17 +860,21 @@ Advanced ▸   mapping, renderer, model files
 
 #### F6. Edit personality
 
-- **Flow**: edit fields inline on the Character tab; changes save
+- **Flow**: edit fields inline on Companion › Personality (name, about,
+  style: helpful ━━●━ playful ━●━━ …, *Persona ▾*); changes save
   automatically (with undo). *Persona ▾* switches or adds personas;
   *Import/Export* under its menu.
 - **Clicks**: 0 to edit, 2 to switch persona.
-- **Today**: Companion window with *Apply edits to draft* and *Save companion
-  settings* as separate steps. SillyTavern/Chub character cards (PNG, JSON or
-  CHARX) add a new persona or update the selected one; drop a card on the
-  window, or use *Import a character card* on the Character tab.
+- **Today**: Companion › Personality shows the active persona and its style
+  mix, and opens the Companion window, with *Apply edits to draft* and *Save
+  companion settings* as separate steps. SillyTavern/Chub character cards
+  (PNG, JSON or CHARX) add a new persona or update the selected one; drop a
+  card on the window, or use *Import a character card* on the Personality page.
 
 #### F7. Change who does lip-sync
 
+- **Entry points**: Companion › Lip-sync; Devices › *Who does what* ›
+  Lip-sync tile; Home's Now line when lip-sync isn't working.
 - **Flow**: P2 with **Voice loudness** as the third card instead of cloud.
   Choosing a machine without Audio2Face offers **Set up Audio2Face on
   GAMING-PC** inline (P5). The mouth follows voice loudness until ready.
@@ -1123,8 +1135,8 @@ option names and in *Details*, never as navigation labels.
 | Setup section pages (Thinking, Its voice, How it listens, Character) | Become Companion tabs (done, with a Memory tab) |
 | Companion card grid | Removed; Companion is the tab set (done) |
 | Audio setup window | Split into Voice › Speakers and Listening › Microphone |
-| Avatar window | Character tab; mapping/renderer under *Advanced* |
-| Companion (persona) window | Character tab › Personality |
+| Avatar window | Character page; mapping/renderer under *Advanced* |
+| Companion (persona) window | Companion › Personality |
 | Voice Library window | Voice tab voice list and *Make a new voice* |
 | F5 voice dialog | Voice tab *Make a new voice* |
 | Voice ID window | Listening › *Teach it my voice* |
