@@ -815,7 +815,15 @@ internal sealed class AvatarController : IAsyncDisposable
             await renderer.DisposeAsync();
             renderer = null;
         }
-        if (worker is not null) await worker.WaitAsync(TimeSpan.FromSeconds(3));
+        if (worker is { } running)
+        {
+            // A worker that already ended (even with an error) is finished; only a still-running one blocks cleanup.
+            try { await running.WaitAsync(TimeSpan.FromSeconds(3)); }
+            catch (Exception error) when (running.IsCompleted)
+            {
+                ErrorLog.Warn("Avatar lip-sync analysis had ended with an error before it was stopped.", error);
+            }
+        }
         worker = null;
         lock (stateGate)
         {

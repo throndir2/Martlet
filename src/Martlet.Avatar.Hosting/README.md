@@ -109,6 +109,13 @@ character or revoke explicit A2F activation; app exit, relevant configuration/
 control changes, session lock (A2F only) and explicit Stop do. A2F activation is
 never restored after restart.
 
+Stopping removes the renderer's temporary WebView2 cache when Windows releases
+its files, retrying in the background; a leftover cache never blocks stopping.
+If the renderer itself cannot be stopped cleanly, **Show/Hide character** retries
+and the reason goes to the desktop log. Exiting (including to install an update)
+never waits on it: the renderer runs in a kill-on-close job object, so Windows
+ends it with Martlet.
+
 ## Draggable desktop character
 
 The character appears in a transparent, borderless, always-on-top desktop

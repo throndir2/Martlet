@@ -1221,19 +1221,20 @@ public partial class MainWindow
 
     /// <summary>A page's Now card: what it uses, then any problem that stops it. <paramref name="id"/> names its status text for
     /// UI Automation ("<c>id</c>" and "<c>id</c>Problem").</summary>
-    private Border PageNowCard(string text, Martlet.Core.Platforms.JobCoverage? problem, string? id = null)
+    private Border PageNowCard(string text, Martlet.Core.Platforms.JobCoverage? problem, string? id = null, string? warning = null)
     {
         var now = new StackPanel();
         now.Children.Add(Heading("Now"));
         var status = new TextBlock { Text = text, FontSize = 15, TextWrapping = TextWrapping.Wrap };
         if (id is not null) AutomationProperties.SetAutomationId(status, id);
         now.Children.Add(status);
-        if (problem is not null)
+        // A job's coverage problem, or another reason (such as a character that did not close cleanly) it is not working.
+        if ((problem is null ? warning : $"Not working now: {problem.Problem} {problem.Effect}") is { } line)
         {
-            var warning = new TextBlock { Text = $"Not working now: {problem.Problem} {problem.Effect}", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
-            warning.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
-            if (id is not null) AutomationProperties.SetAutomationId(warning, id + "Problem");
-            now.Children.Add(warning);
+            var problemText = new TextBlock { Text = line, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
+            problemText.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
+            if (id is not null) AutomationProperties.SetAutomationId(problemText, id + "Problem");
+            now.Children.Add(problemText);
         }
         return Card(now);
     }
@@ -1242,7 +1243,7 @@ public partial class MainWindow
     {
         var showing = avatar.IsShowing;
         page.Children.Add(PageNowCard(CharacterModelName() + (homeAvatar is { } profile ? $" ({profile.Renderer})" : "") +
-            (showing ? ", on your desktop." : ", hidden."), null));
+            (showing ? ", on your desktop." : ", hidden."), null, "SetupCharacterNow", characterCleanupProblem));
 
         page.Children.Add(Card(Heading("Character model"),
             Note("Choose a built-in Live2D character or your own Live2D or VRM model, and tune its size, position and motion.", new Thickness(0, 0, 0, 8)),
