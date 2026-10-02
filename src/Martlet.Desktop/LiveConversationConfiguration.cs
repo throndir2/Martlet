@@ -453,7 +453,8 @@ internal sealed class LiveConversationConfiguration
             $"Now and then it sends ONE screenshot (JPEG, at most {ScreenGlancer.MaximumEdge} px) with the window title, your persona, triggered lorebook entries and recent conversation to " +
             $"{destination}: at most {tuning.LooksPerHour} looks per hour ({chattiness}). " +
             "Most looks end in silence; with a cloud provider each look is a request that may cost money (a paired host has no per-request charge). " +
-            "Martlet's own windows, minimized windows, password managers and private/incognito browser windows are never captured; " +
+            "While a Martlet window is in front, it looks at the window behind it instead. " +
+            "Martlet's own windows are painted out of every picture; minimized windows, password managers and private/incognito browser windows are never captured; " +
             "protected video and windows that block capture read back black and are skipped. Screenshots are never saved, logged or added to memory. " +
             "Locking Windows, Stop, Esc or closing the talk window ends it; the vision button there pauses it.";
     }

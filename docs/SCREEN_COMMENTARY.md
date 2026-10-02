@@ -13,14 +13,19 @@ your setup can't.
    (Quiet, Normal, Chatty), and says exactly what is captured and where it is
    sent.
 2. Click **Turn vision on** (off by default). From then on, opening **Start
-   talking** starts looking; the talk window's **Vision on** button and its
+   talking** starts looking; the talk window's **Watching** button and its
    title show it. It keeps going in the background (while you play) until you
    click that button, Stop or Esc, lock Windows or close the talk window.
    **Turn vision off** in Companion stops it for good.
 3. Every 3 seconds Martlet captures the screen **on this PC** (DXGI Desktop
    Duplication, falling back to GDI; downscaled to at most 1024 px, kept only
    in memory) and compares a 16x9 grey thumbnail with the last one to notice
-   change.
+   change. The **Watching** button's dot blinks on each capture (it twinkles
+   and reads **Looking…** while a look is with the model), and a line under the
+   talk window's status says what it sees, how the last look went (*nothing
+   worth saying*, *said something*), why it is holding off (you're talking,
+   you seem away, the hourly budget is used) and the looks used this hour.
+   Captures are never added to the history; only remarks are.
 4. A **pacer** decides when to take a real look, the way a person would:
    - never while you are talking to Martlet (hands-free speech, typing, a
      reply playing) and not for a while after (12-30 s);
@@ -42,10 +47,13 @@ your setup can't.
    always listening on, an idle listen (nobody speaking) briefly yields to a
    look and re-arms right after. Remarks appear in the talk window's history.
 
-Never captured: Martlet's own windows, minimized windows, password managers and
-private/incognito browser windows (by window title). Protected video reads back
-black and is skipped. Screenshots are never saved, logged, put in local memory
-or support bundles.
+Never captured: minimized windows, password managers and private/incognito
+browser windows (by window title). When a Martlet window is in front (say, you
+clicked the talk window to read it), Martlet looks at the window you were using
+behind it instead. Martlet's own windows are painted grey in every picture (a
+picture that is almost all Martlet is skipped), so the model never reads its own
+conversation. Protected video reads back black and is skipped. Screenshots are
+never saved, logged, put in local memory or support bundles.
 
 ## Cameras, phones and other video sources
 

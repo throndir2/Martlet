@@ -233,8 +233,13 @@ instead of the key, and its name is not returned. Use and Remove change the
 voice list and need `--allow-ui-effects`; Play plays audio and is not for
 automated verification. `f5_voices` reads the same list headlessly.
 
-Status fields include the talk window's `LiveStatus` (its status line) and
+Status fields include the talk window's `LiveStatus` (its status line),
 `LiveMic` (*Listening*, *Listening paused* or *Can't listen* with the reason),
+`LiveVision` (*Watching*, *Looking*, *Vision paused* or *Can't see*, with when
+it last checked the screen; it checks every 3 s), `LiveVisionStatus` (while
+vision is on: what it sees, for example *Watching the window behind Martlet*,
+then the last look's outcome or why it is holding off, and the looks used this
+hour; it never contains window titles)
 and Companion › Lip-sync's `LipSyncNow` and `LipSyncNowProblem` (whether this
 PC's own Audio2Face service answers), plus, while that own service is the
 setting in effect (Martlet's default), `LipSyncOwnTitle` (its title with *in
