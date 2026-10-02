@@ -786,7 +786,9 @@ button only hides it (`ui_snapshot` stops listing *Talk with Martlet*;
 it last checked the screen; it checks every 3 s), `LiveVisionStatus` (while
 vision is on: what it sees, for example *Watching the window behind Martlet*,
 then the last look's outcome or why it is holding off, and the looks used this
-hour; it never contains window titles)
+hour; it never contains window titles), `LiveContext` (*Keeps the last N
+exchanges in mind.*: how many recent exchanges the next reply sees; absent when
+none, and unchanged when a settings change is picked up)
 and Companion › Lip-sync's `LipSyncNow` and `LipSyncNowProblem` (whether this
 PC's own Audio2Face service answers). Lip-sync's places are *This PC* and
 *Another of your computers*; under *This PC*, `LipSyncDockerTitle` (*Audio2Face,

@@ -294,7 +294,7 @@ Docker. See [Recognizing people by voice, and Parakeet](VOICES.md).
 | Visible condition | Meaning and next action |
 | --- | --- |
 | Setup required / unsupported role | Review the displayed exact catalog IDs; store each role key, reselect its destination and save. No automatic fallback or capability request occurs. |
-| Configuration changed | Loaded revision/role/key/output no longer matches this action. An open talk window loads the saved change once Martlet is free and starts a fresh conversation. External profile editing/copying while running is unsupported. |
+| Configuration changed | Loaded revision/role/key/output no longer matches this action. An open talk window loads the saved change once Martlet is free and continues the conversation with its context. External profile editing/copying while running is unsupported. |
 | Credential missing / access denied | Review the signed-in Windows user and selected role reference. Explicit setup retrieval can check local readability only. Do not elevate or disable protection. |
 | STT no speech | No LLM/TTS followed. Review intended input and local microphone test; start a fresh PTT action or type instead. Silence samples are not VAD evidence. |
 | Hands-free never hears me / triggers on noise | Raise or lower **Sensitivity**; watch the level bar while speaking. Choose a longer pause if it cuts you off mid-sentence (talking on before Martlet answers also merges what you say into one message). |
