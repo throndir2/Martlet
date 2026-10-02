@@ -274,6 +274,18 @@ size, its distance from the top of the screen, the camera zoom and where the
 top of the character's head sits relative to the overlay's top edge (it must
 stay in view at every zoom).
 
+The same page's *Speech bubbles and subtitles* card has the checkboxes
+`SetupCharacterSpeechBubbles` (on by default) and `SetupCharacterSubtitles`
+(off by default); snapshots return their states, and `SetupCharacterSpeechDisplay`
+returns whether each is on and whether bubbles show now (character showing) or
+once it is. Ticking either saves `speech-display.json` (the same choices as the
+character window's `SpeechBubbleChoice` and `SubtitleChoice`), so `ui_toggle`
+needs `--allow-ui-effects`. With the character showing,
+`SetupCharacterPreviewBubble` (also `--allow-ui-effects`) sends a sample bubble
+to the overlay for a few seconds; `SetupCharacterSpeechDisplay` then says
+whether the overlay took it. The bubble itself is drawn by the separate
+renderer process, so its text is not in snapshots.
+
 For F5 voices, open `CompanionTab-Voice` (the Voices card shows unless the
 voice comes from a cloud provider). `F5VoicesStatus` reads how many included
 and own voices there are and which is chosen or in use (an included voice's

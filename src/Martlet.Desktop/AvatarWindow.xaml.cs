@@ -34,8 +34,8 @@ public partial class AvatarWindow : ThemedWindow
         this.settings = settings;
         this.operations = operations;
         this.captions = captions;
-        SpeechBubbleChoice.IsChecked = captions?.Preferences.SpeechBubbles == true;
-        SubtitleChoice.IsChecked = captions?.Preferences.Subtitles == true;
+        ShowSpeechDisplay();
+        if (captions is not null) captions.Changed += ShowSpeechDisplay;
         SpeechBubbleChoice.IsEnabled = SubtitleChoice.IsEnabled = captions is not null;
         RendererChoice.ItemsSource = Enum.GetValues<AvatarRenderer>();
         RendererChoice.SelectedItem = AvatarRenderer.Live2D;
@@ -52,9 +52,21 @@ public partial class AvatarWindow : ThemedWindow
     }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e) => await ActionAsync(ReloadAsync);
-    private void SpeechDisplay_Click(object sender, RoutedEventArgs e)
+    private bool showingSpeechDisplay;
+    private void ShowSpeechDisplay()
     {
-        if (captions is null) return;
+        showingSpeechDisplay = true;
+        try
+        {
+            SpeechBubbleChoice.IsChecked = captions?.Preferences.SpeechBubbles == true;
+            SubtitleChoice.IsChecked = captions?.Preferences.Subtitles == true;
+        }
+        finally { showingSpeechDisplay = false; }
+    }
+    // Checked/Unchecked rather than Click, so UI Automation and screen-reader toggles save too.
+    private void SpeechDisplay_Changed(object sender, RoutedEventArgs e)
+    {
+        if (captions is null || showingSpeechDisplay) return;
         var saved = captions.Update(new(SpeechBubbleChoice.IsChecked == true, SubtitleChoice.IsChecked == true));
         SpeechDisplayStatus.Text = saved
             ? "Saved. Changes apply from Martlet's next sentence."
@@ -63,6 +75,7 @@ public partial class AvatarWindow : ThemedWindow
     private async void Reload_Click(object sender, RoutedEventArgs e) => await ActionAsync(ReloadAsync);
     private void Window_Closed(object? sender, EventArgs e)
     {
+        if (captions is not null) captions.Changed -= ShowSpeechDisplay;
         timer.Stop();
         if (busy && !controller.IsActive) controller.Revoke();
         lifetime.Cancel();

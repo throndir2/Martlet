@@ -826,7 +826,7 @@ The Character page:
 Now: Hiyori · showing                                          [ Hide character ]
 
 Character   [Hiyori (built-in)] [My VRM]  [ + Import ]
-On screen    Subtitles [On]   [ Reset position ]  [ Reset size ]
+On screen    Speech bubbles [On]  Subtitles [Off]  [ Reset position ]  [ Reset size ]
 Advanced ▸   mapping, renderer, model files
 ```
 
