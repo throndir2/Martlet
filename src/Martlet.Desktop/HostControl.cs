@@ -192,9 +192,10 @@ internal sealed class HostPairings(string dataDirectory, AvatarProfileStore prof
     }
 
     /// <summary>Saves a new pairing. Pairing hands the host no job: it stands by until you hand it one (handing it lip-sync
-    /// checks it runs Audio2Face, or installs it in the same step). Re-pairing a host keeps its role.</summary>
+    /// checks it runs Audio2Face, or installs it in the same step). Re-pairing a host keeps its role. A pairing the owner made
+    /// here (<paramref name="adopt"/>) is shared with the Martlet network on its next sync, even after a removal.</summary>
     internal async Task<(PairedHost Host, bool LipSync)> AddAsync(AvatarRemoteHost pairing, HostSetupMethod method, string? sshTarget,
-        CancellationToken token, string? sshHostKey = null)
+        CancellationToken token, string? sshHostKey = null, bool adopt = true)
     {
         var (profile, revision) = await LoadProfileAsync(token);
         var hosts = HostRegistry.Load(dataDirectory, profile.RemoteHost, HostSetupCommands.ThisPcAddress());
@@ -217,6 +218,7 @@ internal sealed class HostPairings(string dataDirectory, AvatarProfileStore prof
         var store = new WindowsCredentialStore();
         foreach (var old in new[] { previous?.Pairing, profile.RemoteHost?.HostId == pairing.HostId ? profile.RemoteHost : null })
             if (old is not null && old.CredentialId != pairing.CredentialId) store.DeleteAvatarHostSecret(old.HostId, old.CredentialId);
+        if (adopt) NetworkIdentity.Adopt(dataDirectory, pairing.HostId);
         return (host, lipSync);
     }
 

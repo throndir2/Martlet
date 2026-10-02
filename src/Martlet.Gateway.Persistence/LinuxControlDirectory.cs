@@ -25,6 +25,9 @@ internal sealed class LinuxControlDirectory : IDisposable
     /// <summary>The gateway's log: its own activity and, as the owner's log host, the lines paired desktops send.</summary>
     internal const string Logs = "logs.json", LogsStaging = "logs.staging";
     internal const int MaximumLogsBytes = 2_097_152;
+    /// <summary>The Martlet network roster this host accepted (not part of the approved configuration).</summary>
+    internal const string Network = "network.json", NetworkStaging = "network.staging";
+    internal const int MaximumNetworkBytes = 65_536;
     internal uint UserId => fs.UserId;
     internal uint GroupId => fs.GroupId;
 
@@ -84,7 +87,7 @@ internal sealed class LinuxControlDirectory : IDisposable
 
     internal byte[]? Read(string name, int maximum)
     {
-        if (name is not (Config or Approval or Machine or Cluster or Voices or Logs or Commands or AgentToken)) throw Error(GatewayPersistenceFailure.InvalidPath);
+        if (name is not (Config or Approval or Machine or Cluster or Voices or Logs or Network or Commands or AgentToken)) throw Error(GatewayPersistenceFailure.InvalidPath);
         Validate();
         var before = fs.StatAt(DirectoryFd, name);
         if (before is null) return null;
@@ -169,6 +172,19 @@ internal sealed class LinuxControlDirectory : IDisposable
             fs.Unlink(DirectoryFd, LogsStaging);
         }
         Replace(Logs, LogsStaging, bytes, MaximumLogsBytes);
+    }
+
+    /// <summary>Atomically replaces network.json (0600, service owner).</summary>
+    internal void WriteNetwork(byte[] bytes) => ReplaceRecovering(Network, NetworkStaging, bytes, MaximumNetworkBytes);
+
+    /// <summary>Removes network.json (martlet-host network-reset), so the host is in no Martlet network.</summary>
+    internal bool RemoveNetwork()
+    {
+        if (Read(Network, MaximumNetworkBytes) is null) return false;
+        Validate();
+        fs.Unlink(DirectoryFd, Network);
+        fs.Flush(DirectoryFd);
+        return true;
     }
 
     private void Replace(string name, string staging, byte[] bytes, int maximum)

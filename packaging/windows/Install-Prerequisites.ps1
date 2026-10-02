@@ -441,8 +441,30 @@ if ((& bcdedit.exe /enum '{current}' 2>$null | Out-String) -match 'hypervisorlau
     $restart = $true
 }
 $env:WSL_UTF8 = '1'
-Write-Host 'Installing or updating WSL from Microsoft (wsl --update)...'
-& wsl.exe --update
+function Get-WslVersion {
+    $text = (& wsl.exe --version 2>$null | Out-String) -replace "`0", ''
+    if ($LASTEXITCODE -eq 0 -and $text -match '(\d+\.\d+\.\d+)') { return [version]$Matches[1] }
+}
+# Runs wsl.exe without dumping its help text (an option this wsl.exe lacks); true when it says Windows must restart.
+function Invoke-Wsl([string[]]$Arguments) {
+    $text = ((& wsl.exe @Arguments 2>&1 | ForEach-Object { "$_" } | Out-String) -replace "`0", '').Trim()
+    $code = $LASTEXITCODE
+    if ($text -match '(?m)^\s*Usage:') { Write-Host "This wsl.exe doesn't support wsl $($Arguments -join ' ')." } elseif ($text) { Write-Host $text }
+    return ($code -in 3010, 1641, -2147021886 -or $text -match 'until the system is rebooted')
+}
+$minimum = [version]'2.1.5'
+$wsl = Get-WslVersion
+if (-not $wsl) {
+    Write-Host 'Installing WSL from Microsoft (wsl --install --no-distribution)...'
+    if (Invoke-Wsl @('--install', '--no-distribution')) { $restart = $true }
+    $wsl = Get-WslVersion
+}
+if (-not $wsl -or $wsl -lt $minimum) {
+    Write-Host 'Updating WSL from Microsoft (wsl --update)...'
+    if (Invoke-Wsl @('--update')) { $restart = $true }
+    $wsl = Get-WslVersion
+}
+if ($wsl) { Write-Host "WSL $wsl is installed." }
 if ($restart) { Write-Host 'Restart Windows to finish turning on virtualization.'; exit 3010 }
 '@
     $exit = Invoke-Elevated $script 'turn on Virtual Machine Platform and Windows Subsystem for Linux, and install or update WSL 2'

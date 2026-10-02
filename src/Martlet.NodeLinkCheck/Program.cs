@@ -13,6 +13,13 @@ using Martlet.Gateway;
 // signed requests, the command mailbox and its storage), the desktop's real client and its real agent loop with a fixture
 // runner. Two fixture devices pair: a requester and the host's agent. Nothing leaves loopback; no real credentials, Docker or
 // Martlet installs are touched. Prints one JSON object {passed, steps} and exits 0 only when every step passed.
+// With "network" it rehearses the Martlet network instead (NetworkRehearsal) and prints its report.
+if (args is ["network"])
+{
+    var (networkOk, networkReport) = await Martlet.NodeLinkCheck.NetworkRehearsal.RunAsync(CancellationToken.None);
+    Console.WriteLine(JsonSerializer.Serialize(networkReport));
+    return networkOk ? 0 : 1;
+}
 var steps = new List<object>();
 var passed = true;
 void Step(string name, bool ok, string detail)

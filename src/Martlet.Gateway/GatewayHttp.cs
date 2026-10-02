@@ -27,7 +27,7 @@ internal sealed partial class GatewayHttpApplication
     internal GatewayHttpApplication(
         GatewayHostIdentity identity,
         IGatewayPairingExchange pairing,
-        IGatewayRequestCredentials credentials,
+        GatewayCredentialStore credentials,
         IGatewayAdmissionStatus admission,
         GatewayWorkerRegistry workers,
         GatewayInferenceRouteRegistry inference,
@@ -45,6 +45,7 @@ internal sealed partial class GatewayHttpApplication
         this.crypto = crypto;
         this.audit = audit;
         Logs = new(identity.HostId, clock);
+        Network = new(identity, credentials, clock, (level, message) => Logs.Own(level, message));
     }
 
     internal async Task InvokeAsync(HttpContext context)
@@ -89,6 +90,19 @@ internal sealed partial class GatewayHttpApplication
                 var result = pairing.Exchange(proof, context.RequestAborted);
                 LogPaired(result.Credential);
                 await WritePairingAsync(context, result.Credential, result.HostProof).ConfigureAwait(false);
+                return;
+            }
+            if (context.Request.Method == HttpMethods.Post && rawTarget == Martlet.Core.Network.NetworkPairing.Path)
+            {
+                var proof = await ReadPairingAsync<GatewayMemberPairingProof>(context.Request, context.RequestAborted).ConfigureAwait(false);
+                var credential = Network.PairMember(proof, context.RequestAborted);
+                LogMemberPaired(credential);
+                await WritePairingAsync(context, credential, null).ConfigureAwait(false);
+                return;
+            }
+            if (IsNetworkTarget(rawTarget!))
+            {
+                await InvokeNetworkAsync(context, rawTarget!).ConfigureAwait(false);
                 return;
             }
 

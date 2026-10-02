@@ -89,7 +89,10 @@ and shows the result in the run window (`Windows: ...`). When something is off:
 
 - **Features or WSL**: one administrator prompt turns on both features (with
   their parent features), sets the Windows hypervisor to start with Windows when
-  its boot entry turned it off, and installs or updates WSL from Microsoft.
+  its boot entry turned it off, and installs WSL from Microsoft
+  (`wsl --install --no-distribution`, falling back to `wsl --update`) or
+  updates it. When WSL itself says Windows must restart to finish installing,
+  Martlet treats it like any other restart below.
 - **Restart**: when Windows must restart, Martlet asks first (save your work in
   other apps), then restarts. It leaves `continue-setup.json` in its data folder
   and a one-time sign-in entry (`MartletContinueSetup` under the current user's
@@ -103,9 +106,14 @@ and shows the result in the run window (`Windows: ...`). When something is off:
   and exit; the setup then continues after you sign in.
 
 The host dashboard's Docker Desktop step says the same thing (*Turn on Windows
-features* or *Turn on virtualization*). If Windows is ready and Docker Desktop
-still reports that it is unable to start, use Docker Desktop's *Troubleshoot*
-page (*Restart*, or *Reset to factory defaults*) and try again.
+features* or *Turn on virtualization*). A Docker Desktop that was already open
+while Martlet changed Windows doesn't notice the new WSL by itself, so Martlet
+restarts it. Martlet also restarts it once when it is open but keeps reporting
+its engine `stopped` (its log says *backend is not running*), for example
+because it started before WSL was installed. If Windows is ready and Docker
+Desktop still reports that it is unable to start, or never gets past
+`stopped`, restart Windows, or use Docker Desktop's *Troubleshoot* page
+(*Restart*, or *Reset to factory defaults*), and try again.
 
 ## A local model doesn't answer (Ollama on this PC)
 

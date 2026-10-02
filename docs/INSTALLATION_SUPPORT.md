@@ -153,7 +153,9 @@ The proposed guided flow is:
    remote host, show "Run Host Setup on Kitchen Ubuntu PC" with the correct OS
    bundle, a non-secret role plan and clear return/pairing instructions. No API
    keys, admin passwords or reusable tokens belong in that plan. Initial trust
-   is established out of band; discovery is opt-in, never a subnet-wide scan.
+   is established out of band; discovery is opt-in, never a subnet-wide scan
+   (a broadcast query to Martlet's own port that only the owner's other
+   computers answer, see [finding your other computers](ARCHITECTURE.md#finding-your-other-computers)).
 5. **Approve local changes and pair.** The host shows its own plan and obtains
    scoped local approvals. Resume after reboot without replaying approval or
    starting capture. Present the host identity/fingerprint and short-lived

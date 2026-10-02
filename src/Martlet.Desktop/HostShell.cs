@@ -545,8 +545,8 @@ internal sealed partial class HostShell(string dataDirectory, IHostShellPrompts 
         return $"ecdsa-sha2-nistp256 {Convert.ToBase64String(blob.ToArray())} martlet@{(machine.Length == 0 ? "desktop" : machine)}";
     }
 
-    // Created with an ACL that grants this Windows user alone, before any key bytes are written.
-    private static void WritePrivate(string path, string pem)
+    // Created with an ACL that grants this Windows user alone, before any key bytes are written (also the network key).
+    internal static void WritePrivate(string path, string pem)
     {
         var security = new FileSecurity();
         security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);

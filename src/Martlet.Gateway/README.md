@@ -209,8 +209,11 @@ There is no accept-any-certificate mode and no global CA installation.
 ## Explicit pairing and device lifecycle
 
 Only trusted local host code can call `GatewayPairingService.OpenWindow`.
-There is no network route that opens or approves pairing. The local caller
-freezes one device ID, display name and least-privilege role set
+There is no network route that opens or approves an owner pairing window. The
+one exception to "pairing starts on the host" is the owner's
+[Martlet network](#martlet-network-member-pairing): a desktop the host's
+roster lists as an active member may pair by itself with its network key. The
+local caller freezes one device ID, display name and least-privilege role set
 (`voice`, `perception` or `memory`). The resulting out-of-band card contains:
 
 | Field | Bound |
@@ -258,6 +261,49 @@ A key swapped in on the network changes `K`, so the real host refuses the proof
 and the impostor cannot answer without the code; one observed attempt leaves
 only an offline search of 2^40 codes at 100,000 PBKDF2 iterations each against
 a five-minute window.
+
+### Martlet network member pairing
+
+`GatewayNetworkStore` (`GatewayNetwork.cs`) keeps the owner's
+[Martlet network](../../docs/NETWORK.md) roster this host accepted
+(`Martlet.Core.Network.NetworkRoster`, saved through
+`GatewayServer.AttachNetworkStorage`):
+
+- **Binding.** A host in no network is bound by the first paired device that
+  posts a roster in which that device is an active member desktop and this host
+  is listed with its own SPKI fingerprint. The owner already approved that
+  device's pairing locally, so its network is the owner's. Afterwards only
+  rosters of the same network are merged; another network is `network.other`
+  until `martlet-host network-reset` (or until the host is removed from its
+  network).
+- **Merging.** Entries are ECDSA P-256 signatures by member desktops. The host
+  accepts an incoming entry only when its signer is an active desktop in the
+  roster it already accepted (removals first, so a desktop removed in the same
+  copy vouches for nothing else). Per computer the newest entry wins; a removed
+  desktop key never becomes active again.
+- **Revocation.** When a desktop is removed (or its key changes) the host
+  revokes every credential of that device ID. When this host is removed it
+  revokes every network desktop and keeps the roster, so desktops learn of the
+  removal; a member adding it again binds it again.
+- **Member pairing.** `POST /martlet/v1/pair/member` carries the network ID,
+  device ID, display name, a millisecond timestamp (within two minutes), a
+  16-byte nonce (refused when seen again) and a signature over
+  `NetworkPairing.ProofBytes` (this host's ID and SPKI, network, device, name,
+  timestamp, nonce) by the device's roster key. The desktop pins this host's
+  SPKI from the roster. A match revokes that device's older credentials here
+  and issues one `voice` credential in the usual pairing response (no
+  `host_proof`). At most 30 attempts a minute.
+- **Joining.** A paired device that is not a member posts its display name and
+  public key to `/martlet/v1/network/join`; the host keeps up to 8 requests for
+  an hour (one per device ID, which comes from the caller's credential) with a
+  six-digit check number. Member desktops see them in `GET /martlet/v1/network`
+  and approve by signing the device into the roster, or turn one down with
+  `/martlet/v1/network/deny`.
+
+Failures: `network.unbound` (409), `network.other` (409), `network.denied`
+(403: not an active member, or a removed key asking to rejoin) and
+`network.invalid` (400: unsigned or malformed roster, or a binding roster that
+does not list this host). The in-process rehearsal is MCP `network_selftest`.
 
 Pairing returns a random 16-byte credential ID and one 32-byte device secret.
 The clear secret is returned once and is excluded from all registration,
@@ -326,6 +372,11 @@ the same request returns `auth.replay`.
 | `GET /health/live` | None | Exact `{"status":"live"}`; no host ID, version, worker or system data |
 | `POST /martlet/v1/pair` | Locally opened one-use proof | One scoped credential; 8 KiB strict JSON with required fields, duplicate/unknown rejection |
 | `POST /martlet/v1/pair/code` | Proof of a locally opened short code ([short typed codes](#short-typed-codes)) | One scoped credential plus `host_proof`; same 8 KiB strict JSON rules |
+| `POST /martlet/v1/pair/member` | Signature by an active member desktop's network key ([member pairing](#martlet-network-member-pairing)) | One `voice` credential (older credentials of that device revoked); same 8 KiB strict JSON rules |
+| `GET /martlet/v1/network` | Signed scoped device request, any role | Host ID, `state` (`unbound`, `bound`, `removed`), the accepted `roster` (or null) and, for an active member desktop, pending `joins` (`device_id`, `display_name`, `key`, `check_number`, `requested_at`). Nonsecret |
+| `POST /martlet/v1/network` | Signed device body, any role | Strict schema-1 roster JSON, at most 40 KiB, accepted entry by entry (binding an unbound host); returns the same document as GET and saves `network.json` when a storage is attached |
+| `POST /martlet/v1/network/join` | Signed device body, any role | `display_name` and `key` (ECDSA P-256 SPKI); returns `state` (`pending` or `member`), `network_id` and `check_number` |
+| `POST /martlet/v1/network/deny` | Signed body of an active member desktop | `device_id`; returns `denied` |
 | `GET /martlet/v1/version` | Signed scoped device request | Protocol `2.0`, gateway `0.2.0`, host ID, authorized role and explicit `credential_lifetime` (`paired` or retiring old key with deadline) |
 | `GET /martlet/v1/capabilities` | Signed scoped device request | Registry `martlet.gateway.inference-routes` `1.0`, at most 8 fixed routes and 16 status workers, filtered by role |
 | `GET /martlet/v1/status` | Signed scoped device request | Two-second cooperative cancellation for status reads for only that role |
