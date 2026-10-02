@@ -62,12 +62,18 @@ comment; it needs a Thinking model that can see images. See
 6. The history shows your messages, what you said (the transcript) and
    Martlet's replies as they stream in. A refusal is shown as such and never
    spoken as ordinary speech; a stopped or failed reply keeps its text with a
-   *Cut short* note.
+   *Cut short* note. Replies are kept short by asking, not by cutting: every
+   reply to what you type or say carries a fixed instruction to answer in about
+   one to three sentences (longer only when you ask for detail) and to finish
+   its last sentence. The max reply length (Companion › Replies, 1,024 tokens
+   by default) is only a ceiling against a runaway answer. When a spoken reply
+   outgrows the speech budget below, Martlet stops saying it aloud but still
+   shows all of it, with an *Only the start was said aloud* note.
 
 STT receives only the selected microphone's completed bounded utterance. LLM
 receives the typed text or that final transcript plus the fixed active persona
-revision and one weighted response style selected only after participation
-accepts the turn. Persona/style and user input share the existing byte/token
+revision, one weighted response style selected only after participation
+accepts the turn, and the fixed reply-length instruction. Persona/style and user input share the existing byte/token
 reservation; an over-budget combination is rejected without truncation or a
 provider call. Valid legacy v1/v2 profiles upload no implicit persona/style
 instruction until settings v3 is explicitly
@@ -104,9 +110,9 @@ game/call audio. Capturing other people requires their permission.
 | Overall permission | Original monotonic and absolute expiry within 150 seconds, including scheduling/capture/authorization; never restored or extended |
 | Capture | At most 25 seconds / 800,000 bytes, canonical mono 16 kHz PCM16; original capture permission at most 30 seconds including cleanup and transfer |
 | STT | At most one request, 800,044 WAV bytes, 30-second request, 4096 transcript characters |
-| LLM | At most one request, 4096 user characters; current user + persona + style + bounded explicit history at most 16,384 UTF-8 bytes and 16,640 input-token reservation, 256 requested output tokens by default (16-2,048 via Companion > Replies, which also sets optional sampling: temperature, top P/K, min P, repetition penalties and a paired host's context size, each sent only to routes whose API accepts it), 16,384 response characters, 45-second request |
+| LLM | At most one request, 4096 user characters; current user + persona + style + reply-length instruction + bounded explicit history at most 16,384 UTF-8 bytes and 16,640 input-token reservation, 1,024 requested output tokens by default as a ceiling (16-2,048 via Companion > Replies, which also sets optional sampling: temperature, top P/K, min P, repetition penalties and a paired host's context size, each sent only to routes whose API accepts it), 16,384 response characters, 45-second request |
 | Conversation runtime | At most 90 seconds; existing bounded two-segment pending queue, one active TTS/playback segment |
-| TTS | At most eight requests, 1536 input UTF-8 bytes each / 12,288 total; 10 seconds / 240,000 samples reserved per request, 80 seconds / 1,920,000 samples total; at most 20 seconds per request |
+| TTS | At most eight requests, 1536 input UTF-8 bytes each / 12,288 total; 10 seconds / 240,000 samples reserved per request, 80 seconds / 1,920,000 samples total; at most 20 seconds per request. Reaching this budget ends speech for the reply, not the reply's text |
 | Content and timeline | Current bounded input/transcript/answer/refusal in memory; 32 metadata timeline entries, existing bounded engine event rings; no audio/transcript files or ordinary content logs |
 
 These are admission and request limits, **not a measured latency promise or a
@@ -122,8 +128,8 @@ Each message or utterance is its own bounded action. Internal TTS callbacks do n
 prompt for every sentence: they derive one-use permissions and exact
 `OperationBudget` reservations only for actual segments inside this accepted
 envelope. The runtime enforces its own original stage/turn clocks as well.
-Limits can end a response before all possible segments; unused reservation
-is not silently recycled.
+Speech limits can end what is said aloud before all possible segments (the
+rest of the reply is still shown); unused reservation is not silently recycled.
 
 ## Stop, ownership and privacy
 

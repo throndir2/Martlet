@@ -199,7 +199,7 @@ public sealed class IntegrationTests
     [InlineData("segments")]
     [InlineData("bytes")]
     [InlineData("samples")]
-    public async Task Aggregate_reservations_stop_additional_paid_segments(string cap)
+    public async Task Aggregate_reservations_stop_additional_paid_segments_but_finish_the_reply(string cap)
     {
         await using var h = new Harness();
         h.Answer("One. Two. Three.");
@@ -211,8 +211,9 @@ public sealed class IntegrationTests
         };
         var turn = h.Start(Harness.Request(limits: limits));
         var result = await Harness.Finish(turn);
-        Assert.Equal(ConversationState.Partial, result.State);
-        Assert.Equal(ConversationFailure.LimitExceeded, result.Failure);
+        Assert.Equal(ConversationState.Completed, result.State);
+        Assert.Equal(ConversationFailure.None, result.Failure);
+        Assert.True(result.SpeechLimitReached);
         Assert.Equal(1, h.Tts.Calls);
         Assert.Single(h.Permissions.SpeechActions);
         Assert.Equal("One. Two. Three.", turn.Content.Text);

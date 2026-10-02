@@ -255,7 +255,8 @@ names the problem.
 **Remembering.** After a reply completes, the exchange is queued (at most four
 pending) and handled in the background, one at a time, on a separate text-only
 runtime so it never delays the next turn. Desktop recalls up to ten related
-facts, then sends one extra request (persona-free, <=256 output tokens, same
+facts, then sends one extra request (persona-free, at most the max reply length
+in output tokens, same
 Thinking route and credential binding, its own one-request authorization) with
 the latest exchange, the previous exchange as context and those numbered facts.
 The model answers in a strict line format: `REMEMBER: <fact>`,
