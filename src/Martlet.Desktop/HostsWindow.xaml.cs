@@ -460,7 +460,7 @@ public partial class HostsWindow : ThemedWindow
         paired = host;
         ShowPaired((await pairings.LoadAsync(lifetime.Token)).Hosts.Count);
         StatusText.Text = $"Paired with {host.HostId}. " + (lipSync
-            ? "It handles lip-sync when it runs Audio2Face."
+            ? "It keeps handling lip-sync."
             : "It stands by; hand it jobs under Who does what on the Devices map.");
         return host;
     }

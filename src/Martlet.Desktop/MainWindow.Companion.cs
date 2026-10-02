@@ -1057,12 +1057,14 @@ public partial class MainWindow
             (JobPlace.Loudness, Label(JobPlace.Loudness, "Voice loudness"),
                 "No Audio2Face: the mouth opens and closes with the voice's loudness. Works with any character on any PC, with nothing to set up.")));
 
+        var ownerMissing = owner is not null && HostServes(owner, ClusterJobs.LipSync, HostRoles.Get(HostRoles.Audio2Face).RouteId) == false;
         page.Children.Add(place switch
         {
             JobPlace.ThisPc => LocalLipSyncCard(thisPc, handler, owner, fits),
             JobPlace.Computer => ComputersCard(ClusterJobs.LipSync, "Audio2Face", HostRoles.Audio2Face, owner,
-                $"Does the lip-sync now (Audio2Face{(hostChecks.GetValueOrDefault(owner ?? "")?.Offers?.GetValueOrDefault(HostRoles.Audio2Face) is { } model ? " " + model : "")}).",
-                null, AssignLipSyncAsync,
+                ownerMissing ? "Has the lip-sync, but Audio2Face isn't installed there yet, so the mouth follows the voice's loudness."
+                    : $"Does the lip-sync now (Audio2Face{(hostChecks.GetValueOrDefault(owner ?? "")?.Offers?.GetValueOrDefault(HostRoles.Audio2Face) is { } model ? " " + model : "")}).",
+                ownerMissing ? "Install Audio2Face" : null, AssignLipSyncAsync,
                 "Only Martlet's generated voice then goes to that computer, over its pinned TLS gateway; no microphone audio, keys or files. " +
                 "Audio2Face there needs an NVIDIA graphics card with 4 GB or more and a free NVIDIA NGC key. Until it is ready, and whenever it " +
                 "doesn't answer, the mouth follows the voice's loudness.", thisPc),
@@ -1078,10 +1080,12 @@ public partial class MainWindow
         var gpu = machine.BestGpu;
         var dockerInUse = handler == LipSyncHandler.Host && thisPc is not null && owner == thisPc.HostId;
         var ownInUse = handler == LipSyncHandler.ThisPc;
+        // Lip-sync can be handed to this PC's host service before Audio2Face is installed there (or after it was removed).
+        var notInstalled = dockerInUse && HostServes(thisPc!.HostId, ClusterJobs.LipSync, HostRoles.Get(HostRoles.Audio2Face).RouteId) == false;
 
         var docker = new List<UIElement>
         {
-            OptionTitle("Audio2Face, with Docker", dockerInUse ? "in use" : fits ? "recommended for this PC" : null),
+            OptionTitle("Audio2Face, with Docker", notInstalled ? "chosen, not installed yet" : dockerInUse ? "in use" : fits ? "recommended for this PC" : null),
             Note("NVIDIA Audio2Face-3D moves the mouth and face in time with Martlet's generated voice. It runs in Martlet's host service " +
                 "on this PC, inside Docker Desktop, and needs a free NVIDIA NGC API key, which you enter when it installs. Until it is " +
                 "ready, the mouth follows the voice's loudness.", new Thickness(0, 2, 0, 6)),
@@ -1102,13 +1106,16 @@ public partial class MainWindow
         else
         {
             var model = hostChecks.GetValueOrDefault(thisPc.HostId)?.Offers?.GetValueOrDefault(HostRoles.Audio2Face);
-            docker.Add(Note(dockerInUse ? $"In use: Audio2Face in this PC's host service ({thisPc.HostId}){(model is null ? "" : $", model {model}")}."
+            docker.Add(Note(notInstalled
+                    ? $"Lip-sync is handed to this PC's host service ({thisPc.HostId}), but Audio2Face isn't installed in it yet, so the " +
+                      "mouth follows the voice's loudness. Install it to finish; Martlet asks for your NVIDIA NGC API key and switches over by itself."
+                : dockerInUse ? $"In use: Audio2Face in this PC's host service ({thisPc.HostId}){(model is null ? "" : $", model {model}")}."
                 : model is not null ? $"This PC's host service runs Audio2Face ({model})."
                 : $"This PC's host service ({thisPc.HostId}) is set up. If it doesn't run Audio2Face yet, Martlet installs it and switches over by itself.",
                 new Thickness(0, 0, 0, 8)));
             docker.Add(Row(
-                PageButton(dockerInUse ? "Set up Audio2Face again" : "Use Audio2Face on this PC",
-                    () => AssignLipSyncAsync("host:" + thisPc.HostId).Forget(), primary: fits && !dockerInUse, id: "SetupLipSyncUseLocal"),
+                PageButton(notInstalled ? "Install Audio2Face" : dockerInUse ? "Set up Audio2Face again" : "Use Audio2Face on this PC",
+                    () => AssignLipSyncAsync("host:" + thisPc.HostId).Forget(), primary: notInstalled || fits && !dockerInUse, id: "SetupLipSyncUseLocal"),
                 PageButton("Check it", () => RunNodeAction(NodeAction.CheckHost, thisPc.HostId), id: "SetupLipSyncCheckLocal")));
         }
 
