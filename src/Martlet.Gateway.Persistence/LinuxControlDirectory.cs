@@ -16,6 +16,12 @@ internal sealed class LinuxControlDirectory : IDisposable
     /// <summary>The shared voice list (voiceprints and names) the gateway keeps for paired desktops.</summary>
     internal const string Voices = "voices.json", VoicesStaging = "voices.staging";
     internal const int MaximumVoicesBytes = 1_048_576;
+    /// <summary>Commands paired computers sent through this host (never their secrets).</summary>
+    internal const string Commands = "commands.json", CommandsStaging = "commands.staging";
+    internal const int MaximumCommandsBytes = 1_048_576;
+    /// <summary>The token the gateway writes at each start; only the host computer itself can read it, so the Martlet app
+    /// that presents it runs there and may take this host's commands.</summary>
+    internal const string AgentToken = "agent.token", AgentTokenStaging = "agent.staging";
     /// <summary>The gateway's log: its own activity and, as the owner's log host, the lines paired desktops send.</summary>
     internal const string Logs = "logs.json", LogsStaging = "logs.staging";
     internal const int MaximumLogsBytes = 2_097_152;
@@ -78,7 +84,7 @@ internal sealed class LinuxControlDirectory : IDisposable
 
     internal byte[]? Read(string name, int maximum)
     {
-        if (name is not (Config or Approval or Machine or Cluster or Voices or Logs)) throw Error(GatewayPersistenceFailure.InvalidPath);
+        if (name is not (Config or Approval or Machine or Cluster or Voices or Logs or Commands or AgentToken)) throw Error(GatewayPersistenceFailure.InvalidPath);
         Validate();
         var before = fs.StatAt(DirectoryFd, name);
         if (before is null) return null;
@@ -132,6 +138,24 @@ internal sealed class LinuxControlDirectory : IDisposable
             fs.Unlink(DirectoryFd, VoicesStaging);
         }
         Replace(Voices, VoicesStaging, bytes, MaximumVoicesBytes);
+    }
+
+    /// <summary>Atomically replaces commands.json (0600, service owner).</summary>
+    internal void WriteCommands(byte[] bytes) => ReplaceRecovering(Commands, CommandsStaging, bytes, MaximumCommandsBytes);
+
+    /// <summary>Atomically replaces agent.token (0600, service owner).</summary>
+    internal void WriteAgentToken(byte[] bytes) => ReplaceRecovering(AgentToken, AgentTokenStaging, bytes, 128);
+
+    private void ReplaceRecovering(string name, string staging, byte[] bytes, int maximum)
+    {
+        if (bytes.Length < 1 || bytes.Length > maximum) throw Error(GatewayPersistenceFailure.InvalidState);
+        Validate();
+        if (fs.StatAt(DirectoryFd, staging) is { } stale)
+        {
+            LinuxOwnedDirectory.CheckFile(fs, stale, chain[^1].Identity);
+            fs.Unlink(DirectoryFd, staging);
+        }
+        Replace(name, staging, bytes, maximum);
     }
 
     /// <summary>Atomically replaces logs.json (0600, service owner). A staging file left by an interrupted write is removed first.</summary>

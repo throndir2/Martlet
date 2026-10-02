@@ -258,7 +258,7 @@ public sealed class AvatarIntegrationTests
         };
         await controller.ShowAsync(scope.Profile($"http://127.0.0.1:{port}/") with { RemoteHost = remote }, default);
         Assert.Same(remote, opened);
-        Assert.Contains("Martlet host 192.168.1.20:9443", controller.Status, StringComparison.Ordinal);
+        Assert.Contains("host 192.168.1.20:9443", controller.Status, StringComparison.Ordinal);
         var device = new ControlledDevice { AutoConsume = false };
         await using var harness = new Harness(device, generatedSpeech: controller.Observer);
         harness.Answer("Actual generated PCM test.");
@@ -287,7 +287,7 @@ public sealed class AvatarIntegrationTests
         var renderer = new Renderer { Parameters = [new("aa", 0, 1, 0, ["Mouth"])] };
         await using var controller = new AvatarController(createRenderer: () => renderer, allowControlledClock: true);
         await controller.ShowAsync(scope.Profile($"http://127.0.0.1:{port}/"), default);
-        Assert.Contains("Audio2Face isn't running on this PC", controller.Status, StringComparison.Ordinal);
+        Assert.Contains("Audio2Face isn't running", controller.Status, StringComparison.Ordinal);
         var device = new ControlledDevice { AutoConsume = false };
         await using var harness = new Harness(device, generatedSpeech: controller.Observer);
         harness.Answer("Actual generated PCM test.");

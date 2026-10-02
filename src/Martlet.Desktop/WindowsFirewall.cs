@@ -22,7 +22,7 @@ internal static class WindowsFirewall
 
     internal static string ProbeScript(string address)
     {
-        if (!HostSetupCommands.IsPrivate(address)) throw new InvalidOperationException("Enter this PC's private LAN IPv4 address.");
+        if (!HostSetupCommands.IsPrivate(address)) throw new InvalidOperationException("Enter this PC's private network address.");
         return "$ErrorActionPreference='SilentlyContinue';$ProgressPreference='SilentlyContinue';" +
             $"$r=[bool](Get-NetFirewallRule -Name '{RuleName}');" +
             $"$p=Get-NetIPAddress -IPAddress '{address}' | Get-NetConnectionProfile | Select-Object -First 1;" +
@@ -50,15 +50,15 @@ internal static class WindowsFirewall
         if (gateway)
         {
             script.Append($"Remove-NetFirewallRule -Name '{RuleName}' -ErrorAction SilentlyContinue;");
-            script.Append($"New-NetFirewallRule -Name '{RuleName}' -DisplayName 'Martlet host gateway (TCP {Port})' ");
-            script.Append("-Description 'Lets Martlet desktops on your private network reach the Martlet host on this PC. Added by Martlet hosts; delete it to close the port.' ");
+            script.Append($"New-NetFirewallRule -Name '{RuleName}' -DisplayName 'Martlet host' ");
+            script.Append("-Description 'Lets Martlet desktops on your private network reach this PC as a host. Added by Martlet.' ");
             script.Append($"-Direction Inbound -Action Allow -Protocol TCP -LocalPort {Port} -Profile Private,Domain -RemoteAddress LocalSubnet | Out-Null;");
         }
         foreach (var (name, protocol) in new[] { (NearbyTcpRule, "TCP"), (NearbyUdpRule, "UDP") })
         {
             script.Append($"Remove-NetFirewallRule -Name '{name}' -ErrorAction SilentlyContinue;");
-            script.Append($"New-NetFirewallRule -Name '{name}' -DisplayName 'Martlet: find this PC ({protocol} {Nearby.Port})' ");
-            script.Append("-Description 'Lets Martlet on your other computers find this PC and ask to use its hosts (each request needs your Allow here). Added by Martlet; delete it to stop.' ");
+            script.Append($"New-NetFirewallRule -Name '{name}' -DisplayName 'Martlet: find this PC ({protocol})' ");
+            script.Append("-Description 'Lets Martlet on your other computers find this PC and ask to use its hosts (each request needs your Allow here). Added by Martlet.' ");
             script.Append($"-Direction Inbound -Action Allow -Protocol {protocol} -LocalPort {Nearby.Port} -Profile Private,Domain -RemoteAddress LocalSubnet | Out-Null;");
         }
         if (makePrivateInterface is { } index)

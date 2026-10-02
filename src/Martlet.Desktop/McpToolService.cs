@@ -55,15 +55,18 @@ internal sealed class McpToolService : IAsyncDisposable
     private ToolApprovalRequest? pending;
     private bool loaded, started, disposed;
 
-    internal McpToolService(string? dataDirectory, TimeProvider? clock = null)
+    internal McpToolService(string? dataDirectory, TimeProvider? clock = null, IMcpSecretStore? secrets = null)
     {
         this.clock = clock ?? TimeProvider.System;
         FilePath = dataDirectory is null ? null : Path.Combine(dataDirectory, FileName);
+        Secrets = secrets ?? (FilePath is null || !OperatingSystem.IsWindows() ? null : new WindowsMcpSecrets(FilePath));
         Hub = new("martlet", AppVersions.Current, this.clock);
         Hub.Changed += () => Changed?.Invoke();
     }
 
     internal string? FilePath { get; }
+    /// <summary>Where ${secret:NAME} values for this mcp.json are kept (Windows Credential Manager), or null.</summary>
+    internal IMcpSecretStore? Secrets { get; }
     internal McpHub Hub { get; }
     /// <summary>Why mcp.json could not be used (the servers it listed are not started until it is fixed).</summary>
     internal string? ConfigurationError { get; private set; }
@@ -154,7 +157,7 @@ internal sealed class McpToolService : IAsyncDisposable
     {
         if (FilePath is null || !File.Exists(FilePath)) return "";
         var info = new FileInfo(FilePath);
-        if (info.Length > McpConfiguration.MaxFileBytes) throw new McpConfigurationException("mcp.json is larger than 1 MB.");
+        if (info.Length > McpConfiguration.MaxFileBytes) throw new McpConfigurationException("MCP server settings are larger than 1 MB.");
         return File.ReadAllText(FilePath);
     }
 
@@ -169,11 +172,11 @@ internal sealed class McpToolService : IAsyncDisposable
     {
         McpConfiguration next;
         string? error = null;
-        try { next = McpConfiguration.Parse(ReadText()); }
+        try { next = McpConfiguration.Parse(ReadText(), secrets: Secrets is { } store ? store.Read : null); }
         catch (Exception problem) when (problem is McpConfigurationException or IOException or UnauthorizedAccessException)
         {
             next = McpConfiguration.Empty;
-            error = problem is McpConfigurationException ? problem.Message : $"mcp.json couldn't be read: {problem.Message}";
+            error = problem is McpConfigurationException ? problem.Message : $"MCP server settings couldn't be read: {problem.Message}";
         }
         bool apply;
         lock (gate)
@@ -192,7 +195,7 @@ internal sealed class McpToolService : IAsyncDisposable
     internal void Save(string json)
     {
         _ = McpConfiguration.Parse(json);
-        if (FilePath is null) throw new McpConfigurationException("Martlet has no data folder to save mcp.json in.");
+        if (FilePath is null) throw new McpConfigurationException("Martlet has no data folder to save MCP server settings.");
         Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
         var temporary = FilePath + $".{Guid.NewGuid():N}.tmp";
         try
@@ -210,6 +213,52 @@ internal sealed class McpToolService : IAsyncDisposable
     /// <summary>Changes one server's entry in mcp.json (turning it on or off, or what runs without asking).</summary>
     internal void EditServer(string server, Action<JsonObject> edit) =>
         Save(McpConfiguration.EditServer(ReadText(), server, edit));
+
+    /// <summary>Adds a server from the MCP directory as <paramref name="name"/> (replacing one of that name only when
+    /// <paramref name="replace"/> is set): its secrets go to Windows Credential Manager first, then mcp.json is saved and the
+    /// servers start. Secrets a replaced entry used that nothing uses any more are forgotten.</summary>
+    internal void Install(string name, McpInstallPlan plan, bool replace)
+    {
+        var before = ReadText();
+        var replaced = replace ? McpConfiguration.FindServer(before, name) : null;
+        var json = McpConfiguration.AddServer(before, name, plan.Entry, replace);
+        _ = McpConfiguration.Parse(json);
+        if (plan.Secrets.Count > 0 && Secrets is null)
+            throw new McpConfigurationException("Martlet can't keep secrets on this PC; type ${env:NAME} in secret fields instead.");
+        var kept = McpConfiguration.SecretNames(before).ToHashSet(StringComparer.Ordinal);
+        var written = new List<string>();
+        try
+        {
+            foreach (var (secret, value) in plan.Secrets)
+            {
+                if (Secrets!.Write(secret, value) is { } problem)
+                    throw new McpConfigurationException($"Windows Credential Manager couldn't save {secret} ({problem}). Nothing was installed.");
+                written.Add(secret);
+            }
+            Save(json);
+        }
+        catch
+        {
+            foreach (var secret in written.Where(s => !kept.Contains(s))) Secrets?.Delete(secret);
+            throw;
+        }
+        Forget(McpConfiguration.SecretNames(replaced), json);
+        EnsureStarted(retryNow: true);
+    }
+
+    /// <summary>Removes a server from mcp.json and forgets the secrets only it used.</summary>
+    internal void Remove(string name)
+    {
+        var (json, removed) = McpConfiguration.RemoveServer(ReadText(), name);
+        Save(json);
+        Forget(McpConfiguration.SecretNames(removed), json);
+    }
+
+    private void Forget(IEnumerable<string> secrets, string json)
+    {
+        var used = McpConfiguration.SecretNames(json).ToHashSet(StringComparer.Ordinal);
+        foreach (var secret in secrets.Where(s => !used.Contains(s))) Secrets?.Delete(secret);
+    }
 
     /// <summary>Starts the enabled servers (once). <paramref name="retry"/> also restarts servers that stopped a while ago,
     /// <paramref name="retryNow"/> any stopped server. Replies never retry, so a broken server can't delay each one.</summary>
@@ -321,6 +370,31 @@ internal sealed class McpToolService : IAsyncDisposable
         }
         await Hub.DisposeAsync().ConfigureAwait(false);
     }
+}
+
+/// <summary>Where the ${secret:NAME} values of one mcp.json are kept.</summary>
+internal interface IMcpSecretStore
+{
+    string? Read(string name);
+    /// <summary>Saves a value; returns why it couldn't, or null.</summary>
+    string? Write(string name, string value);
+    void Delete(string name);
+}
+
+/// <summary>Windows Credential Manager, scoped to one mcp.json file so another data folder never sees its secrets.</summary>
+internal sealed class WindowsMcpSecrets(string filePath) : IMcpSecretStore
+{
+    private readonly Martlet.Credentials.Windows.WindowsCredentialStore vault = new();
+    private readonly string scope = Convert.ToHexStringLower(
+        SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(filePath).ToUpperInvariant())))[..16];
+
+    public string? Read(string name) =>
+        vault.ReadMcpSecret(scope, name, out var value) == Martlet.Core.Settings.CredentialError.None ? value : null;
+
+    public string? Write(string name, string value) =>
+        vault.WriteMcpSecret(scope, name, value) is var error && error == Martlet.Core.Settings.CredentialError.None ? null : error.ToString();
+
+    public void Delete(string name) => vault.DeleteMcpSecret(scope, name);
 }
 
 /// <summary>The tools offered to one reply and how to run them. Tool names are made safe for function calling and unique

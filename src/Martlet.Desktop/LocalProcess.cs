@@ -51,7 +51,7 @@ internal static partial class LocalProcess
         try { process.Start(); }
         catch (System.ComponentModel.Win32Exception error)
         {
-            throw new InvalidOperationException($"{Path.GetFileName(file)} could not be started: {error.Message}");
+            throw new InvalidOperationException($"Could not start {Path.GetFileName(file)}: {error.Message}");
         }
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();

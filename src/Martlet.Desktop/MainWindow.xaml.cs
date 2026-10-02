@@ -63,7 +63,7 @@ public partial class MainWindow : ThemedWindow
         this.store = store;
         ThemeChoice.SelectedIndex = Application.Current is App { SelectedTheme: PinkTheme.Dark } ? 1 : 0;
         AppearanceStatus.Text = (Application.Current as App)?.AppearanceNotice
-            ?? "Pink light / rose dark. Your choice is saved locally; Windows high contrast takes priority.";
+            ?? "Choose a palette. Your choice is saved on this PC.";
         InitializeUpdates();
         this.support = support;
         audioSetup = new(setupOperations, new WindowsAudioDeviceCatalog(), new WasapiCaptureDeviceFactory(), new WasapiDeviceFactory());
@@ -96,8 +96,8 @@ public partial class MainWindow : ThemedWindow
         this.startupError = startupError;
         characterTimer.Tick += (_, _) => UpdateCharacterButton();
         characterTimer.Start();
-        DataPathText.Text = "Local settings only. Reports never include the data directory, credentials or settings contents.";
-        StatusText.Text = "Foundation: loading local status. No audio or network services are active.";
+        DataPathText.Text = "Settings are stored on this PC.";
+        StatusText.Text = "Loading local status...";
         AudioStatusText.Text = AudioSetupDiagnostics.Describe(null);
         if (store is not null)
         {
@@ -108,7 +108,7 @@ public partial class MainWindow : ThemedWindow
         }
         else
         {
-            PipelineText.Text = "Mic / VAD / STT / Policy / LLM / TTS / Playback: unavailable; not run. Correct the launch data directory first.";
+            PipelineText.Text = "Status is unavailable until Martlet can use its data folder.";
             ConversationButton.IsEnabled = AutomaticUpdateCheck.IsEnabled = CheckForUpdatesButton.IsEnabled = PrimaryStageButton.IsEnabled =
                 AutomaticHostUpdate.IsEnabled = UpdateHostsButton.IsEnabled = false;
         }
@@ -116,6 +116,7 @@ public partial class MainWindow : ThemedWindow
         InitializeCluster();
         InitializeNearby();
         InitializeVoiceSync();
+        InitializeNodeAgent();
         InitializeLogs();
     }
 
@@ -126,23 +127,23 @@ public partial class MainWindow : ThemedWindow
         app.ApplyTheme(theme);
         if (store is null)
         {
-            AppearanceStatus.Text = "Theme applied for this session only. Correct the launch data directory to save your preference.";
+            AppearanceStatus.Text = "Theme applied for this session. Choose a data folder to save it.";
             return;
         }
         try
         {
             Appearance.Save(store.DataDirectory, theme);
-            AppearanceStatus.Text = $"{(theme == PinkTheme.Dark ? "Rose dark" : "Pink light")} saved locally. Windows high contrast takes priority.";
+            AppearanceStatus.Text = $"{(theme == PinkTheme.Dark ? "Rose dark" : "Pink light")} saved.";
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            AppearanceStatus.Text = "Theme applied for this session, but appearance.txt could not be saved. Check access to your data directory and choose again. Profile settings were not changed.";
+            AppearanceStatus.Text = "Theme applied for this session, but it could not be saved. Check access to Martlet's data folder.";
         }
         try { await avatar.UpdateThemeAsync(lifetime.Token); }
         catch (Exception ex) when (ex is IOException or InvalidOperationException or OperationCanceledException or TimeoutException)
         {
             if (!closing)
-                AppearanceStatus.Text += " The avatar overlay could not update its palette. Stop it and inspect again to use this theme.";
+                AppearanceStatus.Text += " The character could not update its colors. Restart it to apply the theme.";
         }
     }
 
@@ -155,6 +156,7 @@ public partial class MainWindow : ThemedWindow
         await ShowSavedCharacterAsync(onlyIfAutoShow: true);
         StartCluster();
         StartVoiceSync();
+        StartNodeAgent();
         StartLogShipping();
         // Parakeet takes a few seconds to load; do it now rather than on the first thing said.
         if (homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Stt)?.RouteType == SetupRouteType.LocalParakeet)
@@ -187,7 +189,7 @@ public partial class MainWindow : ThemedWindow
         StatusText.Text = model.Text;
         support.ObserveReport(model.Report);
         PipelineText.Text = string.Join(Environment.NewLine, model.Pipeline.Select(node => node.Description));
-        ActivityText.Text = setupOperations.IsRunning ? "An app-shared setup/audio/conversation worker owns resources. Check its action window; new effects wait for actual cleanup."
+        ActivityText.Text = setupOperations.IsRunning ? "A setup task is still finishing. Try again in a moment."
             : model.Activity;
         CreateButton.IsEnabled = !saving && !setupOperations.IsRunning && model.CanCreateProfile;
         ConversationButton.IsEnabled = PrimaryStageButton.IsEnabled = !saving && !model.IsRunning;
@@ -216,16 +218,16 @@ public partial class MainWindow : ThemedWindow
             if (await Task.WhenAny(worker.Completion, Task.Delay(TimeSpan.FromSeconds(5), lifetime.Token)) != worker.Completion)
             {
                 worker.RequestCancellation();
-                if (!closing) ActionText.Text = "Save observation ended. Actual work may still own the app slot; refresh after release. No rollback is claimed.";
+                if (!closing) ActionText.Text = "Saving is still finishing. Refresh in a moment.";
                 return;
             }
             var completed = await worker.Completion;
             var result = completed.Saved?.Save;
             if (!closing)
-                ActionText.Text = result is null ? "Profile save failed or was canceled. Refresh local status."
+                ActionText.Text = result is null ? "Couldn't create the profile. Refresh and try again."
                     : result.Saved
-                    ? "Unconfigured profile saved. Nothing was connected or enabled."
-                    : $"{result.Error!.Summary} Next action ({result.Error.ActionId}): {DiagnosticCatalog.Remedy(result.Error.ActionId).Guidance}";
+                    ? "Profile created."
+                    : $"{result.Error!.Summary} {DiagnosticCatalog.Remedy(result.Error.ActionId).Guidance}";
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         finally { saving = false; }
@@ -308,7 +310,7 @@ public partial class MainWindow : ThemedWindow
         {
             case AdvisorNextStep.Prerequisites:
                 var missing = SetupAdvisor.Recommend(advisor.Answers).ThisPcInstalls.Select(Prerequisites.For).Where(Prerequisites.IsMissing).ToArray();
-                if (missing.Length == 0) ActionText.Text = "Everything this plan needs on this PC is already installed.";
+                if (missing.Length == 0) ActionText.Text = "This PC already has everything needed for that plan.";
                 else InstallPrerequisitesAsync(missing).Forget();
                 break;
             case AdvisorNextStep.Setup: OpenCompanion(CompanionTab.Thinking); break;
@@ -330,9 +332,9 @@ public partial class MainWindow : ThemedWindow
             catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException or
                 System.ComponentModel.Win32Exception) { return null; }
         }
-        if (info.BestGpu is not { } gpu) return (AdvisorGpu.None, "no dedicated graphics card found");
+        if (info.BestGpu is not { } gpu) return (AdvisorGpu.None, "No dedicated graphics card found");
         var answer = SetupAdvisor.Classify(gpu.Name, gpu.MemoryGb);
-        return (answer, answer == AdvisorGpu.None ? $"{gpu.Name} (integrated graphics, not a dedicated GPU)" : gpu.Describe());
+        return (answer, answer == AdvisorGpu.None ? $"{gpu.Name} (not dedicated)" : gpu.Describe());
     }
 
     /// <summary>Paired hosts (other than this PC) with the hardware they last reported.</summary>
@@ -359,7 +361,7 @@ public partial class MainWindow : ThemedWindow
     private async Task InstallPrerequisitesAsync(IReadOnlyCollection<Prerequisite> items, string? ollamaModel = null)
     {
         if (closing) return;
-        ActionText.Text = $"Installing {string.Join(", ", items.Select(i => i.Title))}; the run window shows the progress.";
+        ActionText.Text = $"Installing {string.Join(", ", items.Select(i => i.Title))}. The progress window shows details.";
         var status = await Prerequisites.InstallAsync(this, items, ollamaModel);
         if (closing) return;
         ActionText.Text = status;
@@ -374,7 +376,7 @@ public partial class MainWindow : ThemedWindow
         {
             if (avatar.IsShowing)
             {
-                if (await StopAvatarSafelyAsync()) ActionText.Text = "Character hidden. Voice is unaffected.";
+                if (await StopAvatarSafelyAsync()) ActionText.Text = "Character hidden.";
             }
             else await ShowSavedCharacterAsync(onlyIfAutoShow: false);
         }
@@ -410,14 +412,14 @@ public partial class MainWindow : ThemedWindow
             var view = await avatar.ZoomAsync(action, lifetime.Token);
             if (closing) return;
             if (characterViewText is { } line) line.Text = view is null ? "" : CharacterViewText(view);
-            if (action == "reset") ActionText.Text = "Character returned to its default size and zoom.";
+            if (action == "reset") ActionText.Text = "Character view reset.";
             else if (action != "status" && view is not null) ActionText.Text = $"Character zoomed {action}. {CharacterViewText(view)}";
         }
         catch (Exception error) when (error is System.IO.IOException or InvalidOperationException or TimeoutException or
             OperationCanceledException or ObjectDisposedException or System.IO.InvalidDataException or System.Text.Json.JsonException)
         {
             if (!closing && action != "status")
-                ActionText.Text = action == "reset" ? $"Character zoom could not be reset: {error.Message}" : $"Character zoom could not be changed: {error.Message}";
+                ActionText.Text = action == "reset" ? $"Couldn't reset character zoom: {error.Message}" : $"Couldn't change character zoom: {error.Message}";
         }
         finally { UpdateCharacterButton(); }
     }
@@ -426,25 +428,25 @@ public partial class MainWindow : ThemedWindow
         $"Character view: {view.Width:0} × {view.Height:0}" + view.ScreenTop switch
         {
             null => "",
-            double below when below >= 0 => $", {below:0} px below the top of the screen",
-            double above => $", {-above:0} px above the top of the screen"
-        } + $", camera zoom {view.Zoom:0.##}x; " + view.HeadTop switch
+            double below when below >= 0 => ", on screen",
+            _ => ", partly above the screen"
+        } + $", zoom {view.Zoom:0.##}x. " + view.HeadTop switch
         {
-            null => "head framing not reported yet.",
-            double below when below >= 0 => $"the top of the head is in view ({below:P0} below the overlay's top edge).",
-            double cut => $"the top of the head is cut off ({-cut:P0} above the overlay's top edge)."
+            null => "head position not available.",
+            double below when below >= 0 => "head is in view.",
+            _ => "head may be cropped."
         };
     private async Task ResetCharacterPositionAsync()
     {
         try
         {
             await avatar.ResetPositionAsync(lifetime.Token);
-            ActionText.Text = "Character moved back to the lower-right of your main screen at its default size.";
+            ActionText.Text = "Character moved back to the lower-right.";
         }
         catch (Exception error) when (error is System.IO.IOException or InvalidOperationException or TimeoutException or
             OperationCanceledException or ObjectDisposedException)
         {
-            if (!closing) ActionText.Text = $"Character position could not be reset: {error.Message}";
+            if (!closing) ActionText.Text = $"Couldn't reset character position: {error.Message}";
         }
         finally { UpdateCharacterButton(); }
     }
@@ -469,7 +471,7 @@ public partial class MainWindow : ThemedWindow
             UnauthorizedAccessException or System.ComponentModel.Win32Exception or Martlet.Core.Contracts.ContractException or
             OperationCanceledException)
         {
-            if (!closing) ActionText.Text = $"Character could not start: {error.Message} Voice is unaffected.";
+            if (!closing) ActionText.Text = $"Couldn't show the character: {error.Message}";
         }
         finally { UpdateCharacterButton(); }
     }
@@ -500,7 +502,7 @@ public partial class MainWindow : ThemedWindow
             System.ComponentModel.Win32Exception or UnauthorizedAccessException)
         {
             ErrorLog.Warn("The character could not be stopped cleanly.", error);
-            characterCleanupProblem = "The character's window did not close cleanly. Voice is unaffected; press Hide or Show character to try again (details are in Martlet's log).";
+            characterCleanupProblem = "The character didn't close cleanly. Press Hide or Show character to try again.";
             if (!closing) ActionText.Text = characterCleanupProblem;
             return false;
         }
@@ -541,13 +543,13 @@ public partial class MainWindow : ThemedWindow
         if (recovery?.HasResources == true)
         {
             recovery.StopObserving();
-            ActionText.Text = "Exit is waiting for configuration recovery IO/callbacks or owned staging cleanup. Keep Martlet open; inspect Backup / restore after release, retry cleanup if needed, then Exit again.";
+            ActionText.Text = "Finish the backup or restore task before exiting.";
             return;
         }
         if (support.HasResources)
         {
             support.CancelAndClose();
-            ActionText.Text = "Exit is waiting for owned support IO/cancellation/cleanup. Keep Martlet open; use Troubleshooting to retry cleanup, then Exit again. No rollback or completed cleanup is assumed.";
+            ActionText.Text = "Finish troubleshooting cleanup before exiting.";
             return;
         }
         if (updateDrain is { Task.IsCompleted: false } pendingUpdate)
@@ -559,13 +561,13 @@ public partial class MainWindow : ThemedWindow
             catch (TimeoutException)
             {
                 IsEnabled = true;
-                ActionText.Text = "Exit is waiting for the update request and exact partial-file cleanup. Keep Martlet open and retry Exit after the operation releases.";
+                ActionText.Text = "Finish or cancel the update before exiting.";
                 return;
             }
             if (interruptedUpdateCleanup is { } error)
             {
                 IsEnabled = true;
-                ActionText.Text = $"Update cleanup could not finish. Inspect Martlet's updates folder before exiting: {error}";
+                ActionText.Text = $"Couldn't finish update cleanup: {error}";
                 return;
             }
         }

@@ -19,7 +19,7 @@ internal sealed class HostTranscriptionClient : IHostTranscriptionClient
         {
             var routes = await connection.ReadRoutesAsync(cancellationToken).ConfigureAwait(false);
             var route = routes.FirstOrDefault(r => r.RouteId == Audio2FaceHostConnection.TranscriptionRouteId && r.ModelId == modelId) ??
-                throw HostTextClient.Failed("listening", ProviderFailureCode.ModelNotFound, $"the host offers no transcription route for model {modelId}");
+                throw HostTextClient.Failed("listening", ProviderFailureCode.ModelNotFound, "the host isn't ready for listening");
             return await connection.TranscribeAsync(route, ids, epoch, deadline, pcm16kMono, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }

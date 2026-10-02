@@ -147,7 +147,7 @@ public partial class MainWindow
     {
         if (!LocalOllama.Start())
         {
-            ActionText.Text = "Ollama could not be started. Start it from the Start menu, or install it again.";
+            ActionText.Text = "Ollama couldn't start. Start it from the Start menu, or install it again.";
             return;
         }
         ActionText.Text = "Starting Ollama on this PC...";
@@ -163,7 +163,7 @@ public partial class MainWindow
             if (ollamaState != LocalOllamaState.NotRunning) break;
         }
         if (!closing && ollamaState == LocalOllamaState.NotRunning)
-            ActionText.Text = "Ollama didn't start answering on this PC. Start it from the Start menu, then press Check again.";
+            ActionText.Text = "Ollama didn't start. Start it from the Start menu, then press Check again.";
     }
 
     private async Task PullThinkingModelAsync(string model)
@@ -194,7 +194,7 @@ public partial class MainWindow
         try { Process.Start(new ProcessStartInfo("ms-settings:privacy-microphone") { UseShellExecute = true })?.Dispose(); }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
-            ActionText.Text = "Could not open Windows Settings. Open Settings > Privacy & security > Microphone and allow desktop apps.";
+            ActionText.Text = "Couldn't open Windows Settings. Open Microphone privacy settings and allow desktop apps.";
         }
     }
 
@@ -216,7 +216,7 @@ public partial class MainWindow
         }
         HealthFix Open(CompanionTab tab, string label) => new("open-" + tab.ToString().ToLowerInvariant(), label, () => OpenCompanion(tab), Passive: true);
         HealthFix Dismiss(string id) => new("dismiss", "Dismiss", () => { dismissedHealth.Add(id); RenderHealth(); }, Passive: true);
-        HealthFix Logs() => new("logs", "Open the logs folder", OpenLogsFolder);
+        HealthFix Logs() => new("logs", "Open logs", OpenLogsFolder);
         HealthFix DiagnosticsPage() => new("diagnostics", "Open Diagnostics", () => Navigate(NavDiagnostics), Passive: true);
 
         var routes = homeSettings?.Setup?.Routes ?? [];
@@ -237,7 +237,7 @@ public partial class MainWindow
                 "Martlet can't start properly");
         if (settingsBroken)
             Add("settings", HealthLevel.Problem, "Martlet can't read its settings",
-                (homeSettingsProblem ?? "settings.json can't be used.") + " Restore a backup to get your setup back.",
+                (homeSettingsProblem ?? "Your settings can't be used.") + " Restore a backup to get your setup back.",
                 [new("restore", "Restore a backup", () => Recovery_Click(this, new RoutedEventArgs())),
                  new("troubleshooting", "Open Troubleshooting", () => OpenTroubleshooting(this))],
                 "Martlet can't read its settings");
@@ -248,14 +248,13 @@ public partial class MainWindow
         {
             var nothingYet = homeSettings is null || routes.Count == 0;
             Add("thinking-setup", HealthLevel.Problem, "Set up thinking",
-                "Martlet needs a conversation model to reply. It runs on this PC by default; a cloud model or another of your computers works too. " +
-                "Everything else is optional.",
+                "Martlet needs a conversation model before it can reply. Everything else is optional.",
                 [Open(CompanionTab.Thinking, "Set up thinking"), new("advisor", "Get a recommendation", () => Advisor_Click(this, new RoutedEventArgs()))],
                 nothingYet ? "Let's bring your companion to life" : "Set up thinking to start talking");
         }
         if (llm is not null && ChatCompletionsEndpointCatalog.RetiredOn(llm.Origin, llm.ModelId) is { } retired)
             Add("thinking-retired", HealthLevel.Problem, "Your thinking model was retired",
-                $"{retired.Name} switched {llm.ModelId} off for good, so replies fail. Choose {retired.DefaultModelId} in Companion › Thinking.",
+                $"This model is no longer available. Choose {retired.DefaultModelId} in Companion › Thinking.",
                 [Open(CompanionTab.Thinking, "Change thinking")], "Martlet can't reply right now");
         else if (llm is not null && thinkingDown is null)
         {
@@ -264,18 +263,18 @@ public partial class MainWindow
             {
                 case LocalOllamaState.NotInstalled:
                     Add("ollama", HealthLevel.Problem, "Ollama isn't installed on this PC",
-                        $"Thinking uses {model} in Ollama on this PC. Install Ollama (free, from ollama.com) with that model.",
+                        $"Thinking uses {model} on this PC. Install Ollama with that model.",
                         [new("install", $"Install Ollama and {model}", () => InstallThinkingOllamaAsync(model).Forget()),
                          Open(CompanionTab.Thinking, "Change thinking")], "Martlet can't reply right now");
                     break;
                 case LocalOllamaState.NotRunning:
                     Add("ollama", HealthLevel.Problem, "Ollama isn't running on this PC",
-                        $"Thinking uses {model} in Ollama on this PC, but nothing answers on its port.",
+                        $"Thinking uses {model} on this PC, but Ollama isn't running.",
                         [new("start", "Start Ollama", StartOllama), Open(CompanionTab.Thinking, "Change thinking")], "Martlet can't reply right now");
                     break;
                 case LocalOllamaState.ModelMissing:
                     Add("ollama", HealthLevel.Problem, $"{model} isn't downloaded",
-                        $"Thinking uses {model} in Ollama on this PC, but Ollama doesn't have it yet.",
+                        $"Thinking uses {model} on this PC, but it hasn't been downloaded yet.",
                         [new("download", $"Download {model}", () => PullThinkingModelAsync(model).Forget()), Open(CompanionTab.Thinking, "Change thinking")],
                         "Martlet can't reply right now");
                     break;
@@ -317,7 +316,7 @@ public partial class MainWindow
                 _ => (CompanionTab.Thinking, "thinking")
             };
             Add("failed-" + label, HealthLevel.Warning, $"The last {failure.What.ToLowerInvariant()} failed",
-                $"At {failure.At.LocalDateTime:t} ({failure.Outcome}). The provider's own explanation is in the local log. It clears when the next one works.",
+                $"Last attempt: {failure.Outcome}. Details are in the local log. This clears when the next one works.",
                 [Open(tab, $"Check {label}"), Logs()]);
         }
 
@@ -349,11 +348,11 @@ public partial class MainWindow
         // Lip-sync and the character.
         if (NetworkMap.LipSync(homeAvatar) == LipSyncHandler.ThisPc && ownLipSyncAnswers == false && machine.BestGpu is { IsNvidia: true })
             Add("audio2face", HealthLevel.Notice, "Lifelike lip-sync is available",
-                "Audio2Face isn't running on this PC, so the character's mouth follows the voice's loudness. Your NVIDIA graphics card can run it.",
+                "Use this PC's NVIDIA graphics card for smoother lip-sync.",
                 [Open(CompanionTab.LipSync, "Set up lip-sync")]);
         if (webView2Missing)
             Add("webview2", HealthLevel.Warning, "The desktop character can't show",
-                "It needs the Microsoft Edge WebView2 Runtime, which isn't installed on this PC.",
+                "Install the WebView2 Runtime to show the character.",
                 [new("install", "Install WebView2", () => InstallPrerequisiteAsync(Prerequisites.WebView2).Forget())]);
 
         // Vision: on, but with nothing it can use.
@@ -388,11 +387,11 @@ public partial class MainWindow
             HealthFix Show() => new("show", "Show on the map", () => ShowDevice("host:" + id), Passive: true);
             if (reachable == false)
                 Add("host-" + id, HealthLevel.Warning, $"{id} isn't answering",
-                    "It does no job for this PC right now, so nothing stops working. Check that it's switched on and on your network.",
+                    "It is not handling any task right now. Check that it is on and on your network.",
                     [new("check", $"Check {id} now", () => CheckHostsAsync([host]).Forget()), Show()]);
             else if (outdated)
                 Add("host-update-" + id, HealthLevel.Warning, $"{id} runs an older Martlet",
-                    $"It runs {reported ?? "0.2.0 or older"}; this PC runs {Version}. Update it so both work the same way.",
+                    $"It runs {reported ?? "an older version"}. Update it to Martlet {Version}.",
                     [new("update", $"Update {id}", () => RunNodeAction(NodeAction.UpdateHost, id)), Show()]);
         }
 
@@ -414,9 +413,9 @@ public partial class MainWindow
                 [new("settings", "Open app updates", () => Navigate(NavSettings), Passive: true)]);
         if (availableUpdate is { } update)
             Add("update", HealthLevel.Notice, $"Martlet {update.Version.ToString(3)} is available",
-                $"You run {Version}. It downloads from Martlet's GitHub Release and is checked against its SHA-256 digest before it installs.",
+                $"You run {Version}. Install the update when you're ready.",
                 [new("install", $"Install {update.Version.ToString(3)}", () => ConfirmAndInstallAsync(update, prompted: false).Forget()),
-                 new("details", "Release details", () => ReviewUpdate_Click(this, new RoutedEventArgs()))]);
+                 new("details", "Release notes", () => ReviewUpdate_Click(this, new RoutedEventArgs()))]);
 
         // Unexpected errors since Martlet started, and the last run ending badly.
         var errors = ErrorLog.ErrorCount;
@@ -431,7 +430,7 @@ public partial class MainWindow
         }
         if ((Application.Current as App)?.CrashedLastTime == true)
             Add("crash", HealthLevel.Notice, "Martlet closed unexpectedly last time",
-                "It crashed, was ended or the PC lost power. Details, if any were captured, are in the local log.", [DiagnosticsPage(), Logs(), Dismiss("crash")]);
+                "Details are in the local log if Martlet captured them.", [DiagnosticsPage(), Logs(), Dismiss("crash")]);
 
         // ---------- tiles ----------
         tiles.Add(JobTile("thinking", CompanionTab.Thinking, llm, thinkingDown, required: true,
@@ -444,9 +443,9 @@ public partial class MainWindow
             lipSyncDown is null ? "By " + LipSyncOwnerName() : "Not working: " + lipSyncDown.Problem, () => OpenCompanion(CompanionTab.LipSync)));
         tiles.Add(new("microphone", "Microphone", "\uE720",
             !(microphoneBlocked || micMissing) ? NodeHealth.Ready : stt is null ? NodeHealth.Unknown : NodeHealth.Attention,
-            microphoneBlocked ? "Blocked by Windows privacy settings"
+            microphoneBlocked ? "Blocked by Windows"
                 : micMissing ? (homeSettings?.Audio?.Input.EndpointId is null ? "None found" : "Chosen one isn't connected") +
-                    (stt is null ? "; only listening needs one" : "")
+                    (stt is null ? ". Listening is optional" : "")
                 : homeSettings?.Audio?.Input.EndpointId is null ? "Windows default" : "Connected",
             () => OpenCompanion(CompanionTab.Listening)));
         tiles.Add(new("speakers", "Speakers", "\uE7F5", !speakersMissing ? NodeHealth.Ready : tts is null ? NodeHealth.Unknown : NodeHealth.Attention,
@@ -461,7 +460,7 @@ public partial class MainWindow
             others == 0 ? "Only this PC" + (localHostId is null ? "" : " and its host service")
                 : $"{hostsAnswering} of {others} other computer{(others == 1 ? "" : "s")} answering" +
                   (hostsDown > 0 ? $", {hostsDown} not" : hostsAnswering < others ? ", others not checked yet" : "") +
-                  (hostsOld > 0 ? $"; {hostsOld} to update" : ""),
+                  (hostsOld > 0 ? $", {hostsOld} need updates" : ""),
             () => Navigate(NavDevices)));
         if (toolServers.Count > 0 || mcpTools.ConfigurationError is not null)
         {
@@ -470,7 +469,7 @@ public partial class MainWindow
             var ready = toolStatus.Count(s => s.State == Martlet.Mcp.Client.McpServerState.Ready);
             tiles.Add(new("tools", "Tools", TabGlyph(CompanionTab.Tools),
                 mcpTools.ConfigurationError is not null || failedTools > 0 ? NodeHealth.Attention : ready > 0 ? NodeHealth.Ready : NodeHealth.Unknown,
-                mcpTools.ConfigurationError is not null ? "mcp.json can't be used"
+                mcpTools.ConfigurationError is not null ? "Tool setup can't be read"
                     : failedTools > 0 ? $"{failedTools} of {enabled} server{(enabled == 1 ? "" : "s")} not working"
                     : ready > 0 ? $"{ready} of {enabled} server{(enabled == 1 ? "" : "s")} ready"
                     : $"{enabled} server{(enabled == 1 ? "" : "s")}, start when you talk",
@@ -479,8 +478,8 @@ public partial class MainWindow
         tiles.Add(new("updates", "Updates", "\uE895",
             failedInstallMessage is not null ? NodeHealth.Attention : availableUpdate is not null || !updateChecksEnabled ? NodeHealth.Unknown : NodeHealth.Ready,
             failedInstallMessage is not null ? "Last install failed"
-                : availableUpdate is { } next ? $"Martlet {next.Version.ToString(3)} available; you run {Version}"
-                : !updateChecksEnabled ? $"Martlet {Version}; automatic checks off"
+                : availableUpdate is { } next ? $"Martlet {next.Version.ToString(3)} available. You run {Version}"
+                : !updateChecksEnabled ? $"Martlet {Version}. Automatic checks off"
                 : $"Martlet {Version}",
             () => Navigate(NavSettings)));
         var appBroken = store is null || settingsBroken;
@@ -497,10 +496,10 @@ public partial class MainWindow
     {
         var title = TabTitle(tab);
         var (health, status) = down is not null ? (NodeHealth.Attention, "Not working: " + down.Problem)
-            : route is null ? (required ? NodeHealth.Attention : NodeHealth.Unknown, required ? "Not set up; Martlet needs it" : "Not set up (optional)")
+            : route is null ? (required ? NodeHealth.Attention : NodeHealth.Unknown, required ? "Not set up. Martlet needs it" : "Not set up (optional)")
             : broken ? (NodeHealth.Attention, $"{PlaceName(route)}: {route.ModelId}, not working")
             : (NodeHealth.Ready, tab == CompanionTab.Voice ? PlaceName(route) + VoiceSuffix(route) : $"{PlaceName(route)}: {route.ModelId}");
-        if (note is not null && route is not null) status += "; " + note;
+        if (note is not null && route is not null) status += ". " + note;
         return new(id, title, TabGlyph(tab), health, status, () => OpenCompanion(tab));
     }
 
@@ -554,8 +553,8 @@ public partial class MainWindow
         ConversationButton.SetResourceReference(StyleProperty, "PrimaryButton");
         StageTitle.Text = warnings == 0 ? "Ready when you are" : $"Ready, with {warnings} thing{(warnings == 1 ? "" : "s")} to look at";
         StageText.Text = warnings == 0
-            ? $"{(llm is null ? "Its model" : PlaceName(llm))} is its brain and everything Martlet checks works. Start talking to chat by voice or text."
-            : "Martlet can reply. Below is what isn't working and how to fix it.";
+            ? "Martlet is ready. Start talking to chat by voice or text."
+            : "Martlet can reply. Review the items below when you have time.";
     }
 
     private void RenderIssues(IReadOnlyList<HealthIssue> issues, bool first)
@@ -580,7 +579,7 @@ public partial class MainWindow
             var check = Glyph("\uE930", 18, new Thickness(0, 0, 10, 0));
             check.SetResourceReference(TextBlock.ForegroundProperty, "SuccessBrush");
             clear.Children.Add(check);
-            var text = new TextBlock { Text = "Everything Martlet can check from this PC works.", VerticalAlignment = VerticalAlignment.Center };
+            var text = new TextBlock { Text = "Everything Martlet can check looks good.", VerticalAlignment = VerticalAlignment.Center };
             AutomationProperties.SetAutomationId(text, "HealthAllClear");
             clear.Children.Add(text);
             HealthIssues.Children.Add(clear);

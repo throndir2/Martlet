@@ -8,8 +8,10 @@ using System.Text.RegularExpressions;
 
 namespace Martlet.Desktop;
 
-/// <summary>How the desktop reaches the machine that becomes a Martlet host. Every method runs the same martlet-host engine.</summary>
-internal enum HostSetupMethod { ThisPcDocker, SshDocker, SshNative, OnHost }
+/// <summary>How the desktop reaches the machine that becomes a Martlet host. Every method runs the same martlet-host engine.
+/// <see cref="Agent"/> sends the commands through the host's paired gateway to the Martlet app on that computer, which runs
+/// them there; <see cref="OnHost"/> is only the Add a computer wizard's install-by-hand choice (saved hosts use Agent).</summary>
+internal enum HostSetupMethod { ThisPcDocker, SshDocker, SshNative, OnHost, Agent }
 
 internal enum HostVerb { Setup, Pair, Add, Status, Remove, Update }
 
@@ -57,9 +59,9 @@ internal static partial class HostSetupCommands
         _ = Engine(action);
         if (!VersionPattern().IsMatch(target.Version)) throw new InvalidOperationException("Unexpected Martlet version.");
         if (target.Method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative && !SshTargetPattern().IsMatch(target.SshTarget))
-            throw new InvalidOperationException("Enter the SSH target as user@computer (for example me@192.168.1.20 or me@gpu-pc).");
+            throw new InvalidOperationException("Enter the SSH target as user@computer.");
         if (action == HostAction.Setup && !IsPrivate(target.Address))
-            throw new InvalidOperationException("Enter the host's private LAN IPv4 address (10.x, 172.16-31.x or 192.168.x).");
+            throw new InvalidOperationException("Enter the host's private network address.");
         if (target.HostId is { } id && !Regex.IsMatch(id, @"\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z"))
             throw new InvalidOperationException("Invalid host ID.");
     }
@@ -136,8 +138,8 @@ internal static partial class HostSetupCommands
     {
         Validate(target, action);
         if (target.Method != HostSetupMethod.ThisPcDocker)
-            throw new InvalidOperationException(target.Method == HostSetupMethod.OnHost
-                ? "Run the shown commands on the host itself." : "SSH hosts run inside Martlet, not in a console window.");
+            throw new InvalidOperationException(target.Method is HostSetupMethod.OnHost or HostSetupMethod.Agent
+                ? "Martlet on that computer runs its commands." : "Martlet runs SSH host commands for you.");
         var lines = new StringBuilder("@echo off\r\n");
         lines.Append($"title Martlet host - {Engine(action)}\r\n");
         var image = Image(target);
@@ -160,12 +162,14 @@ internal static partial class HostSetupCommands
     /// <summary>The commands a method runs (without console chatter), or what to type on the host itself.</summary>
     internal static string Preview(HostSetupTarget target, HostAction action) => target.Method switch
     {
+        HostSetupMethod.Agent =>
+            $"Martlet sends \"{Engine(action)}\" to Martlet on {target.HostId ?? target.Address} through its paired host service; " +
+            "Martlet there runs it and its output shows here.",
         HostSetupMethod.OnHost =>
-            "On a Docker host (Linux, or Windows/macOS with Docker Desktop):\r\n  " +
-            DockerShell(target, action) + "\r\n\r\nOn Ubuntu without Docker for the gateway (native):\r\n  " +
-            NativeShell(target, action),
+            "Nothing to type on that PC: install Martlet there and choose Use as a Martlet host. Once paired, this PC sends \"" +
+            Engine(action) + "\" and other commands to Martlet there, which runs them.",
         HostSetupMethod.SshDocker or HostSetupMethod.SshNative =>
-            $"Martlet runs this on {target.SshTarget} over SSH (no console; you confirm here):\r\n  " +
+            $"Martlet will run this on {target.SshTarget}:\r\n  " +
             RemoteShell(target, Engine(action), action == HostAction.Setup),
         _ => string.Join("\r\n", Script(target, action).Split("\r\n")
             .Where(line => line.StartsWith("docker image ", StringComparison.Ordinal) ||
@@ -199,7 +203,7 @@ internal static partial class HostSetupCommands
                 lines.Append($"ssh {SshUnattended} {target.SshTarget} \"{NativeShell(target, action)}\"\r\n");
                 break;
             default:
-                throw new InvalidOperationException("Martlet does not know how to reach this host; run the command on it instead.");
+                throw new InvalidOperationException("Commands for this host go through Martlet on that computer, not a script.");
         }
         lines.Append("exit /b %errorlevel%\r\n");
         return lines.ToString();
@@ -221,7 +225,7 @@ internal static partial class HostSetupCommands
             return (await RunQuietlyOverSshAsync(target, action, dataDirectory, pinnedHostKey, log, token), log);
         File.WriteAllText(script, UnattendedScript(target, action), Encoding.ASCII);
         using var process = Process.Start(new ProcessStartInfo("cmd.exe", $"/d /s /c \"\"{script}\" > \"{log}\" 2>&1\"")
-            { UseShellExecute = false, CreateNoWindow = true }) ?? throw new InvalidOperationException("Could not start the host update.");
+            { UseShellExecute = false, CreateNoWindow = true }) ?? throw new InvalidOperationException("Couldn't start the host update.");
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(token);
         limit.CancelAfter(TimeSpan.FromMinutes(45));
         try { await process.WaitForExitAsync(limit.Token); }
@@ -254,7 +258,7 @@ internal static partial class HostSetupCommands
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
         {
-            sink.Report("Stopped: it needed an answer (SSH password, new host key or sudo password) or took over 45 minutes.");
+            sink.Report("Stopped: SSH needed a password or took too long.");
             return -1;
         }
         catch (Exception error) when (error is HostShellException or Renci.SshNet.Common.SshException or IOException or

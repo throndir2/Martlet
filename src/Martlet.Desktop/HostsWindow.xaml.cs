@@ -37,7 +37,7 @@ public partial class HostsWindow : ThemedWindow
         {
             HostSetupMethod.SshDocker => SshDockerMethod,
             HostSetupMethod.SshNative => SshNativeMethod,
-            HostSetupMethod.OnHost => OnHostMethod,
+            HostSetupMethod.OnHost or HostSetupMethod.Agent => OnHostMethod,
             _ => ThisPcMethod
         }).IsChecked = true;
         if (manage is not null)
@@ -54,14 +54,6 @@ public partial class HostsWindow : ThemedWindow
         : SshNativeMethod.IsChecked == true ? HostSetupMethod.SshNative
         : OnHostMethod.IsChecked == true ? HostSetupMethod.OnHost
         : HostSetupMethod.ThisPcDocker;
-
-    private static string MethodName(HostSetupMethod method) => method switch
-    {
-        HostSetupMethod.SshDocker => "another computer over SSH, using Docker there",
-        HostSetupMethod.SshNative => "another computer over SSH, as a native Ubuntu install",
-        HostSetupMethod.OnHost => "another computer, where you type the commands yourself",
-        _ => "this PC, with Docker Desktop"
-    };
 
     private HostSetupTarget Target() => new(Method, SshTargetText.Text.Trim(), AddressText.Text.Trim(),
         Method == HostSetupMethod.ThisPcDocker ? HostSetupCommands.SuggestedHostId(Environment.MachineName) : null, version);
@@ -195,7 +187,7 @@ public partial class HostsWindow : ThemedWindow
                 {
                     var (pairing, secret) = await Audio2FaceHostClient.PairWithCodeAsync(HostPairingInput.Origin(code.Address), code.Code, device, name,
                         request.Token);
-                    var host = await SavePairingAsync(pairing, secret, HostSetupMethod.OnHost, null, null);
+                    var host = await SavePairingAsync(pairing, secret, HostSetupMethod.Agent, null, null);
                     done.Add(host.HostId);
                     try { await CheckAsync(host.Pairing, Hardware, _ => { }, request.Token); }
                     catch (Exception error) when (error is InvalidOperationException or Audio2FaceHostException) { }
@@ -264,33 +256,31 @@ public partial class HostsWindow : ThemedWindow
         if (Rail[step].IsChecked != true) Rail[step].IsChecked = true;
         BackButton.IsEnabled = step > 0;
         NextButton.Content = step == steps.Length - 1 ? "_Done" : "_Next";
-        MethodSummaryText.Text = $"Installing on {MethodName(Method)}. " + (Method == HostSetupMethod.OnHost
-            ? "Enter the host's address, then run the command shown below in a terminal on that computer."
+        MethodSummaryText.Text = Method == HostSetupMethod.OnHost
+            ? "On that PC, choose Use as a Martlet host in Martlet: it sets itself up. Then pair this PC with the code it shows."
             : Ssh
-                ? "Enter user@computer and press Add this computer. Martlet asks for that account's password once, adds its own SSH key, " +
-                  "checks Docker, sets the host up and pairs this PC by itself. You never need to log in there."
+                ? "Enter user@computer, then choose Add this computer. Martlet signs in once and sets up the host."
                 : Method == HostSetupMethod.ThisPcDocker
-                    ? "Press Set up host. Martlet starts Docker Desktop, sets the host up and pairs this PC by itself; nothing to type."
-                    : "Fill in the address, then press Set up host and answer the questions in the console window.");
+                    ? "Choose Set up host. Martlet starts Docker Desktop and pairs this PC automatically."
+                    : "Enter the host address, then choose Set up host and follow the prompts.";
         RolesSummaryText.Text = Ssh
-            ? $"Roles install from here over SSH; Martlet asks for what each role needs and shows the progress. This host runs on {MethodName(Method)}."
+            ? "Add or remove jobs over SSH. Martlet asks for anything each job needs and shows progress."
             : Method == HostSetupMethod.ThisPcDocker
-                ? $"Roles install from here; Martlet asks for what each role needs and shows the progress. This host runs on {MethodName(Method)}."
-                : $"Roles are added on the host itself, one at a time, with the same flow for every role. This host runs on {MethodName(Method)}.";
+                ? "Add or remove jobs on this PC. Martlet asks for anything each job needs and shows progress."
+                : "Add or remove jobs from here once it is paired: Martlet on that computer runs them and shows progress here.";
         SetupButton.Content = Ssh ? "_Add this computer" : "Set _up host";
         var byCode = Method == HostSetupMethod.OnHost;
         PairAutoCard.Visibility = byCode ? Visibility.Collapsed : Visibility.Visible;
         PairCommandSection.Visibility = byCode ? Visibility.Visible : Visibility.Collapsed;
         PairConsoleButton.Content = Ssh ? "_Pair over SSH" : "_Pair automatically";
         PairConsoleText.Text = Ssh
-            ? "Martlet asks the host for a one-use code over SSH and pairs this PC with it. Nothing to type."
-            : "Martlet asks this PC's host service for a one-use code and pairs this PC with it. Nothing to type.";
-        PairCodeTitle.Text = byCode ? "Type the code the host shows" : "Or type a code the host shows";
+            ? "Martlet gets a one-use code over SSH and pairs this PC automatically."
+            : "Martlet gets a one-use code from this PC's host service and pairs automatically.";
+        PairCodeTitle.Text = byCode ? "Enter the code shown on the host" : "Or enter a code from the host";
         PairCodeHelp.Text = byCode
-            ? "On the host, run martlet-host pair (the command is below); on a Windows PC set up as a host, choose Show a pairing code " +
-              "on its Martlet Home page. It shows its address and a code like K7QM-4XPA that works once, for five minutes. Type both here."
-            : "Pairing a host Martlet can't reach by itself? Run martlet-host pair on it (or choose Show a pairing code on a Windows " +
-              "host's Home page) and type the address and code it shows.";
+            ? "On a Windows PC with Martlet, choose Show a pairing code on its Home page. " +
+              "Enter the address and code it shows within five minutes."
+            : "If Martlet can't reach the host, show a pairing code on the host and enter its address and code here.";
         if (byCode) PairCommandText.Text = CommandFor(HostAction.Pair);
         if (PairAddressText.Text.Length == 0 && Method != HostSetupMethod.ThisPcDocker) PairAddressText.Text = AddressText.Text.Trim();
         if (step == 0 && IsLoaded && !searched) FindNearbyAsync().Forget();
@@ -304,8 +294,8 @@ public partial class HostsWindow : ThemedWindow
         catch (InvalidOperationException error) { return error.Message; }
     }
 
-    /// <summary>Straight to pairing with a code a host already shows: Martlet can't reach that host to run commands, so the
-    /// pairing is saved as one it reaches only through its gateway.</summary>
+    /// <summary>Straight to pairing with a code a host already shows: the pairing is saved as one Martlet reaches through its
+    /// gateway, where Martlet on that computer runs its commands.</summary>
     private void EnterCode_Click(object sender, RoutedEventArgs e)
     {
         choosingCode = true;
@@ -338,9 +328,9 @@ public partial class HostsWindow : ThemedWindow
         var ssh = Ssh;
         SshPanel.Visibility = ssh ? Visibility.Visible : Visibility.Collapsed;
         DockerPanel.Visibility = Method == HostSetupMethod.ThisPcDocker ? Visibility.Visible : Visibility.Collapsed;
-        DockerStateText.Text = MachineInfo.DockerDesktopRunning() ? "Running. You're ready to set up the host."
-            : MachineInfo.DockerDesktopInstalled() ? "Installed. Set up host starts it if needed."
-            : "Not installed. Martlet can install it with winget; Windows asks for approval.";
+        DockerStateText.Text = MachineInfo.DockerDesktopRunning() ? "Docker Desktop is running."
+            : MachineInfo.DockerDesktopInstalled() ? "Docker Desktop is installed. Set up host starts it."
+            : "Docker Desktop is not installed. Martlet can install it.";
         if (Method == HostSetupMethod.ThisPcDocker) AddressText.Text = HostSetupCommands.ThisPcAddress() ?? "";
         else if (AddressText.Text == HostSetupCommands.ThisPcAddress()) AddressText.Text = "";
         ShowCommand();
@@ -375,17 +365,36 @@ public partial class HostsWindow : ThemedWindow
         ShowCommand(action);
         if (Method == HostSetupMethod.OnHost)
         {
-            StatusText.Text = "Run the command shown under Install on the host itself (for example in a terminal there).";
+            // A paired PC with Martlet runs its commands there; setting it up and pairing start on that PC.
+            if (paired is { } host && action.Verb is not (HostVerb.Setup or HostVerb.Pair))
+                RunThroughAgentAsync(host, action).Forget();
+            else
+                StatusText.Text = action.Verb == HostVerb.Pair
+                    ? "On that PC, choose Show a pairing code on Martlet's Home page, then enter its address and code below."
+                    : "On that PC, install Martlet and choose Use as a Martlet host; it sets itself up. Then pair this PC with the code it shows.";
             return;
         }
         RunInMartletAsync(action).Forget();
+    }
+
+    private async Task RunThroughAgentAsync(PairedHost host, HostAction action)
+    {
+        if (busy) { StatusText.Text = "Another host action is still finishing."; return; }
+        busy = true;
+        try
+        {
+            StatusText.Text = await HostActions.RunAsync(this, pairings.DataDirectory, host.Target(version) with { Method = HostSetupMethod.Agent },
+                null, action, pairing: host.Pairing) ?? "Stopped. The run window shows why.";
+        }
+        catch (InvalidOperationException error) { StatusText.Text = error.Message; }
+        finally { busy = false; }
     }
 
     /// <summary>SSH hosts and this PC run in Martlet: setup and pairing as one flow, other actions in a run window.
     /// Nothing opens a console window.</summary>
     private async Task RunInMartletAsync(HostAction action)
     {
-        if (busy) { StatusText.Text = "Another host action is still finishing."; return; }
+        if (busy) { StatusText.Text = "Another host action is still running."; return; }
         if (!Ssh)
         {
             busy = true;
@@ -393,7 +402,7 @@ public partial class HostsWindow : ThemedWindow
             {
                 if (action.Verb == HostVerb.Pair) await PairThisPcAsync();
                 else StatusText.Text = await HostActions.RunAsync(this, pairings.DataDirectory, Target(), null, action)
-                    ?? "Stopped. The run window shows why.";
+                    ?? "Stopped. Check the run window for details.";
             }
             catch (InvalidOperationException error) { StatusText.Text = error.Message; }
             finally { busy = false; }
@@ -414,12 +423,12 @@ public partial class HostsWindow : ThemedWindow
                     StatusText.Text = summary;
                     if (action.Verb == HostVerb.Setup) ShowStep(3);
                 }
-                else StatusText.Text = "Stopped. The run window shows why.";
+                else StatusText.Text = "Stopped. Check the run window for details.";
                 return;
             }
             var target = Target() with { HostId = null };
             var done = await HostActions.RunAsync(this, pairings.DataDirectory, target, PinnedHostKey, action);
-            StatusText.Text = done ?? "Stopped. The run window shows why.";
+            StatusText.Text = done ?? "Stopped. Check the run window for details.";
         }
         catch (InvalidOperationException error) { StatusText.Text = error.Message; }
         finally { busy = false; }
@@ -432,11 +441,11 @@ public partial class HostsWindow : ThemedWindow
         var target = Target();
         var device = DeviceIdText.Text.Trim();
         PairedHost? host = null;
-        var summary = await HostRunWindow.RunAsync(this, "Pair with this PC's host service", async run =>
+        var summary = await HostRunWindow.RunAsync(this, "Pair with this PC's host", async run =>
         {
             await HostLocal.EnsureDockerAsync(run, ContinueSetupKind.Docker);
             await HostLocal.EnsureImageAsync(target, run.Status, run.Output, run.Token);
-            run.Status("Pairing this PC with its host service...");
+            run.Status("Pairing this PC with its host...");
             var (pairing, secret) = await HostLocal.PairAsync(target, device, Environment.MachineName, run.Output, run.Token);
             host = (await KeepPairingAsync(pairings, pairing, secret, HostSetupMethod.ThisPcDocker, null, null, run.Token)).Host;
             return $"Paired with {host.HostId}.";
@@ -447,7 +456,7 @@ public partial class HostsWindow : ThemedWindow
             ShowPaired((await pairings.LoadAsync(lifetime.Token)).Hosts.Count);
             ShowStep(3);
         }
-        StatusText.Text = summary ?? "Stopped. The run window shows why.";
+        StatusText.Text = summary ?? "Stopped. Check the run window for details.";
     }
 
     /// <summary>Add a Linux computer: connect (password once, host key pinned), check Docker, run setup unattended,
@@ -457,48 +466,47 @@ public partial class HostsWindow : ThemedWindow
         var remote = new HostRemote(new HostShell(pairings.DataDirectory, run.Prompts));
         run.Status($"Connecting to {ssh}...");
         var (probe, hostKey) = await remote.ProbeAsync(ssh, PinnedHostKey, run.Token);
-        run.Output.Report($"{ssh}: {probe.OperatingSystem ?? "Linux"} ({probe.Architecture}), Docker " +
-            (probe.Docker ? probe.DockerAccess ? "ready" : "installed (this account uses it through sudo)" : "not installed") +
-            $", SSH host key {hostKey}.");
+        run.Output.Report($"{ssh}: connected. Docker " +
+            (probe.Docker ? probe.DockerAccess ? "is ready" : "needs sudo for this account" : "is not installed") + ".");
         if (HostRemote.Blocker(method, probe, ssh.ToString()) is { } blocker) throw new InvalidOperationException(blocker);
         var address = AddressText.Text.Trim();
         if (!HostSetupCommands.IsPrivate(address))
             address = probe.Address ?? await HostSetupCommands.ResolveAsync(ssh.ToString(), run.Token) ?? "";
         if (setup && !HostSetupCommands.IsPrivate(address))
-            throw new InvalidOperationException("Enter the host's private LAN address (10.x, 172.16-31.x or 192.168.x) under Install.");
+            throw new InvalidOperationException("Enter the host's private network address under Install.");
         AddressText.Text = address;
         var target = new HostSetupTarget(method, ssh.ToString(), address, null, version);
         var sudo = HostRemote.NeedsSudo(method, probe);
         if (setup)
         {
-            run.Status($"Setting up the Martlet host on {ssh}. The first time it builds the host image there (a few minutes)...");
+            run.Status($"Setting up the host on {ssh}. This can take a few minutes...");
             var result = await remote.RunAsync(target, "setup", true, sudo, null, hostKey, run.Output, run.Token);
             if (result.ExitCode != 0)
-                throw new InvalidOperationException($"Setup stopped on {ssh} (exit {result.ExitCode}). The output shows why.");
+                throw new InvalidOperationException($"Setup stopped on {ssh} (exit {result.ExitCode}). Check the output for details.");
         }
         if (!pair) return $"{ssh} is set up.";
         run.Status($"Pairing this PC with {ssh}...");
         var device = DeviceIdText.Text.Trim();
         var (pairing, secret, key) = await remote.PairAsync(target, device, Environment.MachineName, sudo, hostKey, run.Output, run.Token);
         var host = await SavePairingAsync(pairing, secret, method, ssh.ToString(), key);
-        run.Status($"Reading {host.HostId}'s hardware...");
+        run.Status($"Checking {host.HostId}'s hardware...");
         string check;
         try { check = await CheckAsync(host.Pairing, Hardware, run.Status, run.Token); }
-        catch (InvalidOperationException error) { check = "Its check did not answer yet: " + error.Message; }
-        return $"{host.HostId} is set up and paired. {check} It is on the Devices map; select it there to hand it jobs.";
+        catch (InvalidOperationException error) { check = "The host did not answer yet: " + error.Message; }
+        return $"{host.HostId} is set up and paired. {check} Assign jobs on the Devices map.";
     }
 
     private async void ResetSshTrust_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
     {
         var ssh = HostShellTarget.Parse(SshTargetText.Text);
-        if (!ConfirmationDialog.Confirm(this, $"Forget the SSH host key Martlet pinned for {ssh.Host} and any remembered sudo password? " +
-                "Do this only if that computer was reinstalled; the next connection shows its new key to confirm.", "Reset SSH trust"))
+        if (!ConfirmationDialog.Confirm(this, $"Reset saved SSH trust for {ssh.Host} and forget any remembered sudo password? " +
+                "Use this only after reinstalling that computer. The next connection will ask you to trust it again.", "Reset trust"))
             return;
         await new HostShell(pairings.DataDirectory, new HostShellDialogs(this)).ForgetHostKeyAsync(ssh, lifetime.Token);
         await pairings.ClearSshHostKeyAsync(ssh, lifetime.Token);
         HostShell.ForgetSudo(ssh);
         if (paired?.SshTarget is { } current && current == ssh.ToString()) paired = paired with { SshHostKey = null };
-        StatusText.Text = $"Martlet no longer trusts {ssh.Host}'s old SSH host key.";
+        StatusText.Text = $"Martlet will ask you to trust {ssh.Host} again next time.";
     });
 
     private async void Setup_Click(object sender, RoutedEventArgs e)
@@ -512,7 +520,7 @@ public partial class HostsWindow : ThemedWindow
                 {
                     paired = host;
                     DeviceIdText.Text = host.Pairing.DeviceId;
-                    PairedText.Text = $"{host.HostId} at {host.Pairing.Origin}, paired as {host.Pairing.DeviceId}. Reached via: {host.Reach}.";
+                    PairedText.Text = $"Paired with {host.HostId} ({host.Pairing.Origin}). This PC is {host.Pairing.DeviceId}. Connection: {host.Reach}.";
                     ShowStep(3);
                 }
                 if (status is not null) StatusText.Text = status;
@@ -529,26 +537,25 @@ public partial class HostsWindow : ThemedWindow
         progress("Checking Windows Firewall...");
         var state = await WindowsFirewall.ProbeAsync(address, token);
         var blocked = state.DockerBlocked
-            ? " Windows Firewall also has a rule blocking Docker Desktop Backend on private networks; allow it in Windows Security > Firewall > Allow an app."
+            ? " Windows Firewall also blocks Docker Desktop. Allow it in Windows Security if other PCs still can't connect."
             : "";
         int? makePrivate = null;
         if (state.Category == "Public")
         {
             if (!ConfirmationDialog.Confirm(owner,
-                    "Windows treats this PC's network as Public, which blocks other PCs from reaching a Martlet host here. " +
-                    $"Mark it as a Private (home or work) network and allow Martlet's host port {WindowsFirewall.Port} (and {Nearby.Port}, " +
-                    "so Martlet on your other computers can find this PC) from your local network? Windows asks for administrator approval once.",
-                    "Allow other PCs to connect"))
-                return "Firewall unchanged: this PC's network stays Public, so only this PC can use the host." + blocked;
+                    "Windows treats this network as Public. To use this PC as a host, Martlet needs to mark it as Private " +
+                    "and allow connections from your private network (so your other computers can also find this PC). " +
+                    "Windows asks for administrator approval once.", "Allow connections"))
+                return "Firewall unchanged. Other PCs may not reach this host." + blocked;
             makePrivate = state.InterfaceIndex;
         }
         else if (state.RuleExists && state.NearbyRulesExist) return blocked.Length == 0 ? null : blocked.Trim();
-        progress($"Windows asks for administrator approval to allow TCP {WindowsFirewall.Port} (and {Nearby.Port}, so your other computers can find this PC) from your private network...");
+        progress("Windows asks for administrator approval to allow Martlet on your private network...");
         return await WindowsFirewall.ApplyAsync(makePrivate, token) switch
         {
-            WindowsFirewall.Outcome.Applied => $"Windows Firewall now allows TCP {WindowsFirewall.Port} and {Nearby.Port} from your private network" +
+            WindowsFirewall.Outcome.Applied => "Windows Firewall now allows Martlet on your private network" +
                 (makePrivate is null ? "." : ", and the network is Private.") + blocked,
-            WindowsFirewall.Outcome.Declined => "Firewall unchanged (administrator approval declined); other PCs may not reach this host." + blocked,
+            WindowsFirewall.Outcome.Declined => "Firewall unchanged. Other PCs may not reach this host." + blocked,
             _ => "Windows Firewall could not be changed; other PCs may not reach this host." + blocked
         };
     }
@@ -598,7 +605,7 @@ public partial class HostsWindow : ThemedWindow
 
     private async void InstallDocker_Click(object sender, RoutedEventArgs e)
     {
-        if (busy) { StatusText.Text = "Another host action is still finishing."; return; }
+        if (busy) { StatusText.Text = "Another host action is still running."; return; }
         busy = true;
         try
         {
@@ -615,10 +622,9 @@ public partial class HostsWindow : ThemedWindow
         ContinueSetupKind resume = ContinueSetupKind.Docker)
     {
         if (!ConfirmationDialog.Confirm(owner,
-                "Install Docker Desktop with winget? Docker Desktop is free for personal use under Docker's Subscription Service " +
-                "Agreement (docker.com/legal); continuing accepts the winget source and package agreements. It uses WSL 2, so Martlet " +
-                "also turns on Virtual Machine Platform and Windows Subsystem for Linux when they're off. Windows asks for administrator " +
-                "approval, and a restart may follow; Martlet then continues by itself after you sign in.", "Install Docker Desktop"))
+                "Install Docker Desktop now? Martlet uses Windows' package installer and may turn on WSL 2 and virtualization features. " +
+                "Windows may ask for administrator approval and a restart. After you sign in, Martlet continues setup.\n\n" +
+                "By continuing, you accept Docker's Subscription Service Agreement (free for personal use).", "Install Docker Desktop"))
             return (null, false);
         var summary = await HostRunWindow.RunAsync(owner, "Install Docker Desktop", async run =>
         {
@@ -626,12 +632,12 @@ public partial class HostsWindow : ThemedWindow
             await WindowsVirtualizationSetup.EnsureReadyAsync(run, resume);
             try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(MachineInfo.DockerDesktopPath) { UseShellExecute = true })?.Dispose(); }
             catch (Exception error) when (error is System.ComponentModel.Win32Exception or IOException) { run.Output.Report("Start Docker Desktop yourself: " + error.Message); }
-            return "Docker Desktop is installed and starting. Accept Docker's terms if it asks.";
+            return "Docker Desktop is installed and starting. Follow Docker Desktop if it asks you to finish setup.";
         });
         if (summary is not null) return (summary, true);
         return (MachineInfo.DockerDesktopInstalled()
-            ? "Docker Desktop is installed, but Windows isn't ready to start it yet. The run window shows why."
-            : "Docker Desktop was not installed. The run window shows why.", false);
+            ? "Docker Desktop is installed, but Windows isn't ready to start it yet. Check the run window for details."
+            : "Docker Desktop was not installed. Check the run window for details.", false);
     }
 
     // ---------- pairing ----------
@@ -644,9 +650,9 @@ public partial class HostsWindow : ThemedWindow
 
     private void ShowPaired(int count)
     {
-        var others = count > 1 ? $" {count} hosts are paired in all; hand each one its jobs on the Devices map." : "";
+        var others = count > 1 ? $" {count} hosts are paired. Assign jobs on the Devices map." : "";
         PairedText.Text = paired is { } host
-            ? $"{host.HostId} at {host.Pairing.Origin}, paired as {host.Pairing.DeviceId}. Reached via: {host.Reach}.{others}"
+            ? $"Paired with {host.HostId} ({host.Pairing.Origin}). This PC is {host.Pairing.DeviceId}. Connection: {host.Reach}.{others}"
             : "No Martlet host paired yet.";
         StatusText.Text = paired is null ? "No Martlet host paired." : $"Showing {paired.HostId}.";
     }
@@ -686,12 +692,12 @@ public partial class HostsWindow : ThemedWindow
         var shown = new Uri(pairing.Origin);
         PairAddressText.Text = shown.Port == HostPairingInput.DefaultPort ? shown.Host : shown.Authority;
         // A code shown by another computer (its host dashboard or martlet-host pair) pairs that computer, even while the wizard
-        // still shows This PC; Martlet then doesn't know how to reach it to run commands there.
+        // still shows This PC; Martlet then reaches it through Martlet on that computer.
         var method = Method == HostSetupMethod.ThisPcDocker && !HostRegistry.IsThisPc(new Uri(pairing.Origin).Host, HostSetupCommands.ThisPcAddress())
-            ? HostSetupMethod.OnHost : Method;
+            ? HostSetupMethod.Agent : Method;
         var host = await SavePairingAsync(pairing, secret, method, Ssh ? SshTargetText.Text.Trim() : null, PinnedHostKey);
         // An older host's pairing console stays open until it is stopped there.
-        StatusText.Text += card && Method == HostSetupMethod.OnHost ? " In the host console press a key, then type stop and confirm." : "";
+        StatusText.Text += card && Method == HostSetupMethod.OnHost ? " To close the pairing console on the host, press a key, type stop and confirm." : "";
         // Read what the host is like for the map and the advisor; a host that restarts its gateway after pairing may not answer yet.
         try { StatusText.Text += " " + await CheckAsync(host.Pairing, Hardware, _ => { }, lifetime.Token); }
         catch (Exception error) when (error is InvalidOperationException or OperationCanceledException or Audio2FaceHostException) { }
@@ -707,7 +713,7 @@ public partial class HostsWindow : ThemedWindow
         ShowPaired((await pairings.LoadAsync(lifetime.Token)).Hosts.Count);
         StatusText.Text = $"Paired with {host.HostId}. " + (lipSync
             ? "It keeps handling lip-sync."
-            : "It stands by; select it on the Devices map to hand it jobs.");
+            : "It's ready. Assign jobs on the Devices map.");
         return host;
     }
 
@@ -751,39 +757,39 @@ public partial class HostsWindow : ThemedWindow
         }
         var address = HostSetupCommands.ThisPcAddress();
         if (!HostSetupCommands.IsPrivate(address))
-            return (null, "This PC has no private network address (10.x, 172.16-31.x or 192.168.x). Connect it to your home network first.");
+            return (null, "This PC is not on a private network. Connect it to your home network first.");
         string? firewall;
         try { firewall = await OpenFirewallAsync(owner, address!, progress, token); }
         catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
-        { firewall = $"Windows Firewall was not changed ({error.Message}). Other PCs may not reach this host."; }
+        { firewall = $"Couldn't update Windows Firewall: {error.Message}. Other PCs may not reach this host."; }
         var version = typeof(App).Assembly.GetName().Version is { } v ? v.ToString(3) : "0.0.0";
         var target = new HostSetupTarget(HostSetupMethod.ThisPcDocker, "", address!,
             HostSetupCommands.SuggestedHostId(Environment.MachineName), version);
         var (hosts, _) = await pairings.LoadAsync(token);
         var deviceId = hosts.FirstOrDefault()?.Pairing.DeviceId ?? HostSetupCommands.SuggestedDeviceId();
         PairedHost? host = null;
-        progress("Setting up this PC's host service...");
-        var summary = await HostRunWindow.RunAsync(owner, title ?? "Set up this PC's host service", async run =>
+        progress("Setting up this PC as a host...");
+        var summary = await HostRunWindow.RunAsync(owner, title ?? "Set up this PC as a host", async run =>
         {
             await HostLocal.EnsureDockerAsync(run, ContinueSetupKind.ThisPc);
             await HostLocal.EnsureImageAsync(target, run.Status, run.Output, run.Token);
-            run.Status("Setting up the host service on this PC...");
+            run.Status("Setting up this PC as a host...");
             var exit = await HostLocal.EngineAsync(target, ["setup"], run.Output, run.Token);
-            if (exit != 0) throw new InvalidOperationException($"Setup stopped (exit {exit}). The output shows why.");
-            run.Status("Pairing this PC with its host service...");
+            if (exit != 0) throw new InvalidOperationException($"Setup stopped (exit {exit}). Check the output for details.");
+            run.Status("Pairing this PC with the host...");
             var (pairing, secret) = await HostLocal.PairAsync(target, deviceId, Environment.MachineName, run.Output, run.Token);
             host = (await KeepPairingAsync(pairings, pairing, secret, HostSetupMethod.ThisPcDocker, null, null, run.Token)).Host;
-            run.Status("Reading this PC's hardware...");
+            run.Status("Checking this PC's hardware...");
             string check;
             try { check = await CheckAsync(host.Pairing, new HostHardwareStore(pairings.DataDirectory), run.Status, run.Token); }
-            catch (InvalidOperationException error) { check = "Its check did not answer yet: " + error.Message; }
-            var ready = $"This PC's host service ({host.HostId}) is set up and paired. {check}";
+            catch (InvalidOperationException error) { check = "The host did not answer yet: " + error.Message; }
+            var ready = $"This PC is set up as a host. {check}";
             if (then is null) return ready;
             run.Output.Report(ready);
             return await then(run, host);
         });
-        var status = summary ?? (host is null ? "This PC's host service was not set up. The run window shows why."
-            : $"This PC's host service ({host.HostId}) is set up, but the next step stopped. The run window shows why.");
+        var status = summary ?? (host is null ? "This PC was not set up as a host. Check the run window for details."
+            : "This PC is set up as a host, but the next step stopped. Check the run window for details.");
         return (host, firewall is null ? status : firewall + " " + status);
     }
 
@@ -792,7 +798,7 @@ public partial class HostsWindow : ThemedWindow
     internal static async Task<string> CheckAsync(AvatarRemoteHost host, HostHardwareStore? hardware, Action<string> progress,
         CancellationToken token)
     {
-        progress($"Checking {host.HostId} at {host.Origin}...");
+        progress($"Checking {host.HostId}...");
         var check = await HostControl.CheckAsync(host, hardware, token);
         if (check.Reachable != true) throw new InvalidOperationException(check.Text);
         return check.Text;
@@ -806,9 +812,9 @@ public partial class HostsWindow : ThemedWindow
         try { (report, version) = await connection.ReadMachineReportAsync(token); }
         catch (Audio2FaceHostException error) when (error.Code == "request.invalid")
         {
-            return ("Its hardware is not reported: update the host (Update host on its card on the Devices map).", null);
+            return ("Hardware details aren't available yet. Update the host from the Devices map.", null);
         }
-        if (report is null) return ("Its hardware is not reported yet: run 'martlet-host machine' on the host.", version);
+        if (report is null) return ("Hardware details aren't available yet. Check the host and try again.", version);
         try { store?.Save(report); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         return ("Hardware: " + DescribeHardware(report) + ".", version);
@@ -840,12 +846,12 @@ public partial class HostsWindow : ThemedWindow
         var (hosts, profile) = await pairings.LoadAsync(lifetime.Token);
         paired = hosts.FirstOrDefault(h => h.HostId == profile.RemoteHost?.HostId) ?? hosts.LastOrDefault();
         ShowPaired(hosts.Count);
-        StatusText.Text = $"Forgot {host.HostId} here; to remove this PC on the host too, run martlet-host console there and revoke {host.Pairing.DeviceId}.";
+        StatusText.Text = $"Forgot {host.HostId} on this PC. To remove this PC from the host too, revoke {host.Pairing.DeviceId} in the host console.";
     });
 
     private async Task ActionAsync(Func<Task> action)
     {
-        if (busy) { StatusText.Text = "Another host action is still finishing."; return; }
+        if (busy) { StatusText.Text = "Another host action is still running."; return; }
         busy = true;
         try { await action(); }
         catch (OperationCanceledException) { }

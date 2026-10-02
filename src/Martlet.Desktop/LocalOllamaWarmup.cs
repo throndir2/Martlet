@@ -87,7 +87,7 @@ internal sealed class LocalOllamaWarmup : IDisposable
             if (response.IsSuccessStatusCode) result = LocalModelState.Ready;
             else
             {
-                why = Error(await response.Content.ReadAsStringAsync(limit.Token).ConfigureAwait(false)) ?? $"HTTP {(int)response.StatusCode}";
+                why = Error(await response.Content.ReadAsStringAsync(limit.Token).ConfigureAwait(false)) ?? $"Ollama returned error {(int)response.StatusCode}";
                 result = response.StatusCode == HttpStatusCode.NotFound ? LocalModelState.MissingModel : LocalModelState.Failed;
             }
         }
@@ -95,7 +95,7 @@ internal sealed class LocalOllamaWarmup : IDisposable
         catch (OperationCanceledException)
         {
             result = LocalModelState.Failed;
-            why = $"it didn't finish loading within {LoadLimit.TotalMinutes:0} minutes";
+            why = $"Ollama didn't finish loading it within {LoadLimit.TotalMinutes:0} minutes";
         }
         catch (HttpRequestException) { result = LocalModelState.NotRunning; }
         var took = clock.GetElapsedTime(at);

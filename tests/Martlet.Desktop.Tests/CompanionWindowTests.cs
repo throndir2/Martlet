@@ -217,7 +217,7 @@ public sealed class CompanionWindowTests
             await Until(() => !runner.IsRunning && Field<TextBox>(window, "PersonaName").Text == "Aria");
             Assert.Contains("Aria lore", Field<TextBox>(window, "ResultText").Text);
             Click(window, "CompanionSave");
-            await Until(() => !runner.IsRunning && Field<TextBox>(window, "ResultText").Text.Contains("is saved and used with its persona"));
+            await Until(() => !runner.IsRunning && Field<TextBox>(window, "ResultText").Text.Contains("saved for this persona"));
 
             var aria = (await store.LoadAsync()).Settings!.Companion!.Personas.Single(persona => persona.Name == "Aria");
             var book = Assert.Single((await lore.LoadAsync()).Library.Books);
@@ -260,7 +260,7 @@ public sealed class CompanionWindowTests
             Click(window, "LorebookTest");
             var tested = Field<TextBox>(window, "TestResult").Text;
             Assert.Contains("2 entries would be added", tested);
-            Assert.Contains("Mab rules the fae.", tested);
+            Assert.Contains("Mab from world", tested);
 
             Assert.Equal("Castle", Field<TextBox>(window, "EntryTitle").Text);
             Field<TextBox>(window, "EntryContent").Text = "The castle is empty now.";

@@ -21,7 +21,7 @@ public partial class SetupWindow : ThemedWindow
     {
         if (ConfigurationRecovery is not { } openRecovery)
         {
-            ResultText.Text = "Configuration recovery is unavailable in this setup window. Close it and open Configuration backup / restore from the main window.";
+            ResultText.Text = "Backup and restore is not available here. Close setup and open it from the main window.";
             return;
         }
         openRecovery(this);
@@ -29,7 +29,7 @@ public partial class SetupWindow : ThemedWindow
         draft = null;
         revision = null;
         KeyInput.Clear();
-        ResultText.Text = "Recovery closed. Reload the saved checkpoint before editing; no unsaved setup draft can authorize a restore or subsequent key action.";
+        ResultText.Text = "Backup and restore closed. Reload saved setup before making more changes.";
         RenderStatus();
         RenderOperationState();
     }
@@ -54,13 +54,13 @@ public partial class SetupWindow : ThemedWindow
     {
         public override string ToString() => Name;
     }
-    private static readonly LlmProvider OpenAiProvider = new("OpenAI (https://api.openai.com, Responses API)", null, false);
-    private static readonly LlmProvider CustomProvider = new("Custom OpenAI-compatible endpoint (Chat Completions)", null, true);
+    private static readonly LlmProvider OpenAiProvider = new("OpenAI", null, false);
+    private static readonly LlmProvider CustomProvider = new("Custom compatible server", null, true);
     private static readonly IReadOnlyList<LlmProvider> LlmProviders =
     [
         OpenAiProvider,
         .. ChatCompletionsEndpointCatalog.NamedEndpoints.Select(endpoint =>
-            new LlmProvider($"{endpoint.Name} ({endpoint.BaseUrl}, Chat Completions)", endpoint.BaseUrl, true, endpoint.DefaultModelId)),
+            new LlmProvider(endpoint.Name, endpoint.BaseUrl, true, endpoint.DefaultModelId)),
         CustomProvider
     ];
     private static readonly SetupRole[] Jobs = [SetupRole.Llm, SetupRole.Stt, SetupRole.Tts];
@@ -100,7 +100,7 @@ public partial class SetupWindow : ThemedWindow
         RoleChoice.SelectedIndex = 0;
         ProviderChoice.ItemsSource = LlmProviders;
         ProviderChoice.SelectedItem = OpenAiProvider;
-        DisclosureText.Text = OpenAiSetup.Disclosure;
+        DisclosureText.Text = "Cloud AI may use your data and may cost money. Review provider pricing and data policy before saving.";
         rendering = false;
         operationTimer.Tick += (_, _) => RenderOperationState();
         operationTimer.Start();
@@ -122,8 +122,8 @@ public partial class SetupWindow : ThemedWindow
             draft = loaded.Error is null ? SetupSettings.Begin(loaded.Settings) : null;
             needsReload = loaded.Error is not null;
             ResultText.Text = loaded.Error?.Summary ?? (loaded.Settings?.SchemaVersion is 1 or 2
-                ? $"Version {loaded.Settings.SchemaVersion} loaded unchanged. Explicit Save migrates it and atomically snapshots the original; profile ID, routes and legacy references are preserved."
-                : "Checkpoint loaded. No secret lookup, device or network action was performed.");
+                ? "Older settings loaded. Save to update them."
+                : "Setup loaded.");
             if (draft is not null)
             {
                 rendering = true;
@@ -144,7 +144,7 @@ public partial class SetupWindow : ThemedWindow
     {
         if (closed) return false;
         if (!busy && !operations.IsRunning) return true;
-        ResultText.Text = "An earlier setup action still owns its worker. No overlapping action was started. Cancel or close observation; reload only after it releases.";
+        ResultText.Text = "Another setup action is still finishing. Wait or cancel it before starting another.";
         return false;
     }
 
@@ -156,10 +156,10 @@ public partial class SetupWindow : ThemedWindow
         ReloadButton.IsEnabled = !busy && !active;
         CancelButton.IsEnabled = active;
         OperationActivity.Text = active
-            ? "Setup worker still active. Native or filesystem work may not stop immediately. Cancel and Close remain available; timeout is NOT rollback or completion. Other setup actions stay blocked."
+            ? "Setup is working. You can cancel or close this window."
             : needsReload
-                ? "No setup worker active. Reload the saved checkpoint and review pending key recovery before editing."
-                : "No setup worker active. Saved configuration is not voice readiness or permission for paid requests.";
+                ? "Reload saved setup before editing."
+                : "Setup is ready.";
     }
 
     private async Task<bool> ObserveAsync(SetupOperation? operation, Action<SetupWorkResult> apply)
@@ -180,8 +180,8 @@ public partial class SetupWindow : ThemedWindow
                 operation.RequestCancellation();
                 needsReload = true;
                 ResultText.Text = stop.IsCancellationRequested
-                    ? "Cancellation requested; observation stopped. Native work may still be active, not rolled back. Close is available. After the worker releases, reload and review saved settings and pending key removals."
-                    : "Setup observation timed out; cancellation requested. Native work may still be active, not rolled back. Close is available. After the worker releases, reload and review saved settings and pending key removals.";
+                    ? "Setup action canceled. Wait for it to finish, then reload before editing."
+                    : "Setup action timed out. Wait for it to finish, then reload before editing.";
                 return false;
             }
             var result = await operation.Completion;
@@ -190,8 +190,8 @@ public partial class SetupWindow : ThemedWindow
             {
                 needsReload = true;
                 ResultText.Text = result.Outcome == SetupWorkOutcome.Canceled
-                    ? "Setup action canceled. Reload and review saved settings and pending key removals; cancellation is not proof of rollback."
-                    : "Setup action failed. Reload and review the role configuration and pending key removals; do not assume rollback. Raw exception details and secrets are not shown.";
+                    ? "Setup action canceled. Reload before editing again."
+                    : "Setup action failed. Reload before trying again.";
                 return false;
             }
             apply(result);
@@ -208,12 +208,12 @@ public partial class SetupWindow : ThemedWindow
 
     private void RenderStatus()
     {
-        SetupStatus.Text = draft is null ? "Setup blocked. Original settings preserved; see the remedy below." : SetupSettings.Describe(draft);
+        SetupStatus.Text = draft is null ? "Setup could not load. Your saved settings were not changed." : SetupSettings.Describe(draft);
         var saved = draft?.Setup?.Routes.SingleOrDefault(r => r.Role == Role);
         var job = SetupJobNameConverter.Name(Role);
         CredentialScope.Text = saved?.RouteType == SetupRouteType.ChatCompletions
-            ? $"Selected job: {job}; internal alias: {saved.ProviderAlias}; destination: {LiveConversationConfiguration.LlmDestinationName(saved)}. The key is bound to this exact base URL and is optional for local servers. Select another job on Jobs."
-            : $"Selected job: {job}; internal alias: {OpenAiSetup.Alias(Role)}; origin: {OpenAiSetup.Origin}. Select another job on Jobs.";
+            ? $"Selected job: {job}. Key destination: {LiveConversationConfiguration.LlmDestinationName(saved)}. Change jobs on the Jobs tab."
+            : $"Selected job: {job}. Key destination: OpenAI. Change jobs on the Jobs tab.";
         RemovalChoice.ItemsSource = draft?.Setup?.PendingRemovals;
         RemovalChoice.SelectedIndex = 0;
     }
@@ -236,12 +236,12 @@ public partial class SetupWindow : ThemedWindow
         VoiceId.Text = route?.VoiceId ?? (Role == SetupRole.Tts ? OpenAiSpeechSynthesisCatalog.DefaultVoice : "");
         VoiceId.IsEnabled = Role == SetupRole.Tts;
         VoicePanel.Visibility = Role == SetupRole.Tts ? Visibility.Visible : Visibility.Collapsed;
-        VoiceHint.Text = $"Voices this adapter supports: {string.Join(", ", OpenAiSpeechSynthesisCatalog.SupportedVoices)}. A Martlet host voice (F5) is chosen on the Devices map.";
+        VoiceHint.Text = $"OpenAI voices: {string.Join(", ", OpenAiSpeechSynthesisCatalog.SupportedVoices)}. Host voices are chosen on the Devices map.";
         JobText.Text = Role switch
         {
-            SetupRole.Llm => "Thinking is the conversation model that writes Martlet's replies. Pick a cloud provider here, or hand thinking to a paired Martlet host on the Devices map.",
-            SetupRole.Stt => "Listening turns what you say into text. It needs a microphone (Microphone and speakers page). Without it you can still type.",
-            _ => "Speaking turns replies into a voice played on your speakers (Microphone and speakers page). Without it replies stay as text."
+            SetupRole.Llm => "Thinking writes Martlet's replies. Choose a provider here, or use a paired Martlet host on the Devices map.",
+            SetupRole.Stt => "Listening turns speech into text. Choose your microphone on the Microphone and speakers page.",
+            _ => "Speaking reads replies aloud. Choose your speakers on the Microphone and speakers page."
         };
         ConsentChoice.IsChecked = route?.Consent is not null;
         KeyInput.Clear();
@@ -264,19 +264,23 @@ public partial class SetupWindow : ThemedWindow
         ProviderPanel.Visibility = Role == SetupRole.Llm ? Visibility.Visible : Visibility.Collapsed;
         BaseUrlPanel.Visibility = provider.Chat ? Visibility.Visible : Visibility.Collapsed;
         CatalogPanel.Visibility = catalog.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
-        var reasoning = $" Prefer instruct/chat models: Martlet asks for short replies, but each reply is capped at the max reply length ({GenerationSettings.DefaultMaxReplyTokens} tokens unless changed on Companion > Replies) and reasoning/thinking models spend part of that on hidden thinking.";
+        var reasoning = "";
         ProviderHint.Text = Role != SetupRole.Llm
-            ? $"{SetupJobNameConverter.Name(Role).Split(' ')[0]} uses OpenAI in the cloud (https://api.openai.com) and its own API key. The recommended model is prefilled."
+            ? $"{SetupJobNameConverter.Name(Role).Split(' ')[0]} uses OpenAI. The recommended model is filled in."
             : provider.BaseUrl == ChatCompletionsEndpointCatalog.OpenRouterBaseUrl
-                ? $"Recommended: {provider.DefaultModelId} (prefilled; it talks, sees your screen and uses tools). You can enter any exact OpenRouter model ID instead, for example openai/gpt-4o-mini (':free' variants use OpenRouter's free tier). Store your OpenRouter API key on Credentials. OpenRouter chooses the upstream provider; fallback to other providers is disabled." + reasoning
+                ? $"Recommended: {provider.DefaultModelId}. You can enter any OpenRouter model ID. Store your OpenRouter key on Credentials." + reasoning
                 : provider.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl
-                    ? $"Recommended: {provider.DefaultModelId} (prefilled; a fast Free Endpoint that talks, sees your screen and uses tools). You can enter any exact model ID shown on build.nvidia.com instead; models marked Free Endpoint there cost nothing. Store your NVIDIA API key (nvapi-...) on Credentials." + reasoning
+                    ? $"Recommended: {provider.DefaultModelId}. You can enter any NVIDIA Build model ID. Store your NVIDIA key on Credentials." + reasoning
                     : provider.Chat
-                        ? "Enter the API base URL without /chat/completions, for example https://api.groq.com/openai/v1, https://api.together.xyz/v1, or a local server such as http://127.0.0.1:1234/v1 (LM Studio), http://127.0.0.1:8080/v1 (llama.cpp) or http://127.0.0.1:11434/v1 (Ollama), and the model ID that server serves. HTTP is allowed only for a literal loopback IP. A key is optional; store one on Credentials if the server requires it." + reasoning
-                        : $"Recommended: {OpenAiTextGenerationCatalog.DefaultModelId} (prefilled, fast and inexpensive). Pick the larger model below if you prefer.";
+                        ? "Enter the server's base URL and model ID. Use HTTPS unless the server runs on this PC. Store a key only if your server needs one." + reasoning
+                        : $"Recommended: {OpenAiTextGenerationCatalog.DefaultModelId}. Pick another compatible model if you prefer.";
         BoundaryText.Text = provider.Chat
-            ? $"{OpenAiSetup.Boundary(Role)} Internal alias: {ChatCompletionsSetup.Alias}. Destination: {(provider.BaseUrl ?? "the exact base URL entered below")}."
-            : $"{OpenAiSetup.Boundary(Role)} Internal alias: {OpenAiSetup.Alias(Role)}. Destination: {OpenAiSetup.Origin}.";
+            ? $"Data sent: conversation text to {(provider.BaseUrl ?? "the server entered below")}."
+            : Role == SetupRole.Stt
+                ? "Data sent: microphone audio to OpenAI when you use listening."
+                : Role == SetupRole.Tts
+                    ? "Data sent: reply text to OpenAI when Martlet speaks."
+                    : "Data sent: conversation text to OpenAI.";
     }
 
     private void Provider_Changed(object sender, SelectionChangedEventArgs e)
@@ -291,8 +295,8 @@ public partial class SetupWindow : ThemedWindow
         rendering = false;
         routeDirty = true;
         ResultText.Text = prefill && ModelId.Text.Length > 0
-            ? "Provider changed and its recommended model prefilled. Review it, apply the route and explicitly review its destination consent again before saving."
-            : "Provider changed. Enter the exact model ID, apply the route and explicitly review its destination consent again before saving.";
+            ? "Provider changed. Review the model, apply this job and confirm data sharing again before saving."
+            : "Provider changed. Enter the model ID, apply this job and confirm data sharing again before saving.";
     }
 
 
@@ -308,7 +312,7 @@ public partial class SetupWindow : ThemedWindow
     {
         if (!rendering && draft is not null)
         {
-            if (routeDirty) ResultText.Text = "Unapplied route fields were discarded when changing role. Apply the selected role before leaving it.";
+            if (routeDirty) ResultText.Text = "Unapplied changes were discarded. Apply a job before switching away.";
             RenderRole();
         }
     }
@@ -318,14 +322,14 @@ public partial class SetupWindow : ThemedWindow
         if (rendering || draft is null) return;
         ConsentChoice.IsChecked = false;
         routeDirty = true;
-        ResultText.Text = "Route fields changed. Apply the route and explicitly review its destination consent again before saving.";
+        ResultText.Text = "Job settings changed. Apply this job and confirm data sharing again before saving.";
     }
 
     private void UseCatalogModel_Click(object sender, RoutedEventArgs e)
     {
         if (draft is null || ModelCatalogChoice.SelectedItem is not string selected) return;
         ModelId.Text = selected;
-        ResultText.Text = "Compatible model ID copied into the unsaved route. Review the exact model and destination, then apply and consent again.";
+        ResultText.Text = "Model copied. Apply this job and confirm data sharing again.";
     }
 
     private void ApplyRoute_Click(object sender, RoutedEventArgs e)
@@ -342,7 +346,7 @@ public partial class SetupWindow : ThemedWindow
                 : old.RouteType is null or SetupRouteType.OpenAi);
             if (!sameDestination && draft.Setup!.PendingRemovals.Any(removal => removal.Role == Role))
                 throw new ContractException(ErrorCode.InvalidContract,
-                    "Remove this role's detached key on Credentials before switching its destination again; the prior route was not replaced.");
+                    "Remove this job's detached key before changing its destination again.");
             AppSettings updated;
             if (provider.Chat)
                 updated = ChatCompletionsSetup.SelectRoute(draft, baseUrl, modelId);
@@ -350,10 +354,10 @@ public partial class SetupWindow : ThemedWindow
             {
                 if (!Catalog(Role).Contains(modelId, StringComparer.Ordinal))
                     throw new ContractException(ErrorCode.ProviderCapability,
-                        "This named OpenAI adapter does not support that model ID. Select an exact compatible catalog entry; the prior route was not replaced.");
+                        "OpenAI does not support that model for this job. Choose a model from the list.");
                 if (Role == SetupRole.Tts && !OpenAiSpeechSynthesisCatalog.SupportsVoice(VoiceId.Text))
                     throw new ContractException(ErrorCode.ProviderCapability,
-                        "This named OpenAI TTS adapter does not support that voice ID. Review the displayed compatible voices; the prior route was not replaced.");
+                        "OpenAI does not support that voice. Choose one of the voices shown above.");
                 updated = SetupSettings.SelectRoute(draft, Role, modelId, Role == SetupRole.Tts ? VoiceId.Text : null);
             }
             var pending = updated.Setup!.PendingRemovals.Count;
@@ -362,8 +366,8 @@ public partial class SetupWindow : ThemedWindow
             var route = updated.Setup!.Routes.Single(r => r.Role == Role);
             draft = SetupSettings.ReplaceRoute(updated, route with { Consent = ConsentChoice.IsChecked == true ? route.Selection() : null });
             routeDirty = false;
-            ResultText.Text = "Route applied to the working checkpoint. Save to persist it. Model availability, credential validity, cost and quota remain unknown." +
-                (detached ? " The previous destination's key was detached and listed for explicit removal on Credentials; store a key for the new destination if it needs one." : "");
+            ResultText.Text = "Job applied. Save to keep it." +
+                (detached ? " The previous key was detached and is listed for removal on Credentials." : "");
             RenderStatus();
         }
         catch (ContractException ex) { ResultText.Text = ex.Message; }
@@ -374,7 +378,7 @@ public partial class SetupWindow : ThemedWindow
         SetupRole.Stt => OpenAiTranscriptionCatalog.SupportedModelIds,
         SetupRole.Llm => OpenAiTextGenerationCatalog.SupportedModelIds,
         SetupRole.Tts => OpenAiSpeechSynthesisCatalog.SupportedModelIds,
-        _ => throw new ContractException(ErrorCode.InvalidContract, "Choose STT, LLM or TTS.")
+        _ => throw new ContractException(ErrorCode.InvalidContract, "Choose a setup job.")
     };
 
     private void Consent_Changed(object sender, RoutedEventArgs e)
@@ -385,7 +389,7 @@ public partial class SetupWindow : ThemedWindow
     private AppSettings Checkpoint()
     {
         if (draft is null || routeDirty)
-            throw new ContractException(ErrorCode.InvalidContract, "Apply edited route fields before saving, or reload the saved checkpoint.");
+            throw new ContractException(ErrorCode.InvalidContract, "Apply edited job settings before saving, or reload saved setup.");
         if (draft.Profile.Kind is ProfileKind.NotConfigured or ProfileKind.Fixture)
             draft = draft with { Profile = draft.Profile with { Kind = ProfileKind.Api } };
         draft.Validate();
@@ -445,13 +449,13 @@ public partial class SetupWindow : ThemedWindow
     }
 
     private bool Confirm(string text) => confirm?.Invoke(text) ??
-        ConfirmationDialog.Confirm(this, text, "Explicit scoped action");
+        ConfirmationDialog.Confirm(this, text, "Confirm setup action");
 
     private async void StoreKey_Click(object sender, RoutedEventArgs e)
     {
         var saved = draft?.Setup?.Routes.SingleOrDefault(r => r.Role == Role);
         var destination = saved?.RouteType == SetupRouteType.ChatCompletions ? saved.Origin : OpenAiSetup.Origin;
-        if (!MayStart() || !Confirm($"Store a new key for this profile's {Role} route at {destination} and save this checkpoint? This invalidates that role's consent. Any previous key is detached, not deleted; remove it explicitly below. No provider access will be tested.")) return;
+        if (!MayStart() || !Confirm($"Store a new key for {SetupJobNameConverter.Name(Role)} at {destination}? This saves setup and asks you to confirm data sharing again.")) return;
         try
         {
             var snapshot = Checkpoint();
@@ -485,7 +489,7 @@ public partial class SetupWindow : ThemedWindow
 
     private async void ReadKey_Click(object sender, RoutedEventArgs e)
     {
-        if (!MayStart() || !Confirm($"Read only this profile's selected {Role} key from Windows to check local presence? It will be immediately discarded, never revealed or sent to a provider.")) return;
+        if (!MayStart() || !Confirm($"Check whether a saved {SetupJobNameConverter.Name(Role)} key exists? The key will not be shown or sent.")) return;
         try
         {
             var snapshot = Checkpoint();
@@ -499,7 +503,7 @@ public partial class SetupWindow : ThemedWindow
 
     private async void DetachKey_Click(object sender, RoutedEventArgs e)
     {
-        if (!MayStart() || !Confirm($"Detach only this profile's {Role} credential and save? Consent is invalidated. The OS key remains listed for explicit removal; other roles and credentials are unchanged.")) return;
+        if (!MayStart() || !Confirm($"Detach the saved {SetupJobNameConverter.Name(Role)} key from this setup? The key will stay in Windows until you remove it.")) return;
         try
         {
             var snapshot = Checkpoint();
@@ -516,10 +520,10 @@ public partial class SetupWindow : ThemedWindow
         if (!MayStart()) return;
         if (RemovalChoice.SelectedItem is not PendingCredentialRemoval removal)
         {
-            ResultText.Text = "No detached credential is selected. Detach a role first; unrelated Windows credentials cannot be listed or removed.";
+            ResultText.Text = "No detached key is selected. Detach a key first.";
             return;
         }
-        if (!Confirm($"Permanently remove detached {removal.Role} reference {removal.CredentialId} for this profile only? An old settings snapshot cannot restore this key.")) return;
+        if (!Confirm($"Permanently remove the selected detached {SetupJobNameConverter.Name(removal.Role)} key? This cannot be undone.")) return;
         try
         {
             var snapshot = Checkpoint();
@@ -532,7 +536,7 @@ public partial class SetupWindow : ThemedWindow
 
     private async void Reload_Click(object sender, RoutedEventArgs e)
     {
-        if (MayStart() && Confirm("Discard unsaved configuration edits and reload the saved checkpoint? No credential is read or deleted.")) await LoadAsync();
+        if (MayStart() && Confirm("Discard unsaved setup changes and reload the saved setup?")) await LoadAsync();
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e)
@@ -558,10 +562,10 @@ public partial class SetupWindow : ThemedWindow
     private void Link_Click(object sender, RequestNavigateEventArgs e)
     {
         if (e.Uri.AbsoluteUri is not (OpenAiSetup.Pricing or OpenAiSetup.Retention)) return;
-        if (Confirm("Open the official OpenAI page in your browser? This contacts the website, not the inference API."))
+        if (Confirm("Open this provider page in your browser?"))
         {
             try { Process.Start(new ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true }); }
-            catch (Win32Exception) { ResultText.Text = "The browser could not open. Use the displayed official link manually; no provider call was made."; }
+            catch (Win32Exception) { ResultText.Text = "Could not open your browser. Use the link shown above."; }
         }
         e.Handled = true;
     }

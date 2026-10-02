@@ -3,33 +3,33 @@
         Style="{DynamicResource AppWindowStyle}"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Martlet - Setup / resume" Width="850" Height="820" MinWidth="600" MinHeight="520"
+        Title="Martlet - AI setup" Width="850" Height="820" MinWidth="600" MinHeight="520"
         WindowStartupLocation="CenterOwner" Loaded="Window_Loaded" Closing="Window_Closing"
-        AutomationProperties.AutomationId="SetupWindow" AutomationProperties.Name="Martlet resumable configuration, not voice readiness">
+        AutomationProperties.AutomationId="SetupWindow" AutomationProperties.Name="Martlet AI setup">
     <local:ThemedWindow.Resources>
         <local:SetupJobNameConverter x:Key="JobName"/>
     </local:ThemedWindow.Resources>
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="20">
-            <TextBlock Text="AI jobs: thinking, listening and speaking" Style="{DynamicResource PageTitle}"/>
+            <TextBlock Text="Set up Martlet's AI" Style="{DynamicResource PageTitle}"/>
             <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,16"
-                       Text="Pick a provider and model for each job; recommended defaults are prefilled. Saving is configuration only: no capture, devices, network or secret lookup happens on opening this screen, and screen and memory stay OFF."/>
+                       Text="Choose how Martlet thinks, listens and speaks. Defaults are filled in to help you get started."/>
             <StackPanel x:Name="EditorPanel">
                 <TabControl x:Name="Steps" Style="{DynamicResource StepperTabs}" SelectionChanged="Step_Changed" AutomationProperties.AutomationId="SetupSteps">
                     <TabItem Header="1. _Overview">
                         <StackPanel Margin="12">
-                            <TextBlock TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,8" Text="Use AI models: OpenAI, OpenRouter, NVIDIA Build or an OpenAI-compatible server (cloud or your own)."/>
-                            <TextBlock TextWrapping="Wrap" Text="Thinking can use OpenAI, OpenRouter, NVIDIA Build or any OpenAI-compatible Chat Completions endpoint (including a local server such as LM Studio, llama.cpp, vLLM or Ollama on a loopback address). Listening and Speaking use OpenAI in the cloud, or a paired Martlet host from the Devices map. No automatic cloud fallback."/>
+                            <TextBlock TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,8" Text="Martlet can use OpenAI, OpenRouter, NVIDIA Build or your own compatible server."/>
+                            <TextBlock TextWrapping="Wrap" Text="Use OpenAI for listening and speaking, or send those jobs to a paired Martlet host. You can still type if you skip voice."/>
                         </StackPanel>
                     </TabItem>
                     <TabItem Header="2. _Jobs">
                         <StackPanel Margin="12">
-                            <TextBlock TextWrapping="Wrap" Text="Martlet has three AI jobs. Set each one up separately: Thinking (the conversation model), Listening (turns your speech into text) and Speaking (turns replies into a voice). Your microphone and speakers are chosen on the Microphone and speakers page, and handing a job to another computer happens on the Devices map."/>
+                            <TextBlock TextWrapping="Wrap" Text="Set up thinking, listening and speaking one at a time. You can choose microphones, speakers and paired hosts later."/>
                             <TextBlock x:Name="DisclosureText" TextWrapping="Wrap" Margin="0,8"/>
                             <TextBlock TextWrapping="Wrap">
-                                <Hyperlink NavigateUri="https://openai.com/api/pricing/" RequestNavigate="Link_Click">Current official API pricing</Hyperlink>
+                                <Hyperlink NavigateUri="https://openai.com/api/pricing/" RequestNavigate="Link_Click">API pricing</Hyperlink>
                                 <Run Text=" | "/>
-                                <Hyperlink NavigateUri="https://platform.openai.com/docs/guides/your-data" RequestNavigate="Link_Click">Current data retention policy</Hyperlink>
+                                <Hyperlink NavigateUri="https://platform.openai.com/docs/guides/your-data" RequestNavigate="Link_Click">Data policy</Hyperlink>
                             </TextBlock>
                             <Label Target="{Binding ElementName=RoleChoice}" Content="_Job to set up"/>
                             <ComboBox x:Name="RoleChoice" SelectionChanged="Role_Changed" MinHeight="30" AutomationProperties.AutomationId="SetupRole">
@@ -46,17 +46,17 @@
                                 <ComboBox x:Name="ProviderChoice" SelectionChanged="Provider_Changed" MinHeight="30" AutomationProperties.AutomationId="SetupProvider"/>
                             </StackPanel>
                             <StackPanel x:Name="BaseUrlPanel">
-                                <Label Target="{Binding ElementName=BaseUrl}" Content="API _base URL (Martlet appends /chat/completions)"/>
+                                <Label Target="{Binding ElementName=BaseUrl}" Content="API _base URL"/>
                                 <TextBox x:Name="BaseUrl" MaxLength="2048" TextChanged="Route_Changed" AutomationProperties.AutomationId="SetupBaseUrl"/>
                             </StackPanel>
                             <TextBlock x:Name="ProviderHint" TextWrapping="Wrap" Margin="0,4" AutomationProperties.AutomationId="SetupProviderHint"/>
                             <StackPanel x:Name="CatalogPanel">
-                                <Label Target="{Binding ElementName=ModelCatalogChoice}" Content="Known compatible _models"/>
+                                <Label Target="{Binding ElementName=ModelCatalogChoice}" Content="Available _models"/>
                                 <ComboBox x:Name="ModelCatalogChoice" MinHeight="30" AutomationProperties.AutomationId="SetupModelCatalog"/>
                                 <Button Content="_Use selected model" Click="UseCatalogModel_Click" Padding="8" Margin="0,4"
                                         AutomationProperties.AutomationId="SetupUseCatalogModel"/>
                             </StackPanel>
-                            <Label Target="{Binding ElementName=ModelId}" Content="_Model ID (recommended default prefilled; change it if you prefer another)"/>
+                            <Label Target="{Binding ElementName=ModelId}" Content="_Model ID"/>
                             <TextBox x:Name="ModelId" MaxLength="128" TextChanged="Route_Changed" AutomationProperties.AutomationId="SetupModel"/>
                             <StackPanel x:Name="VoicePanel">
                                 <Label Target="{Binding ElementName=VoiceId}" Content="_Voice"/>
@@ -64,39 +64,39 @@
                                 <TextBlock x:Name="VoiceHint" TextWrapping="Wrap" Margin="0,4" Style="{DynamicResource Muted}"/>
                             </StackPanel>
                             <CheckBox x:Name="ConsentChoice" Margin="0,12" Checked="Consent_Changed" Unchecked="Consent_Changed" AutomationProperties.AutomationId="SetupConsent">
-                                <TextBlock TextWrapping="Wrap" Text="I choose this provider, model and destination for this job after reviewing its data/cost disclosure. This is NOT permission for capture or any paid request."/>
+                                <TextBlock TextWrapping="Wrap" Text="I understand where this job sends data and what the provider may charge."/>
                             </CheckBox>
-                            <Button Content="_Apply this job's choice" Click="ApplyRoute_Click" Padding="8" AutomationProperties.AutomationId="SetupApplyRoute"/>
-                            <TextBlock TextWrapping="Wrap" Margin="0,8" Style="{DynamicResource Muted}" Text="Apply before switching jobs or saving. A prefilled default is only a suggestion until you apply it. Changing provider, model, voice or key clears that job's consent. The model list is Martlet's adapter catalog, not proof of account availability. No fallback is performed."/>
+                            <Button Content="_Apply this job" Click="ApplyRoute_Click" Padding="8" AutomationProperties.AutomationId="SetupApplyRoute"/>
+                            <TextBlock TextWrapping="Wrap" Margin="0,8" Style="{DynamicResource Muted}" Text="Apply each job before saving. If you change where a job sends data, confirm it again."/>
                         </StackPanel>
                     </TabItem>
                     <TabItem Header="3. _Credentials">
                         <StackPanel Margin="12">
                             <TextBlock x:Name="CredentialScope" TextWrapping="Wrap"/>
-                            <TextBlock TextWrapping="Wrap" Margin="0,8" Text="Windows Credential Manager stores secrets for this profile, role and exact destination only (the OpenAI origin, or the exact Chat Completions base URL for the LLM). Local OpenAI-compatible servers can run without a key. Settings contain opaque references, never keys. The vault is NOT protection from malware already running as your Windows user."/>
-                            <Label Target="{Binding ElementName=KeyInput}" Content="_API key (masked; never copied automatically)"/>
+                            <TextBlock TextWrapping="Wrap" Margin="0,8" Text="Windows Credential Manager stores keys for this profile and destination. Local servers may not need a key."/>
+                            <Label Target="{Binding ElementName=KeyInput}" Content="_API key"/>
                             <PasswordBox x:Name="KeyInput" MaxLength="1024" AutomationProperties.AutomationId="SetupKey"/>
-                            <Button Content="_Store / replace key and save checkpoint..." Click="StoreKey_Click" Padding="8" Margin="0,8" AutomationProperties.AutomationId="SetupStoreKey"/>
-                            <Button Content="Explicitly _read selected key from vault (presence only; never reveal)" Click="ReadKey_Click" Padding="8" Margin="0,4" AutomationProperties.AutomationId="SetupReadKey"/>
-                            <Button Content="_Detach selected role key and save..." Click="DetachKey_Click" Padding="8" Margin="0,4" AutomationProperties.AutomationId="SetupDetachKey"/>
-                            <Label Target="{Binding ElementName=RemovalChoice}" Content="Detached owned reference to _remove"/>
+                            <Button Content="_Store key..." Click="StoreKey_Click" Padding="8" Margin="0,8" AutomationProperties.AutomationId="SetupStoreKey"/>
+                            <Button Content="_Check saved key" Click="ReadKey_Click" Padding="8" Margin="0,4" AutomationProperties.AutomationId="SetupReadKey"/>
+                            <Button Content="_Detach key..." Click="DetachKey_Click" Padding="8" Margin="0,4" AutomationProperties.AutomationId="SetupDetachKey"/>
+                            <Label Target="{Binding ElementName=RemovalChoice}" Content="Detached key to _remove"/>
                             <ComboBox x:Name="RemovalChoice" MinHeight="30" AutomationProperties.AutomationId="SetupRemoval"/>
-                            <Button Content="_Remove selected detached key from Windows..." Click="RemoveKey_Click" Padding="8" Margin="0,4" AutomationProperties.AutomationId="SetupRemoveKey"/>
-                            <TextBlock TextWrapping="Wrap" Margin="0,8" Text="Replacement saves a pending owned reference before writing the new key, then attaches it and detaches the old key atomically. On interruption, reload and remove the pending reference. Detached keys remain until you explicitly remove them. Deletion cannot be undone by restoring an old settings snapshot."/>
+                            <Button Content="_Remove detached key..." Click="RemoveKey_Click" Padding="8" Margin="0,4" AutomationProperties.AutomationId="SetupRemoveKey"/>
+                            <TextBlock TextWrapping="Wrap" Margin="0,8" Text="Replacing a key leaves the old one listed for removal. Removing a detached key cannot be undone."/>
                         </StackPanel>
                     </TabItem>
                     <TabItem Header="4. _Review">
-                        <TextBlock Margin="12" TextWrapping="Wrap" Text="Review status below. API configuration can be saved incomplete: missing roles, renewed destination consent, key presence/API validity and local microphone/output qualification must be reviewed later. No first voice response, capability probe or live connection is claimed."/>
+                        <TextBlock Margin="12" TextWrapping="Wrap" Text="Review your setup below. You can save before everything is complete and come back later."/>
                     </TabItem>
                 </TabControl>
                 <WrapPanel Margin="0,12">
                     <Button Content="_Back" Click="Back_Click" Padding="12,8" Margin="0,0,8,0" AutomationProperties.AutomationId="SetupBack"/>
                     <Button Content="_Next" Click="Next_Click" Padding="12,8" Margin="0,0,8,0" Style="{DynamicResource PrimaryButton}" AutomationProperties.AutomationId="SetupNext"/>
-                    <Button Content="_Save checkpoint" Click="Save_Click" Padding="12,8" Margin="0,0,8,0" AutomationProperties.AutomationId="SetupSave"/>
+                    <Button Content="_Save setup" Click="Save_Click" Padding="12,8" Margin="0,0,8,0" AutomationProperties.AutomationId="SetupSave"/>
                     <Button Content="Save and e_xit setup" Click="SaveExit_Click" Padding="12,8" AutomationProperties.AutomationId="SetupSaveExit"/>
                 </WrapPanel>
             </StackPanel>
-            <Label Target="{Binding ElementName=SetupStatus}" Content="Always available setup _status (working checkpoint)"/>
+            <Label Target="{Binding ElementName=SetupStatus}" Content="Setup _status"/>
             <TextBox x:Name="SetupStatus" IsReadOnly="True" TextWrapping="Wrap" Height="170" VerticalScrollBarVisibility="Auto"
                      AutomationProperties.AutomationId="SetupStatus"/>
             <TextBox x:Name="ResultText" IsReadOnly="True" TextWrapping="Wrap" MinHeight="55" Margin="0,8"
@@ -104,13 +104,13 @@
             <TextBlock x:Name="OperationActivity" TextWrapping="Wrap" Margin="0,8"
                        AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="SetupActivity"/>
             <WrapPanel>
-                <Button x:Name="CancelButton" Content="_Cancel setup action" Click="Cancel_Click" Padding="8"
+                <Button x:Name="CancelButton" Content="_Cancel action" Click="Cancel_Click" Padding="8"
                         AutomationProperties.AutomationId="SetupCancel"/>
-                <Button x:Name="ReloadButton" Content="_Reload saved checkpoint (discard unsaved edits)..." Click="Reload_Click" Padding="8"
+                <Button x:Name="ReloadButton" Content="_Reload saved setup..." Click="Reload_Click" Padding="8"
                         AutomationProperties.AutomationId="SetupReload"/>
-                <Button Content="Troubleshooting (local only)" Click="Troubleshooting_Click" Padding="8" Margin="8,0" AutomationProperties.AutomationId="SetupTroubleshooting"/>
-                <Button Content="Local configuration backup / restore" Click="Recovery_Click" Padding="8" Margin="8,0" AutomationProperties.AutomationId="SetupRecovery"/>
-                <Button Content="_Close setup (stop observing)" Click="Close_Click" Padding="8" Margin="8,0" AutomationProperties.AutomationId="SetupClose"/>
+                <Button Content="Troubleshooting" Click="Troubleshooting_Click" Padding="8" Margin="8,0" AutomationProperties.AutomationId="SetupTroubleshooting"/>
+                <Button Content="Backup and restore" Click="Recovery_Click" Padding="8" Margin="8,0" AutomationProperties.AutomationId="SetupRecovery"/>
+                <Button Content="_Close setup" Click="Close_Click" Padding="8" Margin="8,0" AutomationProperties.AutomationId="SetupClose"/>
             </WrapPanel>
         </StackPanel>
     </ScrollViewer>

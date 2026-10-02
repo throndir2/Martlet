@@ -224,12 +224,7 @@ to bottom: the **map**, the **selected device** with what it does, and
   job moves to another paired host that runs the same engine, and the row
   says where it moved from or why this PC cannot follow the plan (host not
   paired here, no voice chosen). Jobs nobody does yet are listed here with
-  *Set up in Companion*. **Let my other computers find this PC and ask to use
-  its hosts** (ON by default; unticking it saves `off` in `nearby.txt`) lets
-  this PC answer *Martlet on your network* when it runs a host or reaches one
-  over SSH; its status line names the hosts it offers, the last request, and
-  when Windows Firewall or a Public network keeps other computers out, with
-  *Let my other computers reach this PC* (one administrator prompt).
+  *Set up in Companion*.
 
 Reading hardware is local only. It opens no port, starts no process and makes
 no network request.
@@ -443,7 +438,14 @@ window ends it.
   none is found or the chosen one isn't connected.
 - **Settings**: palette, this PC's role and the tour, app updates (automatic
   checks and their interval, automatic installs, keeping hosts on this PC's
-  version, *Check for updates now*, *Install*, *Update hosts now*), tools
+  version, *Check for updates now*, *Install*, *Update hosts now*), *Your
+  other computers* (whether they may send this PC commands, and **Let my
+  other computers find this PC and ask to use its hosts**: ON by default,
+  unticking it saves `off` in `nearby.txt`; when this PC runs a host or
+  reaches one over SSH it answers *Martlet on your network*, and its status
+  line names the hosts it offers, the last request, and when Windows Firewall
+  or a Public network keeps other computers out, with *Let my other computers
+  reach this PC*, one administrator prompt), tools
   (Troubleshooting, Backup and restore, Prerequisites, Martlet hosts), and
   *Diagnostics* (pipeline, status details, local audio
   evidence, refresh and stop, create profile). Exit is also here.

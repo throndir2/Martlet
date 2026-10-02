@@ -43,10 +43,12 @@ public partial class MainWindow
     }
 
     /// <summary>The hosts this PC can get a pairing code from: hosts it runs (paired here, or this PC's host service set up
-    /// from the host dashboard) and hosts it reaches over SSH.</summary>
+    /// from the host dashboard) and hosts it reaches over SSH. Hosts reached only through Martlet on that computer can't be
+    /// asked for a pairing code from here.</summary>
     private IReadOnlyList<ShareableHost> ShareableHosts()
     {
-        var hosts = homeHosts.Where(h => h.CanLaunch).Select(h => new ShareableHost(h.HostId, h.Target(Version), h.SshHostKey)).ToList();
+        var hosts = homeHosts.Where(h => h.CanLaunch && h.Method is HostSetupMethod.ThisPcDocker or HostSetupMethod.SshDocker or HostSetupMethod.SshNative)
+            .Select(h => new ShareableHost(h.HostId, h.Target(Version), h.SshHostKey)).ToList();
         var local = ThisPcTarget();
         if (hosts.All(h => h.Target.Method != HostSetupMethod.ThisPcDocker) && (thisPcHostVersion ?? nearbyLocalService) is not null &&
             HostSetupCommands.IsPrivate(local.Address) && local.HostId is { } id && hosts.All(h => h.HostId != id))

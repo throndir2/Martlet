@@ -16,9 +16,8 @@ public static class OpenAiSetup
     public const string Origin = "https://api.openai.com";
     public const string Pricing = "https://openai.com/api/pricing/";
     public const string Retention = "https://platform.openai.com/docs/guides/your-data";
-    public const string Disclosure = "Cloud requests may cost money. Price, quota, model access and key validity are unknown. " +
-        "Saving is not permission for capture or future paid requests. Screen and memory stay OFF. " +
-        "No network, model discovery or billable health test is performed.";
+    public const string Disclosure = "Cloud requests may cost money. " +
+        "Your text, audio or reply text is sent only when you start an action. Saving settings sends nothing.";
 
     public static string Alias(SetupRole role) => role switch
     {
@@ -28,9 +27,9 @@ public static class OpenAiSetup
 
     public static string Boundary(SetupRole role) => role switch
     {
-        SetupRole.Stt => "Microphone audio -> cloud STT. Even speech later suppressed can be disclosed and charged.",
-        SetupRole.Llm => "Transcript and conversation text -> cloud LLM.",
-        SetupRole.Tts => "Response text -> cloud TTS. Output is generated voice, not a human recording.",
+        SetupRole.Stt => "Microphone audio can be sent for transcription.",
+        SetupRole.Llm => "Your messages and recent conversation can be sent for replies.",
+        SetupRole.Tts => "Reply text can be sent to create speech.",
         _ => throw new ContractException(ErrorCode.InvalidContract, "Choose STT, LLM or TTS.")
     };
 
@@ -38,7 +37,7 @@ public static class OpenAiSetup
     {
         ContractRules.Require(value is { Length: >= 1 and <= 128 } &&
             value.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.'),
-            "Enter an explicit upstream model or voice ID (1-128 ASCII letters, digits, dot, underscore or hyphen); no endpoint, key or default is accepted.");
+            "Enter a model or voice ID using letters, numbers, dots, underscores or hyphens.");
     }
 }
 
@@ -75,9 +74,7 @@ public static class SelfHostSetup
         };
 
     public const string Disclosure =
-        "Self-host routes remain OFF until their exact endpoint, pinned host identity, role-scoped device credential, " +
-        "route snapshot and per-action disclosure are reviewed. Pair, probe, package verification, download, warmup, " +
-        "reference snapshot/apply and preview are separate actions. Saving never starts network, device, process or model work.";
+        "Self-hosted routes stay off until you pair and enable them. Saving settings does not start hosts, downloads or local processes.";
 
     internal static void Identifier(string? value, int maximum = 128)
     {
@@ -1118,9 +1115,8 @@ public sealed record SetupSettings : IContract
             return "Setup not started. Open Setup / resume.";
         var lines = new List<string>
         {
-            $"Saved choice: {settings.Profile.Kind}. Checkpoint: {setup.Checkpoint}. Configuration only; live account, package, model and device readiness are not established by this summary.",
-            "Saved choices do not authorize recording, provider requests, local processes, reference upload, downloads or warmup. This summary starts none of them.",
-            AudioSetupStatus.From(settings.Audio).Describe(),
+            $"Setup checkpoint: {setup.Checkpoint}.",
+            "Saving settings does not record audio, contact providers or start local tools.",
             OpenAiSetup.Disclosure,
             SelfHostSetup.Disclosure
         };
@@ -1129,46 +1125,61 @@ public sealed record SetupSettings : IContract
             var route = setup.Routes.SingleOrDefault(r => r.Role == role);
             if (route is null)
             {
-                lines.Add($"{role}: not configured. Select a named versioned route in Setup.");
+                lines.Add($"{RoleName(role)}: not set up.");
                 continue;
             }
-            if (route.RouteType is null or SetupRouteType.OpenAi)
-            {
-                lines.Add($"{role}: route selected; " +
-                    $"{(route.Consent is null ? "consent missing or invalidated by a change; review again" : "destination choice recorded, NOT per-turn authorization")}; " +
-                    $"{(route.CredentialId is null ? "credential not configured" : "credential reference saved, OS presence and API validity unknown")}. Connection not checked by this summary." +
-                    (route.Enabled == false ? " Route is OFF." : ""));
-                continue;
-            }
-            var paired = SelfHostSetup.IsGateway(route.RouteType)
-                ? route.CredentialId is null
-                    ? (setup.RetainedGatewayCredentials ?? []).Any(item => item.Role == role)
-                        ? "saved pairing retained; route not connected/mismatched"
-                        : "gateway credential not paired"
-                    : "permanent role-scoped gateway pairing referenced; vault presence and revocation status unknown"
-                : route.RouteType == SetupRouteType.ChatCompletions
-                    ? route.CredentialId is null ? "explicit keyless endpoint" : "endpoint-scoped credential reference saved; API validity unknown"
-                    : "no provider credential";
-            var evidence = route.RouteType switch
-            {
-                SetupRouteType.GatewayOllama or SetupRouteType.GatewayF5 or SetupRouteType.GatewayStt =>
-                    route.GatewaySnapshot is null ? "route probe snapshot missing" : "exact route snapshot saved, not live readiness",
-                SetupRouteType.LocalWhisper =>
-                    route.LocalStt is null ? "package verification missing" : "exact package snapshot saved; launch re-verifies and audits denied egress",
-                _ => "adapter catalog selection saved"
-            };
-            if (route.RouteType == SetupRouteType.GatewayF5)
-                evidence += route.Reference is null
-                    ? "; applied reference missing"
-                    : "; named reference revision applied, source and rights still require per-action review";
-            lines.Add($"{role}: {route.RouteType}; {(route.Enabled == true ? "ON in configuration" : "OFF")}; " +
-                $"{(route.Consent == route.Selection() ? "selection recorded, NOT per-turn authorization" : "selection consent missing or invalidated")}; " +
-                $"{paired}; {evidence}. No connection, model, process or audio action was run by this summary.");
+            var enabled = route.RouteType is null || route.Enabled == true;
+            var consent = route.Consent == route.Selection() ? "selection saved" : "review required";
+            var credential = route.RouteType == SetupRouteType.ChatCompletions
+                ? route.CredentialId is null ? "key optional" : "key saved"
+                : NeedsCredential(route)
+                    ? route.CredentialId is null ? "key missing" : "key saved"
+                    : "no key needed";
+            var status = route.RouteType is null or SetupRouteType.OpenAi or SetupRouteType.ChatCompletions ||
+                route.RouteType is SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWindowsTts or SetupRouteType.LocalParakeet
+                    ? enabled ? "ready when you use it" : "off"
+                    : EvidenceReady(route) && enabled ? "ready when you use it" : "needs setup";
+            lines.Add($"{RoleName(role)}: {RouteName(route.RouteType)}; {status}; {consent}; {credential}.");
         }
         if (setup.PendingRemovals.Count != 0)
-            lines.Add("Credential cleanup pending. Remove each detached reference before changing that role's gateway host, pin or route type.");
+            lines.Add($"Credential cleanup pending: {setup.PendingRemovals.Count}.");
         if (setup.RetainedGatewayCredentials is { Count: > 0 })
-            lines.Add("Saved pairing retained; route not connected/mismatched. Explicitly reconnect the exact saved binding; saving never contacts the host.");
+            lines.Add("A saved host pairing is waiting to be reconnected.");
         return string.Join(Environment.NewLine, lines);
     }
+
+    private static bool NeedsCredential(SetupRoute route) => route.RouteType switch
+    {
+        SetupRouteType.LocalWhisper or SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWindowsTts or SetupRouteType.LocalParakeet => false,
+        SetupRouteType.ChatCompletions => false,
+        _ => true
+    };
+
+    private static bool EvidenceReady(SetupRoute route) => route.RouteType switch
+    {
+        SetupRouteType.GatewayOllama or SetupRouteType.GatewayStt => route.GatewaySnapshot is not null,
+        SetupRouteType.GatewayF5 => route.GatewaySnapshot is not null && route.Reference is not null,
+        SetupRouteType.LocalWhisper => route.LocalStt is not null,
+        _ => true
+    };
+
+    private static string RoleName(SetupRole role) => role switch
+    {
+        SetupRole.Stt => "Speech-to-text",
+        SetupRole.Llm => "Thinking",
+        _ => "Voice"
+    };
+
+    private static string RouteName(SetupRouteType? route) => route switch
+    {
+        null or SetupRouteType.OpenAi => "OpenAI",
+        SetupRouteType.ChatCompletions => "custom chat endpoint",
+        SetupRouteType.LocalWindowsStt => "Windows speech recognition",
+        SetupRouteType.LocalWindowsTts => "Windows voice",
+        SetupRouteType.LocalWhisper or SetupRouteType.LocalParakeet => "local speech recognition",
+        SetupRouteType.GatewayOllama => "paired-host model",
+        SetupRouteType.GatewayF5 => "paired-host voice",
+        SetupRouteType.GatewayStt => "paired-host speech recognition",
+        _ => "selected route"
+    };
 }

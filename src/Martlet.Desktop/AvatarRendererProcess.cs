@@ -48,7 +48,7 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
         token.ThrowIfCancellationRequested();
         var executable = Path.Combine(AppContext.BaseDirectory, "AvatarRenderer", "Martlet.Avatar.RendererHost.exe");
         LocalAvatarFiles.CheckAncestors(executable);
-        if (!File.Exists(executable)) throw new FileNotFoundException("Build the private avatar renderer before activation.");
+        if (!File.Exists(executable)) throw new FileNotFoundException("The character renderer is missing. Reinstall Martlet or choose another character.");
         var info = new ProcessStartInfo(executable) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(executable)! };
         info.Environment.Clear();
         foreach (var name in new[] { "SystemRoot", "WINDIR", "TEMP", "TMP", "LOCALAPPDATA", "DOTNET_ROOT" })
@@ -62,7 +62,7 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
         var limits = new JobLimits { Basic = new() { Flags = 0x2000 } };
         if (!SetInformationJobObject(job, 9, ref limits, Marshal.SizeOf<JobLimits>()))
             throw new Win32Exception(Marshal.GetLastWin32Error());
-        process = Process.Start(info) ?? throw new IOException("Renderer process did not start.");
+        process = Process.Start(info) ?? throw new IOException("The character renderer didn't start.");
         Exited = process.WaitForExitAsync();
         var started = process;
         _ = Exited.ContinueWith(_ =>
@@ -77,13 +77,13 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
         // No browser is initialized until this handshake; the child is already job-owned.
         var response = await SendAsync("load", new RendererLoad(profile, revision,
             Application.Current is App { SelectedTheme: PinkTheme.Dark }), token, TimeSpan.FromSeconds(45));
-        if (response.Kind != "capabilities") throw new InvalidDataException("Renderer capability response missing.");
+        if (response.Kind != "capabilities") throw new InvalidDataException("The character renderer didn't report its controls.");
         Capabilities = RendererProtocol.Data<RendererCapabilities>(response);
         if (Capabilities.Parameters.Length > 512 || Capabilities.Parameters.Any(p =>
             string.IsNullOrWhiteSpace(p.Id) || p.Id.Length > 128 || !double.IsFinite(p.Minimum) ||
             !double.IsFinite(p.Maximum) || !double.IsFinite(p.Neutral) || p.Minimum >= p.Maximum ||
             p.Neutral < p.Minimum || p.Neutral > p.Maximum))
-            throw new InvalidDataException("Renderer returned unsupported capability metadata.");
+            throw new InvalidDataException("The character renderer reported unsupported model controls.");
     }
 
     public async Task<RendererMessage> SendAsync<T>(string kind, T data, CancellationToken token,
@@ -98,7 +98,7 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
             await RendererProtocol.WriteAsync(commands, RendererProtocol.Message(kind, Activation, data), request.Token);
             var response = await RendererProtocol.ReadAsync(replies, request.Token);
             if (response.Activation != Activation || response.Kind == "error")
-                throw new InvalidDataException("Renderer rejected resources/controls or lost its activation binding.");
+                throw new InvalidDataException("The character renderer couldn't apply those controls.");
             return response;
         }
         finally { exchange.Release(); }
@@ -135,7 +135,7 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
                 if (!QueryInformationJobObject(job, 1, out var accounting, Marshal.SizeOf<JobAccounting>(), IntPtr.Zero))
                     throw new Win32Exception(Marshal.GetLastWin32Error());
                 if (accounting.ActiveProcesses == 0) break;
-                if (deadline.Elapsed > TimeSpan.FromSeconds(3)) throw new TimeoutException("Renderer descendants have not exited; activation remains blocked.");
+                if (deadline.Elapsed > TimeSpan.FromSeconds(3)) throw new TimeoutException("The character renderer is still closing. Try again in a moment.");
                 await Task.Delay(10);
             }
             job.Dispose();

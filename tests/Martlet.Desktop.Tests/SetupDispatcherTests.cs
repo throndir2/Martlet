@@ -69,7 +69,7 @@ public sealed class SetupDispatcherTests(ITestOutputHelper output)
             if (action is "Write" or "Delete") Assert.Equal(1, pendingBefore);
 
             Click(window, "SetupCancel");
-            await WaitUntil(() => Control<TextBox>(window, "ResultText").Text.Contains("Cancellation requested", StringComparison.Ordinal));
+            await WaitUntil(() => Control<TextBox>(window, "ResultText").Text.Contains("Setup action canceled", StringComparison.Ordinal));
             Assert.True(runner.IsRunning);
             Assert.False(Button(window, "SetupReload").IsEnabled);
             if (action is "Write" or "Delete")
@@ -331,7 +331,7 @@ public sealed class SetupDispatcherTests(ITestOutputHelper output)
                 Control<TextBox>(window, "ModelId").Text = model;
                 Control<CheckBox>(window, "ConsentChoice").IsChecked = true;
                 Click(window, "SetupApplyRoute");
-                Assert.Contains("Route applied", Control<TextBox>(window, "ResultText").Text);
+                Assert.Contains("Job applied", Control<TextBox>(window, "ResultText").Text);
                 Click(window, "SetupSave");
                 await WaitUntil(() => Control<TextBox>(window, "ResultText").Text.Contains("saved", StringComparison.OrdinalIgnoreCase));
                 var saved = await Task.Run(() => fixture.Store.LoadAsync());

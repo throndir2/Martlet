@@ -25,7 +25,7 @@ internal static class HostPairingCredential
                 return new Guid(bytes);
         }
         catch (FormatException) { }
-        throw new InvalidOperationException("The saved host credential reference is invalid; pair again.");
+        throw new InvalidOperationException("The saved host pairing is invalid. Pair the host again.");
     }
 
     internal static string FromGuid(Guid id) => Base64Url.EncodeToString(id.ToByteArray());

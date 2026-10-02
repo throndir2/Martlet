@@ -46,9 +46,9 @@ public partial class MainWindow
         if (rows.Count > 0)
         {
             var add = node.Kind == NodeKind.Add;
-            DetailContent.Children.Add(DetailSection(add ? "WHAT A HOST DOES" : "WHAT IT DOES",
+            DetailContent.Children.Add(DetailSection(add ? "What a host does" : "What it does",
                 add || rows.All(r => r.Component == DeviceComponent.Host) ? null
-                : node.Kind == NodeKind.Missing ? "Nobody does this yet." : "Each job this device does for you. Change it right here."));
+                : node.Kind == NodeKind.Missing ? "Not set up yet." : "Change these jobs here."));
             foreach (var role in rows)
             {
                 var commands = role.Component is { } key && shown.Add(key)
@@ -59,14 +59,14 @@ public partial class MainWindow
 
         var loose = node.Commands.Where(c => Placed(c) is null && !(c.Action == NodeAction.CheckHost && node.Kind != NodeKind.ThisPc)).ToList();
         if (node.Kind == NodeKind.Add)
-            AddCommandSection("GET STARTED", null, loose);
+            AddCommandSection("Get started", null, loose);
         else
         {
             var give = loose.Where(c => GiveActions.Contains(c.Action)).ToList();
             var roles = loose.Where(c => c.Action is NodeAction.InstallRole or NodeAction.RemoveRole).ToList();
-            AddCommandSection("GIVE IT MORE TO DO", node.Kind == NodeKind.ThisPc ? "Run more of Martlet on this PC." : "Hand it a job or install another role there.",
+            AddCommandSection("Give it more to do", node.Kind == NodeKind.ThisPc ? "Run more of Martlet on this PC." : "Assign a job or add a role.",
                 give, roles);
-            AddCommandSection("MANAGE", null, loose.Where(c => !GiveActions.Contains(c.Action) && !roles.Contains(c)).ToList());
+            AddCommandSection("Manage", null, loose.Where(c => !GiveActions.Contains(c.Action) && !roles.Contains(c)).ToList());
         }
 
         var notes = node.Notes.Distinct(StringComparer.Ordinal)
@@ -88,7 +88,7 @@ public partial class MainWindow
 
         if (node.PairedHostId is { } pairedId && node.Kind == NodeKind.Host && FindHost(pairedId) is { } paired &&
             PlatformCatalog.ManagesRolesRemotely(PlatformDevice.FromHost(pairedId, HardwareStore?.Find(pairedId))))
-            DetailContent.Children.Add(DetailExpander("How Martlet reaches it", "DeviceReachSection", ReachEditor(paired), !paired.CanLaunch));
+            DetailContent.Children.Add(DetailExpander("Connection method", "DeviceReachSection", ReachEditor(paired), !paired.CanLaunch));
     }
 
     // ---------- header ----------
@@ -132,7 +132,7 @@ public partial class MainWindow
         names.Children.Add(title);
         var subtitle = new TextBlock
         {
-            Text = node.Roles.Any(r => r.Component == DeviceComponent.App) ? $"{node.Subtitle} \u00b7 Your Martlet companion: conversations, microphone and speakers" : node.Subtitle
+            Text = node.Roles.Any(r => r.Component == DeviceComponent.App) ? $"{node.Subtitle} \u00b7 Your companion for conversations, microphone and speakers" : node.Subtitle
         };
         subtitle.SetResourceReference(StyleProperty, "Muted");
         names.Children.Add(subtitle);
@@ -221,7 +221,7 @@ public partial class MainWindow
             var change = new Button
             {
                 Content = setUp ? "Set up in Companion"
-                    : lipSync && NetworkMap.LipSync(homeAvatar) == LipSyncHandler.Loudness ? "Set up Audio2Face lip-sync here" : "Change in Companion"
+                    : lipSync && NetworkMap.LipSync(homeAvatar) == LipSyncHandler.Loudness ? "Set up lip-sync here" : "Change in Companion"
             };
             CompactButton(change, setUp);
             AutomationProperties.SetAutomationId(change, "RoleChange-" + (job?.Role.ToString() ?? "LipSync"));
@@ -243,7 +243,7 @@ public partial class MainWindow
         if (companion && node.Kind != NodeKind.Add && (job is not null || lipSync) && NetworkMap.Hosts(Inputs()).Count > 0)
         {
             var owner = new StackPanel { Width = 250, Margin = new Thickness(16, 0, 0, 0), VerticalAlignment = VerticalAlignment.Top };
-            var label = new TextBlock { Text = "Done by", FontSize = 12, Margin = new Thickness(2, 0, 0, 4) };
+            var label = new TextBlock { Text = "Handled by", FontSize = 12, Margin = new Thickness(2, 0, 0, 4) };
             label.SetResourceReference(StyleProperty, "Muted");
             owner.Children.Add(label);
             owner.Children.Add(job is not null ? JobChoice(job) : LipSyncChoice());
@@ -273,7 +273,7 @@ public partial class MainWindow
         if (roles is not { Count: > 0 }) return;
         var buttons = new WrapPanel { Margin = new Thickness(4, -6, 0, 4) };
         foreach (var command in roles.OrderBy(c => c.Action)) buttons.Children.Add(CommandButton(command));
-        var expander = DetailExpander("Install or remove roles", "DeviceRolesSection", buttons, deviceRolesExpanded);
+        var expander = DetailExpander("Host roles", "DeviceRolesSection", buttons, deviceRolesExpanded);
         expander.Margin = new Thickness(-6, commands.Count > 0 ? 10 : 0, 0, 0);
         expander.Expanded += (_, _) => deviceRolesExpanded = true;
         expander.Collapsed += (_, _) => deviceRolesExpanded = false;
@@ -367,24 +367,36 @@ public partial class MainWindow
         return callout;
     }
 
-    /// <summary>How this desktop reaches a host to install or remove its roles: SSH (Docker or native Ubuntu), this PC's
-    /// Docker Desktop, or by hand on the host.</summary>
+    /// <summary>How this desktop reaches a host to install or remove its roles and update it: through Martlet on that computer
+    /// (its paired connection; the default), SSH (Docker or native Ubuntu) or this PC's Docker Desktop.</summary>
     private StackPanel ReachEditor(PairedHost host)
     {
         var panel = new StackPanel { Margin = new Thickness(4, 4, 0, 4), MaxWidth = 520, HorizontalAlignment = HorizontalAlignment.Left };
+        var now = new TextBlock { Text = $"Reached via: {host.Reach}.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8) };
+        AutomationProperties.SetAutomationId(now, "HostReachNow");
+        panel.Children.Add(now);
         var method = new ComboBox { Margin = new Thickness(0, 0, 0, 8) };
-        AutomationProperties.SetName(method, "How Martlet reaches this host");
+        AutomationProperties.SetName(method, "Connection method");
         AutomationProperties.SetAutomationId(method, "HostReachMethod");
         foreach (var (value, text) in new[]
         {
-            (HostSetupMethod.SshDocker, "SSH, with Docker there"), (HostSetupMethod.SshNative, "SSH, native Ubuntu"),
-            (HostSetupMethod.ThisPcDocker, "This PC, with Docker Desktop"), (HostSetupMethod.OnHost, "I run its commands on it myself")
+            (HostSetupMethod.Agent, "Through Martlet on that computer (paired connection)"),
+            (HostSetupMethod.SshDocker, "SSH to a Docker host"), (HostSetupMethod.SshNative, "SSH to an Ubuntu host"),
+            (HostSetupMethod.ThisPcDocker, "This PC with Docker Desktop")
         })
         {
             var item = new ComboBoxItem { Content = text, Tag = value };
             method.Items.Add(item);
-            if (value == host.Method) method.SelectedItem = item;
+            if (value == host.Method || value == HostSetupMethod.Agent && host.Method == HostSetupMethod.OnHost) method.SelectedItem = item;
         }
+        var hint = new TextBlock
+        {
+            Text = "Through Martlet on that computer: commands go over the pinned, signed connection you paired, and Martlet there " +
+                "runs them (it needs to be running there; until then they wait). Use SSH for a Linux computer without Martlet.",
+            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8)
+        };
+        hint.SetResourceReference(StyleProperty, "Muted");
+        AutomationProperties.SetAutomationId(hint, "HostReachHint");
         var label = new TextBlock { Text = "SSH target, for example me@192.168.1.20", Margin = new Thickness(0, 0, 0, 4) };
         label.SetResourceReference(StyleProperty, "Muted");
         var ssh = new TextBox { Text = host.SshTarget ?? "", Margin = new Thickness(0, 0, 0, 8) };
@@ -398,7 +410,7 @@ public partial class MainWindow
         }
         method.SelectionChanged += (_, _) => Toggle();
         Toggle();
-        var save = new Button { Content = "Save how to reach it", HorizontalAlignment = HorizontalAlignment.Left };
+        var save = new Button { Content = "Save connection method", HorizontalAlignment = HorizontalAlignment.Left };
         AutomationProperties.SetAutomationId(save, "HostReachSave");
         save.Click += async (_, _) =>
         {
@@ -407,10 +419,12 @@ public partial class MainWindow
             {
                 var updated = await Pairings().SetReachAsync(host.HostId, chosen, ssh.Text, Version, token);
                 homeHosts = HostRegistry.Upsert(homeHosts, updated);
-                ActionText.Text = $"Saved. Martlet reaches {updated.HostId} via: {updated.Reach}.";
+                now.Text = $"Reached via: {updated.Reach}.";
+                ActionText.Text = $"Saved connection method for {updated.HostId}.";
             });
         };
         panel.Children.Add(method);
+        panel.Children.Add(hint);
         panel.Children.Add(label);
         panel.Children.Add(ssh);
         panel.Children.Add(save);
@@ -446,7 +460,7 @@ public partial class MainWindow
         var routes = homeSettings?.Setup?.Routes ?? [];
         var missing = HostJob.All.Where(job => routes.All(r => r.Role != job.Role)).ToList();
         if (missing.Count == 0) return;
-        var heading = new TextBlock { Text = "Nobody does these yet", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 16, 0, 4) };
+        var heading = new TextBlock { Text = "Not set up yet", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 16, 0, 4) };
         UnassignedJobs.Children.Add(heading);
         foreach (var job in missing)
         {
