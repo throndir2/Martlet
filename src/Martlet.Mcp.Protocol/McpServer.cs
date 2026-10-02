@@ -85,8 +85,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
-        Tool("f5_voices", "List the reference voices Martlet includes for F5 (key, name, female, licence, transcript, format; each " +
-            "clip is checked against its SHA-256 and F5's reference rules) and the default voice; from a data directory's F5 voice " +
+        Tool("f5_voices", "List the reference voices Martlet includes for F5 (key, name, female, cute, licence, transcript, format; " +
+            "each clip is checked against its SHA-256 and F5's reference rules) and the default voice; from a data directory's F5 voice " +
             "list, which included voices were added, how many of the owner's own voices there are and which voice is applied; and " +
             "which voice the speaking route uses (never own voices' names or audio). Plays nothing and contacts nothing.", new
         {
@@ -535,8 +535,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 var format = voice.Check();
                 return (object)new
                 {
-                    key = voice.Key, name = voice.Name, female = voice.Female, description = voice.Description, licence = voice.Licence,
-                    transcript = voice.Transcript,
+                    key = voice.Key, name = voice.Name, female = voice.Female, cute = voice.Cute, description = voice.Description,
+                    licence = voice.Licence, transcript = voice.Transcript,
                     sha256 = voice.AudioSha256, sampleRate = format.SampleRate, durationMs = format.DurationMilliseconds, valid = true
                 };
             }
@@ -591,7 +591,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
         var fallback = Martlet.F5.F5BundledVoices.Default;
         return new
         {
-            @default = fallback.Key, defaultName = fallback.Name, defaultFemale = fallback.Female, included, list, speaking
+            @default = fallback.Key, defaultName = fallback.Name, defaultFemale = fallback.Female, defaultCute = fallback.Cute,
+            cute = Martlet.F5.F5BundledVoices.All.Where(voice => voice.Cute).Select(voice => voice.Key).ToArray(), included, list, speaking
         };
     }
 
