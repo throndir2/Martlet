@@ -110,15 +110,20 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
         catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException) { return "unknown"; }
     }
 
+    /// <summary>Ends the renderer and its descendants. A failed attempt is not final: the next call tries again.</summary>
     public ValueTask DisposeAsync()
     {
-        lock (disposeGate) return new(disposal ??= DisposeCoreAsync());
+        lock (disposeGate)
+        {
+            if (disposal is null || disposal.IsFaulted || disposal.IsCanceled) disposal = DisposeCoreAsync();
+            return new(disposal);
+        }
     }
 
     private async Task DisposeCoreAsync()
     {
         disposed = true;
-        await lifetime.CancelAsync();
+        if (!lifetime.IsCancellationRequested) await lifetime.CancelAsync();
         commands.Dispose();
         replies.Dispose();
         if (job is { IsInvalid: false, IsClosed: false })
@@ -135,19 +140,52 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
             }
             job.Dispose();
         }
-        if (process is not null)
+        if (process is { } running)
         {
-            if (!process.HasExited) process.Kill(entireProcessTree: true);
-            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(3));
-            process.Dispose();
+            try { if (!running.HasExited) running.Kill(entireProcessTree: true); }
+            catch (InvalidOperationException) { }
+            await running.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(3));
+            running.Dispose();
+            process = null;
         }
-        var cache = Path.Combine(Path.GetTempPath(), "Martlet.Avatar", Activation.ToString("N"));
-        if (Directory.Exists(cache))
-        {
-            LocalAvatarFiles.CheckAncestors(Path.Combine(cache, "_"));
-            Directory.Delete(cache, recursive: true);
-        }
+        await DeleteCacheAsync(Path.Combine(Path.GetTempPath(), "Martlet.Avatar", Activation.ToString("N")));
         lifetime.Dispose();
+    }
+
+    /// <summary>
+    /// Removes the activation's WebView2 cache. Windows (or an antivirus scan) can hold its files for a moment after the
+    /// renderer has ended, so this retries in the background instead of failing the stop: a leftover temporary cache
+    /// must never keep the character, an update or exiting Martlet stuck.
+    /// </summary>
+    private static async Task DeleteCacheAsync(string cache)
+    {
+        if (await TryDeleteCacheAsync(cache, TimeSpan.FromSeconds(1), log: false)) return;
+        _ = Task.Run(() => TryDeleteCacheAsync(cache, TimeSpan.FromSeconds(60), log: true));
+    }
+
+    private static async Task<bool> TryDeleteCacheAsync(string cache, TimeSpan patience, bool log)
+    {
+        var deadline = Stopwatch.StartNew();
+        while (true)
+        {
+            try
+            {
+                if (!Directory.Exists(cache)) return true;
+                LocalAvatarFiles.CheckAncestors(Path.Combine(cache, "_"));
+                Directory.Delete(cache, recursive: true);
+                return true;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or
+                Martlet.Core.Contracts.ContractException)
+            {
+                if (error is Martlet.Core.Contracts.ContractException || deadline.Elapsed >= patience)
+                {
+                    if (log) ErrorLog.Warn("The character renderer's temporary WebView2 cache could not be removed; it is left in the temp folder.", error);
+                    return false;
+                }
+            }
+            await Task.Delay(100);
+        }
     }
 
     [StructLayout(LayoutKind.Sequential)]
