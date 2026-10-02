@@ -74,7 +74,7 @@ public partial class MainWindow
                 Text = route is null ? "Thinking isn't set up yet." : $"Replies come from {place}, model {route.ModelId}.",
                 FontSize = 15, TextWrapping = TextWrapping.Wrap
             },
-            Note(DescribeGeneration(saved), new Thickness(0, 2, 0, 0))
+            Note(DescribeGeneration(saved, route), new Thickness(0, 2, 0, 0))
         };
         if (route is null) now.Add(Row(PageButton("Set up thinking", () => OpenCompanion(CompanionTab.Thinking), primary: true, id: "RepliesSetUpThinking")));
         page.Children.Add(Card([.. now]));
@@ -94,14 +94,15 @@ public partial class MainWindow
                 Text = setting.Read(saved) is { } value ? setting.Format(value) : ""
             };
             AutomationProperties.SetAutomationId(box, setting.Id);
-            AutomationProperties.SetHelpText(box, setting.Range + ". " + setting.Help);
+            var range = RangeText(setting, route);
+            AutomationProperties.SetHelpText(box, range + ". " + setting.Help);
             box.TextChanged += (_, _) => { if (box.IsKeyboardFocusWithin) tabEdited = true; };
             boxes[setting.Setting] = box;
 
             var label = new Label { Content = setting.Label, Target = box, Padding = new Thickness(0, 8, 8, 0), VerticalAlignment = VerticalAlignment.Top };
             if (use == GenerationSettingUse.Unused) label.Opacity = 0.6;
             var about = new StackPanel { Margin = new Thickness(0, 8, 0, 10) };
-            about.Children.Add(new TextBlock { Text = setting.Range, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
+            about.Children.Add(new TextBlock { Text = range, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
             about.Children.Add(Note(setting.Help, new Thickness(0, 2, 0, 0)));
             if (route is not null)
             {
@@ -153,14 +154,23 @@ public partial class MainWindow
         _ => $"Not used by {place}: its API has no such setting."
     };
 
-    internal static string DescribeGeneration(GenerationSettings? settings)
+    /// <summary>A setting's range; Ollama on this PC has no reply length limit unless one is set.</summary>
+    private static string RangeText(ReplySetting setting, SetupRoute? route) =>
+        setting.Setting == GenerationSetting.MaxReplyTokens && IsLocalOllama(route)
+            ? $"tokens, {GenerationSettings.MinimumReplyTokens}-{GenerationSettings.MaximumReplyTokens}; empty = no limit"
+            : setting.Range;
+
+    internal static string DescribeGeneration(GenerationSettings? settings, SetupRoute? route = null)
     {
-        if (settings is null) return $"Every setting is at the model's default; replies are up to {GenerationSettings.DefaultMaxReplyTokens} tokens.";
+        var replies = settings?.MaxReplyTokens is null && IsLocalOllama(route) ? "replies have no length limit"
+            : $"replies are up to {settings?.ReplyTokens ?? GenerationSettings.DefaultMaxReplyTokens} tokens";
+        if (settings is null) return $"Every setting is at the model's default; {replies}.";
         var parts = new List<string>();
         foreach (var setting in ReplySettings.Skip(1))
             if (setting.Read(settings) is { } value)
                 parts.Add($"{char.ToLower(setting.Name[0], CultureInfo.CurrentCulture)}{setting.Name[1..]} {setting.Format(value)}");
-        return $"Replies are up to {settings.ReplyTokens} tokens" + (parts.Count == 0 ? "; every other setting is at the model's default." : "; " + string.Join(", ", parts) + ".");
+        return char.ToUpper(replies[0], CultureInfo.CurrentCulture) + replies[1..] +
+            (parts.Count == 0 ? "; every other setting is at the model's default." : "; " + string.Join(", ", parts) + ".");
     }
 
     private void SaveRepliesFrom(IReadOnlyDictionary<GenerationSetting, TextBox> boxes)
@@ -221,7 +231,8 @@ public partial class MainWindow
             var saved = await setupService.SaveAsync(updated, loaded.Revision, token);
             if (!saved.Save.Saved) throw new InvalidOperationException(saved.Summary);
             homeSettings = updated;
-            ActionText.Text = "Reply settings saved. " + DescribeGeneration(generation) + " An open conversation window picks them up on Reload.";
+            ActionText.Text = "Reply settings saved. " + DescribeGeneration(generation, updated.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm)) +
+                " An open conversation window picks them up on Reload.";
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or JsonException)

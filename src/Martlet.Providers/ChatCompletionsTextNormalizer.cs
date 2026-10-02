@@ -4,8 +4,9 @@ using Martlet.Core.Contracts;
 
 namespace Martlet.Providers;
 
-// Tool calls are accepted only when the request offered tools.
-internal sealed class ChatCompletionsTextNormalizer(TextGenerationLimits limits, bool toolsOffered = false)
+// Tool calls are accepted only when the request offered tools. Reported output tokens are held to the reply budget only when
+// the request sent one (max_tokens).
+internal sealed class ChatCompletionsTextNormalizer(TextGenerationLimits limits, bool toolsOffered = false, bool budgetSent = true)
 {
     private sealed class CallBuilder
     {
@@ -71,7 +72,7 @@ internal sealed class ChatCompletionsTextNormalizer(TextGenerationLimits limits,
             usage = new(Count(counts, "prompt_tokens"), Count(counts, "completion_tokens"), Count(counts, "total_tokens"));
             if (usage.InputTokens is { } input && usage.OutputTokens is { } output && usage.TotalTokens is { } total)
                 Require(input <= long.MaxValue - output && input + output == total);
-            if (usage.OutputTokens > limits.MaxOutputTokens)
+            if (budgetSent && usage.OutputTokens > limits.MaxOutputTokens)
                 throw new ResponseProtocolException(ProviderFailureCode.OutputTokenLimit);
         }
         var choices = root.Choices;

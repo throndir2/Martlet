@@ -119,6 +119,12 @@ public static class GenerationSupport
             : GenerationSettingUse.Unused;
     }
 
+    /// <summary>Whether a Chat Completions request carries a reply token budget (max_tokens). Ollama on this PC gets none
+    /// unless a max reply length is set on Companion › Replies: it costs nothing per token, and thinking models spend the
+    /// budget on hidden reasoning before they say anything.</summary>
+    public static bool SendsReplyBudget(string? chatBaseUrl, GenerationSettings? settings) =>
+        settings?.MaxReplyTokens is not null || !string.Equals(chatBaseUrl, LocalOllamaChatBaseUrl, StringComparison.Ordinal);
+
     /// <summary>Whether top K, min P and repetition penalty are sent to a Chat Completions server: not to OpenAI, which
     /// rejects them, nor to Ollama's OpenAI-compatible endpoint, which ignores them.</summary>
     public static bool SendsExtendedSamplers(string? chatBaseUrl) =>
