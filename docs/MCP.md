@@ -224,15 +224,17 @@ voice list and need `--allow-ui-effects`; Play plays audio and is not for
 automated verification. `f5_voices` reads the same list headlessly.
 
 Status fields include the talk window's `LiveStatus` (its status line) and
-`LiveMic` (*Listening*, *Listening paused* or *Can't listen* with the reason),
-and Companion › Lip-sync's `LipSyncNow` and `LipSyncNowProblem` (whether this
+`LiveMic` (*Listening*, *Listening paused*, *Can't listen* or *Mic unavailable*
+with the reason; while Martlet speaks it reads *Not listening while Martlet
+speaks*), and Companion › Lip-sync's `LipSyncNow` and `LipSyncNowProblem` (whether this
 PC's own Audio2Face service answers), plus, while that own service is the
 setting in effect (Martlet's default), `LipSyncOwnTitle` (its title with *in
 use*, *not running* or *checking*) and `LipSyncOwnState` (what it does now).
 Opening the talk window with always
 listening on opens the microphone; for verification, save a fixed microphone
-that does not exist in the disposable data directory, so listening starts and
-fails without capturing real audio.
+that does not exist in the disposable data directory, so listening starts,
+fails without capturing real audio and shows *Mic unavailable* while it keeps
+retrying (it never pauses by itself).
 
 Window discovery uses visible top-level native handles filtered to the attached
 process, then verifies ownership around each UI Automation handle lookup.

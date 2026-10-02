@@ -302,7 +302,7 @@ internal sealed class LiveConversationConfiguration
             $"LLM output: <={TextLimits.MaxOutputTokens} tokens (max reply length on Companion > Replies), <=16,384 response characters, <=45 s.\n" +
             "Runtime <=90 s. Voice: <=8 requests/segments, <=1536 UTF-8 bytes each / 12,288 total, <=10 s / 240,000 samples per segment, <=80 s / 1,920,000 reserved samples total, <=20 s per request. Refusal/unsupported markup is not ordinary speech.\n" +
             "Prices, quota, account/model access and invoice cost are UNKNOWN, not zero or a guaranteed hard currency cap. Failed/canceled requests can still cost money; earlier speech may already have played. No automatic retry.\n" +
-            "Typed input, push-to-talk, or always listening while the talk window is open, as chosen in Companion › Listening (each detected utterance is one action within this envelope; listening re-arms only after the reply finishes). Wake words, name/group listening and remote participant capture are OFF; vision is OFF unless turned on in Companion › Vision. Optional Voice ID compares speech with your saved voiceprint on this PC before upload; non-matching audio is discarded, never uploaded. When voice recognition is on (Companion > People), each utterance is also compared on this PC with the voices Martlet knows (voiceprints only; audio is never kept), the LLM is told who spoke by name or voice tag, and after a reply the exchange may be sent once more to the same Thinking model in one extra text-only request so it can pick up the names people go by. Memory recall and remembering follow the memory setting described above." +
+            "Typed input, push-to-talk, or always listening while the talk window is open, as chosen in Companion › Listening (each detected utterance is one action within this envelope; always listening keeps listening while Martlet thinks and holds off only while it speaks, and the Thinking model may answer [pass] to stay quiet when what it heard wasn't meant for it). Wake words, name/group listening and remote participant capture are OFF; vision is OFF unless turned on in Companion › Vision. Optional Voice ID compares speech with your saved voiceprint on this PC before upload; non-matching audio is discarded, never uploaded. When voice recognition is on (Companion > People), each utterance is also compared on this PC with the voices Martlet knows (voiceprints only; audio is never kept), the LLM is told who spoke by name or voice tag, and after a reply the exchange may be sent once more to the same Thinking model in one extra text-only request so it can pick up the names people go by. Memory recall and remembering follow the memory setting described above." +
             (Memory is { Enabled: true }
                 ? " Conversation content stays bounded in memory, not logs/files; only the short facts picked out for Memory are saved."
                 : " Content stays bounded in memory, not logs/files.") +
@@ -386,8 +386,19 @@ internal sealed class LiveConversationConfiguration
         new(input, TextSelection(), TextLimits, TurnLimits, null, ChatTarget(), HostTarget(),
             generation: Generation?.ContextTokens is { } context ? new() { ContextTokens = context } : null);
 
-    /// <summary>The word the model answers with to stay quiet after a screen glance; never spoken.</summary>
+    /// <summary>The word the model answers with to stay quiet after a screen glance or something always listening heard; never
+    /// spoken.</summary>
     internal const string SilentReply = "pass";
+
+    /// <summary>Replies to always listening: the microphone hears the room, so the model decides whether to answer.</summary>
+    internal static string ListeningInstructions =>
+        "You hear the user through an always-on microphone: whatever is said near it is transcribed and sent to you, without " +
+        "the user pressing anything. Several things said in a row may arrive together in one message, and transcripts can " +
+        "contain mistakes or cut-off fragments.\n" +
+        "Most of it is the user talking with you: answer it like a normal spoken conversation. But not everything is meant " +
+        "for you: people talk to someone else in the room, to a game, a call or a stream, think aloud, or the TV is on. " +
+        $"When something is clearly not meant for you, or needs no answer from you at all, reply with exactly [{SilentReply}] " +
+        "and nothing else, and you stay silent. Never pass when you are asked something or addressed by name.";
 
     internal VisionSupport Vision() => Vision(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm));
 
