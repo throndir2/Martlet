@@ -27,8 +27,8 @@ internal enum CompanionTab { Thinking, Voice, Listening, Vision, LipSync, Charac
 /// and what it does (how it answers and acts). A group with no pages yet is not shown.</summary>
 internal enum CompanionGroup { HowItWorks, WhoItIs, WhatItDoes }
 
-/// <summary>A conversation model Ollama can download and run on this PC. <paramref name="MinimumVramGb"/> is the GPU memory it
-/// needs to run comfortably on the graphics card (0 means any PC).</summary>
+/// <summary>A conversation model Ollama can download and run on this PC. <paramref name="MinimumVramGb"/> is the graphics card
+/// it needs to run comfortably beside a game and Martlet's character (0 means any PC).</summary>
 internal sealed record LocalChatModel(string Id, string Size, string Fits, double MinimumVramGb);
 
 /// <summary>The Companion page: a side list of pages in groups (How it works: Thinking, Voice, Listening, Lip-sync; Who it is:
@@ -47,13 +47,15 @@ public partial class MainWindow
 
     internal const string LocalOllamaBaseUrl = "http://127.0.0.1:11434/v1";
 
-    // Every suggestion also sees (screen watching) and calls tools; the last one a card fits is recommended.
+    // Every suggestion also sees (screen watching) and calls tools; the last one a card fits is recommended. Each leaves about
+    // 5 GB of the card for the game, Martlet's character and Windows: a model that overfills the card is paged out to system
+    // memory and stalls, and its Gemma 4 draft model can't load (see OllamaDraftHead).
     internal static readonly IReadOnlyList<LocalChatModel> LocalChatModels =
     [
         new("gemma4:e2b", "4.6 GB", "any PC", 0),
-        new("qwen3-vl:8b", "6.1 GB", "a graphics card with 8 GB or more", 8),
-        new("gemma4:e4b", "6.6 GB", "a graphics card with 8 GB or more", 8),
-        new("gemma4:12b", "8.0 GB", "a graphics card with 12 GB or more", 12),
+        new("qwen3-vl:8b", "6.1 GB", "a graphics card with 12 GB or more", 12),
+        new("gemma4:e4b", "6.6 GB", "a graphics card with 12 GB or more", 12),
+        new("gemma4:12b", "8.0 GB", "a graphics card with 16 GB or more", 16),
         new("gemma4:26b", "18.7 GB", "a graphics card with 24 GB or more", 24)
     ];
 
@@ -177,6 +179,14 @@ public partial class MainWindow
     /// <summary>Recommended local model: the largest in the list this PC's graphics card fits (a "12 GB" card reports a little less).</summary>
     internal static LocalChatModel RecommendedLocalModel(double? vramGb) =>
         LocalChatModels.Where(m => m.MinimumVramGb <= (vramGb ?? 0) + 0.5).OrderBy(m => m.MinimumVramGb).LastOrDefault() ?? LocalChatModels[0];
+
+    /// <summary>The largest suggested model at least 1 GB smaller than <paramref name="model"/>, or null when none is.</summary>
+    internal static LocalChatModel? SmallerLocalModel(string model)
+    {
+        var size = ListeningAdvisor.OllamaModelGb(model) - 0.5;
+        return LocalChatModels.Where(m => SizeGb(m) <= size - 1).OrderBy(SizeGb).LastOrDefault();
+        static double SizeGb(LocalChatModel m) => ListeningAdvisor.OllamaModelGb(m.Id) - 0.5;
+    }
 
     internal static bool IsLocalOllama(SetupRoute? route) =>
         route?.RouteType == SetupRouteType.ChatCompletions && route.Origin == LocalOllamaBaseUrl;
@@ -543,7 +553,8 @@ public partial class MainWindow
                 test,
                 PageButton("Use Ollama on this PC", () => SaveLocalThinkingAsync(ModelId()).Forget(), id: "SetupUseLocalThinking"));
 
-        var suggestion = Note($"Recommended here: {recommended.Id} ({recommended.Size}).", new Thickness(0, 6, 0, 0));
+        var suggestion = Note($"Recommended here: {recommended.Id} ({recommended.Size}). It leaves room on the graphics card for a game and Martlet's character.",
+            new Thickness(0, 6, 0, 0));
         AutomationProperties.SetAutomationId(suggestion, "SetupLocalRecommendation");
 
         return Card(Heading("Ollama on this PC"),
