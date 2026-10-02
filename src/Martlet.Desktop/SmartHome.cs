@@ -1,15 +1,17 @@
 using System.IO;
 using System.Net.Http.Headers;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Martlet.Core.Settings;
 using Martlet.Credentials.Windows;
 using Martlet.Home;
+using Martlet.Mcp.Client;
 
 namespace Martlet.Desktop;
 
 /// <summary>The saved smart home connection. The access token lives in Windows Credential Manager, never here.</summary>
 internal sealed record HomePreferences(string Address = "", Guid CredentialId = default, bool Control = false,
-    bool AllowSensitive = false, string LocationName = "", string Version = "")
+    bool AllowSensitive = false, string LocationName = "", string Version = "", bool ModelTools = false)
 {
     private const string FileName = "smart-home.json";
 
@@ -52,7 +54,7 @@ internal sealed record HomePreferences(string Address = "", Guid CredentialId = 
     }
 }
 
-internal enum HomeTurnKind { Skipped, Handled, NotRecognized, Blocked, Declined, Unreachable }
+internal enum HomeTurnKind { Skipped, Handled, NotRecognized, Blocked, Declined, Unreachable, Tools }
 
 /// <summary>The smart home step of one user turn: what the persona is told, and a one-line summary for the talk window.</summary>
 internal sealed record HomeTurn(HomeTurnKind Kind, string? Instructions, string? Summary)
@@ -71,6 +73,9 @@ internal sealed record HomeAction(DateTimeOffset At, string Summary);
 internal sealed class SmartHome : IDisposable
 {
     internal static readonly TimeSpan ConfirmTimeout = TimeSpan.FromSeconds(30);
+    /// <summary>The name of Home Assistant's MCP server among the conversation's tool servers.</summary>
+    internal const string ServerName = "home-assistant";
+    private static readonly TimeSpan SafetyRefresh = TimeSpan.FromMinutes(5);
     private const int MaximumActions = 20;
     private readonly Lock gate = new();
     private readonly string? directory;
@@ -79,6 +84,10 @@ internal sealed class SmartHome : IDisposable
     private readonly Queue<HomeAction> actions = new();
     private readonly TimeProvider clock;
     private HomePreferences preferences;
+    private McpToolService? tools;
+    private IReadOnlyCollection<string>? sensitiveNames;
+    private long sensitiveNamesAt, safetyAttemptAt;
+    private string? registered;
 
     internal SmartHome(string? directory, WindowsCredentialStore? vault = null, HomeAssistantClient? client = null, TimeProvider? clock = null)
     {
@@ -92,6 +101,9 @@ internal sealed class SmartHome : IDisposable
     internal HomePreferences Preferences { get { lock (gate) return preferences; } }
     internal bool Connected => Preferences is { Address.Length: > 0 } saved && saved.CredentialId != Guid.Empty;
     internal bool ControlEnabled => Connected && Preferences.Control;
+    /// <summary>The Thinking model may also use Home Assistant's own tools (its MCP server) on tool-capable routes.</summary>
+    internal bool ModelToolsEnabled => ControlEnabled && Preferences.ModelTools;
+    internal McpToolService? Tools { get { lock (gate) return tools; } }
     internal IReadOnlyList<HomeAction> RecentActions { get { lock (gate) return actions.Reverse().ToArray(); } }
 
     /// <summary>Asks the user in the talk window whether to send a sensitive request; false or cancellation means no.</summary>
@@ -146,14 +158,118 @@ internal sealed class SmartHome : IDisposable
     {
         var saved = Preferences;
         if (saved.CredentialId != Guid.Empty) vault.DeleteHomeAssistantToken(saved.CredentialId);
-        Update(current => current with { CredentialId = Guid.Empty, Control = false, AllowSensitive = false, LocationName = "", Version = "" });
+        Update(current => current with
+        {
+            CredentialId = Guid.Empty, Control = false, AllowSensitive = false, ModelTools = false, LocationName = "", Version = ""
+        });
         lock (gate) actions.Clear();
     }
 
-    internal bool SetControl(bool control, bool allowSensitive)
+    internal bool SetControl(bool control, bool allowSensitive, bool modelTools)
     {
         var connected = Connected;
-        return Update(current => current with { Control = control && connected, AllowSensitive = allowSensitive && control && connected });
+        return Update(current => current with
+        {
+            Control = control && connected, AllowSensitive = allowSensitive && control && connected,
+            ModelTools = modelTools && control && connected
+        });
+    }
+
+    /// <summary>Joins the conversation's MCP tool servers: while "use Home Assistant's tools" is on, Home Assistant's MCP
+    /// server (<c>/api/mcp</c>) is a Smart home-managed server whose every call passes <see cref="Policy"/>.</summary>
+    internal void Attach(McpToolService service)
+    {
+        lock (gate) tools = service;
+        Register();
+    }
+
+    /// <summary>A tool-capable turn that offers Home Assistant's tools skips the Assist step, so nothing runs twice.</summary>
+    internal HomeTurn ToolsTurn() => new(HomeTurnKind.Tools, HomeAssistantContext.ToolsOffered(Preferences.AllowSensitive), null);
+
+    /// <summary>Reads which of Home Assistant's entities can open the home (at most every 5 minutes) so tool calls that
+    /// name one are held back. A failure keeps the previous list; with none, calls that address devices by name ask first.</summary>
+    internal async Task RefreshSafetyAsync(CancellationToken cancellationToken)
+    {
+        var saved = Preferences;
+        if (!ModelToolsEnabled) return;
+        lock (gate)
+        {
+            if (sensitiveNames is not null && clock.GetElapsedTime(sensitiveNamesAt) < SafetyRefresh ||
+                safetyAttemptAt != 0 && clock.GetElapsedTime(safetyAttemptAt) < TimeSpan.FromMinutes(1))
+                return;
+            safetyAttemptAt = clock.GetTimestamp();
+        }
+        try
+        {
+            var baseUri = HomeAssistantEndpoint.Normalize(saved.Address);
+            using var read = vault.ReadHomeAssistantToken(saved.CredentialId);
+            if (read.Secret is not { } token) return;
+            var names = await client.SensitiveNamesAsync(baseUri, token, cancellationToken).ConfigureAwait(false);
+            lock (gate)
+            {
+                sensitiveNames = names;
+                sensitiveNamesAt = clock.GetTimestamp();
+            }
+        }
+        catch (HomeAssistantException) { }
+    }
+
+    /// <summary>How one Home Assistant tool call is approved: status tools and ordinary devices run; locks, doors, garages,
+    /// gates, alarms and valves ask every time when allowed and are blocked otherwise; anything else (such as an exposed
+    /// script) asks every time.</summary>
+    internal ToolApprovalPolicy Policy(string tool, JsonObject arguments)
+    {
+        var saved = Preferences;
+        if (!ModelToolsEnabled) return ToolApprovalPolicy.Deny;
+        IReadOnlyCollection<string>? names;
+        lock (gate) names = sensitiveNames;
+        var risk = HomeCommandGuard.AssessTool(tool, arguments, names);
+        var policy = risk switch
+        {
+            HomeToolRisk.ReadOnly or HomeToolRisk.Comfort => ToolApprovalPolicy.AutoApprove,
+            HomeToolRisk.Sensitive => saved.AllowSensitive ? ToolApprovalPolicy.AskEveryTime : ToolApprovalPolicy.Deny,
+            _ => ToolApprovalPolicy.AskEveryTime
+        };
+        if (policy == ToolApprovalPolicy.Deny)
+            Record($"Blocked {tool}: it named a lock, door, garage, gate, alarm or valve, which Smart home settings don't allow.");
+        else if (risk != HomeToolRisk.ReadOnly)
+            Record($"The Thinking model asked Home Assistant to run {tool}{(policy == ToolApprovalPolicy.AskEveryTime ? " (you are asked first)" : "")}.");
+        return policy;
+    }
+
+    // Adds, replaces or removes Home Assistant's MCP server; a new token or address restarts it.
+    private void Register()
+    {
+        McpToolService? service;
+        lock (gate) service = tools;
+        if (service is null) return;
+        var saved = Preferences;
+        McpServerDefinition? definition = null;
+        string? key = null;
+        if (ModelToolsEnabled)
+        {
+            using var read = vault.ReadHomeAssistantToken(saved.CredentialId);
+            string? bearer = null;
+            read.Secret?.Use(value => bearer = new string(value));
+            if (bearer is not null)
+            {
+                definition = new McpServerDefinition
+                {
+                    Name = ServerName, ManagedBy = "Smart home", Transport = McpTransportKind.Http,
+                    Url = HomeAssistantClient.McpEndpoint(HomeAssistantEndpoint.Normalize(saved.Address)),
+                    Headers = new Dictionary<string, string> { ["Authorization"] = "Bearer " + bearer }
+                };
+                key = saved.Address + "|" + saved.CredentialId.ToString("N");
+            }
+        }
+        lock (gate)
+        {
+            if (key == registered) return;
+            registered = key;
+            sensitiveNames = null;
+            safetyAttemptAt = 0;
+        }
+        service.SetManagedServer(ServerName, definition, definition is null ? null : Policy);
     }
 
     /// <summary>The smart home step for one user-started turn. Never throws for Home Assistant problems: the reply goes
@@ -200,21 +316,6 @@ internal sealed class SmartHome : IDisposable
             Record("Couldn't reach Home Assistant: " + error.Message);
             return new(HomeTurnKind.Unreachable, HomeAssistantContext.Unreachable(), "Home Assistant: " + error.Message);
         }
-    }
-
-    /// <summary>What the talk window's envelope says about the smart home step, or null while control is off.</summary>
-    internal string? Disclosure()
-    {
-        if (!ControlEnabled) return null;
-        var saved = Preferences;
-        return $"Smart home is ON (change it in Companion > Smart home): before each reply to what you say or type, your words go to your " +
-            $"Home Assistant at {saved.Address}. Its built-in Assist (sentence matching on that computer, no AI model) acts only on commands it " +
-            "recognizes and only on devices you exposed to voice assistants there; what it did or answered goes to the Thinking model with your " +
-            "message so Martlet can reply. " +
-            (saved.AllowSensitive
-                ? "Requests that mention a lock, door, garage, gate, alarm or valve are sent only after you click Yes. "
-                : "Requests that mention a lock, door, garage, gate, alarm or valve are never sent. ") +
-            "Screen and camera looks never reach Home Assistant. Nothing is saved; the last few actions are listed in Smart home until you close Martlet.";
     }
 
     /// <summary>The token for a Home Assistant camera snapshot address (<c>/api/camera_proxy/camera.*</c>) on the connected
@@ -293,6 +394,7 @@ internal sealed class SmartHome : IDisposable
             preferences = change(preferences);
             saved = preferences.Save(directory);
         }
+        Register();
         Changed?.Invoke();
         return saved;
     }

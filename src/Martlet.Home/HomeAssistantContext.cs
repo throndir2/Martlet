@@ -31,6 +31,16 @@ public static class HomeAssistantContext
         return Wrap(text.ToString());
     }
 
+    /// <summary>For a turn that offers Home Assistant's own tools (its MCP server) instead of the Assist step.</summary>
+    public static string ToolsOffered(bool allowSensitive) => Wrap(
+        "You can check and control the user's smart home with the Home Assistant tools (GetLiveContext lists their devices, areas " +
+        "and current states). Use them only for what the user asks in this message, and never operate a device they didn't ask " +
+        "about. " + (allowSensitive
+            ? "Locks, doors, garage doors, gates, alarms and valves need the user's click to confirm each time. "
+            : "Locks, doors, garage doors, gates, alarms and valves are turned off in Martlet's Smart home settings. ") +
+        "If a tool reports an action as blocked, declined or failed, say so and don't retry. Only say something changed when a " +
+        "tool confirmed it.");
+
     public static string NotRecognized() => Wrap(CannotAct +
         " Home Assistant did not recognize the user's words as a home command, so nothing in their home changed. Only if they asked you to " +
         "control or check a device, say you couldn't and suggest a short command such as \"turn off the kitchen lights\". Otherwise ignore this note.");

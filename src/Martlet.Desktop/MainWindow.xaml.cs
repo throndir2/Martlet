@@ -74,6 +74,7 @@ public partial class MainWindow : ThemedWindow
         smartHome = new(store?.DataDirectory, vault);
         mcpTools = new(store?.DataDirectory);
         mcpTools.Changed += ToolsChanged;
+        smartHome.Attach(mcpTools);
         voiceIdentity = new(store?.DataDirectory);
         voiceIdentity.Load();
         recovery = store is null ? null : new(store, setupOperations, () => !support.HasResources);
