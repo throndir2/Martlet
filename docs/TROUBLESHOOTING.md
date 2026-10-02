@@ -52,9 +52,63 @@ Desktop, its output shows each engine check (`docker info`, cut off after 15
 seconds because Docker Desktop holds requests while its engine starts), what
 Docker Desktop reports (`docker desktop status`) and the warnings and errors of
 its current run (`docker desktop logs`), every 30 seconds while it waits. When
-Docker Desktop answers that it is unable to start (often virtualization or WSL 2
-not turned on), the run stops at once with those messages instead of waiting;
-otherwise it gives up after ten minutes. All of it is also in `host-runs.log`.
+Docker Desktop answers that it is unable to start, Martlet first checks whether
+Windows is the reason (below); if Windows is ready, the run stops at once with
+those messages instead of waiting; otherwise it gives up after ten minutes. All
+of it is also in `host-runs.log`.
+
+## Docker Desktop is unable to start (virtualization, WSL 2)
+
+Docker Desktop's WSL 2 engine needs hardware virtualization turned on in the
+PC's firmware (UEFI/BIOS), the **Virtual Machine Platform** and **Windows
+Subsystem for Linux** features, the Windows hypervisor running and WSL 2.1.5 or
+later. Before Martlet starts Docker Desktop for any host step on this PC (and
+after it installs Docker Desktop), it checks these without administrator rights
+and shows the result in the run window (`Windows: ...`). When something is off:
+
+- **Features or WSL**: one administrator prompt turns on both features (with
+  their parent features), sets the Windows hypervisor to start with Windows when
+  its boot entry turned it off, and installs or updates WSL from Microsoft.
+- **Restart**: when Windows must restart, Martlet asks first (save your work in
+  other apps), then restarts. It leaves `continue-setup.json` in its data folder
+  and a one-time sign-in entry (`MartletContinueSetup` under the current user's
+  `RunOnce` key), so after you sign in Martlet opens by itself and continues:
+  this PC's host service and pairing, the host dashboard's host service, or
+  starting Docker Desktop so you can repeat the step that needed it. Choosing
+  *No* keeps the same continuation for your next restart.
+- **Firmware**: Windows can't turn firmware virtualization on. Martlet offers
+  to restart straight into the firmware settings (administrator approval), where
+  you turn on *Intel Virtualization Technology (VT-x)* or *SVM Mode* (AMD), save
+  and exit; the setup then continues after you sign in.
+
+The host dashboard's Docker Desktop step says the same thing (*Turn on Windows
+features* or *Turn on virtualization*). If Windows is ready and Docker Desktop
+still reports that it is unable to start, use Docker Desktop's *Troubleshoot*
+page (*Restart*, or *Reset to factory defaults*) and try again.
+
+## A local model doesn't answer (Ollama on this PC)
+
+On **Companion › Thinking › This PC**, choose **Test model**. It starts Ollama
+if it is installed but not running, checks the model is downloaded, loads it
+and asks it for a short streamed reply through the same endpoint and reply
+budget as Martlet's replies, all over loopback. The run window shows each step
+(Ollama's version, the model's parameters and whether it sees images and uses tools,
+how long loading took, whether it sits on the graphics card or the processor,
+and the reply), with Ollama's own error text when something fails (for example
+not enough memory, or a model that needs a newer Ollama). The result stays under
+the buttons. A model that loads more slowly than Martlet waits for a reply to
+start, or answers too slowly once loaded, passes with a warning. *Install Ollama
+and use it* runs the same test at the end.
+
+Ollama unloads a model after five idle minutes and loading it again takes from
+about 15 seconds to a couple of minutes; it gives up the load if the request
+that started it stops waiting. So with Ollama on this PC, Martlet waits up to
+two minutes for a reply to start, and the talk window has Ollama load the model
+as it opens and again when you start typing or talking after a quiet spell; its
+status line says *Ollama is loading <model> on this PC…* meanwhile, or why
+Ollama can't (not running, model not downloaded, Ollama's own error). Ollama on
+this PC has no reply token budget unless you set **Max reply length** on
+**Companion › Replies**, so thinking models can reason before they answer.
 
 ## Local configuration backup / restore (V07a)
 

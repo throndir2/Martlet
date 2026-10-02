@@ -37,8 +37,9 @@ public partial class MainWindow
     [
         new(GenerationSetting.MaxReplyTokens, "RepliesMaxReplyTokens", "_Max reply length",
             $"tokens, {GenerationSettings.MinimumReplyTokens}-{GenerationSettings.MaximumReplyTokens}; empty = {GenerationSettings.DefaultMaxReplyTokens}",
-            "The longest reply it may write. Raise it for reasoning/thinking models, which spend part of it on hidden thinking. " +
-            "Longer replies take longer to write and say; a spoken reply stops after about 80 seconds of speech.", true),
+            "A safety ceiling, not how long replies are: Martlet already asks the model to keep replies short. A reply that reaches " +
+            "it stops mid-sentence, so keep it roomy; reasoning/thinking models spend part of it on hidden thinking. A long spoken " +
+            "reply is shown in full, but only about its first 80 seconds are said aloud.", true),
         new(GenerationSetting.Temperature, "RepliesTemperature", "_Temperature", "0-2",
             "Higher is more varied and surprising, lower is more focused and predictable. Empty uses the model's default " +
             $"(a paired host's Ollama uses {GenerationSettings.DefaultHostTemperature.ToString(CultureInfo.CurrentCulture)}).", false),
@@ -66,6 +67,8 @@ public partial class MainWindow
         var saved = homeSettings?.Generation;
         var place = route is null ? null : PlaceName(route);
 
+        var described = Note(DescribeGeneration(saved, route), new Thickness(0, 2, 0, 0));
+        AutomationProperties.SetAutomationId(described, "RepliesNow");
         var now = new List<UIElement>
         {
             Heading("Now"),
@@ -74,7 +77,7 @@ public partial class MainWindow
                 Text = route is null ? "Thinking isn't set up yet." : $"Replies come from {place}, model {route.ModelId}.",
                 FontSize = 15, TextWrapping = TextWrapping.Wrap
             },
-            Note(DescribeGeneration(saved), new Thickness(0, 2, 0, 0))
+            described
         };
         if (route is null) now.Add(Row(PageButton("Set up thinking", () => OpenCompanion(CompanionTab.Thinking), primary: true, id: "RepliesSetUpThinking")));
         page.Children.Add(Card([.. now]));
@@ -94,14 +97,15 @@ public partial class MainWindow
                 Text = setting.Read(saved) is { } value ? setting.Format(value) : ""
             };
             AutomationProperties.SetAutomationId(box, setting.Id);
-            AutomationProperties.SetHelpText(box, setting.Range + ". " + setting.Help);
+            var range = RangeText(setting, route);
+            AutomationProperties.SetHelpText(box, range + ". " + setting.Help);
             box.TextChanged += (_, _) => { if (box.IsKeyboardFocusWithin) tabEdited = true; };
             boxes[setting.Setting] = box;
 
             var label = new Label { Content = setting.Label, Target = box, Padding = new Thickness(0, 8, 8, 0), VerticalAlignment = VerticalAlignment.Top };
             if (use == GenerationSettingUse.Unused) label.Opacity = 0.6;
             var about = new StackPanel { Margin = new Thickness(0, 8, 0, 10) };
-            about.Children.Add(new TextBlock { Text = setting.Range, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
+            about.Children.Add(new TextBlock { Text = range, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
             about.Children.Add(Note(setting.Help, new Thickness(0, 2, 0, 0)));
             if (route is not null)
             {
@@ -153,14 +157,26 @@ public partial class MainWindow
         _ => $"Not used by {place}: its API has no such setting."
     };
 
-    internal static string DescribeGeneration(GenerationSettings? settings)
+    /// <summary>A setting's range; Ollama on this PC has no reply length limit unless one is set.</summary>
+    private static string RangeText(ReplySetting setting, SetupRoute? route) =>
+        setting.Setting == GenerationSetting.MaxReplyTokens && IsLocalOllama(route)
+            ? $"tokens, {GenerationSettings.MinimumReplyTokens}-{GenerationSettings.MaximumReplyTokens}; empty = no limit"
+            : setting.Range;
+
+    internal static string DescribeGeneration(GenerationSettings? settings, SetupRoute? route = null)
     {
-        if (settings is null) return $"Every setting is at the model's default; replies are up to {GenerationSettings.DefaultMaxReplyTokens} tokens.";
+        const string brief = "Martlet asks the model to keep replies short";
+        // Ollama on this PC gets no reply token budget unless a max reply length is set.
+        var stop = settings?.MaxReplyTokens is null && IsLocalOllama(route) ? "there is no reply length limit"
+            : $"a reply stops only if it reaches {settings?.ReplyTokens ?? GenerationSettings.DefaultMaxReplyTokens} tokens";
+        if (settings is null)
+            return $"{brief}; {stop}. Every setting is at the model's default.";
         var parts = new List<string>();
         foreach (var setting in ReplySettings.Skip(1))
             if (setting.Read(settings) is { } value)
                 parts.Add($"{char.ToLower(setting.Name[0], CultureInfo.CurrentCulture)}{setting.Name[1..]} {setting.Format(value)}");
-        return $"Replies are up to {settings.ReplyTokens} tokens" + (parts.Count == 0 ? "; every other setting is at the model's default." : "; " + string.Join(", ", parts) + ".");
+        return $"{brief}; {stop}" +
+            (parts.Count == 0 ? ". Every other setting is at the model's default." : "; " + string.Join(", ", parts) + ".");
     }
 
     private void SaveRepliesFrom(IReadOnlyDictionary<GenerationSetting, TextBox> boxes)
@@ -221,7 +237,8 @@ public partial class MainWindow
             var saved = await setupService.SaveAsync(updated, loaded.Revision, token);
             if (!saved.Save.Saved) throw new InvalidOperationException(saved.Summary);
             homeSettings = updated;
-            ActionText.Text = "Reply settings saved. " + DescribeGeneration(generation) + " An open conversation window picks them up on Reload.";
+            ActionText.Text = "Reply settings saved. " + DescribeGeneration(generation, updated.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm)) +
+                " An open conversation window picks them up on Reload.";
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or JsonException)

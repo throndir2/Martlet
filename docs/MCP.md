@@ -160,6 +160,20 @@ unticked **Keep who does what in sync**; `plan` is this PC's `cluster.json`
 `updatedBy` and `updatedAt`, and each host's ID, roles and `removed`). It never
 returns host addresses or keys and contacts nothing.
 
+`virtualization_status` reports whether Windows is ready for Docker Desktop's
+WSL 2 engine, from the same read-only checks the desktop runs before it starts
+Docker Desktop (optional absolute `dataDirectory`, default the current user's):
+`ready`, `firmwareOff`, `needsWindowsChanges`, `problems` (plain words),
+`firmware`, `hypervisor`, `virtualMachinePlatform` and
+`windowsSubsystemForLinux` (`Enabled`, `Disabled`, `Absent` or `Unknown`),
+`wsl` (version, `none` or null), `virtualMachine`, `summary`,
+`dockerDesktop {installed, running}` and `continueSetup {pending, kind, task,
+created, startsAtSignIn}`: the setup Martlet continues after a Windows restart
+(`continue-setup.json` in the data directory, and whether the per-user `RunOnce`
+entry that starts Martlet at the next sign-in exists). It runs a CIM query and
+`wsl --version` in a hidden Windows PowerShell, changes nothing and returns no
+paths.
+
 `logs_tail` reads the last `lines` (1-400, default 100) of one local log under
 `<dataDirectory>\logs` (`log`: `desktop` (default), `avatar-renderer` or
 `host-runs`), optionally only lines that `contains` some text (case-insensitive,
@@ -175,7 +189,7 @@ interactive Windows session** (ideally with a disposable `--data-directory`).
 Call `ui_connect` with that process ID. `ui_snapshot` returns window accessible names,
 automation IDs, enabled states, checkbox states, and selected read-only status
 fields (a text block's text, or a button's accessible name); it does not dump arbitrary editable fields or credentials.
-Status fields include `VisionStatus` (Companion › Vision: whether the Thinking model can see, or has been retired, and the fix), `SetupCloudHint-Thinking` (the cloud provider's recommended Thinking model, or a retired-model warning), `SetupLocalRecommendation` (the local Ollama model recommended for this PC's graphics card), `SetupProviderHint` (Setup › Jobs prefilled model) and `SetupF5About` (Speaking › This PC: what setting up F5 installs and its licence). `SetupHostThisPc` and `SetupUseLocal-Speaking` start the F5 setup run window straight away (no extra confirmation; installing Docker Desktop still asks for its terms), so they need `--allow-ui-effects`. A run window (`HostRunWindow`, titled `Martlet - <run>`) returns its status line as `HostRunStatus` (for example *Waiting for Docker Desktop to start...* or why it stopped); its output (`HostRunOutput`, which can show a one-use pairing code) is not returned, so read it with `logs_tail` `host-runs`, which also records each status change. `HostRunCancel` cancels a running run (or closes the window afterwards) and needs `--allow-ui-effects`. On a fresh data directory, F5 setup first needs saved settings (*Complete Setup once...*): `SetupUseWindowsVoice` saves them. Setting `DOCKER_HOST` (for example to a local test named pipe) before launching the desktop points its Docker checks away from the real engine. `ui_click` invokes a control by automation ID and `ui_select` selects a named combo-box
+Status fields include `VisionStatus` (Companion › Vision: whether the Thinking model can see, or has been retired, and the fix), `RepliesNow` (Companion › Replies: that Martlet asks for short replies, the max reply length ceiling in effect and the other saved settings), `SetupCloudHint-Thinking` (the cloud provider's recommended Thinking model, or a retired-model warning), `SetupLocalRecommendation` (the local Ollama model recommended for this PC's graphics card), `SetupOllamaStatus` (whether Ollama is installed or running and which models it has), `SetupLocalModelTest` (Thinking › This PC: the last *Test model* result for the model in the box, or that it isn't tested yet), `SetupProviderHint` (Setup › Jobs prefilled model) and `SetupF5About` (Speaking › This PC: what setting up F5 installs and its licence). `SetupHostThisPc` and `SetupUseLocal-Speaking` start the F5 setup run window straight away (no extra confirmation; installing Docker Desktop still asks for its terms), so they need `--allow-ui-effects`. `SetupTestLocalModel` (Thinking › This PC's *Test model*) starts Ollama if needed, loads the model in the box and sends it one short loopback chat request in a run window, so it needs `--allow-ui-effects` too; read the outcome from `HostRunStatus` and `SetupLocalModelTest`. A run window (`HostRunWindow`, titled `Martlet - <run>`) returns its status line as `HostRunStatus` (for example *Waiting for Docker Desktop to start...* or why it stopped); its output (`HostRunOutput`, which can show a one-use pairing code) is not returned, so read it with `logs_tail` `host-runs`, which also records each status change. `HostRunCancel` cancels a running run (or closes the window afterwards) and needs `--allow-ui-effects`. On a fresh data directory, F5 setup first needs saved settings (*Complete Setup once...*): `SetupUseWindowsVoice` saves them. Setting `DOCKER_HOST` (for example to a local test named pipe) before launching the desktop points its Docker checks away from the real engine. `ui_click` invokes a control by automation ID and `ui_select` selects a named combo-box
 option. By default only passive navigation and
 diagnostics controls can be clicked. The main window is split into pages, and a
 page's controls are only visible after you open it: click `NavHome`,
@@ -209,6 +223,17 @@ and `LipSyncOwner`, device commands `NodeAction-<action>`
 roles), and Settings for all devices holds `CheckHosts`, `ClusterSync` (checked by
 default; unticking it needs `--allow-ui-effects` and saves `off`),
 `ClusterStatus` (returned as text) and `RoleSetup-<role>` for jobs nobody does.
+Home and host-dashboard steps have their buttons as `Step-<step>-<n>` and their
+detail line as `StepDetail-<step>` (status text): on the host dashboard,
+`StepDetail-docker` says whether Docker Desktop runs or why Windows can't start
+it yet (virtualization off in the firmware, Virtual Machine Platform or Windows
+Subsystem for Linux off, WSL missing, hypervisor not running), and
+`Step-docker-0` then reads *Turn on virtualization* or *Turn on Windows
+features* (administrator prompt and possibly a restart, so it needs
+`--allow-ui-effects` and is never part of verification). After a restart for
+virtualization, Martlet opens a run window by itself (`HostRunWindow`) that
+continues the setup; `continueSetup` in `virtualization_status` shows what is
+pending.
 Use `ui_snapshot` again to observe asynchronous effects. Modal
 actions may return `completed: false` while their dialog remains open; this
 means the invoke is still pending, not that the action finished.
@@ -233,6 +258,20 @@ instead of the key, and its name is not returned. Use and Remove change the
 voice list and need `--allow-ui-effects`; Play plays audio and is not for
 automated verification. `f5_voices` reads the same list headlessly.
 
+On Thinking, Voice, Listening and Lip-sync, each "Where it runs" option
+(`Place-<page>-<place>`, for example `Place-Voice-Computer` or
+`Place-LipSync-Loudness`) only shows that place's choices, so clicking it is
+passive; the card's own buttons commit. Under *Another of your computers*, each
+paired computer that can run the job (every one except this PC's own host
+service on Voice, Listening and Lip-sync; a host saved as *This PC* whose
+address is another computer counts as that other computer) is listed with
+`HostChoice-<job>-<host ID>` (for example `HostChoice-speaking-diva-host`),
+which reads the host ID and what it does or could do. `HostChoices-<job>` says
+why none are listed (none paired, only this PC's own host service, or none can
+run it) and `HostChoicesUnable-<job>` names paired computers whose platform or
+hardware can't run it, with why. `SetupUseHost-<job>-<host ID>` hands the job
+over and needs `--allow-ui-effects`.
+
 Status fields include the talk window's `LiveStatus` (its status line),
 `LiveMic` (*Listening*, *Listening paused* or *Can't listen* with the reason),
 `LiveVision` (*Watching*, *Looking*, *Vision paused* or *Can't see*, with when
@@ -244,6 +283,12 @@ and Companion › Lip-sync's `LipSyncNow` and `LipSyncNowProblem` (whether this
 PC's own Audio2Face service answers), plus, while that own service is the
 setting in effect (Martlet's default), `LipSyncOwnTitle` (its title with *in
 use*, *not running* or *checking*) and `LipSyncOwnState` (what it does now).
+When Thinking runs in Ollama on this PC, the talk window has Ollama load the
+model as it opens (and again on activity after a few quiet minutes), and
+`LiveStatus` says *Ollama is loading <model> on this PC (N s)…* while it loads,
+or why it can't (Ollama not running, model not downloaded, Ollama's own error);
+the desktop log records each load's duration
+(`{"name":"logs_tail","arguments":{"contains":"Ollama on this PC"}}`).
 Opening the talk window with always
 listening on opens the microphone; for verification, save a fixed microphone
 that does not exist in the disposable data directory, so listening starts and
@@ -295,7 +340,7 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status` and `logs_tail` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `logs_tail` and `virtualization_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

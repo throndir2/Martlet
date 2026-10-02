@@ -243,6 +243,7 @@ function Get-PrerequisiteState([string]$Id) {
         'DockerDesktop' {
             $docker = Get-DockerDesktopPath
             $wsl = Test-Wsl
+            if ($docker -and -not (Test-VirtualizationAvailable)) { return New-State 'ACTION' 'virtualization is off in the firmware (UEFI/BIOS); Docker Desktop needs it' }
             if ($docker -and $wsl) { return New-State 'OK' 'WSL 2 and Docker Desktop are installed' }
             if ($docker) { return New-State 'OPTIONAL' 'Docker Desktop found, but WSL does not answer' }
             if ($wsl) { return New-State 'OPTIONAL' 'WSL is installed; Docker Desktop is not' }
@@ -407,15 +408,47 @@ function Install-NvidiaDriver {
     Open-Page 'https://www.nvidia.com/en-us/drivers/'
 }
 
+function Test-VirtualizationAvailable {
+    # A running Windows hypervisor hides the firmware flag, so either one means virtualization is available.
+    $system = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue
+    $processor = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $system -and -not $processor) { return $true }
+    return [bool]($system.HypervisorPresent -or $processor.VirtualizationFirmwareEnabled)
+}
+
 function Install-DockerDesktop {
     Write-Host 'Docker Desktop is free for personal use under the Docker Subscription Service Agreement (docker.com/legal).'
-    if (-not (Test-Wsl)) {
-        $null = Invoke-Elevated 'wsl.exe --install --no-distribution' 'install Windows Subsystem for Linux (WSL 2)'
-        Write-Note 'If WSL asks you to restart Windows, restart before starting Docker Desktop.'
+    if (-not (Test-VirtualizationAvailable)) {
+        Write-Note "Virtualization is turned off in this PC's firmware (UEFI/BIOS), and Docker Desktop needs it. Restart, open the"
+        Write-Note 'firmware settings (usually Del, F2 or F10 while the PC starts), turn on Intel Virtualization Technology (VT-x) or'
+        Write-Note 'SVM Mode (AMD), save and exit, then run this item again.'
     }
-    else { Write-Host 'WSL is already installed.' }
+    # One elevated step turns on everything Docker Desktop's WSL 2 engine needs; Martlet's own Docker Desktop setup does the same.
+    $script = @'
+$restart = $false
+foreach ($name in @('VirtualMachinePlatform', 'Microsoft-Windows-Subsystem-Linux')) {
+    $feature = Get-WindowsOptionalFeature -Online -FeatureName $name
+    if (-not $feature) { Write-Host "This edition of Windows has no $name feature."; continue }
+    $state = [string]$feature.State
+    if ($state -eq 'Enabled') { Write-Host "$name is already on."; continue }
+    if ($state -eq 'EnablePending') { Write-Host "$name turns on when Windows restarts."; $restart = $true; continue }
+    Write-Host "Turning on $name..."
+    if ((Enable-WindowsOptionalFeature -Online -FeatureName $name -All -NoRestart).RestartNeeded) { $restart = $true }
+}
+if ((& bcdedit.exe /enum '{current}' 2>$null | Out-String) -match 'hypervisorlaunchtype\s+Off') {
+    & bcdedit.exe /set '{current}' hypervisorlaunchtype auto | Out-Null
+    Write-Host 'The Windows hypervisor was set not to start; it now starts with Windows.'
+    $restart = $true
+}
+$env:WSL_UTF8 = '1'
+Write-Host 'Installing or updating WSL from Microsoft (wsl --update)...'
+& wsl.exe --update
+if ($restart) { Write-Host 'Restart Windows to finish turning on virtualization.'; exit 3010 }
+'@
+    $exit = Invoke-Elevated $script 'turn on Virtual Machine Platform and Windows Subsystem for Linux, and install or update WSL 2'
     if (Get-DockerDesktopPath) { Write-Host 'Docker Desktop is already installed.' }
     elseif (-not (Install-WithWinget 'Docker.DockerDesktop' 'Docker Desktop')) { Open-Page 'https://docs.docker.com/desktop/setup/install/windows-install/' }
+    if ($exit -eq 3010) { Write-Note 'Restart Windows to finish turning on virtualization, then start Docker Desktop.' }
     Write-Host 'Then open Martlet > Martlet hosts > This PC and press Set up host. GPU roles also need the NVIDIA driver.'
 }
 
