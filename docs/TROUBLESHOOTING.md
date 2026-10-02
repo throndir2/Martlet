@@ -7,7 +7,8 @@ Martlet always keeps a small local error log; it is never uploaded.
 - Location: `%LOCALAPPDATA%\Martlet\logs\` (or `<--data-directory>\logs\`).
   `desktop.log` is the app; `avatar-renderer.log` is the character process;
   `host-runs.log` is the output of every Martlet host run window (set up this
-  PC, add a host, pair, add/remove a role), exactly as shown, with pairing codes
+  PC, add a host, pair, add/remove a role), exactly as shown, plus each change
+  of the window's status line (`status: ...`), with pairing codes
   masked (rotates at 2 MiB, keeps one older copy). `desktop.log` also records
   each host run's start and result. Martlet never opens a console window.
   `desktop.log` and `avatar-renderer.log` rotate at 2 MiB and keep 3 older copies.
@@ -45,6 +46,15 @@ Windows speech for your language, Ollama, the NVIDIA driver and WSL 2 + Docker
 Desktop with their status, and installs or opens the setting for the item you
 choose. Nothing changes until you pick an item. `-Check` prints the same status
 from a command line.
+
+When a run window (for example *Speak with F5 on this PC*) waits for Docker
+Desktop, its output shows each engine check (`docker info`, cut off after 15
+seconds because Docker Desktop holds requests while its engine starts), what
+Docker Desktop reports (`docker desktop status`) and the warnings and errors of
+its current run (`docker desktop logs`), every 30 seconds while it waits. When
+Docker Desktop answers that it is unable to start (often virtualization or WSL 2
+not turned on), the run stops at once with those messages instead of waiting;
+otherwise it gives up after ten minutes. All of it is also in `host-runs.log`.
 
 ## Local configuration backup / restore (V07a)
 
