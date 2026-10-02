@@ -24,21 +24,21 @@ public sealed record CompatibilityIssue(
 
     public string Summary => Code switch
     {
-        CompatibilityIssueCode.UnknownCapabilities => "Inspect the selected source and model before claiming compatibility.",
-        CompatibilityIssueCode.UnsupportedAspect => "The selected source or model does not expose this aspect.",
-        CompatibilityIssueCode.MappingRequired => "Select an explicit mapping for this source and model.",
-        CompatibilityIssueCode.PartialMapping => "This mapping covers only part of the source aspect; explicitly accept reduced fidelity or select another mapping.",
-        CompatibilityIssueCode.MappingBindingMismatch => "The selected mapping belongs to a different source or model.",
-        CompatibilityIssueCode.SourceChannelMissing => "The mapping requests a channel the selected source does not expose.",
-        CompatibilityIssueCode.ModelParameterMissing => "The mapping targets a parameter absent from this model.",
-        CompatibilityIssueCode.AspectMismatch => "The source channel and target parameter belong to different aspects.",
-        CompatibilityIssueCode.MappingOutOfBounds => "Mapping output exceeds the authored model parameter bounds.",
-        CompatibilityIssueCode.RuntimeNotReady => "The source and renderer must both be available; installation alone is insufficient.",
-        CompatibilityIssueCode.MissingAssignment => "Choose one compatible source or explicitly omit this requested aspect.",
-        CompatibilityIssueCode.ConflictingSources => "Choose one source for this aspect; multiple writers and arbitrary blending are unsupported.",
-        CompatibilityIssueCode.UnrequestedAspect => "Assignments and omissions must belong to the requested aspects.",
-        CompatibilityIssueCode.OmittedAndAssigned => "An aspect cannot be both assigned and intentionally omitted.",
-        CompatibilityIssueCode.OverlappingTarget => "A model parameter can have only one selected writer.",
+        CompatibilityIssueCode.UnknownCapabilities => "Inspect the model controls first.",
+        CompatibilityIssueCode.UnsupportedAspect => "This model does not support this movement.",
+        CompatibilityIssueCode.MappingRequired => "Choose a mapping for this movement.",
+        CompatibilityIssueCode.PartialMapping => "This mapping only covers part of the movement. Accept it or choose another.",
+        CompatibilityIssueCode.MappingBindingMismatch => "This mapping belongs to another source or model.",
+        CompatibilityIssueCode.SourceChannelMissing => "The selected source is missing a needed channel.",
+        CompatibilityIssueCode.ModelParameterMissing => "The model is missing a needed control.",
+        CompatibilityIssueCode.AspectMismatch => "This mapping connects the wrong movement type.",
+        CompatibilityIssueCode.MappingOutOfBounds => "This mapping moves a control outside its allowed range.",
+        CompatibilityIssueCode.RuntimeNotReady => "Start the source and renderer, then try again.",
+        CompatibilityIssueCode.MissingAssignment => "Choose a compatible source or omit this movement.",
+        CompatibilityIssueCode.ConflictingSources => "Choose one source for this movement.",
+        CompatibilityIssueCode.UnrequestedAspect => "This assignment is not part of the current request.",
+        CompatibilityIssueCode.OmittedAndAssigned => "A movement cannot be both omitted and assigned.",
+        CompatibilityIssueCode.OverlappingTarget => "A model control can have only one source.",
         _ => throw new ArgumentOutOfRangeException()
     };
 }

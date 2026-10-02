@@ -63,7 +63,7 @@ internal sealed class DesktopDuplication
                 }
                 if (result < 0)
                 {
-                    var reason = Problem ?? $"the frame could not be captured (0x{result:X8})";
+                    var reason = Problem ?? "the screen could not be captured";
                     ReleaseLocked();
                     return Refuse(target, reason);
                 }
@@ -88,7 +88,7 @@ internal sealed class DesktopDuplication
         try
         {
             var id = FactoryId;
-            if (CreateDXGIFactory1(ref id, out factory) < 0) { refusal = "DXGI is unavailable"; return false; }
+            if (CreateDXGIFactory1(ref id, out factory) < 0) { refusal = "Windows screen capture is unavailable"; return false; }
             // The device must live on the GPU that drives this monitor (laptops with two GPUs).
             for (uint a = 0; output == 0 && Call<Enumerate>(factory, 12)(factory, a, out var candidate) >= 0; a++)
             {
@@ -98,24 +98,24 @@ internal sealed class DesktopDuplication
                     {
                         output = screen;
                         desktop = description.DesktopCoordinates;
-                        if (description.Rotation > 1) { refusal = "the monitor is rotated"; return false; }
+                        if (description.Rotation > 1) { refusal = "rotated monitors aren't supported for full-screen capture"; return false; }
                     }
                     else Marshal.Release(screen);
                 }
                 if (output != 0) adapter = candidate;
                 else Marshal.Release(candidate);
             }
-            if (output == 0) { refusal = "the monitor was not found"; return false; }
+            if (output == 0) { refusal = "the monitor couldn't be found"; return false; }
             if (D3D11CreateDevice(adapter, 0, 0, 0x20, 0, 0, 7, out device, out _, out context) < 0)
-                { refusal = "Direct3D 11 is unavailable"; return false; }
-            if (Marshal.QueryInterface(output, in Output1Id, out output1) < 0) { refusal = "Windows is too old"; return false; }
+                { refusal = "Windows graphics capture is unavailable"; return false; }
+            if (Marshal.QueryInterface(output, in Output1Id, out output1) < 0) { refusal = "this version of Windows doesn't support full-screen capture"; return false; }
             var duplicated = Call<DuplicateOutput>(output1, 22)(output1, device, out duplication);
             if (duplicated < 0)
             {
                 duplication = 0;
                 refusal = duplicated == Unsupported
-                    ? "Windows refused (on a laptop with two GPUs, set Martlet to the power-saving GPU in Windows Settings > System > Display > Graphics)"
-                    : $"Windows refused (0x{duplicated:X8})";
+                    ? "full-screen capture is unavailable on this display; try borderless or windowed mode"
+                    : "Windows refused screen capture";
                 return false;
             }
             monitor = target;
@@ -131,7 +131,7 @@ internal sealed class DesktopDuplication
             if (duplication == 0)
             {
                 ReleaseLocked();
-                Refuse(target, refusal ?? "Windows refused");
+                Refuse(target, refusal ?? "Windows refused screen capture");
             }
         }
     }
@@ -173,7 +173,7 @@ internal sealed class DesktopDuplication
         Call<GetTextureDescription>(texture, 10)(texture, out var description);
         if (description.Format is not (FormatBgra or FormatBgrx))
         {
-            Problem = "the desktop uses an unsupported pixel format";
+            Problem = "the display uses an unsupported format";
             return false;
         }
         if (staging != 0 && textureWidth == description.Width && textureHeight == description.Height) return true;
@@ -201,7 +201,7 @@ internal sealed class DesktopDuplication
         if (Call<Map>(context, 14)(context, staging, 0, MapRead, 0, out var mapped) < 0)
         {
             ReleaseLocked();
-            return Refuse(target, "the frame could not be read");
+            return Refuse(target, "the screen could not be read");
         }
         try
         {

@@ -1,16 +1,18 @@
 using System.Buffers.Text;
-using System.Text;
 using System.Text.Json;
 
 namespace Martlet.Gateway.Host.Linux;
 
 /// <summary>
-/// One copyable line carrying the whole invitation (origin, host ID, pin, pairing ID, token) so a desktop can pair
-/// with a single paste. Same secrecy as the displayed fields: shown only on the owned terminal, one use, five minutes.
+/// How the host shows an invitation. <see cref="Describe"/> is for people: this host's address and a short one-use code
+/// to type on a desktop. <see cref="Format"/> is one machine-readable line carrying the whole card (origin, host ID, pin,
+/// pairing ID, token) that Martlet reads by itself when it pairs over SSH or on this PC. Both have the same secrecy: shown
+/// only on the owner's terminal or run, one use, five minutes.
 /// </summary>
 internal static class PairingCode
 {
     internal const string Prefix = "martlet-pair-v1.";
+    internal const int DefaultPort = 9443;
 
     internal static string Format(GatewayPairingCard card) => Prefix + Base64Url.EncodeToString(
         JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, string>
@@ -18,4 +20,23 @@ internal static class PairingCode
             ["o"] = card.Origin, ["h"] = card.HostId, ["s"] = card.SpkiFingerprint,
             ["i"] = card.PairingId, ["t"] = card.Token.Reveal()
         }));
+
+    /// <summary>The address as people type it: the IP alone on the default port, otherwise IP:port.</summary>
+    internal static string Address(string origin)
+    {
+        var uri = new Uri(origin);
+        return uri.Port == DefaultPort ? uri.Host : $"{uri.Host}:{uri.Port}";
+    }
+
+    internal static string Describe(GatewayCodePairingCard card) =>
+        $"""
+
+        Pair a Martlet desktop with {card.HostId}
+          In Martlet on the desktop: Devices > Add a computer > Enter a pairing code, then type
+            Address:  {Address(card.Origin)}
+            Code:     {card.Code.Reveal()}
+          The code works once and expires in five minutes. Type cancel to withdraw it.
+
+        Waiting for the desktop...
+        """;
 }

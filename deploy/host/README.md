@@ -40,10 +40,12 @@ Commands are the same everywhere:
 
 ```text
 setup               gateway, identity and start at boot (once per host)
-pair                pair a desktop in the gateway console; shows a one-use pairing code (repeat per desktop)
+pair                pair a desktop: shows this host's address and a short one-use code (like K7QM-4XPA) to type in
+                    Martlet (Devices > Add a computer > Enter a pairing code); waits up to five minutes (repeat per desktop)
 pair --device-id <id> --name <name>
                     pair that desktop without a console: prints one "pairing-code: martlet-pair-v1..." line,
-                    waits up to five minutes for it to be redeemed, then restarts the gateway
+                    waits up to five minutes for it to be redeemed, then restarts the gateway (Martlet uses this itself)
+console             the gateway console: list paired desktops and revoke one
 roles               what this host can run
 describe <role>     a role's terms, secrets (stored or missing, never values), choices and GPU/CPU option, machine-readable
 add <role>          install a role, e.g. add ollama, add stt, add f5 or add audio2face (same flow for every role)
@@ -210,28 +212,42 @@ a `yes`.
 
 ## Pairing
 
-**SSH hosts** pair by themselves: **Add this computer** (or **Pair automatically
-over SSH** on the Pair step) runs `martlet-host --yes pair --device-id <this PC>
+**SSH hosts** pair by themselves: **Add this computer** (or **Pair over SSH** on
+the Pair step) runs `martlet-host --yes pair --device-id <this PC>
 --name <this PC>` there. The gateway starts its listener, prints the one-use
 code on one line and waits; Martlet reads the code from the output (it is never
-shown or logged; Docker runs the engine with `--log-driver none`), redeems it with
-the same pairing client as the **Pair with host** button and stores the device
-secret in Windows Credential Manager, and the host restarts its gateway. If
-redeeming fails, Martlet sends `cancel` so the host stops waiting at once.
+shown or logged; Docker runs the engine with `--log-driver none`), redeems it
+and stores the device secret in Windows Credential Manager, and the host
+restarts its gateway. If redeeming fails, Martlet sends `cancel` so the host
+stops waiting at once.
 
 **This PC:** **Pair automatically** runs the same unattended pairing on this PC's
 Docker Desktop. To pair *another* desktop with this PC's host, the host
-dashboard's **Show a pairing code** asks for that desktop's device ID and shows the
-one-use code in Martlet (copied to the clipboard, never logged).
+dashboard's **Show a pairing code** shows this PC's address and a short code in
+large type (never logged); type both on the other desktop.
 
-**By hand:** on the host run `martlet-host pair`. In the host console confirm opening with
-`yes`, type `start` (`yes`), then `pair` with that device ID, a name and role
-`voice` (`yes`). The host shows a pairing code `martlet-pair-v1....` (origin,
-host ID, TLS pin, one-use pairing ID and token). Paste it into Martlet hosts and
-press **Pair with host** while the console is open; then press a key, `list`
-confirms, and `stop` (`yes`) restarts the service. On a host you can also run
-`martlet-host pair --device-id <id> --name <name>` and paste the printed code.
-**Check host** shows which roles the host offers and the hardware it reported.
+**By hand (any host):** on the host run `martlet-host pair`. It shows:
+
+```text
+Pair a Martlet desktop with gpu-pc-host
+  In Martlet on the desktop: Devices > Add a computer > Enter a pairing code, then type
+    Address:  192.168.1.20
+    Code:     K7QM-4XPA
+  The code works once and expires in five minutes. Type cancel to withdraw it.
+```
+
+In Martlet choose **Devices > Add a computer > Enter a pairing code**, type the
+address and code, and press **Pair with host**. The host finishes and restarts
+its gateway by itself; there is no console and no device ID to copy. Codes use
+the digits 2-9 and letters other than `I` and `O`, ignore case, spaces and
+dashes, and close after five wrong tries. The desktop checks that the computer
+at that address really shows this code before it pins its TLS key (see
+[short typed codes](../../src/Martlet.Gateway/README.md#short-typed-codes)).
+An older host whose `pair` opens the gateway console still shows a long
+`martlet-pair-v1....` code; paste that into the same Code box (no address
+needed), or update the host first. `martlet-host console` lists paired desktops
+and revokes one. **Check host** shows which roles the host offers and the
+hardware it reported.
 
 ## Driving Linux hosts from Windows over SSH
 

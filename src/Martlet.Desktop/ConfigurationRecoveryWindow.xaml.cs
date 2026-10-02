@@ -47,9 +47,9 @@ public partial class ConfigurationRecoveryWindow : ThemedWindow
         CleanupButton.IsEnabled = !active && !observing && controller.NeedsCleanup;
         ResultText.Text = observationMessage ?? controller.Message;
         ActivityText.Text = active
-            ? "An app-shared worker still owns actual IO/cancellation callbacks. Timeout/Stop/Close do NOT release it or prove rollback. Reopening cannot start another writer."
-            : controller.NeedsCleanup ? "Owned staging cleanup pending; no new recovery action allowed."
-            : "No worker active. No action resumes automatically. Inspect the actual receipt/result after interruption.";
+            ? "Backup or restore is still working. You can cancel or close this window."
+            : controller.NeedsCleanup ? "Cleanup is needed before another backup or restore."
+            : "Ready.";
         var plan = controller.Preview;
         if (ReferenceEquals(plan, rendered)) return;
         rendered = plan;
@@ -61,13 +61,13 @@ public partial class ConfigurationRecoveryWindow : ThemedWindow
     {
         if (closed) return false;
         if (!observing && !controller.IsBusy) return true;
-        observationMessage = "An app action still owns IO. Wait for actual release; no overlapping recovery started.";
+        observationMessage = "Another action is still finishing. Wait, then try again.";
         Render();
         return false;
     }
 
     private bool Confirm(string text) => confirm?.Invoke(text) ??
-        ConfirmationDialog.Confirm(this, text, "Review local configuration action");
+        ConfirmationDialog.Confirm(this, text, "Confirm settings action");
 
     private async Task Observe(SetupOperation? operation)
     {
@@ -85,7 +85,7 @@ public partial class ConfigurationRecoveryWindow : ThemedWindow
             if (stop.IsCancellationRequested || finished != operation.Completion)
             {
                 controller.StopObserving();
-                observationMessage = "Recovery observation stopped/timed out; cancellation requested, NOT rollback or completion. Keep Martlet open. After release, close/reopen to inspect the actual receipt; read a fresh preview to retry.";
+                observationMessage = "Recovery timed out. Wait for it to finish, then reopen this window.";
             }
             else
             {
@@ -93,7 +93,7 @@ public partial class ConfigurationRecoveryWindow : ThemedWindow
                 if (completed.Outcome == SetupWorkOutcome.Failed && controller.Preview is not null)
                 {
                     controller.ClearPreview();
-                    observationMessage = "Recovery worker or cancellation callbacks failed. No success is assumed; reopen and inspect actual retained receipt/files, then read a fresh preview.";
+                    observationMessage = "Recovery failed. Read a fresh preview before trying again.";
                 }
             }
         }
@@ -110,7 +110,7 @@ public partial class ConfigurationRecoveryWindow : ThemedWindow
     {
         if (!MayStart()) return;
         var destination = BackupPath.Text;
-        if (!Confirm(ConfigurationSnapshot.Scope + $"\n\nCreate-only output: {destination}\nProceed?")) return;
+        if (!Confirm($"Create a settings backup at:\n{destination}\n\nThis writes a local file only.")) return;
         if (closed || destination != BackupPath.Text || !MayStart()) return;
         await Observe(controller.Backup(destination));
     }
@@ -124,10 +124,10 @@ public partial class ConfigurationRecoveryWindow : ThemedWindow
     {
         if (!MayStart() || controller.Preview is not { } plan) return;
         var source = SourcePath.Text;
-        if (!Confirm(plan.Summary + "\n\nReplace with the EXACT candidate JSON shown in the preview? No keys, permissions or audio readiness will be restored.")) return;
+        if (!Confirm("Restore the settings shown in the preview?\n\nCurrent settings will be replaced. API keys, permissions and audio tests will not be restored.")) return;
         if (closed || source != SourcePath.Text || !ReferenceEquals(plan, controller.Preview) || !MayStart())
         {
-            observationMessage = "Preview/source changed during confirmation. Read a fresh preview; restore rejected.";
+            observationMessage = "The source changed. Read a fresh preview before restoring.";
             Render();
             return;
         }

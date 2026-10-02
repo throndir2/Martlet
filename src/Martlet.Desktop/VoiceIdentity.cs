@@ -18,7 +18,7 @@ internal sealed class VoiceIdentity
     private static readonly Lazy<SpeakerEncoder> encoder = new(() =>
     {
         using var stream = typeof(VoiceIdentity).Assembly.GetManifestResourceStream("Martlet.Desktop.SpeakerEncoder.bin")
-            ?? throw new VoiceIdentityException("The bundled Voice ID model is missing from this build.");
+            ?? throw new VoiceIdentityException("Voice ID is missing from this build.");
         return SpeakerEncoder.Load(stream);
     }, LazyThreadSafetyMode.ExecutionAndPublication);
     private readonly object gate = new();
@@ -57,7 +57,7 @@ internal sealed class VoiceIdentity
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or JsonException)
         {
             lock (gate) current = null;
-            LoadError = "Could not read voice-id.json. Voice ID is off until you enroll again or fix file access.";
+            LoadError = "Couldn't read your Voice ID. Enroll again or check file access.";
         }
         Changed?.Invoke();
     }
@@ -102,11 +102,10 @@ internal sealed class VoiceIdentity
 
     internal static string Describe(SpeakerCheck check, float threshold) => check.Verdict switch
     {
-        SpeakerVerdict.User when check.OtherVoiceDetected =>
-            $"Voice ID: you ({check.Similarity:F2} >= {threshold:F2}), but another voice may also be in this recording (lowest part {check.LowestPartialSimilarity:F2}).",
-        SpeakerVerdict.User => $"Voice ID: you ({check.Similarity:F2} >= {threshold:F2}).",
-        SpeakerVerdict.OtherSpeaker => $"Voice ID: someone else is speaking ({check.Similarity:F2} < {threshold:F2}). Ignored; nothing was uploaded.",
-        _ => $"Voice ID: too little speech to recognize ({check.SpeechAnalyzed.TotalSeconds:F1} s). Ignored; nothing was uploaded."
+        SpeakerVerdict.User when check.OtherVoiceDetected => "Voice ID recognized you, but another voice was also heard.",
+        SpeakerVerdict.User => "Voice ID recognized you.",
+        SpeakerVerdict.OtherSpeaker => "Voice ID heard someone else, so Martlet ignored it.",
+        _ => "Voice ID needs a little more speech."
     };
 
     private sealed class VoiceprintFile

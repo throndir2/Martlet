@@ -59,9 +59,9 @@ internal static partial class HostSetupCommands
         _ = Engine(action);
         if (!VersionPattern().IsMatch(target.Version)) throw new InvalidOperationException("Unexpected Martlet version.");
         if (target.Method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative && !SshTargetPattern().IsMatch(target.SshTarget))
-            throw new InvalidOperationException("Enter the SSH target as user@computer (for example me@192.168.1.20 or me@gpu-pc).");
+            throw new InvalidOperationException("Enter the SSH target as user@computer.");
         if (action == HostAction.Setup && !IsPrivate(target.Address))
-            throw new InvalidOperationException("Enter the host's private LAN IPv4 address (10.x, 172.16-31.x or 192.168.x).");
+            throw new InvalidOperationException("Enter the host's private network address.");
         if (target.HostId is { } id && !Regex.IsMatch(id, @"\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z"))
             throw new InvalidOperationException("Invalid host ID.");
     }
@@ -139,7 +139,7 @@ internal static partial class HostSetupCommands
         Validate(target, action);
         if (target.Method != HostSetupMethod.ThisPcDocker)
             throw new InvalidOperationException(target.Method is HostSetupMethod.OnHost or HostSetupMethod.Agent
-                ? "Commands for this host run on it, through Martlet there." : "SSH hosts run inside Martlet, not in a console window.");
+                ? "Martlet on that computer runs its commands." : "Martlet runs SSH host commands for you.");
         var lines = new StringBuilder("@echo off\r\n");
         lines.Append($"title Martlet host - {Engine(action)}\r\n");
         var image = Image(target);
@@ -166,11 +166,10 @@ internal static partial class HostSetupCommands
             $"Martlet sends \"{Engine(action)}\" to Martlet on {target.HostId ?? target.Address} through its paired host service; " +
             "Martlet there runs it and its output shows here.",
         HostSetupMethod.OnHost =>
-            "Nothing to type on that PC: install Martlet there and choose Use as a Martlet host. It sets up its host service " +
-            "and shows a pairing code for this PC. Once paired, this PC sends \"" + Engine(action) + "\" and other commands to " +
-            "Martlet there, which runs them.",
+            "Nothing to type on that PC: install Martlet there and choose Use as a Martlet host. Once paired, this PC sends \"" +
+            Engine(action) + "\" and other commands to Martlet there, which runs them.",
         HostSetupMethod.SshDocker or HostSetupMethod.SshNative =>
-            $"Martlet runs this on {target.SshTarget} over SSH (no console; you confirm here):\r\n  " +
+            $"Martlet will run this on {target.SshTarget}:\r\n  " +
             RemoteShell(target, Engine(action), action == HostAction.Setup),
         _ => string.Join("\r\n", Script(target, action).Split("\r\n")
             .Where(line => line.StartsWith("docker image ", StringComparison.Ordinal) ||
@@ -226,7 +225,7 @@ internal static partial class HostSetupCommands
             return (await RunQuietlyOverSshAsync(target, action, dataDirectory, pinnedHostKey, log, token), log);
         File.WriteAllText(script, UnattendedScript(target, action), Encoding.ASCII);
         using var process = Process.Start(new ProcessStartInfo("cmd.exe", $"/d /s /c \"\"{script}\" > \"{log}\" 2>&1\"")
-            { UseShellExecute = false, CreateNoWindow = true }) ?? throw new InvalidOperationException("Could not start the host update.");
+            { UseShellExecute = false, CreateNoWindow = true }) ?? throw new InvalidOperationException("Couldn't start the host update.");
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(token);
         limit.CancelAfter(TimeSpan.FromMinutes(45));
         try { await process.WaitForExitAsync(limit.Token); }
@@ -259,7 +258,7 @@ internal static partial class HostSetupCommands
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
         {
-            sink.Report("Stopped: it needed an answer (SSH password, new host key or sudo password) or took over 45 minutes.");
+            sink.Report("Stopped: SSH needed a password or took too long.");
             return -1;
         }
         catch (Exception error) when (error is HostShellException or Renci.SshNet.Common.SshException or IOException or
@@ -344,11 +343,5 @@ internal static partial class HostSetupCommands
         return (clean.Length == 0 ? "martlet" : clean.Length > 58 ? clean[..58] : clean) + "-host";
     }
 
-    internal static string SuggestedDeviceId()
-    {
-        var name = new string(System.Environment.MachineName.ToLowerInvariant()
-            .Where(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.').ToArray());
-        var id = "desktop-" + (name.Length == 0 ? "pc" : name);
-        return id.Length > 64 ? id[..64] : id;
-    }
+    internal static string SuggestedDeviceId() => Martlet.Diagnostics.LocalLogs.ThisDeviceId();
 }

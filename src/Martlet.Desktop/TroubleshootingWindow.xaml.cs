@@ -33,15 +33,15 @@ public partial class TroubleshootingWindow : ThemedWindow
             throw new ArgumentOutOfRangeException(nameof(observationTimeout));
         InitializeComponent();
         HelpText.Text = SupportHelp.Text;
-        LocationText.Text = support.Location is { } path ? $"Journal scope: {path}\nNot inspected on opening. Storage readiness UNKNOWN until an explicit action."
-            : "No valid settings data directory. Relaunch with an accessible absolute local --data-directory; no automatic alternative.";
+        LocationText.Text = support.Location is { } path ? $"Troubleshooting records are stored here: {path}"
+            : "Martlet needs an accessible local data folder before troubleshooting can record.";
         FromText.Text = this.clock.GetUtcNow().Subtract(TimeSpan.FromDays(7)).ToString("O");
         ThroughText.Text = this.clock.GetUtcNow().ToString("O");
         OmissionsText.Text = SupportSnapshot.OmissionSummary;
         ErrorLogText.Text = ErrorLog.Directory is { } logs
-            ? $"Crash and error log (always on, local only, never uploaded; includes exception details and stack traces): {logs}"
-            : "Crash and error log unavailable: the logs folder could not be created.";
-        ResultText.Text = "No export selected or approved. No support contact/upload channel is configured.";
+            ? $"Error logs are saved here: {logs}"
+            : "Error logs are not available.";
+        ResultText.Text = "No export created.";
         initialized = true;
         timer.Tick += (_, _) => Render();
         timer.Start();
@@ -58,7 +58,7 @@ public partial class TroubleshootingWindow : ThemedWindow
         if (closed) return;
         WorkText.Text = support.Status;
         var report = support.Report;
-        StatusText.Text = report is null ? "No shared report observed. Use Refresh shared local status; no fake pass is supplied."
+        StatusText.Text = report is null ? "No status report yet. Click Refresh status."
             : ReportFormatter.Human(report);
         StatusText.Text += "\n\n" + support.LiveStatus;
         var available = !support.IsBusy && !support.NeedsCleanup && !awaiting && !confirming;
@@ -87,8 +87,7 @@ public partial class TroubleshootingWindow : ThemedWindow
         {
             support.CancelAndClose();
             ClearPresentation();
-            ResultText.Text = "Support observation timed out. Cancellation requested; IO and callbacks still own resources until they finish. " +
-                "No rollback or export failure/success is inferred. The ownership status will show the actual eventual outcome.";
+            ResultText.Text = "Troubleshooting timed out. Wait for the current action to finish, then try again.";
             Render();
             return false;
         }
@@ -107,7 +106,7 @@ public partial class TroubleshootingWindow : ThemedWindow
     {
         support.CancelAndClose();
         ClearPresentation();
-        ResultText.Text = "Stop requested. Recording OFF; actual IO/callbacks and cleanup remain owned. No new work is queued.";
+        ResultText.Text = "Stopping troubleshooting. Wait for cleanup to finish.";
         Render();
     }
     private async void Cleanup_Click(object sender, RoutedEventArgs e) { if (CleanupButton.IsEnabled) await Observe(support.RetryCleanup()); }
@@ -123,7 +122,7 @@ public partial class TroubleshootingWindow : ThemedWindow
         if (!DateTimeOffset.TryParse(FromText.Text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var from) ||
             !DateTimeOffset.TryParse(ThroughText.Text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var through) ||
             from.Offset != TimeSpan.Zero || through.Offset != TimeSpan.Zero)
-        { ResultText.Text = "Enter explicit UTC times (for example 2026-09-13T12:00:00+00:00); no range was selected."; return; }
+        { ResultText.Text = "Enter UTC times like 2026-09-13T12:00:00+00:00."; return; }
         ClearPresentation();
         var chosen = selection;
         if (await Observe(support.Freeze(LogsChoice.IsChecked == true, new(from, through))) &&
@@ -131,9 +130,8 @@ public partial class TroubleshootingWindow : ThemedWindow
         {
             displayed = preview;
             frozenSelection = chosen;
-            InventoryText.Text = $"Snapshot {preview.Id}\nSHA-256 {preview.Digest}\nFrozen UTC {preview.FrozenAt:O}\n" +
-                $"Receipt range {preview.Range.FromUtc:O} through {preview.Range.ThroughUtc:O}\n{preview.Scope}\n" +
-                string.Join("\n", preview.Files.Select(f => $"{f.Name}: {f.Bytes} bytes; SHA-256 {f.Sha256}\nSource: {f.Source}"));
+            InventoryText.Text = $"Preview created {preview.FrozenAt:O}\nRecords: {preview.Range.FromUtc:O} through {preview.Range.ThroughUtc:O}\n{preview.Scope}\n" +
+                string.Join("\n", preview.Files.Select(f => $"{f.Name}: {f.Bytes} bytes"));
             for (var i = 0; i < preview.Files.Count; i++)
                 PreviewTabs.Items.Add(new TabItem { Header = preview.Files[i].Name, Content = new TextBox
                 {
@@ -148,7 +146,7 @@ public partial class TroubleshootingWindow : ThemedWindow
         if (!ChooseButton.IsEnabled) return;
         var picker = new SaveFileDialog
         {
-            Title = "Choose local support ZIP destination (nothing exported yet)",
+            Title = "Choose where to save the support ZIP",
             Filter = "Support ZIP (*.zip)|*.zip", DefaultExt = ".zip", AddExtension = true,
             FileName = $"Martlet-support-{clock.GetUtcNow():yyyyMMdd-HHmmss}-{Guid.NewGuid():N}.zip",
             OverwritePrompt = false, CheckPathExists = true
@@ -171,35 +169,34 @@ public partial class TroubleshootingWindow : ThemedWindow
         var sourceRevision = support.Revision;
         confirming = true;
         Render();
-        var text = $"Export ONLY this reviewed frozen snapshot locally?\nSnapshot: {preview.Id}\nSHA-256: {preview.Digest}\n" +
-            $"Exact destination: {destination}\n" +
-            string.Join("\n", preview.Files.Select(f => $"{f.Name}: {f.Bytes} bytes; SHA-256 {f.Sha256}")) +
-            "\nNo files will be overwritten. This is NOT an upload. No support contact/channel is configured. Default is No.";
+        var text = $"Export these reviewed support files?\nDestination: {destination}\n" +
+            string.Join("\n", preview.Files.Select(f => $"{f.Name}: {f.Bytes} bytes")) +
+            "\nNo files will be overwritten. Nothing will be uploaded.";
         bool approved;
         try
         {
             approved = confirm?.Invoke(text) ??
-                ConfirmationDialog.Confirm(this, text, "Confirm exact local support export");
+                ConfirmationDialog.Confirm(this, text, "Export support ZIP");
         }
         finally { confirming = false; }
         if (closed) return;
-        if (!approved) { ResultText.Text = "No export approved. Nothing was written."; Render(); return; }
+        if (!approved) { ResultText.Text = "Export canceled. Nothing was written."; Render(); return; }
         if (selection != chosen || pathRevision != destinationRevision || support.Revision != sourceRevision || support.Preview?.Id != preview.Id)
-        { ResultText.Text = "Selection, source or destination changed during confirmation. Review the frozen preview and confirm again."; Render(); return; }
+        { ResultText.Text = "The preview or destination changed. Review the files and export again."; Render(); return; }
         await Observe(support.Export(preview.Id, preview.Digest, destination, explicitlyApproved: true));
     }
     private void Selection_Changed(object sender, RoutedEventArgs e)
     {
         if (!initialized) return;
         selection++;
-        ResultText.Text = "Selection changed. Freeze and review a new preview before export; no previous approval applies.";
+        ResultText.Text = "Selection changed. Preview the files again before exporting.";
         Render();
     }
     private void Destination_Changed(object sender, TextChangedEventArgs e)
     {
         if (!initialized) return;
         destinationRevision++;
-        ResultText.Text = "Destination changed. A new exact-destination default-No confirmation is required.";
+        ResultText.Text = "Destination changed. Confirm export again.";
         Render();
     }
     private async void Clear_Click(object sender, RoutedEventArgs e)

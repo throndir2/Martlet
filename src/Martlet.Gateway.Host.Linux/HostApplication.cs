@@ -96,6 +96,23 @@ internal sealed class ControlVoiceStorage(LinuxControlDirectory directory) : IGa
     }
 }
 
+/// <summary>Keeps the gateway's log in logs.json beside host.json (0600, service owner): its own activity and, when the
+/// owner made it the log host, every computer's lines. Not part of the approved configuration.</summary>
+internal sealed class ControlLogStorage(LinuxControlDirectory directory) : IGatewayLogStorage
+{
+    private readonly object gate = new();
+
+    public byte[]? Load()
+    {
+        lock (gate) return directory.Read(LinuxControlDirectory.Logs, LinuxControlDirectory.MaximumLogsBytes);
+    }
+
+    public void Save(byte[] bytes)
+    {
+        lock (gate) directory.WriteLogs(bytes);
+    }
+}
+
 /// <summary>Keeps the commands paired computers sent through this host in commands.json beside host.json (0600, service
 /// owner; never their secrets). Not part of the approved configuration.</summary>
 internal sealed class ControlCommandStorage(LinuxControlDirectory directory) : IGatewayCommandStorage
@@ -176,12 +193,15 @@ internal static class HostApplication
                 }
                 owner = platform.OpenHost("serve", config, approval, cancellation);
                 CheckApproval(directory, config, approval);
+                if (owner.Enabled) owner.AttachLogs(new ControlLogStorage(directory));
                 PublishMachine(owner, directory, output);
                 if (owner.Enabled)
                 {
                     owner.AttachCluster(new ControlClusterStorage(directory));
                     owner.AttachVoices(new ControlVoiceStorage(directory));
                     AttachCommands(owner, directory);
+                    owner.RecordActivity("INFO", config.Roles.Count == 0 ? "Serving with no roles (for example as the log host)."
+                        : "Serving roles: " + string.Join(", ", config.Roles.Select(r => $"{r.Kind} ({r.Model})")) + ".");
                 }
                 await owner.StartAsync(cancellation);
                 CheckApproval(directory, config, approval);
@@ -337,12 +357,17 @@ internal static class HostApplication
             if (directory.Read(LinuxControlDirectory.Machine, GatewayMachineReport.MaximumBytes) is { } bytes)
             {
                 report = GatewayMachineReport.Parse(bytes);
-                if (report is null) Report(output, "machine.invalid: machine.json ignored; run martlet-host machine to collect it again.");
+                if (report is null)
+                {
+                    Report(output, "machine.invalid: machine.json ignored; run martlet-host machine to collect it again.");
+                    owner.RecordActivity("WARN", "machine.json is invalid, so this host's hardware is not reported. Run martlet-host machine to collect it again.");
+                }
             }
         }
         catch (GatewayPersistenceException)
         {
             Report(output, "machine.unreadable: machine.json must be a 0600 file owned by the service user; hardware not reported.");
+            owner.RecordActivity("WARN", "machine.json is unreadable (it must be a 0600 file owned by the service user), so hardware is not reported.");
         }
         owner.PublishMachine(report);
     }
@@ -360,22 +385,33 @@ internal static class HostApplication
     private static async Task<int> PairOnceAsync(DurableGatewayHost owner, HostConfiguration config,
         LinuxControlDirectory directory, HostOptions options, TextReader input, TextWriter output, CancellationToken cancellation)
     {
-        var device = options.DeviceId!;
+        var device = options.DeviceId;
         var roles = Roles(options.Roles);
         var known = owner.ListRegistrations(cancellation).Select(r => r.CredentialId).ToHashSet(StringComparer.Ordinal);
         config.Recheck(directory);
         await owner.StartAsync(cancellation);
         config.Recheck(directory);
-        var card = owner.OpenPairing(new() { DeviceId = device, DisplayName = options.Name!, Roles = roles }, cancellation);
-        output.WriteLine($"Listener started. One-use invitation for device {device} ({string.Join(',', roles)}), host pin {owner.Identity!.SpkiFingerprint}, expires {card.ExpiresAt:O}.");
-        output.WriteLine("pairing-code: " + PairingCode.Format(card));
+        DateTimeOffset expiresAt;
+        if (device is null)
+        {
+            var code = owner.OpenCodePairing(new() { Roles = roles }, cancellation);
+            expiresAt = code.ExpiresAt;
+            output.WriteLine(PairingCode.Describe(code));
+        }
+        else
+        {
+            var card = owner.OpenPairing(new() { DeviceId = device, DisplayName = options.Name!, Roles = roles }, cancellation);
+            expiresAt = card.ExpiresAt;
+            output.WriteLine($"Listener started. One-use invitation for device {device} ({string.Join(',', roles)}), host pin {owner.Identity!.SpkiFingerprint}, expires {card.ExpiresAt:O}.");
+            output.WriteLine("pairing-code: " + PairingCode.Format(card));
+        }
         output.Flush();
         // Console.In reads synchronously, so the watcher runs on its own thread; it is abandoned when pairing ends.
         var canceled = Task.Run(() => WatchForCancel(input), CancellationToken.None);
         while (true)
         {
             var registered = owner.ListRegistrations(cancellation)
-                .FirstOrDefault(r => r.DeviceId == device && !r.Revoked && !known.Contains(r.CredentialId));
+                .FirstOrDefault(r => (device is null || r.DeviceId == device) && !r.Revoked && !known.Contains(r.CredentialId));
             if (registered is not null)
             {
                 output.WriteLine($"Paired: {Display(registered.DeviceId)} ({Display(registered.DisplayName)}), roles {string.Join(',', registered.Roles)}. Permanent until revoked.");
@@ -386,9 +422,11 @@ internal static class HostApplication
                 output.WriteLine("pairing.canceled: the invitation was withdrawn before a desktop redeemed it.");
                 return 3;
             }
-            if (DateTimeOffset.UtcNow >= card.ExpiresAt)
+            if (DateTimeOffset.UtcNow >= expiresAt)
             {
-                output.WriteLine("pairing.expired: no desktop redeemed the invitation within five minutes.");
+                output.WriteLine(device is null
+                    ? "pairing.expired: no desktop typed the code within five minutes (or it was mistyped five times). Run pair again for a new code."
+                    : "pairing.expired: no desktop redeemed the invitation within five minutes.");
                 return 3;
             }
             await Task.Delay(500, cancellation);

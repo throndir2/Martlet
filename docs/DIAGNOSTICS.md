@@ -1,5 +1,67 @@
 # F04 diagnostic experience
 
+## Diagnostics page and the log host
+
+**Diagnostics** (in the main window's navigation) shows every line Martlet's
+parts wrote, newest first, in one list: the desktop app (`desktop.log`, including
+each status-line message as `Status: ...`, hosts that stop or start answering
+again and failed provider requests), the avatar renderer
+(`avatar-renderer.log`), host runs (`host-runs.log`), each with its rotated
+older copies, and Martlet hosts' gateways. Filters choose the level
+(everything, warnings and errors, errors only), the part (app, character, host
+runs, host gateway) and the computer, and a search box matches the text.
+Selecting a line shows it in full (stack traces and output lines included).
+Home's *unexpected errors* and *closed unexpectedly* items open this page.
+*Copy shown* copies the shown lines; *Open logs folder* opens this PC's folder.
+The page refreshes every 15 seconds while open; *Refresh* reads again and sends
+nothing.
+
+**Every computer keeps its own logs.** The desktop's local files are unchanged
+(rotated at 2 MiB, never uploaded by themselves). Each Martlet host's gateway
+now also keeps a bounded log of its own activity (start and stop, devices
+paired, each finished model request with route, device and duration, each
+refused or failed request with its stable code, HTTP status and trace ID) in
+`logs.json` beside `host.json`. Without a log host, the page shows this PC's
+logs plus each paired host's own log, read over its pinned pairing.
+
+**The log host.** *Collect the logs of all my computers on* chooses one paired
+Martlet host (it can be a host that runs no jobs) to collect everything. The
+choice is the `logs` entry of the [shared plan](CLUSTER.md), so it follows to
+the owner's other computers while who does what stays in sync. Every 30
+seconds while Martlet runs, each companion PC:
+
+1. asks the log host for its *marks* (the newest sequence number it holds per
+   computer and part) the first time;
+2. sends its own new lines (at most 400 per part per send; the first send
+   includes at most the last week);
+3. reads each other paired host's own new gateway lines and passes them on, so
+   the log host collects hosts' logs without any host-to-host trust;
+4. keeps the marks the log host returns for the next send.
+
+Every line has a sequence number that only grows per computer and part
+(derived from its time), and the log host keeps only lines newer than its mark,
+so a line sent twice, relayed by two desktops or re-sent after a restart is
+kept once. Lines passed on by another desktop record who passed them on. The
+log host keeps the newest 6,000 lines (about 1.8 MB) and saves at most every
+30 seconds and when it stops. The page then shows everything the log host
+collected, from every computer, merged with this PC's own lines. A log host
+that stops answering only delays lines; they stay on each computer and are sent
+when it answers again. Forgetting the log host clears the choice.
+
+Logs hold activity, errors and status only: never keys, pairing secrets or
+conversation content. They can include local paths, host names and provider
+error text, and they travel only over the pinned, signed pairing to the
+owner's own host. Hosts older than shared logs refuse `/martlet/v1/logs`; the
+page says to update them. Host-mode PCs (a Windows PC running only the host
+service) contribute their gateway log through the companions, not their
+desktop app log.
+
+**Qualification.** Parsing, filters and the page were exercised on this
+Windows machine through Martlet MCP (`logs_timeline` and the desktop's
+Diagnostics controls); the gateway endpoint (marks, deduplication, relaying,
+paging, persistence and refused requests) in-process. Sending to and reading
+from a real log host over a network is **NOT RUN**.
+
 V06b connects the existing Support engine to the real Desktop
 [Troubleshooting surface](TROUBLESHOOTING.md): passive access at each setup
 stage, explicit OFF-by-default local metadata recording, exact five-file frozen

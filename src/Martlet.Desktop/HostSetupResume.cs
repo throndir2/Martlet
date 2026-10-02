@@ -26,12 +26,12 @@ internal static class HostSetupResume
     /// start Martlet at the next sign-in. Returns the sentence that tells the owner what happens then.</summary>
     internal static string Register(ContinueSetupKind kind, string task)
     {
-        if (dataDirectory is null) return "After you sign in again, open Martlet and press the same button again.";
+        if (dataDirectory is null) return "After you sign in again, open Martlet and run this step again.";
         try { new ContinueSetup(kind, task, DateTimeOffset.Now).Save(dataDirectory); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
         {
             ErrorLog.Warn("Could not save what to continue after the restart", error);
-            return "After you sign in again, open Martlet and press the same button again.";
+            return "After you sign in again, open Martlet and run this step again.";
         }
         try
         {
@@ -39,13 +39,13 @@ internal static class HostSetupResume
             key.SetValue(RunOnceValue, Command(Environment.ProcessPath ?? throw new InvalidOperationException("Martlet's path is unknown."),
                 dataDirectoryArgument));
             ErrorLog.Info($"Continues after the next sign-in: {kind} ({task})");
-            return $"After you sign in again, Martlet opens by itself and continues: {task}.";
+            return $"After you sign in again, Martlet opens and continues {task}.";
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Security.SecurityException or
             InvalidOperationException)
         {
             ErrorLog.Warn("Could not ask Windows to start Martlet at the next sign-in", error);
-            return $"After you sign in again, open Martlet; it continues: {task}.";
+            return $"After you sign in again, open Martlet. It will continue {task}.";
         }
     }
 

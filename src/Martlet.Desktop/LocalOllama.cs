@@ -74,7 +74,7 @@ internal static class LocalOllama
     private static async Task EnsureRunningAsync(HttpClient client, Action<string> status, IProgress<string> output, CancellationToken token)
     {
         if (await AnswersAsync(client, token)) return;
-        var ollama = Executable() ?? throw new InvalidOperationException("Ollama isn't installed on this PC yet. Install it first.");
+        var ollama = Executable() ?? throw new InvalidOperationException("Ollama isn't installed on this PC. Install it first.");
         var app = Path.Combine(Path.GetDirectoryName(ollama)!, "ollama app.exe");
         status("Starting Ollama on this PC...");
         output.Report("Starting Ollama...");
@@ -83,13 +83,13 @@ internal static class LocalOllama
             if (File.Exists(app)) Process.Start(new ProcessStartInfo(app) { UseShellExecute = true })?.Dispose();
             else Process.Start(new ProcessStartInfo(ollama, "serve") { UseShellExecute = false, CreateNoWindow = true })?.Dispose();
         }
-        catch (System.ComponentModel.Win32Exception error) { throw new InvalidOperationException("Ollama could not be started: " + error.Message); }
+        catch (System.ComponentModel.Win32Exception error) { throw new InvalidOperationException("Couldn't start Ollama: " + error.Message); }
         for (var attempt = 0; attempt < 30; attempt++)
         {
             await Task.Delay(TimeSpan.FromSeconds(1), token);
             if (await AnswersAsync(client, token)) return;
         }
-        throw new InvalidOperationException("Ollama did not start on this PC. Start Ollama from the Start menu, then try again.");
+        throw new InvalidOperationException("Ollama didn't start. Start it from the Start menu, then try again.");
     }
 
     /// <summary>Downloads <paramref name="model"/> into this PC's Ollama, reporting each step and its progress.</summary>
@@ -98,7 +98,7 @@ internal static class LocalOllama
         using var client = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
         await EnsureRunningAsync(client, status, output, token);
         status($"Downloading {model} with Ollama...");
-        output.Report($"$ ollama pull {model}  (on this PC)");
+        output.Report($"Downloading {model} with Ollama.");
         using var request = new HttpRequestMessage(HttpMethod.Post, Origin + "/api/pull")
         {
             Content = new StringContent(JsonSerializer.Serialize(new { model, stream = true }), Encoding.UTF8, "application/json")
@@ -117,7 +117,7 @@ internal static class LocalOllama
             using var parsed = document;
             var root = document.RootElement;
             if (root.TryGetProperty("error", out var error))
-                throw new InvalidOperationException($"Ollama could not download {model}: {error.GetString()}");
+                throw new InvalidOperationException($"Couldn't download {model}: {error.GetString()}");
             var text = root.TryGetProperty("status", out var value) ? value.GetString() ?? "" : "";
             if (root.TryGetProperty("total", out var size) && size.TryGetInt64(out var total) && total > 0 &&
                 root.TryGetProperty("completed", out var got) && got.TryGetInt64(out var completed))
@@ -137,8 +137,8 @@ internal static class LocalOllama
             last = text;
         }
         if (!response.IsSuccessStatusCode)
-            throw new InvalidOperationException($"Ollama could not download {model} (HTTP {(int)response.StatusCode}).");
-        if (last != "success") throw new InvalidOperationException($"Ollama did not finish downloading {model}. The output shows why.");
+            throw new InvalidOperationException($"Couldn't download {model} (error {(int)response.StatusCode}).");
+        if (last != "success") throw new InvalidOperationException($"Ollama didn't finish downloading {model}. The output has details.");
     }
 
     private const string TestPrompt = "Say hello in one short, friendly sentence.";
@@ -155,10 +155,10 @@ internal static class LocalOllama
         Action<string> status, IProgress<string> output, CancellationToken token)
     {
         using var client = new HttpClient(new SocketsHttpHandler { UseProxy = false }) { Timeout = Timeout.InfiniteTimeSpan };
-        status("Checking that Ollama answers on this PC...");
+        status("Checking Ollama...");
         await EnsureRunningAsync(client, status, output, token);
-        using (var version = await SendAsync(client, HttpMethod.Get, "/api/version", null, TimeSpan.FromSeconds(10), token))
-            output.Report($"Ollama {JsonText(version.Body, "version") ?? "(unknown version)"} answers at {Origin}.");
+        using (await SendAsync(client, HttpMethod.Get, "/api/version", null, TimeSpan.FromSeconds(10), token))
+            output.Report("Ollama is running.");
 
         status($"Checking {model} in Ollama...");
         string[] capabilities;
@@ -171,16 +171,13 @@ internal static class LocalOllama
             capabilities = root.TryGetProperty("capabilities", out var list) && list.ValueKind == JsonValueKind.Array
                 ? list.EnumerateArray().Select(c => c.ValueKind == JsonValueKind.String ? c.GetString() : null).OfType<string>().ToArray()
                 : [];
-            var details = root.TryGetProperty("details", out var d) && d.ValueKind == JsonValueKind.Object ? d : default;
-            var facts = new[] { JsonText(details, "parameter_size") is { } size ? size + " parameters" : null, JsonText(details, "quantization_level") }
-                .OfType<string>().ToArray();
-            output.Report($"{model} is downloaded{(facts.Length > 0 ? $" ({string.Join(", ", facts)})" : "")}." +
-                (capabilities.Length > 0 ? $" It {Abilities(capabilities)}." : ""));
-            if (capabilities.Length > 0 && !capabilities.Contains("completion", StringComparer.Ordinal))
-                throw new InvalidOperationException($"{model} can't hold a conversation (Ollama lists it for {string.Join(", ", capabilities)}). Choose a chat model.");
+            var canChat = capabilities.Length == 0 || capabilities.Contains("completion", StringComparer.Ordinal);
+            output.Report($"{model} is downloaded." + (capabilities.Length > 0 && canChat ? $" {Abilities(capabilities)}." : ""));
+            if (!canChat)
+                throw new InvalidOperationException($"{model} can't hold a conversation. Choose a chat model.");
         }
 
-        status($"Loading {model} into memory (the first time can take a few minutes)...");
+        status($"Loading {model}...");
         output.Report($"Loading {model}...");
         var clock = Stopwatch.StartNew();
         using (var load = await SendAsync(client, HttpMethod.Post, "/api/generate", new { model, stream = false }, LoadLimit, token))
@@ -189,24 +186,19 @@ internal static class LocalOllama
         output.Report($"Loaded in {Seconds(loaded)}.");
         var placement = await PlacementAsync(client, model, token);
         if (placement is not null) output.Report(placement);
-
         status($"Asking {model} to say hello...");
-        output.Report($"$ POST {Origin}/v1/chat/completions  (model {model}, streamed, " +
-            (replyTokens is { } budget ? $"up to {budget} tokens)" : "no reply token budget)"));
+        output.Report($"Asking {model} for a test reply...");
         var reply = await AskAsync(client, model, replyTokens, output, token);
-        output.Report($"First words after {Seconds(reply.FirstWords)}; finished after {Seconds(reply.Total)}.");
+        output.Report($"First words after {Seconds(reply.FirstWords)}. Finished after {Seconds(reply.Total)}.");
         output.Report($"Reply: {reply.Text}");
 
-        var abilities = capabilities.Length > 0 ? $" It {Abilities(capabilities)}." : "";
+        var abilities = capabilities.Length > 0 ? $" {Abilities(capabilities)}." : "";
         var limit = Seconds(firstWordsLimit);
         if (reply.FirstWords > firstWordsLimit)
-            return new($"{model} answers on this PC, but too slowly for a reply: its first words came after {Seconds(reply.FirstWords)}, and " +
-                $"Martlet waits {limit} for a reply to start. Choose a smaller model.{abilities}", Warning: true);
+            return new($"{model} works, but starts too slowly for Martlet. First words took {Seconds(reply.FirstWords)}. Martlet waits {limit}. Choose a smaller model.{abilities}", Warning: true);
         if (loaded > firstWordsLimit)
-            return new($"{model} works on this PC: once loaded it answered in {Seconds(reply.Total)}. Loading it took {Seconds(loaded)}, longer than " +
-                $"the {limit} Martlet waits for a reply to start, so a reply right after Ollama loads it (at first, or after 5 idle minutes) " +
-                $"may fail with \"took too long\"; try again once it is loaded.{abilities}", Warning: true);
-        return new($"{model} works on this PC: it loaded in {Seconds(loaded)} and answered in {Seconds(reply.Total)}.{abilities}", Warning: false);
+            return new($"{model} works once loaded, but loading took {Seconds(loaded)}. If a reply times out, try again after the model finishes loading.{abilities}", Warning: true);
+        return new($"{model} works on this PC. It loaded in {Seconds(loaded)} and answered in {Seconds(reply.Total)}.{abilities}", Warning: false);
     }
 
     private sealed record Reply(string Text, TimeSpan FirstWords, TimeSpan Total);
@@ -234,7 +226,7 @@ internal static class LocalOllama
             if (!response.IsSuccessStatusCode)
             {
                 var body = await response.Content.ReadAsStringAsync(limit.Token);
-                throw new InvalidOperationException($"{model} didn't answer (HTTP {(int)response.StatusCode}): {ErrorText(body) ?? "Ollama gave no reason"}.");
+                throw new InvalidOperationException($"{model} didn't answer (error {(int)response.StatusCode}): {ErrorText(body) ?? "Ollama gave no reason"}.");
             }
             using var stream = await response.Content.ReadAsStreamAsync(limit.Token);
             using var reader = new StreamReader(stream, Encoding.UTF8);
@@ -284,7 +276,7 @@ internal static class LocalOllama
         }
         catch (JsonException)
         {
-            throw new InvalidOperationException($"{model}'s answer wasn't the Chat Completions stream Martlet reads.");
+            throw new InvalidOperationException("Ollama sent a response Martlet couldn't read.");
         }
         catch (Exception error) when (error is HttpRequestException or IOException)
         {
@@ -339,16 +331,16 @@ internal static class LocalOllama
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
         {
-            throw new InvalidOperationException($"Ollama didn't answer {path} within {Seconds(within)}.");
+            throw new InvalidOperationException($"Ollama didn't answer within {Seconds(within)}.");
         }
         catch (HttpRequestException error)
         {
-            throw new InvalidOperationException($"Ollama stopped answering on this PC ({error.Message}). Start Ollama from the Start menu, then test again.");
+            throw new InvalidOperationException($"Ollama stopped answering ({error.Message}). Start it from the Start menu, then test again.");
         }
     }
 
     private static InvalidOperationException Failure(string what, Answer answer) =>
-        new($"{what} (HTTP {(int)answer.Status}): {ErrorText(answer.Text) ?? "Ollama gave no reason"}.");
+        new($"{what} (error {(int)answer.Status}): {ErrorText(answer.Text) ?? "Ollama gave no reason"}.");
 
     /// <summary>Ollama's own explanation from an error body (<c>{"error":"..."}</c>, or OpenAI-style
     /// <c>{"error":{"message":"..."}}</c>), on one bounded line.</summary>
@@ -368,15 +360,17 @@ internal static class LocalOllama
         return line.Length <= 400 ? line : line[..400] + "…";
     }
 
-    private static string? JsonText(JsonDocument? document, string name) => document is null ? null : JsonText(document.RootElement, name);
-
     private static string? JsonText(JsonElement element, string name) =>
         element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString() : null;
 
-    private static string Abilities(IReadOnlyCollection<string> capabilities) =>
-        $"talks, {(capabilities.Contains("vision") ? "sees images" : "can't see images")} and " +
-        (capabilities.Contains("tools") ? "uses tools" : "can't use tools");
+    private static string Abilities(IReadOnlyCollection<string> capabilities)
+    {
+        var extras = new List<string>();
+        if (capabilities.Contains("vision")) extras.Add("vision");
+        if (capabilities.Contains("tools")) extras.Add("tools");
+        return extras.Count == 0 ? "Ready for chat" : "Also supports " + string.Join(" and ", extras);
+    }
 
     private static string Seconds(TimeSpan time) => time.TotalSeconds < 10
         ? $"{time.TotalSeconds.ToString("0.0", System.Globalization.CultureInfo.CurrentCulture)} s"

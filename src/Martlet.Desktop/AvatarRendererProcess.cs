@@ -48,7 +48,7 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
         token.ThrowIfCancellationRequested();
         var executable = Path.Combine(AppContext.BaseDirectory, "AvatarRenderer", "Martlet.Avatar.RendererHost.exe");
         LocalAvatarFiles.CheckAncestors(executable);
-        if (!File.Exists(executable)) throw new FileNotFoundException("Build the private avatar renderer before activation.");
+        if (!File.Exists(executable)) throw new FileNotFoundException("The character renderer is missing. Reinstall Martlet or choose another character.");
         var info = new ProcessStartInfo(executable) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(executable)! };
         info.Environment.Clear();
         foreach (var name in new[] { "SystemRoot", "WINDIR", "TEMP", "TMP", "LOCALAPPDATA", "DOTNET_ROOT" })
@@ -62,7 +62,7 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
         var limits = new JobLimits { Basic = new() { Flags = 0x2000 } };
         if (!SetInformationJobObject(job, 9, ref limits, Marshal.SizeOf<JobLimits>()))
             throw new Win32Exception(Marshal.GetLastWin32Error());
-        process = Process.Start(info) ?? throw new IOException("Renderer process did not start.");
+        process = Process.Start(info) ?? throw new IOException("The character renderer didn't start.");
         Exited = process.WaitForExitAsync();
         var started = process;
         _ = Exited.ContinueWith(_ =>
@@ -77,13 +77,13 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
         // No browser is initialized until this handshake; the child is already job-owned.
         var response = await SendAsync("load", new RendererLoad(profile, revision,
             Application.Current is App { SelectedTheme: PinkTheme.Dark }), token, TimeSpan.FromSeconds(45));
-        if (response.Kind != "capabilities") throw new InvalidDataException("Renderer capability response missing.");
+        if (response.Kind != "capabilities") throw new InvalidDataException("The character renderer didn't report its controls.");
         Capabilities = RendererProtocol.Data<RendererCapabilities>(response);
         if (Capabilities.Parameters.Length > 512 || Capabilities.Parameters.Any(p =>
             string.IsNullOrWhiteSpace(p.Id) || p.Id.Length > 128 || !double.IsFinite(p.Minimum) ||
             !double.IsFinite(p.Maximum) || !double.IsFinite(p.Neutral) || p.Minimum >= p.Maximum ||
             p.Neutral < p.Minimum || p.Neutral > p.Maximum))
-            throw new InvalidDataException("Renderer returned unsupported capability metadata.");
+            throw new InvalidDataException("The character renderer reported unsupported model controls.");
     }
 
     public async Task<RendererMessage> SendAsync<T>(string kind, T data, CancellationToken token,
@@ -98,7 +98,7 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
             await RendererProtocol.WriteAsync(commands, RendererProtocol.Message(kind, Activation, data), request.Token);
             var response = await RendererProtocol.ReadAsync(replies, request.Token);
             if (response.Activation != Activation || response.Kind == "error")
-                throw new InvalidDataException("Renderer rejected resources/controls or lost its activation binding.");
+                throw new InvalidDataException("The character renderer couldn't apply those controls.");
             return response;
         }
         finally { exchange.Release(); }
@@ -110,15 +110,20 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
         catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException) { return "unknown"; }
     }
 
+    /// <summary>Ends the renderer and its descendants. A failed attempt is not final: the next call tries again.</summary>
     public ValueTask DisposeAsync()
     {
-        lock (disposeGate) return new(disposal ??= DisposeCoreAsync());
+        lock (disposeGate)
+        {
+            if (disposal is null || disposal.IsFaulted || disposal.IsCanceled) disposal = DisposeCoreAsync();
+            return new(disposal);
+        }
     }
 
     private async Task DisposeCoreAsync()
     {
         disposed = true;
-        await lifetime.CancelAsync();
+        if (!lifetime.IsCancellationRequested) await lifetime.CancelAsync();
         commands.Dispose();
         replies.Dispose();
         if (job is { IsInvalid: false, IsClosed: false })
@@ -130,24 +135,57 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
                 if (!QueryInformationJobObject(job, 1, out var accounting, Marshal.SizeOf<JobAccounting>(), IntPtr.Zero))
                     throw new Win32Exception(Marshal.GetLastWin32Error());
                 if (accounting.ActiveProcesses == 0) break;
-                if (deadline.Elapsed > TimeSpan.FromSeconds(3)) throw new TimeoutException("Renderer descendants have not exited; activation remains blocked.");
+                if (deadline.Elapsed > TimeSpan.FromSeconds(3)) throw new TimeoutException("The character renderer is still closing. Try again in a moment.");
                 await Task.Delay(10);
             }
             job.Dispose();
         }
-        if (process is not null)
+        if (process is { } running)
         {
-            if (!process.HasExited) process.Kill(entireProcessTree: true);
-            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(3));
-            process.Dispose();
+            try { if (!running.HasExited) running.Kill(entireProcessTree: true); }
+            catch (InvalidOperationException) { }
+            await running.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(3));
+            running.Dispose();
+            process = null;
         }
-        var cache = Path.Combine(Path.GetTempPath(), "Martlet.Avatar", Activation.ToString("N"));
-        if (Directory.Exists(cache))
-        {
-            LocalAvatarFiles.CheckAncestors(Path.Combine(cache, "_"));
-            Directory.Delete(cache, recursive: true);
-        }
+        await DeleteCacheAsync(Path.Combine(Path.GetTempPath(), "Martlet.Avatar", Activation.ToString("N")));
         lifetime.Dispose();
+    }
+
+    /// <summary>
+    /// Removes the activation's WebView2 cache. Windows (or an antivirus scan) can hold its files for a moment after the
+    /// renderer has ended, so this retries in the background instead of failing the stop: a leftover temporary cache
+    /// must never keep the character, an update or exiting Martlet stuck.
+    /// </summary>
+    private static async Task DeleteCacheAsync(string cache)
+    {
+        if (await TryDeleteCacheAsync(cache, TimeSpan.FromSeconds(1), log: false)) return;
+        _ = Task.Run(() => TryDeleteCacheAsync(cache, TimeSpan.FromSeconds(60), log: true));
+    }
+
+    private static async Task<bool> TryDeleteCacheAsync(string cache, TimeSpan patience, bool log)
+    {
+        var deadline = Stopwatch.StartNew();
+        while (true)
+        {
+            try
+            {
+                if (!Directory.Exists(cache)) return true;
+                LocalAvatarFiles.CheckAncestors(Path.Combine(cache, "_"));
+                Directory.Delete(cache, recursive: true);
+                return true;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or
+                Martlet.Core.Contracts.ContractException)
+            {
+                if (error is Martlet.Core.Contracts.ContractException || deadline.Elapsed >= patience)
+                {
+                    if (log) ErrorLog.Warn("The character renderer's temporary WebView2 cache could not be removed; it is left in the temp folder.", error);
+                    return false;
+                }
+            }
+            await Task.Delay(100);
+        }
     }
 
     [StructLayout(LayoutKind.Sequential)]

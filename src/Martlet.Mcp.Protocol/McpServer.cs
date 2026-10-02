@@ -1,7 +1,9 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Martlet.Core.Installation;
 using Martlet.Doctor;
+using Martlet.Mcp.Client;
 
 namespace Martlet.Mcp;
 
@@ -30,6 +32,17 @@ internal sealed class McpServer(DesktopAutomation desktop)
             log = new { type = "string", @enum = LogTail.Logs },
             lines = new { type = "integer", minimum = 1, maximum = LogTail.MaximumLines },
             contains = new { type = "string", maxLength = LogTail.MaximumFilterLength },
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("logs_timeline", "Read this PC's logs as the desktop's Diagnostics page shows them: desktop, avatar-renderer and host-runs " +
+            "(with rotated copies) parsed into one timeline of {at, level, component, seq, message}, newest first, with counts of " +
+            "errors and warnings and the log host chosen in the shared plan. Filters: level (all, warnings, errors), component, " +
+            "contains. Read-only; contacts no host.", new
+        {
+            level = new { type = "string", @enum = LogTimeline.Levels },
+            component = new { type = "string", @enum = Martlet.Core.Logs.LogComponents.Local },
+            contains = new { type = "string", maxLength = LogTail.MaximumFilterLength },
+            lines = new { type = "integer", minimum = 1, maximum = LogTimeline.MaximumLines },
             dataDirectory = new { type = "string" }
         }),
 
@@ -87,7 +100,22 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "pairing, signed requests, the command mailbox and its storage), the desktop's real client and agent loop with a fixture " +
             "runner, two fixture devices. Checks that only known commands are accepted, only the host's agent (local token) takes them, " +
             "output and outcomes reach the sender, secrets never appear in lists or saved copies, cancel works and commands survive a " +
-            "restart. Contacts nothing outside loopback and touches no real credentials, Docker or installs.", new { })
+            "restart. Contacts nothing outside loopback and touches no real credentials, Docker or installs.", new { }),
+        Tool("mcp_servers_status", "Read the MCP servers in a data directory's mcp.json as Martlet parses them: each server's name, " +
+            "transport, program and raw arguments (with ${env:...} and ${secret:...} references, never their values), environment and " +
+            "header names, on/off, auto-approve, the MCP directory entry it was installed from and the secret names it uses. " +
+            "Read-only; starts no server and reads no credentials.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("mcp_directory_plan", "Show how Martlet's MCP directory would install one MCP Registry entry (a server.json object, as " +
+            "the registry's v0.1 API returns it under \"server\"): the ways to run it, the inputs each needs, and with values (by input " +
+            "key) the exact mcp.json entry and secret names it would write. Local only: fetches, writes and starts nothing.", new
+        {
+            server = new { type = "object" },
+            name = new { type = "string", maxLength = 64 },
+            values = new { type = "object", additionalProperties = new { type = "string", maxLength = 4096 } }
+        }, ["server"])
     ];
 
     private static object Tool(string name, string description, object properties, string[]? required = null) =>
@@ -154,6 +182,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     ["run", .. RequiredStrings(arguments, "probes"), "--json"], arguments, cancellation),
                 "logs_tail" => LogTail.Read(OptionalString(arguments, "dataDirectory"), OptionalString(arguments, "log"),
                     OptionalInt(arguments, "lines"), OptionalString(arguments, "contains")),
+                "logs_timeline" => LogTimeline.Read(OptionalString(arguments, "dataDirectory"), OptionalString(arguments, "level"),
+                    OptionalString(arguments, "component"), OptionalString(arguments, "contains"), OptionalInt(arguments, "lines")),
 
                 "ui_connect" => desktop.Connect(RequiredInt(arguments, "pid")),
                 "ui_snapshot" => desktop.Snapshot(OptionalBool(arguments, "layout") ?? false),
@@ -166,6 +196,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "cluster_status" => ClusterStatus(arguments),
                 "virtualization_status" => await VirtualizationStatusAsync(arguments, cancellation),
                 "node_link_check" => await NodeLinkCheckAsync(cancellation),
+                "mcp_servers_status" => McpServersStatus(arguments),
+                "mcp_directory_plan" => McpDirectoryPlan(arguments),
                 _ => throw new ArgumentException($"Unknown tool '{name}'.")
             };
             return new { content = new[] { new { type = "text", text = JsonSerializer.Serialize(result) } } };
@@ -258,6 +290,99 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             throw new InvalidOperationException($"Martlet.NodeLinkCheck exited {process.ExitCode} without a report: {(await errors).Trim()}");
         }
+    }
+
+    /// <summary>mcp.json in a data directory as the desktop's McpToolService parses it (the file name matches). Arguments are
+    /// the raw ones from the file, so ${env:...} and ${secret:...} stay references; no server starts and no credential is read.</summary>
+    private static object McpServersStatus(JsonElement arguments)
+    {
+        var path = Path.Combine(DataDirectory(arguments), "mcp.json");
+        if (!File.Exists(path)) return new { state = "none" };
+        string text;
+        try
+        {
+            if (new FileInfo(path).Length > McpConfiguration.MaxFileBytes) return new { state = "invalid", problem = "mcp.json is larger than 1 MB." };
+            text = File.ReadAllText(path);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return new { state = "unreadable", problem = error.Message };
+        }
+        McpConfiguration configuration;
+        try { configuration = McpConfiguration.Parse(text, secrets: _ => ""); }
+        catch (McpConfigurationException error) { return new { state = "invalid", problem = error.Message }; }
+        return new
+        {
+            state = "loaded",
+            servers = configuration.Servers.Select(server =>
+            {
+                var raw = McpConfiguration.FindServer(text, server.Name);
+                return new
+                {
+                    name = server.Name,
+                    transport = server.Transport.ToString().ToLowerInvariant(),
+                    command = (raw?["command"] as JsonValue)?.ToString(),
+                    args = (raw?["args"] as JsonArray)?.Select(a => a?.ToString()).ToArray() ?? [],
+                    host = server.Url?.Host,
+                    env = server.Env.Keys.ToArray(),
+                    headers = server.Headers.Keys.ToArray(),
+                    disabled = server.Disabled,
+                    autoApproveAll = server.AutoApproveAll,
+                    autoApprove = server.AutoApprove,
+                    registry = server.Registry,
+                    registryVersion = server.RegistryVersion,
+                    secrets = server.Secrets,
+                    problem = server.Problem
+                };
+            }).ToArray()
+        };
+    }
+
+    /// <summary>How the desktop's MCP directory would install one registry entry. Secret values are never returned, only the
+    /// ${secret:...} names the entry would use.</summary>
+    private static object McpDirectoryPlan(JsonElement arguments)
+    {
+        if (arguments.ValueKind != JsonValueKind.Object || !arguments.TryGetProperty("server", out var given) ||
+            given.ValueKind != JsonValueKind.Object)
+            throw new ArgumentException("Missing object 'server'.");
+        var node = JsonNode.Parse(given.GetRawText()) as JsonObject ?? throw new ArgumentException("Missing object 'server'.");
+        if (node["server"] is JsonObject wrapped) node = wrapped;
+        McpDirectoryEntry entry;
+        try { entry = McpDirectoryEntry.Parse(node); }
+        catch (FormatException error) { throw new ArgumentException(error.Message); }
+        var name = OptionalString(arguments, "name") ?? entry.SuggestedName;
+        var values = new Dictionary<string, string?>(StringComparer.Ordinal);
+        if (arguments.TryGetProperty("values", out var given2) && given2.ValueKind == JsonValueKind.Object)
+            foreach (var value in given2.EnumerateObject())
+                values[value.Name] = value.Value.ValueKind == JsonValueKind.String ? value.Value.GetString()
+                    : throw new ArgumentException($"values.{value.Name} must be a string.");
+        return new
+        {
+            name = entry.Name, displayName = entry.DisplayName, suggestedName = entry.SuggestedName, version = entry.Version,
+            unsupported = entry.Unsupported,
+            options = entry.Options.Select(option =>
+            {
+                object? plan = null;
+                string? problem = null;
+                try
+                {
+                    var built = option.Build(name, values);
+                    plan = new { entry = built.Entry, secrets = built.Secrets.Keys.ToArray(), preview = built.Preview };
+                }
+                catch (McpConfigurationException error) { problem = error.Message; }
+                return new
+                {
+                    kind = option.Kind.ToString(), summary = option.Summary, runtime = option.Runtime,
+                    runtimeAvailable = option.RuntimeAvailable(), host = option.Host,
+                    inputs = option.Inputs.Select(input => new
+                    {
+                        key = input.Key, label = input.Label, required = input.Required, secret = input.Secret, flag = input.Flag,
+                        isPath = input.IsPath, @default = input.Default, placeholder = input.Placeholder, choices = input.Choices
+                    }).ToArray(),
+                    plan, problem
+                };
+            }).ToArray()
+        };
     }
 
     /// <summary>The optional absolute dataDirectory argument, or the current user's Martlet directory.</summary>

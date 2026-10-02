@@ -9,28 +9,27 @@ internal sealed class HostShellDialogs(Window owner) : IHostShellPrompts
 {
     public bool TrustHostKey(HostShellTarget target, string hostKey) => owner.Dispatcher.Invoke(() =>
         ConfirmationDialog.Confirm(owner,
-            $"This is Martlet's first connection to {target.Host}. It identifies itself with this SSH host key:\n\n{hostKey}\n\n" +
-            "To be sure it is really that computer, compare it with what the computer shows for: ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub\n\n" +
-            "Trust this computer? Martlet remembers the key and refuses to connect if it ever changes.", "Trust this computer"));
+            $"Trust {target.Host}?\n\nThis is Martlet's first connection to this computer. Its SSH key fingerprint is:\n\n{hostKey}\n\n" +
+            "Martlet will remember it and refuse to connect if it changes.",
+            "Trust computer"));
 
     public string? LoginPassword(HostShellTarget target, bool retry) => owner.Dispatcher.Invoke(() =>
     {
         var dialog = new HostInputDialog("Sign in once", $"Password for {target}",
             (retry ? "That password was not accepted. " : "") +
-            "Martlet signs in with it once to add its own SSH key to ~/.ssh/authorized_keys there. The password is not saved; " +
-            "from now on Martlet uses its key and you do not need to log in to that computer.", "Sign in");
+            "Martlet signs in once to set up SSH access. The password is not saved.", "Sign in");
         dialog.AddSecret("password", "Password");
         return dialog.Ask(owner)?["password"];
     });
 
     public HostShellSudo? SudoPassword(HostShellTarget target, bool retry) => owner.Dispatcher.Invoke(() =>
     {
-        var dialog = new HostInputDialog("sudo password", $"sudo password for {target}",
-            (retry ? "sudo did not accept that password. " : "") +
-            "Some steps need administrator rights there (sudo), for example using Docker or installing packages. Martlet passes " +
-            "the password to sudo over this SSH connection only; it never appears in commands or logs.", "Continue");
-        dialog.AddSecret("password", "sudo password (usually the same as the sign-in password)");
-        dialog.AddRemember("Remember it for this computer (Windows Credential Manager)");
+        var dialog = new HostInputDialog("Administrator password", $"Administrator password for {target}",
+            (retry ? "That password was not accepted. " : "") +
+            "Some setup steps need administrator rights (sudo) on that computer. The password is sent only over this SSH connection and is not shown in logs.",
+            "Continue");
+        dialog.AddSecret("password", "Administrator password", "Usually the same as the sign-in password.");
+        dialog.AddRemember("Remember for this computer");
         return dialog.Ask(owner) is { } values ? new HostShellSudo(values["password"], dialog.Remembered) : null;
     });
 }
@@ -77,7 +76,7 @@ internal sealed class HostInputDialog : ThemedWindow
         {
             var missing = required.FirstOrDefault(key => values[key]().Length == 0);
             if (missing is null) { DialogResult = true; return; }
-            error.Text = "Fill in every field.";
+            error.Text = "Fill in all required fields.";
             error.Visibility = Visibility.Visible;
         };
         buttons.Children.Add(cancel);
@@ -167,25 +166,22 @@ internal sealed class HostInputDialog : ThemedWindow
         var message = $"{inputs.Title}\n\nNeeds: {inputs.Requires}." +
             (inputs.Terms.Length > 0 ? $"\n\n{inputs.Terms}" : "") +
             (local
-                ? "\n\nMartlet installs it now in this PC's host service (Docker Desktop), without further questions or console windows. " +
-                  "Secrets are kept in the host service's private config on this PC."
+                ? "\n\nMartlet installs it on this PC's host. Secrets stay on this PC."
                 : agent
-                ? $"\n\nMartlet on {host} installs it now in its host service, without further questions. Secrets go to {host} over its " +
-                  "pinned, signed connection, are held only in memory until Martlet there takes them, and are kept in its host service's private config."
-                : "\n\nMartlet installs it now without further questions (missing Docker, NVIDIA driver or NVIDIA Container Toolkit " +
-                  "are installed too). Secrets go to the host over SSH and are kept there in its private config (0600).");
+                ? $"\n\nMartlet on {host} installs it. Secrets go over its paired connection, are held only in memory until Martlet there takes them, and are saved there."
+                : "\n\nMartlet installs it on the host. Secrets are sent over SSH and saved there.");
         var dialog = new HostInputDialog($"Add {role}", $"Add {role} on {host}", message, "_Install");
         foreach (var secret in inputs.Secrets)
             dialog.AddSecret("secret." + secret.Name, secret.Prompt,
-                secret.Stored ? "Already saved on the host; leave empty to keep it." : null, optional: secret.Stored);
+                secret.Stored ? "Already saved. Leave empty to keep it." : null, optional: secret.Stored);
         (string Value, string Why)? Pick(string key, IEnumerable<string> options) =>
             recommended?.GetValueOrDefault(key) is { Value: { } value } pick && options.Contains(value) ? pick : null;
         if (inputs.GpuOrCpu)
         {
             string[] options = [Automatic, "gpu", "cpu"];
             dialog.AddChoice("choice.accelerator", Pick("choice.accelerator", options) is { } pick
-                    ? $"Run it on (recommended: {pick.Value}, {pick.Why})"
-                    : "Run it on (Automatic: the NVIDIA GPU when the host can use one, otherwise the CPU)",
+                    ? $"Run on (recommended: {pick.Value}, {pick.Why})"
+                    : "Run on (automatic chooses the GPU when available)",
                 options, Pick("choice.accelerator", options)?.Value ?? Automatic);
         }
         foreach (var choice in inputs.Choices)
@@ -195,7 +191,7 @@ internal sealed class HostInputDialog : ThemedWindow
             var pick = Pick(key, options);
             dialog.AddChoice(key,
                 pick is { } chosen ? $"{choice.Label} (recommended: {chosen.Value}, {chosen.Why})"
-                    : choice.Suggested ? choice.Label + " (Automatic: suggested by the host's GPU memory)" : choice.Label,
+                    : choice.Suggested ? choice.Label + " (automatic recommended by the host)" : choice.Label,
                 options, pick?.Value ?? (choice.Suggested ? Automatic : choice.Default));
         }
         var values = dialog.Ask(owner);

@@ -3,22 +3,22 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Style="{DynamicResource AppWindowStyle}"
-        Title="Martlet - character" Width="900" Height="850" MinWidth="550" MinHeight="450"
+        Title="Martlet - Character" Width="900" Height="850" MinWidth="550" MinHeight="450"
         Loaded="Window_Loaded" Closed="Window_Closed" PreviewKeyDown="Window_KeyDown" WindowStartupLocation="CenterOwner">
     <DockPanel>
-        <Button Content="Hide character / STOP avatar (Escape)" Click="Stop_Click" DockPanel.Dock="Top" Padding="10,8" Margin="12,8"
-                AutomationProperties.AutomationId="StopAvatar" AutomationProperties.Name="Hide the character and stop avatar analysis; voice continues"/>
+        <Button Content="_Hide character (Esc)" Click="Stop_Click" DockPanel.Dock="Top" Padding="10,8" Margin="12,8"
+                AutomationProperties.AutomationId="StopAvatar" AutomationProperties.Name="Hide the character; voice continues"/>
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="20">
             <TextBlock Text="Character" FontSize="24" FontWeight="SemiBold"/>
             <TextBlock TextWrapping="Wrap" Margin="0,8"
-                Text="Martlet includes Hiyori, a Live2D sample character by Live2D Inc. She idles, blinks, breathes, sways with physics, follows your mouse cursor and moves her mouth while Martlet speaks. With Automatic lip-sync, Martlet uses an Audio2Face service running on this PC (needs an NVIDIA GPU) whenever it finds one, sending it only Martlet's own generated voice; otherwise the mouth follows the loudness of that voice. No microphone or upload is used. You can also use your own Live2D (.model3.json) or VRM (.vrm) model."/>
+                Text="Choose a desktop character. It idles, follows your cursor and moves while Martlet speaks. Automatic lip-sync uses Audio2Face when available."/>
             <TextBlock x:Name="StatusText" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
                        AutomationProperties.AutomationId="AvatarStatus" Margin="0,8"/>
             <Label Target="{Binding ElementName=CharacterChoice}" Content="_Character"/>
             <ComboBox x:Name="CharacterChoice" MinHeight="28" SelectionChanged="CharacterChoice_Changed"
                       AutomationProperties.AutomationId="CharacterChoice">
-                <ComboBoxItem Content="Hiyori (built-in Live2D character)"/>
+                <ComboBoxItem Content="Built-in character"/>
                 <ComboBoxItem Content="My own model file"/>
             </ComboBox>
             <StackPanel x:Name="CustomModelPanel">
@@ -29,24 +29,24 @@
             <Label Target="{Binding ElementName=LipSyncChoice}" Content="_Lip-sync"/>
             <ComboBox x:Name="LipSyncChoice" MinHeight="28" SelectionChanged="Selection_Changed"
                       AutomationProperties.AutomationId="LipSyncChoice">
-                <ComboBoxItem Content="Automatic: Audio2Face when a local service is running, otherwise voice loudness"/>
-                <ComboBoxItem Content="Voice loudness only (never contacts Audio2Face)"/>
-                <ComboBoxItem Content="Audio2Face only (manual mapping and activation under Advanced)"/>
+                <ComboBoxItem Content="Automatic (recommended)"/>
+                <ComboBoxItem Content="Voice loudness only"/>
+                <ComboBoxItem Content="Audio2Face only (advanced)"/>
             </ComboBox>
-            <CheckBox x:Name="AutoShowChoice" Content="Show the character automatically when Martlet starts" Margin="0,10"
+            <CheckBox x:Name="AutoShowChoice" Content="Show at startup" Margin="0,10"
                       AutomationProperties.AutomationId="AutoShowCharacter"/>
-            <CheckBox x:Name="SpeechBubbleChoice" Content="Show _speech bubbles beside the character while Martlet speaks"
+            <CheckBox x:Name="SpeechBubbleChoice" Content="Show _speech bubbles"
                       Margin="0,0,0,6" Checked="SpeechDisplay_Changed" Unchecked="SpeechDisplay_Changed" AutomationProperties.AutomationId="SpeechBubbleChoice"/>
-            <CheckBox x:Name="SubtitleChoice" Content="Show s_ubtitles at the bottom of the active screen while Martlet speaks"
+            <CheckBox x:Name="SubtitleChoice" Content="Show s_ubtitles"
                       Margin="0,0,0,4" Checked="SpeechDisplay_Changed" Unchecked="SpeechDisplay_Changed" AutomationProperties.AutomationId="SubtitleChoice"/>
             <TextBlock x:Name="SpeechDisplayStatus" TextWrapping="Wrap" Margin="0,0,0,10" AutomationProperties.LiveSetting="Polite"
-                       Text="Saved immediately. Subtitles follow the screen of the window you are using and appear on top of full-screen games, just like the character. They are hidden from screen capture."/>
-            <Expander Header="Audio2Face on another computer (Martlet host)" Margin="0,4,0,10"
+                       Text="Saved automatically. Subtitles appear on the active screen and are hidden from screen capture."/>
+            <Expander Header="Audio2Face host" Margin="0,4,0,10"
                       AutomationProperties.AutomationId="RemoteHostSection">
                 <StackPanel Margin="0,8,0,0">
                     <TextBlock TextWrapping="Wrap"
-                        Text="Run Audio2Face on a PC with an NVIDIA GPU (another computer, or this PC through Docker Desktop) as a Martlet host. Martlet hosts sets it up over SSH, with Docker or natively on Ubuntu, and pairs this PC with a one-use code. Automatic lip-sync then uses the host whenever this PC has no local Audio2Face. Only Martlet's generated voice is sent, over pinned TLS to the exact paired host."/>
-                    <Button Content="_Pair or set up a Martlet host..." Click="Hosts_Click" Padding="10,6" Margin="0,8,0,0" HorizontalAlignment="Left"
+                        Text="Use a paired PC with an NVIDIA GPU for Audio2Face lip-sync. Martlet sends only its generated voice to that host."/>
+                    <Button Content="_Pair or set up a host..." Click="Hosts_Click" Padding="10,6" Margin="0,8,0,0" HorizontalAlignment="Left"
                             AutomationProperties.AutomationId="OpenHosts"/>
                     <TextBlock x:Name="HostStatusText" TextWrapping="Wrap" Margin="0,8" AutomationProperties.LiveSetting="Polite"
                                AutomationProperties.AutomationId="HostStatus"/>
@@ -59,50 +59,52 @@
                 <Button Content="_Save choices" Click="Save_Click" Padding="10,6"/>
             </WrapPanel>
             <TextBlock x:Name="CreditText" TextWrapping="Wrap" Margin="0,10" Foreground="{DynamicResource MutedBrush}"
-                Text="Hiyori and the Live2D Cubism runtime: This content uses sample data owned and copyrighted by Live2D Inc. The sample data are utilized in accordance with terms and conditions set by Live2D Inc. This content itself is created at the author's sole discretion. Live2D Cubism Core is used under the Live2D Proprietary Software License; see AvatarRenderer\live2d\LIVE2D-NOTICES.txt."/>
+                Text="Built-in character: This content uses sample data owned and copyrighted by Live2D Inc. The sample data are utilized in accordance with terms and conditions set by Live2D Inc. This content itself is created at the author's sole discretion."/>
             <TextBlock x:Name="ResultText" TextWrapping="Wrap" Margin="0,8" AutomationProperties.LiveSetting="Polite"/>
 
-            <Expander Header="Advanced: renderer, Audio2Face mapping and activation" Margin="0,16,0,0">
+            <Expander Header="Advanced lip-sync setup" Margin="0,16,0,0">
                 <StackPanel Margin="0,8,0,0">
                     <TextBlock TextWrapping="Wrap" Margin="0,8"
-                        Text="Audio2Face lip-sync sends generated TTS PCM to your existing numeric-loopback Audio2Face NIM service after explicit activation. Inspect the model, map ARKit channels to its real parameters, save, then activate. No microphone feed, downloads, credential sharing, service install or silent fallback."/>
+                        Text="Review the model controls, map them to Audio2Face, then activate for this session. Only Martlet's generated speech is sent to the displayed service."/>
                     <Label Target="{Binding ElementName=RendererChoice}" Content="_Renderer"/>
                     <ComboBox x:Name="RendererChoice" MinHeight="28" SelectionChanged="Selection_Changed"/>
-                    <Label Target="{Binding ElementName=SdkPathText}" Content="Live2D SDK override directory (core.js and sdk.js; blank uses the bundled runtime)"/>
+                    <Label Target="{Binding ElementName=SdkPathText}" Content="Live2D SDK _override folder"/>
                     <TextBox x:Name="SdkPathText" MinHeight="28" TextChanged="Configuration_Changed"/>
-                    <Label Target="{Binding ElementName=EndpointText}" Content="Local Audio2Face service _endpoint (checked by Automatic lip-sync)"/>
+                    <Label Target="{Binding ElementName=EndpointText}" Content="Audio2Face _endpoint"/>
                     <TextBox x:Name="EndpointText" Text="http://127.0.0.1:52000/" MinHeight="28" TextChanged="Configuration_Changed"/>
-                    <CheckBox x:Name="InspectPermission" Content="I authorize local GPU model inspection using my installed runtime and selected assets." Margin="0,10"/>
+                    <CheckBox x:Name="InspectPermission" Content="Allow local model inspection" Margin="0,10"/>
                     <WrapPanel>
-                        <Button Content="_Inspect model (analysis OFF)" Click="Inspect_Click" Padding="10,6" Margin="0,0,8,0"/>
-                        <Button Content="_Reload local configuration" Click="Reload_Click" Padding="10,6"/>
+                        <Button Content="_Inspect model" Click="Inspect_Click" Padding="10,6" Margin="0,0,8,0"/>
+                        <Button Content="_Reload settings" Click="Reload_Click" Padding="10,6"/>
                     </WrapPanel>
-                    <Label Target="{Binding ElementName=CapabilityText}" Content="Inspected _controls and compatibility"/>
+                    <Label Target="{Binding ElementName=CapabilityText}" Content="Inspected _controls"/>
                     <TextBox x:Name="CapabilityText" IsReadOnly="True" TextWrapping="Wrap" Height="100" VerticalScrollBarVisibility="Auto"/>
                     <TextBlock TextWrapping="Wrap" Margin="0,8"
-                        Text="Explicit mapping: choose a real inspected target and an ARKit source channel. Reduced coverage must be acknowledged. Unavailable aspects can only be explicitly omitted."/>
-                    <Label Target="{Binding ElementName=SourceChoice}" Content="ARKit _source channel (availability verified only on actual A2F response)"/>
+                        Text="Choose a source channel and the matching model control. Acknowledge reduced fidelity if needed."/>
+                    <Label Target="{Binding ElementName=SourceChoice}" Content="Source _channel"/>
                     <ComboBox x:Name="SourceChoice" MinHeight="28"/>
-                    <Label Target="{Binding ElementName=TargetChoice}" Content="Inspected native _target"/>
+                    <Label Target="{Binding ElementName=TargetChoice}" Content="Model con_trol"/>
                     <ComboBox x:Name="TargetChoice" DisplayMemberPath="Id" MinHeight="28"/>
-                    <CheckBox x:Name="ReducedChoice" Content="Accept reduced fidelity for mapped mouth/expression aspects" Margin="0,8"/>
-                    <Button Content="Add mapping using inspected native bounds" Click="AddMapping_Click" Padding="10,6"/>
-                    <Label Target="{Binding ElementName=ConfigurationText}" Content="Shared avatar configuration (editable exact JSON; one owner per aspect)"/>
+                    <CheckBox x:Name="ReducedChoice" Content="Allow reduced lip-sync quality" Margin="0,8"/>
+                    <Button Content="Add mapping" Click="AddMapping_Click" Padding="10,6"/>
+                    <Label Target="{Binding ElementName=ConfigurationText}" Content="Avatar configuration JSON"/>
                     <TextBox x:Name="ConfigurationText" AcceptsReturn="True" FontFamily="Consolas" Height="230" TextChanged="Configuration_Changed"
                              HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"/>
                     <WrapPanel Margin="0,8">
                         <Button Content="_Validate compatibility" Click="Validate_Click" Padding="10,6" Margin="0,0,8,0"/>
-                        <Button Content="Export local avatar document" Click="Export_Click" Padding="10,6" Margin="0,0,8,0"/>
-                        <Button Content="Restore avatar document" Click="Restore_Click" Padding="10,6"/>
+                        <Button Content="Export avatar settings" Click="Export_Click" Padding="10,6" Margin="0,0,8,0"/>
+                        <Button Content="Restore avatar settings" Click="Restore_Click" Padding="10,6"/>
                     </WrapPanel>
                     <CheckBox x:Name="AnalysisPermission" Margin="0,8"
-                        Content="Activate for this session: send generated speech only to the displayed existing local A2F service. GPU/service/terms prerequisites are my responsibility."/>
+                        Content="Activate Audio2Face for this session"/>
+                    <TextBlock Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,8"
+                        Text="Martlet sends generated speech to the displayed service only while this session is active."/>
                     <WrapPanel>
-                        <Button x:Name="ActivateButton" Content="_Activate reviewed avatar" Click="Activate_Click" Padding="10,6" Margin="0,0,8,0"
+                        <Button x:Name="ActivateButton" Content="_Activate lip-sync" Click="Activate_Click" Padding="10,6" Margin="0,0,8,0"
                                 AutomationProperties.AutomationId="ActivateAvatar"/>
                     </WrapPanel>
                     <TextBlock Margin="0,12" TextWrapping="Wrap"
-                        Text="Avatar settings/assets are preserved when hidden. Audio2Face activation is never saved. Existing application backup/restore does NOT include avatar.json. Closing this settings window does not hide the character; the STOP button always is available."/>
+                        Text="Character settings are saved separately. Closing this window keeps the character open; use Hide character to close it."/>
                 </StackPanel>
             </Expander>
         </StackPanel>

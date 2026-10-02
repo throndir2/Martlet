@@ -44,14 +44,14 @@ internal static partial class HostLocal
         Action<string> status = run.Status;
         var (output, token) = (run.Output, run.Token);
         if (!MachineInfo.DockerDesktopInstalled())
-            throw new InvalidOperationException("Docker Desktop isn't installed on this PC yet. Install it, start it once, then try again.");
+            throw new InvalidOperationException("Install Docker Desktop, open it once, then try again.");
         status("Checking Docker Desktop...");
-        output.Report($"Checking Docker Desktop's engine (docker info, up to {ProbeTimeout.TotalSeconds:0} seconds)...");
+        output.Report("Checking Docker Desktop...");
         var desktop = new DockerDesktopLog();
         var probe = await ProbeEngineAsync(token);
         if (!probe.Answered)
         {
-            if (probe.UnableToStart) output.Report("Docker Desktop's engine answered: " + probe.Error);
+            if (probe.UnableToStart) output.Report("Docker Desktop reported: " + probe.Error);
             // Docker Desktop's WSL 2 engine can't start until Windows' virtualization is on.
             if (await WindowsVirtualizationSetup.EnsureReadyAsync(run, resume) && probe.UnableToStart)
             {
@@ -63,14 +63,12 @@ internal static partial class HostLocal
         }
         if (probe.UnableToStart)
         {
-            if (probe.Error is not null) output.Report("Docker Desktop's engine answered: " + probe.Error);
+            if (probe.Error is not null) output.Report("Docker Desktop reported: " + probe.Error);
             await desktop.ReportAsync(output, token);
-            throw new InvalidOperationException("Docker Desktop reports that it is unable to start on this PC, and Martlet found nothing " +
-                "missing in Windows (virtualization and WSL 2). Its messages above show why. Use Docker Desktop's Troubleshoot page " +
-                "(Restart, or Reset to factory defaults), or restart Windows, then try again.");
+            throw new InvalidOperationException("Docker Desktop couldn't start. Open Docker Desktop Troubleshoot or restart Windows, then try again.");
         }
         HostSetupResume.Clear();
-        output.Report($"Docker Desktop is running (engine {probe.Version}).");
+        output.Report("Docker Desktop is running.");
     }
 
     /// <summary>Restarts Docker Desktop after Windows was changed for it without a restart (it stays failed otherwise),
@@ -78,7 +76,7 @@ internal static partial class HostLocal
     private static async Task RestartDockerDesktopAsync(IProgress<string> output, CancellationToken token)
     {
         if (!MachineInfo.DockerDesktopRunning()) return;
-        output.Report("Restarting Docker Desktop so it picks up the change: docker desktop restart");
+        output.Report("Restarting Docker Desktop...");
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(token);
         limit.CancelAfter(TimeSpan.FromMinutes(3));
         try { await RunAsync(["desktop", "restart"], output, limit.Token); }
@@ -91,15 +89,14 @@ internal static partial class HostLocal
     private static async Task<EngineProbe> WaitForEngineAsync(EngineProbe probe, DockerDesktopLog desktop, Action<string> status,
         IProgress<string> output, CancellationToken token)
     {
-        output.Report("Docker Desktop's engine isn't answering yet: " + probe.Error);
+        output.Report("Docker Desktop isn't ready yet: " + probe.Error);
         if (!MachineInfo.DockerDesktopRunning())
         {
             output.Report("Starting Docker Desktop...");
             Process.Start(new ProcessStartInfo(MachineInfo.DockerDesktopPath) { UseShellExecute = true })?.Dispose();
         }
         await desktop.ReportAsync(output, token);
-        status("Waiting for Docker Desktop to start. The first start can take a few minutes; accept Docker's terms if it asks, " +
-            "and check Docker Desktop's window for errors.");
+        status("Waiting for Docker Desktop to start. Accept Docker's terms if it asks.");
         var started = DateTime.UtcNow;
         var reported = started;
         var reason = probe.Error;
@@ -109,8 +106,7 @@ internal static partial class HostLocal
             if (waited >= StartTimeout)
             {
                 await desktop.ReportAsync(output, token);
-                throw new InvalidOperationException("Docker Desktop did not start within ten minutes. Its messages above show what it reported; " +
-                    "open it, make sure it says it is running, then try again.");
+                throw new InvalidOperationException("Docker Desktop didn't start within ten minutes. Open Docker Desktop, wait until it says it's running, then try again.");
             }
             await Task.Delay(TimeSpan.FromSeconds(3), token);
             probe = await ProbeEngineAsync(token);
@@ -131,8 +127,7 @@ internal static partial class HostLocal
     {
         var (exit, lines) = await CaptureAsync(["info", "--format", "{{.ServerVersion}}"], token);
         if (exit is null)
-            return new(false, null, $"docker info got no answer within {ProbeTimeout.TotalSeconds:0} seconds " +
-                "(Docker Desktop is still starting, waiting for you in its window, or stuck).", false);
+            return new(false, null, $"Docker Desktop didn't answer within {ProbeTimeout.TotalSeconds:0} seconds.", false);
         if (exit == 0 && lines.FirstOrDefault(line => VersionPattern().IsMatch(line)) is { } version) return new(true, version, null, false);
         var error = lines.FirstOrDefault(line => line.Contains("error", StringComparison.OrdinalIgnoreCase) ||
                 line.Contains("daemon", StringComparison.OrdinalIgnoreCase) || line.Contains("docker", StringComparison.OrdinalIgnoreCase))
@@ -176,7 +171,7 @@ internal static partial class HostLocal
             if (lines.Any(line => line.Contains("not a docker command", StringComparison.OrdinalIgnoreCase)))
             {
                 unavailable = true;
-                output.Report(@"This Docker Desktop can't show its status or logs here; they are in %LOCALAPPDATA%\Docker\log\host.");
+                output.Report("Docker Desktop can't show status here. Open Docker Desktop for details.");
                 return;
             }
             var now = exit == 0 ? Status(lines) : exit is null ? "no answer" : Shorten(lines.FirstOrDefault() ?? $"exit {exit}");
@@ -224,7 +219,7 @@ internal static partial class HostLocal
     internal static async Task InstallDockerDesktopAsync(Action<string> status, IProgress<string> output, CancellationToken token)
     {
         var winget = Winget() ?? throw new InvalidOperationException(
-            "winget (App Installer from the Microsoft Store) isn't available on this PC, so Martlet can't install Docker Desktop. " +
+            "App Installer isn't available on this PC, so Martlet can't install Docker Desktop. " +
             "Install Docker Desktop from docker.com, then try again.");
         status("Installing Docker Desktop. Windows asks for administrator approval; this can take several minutes...");
         string[] args = ["install", "--exact", "--id", "Docker.DockerDesktop", "--source", "winget",
@@ -232,7 +227,7 @@ internal static partial class HostLocal
         output.Report("$ winget " + string.Join(' ', args));
         var exit = await LocalProcess.RunAsync(winget, args, output, token);
         if (!MachineInfo.DockerDesktopInstalled())
-            throw new InvalidOperationException($"Docker Desktop was not installed (winget exit {exit}). The output shows why.");
+            throw new InvalidOperationException("Docker Desktop wasn't installed. The output shows why.");
         output.Report("Docker Desktop is installed.");
     }
 
@@ -241,7 +236,7 @@ internal static partial class HostLocal
     {
         var image = HostSetupCommands.Image(target);
         if (await RunAsync(["image", "inspect", image], null, token) == 0) return;
-        status($"Building Martlet's host image {image}. The first time this takes a few minutes...");
+        status("Preparing Martlet host. The first time can take a few minutes...");
         foreach (var reference in new[] { "v" + target.Version, "main" })
         {
             output.Report($"$ docker build -t {image} -f deploy/host/Dockerfile {HostSetupCommands.Repository}#{reference}");
@@ -249,7 +244,7 @@ internal static partial class HostLocal
                     output, token) == 0)
                 return;
         }
-        throw new InvalidOperationException("The host image could not be built. The output shows why.");
+        throw new InvalidOperationException("Couldn't prepare the Martlet host. The output shows why.");
     }
 
     /// <summary>Runs one martlet-host command unattended in a container on this PC; returns its exit code.
@@ -309,9 +304,9 @@ internal static partial class HostLocal
         int exit;
         try { exit = await EngineAsync(target, ["pair", "--device-id", deviceId, "--name", label], sink, token, withdraw.Task); }
         finally { withdraw.TrySetResult(null); }
-        if (pairing is null) throw new InvalidOperationException($"This PC's host did not show a pairing code (exit {exit}). See the output.");
+        if (pairing is null) throw new InvalidOperationException("This PC's host couldn't create a pairing code. See the output.");
         var result = await pairing;
-        if (exit != 0) output.Report($"Paired, but the host reported exit {exit} while restarting its gateway. Check the host.");
+        if (exit != 0) output.Report($"Paired, but the host reported exit {exit} while restarting. Check the host.");
         return result;
     }
 
@@ -327,32 +322,40 @@ internal static partial class HostLocal
         });
         var exit = await EngineAsync(target, ["describe", role], sink, token);
         if (exit != 0 || lines.Count == 0)
-            throw new InvalidOperationException($"Could not read the {role} role from this PC's host service (exit {exit}). See the output.");
+            throw new InvalidOperationException($"Couldn't read {role} from this PC's host service. See the output.");
         return HostRemote.ParseRole(lines);
     }
 
-    /// <summary>Lets another desktop (for example the main PC) pair with this PC's host: runs "pair --device-id ... --name ..."
-    /// and shows its one-use code, which <paramref name="code"/> also receives (for the clipboard). The engine waits up to
-    /// five minutes for that desktop to redeem it; canceling withdraws the code.</summary>
-    internal static async Task<int> PairOtherAsync(HostSetupTarget target, string deviceId, string name, Action<string> code,
+    /// <summary>Lets another desktop (for example the main PC) pair with this PC's host: runs "pair", which shows this PC's
+    /// address and a short one-use code; <paramref name="shown"/> receives both. The code never reaches
+    /// <paramref name="output"/> (or the run log). The engine waits up to five minutes for that desktop to type it;
+    /// canceling withdraws the code.</summary>
+    internal static async Task<int> PairOtherAsync(HostSetupTarget target, Action<string, string> shown,
         IProgress<string> output, CancellationToken token)
     {
-        if (!DeviceIdPattern().IsMatch(deviceId)) throw new InvalidOperationException("Enter the other PC's device ID (for example desktop-main-pc).");
-        var label = new string(name.Where(c => c is >= ' ' and <= '~').Take(64).ToArray()).Trim();
-        if (label.Length == 0 || label[0] == '-') label = "Martlet desktop";
         var withdraw = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
         using var registration = token.Register(() => withdraw.TrySetResult("cancel\n"));
+        string? address = null;
         var sink = new LineSink(line =>
         {
-            if (PairingCodePattern().Match(line) is { Success: true } match) code(match.Value);
-            output.Report(line);
+            if (ShownAddressPattern().Match(line) is { Success: true } where) address = where.Groups[1].Value;
+            if (ShownCodePattern().Match(line) is { Success: true } code)
+            {
+                output.Report("    Code:     (shown above)");
+                shown(address ?? HostSetupCommands.ThisPcAddress() ?? target.Address, code.Groups[1].Value);
+                return;
+            }
+            if (!line.Contains("martlet-pair-v1.", StringComparison.Ordinal)) output.Report(line);
         });
-        try { return await EngineAsync(target, ["pair", "--device-id", deviceId, "--name", label], sink, token, withdraw.Task); }
+        try { return await EngineAsync(target, ["pair"], sink, token, withdraw.Task); }
         finally { withdraw.TrySetResult(null); }
     }
 
-    [GeneratedRegex(@"\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z")]
-    private static partial Regex DeviceIdPattern();
+    [GeneratedRegex(@"^\s*Address:\s+(\S+)\s*$")]
+    private static partial Regex ShownAddressPattern();
+
+    [GeneratedRegex(@"^\s*Code:\s+([2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4})\s*$")]
+    private static partial Regex ShownCodePattern();
 
     private static Task<int> RunAsync(IEnumerable<string> args, IProgress<string>? output, CancellationToken token,
         string? input = null, Task<string?>? moreInput = null) =>

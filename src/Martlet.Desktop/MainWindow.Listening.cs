@@ -104,13 +104,13 @@ public partial class MainWindow
         var parakeetInUse = route?.RouteType == SetupRouteType.LocalParakeet;
         var nothingHere = !inUse && !parakeetInUse;
 
-        string? Tag(bool gpu, bool used) => used ? "in use" : nothingHere && advice is not null && advice.UseGpu == gpu ? "recommended for this PC" : null;
+        string? Tag(bool gpu, bool used) => used ? "in use" : nothingHere && advice is not null && advice.UseGpu == gpu ? "recommended" : null;
 
         var gpuOption = new List<UIElement>
         {
-            OptionTitle("whisper on the graphics card", Tag(true, gpuInUse)),
-            Note("Fastest: replies start sooner. " + (advice?.GpuModel is { } gpuModel
-                    ? $"Uses the {gpuModel} model, which takes about {(gpuModel == "small" ? "1" : "2")} GB of the graphics card."
+            OptionTitle("Whisper on the graphics card", Tag(true, gpuInUse)),
+            Note("Fastest. Replies start sooner. " + (advice?.GpuModel is { } gpuModel
+                    ? $"Uses about {(gpuModel == "small" ? "1" : "2")} GB of graphics memory."
                     : "Needs an NVIDIA graphics card with a current driver."), new Thickness(0, 2, 0, 6))
         };
         if (advice?.GpuBlocked is { } blocked) gpuOption.Add(Warning(blocked));
@@ -121,8 +121,8 @@ public partial class MainWindow
 
         var cpuOption = new List<UIElement>
         {
-            OptionTitle("whisper on the processor", Tag(false, cpuInUse)),
-            Note($"Works on any PC and leaves the graphics card free for games and other models; replies take a moment longer. " +
+            OptionTitle("Whisper on the processor", Tag(false, cpuInUse)),
+            Note($"Works on any PC. Slower, but keeps the graphics card free. " +
                 $"Uses the {advice?.CpuModel ?? (machine.Threads >= 6 ? "small" : "base")} model.", new Thickness(0, 2, 0, 6)),
             Row(PageButton(cpuInUse ? "Set it up again" : "Use the processor", () => UseListeningHereAsync(gpu: false).Forget(),
                 primary: nothingHere && advice?.UseGpu == false, id: "SetupListenCpu"))
@@ -132,22 +132,22 @@ public partial class MainWindow
         var stack = new List<UIElement>
         {
             Heading("How it listens on this PC"),
-            Note("Parakeet runs inside Martlet itself; whisper runs in Martlet's host service inside Docker Desktop. Either one turns your " +
-                "speech into text in memory on this PC and stores nothing. Choose one; it sets itself up.", new Thickness(0, 0, 0, 4)),
+            Note("Choose a local speech recognizer. Speech stays on this PC and recordings aren't saved.",
+                new Thickness(0, 0, 0, 4)),
             Option(ParakeetOption(parakeetInUse), parakeetInUse),
             Note(advice is null ? "Checking this PC's graphics card..."
-                : "For whisper: " + advice.GpuNote + $" Recommended: {(advice.UseGpu ? "the graphics card" : "the processor")}, because {advice.Reason}.",
+                : advice.GpuNote + $" Recommended: {(advice.UseGpu ? "the graphics card" : "the processor")}, because {advice.Reason}.",
                 new Thickness(0, 10, 0, 0)),
             Option(gpuFirst ? gpuOption : cpuOption, gpuFirst ? gpuInUse : cpuInUse),
             Option(gpuFirst ? cpuOption : gpuOption, gpuFirst ? cpuInUse : gpuInUse)
         };
         if (inUse && running is null)
-            stack.Add(Note($"In use: whisper {route!.ModelId} in this PC's host service.", new Thickness(0, 10, 0, 0)));
+            stack.Add(Note($"In use: Whisper on this PC.", new Thickness(0, 10, 0, 0)));
         if (thisPc is null)
             stack.Add(Note((machine.DockerRunning ? "Docker Desktop is running. "
-                    : machine.DockerInstalled ? "Docker Desktop is installed; Martlet starts it when needed. "
-                    : "Docker Desktop isn't installed yet; Martlet installs it first. ") +
-                "The first time, Martlet also sets up its host service on this PC (it then appears as one of your hosts).", new Thickness(0, 10, 0, 0)));
+                    : machine.DockerInstalled ? "Docker Desktop is installed. Martlet starts it when needed. "
+                    : "Docker Desktop isn't installed yet. Martlet installs it first. ") +
+                "The first setup may take a while.", new Thickness(0, 10, 0, 0)));
         stack.Add(Row(
             PageButton("Check the graphics card again", () => { gpuProbe = null; ProbeGpuAsync().Forget(); RenderTab(); }, link: true, id: "SetupListenRecheck"),
             thisPc is null ? null : PageButton("Check it", () => RunNodeAction(NodeAction.CheckHost, thisPc.HostId), link: true, id: "SetupCheckLocal-listening")));
@@ -175,15 +175,13 @@ public partial class MainWindow
         var button = PageButton(installingParakeet ? "Downloading..." : inUse ? "In use" : installed ? "Use Parakeet" : "Download and use Parakeet",
             () => UseParakeetAsync().Forget(), primary: !inUse, id: "SetupListenParakeet");
         button.IsEnabled = !inUse && !installingParakeet && parakeet is not null;
-        var title = OptionTitle("Parakeet in Martlet", inUse ? "in use" : installed ? "most accurate, no Docker, downloaded" : "most accurate, no Docker");
+        var title = OptionTitle("Parakeet in Martlet", inUse ? "in use" : installed ? "accurate, no Docker, downloaded" : "accurate, no Docker");
         AutomationProperties.SetAutomationId(title, "ListenParakeetStatus");
         return
         [
             title,
-            Note("NVIDIA Parakeet TDT 0.6B v3 runs inside Martlet on the processor, the engine AudioTranscriber uses: on the same English " +
-                "test it made about a third fewer word errors than whisper large-v3-turbo (6.9% against 10.6%) and ran 14 times faster than " +
-                "real time. It detects 25 European languages by itself (for others, use whisper). It needs about 1 GB of memory while " +
-                "Martlet runs" + (installed ? "." : $" and downloads once: {SherpaComponents.Megabytes(download)}."), new Thickness(0, 2, 0, 6)),
+            Note("Accurate local listening with no Docker. It uses about 1 GB of memory while Martlet runs" +
+                (installed ? "." : $" and downloads once: {SherpaComponents.Megabytes(download)}."), new Thickness(0, 2, 0, 6)),
             Row(button)
         ];
     }
@@ -198,9 +196,7 @@ public partial class MainWindow
             var parts = new[] { SherpaPart.Runtime, SherpaPart.Parakeet }.Where(p => !SherpaComponents.IsInstalled(root, p)).ToArray();
             var size = SherpaComponents.Megabytes(parts.Sum(SherpaComponents.DownloadBytes));
             if (!ConfirmationDialog.Confirm(this,
-                    $"Listen with Parakeet on this PC? Martlet downloads {string.Join(" and ", parts.Select(SherpaComponents.Disclosure))} " +
-                    $"({size} in all) into its data folder, checks every file against a pinned SHA-256 and switches listening to it. " +
-                    "Your recorded speech is transcribed in memory on this PC; nothing leaves this PC and there is no charge.",
+                    $"Download Parakeet ({size}) and use it for listening?\n\nSpeech stays on this PC and recordings aren't saved.",
                     "Download and use"))
                 return;
             installingParakeet = true;
@@ -209,14 +205,14 @@ public partial class MainWindow
             {
                 foreach (var part in parts)
                     await SherpaComponents.InstallAsync(root, part, new Progress<SherpaProgress>(p => ActionText.Text =
-                        $"Downloading {(p.Part == SherpaPart.Parakeet ? "the Parakeet model" : "the speech engine")}: " +
+                        "Downloading speech recognition: " +
                         $"{p.Received * 100 / Math.Max(1, p.Total)}% of {SherpaComponents.Megabytes(p.Total)}..."), lifetime.Token);
             }
             catch (OperationCanceledException) { return; }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or
                 System.Net.Http.HttpRequestException or InvalidOperationException)
             {
-                ActionText.Text = "Downloading Parakeet stopped: " + error.Message + " Listening stays where it is.";
+                ActionText.Text = "Couldn't download Parakeet. " + error.Message + " Listening didn't change.";
                 return;
             }
             finally
@@ -227,7 +223,7 @@ public partial class MainWindow
         }
         parakeet.WarmAsync().Forget();
         await SaveSectionRouteAsync(HostJob.Listening, LocalSpeechSetup.SelectParakeet, key: null,
-            "Martlet now listens with Parakeet on this PC. Your speech is transcribed here and nothing leaves this PC.");
+            "Martlet now listens with Parakeet on this PC. Speech stays on this PC.");
         if (!closing && openTab == CompanionTab.Listening) RenderTab();
     }
 
@@ -252,17 +248,17 @@ public partial class MainWindow
             return;
         }
         if (!ConfirmationDialog.Confirm(this,
-                $"Listen with whisper {where}? " +
-                (thisPc is null ? "Martlet first sets up its host service in Docker Desktop on this PC (once; this PC then also appears as one of your hosts). " : "") +
-                $"It installs whisper.cpp (MIT) with the {model} Whisper model (MIT, downloaded once from Hugging Face), shows the progress " +
-                "and switches listening to it by itself. " + (gpu ? "" : "The graphics card stays free. ") +
-                "Your recorded speech is transcribed in memory on this PC and not stored; nothing leaves this PC.",
+                $"Listen with Whisper {where}? " +
+                (thisPc is null ? "Martlet will set up Docker Desktop on this PC first. " : "") +
+                $"Martlet will download the {model} speech model and switch listening to it. " +
+                (gpu ? "" : "The graphics card stays free. ") +
+                "Speech stays on this PC and recordings aren't saved.",
                 "Set it up"))
             return;
         await SetUpJobHereAsync(job, new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["choice.accelerator"] = accelerator, ["choice.STT_MODEL"] = model
-        }, $"Listen with whisper {where}");
+        }, $"Listen with Whisper {where}");
     }
 
     /// <summary>F5 on this PC: hands speaking over when it already runs here, otherwise one run window that sets everything
@@ -298,24 +294,24 @@ public partial class MainWindow
                 var target = host.Target(Version);
                 await HostLocal.EnsureDockerAsync(run, Martlet.Core.Installation.ContinueSetupKind.Docker);
                 await HostLocal.EnsureImageAsync(target, run.Status, run.Output, run.Token);
-                run.Status($"Installing {job.Engine} on this PC. The first time downloads its model; this can take a while...");
+                run.Status($"Installing {job.Engine} on this PC...");
                 var exit = await HostLocal.EngineAsync(target, ["add", job.HostRoleKind], run.Output, run.Token, answers: answers);
-                if (exit != 0) throw new InvalidOperationException($"Installing {job.Engine} stopped (exit {exit}). {job.Title} stays where it is; the output shows why.");
+                if (exit != 0) throw new InvalidOperationException($"Installing {job.Engine} stopped (exit {exit}). {job.Title} didn't change. The output has details.");
                 run.Status($"Switching {job.Job} to {job.Engine} on this PC...");
                 var route = await WaitForRouteAsync(host, job, run);
                 var voice = job.RouteType == SetupRouteType.GatewayF5
                     ? await F5Voices.DefaultAsync(dataDirectory, route.DestinationId ?? F5Destination, run.Token) : null;
                 await SaveJobHostAsync(job, host, route, voice);
                 RecordClusterJob(job.Job, new(host.HostId, false));
-                return $"{job.Title} now uses {job.Engine} ({route.ModelId}) on this PC" +
-                    (voice is null ? "." : $", in the voice '{voice.PresetName}'.") + " An open conversation window picks it up on Reload.";
+                return $"{job.Title} now uses {job.Engine} on this PC" +
+                    (voice is null ? "." : $", with the voice \"{voice.PresetName}\".") + " Reload an open conversation to use it.";
             }
 
             string? status;
             if (ThisPcHost() is { } thisPc)
             {
                 var done = await HostRunWindow.RunAsync(this, title, run => Continue(run, thisPc));
-                status = done ?? $"{job.Title} stays where it is; the run window shows why.";
+                status = done ?? $"{job.Title} didn't change. The run window has details.";
             }
             else
             {
@@ -352,8 +348,7 @@ public partial class MainWindow
             hostChecks[host.HostId] = check;
             if (check.Routes?.FirstOrDefault(r => r.RouteId == job.RouteId) is { } route) return route;
             if (attempt >= 12)
-                throw new InvalidOperationException($"{job.Engine} is installed, but this PC's host service doesn't offer it yet ({check.Text}). " +
-                    "Press Check it in a minute.");
+                throw new InvalidOperationException($"Setup finished, but Martlet can't see {job.Engine} yet ({check.Text}). Press Check it in a minute.");
             await Task.Delay(TimeSpan.FromSeconds(5), run.Token);
         }
     }

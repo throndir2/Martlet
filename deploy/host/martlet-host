@@ -6,10 +6,12 @@
 #   martlet-host describe <role> print a role's terms, secrets and choices (machine-readable, no secret values)
 #   martlet-host add <role>     install a role service and publish it through the gateway
 #   martlet-host remove <role>  stop a role and unpublish it (keeps its data)
-#   martlet-host pair           pair a Martlet desktop in the gateway console (shows a one-use pairing code)
+#   martlet-host pair           pair a Martlet desktop: shows this host's address and a one-use code (like K7QM-4XPA) to
+#                               type in Martlet (Devices > Add a computer > Enter a pairing code); waits up to five minutes
 #   martlet-host pair --device-id <id> --name <name> [--roles voice]
 #                               pair that desktop without a console: prints one "pairing-code: martlet-pair-v1..."
 #                               line, waits up to five minutes for the desktop to redeem it, then restarts the gateway
+#   martlet-host console        the gateway console: list paired desktops and revoke one
 #   martlet-host status         show the gateway and every installed role
 #   martlet-host machine        report this machine's hardware (GPUs, CPU, memory) to paired desktops
 #   martlet-host update         update the gateway to this engine's Martlet version (keeps identity, pairings and roles)
@@ -720,45 +722,50 @@ UNIT
 }
 
 cmd_pair() {
-  local device="" name="" roles="voice"
+  local device="" name="" roles="voice" usage="Usage: martlet-host pair [--roles voice] | pair --device-id <id> --name <display name> [--roles voice]"
   while [[ $# -gt 0 ]]; do
-    [[ $# -ge 2 ]] || fail "Usage: martlet-host pair [--device-id <id> --name <display name> [--roles voice]]"
+    [[ $# -ge 2 ]] || fail "${usage}"
     case "$1" in
       --device-id) device="$2" ;;
       --name) name="$2" ;;
       --roles) roles="$2" ;;
-      *) fail "Usage: martlet-host pair [--device-id <id> --name <display name> [--roles voice]]" ;;
+      *) fail "${usage}" ;;
     esac
     shift 2
   done
+  [[ -z "${device}" || -n "${name}" ]] || fail "Add --name <display name> for that desktop."
+  [[ -n "${device}" || -z "${name}" ]] || fail "Add --device-id <id> for that desktop, or leave out --name to show a code."
   require_setup
   collect_machine
+  service_stop
+  # However pairing ends (including a dropped SSH connection or Ctrl+C), the gateway service comes back.
+  trap 'code=$?; trap - EXIT; service_start >/dev/null 2>&1 || true; journal "exit ${code}"' EXIT
+  trap '' PIPE
+  local status=0
   if [[ -n "${device}" ]]; then
-    [[ -n "${name}" ]] || fail "Add --name <display name> for that desktop."
-    service_stop
-    # However pairing ends (including a dropped SSH connection), the gateway service comes back.
-    trap 'code=$?; trap - EXIT; service_start >/dev/null 2>&1 || true; journal "exit ${code}"' EXIT
-    trap '' PIPE
-    note "Pairing ${device} (${name}). Martlet reads the one-use code below by itself; by hand, paste it into Martlet hosts."
+    note "Pairing ${device} (${name}). Martlet reads the one-use code below by itself."
     note "Type cancel (or close stdin in Martlet) to withdraw it; it expires after five minutes."
-    local status=0
     gateway owner-pair --config "${GW_CONFIG}" --device-id "${device}" --name "${name}" --roles "${roles}" || status=$?
-    trap 'journal "exit $?"' EXIT
-    service_start
-    [[ ${status} == 0 ]] || fail "Pairing did not complete."
-    say "Paired. The gateway is serving again."
-    return 0
+  else
+    # Shows this host's address and a one-use XXXX-XXXX code to type on the desktop, then waits for it.
+    gateway owner-pair --config "${GW_CONFIG}" --roles "${roles}" || status=$?
   fi
+  trap 'journal "exit $?"' EXIT
+  service_start
+  [[ ${status} == 0 ]] || fail "Pairing did not complete."
+  say "Paired. The gateway is serving again."
+}
+
+# The gateway's interactive console: list and revoke paired desktops (and the older pasted-card pairing).
+cmd_console() {
+  require_setup
   service_stop
   cat <<'TEXT'
-In Martlet on your desktop open Martlet hosts and note "This PC's device ID".
 In the gateway console confirm opening with: yes, then type:
-  start   (confirm: yes)
-  pair    enter the desktop's device ID, a display name and role: voice (confirm: yes)
-          Copy the pairing code (martlet-pair-v1....) into Martlet hosts and press Pair
-          while this console stays open, then press a key here.
-  list    confirms the pairing
+  list    shows the paired desktops
+  revoke  enter a desktop's device ID to remove its pairing (confirm: yes)
   stop    (confirm: yes)
+To pair a new desktop, use 'martlet-host pair' instead: it shows a short code to type in Martlet.
 TEXT
   gateway admin --config "${GW_CONFIG}"
   service_start
@@ -1100,12 +1107,12 @@ cmd_status() {
 
 if [[ "${MODE}" == docker && "${MARTLET_ENGINE:-launcher}" != inner ]]; then
   case "${1:-help}" in
-    setup|roles|describe|add|remove|pair|status|config|machine|update) docker_launch "$@" ;;
+    setup|roles|describe|add|remove|pair|console|status|config|machine|update) docker_launch "$@" ;;
   esac
 fi
 
 case "${1:-help}" in
-  setup|add|remove|pair|machine|update)
+  setup|add|remove|pair|console|machine|update)
     JOURNAL_ON=1
     if [[ "${MODE}" == docker ]]; then JOURNAL_SESSION="${MARTLET_ENGINE_NAME:-engine} ${IMAGE}"
     else JOURNAL_SESSION="native/$$ $(git -C "${REPO}" describe --tags --always 2>/dev/null || printf 'source')"; fi
@@ -1120,6 +1127,7 @@ case "${1:-help}" in
   add) shift; cmd_add "$@" ;;
   remove) shift; cmd_remove "$@" ;;
   pair) shift; cmd_pair "$@" ;;
+  console) cmd_console ;;
   status) cmd_status ;;
   machine) cmd_machine ;;
   update) cmd_update ;;

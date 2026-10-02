@@ -139,9 +139,8 @@ public sealed class ConfigurationRecoveryDispatcherTests
         var window = Open(controller, text =>
         {
             confirmations++;
-            Assert.Contains("Snapshot SHA-256:", text);
-            Assert.Contains("Current revision:", text);
-            Assert.Contains("key unbound", text);
+            Assert.Contains("Restore the settings shown in the preview?", text);
+            Assert.Contains("API keys, permissions and audio tests will not be restored", text);
             return consent;
         });
         try
@@ -358,7 +357,7 @@ public sealed class ConfigurationRecoveryDispatcherTests
             var supportOwned = true;
             controller = new(scope.Store, runner, () => !supportOwned);
             Assert.Null(controller.Backup(scope.Backup + ".new"));
-            Assert.Contains("recording OFF", controller.Message);
+            Assert.Contains("Close Troubleshooting", controller.Message);
             supportOwned = false;
             Assert.Equal(SetupWorkOutcome.Completed, (await controller.Backup(scope.Backup + ".new")!.Completion).Outcome);
         }

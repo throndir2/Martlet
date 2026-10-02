@@ -29,7 +29,7 @@ public partial class MainWindow
     /// <summary>host@version pairs already updated automatically this session, so a failing host is not retried every check.</summary>
     private readonly HashSet<string> hostUpdateAttempts = new(StringComparer.Ordinal);
 
-    private static string Mib(GitHubUpdate update) => $"{update.Bytes / (1024d * 1024d):F1} MiB";
+    private static string Mib(GitHubUpdate update) => $"{update.Bytes / (1024d * 1024d):F0} MB";
 
     private void InitializeUpdates()
     {
@@ -45,12 +45,12 @@ public partial class MainWindow
             try { updateChecksEnabled = UpdateCheckPreferences.Load(store.DataDirectory); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
             {
-                problem = "Could not read update-checks.txt, so automatic checks use the default (on) until you choose again.";
+                problem = "Couldn't load update settings. Automatic checks stay on until you save again.";
             }
             try { updatePreferences = UpdatePreferences.Load(store.DataDirectory); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
             {
-                problem = "Could not read updates.json, so automatic installs and host updates stay off until you choose again.";
+                problem = "Couldn't load update settings. Automatic installs stay off until you save again.";
             }
         }
         changingUpdateChoice = true;
@@ -80,10 +80,10 @@ public partial class MainWindow
     {
         var every = UpdatePreferences.Describe(updatePreferences.IntervalMinutes);
         var text = updateChecksEnabled
-            ? $"You run Martlet {Version}. Checks GitHub now and every {every} while Martlet runs" +
-              (updatePreferences.AutoInstall ? ", and installs new versions by itself." : "; you choose when to install.")
-            : $"You run Martlet {Version}. Automatic checks are off; Martlet contacts GitHub only when you press Check for updates now.";
-        if (updatePreferences.AutoUpdateHosts) text += $" Paired hosts are checked every {every} and kept on Martlet {Version}.";
+            ? $"Martlet {Version}. Checks every {every} while Martlet runs" +
+              (updatePreferences.AutoInstall ? " and installs updates automatically." : ". You choose when to install.")
+            : $"Martlet {Version}. Automatic checks are off. Use Check for updates any time.";
+        if (updatePreferences.AutoUpdateHosts) text += $" Paired hosts update every {every}.";
         return text;
     }
 
@@ -131,7 +131,7 @@ public partial class MainWindow
                     await ConfirmAndInstallAsync(offered, prompted: true);
                     if (closing) return;
                 }
-                else ActionText.Text = $"Martlet {offered.Version.ToString(3)} is available. Install it from Settings > App updates.";
+                else ActionText.Text = $"Martlet {offered.Version.ToString(3)} is available in Settings.";
             }
             if (AutoInstalling && availableUpdate is { } update && readyUpdate?.Update.Version != update.Version)
                 await DownloadUpdateAsync();
@@ -142,8 +142,7 @@ public partial class MainWindow
                     InstallNow(quiet: true);
                     return;
                 }
-                UpdateStatusText.Text = $"Martlet {ready.Update.Version.ToString(3)} is downloaded. It installs once the character is hidden and " +
-                    "nothing else is open in Martlet, or when you exit. Or press Install now.";
+                UpdateStatusText.Text = $"Martlet {ready.Update.Version.ToString(3)} is downloaded. It installs when Martlet is idle or when you exit.";
             }
         }
         // Hosts follow this PC's version, so wait while this PC is about to update itself.
@@ -179,7 +178,7 @@ public partial class MainWindow
             changingUpdateChoice = true;
             AutomaticUpdateCheck.IsChecked = updateChecksEnabled;
             changingUpdateChoice = false;
-            UpdateStatusText.Text = "Could not save update-checks.txt. The previous choice stays in effect; check access to your data directory.";
+            UpdateStatusText.Text = "Couldn't save update settings. Check access to Martlet's data folder.";
         }
     }
 
@@ -209,7 +208,7 @@ public partial class MainWindow
             UpdateIntervalChoice.SelectedItem = UpdateIntervalChoice.Items.OfType<ComboBoxItem>()
                 .First(item => (int)item.Tag == updatePreferences.IntervalMinutes);
             changingUpdateChoice = false;
-            UpdateStatusText.Text = "Could not save updates.json. The previous choices stay in effect; check access to your data directory.";
+            UpdateStatusText.Text = "Couldn't save update settings. Check access to Martlet's data folder.";
         }
     }
 
@@ -221,7 +220,7 @@ public partial class MainWindow
         updateBusy = true;
         updateDrain = new(TaskCreationOptions.RunContinuationsAsynchronously);
         CheckForUpdatesButton.IsEnabled = false;
-        if (!background) UpdateStatusText.Text = "Checking Martlet's GitHub Releases...";
+        if (!background) UpdateStatusText.Text = "Checking for updates...";
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         updateCheckCancellation = cancellation;
         try
@@ -235,21 +234,21 @@ public partial class MainWindow
             DownloadUpdateButton.Visibility = ReviewUpdateButton.Visibility = result is null ? Visibility.Collapsed : Visibility.Visible;
             if (result is null)
             {
-                UpdateStatusText.Text = $"You have the latest Martlet ({Version}). Checked {DateTime.Now:t}.";
+                UpdateStatusText.Text = $"You're up to date. Checked {DateTime.Now:t}.";
                 return;
             }
             UpdateStatusText.Text = $"Martlet {result.Version.ToString(3)} is available ({Mib(result)})." + (AutoInstalling
-                ? " Downloading it to install automatically."
-                : " Press Install to download it, check it against GitHub's SHA-256 digest and restart into it.");
+                ? " Downloading for automatic install."
+                : " Press Install to download and restart.");
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
         catch (OperationCanceledException)
         {
-            if (!closing) UpdateStatusText.Text = "The GitHub Release check timed out. Martlet tries again at the next check.";
+            if (!closing) UpdateStatusText.Text = "Update check timed out. Martlet will try again later.";
         }
         catch (Exception error) when (error is HttpRequestException or InvalidDataException or IOException)
         {
-            if (!closing) UpdateStatusText.Text = $"GitHub Release check failed: {UpdateError(error)}";
+            if (!closing) UpdateStatusText.Text = $"Couldn't check for updates: {UpdateError(error)}";
         }
         finally
         {
@@ -271,20 +270,20 @@ public partial class MainWindow
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         updateDownloadCancellation = cancellation;
         DownloadUpdateButton.IsEnabled = CheckForUpdatesButton.IsEnabled = false;
-        UpdateStatusText.Text = $"Downloading Martlet {update.Version.ToString(3)} ({Mib(update)}) and checking its SHA-256 digest...";
+        UpdateStatusText.Text = $"Downloading Martlet {update.Version.ToString(3)} ({Mib(update)})...";
         try
         {
             using var http = GitHubReleaseClient.CreateHttpClient();
             var path = await AppUpdateInstaller.DownloadAsync(new GitHubReleaseClient(http), update, store.DataDirectory, cancellation.Token);
             readyUpdate = (path, update);
-            if (!closing) UpdateStatusText.Text = $"Martlet {update.Version.ToString(3)} is downloaded and matches GitHub's SHA-256 digest.";
+            if (!closing) UpdateStatusText.Text = $"Martlet {update.Version.ToString(3)} is ready to install.";
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
         catch (Exception error) when (error is HttpRequestException or InvalidDataException or IOException or
             UnauthorizedAccessException or ArgumentException or OperationCanceledException)
         {
             if (error is UpdateCleanupException) interruptedUpdateCleanup = error.Message;
-            if (!closing) UpdateStatusText.Text = $"Update download failed: {UpdateError(error)}";
+            if (!closing) UpdateStatusText.Text = $"Couldn't download update: {UpdateError(error)}";
         }
         finally
         {
@@ -307,13 +306,11 @@ public partial class MainWindow
     {
         var busy = BusyReason();
         if (!ConfirmationDialog.Confirm(this,
-                (prompted ? $"A new version of Martlet ({update.Version.ToString(3)}) is available; you run {Version}.\n\n" : "") +
-                $"Update to Martlet {update.Version.ToString(3)} now? Martlet downloads {update.AssetName} ({Mib(update)}) from its public " +
-                "GitHub Release, checks it against GitHub's SHA-256 digest, then closes, runs the installer and starts again." +
-                (busy is null ? "" : $" {busy} stops until Martlet is back.") +
-                (prompted ? " Choose No to keep working; Settings > App updates can install it later." : "") +
-                "\n\nThe installer is not code-signed: the digest detects a damaged download but does not prove who published it.",
-                prompted ? "Martlet update available" : "Install update"))
+                $"Martlet {update.Version.ToString(3)} is available. Install it now?\n\n" +
+                $"The update is {Mib(update)}. Martlet will close, install it and restart." +
+                (busy is null ? "" : $"\n\n{busy} will pause until Martlet restarts.") +
+                (prompted ? "\n\nYou can also install it later from Settings." : ""),
+                "Install Martlet update"))
             return;
         if (readyUpdate?.Update.Version != update.Version) await DownloadUpdateAsync();
         if (readyUpdate?.Update.Version == update.Version) InstallNow(quiet: false);
@@ -326,7 +323,7 @@ public partial class MainWindow
         if (readyUpdate is not { } ready || closing) return;
         installOnExit = (ready.Path, ready.Update.Version, true, quiet);
         UpdateStatusText.Text = ActionText.Text =
-            $"Closing Martlet to install {ready.Update.Version.ToString(3)}. It starts again when the installer finishes.";
+            $"Installing Martlet {ready.Update.Version.ToString(3)}. Martlet will restart when it's done.";
         Close();
     }
 
@@ -350,18 +347,18 @@ public partial class MainWindow
         try { Process.Start(new ProcessStartInfo(update.ReleasePage.AbsoluteUri) { UseShellExecute = true })?.Dispose(); }
         catch (Exception error) when (error is Win32Exception or InvalidOperationException)
         {
-            UpdateStatusText.Text = $"Could not open the release page. Copy this URL into your browser instead: {update.ReleasePage}";
+            UpdateStatusText.Text = $"Couldn't open the release notes. Copy this URL into your browser: {update.ReleasePage}";
         }
     }
 
     private static string UpdateError(Exception error) => error switch
     {
         InvalidDataException or ArgumentException => error.Message,
-        HttpRequestException => "GitHub could not be reached or refused the request. No installer was kept.",
+        HttpRequestException => "The update service could not be reached.",
         UpdateCleanupException => error.Message,
-        OperationCanceledException => "The download timed out. Martlet tries again at the next check.",
-        UnauthorizedAccessException or IOException => "Cannot save the update in Martlet's updates folder. Check access and free space.",
-        _ => "The update could not be checked or downloaded."
+        OperationCanceledException => "The download timed out. Martlet will try again later.",
+        UnauthorizedAccessException or IOException => "Martlet can't save the update. Check access and free space.",
+        _ => "The update couldn't be checked or downloaded."
     };
 
     // ---------- hosts ----------
@@ -381,7 +378,7 @@ public partial class MainWindow
         try
         {
             if (!automatic) UpdateStatusText.Text = hosts.Count == 0 && Role != DeviceRole.Host
-                ? "No Martlet host is paired yet." : "Checking which hosts run an older Martlet...";
+                ? "No host is paired yet." : "Checking host versions...";
             foreach (var host in hosts)
             {
                 if (closing) return;
@@ -398,8 +395,7 @@ public partial class MainWindow
                 }
                 if (!host.CanLaunch)
                 {
-                    hostUpdateNotes[host.HostId] = $"Runs an older Martlet than this PC ({Version}). Enter how Martlet signs in to it over SSH, " +
-                        "or choose Through Martlet on that computer, to update it from here.";
+                    hostUpdateNotes[host.HostId] = "This host needs an update. Set how Martlet signs in over SSH, or choose Through Martlet on that computer.";
                     failed++;
                     continue;
                 }
@@ -439,7 +435,7 @@ public partial class MainWindow
         }
         if (closing || automatic && updated + failed + asked == 0) return;
         if (!automatic && hosts.Count == 0 && Role != DeviceRole.Host) return;
-        var summary = $"Hosts: {updated} updated to Martlet {Version}, {current} already current" +
+        var summary = $"Host updates: {updated} updated to Martlet {Version}, {current} already current" +
             (asked > 0 ? $", {asked} asked to update through Martlet there" : "") +
             (failed > 0 ? $", {failed} need you (see their cards on the Devices map)" : "") +
             (unreachable > 0 ? $", {unreachable} not reachable" : "") + ".";
@@ -475,20 +471,19 @@ public partial class MainWindow
 
     private async Task<bool> UpdateHostQuietlyAsync(string id, HostSetupTarget target, string reach, string? sshHostKey = null)
     {
-        hostUpdateNotes[id] = $"Updating to Martlet {Version} in the background ({reach})...";
+        hostUpdateNotes[id] = $"Updating to Martlet {Version}...";
         if (DevicesPage.IsVisible) RenderMap();
         try
         {
-            var (code, log) = await HostSetupCommands.RunUnattendedAsync(target, HostAction.Update, lifetime.Token, store?.DataDirectory, sshHostKey);
+            var (code, _) = await HostSetupCommands.RunUnattendedAsync(target, HostAction.Update, lifetime.Token, store?.DataDirectory, sshHostKey);
             hostUpdateNotes[id] = code == 0
                 ? $"Updated to Martlet {Version} at {DateTime.Now:t}."
-                : $"The background update did not finish (exit code {code}). It may need your SSH password, sudo or an approval on " +
-                  $"the host: press Update host to finish it (Martlet asks for what it needs). Log: {log}";
+                : "The update needs your attention on that computer. Press Update host to finish it.";
             return code == 0;
         }
         catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException or Win32Exception)
         {
-            hostUpdateNotes[id] = $"Could not start its update ({error.Message}). Press Update host to run it from Martlet.";
+            hostUpdateNotes[id] = $"Couldn't start the update: {error.Message}. Press Update host to run it from Martlet.";
             return false;
         }
     }

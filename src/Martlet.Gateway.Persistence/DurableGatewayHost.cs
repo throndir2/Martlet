@@ -276,6 +276,11 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         CancellationToken cancellationToken = default) =>
         Local(() => server!.Pairing.OpenWindow(approval), cancellationToken);
 
+    /// <summary>Opens a short-code pairing window (the host shows its address and an XXXX-XXXX code to type on a desktop).</summary>
+    public GatewayCodePairingCard OpenCodePairing(GatewayCodePairingApproval approval,
+        CancellationToken cancellationToken = default) =>
+        Local(() => server!.Pairing.OpenCodeWindow(approval), cancellationToken);
+
     public IssuedDeviceCredential Rotate(string credentialId, TimeSpan overlap,
         CancellationToken cancellationToken = default) =>
         Local(() => server!.Credentials.Rotate(credentialId, overlap, cancellationToken), cancellationToken);
@@ -379,6 +384,20 @@ public sealed class DurableGatewayHost : IAsyncDisposable
     {
         RequireOpen();
         server!.AttachCommandStorage(storage, agentToken);
+    }
+
+    /// <summary>Keeps this host's log (its own activity and the lines desktops send it as the log host) in
+    /// <paramref name="storage"/>.</summary>
+    public void AttachLogs(IGatewayLogStorage storage)
+    {
+        RequireOpen();
+        server!.AttachLogStorage(storage);
+    }
+
+    /// <summary>Adds a line to this host's own log, which paired desktops can read.</summary>
+    public void RecordActivity(string level, string message)
+    {
+        if (server is not null && !closed) server.RecordActivity(level, message);
     }
 
     public ValueTask CloseCleanlyAsync(CancellationToken cancellationToken = default) =>

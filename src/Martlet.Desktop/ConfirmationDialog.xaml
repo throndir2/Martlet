@@ -12,7 +12,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-        <TextBlock Text="Review this action" Style="{DynamicResource SectionHeading}"/>
+        <TextBlock Text="Please confirm" Style="{DynamicResource SectionHeading}"/>
         <ScrollViewer Grid.Row="1" MaxHeight="460" VerticalScrollBarVisibility="Auto">
             <TextBlock x:Name="QuestionText" TextWrapping="Wrap" Margin="0,4,8,12"/>
         </ScrollViewer>

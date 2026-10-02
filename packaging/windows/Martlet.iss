@@ -106,16 +106,16 @@ begin
   if CompareText(RemoveBackslashUnlessRoot(ExpandFileName(ExpandConstant('{app}'))),
 #ifdef PublicRelease
       RemoveBackslashUnlessRoot(ExpandFileName(ExpandConstant('{localappdata}\Programs\Martlet')))) <> 0 then
-    Result := 'Martlet installs only to its fixed per-user program directory. Remove /DIR overrides. User settings remain separate.';
+    Result := 'Martlet installs to its standard per-user program folder. User settings are stored separately.';
 #else
       RemoveBackslashUnlessRoot(ExpandFileName(ExpandConstant('{localappdata}\Programs\Martlet Internal')))) <> 0 then
-    Result := 'This internal build uses only the fixed per-user program directory. Remove /DIR overrides. User settings must remain separate.';
+    Result := 'This internal build installs to its standard per-user program folder. User settings are stored separately.';
 #endif
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if (CurUninstallStep = usPostUninstall) and not UninstallSilent then
-    MsgBox('Martlet program files were removed. Settings and other user data remain in ' +
-      ExpandConstant('{localappdata}\Martlet') + '. No user data was deleted.', mbInformation, MB_OK);
+    MsgBox('Martlet was uninstalled. Your settings remain in ' +
+      ExpandConstant('{localappdata}\Martlet') + '.', mbInformation, MB_OK);
 end;

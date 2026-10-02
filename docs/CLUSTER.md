@@ -19,6 +19,10 @@ failover stays a per-job **Fail over to another host** choice.
     **fails over**; and `moved_from`, the host a failover moved it away from;
   - one entry per **host**: its address and the roles (with models) it was
     last seen running, or a `removed` tombstone after you forget it.
+  - the `logs` entry: the paired host that collects every computer's logs
+    (the [log host](DIAGNOSTICS.md#diagnostics-page-and-the-log-host)), or
+    nobody. It is not a role: it never moves, fails over or follows a Setup
+    choice, and desktops older than shared logs pass it through untouched.
 - Every entry is a last-writer-wins register stamped with a hybrid revision,
   `max(newest revision known + 1, current Unix milliseconds)`, and the writer's
   device ID. Merging keeps, per job and per host, the entry with the highest
@@ -69,7 +73,8 @@ they adopt the newest change from any computer.
 With failover on for a job, when its host misses two consecutive checks
 (about 30 seconds) the desktop moves the job to another paired host that
 answered and advertises the job's route (the role is installed and its model
-ready). Candidates are ranked by fewest other jobs, then most GPU memory
+ready). Candidates are ranked by fewest other jobs (being the log host counts
+as one), then most GPU memory
 (from the host's hardware report), then host ID, so desktops that see the same
 hosts pick the same one. The move is stamped with `moved_from` and shared; the
 row says where it came from.

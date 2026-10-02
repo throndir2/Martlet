@@ -192,11 +192,11 @@ public static class CredentialMessages
 {
     public static string Describe(CredentialError error) => error switch
     {
-        CredentialError.None => "The requested OS vault action succeeded. Provider/gateway validity, revocation, access, price, quota and readiness remain unknown. Paired devices do not expire.",
-        CredentialError.Missing => "The owned credential is missing. Enter the OpenAI key or re-pair the exact gateway route explicitly; restoring settings does not restore a deleted credential.",
-        CredentialError.AccessDenied => "Windows denied access to this credential. Check the signed-in user and vault access; do not elevate or disable protection.",
+        CredentialError.None => "Credential saved.",
+        CredentialError.Missing => "The credential is missing. Enter the key again or pair the host again.",
+        CredentialError.AccessDenied => "Windows denied access to this credential. Check the signed-in Windows account.",
         CredentialError.UnsupportedPlatform => "Windows Credential Manager is unavailable on this platform. No-key setup remains usable.",
-        CredentialError.InvalidInput => "The credential or origin/host/pin/role binding is invalid. Review the named route and enter or pair it again.",
-        _ => "Windows Credential Manager is unavailable. Retry in the intended signed-in Windows session; do not change system protection."
+        CredentialError.InvalidInput => "This credential no longer matches the selected route. Enter it again.",
+        _ => "Windows Credential Manager is unavailable. Try again in the intended Windows account."
     };
 }

@@ -24,11 +24,11 @@ internal sealed record MachineInfo(string Name, string Windows, string? Processo
     {
         var gpu = BestGpu;
         if (gpu is { IsNvidia: true, MemoryGb: >= 4 })
-            yield return "Can run Audio2Face lip-sync as a Martlet host";
+            yield return "Can run lip-sync as a Martlet host";
         if (gpu is { IsNvidia: true, MemoryGb: >= 8 })
             yield return gpu.MemoryGb >= 16 ? "Can run a mid-size local conversation model" : "Can run a small local conversation model";
         if (gpu is null || !gpu.IsNvidia)
-            yield return "Best paired with a cloud conversation model; GPU roles need NVIDIA";
+            yield return "Best paired with a cloud conversation model; host GPU roles need NVIDIA";
     }
 
     internal static MachineInfo Read()
@@ -52,7 +52,7 @@ internal sealed record MachineInfo(string Name, string Windows, string? Processo
             var build = int.TryParse(key?.GetValue("CurrentBuildNumber") as string, out var number) ? number : Environment.OSVersion.Version.Build;
             var name = (key?.GetValue("ProductName") as string ?? "Windows").Replace("Windows 10", build >= 22000 ? "Windows 11" : "Windows 10");
             var display = key?.GetValue("DisplayVersion") as string;
-            return display is null ? $"{name} (build {build})" : $"{name} {display} (build {build})";
+            return display is null ? name : $"{name} {display}";
         }
         catch (Exception error) when (error is System.Security.SecurityException or IOException or UnauthorizedAccessException)
         {

@@ -183,21 +183,19 @@ public sealed class SupportIntegrationTests
             foreach (var info in preview.Files)
             {
                 Assert.Contains(info.Name, Field<TextBox>(window, "InventoryText").Text);
-                Assert.Contains(info.Sha256, Field<TextBox>(window, "InventoryText").Text);
+                Assert.Contains($"{info.Bytes} bytes", Field<TextBox>(window, "InventoryText").Text);
             }
             Field<TextBox>(window, "DestinationText").Text = scope.Output;
             Click(window, "ExportButton");
-            Assert.Contains("No export approved", Field<TextBox>(window, "ResultText").Text);
+            Assert.Contains("Export canceled", Field<TextBox>(window, "ResultText").Text);
             Assert.False(File.Exists(scope.Output));
-            Assert.Contains("Default is No", confirmation);
-            Assert.Contains(preview.Id.ToString(), confirmation);
-            Assert.Contains(preview.Digest, confirmation);
+            Assert.Contains("Nothing will be uploaded", confirmation);
             Assert.Contains(scope.Output, confirmation);
             approved = true;
             Click(window, "ExportButton");
             await Until(() => File.Exists(scope.Output) && !controller.IsBusy);
             await Until(() => Field<TextBox>(window, "ResultText").Text.Contains("Exported locally", StringComparison.Ordinal));
-            Assert.Contains("NOT sent", Field<TextBox>(window, "ResultText").Text);
+            Assert.Contains("Nothing was uploaded", Field<TextBox>(window, "ResultText").Text);
             AssertArchive(preview, scope.Output);
             Assert.False(Directory.Exists(scope.Data));
         }
@@ -525,7 +523,7 @@ public sealed class SupportIntegrationTests
             await Done(controller.StartRecording());
             response.Release.TrySetResult();
             await fixture.Finish();
-            await Until(() => controller.LiveStatus.Contains("conversation.completed", StringComparison.Ordinal));
+            await Until(() => controller.LiveStatus.Contains("Last conversation activity", StringComparison.Ordinal));
             await Until(() => !controller.IsBusy);
             Assert.Null((await Done(controller.Freeze(true, Range()))).Failure);
             var preview = controller.Preview!;
@@ -573,11 +571,11 @@ public sealed class SupportIntegrationTests
             var earlierDrops = controller.Dropped;
             response.Release.TrySetResult();
             await fixture.Finish();
-            await Until(() => controller.LiveStatus.Contains("conversation.completed", StringComparison.Ordinal));
+            await Until(() => controller.LiveStatus.Contains("Last conversation activity", StringComparison.Ordinal));
             Assert.False(fixture.Runner.IsRunning); // Optional journal IO cannot block the live action.
             Assert.True(controller.IsBusy);
             Assert.True(controller.Dropped > earlierDrops);
-            Assert.Contains($"Dropped (busy/transition bound): {controller.Dropped}", controller.Status);
+            Assert.Contains($"Dropped: {controller.Dropped}", controller.Status);
             Assert.Single(backend.Offered);
             Assert.Empty(backend.Completed);
             Assert.DoesNotContain("conversation.completed", backend.Offered);

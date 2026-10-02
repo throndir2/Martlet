@@ -649,6 +649,7 @@ public sealed class GatewayPairingService : IGatewayPairingExchange
     public static readonly TimeSpan DefaultWindow = TimeSpan.FromMinutes(5);
     public static readonly TimeSpan MaximumWindow = TimeSpan.FromMinutes(5);
     public const int MaximumOpenWindows = 8;
+    public const int MaximumOpenCodeWindows = 2;
     public const int MaximumFailedAttempts = 5;
 
     private readonly object gate = new();
@@ -689,27 +690,13 @@ public sealed class GatewayPairingService : IGatewayPairingExchange
         lock (gate)
         {
             var now = credentials.ObserveTime(clock);
-            foreach (var stale in windows.Where(item => item.Value.ExpiresAt <= now ||
-                credentials.BudgetExpired(item.Value.StartedAt, windowLifetime))
-                .Select(item => item.Key).ToArray())
-                RemoveWindowLocked(stale);
+            RemoveStaleLocked(now);
             GatewayRules.Require(windows.Count < MaximumOpenWindows, "pairing.closed");
-
-            string? pairingId = null;
-            for (var attempt = 0; attempt < 16; attempt++)
-            {
-                var candidate = Base64Url.Encode(crypto.RandomBytes(16));
-                if (!windows.ContainsKey(candidate))
-                {
-                    pairingId = candidate;
-                    break;
-                }
-            }
-            GatewayRules.Require(pairingId is not null, "gateway.internal");
+            var pairingId = NewPairingIdLocked();
             var tokenBytes = crypto.RandomBytes(32);
             var tokenText = Base64Url.Encode(tokenBytes);
             var expiresAt = now + windowLifetime;
-            windows.Add(pairingId!, new()
+            windows.Add(pairingId, new()
             {
                 DeviceId = approval.DeviceId,
                 DisplayName = approval.DisplayName,
@@ -721,7 +708,7 @@ public sealed class GatewayPairingService : IGatewayPairingExchange
             CryptographicOperations.ZeroMemory(tokenBytes);
             return new()
             {
-                PairingId = pairingId!,
+                PairingId = pairingId,
                 HostId = identity.HostId,
                 Origin = origin.CanonicalOrigin,
                 SpkiFingerprint = identity.SpkiFingerprint,
@@ -729,6 +716,58 @@ public sealed class GatewayPairingService : IGatewayPairingExchange
                 ExpiresAt = expiresAt
             };
         }
+    }
+
+    /// <summary>Opens a one-use, five-minute window redeemed with a short typed code (<see cref="GatewayPairingCode"/>)
+    /// instead of a pasted card. Whichever desktop proves the code names itself and receives the approved roles.</summary>
+    public GatewayCodePairingCard OpenCodeWindow(GatewayCodePairingApproval approval)
+    {
+        ArgumentNullException.ThrowIfNull(approval);
+        var roles = approval.ValidateAndCopy();
+        lock (gate)
+        {
+            var now = credentials.ObserveTime(clock);
+            RemoveStaleLocked(now);
+            GatewayRules.Require(windows.Count < MaximumOpenWindows &&
+                windows.Values.Count(window => window.Code is not null) < MaximumOpenCodeWindows, "pairing.closed");
+            var code = GatewayPairingCode.Generate(crypto);
+            var expiresAt = now + windowLifetime;
+            windows.Add(NewPairingIdLocked(), new()
+            {
+                Code = Encoding.ASCII.GetBytes(code),
+                Roles = roles,
+                TokenVerifier = [],
+                ExpiresAt = expiresAt,
+                StartedAt = credentials.ObserveTimestamp()
+            });
+            return new()
+            {
+                HostId = identity.HostId,
+                Origin = origin.CanonicalOrigin,
+                SpkiFingerprint = identity.SpkiFingerprint,
+                Code = new(GatewayPairingCode.Format(code)),
+                ExpiresAt = expiresAt
+            };
+        }
+    }
+
+    private void RemoveStaleLocked(DateTimeOffset now)
+    {
+        foreach (var stale in windows.Where(item => item.Value.ExpiresAt <= now ||
+            credentials.BudgetExpired(item.Value.StartedAt, windowLifetime))
+            .Select(item => item.Key).ToArray())
+            RemoveWindowLocked(stale);
+    }
+
+    private string NewPairingIdLocked()
+    {
+        for (var attempt = 0; attempt < 16; attempt++)
+        {
+            var candidate = Base64Url.Encode(crypto.RandomBytes(16));
+            if (!windows.ContainsKey(candidate))
+                return candidate;
+        }
+        throw new GatewayProtocolException("gateway.internal");
     }
 
     internal IssuedDeviceCredential Exchange(GatewayPairingProof proof,
@@ -739,7 +778,7 @@ public sealed class GatewayPairingService : IGatewayPairingExchange
         {
             cancellationToken.ThrowIfCancellationRequested();
             var now = credentials.ObserveTime(clock);
-            if (!windows.TryGetValue(proof.PairingId, out var window))
+            if (!windows.TryGetValue(proof.PairingId, out var window) || window.Code is not null)
                 throw new GatewayProtocolException("pairing.closed");
             if (window.ExpiresAt <= now || credentials.BudgetExpired(window.StartedAt, windowLifetime))
             {
@@ -763,7 +802,7 @@ public sealed class GatewayPairingService : IGatewayPairingExchange
                     proof.SpkiFingerprint != identity.SpkiFingerprint ? "host.pin_mismatch" : "pairing.invalid");
             }
 
-            var credential = credentials.Issue(window.DeviceId, window.DisplayName, window.Roles, cancellationToken);
+            var credential = credentials.Issue(window.DeviceId!, window.DisplayName!, window.Roles, cancellationToken);
             RemoveWindowLocked(proof.PairingId);
             var afterCommit = credentials.ObserveTime(clock);
             if (window.ExpiresAt <= afterCommit || credentials.BudgetExpired(window.StartedAt, windowLifetime))
@@ -776,10 +815,78 @@ public sealed class GatewayPairingService : IGatewayPairingExchange
     IssuedDeviceCredential IGatewayPairingExchange.Exchange(GatewayPairingProof proof,
         CancellationToken cancellationToken) => Exchange(proof, cancellationToken);
 
+    /// <summary>Redeems a short-code window: the desktop's proof must match one open code under this host's own key
+    /// fingerprint. A miss counts against every open code window (each closes after
+    /// <see cref="MaximumFailedAttempts"/>), so guessing stays bounded.</summary>
+    internal GatewayCodePairingResult Exchange(GatewayCodePairingProof proof, CancellationToken cancellationToken = default)
+    {
+        proof.Validate();
+        Base64Url.TryDecode(proof.ClientNonce, 16, out var nonce);
+        Base64Url.TryDecode(proof.Proof, 32, out var presented);
+        lock (gate)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var now = credentials.ObserveTime(clock);
+            var expired = false;
+            foreach (var stale in windows.Where(item => item.Value.Code is not null && (item.Value.ExpiresAt <= now ||
+                credentials.BudgetExpired(item.Value.StartedAt, windowLifetime))).Select(item => item.Key).ToArray())
+            {
+                RemoveWindowLocked(stale);
+                expired = true;
+            }
+            var open = windows.Where(item => item.Value.Code is not null).ToArray();
+            if (open.Length == 0)
+                throw new GatewayProtocolException(expired ? "pairing.expired" : "pairing.closed");
+
+            string? matchedId = null;
+            PairingWindow? matched = null;
+            byte[]? key = null;
+            foreach (var (id, window) in open)
+            {
+                var candidate = GatewayPairingCode.DeriveKey(Encoding.ASCII.GetString(window.Code!), identity.SpkiFingerprint, nonce);
+                var expected = GatewayPairingCode.ClientProof(candidate, proof.DeviceId, proof.DisplayName, nonce);
+                if (matched is null && crypto.FixedTimeEquals(expected, presented))
+                {
+                    (matchedId, matched, key) = (id, window, candidate);
+                    continue;
+                }
+                CryptographicOperations.ZeroMemory(candidate);
+            }
+            CryptographicOperations.ZeroMemory(presented);
+            if (matched is null)
+            {
+                foreach (var (id, window) in open)
+                    if (++window.FailedAttempts >= MaximumFailedAttempts)
+                        RemoveWindowLocked(id);
+                throw new GatewayProtocolException("pairing.invalid");
+            }
+
+            try
+            {
+                var credential = credentials.Issue(proof.DeviceId, proof.DisplayName, matched.Roles, cancellationToken);
+                RemoveWindowLocked(matchedId!);
+                var afterCommit = credentials.ObserveTime(clock);
+                if (matched.ExpiresAt <= afterCommit || credentials.BudgetExpired(matched.StartedAt, windowLifetime))
+                    throw new GatewayProtocolException("pairing.expired");
+                cancellationToken.ThrowIfCancellationRequested();
+                var hostProof = GatewayPairingCode.HostProof(key!, identity.HostId, credential.DeviceId, credential.CredentialId,
+                    credential.Secret.Reveal(), nonce);
+                return new(credential, Base64Url.Encode(hostProof));
+            }
+            finally { CryptographicOperations.ZeroMemory(key); }
+        }
+    }
+
+    GatewayCodePairingResult IGatewayPairingExchange.Exchange(GatewayCodePairingProof proof,
+        CancellationToken cancellationToken) => Exchange(proof, cancellationToken);
+
     private void RemoveWindowLocked(string id)
     {
         if (windows.Remove(id, out var window))
+        {
             CryptographicOperations.ZeroMemory(window.TokenVerifier);
+            if (window.Code is { } code) CryptographicOperations.ZeroMemory(code);
+        }
     }
 
     internal int RevokeDevice(string deviceId, CancellationToken cancellationToken)
@@ -799,15 +906,21 @@ public sealed class GatewayPairingService : IGatewayPairingExchange
         lock (gate)
         {
             foreach (var window in windows.Values)
+            {
                 CryptographicOperations.ZeroMemory(window.TokenVerifier);
+                if (window.Code is { } code) CryptographicOperations.ZeroMemory(code);
+            }
             windows.Clear();
         }
     }
 
+    /// <summary>A card window names its device (<see cref="DeviceId"/>, <see cref="DisplayName"/>) and keeps the token's
+    /// verifier; a short-code window keeps the code itself (<see cref="Code"/>, ASCII) and lets the desktop name itself.</summary>
     private sealed class PairingWindow
     {
-        internal required string DeviceId { get; init; }
-        internal required string DisplayName { get; init; }
+        internal string? DeviceId { get; init; }
+        internal string? DisplayName { get; init; }
+        internal byte[]? Code { get; init; }
         internal required GatewayRole[] Roles { get; init; }
         internal required byte[] TokenVerifier { get; init; }
         internal required DateTimeOffset ExpiresAt { get; init; }

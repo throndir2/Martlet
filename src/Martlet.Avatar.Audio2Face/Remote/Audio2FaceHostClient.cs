@@ -80,6 +80,82 @@ public sealed record HostPairingCode(string Origin, string HostId, string SpkiFi
     public override string ToString() => $"Pairing code for {HostId} at {Origin} (token omitted)";
 }
 
+/// <summary>
+/// What a person types to pair with a host: the address it shows and its short one-use code (like K7QM-4XPA), or the whole
+/// pasted <see cref="HostPairingCode"/> card that older hosts show. Mirrors <c>Martlet.Gateway.GatewayPairingCode</c>:
+/// PBKDF2-SHA256(code, salt "martlet-pair-code-v1\n" + the SPKI fingerprint this desktop was shown + "\n" + a fresh
+/// 16-byte nonce, 100,000 iterations) keys an HMAC proof each way, so the desktop pins the host key only after the host
+/// proves it knows the code; keep both in step.
+/// </summary>
+public static class HostPairingInput
+{
+    public const string Alphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+    public const int CodeLength = 8;
+    public const int DefaultPort = 9443;
+    internal const int Iterations = 100_000;
+    private const string Label = "martlet-pair-code-v1";
+
+    /// <summary>True when the text is a pasted martlet-pair-v1 card rather than a short code.</summary>
+    public static bool IsCard(string? text) => text?.Trim().StartsWith(HostPairingCode.Prefix, StringComparison.Ordinal) == true;
+
+    /// <summary>The canonical short code: uppercased, spaces and dashes dropped, exactly 8 symbols of <see cref="Alphabet"/>.</summary>
+    public static string NormalizeCode(string? text)
+    {
+        var code = new string((text ?? "").Where(c => c is not (' ' or '-' or '\t')).Select(char.ToUpperInvariant).ToArray());
+        if (code.Length != CodeLength || !code.All(Alphabet.Contains))
+            throw new Audio2FaceHostException("pairing.invalid",
+                "Type the 8-character code the host shows, like K7QM-4XPA. Codes use the digits 2-9 and letters other than I and O.");
+        return code;
+    }
+
+    /// <summary>The host's origin from the address it shows: "192.168.1.20" (port 9443), "192.168.1.20:9555" or a full
+    /// https:// origin.</summary>
+    public static string Origin(string? address)
+    {
+        var text = address?.Trim().TrimEnd('/') ?? "";
+        if (text.Length == 0)
+            throw new Audio2FaceHostException("origin.invalid", "Type the address the host shows next to its code, for example 192.168.1.20.");
+        if (!text.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            var port = text.StartsWith('[') ? text.LastIndexOf(':') > text.IndexOf(']') : text.Count(c => c == ':') == 1;
+            text = "https://" + text + (port ? "" : ":" + DefaultPort);
+        }
+        try { return Audio2FaceHostClient.CanonicalOrigin(text); }
+        catch (Audio2FaceHostException)
+        {
+            throw new Audio2FaceHostException("origin.invalid",
+                "Type the address the host shows next to its code: a private network address such as 192.168.1.20 (or 192.168.1.20:9443).");
+        }
+    }
+
+    internal static byte[] DeriveKey(string code, string spkiFingerprint, ReadOnlySpan<byte> nonce)
+    {
+        var salt = Concat(Encoding.UTF8.GetBytes($"{Label}\n{spkiFingerprint}\n"), nonce);
+        var password = Encoding.ASCII.GetBytes(code);
+        try { return Rfc2898DeriveBytes.Pbkdf2(password, salt, Iterations, HashAlgorithmName.SHA256, 32); }
+        finally { CryptographicOperations.ZeroMemory(password); }
+    }
+
+    internal static byte[] ClientProof(ReadOnlySpan<byte> key, string deviceId, string displayName, ReadOnlySpan<byte> nonce) =>
+        HMACSHA256.HashData(key, Concat(Encoding.UTF8.GetBytes($"{Label} client\n{deviceId}\n{displayName}\n"), nonce));
+
+    internal static byte[] HostProof(ReadOnlySpan<byte> key, string hostId, string deviceId, string credentialId, string secret,
+        ReadOnlySpan<byte> nonce)
+    {
+        var message = Concat(Encoding.UTF8.GetBytes($"{Label} host\n{hostId}\n{deviceId}\n{credentialId}\n{secret}\n"), nonce);
+        try { return HMACSHA256.HashData(key, message); }
+        finally { CryptographicOperations.ZeroMemory(message); }
+    }
+
+    private static byte[] Concat(byte[] head, ReadOnlySpan<byte> tail)
+    {
+        var bytes = new byte[head.Length + tail.Length];
+        head.CopyTo(bytes, 0);
+        tail.CopyTo(bytes.AsSpan(head.Length));
+        return bytes;
+    }
+}
+
 /// <summary>One facial frame; SampleOffset is relative to the first sample of the submitted chunk.</summary>
 public sealed record RemoteFaceFrame(long SampleOffset, IReadOnlyDictionary<string, double> Blendshapes);
 
@@ -140,6 +216,106 @@ public static class Audio2FaceHostClient
             throw new Audio2FaceHostException("response.invalid", "The host's pairing response was invalid.");
         }
         finally { CryptographicOperations.ZeroMemory(body); }
+    }
+
+    /// <summary>
+    /// Pairs with the host at <paramref name="origin"/> using the short code it shows (<see cref="HostPairingInput"/>).
+    /// The first request only learns which TLS key answers there; later connections must present the same key. The proof
+    /// is bound to that key, so the real host rejects it when anything else answered, and this desktop keeps the pairing
+    /// (pinned to that key) only after the host proves it knows the code too.
+    /// </summary>
+    public static async Task<(Audio2FaceHostPairing Pairing, string Secret)> PairWithCodeAsync(
+        string origin, string code, string deviceId, string displayName, CancellationToken cancellationToken = default)
+    {
+        var canonical = CanonicalOrigin(origin);
+        var normalized = HostPairingInput.NormalizeCode(code);
+        RequireIdentifier(deviceId, "device ID");
+        var name = new string(displayName.Where(c => c is >= ' ' and <= '~').Take(64).ToArray()).Trim();
+        if (name.Length == 0) name = "Martlet desktop";
+        var address = new Uri(canonical).Authority;
+        string? seen = null;
+        var nonce = RandomNumberGenerator.GetBytes(16);
+        byte[]? key = null;
+        byte[]? body = null;
+        try
+        {
+            using var http = CreateHttpClient(canonical, presented =>
+            {
+                seen ??= presented;
+                return presented == seen;
+            });
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(20));
+            try
+            {
+                using var probe = new HttpRequestMessage(HttpMethod.Get, canonical + "/health/live");
+                using var live = await Send(http, probe, timeout.Token).ConfigureAwait(false);
+            }
+            catch (Audio2FaceHostException error) when (error.Code == "host.unreachable")
+            {
+                throw new Audio2FaceHostException("host.unreachable",
+                    $"No Martlet host answered at {address}. Check the address the host shows, that both computers are on the same network " +
+                    "and that the host is still showing its code.");
+            }
+            if (seen is null) throw new Audio2FaceHostException("host.unreachable", $"The computer at {address} did not present a host key.");
+            key = await Task.Run(() => HostPairingInput.DeriveKey(normalized, seen, nonce), timeout.Token).ConfigureAwait(false);
+            body = JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                protocol_version = new { major = 2, minor = 0 },
+                device_id = deviceId, display_name = name, client_nonce = Base64Url.EncodeToString(nonce),
+                proof = Base64Url.EncodeToString(HostPairingInput.ClientProof(key, deviceId, name, nonce))
+            });
+            using var request = new HttpRequestMessage(HttpMethod.Post, canonical + "/martlet/v1/pair/code") { Content = JsonContent(body) };
+            using var response = await Send(http, request, timeout.Token).ConfigureAwait(false);
+            using var document = await ReadJson(response, 16 * 1024, timeout.Token).ConfigureAwait(false);
+            var root = document.RootElement;
+            if (response.StatusCode != HttpStatusCode.Created)
+            {
+                var failure = root.TryGetProperty("code", out var value) ? value.GetString() : null;
+                throw failure switch
+                {
+                    "pairing.invalid" => new Audio2FaceHostException("pairing.invalid",
+                        "That code doesn't match. Check it against the host and type it again; after five wrong tries the host needs a new code."),
+                    "pairing.closed" => new Audio2FaceHostException("pairing.closed",
+                        $"The host at {address} isn't waiting for a code. Show a new code on the host (martlet-host pair) and type that."),
+                    "pairing.expired" => new Audio2FaceHostException("pairing.expired",
+                        "That code expired (codes last five minutes). Show a new code on the host and type that."),
+                    "request.invalid" => new Audio2FaceHostException("pairing.unsupported",
+                        $"The host at {address} runs an older Martlet that doesn't take short codes. Update it, or paste the long martlet-pair-v1 code it shows."),
+                    _ => Remote(root)
+                };
+            }
+            var hostId = root.GetProperty("host_id").GetString()!;
+            var credentialId = root.GetProperty("credential_id").GetString()!;
+            var secret = root.GetProperty("credential_secret").GetString()!;
+            RequireIdentifier(hostId, "host ID");
+            if (root.GetProperty("protocol_version").GetProperty("major").GetInt32() != 2 ||
+                root.GetProperty("device_id").GetString() != deviceId ||
+                root.GetProperty("lifetime").GetProperty("kind").GetString() != "paired" ||
+                !root.GetProperty("roles").EnumerateArray().Any(role => role.GetString() == "voice") ||
+                !TryBase64Url(credentialId, 16, out _) || !TryBase64Url(secret, 32, out var raw))
+                throw new Audio2FaceHostException("pairing.invalid", "The host returned an unexpected pairing; show a new code and try again.");
+            CryptographicOperations.ZeroMemory(raw);
+            var expected = HostPairingInput.HostProof(key, hostId, deviceId, credentialId, secret, nonce);
+            if (!TryBase64Url(root.GetProperty("host_proof").GetString(), 32, out var proof) ||
+                !CryptographicOperations.FixedTimeEquals(expected, proof))
+                throw new Audio2FaceHostException("host.pin_mismatch",
+                    $"The computer at {address} could not prove it shows this code, so Martlet did not pair with it. Check the address and try again.");
+            var pairing = new Audio2FaceHostPairing
+            {
+                Origin = canonical, HostId = hostId, SpkiFingerprint = seen, DeviceId = deviceId, CredentialId = credentialId
+            };
+            return (pairing, secret);
+        }
+        catch (Exception error) when (error is JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            throw new Audio2FaceHostException("response.invalid", "The host's pairing response was invalid.");
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(key);
+            CryptographicOperations.ZeroMemory(body);
+        }
     }
 
     internal static string CanonicalOrigin(string? value)
@@ -203,7 +379,12 @@ public static class Audio2FaceHostClient
         return address.AddressFamily == AddressFamily.InterNetworkV6 && (address.GetAddressBytes()[0] & 0xFE) == 0xFC;
     }
 
-    internal static HttpClient CreateHttpClient(string origin, string spkiFingerprint, TimeProvider? clock = null)
+    internal static HttpClient CreateHttpClient(string origin, string spkiFingerprint, TimeProvider? clock = null) =>
+        CreateHttpClient(origin, presented => presented == spkiFingerprint, clock);
+
+    /// <summary>A client for <paramref name="origin"/> that accepts the host key only when <paramref name="accept"/> says so
+    /// for its SPKI fingerprint (still requiring a current certificate for that address).</summary>
+    internal static HttpClient CreateHttpClient(string origin, Func<string, bool> accept, TimeProvider? clock = null)
     {
         var now = clock ?? TimeProvider.System;
         var handler = new SocketsHttpHandler
@@ -218,7 +399,7 @@ public static class Audio2FaceHostClient
             RevocationMode = X509RevocationMode.NoCheck, DisableCertificateDownloads = true
         };
         handler.SslOptions.RemoteCertificateValidationCallback = (_, certificate, chain, errors) =>
-            ValidateCertificate(certificate, chain, errors, spkiFingerprint, now);
+            ValidateCertificate(certificate, chain, errors, accept, now);
         return new HttpClient(handler, disposeHandler: true)
         {
             BaseAddress = new Uri(origin + "/"), Timeout = Timeout.InfiniteTimeSpan
@@ -226,7 +407,11 @@ public static class Audio2FaceHostClient
     }
 
     internal static bool ValidateCertificate(X509Certificate? certificate, X509Chain? chain, SslPolicyErrors errors,
-        string spkiFingerprint, TimeProvider clock)
+        string spkiFingerprint, TimeProvider clock) =>
+        ValidateCertificate(certificate, chain, errors, presented => presented == spkiFingerprint, clock);
+
+    private static bool ValidateCertificate(X509Certificate? certificate, X509Chain? chain, SslPolicyErrors errors,
+        Func<string, bool> accept, TimeProvider clock)
     {
         if (certificate is null || errors.HasFlag(SslPolicyErrors.RemoteCertificateNameMismatch) ||
             errors.HasFlag(SslPolicyErrors.RemoteCertificateNotAvailable))
@@ -242,7 +427,7 @@ public static class Audio2FaceHostClient
         {
             var now = clock.GetUtcNow();
             if (now < certificate2.NotBefore.ToUniversalTime() || now > certificate2.NotAfter.ToUniversalTime() ||
-                Fingerprint(certificate2) != spkiFingerprint)
+                !accept(Fingerprint(certificate2)))
                 return false;
             if (!errors.HasFlag(SslPolicyErrors.RemoteCertificateChainErrors)) return errors == SslPolicyErrors.None;
             const X509ChainStatusFlags allowed = X509ChainStatusFlags.UntrustedRoot | X509ChainStatusFlags.PartialChain;

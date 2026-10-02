@@ -31,6 +31,12 @@ public sealed record McpServerDefinition
     public string? Problem { get; init; }
     /// <summary>The Martlet feature that manages this server (for example Smart home), or null for one from mcp.json.</summary>
     public string? ManagedBy { get; init; }
+    /// <summary>The MCP Registry name it was installed from (for example io.github.upstash/context7), if any.</summary>
+    public string? Registry { get; init; }
+    /// <summary>The registry version it was installed at, if any.</summary>
+    public string? RegistryVersion { get; init; }
+    /// <summary>The ${secret:NAME} values it uses, which Martlet keeps outside mcp.json.</summary>
+    public IReadOnlyList<string> Secrets { get; init; } = [];
 
     public bool AutoApproves(string tool) => AutoApproveAll || AutoApprove.Contains(tool, StringComparer.Ordinal);
 
@@ -90,9 +96,12 @@ public sealed partial class McpConfiguration
         CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true, MaxDepth = 32
     };
 
-    public static McpConfiguration Parse(string? json, Func<string, string?>? environment = null)
+    /// <summary>Reads mcp.json. <paramref name="secrets"/> looks up ${secret:NAME} values (Martlet keeps them in Windows
+    /// Credential Manager); without it, or for a name it doesn't know, that server can't start until the secret is saved.</summary>
+    public static McpConfiguration Parse(string? json, Func<string, string?>? environment = null, Func<string, string?>? secrets = null)
     {
         environment ??= Environment.GetEnvironmentVariable;
+        secrets ??= _ => null;
         if (string.IsNullOrWhiteSpace(json)) return Empty;
         if (json.Length > MaxFileBytes) throw new McpConfigurationException("mcp.json is larger than 1 MB.");
         JsonNode? root;
@@ -113,7 +122,7 @@ public sealed partial class McpConfiguration
         }
         var servers = new List<McpServerDefinition>();
         foreach (var (name, value) in section)
-            servers.Add(ParseServer(name, value, environment));
+            servers.Add(ParseServer(name, value, environment, secrets));
         return new(servers);
     }
 
@@ -125,13 +134,15 @@ public sealed partial class McpConfiguration
             _ => throw new McpConfigurationException("\"mcpServers\" must be an object of named servers.")
         };
 
-    private static McpServerDefinition ParseServer(string name, JsonNode? value, Func<string, string?> environment)
+    private static McpServerDefinition ParseServer(string name, JsonNode? value, Func<string, string?> environment,
+        Func<string, string?> secrets)
     {
         if (name.Trim().Length == 0 || name.Length > McpServerDefinition.MaxNameLength || name.Any(char.IsControl))
             throw new McpConfigurationException($"Server names must be 1-{McpServerDefinition.MaxNameLength} characters.");
         if (value is not JsonObject server) throw new McpConfigurationException($"Server \"{name}\" must be an object.");
         var problems = new List<string>();
-        string Expand(string text) => ExpandVariables(text, environment, problems);
+        var used = new List<string>();
+        string Expand(string text) => ExpandVariables(text, environment, secrets, problems, used);
         var type = String(server, name, "type")?.Trim().ToLowerInvariant();
         var command = String(server, name, "command");
         var url = String(server, name, "url") ?? String(server, name, "serverUrl");
@@ -180,6 +191,9 @@ public sealed partial class McpConfiguration
             Disabled = Bool(server, name, "disabled") == true || Bool(server, name, "enabled") == false,
             AutoApproveAll = autoAll,
             AutoApprove = autoTools,
+            Registry = String(server, name, "registry") is { Length: > 0 } registry ? registry.Trim() : null,
+            RegistryVersion = String(server, name, "version") is { Length: > 0 } version ? version.Trim() : null,
+            Secrets = used.Distinct(StringComparer.Ordinal).ToArray(),
             Problem = problems.Count == 0 ? null : string.Join(" ", problems.Distinct())
         };
     }
@@ -202,7 +216,8 @@ public sealed partial class McpConfiguration
         return (false, tools.Distinct(StringComparer.Ordinal).ToArray());
     }
 
-    private static string ExpandVariables(string text, Func<string, string?> environment, List<string> problems) =>
+    private static string ExpandVariables(string text, Func<string, string?> environment, Func<string, string?> secrets,
+        List<string> problems, List<string> used) =>
         VariablePattern().Replace(text, match =>
         {
             var key = match.Groups[1].Value;
@@ -214,10 +229,46 @@ public sealed partial class McpConfiguration
                 if (found is null) problems.Add($"The environment variable {variable} isn't set for Martlet.");
                 return found ?? "";
             }
+            if (key.StartsWith("secret:", StringComparison.Ordinal))
+            {
+                var secret = key[7..];
+                used.Add(secret);
+                var found = secrets(secret);
+                if (found is null)
+                    problems.Add($"The secret {secret} isn't saved on this PC. Install the server again from the MCP directory to enter it.");
+                return found ?? "";
+            }
             return match.Value;
         });
 
-    [GeneratedRegex(@"\$\{(userHome|env:[A-Za-z_][A-Za-z0-9_]*)\}", RegexOptions.CultureInvariant)]
+    /// <summary>Every ${secret:NAME} name used anywhere in <paramref name="json"/> (none if it can't be read).</summary>
+    public static IReadOnlyList<string> SecretNames(string json)
+    {
+        try { return SecretNames(ReadDocument(json)); }
+        catch (McpConfigurationException) { return []; }
+    }
+
+    /// <summary>The ${secret:NAME} names used anywhere in one server's entry.</summary>
+    public static IReadOnlyList<string> SecretNames(JsonNode? entry)
+    {
+        var names = new List<string>();
+        void Visit(JsonNode? node)
+        {
+            switch (node)
+            {
+                case JsonObject values: foreach (var (_, child) in values) Visit(child); break;
+                case JsonArray items: foreach (var child in items) Visit(child); break;
+                case JsonValue value when value.TryGetValue<string>(out var text):
+                    foreach (Match match in VariablePattern().Matches(text))
+                        if (match.Groups[1].Value.StartsWith("secret:", StringComparison.Ordinal)) names.Add(match.Groups[1].Value[7..]);
+                    break;
+            }
+        }
+        Visit(entry);
+        return names.Distinct(StringComparer.Ordinal).ToArray();
+    }
+
+    [GeneratedRegex(@"\$\{(userHome|env:[A-Za-z_][A-Za-z0-9_]*|secret:[A-Za-z0-9._-]{1,128})\}", RegexOptions.CultureInvariant)]
     private static partial Regex VariablePattern();
 
     private static string? String(JsonObject server, string name, string property) => server[property] switch
@@ -284,6 +335,70 @@ public sealed partial class McpConfiguration
             throw new McpConfigurationException($"Server \"{server}\" isn't in mcp.json any more.");
         edit(entry);
         return document.ToJsonString(Writing);
+    }
+
+    private static JsonObject ReadDocument(string json)
+    {
+        try
+        {
+            return JsonNode.Parse(string.IsNullOrWhiteSpace(json) ? "{}" : json, documentOptions: Reading) as JsonObject
+                ?? throw new McpConfigurationException("The file must be a JSON object.");
+        }
+        catch (JsonException) { throw new McpConfigurationException("mcp.json isn't valid JSON; fix it in the editor first."); }
+    }
+
+    /// <summary>Returns <paramref name="json"/> with <paramref name="entry"/> saved as server <paramref name="server"/>,
+    /// replacing one of that name only when <paramref name="replace"/> is set (comments in the file are not preserved).</summary>
+    public static string AddServer(string json, string server, JsonObject entry, bool replace = false)
+    {
+        if (server.Trim().Length == 0 || server.Length > McpServerDefinition.MaxNameLength || server.Any(char.IsControl))
+            throw new McpConfigurationException($"Server names must be 1-{McpServerDefinition.MaxNameLength} characters.");
+        var document = ReadDocument(json);
+        var section = Section(document);
+        if (section is null) document["mcpServers"] = section = new JsonObject();
+        var existing = section.Select(pair => pair.Key).FirstOrDefault(name => string.Equals(name, server, StringComparison.OrdinalIgnoreCase));
+        if (existing is not null && !replace) throw new McpConfigurationException($"A server named \"{existing}\" is already in mcp.json.");
+        if (existing is null && section.Count >= MaxServers)
+            throw new McpConfigurationException($"Martlet supports at most {MaxServers} MCP servers; remove one first.");
+        if (existing is not null) section.Remove(existing);
+        section[server] = entry.DeepClone();
+        return document.ToJsonString(Writing);
+    }
+
+    /// <summary>A copy of the entry named <paramref name="server"/> (ignoring case), or null.</summary>
+    public static JsonObject? FindServer(string json, string server)
+    {
+        try
+        {
+            return Section(ReadDocument(json))?.FirstOrDefault(pair => string.Equals(pair.Key, server, StringComparison.OrdinalIgnoreCase))
+                .Value?.DeepClone() as JsonObject;
+        }
+        catch (McpConfigurationException) { return null; }
+    }
+
+    /// <summary>Returns <paramref name="json"/> without server <paramref name="server"/> and the entry it removed.</summary>
+    public static (string Json, JsonObject Removed) RemoveServer(string json, string server)
+    {
+        var document = ReadDocument(json);
+        if (Section(document) is not { } section || section[server] is not JsonObject entry)
+            throw new McpConfigurationException($"Server \"{server}\" isn't in mcp.json any more.");
+        section.Remove(server);
+        return (document.ToJsonString(Writing), entry);
+    }
+
+    /// <summary>The first of <paramref name="name"/>, name-2, name-3... that no server in <paramref name="json"/> uses.</summary>
+    public static string UniqueName(string json, string name)
+    {
+        HashSet<string> taken;
+        try { taken = Section(ReadDocument(json))?.Select(pair => pair.Key).ToHashSet(StringComparer.OrdinalIgnoreCase) ?? []; }
+        catch (McpConfigurationException) { taken = []; }
+        var candidate = name;
+        for (var n = 2; taken.Contains(candidate); n++)
+        {
+            var suffix = $"-{n}";
+            candidate = name[..Math.Min(name.Length, McpServerDefinition.MaxNameLength - suffix.Length)] + suffix;
+        }
+        return candidate;
     }
 
     public static void AddAutoApproveEntry(JsonObject entry, string tool)

@@ -64,8 +64,8 @@ public partial class LorebookWindow : ThemedWindow
             ShowSettings(result.Library);
             savedSnapshot = loaded ? Snapshot(result.Library) : null;
             ResultText.Text = result.Error ?? (books.Count == 0
-                ? "No lorebooks yet. Create one, or import a SillyTavern World Info file or a character card with a lorebook."
-                : $"{books.Count} {(books.Count == 1 ? "lorebook" : "lorebooks")} loaded from this PC.");
+                ? "No lorebooks yet. Create one, or import a lorebook or character card."
+                : $"{books.Count} {(books.Count == 1 ? "lorebook" : "lorebooks")} loaded.");
             RenderBooks(books.FirstOrDefault());
         }
         finally
@@ -143,14 +143,14 @@ public partial class LorebookWindow : ThemedWindow
         book.Entries.Add(new LorebookEntryItem { Uid = 0, Title = "First entry" });
         books.Add(book);
         RenderBooks(book);
-        ResultText.Text = "New lorebook added. Give it entries, then Save lorebooks to keep it.";
+        ResultText.Text = "New lorebook added. Add entries, then save.";
     }
 
     private void DeleteBook_Click(object sender, RoutedEventArgs e)
     {
         if (BookChoice.SelectedItem is not LorebookItem book) return;
-        if (!ConfirmationDialog.Confirm(this, $"Delete the lorebook \"{book.Name}\" and its {book.Entries.Count} entries? " +
-            "It is gone once you Save lorebooks; Reload brings it back before then.", "Delete lorebook")) return;
+        if (!ConfirmationDialog.Confirm(this, $"Delete \"{book.Name}\" and its entries? Save to make this permanent.",
+            "Delete lorebook")) return;
         var index = books.IndexOf(book);
         books.Remove(book);
         RenderBooks(books.Count == 0 ? null : books[Math.Min(index, books.Count - 1)]);
@@ -180,7 +180,7 @@ public partial class LorebookWindow : ThemedWindow
             book.Entries.Insert(book.Entries.IndexOf(entry) + 1, copy);
             SelectEntry(copy);
         }
-        catch (ContractException error) { ResultText.Text = "Fix this entry before duplicating it. " + error.Message; }
+        catch (ContractException error) { ResultText.Text = "Fix this entry before duplicating. " + error.Message; }
     }
 
     private void DeleteEntry_Click(object sender, RoutedEventArgs e)
@@ -189,7 +189,7 @@ public partial class LorebookWindow : ThemedWindow
         var index = book.Entries.IndexOf(entry);
         book.Entries.Remove(entry);
         if (book.Entries.Count > 0) EntryList.SelectedItem = book.Entries[Math.Min(index, book.Entries.Count - 1)];
-        ResultText.Text = $"Entry \"{entry.Label}\" removed. Save lorebooks to make it permanent.";
+        ResultText.Text = $"Entry \"{entry.Label}\" removed. Save to make it permanent.";
         Render();
     }
 
@@ -224,10 +224,10 @@ public partial class LorebookWindow : ThemedWindow
             books.Add(item);
             RenderBooks(item);
             var constant = import.Book.Entries.Count(entry => entry.Constant);
-            ResultText.Text = $"Imported \"{item.Name}\" from a {import.Format}: {import.Book.Entries.Count} " +
+            ResultText.Text = $"Imported \"{item.Name}\" with {import.Book.Entries.Count} " +
                 $"{(import.Book.Entries.Count == 1 ? "entry" : "entries")}" + (constant > 0 ? $" ({constant} always on)" : "") +
-                (import.SkippedEntries > 0 ? $"; {import.SkippedEntries} skipped (empty, too long or without keywords)" : "") +
-                ". It is on for every persona; change that above, then Save lorebooks to keep it.";
+                (import.SkippedEntries > 0 ? $". {import.SkippedEntries} skipped." : "") +
+                " It is on for every persona; review and save.";
         }
         catch (ContractException error) { ResultText.Text = error.Message; }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
@@ -252,7 +252,7 @@ public partial class LorebookWindow : ThemedWindow
         try
         {
             File.WriteAllBytes(path, SillyTavernLorebooks.Export(book));
-            ResultText.Text = $"Exported \"{book.Name}\" as SillyTavern World Info JSON. Import it in SillyTavern under World Info.";
+            ResultText.Text = $"Exported \"{book.Name}\". Import it into SillyTavern as World Info.";
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
@@ -316,8 +316,8 @@ public partial class LorebookWindow : ThemedWindow
             revision = saved.Revision;
             savedSnapshot = Snapshot(library);
             var on = library.Books.Count(book => book.Activation != LorebookActivation.Off);
-            ResultText.Text = $"Lorebooks saved on this PC: {library.Books.Count} {(library.Books.Count == 1 ? "lorebook" : "lorebooks")}, {on} on. " +
-                "The next reply uses them.";
+            ResultText.Text = $"Lorebooks saved: {library.Books.Count} {(library.Books.Count == 1 ? "lorebook" : "lorebooks")}, {on} on. " +
+                "The next reply can use them.";
             return true;
         }
         finally
@@ -356,30 +356,21 @@ public partial class LorebookWindow : ThemedWindow
 
     private static string Describe(LorebookScanResult result, LorebookLibrary library)
     {
-        if (result.ActiveBooks == 0) return "No lorebook is on for this persona, so nothing would be added.";
+        if (result.ActiveBooks == 0) return "No lorebook is on for this persona.";
         var text = new StringBuilder();
         if (result.Included.Count == 0)
-            text.Append("Nothing triggers. Keywords are searched in the last ").Append(library.ScanDepth)
+            text.Append("No entries would be added. Martlet checks the last ").Append(library.ScanDepth)
                 .Append(library.ScanDepth == 1 ? " message" : " messages").Append(library.MatchWholeWords ? " as whole words" : "").Append('.');
         else
         {
-            text.Append($"{result.Included.Count} {(result.Included.Count == 1 ? "entry" : "entries")} would be added " +
-                $"({result.UsedUtf8Bytes:N0} of {library.BudgetUtf8Bytes:N0} budget bytes):\n");
+            text.Append($"{result.Included.Count} {(result.Included.Count == 1 ? "entry" : "entries")} would be added:\n");
             foreach (var hit in result.Included)
-                text.Append($"- {hit.Entry.Label} ({hit.BookName}; {Trigger(hit)}; " +
+                text.Append($"- {hit.Entry.Label} from {hit.BookName} ({Trigger(hit)}, " +
                     $"{(hit.Entry.Position == LorebookPosition.BeforePersona ? "before" : "after")} the persona" +
                     (hit.Entry.Probability < 100 ? $"; {hit.Entry.Probability}% chance" : "") + ")\n");
         }
         if (result.OverBudget.Count > 0)
-            text.Append($"\nLeft out by the budget: {string.Join(", ", result.OverBudget.Select(hit => hit.Entry.Label))}.\n");
-        if (result.Included.Count > 0)
-        {
-            var (before, after) = LorebookPromptContext.Blocks(result.Included);
-            text.Append("\nAdded to the instructions:\n");
-            if (before is not null) text.Append(before).Append("\n[persona]\n");
-            else text.Append("[persona]\n");
-            if (after is not null) text.Append(after).Append('\n');
-        }
+            text.Append($"\nSkipped because of the budget: {string.Join(", ", result.OverBudget.Select(hit => hit.Entry.Label))}.\n");
         return text.ToString().TrimEnd();
     }
 

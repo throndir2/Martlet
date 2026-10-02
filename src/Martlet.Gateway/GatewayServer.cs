@@ -59,6 +59,13 @@ public sealed class GatewayServer
     public void AttachCommandStorage(IGatewayCommandStorage storage, string agentToken) =>
         application.Commands.Attach(storage, agentToken, application.Now);
 
+    /// <summary>Keeps this host's log (its own activity and, as the owner's log host, every computer's lines it receives;
+    /// served at /martlet/v1/logs) in <paramref name="storage"/> and loads the log saved there.</summary>
+    public void AttachLogStorage(IGatewayLogStorage storage) => application.Logs.Attach(storage);
+
+    /// <summary>Adds a line to this host's own log (for example a configuration problem the host found at start).</summary>
+    public void RecordActivity(string level, string message) => application.Logs.Own(level, message);
+
     public GatewayServer(
         GatewayHostIdentity identity,
         GatewayOrigin origin,
@@ -115,7 +122,10 @@ public sealed class GatewayServer
         {
             var listener = await listenerFactory.StartAsync(
                 binding, application.InvokeAsync, cancellationToken).ConfigureAwait(false);
-            return new InferenceListener(listener, inference);
+            application.Logs.Own(Martlet.Core.Logs.LogLevels.Info,
+                $"Gateway {identity.HostId} started on {listener.Origin.CanonicalOrigin}" +
+                (typeof(GatewayServer).Assembly.GetName().Version?.ToString(3) is { } version ? $" (Martlet {version})." : "."));
+            return new InferenceListener(listener, inference, application.Logs);
         }
         catch
         {
@@ -126,14 +136,18 @@ public sealed class GatewayServer
     }
 
     private sealed class InferenceListener(
-        GatewayListenerHandle listener, GatewayInferenceRouteRegistry inference) : GatewayListenerHandle
+        GatewayListenerHandle listener, GatewayInferenceRouteRegistry inference, GatewayLogStore logs) : GatewayListenerHandle
     {
+        private int stopping;
         public override GatewayOrigin Origin => listener.Origin;
         public override async ValueTask DisposeAsync()
         {
+            var first = Interlocked.Exchange(ref stopping, 1) == 0;
+            if (first) logs.Own(Martlet.Core.Logs.LogLevels.Info, "Gateway stopping.");
             var closing = inference.CloseAsync().AsTask();
             await listener.DisposeAsync().ConfigureAwait(false);
             await closing.ConfigureAwait(false);
+            if (first) logs.Flush();
         }
     }
 }

@@ -70,7 +70,7 @@ public sealed class LiveConversationTests
         var route = settings.Setup!.Routes.Single(item => item.Role == SetupRole.Llm);
         var disabled = SetupSettings.SetRouteEnabled(settings, SetupRole.Llm, false, true);
         var configuration = LiveConversationConfiguration.From(loaded with { Settings = disabled })!;
-        Assert.Contains("enabled OpenAI routes only", configuration.Unavailable(false, false));
+        Assert.Contains("Review Thinking in Companion", configuration.Unavailable(false, false));
         var selfHost = SetupSettings.ConfigureGatewayEndpoint(settings with
         {
             Setup = settings.Setup with { Routes = settings.Setup.Routes.Where(item => item.Role != SetupRole.Llm).ToArray() }
@@ -80,7 +80,7 @@ public sealed class LiveConversationTests
             SpkiFingerprint = "sha256:" + new string('a', 64), DeviceRole = "voice"
         }, route.ModelId);
         configuration = LiveConversationConfiguration.From(loaded with { Settings = selfHost })!;
-        Assert.Contains("saved self-host choice is retained", configuration.Unavailable(false, false));
+        Assert.Contains("This setup isn't available", configuration.Unavailable(false, false));
 
         // Handed to a paired host on the Devices page: pairing reference, route snapshot and recorded selection.
         var pairingCredential = HostPairingCredential.FromGuid(Guid.NewGuid());
@@ -95,7 +95,7 @@ public sealed class LiveConversationTests
         paired = SetupSettings.SetRouteEnabled(paired, SetupRole.Llm, true, true);
         configuration = LiveConversationConfiguration.From(loaded with { Settings = paired })!;
         Assert.Null(configuration.Unavailable(false, false));
-        Assert.Contains("Your own Martlet host runs this model", configuration.Disclosure(false));
+        Assert.Contains("your Martlet host fixture-host", configuration.Disclosure(false));
         var request = configuration.Request(new("Hello host"), false, ResponseStyle.Helpful, [], null, null, out _, out _, out _);
         Assert.Equal(SelfHostSetup.GatewayOllamaAlias, request.Model.ModelAlias);
         Assert.Equal("llama3.2-3b", request.Model.UpstreamModelId);
@@ -103,7 +103,7 @@ public sealed class LiveConversationTests
             (request.Host!.HostId, request.Host.Origin, HostPairingCredential.FromGuid(request.Host.CredentialId)));
         // llama3.2:3b is text-only: screen watching is refused with a concrete fix (a vision model on the host).
         Assert.Equal(VisionSupport.Unsupported, configuration.Vision());
-        Assert.Contains("gemma4:e2b", configuration.VisionAdvice());
+        Assert.Contains("vision-capable model for the host", configuration.VisionAdvice());
         var image = new BoundedImage([0xFF, 0xD8, 0xFF, .. new byte[32]], ImageMediaType.Jpeg, 4, 4);
         var glance = configuration.Request(new("(Screen glance.)"), false, ResponseStyle.Helpful, [], null, null, out _, out _, out _, image,
             LiveConversationConfiguration.CommentaryInstructions(Chattiness.Normal), LiveConversationConfiguration.SilentReply);
@@ -132,7 +132,7 @@ public sealed class LiveConversationTests
         Assert.Null(configuration.Unavailable(false, true));
         Assert.Equal(("gpu-host", pairing), (configuration.SttHostTarget()!.HostId, configuration.SttHostTarget()!.CredentialId));
         Assert.Contains("your Martlet host gpu-host", configuration.Disclosure(false));
-        Assert.Contains("not stored", configuration.Disclosure(false));
+        Assert.Contains("doesn't store recordings", configuration.Disclosure(false));
 
         // The host adapter consumes the same one-use upload authorization, bound to the host's origin and model.
         var host = configuration.SttHostTarget()!;
@@ -813,7 +813,7 @@ public sealed class LiveConversationTests
         changed = SetupSettings.ReplaceRoute(changed, route with { Consent = route.Selection() });
         await fixture.Save(changed);
         var configuration = fixture.Controller.Configuration!;
-        Assert.Contains("retired meta/llama-3.3-70b-instruct", configuration.Unavailable(false, false));
+        Assert.Contains("retired this Thinking model", configuration.Unavailable(false, false));
         Assert.Equal(VisionSupport.Unsupported, configuration.Vision());
         Assert.Contains("google/diffusiongemma-26b-a4b-it", configuration.VisionAdvice());
         fixture.NoEffects();
@@ -889,7 +889,7 @@ public sealed class LiveConversationTests
         Assert.Null(operation.ResponseStyle);
         using var body = JsonDocument.Parse(fixture.Llm.Body);
         Assert.False(body.RootElement.TryGetProperty("instructions", out _));
-        Assert.Contains("legacy settings profile has no persona", fixture.Controller.Configuration!.Disclosure(false));
+        Assert.Contains("No companion persona is included", fixture.Controller.Configuration!.Disclosure(false));
     }
 
     [Fact]

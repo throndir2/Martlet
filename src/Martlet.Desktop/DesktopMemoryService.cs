@@ -302,7 +302,7 @@ internal sealed class DesktopMemoryService : IDisposable
     }
 
     private static DesktopMemoryException Invalidated() => new("memory.retrieval_invalidated",
-        "Memory changed or was turned off while it was being read.");
+        "Memory changed while it was being read.");
 
     internal void Invalidate()
     {
@@ -331,7 +331,7 @@ internal sealed class DesktopMemoryService : IDisposable
         var approval = preview.Authorize(MemoryConsentDecision.Allow);
         if (!await storeGate.WaitAsync(StoreWait, token).ConfigureAwait(false))
             throw new DesktopMemoryException("memory.busy",
-                "Memory is busy with another action or a pending cleanup. Try again in a moment.");
+                "Memory is busy. Try again in a moment.");
         MemoryStore store;
         try
         {
@@ -387,7 +387,7 @@ internal sealed class DesktopMemoryService : IDisposable
         if (loaded.State != SettingsLoadState.Loaded || loaded.Error is not null ||
             loaded.Settings?.Memory is not { Enabled: true } memory)
             throw new DesktopMemoryException("memory.disabled",
-                "Memory is OFF. Turn it on in Memory to let Martlet remember and recall things.");
+                "Memory is off. Turn it on in Memory to remember and recall facts.");
         if (memory.ConfigurationRevision != expectedConfigurationRevision)
             throw new DesktopMemoryException("memory.configuration_changed",
                 "Memory settings changed. Reload and try again.");
@@ -408,7 +408,7 @@ internal sealed class DesktopMemoryService : IDisposable
         var now = clock.GetUtcNow();
         if (now.Offset != TimeSpan.Zero)
             throw new DesktopMemoryException("memory.clock_invalid",
-                "The local UTC clock is unavailable for memory provenance.");
+                "The system clock needs UTC support for memory.");
         return now;
     }
 

@@ -185,18 +185,18 @@ public partial class LiveConversationWindow : ThemedWindow
         if (completed != worker.Completion || stop.IsCancellationRequested)
         {
             worker.RequestCancellation();
-            notice = "Martlet couldn't read your settings in time. Close this window and open it again.";
+            notice = "Couldn't load settings. Close this window and try again.";
         }
         else if ((await worker.Completion).Loaded is { } loaded)
         {
             controller.Configure(loaded);
             ready = loaded.Error is null;
             notice = loaded.Error?.Summary ?? (controller.Configuration is null
-                ? "Set up how Martlet thinks in Companion › Thinking, then come back to talk." : null);
+                ? "Set up Thinking in Companion, then come back to talk." : null);
             Warm();
             StartLive();
         }
-        else notice = "Martlet couldn't read your settings. Close this window and open it again.";
+        else notice = "Couldn't load settings. Close this window and try again.";
         RenderActions();
     }
 
@@ -246,11 +246,11 @@ public partial class LiveConversationWindow : ThemedWindow
         return status.State switch
         {
             LocalModelState.Loading when status.Elapsed >= TimeSpan.FromSeconds(1) =>
-                $"Ollama is loading {local.Model} on this PC ({status.Elapsed.TotalSeconds:0} s)… the first reply waits for it.",
+                $"Starting local model {local.Model}… the first reply may take a moment.",
             _ when !problems => null,
-            LocalModelState.NotRunning => "Ollama isn't running on this PC. Start Ollama from the Start menu; Martlet notices when it answers.",
-            LocalModelState.MissingModel => $"Ollama on this PC doesn't have {local.Model}. Download it in Companion › Thinking.",
-            LocalModelState.Failed => $"Ollama on this PC couldn't load {local.Model}: {status.Detail}. Choose a smaller model in " +
+            LocalModelState.NotRunning => "Start Ollama, then try again.",
+            LocalModelState.MissingModel => $"Download {local.Model} in Companion › Thinking.",
+            LocalModelState.Failed => $"Couldn't start {local.Model}: {status.Detail}. Choose a smaller model in " +
                 "Companion › Thinking, or close programs that use a lot of memory.",
             _ => null
         };
@@ -295,7 +295,7 @@ public partial class LiveConversationWindow : ThemedWindow
         if (reloadReason is { } reason)
         {
             reloadReason = null;
-            if (Messages.Count > 0) AddNote(reason + " Martlet switched over and started a fresh conversation.");
+            if (Messages.Count > 0) AddNote(reason + " Martlet started a fresh conversation.");
             LoadAsync().Forget();
             return;
         }
@@ -462,10 +462,10 @@ public partial class LiveConversationWindow : ThemedWindow
     private static string MicProblem(ErrorCode code) => code switch
     {
         ErrorCode.AudioAccessDenied =>
-            "Windows isn't letting Martlet use the microphone: check Settings › Privacy & security › Microphone, including desktop-app access.",
-        ErrorCode.AudioDeviceBusy => "Another app is using the microphone exclusively.",
-        ErrorCode.AudioFormatUnsupported => "The microphone's sound format isn't supported; choose another in Companion › Listening.",
-        _ => "Martlet can't open the microphone chosen in Companion › Listening (unplugged, disabled or missing?)."
+            "Windows is blocking the microphone. Allow desktop apps to use it in Windows Settings.",
+        ErrorCode.AudioDeviceBusy => "Another app is using the microphone.",
+        ErrorCode.AudioFormatUnsupported => "This microphone isn't supported. Choose another in Companion › Listening.",
+        _ => "Martlet can't open the microphone. Check that it is connected and enabled."
     };
 
     private static string? ListenOutcome(LiveConversationStatus status, LiveConversationConfiguration? configuration)
@@ -473,7 +473,7 @@ public partial class LiveConversationWindow : ThemedWindow
         if (status.Quarantined) return Remedy("conversation.cleanup_quarantined");
         if (status.ProviderFailure is { } provider)
             return configuration?.SttHostTarget() is { } host && HostRemedy(provider, host.HostId, ProviderRole.Stt) is { } remedy
-                ? remedy : "Speech-to-text: " + ProviderRemedy(provider);
+                ? remedy : "Couldn't transcribe speech. " + ProviderRemedy(provider);
         return status.Code is "listen.heard" or "listen.held" or "mic.no_speech" or "stt.NoSpeech" or "speaker.not_user" or
             "speaker.too_short" or "conversation.canceled" or "conversation.revoked" or "conversation.expired" ? null : Remedy(status.Code);
     }
@@ -580,9 +580,9 @@ public partial class LiveConversationWindow : ThemedWindow
             else
             {
                 var refusal = done.Turn?.Content.Refusal?.Trim();
-                if (!string.IsNullOrEmpty(refusal) && reply.Text != refusal) reply.AddNote("Martlet then declined: " + refusal);
+                if (!string.IsNullOrEmpty(refusal) && reply.Text != refusal) reply.AddNote("Martlet declined: " + refusal);
                 else if (done.Turn?.Snapshot.State is not (ConversationState.Completed or ConversationState.Refused)) reply.AddNote("Cut short.");
-                else if (done.Turn?.Snapshot.SpeechLimitReached == true) reply.AddNote("Only the start was said aloud.");
+                else if (done.Turn?.Snapshot.SpeechLimitReached == true) reply.AddNote("Only the beginning was spoken.");
             }
         }
         if (done.Spoken && !continued)
@@ -667,7 +667,7 @@ public partial class LiveConversationWindow : ThemedWindow
         if (commentary is { OwnershipReleased: false } glance)
         {
             controller.Stop(glance, "commentary.interrupted", keepContext: true);
-            notice = "Martlet stopped its remark so you can talk. Hold to talk again.";
+            notice = "Martlet stopped its remark. Hold to talk again.";
             return false;
         }
         if (owned is { OwnershipReleased: false } live)
@@ -762,8 +762,8 @@ public partial class LiveConversationWindow : ThemedWindow
     /// <summary>Why always listening can't start, with where to fix it.</summary>
     private string ListeningProblem() =>
         controller.Configuration?.Unavailable(Voice, true) is { } why
-            ? $"Martlet can't listen yet ({why}) Fix it in Companion › Listening; you can still type."
-            : "Martlet can't listen yet. Set up listening in Companion › Listening; you can still type.";
+            ? $"Martlet can't listen yet. {why} You can still type."
+            : "Martlet can't listen yet. Check Companion › Listening. You can still type.";
 
     private void Vision_Click(object sender, RoutedEventArgs e)
     {
@@ -878,11 +878,11 @@ public partial class LiveConversationWindow : ThemedWindow
         MicChip.IsEnabled = true;
         MicText.Text = micDown ? "Mic unavailable" : cantListen ? "Can't listen" : listening ? "Listening" : micUsable ? "Listening paused" : "Can't listen";
         MicDot.SetResourceReference(Shape.FillProperty, micDown || cantListen ? "WarningBrush" : listening ? "SuccessBrush" : micUsable ? "MutedBrush" : "WarningBrush");
-        MicChip.ToolTip = micDown ? $"{micProblem} Martlet tries the microphone again every few seconds. Click to pause listening."
-            : cantListen ? $"{listenProblem} Martlet keeps trying and listens as soon as it can. Click to pause listening."
+        MicChip.ToolTip = micDown ? $"{micProblem} Martlet will try again soon. Click to pause listening."
+            : cantListen ? $"{listenProblem} Martlet will listen when it can. Click to pause listening."
             : listening ? (listener is { Held: true }
-                ? "Not listening while Martlet speaks, so it never hears itself; it listens again right after. Click to pause listening."
-                : "Martlet hears you whenever you speak, even while it thinks, and decides when to answer. Click to pause listening.")
+                ? "Paused while Martlet speaks. Click to pause listening."
+                : "Martlet listens for you and answers when needed. Click to pause listening.")
             : micUsable ? "Click to listen again." : ListeningProblem();
         AutomationProperties.SetName(MicChip, MicText.Text + ". " + MicChip.ToolTip);
 
@@ -902,10 +902,9 @@ public partial class LiveConversationWindow : ThemedWindow
             }
         }
         VisionChip.ToolTip = watching
-            ? $"Martlet checks {watchSource.Label} every {ScreenCommentaryPacer.Tick.TotalSeconds:0} s (the dot blinks) and now and then takes a look: " +
-              "one picture goes to the Thinking model, which stays quiet unless something is worth a remark." +
+            ? $"Martlet checks {watchSource.Label} and occasionally sends one picture to the Thinking model." +
               (lastCheck is { } checkedAt ? $" Last checked at {checkedAt:T}." : "") +
-              (captureNote is { } why ? $" Full-screen game capture is unavailable ({why}); borderless and windowed still work." : "") + " Click to stop."
+              (captureNote is { } why ? $" Full-screen capture is unavailable: {why}. Try borderless or windowed mode." : "") + " Click to stop."
             : visionProblem ?? "Click to let Martlet look again.";
         AutomationProperties.SetName(VisionChip, VisionText.Text.TrimEnd('…') + ". " + VisionChip.ToolTip);
         var visionLine = VisionLine();
@@ -916,7 +915,7 @@ public partial class LiveConversationWindow : ThemedWindow
         StopButton.IsEnabled = owned is { OwnershipReleased: false } || commentary is { OwnershipReleased: false } ||
             pendingText is not null || heardQueue.Count > 0 || watching || loading is not null;
         LevelMeter.Visibility = listening ? Visibility.Visible : Visibility.Collapsed;
-        Title = watching ? $"Martlet - talk (looking at {watchSource.Label})" : "Martlet - talk";
+        Title = watching ? $"Talk with Martlet (watching {watchSource.Label})" : "Talk with Martlet";
         ResultText.Text = notice ?? Activity();
         EmptyDetail.Text = !available ? "" : listening ? "Just start talking, or type below."
             : pushToTalk ? "Type below, or hold the talk button to speak." : "Type a message below.";
@@ -936,7 +935,7 @@ public partial class LiveConversationWindow : ThemedWindow
             return live.Status.Code == "home.asking" ? "Checking with Home Assistant…" : Replying(live);
         }
         if (listener is { Transcribing: > 0 }) return "Got it. Transcribing…";
-        if (heardQueue.Count > 0) return "Listening for the rest…";
+        if (heardQueue.Count > 0) return "Waiting for you to finish…";
         if (commentary is { OwnershipReleased: false }) return "Martlet is taking a look…";
         return Idle();
     }
@@ -952,7 +951,7 @@ public partial class LiveConversationWindow : ThemedWindow
         var snapshot = live.Turn?.Snapshot;
         if (snapshot?.ActiveTool is { } tool)
             return controller.Tools?.PendingApproval is { Answer.IsCompleted: false } ask
-                ? $"May Martlet use {ask.Tool}? Answer above the message box." : $"Using {tool}…";
+                ? $"Allow {ask.Tool}? Answer above." : $"Using {tool}…";
         return snapshot?.State == ConversationState.Playing ? "Martlet is speaking. Esc stops it." : LocalModelNote(false) ??
             (live.Spoken ? "Martlet is thinking… keep talking if you're not done." : "Martlet is thinking…");
     }
@@ -998,11 +997,10 @@ public partial class LiveConversationWindow : ThemedWindow
     private string VisionLine()
     {
         if (!watching) return visionProblem is { } problem && problem != notice ? problem : "";
-        var looks = pacer is { } p && p.LooksThisHour is > 0 and var count ? $" Looks this hour: {count} of {p.Settings.LooksPerHour}." : "";
-        if (sight is null) return $"Starting to watch {watchSource.Label}.";
-        if (!seeing) return sight + (lookNote is null ? "" : " " + lookNote) + looks;
-        var state = commentary is { OwnershipReleased: false } ? "Taking a look now…" : waitNote ?? lookNote ?? "First look soon.";
-        return $"{sight} {state}{looks}";
+        if (sight is null) return $"Watching {watchSource.Label} soon.";
+        if (!seeing) return sight + (lookNote is null ? "" : " " + lookNote);
+        var state = commentary is { OwnershipReleased: false } ? "Taking a look…" : waitNote ?? lookNote ?? "First look soon.";
+        return $"{sight} {state}";
     }
 
     // Runs on the UI timer: notices conversation, collects finished glances and schedules the next capture.
@@ -1046,16 +1044,16 @@ public partial class LiveConversationWindow : ThemedWindow
             {
                 sight = !source.IsScreen ? result.Skip switch
                 {
-                    GlanceSkip.Blank => $"{char.ToUpperInvariant(source.Label[0])}{source.Label[1..]} shows only black (lens covered, privacy shutter closed or the camera is off).",
+                    GlanceSkip.Blank => $"{char.ToUpperInvariant(source.Label[0])}{source.Label[1..]} is black. Check the lens cover or privacy shutter.",
                     _ => result.Note ?? "Couldn't read the camera this time; trying again shortly."
                 } : result.Skip switch
                 {
-                    GlanceSkip.MartletInFront => "Only Martlet's own windows are in view, so there's nothing to look at.",
-                    GlanceSkip.Private => "A password manager or private window is in front; not looking.",
-                    GlanceSkip.Blank when result.ProtectedContent => "Windows blacks out protected video, so Martlet can't see it.",
+                    GlanceSkip.MartletInFront => "Only Martlet is visible.",
+                    GlanceSkip.Private => "A private window is in front, so Martlet won't look.",
+                    GlanceSkip.Blank when result.ProtectedContent => "Protected video is hidden by Windows.",
                     GlanceSkip.Blank when result.Note is { } why =>
-                        $"The screen reads back black and full-screen capture is unavailable: {why}. Borderless or windowed mode still works.",
-                    GlanceSkip.Blank => "The screen reads back black (protected content or a game that blocks capture).",
+                        $"The screen is black to Martlet. Try borderless or windowed mode. {why}.",
+                    GlanceSkip.Blank => "The screen is black to Martlet.",
                     GlanceSkip.Minimized or GlanceSkip.NoWindow => "No window in front to look at.",
                     _ => "Couldn't capture the screen this time."
                 };
@@ -1073,8 +1071,8 @@ public partial class LiveConversationWindow : ThemedWindow
             lookWanted = verdict == PacerVerdict.Look;
             waitNote = verdict switch
             {
-                PacerVerdict.UserAway => "You seem to be away; waiting for you.",
-                PacerVerdict.HourlyLimit => "Hourly look budget used up; resting.",
+                PacerVerdict.UserAway => "Waiting until you're back.",
+                PacerVerdict.HourlyLimit => "Taking a break from looking.",
                 PacerVerdict.AfterConversation => "You're talking; not interrupting.",
                 PacerVerdict.Busy when commentary is not { OwnershipReleased: false } => "You're talking; not interrupting.",
                 _ => null
@@ -1110,7 +1108,7 @@ public partial class LiveConversationWindow : ThemedWindow
         }
         catch (Exception error) when (error is ContractException or InvalidOperationException or NotSupportedException or System.Runtime.InteropServices.ExternalException)
         {
-            lookNote = "Couldn't prepare the image this time.";
+            lookNote = "Couldn't prepare the image.";
             return false;
         }
         finally
@@ -1127,20 +1125,20 @@ public partial class LiveConversationWindow : ThemedWindow
         if (done.Passed)
         {
             pacer?.NoteLook(false);
-            lookNote = $"Last look at {at}: nothing worth saying.";
+            lookNote = $"Last look {at}: nothing to say.";
             return;
         }
         if (status.Code is "runtime.Completed")
         {
             pacer?.NoteLook(true);
             if (done.Turn?.Content.Text.Trim() is { Length: > 0 } remark) Add(ChatRole.Martlet, remark, $"Martlet, about {watchSource.Label}");
-            lookNote = $"Last look at {at}: said something.";
+            lookNote = $"Last look {at}: commented.";
             return;
         }
         if (status.Code is "runtime.Refused" or "commentary.interrupted" or "commentary.stopped" or "conversation.canceled" or "conversation.revoked")
         {
             pacer?.NoteLook(false);
-            lookNote = status.Code == "runtime.Refused" ? $"Last look at {at}: the model declined to comment." : $"Last look at {at}: stopped so you could talk.";
+            lookNote = status.Code == "runtime.Refused" ? $"Last look {at}: no comment." : $"Last look {at}: stopped.";
             return;
         }
         // No automatic retry of a failing request: stop and say what to change.
@@ -1148,13 +1146,13 @@ public partial class LiveConversationWindow : ThemedWindow
         var provider = done.Turn?.Snapshot.ProviderFailure ?? status.ProviderFailure;
         var job = FailedJob(done);
         StopWatching(job == ProviderRole.Tts
-            ? "Martlet stopped looking because it couldn't speak: " + ProviderRemedy(provider!.Value, done.Authorization.Configuration, job)
+            ? "Martlet stopped vision. " + ProviderRemedy(provider!.Value, done.Authorization.Configuration, job)
             : provider == ProviderFailureCode.InputLimit
-            ? "The picture didn't fit the Thinking route. If Thinking runs on your Martlet host, update the host so its gateway accepts images."
+            ? "The picture was too large for Thinking. If Thinking runs on a Martlet host, update the host."
             : provider is not (null or ProviderFailureCode.ModelRetired or ProviderFailureCode.ModelNotFound) &&
                 selected is not null && selected.Vision() != VisionSupport.Supported
-            ? $"The Thinking model rejected the picture ({provider}); it most likely can't see images. {selected.VisionAdvice()}"
-            : "Martlet stopped looking: " + (provider is { } code ? ProviderRemedy(code, done.Authorization.Configuration, job) : Remedy(status.Code)));
+            ? $"The Thinking model rejected the picture. {selected.VisionAdvice()}"
+            : "Martlet stopped vision. " + (provider is { } code ? ProviderRemedy(code, done.Authorization.Configuration, job) : Remedy(status.Code)));
     }
 
     /// <summary>Stops looking and frees the screen capture, camera or stream. A <paramref name="problem"/> is shown and keeps
@@ -1198,7 +1196,7 @@ public partial class LiveConversationWindow : ThemedWindow
                 StopListening(keepHeard: false);
                 answering = null;
                 if (watching) StopWatching(null);
-                if (Messages.Count > 0) AddNote("Windows was locked, so Martlet stopped listening and looking and started a fresh conversation.");
+                if (Messages.Count > 0) AddNote("Windows was locked, so Martlet stopped and started a fresh conversation.");
             }
             else
             {
@@ -1213,8 +1211,8 @@ public partial class LiveConversationWindow : ThemedWindow
     private void MemoryCaptured(MemoryCaptureReport report) => Dispatcher.BeginInvoke(() =>
     {
         if (closed) return;
-        var text = report.Failure is { } failure
-            ? $"Couldn't update memory for that exchange ({failure})."
+        var text = report.Failure is not null
+            ? "Couldn't update memory."
             : string.Join("  ", report.Changes!.Select(change => change.Kind switch
             {
                 MemoryCaptureKind.Remember => "Remembered: ",
@@ -1229,7 +1227,7 @@ public partial class LiveConversationWindow : ThemedWindow
     private void VoicesNamed(IReadOnlyList<(Martlet.Core.Speakers.KnownVoice Voice, string Name)> learned) => Dispatcher.BeginInvoke(() =>
     {
         if (closed) return;
-        var text = string.Join("  ", learned.Select(l => $"Learned: {l.Voice.Tag.Replace("V", "voice ")} is {l.Name}."));
+        var text = string.Join("  ", learned.Select(l => $"Learned {l.Voice.Tag.Replace("V", "voice ")} is {l.Name}."));
         if (lastReply is not null) lastReply.AddNote(text);
         else AddNote(text);
     });
@@ -1298,8 +1296,8 @@ public partial class LiveConversationWindow : ThemedWindow
             return;
         }
         var left = Math.Max(0, (int)Math.Ceiling((request.Expires - clock.GetUtcNow()).TotalSeconds));
-        ToolApprovalText.Text = $"{request.Tool}, from the {request.Server} server, with what's below. It runs on this PC with your " +
-            $"permissions. Declined automatically in {left} s.";
+        ToolApprovalText.Text = $"Allow {request.Tool} from {request.Server}? It can use this PC with your permissions. " +
+            $"Automatically denied in {left} s.";
         if (ReferenceEquals(shownApproval, request)) return;
         shownApproval = request;
         ToolApprovalArguments.Text = request.Arguments;
@@ -1336,9 +1334,9 @@ public partial class LiveConversationWindow : ThemedWindow
         return job switch
         {
             ProviderRole.Tts when code is ProviderFailureCode.ModelUnsupported or ProviderFailureCode.ModelNotFound or ProviderFailureCode.VoiceUnsupported =>
-                "Martlet couldn't speak: that voice isn't available (no longer installed, or not offered to this account). Choose another in Companion › Voice.",
-            ProviderRole.Tts => "Martlet couldn't speak: " + ProviderRemedy(code),
-            ProviderRole.Stt => "Speech-to-text: " + ProviderRemedy(code),
+                "Martlet couldn't speak. Choose another voice in Companion › Voice.",
+            ProviderRole.Tts => "Martlet couldn't speak. " + ProviderRemedy(code),
+            ProviderRole.Stt => "Couldn't transcribe speech. " + ProviderRemedy(code),
             _ => ProviderRemedy(code)
         };
     }
@@ -1347,23 +1345,22 @@ public partial class LiveConversationWindow : ThemedWindow
     /// the gateway answers that the worker is unavailable (stopped, still starting, or cut off from the gateway) as ModelNotFound.</summary>
     internal static string? HostRemedy(ProviderFailureCode code, string hostId, ProviderRole job)
     {
-        var (what, page) = job switch
+        var what = job switch
         {
-            ProviderRole.Tts => ("its voice (F5)", "Companion › Voice"),
-            ProviderRole.Stt => ("its speech-to-text (whisper)", "Companion › Listening"),
-            _ => ("its Thinking model (Ollama)", "Companion › Thinking")
+            ProviderRole.Tts => "voice",
+            ProviderRole.Stt => "listening",
+            _ => "Thinking"
         };
         return code switch
         {
             ProviderFailureCode.ModelNotFound or ProviderFailureCode.ModelUnsupported or ProviderFailureCode.Server =>
-                $"Your Martlet host {hostId} didn't run {what}: it may still be starting, or it stopped. Try again in a minute. " +
-                $"If it keeps happening, update or set up that computer's host service again in Martlet (Devices), or choose another in {page}.",
+                $"Your Martlet host {hostId} didn't answer for {what}. Try again in a minute. If it keeps happening, update or set up that host again on Devices.",
             ProviderFailureCode.Network =>
-                $"Couldn't reach your Martlet host {hostId} for {what}. Check that the computer is on and Docker is running, then try again.",
+                $"Couldn't reach your Martlet host {hostId}. Check that the computer is on, then try again.",
             ProviderFailureCode.VoiceUnsupported when job == ProviderRole.Tts =>
-                $"Martlet couldn't read the voice your host {hostId} speaks with on this PC. Choose a voice again in Companion › Voice.",
+                $"Martlet couldn't use the voice from host {hostId}. Choose a voice again in Companion › Voice.",
             ProviderFailureCode.CredentialUnavailable or ProviderFailureCode.Authentication or ProviderFailureCode.PermissionDenied =>
-                $"Martlet couldn't use this PC's pairing with your host {hostId}. Pair this PC with it again on Devices.",
+                $"Martlet couldn't use this PC's pairing with host {hostId}. Pair it again on Devices.",
             _ => null
         };
     }
@@ -1375,16 +1372,14 @@ public partial class LiveConversationWindow : ThemedWindow
         {
             ProviderFailureCode.DeadlineExceeded or ProviderFailureCode.FirstDeltaTimeout or ProviderFailureCode.IdleTimeout or
                 ProviderFailureCode.ConsentExpired =>
-                $"Ollama on this PC didn't answer within {local.TextLimits.MaxRequestTime.TotalMinutes:0} minutes. It may still be loading " +
-                $"{model}, or the model is too big for this PC's memory. Try again, or choose a smaller model in Companion › Thinking.",
-            ProviderFailureCode.Network => "Couldn't reach Ollama on this PC. Start Ollama from the Start menu, then try again.",
-            ProviderFailureCode.Server => $"Ollama on this PC couldn't run {model}. It may not fit this PC's memory: choose a smaller " +
+                $"Local model {model} didn't answer in time. Try again, or choose a smaller model in Companion › Thinking.",
+            ProviderFailureCode.Network => "Couldn't reach Ollama. Start it, then try again.",
+            ProviderFailureCode.Server => $"Couldn't run local model {model}. Choose a smaller " +
                 "model in Companion › Thinking, or close programs that use a lot of memory, then try again.",
             ProviderFailureCode.ModelNotFound or ProviderFailureCode.ModelUnsupported =>
-                $"Ollama on this PC doesn't have {model}. Download it in Companion › Thinking.",
+                $"Download local model {model} in Companion › Thinking.",
             ProviderFailureCode.OutputTokenLimit =>
-                "The model used the whole max reply length you set (thinking models spend part of it on hidden reasoning). " +
-                "Raise it, or clear it for no limit, in Companion › Replies.",
+                "The model hit the max reply length. Raise it in Companion › Replies, or ask for a shorter answer.",
             _ => null
         };
     }
@@ -1406,22 +1401,22 @@ public partial class LiveConversationWindow : ThemedWindow
         ProviderFailureCode.OriginRejected or ProviderFailureCode.CredentialBindingMismatch or ProviderFailureCode.RedirectRejected =>
             "The provider's address didn't match the one you set up, so nothing was sent there. Review it in Companion.",
         ProviderFailureCode.OutputTokenLimit =>
-            "The model used its whole reply budget (thinking models can spend it on hidden reasoning). Ask for a shorter answer, or choose a chat model in Companion.",
-        _ => $"Martlet couldn't use the provider's answer ({code}). Try again."
+            "The model hit the max reply length. Ask for a shorter answer, or raise the limit in Companion › Replies.",
+        _ => "Martlet couldn't use the provider's answer. Try again."
     };
 
     internal static string Remedy(string code) => code switch
     {
         "conversation.canceled" => "Stopped.",
         "conversation.focus_lost" => "The recording was thrown away because the talk button lost focus. Nothing was sent.",
-        "conversation.ownership_busy" => "Martlet is still finishing something else. Try again in a moment; if it stays stuck, close Martlet and open it again.",
+        "conversation.ownership_busy" => "Martlet is still finishing something else. Try again in a moment.",
         "conversation.setup_required" or "conversation.configuration_unsupported" =>
             "Martlet can't use its current setup. Review Thinking (and Voice or Listening) in Companion.",
         "conversation.configuration_changed" => "Your setup changed, so Martlet stopped. Try again.",
         "conversation.controls_blocked" or "conversation.locked" => "Windows is locked, so Martlet stopped.",
         "conversation.revoked" => "Stopped.",
         "conversation.input_limit" => "That's too long for Martlet's Thinking model. Try a shorter message.",
-        "conversation.invalid_input" => "That message can't be sent. Use ordinary text of at most 4096 characters.",
+        "conversation.invalid_input" => "That message can't be sent. Use shorter plain text.",
         "conversation.expired" => "That took too long, so Martlet gave up. Try again.",
         "memory.disabled" => "Memory is off. Turn it on in Companion › Memory.",
         "memory.configuration_changed" => "Memory settings changed during the reply. Try again.",
@@ -1435,10 +1430,10 @@ public partial class LiveConversationWindow : ThemedWindow
         "runtime.Refused" => "Martlet declined to answer that.",
         "runtime.Partial" or "runtime.Failed" or "runtime.Canceled" => "Martlet's reply didn't finish. Try again.",
         "conversation.cleanup_quarantined" or "mic.cleanup_quarantined" =>
-            "Martlet couldn't confirm that the microphone or speakers were released. Close Martlet and open it again before talking.",
+            "Martlet couldn't confirm that the microphone or speakers stopped. Restart Martlet before talking.",
         "commentary.vision_unsupported" => "Your Thinking model can't see images, so vision is off. Companion › Vision says what to change.",
         "commentary.interrupted" or "commentary.stopped" => "Martlet stopped its remark.",
         _ when code.StartsWith("policy.", StringComparison.Ordinal) => "Martlet didn't reply to that.",
-        _ => $"Something went wrong ({code}). Try again; Settings › Troubleshooting has the details."
+        _ => "Something went wrong. Try again. Details are in Settings › Troubleshooting."
     };
 }

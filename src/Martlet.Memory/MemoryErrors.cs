@@ -29,23 +29,23 @@ public sealed class MemoryException(MemoryFailure failure) : Exception(MessageFo
 
     private static string MessageFor(MemoryFailure failure) => failure switch
     {
-        MemoryFailure.InvalidData => "Memory data is invalid. Supply only the documented bounded fields.",
-        MemoryFailure.UnsupportedVersion => "The memory store uses an unsupported version. Preserve it and use a compatible build.",
-        MemoryFailure.InvalidPath => "Choose an explicit absolute local path without links, alternate streams or network storage.",
-        MemoryFailure.ConsentRequired => "Memory remains off. Review the selected local scope and explicitly allow this action.",
-        MemoryFailure.ConsentMismatch => "The approval does not match this exact scope, preview, revision or destination.",
+        MemoryFailure.InvalidData => "Memory data is invalid.",
+        MemoryFailure.UnsupportedVersion => "This memory store needs a newer Martlet.",
+        MemoryFailure.InvalidPath => "Choose a local folder on this PC.",
+        MemoryFailure.ConsentRequired => "Memory is off. Review the location and turn it on first.",
+        MemoryFailure.ConsentMismatch => "Memory changed. Review it again before continuing.",
         MemoryFailure.ConsentConsumed => "This approval was already used. Review and approve a fresh action.",
-        MemoryFailure.Busy => "This memory scope is already in use. Wait for its current owner to finish.",
-        MemoryFailure.Closed => "This memory resource is closed. Explicitly reopen the selected scope.",
-        MemoryFailure.LimitExceeded => "A memory count, text, query or storage bound was exceeded.",
-        MemoryFailure.CorruptStore => "The owned memory store is malformed or incomplete. Preserve it; no reset was performed.",
-        MemoryFailure.AccessDenied => "Memory storage access was denied. Choose an accessible local scope; do not elevate or disable protection.",
-        MemoryFailure.Conflict => "Memory changed since it was inspected. Reload and review the current fact before retrying.",
-        MemoryFailure.NotFound => "The exact memory fact was not found. No successful edit or deletion is claimed.",
-        MemoryFailure.QueryInvalidated => "Memory changed while the result was in flight. Run a fresh retrieval or export preview.",
+        MemoryFailure.Busy => "Memory is in use. Try again in a moment.",
+        MemoryFailure.Closed => "Memory was closed. Reopen it and try again.",
+        MemoryFailure.LimitExceeded => "Memory is too large for this action.",
+        MemoryFailure.CorruptStore => "The memory store is damaged. Keep it and choose another location if needed.",
+        MemoryFailure.AccessDenied => "Memory storage access was denied. Choose a folder you can write to.",
+        MemoryFailure.Conflict => "Memory changed. Reload and try again.",
+        MemoryFailure.NotFound => "That memory fact was not found.",
+        MemoryFailure.QueryInvalidated => "Memory changed while Martlet was reading it. Try again.",
         MemoryFailure.DestinationExists => "The selected export already exists. Choose a new filename; nothing was overwritten.",
-        MemoryFailure.CleanupPending => "An owned staging file still needs cleanup before another write or export.",
-        _ => "Local memory IO failed. Existing authoritative data was preserved; check storage and retry explicitly."
+        MemoryFailure.CleanupPending => "A previous memory export still needs cleanup. Try again after cleanup finishes.",
+        _ => "Memory storage failed. Check the location and try again."
     };
 }
 
