@@ -751,7 +751,16 @@ needs `--allow-ui-effects`; errors, Stop and `LiveStop` never stop listening,
 only the button or *Pause Martlet* in the notification-area menu does, and
 listening that can't start yet, such as Voice ID not set up, reads *Can't
 listen* and keeps retrying), Home's `OpenLiveConversation` (*Start talking*,
-or *Show conversation* while the talk window is open),
+or *Show conversation* while a conversation runs, shown or hidden), Home's
+`HomeListen` (*Start listening* / *Stop listening*, shown with always
+listening; it runs the conversation hidden, without the talk window, so it
+needs `--allow-ui-effects`) and `HomeListeningStatus` (the listening
+indicator: *Not listening*, *Getting ready to listen…*, *Listening. Just start
+talking.*, *Hearing you…*, *Martlet is replying…*, *Martlet is speaking…*,
+*Paused…* or why it can't listen, such as *Set up Thinking in Companion, then
+come back to talk.*). While Martlet listens or watches, the talk window's close
+button only hides it (`ui_snapshot` stops listing *Talk with Martlet*;
+`OpenLiveConversation` shows it again),
 `LiveVision` (*Watching*, *Looking*, *Vision paused* or *Can't see*, with when
 it last checked the screen; it checks every 3 s), `LiveVisionStatus` (while
 vision is on: what it sees, for example *Watching the window behind Martlet*,
@@ -824,7 +833,11 @@ choices and `TrayExit` need `--allow-ui-effects`. While another Martlet dialog
 `CloseToTray` (checked by default; saves `background.json`), `StartWithWindows`
 (the per-user Run entry `Martlet`: this executable, the same `--data-directory`
 and `--tray` when `StartInTray` is checked; verify with a disposable data
-directory and turn it off again afterwards), `StartInTray` and `BackgroundStatus`
+directory and turn it off again afterwards), `StartInTray`, `StartCompanion`
+(*When Martlet starts, show the character and start listening*; saves
+`background.json` and applies on every start, `--tray` included, so the
+desktop log records *Martlet started with the character and listening.*) and
+`BackgroundStatus`
 (status text: what closing does, and whether Windows starts Martlet, including
 when Windows' own Startup apps switch turned it off). A second start with the
 same data directory shows the running Martlet and exits (with `--tray` it only

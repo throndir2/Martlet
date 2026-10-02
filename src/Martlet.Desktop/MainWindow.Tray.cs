@@ -120,7 +120,7 @@ public partial class MainWindow
     private string TrayStatusText() => closing ? "Martlet is closing"
         : openConversation is { } talk
             ? talk.Paused ? "Martlet is paused" : talk.IsListening ? "Martlet is listening" : talk.IsWatching ? "Martlet is watching"
-                : "Martlet: talk window open"
+                : talk.IsVisible ? "Martlet: talk window open" : "Martlet is running"
         : "Martlet is running";
 
     private void UpdateTray() => tray?.SetToolTip(TrayStatusText());
@@ -150,7 +150,7 @@ public partial class MainWindow
         menu.Items.Add(TrayItem("TrayOpen", "_Open Martlet", ShowFromTray, bold: true));
         menu.Items.Add(TrayItem("TrayTalk", talk is null ? "_Talk to Martlet" : "Show the _talk window", TrayTalk,
             enabled: talk is not null || canTalk));
-        // Always listening starts only from Start listening, here or in the talk window (which this opens when needed).
+        // Always listening starts only from Start listening, here or on Home; it runs without the talk window.
         if (talk is { HandsFree: true, ListeningStarted: true })
             menu.Items.Add(TrayItem("TrayStopListening", "Stop _listening", () => { talk.ToggleListening(); UpdateTray(); }));
         else if (talk?.HandsFree ?? Talk.HandsFree)
@@ -160,7 +160,7 @@ public partial class MainWindow
             menu.Items.Add(talk.Paused
                 ? TrayItem("TrayResume", "_Resume Martlet", () => { talk.Resume(); UpdateTray(); })
                 : TrayItem("TrayPause", "_Pause Martlet", () => { talk.Pause(); UpdateTray(); }));
-            menu.Items.Add(TrayItem("TrayEndTalk", "_End the conversation", () => { if (talk.IsVisible) talk.Close(); }));
+            menu.Items.Add(TrayItem("TrayEndTalk", "_End the conversation", talk.End));
         }
         menu.Items.Add(TrayItem("TrayCharacter", avatar.IsShowing ? "Hide the _character" : "Show the _character",
             () => Character_Click(this, new RoutedEventArgs()), enabled: !blocked && setupService is not null));
@@ -211,8 +211,10 @@ public partial class MainWindow
         if (closing) return;
         if (openConversation is { } talk)
         {
+            if (!talk.IsVisible) talk.Show();
             if (talk.WindowState == WindowState.Minimized) talk.WindowState = WindowState.Normal;
             talk.Activate();
+            UpdateTray();
             return;
         }
         if (!IsWindowEnabled(WindowHandle))
@@ -223,11 +225,16 @@ public partial class MainWindow
         Conversation_Click(this, new RoutedEventArgs());
     }
 
-    /// <summary>Start listening from the menu: in the talk window, opening it first when it isn't open.</summary>
+    /// <summary>Start listening from the menu: Martlet listens without opening the talk window.</summary>
     private void TrayStartListening()
     {
-        TrayTalk();
-        openConversation?.ListenWhenReady();
+        if (closing) return;
+        if (openConversation is null && !IsWindowEnabled(WindowHandle))
+        {
+            ShowFromTray();
+            return;
+        }
+        StartListening();
         UpdateTray();
     }
 
@@ -322,6 +329,7 @@ public partial class MainWindow
         StartWithWindowsCheck.IsChecked = state == StartupState.On;
         StartInTrayCheck.IsChecked = background.StartInTray;
         StartInTrayCheck.IsEnabled = state == StartupState.On;
+        StartCompanionCheck.IsChecked = background.StartCompanion;
         changingBackgroundChoice = false;
         var closeText = tray is { Added: false }
             ? "Martlet's notification-area icon isn't available, so closing the window exits Martlet."
@@ -342,7 +350,9 @@ public partial class MainWindow
                 " Martlet's startup is turned off in Windows (Settings › Apps › Startup); tick Start with Windows to turn it back on.",
             _ => ""
         };
-        BackgroundStatusText.Text = problem ?? closeText + startText;
+        BackgroundStatusText.Text = problem ?? closeText + startText + (background.StartCompanion
+            ? " When Martlet starts, it shows the character and starts listening."
+            : "");
     }
 
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool IsWindowEnabled(nint window);

@@ -54,9 +54,10 @@ public sealed class ChatMessage : INotifyPropertyChanged
 }
 
 /// <summary>The conversation: its history and the message box. It is modeless, so the rest of Martlet stays usable while it is
-/// open. How Martlet listens (always or push-to-talk), whether it speaks and whether it may see (Vision) are chosen in Companion
+/// open, and optional: Home's Start listening runs it hidden, and closing it while Martlet listens or watches only hides it. How
+/// Martlet listens (always or push-to-talk), whether it speaks and whether it may see (Vision) are chosen in Companion
 /// and followed live; always listening starts only when you press Start listening (and stops from the same button), vision runs
-/// while the window is open and its button pauses it, and Stop (Esc) stops Martlet's reply, any recording and vision at once
+/// while the conversation runs and its button pauses it, and Stop (Esc) stops Martlet's reply, any recording and vision at once
 /// (listening carries on).</summary>
 public partial class LiveConversationWindow : ThemedWindow
 {
@@ -156,7 +157,36 @@ public partial class LiveConversationWindow : ThemedWindow
     {
         Motion.Sway(TalkMascot, 3, 4);
         InputText.Focus();
-        await LoadAsync();
+        await BeginAsync();
+    }
+
+    // The conversation loads once: when the window first shows, or earlier when it starts hidden (Start listening on Home).
+    private bool begun, loadPending, ending;
+
+    private Task BeginAsync()
+    {
+        if (begun) return Task.CompletedTask;
+        begun = true;
+        return LoadAsync();
+    }
+
+    /// <summary>Runs the conversation without showing the window: Home's Start listening, the notification-area menu and
+    /// starting with Martlet use it. Showing the window later only shows the history; it doesn't start again.</summary>
+    internal void StartInBackground()
+    {
+        if (closed) return;
+        new System.Windows.Interop.WindowInteropHelper(this).EnsureHandle();
+        BeginAsync().Forget();
+    }
+
+    /// <summary>Raised when the close button hid the window because the conversation keeps listening or watching.</summary>
+    internal event Action? HiddenToBackground;
+
+    /// <summary>Ends the conversation and closes the window, even while it listens (End the conversation, exiting Martlet).</summary>
+    internal void End()
+    {
+        ending = true;
+        Close();
     }
 
     /// <summary>Picks up who does what after it changed elsewhere (a synced change or a failover) as soon as Martlet is free.</summary>
@@ -170,7 +200,14 @@ public partial class LiveConversationWindow : ThemedWindow
     private async Task LoadAsync()
     {
         if (closed) return;
-        if (operations.IsRunning) { notice = Remedy("conversation.ownership_busy"); return; }
+        if (operations.IsRunning)
+        {
+            // Another Martlet task holds settings (often right after Martlet starts): load as soon as it finishes.
+            notice = Remedy("conversation.ownership_busy");
+            loadPending = true;
+            return;
+        }
+        loadPending = false;
         ready = false;
         listening = false;
         StopListening(keepHeard: true);
@@ -342,6 +379,13 @@ public partial class LiveConversationWindow : ThemedWindow
         }
         // The reply may have released the slot just now; settle it before anything replaces it.
         Settle();
+        if (loadPending)
+        {
+            loadPending = false;
+            notice = null;
+            LoadAsync().Forget();
+            return;
+        }
         if (reloadReason is { } reason)
         {
             reloadReason = null;
@@ -852,6 +896,27 @@ public partial class LiveConversationWindow : ThemedWindow
     internal bool HandsFree => preferences.HandsFree;
     /// <summary>Start listening was pressed and listening hasn't been stopped since.</summary>
     internal bool ListeningStarted => !listenPaused;
+
+    /// <summary>Home's listening indicator: what listening is doing now, and whether that is a problem.</summary>
+    internal (string Text, bool Problem) ListeningStatus
+    {
+        get
+        {
+            if (Paused) return ("Paused. Resume Martlet from its notification-area icon.", false);
+            if (listenPaused)
+                return listenWhenReady || loading is not null || loadPending ? ("Getting ready to listen…", false)
+                    : notice is not null && (!Available || !MicrophoneUsable) ? (notice, true) : ("Not listening", false);
+            if (loading is not null || loadPending || !ready && notice is null) return ("Getting ready to listen…", false);
+            if (locked) return ("Windows is locked. Martlet listens again when you unlock it.", false);
+            if (listening && micProblem is not null) return ($"{micProblem} Martlet keeps trying.", true);
+            if (listenProblem is not null) return ($"{listenProblem} Martlet keeps trying.", true);
+            if (!listening) return (ListeningProblem(), true);
+            if (listener is { Hearing: true }) return ("Hearing you…", false);
+            if (owned is { OwnershipReleased: false } live && !live.Status.Finished) return ("Martlet is replying…", false);
+            if (listener is { Held: true }) return ("Martlet is speaking…", false);
+            return ("Listening. Just start talking.", false);
+        }
+    }
 
     /// <summary>Start listening / Stop listening, as the window's own button.</summary>
     internal void ToggleListening() => Mic_Click(this, new RoutedEventArgs());
@@ -1391,6 +1456,14 @@ public partial class LiveConversationWindow : ThemedWindow
 
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
+        // The window only shows the conversation: while Martlet listens or watches, closing it hides it and Martlet carries on.
+        if (!ending && !closed && (!listenPaused || watching))
+        {
+            e.Cancel = true;
+            Hide();
+            HiddenToBackground?.Invoke();
+            return;
+        }
         listening = false;
         StopListening(keepHeard: false);
         StopAll("conversation.closed", keepContext: false);
@@ -1421,6 +1494,7 @@ public partial class LiveConversationWindow : ThemedWindow
         HomeQuestionText.Text = question;
         HomeQuestionPanel.Visibility = Visibility.Visible;
         Motion.Enter(HomeQuestionPanel, dy: 10);
+        Reveal();
         if (IsActive) HomeNoButton.Focus();
         var registration = token.Register(() => answer.TrySetResult(false));
         answer.Task.ContinueWith(_ =>
@@ -1461,6 +1535,16 @@ public partial class LiveConversationWindow : ThemedWindow
         ToolAlwaysButton.Visibility = request.AllowAlways ? Visibility.Visible : Visibility.Collapsed;
         ToolApprovalPanel.Visibility = Visibility.Visible;
         Motion.Enter(ToolApprovalPanel, dy: 10);
+        Reveal();
+    }
+
+    /// <summary>A question that needs your answer shows the window when it runs hidden in the background.</summary>
+    private void Reveal()
+    {
+        if (closed || IsVisible) return;
+        Show();
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Activate();
     }
 
     private void AnswerTool(ToolApprovalChoice choice)

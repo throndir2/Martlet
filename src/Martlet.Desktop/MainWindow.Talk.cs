@@ -33,6 +33,7 @@ public partial class MainWindow
             ActionText.Text = "Couldn't save your talk choices. They apply until Martlet closes.";
         // An open talk window follows the change right away.
         openConversation?.UsePreferences(next, visionAddress);
+        RenderListening();
         if (render) RenderTab();
     }
 
@@ -44,7 +45,7 @@ public partial class MainWindow
     {
         var prefs = Talk;
         var always = Choice("TalkMode", "Always listening (recommended)",
-            "Press Start listening in the talk window and Martlet listens, replying when you pause, until you press Stop listening.",
+            "Press Start listening on Home and Martlet listens, replying when you pause, until you press Stop listening. The talk window is optional.",
             prefs.HandsFree, "TalkModeAlways");
         var push = Choice("TalkMode", "Push-to-talk",
             "Hold the talk button, or Space, when you want Martlet to listen.", !prefs.HandsFree, "TalkModePushToTalk");
@@ -72,7 +73,7 @@ public partial class MainWindow
 
             children.Add(Labeled("Sensitivity", scale));
             children.Add(Labeled("Reply after", pause));
-            children.Add(Note("Martlet listens again after each reply. Stop listening, locking Windows or closing the talk window ends listening.",
+            children.Add(Note("Martlet listens again after each reply, with or without the talk window open. Stop listening ends it; locking Windows pauses it.",
                 new Thickness(0, 8, 0, 0)));
         }
 
@@ -253,7 +254,7 @@ public partial class MainWindow
         {
             var on = !Talk.Watch;
             SaveTalk(Talk with { Watch = on }, render: true);
-            ActionText.Text = !on ? "Vision is off." : openConversation is null ? "Vision is on. Open the talk window to start." : "Vision is on.";
+            ActionText.Text = !on ? "Vision is off." : openConversation is null ? "Vision is on. Start listening on Home, or open the talk window, to start." : "Vision is on.";
         }, primary: !prefs.Watch, id: "VisionToggle");
         toggle.IsEnabled = prefs.Watch || canSee && chosen;
         page.Children.Add(Card(Heading(prefs.Watch ? "Vision is on" : "Let Martlet see"),

@@ -5,9 +5,11 @@ using Microsoft.Win32;
 namespace Martlet.Desktop;
 
 /// <summary>Settings › Startup and closing: whether closing the window keeps Martlet running in the notification area (on by
-/// default), whether a start with Windows opens no window, and whether Martlet already said where it went. Saved in
-/// background.json; Start with Windows itself is the per-user Run entry (<see cref="WindowsStartup"/>).</summary>
-internal sealed record BackgroundPreferences(bool CloseToTray = true, bool StartInTray = true, bool HintShown = false)
+/// default), whether a start with Windows opens no window, whether Martlet shows the character and starts listening as it starts,
+/// and whether Martlet already said where it went. Saved in background.json; Start with Windows itself is the per-user Run entry
+/// (<see cref="WindowsStartup"/>).</summary>
+internal sealed record BackgroundPreferences(bool CloseToTray = true, bool StartInTray = true, bool HintShown = false,
+    bool StartCompanion = false)
 {
     private const string FileName = "background.json";
 

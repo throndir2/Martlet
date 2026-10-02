@@ -550,15 +550,17 @@ public partial class MainWindow
             stageFix = fix?.Run;
             PrimaryStageButton.Content = fix?.Label ?? "";
             PrimaryStageButton.Visibility = fix is null ? Visibility.Collapsed : Visibility.Visible;
-            ConversationButton.ClearValue(StyleProperty);
+            stageReady = false;
+            RenderListening();
             return;
         }
         stageFix = null;
         PrimaryStageButton.Visibility = Visibility.Collapsed;
-        ConversationButton.SetResourceReference(StyleProperty, "PrimaryButton");
+        stageReady = true;
+        RenderListening();
         StageTitle.Text = warnings == 0 ? "Ready when you are" : $"Ready, with {warnings} thing{(warnings == 1 ? "" : "s")} to look at";
         StageText.Text = warnings == 0
-            ? "Martlet is ready. Start talking to chat by voice or text."
+            ? "Martlet is ready. Start listening to talk by voice, or start talking to chat by voice or text."
             : "Martlet can reply. Review the items below when you have time.";
     }
 
