@@ -148,6 +148,16 @@ dismisses the welcome tour. Use `ui_snapshot` again to observe asynchronous effe
 actions may return `completed: false` while their dialog remains open; this
 means the invoke is still pending, not that the action finished.
 
+Status fields listed in `SafeValues` report their text as `value` (read-only
+text boxes through their Value pattern, text blocks through their accessible
+name). For the desktop character, open `CompanionTab-Character`; with
+`--allow-ui-effects`, `SetupCharacterToggle` shows or hides it and
+`SetupCharacterZoomIn`, `SetupCharacterZoomOut` and `SetupCharacterResetZoom`
+zoom its overlay. `SetupCharacterView` then reports the overlay's size, its
+distance from the top of the screen, the camera zoom and where the top of the
+character's head sits relative to the overlay's top edge (it must stay in view
+at every zoom).
+
 Window discovery uses visible top-level native handles filtered to the attached
 process, then verifies ownership around each UI Automation handle lookup.
 This avoids transient omissions from UI Automation's desktop-root enumeration

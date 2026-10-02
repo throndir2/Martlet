@@ -18,7 +18,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
         "FoundationStatus", "PipelineStatus", "LocalAudioStatus",
-        "LiveStatus", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult"
+        "LiveStatus", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult", "SetupCharacterView"
     };
     private int? processId;
 
@@ -46,8 +46,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
             {
                 var (window, element) = control;
                 var id = element.Current.AutomationId;
-                var value = SafeValues.Contains(id) && element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern)
-                    ? ((ValuePattern)pattern).Current.Value : null;
+                var value = !SafeValues.Contains(id) ? null
+                    : element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern) ? ((ValuePattern)pattern).Current.Value
+                    // Text blocks have no Value pattern; their accessible name is their text.
+                    : element.Current.ControlType == ControlType.Text ? element.Current.Name : null;
                 return new
                 {
                     window = window.Current.Name,
