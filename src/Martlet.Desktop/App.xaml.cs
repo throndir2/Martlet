@@ -13,6 +13,8 @@ public partial class App : Application
     internal string? AppearanceNotice { get; private set; }
     /// <summary>The --data-directory Martlet was started with, so an update restarts it with the same one.</summary>
     internal string? DataDirectoryArgument { get; private set; }
+    /// <summary>The previous run did not exit cleanly (crash, kill or power loss); Home says so with the logs folder.</summary>
+    internal bool CrashedLastTime { get; private set; }
 
     internal void ApplyTheme(PinkTheme theme)
     {
@@ -53,6 +55,7 @@ public partial class App : Application
             error = "Cannot open the data directory. Launch without arguments, or use --data-directory with an accessible absolute path. Do not run as administrator.";
         }
         var crashedLastTime = ErrorLog.Initialize(ErrorLog.DefaultDirectory(store?.DataDirectory), "desktop");
+        CrashedLastTime = crashedLastTime && !afterUpdate;
         ErrorLog.AttachDispatcher(this, "Martlet");
         // Failed provider requests record their HTTP status and the provider's own short explanation locally.
         Martlet.Providers.ProviderDiagnostics.SetSink(line => ErrorLog.Warn(line));
@@ -82,14 +85,6 @@ public partial class App : Application
             Shutdown(1);
             return;
         }
-        if (crashedLastTime && !afterUpdate)
-            Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () =>
-            {
-                if (MessageBox.Show(MainWindow, "Martlet closed unexpectedly last time. Details, if any were captured, are in the local log:\n" +
-                        $"{ErrorLog.CurrentFile}\n\nOpen the logs folder?", "Martlet - previous session ended unexpectedly",
-                        MessageBoxButton.YesNo, MessageBoxImage.Information) == MessageBoxResult.Yes)
-                    ErrorLog.OpenFolder();
-            });
     }
 
     protected override void OnExit(ExitEventArgs e)

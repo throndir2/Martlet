@@ -14,11 +14,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "SetupClose", "AudioClose", "CloseLive", "SupportClose",
         "RecoveryClose", "SupportFreeze", "SupportClear",
         "NavHome", "NavDevices", "NavCompanion", "NavSettings", "TourSkip", "TourBegin", "TourBack", "DiagnosticsSection",
-        "OpenPeople", "DeviceFactsSection", "DeviceReachSection", "DeviceRolesSection"
+        "OpenPeople", "DeviceFactsSection", "DeviceReachSection", "DeviceRolesSection", "HealthRecheck"
     };
     /// <summary>Choosing a Companion page in its side list only shows that page; Devices map nodes ("Node-this-pc",
-    /// "Node-host:gpu-1") and the problem card's Show buttons only select a device and show its details.</summary>
-    private static readonly string[] SafeClickPrefixes = ["CompanionTab-", "Node-", "CoverageShow-"];
+    /// "Node-host:gpu-1") and the problem card's Show buttons only select a device and show its details. Home's Health tiles
+    /// ("HealthCheck-thinking") and its passive fixes ("HealthOpen-voice-setup-open-voice", "HealthOpen-crash-dismiss") only
+    /// open the page where something changes, or hide the item.</summary>
+    private static readonly string[] SafeClickPrefixes = ["CompanionTab-", "Node-", "CoverageShow-", "HealthCheck-", "HealthOpen-"];
     // Read-only status text. Text blocks and buttons have no value, so their accessible name (a text block's text) is returned.
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
@@ -27,11 +29,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "PeopleStatus", "PeopleSyncStatus", "PeopleVoiceCount", "ListenParakeetStatus", "SetupCharacterView",
         "LipSyncNow", "LipSyncNowProblem", "LipSyncOwnTitle", "LipSyncOwnState", "SelectedDevice", "SelectedDeviceHealth", "ClusterStatus",
         "VisionStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "SetupF5About", "F5VoicesStatus",
-        "HostRunStatus"
+        "HostRunStatus", "StageTitle", "StageText", "HealthTitle", "HealthSummary", "HealthAllClear"
     };
     /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)");
-    /// Companion › Voice's included F5 voices ("F5VoiceRow-arctic-slt" reads "SLT (US female)", with "· in use" when it is).</summary>
-    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "F5VoiceRow-"];
+    /// Companion › Voice's included F5 voices ("F5VoiceRow-arctic-slt" reads "SLT (US female)", with "· in use" when it is);
+    /// Home's items ("HealthIssue-ollama" reads "Problem: Ollama isn't running on this PC. ...") and Health tiles
+    /// ("HealthCheck-microphone" reads "Microphone: OK. Windows default").</summary>
+    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "F5VoiceRow-", "HealthIssue-", "HealthCheck-"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>

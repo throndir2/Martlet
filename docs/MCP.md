@@ -213,6 +213,34 @@ Use `ui_snapshot` again to observe asynchronous effects. Modal
 actions may return `completed: false` while their dialog remains open; this
 means the invoke is still pending, not that the action finished.
 
+Home (companion mode) shows what needs attention, then one Health tile per
+part. `StageTitle` and `StageText` return the hero's headline and line,
+`HealthTitle` (*Needs attention* or *All good*) and `HealthSummary` (for
+example *1 problem stops Martlet replying · 3 good to know.*) the list's
+heading, and `HealthAllClear` shows when nothing needs attention. Each item's
+title `HealthIssue-<id>` returns its level, title and detail (*Problem: Ollama
+isn't running on this PC. ...*); ids include `data-folder`, `settings`,
+`thinking-setup`, `thinking-retired`, `ollama`, `job-<job>` (coverage, for
+example `job-listening`), `docker`, `failed-thinking`, `failed-listening`,
+`microphone`, `microphone-blocked`, `speakers`, `listening-setup`,
+`voice-setup`, `audio2face`, `webview2`, `vision`, `vision-source`,
+`host-<host ID>`, `host-update-<host ID>`, `tools-config`, `tools-<server>`,
+`update`, `update-failed`, `update-cleanup`, `errors` and `crash`. Its fixes
+are `HealthOpen-<id>-<fix>` when they only open a page or hide the item
+(passive clicks, for example `HealthOpen-thinking-setup-open-thinking` or
+`HealthOpen-crash-dismiss`) and `HealthFix-<id>-<fix>` when they do something
+(start or install software, check a host, install an update), which needs
+`--allow-ui-effects`. Tiles `HealthCheck-<part>` (`thinking`, `listening`,
+`voice`, `lipsync`, `microphone`, `speakers`, `character`, `devices`, `tools`,
+`updates`, `app`) return *<Part>: OK*, *needs attention* or *not checked or
+not set up* with the state, and clicking one only opens its page.
+`HealthRecheck` re-reads settings, devices and this PC's own loopback services
+(Ollama when Thinking uses it) and contacts no other computer, so it is
+passive. To see a problem on a disposable data directory, put invalid JSON in
+`settings.json` (*settings*), a stale `logs\desktop.<pid>.running` marker
+(*crash*), or choose Ollama on this PC in Companion › Thinking while Ollama
+isn't running (*ollama*).
+
 For the desktop character, open `CompanionTab-Character`; with
 `--allow-ui-effects`, `SetupCharacterToggle` shows or hides it and
 `SetupCharacterZoomIn`, `SetupCharacterZoomOut` and `SetupCharacterResetZoom`

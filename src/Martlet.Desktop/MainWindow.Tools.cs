@@ -183,5 +183,6 @@ public partial class MainWindow
     private void ToolsChanged() => Dispatcher.BeginInvoke(() =>
     {
         if (!closing && openTab == CompanionTab.Tools && NavCompanion.IsChecked == true) RenderTab();
+        if (!closing) RenderHealth();
     });
 }

@@ -173,6 +173,16 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private LiveConversationConfiguration? configuration;
     private long revision, captureEpoch;
     private bool paused, muted, locked, disposed;
+    private readonly Dictionary<SetupRole, JobFailure> failures = [];
+
+    /// <summary>A request that failed since Martlet started and has not worked since: what it was, Martlet's own outcome codes
+    /// (never provider text or anything said) and when.</summary>
+    internal sealed record JobFailure(SetupRole Role, string What, string Outcome, DateTimeOffset At);
+
+    /// <summary>Each job's latest failed request that no later request of that job has made good, in job order.</summary>
+    internal IReadOnlyList<JobFailure> RecentFailures { get { lock (gate) return [.. failures.Values.OrderBy(f => f.Role)]; } }
+    /// <summary>Raised off the dispatcher when <see cref="RecentFailures"/> changes.</summary>
+    internal event Action? FailuresChanged;
 
     internal bool IsRunning => operations.IsRunning;
     internal int ContextTurns { get { lock (gate) return context.Count; } }
@@ -469,6 +479,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
             operation.Passed = passed;
             if (IsFailure(terminal))
                 LogFailure(camera ? "Camera glance" : "Screen glance", operation.Authorization.Configuration, SetupRole.Llm, Describe(terminal));
+            else if (terminal.State == ConversationState.Completed) Succeeded(SetupRole.Llm);
             if (terminal.State == ConversationState.Completed && !passed)
             {
                 lock (gate)
@@ -616,6 +627,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                     operation.Publish(new("stt." + result.Outcome, Finished: true, ProviderFailure: result.Failure?.Code));
                     return new(result.Outcome == TranscriptionOutcome.NoSpeech ? SetupWorkOutcome.Completed : SetupWorkOutcome.Failed);
                 }
+                Succeeded(SetupRole.Stt);
                 operation.Heard = await HeardAsync(operation, worker).ConfigureAwait(false);
                 operation.Transcript = result.Text;
                 input = new(result.Text!);
@@ -716,6 +728,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                     "Martlet asked again without tools and stops offering them to it until it restarts.");
             }
             if (IsFailure(terminal)) LogFailure("Reply", configured, SetupRole.Llm, Describe(terminal));
+            else if (terminal.State == ConversationState.Completed) Succeeded(SetupRole.Llm);
             if (terminal.State == ConversationState.Completed && !string.IsNullOrWhiteSpace(turn.Content.Text))
             {
                 lock (gate)
@@ -840,11 +853,20 @@ internal sealed class LiveConversationController : IAsyncDisposable
 
     // One local log line per failed request naming the route it used, never what was said. The provider's own
     // explanation (HTTP status and message) is logged just before it by ProviderDiagnostics.
-    private static void LogFailure(string what, LiveConversationConfiguration configured, SetupRole role, string outcome)
+    private void LogFailure(string what, LiveConversationConfiguration configured, SetupRole role, string outcome)
     {
         var route = configured.Routes.SingleOrDefault(r => r.Role == role);
         ErrorLog.Warn($"{what} failed ({outcome}). {role} route: {route?.RouteType?.ToString() ?? "OpenAi"}, " +
             $"{route?.Origin ?? "no destination"}, model {route?.ModelId ?? "none"}.");
+        lock (gate) failures[role] = new(role, what, outcome, clock.GetLocalNow());
+        FailuresChanged?.Invoke();
+    }
+
+    private void Succeeded(SetupRole role)
+    {
+        bool cleared;
+        lock (gate) cleared = failures.Remove(role);
+        if (cleared) FailuresChanged?.Invoke();
     }
 
     // Lorebooks help but are never required: if lorebooks.json can't be used right now, the reply goes ahead without lore.
@@ -1000,6 +1022,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 lock (gate) captureQuarantined = true;
             if (!token.IsCancellationRequested && IsFailure(terminal))
                 LogFailure(purpose, configuration, SetupRole.Llm, Describe(terminal));
+            else if (terminal.State == ConversationState.Completed) Succeeded(SetupRole.Llm);
             return terminal.State == ConversationState.Completed ? (turn.Content.Text, null)
                 : (null, terminal.ProviderFailure?.ToString() ?? "runtime." + terminal.State);
         }

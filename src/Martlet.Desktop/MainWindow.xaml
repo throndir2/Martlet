@@ -46,7 +46,7 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- Home: how Martlet is doing and Start talking (every choice is made in Companion), or the host dashboard -->
+            <!-- Home: is anything wrong or missing, and Start talking (every choice is made in Companion), or the host dashboard -->
             <ScrollViewer x:Name="HomePage" VerticalScrollBarVisibility="Auto">
                 <StackPanel Margin="36,30,36,24" MaxWidth="1000">
                     <StackPanel x:Name="CompanionHome">
@@ -101,28 +101,33 @@
                             </Grid>
                         </Border>
 
-                        <StackPanel x:Name="HomeCoverage" AutomationProperties.Name="What isn't working right now"/>
-
-                        <Border x:Name="NowCard" Style="{DynamicResource CardStyle}">
+                        <!-- What needs attention: problems, warnings and good-to-know items, each with its fixes (MainWindow.Health.cs) -->
+                        <Border x:Name="AttentionCard" Style="{DynamicResource CardStyle}">
                             <StackPanel>
-                                <StackPanel Margin="0,0,0,8">
-                                    <TextBlock Text="Now" Style="{DynamicResource SectionHeading}" Margin="0,0,0,2"/>
-                                    <TextBlock Style="{DynamicResource Muted}" Text="What Martlet uses right now. Each choice is made in Companion."/>
-                                </StackPanel>
-                                <StackPanel x:Name="NowPanel" AutomationProperties.Name="What Martlet uses now" AutomationProperties.AutomationId="NowLines"/>
+                                <DockPanel Margin="0,0,0,10">
+                                    <Button x:Name="HealthRecheckButton" DockPanel.Dock="Right" Content="Check _again" Click="HealthRecheck_Click"
+                                            VerticalAlignment="Center" Margin="12,0,0,0" AutomationProperties.AutomationId="HealthRecheck"
+                                            AutomationProperties.Name="Check again: re-reads settings, devices and this PC's own services; contacts no other computer"/>
+                                    <StackPanel>
+                                        <TextBlock x:Name="HealthTitle" Text="Needs attention" Style="{DynamicResource SectionHeading}" Margin="0,0,0,2"
+                                                   AutomationProperties.AutomationId="HealthTitle"/>
+                                        <TextBlock x:Name="HealthSummary" Style="{DynamicResource Muted}" TextWrapping="Wrap"
+                                                   AutomationProperties.AutomationId="HealthSummary" AutomationProperties.LiveSetting="Polite"/>
+                                    </StackPanel>
+                                </DockPanel>
+                                <StackPanel x:Name="HealthIssues" AutomationProperties.Name="What needs attention" AutomationProperties.AutomationId="HealthIssues"/>
                             </StackPanel>
                         </Border>
 
+                        <!-- Health: every part Martlet checks, one tile each; a tile only opens where that part is changed -->
                         <Border Style="{DynamicResource CardStyle}">
-                            <DockPanel>
-                                <Button DockPanel.Dock="Right" Content="Open the map" Click="OpenDevices_Click" VerticalAlignment="Center" Margin="12,0,0,0"
-                                        AutomationProperties.AutomationId="OpenDevicesMap"/>
-                                <StackPanel>
-                                    <TextBlock Text="Your devices" Style="{DynamicResource SectionHeading}" Margin="0,0,0,2"/>
-                                    <TextBlock Style="{DynamicResource Muted}" Text="The computers and services Martlet uses, and what each one runs."/>
-                                    <WrapPanel x:Name="DeviceChips" Margin="0,6,0,0"/>
-                                </StackPanel>
-                            </DockPanel>
+                            <StackPanel>
+                                <TextBlock Text="Health" Style="{DynamicResource SectionHeading}" Margin="0,0,0,2"/>
+                                <TextBlock Style="{DynamicResource Muted}" Margin="0,0,0,10" TextWrapping="Wrap"
+                                           Text="Every part Martlet checks, from what this PC already knows. Select one to see or change it."/>
+                                <UniformGrid x:Name="HealthChecks" Columns="3" SizeChanged="HealthChecks_SizeChanged"
+                                             AutomationProperties.Name="Health checks" AutomationProperties.AutomationId="HealthChecks"/>
+                            </StackPanel>
                         </Border>
                     </StackPanel>
 

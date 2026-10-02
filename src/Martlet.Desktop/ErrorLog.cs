@@ -28,8 +28,16 @@ internal static class ErrorLog
     private static string? sessionMarker;
     private static bool shownDialog;
     private static DateTimeOffset lastDialog = DateTimeOffset.MinValue;
+    private static int errorCount;
+    private static (DateTimeOffset At, string Message)? lastError;
 
     internal static string? Directory => directory;
+    /// <summary>ERROR and FATAL entries written since this process started.</summary>
+    internal static int ErrorCount { get { lock (gate) return errorCount; } }
+    /// <summary>The latest ERROR or FATAL entry's time and one-line message (the exception's type and message, no stack).</summary>
+    internal static (DateTimeOffset At, string Message)? LastError { get { lock (gate) return lastError; } }
+    /// <summary>Raised on the writing thread after an ERROR or FATAL entry.</summary>
+    internal static event Action? ErrorRecorded;
     internal static string? CurrentFile => directory is null ? null : Path.Combine(directory, component + ".log");
 
     internal static string DefaultDirectory(string? dataDirectory)
@@ -188,19 +196,31 @@ internal static class ErrorLog
         if (exception is not null) text.AppendLine().Append(exception);
         text.AppendLine();
         Debug.Write(text.ToString());
+        var serious = level is "ERROR" or "FATAL";
         lock (gate)
         {
-            if (directory is null) return;
-            try
+            if (serious)
             {
-                var path = Path.Combine(directory, component + ".log");
-                if (File.Exists(path) && new FileInfo(path).Length > MaximumFileBytes) Rotate(path);
-                using var stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
-                var bytes = Encoding.UTF8.GetBytes(text.ToString());
-                stream.Write(bytes);
+                var summary = exception is null ? message : $"{message}: {exception.GetType().Name}: {exception.Message}";
+                lastError = (DateTimeOffset.Now, summary.ReplaceLineEndings(" "));
+                errorCount++;
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { }
+            if (directory is not null)
+            {
+                try
+                {
+                    var path = Path.Combine(directory, component + ".log");
+                    if (File.Exists(path) && new FileInfo(path).Length > MaximumFileBytes) Rotate(path);
+                    using var stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
+                    var bytes = Encoding.UTF8.GetBytes(text.ToString());
+                    stream.Write(bytes);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { }
+            }
         }
+        if (!serious) return;
+        try { ErrorRecorded?.Invoke(); }
+        catch (Exception ex) when (!IsFatal(ex)) { }
     }
 
     private static void Rotate(string path)
