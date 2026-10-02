@@ -53,17 +53,22 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(status, "F5VoicesStatus");
         stack.Add(status);
 
-        stack.Add(VoiceGroup("Included voices"));
-        foreach (var bundled in F5BundledVoices.All)
+        foreach (var (title, group, cute) in new[] { ("Cute voices", "cute", true), ("More included voices", "included", false) })
         {
-            var stored = voices.FirstOrDefault(v => F5Voices.Bundled(v) == bundled);
-            var inUse = stored is not null && stored.PresetId == chosen;
-            stack.Add(VoiceRow(bundled.Name, bundled.Description, inUse, mark, bundled.Key, status: true,
-                () => PlayVoiceAsync(stored, bundled.Name, bundled), () => UseVoiceAsync(stored, bundled),
-                stored is null || inUse || stored.PresetId == applied ? null : () => RemoveVoiceAsync(stored)));
+            var included = F5BundledVoices.All.Where(v => v.Cute == cute).ToArray();
+            if (included.Length == 0) continue;
+            stack.Add(VoiceGroup(title, group));
+            foreach (var bundled in included)
+            {
+                var stored = voices.FirstOrDefault(v => F5Voices.Bundled(v) == bundled);
+                var inUse = stored is not null && stored.PresetId == chosen;
+                stack.Add(VoiceRow(bundled.Name, bundled.Description, inUse, mark, bundled.Key, status: true,
+                    () => PlayVoiceAsync(stored, bundled.Name, bundled), () => UseVoiceAsync(stored, bundled),
+                    stored is null || inUse || stored.PresetId == applied ? null : () => RemoveVoiceAsync(stored)));
+            }
         }
 
-        if (own.Length > 0) stack.Add(VoiceGroup("Your voices"));
+        if (own.Length > 0) stack.Add(VoiceGroup("Your voices", "own"));
         foreach (var voice in own)
         {
             var inUse = voice.PresetId == chosen;
@@ -80,10 +85,12 @@ public partial class MainWindow
 
     private static string Capitalized(string text) => char.ToUpperInvariant(text[0]) + text[1..];
 
-    private static TextBlock VoiceGroup(string text)
+    /// <summary>A group heading in the voice list, readable as <c>F5VoiceGroup-id</c> (cute, included, own).</summary>
+    private static TextBlock VoiceGroup(string text, string id)
     {
         var label = Note(text.ToUpperInvariant(), new Thickness(0, 6, 0, 8));
         label.FontWeight = FontWeights.SemiBold;
+        AutomationProperties.SetAutomationId(label, $"F5VoiceGroup-{id}");
         return label;
     }
 

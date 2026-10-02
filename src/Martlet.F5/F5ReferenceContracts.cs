@@ -49,7 +49,7 @@ public enum F5VoiceRightsBasis
 {
     OwnVoice,
     ExplicitPermission,
-    /// <summary>A voice Martlet bundles (<see cref="F5BundledVoices"/>): public domain or CMU ARCTIC, free to use and share.
+    /// <summary>A voice Martlet bundles (<see cref="F5BundledVoices"/>): public domain (or CC0) or CMU ARCTIC, free to use and share.
     /// Earlier versions also used it for the F5-TTS example clip they bundled.</summary>
     PublishedSample
 }

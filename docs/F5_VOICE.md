@@ -161,16 +161,27 @@ invalidation, and preview separation. It opens no network or audio device.
 
 ## Desktop voices and playback
 
-Martlet includes ten reference voices that are free to use and share
-(`Martlet.F5.F5BundledVoices`, clips in `src\Martlet.F5\BundledVoices`): LJ
+Martlet includes fourteen reference voices that are free to use and share
+(`Martlet.F5.F5BundledVoices`, clips in `src\Martlet.F5\BundledVoices`). The
+four **cute voices** come first (`Cute`): two LibriVox readers voicing Anne
+Shirley, the excitable young heroine of Anne of Green Gables, in Chapter II:
+WoollyBee (CC0) and Annie Coleman Rothenberg (public domain), each as read
+("Bee (cute, bubbly)", "Annie (cute, chatty)") and with pitch raised 1.33x and
+formants 1.12x by Praat's PSOLA "Change gender" ("Bee (cute anime girl)",
+"Annie (cute anime girl)"). Locally on F5 v1 Base (3 sentences, 2 seeds each)
+they spoke at a median 365, 341, 336 and 265 Hz respectively against LJ's 217 Hz,
+with every word recognized. Then come LJ
 Speech (public domain), Cori Samuel's and Helen Taylor's LibriVox readings
 (public domain) and seven CMU ARCTIC speakers (slt, clb, bdl, rms, awb, jmk, ksp;
 free for any use with the notice kept). `BundledVoices\NOTICES.txt` lists each
 source file with its SHA-256, transcript and the marked modifications, and
-`scripts\Build-F5BundledVoices.py` rebuilds the clips from the pinned sources.
-Each clip is 6.5-8.5 seconds of speech with its exact transcript; an embedded
-clip is verified against its SHA-256 before use. The default voice is female:
-`F5BundledVoices.Default` is the first included voice marked `Female` (LJ).
+`scripts\Build-F5BundledVoices.py` rebuilds the clips from the pinned sources
+(reproducibly; the anime lift needs praat-parselmouth and seeds Praat's random
+generator). Each clip is 6.5-11 seconds of speech with its exact transcript; an
+embedded clip is verified against its SHA-256 before use. The default voice is
+cute and female: `F5BundledVoices.Default` is the first included voice marked
+`Cute` and `Female` (Bee, cute anime girl). Owners who already chose a voice
+keep it.
 When Speaking is first handed to an F5 host, Desktop uses the voice already
 chosen for that destination, otherwise that default, with no picker. An included
 voice is snapshotted with the `PublishedSample` rights basis when first used.
@@ -185,7 +196,8 @@ route (consent carried over as for **Use**); without an F5 speaking route, a
 voice list whose applied voice is the retired clip applies the default instead.
 The owner can then remove the retired copy.
 
-**Companion > Voice > Voices** is the voice library: the included voices, then
+**Companion > Voice > Voices** is the voice library: the included voices (under
+**Cute voices**, then **More included voices**), then
 every stored voice of the owner's, each with **Play** (the stored copy or the
 included clip, locally), **Use** and **Remove**, and **Add a voice...**
 (recording, name, exact transcript, whose voice and the rights confirmation).

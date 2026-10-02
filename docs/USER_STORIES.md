@@ -1348,9 +1348,9 @@ These need building before the recipes in 11.2 work:
    whisper.cpp, no Docker) exists as a disabled candidate. Wiring it in
    removes WSL, Docker Desktop and the host service from the most common
    *This PC* listening setup.
-3. ~~A bundled default F5 voice~~: done in #145; since replaced by ten included
+3. ~~A bundled default F5 voice~~: done in #145; since replaced by fourteen included
    voices that are free to use and share (public domain or CMU ARCTIC), the first
-   used when no voice is chosen; recording is optional.
+   cute, high-pitched voice used when no voice is chosen; recording is optional.
 4. **One key per provider.** Keys are bound per job today; an OpenAI key
    should serve Thinking, Listening and Voice without being entered three
    times.
@@ -1371,7 +1371,7 @@ Each flow below asks for a step Martlet could do itself.
 | --- | --- | --- | --- | --- |
 | 1 | Thinking › This PC | *Install Ollama and use it* (installs, downloads the suggested model and switches, in a run window); *Check Ollama* and *Download model* remain | Selecting *This PC* runs the whole chain (C2) | `MainWindow.SetupPages.cs:314-345` |
 | 2 | Voice / Listening › This PC | One click per option and one confirmation: Docker (installed when missing) › host service › role › switch run in one run window. Listening picks GPU or CPU in Martlet from the card's free memory and what already runs on it | Selecting *This PC* runs Docker › host service › role › model › test › switch as one chain; Listening uses native whisper.cpp with no Docker (11.6) | `MainWindow.SetupPages.cs:408-420` |
-| 3 | Voice › F5 | Done: the first included voice is used without a picker; the Voice tab's *Voices* list offers ten included voices (public domain or CMU ARCTIC) and plays, switches (*Use*, one click) and removes voices inline (D2) | Keep | `MainWindow.Voices.cs`, `HostSpeech.cs`, `F5BundledVoices.cs` |
+| 3 | Voice › F5 | Done: the first included voice (a cute, high-pitched one) is used without a picker; the Voice tab's *Voices* list offers fourteen included voices, cute ones first (public domain or CMU ARCTIC), and plays, switches (*Use*, one click) and removes voices inline (D2) | Keep | `MainWindow.Voices.cs`, `HostSpeech.cs`, `F5BundledVoices.cs` |
 | 4 | Cloud card | Consent checkbox, key per job, *Save* | Paste key = switch; key reused across jobs (C4) | `MainWindow.SetupPages.cs:540-580` |
 | 5 | Legacy Setup window | Demo preselected; *Apply this job's choice*, credentials tab, *Save checkpoint*, *Save and exit setup* | Removed | `SetupWindow.xaml` |
 | 6 | Audio setup | Per-test confirmation; the microphone test gates *Working* (Save removed: picking applies) | Windows default devices, no gate | `AudioSetupWindow.xaml(.cs)` |

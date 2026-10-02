@@ -76,8 +76,11 @@ that commit. The encoder was trained upstream on LibriSpeech and VoxCeleb; no
 recording or training audio is redistributed. Hands-free voice activity is an
 authored energy detector and adds no model.
 
-F5 voices: Martlet.F5 embeds ten short reference recordings (src\Martlet.F5\
-BundledVoices) that F5 copies a voice from: LJ Speech 1.1 (public domain LibriVox
+F5 voices: Martlet.F5 embeds fourteen short reference recordings (src\Martlet.F5\
+BundledVoices) that F5 copies a voice from: four cute voices from two LibriVox
+readings of Anne of Green Gables (WoollyBee, CC0; Annie Coleman Rothenberg, public
+domain), each as read and with pitch and formants raised (marked), LJ Speech 1.1
+(public domain LibriVox
 audio), two LibriVox readings (Cori Samuel, Frankenstein; Helen Taylor, Love at
 Second Sight; public domain) and seven CMU ARCTIC speakers (slt, clb, bdl, rms,
 awb, jmk, ksp; Carnegie Mellon University, free for any use including commercial,

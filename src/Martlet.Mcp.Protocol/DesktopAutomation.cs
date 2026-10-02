@@ -78,7 +78,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "BackgroundStatus", "TrayStatus"
     };
     /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)");
-    /// Companion › Voice's included F5 voices ("F5VoiceRow-arctic-slt" reads "SLT (US female)", with "· in use" when it is);
+    /// Companion › Voice's included F5 voices ("F5VoiceRow-arctic-slt" reads "SLT (US female)", with "· in use" when it is)
+    /// and the voice list's group headings ("F5VoiceGroup-cute" reads "CUTE VOICES");
     /// each home or host-dashboard step's detail line ("StepDetail-docker" says whether Docker Desktop runs, or why it can't start);
     /// the paired computers a job can be handed to ("HostChoice-speaking-gpu-pc" reads "gpu-pc: Runs F5 (f5tts-v1-base).")
     /// and why none are listed or which can't run it ("HostChoices-speaking", "HostChoicesUnable-speaking"); Home's items
@@ -90,8 +91,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// requests to join ("NetworkJoin-desktop-b" reads "DESKTOP-B asks to join. desktop-b, through gpu-pc. Check number ...");
     /// API keys ("ApiKeyRow-AbC..." reads "Home Assistant. See status and logs. Made on desktop-a 10/2/2026. ... ID AbCdEf.",
     /// never the key or its verifier).</summary>
-    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "F5VoiceRow-", "StepDetail-", "HostChoice", "HealthIssue-", "HealthCheck-",
-        "LogEntry-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "ApiKeyRow-"];
+    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "F5VoiceRow-", "F5VoiceGroup-", "StepDetail-", "HostChoice",
+        "HealthIssue-", "HealthCheck-", "LogEntry-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "ApiKeyRow-"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>
