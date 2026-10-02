@@ -267,6 +267,7 @@ public partial class MainWindow
             ActionText.Text = error.Message;
         }
         ObserveLocalJobs();
+        UpdateNearby();
         RenderHome();
         if (DevicesPage.IsVisible) RenderMap();
         CheckOwnLipSyncAsync().Forget();
@@ -414,8 +415,16 @@ public partial class MainWindow
                     : "Sets up the host service. Windows may ask to allow private-network access.",
                 hostServiceReachable == true, false, [new("Set up host service", () => SetUpHostServiceAsync().Forget(), true)]),
             new("pair", "Pair your main PC",
-                "Shows this PC's address and a one-time code. On your main PC, choose Devices > Add a computer > Enter a pairing code.",
-                false, false, [new("Show a pairing code", () => LaunchHost(HostAction.Pair), true)]),
+                "On your main PC, choose Devices > Add a computer: this PC is listed under Martlet on your network. Press Connect " +
+                "there, then Allow here when both show the same check number. Or show a pairing code and type it there (Enter a " +
+                "pairing code)." + (NearbyBlocked
+                    ? " Windows Firewall doesn't let your other computers find this PC yet; Let my other computers find this PC fixes " +
+                      "that (administrator approval once)."
+                    : ""),
+                false, false, NearbyBlocked
+                    ? [new("Show a pairing code", () => LaunchHost(HostAction.Pair), true),
+                       new("Let my other computers find this PC", () => NearbyFirewall_Click(this, new RoutedEventArgs()))]
+                    : [new("Show a pairing code", () => LaunchHost(HostAction.Pair), true)]),
             new("roles", "Add roles",
                 "Add tasks this host can handle. " + nvidia,
                 false, true, [.. HostRoles.All.SelectMany(r => new[]

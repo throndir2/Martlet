@@ -41,6 +41,35 @@
         <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Auto">
             <StackPanel Margin="34,28" MaxWidth="760" HorizontalAlignment="Left">
                 <StackPanel x:Name="MethodStep">
+                    <Border x:Name="NearbyCard" Style="{DynamicResource CardStyle}" Margin="0,0,0,22" AutomationProperties.AutomationId="NearbyCard">
+                        <StackPanel>
+                            <DockPanel>
+                                <Button x:Name="NearbyFindButton" DockPanel.Dock="Right" Content="_Find again" Click="NearbyFind_Click" VerticalAlignment="Top"
+                                        Margin="16,0,0,0" AutomationProperties.AutomationId="NearbyFind"/>
+                                <StackPanel>
+                                    <TextBlock Text="Martlet on your network" FontWeight="SemiBold" FontSize="16"/>
+                                    <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                               Text="Another of your computers that runs a host (or reaches one over SSH) can let this PC use it. Pick it, then press Allow on that computer once both show the same check number. Nothing to type."/>
+                                </StackPanel>
+                            </DockPanel>
+                            <!-- One row per Martlet that answered, built in code (NearbyItem-n, NearbyConnect-n). -->
+                            <StackPanel x:Name="NearbyList" Margin="0,8,0,0"/>
+                            <TextBlock x:Name="NearbyStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,8,0,0"
+                                       AutomationProperties.AutomationId="NearbyStatus" AutomationProperties.LiveSetting="Polite"/>
+                            <Border x:Name="NearbyCheckPanel" Visibility="Collapsed" Background="{DynamicResource SoftBrush}" CornerRadius="12"
+                                    Padding="16,12" Margin="0,12,0,0">
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right" Content="_Stop asking" Click="NearbyCancel_Click" VerticalAlignment="Center"
+                                            AutomationProperties.AutomationId="NearbyCancel"/>
+                                    <StackPanel>
+                                        <TextBlock Style="{DynamicResource Muted}" Text="Check number (the other computer shows the same)"/>
+                                        <TextBlock x:Name="NearbyNumberText" FontSize="36" FontWeight="Bold" FontFamily="Consolas"
+                                                   AutomationProperties.AutomationId="NearbyNumber"/>
+                                    </StackPanel>
+                                </DockPanel>
+                            </Border>
+                        </StackPanel>
+                    </Border>
                     <TextBlock Text="Where will the host run?" Style="{DynamicResource PageTitle}"/>
                     <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,18"
                                Text="Choose where the host runs. Martlet can set it up over SSH or show you the commands."/>

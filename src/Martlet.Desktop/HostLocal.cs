@@ -331,24 +331,31 @@ internal static partial class HostLocal
     /// <paramref name="output"/> (or the run log). The engine waits up to five minutes for that desktop to type it;
     /// canceling withdraws the code.</summary>
     internal static async Task<int> PairOtherAsync(HostSetupTarget target, Action<string, string> shown,
-        IProgress<string> output, CancellationToken token)
+        IProgress<string> output, CancellationToken token, string codeNote = "(shown above)")
     {
         var withdraw = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
         using var registration = token.Register(() => withdraw.TrySetResult("cancel\n"));
+        var sink = ShownCodeSink(HostSetupCommands.ThisPcAddress() ?? target.Address, shown, output, codeNote);
+        try { return await EngineAsync(target, ["pair"], sink, token, withdraw.Task); }
+        finally { withdraw.TrySetResult(null); }
+    }
+
+    /// <summary>Reads what "martlet-host pair" shows for another desktop (its "Address:" and "Code:" lines) and passes both to
+    /// <paramref name="shown"/>; every other line goes to <paramref name="output"/>, the code only as <paramref name="codeNote"/>.</summary>
+    internal static LineSink ShownCodeSink(string fallbackAddress, Action<string, string> shown, IProgress<string> output, string codeNote)
+    {
         string? address = null;
-        var sink = new LineSink(line =>
+        return new LineSink(line =>
         {
             if (ShownAddressPattern().Match(line) is { Success: true } where) address = where.Groups[1].Value;
             if (ShownCodePattern().Match(line) is { Success: true } code)
             {
-                output.Report("    Code:     (shown above)");
-                shown(address ?? HostSetupCommands.ThisPcAddress() ?? target.Address, code.Groups[1].Value);
+                output.Report("    Code:     " + codeNote);
+                shown(address ?? fallbackAddress, code.Groups[1].Value);
                 return;
             }
             if (!line.Contains("martlet-pair-v1.", StringComparison.Ordinal)) output.Report(line);
         });
-        try { return await EngineAsync(target, ["pair"], sink, token, withdraw.Task); }
-        finally { withdraw.TrySetResult(null); }
     }
 
     [GeneratedRegex(@"^\s*Address:\s+(\S+)\s*$")]

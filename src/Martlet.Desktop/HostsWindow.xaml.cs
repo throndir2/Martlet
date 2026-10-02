@@ -1,4 +1,5 @@
 using System.IO;
+using System.Net.Sockets;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
@@ -57,16 +58,190 @@ public partial class HostsWindow : ThemedWindow
     private HostSetupTarget Target() => new(Method, SshTargetText.Text.Trim(), AddressText.Text.Trim(),
         Method == HostSetupMethod.ThisPcDocker ? HostSetupCommands.SuggestedHostId(Environment.MachineName) : null, version);
 
-    private async void Window_Loaded(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
+    private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
-        var (hosts, profile) = await pairings.LoadAsync(lifetime.Token);
-        paired = paired is { } manage ? hosts.FirstOrDefault(h => h.HostId == manage.HostId) ?? manage
-            : hosts.FirstOrDefault(h => h.HostId == profile.RemoteHost?.HostId) ?? hosts.LastOrDefault();
-        if (paired is not null) DeviceIdText.Text = paired.Pairing.DeviceId;
-        ShowPaired(hosts.Count);
-    });
+        if (step == 0) FindNearbyAsync().Forget();
+        await ActionAsync(async () =>
+        {
+            var (hosts, profile) = await pairings.LoadAsync(lifetime.Token);
+            paired = paired is { } manage ? hosts.FirstOrDefault(h => h.HostId == manage.HostId) ?? manage
+                : hosts.FirstOrDefault(h => h.HostId == profile.RemoteHost?.HostId) ?? hosts.LastOrDefault();
+            if (paired is not null) DeviceIdText.Text = paired.Pairing.DeviceId;
+            ShowPaired(hosts.Count);
+        });
+    }
 
     private void Window_Closed(object? sender, EventArgs e) => lifetime.Cancel();
+
+    // ---------- Martlet on your network ----------
+
+    private IReadOnlyList<NearbyMartlet> nearbyFound = [];
+    private CancellationTokenSource? nearbyRequest;
+    private bool finding;
+    private bool searched;
+
+    private void NearbyFind_Click(object sender, RoutedEventArgs e) => FindNearbyAsync().Forget();
+
+    private void NearbyCancel_Click(object sender, RoutedEventArgs e) => nearbyRequest?.Cancel();
+
+    /// <summary>Asks the local network which Martlet desktops can share hosts (about two seconds) and lists those with a host
+    /// this PC isn't paired with yet.</summary>
+    private async Task FindNearbyAsync()
+    {
+        if (finding || nearbyRequest is not null) return;
+        finding = true;
+        searched = true;
+        NearbyFindButton.IsEnabled = false;
+        NearbyStatusText.Text = "Looking for Martlet on your network...";
+        try { nearbyFound = await Nearby.FindAsync(lifetime.Token); }
+        catch (OperationCanceledException) { return; }
+        catch (Exception error) when (error is SocketException or IOException)
+        {
+            nearbyFound = [];
+            NearbyStatusText.Text = $"Couldn't look on your network ({error.Message}).";
+            return;
+        }
+        finally
+        {
+            finding = false;
+            NearbyFindButton.IsEnabled = nearbyRequest is null;
+        }
+        ShowNearby();
+        ErrorLog.Info($"Nearby: found {nearbyFound.Count} Martlet desktop(s) that can share hosts" +
+            (nearbyFound.Count == 0 ? "." : ": " + string.Join(", ", nearbyFound.Select(m => $"{m.Name} at {m.Where} ({string.Join(", ", m.Hosts)})")) + "."));
+    }
+
+    private IReadOnlySet<string> KnownHostIds()
+    {
+        try { return HostRegistry.Load(pairings.DataDirectory, null, HostSetupCommands.ThisPcAddress()).Select(h => h.HostId).ToHashSet(StringComparer.Ordinal); }
+        catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException) { return new HashSet<string>(); }
+    }
+
+    private void ShowNearby()
+    {
+        var known = KnownHostIds();
+        NearbyList.Children.Clear();
+        var offers = nearbyFound.Select(m => (Martlet: m, New: m.Hosts.Where(h => !known.Contains(h)).ToArray())).ToArray();
+        var listed = offers.Where(o => o.New.Length > 0).ToArray();
+        for (var i = 0; i < listed.Length; i++)
+        {
+            var (martlet, hosts) = listed[i];
+            var row = new DockPanel { Margin = new Thickness(0, 6, 0, 0) };
+            var connect = new Button { Content = "Connect", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 0, 0), IsEnabled = !busy };
+            connect.SetResourceReference(StyleProperty, "PrimaryButton");
+            System.Windows.Automation.AutomationProperties.SetAutomationId(connect, $"NearbyConnect-{i}");
+            System.Windows.Automation.AutomationProperties.SetName(connect, $"Connect to {martlet.Name}");
+            connect.Click += (_, _) => ConnectNearbyAsync(martlet, hosts).Forget();
+            DockPanel.SetDock(connect, Dock.Right);
+            row.Children.Add(connect);
+            var text = new TextBlock
+            {
+                Text = $"{martlet.Name} ({martlet.Where}): {string.Join(", ", hosts)} · Martlet {martlet.Version}",
+                TextWrapping = TextWrapping.Wrap, FontSize = 15, VerticalAlignment = VerticalAlignment.Center
+            };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(text, $"NearbyItem-{i}");
+            row.Children.Add(text);
+            NearbyList.Children.Add(row);
+        }
+        var connected = offers.Length - listed.Length;
+        var already = connected == 0 ? "" : connected == 1 ? " 1 more is already connected to this PC." : $" {connected} more are already connected to this PC.";
+        NearbyStatusText.Text = listed.Length > 0
+            ? $"Found {listed.Length} {(listed.Length == 1 ? "computer" : "computers")} with a host this PC doesn't use yet.{already}"
+            : offers.Length > 0
+                ? $"This PC already uses every host Martlet found on your network.{already}"
+                : "No other Martlet answered. Open Martlet on the computer with the host (it must run the host or reach it over SSH, " +
+                  "with Let my other computers find this PC on), then Find again. Not on the same network? Use Enter a pairing code below.";
+    }
+
+    /// <summary>Asks <paramref name="martlet"/> to share <paramref name="hosts"/>: both computers show the same check number
+    /// and its owner allows the request there; this PC then pairs with each host using the one-use code it sends.</summary>
+    private async Task ConnectNearbyAsync(NearbyMartlet martlet, IReadOnlyList<string> hosts)
+    {
+        if (busy) { StatusText.Text = "Another host action is still finishing."; return; }
+        busy = true;
+        using var request = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+        nearbyRequest = request;
+        SetNearbyEnabled(false);
+        var device = DeviceIdText.Text.Trim();
+        var name = Environment.MachineName;
+        try
+        {
+            await pairings.LoadProfileAsync(request.Token);
+            NearbyStatusText.Text = $"Asking Martlet on {martlet.Name}...";
+            using var join = await NearbyJoin.ConnectAsync(martlet, device, name, request.Token);
+            NearbyNumberText.Text = join.Number;
+            NearbyCheckPanel.Visibility = Visibility.Visible;
+            NearbyStatusText.Text = $"Martlet on {martlet.Name} now asks whether to let {Nearby.Label(name)} use {string.Join(", ", hosts)}. " +
+                $"Press Allow there if it shows check number {join.Number}.";
+            ErrorLog.Info($"Nearby: asked {martlet.Name} at {martlet.Where} to share its hosts.");
+            await join.WaitApprovalAsync(request.Token);
+            NearbyStatusText.Text = $"{martlet.Name} allowed this PC. It is getting a one-use pairing code from each host (this can take a minute)...";
+            var (codes, problems) = await join.WaitCodesAsync(request.Token);
+            NearbyCheckPanel.Visibility = Visibility.Collapsed;
+            var done = new List<string>();
+            var notes = problems.ToList();
+            foreach (var code in codes)
+            {
+                NearbyStatusText.Text = $"Pairing with {code.HostId}...";
+                try
+                {
+                    var (pairing, secret) = await Audio2FaceHostClient.PairWithCodeAsync(HostPairingInput.Origin(code.Address), code.Code, device, name,
+                        request.Token);
+                    var host = await SavePairingAsync(pairing, secret, HostSetupMethod.Agent, null, null);
+                    done.Add(host.HostId);
+                    try { await CheckAsync(host.Pairing, Hardware, _ => { }, request.Token); }
+                    catch (Exception error) when (error is InvalidOperationException or Audio2FaceHostException) { }
+                }
+                catch (OperationCanceledException) when (request.IsCancellationRequested) { throw; }
+                catch (Exception error) when (error is Audio2FaceHostException or InvalidOperationException or IOException or
+                    UnauthorizedAccessException or ContractException or ArgumentException or JsonException or TimeoutException or
+                    System.Net.Http.HttpRequestException or OperationCanceledException)
+                {
+                    notes.Add($"{code.HostId}: {error.Message}");
+                }
+            }
+            try { await join.DoneAsync(done, request.Token); }
+            catch (Exception error) when (error is IOException or SocketException or ObjectDisposedException) { }
+            var extra = notes.Count == 0 ? "" : " " + string.Join(" ", notes);
+            NearbyStatusText.Text = done.Count == 0
+                ? $"This PC isn't paired with {martlet.Name}'s hosts.{extra}"
+                : $"Paired with {string.Join(", ", done)} through {martlet.Name}. Hand {(done.Count == 1 ? "it" : "them")} jobs on the Devices map.{extra}";
+            StatusText.Text = NearbyStatusText.Text;
+            ErrorLog.Info($"Nearby: {NearbyStatusText.Text}");
+        }
+        catch (OperationCanceledException) when (!lifetime.IsCancellationRequested)
+        {
+            NearbyStatusText.Text = $"Stopped asking {martlet.Name}.";
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception error) when (error is InvalidOperationException or IOException or SocketException or InvalidDataException or
+            JsonException or System.Security.Cryptography.CryptographicException or TimeoutException or Audio2FaceHostException)
+        {
+            NearbyStatusText.Text = error.Message;
+            StatusText.Text = error.Message;
+            ErrorLog.Info($"Nearby: asking {martlet.Name} stopped: {error.Message}");
+        }
+        finally
+        {
+            nearbyRequest = null;
+            busy = false;
+            if (!lifetime.IsCancellationRequested)
+            {
+                NearbyCheckPanel.Visibility = Visibility.Collapsed;
+                SetNearbyEnabled(true);
+                var status = NearbyStatusText.Text;
+                ShowNearby();
+                NearbyStatusText.Text = status;
+            }
+        }
+    }
+
+    private void SetNearbyEnabled(bool enabled)
+    {
+        NearbyFindButton.IsEnabled = enabled && !finding;
+        foreach (var row in NearbyList.Children.OfType<DockPanel>())
+            foreach (var button in row.Children.OfType<Button>()) button.IsEnabled = enabled;
+    }
 
     // ---------- wizard navigation ----------
 
@@ -108,6 +283,7 @@ public partial class HostsWindow : ThemedWindow
             : "If Martlet can't reach the host, show a pairing code on the host and enter its address and code here.";
         if (byCode) PairCommandText.Text = CommandFor(HostAction.Pair);
         if (PairAddressText.Text.Length == 0 && Method != HostSetupMethod.ThisPcDocker) PairAddressText.Text = AddressText.Text.Trim();
+        if (step == 0 && IsLoaded && !searched) FindNearbyAsync().Forget();
         Scroller.ScrollToTop();
         if (animate) Motion.Enter(steps[step], dx: 28, dy: 0, milliseconds: 280);
     }
@@ -354,7 +530,8 @@ public partial class HostsWindow : ThemedWindow
         Run(HostAction.Setup);
     }
 
-    /// <summary>Lets other PCs on the private network reach this PC's host port: one UAC prompt, only when needed.</summary>
+    /// <summary>Lets other PCs on the private network reach this PC's host port and find this PC (<see cref="Nearby"/>): one
+    /// UAC prompt, only when needed.</summary>
     internal static async Task<string?> OpenFirewallAsync(Window owner, string address, Action<string> progress, CancellationToken token)
     {
         progress("Checking Windows Firewall...");
@@ -367,11 +544,12 @@ public partial class HostsWindow : ThemedWindow
         {
             if (!ConfirmationDialog.Confirm(owner,
                     "Windows treats this network as Public. To use this PC as a host, Martlet needs to mark it as Private " +
-                    "and allow connections from your private network. Windows asks for administrator approval once.", "Allow connections"))
+                    "and allow connections from your private network (so your other computers can also find this PC). " +
+                    "Windows asks for administrator approval once.", "Allow connections"))
                 return "Firewall unchanged. Other PCs may not reach this host." + blocked;
             makePrivate = state.InterfaceIndex;
         }
-        else if (state.RuleExists) return blocked.Length == 0 ? null : blocked.Trim();
+        else if (state.RuleExists && state.NearbyRulesExist) return blocked.Length == 0 ? null : blocked.Trim();
         progress("Windows asks for administrator approval to allow Martlet on your private network...");
         return await WindowsFirewall.ApplyAsync(makePrivate, token) switch
         {

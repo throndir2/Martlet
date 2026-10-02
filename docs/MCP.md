@@ -204,6 +204,17 @@ unticked **Keep who does what in sync**; `plan` is this PC's `cluster.json`
 `updatedBy` and `updatedAt`, and each host's ID, roles and `removed`). It never
 returns host addresses or keys and contacts nothing.
 
+`nearby_status` reads whether this PC lets Martlet on the owner's other
+computers [find it](ARCHITECTURE.md#finding-your-other-computers) (optional
+absolute `dataDirectory`, default the current user's): `share` is
+`on (default)` when `nearby.txt` is missing, `on`, or `off` once the owner
+unticked **Let my other computers find this PC**; `port` (9444); and `hosts`
+from `hosts.json` (`state` `none`, `loaded` or `unreadable`; when loaded the
+number `paired` and the `shareable` ones with `hostId` and `reach`
+(`ThisPcDocker`, `SshDocker` or `SshNative`)). This PC's own host service set
+up from the host dashboard is found by the desktop from Docker, not here. It
+never returns addresses, SSH targets or keys and contacts nothing.
+
 `node_link_check` runs [commands between computers](CLUSTER.md#commands-between-your-computers)
 end to end on this PC's loopback and returns `{exitCode, report: {passed,
 steps: [{name, ok, detail}]}}`: the real gateway (Kestrel, pinned TLS with a
@@ -337,7 +348,16 @@ stored pairing secret it stops at *This PC's pairing secret is missing*.
 Settings › *Your other computers* has `AllowNodeCommands` (checked by default;
 `ui_toggle` needs `--allow-ui-effects` and saves `node-commands.txt`) and
 `NodeAgentStatus` (status text: off, no host service on this PC, ready, the
-last command it ran, or the update of its own host service).
+last command it ran, or the update of its own host service). The same card
+has `NearbyShare` (*Let my other computers find this PC and ask to use its
+hosts*, checked by default; unticking it needs `--allow-ui-effects` and saves
+`off` in `nearby.txt`), `NearbyShareStatus` (returned: off, nothing to share,
+the port in use, *Checking Windows Firewall...*, Windows Firewall or a Public
+network keeping other computers out (then only Martlet on this PC can find
+it), or on with the hosts it offers; then *Last request:* allowed, denied,
+withdrawn or stopped) and `NearbyFirewall` (*Let my other computers reach this
+PC*, shown only when blocked: an administrator prompt, never part of
+verification).
 Home and host-dashboard steps have their buttons as `Step-<step>-<n>` and their
 detail line as `StepDetail-<step>` (status text): on the host dashboard,
 `StepDetail-docker` says whether Docker Desktop runs or why Windows can't start
@@ -369,7 +389,38 @@ device secret in Windows Credential Manager, so verification stops at refused
 codes. On the host dashboard, *Show a pairing code* (`Step-pair-0`) shows the
 address (`HostRunPairAddress`, returned) and the one-use code (`HostRunPairCode`,
 never returned) in the run window's `HostRunPairing` panel; the host-runs log
-masks codes.
+masks codes. `StepDetail-pair` also tells the owner to find this PC from the
+main PC (*Martlet on your network*), and when Windows Firewall keeps other
+computers out it says so and `Step-pair-1` (*Let my other computers find this
+PC*, an administrator prompt) appears.
+
+*Martlet on your network* ([how it works](ARCHITECTURE.md#finding-your-other-computers))
+is the first card of the wizard's *Where it runs* step. Opening the wizard on
+that step (so `AddComputer`) and `NearbyFind` (*Find again*) send Martlet's
+discovery query to port 9444 on loopback and the local network's broadcast
+addresses and list who answers; they pair nothing and change nothing, so they
+are passive clicks. `NearbyStatus` (returned) says what was found (*Found 1
+computer with a host this PC doesn't use yet.*, *No other Martlet
+answered...*), what a request is doing or why it stopped (*DIVA denied the
+request (or it expired there).*, *Stopped asking DIVA.*, the sharing
+computer's reason, *Paired with ... through ...*). Each found computer is a row
+with `NearbyItem-<n>` (returned: *<name> (<address or this PC>): <hosts> ·
+Martlet <version>*) and `NearbyConnect-<n>`, which starts a request and needs
+`--allow-ui-effects`. While asking, `NearbyNumber` returns the check number and
+`NearbyCancel` (*Stop asking*) withdraws the request (passive). On the
+computer asked, a separate window `JoinRequestWindow` (*Martlet - <name> wants
+to use your hosts*) returns `JoinRequestTitle`, `JoinRequestText` (who, from
+which address, which hosts), `JoinRequestNumber` (must equal the asking side's
+`NearbyNumber`) and `JoinRequestExpiry`; `JoinAllow` and `JoinDeny` need
+`--allow-ui-effects`. Allow opens a run window (`HostRunWindow`, *Martlet - Let
+<name> use your hosts*) that asks each host for a one-use code; its
+`HostRunStatus` and the host-runs log show progress, never the codes. To
+exercise it on one PC, run two desktops on disposable data directories with
+`DOCKER_HOST` pointed at a missing pipe (so neither finds this PC's real host
+service): give the sharing one a `hosts.json` with an SSH host that refuses
+(for example `martlet@127.0.0.1:1`), so it answers on loopback, Allow reaches
+the run window and the request fails with that host's reason on both sides
+before any real code or credential exists.
 Use `ui_snapshot` again to observe asynchronous effects. Modal
 actions may return `completed: false` while their dialog remains open; this
 means the invoke is still pending, not that the action finished.
@@ -585,7 +636,7 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `logs_tail`, `logs_timeline`, `virtualization_status` and `mcp_servers_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status` and `mcp_servers_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

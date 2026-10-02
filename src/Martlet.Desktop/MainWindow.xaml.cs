@@ -114,6 +114,7 @@ public partial class MainWindow : ThemedWindow
         }
         InitializeShell();
         InitializeCluster();
+        InitializeNearby();
         InitializeVoiceSync();
         InitializeNodeAgent();
         InitializeLogs();
@@ -577,6 +578,7 @@ public partial class MainWindow : ThemedWindow
         updateTimer.Stop();
         clusterTimer.Stop();
         voiceSyncTimer.Stop();
+        StopNearby();
         StopLogs();
         audioSessionEvents.LockedChanged -= audioSetup.SetSessionLocked;
         audioSessionEvents.LockedChanged -= AvatarSessionLocked;

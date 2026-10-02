@@ -145,6 +145,19 @@ internal sealed partial class HostRemote(HostShell shell)
         return (paired, secret, result.HostKey);
     }
 
+    /// <summary>Lets another desktop pair with an SSH host: runs "pair" there, which shows the host's address and a short
+    /// one-use code; <paramref name="shown"/> receives both (the code never reaches <paramref name="output"/>). The host waits
+    /// up to five minutes for that desktop to redeem it; canceling withdraws the code. Returns the exit code.</summary>
+    internal async Task<int> PairOtherAsync(HostSetupTarget target, bool sudo, string? pinnedHostKey, Action<string, string> shown,
+        IProgress<string> output, CancellationToken token, string codeNote)
+    {
+        var withdraw = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var registration = token.Register(() => withdraw.TrySetResult("cancel\n"));
+        var sink = HostLocal.ShownCodeSink(target.Address, shown, output, codeNote);
+        try { return (await RunAsync(target, "pair", false, sudo, null, pinnedHostKey, sink, token, withdraw.Task)).ExitCode; }
+        finally { withdraw.TrySetResult(null); }
+    }
+
     /// <summary>Reads a role's terms, secrets and choices from the host (martlet-host describe).</summary>
     internal async Task<HostRoleInputs> DescribeAsync(HostSetupTarget target, string role, bool sudo, string? pinnedHostKey,
         IProgress<string> output, CancellationToken token)

@@ -175,7 +175,7 @@
                         <Border Style="{DynamicResource CardStyle}">
                             <StackPanel>
                                 <TextBlock Text="Good to know" Style="{DynamicResource SectionHeading}"/>
-                                <TextBlock Style="{DynamicResource Muted}" Margin="0,0,0,4" Text="&#x2022; Paired computers connect only on your private network."/>
+                                <TextBlock Style="{DynamicResource Muted}" Margin="0,0,0,4" TextWrapping="Wrap" Text="&#x2022; Paired computers connect only on your private network. Your other computers can find this PC there and ask to pair; you allow each one here."/>
                                 <TextBlock Style="{DynamicResource Muted}" Margin="0,0,0,4" Text="&#x2022; Lip-sync may send generated voice here. Microphone audio and files stay on your main PC."/>
                                 <TextBlock Style="{DynamicResource Muted}" Margin="0,0,0,10" Text="&#x2022; GPU tasks need an NVIDIA graphics card, current drivers and Docker Desktop."/>
                                 <WrapPanel>
@@ -445,6 +445,17 @@
                             </CheckBox>
                             <TextBlock x:Name="NodeAgentStatus" Style="{DynamicResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap"
                                        AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="NodeAgentStatus"/>
+                            <CheckBox x:Name="NearbyShareChoice" Checked="NearbyShare_Changed" Unchecked="NearbyShare_Changed" Margin="0,14,0,6"
+                                      ToolTip="Martlet on your other computers can find this PC on your private network (port 9444) and ask to use the hosts it runs or reaches over SSH. Each request shows a check number here and needs your Allow."
+                                      AutomationProperties.AutomationId="NearbyShare">
+                                <TextBlock TextWrapping="Wrap" Text="Let my other computers find this PC and ask to use its hosts"/>
+                            </CheckBox>
+                            <TextBlock x:Name="NearbyShareStatusText" Style="{DynamicResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap"
+                                       AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="NearbyShareStatus"/>
+                            <Button x:Name="NearbyFirewallButton" Content="Let my other computers reach this PC" Click="NearbyFirewall_Click"
+                                    HorizontalAlignment="Left" Margin="0,8,0,0" Visibility="Collapsed"
+                                    ToolTip="Adds Windows Firewall rules for port 9444 on your private network (administrator approval once)"
+                                    AutomationProperties.AutomationId="NearbyFirewall"/>
                         </StackPanel>
                     </Border>
 

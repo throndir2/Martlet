@@ -230,6 +230,63 @@ deployment remain gated.
 Unpaired clients may access only a minimal liveness/pairing surface, not
 model inventories, system data, logs, or job results.
 
+### Finding your other computers
+
+Instead of typing a host's address and code, a desktop can find Martlet on the
+owner's other computers and ask one of them to share its hosts (Add a
+computer › *Martlet on your network*). The gateway is unchanged: no network
+route opens or approves pairing; the computer that already controls a host
+asks it for an ordinary one-use code.
+
+1. **Who answers.** A Martlet desktop answers only while *Let my other
+   computers find this PC* is on (the default, Settings › Your other
+   computers; `nearby.txt` says `off` otherwise) and it can get pairing codes
+   from at least one host: hosts it runs (this PC's host service, paired here
+   or set up from the host dashboard) or reaches over SSH (not hosts it
+   reaches only through Martlet on that computer). It listens on UDP
+   and TCP **9444** on the private network once Windows Firewall allows that
+   port (rules `Martlet-Nearby-UDP`/`-TCP`, Private/Domain, local subnet,
+   added with the host's other firewall rule or with *Let my other computers
+   reach this PC*), otherwise on loopback only. It answers private IPv4 and
+   loopback senders only, at most 40 answers per 10 seconds.
+2. **Finding.** The asking desktop sends a small JSON query
+   (`{"martlet":"find","v":1,"q":<random>}`) to loopback, the limited broadcast
+   and each private subnet's broadcast address, twice in about 1.6 seconds. It
+   is never a subnet scan. Answers carry the computer name, device ID, Martlet
+   version and the IDs of the hosts it can share: no addresses (the answer's
+   source is the address), keys or other data. Hosts this PC is already paired
+   with are not offered again.
+3. **Asking.** On *Connect* the two computers talk newline-delimited JSON on
+   TCP 9444 (at most one request at a time and ten a minute per computer). They
+   agree a key with ephemeral ECDH P-256: the asking side first sends
+   SHA-256 of its key and nonce, the sharing side answers with its key and
+   nonce, then the asking side reveals its own. Both derive the **check
+   number** (six digits of SHA-256 over both keys and nonces) and an AES-GCM
+   key (HKDF-SHA256). Because the asking side commits first, nobody in between
+   can choose keys that make the two numbers match except by a one-in-a-million
+   guess per attempt.
+4. **Allowing.** The sharing computer shows *<name> wants to use this PC's
+   hosts* with the address, the hosts and the check number; Deny is the
+   default, closing denies and the request expires after two minutes or as
+   soon as the asking side gives up. The owner allows only when the asking
+   computer shows the same number.
+5. **Sharing.** After Allow, a run window asks each host for a one-use pairing
+   code exactly as *Show a pairing code* does (`martlet-host pair`, locally or
+   over SSH) and sends the codes sealed with the agreed key. The asking
+   desktop redeems each one directly with its host through the
+   [short-code exchange](../src/Martlet.Gateway/README.md#short-typed-codes),
+   which still proves the host's key before it is pinned, saves the pairing
+   (secret in Windows Credential Manager) and reports which hosts it paired;
+   codes it did not use are withdrawn. Codes never reach a log, the run output
+   or MCP.
+
+Discovery supplies an address and names, never trust: trust comes from the
+owner's Allow on a computer that already controls the host, bound to the
+channel by the check number. A new pairing hands the host no job. On a network
+you don't control, a device pretending to be Martlet could answer a find and
+approve its own request; connect only when your own computer shows the request
+and the same number, and use a pairing code otherwise.
+
 Do not publish raw inference ports. Bind only the chosen private interface,
 allow only the intended client addresses/subnet, account for IPv4 **and** IPv6,
 and never enable router forwarding/UPnP by default. Docker published ports can
