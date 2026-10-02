@@ -43,7 +43,12 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("ui_toggle", "Toggle an enabled checkbox (requires --allow-ui-effects).", new
         {
             id = new { type = "string" }
-        }, ["id"])
+        }, ["id"]),
+        Tool("voices_status", "Read voice recognition and Parakeet status from a data directory: on/off choices, which downloads " +
+            "are installed and counts of known voices (never names, voiceprints or audio). Read-only; no audio, network or models run.", new
+        {
+            dataDirectory = new { type = "string" }
+        })
     ];
 
     private static object Tool(string name, string description, object properties, string[]? required = null) =>
@@ -115,6 +120,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "ui_select" => desktop.Select(RequiredString(arguments, "id"), RequiredString(arguments, "item")),
                 "ui_set_text" => desktop.SetText(RequiredString(arguments, "id"), RequiredString(arguments, "text")),
                 "ui_toggle" => desktop.Toggle(RequiredString(arguments, "id")),
+                "voices_status" => VoicesStatus(arguments),
                 _ => throw new ArgumentException($"Unknown tool '{name}'.")
             };
             return new { content = new[] { new { type = "text", text = JsonSerializer.Serialize(result) } } };
@@ -125,6 +131,54 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             return new { content = new[] { new { type = "text", text = ex.Message } }, isError = true };
         }
+    }
+
+    /// <summary>Voice recognition (Companion › People) and Parakeet as the desktop keeps them in a data directory (the file
+    /// names match Martlet.Desktop's LocalVoices). Counts only: names and voiceprints are personal and never returned.</summary>
+    private static object VoicesStatus(JsonElement arguments)
+    {
+        var directory = arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty("dataDirectory", out var given)
+            ? given.GetString() ?? throw new ArgumentException("Invalid data directory.")
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Martlet");
+        if (!Path.IsPathFullyQualified(directory)) throw new ArgumentException("dataDirectory must be an absolute path.");
+        string? Choice(string file)
+        {
+            try { return File.ReadAllText(Path.Combine(directory, file)).Trim(); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return null; }
+        }
+        object roster;
+        var path = Path.Combine(directory, "voices.json");
+        if (!File.Exists(path)) roster = new { state = "none" };
+        else
+        {
+            try
+            {
+                var list = Martlet.Core.Speakers.VoiceRoster.Parse(File.ReadAllBytes(path));
+                roster = new
+                {
+                    state = "loaded", voices = list.Live.Count, named = list.Live.Count(v => v.Named), owner = list.Live.Count(v => v.Owner),
+                    withLearnedNames = list.Live.Count(v => v.Names.Any(n => n.Source == Martlet.Core.Speakers.VoiceNameSource.Conversation)),
+                    merged = list.Live.Sum(v => v.MergedVoices), tombstones = list.Voices.Count(v => v.Removed)
+                };
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
+            {
+                roster = new { state = "unreadable" };
+            }
+        }
+        var speech = Path.Combine(directory, "speech");
+        return new
+        {
+            recognition = Choice("voice-recognition.txt") ?? "off (never chosen)",
+            sharing = Choice("voice-sharing.txt") ?? "on (default)",
+            installed = new
+            {
+                runtime = Martlet.Sherpa.SherpaComponents.IsInstalled(speech, Martlet.Sherpa.SherpaPart.Runtime),
+                voiceModels = Martlet.Sherpa.SherpaComponents.IsInstalled(speech, Martlet.Sherpa.SherpaPart.Speakers),
+                parakeet = Martlet.Sherpa.SherpaComponents.IsInstalled(speech, Martlet.Sherpa.SherpaPart.Parakeet)
+            },
+            roster
+        };
     }
 
     private static async Task<object> DoctorAsync(string[] args, JsonElement arguments, CancellationToken cancellation)

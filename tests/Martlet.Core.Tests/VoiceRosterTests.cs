@@ -58,12 +58,15 @@ public sealed class VoiceRosterTests
         var roster = VoiceRoster.Empty;
         (roster, var a) = roster.Add(Voice(1), 3, "desk-a", Start);
         (roster, var b) = roster.Add(Voice(2), 3, "desk-a", Start);
-        roster = roster.AddHeardName(b!.Id, "Al", "desk-a", Start);
+        roster = roster.AddHeardName(b!.Id, "Al", "desk-a", Start).AddHeardName(a!.Id, "David", "desk-a", Start)
+            .SetNames(b.Id, "Zira", ["Al"], "desk-a", Start);
         var before = roster;
-        var joined = roster.Join(b.Id, a!.Id, "desk-a", Start.AddMinutes(1));
+        var joined = roster.Join(b.Id, a.Id, "desk-a", Start.AddMinutes(1));
         Assert.Single(joined.Live);
         Assert.Equal(a.Id, joined.Resolve(b.Id)!.Id);
+        Assert.Equal("David", joined.Resolve(a.Id)!.DisplayName);
         Assert.Contains("Al", joined.Resolve(a.Id)!.Names.Select(n => n.Text));
+        Assert.Contains("Zira", joined.Resolve(a.Id)!.OtherNames);
         Assert.Equal(VoiceMatchKind.Known, joined.Identify(Voice(2, 0.02f, 3)).Kind);
         var merged = VoiceRoster.Merge(before, joined);
         Assert.Equal(merged.Digest(), VoiceRoster.Merge(joined, before).Digest());

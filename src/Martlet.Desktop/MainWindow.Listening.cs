@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Avatar.Hosting;
@@ -174,9 +175,11 @@ public partial class MainWindow
         var button = PageButton(installingParakeet ? "Downloading..." : inUse ? "In use" : installed ? "Use Parakeet" : "Download and use Parakeet",
             () => UseParakeetAsync().Forget(), primary: !inUse, id: "SetupListenParakeet");
         button.IsEnabled = !inUse && !installingParakeet && parakeet is not null;
+        var title = OptionTitle("Parakeet in Martlet", inUse ? "in use" : installed ? "most accurate, no Docker, downloaded" : "most accurate, no Docker");
+        AutomationProperties.SetAutomationId(title, "ListenParakeetStatus");
         return
         [
-            OptionTitle("Parakeet in Martlet", inUse ? "in use" : "most accurate, no Docker"),
+            title,
             Note("NVIDIA Parakeet TDT 0.6B v3 runs inside Martlet on the processor, the engine AudioTranscriber uses: on the same English " +
                 "test it made about a third fewer word errors than whisper large-v3-turbo (6.9% against 10.6%) and ran 14 times faster than " +
                 "real time. It detects 25 European languages by itself (for others, use whisper). It needs about 1 GB of memory while " +

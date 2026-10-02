@@ -253,7 +253,8 @@ public sealed record VoiceRoster
         }
         var kept = into with
         {
-            Name = into.Name ?? from.Name, Names = TrimNames(names), Owner = into.Owner || from.Owner, Centroid = centroid,
+            // The kept voice keeps its own name (typed or learned); the merged voice's typed name becomes another name.
+            Name = into.Name ?? (into.Named ? null : from.Name), Names = TrimNames(names), Owner = into.Owner || from.Owner, Centroid = centroid,
             Samples = VoicePrints.SelectRepresentatives(into.SampleVectors.Concat(from.SampleVectors), MaximumSamples).Select(VoicePrints.Encode).ToArray(),
             MergedVoices = Math.Min(into.MergedVoices + from.MergedVoices + 1, 1000),
             Heard = Math.Min(into.Heard + from.Heard, 1_000_000), SpeechSeconds = Math.Min(into.SpeechSeconds + from.SpeechSeconds, 1e7),

@@ -138,9 +138,14 @@ Real native inference ran locally on Windows x64 with the pinned downloads:
 two synthetic (Windows SAPI) speakers were added as two voices, a second
 utterance matched its speaker at 0.93, a 13 s utterance with both speakers was
 split and both were recognized, and Parakeet transcribed both speakers'
-sentences. Unit tests cover the voice list merge rules, naming and the gateway
-endpoint. Real people, rooms, microphones, many speakers and multi-computer
-sync on real hosts are **NOT RUN**.
+sentences. Through Martlet MCP on a disposable data directory (with that real
+voice list), the People and Listening pages showed their status, a voice was
+renamed and merged, and `voices_status` reported the changed counts. Unit tests
+cover the voice list merge rules, naming and the gateway endpoint. Live
+microphone conversations, real people, rooms, many speakers, the name-learning
+request against a real Thinking model and multi-computer sync on real hosts are
+**NOT RUN** (no audio capture or provider calls in agent verification, and no
+second paired host here).
 
 To run the native tests, point `MARTLET_SPEECH_ROOT` at a speech folder with
 the runtime, voice models and Parakeet installed and `MARTLET_SPEECH_FIXTURES`

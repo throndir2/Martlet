@@ -128,13 +128,15 @@ public partial class MainWindow
         }
         var size = SherpaComponents.Megabytes((localVoices.Root is { } root && SherpaComponents.IsInstalled(root, SherpaPart.Runtime)
             ? 0 : SherpaComponents.DownloadBytes(SherpaPart.Runtime)) + SherpaComponents.DownloadBytes(SherpaPart.Speakers));
-        children.Add(new TextBlock
+        var status = new TextBlock
         {
             Text = localVoices.Active ? "On. Martlet recognizes voices in every conversation and learns the names people go by."
                 : localVoices.Installed ? "Off. Martlet doesn't check who is talking."
                 : "Off. Martlet can tell people apart by their voices, like AudioTranscriber does.",
             FontSize = 15, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6)
-        });
+        };
+        AutomationProperties.SetAutomationId(status, "PeopleStatus");
+        children.Add(status);
         children.Add(Note("Each thing said to Martlet is compared on this PC with the voices it knows: a known voice is named to the Thinking " +
             "model (\"Sam is speaking\"), a new one is added as Voice 1, Voice 2... and, after a reply, the Thinking model picks up the " +
             "names people use (\"I'm Sam\", \"thanks, Sam\"), so a voice collects every name it goes by. Only voiceprints (256 numbers per " +
@@ -223,11 +225,13 @@ public partial class MainWindow
         share.Unchecked += (_, _) => SetSharing(false);
         var sync = PageButton(voiceSyncBusy ? "Syncing..." : "Sync now", () => SyncVoicesAsync().Forget(), link: true, id: "PeopleSync");
         sync.IsEnabled = localVoices.Sharing && !voiceSyncBusy;
+        var syncStatus = Note(localVoices.Sharing ? voiceSyncStatus : "Off: the list stays on this PC only.", new Thickness(0, 6, 0, 0));
+        AutomationProperties.SetAutomationId(syncStatus, "PeopleSyncStatus");
         return Card(Heading("On all my computers"), share,
             Note("While Martlet runs, this PC merges its list with each paired host's copy every 30 seconds over the pinned pairing " +
                 "(the hosts only keep it). Switch which computer is your companion and it already knows everyone. Changes, renames, merges " +
                 "and forgotten voices reach every computer; the newest change wins.", new Thickness(0, 6, 0, 0)),
-            Note(localVoices.Sharing ? voiceSyncStatus : "Off: the list stays on this PC only.", new Thickness(0, 6, 0, 0)),
+            syncStatus,
             Row(sync));
     }
 
@@ -249,7 +253,9 @@ public partial class MainWindow
     {
         var voices = localVoices.Roster.Live.OrderByDescending(v => v.Owner).ThenByDescending(v => v.Named)
             .ThenByDescending(v => v.LastHeardAt).ToArray();
-        var children = new List<UIElement> { Heading(voices.Length == 0 ? "Voices Martlet knows" : $"Voices Martlet knows ({voices.Length})") };
+        var heading = Heading(voices.Length == 0 ? "Voices Martlet knows" : $"Voices Martlet knows ({voices.Length})");
+        AutomationProperties.SetAutomationId(heading, "PeopleVoiceCount");
+        var children = new List<UIElement> { heading };
         if (voices.Length == 0)
         {
             children.Add(Note("None yet. Turn recognition on and talk with Martlet; each new voice appears here, and its names fill in as " +
