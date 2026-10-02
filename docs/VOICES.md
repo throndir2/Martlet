@@ -14,7 +14,7 @@ recorded or uploaded for them by itself.
 
 - **Recognize who is talking.** *Download and turn on* asks once, then downloads
   sherpa-onnx 1.13.8 with ONNX Runtime (from the official NuGet runtime package)
-  and the two voice models, about 59 MB, into `speech\` in Martlet's data
+  and the two voice models, about 41 MB, into `speech\` in Martlet's data
   folder. Every file is checked against a pinned size and SHA-256; a file that
   doesn't match is deleted. The checkbox turns recognition on and off
   (`voice-recognition.txt`).
@@ -108,7 +108,7 @@ Companion › Listening › This PC now offers **Parakeet in Martlet** next to
 whisper. NVIDIA Parakeet TDT 0.6B v3 (int8 ONNX export) runs inside Martlet on
 the processor through the same sherpa-onnx runtime: no Docker, no host
 service. *Download and use Parakeet* asks once, downloads about 670 MB (plus
-the 22 MB runtime if voice recognition hasn't downloaded it yet) from Hugging
+the 9 MB runtime if voice recognition hasn't downloaded it yet) from Hugging
 Face at a pinned revision, checks each file and switches Listening to the
 `LocalParakeet` route (`local-parakeet`, model `parakeet-tdt-0.6b-v3-int8`).
 It needs about 1 GB of memory while Martlet runs.
