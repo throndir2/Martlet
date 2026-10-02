@@ -1,0 +1,193 @@
+<local:ThemedWindow x:Class="Martlet.Desktop.LorebookWindow"
+        xmlns:local="clr-namespace:Martlet.Desktop"
+        Style="{DynamicResource AppWindowStyle}"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Martlet - Lorebooks" Width="920" Height="900" MinWidth="640" MinHeight="560"
+        WindowStartupLocation="CenterOwner" Loaded="Window_Loaded" Closing="Window_Closing"
+        AllowDrop="True" PreviewDragOver="Window_PreviewDragOver" PreviewDrop="Window_PreviewDrop"
+        AutomationProperties.AutomationId="LorebookWindow"
+        AutomationProperties.Name="Edit lorebooks: world and character lore added when its keywords come up">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="20">
+            <TextBlock Text="Lorebooks" FontSize="24" FontWeight="SemiBold"/>
+            <TextBlock TextWrapping="Wrap" Margin="0,8"
+                       Text="World Info like SillyTavern: each entry has keywords, and when one comes up in the conversation its text is added to what Martlet knows for that reply. Always-on entries are added every time. Lorebooks are saved on this PC (lorebooks.json); triggered entries go to your Thinking model with the persona. Import SillyTavern World Info JSON, or the lorebook inside a character card (PNG, JSON or CHARX), by button or by dropping the file here."/>
+            <TextBox x:Name="ResultText" IsReadOnly="True" TextWrapping="Wrap" MinHeight="40" Margin="0,4,0,8"
+                     AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="LorebookResult"
+                     AutomationProperties.Name="Lorebook status"/>
+
+            <StackPanel x:Name="EditorRoot">
+                <TextBlock Text="Lorebook" FontSize="18" FontWeight="SemiBold" Margin="0,6,0,4"/>
+                <ComboBox x:Name="BookChoice" MinHeight="30" DisplayMemberPath="Display" SelectionChanged="BookChoice_Changed"
+                          AutomationProperties.AutomationId="LorebookChoice" AutomationProperties.Name="Lorebook"/>
+                <WrapPanel Margin="0,8">
+                    <Button Content="_New lorebook" Click="NewBook_Click" Padding="10,6" Margin="0,0,8,6"
+                            AutomationProperties.AutomationId="LorebookNew"/>
+                    <Button Content="_Import..." Click="Import_Click" Padding="10,6" Margin="0,0,8,6"
+                            AutomationProperties.AutomationId="LorebookImport"
+                            ToolTip="SillyTavern World Info JSON, or a character card (PNG, JSON or CHARX) with a lorebook"/>
+                    <Button x:Name="ExportButton" Content="_Export for SillyTavern..." Click="Export_Click" Padding="10,6" Margin="0,0,8,6"
+                            AutomationProperties.AutomationId="LorebookExport"/>
+                    <Button x:Name="DeleteBookButton" Content="Delete lorebook" Click="DeleteBook_Click" Padding="10,6" Margin="0,0,8,6"
+                            AutomationProperties.AutomationId="LorebookDelete"/>
+                </WrapPanel>
+
+                <StackPanel x:Name="BookPanel" DataContext="{Binding SelectedItem, ElementName=BookChoice}">
+                    <Label Target="{Binding ElementName=BookName}" Content="Lorebook _name"/>
+                    <TextBox x:Name="BookName" MaxLength="128" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                             AutomationProperties.AutomationId="LorebookName"/>
+                    <Label Target="{Binding ElementName=BookActivation}" Content="_Use it"/>
+                    <ComboBox x:Name="BookActivation" MinHeight="30" SelectedIndex="{Binding ActivationIndex}"
+                              AutomationProperties.AutomationId="LorebookActivation">
+                        <ComboBoxItem Content="Off"/>
+                        <ComboBoxItem Content="With every persona"/>
+                        <ComboBoxItem Content="Only with the personas checked below"/>
+                    </ComboBox>
+                    <ItemsControl ItemsSource="{Binding Personas}" IsEnabled="{Binding PersonasEnabled}" Margin="0,6,0,0"
+                                  AutomationProperties.AutomationId="LorebookPersonas" AutomationProperties.Name="Personas that use this lorebook">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <CheckBox Content="{Binding Name}" IsChecked="{Binding IsChecked}" Margin="0,0,14,4"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Label Target="{Binding ElementName=BookDescription}" Content="_Notes (not sent to the model)"/>
+                    <TextBox x:Name="BookDescription" Text="{Binding Description, UpdateSourceTrigger=PropertyChanged}" MaxLength="4096"
+                             AcceptsReturn="True" TextWrapping="Wrap" Height="48" VerticalScrollBarVisibility="Auto"
+                             AutomationProperties.AutomationId="LorebookDescription"/>
+
+                    <TextBlock Text="Entries" FontSize="18" FontWeight="SemiBold" Margin="0,14,0,4"/>
+                    <WrapPanel>
+                        <Button Content="_Add entry" Click="AddEntry_Click" Padding="10,6" Margin="0,0,8,6"
+                                AutomationProperties.AutomationId="LorebookAddEntry"/>
+                        <Button Content="Du_plicate entry" Click="DuplicateEntry_Click" Padding="10,6" Margin="0,0,8,6"
+                                AutomationProperties.AutomationId="LorebookDuplicateEntry"/>
+                        <Button Content="Delete entry" Click="DeleteEntry_Click" Padding="10,6" Margin="0,0,8,6"
+                                AutomationProperties.AutomationId="LorebookDeleteEntry"/>
+                    </WrapPanel>
+                    <Label Target="{Binding ElementName=EntrySearch}" Content="_Find entries (title, keyword or text)"/>
+                    <TextBox x:Name="EntrySearch" TextChanged="EntrySearch_Changed" AutomationProperties.AutomationId="LorebookSearch"/>
+                    <ListBox x:Name="EntryList" ItemsSource="{Binding Entries}" DisplayMemberPath="Display" Height="190" Margin="0,6,0,0"
+                             SelectionChanged="EntryList_Changed"
+                             AutomationProperties.AutomationId="LorebookEntries" AutomationProperties.Name="Lorebook entries"/>
+                    <TextBlock x:Name="EntryCount" TextWrapping="Wrap" Margin="0,4,0,0"/>
+
+                    <StackPanel x:Name="EntryPanel" DataContext="{Binding SelectedItem, ElementName=EntryList}" Margin="0,8,0,0">
+                        <Label Target="{Binding ElementName=EntryTitle}" Content="Entry _title (only for you)"/>
+                        <TextBox x:Name="EntryTitle" MaxLength="256" Text="{Binding Title, UpdateSourceTrigger=PropertyChanged}"
+                                 AutomationProperties.AutomationId="LorebookEntryTitle"/>
+                        <Label Target="{Binding ElementName=EntryKeys}" Content="_Keywords (comma-separated; /regex/i works too)"/>
+                        <TextBox x:Name="EntryKeys" Text="{Binding Keys, UpdateSourceTrigger=PropertyChanged}"
+                                 AutomationProperties.AutomationId="LorebookEntryKeys"/>
+                        <Grid Margin="0,4,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="12"/>
+                                <ColumnDefinition Width="230"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <Label Target="{Binding ElementName=EntrySecondary}" Content="_Optional filter keywords"/>
+                                <TextBox x:Name="EntrySecondary" Text="{Binding SecondaryKeys, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.AutomationId="LorebookEntrySecondary"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <Label Target="{Binding ElementName=EntryLogic}" Content="Filter _rule"/>
+                                <ComboBox x:Name="EntryLogic" MinHeight="28" SelectedIndex="{Binding LogicIndex}"
+                                          AutomationProperties.AutomationId="LorebookEntryLogic">
+                                    <ComboBoxItem Content="And any of them"/>
+                                    <ComboBoxItem Content="Not all of them"/>
+                                    <ComboBoxItem Content="None of them"/>
+                                    <ComboBoxItem Content="And all of them"/>
+                                </ComboBox>
+                            </StackPanel>
+                        </Grid>
+                        <Label Target="{Binding ElementName=EntryContent}" Content="_Content (added to the instructions when triggered)"/>
+                        <TextBox x:Name="EntryContent" Text="{Binding Content, UpdateSourceTrigger=PropertyChanged}"
+                                 AcceptsReturn="True" AcceptsTab="False" TextWrapping="Wrap" Height="170" VerticalScrollBarVisibility="Auto"
+                                 AutomationProperties.AutomationId="LorebookEntryContent"/>
+                        <TextBlock Text="{Binding Size}" Margin="0,2,0,6"/>
+                        <WrapPanel>
+                            <CheckBox Content="_Enabled" IsChecked="{Binding Enabled}" Margin="0,4,16,4" VerticalAlignment="Center"
+                                      AutomationProperties.AutomationId="LorebookEntryEnabled"/>
+                            <CheckBox Content="Always _on (no keyword needed)" IsChecked="{Binding Constant}" Margin="0,4,16,4" VerticalAlignment="Center"
+                                      AutomationProperties.AutomationId="LorebookEntryConstant"/>
+                            <Label Content="Placement" VerticalAlignment="Center"/>
+                            <ComboBox SelectedIndex="{Binding PositionIndex}" MinWidth="150" Margin="0,0,16,4"
+                                      AutomationProperties.AutomationId="LorebookEntryPosition" AutomationProperties.Name="Placement">
+                                <ComboBoxItem Content="Before the persona"/>
+                                <ComboBoxItem Content="After the persona"/>
+                            </ComboBox>
+                            <Label Content="Order" VerticalAlignment="Center"/>
+                            <TextBox Text="{Binding Order, UpdateSourceTrigger=PropertyChanged}" Width="70" Margin="0,0,16,4" VerticalAlignment="Center"
+                                     AutomationProperties.AutomationId="LorebookEntryOrder" AutomationProperties.Name="Order"
+                                     ToolTip="Higher orders win the budget first and sit closer to the reply."/>
+                            <Label Content="Chance %" VerticalAlignment="Center"/>
+                            <TextBox Text="{Binding Probability, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,0,4" VerticalAlignment="Center"
+                                     AutomationProperties.AutomationId="LorebookEntryProbability" AutomationProperties.Name="Chance percent"/>
+                        </WrapPanel>
+                        <Expander Header="More entry options" Margin="0,6,0,0" AutomationProperties.AutomationId="LorebookEntryMore">
+                            <StackPanel Margin="0,6,0,0">
+                                <TextBlock TextWrapping="Wrap" Text="A filled box overrides the scan settings below for this entry; an indeterminate box or empty depth uses them."/>
+                                <WrapPanel Margin="0,4,0,0">
+                                    <CheckBox Content="Case-sensitive" IsThreeState="True" IsChecked="{Binding CaseSensitive}" Margin="0,4,16,4"
+                                              AutomationProperties.AutomationId="LorebookEntryCase"/>
+                                    <CheckBox Content="Whole words only" IsThreeState="True" IsChecked="{Binding WholeWords}" Margin="0,4,16,4"
+                                              AutomationProperties.AutomationId="LorebookEntryWholeWords"/>
+                                    <Label Content="Scan depth" VerticalAlignment="Center"/>
+                                    <TextBox Text="{Binding ScanDepth, UpdateSourceTrigger=PropertyChanged}" Width="50" VerticalAlignment="Center"
+                                             AutomationProperties.AutomationId="LorebookEntryScanDepth" AutomationProperties.Name="Entry scan depth"/>
+                                </WrapPanel>
+                                <CheckBox Content="Only the conversation can trigger it (not other entries)" IsChecked="{Binding ExcludeRecursion}" Margin="0,4"
+                                          AutomationProperties.AutomationId="LorebookEntryExcludeRecursion"/>
+                                <CheckBox Content="Its content never triggers other entries" IsChecked="{Binding PreventRecursion}" Margin="0,4"
+                                          AutomationProperties.AutomationId="LorebookEntryPreventRecursion"/>
+                            </StackPanel>
+                        </Expander>
+                    </StackPanel>
+                </StackPanel>
+
+                <TextBlock Text="Scan settings (all lorebooks)" FontSize="18" FontWeight="SemiBold" Margin="0,16,0,4"/>
+                <WrapPanel>
+                    <Label Target="{Binding ElementName=ScanDepth}" Content="_Scan depth (messages)" VerticalAlignment="Center"/>
+                    <TextBox x:Name="ScanDepth" Width="50" Margin="0,0,16,4" VerticalAlignment="Center" AutomationProperties.AutomationId="LorebookScanDepth"
+                             ToolTip="How many of the latest messages are searched for keywords, counting the one being answered."/>
+                    <Label Target="{Binding ElementName=Budget}" Content="_Budget (UTF-8 bytes per reply)" VerticalAlignment="Center"/>
+                    <TextBox x:Name="Budget" Width="70" Margin="0,0,16,4" VerticalAlignment="Center" AutomationProperties.AutomationId="LorebookBudget"
+                             ToolTip="Most entry text added to one reply: 256 to 12,288 bytes. Higher-order entries win when it runs out."/>
+                </WrapPanel>
+                <WrapPanel>
+                    <CheckBox x:Name="Recursive" Content="Triggered entries can trigger other entries" Margin="0,4,16,4"
+                              AutomationProperties.AutomationId="LorebookRecursive"/>
+                    <CheckBox x:Name="CaseSensitive" Content="Case-sensitive keywords" Margin="0,4,16,4"
+                              AutomationProperties.AutomationId="LorebookCaseSensitive"/>
+                    <CheckBox x:Name="WholeWords" Content="Match whole words only" Margin="0,4,16,4"
+                              AutomationProperties.AutomationId="LorebookWholeWords"/>
+                </WrapPanel>
+
+                <TextBlock Text="Try it" FontSize="18" FontWeight="SemiBold" Margin="0,16,0,4"/>
+                <TextBlock TextWrapping="Wrap" Text="Type something you might say to see which entries it triggers with your unsaved changes. Nothing is sent anywhere."/>
+                <DockPanel Margin="0,6,0,0">
+                    <Button DockPanel.Dock="Right" Content="Sho_w what triggers" Click="Test_Click" Padding="10,5" Margin="8,0,0,0"
+                            AutomationProperties.AutomationId="LorebookTest"/>
+                    <ComboBox x:Name="TestPersona" DockPanel.Dock="Right" MinWidth="160" Margin="8,0,0,0" DisplayMemberPath="Name"
+                              AutomationProperties.AutomationId="LorebookTestPersona" AutomationProperties.Name="Persona to test with"/>
+                    <TextBox x:Name="TestInput" AutomationProperties.AutomationId="LorebookTestInput" AutomationProperties.Name="Message to test"/>
+                </DockPanel>
+                <TextBox x:Name="TestResult" IsReadOnly="True" TextWrapping="Wrap" Height="160" Margin="0,6,0,0" VerticalScrollBarVisibility="Auto"
+                         AutomationProperties.AutomationId="LorebookTestResult" AutomationProperties.Name="Triggered entries"/>
+            </StackPanel>
+
+            <WrapPanel Margin="0,14,0,0">
+                <Button x:Name="SaveButton" Content="_Save lorebooks" Click="Save_Click" Padding="10,7" Margin="0,0,8,0"
+                        Style="{DynamicResource PrimaryButton}" AutomationProperties.AutomationId="LorebookSave"/>
+                <Button Content="_Reload saved lorebooks" Click="Reload_Click" Padding="10,7" Margin="0,0,8,0"
+                        AutomationProperties.AutomationId="LorebookReload"/>
+                <Button Content="_Close" Click="Close_Click" Padding="10,7" AutomationProperties.AutomationId="LorebookClose"/>
+            </WrapPanel>
+        </StackPanel>
+    </ScrollViewer>
+</local:ThemedWindow>

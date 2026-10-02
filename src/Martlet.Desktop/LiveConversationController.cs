@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using Martlet.Audio;
 using Martlet.Conversation;
 using Martlet.Core.Contracts;
+using Martlet.Core.Lorebooks;
 using Martlet.Core.Settings;
 using Martlet.Participation;
 using Martlet.Providers;
@@ -52,6 +53,13 @@ internal sealed class LiveConversationOperation
     internal long? MemoryStoreRevision { get; set; }
     /// <summary>Why memory could not be read for this turn (the reply went ahead without it).</summary>
     internal string? MemoryProblem { get; set; }
+    internal int LoreEntriesUsed { get; set; }
+
+    /// <summary>Triggered entries left out by the lorebook budget or to fit the request.</summary>
+    internal int LoreEntriesOmitted { get; set; }
+    internal IReadOnlyList<string> LoreTitles { get; set; } = [];
+    /// <summary>Why the lorebooks could not be read for this turn (the reply went ahead without them).</summary>
+    internal string? LoreProblem { get; set; }
     /// <summary>What Home Assistant did or answered for this turn, shown above the reply. Never logged or saved.</summary>
     [JsonIgnore] internal string? HomeSummary { get; set; }
     internal ListeningOptions? Listening { get; init; }
@@ -137,6 +145,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private readonly Func<int, int> nextStyle;
     private readonly Action? revokeAvatar;
     private readonly DesktopMemoryService? memory;
+    private readonly LorebookStore? lorebooks;
     private readonly VoiceIdentity? voiceIdentity;
     private readonly SmartHome? smartHome;
     private readonly TaskCompletionSource quarantine = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -176,7 +185,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
         DesktopMemoryService? memory = null,
         GeneratedSpeechObserver? generatedSpeech = null, Action? revokeAvatar = null, VoiceIdentity? voiceIdentity = null,
         IHostTranscriptionClient? hostListener = null, string? dataDirectory = null, SpokenTextFeed? spokenText = null,
-        SmartHome? smartHome = null)
+        SmartHome? smartHome = null, LorebookStore? lorebooks = null)
+
     {
         this.operations = operations;
         this.settings = settings;
@@ -186,6 +196,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         this.nextStyle = nextStyle ?? RandomNumberGenerator.GetInt32;
         this.revokeAvatar = revokeAvatar;
         this.memory = memory;
+        this.lorebooks = lorebooks;
         this.voiceIdentity = voiceIdentity;
         this.smartHome = smartHome;
         this.runtimeFactory = runtimeFactory;
@@ -408,6 +419,10 @@ internal sealed class LiveConversationController : IAsyncDisposable
         try
         {
             await operation.Authorization.ValidateSettingsAsync(worker).ConfigureAwait(false);
+            IReadOnlyList<TextHistoryMessage> earlier;
+            lock (gate) earlier = context.Snapshot();
+            var lore = await ScanLoreAsync(operation, prompt, earlier, operation.Authorization.Configuration.Persona, worker)
+                .ConfigureAwait(false);
             ConversationTurn turn;
             lock (gate)
             {
@@ -416,13 +431,14 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 var persona = configured.Persona;
                 ResponseStyle? style = persona is null ? null : ResponseStyleSelector.Select(persona.Styles, nextStyle);
                 var history = context.Snapshot();
-                var request = configured.Request(new(prompt), operation.Authorization.Voice, style, history, null,
-                    out var usedHistory, out _, image, LiveConversationConfiguration.CommentaryInstructions(chattiness, camera),
+                var request = configured.Request(new(prompt), operation.Authorization.Voice, style, history, null, lore,
+                    out var usedHistory, out _, out var usedLore, image, LiveConversationConfiguration.CommentaryInstructions(chattiness, camera),
                     LiveConversationConfiguration.SilentReply);
                 operation.PersonaRevision = persona?.ConfigurationRevision;
                 operation.ResponseStyle = style;
                 operation.ContextMessages = usedHistory;
                 operation.ContextMessagesOmitted = history.Count - usedHistory;
+                RecordLore(operation, lore, usedLore);
                 operation.Authorization.BindInput(request.Input);
                 operation.Publish(new("commentary.looking"));
                 turn = runtime.Start(request, operation.Authorization, operation.OriginalCaller);
@@ -619,19 +635,21 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 await operation.Authorization.ValidateSettingsAsync(worker).ConfigureAwait(false);
                 operation.MemoryStoreRevision = memoryResult?.StoreRevision;
             }
+            var lore = await ScanLoreAsync(operation, input!.UserText, history, persona, worker).ConfigureAwait(false);
 
             lock (gate)
             {
                 operation.Authorization.Check(worker);
                 var request = operation.Authorization.Configuration.Request(
-                    input!, operation.Authorization.Voice, style, history, memoryResult,
-                    out var usedHistory, out var usedMemory, extraInstructions: home?.Instructions);
+                    input!, operation.Authorization.Voice, style, history, memoryResult, lore,
+                    out var usedHistory, out var usedMemory, out var usedLore, extraInstructions: home?.Instructions);
                 operation.PersonaRevision = persona?.ConfigurationRevision;
                 operation.ResponseStyle = style;
                 operation.ContextMessages = usedHistory;
                 operation.ContextMessagesOmitted = history.Count - usedHistory;
                 operation.MemoryFactsUsed = usedMemory;
                 operation.MemoryFactsOmitted = (memoryResult?.Facts.Count ?? 0) - usedMemory;
+                RecordLore(operation, lore, usedLore);
                 operation.Authorization.BindInput(request.Input);
                 // Exact-content commit, pause/consent state and immediate Start share this short, non-awaiting gate.
                 turn = runtime.Start(request, operation.Authorization, operation.OriginalCaller);
@@ -709,6 +727,31 @@ internal sealed class LiveConversationController : IAsyncDisposable
     }
 
     private CorrelationIds Ids() => new() { SessionId = runtime.SessionId, TurnId = Guid.NewGuid(), RequestId = Guid.NewGuid() };
+
+    // Lorebooks help but are never required: if lorebooks.json can't be used right now, the reply goes ahead without lore.
+    private async Task<LorebookScanResult?> ScanLoreAsync(LiveConversationOperation operation, string current,
+        IReadOnlyList<TextHistoryMessage> history, PersonaProfile? persona, CancellationToken worker)
+    {
+        if (lorebooks is null) return null;
+        var loaded = await lorebooks.LoadAsync(worker).ConfigureAwait(false);
+        operation.Authorization.Check(worker);
+        if (!loaded.Loaded)
+        {
+            operation.LoreProblem = loaded.Error;
+            operation.Publish(new("lorebook.unavailable"));
+            return null;
+        }
+        var result = LorebookScanner.Scan(loaded.Library,
+            new(current, history.Select(message => message.Text).ToArray(), persona?.Id, persona?.Name), Random.Shared.Next);
+        return result.Included.Count == 0 && result.OverBudget.Count == 0 ? null : result;
+    }
+
+    private static void RecordLore(LiveConversationOperation operation, LorebookScanResult? lore, int used)
+    {
+        operation.LoreEntriesUsed = used;
+        operation.LoreEntriesOmitted = (lore?.Included.Count ?? 0) - used + (lore?.OverBudget.Count ?? 0);
+        operation.LoreTitles = lore?.Included.Take(used).Select(hit => hit.Entry.Label).ToArray() ?? [];
+    }
 
     // Memory helps but is never required: if the store can't be read right now, the reply goes ahead without it.
     private async Task<DesktopMemoryRecall?> RecallAsync(LiveConversationOperation operation, string query, CancellationToken worker)
