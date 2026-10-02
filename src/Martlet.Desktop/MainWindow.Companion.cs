@@ -20,7 +20,7 @@ namespace Martlet.Desktop;
 /// <summary>The Companion page's pages: the one place each choice that shapes Martlet is made, listed by group in a side list.
 /// Home and Devices link here. A new page adds its value here (in list order) and one arm each in GroupOf, TabTitle, TabGlyph,
 /// TabIntro and RenderTab.</summary>
-internal enum CompanionTab { Thinking, Voice, Listening, LipSync, Character, Personality, Memory, Replies, SmartHome }
+internal enum CompanionTab { Thinking, Voice, Listening, Vision, LipSync, Character, Personality, Memory, Replies, SmartHome }
 
 /// <summary>The side list's groups, in order: how it works (where each job runs), who it is (look, personality, what it knows)
 /// and what it does (how it answers and acts). A group with no pages yet is not shown.</summary>
@@ -97,7 +97,7 @@ public partial class MainWindow
 
     private static CompanionGroup GroupOf(CompanionTab section) => section switch
     {
-        CompanionTab.Thinking or CompanionTab.Voice or CompanionTab.Listening or CompanionTab.LipSync => CompanionGroup.HowItWorks,
+        CompanionTab.Thinking or CompanionTab.Voice or CompanionTab.Listening or CompanionTab.Vision or CompanionTab.LipSync => CompanionGroup.HowItWorks,
         CompanionTab.Character or CompanionTab.Personality or CompanionTab.Memory => CompanionGroup.WhoItIs,
         CompanionTab.Replies => CompanionGroup.WhatItDoes,
         CompanionTab.SmartHome => CompanionGroup.WhatItDoes,
@@ -116,6 +116,7 @@ public partial class MainWindow
         CompanionTab.Thinking => "Thinking",
         CompanionTab.Voice => "Voice",
         CompanionTab.Listening => "Listening",
+        CompanionTab.Vision => "Vision",
         CompanionTab.LipSync => "Lip-sync",
         CompanionTab.Character => "Character",
         CompanionTab.Personality => "Personality",
@@ -131,6 +132,7 @@ public partial class MainWindow
         CompanionTab.Thinking => "\uE82F",
         CompanionTab.Voice => "\uE767",
         CompanionTab.Listening => "\uE720",
+        CompanionTab.Vision => "\uE890",
         CompanionTab.LipSync => "\uE8BD",
         CompanionTab.Character => "\uE77B",
         CompanionTab.Personality => "\uE76E",
@@ -147,8 +149,9 @@ public partial class MainWindow
             "It runs on this PC by default, so nothing leaves your computer.",
         CompanionTab.Voice => "How Martlet speaks its replies: where the voice runs, the voice itself and the speakers it plays on. " +
             "By default it speaks on this PC, with the F5 voice in Docker or a Windows voice with no Docker.",
-        CompanionTab.Listening => "How Martlet hears you: your microphone and the speech-to-text provider, model and key. " +
-            "By default whisper runs on this PC. You can always type instead.",
+        CompanionTab.Listening => "How Martlet hears you: your microphone, how you talk (always listening or push-to-talk) and the " +
+            "speech-to-text provider, model and key. By default whisper runs on this PC. You can always type instead.",
+        CompanionTab.Vision => "What Martlet may look at while the talk window is open: your screen or a camera, and how often it comments. Off by default.",
         CompanionTab.LipSync => "Who moves the character's mouth in time with its voice. It switches right away, even while the character talks.",
         CompanionTab.Character => "What Martlet looks like: the character on your desktop, its model, size, position and motion.",
         CompanionTab.Personality => "Who Martlet is: its personas and how helpful, sarcastic, silly or playful it is, including characters " +
@@ -294,6 +297,7 @@ public partial class MainWindow
         switch (section)
         {
             case CompanionTab.Thinking or CompanionTab.Voice or CompanionTab.Listening: RenderJobTab(body, section); break;
+            case CompanionTab.Vision: RenderVisionPage(body); break;
             case CompanionTab.LipSync: RenderLipSyncTab(body); break;
             case CompanionTab.Character: RenderCharacterTab(body); break;
             case CompanionTab.Personality: RenderPersonalityTab(body); break;
@@ -356,7 +360,9 @@ public partial class MainWindow
             page.Children.Add(VoicesCard());
 
         if (section == CompanionTab.Voice) page.Children.Add(AudioCard(output: true));
+        if (section == CompanionTab.Voice) page.Children.Add(SpeakRepliesCard());
         if (section == CompanionTab.Listening) page.Children.Add(AudioCard(output: false));
+        if (section == CompanionTab.Listening) page.Children.Add(TalkModeCard());
 
         var advanced = PageButton("Advanced setup: every job, stored keys and detached keys", () =>
         {
@@ -449,7 +455,7 @@ public partial class MainWindow
                     : "No microphone found. Plug one in or turn it on in Windows Sound settings."
                 : $"{device} isn't connected. Plug it in or pick another."
             : $"Using {device}" + (checkpoint is not null ? $", tested on {checkpoint.TestedAt.ToLocalTime():d}." : ".");
-        var line = Note(text + (output ? " Martlet plays its voice here." : " Martlet listens only while you hold to talk or turn on hands-free."),
+        var line = Note(text + (output ? " Martlet plays its voice here." : " Martlet listens only while the talk window is open, as chosen under How you talk."),
             new Thickness(0, 0, 0, 8));
         if (missing) line.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
         return Card(Heading(what), line,

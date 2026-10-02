@@ -923,9 +923,11 @@ it.*
 - **Decision**: this replaces the per-action checkboxes in the conversation
   window. Consent becomes standing, visible and revocable instead of
   re-asked every message.
-- **Today**: 3 ticks before the first spoken message, 1 before the first
-  typed message, plus separate ticks for memory, screen, Voice ID, avatar
-  inspection and analysis.
+- **Today**: the conversation window has no per-message ticks. Listening
+  (always or push-to-talk), spoken replies and vision are chosen in Companion
+  (Listening, Voice, Vision); the talk window shows *Listening* and *Vision*
+  toggles while they are on. Avatar inspection and analysis keep their own
+  ticks; a Settings › Privacy page does not exist yet.
 
 #### G4. Stop everything now
 
@@ -941,15 +943,16 @@ it.*
 
 - **Flow**: Home › **Start talking** › type › Enter.
 - **Clicks**: 1 (+ Enter).
-- **Today**: 1 click + 1 tick + *Send (one paid action)*.
+- **Today**: as above; the history shows the exchange as chat bubbles.
 
 #### H2. First spoken message
 
 - **Flow**: Home › **Start talking** › hold the talk key or 🎤 › speak ›
   release.
 - **Clicks**: 1 + hold.
-- **Today**: 1 click + 3 ticks + hold, and *Finish and send* as a second
-  send button.
+- **Today**: with *Push-to-talk* chosen in Companion › Listening, 1 click +
+  hold the talk button (or Space on it); there is no global talk key yet. With
+  *Always listening* (the default), 1 click and just speak.
 
 #### H3. Talk while doing something else (gaming)
 
@@ -961,6 +964,9 @@ it.*
 
 - **Entry points**: conversation 🎤 chip ▾ › *Hands-free*; Listening tab.
 - **Clicks**: 2.
+- **Today**: *Always listening* is the default in Companion › Listening and
+  starts when the talk window opens (once the microphone is tested); the
+  window's *Listening* button pauses and resumes it.
 
 #### H5. Interrupt
 
@@ -975,8 +981,9 @@ it.*
   permission is off, picking one turns it on (it's the user's explicit
   action) and the chip lights.
 - **Clicks**: 2.
-- **Today**: a long consent checkbox plus *Start watching* in the
-  conversation's settings column.
+- **Today**: Companion › Vision chooses the source and chattiness and *Turn
+  vision on*; the talk window then looks while it is open, and its *Vision*
+  button pauses and resumes it.
 
 #### H7. Memory
 
@@ -1333,7 +1340,7 @@ Each flow below asks for a step Martlet could do itself.
 | 4 | Cloud card | Consent checkbox, key per job, *Save* | Paste key = switch; key reused across jobs (C4) | `MainWindow.SetupPages.cs:540-580` |
 | 5 | Legacy Setup window | Demo preselected; *Apply this job's choice*, credentials tab, *Save checkpoint*, *Save and exit setup* | Removed | `SetupWindow.xaml` |
 | 6 | Audio setup | Per-test confirmation; the microphone test gates *Working* (Save removed: picking applies) | Windows default devices, no gate | `AudioSetupWindow.xaml(.cs)` |
-| 7 | Conversation | Voice output off each time; 1–3 consent ticks per message; *Finish and send* | Voice on; standing permissions; release sends | `LiveConversationWindow.xaml:105-237` |
+| 7 | Conversation | Done: history and message box only; listening, spoken replies and vision are standing Companion choices with pause toggles in the window | Global talk key; Settings › Privacy | `LiveConversationWindow.xaml(.cs)`, `MainWindow.Talk.cs` |
 | 8 | Character | *Save choices*, *Activate reviewed avatar*, inspection and analysis permissions, manual mapping | Picking applies; automatic mapping | `AvatarWindow.xaml(.cs)`, `Audio2FaceAutoMapping.cs` |
 | 9 | Host role install | Role dialog with GPU/CPU choice and options on other computers; on this PC whisper's choice is made on the Listening tab and the install asks nothing | *Automatic* preselected; dialog only for the NGC key | `HostDialogs.cs:125-148` |
 | 10 | Add a computer | Method choice, typed LAN address, *Install Docker Desktop*, pairing code, *Pair with host*, *Check host* | Join the network (B1); SSH only for Linux (B6) | `HostsWindow.xaml(.cs)` |

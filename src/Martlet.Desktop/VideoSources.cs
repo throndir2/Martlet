@@ -46,6 +46,14 @@ internal sealed record WatchSource(WatchKind Kind, string Id = "", string Name =
     internal static string WithoutCredentials(string address) =>
         Uri.TryCreate(address.Trim(), UriKind.Absolute, out var uri) && uri.UserInfo.Length > 0
             ? new UriBuilder(uri) { UserName = "", Password = "" }.Uri.ToString() : address.Trim();
+
+    /// <summary>A typed camera address as Martlet reads it: quotes trimmed, and http:// added when no scheme or file is given.</summary>
+    internal static string Normalize(string? text)
+    {
+        var address = (text ?? "").Trim().Trim('"');
+        if (address.Length == 0 || address.Contains("://", StringComparison.Ordinal) || File.Exists(address)) return address;
+        return "http://" + address;
+    }
 }
 
 internal sealed record CameraDevice(string Id, string Name);

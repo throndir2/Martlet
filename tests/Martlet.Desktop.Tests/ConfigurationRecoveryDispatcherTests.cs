@@ -16,7 +16,7 @@ public sealed class ConfigurationRecoveryDispatcherTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public Task MainConversationSetupRecoveryUsesExistingOwnerAndStaysPassive(bool busy) => OnDispatcher(async () =>
+    public Task CompanionSetupRecoveryUsesExistingOwnerAndStaysPassive(bool busy) => OnDispatcher(async () =>
     {
         using var scope = new Scope();
         var support = new SupportController(scope.Data);
@@ -25,7 +25,6 @@ public sealed class ConfigurationRecoveryDispatcherTests
         var existingRecovery = Private<ConfigurationRecoveryController>(main, "recovery");
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var inspected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        LiveConversationWindow? live = null;
         SetupWindow? setup = null;
         ConfigurationRecoveryWindow? recovery = null;
         SetupOperation? worker = null;
@@ -37,71 +36,60 @@ public sealed class ConfigurationRecoveryDispatcherTests
             {
                 try
                 {
-                    live = main.OwnedWindows.OfType<LiveConversationWindow>().Single();
-                    await Until(() => Field<TextBlock>(live, "ResultText").Text.Contains("Choices loaded", StringComparison.Ordinal));
-                    Assert.False(Field<CheckBox>(live, "AcceptAction").IsChecked);
-                    Assert.False(Field<CheckBox>(live, "VoiceChoice").IsChecked);
+                    await Until(() => main.OwnedWindows.OfType<SetupWindow>().Any());
+                    setup = main.OwnedWindows.OfType<SetupWindow>().Single();
+                    await Until(() => Field<StackPanel>(setup, "EditorPanel").IsEnabled);
+                    Assert.False(Directory.Exists(scope.Data));
+                    if (busy)
+                        worker = runner.TryStart(async _ => { await release.Task; return new(SetupWorkOutcome.Completed); });
                     _ = Dispatcher.CurrentDispatcher.BeginInvoke(async () =>
                     {
                         try
                         {
-                            setup = live.OwnedWindows.OfType<SetupWindow>().Single();
-                            await Until(() => Field<StackPanel>(setup, "EditorPanel").IsEnabled);
+                            await Until(() => setup.OwnedWindows.OfType<ConfigurationRecoveryWindow>().Any());
+                            recovery = setup.OwnedWindows.OfType<ConfigurationRecoveryWindow>().Single();
+                            Assert.Same(setup, recovery.Owner);
+                            Assert.Same(existingRecovery, Private<ConfigurationRecoveryController>(recovery, "controller"));
+                            Assert.True(recovery.IsVisible);
+                            Assert.True(IsWindowEnabled(new WindowInteropHelper(recovery).Handle));
+                            Assert.False(IsWindowEnabled(new WindowInteropHelper(setup).Handle));
+                            Assert.Equal(!busy, Field<StackPanel>(recovery, "Actions").IsEnabled);
+                            Assert.False(Field<Button>(recovery, "RestoreButton").IsEnabled);
+                            Assert.Null(existingRecovery.Preview);
+                            Assert.False(support.HasResources);
                             Assert.False(Directory.Exists(scope.Data));
                             if (busy)
-                                worker = runner.TryStart(async _ => { await release.Task; return new(SetupWorkOutcome.Completed); });
-                            _ = Dispatcher.CurrentDispatcher.BeginInvoke(async () =>
                             {
-                                try
-                                {
-                                    await Until(() => setup.OwnedWindows.OfType<ConfigurationRecoveryWindow>().Any());
-                                    recovery = setup.OwnedWindows.OfType<ConfigurationRecoveryWindow>().Single();
-                                    Assert.Same(setup, recovery.Owner);
-                                    Assert.Same(existingRecovery, Private<ConfigurationRecoveryController>(recovery, "controller"));
-                                    Assert.True(recovery.IsVisible);
-                                    Assert.True(IsWindowEnabled(new WindowInteropHelper(recovery).Handle));
-                                    Assert.False(IsWindowEnabled(new WindowInteropHelper(setup).Handle));
-                                    Assert.Equal(!busy, Field<StackPanel>(recovery, "Actions").IsEnabled);
-                                    Assert.False(Field<Button>(recovery, "RestoreButton").IsEnabled);
-                                    Assert.Null(existingRecovery.Preview);
-                                    Assert.False(support.HasResources);
-                                    Assert.False(Directory.Exists(scope.Data));
-                                    if (busy)
-                                    {
-                                        Field<TextBox>(recovery, "BackupPath").Text = scope.Backup;
-                                        Click(recovery, "RecoveryBackup"); // Programmatic delivery cannot bypass the shared slot.
-                                        Assert.True(runner.IsRunning);
-                                        Assert.False(Directory.Exists(scope.Data));
-                                        Assert.Null(existingRecovery.Receipt);
-                                    }
-                                    await Heartbeat();
-                                    Click(recovery, "RecoveryClose");
-                                    Assert.False(recovery.IsVisible);
-                                    if (busy) Assert.False(worker!.Completion.IsCompleted);
-                                    inspected.TrySetResult();
-                                }
-                                catch (Exception error) { inspected.TrySetException(error); }
-                                finally { recovery?.Close(); release.TrySetResult(); }
-                            });
-                            Click(setup, "SetupRecovery"); // Real nested modal dispatcher frame after the fix.
-                            await inspected.Task;
+                                Field<TextBox>(recovery, "BackupPath").Text = scope.Backup;
+                                Click(recovery, "RecoveryBackup"); // Programmatic delivery cannot bypass the shared slot.
+                                Assert.True(runner.IsRunning);
+                                Assert.False(Directory.Exists(scope.Data));
+                                Assert.Null(existingRecovery.Receipt);
+                            }
+                            await Heartbeat();
+                            Click(recovery, "RecoveryClose");
+                            Assert.False(recovery.IsVisible);
+                            if (busy) Assert.False(worker!.Completion.IsCompleted);
+                            inspected.TrySetResult();
                         }
                         catch (Exception error) { inspected.TrySetException(error); }
-                        finally { setup?.Close(); release.TrySetResult(); }
+                        finally { recovery?.Close(); release.TrySetResult(); }
                     });
-                    Field<Button>(live, "SetupButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Click(setup, "SetupRecovery"); // Real nested modal dispatcher frame after the fix.
                     await inspected.Task;
                 }
                 catch (Exception error) { inspected.TrySetException(error); }
-                finally { live?.Close(); }
+                finally { setup?.Close(); release.TrySetResult(); }
             });
-            Field<Button>(main, "ConversationButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            // Setup now opens from Companion (Advanced setup); the talk window no longer links to it.
+            Field<RadioButton>(main, "NavCompanion").IsChecked = true;
+            Click(main, "OpenSetup");
             await inspected.Task.WaitAsync(TimeSpan.FromSeconds(12));
         }
         finally
         {
             release.TrySetResult();
-            recovery?.Close(); setup?.Close(); live?.Close();
+            recovery?.Close(); setup?.Close();
             await Until(() => !runner.IsRunning);
             main.Close();
             await Until(() => !main.IsVisible);

@@ -3,12 +3,16 @@ using System.Text.Json;
 
 namespace Martlet.Desktop;
 
-// How the user prefers to talk. Choosing hands-free here never starts listening by itself; watching is never saved as
-// on, only how chatty Martlet is and what it looks at (screen, camera or a camera address without its password).
-internal sealed record TalkPreferences(bool HandsFree = false, double Sensitivity = 0.5, int PauseIndex = 1, bool VoiceId = false,
-    int ScreenChattiness = 1, int ScreenScope = 0, string CameraId = "", string CameraName = "", string VideoAddress = "")
+// How the user talks with Martlet, chosen in Companion (Listening, Voice and Vision) and used by the talk window while it is
+// open: always listening or push-to-talk, whether replies are spoken, and whether (and at what) Martlet may look. The talk
+// window's mic and vision buttons, Stop and Esc pause them there. A camera address is saved without its user name or password.
+internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity = 0.5, int PauseIndex = 1, bool VoiceId = false,
+    int ScreenChattiness = 1, int ScreenScope = 0, string CameraId = "", string CameraName = "", string VideoAddress = "",
+    bool SpeakReplies = true, bool Watch = false, int Version = 0)
 {
     private const string FileName = "talk-preferences.json";
+    // Version 2 made always listening the default; earlier files chose push-to-talk only because it was the old default.
+    private const int CurrentVersion = 2;
     internal static readonly TimeSpan[] Pauses = [TimeSpan.FromMilliseconds(500), TimeSpan.FromMilliseconds(800), TimeSpan.FromMilliseconds(1200)];
 
     internal static TalkPreferences Load(string? directory)
@@ -21,13 +25,15 @@ internal sealed record TalkPreferences(bool HandsFree = false, double Sensitivit
             var loaded = JsonSerializer.Deserialize<TalkPreferences>(File.ReadAllText(path)) ?? new();
             return loaded with
             {
+                HandsFree = loaded.Version < CurrentVersion || loaded.HandsFree,
                 Sensitivity = double.IsFinite(loaded.Sensitivity) ? Math.Clamp(loaded.Sensitivity, 0, 1) : 0.5,
                 PauseIndex = Math.Clamp(loaded.PauseIndex, 0, Pauses.Length - 1),
                 ScreenChattiness = Math.Clamp(loaded.ScreenChattiness, 0, 2),
                 ScreenScope = Math.Clamp(loaded.ScreenScope, 0, 3),
                 CameraId = loaded.CameraId ?? "",
                 CameraName = loaded.CameraName ?? "",
-                VideoAddress = WatchSource.WithoutCredentials(loaded.VideoAddress ?? "")
+                VideoAddress = WatchSource.WithoutCredentials(loaded.VideoAddress ?? ""),
+                Version = CurrentVersion
             };
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return new(); }
@@ -43,7 +49,11 @@ internal sealed record TalkPreferences(bool HandsFree = false, double Sensitivit
             var temporary = Path.Combine(directory, $"talk-preferences.{Guid.NewGuid():N}.tmp");
             try
             {
-                File.WriteAllText(temporary, JsonSerializer.Serialize(this));
+                File.WriteAllText(temporary, JsonSerializer.Serialize(this with
+                {
+                    VideoAddress = WatchSource.WithoutCredentials(VideoAddress),
+                    Version = CurrentVersion
+                }));
                 File.Move(temporary, path, overwrite: true);
             }
             finally

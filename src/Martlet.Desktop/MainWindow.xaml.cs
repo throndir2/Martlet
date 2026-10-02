@@ -256,9 +256,9 @@ public partial class MainWindow : ThemedWindow
     private async void Conversation_Click(object sender, RoutedEventArgs e)
     {
         if (conversation is null || closing || saving || model?.IsRunning == true) return;
-        openConversation = new LiveConversationWindow(setupService!, setupOperations, conversation, audioSessionEvents, audioSetup, voiceIdentity: voiceIdentity)
-            { Owner = this, Troubleshooting = OpenTroubleshooting, Support = support, ConfigurationRecovery = OpenRecovery,
-                Avatar = OpenAvatar };
+        openConversation = new LiveConversationWindow(setupService!, setupOperations, conversation, audioSessionEvents, voiceIdentity: voiceIdentity,
+            preferences: Talk, videoAddress: visionAddress)
+            { Owner = this, Support = support };
         try { openConversation.ShowDialog(); }
         finally { openConversation = null; }
         await RefreshAsync();

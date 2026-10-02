@@ -1,12 +1,10 @@
 using System.Collections.Concurrent;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Interop;
 using System.Windows.Threading;
 using Martlet.Audio;
 using Martlet.Audio.Tests;
@@ -134,33 +132,60 @@ public sealed class LiveConversationTests
     }
 
     [Fact]
-    public Task OpeningConfiguredWindowHasNoDefaultEffectsAndConsentIsNotRestored() => DispatcherTest(async () =>
+    public Task OpeningWindowWithoutTestedMicrophoneHasNoEffects() => DispatcherTest(async () =>
     {
         await using var fixture = await LiveFixture.Create();
-        var window = fixture.Open();
+        // Always listening is the default, but it waits until the microphone was set up and tested in Companion.
+        var window = fixture.Open(new TalkPreferences());
         try
         {
             await Loaded(window);
             Assert.False(Control<Button>(window, "SendButton").IsEnabled);
-            Assert.False(Control<Button>(window, "PttButton").IsEnabled);
-            Assert.False(Control<CheckBox>(window, "VoiceChoice").IsChecked);
-            Assert.Contains("800,044", Text(window, "EnvelopeText"));
-            Assert.Contains("UNKNOWN", Text(window, "EnvelopeText"));
-            Assert.Contains("150 s", Text(window, "EnvelopeText"));
-            Assert.Contains("<=256 tokens, <=16,384 response characters, <=45 s", Text(window, "EnvelopeText"));
-            Assert.Contains("eight completed explicit exchanges", Text(window, "EnvelopeText"));
-            Assert.Contains("configured, NOT live verified", Text(window, "ConfigurationText"));
+            Assert.Equal(Visibility.Collapsed, Control<Button>(window, "PttButton").Visibility);
+            Assert.Equal(Visibility.Visible, Control<Button>(window, "MicChip").Visibility);
+            Assert.False(Control<Button>(window, "MicChip").IsEnabled);
+            Assert.Equal("Mic not set up", Control<TextBlock>(window, "MicText").Text);
+            Assert.Empty(window.Messages);
+            Click(window, "SendButton"); // An empty message box sends nothing, even through a routed click.
+            await Heartbeat();
             fixture.NoEffects();
             Assert.False(Directory.Exists(Path.Combine(
                 fixture.DirectoryPath, MemorySettings.AppLocalDirectoryName)));
-            Click(window, "SendButton"); // Even a programmatic routed click cannot bypass missing permission.
-            fixture.NoEffects();
-            Assert.Contains("Permission missing", Text(window, "ResultText"));
         }
         finally { window.Close(); }
-        var reopened = fixture.Open();
-        try { await Loaded(reopened); Assert.False(Control<CheckBox>(reopened, "AcceptAction").IsChecked); fixture.NoEffects(); }
+        var reopened = fixture.Open(new TalkPreferences());
+        try { await Loaded(reopened); fixture.NoEffects(); }
         finally { reopened.Close(); }
+    });
+
+    [Fact]
+    public Task AlwaysListeningStartsWithTestedMicrophoneAndShowsTheSpokenExchange() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        await fixture.TestMicrophone();
+        fixture.Answer("Heard you.");
+        EnqueueUtterance(fixture.Capture, quietBefore: 5, speech: 25, quietAfter: 15);
+        var window = fixture.Open(new TalkPreferences(SpeakReplies: false));
+        try
+        {
+            await Loaded(window);
+            await fixture.Advance(() => window.Messages.Any(m => m.Role == ChatRole.Martlet && m.Text.Contains("Heard you.", StringComparison.Ordinal)));
+            var said = Assert.Single(window.Messages, m => m.IsUser);
+            Assert.Contains("Synthetic fixture transcript.", said.Text);
+            Assert.StartsWith("You (spoken)", said.Caption);
+            Assert.Equal(1, fixture.Stt.Calls);
+            Assert.Equal(1, fixture.Llm.Calls);
+            Assert.Equal(0, fixture.Tts.Calls);
+            // Listening re-arms after the reply; Esc pauses it and the mic button shows that.
+            await fixture.Advance(() => window.Current is { OwnershipReleased: false, HandsFree: true } && window.Current.Transcription is null);
+            Escape(window, "InputText");
+            await fixture.Advance(() => !fixture.Runner.IsRunning);
+            Assert.Equal("Listening paused", Control<TextBlock>(window, "MicText").Text);
+            await Heartbeat();
+            Assert.False(fixture.Runner.IsRunning);
+            Assert.Equal(1, fixture.Stt.Calls);
+        }
+        finally { window.Close(); }
     });
 
     [Fact]
@@ -482,21 +507,19 @@ public sealed class LiveConversationTests
     {
         await using var fixture = await LiveFixture.Create();
         fixture.Answer("Hello there. ", "Second sentence.");
-        var window = fixture.Open();
+        var window = fixture.Open(new TalkPreferences(HandsFree: false, SpeakReplies: voice));
         try
         {
             await Loaded(window);
-            Control<CheckBox>(window, "VoiceChoice").IsChecked = voice;
             Control<TextBox>(window, "InputText").Text = "typed-content-canary";
-            Control<CheckBox>(window, "AcceptAction").IsChecked = true;
             Assert.True(Control<Button>(window, "SendButton").IsEnabled);
             Click(window, "SendButton");
+            Assert.Equal("", Control<TextBox>(window, "InputText").Text);
             await fixture.Finish();
-            await Until(() => Text(window, "StatusText").Contains("app worker released: True", StringComparison.Ordinal));
-            Assert.Contains("Hello there. Second sentence.", Text(window, "AnswerText"));
-            Assert.Contains("FIXTURE HTTP evidence", Text(window, "AnswerText"));
-            Assert.Equal("", Text(window, "RefusalText"));
-            Assert.False(Control<CheckBox>(window, "AcceptAction").IsChecked);
+            await Until(() => window.Current is { OwnershipReleased: true });
+            await Until(() => window.Messages.Any(m => m.Role == ChatRole.Martlet && m.Text == "Hello there. Second sentence."));
+            Assert.Equal("typed-content-canary", Assert.Single(window.Messages, m => m.IsUser).Text);
+            Assert.False(Assert.Single(window.Messages, m => m.Role == ChatRole.Martlet).HasNote);
             Assert.Equal(1, fixture.Llm.Calls);
             Assert.Equal(voice ? 2 : 0, fixture.Tts.Calls);
             Assert.Equal(voice ? 2 : 0, fixture.Output.Opens);
@@ -524,8 +547,7 @@ public sealed class LiveConversationTests
                 Assert.NotEmpty(fixture.Output.Bytes);
             }
             Assert.Null(fixture.Controller.PolicySnapshot.ActiveIntentId);
-            Assert.DoesNotContain("typed-content-canary", Text(window, "StatusText"));
-            Assert.DoesNotContain(LiveFixture.Secret, Text(window, "StatusText") + Text(window, "EnvelopeText") + Text(window, "ResultText"));
+            Assert.DoesNotContain(LiveFixture.Secret, Text(window, "ResultText") + string.Concat(window.Messages.Select(m => m.Text + m.Note)));
             Assert.DoesNotContain(LiveFixture.Secret, await File.ReadAllTextAsync(fixture.Store.FilePath));
         }
         finally { window.Close(); }
@@ -775,17 +797,17 @@ public sealed class LiveConversationTests
         byte[] pcm = ProviderFixtures.Wave(1600)[44..];
         fixture.Capture.Packets.Enqueue(pcm);
         fixture.Answer("Spoken answer.");
-        var window = fixture.Open();
+        var window = fixture.Open(new TalkPreferences(HandsFree: false));
         try
         {
             await Loaded(window);
-            Permit(window, voice: true, microphone: true);
+            Assert.Equal(Visibility.Visible, Control<Button>(window, "PttButton").Visibility);
             SendKey(window, Key.Space, down: true);
             await Until(() => fixture.Capture.Reads > 0);
             Assert.True(Control<Button>(window, "PttButton").IsEnabled);
             SendKey(window, Key.Space, down: false);
             await fixture.Finish();
-            await Until(() => Text(window, "AnswerText").Contains("Spoken answer.", StringComparison.Ordinal));
+            await Until(() => window.Messages.Any(m => m.Role == ChatRole.Martlet && m.Text.Contains("Spoken answer.", StringComparison.Ordinal)));
             Assert.Equal(1, fixture.Capture.Opens);
             Assert.Equal(1, fixture.Stt.Calls);
             Assert.Equal(1, fixture.Llm.Calls);
@@ -806,7 +828,7 @@ public sealed class LiveConversationTests
             Assert.Contains("/openai-llm/", fixture.Native.Targets.ElementAt(1));
             Assert.Contains("/openai-tts/", fixture.Native.Targets.ElementAt(2));
             Assert.Contains("Synthetic fixture transcript.", Encoding.UTF8.GetString(fixture.Llm.Body));
-            Assert.Contains("confidence UNKNOWN", Text(window, "TranscriptText"));
+            Assert.Contains("Synthetic fixture transcript.", Assert.Single(window.Messages, m => m.IsUser).Text);
             Assert.Null(fixture.Controller.PolicySnapshot.ActiveIntentId);
         }
         finally { window.Close(); }
@@ -878,12 +900,8 @@ public sealed class LiveConversationTests
     [Theory]
     [InlineData("stop")]
     [InlineData("escape")]
-    [InlineData("pause")]
-    [InlineData("mute")]
     [InlineData("lock")]
-    [InlineData("deactivate")]
     [InlineData("close")]
-    [InlineData("voice-change")]
     public Task SlowVaultNeverBlocksDispatcherOrReleasesAppOwnershipEarly(string transition) => DispatcherTest(async () =>
     {
         await using var fixture = await LiveFixture.Create();
@@ -892,10 +910,7 @@ public sealed class LiveConversationTests
         try
         {
             await Loaded(window);
-            if (transition == "deactivate")
-                SendMessage(new WindowInteropHelper(window).Handle, 0x0006, new IntPtr(1), IntPtr.Zero);
             Control<TextBox>(window, "InputText").Text = "test";
-            Permit(window);
             Click(window, "SendButton");
             await fixture.Native.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
             await Heartbeat();
@@ -903,12 +918,8 @@ public sealed class LiveConversationTests
             {
                 case "stop": Click(window, "StopButton"); break;
                 case "escape": Escape(window, "InputText"); break;
-                case "pause": Control<CheckBox>(window, "PauseChoice").IsChecked = true; break;
-                case "mute": Control<CheckBox>(window, "MuteChoice").IsChecked = true; break;
                 case "lock": fixture.Events.Signal(true); break;
-                case "deactivate": SendMessage(new WindowInteropHelper(window).Handle, 0x0006, IntPtr.Zero, IntPtr.Zero); break;
                 case "close": window.Close(); break;
-                case "voice-change": Control<CheckBox>(window, "VoiceChoice").IsChecked = true; break;
             }
             await Heartbeat();
             fixture.Clock.Advance(TimeSpan.FromSeconds(3));
@@ -1296,7 +1307,6 @@ public sealed class LiveConversationTests
         try
         {
             await Loaded(window);
-            Permit(window, microphone: true);
             SendKey(window, Key.Space, down: true);
             await Until(() => fixture.Capture.Reads > 0);
             var ptt = Control<Button>(window, "PttButton");
@@ -1307,7 +1317,7 @@ public sealed class LiveConversationTests
             Assert.Equal(0, fixture.Stt.Calls);
             Assert.Equal(0, fixture.Llm.Calls);
             Assert.Equal(1, fixture.Capture.Opens);
-            Assert.False(Control<CheckBox>(window, "AcceptCapture").IsChecked);
+            Assert.Empty(window.Messages);
         }
         finally { window.Close(); }
     });
@@ -1318,17 +1328,21 @@ public sealed class LiveConversationTests
     public Task StopRemainsVisibleAndClickableAtEveryScrollPosition(double width, double height) => DispatcherTest(async () =>
     {
         await using var fixture = await LiveFixture.Create();
+        fixture.Native.Block = true;
         var window = fixture.Open();
         try
         {
             await Loaded(window);
             window.Width = width;
             window.Height = height;
-            Permit(window);
+            for (var i = 0; i < 40; i++) window.Messages.Add(new ChatMessage(ChatRole.Note, $"Earlier note {i}."));
+            Control<TextBox>(window, "InputText").Text = "test";
+            Click(window, "SendButton");
+            await fixture.Native.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
             var content = Assert.IsAssignableFrom<FrameworkElement>(window.Content);
-            var scroll = Assert.IsType<ScrollViewer>(
-                Assert.IsType<StackPanel>(Control<TextBox>(window, "EnvelopeText").Parent).Parent);
+            var scroll = Control<ScrollViewer>(window, "HistoryScroll");
             var stop = Control<Button>(window, "StopButton");
+            Assert.True(stop.IsEnabled);
             window.UpdateLayout();
             Assert.True(scroll.ScrollableHeight > 0);
             Point? fixedPosition = null;
@@ -1347,27 +1361,29 @@ public sealed class LiveConversationTests
                 fixedPosition = bounds.TopLeft;
             }
             Assert.Equal("Esc", System.Windows.Automation.AutomationProperties.GetAcceleratorKey(stop));
-            fixture.NoEffects();
+            Assert.Equal(0, fixture.Llm.Calls);
         }
-        finally { window.Close(); }
+        finally { fixture.Native.Release.Set(); window.Close(); await fixture.Finish(); }
     });
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public Task StopOrEscapeRevokesUnusedPermissionsWithoutStartingWork(bool escape) => DispatcherTest(async () =>
+    public Task StopOrEscapeWhileIdleStartsNoWorkAndKeepsTheDraft(bool escape) => DispatcherTest(async () =>
     {
         await using var fixture = await LiveFixture.Create();
         await fixture.EnableMemory();
-        var window = fixture.Open();
+        var window = fixture.Open(new TalkPreferences(HandsFree: false, SpeakReplies: true));
         try
         {
             await Loaded(window);
-            Permit(window, voice: true, microphone: true);
-            Assert.True(Control<Button>(window, "StopButton").IsEnabled);
+            Control<TextBox>(window, "InputText").Text = "draft";
+            Assert.False(Control<Button>(window, "StopButton").IsEnabled);
             if (escape) Escape(window, "InputText");
             else Click(window, "StopButton");
-            AssertPermissionsCleared(window);
+            await Heartbeat();
+            Assert.Equal("draft", Control<TextBox>(window, "InputText").Text);
+            Assert.Empty(window.Messages);
             Assert.False(Control<Button>(window, "StopButton").IsEnabled);
             fixture.NoEffects();
         }
@@ -1379,22 +1395,21 @@ public sealed class LiveConversationTests
     {
         await using var fixture = await LiveFixture.Create();
         fixture.Capture.Packets.Enqueue(new byte[3200]);
-        var window = fixture.Open();
+        var window = fixture.Open(new TalkPreferences(HandsFree: false, SpeakReplies: true));
         try
         {
             await Loaded(window);
-            Permit(window, voice: true, microphone: true);
             SendKey(window, Key.Space, down: true);
             await Until(() => fixture.Capture.Reads > 0);
             Escape(window, "PttButton");
             SendKey(window, Key.Space, down: false);
             await fixture.Finish();
-            await Until(() => Text(window, "StatusText").Contains("app worker released: True", StringComparison.Ordinal));
-            Assert.Contains("conversation.canceled", Text(window, "StatusText"));
-            Assert.Contains("retained PCM: 0", Text(window, "StatusText"));
-            AssertPermissionsCleared(window);
-            SendKey(window, Key.Space, down: true);
-            SendKey(window, Key.Space, down: false);
+            var discarded = Assert.IsType<LiveConversationOperation>(window.Current);
+            await Until(() => discarded.OwnershipReleased);
+            Assert.Equal("conversation.canceled", discarded.Status.Code);
+            Assert.Equal(0, discarded.Capture!.Snapshot.RetainedPcmBytes);
+            Assert.Empty(window.Messages);
+            await Until(() => Text(window, "ResultText") == "Stopped.");
             Assert.Equal(1, fixture.Capture.Opens);
             Assert.Equal(1, fixture.Capture.Stops);
             Assert.Equal(1, fixture.Capture.Disposals);
@@ -1412,26 +1427,25 @@ public sealed class LiveConversationTests
     {
         await using var fixture = await LiveFixture.Create(new ControlledDevice { AutoConsume = false });
         fixture.Answer("Retained response.");
-        var window = fixture.Open();
+        var window = fixture.Open(new TalkPreferences(HandsFree: false, SpeakReplies: true));
         try
         {
             await Loaded(window);
             Control<TextBox>(window, "InputText").Text = "test";
-            Permit(window, voice: true);
             Click(window, "SendButton");
             await Until(() => fixture.Output.Starts > 0);
-            Escape(window, "AnswerText");
+            Escape(window, "InputText");
             await fixture.Finish();
-            await Until(() => Text(window, "StatusText").Contains("app worker released: True", StringComparison.Ordinal));
-            Assert.Contains("Retained response.", Text(window, "AnswerText"));
-            Assert.Contains("conversation.canceled", Text(window, "StatusText"));
+            var stopped = Assert.IsType<LiveConversationOperation>(window.Current);
+            await Until(() => stopped.OwnershipReleased && window.Messages.Any(m => m.Role == ChatRole.Martlet && m.HasNote));
+            Assert.Contains("Retained response.", Assert.Single(window.Messages, m => m.Role == ChatRole.Martlet).Text);
+            Assert.Equal("conversation.canceled", stopped.Status.Code);
             Assert.True(fixture.Output.Samples > 0);
             Assert.Equal(1, fixture.Output.Stops);
             Assert.Equal(1, fixture.Output.Disposals);
             Assert.Equal(1, fixture.Llm.Calls);
             Assert.Equal(1, fixture.Tts.Calls);
-            AssertPermissionsCleared(window);
-            Escape(window, "AnswerText");
+            Escape(window, "InputText");
             Assert.Equal(1, fixture.Output.Opens);
             Assert.Equal(1, fixture.Tts.Calls);
         }
@@ -1450,11 +1464,11 @@ public sealed class LiveConversationTests
         {
             await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.True(Control<Button>(window, "StopButton").IsEnabled);
-            Escape(window, "ConfigurationText");
+            Escape(window, "InputText");
             await Heartbeat();
             Assert.True(fixture.Runner.IsRunning);
             Assert.Null(fixture.Runner.TryStart(_ => Task.FromResult(new SetupWorkResult(SetupWorkOutcome.Completed))));
-            AssertPermissionsCleared(window);
+            Assert.False(Control<Button>(window, "SendButton").IsEnabled);
             fixture.NoEffects();
             release.TrySetResult();
             await fixture.Finish();
@@ -1464,14 +1478,6 @@ public sealed class LiveConversationTests
         finally { release.TrySetResult(); window.Close(); }
     });
 
-    private static void AssertPermissionsCleared(Window window)
-    {
-        Assert.False(Control<CheckBox>(window, "AcceptAction").IsChecked);
-        Assert.False(Control<CheckBox>(window, "AcceptCapture").IsChecked);
-        Assert.False(Control<CheckBox>(window, "AcceptUpload").IsChecked);
-        Assert.False(Control<Button>(window, "SendButton").IsEnabled);
-        Assert.False(Control<Button>(window, "PttButton").IsEnabled);
-    }
     private static void Escape(Window window, string target)
     {
         var key = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(window), 0, Key.Escape)
@@ -1484,14 +1490,7 @@ public sealed class LiveConversationTests
     private static string Text(Window window, string name) => name == "ResultText"
         ? Control<TextBlock>(window, name).Text : Control<TextBox>(window, name).Text;
     private static void Click(Window window, string name) => Control<Button>(window, name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-    private static Task Loaded(Window window) => Until(() => Text(window, "ResultText").StartsWith("Choices loaded", StringComparison.Ordinal));
-    private static void Permit(Window window, bool voice = false, bool microphone = false)
-    {
-        Control<CheckBox>(window, "VoiceChoice").IsChecked = voice;
-        Control<CheckBox>(window, "AcceptCapture").IsChecked = microphone;
-        Control<CheckBox>(window, "AcceptUpload").IsChecked = microphone;
-        Control<CheckBox>(window, "AcceptAction").IsChecked = true;
-    }
+    private static Task Loaded(LiveConversationWindow window) => Until(() => window.IsReady);
     private static void SendKey(Window window, Key key, bool down) =>
         Control<Button>(window, "PttButton").RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(window), 0, key)
         { RoutedEvent = down ? Keyboard.PreviewKeyDownEvent : Keyboard.PreviewKeyUpEvent });
@@ -1522,8 +1521,6 @@ public sealed class LiveConversationTests
         await finished.Task.WaitAsync(TimeSpan.FromSeconds(25));
         Assert.True(thread.Join(TimeSpan.FromSeconds(5)));
     }
-    [DllImport("user32.dll", EntryPoint = "SendMessageW")]
-    private static extern IntPtr SendMessage(IntPtr handle, uint message, IntPtr wParam, IntPtr lParam);
 }
 
 internal sealed class LiveFixture : IAsyncDisposable
@@ -1635,12 +1632,34 @@ internal sealed class LiveFixture : IAsyncDisposable
         return await Memory.SaveFactAsync(loaded.Settings!.Memory!.ConfigurationRevision,
             content, Martlet.Memory.MemoryRetention.UntilDeleted());
     }
-    internal LiveConversationWindow Open()
+    /// <summary>Opens the talk window; by default with push-to-talk and text-only replies, so nothing listens or speaks
+    /// unless a test asks for it.</summary>
+    internal LiveConversationWindow Open(TalkPreferences? preferences = null)
     {
-        var window = new LiveConversationWindow(Settings, Runner, Controller, Events, clock: Clock)
+        var window = new LiveConversationWindow(Settings, Runner, Controller, Events, clock: Clock,
+            preferences: preferences ?? new TalkPreferences(HandsFree: false, SpeakReplies: false))
         { ShowActivated = false, ShowInTaskbar = false };
         window.Show();
         return window;
+    }
+    /// <summary>Marks the selected microphone as set up and tested, as the microphone test in Companion does.</summary>
+    internal async Task TestMicrophone()
+    {
+        var settings = (await Store.LoadAsync()).Settings!;
+        var input = settings.Audio!.Input;
+        await Save(settings with { Audio = settings.Audio with { Input = input with { Checkpoint = new()
+        {
+            ConfigurationRevision = input.ConfigurationRevision, TestedAt = DateTimeOffset.UtcNow, Outcome = LocalAudioOutcome.SamplesReceived
+        } } } });
+    }
+    internal async Task Advance(Func<bool> condition)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        while (!condition())
+        {
+            Clock.Advance(TimeSpan.FromMilliseconds(5));
+            await Task.Delay(1, timeout.Token);
+        }
     }
     internal void Answer(params string[] text) => Llm.Respond = (_, _) => Task.FromResult(TextRecordingHandler.Sse(Harness.Trace(text)));
     internal async Task Finish(LiveConversationOperation? operation = null, bool advance = true)

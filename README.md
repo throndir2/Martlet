@@ -1,12 +1,14 @@
 # Martlet
 
 **Status: internal explicit API conversation integration; not a qualified release.**
-Desktop now has a separate [real API conversation](docs/CONVERSATION.md) surface:
-explicit typed input, bounded push-to-talk or hands-free voice activity through
-configured OpenAI STT, participation policy, streaming LLM and optional generated
-voice/playback. Optional local **Voice ID** recognizes your enrolled voice and
-ignores other people before anything is uploaded.
-Each new action requires a bounded data/cost/output authorization; no credentials or audio are accessed on launch; network remains idle except for
+Desktop now has a [talk window](docs/CONVERSATION.md) that is just the
+conversation: a chat history (what you typed or said and Martlet's replies) and
+a message box. By default Martlet listens whenever it is open (once a microphone
+is tested), or push-to-talk; it streams the reply and speaks it with the chosen
+voice. How it listens, speaks and sees is chosen in Companion. Optional local
+**Voice ID** recognizes your enrolled voice and ignores other people before
+anything is uploaded. Each message or utterance is its own bounded action; no
+credentials or audio are accessed on launch; network remains idle except for
 update checks (on by default; can be turned off), host updates or [who-does-what sync](docs/CLUSTER.md) when enabled. Text-only never requests TTS or opens output.
 Actual account/device/first-conversation qualification remains **NOT RUN**.
 
@@ -25,8 +27,8 @@ through **Setup / resume**; see [SETUP](docs/SETUP.md). Saved API routes are not
 verified connections or spending permission. **Audio setup (local only)** offers explicit microphone/
 output selection and separately confirmed bounded local capture/tone tests.
 Opening it does not enumerate or open devices. Historical local checkpoints
-are not device readiness or permission to listen later. Hands-free voice
-activity listens only while you keep **Start listening** on; acoustic wake words,
+are not device readiness. Always listening runs only while the talk window is
+open, and its **Listening** button pauses it; acoustic wake words,
 automatic name/group listening and supported end-user deployment
 are not available. A PC microphone does not automatically
 capture remote participants.
