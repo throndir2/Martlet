@@ -59,6 +59,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // "Hearing you…", "Not listening" or why Martlet can't listen).
         "OpenLiveConversation", "HomeListen", "HomeListeningStatus",
         "PeopleStatus", "PeopleSyncStatus", "PeopleVoiceCount", "ListenParakeetStatus", "SetupCharacterView", "SetupCharacterSpeechDisplay",
+        // Where the character's speech bubble goes: following the character or in one place, and its pixel offsets.
+        "SetupCharacterBubblePlacement", "SetupCharacterBubbleOffsetX", "SetupCharacterBubbleOffsetY",
         "SetupCharacterNow", "SetupCharacterNowProblem",
         "LipSyncNow", "LipSyncNowProblem", "LipSyncOwnTitle", "LipSyncOwnState", "LipSyncDockerTitle", "LipSyncDockerAbout", "LipSyncLoudnessTitle",
         "SelectedDevice", "SelectedDeviceHealth", "ClusterStatus",

@@ -646,8 +646,21 @@ character window's `SpeechBubbleChoice` and `SubtitleChoice`), so `ui_toggle`
 needs `--allow-ui-effects`. With the character showing,
 `SetupCharacterPreviewBubble` (also `--allow-ui-effects`) sends a sample bubble
 to the overlay for a few seconds; `SetupCharacterSpeechDisplay` then says
-whether the overlay took it. The bubble itself is drawn by the separate
+whether the overlay took it and where it put it (to the left or right of the
+character's head, above it, or in its fixed place, with the bubble's screen
+position and size). The bubble itself is drawn by the separate
 renderer process, so its text is not in snapshots.
+
+The same card sets where the bubble goes. `SetupCharacterBubblePlacement`
+returns *Follows the character* (default: beside the head on whichever side has
+room on its screen, then above it, following moves, zoom and pan) or *Stays in
+one place*; `SetupCharacterBubbleOffsetX` and `SetupCharacterBubbleOffsetY`
+return the pixel offsets (positive is right and down; in one place they are
+measured from the top-left of the character's screen). `ui_select` and
+`ui_set_text` on them save `speech-display.json` (`StaticBubble`,
+`BubbleOffsetX`, `BubbleOffsetY`), so they need `--allow-ui-effects`;
+`SetupCharacterSpeechDisplay` reads back the saved position, or says an offset
+isn't a number from -4000 to 4000.
 
 For F5 voices, open `CompanionTab-Voice` (the Voices card shows unless the
 voice comes from a cloud provider). `F5VoicesStatus` reads how many included
