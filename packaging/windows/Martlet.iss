@@ -114,7 +114,17 @@ begin
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  StartupCommand: String;
 begin
+  // Settings > Start with Windows points the per-user Run entry at this install; it leaves with the install.
+  if (CurUninstallStep = usUninstall) and
+     RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'Martlet', StartupCommand) and
+     (Pos(Lowercase(AddBackslash(ExpandConstant('{app}'))), Lowercase(StartupCommand)) > 0) then
+  begin
+    RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'Martlet');
+    RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run', 'Martlet');
+  end;
   if (CurUninstallStep = usPostUninstall) and not UninstallSilent then
     MsgBox('Martlet was uninstalled. Your settings remain in ' +
       ExpandConstant('{localappdata}\Martlet') + '.', mbInformation, MB_OK);

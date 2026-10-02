@@ -15,6 +15,8 @@ public partial class App : Application
     internal string? DataDirectoryArgument { get; private set; }
     /// <summary>The previous run did not exit cleanly (crash, kill or power loss); Home says so with the logs folder.</summary>
     internal bool CrashedLastTime { get; private set; }
+    /// <summary>This process owns its data folder (<see cref="SingleInstance"/>).</summary>
+    private SingleInstance? instance;
 
     internal void ApplyTheme(PinkTheme theme)
     {
@@ -36,9 +38,17 @@ public partial class App : Application
         base.OnStartup(e);
         SettingsStore? store = null;
         string? error = null;
-        // An automatic update restarts Martlet minimized and without taking focus from whatever you are doing.
-        var afterUpdate = e.Args is [.., "--after-update"];
-        var args = afterUpdate ? e.Args[..^1] : e.Args;
+        // Flags after the data folder: an automatic update restarts Martlet minimized and without taking focus from whatever you
+        // are doing (--after-update); Start with Windows, and an update while Martlet was in the notification area, start it there
+        // without its window (--tray).
+        var args = e.Args;
+        bool afterUpdate = false, toTray = false;
+        while (args is [.., "--after-update" or WindowsStartup.TrayArgument])
+        {
+            if (args[^1] == WindowsStartup.TrayArgument) toTray = true;
+            else afterUpdate = true;
+            args = args[..^1];
+        }
         try
         {
             var directory = args switch
@@ -60,6 +70,26 @@ public partial class App : Application
         // Failed provider requests record their HTTP status and the provider's own short explanation locally.
         Martlet.Providers.ProviderDiagnostics.SetSink(line => ErrorLog.Warn(line));
         if (error is not null) ErrorLog.Warn(error);
+        if (store is not null)
+        {
+            var acquired = true;
+            try
+            {
+                instance = SingleInstance.TryAcquire(store.DataDirectory);
+                acquired = instance is not null;
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or WaitHandleCannotBeOpenedException or IOException)
+            {
+                ErrorLog.Warn("Couldn't check for another Martlet with this data folder", ex);
+            }
+            if (!acquired)
+            {
+                ErrorLog.Info("Martlet already runs with this data folder; showing it instead of starting again.");
+                if (!toTray) SingleInstance.ShowRunning(store.DataDirectory);
+                Shutdown(0);
+                return;
+            }
+        }
         try
         {
             if (store is not null)
@@ -70,13 +100,22 @@ public partial class App : Application
             }
             ApplyTheme(SelectedTheme);
             SystemParameters.StaticPropertyChanged += SystemAppearanceChanged;
-            MainWindow = new MainWindow(store, error);
-            if (afterUpdate)
+            var main = new MainWindow(store, error);
+            MainWindow = main;
+            SessionEnding += (_, _) => main.PrepareForSessionEnd();
+            if (toTray) main.EnableTray();
+            if (toTray && main.CanStartInTray) main.StartInTray();
+            else
             {
-                MainWindow.ShowActivated = false;
-                MainWindow.WindowState = WindowState.Minimized;
+                if (afterUpdate)
+                {
+                    main.ShowActivated = false;
+                    main.WindowState = WindowState.Minimized;
+                }
+                main.Show();
+                if (!toTray) main.EnableTray();
             }
-            MainWindow.Show();
+            instance?.Listen(() => Dispatcher.BeginInvoke(main.ShowFromTray));
         }
         catch (Exception ex)
         {
@@ -91,6 +130,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         SystemParameters.StaticPropertyChanged -= SystemAppearanceChanged;
+        instance?.Dispose();
         ErrorLog.MarkCleanExit();
         base.OnExit(e);
     }

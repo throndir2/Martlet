@@ -7,7 +7,7 @@ Starts src\Martlet.Mcp from this checkout, sends initialize and each call in
 order, and prints one JSON array of results. Doctor, voices_status, f5_voices, cluster_status, logs_tail, logs_timeline,
 virtualization_status and mcp_servers_status calls
 without an explicit dataDirectory get a disposable one. -Desktop launches Martlet.Desktop with the
-same disposable data directory and connects ui_* tools to it first.
+same disposable data directory (plus any -DesktopArguments, such as --tray) and connects ui_* tools to it first.
 
 Each call is {"name": "<tool>", "arguments": {...}} with optional "waitMs"
 (pause after the call) and "until" (repeat the call for up to 20 seconds until
@@ -25,6 +25,7 @@ param(
     [switch]$Desktop,
     [int]$DesktopProcessId,
     [string]$DataDirectory,
+    [string[]]$DesktopArguments = @(),
     [switch]$AllowUiEffects,
     [switch]$KeepDesktop,
     [switch]$Build,
@@ -100,6 +101,7 @@ try {
         $start = [System.Diagnostics.ProcessStartInfo]::new($executable)
         $start.ArgumentList.Add('--data-directory')
         $start.ArgumentList.Add($data)
+        foreach ($argument in $DesktopArguments) { $start.ArgumentList.Add($argument) }
         $start.UseShellExecute = $false
         $desktopProcess = [System.Diagnostics.Process]::Start($start)
         $DesktopProcessId = $desktopProcess.Id

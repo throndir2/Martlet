@@ -117,6 +117,7 @@ public partial class MainWindow : ThemedWindow
         InitializeVoiceSync();
         InitializeNodeAgent();
         InitializeLogs();
+        InitializeBackground();
     }
 
     private async void Theme_Changed(object sender, SelectionChangedEventArgs e)
@@ -149,6 +150,17 @@ public partial class MainWindow : ThemedWindow
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         StartAmbientMotion();
+        await StartRunningAsync();
+    }
+
+    private bool started;
+
+    /// <summary>Everything Martlet does once it runs: status, the saved character, sync, the node agent, logs and updates. It
+    /// runs when the window first shows, or straight away when Martlet starts in the notification area.</summary>
+    private async Task StartRunningAsync()
+    {
+        if (started) return;
+        started = true;
         ReadMachineAsync().Forget();
         await RefreshAsync();
         if (!closing) ContinueSetupAsync().Forget();
@@ -289,9 +301,14 @@ public partial class MainWindow : ThemedWindow
         if (conversation is null || closing || saving || model?.IsRunning == true) return;
         openConversation = new LiveConversationWindow(setupService!, setupOperations, conversation, audioSessionEvents, voiceIdentity: voiceIdentity,
             preferences: Talk, videoAddress: visionAddress)
-            { Owner = this, Support = support };
+            { Owner = this, Support = support, OwnTaskbarButton = !IsVisible };
+        UpdateTray();
         try { openConversation.ShowDialog(); }
-        finally { openConversation = null; }
+        finally
+        {
+            openConversation = null;
+            UpdateTray();
+        }
         await RefreshAsync();
     }
 
@@ -539,14 +556,22 @@ public partial class MainWindow : ThemedWindow
         e.Cancel = true;
         if (closing)
             return;
+        // The close button keeps Martlet running in the notification area unless you chose to exit.
+        if (!exiting && tray is { Added: true } && background.CloseToTray)
+        {
+            HideToTray();
+            return;
+        }
         if (recovery?.HasResources == true)
         {
+            RefuseExit();
             recovery.StopObserving();
             ActionText.Text = "Finish the backup or restore task before exiting.";
             return;
         }
         if (support.HasResources)
         {
+            RefuseExit();
             support.CancelAndClose();
             ActionText.Text = "Finish troubleshooting cleanup before exiting.";
             return;
@@ -560,12 +585,14 @@ public partial class MainWindow : ThemedWindow
             catch (TimeoutException)
             {
                 IsEnabled = true;
+                RefuseExit();
                 ActionText.Text = "Finish or cancel the update before exiting.";
                 return;
             }
             if (interruptedUpdateCleanup is { } error)
             {
                 IsEnabled = true;
+                RefuseExit();
                 ActionText.Text = $"Couldn't finish update cleanup: {error}";
                 return;
             }
@@ -577,6 +604,7 @@ public partial class MainWindow : ThemedWindow
         updateTimer.Stop();
         clusterTimer.Stop();
         voiceSyncTimer.Stop();
+        trayTimer.Stop();
         StopLogs();
         audioSessionEvents.LockedChanged -= audioSetup.SetSessionLocked;
         audioSessionEvents.LockedChanged -= AvatarSessionLocked;
@@ -600,6 +628,7 @@ public partial class MainWindow : ThemedWindow
             System.ComponentModel.Win32Exception or UnauthorizedAccessException) { }
         memory?.Dispose();
         LaunchPendingInstall();
+        tray?.Dispose();
         // WPF OnMainWindowClose exits the process, including any non-cooperative in-process callback.
         // Even absent or synchronous cleanup must leave WPF's original Closing event before closing again.
         await Dispatcher.InvokeAsync(() =>
@@ -609,5 +638,5 @@ public partial class MainWindow : ThemedWindow
         });
     }
 
-    private void Exit_Click(object sender, RoutedEventArgs e) => Close();
+    private void Exit_Click(object sender, RoutedEventArgs e) => ExitMartlet();
 }

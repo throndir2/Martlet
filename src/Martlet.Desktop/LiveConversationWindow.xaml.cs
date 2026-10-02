@@ -783,6 +783,64 @@ public partial class LiveConversationWindow : ThemedWindow
 
     private void Stop_Click(object sender, RoutedEventArgs e) => StopAll("conversation.canceled");
 
+    // ---------- Pause and Resume Martlet (the notification-area menu) ----------
+
+    /// <summary>Whether there is anything to pause: always listening or vision is chosen in Companion.</summary>
+    internal bool CanPause => preferences.HandsFree || preferences.Watch;
+    /// <summary>Everything chosen is paused: listening (when always listening) and vision (when it is on).</summary>
+    internal bool Paused => CanPause && (!preferences.HandsFree || listenPaused) && (!preferences.Watch || watchPaused);
+    internal bool IsListening => listening;
+    internal bool IsWatching => watching;
+
+    /// <summary>Pause Martlet: stops a reply, a recording and vision like Stop, and also pauses listening, until Resume (or the
+    /// mic and vision buttons).</summary>
+    internal void Pause()
+    {
+        if (closed) return;
+        StopAll("conversation.canceled");
+        listening = false;
+        listenPaused = true;
+        StopListening(keepHeard: false);
+        watchPaused = true;
+        notice = "Paused. Martlet isn't listening or looking. Resume it from its notification-area icon, or use the mic button.";
+        RenderActions();
+    }
+
+    /// <summary>Resume Martlet: listening and vision come back as chosen in Companion, like their buttons.</summary>
+    internal void Resume()
+    {
+        if (closed) return;
+        notice = null;
+        if (preferences.HandsFree && !listening)
+        {
+            listenPaused = false;
+            listenRetryAt = 0;
+            if (MicrophoneUsable) listening = true;
+            else notice = ListeningProblem();
+        }
+        if (preferences.Watch && !watching)
+        {
+            watchPaused = false;
+            StartWatching();
+        }
+        RenderActions();
+    }
+
+    /// <summary>Opened from the notification area while Martlet's main window is hidden there: the talk window gets its own
+    /// taskbar button, so it can't get lost behind other windows.</summary>
+    internal bool OwnTaskbarButton { get; init; }
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        if (!OwnTaskbarButton || PresentationSource.FromVisual(this) is not System.Windows.Interop.HwndSource source) return;
+        const int GWL_EXSTYLE = -20, WS_EX_APPWINDOW = 0x40000;
+        SetWindowLongPtrW(source.Handle, GWL_EXSTYLE, GetWindowLongPtrW(source.Handle, GWL_EXSTYLE) | WS_EX_APPWINDOW);
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern nint GetWindowLongPtrW(nint window, int index);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern nint SetWindowLongPtrW(nint window, int index, nint value);
+
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key != Key.Escape) return;

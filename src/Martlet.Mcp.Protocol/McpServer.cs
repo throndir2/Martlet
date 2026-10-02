@@ -72,6 +72,14 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             id = new { type = "string" }
         }, ["id"]),
+        Tool("ui_tray", "Martlet's notification-area icon. \"status\" (default) reads whether the icon is shown, whether the main " +
+            "window is visible or hidden in the notification area, and whether Martlet still runs. \"open\" and \"menu\" send the icon " +
+            "what Explorer sends for a left click (show Martlet) and a right click (its menu at the mouse pointer; ui_snapshot then " +
+            "lists the Tray* items). \"close\" presses the main window's close button, which hides Martlet in the notification area " +
+            "by default or exits it, so it requires --allow-ui-effects.", new
+        {
+            action = new { type = "string", @enum = DesktopAutomation.TrayActions }
+        }),
         Tool("voices_status", "Read voice recognition and Parakeet status from a data directory: on/off choices, which downloads " +
             "are installed and counts of known voices (never names, voiceprints or audio). Read-only; no audio, network or models run.", new
         {
@@ -191,6 +199,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "ui_select" => desktop.Select(RequiredString(arguments, "id"), RequiredString(arguments, "item")),
                 "ui_set_text" => desktop.SetText(RequiredString(arguments, "id"), RequiredString(arguments, "text")),
                 "ui_toggle" => desktop.Toggle(RequiredString(arguments, "id")),
+                "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status"),
                 "voices_status" => VoicesStatus(arguments),
                 "f5_voices" => F5Voices(arguments),
                 "cluster_status" => ClusterStatus(arguments),
