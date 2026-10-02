@@ -58,7 +58,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "OpenLiveConversation",
         "PeopleStatus", "PeopleSyncStatus", "PeopleVoiceCount", "ListenParakeetStatus", "SetupCharacterView", "SetupCharacterSpeechDisplay",
         "SetupCharacterNow", "SetupCharacterNowProblem",
-        "LipSyncNow", "LipSyncNowProblem", "LipSyncOwnTitle", "LipSyncOwnState", "LipSyncDockerTitle", "LipSyncLoudnessTitle",
+        "LipSyncNow", "LipSyncNowProblem", "LipSyncOwnTitle", "LipSyncOwnState", "LipSyncDockerTitle", "LipSyncDockerAbout", "LipSyncLoudnessTitle",
         "SelectedDevice", "SelectedDeviceHealth", "ClusterStatus",
         "VisionStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "SetupF5About", "F5VoicesStatus",
         "SetupOllamaStatus", "SetupLocalModelTest", "HostRunStatus", "RepliesNow", "AppUpdateStatus",
@@ -104,10 +104,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// network's computers ("NetworkMember-host-gpu-pc" reads "gpu-pc. Host, paired with this PC; added on desktop-a.") and
     /// requests to join ("NetworkJoin-desktop-b" reads "DESKTOP-B asks to join. desktop-b, through gpu-pc. Check number ...");
     /// API keys ("ApiKeyRow-AbC..." reads "Home Assistant. See status and logs. Made on desktop-a 10/2/2026. ... ID AbCdEf.",
-    /// never the key or its verifier).</summary>
+    /// never the key or its verifier); a host role's choices in its Add dialog ("HostInput-choice.A2F_ENGINE" reads "local";
+    /// never its secret fields) and the terms that follow a variant choice ("HostInputTerms-A2F_ENGINE").</summary>
     private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "F5VoiceRow-", "F5VoiceGroup-", "StepDetail-", "HostChoice",
         "HealthIssue-", "HealthCheck-", "LogEntry-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",
-        "SmartHomeDevice-", "SmartHomeUpdate-"];
+        "SmartHomeDevice-", "SmartHomeUpdate-", "HostInput-choice.", "HostInputTerms-"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>

@@ -1241,7 +1241,7 @@ default, is detected, or is installed by Martlet.
 | Only when the user opts in | Input |
 | --- | --- |
 | A custom voice | A 10-second recording and *whose voice is this* |
-| Audio2Face lip-sync | A free NVIDIA NGC key (the only second key in the product) |
+| Audio2Face lip-sync | None with the default open-source engine; a free NVIDIA NGC key only for NVIDIA's NIM engine |
 | A Linux machine over SSH | Address, user and password once |
 | Their own character | A model file |
 | Their own model server | URL and model ID under *Advanced* |
@@ -1304,7 +1304,7 @@ moves to it. Jobs already running well locally stay local.
 | *Install Docker Desktop* | Hosts | Inside the runner when a job needs it (or not needed, 11.6). |
 | Pairing code paste, *Pair with host*, *Check host* | Hosts › Pair | Removed; network trust (B1, B2). |
 | Role options (GPU or CPU, model) | Role install dialog | *Automatic*, preselected by the machine's hardware. |
-| NVIDIA NGC key | Audio2Face role | Asked only when the user turns on Audio2Face, with *Get a free key ↗*. |
+| NVIDIA NGC key | Audio2Face role, `nim` engine only | Asked only when the user picks the NIM engine for Audio2Face, with *Get a free key ↗*; the default open-source engine needs none. |
 | Talk mode, talk key | Conversation | Push-to-talk on a global key (preset), changeable on Listening. |
 | Hands-free sensitivity, reply pause | Conversation | Defaults (0.5, 0.8 s); Listening › *Advanced*. |
 | *Speak the reply …* (off) | Conversation | On whenever a voice is set. |
@@ -1333,7 +1333,7 @@ prompt per run.
 | Docker Desktop | Same | Silent install with its licence accepted on the user's behalf after the terms sheet; started automatically; no sign-in. |
 | Firewall rule (TCP 9443) | Only when this PC helps other computers | Part of the same single elevation; no separate Public-to-Private dialog. |
 | NVIDIA driver | GPU jobs | Detected. If missing or too old, a Fix card links to the driver download (drivers can't be installed silently and reliably). The plan falls back to CPU or cloud until then. |
-| NVIDIA NGC key | Audio2Face only | Opt-in (11.1). |
+| NVIDIA NGC key | Audio2Face NIM engine only | Opt-in (11.1). |
 
 ### 11.6 Gaps that block "just a key"
 
@@ -1377,7 +1377,7 @@ Each flow below asks for a step Martlet could do itself.
 | 6 | Audio setup | Per-test confirmation; the microphone test gates *Working* (Save removed: picking applies) | Windows default devices, no gate | `AudioSetupWindow.xaml(.cs)` |
 | 7 | Conversation | Done: history and message box only; listening, spoken replies and vision are standing Companion choices with pause toggles in the window | Global talk key; Settings › Privacy | `LiveConversationWindow.xaml(.cs)`, `MainWindow.Talk.cs` |
 | 8 | Character | *Save choices*, *Activate reviewed avatar*, inspection and analysis permissions, manual mapping | Picking applies; automatic mapping | `AvatarWindow.xaml(.cs)`, `Audio2FaceAutoMapping.cs` |
-| 9 | Host role install | Role dialog with GPU/CPU choice and options on other computers; on this PC whisper's choice is made on the Listening tab and the install asks nothing | *Automatic* preselected; dialog only for the NGC key | `HostDialogs.cs:125-148` |
+| 9 | Host role install | Role dialog with GPU/CPU choice and options on other computers; on this PC whisper's choice is made on the Listening tab and the install asks nothing | *Automatic* preselected; the NGC key field appears only for the Audio2Face NIM engine | `HostDialogs.cs:125-148` |
 | 10 | Add a computer | Method choice, typed LAN address, *Install Docker Desktop*, pairing code, *Pair with host*, *Check host* | Join the network (B1); SSH only for Linux (B6) | `HostsWindow.xaml(.cs)` |
 | 11 | Prepare a Linux host | Type target, *Read status*, *Tick what is missing*, *Run selected* | Part of B6's runner | `PrepareHostWindow.xaml(.cs)` |
 | 12 | Prerequisites | Welcome-tour tick list (installs in a run window, no console); Ollama and Windows speech left unticked | Installed on demand by the job that needs them | `Prerequisites.cs`, `MainWindow.Shell.cs:231-260` |

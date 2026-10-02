@@ -415,7 +415,7 @@ window ends it.
   - *This PC*: two ways, the one in use first, like the voice. **Audio2Face,
     with Docker** (*Set up Audio2Face with Docker* sets up and pairs Martlet's
     host service on this PC, then hands lip-sync to it, installing Audio2Face
-    with its NGC key; once the host service exists, *Use Audio2Face on this
+    with its open-source engine, no key; once the host service exists, *Use Audio2Face on this
     PC* and *Check it*; recommended with an NVIDIA graphics card of 4 GB or
     more) or **Voice loudness, no setup** (*Use voice loudness* turns
     Audio2Face off; recommended otherwise). Below them, an advanced **Your own

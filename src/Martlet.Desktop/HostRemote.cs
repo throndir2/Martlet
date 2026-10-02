@@ -10,9 +10,15 @@ internal sealed record HostProbe(bool Docker, bool DockerAccess, string Sudo, st
     internal bool SudoNeedsPassword => Sudo == "password";
 }
 
-/// <summary>A role's inputs as the host's role.conf declares them (martlet-host describe).</summary>
+/// <summary>A role's inputs as the host's role.conf declares them (martlet-host describe). <paramref name="SecretWhen"/> and
+/// <paramref name="TermsWhen"/> belong to one variant of the role: they apply only when choice <c>Variable</c> is <c>Value</c>.</summary>
 internal sealed record HostRoleInputs(string Title, string Requires, string Terms, bool Installed,
-    IReadOnlyList<HostRoleSecret> Secrets, IReadOnlyList<HostRoleChoice> Choices, bool GpuOrCpu = false);
+    IReadOnlyList<HostRoleSecret> Secrets, IReadOnlyList<HostRoleChoice> Choices, bool GpuOrCpu = false)
+{
+    public IReadOnlyDictionary<string, (string Variable, string Value)> SecretWhen { get; init; } =
+        new Dictionary<string, (string, string)>(StringComparer.Ordinal);
+    public IReadOnlyList<(string Variable, string Value, string Text)> TermsWhen { get; init; } = [];
+}
 
 internal sealed record HostRoleSecret(string Name, string Prompt, bool Stored);
 
@@ -182,6 +188,10 @@ internal sealed partial class HostRemote(HostShell shell)
         var suggested = new HashSet<string>(StringComparer.Ordinal);
         var secrets = new List<HostRoleSecret>();
         var choices = new List<HostRoleChoice>();
+        var secretWhen = new Dictionary<string, (string, string)>(StringComparer.Ordinal);
+        var termsWhen = new List<(string, string, string)>();
+        static (string Variable, string Value)? Condition(string text) =>
+            text.Split('=') is [var variable, var value] && variable.Length > 0 && value.Length > 0 ? (variable, value) : null;
         foreach (var line in lines)
         {
             var split = line.IndexOf('=');
@@ -198,13 +208,22 @@ internal sealed partial class HostRemote(HostShell shell)
                 case "role.secret" when value.Split('|') is [var name, .. var middle, var state] && middle.Length > 0:
                     secrets.Add(new(name, string.Join('|', middle), state == "stored"));
                     break;
+                case "role.secret_when" when value.Split('|') is [var name, var when] && Condition(when) is { } condition:
+                    secretWhen[name] = condition;
+                    break;
+                case "role.terms_when" when value.IndexOf('|') is > 0 and var bar && Condition(value[..bar]) is { } condition:
+                    termsWhen.Add((condition.Variable, condition.Value, value[(bar + 1)..]));
+                    break;
                 case "role.choice" when value.Split('|') is [var variable, var label, var options, var fallback]:
                     choices.Add(new(variable, label, options.Split(' ', StringSplitOptions.RemoveEmptyEntries), fallback));
                     break;
             }
         }
         return new(title, requires, terms, installed, secrets,
-            choices.Select(c => c with { Suggested = suggested.Contains(c.Variable) }).ToList(), gpuOrCpu);
+            choices.Select(c => c with { Suggested = suggested.Contains(c.Variable) }).ToList(), gpuOrCpu)
+        {
+            SecretWhen = secretWhen, TermsWhen = termsWhen
+        };
     }
 }
 

@@ -3,6 +3,10 @@
 This is Martlet's first rich speech-to-face backend: a real protobuf/gRPC client
 for an **already provisioned NVIDIA Audio2Face-3D NIM v2 service** on an explicitly
 configured numeric loopback address. It is not a native Audio2Face SDK bridge.
+The same protocol is served by Martlet's own
+[local Audio2Face service](../../workers/audio2face/README.md) (NVIDIA's
+open-source Audio2Face-3D SDK, the `audio2face` host role's default `local`
+engine), so this client and the gateway relay work with either engine.
 It does not install, launch, download, authenticate to, or replace a service.
 Construction and `InspectPrerequisites()` are passive. `Audio2FaceProbe.IsListeningAsync`
 is a separate, explicit TCP connect check against the configured loopback

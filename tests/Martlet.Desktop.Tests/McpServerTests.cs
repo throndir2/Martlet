@@ -61,14 +61,14 @@ public sealed class McpServerTests(ITestOutputHelper output)
             for (var attempt = 0; attempt < 50 && !settings.Contains("AutomaticUpdateCheck", StringComparison.Ordinal); attempt++)
             {
                 await Task.Delay(100);
-                settings = JsonSerializer.Serialize(await Task.Run(automation.Snapshot));
+                settings = JsonSerializer.Serialize(await Task.Run(() => automation.Snapshot()));
             }
             Assert.Contains("AutomaticUpdateCheck", settings);
             if (churn)
             {
                 for (var iteration = 0; iteration < 100; iteration++)
                 {
-                    var snapshot = JsonSerializer.SerializeToElement(await Task.Run(automation.Snapshot));
+                    var snapshot = JsonSerializer.SerializeToElement(await Task.Run(() => automation.Snapshot()));
                     Assert.Single(snapshot.GetProperty("windows").EnumerateArray());
                     await Task.Delay(5);
                 }
@@ -213,11 +213,11 @@ public sealed class McpServerTests(ITestOutputHelper output)
 
     private static async Task<JsonElement> WaitForWindowCount(DesktopAutomation automation, int count)
     {
-        var snapshot = JsonSerializer.SerializeToElement(await Task.Run(automation.Snapshot));
+        var snapshot = JsonSerializer.SerializeToElement(await Task.Run(() => automation.Snapshot()));
         for (var attempt = 0; attempt < 50 && snapshot.GetProperty("windows").GetArrayLength() != count; attempt++)
         {
             await Task.Delay(100);
-            snapshot = JsonSerializer.SerializeToElement(await Task.Run(automation.Snapshot));
+            snapshot = JsonSerializer.SerializeToElement(await Task.Run(() => automation.Snapshot()));
         }
         Assert.Equal(count, snapshot.GetProperty("windows").GetArrayLength());
         return snapshot;

@@ -1403,8 +1403,8 @@ public partial class MainWindow
                 ownerMissing ? "Audio2Face isn't installed there yet, so voice loudness is used for now."
                     : $"In use: Audio2Face{(hostChecks.GetValueOrDefault(owner ?? "")?.Offers?.GetValueOrDefault(HostRoles.Audio2Face) is { } model ? " " + model : "")}.",
                 ownerMissing ? "Install Audio2Face" : null, AssignLipSyncAsync,
-                "Only Martlet's generated voice is sent to that computer. Audio2Face needs an NVIDIA graphics card and NGC key. " +
-                "Until it is ready, the mouth follows voice loudness.", thisPc)
+                "Only Martlet's generated voice is sent to that computer. Audio2Face needs an NVIDIA graphics card; its open-source " +
+                "engine needs no NVIDIA account (NVIDIA's NIM engine needs an NGC key). Until it is ready, the mouth follows voice loudness.", thisPc)
             : LocalLipSyncCard(thisPc, handler, owner, fits));
     }
 
@@ -1428,11 +1428,14 @@ public partial class MainWindow
         var dockerTitle = OptionTitle("Audio2Face, with Docker",
             notInstalled ? "chosen, not installed yet" : dockerInUse ? "in use" : fits ? "recommended for this PC" : null);
         AutomationProperties.SetAutomationId(dockerTitle, "LipSyncDockerTitle");
+        var dockerAbout = Note("NVIDIA Audio2Face moves the mouth naturally with Martlet's voice. It runs in Docker on this PC with NVIDIA's " +
+            "open-source Audio2Face, so no NVIDIA account or key is needed (NVIDIA's NIM, which needs an NGC key, is the other engine " +
+            "offered). Until it is ready, voice loudness is used.", new Thickness(0, 2, 0, 6));
+        AutomationProperties.SetAutomationId(dockerAbout, "LipSyncDockerAbout");
         var docker = new List<UIElement>
         {
             dockerTitle,
-            Note("NVIDIA Audio2Face moves the mouth naturally with Martlet's voice. It runs in Docker on this PC and needs an NVIDIA NGC key. " +
-                "Until it is ready, voice loudness is used.", new Thickness(0, 2, 0, 6)),
+            dockerAbout,
             Note(gpu is null ? "No dedicated graphics card was found on this PC; Audio2Face needs an NVIDIA graphics card with 4 GB or more."
                 : $"This PC has {gpu.Describe()}." + (fits ? "" : " Audio2Face needs an NVIDIA graphics card with 4 GB or more, so voice " +
                     "loudness or another computer suits this PC better."), new Thickness(0, 0, 0, 6))

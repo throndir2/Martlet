@@ -1,14 +1,43 @@
-# Martlet Audio2Face host service (NVIDIA Audio2Face-3D NIM), loopback-only behind the Martlet gateway.
-# Adapted from NVIDIA Audio2Face-3D-Samples quick-start/docker-compose.yml at commit
-# a2d0150043be7dc15db2fad8193a78b660e1100f (SPDX-License-Identifier: Apache-2.0, Copyright (c) 2024 NVIDIA
-# CORPORATION & AFFILIATES). Changes: Martlet-managed named volumes, restart policy, network chosen by
-# martlet-host (host loopback natively, the gateway's network namespace in Docker mode).
-# "martlet-host add audio2face" fills the configs volume with the pinned configs listed in role.conf, rewritten
-# so the gRPC service listens only on 127.0.0.1:52000. Use of the NIM and its models is subject to NVIDIA's
-# terms, accepted by the operator.
+# Martlet Audio2Face host service (lip-sync), loopback-only behind the Martlet gateway. role.conf's A2F_ENGINE choice
+# picks one Compose profile; both serve NVIDIA's Audio2Face-3D gRPC protocol on 127.0.0.1:52000 (host loopback
+# natively, the gateway's network namespace in Docker mode), and the Martlet gateway is the single LAN entry point.
+#
+# local: NVIDIA's open-source Audio2Face-3D SDK (MIT), built on this host from Martlet's workers/audio2face sources
+#   (workers/audio2face/Dockerfile). On first start it downloads the chosen model from Hugging Face at a pinned revision
+#   (SHA-256 checked, NVIDIA Open Model License) into the martlet-audio2face-models volume and builds its TensorRT
+#   engine for this GPU there; both are kept on re-add. No NVIDIA account or key.
+#
+# nim: NVIDIA's Audio2Face-3D NIM, adapted from NVIDIA Audio2Face-3D-Samples quick-start/docker-compose.yml at commit
+#   a2d0150043be7dc15db2fad8193a78b660e1100f (SPDX-License-Identifier: Apache-2.0, Copyright (c) 2024 NVIDIA
+#   CORPORATION & AFFILIATES). Changes: Martlet-managed named volumes, restart policy, network chosen by martlet-host.
+#   "martlet-host add audio2face" fills the configs volume with the pinned configs listed in role.conf, rewritten so the
+#   gRPC service listens only on 127.0.0.1:52000. Use of the NIM and its models is subject to NVIDIA's terms, accepted
+#   by the operator with their own NGC API key.
 
 services:
+  a2f-local:
+    profiles: [ local ]
+    build:
+      context: ${MARTLET_SOURCE:?set by martlet-host}/workers/audio2face
+    image: martlet-audio2face:1
+    pull_policy: build
+    restart: unless-stopped
+    init: true
+    environment:
+      A2F_3D_MODEL_NAME: ${A2F_3D_MODEL_NAME:-claire}
+    volumes:
+      - models:/models
+    network_mode: ${MARTLET_ROLE_NETWORK:?set by martlet-host}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+
   a2f-3d-init:
+    profiles: [ nim ]
     image: nvcr.io/nim/nvidia/audio2face-3d:1.3
     secrets:
       - ngc_api_key
@@ -27,6 +56,7 @@ services:
               capabilities: [ gpu ]
 
   a2f-3d-service:
+    profiles: [ nim ]
     image: nvcr.io/nim/nvidia/audio2face-3d:1.3
     restart: unless-stopped
     secrets:
@@ -58,6 +88,8 @@ volumes:
     external: true
   data:
     name: martlet-audio2face-data
+  models:
+    name: martlet-audio2face-models
 
 secrets:
   ngc_api_key:

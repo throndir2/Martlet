@@ -74,7 +74,7 @@ internal sealed class HostInputDialog : ThemedWindow
         AutomationProperties.SetAutomationId(ok, "HostInputOk");
         ok.Click += (_, _) =>
         {
-            var missing = required.FirstOrDefault(key => values[key]().Length == 0);
+            var missing = required.FirstOrDefault(key => Shown(key) && values[key]().Length == 0);
             if (missing is null) { DialogResult = true; return; }
             error.Text = "Fill in all required fields.";
             error.Visibility = Visibility.Visible;
@@ -88,8 +88,50 @@ internal sealed class HostInputDialog : ThemedWindow
 
     internal bool Remembered => remember?.IsChecked == true;
 
+    // Fields shown only while a choice has a given value (a role variant's own secret), and text that follows a choice.
+    private readonly Dictionary<string, (string Choice, string Value, UIElement[] Elements)> conditional = new(StringComparer.Ordinal);
+    private readonly List<(string Choice, TextBlock Text, IReadOnlyDictionary<string, string> ByValue)> followers = [];
+
+    private string? Selected(string key) => values.TryGetValue(key, out var value) ? value() : null;
+
+    private bool Shown(string key) =>
+        !conditional.TryGetValue(key, out var when) || Selected(when.Choice) == when.Value;
+
+    private void Refresh()
+    {
+        foreach (var (key, when) in conditional)
+            foreach (var element in when.Elements) element.Visibility = Shown(key) ? Visibility.Visible : Visibility.Collapsed;
+        foreach (var (choice, text, byValue) in followers)
+        {
+            text.Text = Selected(choice) is { } value && byValue.TryGetValue(value, out var shown) ? shown : "";
+            text.Visibility = text.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
+
+    /// <summary>Shows the field <paramref name="key"/> (added last) only while <paramref name="choice"/> is <paramref name="value"/>;
+    /// otherwise it is neither required nor returned.</summary>
+    internal void ShowWhen(string key, string choice, string value)
+    {
+        var start = fieldStarts[key];
+        conditional[key] = (choice, value, fields.Children.Cast<UIElement>().Skip(start).ToArray());
+        Refresh();
+    }
+
+    /// <summary>Adds text that reads <paramref name="byValue"/>[the selected value of <paramref name="choice"/>], hidden for other values.</summary>
+    internal void AddFollowingText(string id, string choice, IReadOnlyDictionary<string, string> byValue)
+    {
+        var text = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) };
+        AutomationProperties.SetAutomationId(text, id);
+        fields.Children.Add(text);
+        followers.Add((choice, text, byValue));
+        Refresh();
+    }
+
+    private readonly Dictionary<string, int> fieldStarts = new(StringComparer.Ordinal);
+
     internal void AddSecret(string key, string label, string? hint = null, bool optional = false)
     {
+        fieldStarts[key] = fields.Children.Count;
         fields.Children.Add(new Label { Content = label, Padding = new Thickness(0, 6, 0, 4) });
         var box = new PasswordBox();
         AutomationProperties.SetName(box, label);
@@ -107,12 +149,14 @@ internal sealed class HostInputDialog : ThemedWindow
 
     internal void AddChoice(string key, string label, IEnumerable<string> options, string selected)
     {
+        fieldStarts[key] = fields.Children.Count;
         fields.Children.Add(new Label { Content = label, Padding = new Thickness(0, 6, 0, 4) });
         var combo = new ComboBox { ItemsSource = options.ToArray(), SelectedItem = selected };
         AutomationProperties.SetName(combo, label);
         AutomationProperties.SetAutomationId(combo, "HostInput-" + key);
         fields.Children.Add(combo);
         values[key] = () => combo.SelectedItem as string ?? selected;
+        combo.SelectionChanged += (_, _) => Refresh();
     }
 
     internal void AddText(string key, string label, string text, string? hint = null)
@@ -149,18 +193,30 @@ internal sealed class HostInputDialog : ThemedWindow
         fields.Children.Add(remember);
     }
 
-    /// <summary>The entered values, or null when canceled.</summary>
+    /// <summary>The entered values of the fields shown, or null when canceled.</summary>
     internal Dictionary<string, string>? Ask(Window owner)
     {
         Owner = owner;
-        return ShowDialog() == true ? values.ToDictionary(pair => pair.Key, pair => pair.Value(), StringComparer.Ordinal) : null;
+        return ShowDialog() == true ? Answers() : null;
     }
+
+    internal Dictionary<string, string> Answers() =>
+        values.Where(pair => Shown(pair.Key)).ToDictionary(pair => pair.Key, pair => pair.Value(), StringComparer.Ordinal);
 
     /// <summary>Asks for a role's secrets and choices (declared by the host's role.conf) and shows its terms; the Install
     /// click is the owner's confirmation. Returns martlet-host answers (secret.name=..., choice.VAR=...), or null.
     /// <paramref name="recommended"/> preselects answers Martlet worked out for this machine (for example GPU or CPU from
     /// what already runs on its graphics card), each with its reason.</summary>
     internal static Dictionary<string, string>? ForRole(Window owner, string host, string role, HostRoleInputs inputs,
+        IReadOnlyDictionary<string, (string Value, string Why)>? recommended = null, bool local = false, bool agent = false) =>
+        Cleaned(RoleDialog(host, role, inputs, recommended, local, agent).Ask(owner));
+
+    /// <summary>What <see cref="ForRole"/> returns for the dialog's values: answers without empty fields or "automatic".</summary>
+    internal static Dictionary<string, string>? Cleaned(Dictionary<string, string>? values) =>
+        values?.Where(pair => pair.Value.Length > 0 && pair.Value != Automatic)
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+
+    internal static HostInputDialog RoleDialog(string host, string role, HostRoleInputs inputs,
         IReadOnlyDictionary<string, (string Value, string Why)>? recommended = null, bool local = false, bool agent = false)
     {
         var message = $"{inputs.Title}\n\nNeeds: {inputs.Requires}." +
@@ -171,9 +227,6 @@ internal sealed class HostInputDialog : ThemedWindow
                 ? $"\n\nMartlet on {host} installs it. Secrets go over its paired connection, are held only in memory until Martlet there takes them, and are saved there."
                 : "\n\nMartlet installs it on the host. Secrets are sent over SSH and saved there.");
         var dialog = new HostInputDialog($"Add {role}", $"Add {role} on {host}", message, "_Install");
-        foreach (var secret in inputs.Secrets)
-            dialog.AddSecret("secret." + secret.Name, secret.Prompt,
-                secret.Stored ? "Already saved. Leave empty to keep it." : null, optional: secret.Stored);
         (string Value, string Why)? Pick(string key, IEnumerable<string> options) =>
             recommended?.GetValueOrDefault(key) is { Value: { } value } pick && options.Contains(value) ? pick : null;
         if (inputs.GpuOrCpu)
@@ -194,9 +247,19 @@ internal sealed class HostInputDialog : ThemedWindow
                     : choice.Suggested ? choice.Label + " (automatic recommended by the host)" : choice.Label,
                 options, pick?.Value ?? (choice.Suggested ? Automatic : choice.Default));
         }
-        var values = dialog.Ask(owner);
-        return values?.Where(pair => pair.Value.Length > 0 && pair.Value != Automatic)
-            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        // A variant's own terms (for example each Audio2Face engine's) follow the choice that selects it.
+        foreach (var variable in inputs.TermsWhen.Select(t => t.Variable).Distinct(StringComparer.Ordinal))
+            dialog.AddFollowingText("HostInputTerms-" + variable, "choice." + variable, inputs.TermsWhen
+                .Where(t => t.Variable == variable).GroupBy(t => t.Value, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => string.Join("\n\n", g.Select(t => t.Text)), StringComparer.Ordinal));
+        foreach (var secret in inputs.Secrets)
+        {
+            dialog.AddSecret("secret." + secret.Name, secret.Prompt,
+                secret.Stored ? "Already saved. Leave empty to keep it." : null, optional: secret.Stored);
+            if (inputs.SecretWhen.GetValueOrDefault(secret.Name) is { } when)
+                dialog.ShowWhen("secret." + secret.Name, "choice." + when.Variable, when.Value);
+        }
+        return dialog;
     }
 
     private const string Automatic = "automatic";

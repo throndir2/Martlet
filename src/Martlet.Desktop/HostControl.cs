@@ -64,7 +64,7 @@ internal static class HostRoles
 
     internal static readonly IReadOnlyList<HostRoleInfo> All =
     [
-        new(Audio2Face, "Lip-sync", "Lip-sync", "an NVIDIA GPU with at least 4 GB and an NVIDIA API key",
+        new(Audio2Face, "Lip-sync", "Lip-sync", "an NVIDIA GPU (RTX 20 series or newer) with at least 4 GB (no NVIDIA account or key)",
             Audio2FaceHostClient.RouteId, "lip-sync",
             "Moves the character's face with Martlet's voice. Generated voice audio goes to that host."),
         new(Ollama, "Thinks", "Thinking", "Docker; an NVIDIA GPU is recommended",

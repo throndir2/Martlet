@@ -139,6 +139,16 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "Checks scopes (read, voice, manage), refusals (no key, wrong key, endpoints keys may never use), sync to a second host and " +
             "a restart, last-used reports, revocation mid-reply, stale copies and expiry. Loopback only; writes nothing to disk or the " +
             "credential vault.", new { }),
+        Tool("audio2face_check", "Animate a short synthesized speech-like test signal (generated here; no microphone, nothing played) " +
+            "with an Audio2Face service on a numeric loopback endpoint (default http://127.0.0.1:52000) through Martlet's production " +
+            "Audio2Face client, the one the host gateway's lip-sync relay uses, so either Audio2Face engine (the local open-source SDK " +
+            "service or NVIDIA's NIM) can be checked. Returns ok, frames, frames per second, the frame time span, how many blendshape " +
+            "channels came back and moved, the jawOpen peak, the strongest channels and timings, or the failure category. Loopback only.", new
+        {
+            endpoint = new { type = "string", maxLength = 64 },
+            seconds = new { type = "integer", minimum = 1, maximum = 10 },
+            sampleRate = new { type = "integer", @enum = Audio2FaceCheck.SampleRates }
+        }),
         Tool("mcp_servers_status", "Read the MCP servers in a data directory's mcp.json as Martlet parses them: each server's name, " +
             "transport, program and raw arguments (with ${env:...} and ${secret:...} references, never their values), environment and " +
             "header names, on/off, auto-approve, the MCP directory entry it was installed from and the secret names it uses. " +
@@ -258,6 +268,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "node_link_check" => await NodeLinkCheckAsync(cancellation),
                 "api_keys_status" => ApiKeysStatus(arguments),
                 "api_selftest" => await NodeLinkCheckAsync(cancellation, "api"),
+                "audio2face_check" => await Audio2FaceCheck.RunAsync(OptionalString(arguments, "endpoint"),
+                    OptionalInt(arguments, "seconds"), OptionalInt(arguments, "sampleRate"), cancellation),
                 "mcp_servers_status" => McpServersStatus(arguments),
                 "mcp_directory_plan" => McpDirectoryPlan(arguments),
                 "home_assistant_probe" => await HomeAssistantProbeAsync(arguments, cancellation),

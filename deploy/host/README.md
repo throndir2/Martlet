@@ -298,7 +298,7 @@ rest from Windows. **Add this computer** in Martlet hosts:
 Afterwards the map's per-host actions (add or remove a role, show status) run the
 same way. Adding a role first runs `describe <role>` there and shows its
 requirements, terms, secrets and choices in Martlet; the **Install** click is the
-confirmation, and the secrets (for example the NGC API key) go to the host over
+confirmation, and the secrets (for example the NGC API key of the Audio2Face NIM engine) go to the host over
 stdin and are stored there in the host's private config (0600).
 
 Trust model:
@@ -332,10 +332,11 @@ Trust model:
 | Step | `role.conf` key | What happens |
 | --- | --- | --- |
 | Requirements | `requires` | Shared checks/installs: `gpu` (NVIDIA driver), `docker` (Engine + Compose), `docker-engine` (Linux Docker Engine, not Docker Desktop, for LAN host-network roles), `nvidia-toolkit` (native method) |
-| Terms | `terms` | Shown; continue only on `yes` (or shown in Martlet, whose Install click confirms) |
 | GPU or CPU | `gpu=optional\|<overlay>.yaml`, `gpu=required\|<overlay>.yaml` | Detects NVIDIA GPU memory usable by containers. `optional` asks `gpu` or `cpu` (default: GPU when present; Martlet sends `choice.accelerator` or lets the host decide); `required` always uses the GPU. `gpu` adds the role's Compose overlay (and the NVIDIA requirements); `cpu` runs without it |
+| Choices | `choice=VAR\|label\|options\|default`, `choice_by_vram=VAR\|<MiB>@<value> ...`, `profile_from=VAR` | Asked each time (or chosen in Martlet, where *Automatic* keeps the suggestion), written to the role's `.env`; `choice_by_vram` suggests the default by GPU memory (ascending thresholds, `0` = CPU); `profile_from` makes that choice the role's Compose profile (`COMPOSE_PROFILES`), so one role can offer variants such as the Audio2Face engine. Changing the variant on a re-add stops the previous one first (its volumes are kept) |
+| Variants | `[VAR=value]` ... `[end]` | Entries between these lines (terms, secrets, registry, assets, loopback rewrites) apply only when choice `VAR` is `value`; `describe` lists them as `role.terms_when` and `role.secret_when`, so Martlet shows them only for that choice |
+| Terms | `terms` | Shown (every one that applies to the choices made); continue only on `yes` (or shown in Martlet, whose Install click confirms) |
 | Secrets | `secret=name\|prompt` | Asked once (or sent by Martlet on stdin), stored in the host config `secrets/<name>` (0600), passed to Compose as environment secret `<NAME>` |
-| Choices | `choice=VAR\|label\|options\|default`, `choice_by_vram=VAR\|<MiB>@<value> ...` | Asked each time (or chosen in Martlet, where *Automatic* keeps the suggestion), written to the role's `.env`; `choice_by_vram` suggests the default by GPU memory (ascending thresholds, `0` = CPU) |
 | Registry | `registry=host\|user\|secret` | `docker login` with the stored secret |
 | Assets | `asset=url\|path` | Pinned HTTPS downloads (`{VAR}` uses a choice), copied into the role's `martlet-<role>-configs` volume |
 | Loopback | `rewrite=path\|sed`, `expect=path\|text` | Rewrite configs to 127.0.0.1 and verify it |
@@ -471,7 +472,7 @@ ssh -t me@gpu-pc bash martlet-prepare gpu-power --power 0=250 tools --tools pyth
 | `ollama` | Docker; an NVIDIA GPU (NVIDIA Container Toolkit) makes replies fast, otherwise the CPU; official `ollama/ollama:0.34.4`, model `gemma4:e2b`, `gemma4:e4b`, `qwen3-vl:8b`, `gemma4:12b` or `gemma4:26b` (suggested by GPU memory; these also see images, so the desktop can watch the screen with them, and call tools), the vision-only `gemma3:4b`, `qwen2.5vl:7b`, `gemma3:12b` or `gemma3:27b`, or the text-only `llama3.2:3b`, `qwen2.5:7b`, `llama3.1:8b` or `qwen2.5:14b`, kept in volume `martlet-ollama-models` and kept loaded | Thinking: the conversation model when the desktop hands thinking to this host (Devices > Who does what). Relay `Martlet.Gateway.Ollama` streams loopback `/api/chat` (persona, recent history, message and, for a screen glance, one image) with an 8,192-token context |
 | `stt` | Docker; an NVIDIA GPU (NVIDIA Container Toolkit, driver 580+ for CUDA 13) makes it fast, otherwise the CPU; official `ghcr.io/ggml-org/whisper.cpp` release 1.9.4 (CPU or CUDA build), model `base`, `small`, `medium` or `large-v3-turbo` (suggested by GPU memory: `small` on the CPU, `large-v3-turbo` from 4 GB), downloaded on first start from Hugging Face at a pinned revision with its SHA-256 checked into volume `martlet-stt-models`; listens on 127.0.0.1:8178 | Listening: speech-to-text when the desktop hands listening to this host (Devices > the Listening row's *Done by*). Relay `Martlet.Gateway.Stt` sends each utterance (16 kHz mono, at most 30 s) to loopback `/inference` and returns its text without non-speech tags; audio stays in memory |
 | `f5` | NVIDIA GPU (6 GB+) with the NVIDIA Container Toolkit (`gpu=required`); image built on the host from `workers/f5/host/Dockerfile` (`python:3.12.10`, hash-locked PyTorch 2.6.0 CUDA 12.4, `f5-tts` 1.1.22, `vocos` 0.1.0, the bounded `martlet_f5_worker` and its loopback front `martlet_f5_host.py` on 127.0.0.1:50080); `martlet-f5 provision` downloads and verifies the pinned `F5TTS_v1_Base` (CC-BY-NC-4.0) and Vocos (MIT) files into volume `martlet-f5-models`, `martlet-f5 warm` loads them | Speaking: replies in a voice cloned from your reference recording when the desktop hands speaking to this host (Devices > the Speaking row's *Done by*). Relay `Martlet.Gateway.F5` streams the worker's contiguous 24 kHz mono PCM16 frames and chunk completions; cancellation is discard-only |
-| `audio2face` | NVIDIA GPU (4 GB+), free NVIDIA account with an [NGC API key](https://org.ngc.nvidia.com/setup/api-key); NIM `nvcr.io/nim/nvidia/audio2face-3d:1.3`, models `claire`/`mark`/`james` | Automatic lip-sync uses it when the desktop hands lip-sync to this host (Devices > the Lip-sync row's *Done by*) |
+| `audio2face` | NVIDIA GPU (4 GB+; RTX 20 series or newer for the local engine) with the NVIDIA Container Toolkit (`gpu`, `docker`, `nvidia-toolkit`); models `claire`/`mark`/`james`. Engine choice `A2F_ENGINE`: **`local`** (default, no NVIDIA account or key): image built on the host from [`workers/audio2face`](../../workers/audio2face/README.md), NVIDIA's open-source Audio2Face-3D SDK (MIT) with CUDA 12.8 and TensorRT 10.9 behind Martlet's gRPC front; on first start it downloads the chosen model from Hugging Face at a pinned revision (SHA-256 checked, NVIDIA Open Model License) into volume `martlet-audio2face-models` and builds its TensorRT engine for that GPU there (driver 570+). **`nim`**: NVIDIA's NIM `nvcr.io/nim/nvidia/audio2face-3d:1.3` with your free NVIDIA account's [NGC API key](https://org.ngc.nvidia.com/setup/api-key) (development and testing use; NVIDIA lists that release as end of support). Both listen on 127.0.0.1:52000 | Automatic lip-sync uses it when the desktop hands lip-sync to this host (Devices > the Lip-sync row's *Done by*). Relay `Martlet.Gateway.Audio2Face` streams each speech chunk to the engine's `ProcessAudioStream` and returns ARKit blendshape frames |
 | `home-assistant` | Linux Docker Engine (not Docker Desktop); official `ghcr.io/home-assistant/home-assistant:2026.9.4`; host networking on port 8123, privileged USB/Bluetooth access, `/run/dbus:/run/dbus:ro`, config in volume `martlet-home-assistant-config` | Smart home: Martlet installs and onboards Home Assistant through HA's own HTTP/WebSocket API at `http://<host LAN address>:8123`. It is a route-less `feature=home-assistant` role, not relayed through the Martlet gateway |
 
 On a native host the `ollama` role listens on the host's own 127.0.0.1:11434, so
@@ -499,7 +500,21 @@ Smart home page instead of installing another one.
   Linux machine are not yet run.
 - **Windows Firewall step**: the non-admin probe and the rule script (as `-WhatIf`)
   were run; the elevated change itself has not been applied on a test machine.
-- Not yet run: a real NVIDIA GPU with the Audio2Face NIM.
+- **Audio2Face role, `local` engine**: on Windows with Docker Desktop and an NVIDIA
+  RTX 4070 (driver 610.88), the image built from `workers/audio2face` (SDK, CUDA
+  12.8, TensorRT 10.9); the role's `compose.yaml` with profile `local` ran in a
+  shared network namespace like the Docker method's (disposable volumes): its first
+  start downloaded the pinned `mark` files (SHA-256 checked), built the FP16
+  TensorRT engine and listened only on 127.0.0.1:52000; a restart reused both and
+  answered within seconds. MCP's `audio2face_check` animated 1-4 s test signals
+  at 24, 44.1 and 48 kHz through the production Audio2Face client (30 frames per
+  second, 52 shared channels, well under a second per clip); `claire` passed the
+  same way. `martlet-host add`'s variant handling (choices before terms, the NIM's
+  secret, registry login and assets only for `nim`, the profile switch stopping
+  the other engine) was run with Docker, the gateway and the network stubbed. Not
+  yet run: `martlet-host add audio2face` end to end on a host, a Linux host, the
+  gateway relay against this engine (it uses the same client), the `nim` engine
+  on a real GPU, or a live conversation.
 - **Ollama role**: on Windows with Docker Desktop (CPU, no GPU), the role's
   `compose.yaml` ran in a shared network namespace like the Docker method's, listened
   only on loopback, and its post-start `ollama pull` worked (with `qwen2.5:0.5b`); a real
