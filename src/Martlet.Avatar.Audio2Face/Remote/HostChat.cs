@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using Martlet.Core.Contracts;
+using Martlet.Core.Settings;
 
 namespace Martlet.Avatar.Audio2Face.Remote;
 
@@ -30,11 +31,13 @@ public sealed partial class Audio2FaceHostConnection
 
     /// <summary>Streams the reply of the host's own conversation model (its Ollama role) through the gateway relay.
     /// Only text deltas are yielded; failures throw <see cref="Audio2FaceHostException"/> with the gateway's code.
-    /// <paramref name="images"/> (base64 JPEG/PNG, at most one) ride with the current input for a vision model.</summary>
+    /// <paramref name="images"/> (base64 JPEG/PNG, at most one) ride with the current input for a vision model.
+    /// <paramref name="sampling"/> adds the optional Ollama sampling settings; unset values are not sent, so a request
+    /// without any keeps the shape older hosts accept.</summary>
     public async IAsyncEnumerable<string> StreamChatAsync(HostRoute route, CorrelationIds ids, long epoch,
         DateTimeOffset deadline, string? system, IReadOnlyList<HostChatMessage> history, string input, double temperature,
         int maximumOutputTokens, int maximumContextTokens, IReadOnlyList<string>? images = null,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        GenerationSettings? sampling = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(route);
         ArgumentNullException.ThrowIfNull(ids);
@@ -60,6 +63,16 @@ public sealed partial class Audio2FaceHostConnection
                 ["role"] = message.Assistant ? "assistant" : "user", ["text"] = ChatText(message.Text)
             }).ToArray();
         if (images is { Count: > 0 }) payload["images"] = images.ToArray();
+        if (sampling is not null)
+        {
+            if (sampling.TopP is { } topP) payload["top_p"] = topP;
+            if (sampling.TopK is { } topK) payload["top_k"] = topK;
+            if (sampling.MinP is { } minP) payload["min_p"] = minP;
+            if (sampling.RepeatPenalty is { } repeat) payload["repeat_penalty"] = repeat;
+            if (sampling.FrequencyPenalty is { } frequency) payload["frequency_penalty"] = frequency;
+            if (sampling.PresencePenalty is { } presence) payload["presence_penalty"] = presence;
+            if (sampling.ContextTokens is { } context) payload["context_tokens"] = context;
+        }
         var body = JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, object>
         {
             ["protocol_version"] = new Dictionary<string, int> { ["major"] = 2, ["minor"] = 0 },

@@ -20,7 +20,7 @@ namespace Martlet.Desktop;
 /// <summary>The Companion page's pages: the one place each choice that shapes Martlet is made, listed by group in a side list.
 /// Home and Devices link here. A new page adds its value here (in list order) and one arm each in GroupOf, TabTitle, TabGlyph,
 /// TabIntro and RenderTab.</summary>
-internal enum CompanionTab { Thinking, Voice, Listening, LipSync, Character, Personality, Memory, SmartHome }
+internal enum CompanionTab { Thinking, Voice, Listening, LipSync, Character, Personality, Memory, Replies, SmartHome }
 
 /// <summary>The side list's groups, in order: how it works (where each job runs), who it is (look, personality, what it knows)
 /// and what it does (how it answers and acts). A group with no pages yet is not shown.</summary>
@@ -99,6 +99,7 @@ public partial class MainWindow
     {
         CompanionTab.Thinking or CompanionTab.Voice or CompanionTab.Listening or CompanionTab.LipSync => CompanionGroup.HowItWorks,
         CompanionTab.Character or CompanionTab.Personality or CompanionTab.Memory => CompanionGroup.WhoItIs,
+        CompanionTab.Replies => CompanionGroup.WhatItDoes,
         CompanionTab.SmartHome => CompanionGroup.WhatItDoes,
         _ => CompanionGroup.WhatItDoes
     };
@@ -119,6 +120,7 @@ public partial class MainWindow
         CompanionTab.Character => "Character",
         CompanionTab.Personality => "Personality",
         CompanionTab.Memory => "Memory",
+        CompanionTab.Replies => "Replies",
         CompanionTab.SmartHome => "Smart home",
         _ => section.ToString()
     };
@@ -133,6 +135,7 @@ public partial class MainWindow
         CompanionTab.Character => "\uE77B",
         CompanionTab.Personality => "\uE76E",
         CompanionTab.Memory => "\uE8F1",
+        CompanionTab.Replies => "\uE8F2",
         CompanionTab.SmartHome => "\uEC26",
         _ => "\uE76E"
     };
@@ -151,6 +154,8 @@ public partial class MainWindow
         CompanionTab.Personality => "Who Martlet is: its personas and how helpful, sarcastic, silly or playful it is, including characters " +
             "from SillyTavern or Chub character cards.",
         CompanionTab.Memory => "Facts Martlet remembers about you between conversations.",
+        CompanionTab.Replies => "How Martlet answers: how long its replies may be and how the Thinking model picks its words " +
+            "(temperature, top P, repetition and context size).",
         CompanionTab.SmartHome => "Lights, heating, media and more through Home Assistant, when you ask: the connection, what Martlet may do " +
             "and what it did. Off by default.",
         _ => ""
@@ -293,6 +298,7 @@ public partial class MainWindow
             case CompanionTab.Character: RenderCharacterTab(body); break;
             case CompanionTab.Personality: RenderPersonalityTab(body); break;
             case CompanionTab.Memory: RenderMemoryTab(body); break;
+            case CompanionTab.Replies: RenderRepliesTab(body); break;
             case CompanionTab.SmartHome: RenderSmartHomeTab(body); break;
             default: throw new UnreachableException($"The Companion page {section} has no content.");
         }

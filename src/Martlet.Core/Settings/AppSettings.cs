@@ -23,6 +23,9 @@ public sealed record AppSettings : IContract
     public CompanionSettings? Companion { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public MemorySettings? Memory { get; init; }
+    /// <summary>Optional reply generation settings (Companion > Replies); absent while every value is the model default.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public GenerationSettings? Generation { get; init; }
 
     public static AppSettings CreateUnconfigured() => new()
     {
@@ -52,6 +55,9 @@ public sealed record AppSettings : IContract
         ContractRules.Require(SchemaVersion < 4 ? Memory is null : Memory is not null,
             "Settings before version 4 cannot contain memory settings; version 4 requires them.");
         Memory?.Validate();
+        ContractRules.Require(Generation is null || !Generation.IsDefault,
+            "Generation settings are saved as absent when every value is the model default.");
+        Generation?.Validate();
         if (Setup is not null)
         {
             var legacy = Profile.Credentials.Select(item => item.CredentialId).ToHashSet();

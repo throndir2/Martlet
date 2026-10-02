@@ -213,11 +213,13 @@ public sealed class GatewayAuthenticatedClient : IDisposable
         BoundedTextInput input,
         TextGenerationLimits limits,
         double temperature,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Martlet.Core.Settings.GenerationSettings? sampling = null)
     {
         ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(limits);
         limits.Validate();
+        sampling?.Validate();
         var route = GatewayInferenceRoute.FromCapability(capability);
         GatewayRules.Require(route.Kind == GatewayInferenceKind.OllamaChat &&
             input.Utf8Bytes <= route.MaximumInputBytes &&
@@ -238,7 +240,8 @@ public sealed class GatewayAuthenticatedClient : IDisposable
                 limits.MaxContextTokens,
                 input.Personality,
                 input.History,
-                input.Image is { } image ? [image.ToBase64()] : null)), cancellationToken);
+                input.Image is { } image ? [image.ToBase64()] : null,
+                GatewayOllamaSampling.From(sampling))), cancellationToken);
     }
 
     public IAsyncEnumerable<GatewayInferenceEvent> StreamF5Async(
@@ -605,6 +608,14 @@ internal static class GatewayClientJson
                 ["text"] = message.Text
             }).ToArray();
         if (ollama.Images.Count > 0) payload["images"] = ollama.Images.ToArray();
+        var sampling = ollama.Sampling;
+        if (sampling.TopP is { } topP) payload["top_p"] = topP;
+        if (sampling.TopK is { } topK) payload["top_k"] = topK;
+        if (sampling.MinP is { } minP) payload["min_p"] = minP;
+        if (sampling.RepeatPenalty is { } repeat) payload["repeat_penalty"] = repeat;
+        if (sampling.FrequencyPenalty is { } frequency) payload["frequency_penalty"] = frequency;
+        if (sampling.PresencePenalty is { } presence) payload["presence_penalty"] = presence;
+        if (sampling.ContextTokens is { } context) payload["context_tokens"] = context;
         return payload;
     }
 

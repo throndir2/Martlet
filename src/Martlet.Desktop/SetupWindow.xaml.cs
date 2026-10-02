@@ -263,7 +263,7 @@ public partial class SetupWindow : ThemedWindow
         ProviderPanel.Visibility = Role == SetupRole.Llm ? Visibility.Visible : Visibility.Collapsed;
         BaseUrlPanel.Visibility = provider.Chat ? Visibility.Visible : Visibility.Collapsed;
         CatalogPanel.Visibility = catalog.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
-        const string reasoning = " Prefer instruct/chat models: each reply is capped at 256 tokens and reasoning/thinking models spend part of that on hidden thinking.";
+        const string reasoning = " Prefer instruct/chat models: each reply is capped at the max reply length (256 tokens unless raised on Companion > Replies) and reasoning/thinking models spend part of that on hidden thinking.";
         ProviderHint.Text = Role != SetupRole.Llm
             ? $"{SetupJobNameConverter.Name(Role).Split(' ')[0]} uses OpenAI in the cloud (https://api.openai.com) and its own API key. The recommended model is prefilled."
             : provider.BaseUrl == ChatCompletionsEndpointCatalog.OpenRouterBaseUrl
