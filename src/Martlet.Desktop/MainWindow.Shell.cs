@@ -164,32 +164,19 @@ public partial class MainWindow
     private void UseHost_Click(object sender, RoutedEventArgs e) { SetRole(DeviceRole.Host); Navigate(NavHome); }
     private void ReplayTour_Click(object sender, RoutedEventArgs e) => ShowTour(TourWelcome);
 
-    private IReadOnlyList<Prerequisite> tourMissing = [];
-
-    // The ready step appears only when something is missing; a host has no "how to start" step.
-    private StackPanel[] TourPanels
-    {
-        get
-        {
-            var panels = new List<StackPanel> { TourWelcome, TourRole };
-            if (tourMissing.Count > 0) panels.Add(TourReady);
-            if (Role != DeviceRole.Host) panels.Add(TourStart);
-            return panels.ToArray();
-        }
-    }
+    // A host has no "how to start" step. The tour installs nothing: each setup installs what it needs.
+    private StackPanel[] TourPanels => Role == DeviceRole.Host ? [TourWelcome, TourRole] : [TourWelcome, TourRole, TourStart];
 
     private void ShowTour(StackPanel panel)
     {
         var appearing = Tour.Visibility != Visibility.Visible;
-        if (ReferenceEquals(panel, TourWelcome)) tourMissing = Prerequisites.Missing();
-        if (ReferenceEquals(panel, TourReady)) RenderTourReady();
         Tour.BeginAnimation(OpacityProperty, null);
         Tour.Opacity = 1;
         Tour.Visibility = Visibility.Visible;
         var panels = TourPanels;
         var step = Math.Max(0, Array.IndexOf(panels, panel));
         tourStep = step;
-        foreach (var candidate in new[] { TourWelcome, TourRole, TourReady, TourStart })
+        foreach (var candidate in new[] { TourWelcome, TourRole, TourStart })
             candidate.Visibility = ReferenceEquals(candidate, panel) ? Visibility.Visible : Visibility.Collapsed;
         TourBackButton.Visibility = step > 0 ? Visibility.Visible : Visibility.Hidden;
         TourDots.Children.Clear();
@@ -217,82 +204,14 @@ public partial class MainWindow
     private void TourCompanion_Click(object sender, RoutedEventArgs e)
     {
         SetRole(DeviceRole.Companion);
-        ShowTour(tourMissing.Count > 0 ? TourReady : TourStart);
+        ShowTour(TourStart);
     }
 
     private void TourHost_Click(object sender, RoutedEventArgs e)
     {
         SetRole(DeviceRole.Host);
-        if (tourMissing.Count > 0) ShowTour(TourReady);
-        else FinishTourAsHost();
-    }
-
-    private void FinishTourAsHost()
-    {
         HideTour();
         Navigate(NavHome);
-    }
-
-    /// <summary>One tick box per missing item. Items needed to talk and see the character start ticked; a host with an
-    /// NVIDIA card also gets Docker ticked, since its GPU roles run there. The rest wait for the setup advisor.</summary>
-    private void RenderTourReady()
-    {
-        var host = Role == DeviceRole.Host;
-        var nvidia = host && ThisPcHasNvidia();
-        TourReadyItems.Children.Clear();
-        foreach (var item in tourMissing)
-        {
-            var text = new StackPanel();
-            text.Children.Add(new TextBlock { Text = item.Title, FontSize = 15, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
-            var detail = new TextBlock { Text = item.Detail, Margin = new Thickness(0, 2, 0, 0) };
-            detail.SetResourceReference(StyleProperty, "Muted");
-            text.Children.Add(detail);
-            var box = new CheckBox
-            {
-                Content = text, Tag = item, Margin = new Thickness(0, 0, 0, 12),
-                IsChecked = ReferenceEquals(item, Prerequisites.WebView2) || ReferenceEquals(item, Prerequisites.Microphone) ||
-                    ReferenceEquals(item, Prerequisites.DockerDesktop) && nvidia
-            };
-            AutomationProperties.SetName(box, $"{item.Title}: {item.Detail}");
-            AutomationProperties.SetAutomationId(box, $"TourReady{item.Id}");
-            box.Checked += (_, _) => UpdateTourInstallButton();
-            box.Unchecked += (_, _) => UpdateTourInstallButton();
-            TourReadyItems.Children.Add(box);
-        }
-        UpdateTourInstallButton();
-    }
-
-    private Prerequisite[] TourReadyChoices() =>
-        TourReadyItems.Children.OfType<CheckBox>().Where(box => box.IsChecked == true).Select(box => box.Tag).OfType<Prerequisite>().ToArray();
-
-    private void UpdateTourInstallButton()
-    {
-        var any = TourReadyChoices().Length > 0;
-        TourInstallButton.Content = any ? "Install selected" : "Continue";
-        TourReadyLaterButton.Visibility = any ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    private bool ThisPcHasNvidia()
-    {
-        if (!ReferenceEquals(machine, MachineInfo.Unknown)) return machine.BestGpu?.IsNvidia == true;
-        try { return MachineInfo.Read().BestGpu?.IsNvidia == true; }
-        catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException or
-            System.ComponentModel.Win32Exception) { return false; }
-    }
-
-    private void TourInstall_Click(object sender, RoutedEventArgs e)
-    {
-        var chosen = TourReadyChoices();
-        if (chosen.Length > 0) InstallPrerequisitesAsync(chosen).Forget();
-        ContinueAfterTourReady();
-    }
-
-    private void TourReadyLater_Click(object sender, RoutedEventArgs e) => ContinueAfterTourReady();
-
-    private void ContinueAfterTourReady()
-    {
-        if (Role == DeviceRole.Host) FinishTourAsHost();
-        else ShowTour(TourStart);
     }
 
     private void TourAdvisor_Click(object sender, RoutedEventArgs e) { HideTour(); Advisor_Click(sender, e); }

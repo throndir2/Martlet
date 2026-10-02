@@ -77,9 +77,9 @@ TouchTime=00:00
 [Files]
 #include PayloadFiles
 
-; Setup asks no feature questions. Prerequisites are never bundled or installed here: on first launch, the Martlet
-; welcome tour checks this PC and offers each missing item, and its setup advisor offers what the chosen plan needs.
-; Start > Martlet prerequisites checks and installs them any time.
+; Setup asks no feature questions. Prerequisites are never bundled or installed here: Martlet's setup advisor offers
+; what the chosen plan needs, and Prerequisites in its Settings or Start > Martlet prerequisites checks and
+; installs them any time.
 [Run]
 Filename: "{app}\Desktop\Martlet.Desktop.exe"; WorkingDir: "{app}\Desktop"; Description: "Start Martlet and finish setting up"; Flags: postinstall nowait skipifsilent
 

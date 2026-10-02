@@ -25,7 +25,7 @@ them when a route ships.
 
 **Not in the installer:** setup asks no questions, so the advisor above is the
 single place these rules live. The installer only offers to start Martlet, whose
-welcome tour then asks what the PC is for and offers anything missing on it.
+welcome tour then asks what the PC is for.
 
 ## 1. What must stay on the PC you talk to
 
@@ -65,8 +65,8 @@ never to a cloud provider).
 
 **Nothing requires a GPU.** The minimum working setup is the Windows app plus
 an API. Only Audio2Face lip-sync strictly needs an NVIDIA GPU, and loudness
-lip-sync replaces it on any PC. The welcome tour, the advisor and the **Martlet
-prerequisites** tool install what each layout needs on the Windows PC (Windows speech, Ollama,
+lip-sync replaces it on any PC. The advisor and the **Martlet prerequisites**
+tool install what each layout needs on the Windows PC (Windows speech, Ollama,
 WSL 2 + Docker Desktop); see [Prerequisites](PREREQUISITES.md).
 
 ### Offload the LLM first

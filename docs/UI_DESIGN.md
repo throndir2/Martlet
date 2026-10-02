@@ -48,7 +48,7 @@ Each page answers one question, so no two pages do the same thing:
 
 This full-window overlay appears when no device-role choice has been saved
 (`device-role.txt`). The installer asks no setup questions, so this is where
-setup starts. It has up to four short cards, animated between steps and marked
+setup starts. It has up to three short cards, animated between steps and marked
 with step dots:
 
 1. **Hi, I'm Martlet.** One sentence about what Martlet does, plus *Let's begin*.
@@ -57,19 +57,18 @@ with step dots:
    - *Talk with my companion here* (the PC you sit at).
    - *Lend this PC to Martlet* (a spare or gaming PC with a GPU that runs heavy
      parts, such as lip-sync, for another PC).
-3. **Get this PC ready** (only when something is missing). One tick box per
-   missing prerequisite, read from the registry and files: WebView2 and blocked
-   microphone access are ticked; WSL 2 + Docker Desktop is ticked for a host
-   with an NVIDIA GPU; Windows speech and Ollama wait unticked for the setup
-   advisor. *Install selected* runs the prerequisites tool for the ticked items
-   hidden, with its output in a Martlet run window; *Not now* moves on.
-4. **How would you like to start?** (companion mode) *Recommend a setup for me*
+3. **How would you like to start?** (companion mode) *Recommend a setup for me*
    opens the setup advisor (its plan adds *Install on this PC* for what it runs
    here), and *I know what I want* opens Companion › *Thinking*. In host mode,
    the tour ends on the host dashboard.
 
-The tour saves only the device role and contacts nothing; it installs only the
-items you tick and confirm with *Install selected*.
+The tour saves only the device role; it contacts nothing and installs nothing.
+Each setup installs what it needs (Thinking's *This PC* installs Ollama, the
+advisor's plan installs its items), and **Prerequisites** under Settings › Tools
+installs any item by hand. A quick start that reads this PC's hardware and
+installs the whole plan in one go is planned
+([A1](USER_STORIES.md#a1-quick-start-on-a-first-pc)); a tick list of single
+prerequisites was removed because it set up only a fragment of any plan.
 Settings > *This PC's role* changes the role or replays the tour.
 
 ### 2. Home (main PC)

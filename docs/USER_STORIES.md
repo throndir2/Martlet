@@ -338,9 +338,11 @@ so I can talk to it in minutes.*
   - User closes the app mid-setup: setup resumes on next launch.
 - **Done when**: a new PC reaches a working first reply with ≤4 clicks
   using defaults; no console, no runtime agreement, ≤1 UAC prompt.
-- **Today**: welcome tour → role → prerequisites (PowerShell console) →
-  *How would you like to start?* → advisor or Setup → per-job pages →
-  console model download → back to page → *Use Ollama on this PC*.
+- **Today**: welcome tour → role → *How would you like to start?* → advisor
+  (*Install on this PC* for its items) or Thinking › *This PC* (installs
+  Ollama and its model) → remaining jobs one page at a time. The tour's
+  prerequisite tick list was removed: it installed only a fragment of any
+  plan, so this one-click, hardware-sized quick start replaces it.
 
 #### A2. Custom first setup
 
@@ -1137,7 +1139,7 @@ option names and in *Details*, never as navigation labels.
 
 | Current | Fate |
 | --- | --- |
-| Welcome tour (4 cards) | Replaced by Welcome › Plan › Terms › Permissions › Setting up (A1/B1) |
+| Welcome tour (3 cards) | Replaced by Welcome › Plan › Terms › Permissions › Setting up (A1/B1) |
 | Setup advisor window | Removed; its logic becomes the *Recommended* preselection (R5) and the A1 plan |
 | Legacy Setup window (Choice, Jobs, Credentials, Review) | Removed; keys are on job tabs, stored/detached keys under Thinking › *Advanced* |
 | Setup section pages (Thinking, Its voice, How it listens, Character) | Become Companion tabs (done, with a Memory tab) |
@@ -1268,7 +1270,7 @@ moves to it. Jobs already running well locally stay local.
 | Host method (Docker / SSH Docker / SSH Ubuntu / manual) | Hosts › Where it runs | Detected: *This PC* sets itself up; a Windows PC joins the network; SSH only for Linux. |
 | SSH target | Hosts › Install | Asked, Linux path only. |
 | Host LAN address | Hosts › Install | Detected and reported by the machine. |
-| *Install Docker Desktop* | Hosts, welcome tour | Inside the runner when a job needs it (or not needed, 11.6). |
+| *Install Docker Desktop* | Hosts | Inside the runner when a job needs it (or not needed, 11.6). |
 | Pairing code paste, *Pair with host*, *Check host* | Hosts › Pair | Removed; network trust (B1, B2). |
 | Role options (GPU or CPU, model) | Role install dialog | *Automatic*, preselected by the machine's hardware. |
 | NVIDIA NGC key | Audio2Face role | Asked only when the user turns on Audio2Face, with *Get a free key ↗*. |
@@ -1282,7 +1284,7 @@ moves to it. Jobs already running well locally stay local.
 | Persona name and text | Companion window | Default *Martlet* persona; editing optional. |
 | *Keep who does what in sync*, failover | Devices | Always on inside a network. |
 | Setup advisor questions (3 pages) | Advisor window | Replaced by hardware detection (11.3). |
-| Prerequisite tick list | Welcome tour | Removed; each job installs what it needs (11.5). |
+| Prerequisite tick list | Welcome tour | Removed (done); each job installs what it needs (11.5), and the A1 quick start installs the whole plan. |
 | Windows microphone privacy | Prerequisites | Detected. Windows doesn't let apps change it, so a Fix card opens the exact Settings page. |
 
 ### 11.5 Prerequisites Martlet installs by itself

@@ -135,8 +135,8 @@ The private renderer host adds Microsoft.Web.WebView2 SDK 1.0.4191.47. Its three
 injected managed reference identities are not separate NuGet packages. Their
 DLL/XML files and the two x64 WebView2Loader copies are verified against exact
 entries in the one SDK archive, with its complete LICENSE.txt and NOTICE.txt.
-The WebView2 runtime itself is never bundled. When it is missing, the Desktop
-welcome tour (ticked by default) or prerequisites\Install-Prerequisites.ps1 runs
+The WebView2 runtime itself is never bundled. When it is missing and ticked, the
+Desktop's Prerequisites checklist or prerequisites\Install-Prerequisites.ps1 runs
 Microsoft's Authenticode-checked Evergreen bootstrapper, which downloads it from
 Microsoft under Microsoft's terms.
 

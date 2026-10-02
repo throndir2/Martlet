@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Run without parameters for an interactive checklist. Nothing is installed or changed until you
-    choose an item (or pass -Install, which the Martlet welcome tour and setup advisor do for the items you tick).
+    choose an item (or pass -Install, which Martlet's setup advisor and Prerequisites checklist do for the items you pick).
     Installers come from their publishers (Microsoft, Ollama, Docker) through Microsoft's signed
     WebView2 bootstrapper or winget, and keep their own license terms. Steps that change Windows
     features ask for administrator approval separately; Martlet itself stays a per-user app.

@@ -793,7 +793,7 @@ if ($authoring -match '(?im)^\[(UninstallRun|Registry|InstallDelete|UninstallDel
     throw 'Installer contains an unexpected mutation/deletion/autorun surface.'
 }
 # Setup installs no prerequisites; its only [Run] entry is the Finished page's user-controlled "Start Martlet" box.
-if ($authoring -match '(?im)^\[Tasks\]|Install-Prerequisites\.ps1"" -') { throw 'Installer must not offer or run prerequisite installs; the Desktop welcome tour does.' }
+if ($authoring -match '(?im)^\[Tasks\]|Install-Prerequisites\.ps1"" -') { throw 'Installer must not offer or run prerequisite installs; the Desktop app does.' }
 $runSection = [regex]::Match($authoring, '(?ims)^\[Run\]\s*(.*?)(?=^\[|\z)').Groups[1].Value
 foreach ($entry in @($runSection -split "`r?`n" | Where-Object { $_.Trim() -and -not $_.TrimStart().StartsWith(';') })) {
     if ($entry -notmatch 'Filename: "\{app\}\\Desktop\\Martlet\.Desktop\.exe"' -or $entry -notmatch 'Flags: postinstall nowait skipifsilent') {

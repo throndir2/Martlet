@@ -8,7 +8,7 @@ of four ways:
 | Delivery | Meaning |
 | --- | --- |
 | **Bundled** | Shipped inside the Martlet installer. Nothing to do. |
-| **First-run option** | A tick box on the welcome tour's *Get this PC ready* step (shown only when missing), an **Install on this PC** button in the setup advisor's plan, and an item in the **Martlet prerequisites** tool. Downloaded from its publisher only when you choose it. |
+| **First-run option** | An **Install on this PC** button in the setup advisor's plan, and an item in **Prerequisites** (Settings › Tools) and the **Martlet prerequisites** tool. Downloaded from its publisher only when you choose it. |
 | **Host tool** | Installed on a GPU host by `martlet-host setup` / `add <role>` after you type `yes` ([Martlet host](../deploy/host/README.md)). |
 | **You supply** | Accounts, keys, your own models and GPU drivers. Martlet cannot redistribute or create them. |
 
@@ -16,19 +16,18 @@ of four ways:
 
 1. **The first time Martlet starts.** The installer asks nothing and installs no
    prerequisites; its Finished page offers to start Martlet. The welcome tour
-   asks what this PC is for (the PC you talk on, or a host that lends its GPU),
-   then checks this PC and shows a **Get this PC ready** step with a tick box for
-   each missing prerequisite (the step is skipped when nothing is missing).
-   WebView2 and blocked microphone access are ticked by default; WSL 2 + Docker
-   Desktop is ticked for a host PC with an NVIDIA GPU; Windows speech and Ollama
-   stay unticked. Next, **Recommend a setup for me** asks your goal, features and
-   computers; when its plan runs Ollama, Windows speech or Docker Desktop on this
-   PC and one is missing, **Install on this PC** installs just those. Chosen items
-   run `prerequisites\Install-Prerequisites.ps1 -Install ...` in a visible
-   console. Nothing chosen here is final: see step 2, and change where each role
-   runs later in Martlet (Setup / resume, Devices).
+   asks what this PC is for (the PC you talk on, or a host that lends its GPU)
+   and installs nothing. Next, **Recommend a setup for me** asks your goal,
+   features and computers; when its plan runs Ollama, Windows speech or Docker
+   Desktop on this PC and one is missing, **Install on this PC** installs just
+   those (Thinking's *This PC* also installs Ollama with its model). Chosen items
+   run `prerequisites\Install-Prerequisites.ps1 -NoPrompt -Install ...` hidden,
+   with its output in a Martlet run window. Nothing chosen here is final: see
+   step 2, and change where each role runs later in Martlet (Companion, Devices).
+   A one-click quick start that reads this PC's hardware and installs the whole
+   plan is planned ([A1](USER_STORIES.md#a1-quick-start-on-a-first-pc)).
 2. **Any time later.** Start menu > **Martlet prerequisites**, or
-   **Prerequisites (check / install)** on the Martlet home screen, opens the same
+   **Prerequisites (check / install)** in Martlet's Settings › Tools, opens the same
    tool as an interactive checklist. It shows the status of every item and changes
    nothing until you pick one.
 3. **From a command line** (Windows PowerShell 5.1 or PowerShell 7):
