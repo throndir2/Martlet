@@ -1,21 +1,28 @@
 """Builds the reference voices Martlet bundles for F5 (src/Martlet.F5/BundledVoices) from their pinned upstream recordings.
 
-Every source is public domain (LJ Speech, LibriVox) or CMU ARCTIC (free for any use; its notice is kept in
+Every source is public domain or CC0 (the cute and anime voices' LibriVox readings of Anne of Green Gables, LJ Speech,
+the other LibriVox readings) or CMU ARCTIC (free for any use; its notice is kept in
 src/Martlet.F5/BundledVoices/NOTICES.txt). Download the sources into one directory with their upstream layout:
 
-  LJSpeech-1.1/wavs/LJ001-0009.wav           https://data.keithito.com/data/speech/LJSpeech-1.1.tar.bz2
-  librivox/frankenstein_01_shelley.mp3        https://archive.org/download/frankenstein_cs_librivox/
-  librivox/secondsight_01_leverson.mp3        https://archive.org/download/lovesecondsight_1604_librivox/
+  librivox/anneofgreengables_02_montgomery.mp3 https://archive.org/download/anneofgreengables_sp_librivox/
+  librivox/agg_02_montgomery.mp3               https://archive.org/download/anne_gables_0808/
+  LJSpeech-1.1/wavs/LJ001-0009.wav             https://data.keithito.com/data/speech/LJSpeech-1.1.tar.bz2
+  librivox/frankenstein_01_shelley.mp3         https://archive.org/download/frankenstein_cs_librivox/
+  librivox/secondsight_01_leverson.mp3         https://archive.org/download/lovesecondsight_1604_librivox/
   cmu_us_<speaker>_arctic/wav/arctic_a00NN.wav http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_<speaker>_arctic/wav/
 
-then run (needs numpy and miniaudio):
+then run (needs numpy and miniaudio, and praat-parselmouth for the anime voices):
 
-  python scripts/Build-F5BundledVoices.py <sources directory>
+  python scripts/Build-F5BundledVoices.py <sources directory> [output directory] [--only key,key...]
 
-Modifications (the same for every clip, marked here as the CMU ARCTIC terms require): the spoken passage is cut out at
-its silences (short pauses kept, ARCTIC's two sentences joined by 0.3 s of silence), DC offset and rumble below 50 Hz are
-removed, the level is set to -20 dBFS speech RMS (peaks at most -1 dBFS), 10 ms fades are applied at each cut,
-LibriVox MP3s are decoded and resampled to 24 kHz, and the result is written as mono 16-bit PCM WAV.
+--only rebuilds just the named voices (for example when only their sources are downloaded).
+
+Modifications (marked here as the CMU ARCTIC terms require): the spoken passage is cut out at its silences (short pauses
+kept, ARCTIC's two sentences joined by 0.3 s of silence), DC offset and rumble below 50 Hz are removed, the level is set
+to -20 dBFS speech RMS (peaks at most -1 dBFS), 10 ms fades are applied at each cut, MP3s are decoded and resampled to
+24 kHz, and the result is written as mono 16-bit PCM WAV. The anime voices' pitch is also raised 1.33x (range 1.15x) and
+their formants 1.12x with Praat's PSOLA "Change gender", keeping the duration; no other clip's pitch, speed or timbre is
+changed.
 """
 
 import hashlib
@@ -38,8 +45,25 @@ ARCTIC_SOURCES = {
     "ksp": ("04790d7ee04e8873aec54a156b52e9831d1437894f20fabefd858b91173d280f", "e94c2905772c8625239b8868943766a63a2c55e51ca17258bf283f72dfaa2d0c"),
 }
 
-# key: [(relative source path, SHA-256, start s, end s or None for the whole file)], output sample rate
+ANNE_V6 = ("librivox/anneofgreengables_02_montgomery.mp3", "39e640f3ca7a59bdfa5c528c4af63bc4233e62e85dc791d3cbdba28a7ef1b145")
+ANNE_V4 = ("librivox/agg_02_montgomery.mp3", "4ef534ec93aa850571defca7c5d1dda245a0c3df210a3b43a32c9e24377f544d")
+# The anime voices raise a cute voice's pitch and formants with Praat's PSOLA "Change gender" (needs praat-parselmouth):
+# (formant shift ratio, pitch median factor, pitch range factor). Duration is unchanged.
+ANIME_LIFT = (1.12, 1.33, 1.15)
+
+# key: [(relative source path, SHA-256, start s, end s or None for the whole file)], output sample rate[, lift]
 VOICES = {
+    # The cute, high voices come first; the first is F5's default.
+    # WoollyBee as Anne Shirley (Chapter II): "You do get so attached to things like that, don't you? Is there a brook
+    # anywhere near Green Gables? I forgot to ask Mrs. Spencer that." Lifted to an anime pitch.
+    "librivox-woollybee-anime": ([(*ANNE_V6, 852.50, 860.80)], 24_000, ANIME_LIFT),
+    # WoollyBee as Anne (Chapter II): "It isn't heavy. I've got all my worldly goods in it, but it isn't heavy. And if it
+    # isn't carried in just a certain way the handle pulls out, so I'd better keep it because I know the exact knack of it."
+    "librivox-woollybee": ([(*ANNE_V6, 413.30, 423.72)], 24_000),
+    # Annie Coleman Rothenberg as Anne (Chapter II): "But am I talking too much? People are always telling me I do. Would
+    # you rather I didn't talk? If you say so, I'll stop." Lifted to an anime pitch, and as read.
+    "librivox-annie-anime": ([(*ANNE_V4, 795.30, 802.65)], 24_000, ANIME_LIFT),
+    "librivox-annie": ([(*ANNE_V4, 795.30, 802.65)], 24_000),
     "lj-speech": ([("LJSpeech-1.1/wavs/LJ001-0009.wav", "d003373f9c769b17995cfff2a99818e720a56f3376678b27fc6c9c27539c3f75", 0, None)], None),
     # "I have thus endeavoured to preserve the truth of the elementary principles of human nature, while I have not
     # scrupled to innovate upon their combinations." (Preface; the passage sits between 105.24 s and 113.87 s.)
@@ -115,8 +139,25 @@ def speech(x, rate):
     return piece, threshold
 
 
+def lift(x, rate, shift):
+    """Raises pitch and formants (Praat's PSOLA "Change gender"), keeping the duration."""
+    import parselmouth
+    from parselmouth.praat import call, run
+
+    # PSOLA fills unvoiced stretches with random pulses; a fixed seed keeps the clip reproducible.
+    run("random_initializeWithSeedUnsafelyButPredictably (5)")
+    formant_ratio, pitch_factor, range_factor = shift
+    sound = parselmouth.Sound(x, rate)
+    f0 = sound.to_pitch(pitch_floor=100, pitch_ceiling=800).selected_array["frequency"]
+    median = float(np.median(f0[f0 > 0]))
+    changed = call(sound, "Change gender", 100, 800, formant_ratio, median * pitch_factor, range_factor, 1.0)
+    if changed.sampling_frequency != rate:
+        raise SystemExit("Change gender altered the sample rate")
+    return changed.values[0].astype(np.float64)
+
+
 def build(sources: pathlib.Path, key: str):
-    parts, target = VOICES[key]
+    parts, target, *shift = VOICES[key]
     pieces, rate, thresholds = [], None, []
     for relative, digest, start, end in parts:
         x, source_rate = load(sources / relative, digest)
@@ -136,6 +177,8 @@ def build(sources: pathlib.Path, key: str):
         joined.append(piece)
     joined.append(silence(TAIL))
     audio = np.concatenate(joined)
+    if shift:
+        audio = lift(audio, rate, shift[0])
     db, frame = levels(audio, rate)
     active = np.repeat(db > min(thresholds), frame)
     speech_rms = np.sqrt(np.mean(audio[: len(active)][active] ** 2))
@@ -145,12 +188,23 @@ def build(sources: pathlib.Path, key: str):
 
 
 def main():
-    if len(sys.argv) not in (2, 3):
+    arguments = sys.argv[1:]
+    only = None
+    if "--only" in arguments:
+        index = arguments.index("--only")
+        if index + 1 >= len(arguments):
+            raise SystemExit(__doc__)
+        only = arguments[index + 1].split(",")
+        del arguments[index: index + 2]
+        unknown = [key for key in only if key not in VOICES]
+        if unknown:
+            raise SystemExit(f"unknown voice(s): {', '.join(unknown)}")
+    if len(arguments) not in (1, 2):
         raise SystemExit(__doc__)
-    sources = pathlib.Path(sys.argv[1])
-    output = pathlib.Path(sys.argv[2]) if len(sys.argv) == 3 else pathlib.Path(__file__).resolve().parents[1] / "src" / "Martlet.F5" / "BundledVoices"
+    sources = pathlib.Path(arguments[0])
+    output = pathlib.Path(arguments[1]) if len(arguments) == 2 else pathlib.Path(__file__).resolve().parents[1] / "src" / "Martlet.F5" / "BundledVoices"
     output.mkdir(parents=True, exist_ok=True)
-    for key in VOICES:
+    for key in only or VOICES:
         samples, rate = build(sources, key)
         path = output / f"{key}.wav"
         with wave.open(str(path), "wb") as writer:

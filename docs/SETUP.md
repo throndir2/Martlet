@@ -502,10 +502,14 @@ device qualification or learned VAD evidence.
 ## Voices (F5)
 
 F5 copies a voice from a short recording; nothing is trained. **Companion >
-Voice > Voices** lists Martlet's ten included voices, then every voice you added,
-with **Play**, **Use** and **Remove** on each. The included voices are free to use
-and share: LJ Speech and two LibriVox readings (public domain) and seven CMU ARCTIC
-speakers (US, Scottish, Canadian and Indian English; free for any use). Their
+Voice > Voices** lists Martlet's fourteen included voices, then every voice you
+added, with **Play**, **Use** and **Remove** on each. **Cute voices** come first:
+two LibriVox readers voicing Anne of Green Gables' excitable young heroine, each
+as read and lifted to a high, anime-like pitch; F5 starts with *Bee (cute anime
+girl)*. **More included voices** are LJ Speech, two more LibriVox narrators and
+seven CMU ARCTIC speakers (US, Scottish, Canadian and Indian English). All are
+free to use and share: the cute voices and LibriVox readings are public domain
+(CC0 or public domain mark) and CMU ARCTIC is free for any use. Their
 sources and notices are in `notices\F5-Voices-NOTICES.txt`. An included voice
 joins the voice list when it is first used, and can be removed again (it stays
 offered). **Add a voice...**

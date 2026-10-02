@@ -178,10 +178,12 @@ learned names, merged, tombstones). It never returns names, voiceprints or audio
 runs no model.
 
 `f5_voices` lists the [F5 reference voices](F5_VOICE.md#desktop-voices-and-playback)
-Martlet includes (key, name, `female`, description, licence, transcript, SHA-256,
-sample rate and duration; each clip is checked against its SHA-256 and the
+Martlet includes (key, name, `female`, `cute`, description, licence, transcript,
+SHA-256, sample rate and duration; each clip is checked against its SHA-256 and the
 reference store's audio, name and transcript rules, `valid` or the failure), the
-`default` key, `defaultName` and `defaultFemale` (always true). From a data
+`default` key, `defaultName`, `defaultFemale` and `defaultCute` (both always true;
+the default is the first cute voice, `librivox-woollybee-anime`) and `cute`, the
+keys of the cute, high-pitched voices listed first. From a data
 directory (optional absolute `dataDirectory`, default the current user's) it reads
 the `f5-voices` list: `state` (`none`, `loaded`, `busy` while the desktop holds it,
 or `unreadable`), the number of voices, the keys of included voices in it, the
@@ -191,8 +193,8 @@ there and the applied voice (an included key, `own`, `retired-sample` or null).
 the settings rule it broke or the error type as `problem`), the
 speaking route's type (for example `GatewayF5`, null without one) and the voice it
 records (an included key, `own`, `retired-sample` or null). After the desktop
-loads settings, a route or applied voice that was `retired-sample` reads
-`lj-speech`. It never returns own voices' names, transcripts or audio, plays
+loads settings, a route or applied voice that was `retired-sample` reads the
+default key. It never returns own voices' names, transcripts or audio, plays
 nothing and contacts nothing.
 
 `cluster_status` reads [shared who does what](CLUSTER.md) from a data directory
@@ -632,7 +634,10 @@ renderer process, so its text is not in snapshots.
 For F5 voices, open `CompanionTab-Voice` (the Voices card shows unless the
 voice comes from a cloud provider). `F5VoicesStatus` reads how many included
 and own voices there are and which is chosen or in use (an included voice's
-name, "one of your voices" or the retired F5-TTS sample). Each included voice's
+name, "one of your voices" or the retired F5-TTS sample). The included voices are
+grouped under `F5VoiceGroup-cute` ("CUTE VOICES", listed first) and
+`F5VoiceGroup-included` ("MORE INCLUDED VOICES"); `F5VoiceGroup-own` heads the
+owner's voices when there are any. Each included voice's
 title `F5VoiceRow-<key>` (for example `F5VoiceRow-arctic-slt`) returns its name
 with "· chosen" or "· in use" when it is. Its controls are `F5VoicePlay-<key>`,
 `F5VoiceUse-<key>` and, once it is in the list and not in use,
