@@ -87,6 +87,11 @@ Limits, by design for a home network:
 | Desktop UI | `MainWindow.Network.cs`, the **Your Martlet network** card on the Devices page; `NetworkIdentity.cs` for the key and `network.json` |
 | MCP | `network_status` (this PC's network from a data directory) and `network_selftest` (end-to-end rehearsal on loopback, `Martlet.NodeLinkCheck network`); card IDs in [MCP](MCP.md) |
 
+Apps and scripts outside the network (Home Assistant, your own scripts) don't
+join it: they use [API keys](API.md), which belong to the network too. A key
+made or revoked on any member PC reaches every host the same way as the who
+does what plan, and grants nothing in the network itself.
+
 ## Qualification
 
 Checked on the Windows development PC through Martlet MCP: `network_selftest`

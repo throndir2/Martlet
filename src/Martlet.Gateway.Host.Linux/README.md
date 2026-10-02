@@ -85,6 +85,10 @@ approved configuration either. Missing means the host is in no network; an
 unreadable copy is ignored (with a warning in the host's log) until a paired
 desktop binds the host again. `status` reports `network` (`unbound`, `bound` or
 `removed` with the network ID and member counts; no keys or addresses).
+The network's [API keys](../../docs/API.md) for other apps and scripts are kept
+in `api-keys.json` (same 0600 custody, through `api-keys.staging`; names,
+scopes and SHA-256 verifiers, never a usable key); a missing or malformed copy
+starts empty and paired desktops push theirs again.
 The parser rejects extra arguments, environment selectors, approval flags,
 secrets and arbitrary command paths. No args, `help`, `--help` and `-h` are
 passive and do not read files, create keys or start a listener.

@@ -127,6 +127,18 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "runner, two fixture devices. Checks that only known commands are accepted, only the host's agent (local token) takes them, " +
             "output and outcomes reach the sender, secrets never appear in lists or saved copies, cancel works and commands survive a " +
             "restart. Contacts nothing outside loopback and touches no real credentials, Docker or installs.", new { }),
+        Tool("api_keys_status", "Read the API keys of this PC's Martlet network from a data directory (api-keys.json, docs/API.md): for " +
+            "each key its ID, name, scopes, who made it and when, expiry and whether it is revoked or expired. Read-only; contacts " +
+            "nothing and never returns a key or its verifier.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("api_selftest", "Rehearse API keys for software outside the Martlet network end to end with the production code: two " +
+            "real gateways on 127.0.0.1 (pinned TLS, the real Ollama relay route over a fixture Ollama, NOT AI), a simulated desktop " +
+            "that creates, syncs and revokes keys through its paired client, and a plain HTTPS client sending Authorization: Bearer. " +
+            "Checks scopes (read, voice, manage), refusals (no key, wrong key, endpoints keys may never use), sync to a second host and " +
+            "a restart, last-used reports, revocation mid-reply, stale copies and expiry. Loopback only; writes nothing to disk or the " +
+            "credential vault.", new { }),
         Tool("mcp_servers_status", "Read the MCP servers in a data directory's mcp.json as Martlet parses them: each server's name, " +
             "transport, program and raw arguments (with ${env:...} and ${secret:...} references, never their values), environment and " +
             "header names, on/off, auto-approve, the MCP directory entry it was installed from and the secret names it uses. " +
@@ -226,6 +238,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "nearby_status" => NearbyStatus(arguments),
                 "virtualization_status" => await VirtualizationStatusAsync(arguments, cancellation),
                 "node_link_check" => await NodeLinkCheckAsync(cancellation),
+                "api_keys_status" => ApiKeysStatus(arguments),
+                "api_selftest" => await NodeLinkCheckAsync(cancellation, "api"),
                 "mcp_servers_status" => McpServersStatus(arguments),
                 "mcp_directory_plan" => McpDirectoryPlan(arguments),
                 _ => throw new ArgumentException($"Unknown tool '{name}'.")
@@ -282,6 +296,33 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 parakeet = Martlet.Sherpa.SherpaComponents.IsInstalled(speech, Martlet.Sherpa.SherpaPart.Parakeet)
             },
             roster
+        };
+    }
+
+    /// <summary>The network's API keys as the desktop keeps them in a data directory (the file name matches Martlet.Desktop's
+    /// MainWindow.ApiKeys). Names, scopes and stamps only: the verifier is never returned, and the key itself is kept nowhere.</summary>
+    private static object ApiKeysStatus(JsonElement arguments)
+    {
+        var path = Path.Combine(DataDirectory(arguments), "api-keys.json");
+        if (!File.Exists(path)) return new { state = "none" };
+        Martlet.Core.Access.ApiKeyList list;
+        try { list = Martlet.Core.Access.ApiKeyList.Parse(File.ReadAllBytes(path)); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
+        {
+            return new { state = "unreadable", problem = error.Message };
+        }
+        var now = DateTimeOffset.UtcNow;
+        return new
+        {
+            state = "loaded",
+            live = list.Live(now).Count,
+            revoked = list.Keys.Count(k => k.Revoked),
+            expired = list.Keys.Count(k => !k.Revoked && k.Expired(now)),
+            keys = list.Keys.Select(k => new
+            {
+                id = k.Id, name = k.Name, scopes = k.Scopes, createdBy = k.CreatedBy, createdAt = k.CreatedAt, expiresAt = k.ExpiresAt,
+                revoked = k.Revoked, expired = !k.Revoked && k.Expired(now), updatedBy = k.UpdatedBy, hasVerifier = k.Verifier is not null
+            })
         };
     }
 

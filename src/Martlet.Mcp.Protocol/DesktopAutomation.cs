@@ -32,7 +32,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "TrayOpen", "TrayTalk", "TrayPause", "TrayEndTalk",
         // Martlet on your network: Find again only sends Martlet's own discovery query (port 9444) on the local network and
         // lists who answers; Stop asking only withdraws this PC's own request. Connect, Allow and Deny do the work.
-        "NearbyFind", "NearbyCancel"
+        "NearbyFind", "NearbyCancel",
+        // Apps and API keys: Cancel closes the create dialog without making a key, and Done closes the dialog that showed a new
+        // key once. Create API key, Create key, Copy (the clipboard) and Revoke change things, so they need --allow-ui-effects.
+        "ApiKeyCreateCancel", "ApiKeyCreatedDone"
     };
     /// <summary>Choosing a Companion page in its side list only shows that page; Devices map nodes ("Node-this-pc",
     /// "Node-host:gpu-1") and the problem card's Show buttons only select a device and show its details; a job's
@@ -66,6 +69,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Settings › Your other computers (whether Martlet here runs commands your other computers send, and what it last did)
         // and a paired host's How Martlet reaches it (the saved route in words, and what each route means).
         "NodeAgentStatus", "HostReachNow", "HostReachHint",
+        // Devices › Apps and API keys: how many keys and how many hosts have them; the created dialog's title, host addresses
+        // with their public key pins, and the example request (it names $MARTLET_API_KEY, never the key). The key itself
+        // (ApiKeyValue) is never returned.
+        "ApiKeysStatus", "ApiKeyCreatedTitle", "ApiKeyHosts", "ApiKeyExample",
         // Settings › Startup and closing (what closing does and whether Windows starts Martlet), and the notification-area menu's
         // status line (Martlet is running, listening, paused or watching).
         "BackgroundStatus", "TrayStatus"
@@ -80,9 +87,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// "21:04:11.532 WARN This PC · App: Host gpu-box stopped answering: ..."); the Martlet desktops found on the network in
     /// Add a computer ("NearbyItem-0" reads "GAMING-PC (192.168.1.31): gaming-pc-host · Martlet 0.17.0"); the Martlet
     /// network's computers ("NetworkMember-host-gpu-pc" reads "gpu-pc. Host, paired with this PC; added on desktop-a.") and
-    /// requests to join ("NetworkJoin-desktop-b" reads "DESKTOP-B asks to join. desktop-b, through gpu-pc. Check number ...").</summary>
+    /// requests to join ("NetworkJoin-desktop-b" reads "DESKTOP-B asks to join. desktop-b, through gpu-pc. Check number ...");
+    /// API keys ("ApiKeyRow-AbC..." reads "Home Assistant. See status and logs. Made on desktop-a 10/2/2026. ... ID AbCdEf.",
+    /// never the key or its verifier).</summary>
     private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "F5VoiceRow-", "StepDetail-", "HostChoice", "HealthIssue-", "HealthCheck-",
-        "LogEntry-", "NearbyItem-", "NetworkMember-", "NetworkJoin-"];
+        "LogEntry-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "ApiKeyRow-"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>

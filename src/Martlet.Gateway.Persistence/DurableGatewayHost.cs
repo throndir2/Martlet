@@ -378,6 +378,13 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         server!.AttachVoiceStorage(storage);
     }
 
+    /// <summary>Keeps the network's API keys paired desktops sync through this host in <paramref name="storage"/>.</summary>
+    public void AttachApiKeys(IGatewayApiKeyStorage storage)
+    {
+        RequireOpen();
+        server!.AttachApiKeyStorage(storage);
+    }
+
     /// <summary>Keeps the Martlet network roster this host accepted in <paramref name="storage"/>.</summary>
     public void AttachNetwork(IGatewayNetworkStorage storage)
     {

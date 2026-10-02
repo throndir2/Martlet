@@ -237,6 +237,37 @@ leaves loopback, nothing is written to disk or Windows Credential Manager, and
 it does not cover the desktop window, `network.json` on a Linux host,
 `martlet-host`, SSH or a real LAN.
 
+`api_keys_status` reads the [API keys](API.md) of this PC's Martlet network
+from a data directory (optional absolute `dataDirectory`, default the current
+user's; the script supplies its disposable one): `state` (`none`, `loaded` or
+`unreadable`), counts of `live`, `revoked` and `expired` keys, and each key's
+`id`, `name`, `scopes`, `createdBy`, `createdAt`, `expiresAt`, `revoked`,
+`expired`, `updatedBy` and `hasVerifier`. It never returns a key or its
+verifier (Martlet keeps no key) and contacts nothing.
+
+`api_selftest` (no arguments) rehearses API keys for software outside the
+network end to end with the production code: two real gateways
+(`lab-api-1`, `lab-api-2`: Kestrel, pinned TLS, a throwaway certificate) on
+`127.0.0.1`, each with the real Ollama relay route over a fixture Ollama
+(canned text, NOT AI), a simulated desktop using its paired client
+(`HostApiKeys.cs`), and a plain HTTPS client that pins the host key and sends
+`Authorization: Bearer`. It runs `src\Martlet.NodeLinkCheck` (mode `api`,
+`ApiRehearsal.cs`) and returns `{exitCode, report}` like `network_selftest`.
+Its steps: the desktop pairs with both hosts and creates a read+voice and a
+manage key, and both hosts keep verifiers and no secret; no key
+(`auth.missing`), a malformed and a wrong key (`key.invalid`) are refused; the
+read+voice key reads version (naming the key), status and capabilities, the
+documented `curl -k --pinnedpubkey` request (System32's curl.exe) answers and a
+wrong pin is refused (exit 90), and the key chats through the native route; it gets `key.scope` for commands, voices,
+network, api-keys, posting the plan and posting logs; the manage key sends
+`host.status` and follows it but can't chat or read status; the same key works
+on the second host and after it restarts from its saved copy; the desktop sees
+when keys were last used; revoking a key cuts its streaming reply and every
+host refuses it after sync; a stale copy can't bring it back; an expired key
+gets `key.expired`. Nothing leaves loopback and nothing is written to disk or
+Windows Credential Manager; it does not cover the desktop window,
+`api-keys.json` on a Linux host, a real model or a real LAN.
+
 `nearby_status` reads whether this PC lets Martlet on the owner's other
 computers [find it](ARCHITECTURE.md#finding-your-other-computers) (optional
 absolute `dataDirectory`, default the current user's): `share` is
@@ -386,6 +417,21 @@ paired hosts, so it is not a passive click), each computer's row title
 Turn down change the network and need `--allow-ui-effects` (then
 `ConfirmationYes`); Allow also hands that computer access to every host, so
 keep it to disposable lab networks.
+
+The **Apps and API keys** card ([API](API.md)) holds `ApiKeysStatus` (status
+text: how many keys, and on how many hosts they are or why not), each key's
+row title `ApiKeyRow-<key ID>` (status text: name, what it may do, which
+computer made it, last use, expiry and the ID's first characters) with
+`ApiKeyRevoke-<key ID>`, and `ApiKeyCreate`. Create opens
+`ApiKeyCreateDialog` with `ApiKeyName`, `ApiKeyScope-<read|voice|perception|manage>`
+(read is ticked), `ApiKeyExpiry` (*Never*, *In 30 days*, *In 90 days*, *In a
+year*), `ApiKeyCreateConfirm` and `ApiKeyCreateCancel` (passive). Creating
+shows `ApiKeyCreatedDialog`: `ApiKeyCreatedTitle`, `ApiKeyHosts` (the hosts'
+addresses and public key pins) and `ApiKeyExample` (a curl request naming
+`$MARTLET_API_KEY`) are returned as text; the key itself (`ApiKeyValue`) is
+never returned, and `ApiKeyCopy` writes the clipboard; `ApiKeyCreatedDone`
+(passive) closes it. Create, the dialog's fields, Copy and Revoke (then
+`ConfirmationYes`) change data and need `--allow-ui-effects`.
 
 A paired host's `DeviceReachSection` holds `HostReachNow` (*Reached via: ...*,
 status text), `HostReachMethod` (a combo box: *Through Martlet on that computer
@@ -746,7 +792,7 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status` and `mcp_servers_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status` and `api_keys_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

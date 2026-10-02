@@ -5,6 +5,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Martlet.Gateway\Martlet.Gateway.csproj" />
+    <ProjectReference Include="..\Martlet.Gateway.Ollama\Martlet.Gateway.Ollama.csproj" />
     <ProjectReference Include="..\Martlet.Avatar.Audio2Face\Martlet.Avatar.Audio2Face.csproj" />
   </ItemGroup>
 </Project>

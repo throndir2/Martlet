@@ -307,7 +307,7 @@ internal sealed partial class GatewayHttpApplication
         if (context.Request.Method == HttpMethods.Get)
         {
             EnsureEmptyRequest(context.Request);
-            _ = authenticator.Authenticate(context.Request);
+            _ = Authorize(context.Request, GatewayApiAccess.Read);
             var query = LogsQuery(rawTarget);
             var limit = (int)Math.Min(query.GetValueOrDefault("limit", DefaultLogPage), MaximumLogPage);
             GatewayRules.Require(limit >= 1 && !(query.ContainsKey("after") && query.ContainsKey("own_after")), "request.invalid");
