@@ -36,7 +36,7 @@ internal static class HostPairingCredential
 internal sealed class HostTextClient : IHostTextClient
 {
     public async IAsyncEnumerable<string> StreamAsync(HostTextTarget target, TextModelSelection model, BoundedTextInput input,
-        TextGenerationLimits limits, CorrelationIds ids, long epoch, DateTimeOffset deadline,
+        TextGenerationLimits limits, CorrelationIds ids, long epoch, DateTimeOffset deadline, GenerationSettings? generation,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         using var connection = Connect(target);
@@ -45,8 +45,8 @@ internal sealed class HostTextClient : IHostTextClient
             throw new HostTextException(ProviderFailureCode.ModelNotFound);
         var history = input.History.Select(m => new HostChatMessage(m.Role == TextHistoryRole.Assistant, m.Text)).ToArray();
         await using var deltas = connection.StreamChatAsync(route, ids, epoch, deadline, input.Personality, history, input.UserText,
-            HostTextGenerationStream.Temperature, limits.MaxOutputTokens, limits.MaxContextTokens,
-            input.Image is { } image ? [image.ToBase64()] : null, cancellationToken)
+            generation?.Temperature ?? HostTextGenerationStream.Temperature, limits.MaxOutputTokens, limits.MaxContextTokens,
+            input.Image is { } image ? [image.ToBase64()] : null, generation, cancellationToken)
             .GetAsyncEnumerator(cancellationToken);
         while (await Guard(() => deltas.MoveNextAsync().AsTask(), cancellationToken).ConfigureAwait(false))
             yield return deltas.Current;

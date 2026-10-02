@@ -11,6 +11,7 @@
     <Project Path="src/Martlet.Desktop/Martlet.Desktop.csproj" />
     <Project Path="src/Martlet.Diagnostics/Martlet.Diagnostics.csproj" />
     <Project Path="src/Martlet.Doctor/Martlet.Doctor.csproj" />
+    <Project Path="src/Martlet.Home/Martlet.Home.csproj" />
     <Project Path="src/Martlet.Gateway.Trust/Martlet.Gateway.Trust.csproj" />
     <Project Path="src/Martlet.Gateway.Ollama/Martlet.Gateway.Ollama.csproj" />
     <Project Path="src/Martlet.Gateway.F5/Martlet.Gateway.F5.csproj" />

@@ -174,7 +174,8 @@ internal static class GatewayInferenceJson
         var fields = Object(
             element,
             ["input", "temperature", "maximum_output_tokens", "maximum_context_tokens"],
-            ["system", "history", "images"]);
+            ["system", "history", "images", "top_p", "top_k", "min_p", "repeat_penalty", "frequency_penalty",
+                "presence_penalty", "context_tokens"]);
         var input = Text(fields, "input", BoundedTextInput.HardMaxUtf8Bytes, allowNewLines: true);
         string? system = fields.TryGetValue("system", out var systemElement)
             ? Text(systemElement, BoundedTextInput.HardMaxUtf8Bytes, allowNewLines: true)
@@ -223,7 +224,36 @@ internal static class GatewayInferenceJson
                 images.Add(encoded);
             }
         }
-        return new(input, temperature, outputTokens, contextTokens, system, history, images);
+        return new(input, temperature, outputTokens, contextTokens, system, history, images,
+            ParseSampling(fields, outputTokens, contextTokens));
+    }
+
+    // Optional Ollama sampling options, each bounded like the client's settings; absent ones keep Ollama's defaults.
+    private static GatewayOllamaSampling ParseSampling(
+        IReadOnlyDictionary<string, JsonElement> fields, int outputTokens, int maximumContextTokens)
+    {
+        double? Optional(string name, double minimum, double maximum)
+        {
+            if (!fields.ContainsKey(name)) return null;
+            var value = Number(fields, name);
+            GatewayRules.Require(double.IsFinite(value) && value >= minimum && value <= maximum, "request.invalid");
+            return value;
+        }
+        int? OptionalInteger(string name, long minimum, long maximum) =>
+            fields.ContainsKey(name) ? checked((int)Integer(fields, name, minimum, maximum)) : null;
+        var topP = Optional("top_p", 0, 1);
+        GatewayRules.Require(topP is null or > 0, "request.invalid");
+        var context = OptionalInteger("context_tokens", Martlet.Core.Settings.GenerationSettings.MinimumContextTokens,
+            Martlet.Core.Settings.GenerationSettings.MaximumContextTokens);
+        GatewayRules.Require(context is null || context > outputTokens && context <= maximumContextTokens, "request.invalid");
+        return new(
+            topP,
+            OptionalInteger("top_k", 1, Martlet.Core.Settings.GenerationSettings.MaximumTopK),
+            Optional("min_p", 0, 1),
+            Optional("repeat_penalty", 0, 2),
+            Optional("frequency_penalty", -2, 2),
+            Optional("presence_penalty", -2, 2),
+            context);
     }
 
     private static GatewayF5SynthesisPayload ParseF5(

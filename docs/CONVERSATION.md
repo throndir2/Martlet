@@ -100,7 +100,7 @@ game/call audio. Capturing other people requires their permission.
 | Overall permission | Original monotonic and absolute expiry within 150 seconds, including scheduling/capture/authorization; never restored or extended |
 | Capture | At most 25 seconds / 800,000 bytes, canonical mono 16 kHz PCM16; original capture permission at most 30 seconds including cleanup and transfer |
 | STT | At most one request, 800,044 WAV bytes, 30-second request, 4096 transcript characters |
-| LLM | At most one request, 4096 user characters; current user + persona + style + bounded explicit history at most 16,384 UTF-8 bytes and 16,640 input-token reservation, 256 requested output tokens, 16,384 response characters, 45-second request |
+| LLM | At most one request, 4096 user characters; current user + persona + style + bounded explicit history at most 16,384 UTF-8 bytes and 16,640 input-token reservation, 256 requested output tokens by default (16-2,048 via Companion > Replies, which also sets optional sampling: temperature, top P/K, min P, repetition penalties and a paired host's context size, each sent only to routes whose API accepts it), 16,384 response characters, 45-second request |
 | Conversation runtime | At most 90 seconds; existing bounded two-segment pending queue, one active TTS/playback segment |
 | TTS | At most eight requests, 1536 input UTF-8 bytes each / 12,288 total; 10 seconds / 240,000 samples reserved per request, 80 seconds / 1,920,000 samples total; at most 20 seconds per request |
 | Content and timeline | Current bounded input/transcript/answer/refusal in memory; 32 metadata timeline entries, existing bounded engine event rings; no audio/transcript files or ordinary content logs |

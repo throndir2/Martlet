@@ -15,7 +15,7 @@ public sealed class HostTextTests
         internal int Calls { get; private set; }
 
         public async IAsyncEnumerable<string> StreamAsync(HostTextTarget target, TextModelSelection model, BoundedTextInput input,
-            TextGenerationLimits limits, CorrelationIds ids, long epoch, DateTimeOffset deadline,
+            TextGenerationLimits limits, CorrelationIds ids, long epoch, DateTimeOffset deadline, GenerationSettings? generation,
             [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             Calls++;

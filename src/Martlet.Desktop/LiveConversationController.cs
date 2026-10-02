@@ -54,11 +54,14 @@ internal sealed class LiveConversationOperation
     /// <summary>Why memory could not be read for this turn (the reply went ahead without it).</summary>
     internal string? MemoryProblem { get; set; }
     internal int LoreEntriesUsed { get; set; }
+
     /// <summary>Triggered entries left out by the lorebook budget or to fit the request.</summary>
     internal int LoreEntriesOmitted { get; set; }
     internal IReadOnlyList<string> LoreTitles { get; set; } = [];
     /// <summary>Why the lorebooks could not be read for this turn (the reply went ahead without them).</summary>
     internal string? LoreProblem { get; set; }
+    /// <summary>What Home Assistant did or answered for this turn, shown above the reply. Never logged or saved.</summary>
+    [JsonIgnore] internal string? HomeSummary { get; set; }
     internal ListeningOptions? Listening { get; init; }
     internal Voiceprint? Voiceprint { get; init; }
     internal SpeakerCheck? SpeakerCheck { get; set; }
@@ -144,6 +147,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private readonly DesktopMemoryService? memory;
     private readonly LorebookStore? lorebooks;
     private readonly VoiceIdentity? voiceIdentity;
+    private readonly SmartHome? smartHome;
     private readonly TaskCompletionSource quarantine = new(TaskCreationOptions.RunContinuationsAsynchronously);
     // What Martlet said while watching the screen (last 30 minutes), so it does not repeat itself. In memory only.
     private readonly Queue<(long At, string Text)> remarks = new();
@@ -171,6 +175,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
     /// <summary>Tests turn background remembering off to inspect only the reply request.</summary>
     internal bool AutoCapture { get; set; } = true;
     internal Task MemoryCaptureIdle { get { lock (gate) return captureTail; } }
+    /// <summary>The Home Assistant connection consulted on user-started turns while its control is on.</summary>
+    internal SmartHome? Home => smartHome;
     internal LiveConversationController(SetupOperationRunner operations, ISetupService settings, ICredentialStore vault,
         ICaptureDeviceFactory captureDevices, IPlaybackDeviceFactory playbackDevices, TimeProvider? clock = null,
         Func<IProviderCredentialSource, TimeProvider, ConversationRuntime>? runtimeFactory = null,
@@ -179,7 +185,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
         DesktopMemoryService? memory = null,
         GeneratedSpeechObserver? generatedSpeech = null, Action? revokeAvatar = null, VoiceIdentity? voiceIdentity = null,
         IHostTranscriptionClient? hostListener = null, string? dataDirectory = null, SpokenTextFeed? spokenText = null,
-        LorebookStore? lorebooks = null)
+        SmartHome? smartHome = null, LorebookStore? lorebooks = null)
+
     {
         this.operations = operations;
         this.settings = settings;
@@ -191,6 +198,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         this.memory = memory;
         this.lorebooks = lorebooks;
         this.voiceIdentity = voiceIdentity;
+        this.smartHome = smartHome;
         this.runtimeFactory = runtimeFactory;
         context = new(this.clock);
         captureCredentials = new(() => Volatile.Read(ref captureAuthorization));
@@ -607,6 +615,17 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 history = context.Snapshot();
             }
 
+            // Only the user's own typed or spoken words ever reach Home Assistant (glances use RunCommentaryAsync).
+            HomeTurn? home = null;
+            if (smartHome is { ControlEnabled: true } house)
+            {
+                operation.Publish(new("home.asking"));
+                home = await house.HandleAsync(input!.UserText, worker).ConfigureAwait(false);
+                operation.Authorization.Check(worker);
+                operation.HomeSummary = home.Summary;
+                operation.Publish(new(home.Code));
+            }
+
             DesktopMemoryRecall? memoryResult = null;
             if (operation.MemoryRequested)
             {
@@ -623,7 +642,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 operation.Authorization.Check(worker);
                 var request = operation.Authorization.Configuration.Request(
                     input!, operation.Authorization.Voice, style, history, memoryResult, lore,
-                    out var usedHistory, out var usedMemory, out var usedLore);
+                    out var usedHistory, out var usedMemory, out var usedLore, extraInstructions: home?.Instructions);
                 operation.PersonaRevision = persona?.ConfigurationRevision;
                 operation.ResponseStyle = style;
                 operation.ContextMessages = usedHistory;

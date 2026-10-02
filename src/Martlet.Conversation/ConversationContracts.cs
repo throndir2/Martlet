@@ -48,11 +48,14 @@ public sealed record ChatCompletionsTarget(string BaseUrl, bool Keyless = false)
 // Host selects a paired Martlet host's own conversation model (Ollama) instead of a cloud destination;
 // HostSpeech selects a paired host's own F5 voice for the spoken reply and WindowsVoice an installed Windows voice on
 // this PC. SilentReply is a word the model may answer with to stay quiet (unprompted screen commentary); a sentence that
-// is only that word is never spoken.
+// is only that word is never spoken. Generation carries the persona's optional sampling settings; it changes how the
+// model samples, never what is disclosed, so it is not part of the text authorization (the reply token budget is, through
+// TextLimits).
 public sealed class ConversationRequest(
     BoundedTextInput input, TextModelSelection model, TextGenerationLimits textLimits,
     ConversationLimits limits, SpeechOutput? speech = null, ChatCompletionsTarget? chat = null, HostTextTarget? host = null,
-    HostSpeechTarget? hostSpeech = null, string? silentReply = null, WindowsVoiceTarget? windowsVoice = null)
+    HostSpeechTarget? hostSpeech = null, string? silentReply = null, WindowsVoiceTarget? windowsVoice = null,
+    GenerationSettings? generation = null)
 {
     [JsonIgnore] public BoundedTextInput Input { get; } = input;
     public TextModelSelection Model { get; } = model;
@@ -64,6 +67,7 @@ public sealed class ConversationRequest(
     [JsonIgnore] public HostSpeechTarget? HostSpeech { get; } = hostSpeech;
     [JsonIgnore] public WindowsVoiceTarget? WindowsVoice { get; } = windowsVoice;
     [JsonIgnore] public string? SilentReply { get; } = silentReply;
+    public GenerationSettings? Generation { get; } = generation;
 
     internal void Validate()
     {
@@ -75,6 +79,7 @@ public sealed class ConversationRequest(
         ArgumentNullException.ThrowIfNull(Limits);
         TextLimits.Validate();
         Limits.Validate();
+        Generation?.Validate();
         ContractRules.Identifier(Model.ModelAlias);
         if (Host is { } host)
         {

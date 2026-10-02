@@ -51,7 +51,7 @@ public partial class LiveConversationWindow : ThemedWindow
         IAudioSessionEvents sessionEvents, AudioSetupService? audio = null, TimeProvider? clock = null, VoiceIdentity? voiceIdentity = null,
         IScreenGlancer? glancer = null, IVideoInput? video = null)
     {
-        this.video = video ?? new VideoInput();
+        this.video = video ?? new VideoInput(controller.Home is { } home ? home.CameraAuthorization : null);
         this.settings = settings;
         this.operations = operations;
         this.controller = controller;
@@ -148,7 +148,8 @@ public partial class LiveConversationWindow : ThemedWindow
             "; voices: " + string.Join(", ", OpenAiSpeechSynthesisCatalog.SupportedVoices) + ". No model discovery or fallback.";
         EnvelopeText.Text = selected is null
             ? "No active supported API configuration. Capture/upload/LLM/TTS permission is OFF. Use Setup / resume."
-            : selected.Disclosure(voice) + "\n" + selected.ScreenDisclosure(SelectedChattiness, SelectedSource);
+            : selected.Disclosure(voice) + "\n" + (controller.Home?.Disclosure() is { } home ? home + "\n" : "") +
+                selected.ScreenDisclosure(SelectedChattiness, SelectedSource);
         VisionStatus.Text = selected is null ? "Load a saved Thinking model first (Setup / resume)."
             : (selected.Vision() switch
             {
@@ -824,7 +825,7 @@ public partial class LiveConversationWindow : ThemedWindow
         // Hands-free keeps the previous reply on screen until the next one starts.
         if (!operation.HandsFree || operation.Turn is not null)
         {
-            AnswerText.Text = $"{evidence}\n{content?.Text}";
+            AnswerText.Text = $"{evidence}\n{(operation.HomeSummary is { } home ? home + "\n" : "")}{content?.Text}";
             RefusalText.Text = content?.Refusal ?? "";
         }
         var speaker = operation.SpeakerCheck is { } check && operation.Voiceprint is { } print
@@ -870,6 +871,7 @@ public partial class LiveConversationWindow : ThemedWindow
         "mic.hearing_speech" => "Hearing you... pause when you're done.",
         "speaker.checking" => "Checking it's you (Voice ID, on this PC)...",
         "speaker.verified" or "mic.transferred_and_cleared" or "stt.uploading" => "Got it. Transcribing...",
+        "home.asking" => "Checking with Home Assistant...",
         _ when code.StartsWith("runtime.", StringComparison.Ordinal) => "Replying... listening resumes after the reply finishes.",
         _ => null
     };

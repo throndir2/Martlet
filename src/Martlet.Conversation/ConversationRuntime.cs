@@ -90,9 +90,9 @@ public sealed class ConversationRuntime : IAsyncDisposable
         if (request.Host is { } host)
             return new HostTextGenerationStream(HostText ?? throw new InvalidOperationException(
                 "This runtime was not composed with a Martlet host text client."), host, context, request.Model,
-                request.Input, request.TextLimits, consent, Clock, caller);
+                request.Input, request.TextLimits, consent, Clock, caller, request.Generation);
         if (request.Chat is not { } target)
-            return Text.Stream(context, request.Model, request.Input, request.TextLimits, consent, caller);
+            return Text.Stream(context, request.Model, request.Input, request.TextLimits, consent, caller, request.Generation);
         ChatCompletionsTextGenerationAdapter? adapter;
         lock (Sync)
         {
@@ -104,7 +104,7 @@ public sealed class ConversationRuntime : IAsyncDisposable
                 chatAdapters[target] = adapter;
             }
         }
-        return adapter.Stream(context, request.Model, request.Input, request.TextLimits, consent, caller);
+        return adapter.Stream(context, request.Model, request.Input, request.TextLimits, consent, caller, request.Generation);
     }
 
     // This is the explicit new-turn operation. It neither interrupts nor queues behind existing ownership.

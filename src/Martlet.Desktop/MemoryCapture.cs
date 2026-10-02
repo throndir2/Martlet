@@ -67,8 +67,8 @@ internal static partial class MemoryCapture
             try
             {
                 var input = new BoundedTextInput(text.ToString(), Instructions);
-                if (input.Utf8Bytes <= LiveConversationConfiguration.TextLimits.MaxInputBytes &&
-                    input.InputTokenReservation <= LiveConversationConfiguration.TextLimits.MaxInputTokens)
+                if (input.Utf8Bytes <= LiveConversationConfiguration.DefaultTextLimits.MaxInputBytes &&
+                    input.InputTokenReservation <= LiveConversationConfiguration.DefaultTextLimits.MaxInputTokens)
                     return new(input, shown);
             }
             catch (ContractException)
