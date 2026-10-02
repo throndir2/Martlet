@@ -326,7 +326,12 @@ chosen option.
 For the desktop character, open `CompanionTab-Character`; with
 `--allow-ui-effects`, `SetupCharacterToggle` shows or hides it and
 `SetupCharacterZoomIn`, `SetupCharacterZoomOut` and `SetupCharacterResetZoom`
-zoom its overlay. The `SetupCharacterView` status then reports the overlay's
+zoom its overlay. `SetupCharacterNow` returns the page's Now line (the model,
+then *on your desktop* or *hidden*), and `SetupCharacterNowProblem` appears when
+the character's last stop did not finish cleanly (pressing Show or Hide
+character retries; details go to the `desktop` log). Exiting never waits on the
+character: Settings' `ExitMartlet` (needs `--allow-ui-effects`) closes Martlet
+even then, and Windows ends the renderer with it. After a zoom, the `SetupCharacterView` status reports the overlay's
 size, its distance from the top of the screen, the camera zoom and where the
 top of the character's head sits relative to the overlay's top edge (it must
 stay in view at every zoom).
