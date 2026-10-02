@@ -128,7 +128,7 @@ public partial class MainWindow
             ActionText.Text = "Checking Home Assistant...";
             var info = await smartHome.ConnectAsync(address.Text, token, lifetime.Token);
             ActionText.Text = smartHome.ControlEnabled
-                ? $"Connected to {info.LocationName} (Home Assistant {info.Version}). An open talk window picks it up on Reload."
+                ? $"Connected to {info.LocationName} (Home Assistant {info.Version})."
                 : $"Connected to {info.LocationName} (Home Assistant {info.Version}). Turn on \"Let Martlet control and check my home\" to use it.";
         }
         catch (HomeAssistantException error) { ActionText.Text = error.Message; }
@@ -159,21 +159,7 @@ public partial class MainWindow
         ActionText.Text = !saved ? "Couldn't save the smart home setting. Check access to your data directory."
             : !control ? "Martlet won't use Home Assistant now."
             : allowSensitive ? "Martlet may now also operate locks, doors, garage doors, gates, alarms and valves, after you click Yes each time."
-            : "Martlet now controls and checks your home through Home Assistant when you ask. An open talk window picks it up on Reload.";
+            : "Martlet now controls and checks your home through Home Assistant when you ask.";
         RenderTab();
     }
-
-    /// <summary>Asks on screen before a lock/door/garage/gate/alarm/valve request goes to Home Assistant. No is the default
-    /// button; the conversation's cancellation (Stop, timeout) closes the question as a no.</summary>
-    private Task<bool> ConfirmSmartHomeAsync(string question, CancellationToken token) =>
-        Dispatcher.InvokeAsync(() =>
-        {
-            if (closing || token.IsCancellationRequested) return false;
-            var dialog = new ConfirmationDialog("Martlet - smart home", question)
-            {
-                Owner = openConversation is { IsVisible: true } talk ? talk : this
-            };
-            using var cancel = token.Register(() => dialog.Dispatcher.BeginInvoke(() => { if (dialog.IsVisible) dialog.Close(); }));
-            return dialog.ShowDialog() == true;
-        }).Task;
 }

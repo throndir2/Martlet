@@ -125,6 +125,7 @@ public partial class LiveConversationWindow : ThemedWindow
         timer.Start();
         sessionEvents.LockedChanged += SessionSwitch;
         controller.MemoryCaptured += MemoryCaptured;
+        if (controller.Home is { } smartHome) smartHome.Confirm = ConfirmHomeAsync;
         RenderActions();
     }
 
@@ -506,6 +507,7 @@ public partial class LiveConversationWindow : ThemedWindow
         pendingText = null;
         pendingMessage = null;
         reloadReason = null;
+        homeQuestion?.TrySetResult(false);
         listenNote = null;
         if (listening) listenPaused = true;
         listening = false;
@@ -886,7 +888,40 @@ public partial class LiveConversationWindow : ThemedWindow
         timer.Stop();
         sessionEvents.LockedChanged -= SessionSwitch;
         controller.MemoryCaptured -= MemoryCaptured;
+        homeQuestion?.TrySetResult(false);
+        if (controller.Home is { } smartHome && smartHome.Confirm == ConfirmHomeAsync) smartHome.Confirm = null;
     }
+
+    private TaskCompletionSource<bool>? homeQuestion;
+
+    /// <summary>Asks above the message box before a request about a lock, door, garage, gate, alarm or valve goes to Home
+    /// Assistant. Stop, Close or the timeout answer no.</summary>
+    private Task<bool> ConfirmHomeAsync(string question, CancellationToken token) => Dispatcher.InvokeAsync(() =>
+    {
+        if (closed || token.IsCancellationRequested) return Task.FromResult(false);
+        homeQuestion?.TrySetResult(false);
+        var answer = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        homeQuestion = answer;
+        HomeQuestionText.Text = question;
+        HomeQuestionPanel.Visibility = Visibility.Visible;
+        Motion.Enter(HomeQuestionPanel, dy: 10);
+        if (IsActive) HomeNoButton.Focus();
+        var registration = token.Register(() => answer.TrySetResult(false));
+        answer.Task.ContinueWith(_ =>
+        {
+            registration.Dispose();
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (!ReferenceEquals(homeQuestion, answer)) return;
+                homeQuestion = null;
+                HomeQuestionPanel.Visibility = Visibility.Collapsed;
+            });
+        }, TaskScheduler.Default);
+        return answer.Task;
+    }).Task.Unwrap();
+
+    private void HomeYes_Click(object sender, RoutedEventArgs e) => homeQuestion?.TrySetResult(true);
+    private void HomeNo_Click(object sender, RoutedEventArgs e) => homeQuestion?.TrySetResult(false);
 
     // ---------- plain-language messages ----------
 

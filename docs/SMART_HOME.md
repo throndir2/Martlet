@@ -41,22 +41,22 @@ address; plain `http` is accepted only for local-network addresses). With
    door, garage, gate, alarm or valve (common words in English, German,
    French, Spanish, Italian and Dutch) and is not a status question is
    **never sent** unless **Also locks, doors, garage doors, gates, alarms and
-   valves** is on, and then only after the user clicks **Yes** in a dialog
-   (No is the default; 30 s or Stop means no). Status questions ("is the front
+   valves** is on, and then only after the user clicks **Yes, send it** in
+   the talk window (inline, above the message box; 30 s, Stop or Close means
+   no). Status questions ("is the front
    door locked?") always go through. Longer sentences that merely mention a
    door are treated as chat and not sent. If Home Assistant still reports
    operating such a device without confirmation, the summary says so and
    recommends unexposing it. Home Assistant's exposed-entities list remains the
    outer allowlist; it does not expose locks, garage doors or alarms by
    default.
-4. The talk window shows a **Home Assistant:** line above the reply, its
-   envelope discloses the smart home step, and Smart home lists the last 20
-   actions in memory (never saved).
+4. The talk window's history shows a **Home Assistant:** line above the reply,
+   the Smart home page discloses the step, and it lists the last 20 actions in
+   memory (never saved).
 5. **Cameras:** a Home Assistant camera snapshot address
    (`<address>/api/camera_proxy/camera.front_door`) works as a phone or
    network camera source in Watch; Martlet adds the saved token itself and
-   names the source after the entity. `SmartHome.CamerasAsync` lists camera
-   entities for the Vision page's source list.
+   names the source after the entity. Companion › Vision › **Use a Home Assistant camera** lists the camera entities (`SmartHome.CamerasAsync`) and fills in the chosen one's address.
 
 Code: `src/Martlet.Home` (endpoint rules, REST client, guard, persona
 context), `src/Martlet.Desktop/SmartHome.cs` (connection, preferences in
@@ -268,7 +268,7 @@ flowchart LR
 | SH00 | **Delivered 2026-10-01.** HA connection page, vaulted token, built-in Assist on user turns for every model, safety tier with click confirmation, action list, persona context, HA camera snapshot addresses in Watch | - |
 | SH01 | Opt-in tool calling in the chat encoders + streamed tool-call parsing + `ToolModelCatalog`; default unchanged (owned by the MCP client session, `Martlet.Mcp.Client`) | - |
 | SH02 | HA `/api/mcp` registered as a Smart home-managed server in the shared MCP client (no second client), for fuzzy requests ("make it cozy"); Assist pre-step off on those turns to avoid double actions | SH01 |
-| SH03 | Per-tool approval hook on managed servers: comfort tools auto-approved, lock/door/garage/gate/alarm/valve tools ask every time or are denied; tools only on user-started turns; spoken result | SH02 |
+| SH03 | Per-tool approval hook on managed servers (not yet in `Martlet.Mcp.Client`; the MCP session uses inline per-call approvals): comfort tools auto-approved, lock/door/garage/gate/alarm/valve tools ask every time or are denied; tools only on user-started turns; spoken result | SH02 |
 | SH04 | HA cameras listed as Vision sources; "Look at the front door" on request | video source input, SH00 |
 | SH05 | Event-triggered looks/remarks from HA WebSocket and optional Frigate MQTT (doorbell, person detected); announcements; never actions | SH04 |
 | SH06 | Host `home` role: go2rtc and matterjs-server containers; multi-admin Matter pairing from a shared code | SH02, host roles |
