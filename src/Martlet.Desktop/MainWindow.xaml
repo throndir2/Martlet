@@ -177,7 +177,7 @@
                         <Border Style="{DynamicResource CardStyle}">
                             <StackPanel>
                                 <TextBlock Text="Good to know" Style="{DynamicResource SectionHeading}"/>
-                                <TextBlock Style="{DynamicResource Muted}" Margin="0,0,0,4" Text="&#x2022; The host listens only on your private network, on TCP 9443. Each desktop is paired once with a one-use code."/>
+                                <TextBlock Style="{DynamicResource Muted}" Margin="0,0,0,4" TextWrapping="Wrap" Text="&#x2022; The host listens only on your private network, on TCP 9443. Each desktop is paired once: it finds this PC (port 9444) and you allow it here, or it types a one-use code."/>
                                 <TextBlock Style="{DynamicResource Muted}" Margin="0,0,0,4" Text="&#x2022; Only the main PC's generated voice is sent here for lip-sync. No microphone audio, keys or files."/>
                                 <TextBlock Style="{DynamicResource Muted}" Margin="0,0,0,10" Text="&#x2022; GPU roles need an NVIDIA graphics card with a current driver and Docker Desktop's WSL 2 GPU support."/>
                                 <WrapPanel>
@@ -239,6 +239,16 @@
                                               AutomationProperties.AutomationId="ClusterSync"/>
                                     <TextBlock x:Name="ClusterStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="24,2,0,0"
                                                AutomationProperties.AutomationId="ClusterStatus" AutomationProperties.LiveSetting="Polite"/>
+                                    <CheckBox x:Name="NearbyShareChoice" Checked="NearbyShare_Changed" Unchecked="NearbyShare_Changed" Margin="0,14,0,0"
+                                              Content="Let my other computers find this PC and ask to use its hosts"
+                                              ToolTip="On by default. While Martlet runs on a PC that runs a host or reaches one over SSH, Martlet on your other computers can find it on your private network (port 9444) and ask to use those hosts. Each request shows a check number here and needs your Allow; nothing is shared before that."
+                                              AutomationProperties.AutomationId="NearbyShare"/>
+                                    <TextBlock x:Name="NearbyShareStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="24,2,0,0"
+                                               AutomationProperties.AutomationId="NearbyShareStatus" AutomationProperties.LiveSetting="Polite"/>
+                                    <Button x:Name="NearbyFirewallButton" Content="Let my other computers reach this PC" Click="NearbyFirewall_Click"
+                                            HorizontalAlignment="Left" Margin="24,8,0,0" Visibility="Collapsed"
+                                            ToolTip="Adds Windows Firewall rules for port 9444 from your private network (one administrator prompt)"
+                                            AutomationProperties.AutomationId="NearbyFirewall"/>
                                 </StackPanel>
                             </Border>
                             <StackPanel x:Name="UnassignedJobs" AutomationProperties.Name="Jobs nobody does yet"/>

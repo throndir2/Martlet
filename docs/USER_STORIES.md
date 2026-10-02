@@ -416,8 +416,13 @@ don't redo everything, and tell the network what this PC can do.*
 - **Done when**: a second PC becomes a working member with the network's
   configuration and its abilities advertised, without copying codes,
   consoles or per-host pairing.
-- **Today**: not possible. Each desktop pairs each host separately via the
-  Hosts wizard; cloud keys are re-entered; who-does-what sync is on by default.
+- **Today**: partly. Add a computer › *Martlet on your network* lists the
+  owner's other computers that run a host or reach one over SSH; *Connect*
+  shows a check number, the other computer asks *Allow* with the same number
+  and this PC is paired with its hosts without typing anything
+  ([how](ARCHITECTURE.md#finding-your-other-computers)). Pairing is still per
+  desktop and host (no network-wide trust yet), cloud keys are re-entered and
+  who-does-what sync is on by default.
 
 #### B2. Approve a joining machine
 
@@ -432,6 +437,10 @@ don't redo everything, and tell the network what this PC can do.*
   again; three denials in a row block it for an hour.
 - **Done when**: approval is one click and shows the check number that
   matches the joining screen.
+- **Today**: a computer that shares its hosts shows *<name> wants to use this
+  PC's hosts* with the check number, **Allow** and **Deny** (Deny is the
+  default); the request expires after 2 minutes. Not yet: notifications in
+  the tray, a Devices ghost node or blocking after repeated denials.
 
 #### B3. Join a network after setting up alone
 

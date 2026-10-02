@@ -267,6 +267,7 @@ public partial class MainWindow
             ActionText.Text = error.Message;
         }
         ObserveLocalJobs();
+        UpdateNearby();
         RenderHome();
         if (DevicesPage.IsVisible) RenderMap();
         CheckOwnLipSyncAsync().Forget();
@@ -414,9 +415,16 @@ public partial class MainWindow
                     : "Sets up the gateway once. Windows asks once to allow TCP 9443 from your private network.",
                 hostServiceReachable == true, false, [new("Set up host service", () => SetUpHostServiceAsync().Forget(), true)]),
             new("pair", "Pair your main PC",
-                "Martlet shows this PC's address and a short one-use code here. On your main PC, open Devices > Add a computer > " +
-                "Enter a pairing code and type them.",
-                false, false, [new("Show a pairing code", () => LaunchHost(HostAction.Pair), true)]),
+                "On your main PC, open Devices > Add a computer: this PC is listed under Martlet on your network. Press Connect there, " +
+                "then Allow here when both show the same check number. Or choose Show a pairing code and type the address and code " +
+                "it shows (Add a computer > Enter a pairing code)." + (NearbyBlocked
+                    ? " Windows Firewall doesn't let your other computers find this PC yet: Let my other computers find this PC fixes " +
+                      "that (one administrator prompt)."
+                    : ""),
+                false, false, NearbyBlocked
+                    ? [new("Show a pairing code", () => LaunchHost(HostAction.Pair), true),
+                       new("Let my other computers find this PC", () => NearbyFirewall_Click(this, new RoutedEventArgs()))]
+                    : [new("Show a pairing code", () => LaunchHost(HostAction.Pair), true)]),
             new("roles", "Add roles",
                 string.Join(" ", HostRoles.All.Select(r => $"{r.Name} needs {r.Needs}.")) + " " + nvidia,
                 false, true, [.. HostRoles.All.SelectMany(r => new[]

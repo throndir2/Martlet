@@ -88,6 +88,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("nearby_status", "Read whether this PC lets Martlet on the owner's other computers find it and ask to use its hosts " +
+            "(on by default, \"off\" only after the owner turned it off) and which paired hosts it could share from hosts.json (hosts " +
+            "it runs or reaches over SSH; this PC's own host service set up from the host dashboard is found from Docker by the " +
+            "desktop, not here). Read-only; contacts nothing and returns no addresses, SSH targets or keys.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
         Tool("virtualization_status", "Read whether Windows is ready for Docker Desktop's WSL 2 engine (virtualization in the firmware, " +
             "the Windows hypervisor, Virtual Machine Platform, Windows Subsystem for Linux, the WSL version), whether Docker Desktop is " +
             "installed and running, and any setup Martlet continues after a Windows restart. Read-only; changes nothing.", new
@@ -172,6 +179,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "voices_status" => VoicesStatus(arguments),
                 "f5_voices" => F5Voices(arguments),
                 "cluster_status" => ClusterStatus(arguments),
+                "nearby_status" => NearbyStatus(arguments),
                 "virtualization_status" => await VirtualizationStatusAsync(arguments, cancellation),
                 _ => throw new ArgumentException($"Unknown tool '{name}'.")
             };
@@ -398,6 +406,47 @@ internal sealed class McpServer(DesktopAutomation desktop)
             }
         }
         return new { sync = choice switch { "off" => "off", null => "on (default)", _ => "on" }, plan };
+    }
+
+    /// <summary>"Let my other computers find this PC" as the desktop keeps it (the file names match Martlet.Desktop's Nearby and
+    /// HostRegistry): the choice, on unless nearby.txt says "off", and the paired hosts this PC could share (those it runs, saved
+    /// as ThisPcDocker, or reaches over SSH). Host IDs and how each is reached only: no addresses, SSH targets or keys.</summary>
+    private static object NearbyStatus(JsonElement arguments)
+    {
+        var directory = DataDirectory(arguments);
+        string? choice;
+        try { choice = File.ReadAllText(Path.Combine(directory, "nearby.txt")).Trim(); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { choice = null; }
+        object hosts;
+        var path = Path.Combine(directory, "hosts.json");
+        if (!File.Exists(path)) hosts = new { state = "none", paired = 0, shareable = Array.Empty<object>() };
+        else
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(File.ReadAllBytes(path));
+                var list = document.RootElement.GetProperty("hosts").EnumerateArray().Select(host =>
+                {
+                    var method = host.TryGetProperty("method", out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : "OnHost";
+                    var ssh = host.TryGetProperty("sshTarget", out var target) && target.ValueKind == JsonValueKind.String &&
+                        !string.IsNullOrWhiteSpace(target.GetString());
+                    var id = host.GetProperty("pairing").GetProperty("hostId").GetString();
+                    var shareable = method == "ThisPcDocker" || method is "SshDocker" or "SshNative" && ssh;
+                    return (id, method, shareable);
+                }).ToArray();
+                hosts = new
+                {
+                    state = "loaded", paired = list.Length,
+                    shareable = list.Where(h => h.shareable).Select(h => new { hostId = h.id, reach = h.method }).ToArray()
+                };
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException or
+                InvalidOperationException)
+            {
+                hosts = new { state = "unreadable" };
+            }
+        }
+        return new { share = choice switch { "off" => "off", null => "on (default)", _ => "on" }, port = 9444, hosts };
     }
 
     private static async Task<object> DoctorAsync(string[] args, JsonElement arguments, CancellationToken cancellation)

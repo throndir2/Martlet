@@ -1,0 +1,31 @@
+<local:ThemedWindow x:Class="Martlet.Desktop.JoinRequestWindow"
+        xmlns:local="clr-namespace:Martlet.Desktop"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Style="{DynamicResource AppWindowStyle}"
+        Width="560" MinWidth="420" SizeToContent="Height" ResizeMode="NoResize" Topmost="True"
+        WindowStartupLocation="CenterScreen" Closing="Window_Closing"
+        AutomationProperties.AutomationId="JoinRequestWindow">
+    <StackPanel Margin="26,24">
+        <TextBlock x:Name="HeadingText" Style="{DynamicResource SectionHeading}" TextWrapping="Wrap" AutomationProperties.AutomationId="JoinRequestTitle"/>
+        <TextBlock x:Name="DetailText" TextWrapping="Wrap" Margin="0,6,0,14" AutomationProperties.AutomationId="JoinRequestText"/>
+        <Border Style="{DynamicResource CardStyle}" Background="{DynamicResource SoftBrush}" Margin="0,0,0,14">
+            <StackPanel>
+                <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" x:Name="NumberHelpText"/>
+                <TextBlock x:Name="NumberText" FontSize="40" FontWeight="Bold" FontFamily="Consolas" Margin="0,6,0,0"
+                           AutomationProperties.AutomationId="JoinRequestNumber"/>
+            </StackPanel>
+        </Border>
+        <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,0,0,16"
+                   Text="Allowing gives that computer a one-use code for each host listed; it pairs like a computer you added yourself and can then use those hosts' jobs. Deny if you didn't just ask from there, or if the numbers differ."/>
+        <DockPanel>
+            <TextBlock x:Name="ExpiryText" Style="{DynamicResource Muted}" VerticalAlignment="Center" AutomationProperties.AutomationId="JoinRequestExpiry"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="DenyButton" Content="_Deny" IsDefault="True" IsCancel="True" Click="Deny_Click" MinWidth="100" Margin="0,0,12,0"
+                        AutomationProperties.AutomationId="JoinDeny"/>
+                <Button x:Name="AllowButton" Content="_Allow" Click="Allow_Click" MinWidth="100" Style="{DynamicResource PrimaryButton}"
+                        AutomationProperties.AutomationId="JoinAllow"/>
+            </StackPanel>
+        </DockPanel>
+    </StackPanel>
+</local:ThemedWindow>

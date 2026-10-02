@@ -169,8 +169,11 @@ public sealed class HostSetupCommandsTests
         Assert.Contains("-Direction Inbound -Action Allow -Protocol TCP -LocalPort 9443 -Profile Private,Domain -RemoteAddress LocalSubnet", script);
         Assert.DoesNotContain("Set-NetConnectionProfile", script);
         Assert.Contains("Set-NetConnectionProfile -InterfaceIndex 14 -NetworkCategory Private;", WindowsFirewall.ApplyScript(14));
+        Assert.Contains("-Direction Inbound -Action Allow -Protocol UDP -LocalPort 9444 -Profile Private,Domain -RemoteAddress LocalSubnet", script);
+        Assert.Contains("-Direction Inbound -Action Allow -Protocol TCP -LocalPort 9444 -Profile Private,Domain -RemoteAddress LocalSubnet", script);
+        Assert.DoesNotContain("Martlet-Host-Gateway", WindowsFirewall.ApplyScript(null, gateway: false));
         Assert.Throws<InvalidOperationException>(() => WindowsFirewall.ProbeScript("192.168.1.2'; calc; '"));
-        Assert.Equal(new WindowsFirewall.State(true, "Public", 7, false), WindowsFirewall.Parse("True|Public|7|False\r\n"));
+        Assert.Equal(new WindowsFirewall.State(true, "Public", 7, false, true), WindowsFirewall.Parse("True|Public|7|False|True\r\n"));
         Assert.Equal(new WindowsFirewall.State(false, null, null, false), WindowsFirewall.Parse("unexpected"));
     }
 }
