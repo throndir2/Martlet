@@ -104,6 +104,12 @@
           "Martlet.Core": "[0.9.0, )"
         }
       },
+      "martlet.home": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Core": "[0.9.0, )"
+        }
+      },
       "martlet.memory": {
         "type": "Project"
       },
