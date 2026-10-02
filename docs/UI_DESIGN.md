@@ -30,7 +30,7 @@ obvious next step at every stage, and a living map of the user's computers.
 ## Stages and surfaces
 
 ```text
-first launch ──> Welcome tour ──┬── "Talk with my companion here" ──> Home (Now lines ─> ready)
+first launch ──> Welcome tour ──┬── "Talk with my companion here" ──> Home (what needs attention ─> ready)
                                 └── "Lend this PC to Martlet"     ──> Host dashboard (host service)
 Every mode: Home · Devices (map) · Companion* · Settings      (* companion mode only)
 ```
@@ -39,7 +39,7 @@ Each page answers one question, so no two pages do the same thing:
 
 | Page | Question | Changes settings? |
 | --- | --- | --- |
-| **Home** | Is Martlet ready, and can I talk to it? | No. It shows status and links to where each thing changes. |
+| **Home** | Is anything wrong or missing, and can I talk to it? | No. It shows problems with their fixes and links to where each thing changes. |
 | **Companion** | How does Martlet think, sound, listen, look and remember? | Yes: the one place each of those choices is made. |
 | **Devices** | Which computer does what? | Machines and handing jobs between them. |
 | **Settings** | How does the app itself behave? | Appearance, this PC's role, updates, tools. |
@@ -73,40 +73,60 @@ Settings > *This PC's role* changes the role or replays the tour.
 
 ### 2. Home (main PC)
 
-Home answers "is Martlet ready, and can I talk to it?" It shows status and
-offers *Start talking*; it changes no settings itself. Every choice is made in
-Companion (section 7), and Home links there.
+Home answers "is anything wrong or missing, and can I talk to it?" It is where
+you find what isn't set up, what stopped working and what to do about it, and
+it offers *Start talking*. It changes no settings itself: each fix opens the
+place where that thing changes (usually a Companion page) or runs the one step
+it names (*Start Ollama*, *Check gpu-1 now*, *Install WebView2*). Everything
+on it comes from what this PC already knows (saved settings, the last host
+checks, Windows' device and app lists, the local log and this PC's own
+loopback services such as Ollama and Audio2Face); Home contacts no other
+computer or provider by itself.
 
-The hero card changes with setup progress:
+The hero card says how Martlet is doing overall:
 
-| Stage | Headline | Primary action |
+| State | Headline | Primary action |
 | --- | --- | --- |
 | Nothing saved yet | "Let's bring your companion to life" | *Set up thinking* (opens Companion › *Thinking*) |
-| Thinking not chosen, or chosen without destination consent | "Almost there" | *Finish setup* |
-| Ready (thinking chosen, consented and on) | "Ready when you are" (with a time-of-day greeting) | **Start talking** |
+| A problem stops replies | The problem in one line, such as "Martlet can't reply right now" or "Martlet can't read its settings" | That problem's first fix |
+| Replies work, warnings remain | "Ready, with 2 things to look at" | **Start talking** |
+| Everything checked works | "Ready when you are" (with a time-of-day greeting) | **Start talking** |
 
-*Show character* sits next to the primary action at every stage. *Not sure?
-Get a recommendation* opens the advisor.
+*Show character* sits next to the primary action at every stage; *Not sure
+what you need? Get a recommendation* (the advisor) shows while thinking isn't
+set up.
 
-Below the hero, **Now** has one line per job: *Thinking*, *Voice*,
-*Listening* and *Character*. Each line has a status dot (green working, amber
-needs attention or not working, grey not set up), what Martlet uses now in one
-sentence, and one button (*Set up*, *Review* or *Change*) that opens that
-job's Companion page. Only Thinking is required; while it is missing its line
-is highlighted and its button is primary. When lip-sync stops working, the
-*Character* line becomes a *Lip-sync* line that opens the Lip-sync page. The Windows default microphone is
-assumed to work: the Listening line says *No microphone found* or *Your chosen
-microphone isn't connected* (amber, with *Fix mic* once listening itself is
-ready) only when this PC has no microphone or the chosen one is unplugged, and
-the Listening tab's **Now** card says the same. A microphone test is optional.
+Below the hero, **Needs attention** (*All good* when nothing does) lists every
+item with what it means and its fixes, most serious first:
 
-When a chosen job stops working (its host isn't answering, its role was
-removed, its key was deleted, or Setup saved a route this version can't use),
-a **What isn't working** card appears under the hero with the reason, what it
-means ("Martlet can't hear you; you can still type") and one-click fixes; the
-job's Now line says *Not working now*. If thinking is down, the headline
-becomes "Martlet can't reply right now". The rules are in
-[Platforms](PLATFORMS.md#what-the-app-guarantees).
+- **Problems** stop Martlet replying: the data folder or settings can't be
+  used, thinking isn't set up, its model was retired, its Ollama on this PC
+  isn't installed, running or doesn't have the model, its host isn't
+  answering, or Docker Desktop is stopped while this PC's host service thinks.
+- **Warnings** mean something chosen doesn't work, or works in a reduced way:
+  a job's host, key, consent or route (the [coverage
+  rules](PLATFORMS.md#what-the-app-guarantees)), the last reply or
+  transcription failing, a missing or Windows-blocked microphone, unplugged
+  speakers, the WebView2 runtime the character needs, vision turned on with a
+  text-only model or no camera, a paired computer not answering or on an
+  older Martlet, a tool server that failed, an update that didn't install, or
+  unexpected errors since Martlet started.
+- **Good to know** (muted, below): optional jobs not set up yet (listening,
+  voice), lifelike lip-sync on an NVIDIA PC that runs no Audio2Face, a new
+  Martlet version, and Martlet closing unexpectedly last time. Errors and the
+  crash note can be dismissed for this session.
+
+*Check again* re-reads settings, devices and this PC's own services (it
+contacts no other computer). Items also refresh by themselves after a check,
+a save, a failed request or an error.
+
+**Health** closes the page: one tile per part Martlet checks (Thinking,
+Listening, Voice, Lip-sync, Microphone, Speakers, Character, Devices, Tools
+when servers are set up, Updates and This app), each with a status dot (green
+working, amber needs attention, grey not set up or not checked) and its state
+in a few words. A tile opens the page where that part changes. The old *Now*
+lines and *Your devices* chips are gone: what each job uses is on its tile,
+and the Devices page is one click away in the rail.
 
 ### 3. Devices (hardware map)
 
@@ -285,8 +305,8 @@ window ends it.
 
 - **Companion** answers "how does Martlet think, sound, listen, look and
   remember?" It is the one place each of those choices is made, as pages in a
-  side list grouped by what they decide. Home's Now lines, the Devices tiles and
-  nodes, fix cards, the tour and the advisor all open the matching page
+  side list grouped by what they decide. Home's fixes and Health tiles, the
+  Devices tiles and nodes, fix cards, the tour and the advisor all open the matching page
   (Companion opens on the last page used, *Thinking* at first):
 
   - **How it works** (where each job runs):

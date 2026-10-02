@@ -32,6 +32,44 @@ internal static class LocalOllama
         catch (HttpRequestException) { return false; }
     }
 
+    /// <summary>Starts Ollama on this PC (its tray app, or a hidden server); false when it isn't installed or won't start.</summary>
+    internal static bool Start()
+    {
+        if (Executable() is not { } ollama) return false;
+        var app = Path.Combine(Path.GetDirectoryName(ollama)!, "ollama app.exe");
+        try
+        {
+            if (File.Exists(app)) Process.Start(new ProcessStartInfo(app) { UseShellExecute = true })?.Dispose();
+            else Process.Start(new ProcessStartInfo(ollama, "serve") { UseShellExecute = false, CreateNoWindow = true })?.Dispose();
+            return true;
+        }
+        catch (System.ComponentModel.Win32Exception) { return false; }
+    }
+
+    /// <summary>The models this PC's Ollama serves, or null when nothing answers on its loopback port within
+    /// <paramref name="timeout"/>. Reads only; contacts nothing beyond this PC.</summary>
+    internal static async Task<IReadOnlyList<string>?> ModelsAsync(TimeSpan timeout, CancellationToken token)
+    {
+        try
+        {
+            using var client = new HttpClient { Timeout = timeout };
+            using var response = await client.GetAsync(Origin + "/api/tags", token);
+            if (!response.IsSuccessStatusCode) return null;
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
+            return document.RootElement.TryGetProperty("models", out var models) && models.ValueKind == JsonValueKind.Array
+                ? models.EnumerateArray().Select(m => m.TryGetProperty("name", out var name) ? name.GetString() : null)
+                    .OfType<string>().Where(name => name.Length is > 0 and <= 128).Take(200).ToArray()
+                : [];
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested) { return null; }
+        catch (Exception error) when (error is HttpRequestException or JsonException or InvalidOperationException) { return null; }
+    }
+
+    /// <summary>Whether Ollama serves <paramref name="model"/>; a name without a tag means its ":latest".</summary>
+    internal static bool Serves(IEnumerable<string> models, string model) => models.Any(name =>
+        string.Equals(name, model, StringComparison.OrdinalIgnoreCase) ||
+        !model.Contains(':', StringComparison.Ordinal) && string.Equals(name, model + ":latest", StringComparison.OrdinalIgnoreCase));
+
     /// <summary>Makes sure Ollama answers on this PC, starting its tray app (or a hidden server) when it does not.</summary>
     private static async Task EnsureRunningAsync(HttpClient client, Action<string> status, IProgress<string> output, CancellationToken token)
     {

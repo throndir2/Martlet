@@ -15,8 +15,9 @@ credentials or audio are accessed on launch; network remains idle except for
 update checks (on by default; can be turned off), host updates or [who-does-what sync](docs/CLUSTER.md) when enabled. Text-only never requests TTS or opens output.
 Actual account/device/first-conversation qualification remains **NOT RUN**.
 
-The desktop starts with a short welcome tour, then a Home page with one next
-step at a time (setup checklist, then **Start talking**), a **Devices** map of
+The desktop starts with a short welcome tour, then a Home page that lists what
+needs attention (what isn't set up, what stopped working and how to fix each)
+with a health tile per part and **Start talking**, a **Devices** map of
 every computer and cloud service with its hardware and roles, where **Who does
 what** hands jobs such as Audio2Face lip-sync to any paired host on the spot and
 installs or removes host roles remotely, a host dashboard

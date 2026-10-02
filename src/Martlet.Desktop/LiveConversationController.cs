@@ -181,6 +181,16 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private LiveConversationConfiguration? configuration;
     private long revision, captureEpoch;
     private bool paused, muted, locked, disposed;
+    private readonly Dictionary<SetupRole, JobFailure> failures = [];
+
+    /// <summary>A request that failed since Martlet started and has not worked since: what it was, Martlet's own outcome codes
+    /// (never provider text or anything said) and when.</summary>
+    internal sealed record JobFailure(SetupRole Role, string What, string Outcome, DateTimeOffset At);
+
+    /// <summary>Each job's latest failed request that no later request of that job has made good, in job order.</summary>
+    internal IReadOnlyList<JobFailure> RecentFailures { get { lock (gate) return [.. failures.Values.OrderBy(f => f.Role)]; } }
+    /// <summary>Raised off the dispatcher when <see cref="RecentFailures"/> changes.</summary>
+    internal event Action? FailuresChanged;
     // Always listening runs on its own slot beside replies (so it keeps hearing while Martlet thinks), with its own
     // speech-to-text credentials bound to the one utterance being transcribed.
     private readonly SetupOperationRunner listenSlot = new();
@@ -716,6 +726,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
             operation.Passed = passed;
             if (IsFailure(terminal))
                 LogFailure(camera ? "Camera glance" : "Screen glance", operation.Authorization.Configuration, SetupRole.Llm, Describe(terminal));
+            else if (terminal.State == ConversationState.Completed) Succeeded(SetupRole.Llm);
             if (terminal.State == ConversationState.Completed && !passed)
             {
                 lock (gate)
@@ -933,6 +944,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                     "Martlet asked again without tools and stops offering them to it until it restarts.");
             }
             if (IsFailure(terminal)) LogFailure("Reply", configured, SetupRole.Llm, Describe(terminal));
+            else if (terminal.State == ConversationState.Completed) Succeeded(SetupRole.Llm);
             // What always listening heard may not have been meant for Martlet: the model answers [pass] and stays quiet.
             var passed = operation.Spoken && terminal.State == ConversationState.Completed && IsSilentReply(turn.Content.Text);
             operation.Passed = passed;
@@ -1048,7 +1060,11 @@ internal sealed class LiveConversationController : IAsyncDisposable
         finally { operation.EndTranscription(); }
         operation.Authorization.Check(worker);
         operation.Transcription = result;
-        if (result.Outcome == TranscriptionOutcome.Completed) return result;
+        if (result.Outcome == TranscriptionOutcome.Completed)
+        {
+            Succeeded(SetupRole.Stt);
+            return result;
+        }
         if (result.Outcome != TranscriptionOutcome.NoSpeech)
             LogFailure("Transcription", operation.Authorization.Configuration, SetupRole.Stt,
                 $"outcome {result.Outcome}" + (result.Failure?.Code is { } sttCode ? $", provider {sttCode}" : ""));
@@ -1103,11 +1119,20 @@ internal sealed class LiveConversationController : IAsyncDisposable
 
     // One local log line per failed request naming the route it used, never what was said. The provider's own
     // explanation (HTTP status and message) is logged just before it by ProviderDiagnostics.
-    private static void LogFailure(string what, LiveConversationConfiguration configured, SetupRole role, string outcome)
+    private void LogFailure(string what, LiveConversationConfiguration configured, SetupRole role, string outcome)
     {
         var route = configured.Routes.SingleOrDefault(r => r.Role == role);
         ErrorLog.Warn($"{what} failed ({outcome}). {role} route: {route?.RouteType?.ToString() ?? "OpenAi"}, " +
             $"{route?.Origin ?? "no destination"}, model {route?.ModelId ?? "none"}.");
+        lock (gate) failures[role] = new(role, what, outcome, clock.GetLocalNow());
+        FailuresChanged?.Invoke();
+    }
+
+    private void Succeeded(SetupRole role)
+    {
+        bool cleared;
+        lock (gate) cleared = failures.Remove(role);
+        if (cleared) FailuresChanged?.Invoke();
     }
 
     // Lorebooks help but are never required: if lorebooks.json can't be used right now, the reply goes ahead without lore.
@@ -1263,6 +1288,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 lock (gate) captureQuarantined = true;
             if (!token.IsCancellationRequested && IsFailure(terminal))
                 LogFailure(purpose, configuration, SetupRole.Llm, Describe(terminal));
+            else if (terminal.State == ConversationState.Completed) Succeeded(SetupRole.Llm);
             return terminal.State == ConversationState.Completed ? (turn.Content.Text, null)
                 : (null, terminal.ProviderFailure?.ToString() ?? "runtime." + terminal.State);
         }

@@ -123,7 +123,7 @@ These are acceptance criteria for every screen.
 
 ```text
 ┌──────────┬──────────────────────────────────────────────────────────┐
-│ Home     │  Status, Start talking, Now lines, problems, progress    │
+│ Home     │  Needs attention (fixes), Health tiles, Start talking    │
 │ Companion│  How it works: Thinking · Voice · Listening · Vision ·   │
 │          │    Lip-sync                                              │
 │          │  Who it is: Character · Personality · Lorebook · Memory  │
@@ -133,9 +133,11 @@ These are acceptance criteria for every screen.
 └──────────┴──────────────────────────────────────────────────────────┘
 ```
 
-- **Home**: hero (*Start talking*, *Show character*), four **Now lines**
-  (one per job, each a link to its page), the *Fix* card when something is
-  broken, and any running task's progress.
+- **Home**: hero (*Start talking*, *Show character*), **Needs attention**
+  (every problem, warning and optional setup with its fixes, most serious
+  first) and **Health** tiles (one per part, each a link to its page). It
+  replaced the four *Now lines* and the *Fix* card; see
+  [UI design](UI_DESIGN.md#2-home-main-pc).
 - **Companion**: a side list of pages in three groups. *How it works* holds
   the job pages (each asks where the job runs); *Who it is* holds the look,
   the personality and what it knows; *What it does* holds how it answers and

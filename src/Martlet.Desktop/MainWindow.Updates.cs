@@ -19,6 +19,8 @@ public partial class MainWindow
     private string? announcedUpdate;
     /// <summary>A version whose install just failed; it is not installed automatically again until you press Install.</summary>
     private string? failedInstall;
+    /// <summary>What the last install said when it failed, for Home.</summary>
+    private string? failedInstallMessage;
     private bool hostUpdatesRunning;
     private string? thisPcHostVersion;
     /// <summary>What happened to each host's latest update, shown on its Devices card.</summary>
@@ -92,6 +94,7 @@ public partial class MainWindow
         {
             UpdateStatusText.Text = ActionText.Text = result.Message;
             failedInstall = result.Failed;
+            if (result.Failed is not null) failedInstallMessage = result.Message;
         }
         AppUpdateInstaller.CleanUp(store.DataDirectory, Version);
         updateTimer.Start();
@@ -254,6 +257,7 @@ public partial class MainWindow
             if (!closing) CheckForUpdatesButton.IsEnabled = true;
             updateDrain.TrySetResult();
             updateDrain = null;
+            if (!closing) RenderHealth();
         }
     }
 
