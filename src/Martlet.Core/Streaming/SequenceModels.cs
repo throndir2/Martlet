@@ -23,6 +23,8 @@ public sealed record SequenceLimits : IContract
     public TimeSpan FirstEventTimeout { get; init; } = TimeSpan.FromSeconds(15);
     public TimeSpan IdleTimeout { get; init; } = TimeSpan.FromSeconds(10);
     public TimeSpan TotalTimeout { get; init; } = TimeSpan.FromSeconds(60);
+    /// <summary>A completion may carry no text: the model answered with tool calls only (the owner checks them).</summary>
+    public bool AllowEmptyCompletion { get; init; }
 
     public void Validate()
     {

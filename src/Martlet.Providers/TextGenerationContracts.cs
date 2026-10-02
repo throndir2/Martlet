@@ -63,6 +63,10 @@ public sealed class BoundedTextInput
 {
     public const int HardMaxUtf8Bytes = 16_384;
     public const int HardMaxHistoryMessages = 16;
+    public const int HardMaxTools = 128;
+    public const int HardMaxToolDefinitionBytes = 98_304;
+    public const int HardMaxToolRounds = 8;
+    public const int HardMaxToolExchangeBytes = 65_536;
     [JsonIgnore]
     public string UserText { get; }
     [JsonIgnore]
@@ -72,12 +76,25 @@ public sealed class BoundedTextInput
     /// <summary>Optional image sent with the current user message only; never part of history.</summary>
     [JsonIgnore]
     public BoundedImage? Image { get; }
+    /// <summary>Functions the model may call. Empty means a plain text request.</summary>
+    [JsonIgnore]
+    public IReadOnlyList<TextToolDefinition> Tools { get; }
+    /// <summary>Earlier tool rounds of this same reply: the model's calls and what each returned.</summary>
+    [JsonIgnore]
+    public IReadOnlyList<TextToolRound> ToolRounds { get; }
+    /// <summary>False on the last allowed round: the tools stay described but the model must answer in text.</summary>
+    public bool ToolCallsAllowed { get; }
+    /// <summary>The first input of this reply when this one continues it (after tool calls or without tools).</summary>
+    [JsonIgnore]
+    public BoundedTextInput? Origin { get; }
     public int Utf8Bytes { get; }
+    public int ToolUtf8Bytes { get; }
     // Local admission budget, NOT measured token usage or a price estimate.
     public int InputTokenReservation { get; }
+    public int ToolTokenReservation { get; }
 
     public BoundedTextInput(string userText, string? personality = null, IEnumerable<TextHistoryMessage>? history = null,
-        BoundedImage? image = null)
+        BoundedImage? image = null, IEnumerable<TextToolDefinition>? tools = null)
     {
         var messages = new List<TextHistoryMessage>();
         int bytes = Count(userText);
@@ -95,14 +112,63 @@ public sealed class BoundedTextInput
                 messages.Add(message);
             }
         ContractRules.Require(bytes <= HardMaxUtf8Bytes, "Text input exceeds its byte bound.");
+        var definitions = tools?.ToArray() ?? [];
+        ContractRules.Require(definitions.Length <= HardMaxTools && definitions.All(t => t is not null) &&
+            definitions.Select(t => t.Name).Distinct(StringComparer.Ordinal).Count() == definitions.Length,
+            "Tools must have unique names and stay within their bound.");
+        var toolBytes = definitions.Sum(t => t.Utf8Bytes);
+        ContractRules.Require(toolBytes <= HardMaxToolDefinitionBytes, "Tool descriptions exceed their byte bound.");
         UserText = userText;
         Personality = personality;
         History = messages.AsReadOnly();
         Image = image;
+        Tools = Array.AsReadOnly(definitions);
+        ToolRounds = [];
+        ToolCallsAllowed = definitions.Length > 0;
         Utf8Bytes = bytes;
+        ToolUtf8Bytes = toolBytes;
+        ToolTokenReservation = ToolReservation(toolBytes, definitions.Length, 0);
         InputTokenReservation = bytes + 256 * (messages.Count + (personality is null ? 1 : 2)) +
-            (image is null ? 0 : BoundedImage.TokenReservation);
+            (image is null ? 0 : BoundedImage.TokenReservation) + ToolTokenReservation;
     }
+
+    private BoundedTextInput(BoundedTextInput origin, IReadOnlyList<TextToolDefinition> tools, IReadOnlyList<TextToolRound> rounds,
+        bool callsAllowed)
+    {
+        UserText = origin.UserText;
+        Personality = origin.Personality;
+        History = origin.History;
+        Image = origin.Image;
+        Origin = origin;
+        Tools = tools;
+        ToolRounds = rounds;
+        ToolCallsAllowed = callsAllowed && tools.Count > 0;
+        Utf8Bytes = origin.Utf8Bytes;
+        var exchange = rounds.Sum(r => r.Utf8Bytes);
+        ContractRules.Require(rounds.Count <= HardMaxToolRounds && exchange <= HardMaxToolExchangeBytes,
+            "Tool calls and results exceed their bound.");
+        ToolUtf8Bytes = tools.Sum(t => t.Utf8Bytes) + exchange;
+        ToolTokenReservation = ToolReservation(ToolUtf8Bytes, tools.Count, rounds.Sum(r => r.Calls.Count));
+        InputTokenReservation = origin.InputTokenReservation - origin.ToolTokenReservation + ToolTokenReservation;
+    }
+
+    /// <summary>This reply's input plus the finished tool rounds; <paramref name="callsAllowed"/> false asks for a text answer.</summary>
+    public BoundedTextInput WithToolRounds(IReadOnlyList<TextToolRound> rounds, bool callsAllowed)
+    {
+        ArgumentNullException.ThrowIfNull(rounds);
+        var origin = Origin ?? this;
+        return new(origin, origin.Tools, rounds.ToArray(), callsAllowed);
+    }
+
+    /// <summary>This reply's input with no tools at all, for a model that rejected them.</summary>
+    public BoundedTextInput WithoutTools() => new(Origin ?? this, [], [], false);
+
+    /// <summary>Exchange bytes still available to tool rounds after <paramref name="rounds"/>.</summary>
+    public static int RemainingToolExchangeBytes(IEnumerable<TextToolRound> rounds) =>
+        HardMaxToolExchangeBytes - rounds.Sum(r => r.Utf8Bytes);
+
+    private static int ToolReservation(int bytes, int tools, int calls) =>
+        bytes == 0 ? 0 : (bytes + 2) / 3 + 32 * tools + 64 * calls + 64;
 
     private static int Count(string value)
     {
@@ -131,8 +197,8 @@ public sealed record TextGenerationLimits : IContract
     public void Validate()
     {
         ContractRules.Require(MaxInputBytes is > 0 and <= BoundedTextInput.HardMaxUtf8Bytes &&
-            MaxInputTokens is > 0 and <= 24_576 && MaxOutputTokens is >= 16 and <= 4096 &&
-            MaxContextTokens is > 0 and <= 32_768 && MaxInputTokens + MaxOutputTokens <= MaxContextTokens &&
+            MaxInputTokens is > 0 and <= 126_976 && MaxOutputTokens is >= 16 and <= 4096 &&
+            MaxContextTokens is > 0 and <= 131_072 && MaxInputTokens + MaxOutputTokens <= MaxContextTokens &&
             MaxEventBytes is >= 128 and <= ContractRules.MaxJsonBytes &&
             MaxStreamBytes >= MaxEventBytes && MaxStreamBytes <= 4_194_304 &&
             MaxEvents is >= 2 and <= 4094 &&
@@ -182,9 +248,13 @@ public sealed class TextGenerationResult
     public string? RefusalText { get; }
     public TextGenerationUsage Usage { get; }
     public ProviderFailure? Failure { get; }
+    /// <summary>Functions the model asked to call before answering (only with a completed outcome).</summary>
+    [JsonIgnore]
+    public IReadOnlyList<TextToolCall> ToolCalls { get; }
 
     internal TextGenerationResult(ProviderRequestContext context, EvidenceProvenance provenance,
-        TextGenerationOutcome outcome, TextGenerationUsage? usage = null, ProviderFailure? failure = null, string? refusal = null)
+        TextGenerationOutcome outcome, TextGenerationUsage? usage = null, ProviderFailure? failure = null, string? refusal = null,
+        IReadOnlyList<TextToolCall>? toolCalls = null)
     {
         Context = context;
         Provenance = provenance;
@@ -192,6 +262,7 @@ public sealed class TextGenerationResult
         Usage = usage ?? TextGenerationUsage.Unknown;
         Failure = failure;
         RefusalText = refusal;
+        ToolCalls = outcome == TextGenerationOutcome.Completed ? toolCalls ?? [] : [];
     }
 
     public TurnResult ToTurnResult() => new()

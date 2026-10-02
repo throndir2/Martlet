@@ -62,12 +62,17 @@ screen, a webcam or capture card, a phone camera (phone-as-webcam apps or an
 IP camera address) or other video sources. See
 [screen and camera commentary](docs/SCREEN_COMMENTARY.md).
 
-**Voice Library (local preparation)** now offers all five self-hosted research
-targets (F5-TTS, Qwen3-TTS, Chatterbox, GPT-SoVITS, XTTS-v2), explicit private
-WAV/transcript import for reference or training material, persistent
-inspection/removal and engine-specific guidance. It does not install models,
-upload audio, train, synthesize, preview speech or change the conversation
-voice. Those stages follow the [Voice Studio plan](docs/VOICE_STUDIO.md).
+**Tools (MCP)** let Martlet use MCP servers on this PC while you talk: your files, a
+browser, a calendar and anything else with an MCP server. Add servers on
+**Companion > Tools** (the standard `mcpServers` format); the talk window asks before
+each tool call unless you always allow it. See [MCP](docs/MCP.md).
+
+**Voices (F5)**: add your own voice recordings on **Companion > Voice >
+Voices** and switch between them in one click. F5 copies a voice from a short
+recording with its transcript; nothing is trained. Martlet keeps its own copy of
+each recording on this PC and sends it with each reply only to the computer that
+speaks. See [Voices](docs/SETUP.md#voices-f5) and the
+[Voice Studio plan](docs/VOICE_STUDIO.md) for other engines.
 
 The [planned installation flow](docs/INSTALLATION_SUPPORT.md#feature-first-multi-machine-setup)
 coordinates optional features and mixed API/self-hosted roles across machines.
@@ -98,12 +103,12 @@ There is no remote memory, embedding, vector database or automatic backup.
 | [iOS and iPadOS plan](docs/IOS.md) | What it takes to run Martlet on iPhone/iPad as a companion while you game there and as a host lending on-device speech, voices and Apple Intelligence to the desktop: feature matrix, platform limits, gateway subset and slices IO01-IO11 (plan only) |
 | [macOS plan](docs/MACOS.md) | Martlet on Apple-silicon and Intel Macs as a companion with a floating character and as a host (Ollama/whisper.cpp on the GPU, F5 on MLX, Apple speech, voices and Apple Intelligence); unsigned builds and slices MA01-MA10 (plan only) |
 | [Android plan](docs/ANDROID.md) | Martlet on Android phones and tablets as a companion while gaming, as a host that keeps serving with the screen off, and old phones as satellite microphones; signed-APK sideloading and slices AN01-AN11 (plan only) |
-| [Smart home and cameras](docs/SMART_HOME.md) | Home Assistant connection and control on your own turns (built-in Assist, works with every Thinking model; locks/doors/garages/alarms blocked or click-confirmed), HA camera snapshots in Watch, plus the Matter/Thread/Zigbee/Z-Wave/camera landscape, other integrations worth knowing and the remaining slices |
+| [Smart home and cameras](docs/SMART_HOME.md) | Home Assistant connection and control on your own turns (built-in Assist with every Thinking model, plus Home Assistant's MCP tools for free-form requests on tool-capable models; locks/doors/garages/alarms blocked or click-confirmed), HA camera snapshots in Watch, plus the Matter/Thread/Zigbee/Z-Wave/camera landscape, other integrations worth knowing and the remaining slices |
 | [Shared who does what and failover](docs/CLUSTER.md) | The cluster plan every host and desktop keeps, how copies merge, the 15-second sync, per-job failover between hosts and its edge cases |
 | [Prerequisites](docs/PREREQUISITES.md) | Every runtime prerequisite by feature and machine: what is bundled, what the installer and **Martlet prerequisites** tool install on request (WebView2, microphone access, Windows speech, Ollama, WSL 2 + Docker Desktop), what hosts install, and what you supply |
 | [Delivery and release plan](docs/DELIVERY.md) | PR-sized backlog, dependencies, acceptance criteria, release gates, and traceability |
 | [Research and provenance](docs/RESEARCH.md) | Dated primary sources, verified constraints, and unresolved integration questions |
-| [Local MCP control](docs/MCP.md) | Stdio tools for headless diagnostics and interactive desktop UI Automation |
+| [MCP: tools while you talk, and local MCP control](docs/MCP.md) | Martlet as an MCP client: MCP servers on this PC (stdio or streamable HTTP, standard `mcpServers` mcp.json) give replies tools, with per-call confirmations in the talk window and a tool log on Companion > Tools; plus Martlet's own stdio MCP server for headless diagnostics and desktop UI Automation |
 | [Implemented foundation and decisions](docs/FOUNDATION.md) | Accepted/deferred decisions, exact APIs/bounds, current behavior and next ownership |
 | [Resumable setup and local audio](docs/SETUP.md) | V02a configuration/vault actions and V02b explicit local device tests, historical checkpoints, strict migration and remaining live gates |
 | [Explicit API conversation](docs/CONVERSATION.md) | V04b typed/PTT path, hands-free voice activity, local Voice ID, exact supported models and bounds, fresh authorization, Stop/cleanup, troubleshooting and separately authorized live-trial checklist |
@@ -166,11 +171,16 @@ pipelines, including GitHub Actions with self-hosted runners. Do not restore
 Actions billing, increase spending limits or use another hosted service to
 obtain validation evidence.
 
-Martlet is a prototype. Local test suites, build/package/smoke gates and
-independent review are **not required** before commit, PR or merge and should
-not be run by default. Run at most a quick targeted build or test when it
-directly helps finish or debug a change. Existing tests and scripts remain
-available for manual use. `CI=true` remains a local MSBuild setting for locked
+Martlet is a prototype. The one required local check is functional: every new
+feature or behavior change is verified working on the dev machine through
+Martlet's own MCP server where that machine can exercise it, and the MCP
+server is extended in the same change so it can reach and observe the feature
+(see [Verifying changes with Martlet MCP](docs/MCP.md#verifying-changes-with-martlet-mcp)).
+Otherwise, local test suites, build/package/smoke gates and independent review
+are **not required** before commit, PR or merge and should not be run by
+default. Run at most a quick targeted build or test when it directly helps
+finish or debug a change. Existing tests and scripts remain available for
+manual use. `CI=true` remains a local MSBuild setting for locked
 restore and deterministic build metadata; it does not require a remote runner.
 
 The only permitted remote workflow is a **minimal build/package/release**:

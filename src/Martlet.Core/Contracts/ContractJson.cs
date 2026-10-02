@@ -5,14 +5,18 @@ namespace Martlet.Core.Contracts;
 
 public static class ContractJson
 {
-    private static readonly JsonSerializerOptions Options = CreateOptions();
+    public const int DefaultMaxDepth = 16;
+    public const int DeepMaxDepth = 64;
+    private static readonly JsonSerializerOptions Options = CreateOptions(DefaultMaxDepth);
+    // Provider events that echo nested tool schemas (the Responses API repeats the request's tools).
+    private static readonly JsonSerializerOptions DeepOptions = CreateOptions(DeepMaxDepth);
 
-    private static JsonSerializerOptions CreateOptions()
+    private static JsonSerializerOptions CreateOptions(int maxDepth)
     {
         var options = new JsonSerializerOptions
         {
             PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-            MaxDepth = 16,
+            MaxDepth = maxDepth,
             WriteIndented = true,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
             RespectNullableAnnotations = true
@@ -22,15 +26,19 @@ public static class ContractJson
         return options;
     }
 
-    public static T Read<T>(ReadOnlyMemory<byte> json, int maximumBytes = ContractRules.MaxJsonBytes) where T : IContract
+    public static T Read<T>(ReadOnlyMemory<byte> json, int maximumBytes = ContractRules.MaxJsonBytes) where T : IContract =>
+        Read<T>(json, maximumBytes, DefaultMaxDepth);
+
+    public static T Read<T>(ReadOnlyMemory<byte> json, int maximumBytes, int maxDepth) where T : IContract
     {
         ContractRules.Require(maximumBytes is > 0 and <= ContractRules.MaxJsonBytes, "Invalid JSON size limit.");
+        ContractRules.Require(maxDepth is DefaultMaxDepth or DeepMaxDepth, "Invalid JSON depth limit.");
         ContractRules.Require(json.Length <= maximumBytes, "JSON exceeds the supported size limit.", ErrorCode.PayloadTooLarge);
         try
         {
-            using var document = JsonDocument.Parse(json, new JsonDocumentOptions { MaxDepth = 16 });
+            using var document = JsonDocument.Parse(json, new JsonDocumentOptions { MaxDepth = maxDepth });
             InspectJson(document.RootElement);
-            var value = document.Deserialize<T>(Options);
+            var value = document.Deserialize<T>(maxDepth == DeepMaxDepth ? DeepOptions : Options);
             ContractRules.Require(value is not null, "A contract object is required.");
             value!.Validate();
             return value;

@@ -18,15 +18,31 @@ public sealed record ConversationLimits
     public int MaxSpeechTextBytes { get; init; } = 12_288;
     public long MaxReservedSpeechSamples { get; init; } = 2_160_000;
     public int EventCapacity { get; init; } = 128;
+    /// <summary>Tool rounds one reply may use when the request offers tools; the next request must answer in text.</summary>
+    public int MaxToolRounds { get; init; } = 4;
 
     internal void Validate()
     {
-        ContractRules.Require(TurnTimeout > TimeSpan.Zero && TurnTimeout <= TimeSpan.FromSeconds(90) &&
+        ContractRules.Require(TurnTimeout > TimeSpan.Zero && TurnTimeout <= TimeSpan.FromSeconds(150) &&
             ShutdownTimeout > TimeSpan.Zero && ShutdownTimeout <= TimeSpan.FromSeconds(2) &&
             MaxSpeechSegments is >= 1 and <= 32 && MaxSpeechTextBytes is >= 1 and <= 16_384 &&
-            MaxReservedSpeechSamples is >= 1 and <= 2_160_000 && EventCapacity is >= 4 and <= 128,
+            MaxReservedSpeechSamples is >= 1 and <= 2_160_000 && EventCapacity is >= 4 and <= 128 &&
+            MaxToolRounds is >= 0 and <= BoundedTextInput.HardMaxToolRounds,
             "Conversation limits are out of range.");
     }
+}
+
+/// <summary>What a tool call returned, for the model. A failed or declined tool is a result with IsError, not an exception.</summary>
+public sealed record ConversationToolResult(string Output, bool IsError = false)
+{
+    public override string ToString() => $"{nameof(ConversationToolResult)} (error: {IsError})";
+}
+
+/// <summary>Runs the tool calls a model asks for during one reply (for example MCP tools on this PC). Implementations ask the
+/// user first when required, honor cancellation and bound their own time.</summary>
+public interface IConversationToolHost
+{
+    ValueTask<ConversationToolResult> CallAsync(TextToolCall call, CancellationToken cancellationToken);
 }
 
 public sealed class SpeechOutput(SpeechSynthesisSelection selection, OutputSelection output, SpeechSynthesisLimits limits)
@@ -50,12 +66,12 @@ public sealed record ChatCompletionsTarget(string BaseUrl, bool Keyless = false)
 // this PC. SilentReply is a word the model may answer with to stay quiet (unprompted screen commentary); a sentence that
 // is only that word is never spoken. Generation carries the persona's optional sampling settings; it changes how the
 // model samples, never what is disclosed, so it is not part of the text authorization (the reply token budget is, through
-// TextLimits).
+// TextLimits). Tools runs the calls a model makes when the input offers tools.
 public sealed class ConversationRequest(
     BoundedTextInput input, TextModelSelection model, TextGenerationLimits textLimits,
     ConversationLimits limits, SpeechOutput? speech = null, ChatCompletionsTarget? chat = null, HostTextTarget? host = null,
     HostSpeechTarget? hostSpeech = null, string? silentReply = null, WindowsVoiceTarget? windowsVoice = null,
-    GenerationSettings? generation = null)
+    GenerationSettings? generation = null, IConversationToolHost? tools = null)
 {
     [JsonIgnore] public BoundedTextInput Input { get; } = input;
     public TextModelSelection Model { get; } = model;
@@ -68,6 +84,7 @@ public sealed class ConversationRequest(
     [JsonIgnore] public WindowsVoiceTarget? WindowsVoice { get; } = windowsVoice;
     [JsonIgnore] public string? SilentReply { get; } = silentReply;
     public GenerationSettings? Generation { get; } = generation;
+    [JsonIgnore] public IConversationToolHost? Tools { get; } = tools;
 
     internal void Validate()
     {
@@ -80,6 +97,11 @@ public sealed class ConversationRequest(
         TextLimits.Validate();
         Limits.Validate();
         Generation?.Validate();
+        ContractRules.Require(Input.Origin is null && Input.ToolRounds.Count == 0,
+            "A conversation request starts from the reply's first input.");
+        // A paired host's gateway speaks its own protocol without function calling.
+        ContractRules.Require(Input.Tools.Count == 0 || Tools is not null && Host is null,
+            "Tools need a tool host and an OpenAI or Chat Completions destination.", ErrorCode.ProviderCapability);
         ContractRules.Identifier(Model.ModelAlias);
         if (Host is { } host)
         {
@@ -184,7 +206,7 @@ public sealed record ConversationSnapshot(
     Guid? ActiveSpeechRequestId, EvidenceProvenance? TextProvenance, EvidenceProvenance? SpeechProvenance,
     long AcceptedSamples, long SubmittedSamples, long DeviceConsumedSamples, bool MayHavePlayed,
     bool OwnershipReleased, bool Quarantined, long DroppedEvents, PlaybackSnapshot? Playback,
-    Guid? RetryOf, bool EarlierTurnMayHavePlayed)
+    Guid? RetryOf, bool EarlierTurnMayHavePlayed, int ToolCalls = 0, string? ActiveTool = null, bool ToolsRejected = false)
 {
     public decimal? EstimatedCost => null;
     public long? AudibleSamples => null;

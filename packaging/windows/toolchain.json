@@ -10,7 +10,7 @@
   },
   "applicationGraphs": {
     "Desktop": {
-      "projects": ["Martlet.Desktop", "Martlet.Core", "Martlet.Diagnostics", "Martlet.Audio", "Martlet.Credentials.Windows", "Martlet.Conversation", "Martlet.Memory", "Martlet.Providers", "Martlet.Participation", "Martlet.Support", "Martlet.Avatars", "Martlet.Avatar.Hosting", "Martlet.Avatar.Audio2Face", "Martlet.F5", "Martlet.Home", "Martlet.Sherpa"],
+      "projects": ["Martlet.Desktop", "Martlet.Core", "Martlet.Diagnostics", "Martlet.Audio", "Martlet.Credentials.Windows", "Martlet.Conversation", "Martlet.Memory", "Martlet.Providers", "Martlet.Participation", "Martlet.Support", "Martlet.Avatars", "Martlet.Avatar.Hosting", "Martlet.Avatar.Audio2Face", "Martlet.F5", "Martlet.Mcp.Client", "Martlet.Home", "Martlet.Sherpa"],
       "packages": ["NAudio.Wasapi", "NAudio.Core", "System.Numerics.Tensors", "Google.Protobuf", "Grpc.Core.Api", "Grpc.Net.Client", "Grpc.Net.Common", "Microsoft.Extensions.DependencyInjection.Abstractions", "Microsoft.Extensions.Logging.Abstractions", "SSH.NET"],
       "frameworks": ["Microsoft.NETCore.App", "Microsoft.WindowsDesktop.App"]
     },

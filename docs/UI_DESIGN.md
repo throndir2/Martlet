@@ -301,18 +301,18 @@ window ends it.
        lorebook with *Turn on/off*, *Edit lorebooks* and *Import a lorebook*
        (see [Lorebooks](LOREBOOKS.md)).
     9. *Memory*: whether memory is on, and *Manage memory* for its facts.
-  - **What it does**: how it answers and acts (generation settings, tools,
-    smart home). The group appears once it has a page.
+  - **What it does**: how it answers and acts: *Replies* (generation
+    settings), *Tools* (the MCP servers Martlet may call while you talk, whether
+    each runs without asking, and recent tool use) and *Smart home*.
 
   A page gets its own entry only if it has its own **Where it runs** choice,
   its own consent or data destination, or its own list to edit; anything else
-  is a card on an existing page. Planned pages and their groups: *Tools*
-  (what it does).
+  is a card on an existing page.
 
   Every page starts with **Now**: what it uses and any problem stopping it.
-  Cards appear only when they apply to the chosen place: the Voice Library
-  shows only where F5 speaks (this PC's F5 or another of your computers), never
-  for a cloud provider or a Windows voice; a one-provider cloud card names the
+  Cards appear only when they apply to the chosen place: Voices (the F5 voice
+  list) shows wherever F5 can speak (this PC or another of your computers),
+  never for a cloud provider; a one-provider cloud card names the
   provider instead of offering a one-item list; Ollama's download and check
   buttons appear once Ollama is installed.
 
@@ -364,8 +364,8 @@ window ends it.
 
   *Advanced setup* at the bottom of each job tab opens the full Setup window on
   that job, for every route type and stored or detached keys. Microphone and
-  speakers, the Voice Library, character customization, personality and
-  memory facts still open their own windows from their tabs.
+  speakers, character customization, personality and memory facts still open
+  their own windows from their tabs; the F5 voices are listed inline on Voice.
 
   **Microphone and speakers** is one short page with two cards. Each card has
   the device picker (Windows default first; the list refreshes on its own when

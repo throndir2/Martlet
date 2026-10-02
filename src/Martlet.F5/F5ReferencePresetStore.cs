@@ -194,9 +194,7 @@ public sealed class F5ReferencePresetStore : IDisposable
                 if (existingPreset?.Snapshots.SingleOrDefault(snapshot =>
                     snapshot.ReferenceRevision == referenceRevision) is { } existing)
                 {
-                    F5Guard.Require(string.Equals(existing.SourcePath, audio.SourcePath,
-                        F5ReferencePaths.PathComparison) &&
-                        existing.Rights.ProcessingDestinationId ==
+                    F5Guard.Require(existing.Rights.ProcessingDestinationId ==
                             request.Rights.ProcessingDestinationId,
                         F5Failure.Conflict);
                     return existing.ToPublic(existingPreset.Name);
@@ -259,7 +257,7 @@ public sealed class F5ReferencePresetStore : IDisposable
                 catch
                 {
                     if (createdAudio)
-                        TryDeleteUncommittedAudio(snapshot);
+                        TryDeleteAudio(snapshot);
                     throw;
                 }
             }
@@ -274,33 +272,25 @@ public sealed class F5ReferencePresetStore : IDisposable
         }
     }
 
-    public async Task<F5ReferenceApplyPreview> CreateApplyPreviewAsync(
+    public Task<F5ReferenceApplyPreview> CreateApplyPreviewAsync(
         Guid presetId,
         string referenceRevision,
         CancellationToken cancellationToken = default)
     {
         F5Guard.Require(presetId != Guid.Empty);
         F5Guard.Sha256(referenceRevision);
-        F5ReferenceStoreDocument captured;
-        F5ReferenceSnapshotDocument snapshot;
+        cancellationToken.ThrowIfCancellationRequested();
         lock (gate)
         {
             EnsureOpen();
-            captured = state;
-            snapshot = FindSnapshot(captured, presetId, referenceRevision);
-        }
-        await VerifySourceAsync(snapshot, cancellationToken);
-        lock (gate)
-        {
-            EnsureOpen();
-            F5Guard.Require(state.StoreRevision == captured.StoreRevision, F5Failure.Conflict);
-            return new(
+            var snapshot = FindSnapshot(state, presetId, referenceRevision);
+            return Task.FromResult(new F5ReferenceApplyPreview(
                 Guid.NewGuid(),
                 state.StoreRevision,
                 presetId,
                 referenceRevision,
                 snapshot.Rights.ProcessingDestinationId,
-                state.AppliedReferenceRevision);
+                state.AppliedReferenceRevision));
         }
     }
 
@@ -336,7 +326,7 @@ public sealed class F5ReferencePresetStore : IDisposable
                 current = state;
             }
 
-            await VerifySourceAsync(snapshot, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             F5Guard.Require(Interlocked.CompareExchange(ref authorization.Used, 1, 0) == 0,
                 F5Failure.AuthorizationConsumed);
             if (current.AppliedPresetId == preview.PresetId &&
@@ -395,34 +385,47 @@ public sealed class F5ReferencePresetStore : IDisposable
         return AcquireAsync(presetId, referenceRevision, requireApplied: false, cancellationToken);
     }
 
-    public async Task<F5ReferenceSourceStatus> CheckSourceAsync(
-        Guid presetId,
-        string referenceRevision,
-        CancellationToken cancellationToken = default)
+    /// <summary>Removes a voice: the preset, all its snapshots and their stored recordings. The applied voice cannot be
+    /// removed (apply another one first), so a selection never points at a missing voice. Original files are untouched.</summary>
+    public async Task DeleteAsync(Guid presetId, CancellationToken cancellationToken = default)
     {
-        F5ReferenceSnapshotDocument snapshot;
-        lock (gate)
-        {
-            EnsureOpen();
-            snapshot = FindSnapshot(state, presetId, referenceRevision);
-        }
+        F5Guard.Require(presetId != Guid.Empty);
+        await mutationGate.WaitAsync(cancellationToken);
         try
         {
-            await VerifySourceAsync(snapshot, cancellationToken);
-            return new(presetId, referenceRevision, F5ReferenceSourceState.Current, null);
+            F5ReferenceStoreDocument current;
+            F5ReferencePresetDocument preset;
+            lock (gate)
+            {
+                EnsureOpen();
+                current = state;
+                preset = current.Presets.SingleOrDefault(candidate => candidate.Id == presetId) ??
+                    throw new F5Exception(F5Failure.NotFound);
+                F5Guard.Require(current.AppliedPresetId != presetId, F5Failure.Conflict);
+            }
+            var next = current with
+            {
+                StoreRevision = NextRevision(current.StoreRevision),
+                UpdatedAtUtc = CurrentUtc(),
+                Presets = [.. current.Presets.Where(candidate => candidate.Id != presetId)]
+            };
+            await CommitAsync(current, next, cancellationToken);
+            foreach (var snapshot in preset.Snapshots)
+                TryDeleteAudio(snapshot);
+            try
+            {
+                var folder = Path.GetDirectoryName(StoredPath(preset.Snapshots[0]))!;
+                if (Directory.Exists(folder) && !Directory.EnumerateFileSystemEntries(folder).Any())
+                    Directory.Delete(folder);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                // An empty generated folder is inert.
+            }
         }
-        catch (F5Exception error) when (error.Failure == F5Failure.SourceMissing)
+        finally
         {
-            return new(presetId, referenceRevision, F5ReferenceSourceState.Missing, error.Failure);
-        }
-        catch (F5Exception error) when (error.Failure == F5Failure.SourceChanged)
-        {
-            return new(presetId, referenceRevision, F5ReferenceSourceState.Changed, error.Failure);
-        }
-        catch (F5Exception error) when (error.Failure is F5Failure.InvalidAudio or
-            F5Failure.InvalidPath or F5Failure.AccessDenied or F5Failure.IoFailure)
-        {
-            return new(presetId, referenceRevision, F5ReferenceSourceState.Invalid, error.Failure);
+            mutationGate.Release();
         }
     }
 
@@ -459,7 +462,6 @@ public sealed class F5ReferencePresetStore : IDisposable
         byte[]? storedBytes = null;
         try
         {
-            await VerifySourceAsync(snapshot, cancellationToken);
             var storedPath = StoredPath(snapshot);
             ValidatedReferenceAudio stored;
             try
@@ -485,22 +487,6 @@ public sealed class F5ReferencePresetStore : IDisposable
                 CryptographicOperations.ZeroMemory(storedBytes);
             if (release)
                 ReleaseUse();
-        }
-    }
-
-    private static async Task VerifySourceAsync(
-        F5ReferenceSnapshotDocument snapshot,
-        CancellationToken cancellationToken)
-    {
-        var current = await F5ReferenceAudio.ReadAsync(snapshot.SourcePath, cancellationToken);
-        try
-        {
-            F5Guard.Require(F5Guard.FixedTimeEquals(current.Sha256, snapshot.AudioSha256) &&
-                current.Format == snapshot.AudioFormat, F5Failure.SourceChanged);
-        }
-        finally
-        {
-            CryptographicOperations.ZeroMemory(current.Bytes);
         }
     }
 
@@ -660,7 +646,7 @@ public sealed class F5ReferencePresetStore : IDisposable
         return now;
     }
 
-    private void TryDeleteUncommittedAudio(F5ReferenceSnapshotDocument snapshot)
+    private void TryDeleteAudio(F5ReferenceSnapshotDocument snapshot)
     {
         try
         {

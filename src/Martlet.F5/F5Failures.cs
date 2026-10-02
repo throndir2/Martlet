@@ -47,8 +47,8 @@ public sealed class F5Exception : Exception
     private static string MessageFor(F5Failure failure) => failure switch
     {
         F5Failure.InvalidPath => "Select a bounded absolute path on an allowed local volume without links.",
-        F5Failure.SourceMissing => "The selected reference source is missing. Select or reload it explicitly.",
-        F5Failure.SourceChanged => "The reference source changed after validation. Snapshot and apply it again.",
+        F5Failure.SourceMissing => "The selected reference source is missing. Select it again.",
+        F5Failure.SourceChanged => "The reference source changed while it was being read. Select it again.",
         F5Failure.InvalidAudio => "The reference must be a supported, readable, bounded PCM WAV file.",
         F5Failure.RightsRequired => "Confirm the reference-voice rights and exact processing destination.",
         F5Failure.AuthorizationRequired => "Fresh explicit authorization is required for this exact action.",

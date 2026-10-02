@@ -491,37 +491,22 @@ signing and G2. No OS-vault roundtrip, live provider/key/model request, cost or
 voice-quality test was run. Passing a controlled PCM meter test is not physical
 device qualification or learned VAD evidence.
 
-## Voice Library: local preparation (VS01)
+## Voices (F5)
 
-From the main window, open **Voice Library**. Choose any of the five engines
-to inspect its reference requirements, training availability and license
-caveats. No models or files are loaded merely by opening or changing engines.
-This does not replace the existing API setup described above.
+F5 copies a voice from a short recording; nothing is trained. **Companion >
+Voice > Voices** lists every voice you added (and F5-TTS's published English
+sample voice), with **Play**, **Use** and **Remove** on each. **Add a voice...**
+takes a mono 16-bit PCM WAV of 1 to 30 seconds (5 to 12 seconds of clear speech
+works best) at 16/22.05/24/44.1/48 kHz, at most 4 MiB, its exact transcript,
+whose voice it is and your rights confirmation. The new voice is used right
+away. Up to 16 voices are kept.
 
-Use **Browse for WAV**, enter a name and matching reviewed transcript, choose
-reference or training-material purpose, select speaker rights and explicitly
-confirm local storage. **Import local copy** preserves the source and saves
-an immutable versioned bundle under `voice-library` in the app data directory.
-Accepted input is non-silent mono PCM16 WAV at 16/22.05/24/44.1/48 kHz, up to
-64 MiB: references are 1-30 seconds, training material 1-600 seconds. A format
-check does not establish speech, single-speaker content or voice quality.
-No decoder/model download, conversion, cropping or transcription is automatic.
-
-**Load / reload saved assets** explicitly reads and verifies local copies.
-Selecting a saved asset and another engine shows preparation guidance without
-changing either the asset or the active conversation. **Remove selected
-imported copy** requires confirmation and preserves the original file.
-Files are not encrypted by Martlet, not included in settings backup/support
-export, and are bounded to 64 assets / 512 MiB. Keep any desired originals.
-An interrupted `.pending` file blocks further imports/listing with a visible
-repair message; preserve saved `.voice` files and remove only the identified
-staging data after confirming no import is running.
-
-Close/Cancel requests cancellation without releasing the shared app worker
-early. Other setup/audio/conversation effects cannot overlap this IO.
-Normal app Exit also waits for outstanding voice IO/cleanup; after the
-operation finishes, Exit again. A crash or forced process termination can
-still leave staging data, handled as an explicit recovery condition.
-**Installation, worker upload, reference preprocessing, training, A/B speech
-previews and applying a self-hosted voice are not implemented by VS01.**
-See [VS02-VS06](VOICE_STUDIO.md#delivery-slices-and-acceptance).
+Martlet stores its own copy of each recording under `f5-voices` in the app data
+directory, so the original file can be moved or deleted after adding it.
+**Use** switches the voice in one click: when F5 speaks (on this PC or another
+of your computers) the speaking route records the new voice and the next
+conversation speaks with it; otherwise F5 uses it once it does the speaking.
+The voice in use cannot be removed until you switch to another one. Removing a
+voice deletes only Martlet's copy, never your original file. Each reply sends
+the chosen recording and transcript only to the computer that speaks, over its
+pinned TLS gateway; the host keeps nothing after the reply.

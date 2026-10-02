@@ -7,11 +7,9 @@ settings, packaging, and the existing provider graph. Nothing in this slice
 installs or starts Python, F5-TTS, weights, CUDA, Docker, services, a gateway,
 or an audio device. The deterministic worker is **FIXTURE - NOT AI**.
 
-VS01 reuses the strict PCM16 WAV inspector from `Martlet.Core.Voices` in both
-the local Voice Library and this F5 adapter. F5 retains its original 4 MiB,
-1-30 second reference bounds and failure codes. This shared managed parser
-dependency does not connect the F5 worker/store to Desktop or change its
-private reference manifest.
+`Martlet.Core.Voices.PcmWaveInfo` is the strict PCM16 WAV inspector this F5
+adapter uses. F5 retains its own 4 MiB, 1-30 second reference bounds and
+failure codes.
 
 ## Reuse and installation boundary
 
@@ -84,9 +82,10 @@ stopped.
 
 `F5ReferencePresetStore` owns a selected local directory and a strict
 schema-v1 manifest. It supports up to 16 named presets, 16 snapshots per
-preset, and 64 snapshots total. Snapshotting and applying are explicit;
-neither action synthesizes, uploads, plays audio, downloads a model, or starts
-a worker.
+preset, and 64 snapshots total. Snapshotting, applying and deleting are
+explicit; none of them synthesizes, uploads, plays audio, downloads a model, or
+starts a worker. F5 copies a voice from the reference at each request; nothing
+is trained.
 
 Accepted reference files are:
 
@@ -107,12 +106,15 @@ exact processing destination. It does not infer that the user owns a voice.
 The acknowledgment records the user's assertion; legal/product review and
 the actual subject's permission remain external gates.
 
-Every Apply and every later acquisition rereads and validates the original
-source. Missing, malformed, or same-path replacement blocks use. A changed
-file must be snapshotted and explicitly applied as a new reference revision;
-the old immutable snapshot remains available for deliberate re-selection.
-Requests use only the acquired snapshot bytes, so editing a file cannot mutate
-an active turn. Active synthesis/preview leases block Apply until cleanup.
+The stored copy is authoritative once snapshotted: Apply and every later
+acquisition read the store's own copy and verify its digest, never the original
+source, so the original may be moved, edited or deleted afterwards. A changed
+recording becomes a voice only when it is snapshotted again (a new reference
+revision), and the old immutable snapshot remains available. Requests use only
+the acquired snapshot bytes. Active synthesis/preview leases block Apply until
+cleanup. `DeleteAsync` removes a preset, its snapshots and stored copies; the
+applied preset cannot be deleted, so the selection never points at a missing
+voice.
 
 Apply uses a revision-bound, one-use authorization. Preview has a different
 one-use authorization type and can target an unapplied snapshot; creating a
@@ -151,23 +153,29 @@ dotnet test tests\Martlet.F5.Tests\Martlet.F5.Tests.csproj -c Release --no-build
 
 The suite uses generated local PCM fixtures only. It covers strict
 format/duration/size/path/text/identity bounds, rights and authorization,
-atomic snapshot persistence, stale and missing sources, same-path replacement,
-transcript revisions, mid-turn Apply exclusion, exact worker identity,
+atomic snapshot persistence, stored copies that outlive a changed or missing
+original, deletion, transcript revisions, mid-turn Apply exclusion, exact
+worker identity,
 contiguous PCM, truncation, cancellation, late-frame discard, cache
 invalidation, and preview separation. It opens no network or audio device.
 
-## Desktop starting voice and playback
+## Desktop voices and playback
 
 Martlet.Desktop bundles F5-TTS's published English reference clip
 (`basic_ref_en.wav`, MIT; see `packaging\windows\DEPENDENCIES.txt`) with its
 upstream transcript. When Speaking is first handed to an F5 host, Desktop uses
 the voice already chosen for that destination, otherwise this sample, with no
-picker. The sample is written to `f5-sample-voice\` under Martlet's data
-directory and snapshotted with the `PublishedSample` rights basis. **Choose
-another voice** opens the picker, which lists the stored voices, the sample and
-a new recording. **Play** plays the selected recording locally. The worker
-policy is unchanged: Desktop still sends an explicit reference with every
-request, and the worker never chooses a voice.
+picker. The sample is snapshotted with the `PublishedSample` rights basis.
+
+**Companion > Voice > Voices** is the voice library: every stored voice plus
+the sample, each with **Play** (the stored copy, locally), **Use** and
+**Remove**, and **Add a voice...** (recording, name, exact transcript, whose
+voice and the rights confirmation). **Use** applies the voice in the store and,
+when F5 speaks, records it on the speaking route with a refreshed selection, so
+the next conversation speaks with it. The speech client reads the exact
+preset/revision the route records. The voice in use cannot be removed. The
+worker policy is unchanged: Desktop sends an explicit reference with every
+request, and the worker never chooses a voice or keeps it.
 
 ## Gates still not run
 

@@ -84,15 +84,16 @@ public sealed class ConversationRuntime : IAsyncDisposable
     }
 
     // One passive adapter per exact destination; the turn's authorization still binds base URL, model and key.
+    // Input is the request's input or a continuation of it after tool calls.
     internal ITextGenerationStream StreamText(ProviderRequestContext context, ConversationRequest request,
-        TextDisclosureAuthorization consent, CancellationToken caller)
+        BoundedTextInput input, TextDisclosureAuthorization consent, CancellationToken caller)
     {
         if (request.Host is { } host)
             return new HostTextGenerationStream(HostText ?? throw new InvalidOperationException(
                 "This runtime was not composed with a Martlet host text client."), host, context, request.Model,
-                request.Input, request.TextLimits, consent, Clock, caller, request.Generation);
+                input, request.TextLimits, consent, Clock, caller, request.Generation);
         if (request.Chat is not { } target)
-            return Text.Stream(context, request.Model, request.Input, request.TextLimits, consent, caller, request.Generation);
+            return Text.Stream(context, request.Model, input, request.TextLimits, consent, caller, request.Generation);
         ChatCompletionsTextGenerationAdapter? adapter;
         lock (Sync)
         {
@@ -104,7 +105,7 @@ public sealed class ConversationRuntime : IAsyncDisposable
                 chatAdapters[target] = adapter;
             }
         }
-        return adapter.Stream(context, request.Model, request.Input, request.TextLimits, consent, caller, request.Generation);
+        return adapter.Stream(context, request.Model, input, request.TextLimits, consent, caller, request.Generation);
     }
 
     // This is the explicit new-turn operation. It neither interrupts nor queues behind existing ownership.

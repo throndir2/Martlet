@@ -121,7 +121,7 @@ public partial class LiveConversationWindow : ThemedWindow
         locked = controller.Controls.Locked;
         // Pause and mute used to be switches in this window; listening and vision now pause from their own buttons.
         controller.SetControls(false, false, locked);
-        timer.Tick += (_, _) => { Observe(); Watch(); Pump(); RenderActions(); };
+        timer.Tick += (_, _) => { Observe(); Watch(); Pump(); RenderActions(); RenderToolApproval(); };
         timer.Start();
         sessionEvents.LockedChanged += SessionSwitch;
         controller.MemoryCaptured += MemoryCaptured;
@@ -619,8 +619,15 @@ public partial class LiveConversationWindow : ThemedWindow
     private string Idle() => !Available ? "" : listening ? "Listening. Just talk, or type below." + (listenNote is null ? "" : " " + listenNote)
         : !preferences.HandsFree && MicrophoneUsable ? "Type below, or hold the talk button to speak." : "Type a message below.";
 
-    private static string Replying(LiveConversationOperation live) =>
-        live.Turn?.Snapshot.State == ConversationState.Playing ? "Martlet is speaking. Esc stops it." : "Martlet is thinking…";
+    private string Replying(LiveConversationOperation live)
+    {
+        if (live.Status.Code == "tools.preparing") return "Getting tools ready…";
+        var snapshot = live.Turn?.Snapshot;
+        if (snapshot?.ActiveTool is { } tool)
+            return controller.Tools?.PendingApproval is { Answer.IsCompleted: false } ask
+                ? $"May Martlet use {ask.Tool}? Answer above the message box." : $"Using {tool}…";
+        return snapshot?.State == ConversationState.Playing ? "Martlet is speaking. Esc stops it." : "Martlet is thinking…";
+    }
 
     private string? ListeningMessage(LiveConversationOperation live) => live.Status.Code switch
     {
@@ -628,6 +635,7 @@ public partial class LiveConversationWindow : ThemedWindow
         "speaker.checking" => "Checking it's you…",
         "speaker.verified" or "mic.transferred_and_cleared" or "stt.uploading" or "voices.recognized" => "Got it. Transcribing…",
         "home.asking" => "Checking with Home Assistant…",
+        "tools.preparing" => Replying(live),
         var code when code.StartsWith("runtime.", StringComparison.Ordinal) => Replying(live),
         _ => null
     };
@@ -934,6 +942,40 @@ public partial class LiveConversationWindow : ThemedWindow
 
     private void HomeYes_Click(object sender, RoutedEventArgs e) => homeQuestion?.TrySetResult(true);
     private void HomeNo_Click(object sender, RoutedEventArgs e) => homeQuestion?.TrySetResult(false);
+
+    private ToolApprovalRequest? shownApproval;
+
+    /// <summary>Shows the MCP tool call waiting for an answer above the message box. The request declines itself when the
+    /// reply stops or after 60 seconds.</summary>
+    private void RenderToolApproval()
+    {
+        if (closed || ToolApprovalPanel is null) return;
+        if (controller.Tools?.PendingApproval is not { Answer.IsCompleted: false } request)
+        {
+            shownApproval = null;
+            ToolApprovalPanel.Visibility = Visibility.Collapsed;
+            return;
+        }
+        var left = Math.Max(0, (int)Math.Ceiling((request.Expires - clock.GetUtcNow()).TotalSeconds));
+        ToolApprovalText.Text = $"{request.Tool}, from the {request.Server} server, with what's below. It runs on this PC with your " +
+            $"permissions. Declined automatically in {left} s.";
+        if (ReferenceEquals(shownApproval, request)) return;
+        shownApproval = request;
+        ToolApprovalArguments.Text = request.Arguments;
+        ToolAlwaysButton.Visibility = request.AllowAlways ? Visibility.Visible : Visibility.Collapsed;
+        ToolApprovalPanel.Visibility = Visibility.Visible;
+        Motion.Enter(ToolApprovalPanel, dy: 10);
+    }
+
+    private void AnswerTool(ToolApprovalChoice choice)
+    {
+        if (shownApproval is { } request) controller.Tools?.Answer(request, choice);
+        RenderToolApproval();
+    }
+
+    private void ToolAllow_Click(object sender, RoutedEventArgs e) => AnswerTool(ToolApprovalChoice.AllowOnce);
+    private void ToolAlways_Click(object sender, RoutedEventArgs e) => AnswerTool(ToolApprovalChoice.AlwaysAllow);
+    private void ToolDeny_Click(object sender, RoutedEventArgs e) => AnswerTool(ToolApprovalChoice.Deny);
 
     // ---------- plain-language messages ----------
 

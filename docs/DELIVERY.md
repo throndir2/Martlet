@@ -109,7 +109,7 @@ candidate. Its exact local commands, results and review are recorded in its PR.
 
 | Item | Actual status |
 | --- | --- |
-| VS01 | [Voice Library](VOICE_STUDIO.md): passive five-engine catalog and real local reference/training-material WAV import, transcript/rights checks, immutable versioned bundles, explicit reload/inspect/remove, shared effect ownership and engine-specific preparation guidance. No model runtime, upload, training, preview playback or conversation route; VS02-VS06 and actual device/model/novice qualification remain incomplete. |
+| VS01 | Replaced by the working [F5 voice list](SETUP.md#voices-f5) on Companion > Voice > Voices: add recordings (transcript and rights), play, switch in one click and remove, with Martlet's own stored copy so originals may move. The earlier passive five-engine Voice Library window, which never reached a voice route, was removed. Other engines, training and A/B previews remain VS02-VS06. |
 | D01 | Dispositions recorded in [FOUNDATION.md](FOUNDATION.md). .NET/WPF/core direction and pins chosen; owner later chose reserved-rights source, personal/noncommercial official-binary use and normal releases with an unsigned installer (signing not required). Included-component rights, provider spending and optional model/SDK rights remain gates. |
 | D02 | Versioned settings/profile/provider contracts, bounded PCM, production JSON and temporal text validators, explicit refusal, epochs/cancel/EOF/deadlines and golden traces exist. Role request bodies, remote schemas/SSE/binary wire framing remain; **AC-01 is partial, not frozen or fully passed**. |
 | F01 | Offline accessible text/status shell, explicit unconfigured-profile save, atomic validated settings and truthful shared-status CLI implemented. Local developer-host build/tests/CLI and bounded desktop-launch scope are documented; no clean consumer-OS claim. |
@@ -343,8 +343,12 @@ against current repository instructions and coordinate ownership of shared
 files. Use established decisions for routine work; decide consequential unresolved
 questions autonomously where evidence allows rather than reopening accepted
 choices. During the prototype phase a PR needs only a short description of the
-change; tests, package/smoke gates and independent review are optional and not
-run by default. Never fabricate check statuses or claim unrun gates passed.
+change and what was verified through Martlet MCP: feature and behavior changes
+are exercised on the dev machine through `Martlet.Mcp` where possible, and the
+MCP server is extended in the same change to reach them (see
+[Verifying changes with Martlet MCP](MCP.md#verifying-changes-with-martlet-mcp)).
+Tests, package/smoke gates and independent review are optional and not run by
+default. Never fabricate check statuses or claim unrun gates passed.
 
 The product owner's distribution/cloud choices and restricted-model/SDK rights
 remain real decisions. Releases do not require code signing; a spending

@@ -44,6 +44,29 @@
         <!-- The message box stays in view below the history. -->
         <Border DockPanel.Dock="Bottom" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="16,12,16,14">
             <StackPanel>
+                <!-- A tool call waiting for your answer: inline, so answering never leaves (or revokes) the conversation. -->
+                <Border x:Name="ToolApprovalPanel" Background="{DynamicResource SoftBrush}" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="1"
+                        CornerRadius="14" Padding="14,10" Margin="0,0,0,10" Visibility="Collapsed" AutomationProperties.AutomationId="LiveToolApproval">
+                    <StackPanel>
+                        <DockPanel>
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button Content="De_ny" Click="ToolDeny_Click" MinWidth="80" Margin="12,0,8,0" AutomationProperties.AutomationId="LiveToolDeny"/>
+                                <Button x:Name="ToolAlwaysButton" Content="Always allo_w" Click="ToolAlways_Click" MinWidth="104" Margin="0,0,8,0"
+                                        AutomationProperties.AutomationId="LiveToolAlways"/>
+                                <Button Content="Allow _once" Click="ToolAllow_Click" MinWidth="104" Style="{DynamicResource PrimaryButton}"
+                                        AutomationProperties.AutomationId="LiveToolAllow"/>
+                            </StackPanel>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="Martlet wants to use a tool" FontWeight="SemiBold"/>
+                                <TextBlock x:Name="ToolApprovalText" TextWrapping="Wrap" Margin="0,2,0,0"
+                                           AutomationProperties.LiveSetting="Assertive" AutomationProperties.AutomationId="LiveToolApprovalText"/>
+                            </StackPanel>
+                        </DockPanel>
+                        <TextBox x:Name="ToolApprovalArguments" IsReadOnly="True" TextWrapping="Wrap" MaxHeight="140" Margin="0,8,0,0"
+                                 VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="12"
+                                 AutomationProperties.Name="What the tool will be given" AutomationProperties.AutomationId="LiveToolApprovalArguments"/>
+                    </StackPanel>
+                </Border>
                 <!-- Smart home confirmation: inline, so answering never leaves the conversation. -->
                 <Border x:Name="HomeQuestionPanel" Background="{DynamicResource SoftBrush}" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="1"
                         CornerRadius="14" Padding="14,10" Margin="0,0,0,10" Visibility="Collapsed" AutomationProperties.AutomationId="LiveHomeQuestion">

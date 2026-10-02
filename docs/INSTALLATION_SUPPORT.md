@@ -4,9 +4,9 @@ The [five-engine Voice Studio plan](VOICE_STUDIO.md) expands optional
 self-hosted speech beyond F5. Its guided experience isolates each engine's
 dependencies, distinguishes installation/loading/voice preparation, and allows
 reference or training-material import followed by A/B previews before Apply.
-VS01's local Voice Library is implemented preparation only; host installation,
-engine execution, training and previews remain later slices, not enabled
-services or qualified setup.
+F5 voices are implemented: Companion > Voice > Voices adds recordings and
+switches between them. Other engines' installation and execution, training and
+previews remain later slices, not enabled services or qualified setup.
 
 The implemented [V06b Desktop troubleshooting path](TROUBLESHOOTING.md) now
 provides passive shared status/remedies, explicit local metadata recording and

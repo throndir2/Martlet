@@ -1,4 +1,101 @@
-# Local MCP control (Windows)
+# MCP in Martlet
+
+Martlet speaks the Model Context Protocol in both directions:
+
+- **As a client** (below): MCP servers on your PC give Martlet tools it can use while
+  you talk.
+- **As a server** ([Local MCP control](#local-mcp-control-windows)): `Martlet.Mcp`
+  lets an MCP client run Martlet's diagnostics and drive its desktop UI.
+
+## Tools while you talk (MCP client)
+
+Add MCP servers on **Companion > Tools** (*Edit servers (mcp.json)*). The file is
+`mcp.json` in Martlet's data folder and uses the format Claude Desktop, Cursor and
+Cline use (VS Code's `"servers"` key works too; comments and trailing commas are
+accepted), so a server's published configuration can be pasted as is:
+
+```json
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "${userHome}\\Documents"]
+    },
+    "my-http-server": {
+      "type": "http",
+      "url": "http://127.0.0.1:3000/mcp",
+      "headers": { "Authorization": "Bearer ${env:MY_SERVER_TOKEN}" },
+      "autoApprove": ["search"]
+    }
+  }
+}
+```
+
+- **stdio** servers (`command`, `args`, optional `env` and `cwd`) run as programs on
+  this PC with your permissions. `npx`/`.cmd` commands are started through
+  `cmd.exe` with safe quoting. Every server Martlet starts is in one Windows job
+  object, so it ends when Martlet ends (even if Martlet is killed).
+- **Streamable HTTP** servers (`"type": "http"`, `url`, optional `headers`) are
+  reached with MCP sessions; the older SSE transport is not supported.
+- `${env:NAME}` and `${userHome}` are expanded, so secrets can stay in environment
+  variables instead of the plain-text file. A missing variable stops only that server.
+- `"disabled": true` turns a server off; `"autoApprove"` lists tools that run without
+  asking (`true` or `"*"` for every tool of that server). The Tools page edits these
+  for you (comments in the file are not kept when it does).
+
+**When servers run.** Nothing starts when Martlet starts. Enabled servers start in
+the background when you open a talk window (or press *Start servers now*), and a
+reply waits at most 10 seconds for servers still starting. Servers that stopped are
+retried when a talk window opens again or from the Tools page. Each server's state,
+tools and recent error output are on the Tools page.
+
+**Which replies get tools.** Only replies to what you say or type, and only when
+Thinking uses OpenAI or a Chat Completions endpoint (local Ollama, LM Studio,
+OpenRouter, NVIDIA Build...). Screen and camera glances and memory requests never
+get tools, and a paired Martlet host's gateway has no function calling, so replies
+from a host's model don't offer tools. If the model rejects a request because it
+doesn't support tools (many small local models), Martlet asks it once more without
+tools and stops offering them to that model until Martlet restarts.
+
+**Confirmations.** Before each call the talk window shows the tool, its server and
+the exact arguments, with *Allow once*, *Always allow this tool* and *Deny*; it is
+part of the talk window (not a separate dialog), so answering doesn't end the
+action. Unanswered calls are declined after 60 seconds, and a declined call tells
+the model so. *Always allow* adds the tool to the server's `autoApprove` list.
+The model, not you, chooses what to pass, and text a tool reads (a web page, file
+or email) can try to steer it, so only skip confirmation for tools whose effects
+you are comfortable with.
+
+**Servers other features manage.** A Martlet feature can add its own server with
+`McpToolService.SetManagedServer(name, definition with ManagedBy, policy)` (for example a Home
+Assistant MCP endpoint). It is never written to mcp.json, appears on the Tools page as
+managed by that feature, and loses to an mcp.json entry with the same name. Its
+`policy(tool, arguments)` decides each call first: `AutoApprove`, `AskEveryTime` (no
+*Always allow*), `Deny` (the model is told it's blocked) or `Default` (the normal
+rules); a policy that throws counts as `AskEveryTime`. Managed servers never offer
+*Always allow*.
+
+**What is sent where.** Tool names, descriptions and parameter schemas go to the
+Thinking model with each reply that offers tools; each tool result (cut to 12,000
+characters, and to the reply's 64 KB tool budget) goes to the same model. The model
+is told that tool output is data, not instructions.
+
+**Bounds.** At most 128 tools (96 KB of descriptions) per reply, 16 calls per round
+and 4 tool rounds per reply; each round is one more LLM request under the same
+action, and the reply's last request must answer in text. A tool call has 60
+seconds; a reply that may use tools has 140 seconds inside the 150-second action.
+Calls run one at a time. The Tools page lists recent tool use (server, tool,
+outcome and a short argument preview) until Martlet closes; it is never written to
+disk.
+
+**Protocol.** Martlet's client implements MCP 2025-06-18 (and accepts servers that
+answer with 2025-03-26 or 2024-11-05): `initialize`, `tools/list` (with paging and
+`notifications/tools/list_changed`), `tools/call` and `notifications/cancelled` when
+a reply stops. It declares no client capabilities, so servers can't ask it for
+sampling, roots or elicitation. Text, resource text and structured results reach
+the model; images and audio are described, not sent. The client library is
+`src\Martlet.Mcp.Client`; the Desktop glue is `McpToolService`.
+## Local MCP control (Windows)
 
 `Martlet.Mcp` is a local stdio Model Context Protocol server. It does not listen
 on a network port, start the desktop, or activate a provider, microphone or
@@ -66,8 +163,74 @@ desktop's own per-action confirmations, spending/data disclosures, or Stop
 controls. This opt-in can allow the LLM to approve chargeable provider calls,
 audio capture/playback, credential actions and file operations by manipulating
 the UI; only enable it for an attended, isolated test with the intended
-permissions and budget. Do not use a real profile or provide this flag to an
-untrusted MCP client. UI Automation needs an unlocked interactive desktop and
+permissions and budget (agent verification with a disposable data directory and
+no real credentials counts; see below). Do not use a real profile or provide
+this flag to an untrusted MCP client. UI Automation needs an unlocked interactive desktop and
 can fail in an unattended/headless session; use Doctor's headless tools there.
 An automation click is not proof of actual microphone, speaker or provider
 readiness.
+
+## Verifying changes with Martlet MCP
+
+Every new feature or behavior change is verified on the dev machine through
+this server before merge, whenever the machine can exercise it (the policy is
+in [AGENTS.md](../AGENTS.md#verify-changes-through-martlet-mcp)).
+`scripts\Invoke-MartletMcp.ps1` runs this checkout's `Martlet.Mcp`, sends a list
+of tool calls in order and prints one JSON array of results; it exits 1 if any
+call fails or an `until` is not met.
+
+```powershell
+# Headless: Doctor against a fresh disposable data directory
+.\scripts\Invoke-MartletMcp.ps1 -Build -Calls '[{"name":"doctor_status"}]'
+
+# UI: launch a disposable desktop, connect, navigate and poll until it shows
+.\scripts\Invoke-MartletMcp.ps1 -Build -Desktop -Calls '[
+  {"name":"ui_click","arguments":{"id":"TourSkip"}},
+  {"name":"ui_click","arguments":{"id":"NavSettings"}},
+  {"name":"ui_snapshot","until":"AutomaticUpdateCheck"}]'
+```
+
+- Each call is `{"name", "arguments"}` plus optional `waitMs` (pause after it;
+  `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
+  seconds until its result text contains that string). `-Calls` also takes a
+  path to a JSON file.
+- Doctor calls without a `dataDirectory` get the script's disposable data
+  directory, which `-Desktop` also uses, so Doctor sees the desktop's settings.
+  The directory and the desktop are removed at the end.
+- `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
+  and `-DataDirectory` for follow-up runs; stop it and delete the directory
+  when done.
+- `-AllowUiEffects` passes `--allow-ui-effects` (disposable data and no real
+  credentials only; it never authorizes spending, provider requests, credential
+  handling, audio capture/playback or data disclosure).
+- `-Build` builds `Martlet.Mcp` (and `Martlet.Desktop` with `-Desktop`) in
+  `-Configuration` (default Release); the `dotnet` on `PATH` must provide the
+  SDK pinned in `global.json`.
+
+Check the outcome the change should produce (status values, control states,
+Doctor probes), not only that calls succeeded. What the machine cannot exercise
+(locked desktop, missing hardware, credentials, paid services, another OS) is
+reported as NOT RUN with the reason.
+
+## Extending the server
+
+New features extend the server in the same change, so that MCP can reach and
+observe them:
+
+- **Controls:** give every new interactive control and status field a stable,
+  unique `AutomationProperties.AutomationId` (`ui_snapshot` lists controls by
+  ID; duplicates fail as ambiguous).
+- **Passive clicks:** add navigation, open/close, refresh and expand controls
+  that start no work to `SafeClicks` in
+  `src\Martlet.Mcp.Protocol\DesktopAutomation.cs`. Anything that sends,
+  records, plays, spends, writes files or handles credentials stays behind
+  `--allow-ui-effects`.
+- **Status:** add read-only, non-secret status fields to `SafeValues` so
+  snapshots return their text. Never expose editable fields, credentials,
+  personal data or file paths.
+- **Headless capabilities:** add a tool to `Tools` and `CallAsync` in
+  `src\Martlet.Mcp.Protocol\McpServer.cs` (strict input schema, bounded
+  arguments, ID-based results), or a Doctor probe that `doctor_run` reaches.
+  Keep tools local, read-only by default and free of network, audio and
+  credential effects unless gated like `--allow-ui-effects`.
+- **Docs:** update this page with the new tools, IDs and status fields.

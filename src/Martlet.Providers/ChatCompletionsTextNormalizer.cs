@@ -4,14 +4,22 @@ using Martlet.Core.Contracts;
 
 namespace Martlet.Providers;
 
-internal sealed class ChatCompletionsTextNormalizer(TextGenerationLimits limits)
+// Tool calls are accepted only when the request offered tools.
+internal sealed class ChatCompletionsTextNormalizer(TextGenerationLimits limits, bool toolsOffered = false)
 {
+    private sealed class CallBuilder
+    {
+        public string? Id, Name;
+        public readonly StringBuilder Arguments = new();
+    }
+
     private string? id;
     private string? model;
     private string? finish;
     private int textCharacters;
     private bool hasText;
     private readonly StringBuilder refusal = new();
+    private readonly List<CallBuilder> calls = [];
     private TextGenerationUsage usage = TextGenerationUsage.Unknown;
     private bool usageSeen;
     public bool HasContentDelta { get; private set; }
@@ -25,6 +33,9 @@ internal sealed class ChatCompletionsTextNormalizer(TextGenerationLimits limits)
         if (value.Data.Span.SequenceEqual("[DONE]"u8))
         {
             if (finish is null) throw new ResponseProtocolException(ProviderFailureCode.ResponseTruncated);
+            // Some servers (older Ollama, some proxies) finish tool calls with "stop".
+            if (calls.Count > 0 && finish is "tool_calls" or "function_call" or "stop" && refusal.Length == 0)
+                return new(Outcome: TextGenerationOutcome.Completed, Usage: usage, ToolCalls: BuildCalls());
             return finish switch
             {
                 "stop" when refusal.Length > 0 => new(Outcome: TextGenerationOutcome.Refused, Usage: usage, Refusal: refusal.ToString()),
@@ -82,6 +93,15 @@ internal sealed class ChatCompletionsTextNormalizer(TextGenerationLimits limits)
         foreach (var property in delta.EnumerateObject())
         {
             if (property.Name is "content" or "refusal" or "role") continue;
+            if (property.Name == "tool_calls")
+            {
+                if (!IsEmpty(property.Value))
+                {
+                    if (!toolsOffered) throw new ResponseProtocolException(ProviderFailureCode.UnsupportedOutput);
+                    AcceptToolCalls(property.Value);
+                }
+                continue;
+            }
             // Reasoning/thinking traces (NVIDIA NIM reasoning_content, OpenRouter reasoning/reasoning_details)
             // are never spoken or shown; they only prove the model is still working.
             if (property.Name is "reasoning" or "reasoning_content" or "reasoning_details")
@@ -113,9 +133,77 @@ internal sealed class ChatCompletionsTextNormalizer(TextGenerationLimits limits)
         }
         finish = OptionalString(choice, "finish_reason");
         MadeProgress |= finish is not null;
-        if (finish is not null && finish is not ("stop" or "length" or "content_filter"))
+        if (finish is not null && finish is not ("stop" or "length" or "content_filter") &&
+            !(toolsOffered && finish is "tool_calls" or "function_call"))
             throw new ResponseProtocolException(ProviderFailureCode.UnsupportedOutput);
         return string.IsNullOrEmpty(text) ? null : new(Text: text);
+    }
+
+    // Streamed calls arrive in pieces keyed by index (OpenAI, vLLM, LM Studio) or whole per chunk without an index (some
+    // local servers); ids and names come once, arguments accumulate.
+    private void AcceptToolCalls(JsonElement value)
+    {
+        Require(value.ValueKind == JsonValueKind.Array);
+        foreach (var item in value.EnumerateArray())
+        {
+            Require(item.ValueKind == JsonValueKind.Object);
+            var callId = OptionalString(item, "id");
+            if (item.TryGetProperty("type", out var type) && type.ValueKind != JsonValueKind.Null)
+                Require(type.ValueKind == JsonValueKind.String && type.GetString() is "function" or "");
+            CallBuilder call;
+            if (item.TryGetProperty("index", out var index) && index.ValueKind != JsonValueKind.Null)
+            {
+                Require(index.ValueKind == JsonValueKind.Number && index.TryGetInt32(out _));
+                var position = index.GetInt32();
+                Require(position >= 0 && position <= calls.Count);
+                if (position == calls.Count) calls.Add(new());
+                call = calls[position];
+            }
+            else if (calls.Count == 0 || callId is not null && calls[^1].Id is not null && calls[^1].Id != callId)
+            {
+                calls.Add(new());
+                call = calls[^1];
+            }
+            else call = calls[^1];
+            if (calls.Count > TextToolRound.MaxCalls) throw new ResponseProtocolException(ProviderFailureCode.ResponseTooLarge);
+            if (!string.IsNullOrEmpty(callId))
+            {
+                Require(call.Id is null || call.Id == callId);
+                call.Id = callId;
+            }
+            if (item.TryGetProperty("function", out var function) && function.ValueKind != JsonValueKind.Null)
+            {
+                Require(function.ValueKind == JsonValueKind.Object);
+                if (OptionalString(function, "name") is { Length: > 0 } name && call.Name != name)
+                    call.Name = call.Name is null ? name : call.Name + name;
+                if (function.TryGetProperty("arguments", out var arguments) && arguments.ValueKind != JsonValueKind.Null)
+                {
+                    var piece = arguments.ValueKind == JsonValueKind.String ? arguments.GetString()! :
+                        arguments.ValueKind == JsonValueKind.Object ? arguments.GetRawText() :
+                        throw new ResponseProtocolException(ProviderFailureCode.ResponseSchema);
+                    if (piece.Length > ContractRules.MaxTextCharacters - call.Arguments.Length)
+                        throw new ResponseProtocolException(ProviderFailureCode.ResponseTooLarge);
+                    call.Arguments.Append(piece);
+                }
+            }
+            HasContentDelta = true;
+            MadeProgress = true;
+        }
+    }
+
+    private IReadOnlyList<TextToolCall> BuildCalls()
+    {
+        var result = new List<TextToolCall>();
+        for (var i = 0; i < calls.Count; i++)
+        {
+            var call = calls[i];
+            Require(!string.IsNullOrWhiteSpace(call.Name));
+            var callId = string.IsNullOrEmpty(call.Id) ? $"call_{i + 1}" : call.Id;
+            Require(result.All(c => c.CallId != callId));
+            try { result.Add(new(callId, call.Name!, call.Arguments.ToString())); }
+            catch (ContractException) { throw new ResponseProtocolException(ProviderFailureCode.ResponseSchema); }
+        }
+        return result;
     }
 
     private void AddText(string text)
