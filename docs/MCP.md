@@ -272,10 +272,16 @@ run it) and `HostChoicesUnable-<job>` names paired computers whose platform or
 hardware can't run it, with why. `SetupUseHost-<job>-<host ID>` hands the job
 over and needs `--allow-ui-effects`.
 
-Status fields include the talk window's `LiveStatus` (its status line) and
+Status fields include the talk window's `LiveStatus` (its status line),
 `LiveMic` (*Listening*, *Listening paused*, *Can't listen* or *Mic unavailable*
 with the reason; while Martlet speaks it reads *Not listening while Martlet
-speaks*), and Companion › Lip-sync's `LipSyncNow` and `LipSyncNowProblem` (whether this
+speaks*),
+`LiveVision` (*Watching*, *Looking*, *Vision paused* or *Can't see*, with when
+it last checked the screen; it checks every 3 s), `LiveVisionStatus` (while
+vision is on: what it sees, for example *Watching the window behind Martlet*,
+then the last look's outcome or why it is holding off, and the looks used this
+hour; it never contains window titles)
+and Companion › Lip-sync's `LipSyncNow` and `LipSyncNowProblem` (whether this
 PC's own Audio2Face service answers), plus, while that own service is the
 setting in effect (Martlet's default), `LipSyncOwnTitle` (its title with *in
 use*, *not running* or *checking*) and `LipSyncOwnState` (what it does now).

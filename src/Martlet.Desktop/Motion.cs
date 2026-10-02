@@ -114,6 +114,19 @@ internal static class Motion
         });
     }
 
+    /// <summary>One quick swell-and-fade back to rest, like a camera shutter, for a status dot.</summary>
+    internal static void Blink(UIElement element)
+    {
+        if (!Enabled) return;
+        var scale = Scale(element);
+        var duration = TimeSpan.FromMilliseconds(650);
+        var settle = new DoubleAnimation(1.8, 1, duration) { EasingFunction = EaseOut, FillBehavior = FillBehavior.Stop };
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, settle);
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, settle);
+        element.BeginAnimation(UIElement.OpacityProperty,
+            new DoubleAnimation(0.3, 1, duration) { EasingFunction = EaseOut, FillBehavior = FillBehavior.Stop });
+    }
+
     /// <summary>A gentle side-to-side tilt, forever, for the mascot.</summary>
     internal static void Sway(UIElement element, double degrees = 4, double seconds = 3.6)
     {

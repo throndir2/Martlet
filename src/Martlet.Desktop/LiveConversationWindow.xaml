@@ -37,6 +37,9 @@
                     <!-- No fixed accessible name: the status text itself is what screen readers announce (and MCP reads). -->
                     <TextBlock x:Name="ResultText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap"
                                AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="LiveStatus"/>
+                    <!-- While vision is on: what Martlet is watching, how its last look went and why it is holding off. -->
+                    <TextBlock x:Name="VisionStatusText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"
+                               Visibility="Collapsed" AutomationProperties.AutomationId="LiveVisionStatus"/>
                 </StackPanel>
             </DockPanel>
         </Border>
