@@ -1017,8 +1017,10 @@ public partial class MainWindow
                 showing ? PageButton("Reset zoom", () => ResetCharacterZoomAsync().Forget(), id: "SetupCharacterResetZoom") : null)));
 
         page.Children.Add(Card(Heading("Personality"),
-            Note("Its personas and how playful, helpful or silly it is.", new Thickness(0, 0, 0, 8)),
-            Row(PageButton("Edit personality", () => Companion_Click(this, new RoutedEventArgs()), id: "OpenCompanion"))));
+            Note("Its personas and how playful, helpful or silly it is. Bring in characters from SillyTavern or Chub (CharacterHub) " +
+                "character cards: a PNG card image, a JSON card or a CHARX file.", new Thickness(0, 0, 0, 8)),
+            Row(PageButton("Edit personality", () => Companion_Click(this, new RoutedEventArgs()), id: "OpenCompanion"),
+                PageButton("Import a character card", () => OpenCompanionWindowAsync(importCard: true).Forget(), id: "ImportCharacterCard"))));
 
         RenderLipSync(page);
     }

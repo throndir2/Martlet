@@ -856,7 +856,9 @@ Advanced ▸   mapping, renderer, model files
   *Import/Export* under its menu.
 - **Clicks**: 0 to edit, 2 to switch persona.
 - **Today**: Companion window with *Apply edits to draft* and *Save companion
-  settings* as separate steps.
+  settings* as separate steps. SillyTavern/Chub character cards (PNG, JSON or
+  CHARX) add a new persona or update the selected one; drop a card on the
+  window, or use *Import a character card* on the Character tab.
 
 #### F7. Change who does lip-sync
 

@@ -233,10 +233,12 @@ public partial class MainWindow : ThemedWindow
         await RefreshAsync();
     }
 
-    private async void Companion_Click(object sender, RoutedEventArgs e)
+    private async void Companion_Click(object sender, RoutedEventArgs e) => await OpenCompanionWindowAsync(importCard: false);
+
+    private async Task OpenCompanionWindowAsync(bool importCard)
     {
         if (companionService is null || closing || saving || model?.IsRunning == true) return;
-        new CompanionWindow(companionService, setupOperations) { Owner = this }.ShowDialog();
+        new CompanionWindow(companionService, setupOperations, importCardOnOpen: importCard) { Owner = this }.ShowDialog();
         await RefreshAsync();
     }
 

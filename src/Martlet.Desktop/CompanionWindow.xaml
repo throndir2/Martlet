@@ -5,6 +5,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Martlet - Companion" Width="850" Height="820" MinWidth="620" MinHeight="560"
         WindowStartupLocation="CenterOwner" Loaded="Window_Loaded" Closing="Window_Closing"
+        AllowDrop="True" PreviewDragOver="Window_PreviewDragOver" PreviewDrop="Window_PreviewDrop"
         AutomationProperties.AutomationId="CompanionWindow"
         AutomationProperties.Name="Edit local companion personas and response style weights">
     <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -23,6 +24,15 @@
                             AutomationProperties.AutomationId="CompanionDuplicate"/>
                     <Button Content="_Delete" Click="Delete_Click" Padding="10,6"
                             AutomationProperties.AutomationId="CompanionDelete"/>
+                </WrapPanel>
+                <TextBlock Text="Character cards" FontWeight="SemiBold" Margin="0,6,0,2"/>
+                <TextBlock TextWrapping="Wrap"
+                           Text="Bring in a character from SillyTavern, Chub (CharacterHub), RisuAI or another Tavern-compatible app: a PNG card image, a JSON card or a CHARX file (Character Card V1, V2 or V3). Its name, description, personality, scenario and example dialogue become the persona. You can also drop a card onto this window to add it."/>
+                <WrapPanel Margin="0,8">
+                    <Button Content="Ne_w persona from a character card..." Click="CardNew_Click" Padding="10,6" Margin="0,0,8,0"
+                            AutomationProperties.AutomationId="CompanionCardNew"/>
+                    <Button Content="_Update this persona from a character card..." Click="CardUpdate_Click" Padding="10,6"
+                            AutomationProperties.AutomationId="CompanionCardUpdate"/>
                 </WrapPanel>
                 <Label Target="{Binding ElementName=PersonaName}" Content="Persona _name"/>
                 <TextBox x:Name="PersonaName" MaxLength="64" TextChanged="Editor_Changed"

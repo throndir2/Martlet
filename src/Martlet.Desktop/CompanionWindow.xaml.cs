@@ -1,4 +1,6 @@
 using System.ComponentModel;
+using System.IO;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
@@ -14,6 +16,8 @@ public partial class CompanionWindow : ThemedWindow
     private readonly SetupOperationRunner operations;
     private readonly Func<string?> chooseImport;
     private readonly Func<string?> chooseExport;
+    private readonly Func<string?> chooseCard;
+    private readonly bool importCardOnOpen;
     private readonly DispatcherTimer operationTimer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private AppSettings? draft;
     private string? revision;
@@ -22,20 +26,31 @@ public partial class CompanionWindow : ThemedWindow
     private bool rendering;
     private bool editorDirty;
 
+    /// <summary>The least persona text room worth importing a card into.</summary>
+    private const int MinimumCardCharacters = 500;
+
     internal CompanionWindow(ICompanionSettingsService service, SetupOperationRunner operations,
-        Func<string?>? chooseImport = null, Func<string?>? chooseExport = null)
+        Func<string?>? chooseImport = null, Func<string?>? chooseExport = null, Func<string?>? chooseCard = null,
+        bool importCardOnOpen = false)
     {
         this.service = service;
         this.operations = operations;
         this.chooseImport = chooseImport ?? SelectImport;
         this.chooseExport = chooseExport ?? SelectExport;
+        this.chooseCard = chooseCard ?? SelectCard;
+        this.importCardOnOpen = importCardOnOpen;
         InitializeComponent();
         operationTimer.Tick += (_, _) => RenderOperationState();
         operationTimer.Start();
         RenderOperationState();
     }
 
-    private async void Window_Loaded(object sender, RoutedEventArgs e) => await LoadAsync();
+    private async void Window_Loaded(object sender, RoutedEventArgs e)
+    {
+        await LoadAsync();
+        if (importCardOnOpen && !closed && draft?.Companion is not null)
+            await ImportCardAsync(update: false);
+    }
 
     private async Task LoadAsync()
     {
@@ -266,6 +281,116 @@ public partial class CompanionWindow : ThemedWindow
             result => ResultText.Text = result.PersonaFile!.Summary);
     }
 
+    private async void CardNew_Click(object sender, RoutedEventArgs e) => await ImportCardAsync(update: false);
+    private async void CardUpdate_Click(object sender, RoutedEventArgs e) => await ImportCardAsync(update: true);
+
+    /// <summary>Reads a character card and either adds it as a new persona (selected in the draft) or loads it into the
+    /// editor for the selected persona, which keeps its identity and response-style weights. Both stay drafts until Save.</summary>
+    private async Task ImportCardAsync(bool update, string? path = null)
+    {
+        if (!MayStart() || draft?.Companion is null) return;
+        if (update && PersonaChoice.SelectedItem is not PersonaProfile) return;
+        if (!update && editorDirty && !ApplyDraft()) return;
+        path ??= chooseCard();
+        if (path is null) { ResultText.Text = "Character card import canceled. The draft is unchanged."; return; }
+        var backend = service;
+        await ObserveAsync(operations.TryStart(async token => new(SetupWorkOutcome.Completed,
+            CardFile: await backend.ImportCardAsync(path, token).ConfigureAwait(false))), result =>
+        {
+            var file = result.CardFile!;
+            ResultText.Text = !file.Succeeded ? file.Summary
+                : update ? UpdateFromCard(file.Card!, path)
+                : AddFromCard(file.Card!, path);
+        });
+    }
+
+    private string AddFromCard(CharacterCard card, string path)
+    {
+        if (draft?.Companion is not { } companion) return "Reload before importing a character card.";
+        if (companion.Personas.Count >= CompanionSettings.MaximumPersonas)
+            return $"At most {CompanionSettings.MaximumPersonas} personas are supported. Delete one, or update an existing persona from the card instead.";
+        var (characters, bytes) = CardRoom(companion, except: null);
+        if (characters < MinimumCardCharacters) return NoRoom;
+        var persona = card.ToPersona(Path.GetFileNameWithoutExtension(path), characters, bytes);
+        try
+        {
+            var name = UniqueName(companion, persona.Name);
+            var added = companion.Add(name);
+            var updated = added.Update(added.ActivePersonaId, name, persona.Text, ResponseStyleWeights.HelpfulOnly());
+            draft = draft with { Companion = updated };
+            RenderPersonas(updated.ActivePersonaId);
+            return $"Added {Describe(card)} as the new persona \"{name}\" in the local draft. Review it, then Save to keep it." +
+                Fitting(card, persona);
+        }
+        catch (ContractException error) { return error.Message; }
+    }
+
+    private string UpdateFromCard(CharacterCard card, string path)
+    {
+        if (draft?.Companion is not { } companion || PersonaChoice.SelectedItem is not PersonaProfile selected)
+            return "Select the persona to update, then import the character card again.";
+        var (characters, bytes) = CardRoom(companion, except: selected.Id);
+        if (characters < MinimumCardCharacters) return NoRoom;
+        var persona = card.ToPersona(Path.GetFileNameWithoutExtension(path), characters, bytes);
+        try
+        {
+            PersonaName.Text = UniqueName(companion, persona.Name, except: selected.Id);
+            PersonaText.Text = persona.Text;
+            editorDirty = true;
+            return $"Loaded {Describe(card)} into the editor for \"{selected.Name}\"; its response-style weights are unchanged. " +
+                "Review it, then Apply and Save." + Fitting(card, persona);
+        }
+        catch (ContractException error) { return error.Message; }
+    }
+
+    private const string NoRoom =
+        "All persona texts together are near the 16,384-character limit. Shorten or delete another persona, then import the card again.";
+
+    /// <summary>Room for a card's persona text: the per-persona limit, or less when the other personas' texts leave less of
+    /// the combined settings limit.</summary>
+    private static (int Characters, int Bytes) CardRoom(CompanionSettings companion, Guid? except)
+    {
+        var others = companion.Personas.Where(persona => persona.Id != except).ToArray();
+        return (Math.Min(PersonaProfile.MaximumTextCharacters,
+                CompanionSettings.MaximumAggregateTextCharacters - others.Sum(persona => persona.Text.Length)),
+            Math.Min(PersonaProfile.MaximumTextUtf8Bytes,
+                CompanionSettings.MaximumAggregateTextUtf8Bytes - others.Sum(persona => Encoding.UTF8.GetByteCount(persona.Text))));
+    }
+
+    private static string Describe(CharacterCard card) =>
+        $"{card.FormatName} \"{card.DisplayName}\"" + (card.Creator.Length > 0 ? $" by {card.Creator}" : "");
+
+    private static string Fitting(CharacterCard card, CharacterCardPersona persona)
+    {
+        var notes = new List<string>();
+        if (persona.Shortened.Count > 0) notes.Add("Shortened to fit: " + string.Join(", ", persona.Shortened) + ".");
+        if (persona.LeftOut.Count > 0) notes.Add("Left out to fit: " + string.Join(", ", persona.LeftOut) + ".");
+        if (card.KeywordLoreEntries > 0)
+            notes.Add($"Not imported: {card.KeywordLoreEntries} keyword-triggered lorebook " +
+                (card.KeywordLoreEntries == 1 ? "entry" : "entries") + " (Martlet has no lorebook; always-on entries are included).");
+        return notes.Count == 0 ? "" : " " + string.Join(" ", notes);
+    }
+
+    private void Window_PreviewDragOver(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
+        e.Effects = EditorPanel.IsEnabled ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private async void Window_PreviewDrop(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
+        e.Handled = true;
+        if (!EditorPanel.IsEnabled) { MayStart(); return; }
+        if (e.Data.GetData(DataFormats.FileDrop) is not string[] { Length: 1 } files)
+        {
+            ResultText.Text = "Drop one character card at a time (PNG, JSON or CHARX).";
+            return;
+        }
+        await ImportCardAsync(update: false, files[0]);
+    }
+
     private async void Save_Click(object sender, RoutedEventArgs e)
     {
         if (!MayStart() || !ApplyDraft()) return;
@@ -299,14 +424,15 @@ public partial class CompanionWindow : ThemedWindow
         operationTimer.Stop();
     }
 
-    private static string UniqueName(CompanionSettings settings, string basis)
+    private static string UniqueName(CompanionSettings settings, string basis, Guid? except = null)
     {
         for (var index = 1; index <= CompanionSettings.MaximumPersonas; index++)
         {
             var suffix = index == 1 ? "" : $" {index}";
-            var prefix = basis[..Math.Min(basis.Length, PersonaProfile.MaximumNameCharacters - suffix.Length)];
+            var prefix = basis[..Math.Min(basis.Length, PersonaProfile.MaximumNameCharacters - suffix.Length)].TrimEnd();
             var candidate = prefix + suffix;
-            if (!settings.Personas.Any(persona => string.Equals(persona.Name, candidate, StringComparison.OrdinalIgnoreCase)))
+            if (!settings.Personas.Any(persona => persona.Id != except &&
+                    string.Equals(persona.Name, candidate, StringComparison.OrdinalIgnoreCase)))
                 return candidate;
         }
         throw new ContractException(ErrorCode.InvalidContract, "No unique persona name is available.");
@@ -318,6 +444,18 @@ public partial class CompanionWindow : ThemedWindow
         {
             Title = "Import persona text",
             Filter = "UTF-8 text (*.txt)|*.txt|All files (*.*)|*.*",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+        return dialog.ShowDialog() == true ? dialog.FileName : null;
+    }
+
+    private static string? SelectCard()
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Import a character card",
+            Filter = "Character cards (*.png;*.json;*.charx)|*.png;*.json;*.charx|All files (*.*)|*.*",
             CheckFileExists = true,
             Multiselect = false
         };
