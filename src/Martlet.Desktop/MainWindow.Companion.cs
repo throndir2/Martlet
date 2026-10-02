@@ -20,7 +20,7 @@ namespace Martlet.Desktop;
 /// <summary>The Companion page's pages: the one place each choice that shapes Martlet is made, listed by group in a side list.
 /// Home and Devices link here. A new page adds its value here (in list order) and one arm each in GroupOf, TabTitle, TabGlyph,
 /// TabIntro and RenderTab.</summary>
-internal enum CompanionTab { Thinking, Voice, Listening, Vision, LipSync, Character, Personality, Lorebook, Memory, Replies, Tools, SmartHome }
+internal enum CompanionTab { Thinking, Voice, Listening, Vision, LipSync, Character, Personality, Lorebook, Memory, People, Replies, Tools, SmartHome }
 
 /// <summary>The side list's groups, in order: how it works (where each job runs), who it is (look, personality, what it knows)
 /// and what it does (how it answers and acts). A group with no pages yet is not shown.</summary>
@@ -98,7 +98,7 @@ public partial class MainWindow
     private static CompanionGroup GroupOf(CompanionTab section) => section switch
     {
         CompanionTab.Thinking or CompanionTab.Voice or CompanionTab.Listening or CompanionTab.Vision or CompanionTab.LipSync => CompanionGroup.HowItWorks,
-        CompanionTab.Character or CompanionTab.Personality or CompanionTab.Lorebook or CompanionTab.Memory => CompanionGroup.WhoItIs,
+        CompanionTab.Character or CompanionTab.Personality or CompanionTab.Lorebook or CompanionTab.Memory or CompanionTab.People => CompanionGroup.WhoItIs,
         CompanionTab.Replies => CompanionGroup.WhatItDoes,
         CompanionTab.Tools => CompanionGroup.WhatItDoes,
         CompanionTab.SmartHome => CompanionGroup.WhatItDoes,
@@ -123,6 +123,7 @@ public partial class MainWindow
         CompanionTab.Personality => "Personality",
         CompanionTab.Lorebook => "Lorebook",
         CompanionTab.Memory => "Memory",
+        CompanionTab.People => "People",
         CompanionTab.Replies => "Replies",
         CompanionTab.Tools => "Tools",
         CompanionTab.SmartHome => "Smart home",
@@ -141,6 +142,7 @@ public partial class MainWindow
         CompanionTab.Personality => "\uE76E",
         CompanionTab.Lorebook => "\uE736",
         CompanionTab.Memory => "\uE8F1",
+        CompanionTab.People => "\uE716",
         CompanionTab.Replies => "\uE8F2",
         CompanionTab.Tools => "\uE90F",
         CompanionTab.SmartHome => "\uEC26",
@@ -155,7 +157,7 @@ public partial class MainWindow
         CompanionTab.Voice => "How Martlet speaks its replies: where the voice runs, the voice itself and the speakers it plays on. " +
             "By default it speaks on this PC, with the F5 voice in Docker or a Windows voice with no Docker.",
         CompanionTab.Listening => "How Martlet hears you: your microphone, how you talk (always listening or push-to-talk) and the " +
-            "speech-to-text provider, model and key. By default whisper runs on this PC. You can always type instead.",
+            "speech-to-text provider, model and key. By default it listens on this PC (Parakeet inside Martlet, or whisper). You can always type instead.",
         CompanionTab.Vision => "What Martlet may look at while the talk window is open: your screen or a camera, and how often it comments. Off by default.",
         CompanionTab.LipSync => "Who moves the character's mouth in time with its voice. It switches right away, even while the character talks.",
         CompanionTab.Character => "What Martlet looks like: the character on your desktop, its model, size, position and motion.",
@@ -164,6 +166,8 @@ public partial class MainWindow
         CompanionTab.Lorebook => "What Martlet knows about its world: lore entries that are added to a reply when their keywords come up, " +
             "like SillyTavern's World Info. Import SillyTavern lorebooks or the lorebook inside a character card.",
         CompanionTab.Memory => "Facts Martlet remembers about you between conversations.",
+        CompanionTab.People => "Who Martlet hears: the voices it recognizes in your microphone and the names each one goes by. Rename, merge or " +
+            "forget any of them; the list can follow you to your other computers.",
         CompanionTab.Replies => "How Martlet answers: how long its replies may be and how the Thinking model picks its words " +
             "(temperature, top P, repetition and context size).",
         CompanionTab.Tools => "Tools Martlet can use on this PC while you talk, from MCP servers: which servers run, what runs without " +
@@ -196,6 +200,7 @@ public partial class MainWindow
     {
         if (IsLocalOllama(route)) return "Ollama on this PC";
         if (route.RouteType == SetupRouteType.LocalWindowsTts) return "Windows voice on this PC";
+        if (route.RouteType == SetupRouteType.LocalParakeet) return "Parakeet on this PC";
         if (SelfHostSetup.IsGateway(route.RouteType) && route.Gateway is { } gateway)
         {
             var engine = route.RouteType switch
@@ -221,6 +226,7 @@ public partial class MainWindow
     {
         LipSyncHandler.Loudness => "voice loudness",
         LipSyncHandler.Host => homeAvatar!.RemoteHost!.HostId,
+        _ when ownLipSyncAnswers == false => "voice loudness (Audio2Face isn't running on this PC)",
         _ => "this PC"
     };
 
@@ -250,6 +256,7 @@ public partial class MainWindow
         CompanionScroll.ScrollToTop();
         RenderTab();
         Motion.Enter(entering ? CompanionPage : CompanionContent);
+        if (openTab == CompanionTab.LipSync) CheckOwnLipSyncAsync().Forget();
     }
 
     private readonly Dictionary<CompanionTab, RadioButton> companionNav = [];
@@ -312,6 +319,7 @@ public partial class MainWindow
             case CompanionTab.Personality: RenderPersonalityTab(body); break;
             case CompanionTab.Lorebook: RenderLorebookTab(body); break;
             case CompanionTab.Memory: RenderMemoryTab(body); break;
+            case CompanionTab.People: RenderPeopleTab(body); break;
             case CompanionTab.Replies: RenderRepliesTab(body); break;
             case CompanionTab.Tools: RenderToolsTab(body); break;
             case CompanionTab.SmartHome: RenderSmartHomeTab(body); break;
@@ -324,7 +332,8 @@ public partial class MainWindow
     /// <summary>Routes that run on this PC without Martlet's host service: Ollama for thinking, installed Windows speech and
     /// native whisper.cpp.</summary>
     private static bool RunsHereWithoutHost(SetupRoute route) =>
-        IsLocalOllama(route) || route.RouteType is SetupRouteType.LocalWindowsTts or SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWhisper;
+        IsLocalOllama(route) || route.RouteType is SetupRouteType.LocalWindowsTts or SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWhisper or
+            SetupRouteType.LocalParakeet;
 
     private void RenderJobTab(Panel page, CompanionTab section)
     {
@@ -346,7 +355,7 @@ public partial class MainWindow
                 SetupRole.Llm => "Ollama runs a free conversation model here. Nothing leaves this PC and there is no per-request charge.",
                 SetupRole.Tts => "The natural F5 voice in Docker, or a voice already installed in Windows with no Docker at all. " +
                     "Nothing leaves this PC and there is no per-request charge.",
-                _ => "whisper turns your speech into text here. Your voice never leaves this PC."
+                _ => "Parakeet (inside Martlet) or whisper turns your speech into text here. Your voice never leaves this PC."
             }),
             (JobPlace.Computer, "Another of your computers",
                 $"Hand {job.Job} to a paired Martlet host on your network, for example a gaming PC. Add one here if you have none yet."),
@@ -372,6 +381,13 @@ public partial class MainWindow
         if (section == CompanionTab.Voice) page.Children.Add(SpeakRepliesCard());
         if (section == CompanionTab.Listening) page.Children.Add(AudioCard(output: false));
         if (section == CompanionTab.Listening) page.Children.Add(TalkModeCard());
+        if (section == CompanionTab.Listening)
+            page.Children.Add(Card(Heading("Who is talking"),
+                Note(localVoices.Active
+                    ? $"Martlet recognizes voices and knows {localVoices.Roster.Live.Count} so far. See and name them on People."
+                    : "Martlet can recognize who is talking by voice and learn their names, so several people can share the microphone.",
+                    new Thickness(0, 0, 0, 0)),
+                Row(PageButton("Open People", () => OpenCompanion(CompanionTab.People), link: true, id: "OpenPeople"))));
 
         var advanced = PageButton("Advanced setup: every job, stored keys and detached keys", () =>
         {
@@ -1087,16 +1103,20 @@ public partial class MainWindow
 
     // ---------- character ----------
 
-    /// <summary>A page's Now card: what it uses, then any problem that stops it.</summary>
-    private Border PageNowCard(string text, Martlet.Core.Platforms.JobCoverage? problem)
+    /// <summary>A page's Now card: what it uses, then any problem that stops it. <paramref name="id"/> names its status text for
+    /// UI Automation ("<c>id</c>" and "<c>id</c>Problem").</summary>
+    private Border PageNowCard(string text, Martlet.Core.Platforms.JobCoverage? problem, string? id = null)
     {
         var now = new StackPanel();
         now.Children.Add(Heading("Now"));
-        now.Children.Add(new TextBlock { Text = text, FontSize = 15, TextWrapping = TextWrapping.Wrap });
+        var status = new TextBlock { Text = text, FontSize = 15, TextWrapping = TextWrapping.Wrap };
+        if (id is not null) AutomationProperties.SetAutomationId(status, id);
+        now.Children.Add(status);
         if (problem is not null)
         {
             var warning = new TextBlock { Text = $"Not working now: {problem.Problem} {problem.Effect}", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
             warning.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
+            if (id is not null) AutomationProperties.SetAutomationId(warning, id + "Problem");
             now.Children.Add(warning);
         }
         return Card(now);
@@ -1114,6 +1134,18 @@ public partial class MainWindow
                 PageButton("Choose and customize", () => RunNodeAction(NodeAction.Character), id: "OpenAvatar"),
                 showing ? PageButton("Reset position", () => ResetCharacterPositionAsync().Forget(), id: "SetupCharacterResetPosition") : null,
                 showing ? PageButton("Reset zoom", () => ResetCharacterZoomAsync().Forget(), id: "SetupCharacterResetZoom") : null)));
+        characterViewText = null;
+        if (!showing) return;
+        // Wheel zoom happens on the overlay itself; Martlet reads the overlay's view whenever this page renders.
+        characterViewText = Note("", new Thickness(0, 8, 0, 0));
+        AutomationProperties.SetAutomationId(characterViewText, "SetupCharacterView");
+        page.Children.Add(Card(Heading("Zoom"),
+            Note("Mouse wheel over the character zooms it toward the cursor; the top of its head always stays in view. " +
+                "Ctrl+drag or middle-drag pans when zoomed in.", new Thickness(0, 0, 0, 0)),
+            Row(PageButton("Zoom in", () => ZoomCharacterAsync("in").Forget(), id: "SetupCharacterZoomIn"),
+                PageButton("Zoom out", () => ZoomCharacterAsync("out").Forget(), id: "SetupCharacterZoomOut")),
+            characterViewText));
+        ZoomCharacterAsync("status").Forget();
     }
 
     // ---------- personality ----------
@@ -1170,8 +1202,14 @@ public partial class MainWindow
             LipSyncHandler.Loudness => "Voice loudness: the mouth opens and closes with the voice. Audio2Face is off.",
             LipSyncHandler.Host => $"Audio2Face on {(owner == thisPc?.HostId ? "this PC" : owner)}" +
                 (ownerMissing ? ", not installed there yet, so the mouth follows the voice's loudness." : "."),
-            _ => $"Your own Audio2Face service on this PC ({new Uri(homeAvatar?.Endpoint ?? AvatarProfile.DefaultEndpoint).Authority})."
-        }, coverage.FirstOrDefault(c => c.Job == ClusterJobs.LipSync && c.IsProblem)));
+            _ => $"Your own Audio2Face service on this PC ({OwnLipSyncEndpoint().Authority})" + ownLipSyncAnswers switch
+            {
+                true => ", answering.",
+                false => ": nothing answers there, so the mouth follows the voice's loudness. Audio2Face isn't installed or running " +
+                    "on this PC; install it with Docker below, or start your own service.",
+                _ => "."
+            }
+        }, coverage.FirstOrDefault(c => c.Job == ClusterJobs.LipSync && c.IsProblem), "LipSyncNow"));
 
         var current = handler switch
         {
@@ -1268,7 +1306,8 @@ public partial class MainWindow
         if (ownInUse)
             own.Add(Note(homeAvatar?.LipSync == AvatarLipSync.Audio2Face
                 ? "In use, with Audio2Face-only lip-sync activated in the character's settings (Choose and customize)."
-                : $"In use: Martlet checks {endpoint} before each sentence.", new Thickness(0, 0, 0, 4)));
+                : $"In use: Martlet checks {endpoint} before each sentence." +
+                    (ownLipSyncAnswers == false ? " Nothing answers there right now." : ""), new Thickness(0, 0, 0, 4)));
         else own.Add(Row(PageButton("Use my own service", () => AssignLipSyncAsync("this-pc").Forget(), id: "SetupLipSyncOwnService")));
 
         // The own service is the default fallback, so it comes first only when it is in use and Docker's Audio2Face doesn't fit here.

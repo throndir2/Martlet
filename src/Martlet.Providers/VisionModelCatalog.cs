@@ -28,7 +28,7 @@ public static partial class VisionModelCatalog
         "vision", "qwen25vl", "qwen2vl", "qwen3vl", "qwenvl", "qwen25omni", "qwen3omni", "internvl", "kimivl", "nanovl",
         "llava", "minicpmv", "moondream", "pixtral", "multimodal", "llama4", "mistralsmall31", "mistralsmall32",
         "mistralmedium3", "gpt4o", "gpt41", "gpt5", "gpt4turbo", "gemini", "claude", "grok4", "glm4v", "glm45v",
-        "smolvlm", "paligemma", "idefics"
+        "smolvlm", "paligemma", "idefics", "gemma4"
     ];
 
     private static readonly string[] TextOnlyMarkers =

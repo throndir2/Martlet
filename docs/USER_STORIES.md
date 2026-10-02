@@ -965,7 +965,8 @@ it.*
 - **Entry points**: conversation 🎤 chip ▾ › *Hands-free*; Listening tab.
 - **Clicks**: 2.
 - **Today**: *Always listening* is the default in Companion › Listening and
-  starts when the talk window opens (once the microphone is tested); the
+  starts when the talk window opens (with the chosen or Windows default
+  microphone; testing it is optional); the
   window's *Listening* button pauses and resumes it.
 
 #### H5. Interrupt

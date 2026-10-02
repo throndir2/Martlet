@@ -76,7 +76,8 @@ public sealed class SetupService(SettingsStore settingsStore, ICredentialStore c
         settings.Validate();
         var route = RequireRoute(settings, role);
         if (route.CredentialId is not { } id)
-            return route.RouteType is SetupRouteType.ChatCompletions or SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWindowsTts
+            return route.RouteType is SetupRouteType.ChatCompletions or SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWindowsTts or
+                    SetupRouteType.LocalParakeet
                 ? CredentialError.None : CredentialError.Missing;
         using var result = credentials.Read(CredentialBinding.For(settings, role, id));
         return result.Error;

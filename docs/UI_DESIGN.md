@@ -263,7 +263,7 @@ envelopes, timelines or links to other windows.
   talk, or type below.*, *Martlet is thinking*, *Martlet is speaking. Esc
   stops it.*, or what went wrong in plain words). On the right, small toggles
   for what is on: **Listening** (shown with always listening; click to pause or
-  resume, or *Mic not set up* until the microphone is tested) and **Vision**
+  resume, or *Can't listen* with the reason while listening isn't set up) and **Vision**
   (shown when vision is on; click to pause or resume), then **Stop (Esc)**.
 - **History**: chat bubbles for the whole conversation while the window is
   open: what you typed, what you said (the transcript, captioned *You
@@ -275,7 +275,7 @@ envelopes, timelines or links to other windows.
   to *Send*; invoking it starts a recording and invoking it again sends.
 
 Opening the window starts what Companion chose: **always listening** (the
-default, once a microphone is set up and tested) and **vision** (off by
+default, with the chosen or Windows default microphone; no test needed) and **vision** (off by
 default). Typing while Martlet listens hands the microphone over for the typed
 message, and listening resumes after the reply. **Stop (Esc)** stops the reply,
 any recording, listening and vision at once and keeps the conversation;

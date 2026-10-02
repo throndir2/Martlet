@@ -132,11 +132,28 @@ reads; without it, Doctor uses the current user's Martlet directory. No
 headless MCP tool creates a profile, opens a device, plays a tone, sends a
 request or handles credentials.
 
+`voices_status` reads [voice recognition and Parakeet](VOICES.md) state from a data
+directory (optional absolute `dataDirectory`, default the current user's): the
+recognition and sharing choices, whether the sherpa-onnx runtime, voice models and
+Parakeet are downloaded, and counts from `voices.json` (voices, named, owner, with
+learned names, merged, tombstones). It never returns names, voiceprints or audio and
+runs no model.
+
+`logs_tail` reads the last `lines` (1-400, default 100) of one local log under
+`<dataDirectory>\logs` (`log`: `desktop` (default), `avatar-renderer` or
+`host-runs`), optionally only lines that `contains` some text (case-insensitive,
+at most 200 characters). It returns `{log, exists, truncated, lines}` and never
+writes, rotates or deletes a log. Failed provider requests appear in the desktop
+log with their endpoint, model, HTTP status and the provider's own short
+explanation, followed by a `Reply failed (...)` line naming the route, for
+example `{"name":"logs_tail","arguments":{"contains":"failed"}}`. Logs can
+include local paths and provider error text (never keys or conversation content).
+
 To drive the visible desktop, start `Martlet.Desktop.exe` yourself in the **same
 interactive Windows session** (ideally with a disposable `--data-directory`).
 Call `ui_connect` with that process ID. `ui_snapshot` returns window accessible names,
 automation IDs, enabled states, checkbox states, and selected read-only status
-fields; it does not dump arbitrary editable fields or credentials. `ui_click`
+fields (a text block's text, or a button's accessible name); it does not dump arbitrary editable fields or credentials. `ui_click`
 invokes a control by automation ID and `ui_select` selects a named combo-box
 option. By default only passive navigation and
 diagnostics controls can be clicked. The main window is split into pages, and a
@@ -144,22 +161,47 @@ page's controls are only visible after you open it: click `NavHome`,
 `NavDevices`, `NavCompanion` or `NavSettings` first (for example
 `NavCompanion` before `OpenSetup`). On Settings, click `DiagnosticsSection` to
 expand the pipeline and status fields. On a fresh data directory, `TourSkip`
-dismisses the welcome tour. On Devices, `Node-<id>` selects a device on the map
-(`Node-this-pc`, `Node-host:<host ID>`, `Node-cloud:<server>`, `Node-add`,
-`Node-missing:brain`) and `CoverageShow-<job>` selects the device doing a job;
-both only show details, so they are passive clicks, as are the
-`DeviceFactsSection`, `DeviceRolesSection` and `DeviceReachSection` expanders.
-`SelectedDevice` and `SelectedDeviceHealth` return the selected device's name
-and status, and each row title `DeviceComponent-<part>` (`job-Llm`, `job-Stt`,
-`job-Tts`, `lipsync`, `character`, `audio`, `host-service`, `host`,
-`role-<role>`, `offer`) returns the job's name. Job owners are
-`ThinkingOwner`, `ListeningOwner`, `SpeakingOwner` and `LipSyncOwner`, device
-commands `NodeAction-<action>` (`NodeAction-InstallRole-<role>` and
-`NodeAction-RemoveRole-<role>` for host roles), and Settings for all devices
-holds `CheckHosts`, `ClusterSync`, `ClusterStatus` (returned as text) and
-`RoleSetup-<role>` for jobs nobody does. Use `ui_snapshot` again to observe asynchronous effects. Modal
+dismisses the welcome tour. Companion's side list items (`CompanionTab-<Page>`,
+for example `CompanionTab-People`) and `OpenPeople` (on Listening) are passive
+navigation too. People shows `PeopleStatus`, `PeopleSyncStatus` and
+`PeopleVoiceCount`, and Listening shows `ListenParakeetStatus`; snapshots return
+these status texts, as does the talk window's `LiveStatus` (the line under "Martlet": what it is doing, or why the last reply failed). Each voice's controls are numbered by voice (`PeopleName-3`,
+`PeopleOtherNames-3`, `PeopleSave-3`, `PeopleOwner-3`, `PeopleMergeTarget-3`,
+`PeopleMerge-3`, `PeopleForget-3`); like `PeopleInstall`, `PeopleRecognize`,
+`PeopleShare`, `PeopleSync`, `PeopleForgetAll` and `SetupListenParakeet`, they
+change data or download and need `--allow-ui-effects`. On Devices, `Node-<id>`
+selects a device on the map (`Node-this-pc`, `Node-host:<host ID>`,
+`Node-cloud:<server>`, `Node-add`, `Node-missing:brain`) and
+`CoverageShow-<job>` selects the device doing a job; both only show details, so
+they are passive clicks, as are the `DeviceFactsSection`, `DeviceRolesSection`
+and `DeviceReachSection` expanders. `SelectedDevice` and `SelectedDeviceHealth`
+return the selected device's name and status, and each row title
+`DeviceComponent-<part>` (`job-Llm`, `job-Stt`, `job-Tts`, `lipsync`,
+`character`, `audio`, `host-service`, `host`, `role-<role>`, `offer`) returns the
+job's name. Job owners are `ThinkingOwner`, `ListeningOwner`, `SpeakingOwner`
+and `LipSyncOwner`, device commands `NodeAction-<action>`
+(`NodeAction-InstallRole-<role>` and `NodeAction-RemoveRole-<role>` for host
+roles), and Settings for all devices holds `CheckHosts`, `ClusterSync`,
+`ClusterStatus` (returned as text) and `RoleSetup-<role>` for jobs nobody does.
+Use `ui_snapshot` again to observe asynchronous effects. Modal
 actions may return `completed: false` while their dialog remains open; this
 means the invoke is still pending, not that the action finished.
+
+For the desktop character, open `CompanionTab-Character`; with
+`--allow-ui-effects`, `SetupCharacterToggle` shows or hides it and
+`SetupCharacterZoomIn`, `SetupCharacterZoomOut` and `SetupCharacterResetZoom`
+zoom its overlay. The `SetupCharacterView` status then reports the overlay's
+size, its distance from the top of the screen, the camera zoom and where the
+top of the character's head sits relative to the overlay's top edge (it must
+stay in view at every zoom).
+
+Status fields include the talk window's `LiveStatus` (its status line) and
+`LiveMic` (*Listening*, *Listening paused* or *Can't listen* with the reason),
+and Companion › Lip-sync's `LipSyncNow` and `LipSyncNowProblem` (whether this
+PC's own Audio2Face service answers). Opening the talk window with always
+listening on opens the microphone; for verification, save a fixed microphone
+that does not exist in the disposable data directory, so listening starts and
+fails without capturing real audio.
 
 Window discovery uses visible top-level native handles filtered to the attached
 process, then verifies ownership around each UI Automation handle lookup.
@@ -207,9 +249,9 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- Doctor calls without a `dataDirectory` get the script's disposable data
-  directory, which `-Desktop` also uses, so Doctor sees the desktop's settings.
-  The directory and the desktop are removed at the end.
+- Doctor, `voices_status` and `logs_tail` calls without a `dataDirectory` get the script's disposable data
+  directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
+  and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
   and `-DataDirectory` for follow-up runs; stop it and delete the directory
   when done.
@@ -236,13 +278,13 @@ observe them:
 - **Passive clicks:** add navigation, open/close, refresh and expand controls
   that start no work to `SafeClicks` in
   `src\Martlet.Mcp.Protocol\DesktopAutomation.cs` (or `SafeClickPrefixes` for a
-  family of generated IDs such as `Node-`). Anything that sends,
+  family of generated IDs such as `CompanionTab-` and `Node-`). Anything that sends,
   records, plays, spends, writes files or handles credentials stays behind
   `--allow-ui-effects`.
 - **Status:** add read-only, non-secret status fields to `SafeValues` (or
-  `SafeValuePrefixes`) so snapshots return their text: a value pattern's value,
-  or a text block's text. Never expose editable fields, credentials,
-  personal data or file paths.
+  `SafeValuePrefixes`) so snapshots return their text (a value pattern's value,
+  a text block's text, or a status button's accessible name).
+  Never expose editable fields, credentials, personal data or file paths.
 - **Headless capabilities:** add a tool to `Tools` and `CallAsync` in
   `src\Martlet.Mcp.Protocol\McpServer.cs` (strict input schema, bounded
   arguments, ID-based results), or a Doctor probe that `doctor_run` reaches.

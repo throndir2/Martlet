@@ -194,7 +194,13 @@ public partial class MainWindow
         var title = new TextBlock { Text = role.Name, FontSize = 15, FontWeight = FontWeights.SemiBold };
         AutomationProperties.SetAutomationId(title, "DeviceComponent-" + (role.Component ?? role.Chip).Replace(':', '-'));
         text.Children.Add(title);
-        var detail = new TextBlock { Text = role.Detail, Margin = new Thickness(0, 2, 0, 0) };
+        var detail = new TextBlock
+        {
+            // This PC's own Audio2Face service says whether it is running once Martlet has checked it.
+            Text = lipSync && node.Kind == NodeKind.ThisPc && NetworkMap.LipSync(homeAvatar) == LipSyncHandler.ThisPc && ownLipSyncAnswers is not null
+                ? OwnLipSyncState() : role.Detail,
+            Margin = new Thickness(0, 2, 0, 0)
+        };
         detail.SetResourceReference(StyleProperty, "Muted");
         text.Children.Add(detail);
         if (clusterJob is not null && coverage.FirstOrDefault(c => c.Job == clusterJob && c.IsProblem) is { } problem)
@@ -212,14 +218,19 @@ public partial class MainWindow
         if (companion && node.Kind != NodeKind.Add && (job is not null || lipSync))
         {
             var setUp = node.Kind == NodeKind.Missing;
-            var change = new Button { Content = setUp ? "Set up in Companion" : "Change in Companion" };
+            var change = new Button
+            {
+                Content = setUp ? "Set up in Companion"
+                    : lipSync && NetworkMap.LipSync(homeAvatar) == LipSyncHandler.Loudness ? "Set up Audio2Face lip-sync here" : "Change in Companion"
+            };
             CompactButton(change, setUp);
             AutomationProperties.SetAutomationId(change, "RoleChange-" + (job?.Role.ToString() ?? "LipSync"));
             var tab = job is null ? CompanionTab.LipSync : TabFor(job.Role);
             change.Click += (_, _) => OpenCompanion(tab);
             buttons.Children.Add(change);
         }
-        foreach (var command in commands.Where(c => !(c.Action == NodeAction.Companion && job is not null)))
+        // The row's own Change button opens the job's Companion page, so the map's matching command is not repeated.
+        foreach (var command in commands.Where(c => !(c.Action == NodeAction.Companion && (job is not null || lipSync))))
             buttons.Children.Add(CommandButton(command));
         if (buttons.Children.Count > 0) text.Children.Add(buttons);
         if (companion && clusterJob is not null && ClusterControls(clusterJob) is { } cluster)

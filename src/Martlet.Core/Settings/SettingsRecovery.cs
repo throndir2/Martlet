@@ -338,7 +338,7 @@ public sealed partial class SettingsStore
             .Select(RetainedGatewayCredential.From)).ToArray();
         foreach (var route in settings.Setup!.Routes.Where(route =>
             SelfHostSetup.IsGateway(route.RouteType) || route.RouteType is SetupRouteType.LocalWhisper or
-                SetupRouteType.ChatCompletions or SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWindowsTts))
+                SetupRouteType.ChatCompletions or SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWindowsTts or SetupRouteType.LocalParakeet))
         {
             if (route.Enabled != false || route.Consent is not null || route.GatewaySnapshot is not null ||
                 route.Reference is not null || route.LocalStt is not null ||

@@ -125,6 +125,7 @@ public partial class LiveConversationWindow : ThemedWindow
         timer.Start();
         sessionEvents.LockedChanged += SessionSwitch;
         controller.MemoryCaptured += MemoryCaptured;
+        controller.VoicesNamed += VoicesNamed;
         if (controller.Home is { } smartHome) smartHome.Confirm = ConfirmHomeAsync;
         RenderActions();
     }
@@ -181,19 +182,19 @@ public partial class LiveConversationWindow : ThemedWindow
     }
 
     private bool Voice => preferences.SpeakReplies && controller.Configuration is { } selected && selected.Unavailable(true, false) is null;
+    // Listening uses the microphone chosen in Companion › Listening (the Windows default unless another is picked); testing it
+    // there is optional, and a microphone that can't be opened says so here.
     private bool MicrophoneUsable => controller.Configuration is { } selected && selected.Unavailable(Voice, true) is null;
-    // Always listening opens the microphone by itself, so it waits until the microphone was set up and tested in Companion.
-    private bool CanListen => MicrophoneUsable && controller.Configuration?.Audio?.Input.Checkpoint is not null;
     private bool Available => ready && !locked && loading is null && controller.Configuration is not null;
 
     private bool Recording => owned is { OwnershipReleased: false, HandsFree: false } live && live.Authorization.Microphone &&
         live.Turn is null && live.Transcription is null && !live.Status.Finished;
 
-    /// <summary>Starts what was chosen in Companion: always listening (once the microphone is set up) and vision.</summary>
+    /// <summary>Starts what was chosen in Companion: always listening (once listening is set up) and vision.</summary>
     private void StartLive()
     {
         if (closed || !Available) return;
-        listening = preferences.HandsFree && !listenPaused && CanListen;
+        listening = preferences.HandsFree && !listenPaused && MicrophoneUsable;
         if (preferences.Watch && !watchPaused && !watching) StartWatching();
     }
 
@@ -466,11 +467,17 @@ public partial class LiveConversationWindow : ThemedWindow
         else
         {
             listenPaused = false;
-            if (CanListen) listening = true;
-            else notice = "Set up and test your microphone in Companion › Listening first.";
+            if (MicrophoneUsable) listening = true;
+            else notice = ListeningProblem();
         }
         RenderActions();
     }
+
+    /// <summary>Why always listening can't start, with where to fix it.</summary>
+    private string ListeningProblem() =>
+        controller.Configuration?.Unavailable(Voice, true) is { } why
+            ? $"Martlet can't listen yet ({why}) Fix it in Companion › Listening; you can still type."
+            : "Martlet can't listen yet. Set up listening in Companion › Listening; you can still type.";
 
     private void Vision_Click(object sender, RoutedEventArgs e)
     {
@@ -539,7 +546,8 @@ public partial class LiveConversationWindow : ThemedWindow
             heard = home = reply = null;
         }
         if (heard is null && operation.Transcript is { } said && !string.IsNullOrWhiteSpace(said))
-            heard = Add(ChatRole.User, said.Trim(), "You (spoken)");
+            heard = Add(ChatRole.User, said.Trim(), operation.Heard?.Speaker?.Voice is { } voice
+                ? $"{voice.DisplayName}{(voice.Owner ? " (you)" : "")} (spoken)" : "You (spoken)");
         // What Home Assistant did or answered for this turn, above the reply.
         if (home is null && operation.HomeSummary is { } summary && !string.IsNullOrWhiteSpace(summary))
             home = Add(ChatRole.Note, summary.Trim(), "");
@@ -572,12 +580,14 @@ public partial class LiveConversationWindow : ThemedWindow
         var talkLabel = held || Recording ? "Release to send" : "Hold to _talk";
         if (!Equals(PttButton.Content, talkLabel)) PttButton.Content = talkLabel;
 
-        MicChip.Visibility = available && preferences.HandsFree && MicrophoneUsable ? Visibility.Visible : Visibility.Collapsed;
-        MicChip.IsEnabled = listening || CanListen;
-        MicText.Text = listening ? "Listening" : CanListen ? "Listening paused" : "Mic not set up";
-        MicDot.SetResourceReference(Shape.FillProperty, listening ? "SuccessBrush" : "MutedBrush");
+        // Always listening shows its state here; when listening can't start, the button says why.
+        MicChip.Visibility = available && preferences.HandsFree ? Visibility.Visible : Visibility.Collapsed;
+        var micUsable = MicrophoneUsable;
+        MicChip.IsEnabled = true;
+        MicText.Text = listening ? "Listening" : micUsable ? "Listening paused" : "Can't listen";
+        MicDot.SetResourceReference(Shape.FillProperty, listening ? "SuccessBrush" : micUsable ? "MutedBrush" : "WarningBrush");
         MicChip.ToolTip = listening ? "Martlet hears you whenever you speak. Click to pause listening."
-            : CanListen ? "Click to listen again." : "Set up and test your microphone in Companion › Listening.";
+            : micUsable ? "Click to listen again." : ListeningProblem();
         AutomationProperties.SetName(MicChip, MicText.Text + ". " + MicChip.ToolTip);
 
         VisionChip.Visibility = available && preferences.Watch ? Visibility.Visible : Visibility.Collapsed;
@@ -631,7 +641,7 @@ public partial class LiveConversationWindow : ThemedWindow
     {
         "mic.hearing_speech" => "Hearing you… pause when you're done.",
         "speaker.checking" => "Checking it's you…",
-        "speaker.verified" or "mic.transferred_and_cleared" or "stt.uploading" => "Got it. Transcribing…",
+        "speaker.verified" or "mic.transferred_and_cleared" or "stt.uploading" or "voices.recognized" => "Got it. Transcribing…",
         "home.asking" => "Checking with Home Assistant…",
         "tools.preparing" => Replying(live),
         var code when code.StartsWith("runtime.", StringComparison.Ordinal) => Replying(live),
@@ -815,7 +825,8 @@ public partial class LiveConversationWindow : ThemedWindow
         var provider = done.Turn?.Snapshot.ProviderFailure ?? status.ProviderFailure;
         StopWatching(provider == ProviderFailureCode.InputLimit
             ? "The picture didn't fit the Thinking route. If Thinking runs on your Martlet host, update the host so its gateway accepts images."
-            : provider is not null && selected is not null && selected.Vision() != VisionSupport.Supported
+            : provider is not (null or ProviderFailureCode.ModelRetired or ProviderFailureCode.ModelNotFound) &&
+                selected is not null && selected.Vision() != VisionSupport.Supported
             ? $"The Thinking model rejected the picture ({provider}); it most likely can't see images. {selected.VisionAdvice()}"
             : "Martlet stopped looking: " + (provider is { } code ? ProviderRemedy(code) : Remedy(status.Code)));
     }
@@ -886,6 +897,15 @@ public partial class LiveConversationWindow : ThemedWindow
         else AddNote(text);
     });
 
+    // Raised off the dispatcher once names were picked up for voices from an exchange.
+    private void VoicesNamed(IReadOnlyList<(Martlet.Core.Speakers.KnownVoice Voice, string Name)> learned) => Dispatcher.BeginInvoke(() =>
+    {
+        if (closed) return;
+        var text = string.Join("  ", learned.Select(l => $"Learned: {l.Voice.Tag.Replace("V", "voice ")} is {l.Name}."));
+        if (lastReply is not null) lastReply.AddNote(text);
+        else AddNote(text);
+    });
+
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
         StopAll("conversation.closed", keepContext: false);
@@ -896,6 +916,7 @@ public partial class LiveConversationWindow : ThemedWindow
         timer.Stop();
         sessionEvents.LockedChanged -= SessionSwitch;
         controller.MemoryCaptured -= MemoryCaptured;
+        controller.VoicesNamed -= VoicesNamed;
         homeQuestion?.TrySetResult(false);
         if (controller.Home is { } smartHome && smartHome.Confirm == ConfirmHomeAsync) smartHome.Confirm = null;
     }
@@ -975,6 +996,8 @@ public partial class LiveConversationWindow : ThemedWindow
         ProviderFailureCode.RateLimited => "The provider is limiting requests right now. Wait a moment, then try again.",
         ProviderFailureCode.ModelUnsupported or ProviderFailureCode.ModelNotFound or ProviderFailureCode.VoiceUnsupported =>
             "The provider doesn't offer that model or voice to this account. Choose another in Companion.",
+        ProviderFailureCode.ModelRetired =>
+            "The provider has retired this model, so it no longer answers. Choose another model in Companion › Thinking.",
         ProviderFailureCode.ConsentExpired or ProviderFailureCode.DeadlineExceeded or ProviderFailureCode.FirstDeltaTimeout or
             ProviderFailureCode.FirstAudioTimeout or ProviderFailureCode.IdleTimeout =>
             "The provider took too long to answer. Try again.",

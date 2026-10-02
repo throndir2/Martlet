@@ -22,6 +22,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
             probes = new { type = "array", items = new { type = "string" }, minItems = 1 },
             dataDirectory = new { type = "string" }
         }, ["probes"]),
+        Tool("logs_tail", "Read the last lines of a local Martlet log (desktop, avatar-renderer or host-runs), optionally only lines " +
+            "containing some text. Failed provider requests appear in the desktop log with their HTTP status and the provider's " +
+            "own short explanation. Read-only; logs can include local paths and provider error text, never keys.", new
+        {
+            log = new { type = "string", @enum = LogTail.Logs },
+            lines = new { type = "integer", minimum = 1, maximum = LogTail.MaximumLines },
+            contains = new { type = "string", maxLength = LogTail.MaximumFilterLength },
+            dataDirectory = new { type = "string" }
+        }),
 
         Tool("ui_connect", "Attach to an already-running Martlet.Desktop process in this interactive session.", new
         {
@@ -43,7 +52,12 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("ui_toggle", "Toggle an enabled checkbox (requires --allow-ui-effects).", new
         {
             id = new { type = "string" }
-        }, ["id"])
+        }, ["id"]),
+        Tool("voices_status", "Read voice recognition and Parakeet status from a data directory: on/off choices, which downloads " +
+            "are installed and counts of known voices (never names, voiceprints or audio). Read-only; no audio, network or models run.", new
+        {
+            dataDirectory = new { type = "string" }
+        })
     ];
 
     private static object Tool(string name, string description, object properties, string[]? required = null) =>
@@ -108,6 +122,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "doctor_list" => await DoctorAsync(["list", "--json"], arguments, cancellation),
                 "doctor_run" => await DoctorAsync(
                     ["run", .. RequiredStrings(arguments, "probes"), "--json"], arguments, cancellation),
+                "logs_tail" => LogTail.Read(OptionalString(arguments, "dataDirectory"), OptionalString(arguments, "log"),
+                    OptionalInt(arguments, "lines"), OptionalString(arguments, "contains")),
 
                 "ui_connect" => desktop.Connect(RequiredInt(arguments, "pid")),
                 "ui_snapshot" => desktop.Snapshot(),
@@ -115,6 +131,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "ui_select" => desktop.Select(RequiredString(arguments, "id"), RequiredString(arguments, "item")),
                 "ui_set_text" => desktop.SetText(RequiredString(arguments, "id"), RequiredString(arguments, "text")),
                 "ui_toggle" => desktop.Toggle(RequiredString(arguments, "id")),
+                "voices_status" => VoicesStatus(arguments),
                 _ => throw new ArgumentException($"Unknown tool '{name}'.")
             };
             return new { content = new[] { new { type = "text", text = JsonSerializer.Serialize(result) } } };
@@ -125,6 +142,54 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             return new { content = new[] { new { type = "text", text = ex.Message } }, isError = true };
         }
+    }
+
+    /// <summary>Voice recognition (Companion › People) and Parakeet as the desktop keeps them in a data directory (the file
+    /// names match Martlet.Desktop's LocalVoices). Counts only: names and voiceprints are personal and never returned.</summary>
+    private static object VoicesStatus(JsonElement arguments)
+    {
+        var directory = arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty("dataDirectory", out var given)
+            ? given.GetString() ?? throw new ArgumentException("Invalid data directory.")
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Martlet");
+        if (!Path.IsPathFullyQualified(directory)) throw new ArgumentException("dataDirectory must be an absolute path.");
+        string? Choice(string file)
+        {
+            try { return File.ReadAllText(Path.Combine(directory, file)).Trim(); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return null; }
+        }
+        object roster;
+        var path = Path.Combine(directory, "voices.json");
+        if (!File.Exists(path)) roster = new { state = "none" };
+        else
+        {
+            try
+            {
+                var list = Martlet.Core.Speakers.VoiceRoster.Parse(File.ReadAllBytes(path));
+                roster = new
+                {
+                    state = "loaded", voices = list.Live.Count, named = list.Live.Count(v => v.Named), owner = list.Live.Count(v => v.Owner),
+                    withLearnedNames = list.Live.Count(v => v.Names.Any(n => n.Source == Martlet.Core.Speakers.VoiceNameSource.Conversation)),
+                    merged = list.Live.Sum(v => v.MergedVoices), tombstones = list.Voices.Count(v => v.Removed)
+                };
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
+            {
+                roster = new { state = "unreadable" };
+            }
+        }
+        var speech = Path.Combine(directory, "speech");
+        return new
+        {
+            recognition = Choice("voice-recognition.txt") ?? "off (never chosen)",
+            sharing = Choice("voice-sharing.txt") ?? "on (default)",
+            installed = new
+            {
+                runtime = Martlet.Sherpa.SherpaComponents.IsInstalled(speech, Martlet.Sherpa.SherpaPart.Runtime),
+                voiceModels = Martlet.Sherpa.SherpaComponents.IsInstalled(speech, Martlet.Sherpa.SherpaPart.Speakers),
+                parakeet = Martlet.Sherpa.SherpaComponents.IsInstalled(speech, Martlet.Sherpa.SherpaPart.Parakeet)
+            },
+            roster
+        };
     }
 
     private static async Task<object> DoctorAsync(string[] args, JsonElement arguments, CancellationToken cancellation)
@@ -152,6 +217,24 @@ internal sealed class McpServer(DesktopAutomation desktop)
             !element.TryGetProperty(property, out var value) || !value.TryGetInt32(out var number))
             throw new ArgumentException($"Missing integer '{property}'.");
         return number;
+    }
+
+    private static string? OptionalString(JsonElement element, string property)
+    {
+        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(property, out var value) ||
+            value.ValueKind == JsonValueKind.Null)
+            return null;
+        if (value.ValueKind != JsonValueKind.String) throw new ArgumentException($"'{property}' must be a string.");
+        return value.GetString();
+    }
+
+    private static int? OptionalInt(JsonElement element, string property)
+    {
+        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(property, out var value) ||
+            value.ValueKind == JsonValueKind.Null)
+            return null;
+        return value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number)
+            ? number : throw new ArgumentException($"'{property}' must be an integer.");
     }
 
     private static string[] RequiredStrings(JsonElement element, string property)

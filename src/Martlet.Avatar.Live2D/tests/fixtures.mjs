@@ -60,6 +60,9 @@ export function environment() {
     getDrawableVertexCount: () => 4,
     getDrawableVertexIndexCount: () => 6,
     getDrawableTextureIndex: () => 0,
+    getDrawableVertices: () => new Float32Array([-1, -2, 1, -2, 1, 1.5, -1, 1.5]),
+    getDrawableOpacity: () => 1,
+    getDrawableDynamicFlagIsVisible: () => true,
     update: () => calls.push(["model.update"]),
   };
   let started = false;

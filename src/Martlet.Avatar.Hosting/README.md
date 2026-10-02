@@ -116,8 +116,12 @@ overlay, initially near the lower-right corner of the primary work area.
 
 Drag the character to reposition the overlay, including onto another monitor.
 The mouse wheel over the character zooms: it first grows the overlay up to the
-height of the screen, then keeps zooming the camera into the character (up to
-16x, toward the cursor). When zoomed in, Ctrl+drag or middle-drag pans.
+height of the screen (growing downward instead once its top reaches the top of
+the screen), then keeps zooming the camera into the character (up to 16x,
+toward the cursor). The top of the character's head always stays in view: zoom
+and pan never push it above the overlay's top edge (the renderer reports where
+the head's top is for the loaded Live2D or VRM model). When zoomed in,
+Ctrl+drag or middle-drag pans.
 Right-click the character for **Zoom in**, **Zoom out**, **Reset zoom** and
 **Reset position and size**. After clicking the character, use arrow keys for
 10-DIP steps (device-independent pixels), Shift+arrows for 1-DIP steps, +/- to
@@ -127,7 +131,9 @@ in the main Martlet window.
 **Reset character position** (home screen, shown while the character is
 visible) returns it to the lower-right of the primary screen at its default
 size and zoom, even if it was dragged off-screen. **Reset character zoom**
-restores the default size and zoom without moving it. The overlay does not take
+restores the default size and zoom without moving it. **Companion > Character**
+also has **Zoom in** and **Zoom out** and shows the overlay's current size,
+camera zoom and where the top of the head sits. The overlay does not take
 keyboard focus on opening.
 Position is session-only, and this is not a global click-through or game-injected
 overlay. Exclusive-fullscreen applications may cover it.

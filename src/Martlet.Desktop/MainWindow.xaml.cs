@@ -30,6 +30,8 @@ public partial class MainWindow : ThemedWindow
     private readonly SmartHome smartHome;
     private readonly McpToolService mcpTools;
     private readonly VoiceIdentity voiceIdentity;
+    private readonly LocalVoices localVoices;
+    private readonly ParakeetListener? parakeet;
     private readonly ConfigurationRecoveryController? recovery;
     private readonly AudioSetupService audioSetup;
     private readonly LiveConversationController? conversation;
@@ -77,6 +79,8 @@ public partial class MainWindow : ThemedWindow
         smartHome.Attach(mcpTools);
         voiceIdentity = new(store?.DataDirectory);
         voiceIdentity.Load();
+        localVoices = new(store?.DataDirectory);
+        parakeet = store is null ? null : new(LocalVoices.SpeechRoot(store.DataDirectory));
         recovery = store is null ? null : new(store, setupOperations, () => !support.HasResources);
         captions = new(avatar, store?.DataDirectory);
         if (setupService is not null)
@@ -84,7 +88,7 @@ public partial class MainWindow : ThemedWindow
             conversation = new(setupOperations, setupService, vault, new WasapiCaptureDeviceFactory(), new WasapiDeviceFactory(),
                 memory: memory, generatedSpeech: avatar.Observer, revokeAvatar: avatar.Revoke, voiceIdentity: voiceIdentity,
                 dataDirectory: store!.DataDirectory, spokenText: captions.Feed, smartHome: smartHome, lorebooks: lorebooks,
-                tools: mcpTools);
+                tools: mcpTools, voices: localVoices, localListener: parakeet);
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
         }
         audioSessionEvents.LockedChanged += AvatarSessionLocked;
@@ -109,6 +113,7 @@ public partial class MainWindow : ThemedWindow
         }
         InitializeShell();
         InitializeCluster();
+        InitializeVoiceSync();
     }
 
     private async void Theme_Changed(object sender, SelectionChangedEventArgs e)
@@ -145,6 +150,10 @@ public partial class MainWindow : ThemedWindow
         await RefreshAsync();
         await ShowSavedCharacterAsync(onlyIfAutoShow: true);
         StartCluster();
+        StartVoiceSync();
+        // Parakeet takes a few seconds to load; do it now rather than on the first thing said.
+        if (homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Stt)?.RouteType == SetupRouteType.LocalParakeet)
+            parakeet?.WarmAsync().Forget();
         if (!closing) await StartUpdatesAsync();
     }
     private async void Refresh_Click(object sender, RoutedEventArgs e) => await RefreshAsync();
@@ -383,20 +392,43 @@ public partial class MainWindow : ThemedWindow
     }
     private async void ResetCharacter_Click(object sender, RoutedEventArgs e) => await ResetCharacterPositionAsync();
     private async void ResetCharacterZoom_Click(object sender, RoutedEventArgs e) => await ResetCharacterZoomAsync();
-    private async Task ResetCharacterZoomAsync()
+    private Task ResetCharacterZoomAsync() => ZoomCharacterAsync("reset");
+
+    /// <summary>The Character page's line describing the overlay's current size, zoom and head framing.</summary>
+    private TextBlock? characterViewText;
+
+    /// <summary>Zooms the character "in", "out", "reset"s it, or only reads its "status", then shows the resulting view.</summary>
+    private async Task ZoomCharacterAsync(string action)
     {
         try
         {
-            await avatar.ZoomAsync("reset", lifetime.Token);
-            ActionText.Text = "Character returned to its default size and zoom.";
+            var view = await avatar.ZoomAsync(action, lifetime.Token);
+            if (closing) return;
+            if (characterViewText is { } line) line.Text = view is null ? "" : CharacterViewText(view);
+            if (action == "reset") ActionText.Text = "Character returned to its default size and zoom.";
+            else if (action != "status" && view is not null) ActionText.Text = $"Character zoomed {action}. {CharacterViewText(view)}";
         }
         catch (Exception error) when (error is System.IO.IOException or InvalidOperationException or TimeoutException or
-            OperationCanceledException or ObjectDisposedException)
+            OperationCanceledException or ObjectDisposedException or System.IO.InvalidDataException or System.Text.Json.JsonException)
         {
-            if (!closing) ActionText.Text = $"Character zoom could not be reset: {error.Message}";
+            if (!closing && action != "status")
+                ActionText.Text = action == "reset" ? $"Character zoom could not be reset: {error.Message}" : $"Character zoom could not be changed: {error.Message}";
         }
         finally { UpdateCharacterButton(); }
     }
+
+    internal static string CharacterViewText(RendererView view) =>
+        $"Character view: {view.Width:0} × {view.Height:0}" + view.ScreenTop switch
+        {
+            null => "",
+            double below when below >= 0 => $", {below:0} px below the top of the screen",
+            double above => $", {-above:0} px above the top of the screen"
+        } + $", camera zoom {view.Zoom:0.##}x; " + view.HeadTop switch
+        {
+            null => "head framing not reported yet.",
+            double below when below >= 0 => $"the top of the head is in view ({below:P0} below the overlay's top edge).",
+            double cut => $"the top of the head is cut off ({-cut:P0} above the overlay's top edge)."
+        };
     private async Task ResetCharacterPositionAsync()
     {
         try
@@ -528,6 +560,7 @@ public partial class MainWindow : ThemedWindow
         characterTimer.Stop();
         updateTimer.Stop();
         clusterTimer.Stop();
+        voiceSyncTimer.Stop();
         audioSessionEvents.LockedChanged -= audioSetup.SetSessionLocked;
         audioSessionEvents.LockedChanged -= AvatarSessionLocked;
         if (conversation is not null) audioSessionEvents.LockedChanged -= conversation.SetSessionLocked;

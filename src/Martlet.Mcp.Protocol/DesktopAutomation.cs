@@ -14,16 +14,18 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "SetupClose", "AudioClose", "CloseLive", "SupportClose",
         "RecoveryClose", "SupportFreeze", "SupportClear",
         "NavHome", "NavDevices", "NavCompanion", "NavSettings", "TourSkip", "DiagnosticsSection",
-        "DeviceFactsSection", "DeviceReachSection", "DeviceRolesSection"
+        "OpenPeople", "DeviceFactsSection", "DeviceReachSection", "DeviceRolesSection"
     };
-    /// <summary>Devices map nodes ("Node-this-pc", "Node-host:gpu-1") and the problem card's Show buttons: they only select
-    /// a device and show its details.</summary>
-    private static readonly string[] SafeClickPrefixes = ["Node-", "CoverageShow-"];
+    /// <summary>Choosing a Companion page in its side list only shows that page; Devices map nodes ("Node-this-pc",
+    /// "Node-host:gpu-1") and the problem card's Show buttons only select a device and show its details.</summary>
+    private static readonly string[] SafeClickPrefixes = ["CompanionTab-", "Node-", "CoverageShow-"];
+    // Read-only status text. Text blocks and buttons have no value, so their accessible name (a text block's text) is returned.
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
         "FoundationStatus", "PipelineStatus", "LocalAudioStatus",
-        "LiveStatus", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
-        "SelectedDevice", "SelectedDeviceHealth", "ClusterStatus"
+        "LiveStatus", "LiveMic", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
+        "PeopleStatus", "PeopleSyncStatus", "PeopleVoiceCount", "ListenParakeetStatus", "SetupCharacterView",
+        "LipSyncNow", "LipSyncNowProblem", "SelectedDevice", "SelectedDeviceHealth", "ClusterStatus"
     };
     /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)").</summary>
     private static readonly string[] SafeValuePrefixes = ["DeviceComponent-"];
@@ -59,10 +61,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
             {
                 var (window, element) = control;
                 var id = element.Current.AutomationId;
-                // Read-only status text: a value pattern's value, or a text block's accessible name (its text).
+                // Status text blocks expose their text as the accessible name; a status button's name carries its state.
                 var value = !IsSafeValue(id) ? null
                     : element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern) ? ((ValuePattern)pattern).Current.Value
-                    : element.Current.ControlType == ControlType.Text ? element.Current.Name : null;
+                    : element.Current.ControlType == ControlType.Text || element.Current.ControlType == ControlType.Button ? element.Current.Name : null;
                 return new
                 {
                     window = window.Current.Name,

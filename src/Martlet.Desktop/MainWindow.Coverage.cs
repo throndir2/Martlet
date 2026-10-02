@@ -1,6 +1,8 @@
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using Martlet.Avatar.Audio2Face;
+using Martlet.Avatar.Hosting;
 using Martlet.Core.Cluster;
 using Martlet.Core.Installation;
 using Martlet.Core.Platforms;
@@ -45,6 +47,13 @@ public partial class MainWindow
         }
         if (route.RouteType == SetupRouteType.LocalWindowsTts)
             return new() { Job = job.Job, Doer = JobDoer.ThisDevice, DoerName = name, Enabled = enabled, Reviewed = reviewed };
+        if (route.RouteType == SetupRouteType.LocalParakeet)
+            return new()
+            {
+                Job = job.Job, Doer = JobDoer.ThisDevice, DoerName = name, Enabled = enabled, Reviewed = reviewed,
+                NotConnected = store is not null && Martlet.Sherpa.ParakeetEngine.Installed(LocalVoices.SpeechRoot(store.DataDirectory)) ? null
+                    : "the Parakeet model isn't downloaded on this PC. Choose Parakeet again on Companion › Listening to download it"
+            };
         if (route.RouteType is SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWhisper)
             return new()
             {
@@ -70,6 +79,45 @@ public partial class MainWindow
             Fallback = "this PC"
         },
         _ => new() { Job = ClusterJobs.LipSync, Doer = JobDoer.ThisDevice, DoerName = "This PC" }
+    };
+
+    /// <summary>Whether this PC's own Audio2Face service answered its last check; null while lip-sync isn't handled by it or
+    /// before the first check. Not a coverage problem: this PC's lip-sync uses that service only when one runs.</summary>
+    private bool? ownLipSyncAnswers;
+    private bool checkingOwnLipSync;
+
+    private Uri OwnLipSyncEndpoint() => new(homeAvatar?.Endpoint ?? AvatarProfile.DefaultEndpoint);
+
+    /// <summary>When lip-sync is handled by this PC's own Audio2Face service, checks that something answers on its loopback
+    /// port (a 300 ms local connect; nothing is sent), so Home, Devices and Companion › Lip-sync say when nothing runs there.</summary>
+    private async Task CheckOwnLipSyncAsync()
+    {
+        if (closing || checkingOwnLipSync) return;
+        bool? answers = null;
+        if (NetworkMap.LipSync(homeAvatar) == LipSyncHandler.ThisPc)
+        {
+            checkingOwnLipSync = true;
+            try
+            {
+                answers = await Audio2FaceProbe.IsListeningAsync(new Audio2FaceOptions { Endpoint = OwnLipSyncEndpoint() },
+                    TimeSpan.FromMilliseconds(300), lifetime.Token);
+            }
+            catch (Exception error) when (error is OperationCanceledException or ArgumentException or UriFormatException) { return; }
+            finally { checkingOwnLipSync = false; }
+        }
+        if (closing || answers == ownLipSyncAnswers) return;
+        ownLipSyncAnswers = answers;
+        RenderHome();
+        if (DevicesPage.IsVisible) RenderMap();
+    }
+
+    /// <summary>What this PC's own lip-sync does right now, for the places that show who handles lip-sync.</summary>
+    private string OwnLipSyncState() => ownLipSyncAnswers switch
+    {
+        true => $"Audio2Face answers at {OwnLipSyncEndpoint().Authority}.",
+        false => $"Audio2Face isn't installed or running on this PC (nothing answers at {OwnLipSyncEndpoint().Authority}), so the mouth " +
+            "follows the voice's loudness. Install it in Companion › Lip-sync.",
+        _ => "Its own Audio2Face service when running, otherwise voice loudness."
     };
 
     /// <summary>The freshest thing this PC knows about a host: the background sync check when sync is on, otherwise the

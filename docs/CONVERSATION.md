@@ -190,9 +190,12 @@ or **Push-to-talk**. The choice, sensitivity, pause length, Voice ID toggle,
 *Speak replies* and Vision choices are remembered in `talk-preferences.json` in
 the data folder.
 
-- With always listening, opening the talk window opens the microphone once it
-  has been set up and tested in Companion (until then the mic button says *Mic
-  not set up* and you can type). An adaptive energy detector (`EnergyVoiceActivityDetector`,
+- With always listening, opening the talk window opens the microphone chosen in
+  Companion › Listening (the Windows default unless another is picked; testing
+  it there is optional). If listening isn't set up, the mic button says *Can't
+  listen* and why; if the microphone can't be opened (absent, busy, denied),
+  listening pauses and the status line says how to fix it, and you can type.
+  An adaptive energy detector (`EnergyVoiceActivityDetector`,
   20 ms frames read from the capture's own buffer through `TryCopyMonoFrame`)
   waits for speech, then releases the capture after your chosen pause
   (0.5/0.8/1.2 s). Only the detected speech plus 300 ms pre-roll and 200 ms tail
@@ -228,6 +231,15 @@ the data folder.
   similar voice can pass, and a cold or a new microphone can lower your score.
   Same-person clean speech typically scores 0.80-0.95 and other people
   0.45-0.75; enrollment suggests a threshold from how consistent your phrases were.
+
+**Recognizing who is talking** (Companion › **People**, off until you download
+it) tells several people at the microphone apart with AudioTranscriber's
+sherpa-onnx speaker recognition, names the speaker to the Thinking model, labels
+earlier messages with who said them, and learns the names each voice goes by
+from the conversation. The list of voices can follow you to every computer
+through your paired hosts. **Parakeet** (Companion › Listening › This PC) is
+AudioTranscriber's more accurate speech-to-text, running inside Martlet with no
+Docker. See [Recognizing people by voice, and Parakeet](VOICES.md).
 
 ## Troubleshooting
 

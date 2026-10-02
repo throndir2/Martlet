@@ -91,7 +91,7 @@ public partial class MainWindow
         RefreshCoverage();
     }
 
-    /// <summary>Records a job change made on this PC (in Who does what or Setup) as the newest entry of the shared plan.</summary>
+    /// <summary>Records a job change made on this PC (on the Devices page or in Setup) as the newest entry of the shared plan.</summary>
     private void RecordClusterJob(string job, LocalJob local)
     {
         clusterObserved[job] = local;
@@ -104,7 +104,7 @@ public partial class MainWindow
         QueueClusterSync();
     }
 
-    /// <summary>Notices jobs that changed outside Who does what (for example in Setup) and records them.</summary>
+    /// <summary>Notices jobs that changed outside the Devices page (for example in Setup) and records them.</summary>
     private void ObserveLocalJobs()
     {
         if (store is null || homeSettings?.Setup is null) return;

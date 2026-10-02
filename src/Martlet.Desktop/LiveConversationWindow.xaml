@@ -34,9 +34,9 @@
                 <Image x:Name="TalkMascot" Style="{DynamicResource Mascot}" DockPanel.Dock="Left" Width="40" Height="40" Margin="0,0,12,0"/>
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock Text="Martlet" FontSize="19" FontWeight="SemiBold"/>
+                    <!-- No fixed accessible name: the status text itself is what screen readers announce (and MCP reads). -->
                     <TextBlock x:Name="ResultText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap"
-                               AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="LiveStatus"
-                               AutomationProperties.Name="What Martlet is doing"/>
+                               AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="LiveStatus"/>
                 </StackPanel>
             </DockPanel>
         </Border>

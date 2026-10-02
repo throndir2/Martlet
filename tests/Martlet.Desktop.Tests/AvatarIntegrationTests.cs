@@ -287,7 +287,7 @@ public sealed class AvatarIntegrationTests
         var renderer = new Renderer { Parameters = [new("aa", 0, 1, 0, ["Mouth"])] };
         await using var controller = new AvatarController(createRenderer: () => renderer, allowControlledClock: true);
         await controller.ShowAsync(scope.Profile($"http://127.0.0.1:{port}/"), default);
-        Assert.Contains("No Audio2Face service", controller.Status, StringComparison.Ordinal);
+        Assert.Contains("Audio2Face isn't running on this PC", controller.Status, StringComparison.Ordinal);
         var device = new ControlledDevice { AutoConsume = false };
         await using var harness = new Harness(device, generatedSpeech: controller.Observer);
         harness.Answer("Actual generated PCM test.");

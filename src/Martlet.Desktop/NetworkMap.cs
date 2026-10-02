@@ -168,6 +168,7 @@ internal static class NetworkMap
         SetupRouteType.LocalWindowsStt => "Windows speech",
         SetupRouteType.LocalWindowsTts => "Windows voice",
         SetupRouteType.LocalWhisper => "whisper.cpp on this PC",
+        SetupRouteType.LocalParakeet => "Parakeet on this PC",
         _ => "OpenAI"
     };
 
@@ -209,6 +210,10 @@ internal static class NetworkMap
                 case SetupRouteType.LocalWhisper:
                     target = thisPc;
                     role = role with { Detail = "whisper.cpp on this PC: " + RouteDetail(route) };
+                    break;
+                case SetupRouteType.LocalParakeet:
+                    target = thisPc;
+                    role = role with { Detail = "Parakeet on this PC: " + RouteDetail(route) };
                     break;
                 case SetupRouteType.GatewayOllama or SetupRouteType.GatewayF5 or SetupRouteType.GatewayStt when route.Gateway is { } gateway:
                     var host = new Uri(gateway.Origin).Host;
@@ -436,7 +441,7 @@ internal static class NetworkMap
                 case LipSyncHandler.Loudness:
                     thisPc.Roles.Add(new("Lip-sync", "Lip-sync", "In charge: the mouth follows the voice's loudness (Audio2Face is off)",
                         DeviceComponent.LipSync));
-                    thisPc.Commands.Add(new(NodeAction.LipSyncThisPc, "Turn on Audio2Face lip-sync here", Component: DeviceComponent.LipSync));
+                    thisPc.Commands.Add(new(NodeAction.Companion, "Set up Audio2Face lip-sync here", Argument: "LipSync", Component: DeviceComponent.LipSync));
                     break;
                 default:
                     thisPc.Commands.Add(new(NodeAction.LipSyncThisPc, "Take lip-sync back to this PC"));

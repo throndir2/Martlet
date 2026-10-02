@@ -1,12 +1,14 @@
 using System.IO;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.F5;
+using Martlet.Sherpa;
 
 namespace Martlet.Desktop;
 
@@ -99,13 +101,14 @@ public partial class MainWindow
         var running = inUse ? gpuProbe?.SttAccelerator : null;
         var gpuInUse = inUse && running == "gpu";
         var cpuInUse = inUse && running == "cpu";
-        var nothingHere = !inUse;
+        var parakeetInUse = route?.RouteType == SetupRouteType.LocalParakeet;
+        var nothingHere = !inUse && !parakeetInUse;
 
         string? Tag(bool gpu, bool used) => used ? "in use" : nothingHere && advice is not null && advice.UseGpu == gpu ? "recommended for this PC" : null;
 
         var gpuOption = new List<UIElement>
         {
-            OptionTitle("On the graphics card", Tag(true, gpuInUse)),
+            OptionTitle("whisper on the graphics card", Tag(true, gpuInUse)),
             Note("Fastest: replies start sooner. " + (advice?.GpuModel is { } gpuModel
                     ? $"Uses the {gpuModel} model, which takes about {(gpuModel == "small" ? "1" : "2")} GB of the graphics card."
                     : "Needs an NVIDIA graphics card with a current driver."), new Thickness(0, 2, 0, 6))
@@ -118,7 +121,7 @@ public partial class MainWindow
 
         var cpuOption = new List<UIElement>
         {
-            OptionTitle("On the processor", Tag(false, cpuInUse)),
+            OptionTitle("whisper on the processor", Tag(false, cpuInUse)),
             Note($"Works on any PC and leaves the graphics card free for games and other models; replies take a moment longer. " +
                 $"Uses the {advice?.CpuModel ?? (machine.Threads >= 6 ? "small" : "base")} model.", new Thickness(0, 2, 0, 6)),
             Row(PageButton(cpuInUse ? "Set it up again" : "Use the processor", () => UseListeningHereAsync(gpu: false).Forget(),
@@ -129,11 +132,12 @@ public partial class MainWindow
         var stack = new List<UIElement>
         {
             Heading("How it listens on this PC"),
-            Note("whisper turns your speech into text in memory on this PC and stores nothing. It runs in Martlet's host service " +
-                "inside Docker Desktop. Choose one; it sets itself up.", new Thickness(0, 0, 0, 4)),
+            Note("Parakeet runs inside Martlet itself; whisper runs in Martlet's host service inside Docker Desktop. Either one turns your " +
+                "speech into text in memory on this PC and stores nothing. Choose one; it sets itself up.", new Thickness(0, 0, 0, 4)),
+            Option(ParakeetOption(parakeetInUse), parakeetInUse),
             Note(advice is null ? "Checking this PC's graphics card..."
-                : advice.GpuNote + $" Recommended: {(advice.UseGpu ? "the graphics card" : "the processor")}, because {advice.Reason}.",
-                new Thickness(0, 4, 0, 0)),
+                : "For whisper: " + advice.GpuNote + $" Recommended: {(advice.UseGpu ? "the graphics card" : "the processor")}, because {advice.Reason}.",
+                new Thickness(0, 10, 0, 0)),
             Option(gpuFirst ? gpuOption : cpuOption, gpuFirst ? gpuInUse : cpuInUse),
             Option(gpuFirst ? cpuOption : gpuOption, gpuFirst ? cpuInUse : gpuInUse)
         };
@@ -155,6 +159,76 @@ public partial class MainWindow
         var warning = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6) };
         warning.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
         return warning;
+    }
+
+    // ---------- Listening › This PC › Parakeet ----------
+
+    private bool installingParakeet;
+
+    /// <summary>Parakeet inside Martlet: no Docker or host service, the most accurate of the local choices (AudioTranscriber's
+    /// default engine).</summary>
+    private List<UIElement> ParakeetOption(bool inUse)
+    {
+        var installed = parakeet?.Installed == true;
+        var download = (store is not null && SherpaComponents.IsInstalled(LocalVoices.SpeechRoot(store.DataDirectory), SherpaPart.Runtime)
+            ? 0 : SherpaComponents.DownloadBytes(SherpaPart.Runtime)) + (installed ? 0 : SherpaComponents.DownloadBytes(SherpaPart.Parakeet));
+        var button = PageButton(installingParakeet ? "Downloading..." : inUse ? "In use" : installed ? "Use Parakeet" : "Download and use Parakeet",
+            () => UseParakeetAsync().Forget(), primary: !inUse, id: "SetupListenParakeet");
+        button.IsEnabled = !inUse && !installingParakeet && parakeet is not null;
+        var title = OptionTitle("Parakeet in Martlet", inUse ? "in use" : installed ? "most accurate, no Docker, downloaded" : "most accurate, no Docker");
+        AutomationProperties.SetAutomationId(title, "ListenParakeetStatus");
+        return
+        [
+            title,
+            Note("NVIDIA Parakeet TDT 0.6B v3 runs inside Martlet on the processor, the engine AudioTranscriber uses: on the same English " +
+                "test it made about a third fewer word errors than whisper large-v3-turbo (6.9% against 10.6%) and ran 14 times faster than " +
+                "real time. It detects 25 European languages by itself (for others, use whisper). It needs about 1 GB of memory while " +
+                "Martlet runs" + (installed ? "." : $" and downloads once: {SherpaComponents.Megabytes(download)}."), new Thickness(0, 2, 0, 6)),
+            Row(button)
+        ];
+    }
+
+    /// <summary>Listening with Parakeet on this PC: one confirmation for the download (when needed), then the route switches.</summary>
+    private async Task UseParakeetAsync()
+    {
+        if (store is null || setupService is null || parakeet is null || closing || installingParakeet) return;
+        var root = parakeet.Root;
+        if (!parakeet.Installed)
+        {
+            var parts = new[] { SherpaPart.Runtime, SherpaPart.Parakeet }.Where(p => !SherpaComponents.IsInstalled(root, p)).ToArray();
+            var size = SherpaComponents.Megabytes(parts.Sum(SherpaComponents.DownloadBytes));
+            if (!ConfirmationDialog.Confirm(this,
+                    $"Listen with Parakeet on this PC? Martlet downloads {string.Join(" and ", parts.Select(SherpaComponents.Disclosure))} " +
+                    $"({size} in all) into its data folder, checks every file against a pinned SHA-256 and switches listening to it. " +
+                    "Your recorded speech is transcribed in memory on this PC; nothing leaves this PC and there is no charge.",
+                    "Download and use"))
+                return;
+            installingParakeet = true;
+            RenderTab();
+            try
+            {
+                foreach (var part in parts)
+                    await SherpaComponents.InstallAsync(root, part, new Progress<SherpaProgress>(p => ActionText.Text =
+                        $"Downloading {(p.Part == SherpaPart.Parakeet ? "the Parakeet model" : "the speech engine")}: " +
+                        $"{p.Received * 100 / Math.Max(1, p.Total)}% of {SherpaComponents.Megabytes(p.Total)}..."), lifetime.Token);
+            }
+            catch (OperationCanceledException) { return; }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or
+                System.Net.Http.HttpRequestException or InvalidOperationException)
+            {
+                ActionText.Text = "Downloading Parakeet stopped: " + error.Message + " Listening stays where it is.";
+                return;
+            }
+            finally
+            {
+                installingParakeet = false;
+                if (!closing && openTab == CompanionTab.Listening) RenderTab();
+            }
+        }
+        parakeet.WarmAsync().Forget();
+        await SaveSectionRouteAsync(HostJob.Listening, LocalSpeechSetup.SelectParakeet, key: null,
+            "Martlet now listens with Parakeet on this PC. Your speech is transcribed here and nothing leaves this PC.");
+        if (!closing && openTab == CompanionTab.Listening) RenderTab();
     }
 
     /// <summary>Listening on this PC with whisper on the graphics card or the processor: one confirmation, then one run window.</summary>
