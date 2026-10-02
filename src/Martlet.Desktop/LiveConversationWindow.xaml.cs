@@ -77,9 +77,18 @@ public partial class LiveConversationWindow : ThemedWindow
     private bool closed, ready, mouseHeld, keyHeld, follow = true;
     private volatile bool locked;
     private long generation;
-    // Always listening runs whenever the window is open and the microphone is set up; the mic button or Stop pauses it.
+    // Always listening runs whenever the window is open and the microphone is set up; the mic button or Stop pauses it. It
+    // runs beside replies (listener) and never pauses by itself: a microphone that can't be opened is tried again shortly.
     private bool listening, listenPaused;
-    private string? listenNote;
+    private LiveListener? listener;
+    private long listenRetryAt, lastHeard;
+    private string? listenNote, micProblem;
+    // What always listening heard that waits for a reply, and what the reply in progress answers: talking on before Martlet
+    // says anything restarts that reply with everything said.
+    private readonly List<HeardEntry> heardQueue = [];
+    private List<HeardEntry>? answering;
+    private int restarts;
+    private sealed record HeardEntry(string Text, double? Confidence, HeardVoices? Voices, ChatMessage Bubble);
     // Typed text waits here while an idle listen or a screen remark hands the app slot over.
     private string? pendingText;
     private ChatMessage? pendingMessage;
@@ -107,6 +116,7 @@ public partial class LiveConversationWindow : ThemedWindow
     public ObservableCollection<ChatMessage> Messages { get; } = [];
     internal bool IsReady => ready && loading is null;
     internal LiveConversationOperation? Current => owned;
+    internal LiveListener? Listener => listener;
 
     internal LiveConversationWindow(ISetupService settings, SetupOperationRunner operations, LiveConversationController controller,
         IAudioSessionEvents sessionEvents, TimeProvider? clock = null, VoiceIdentity? voiceIdentity = null,
@@ -157,6 +167,7 @@ public partial class LiveConversationWindow : ThemedWindow
         if (operations.IsRunning) { notice = Remedy("conversation.ownership_busy"); return; }
         ready = false;
         listening = false;
+        StopListening(keepHeard: true);
         if (watching) StopWatching(null);
         var backend = settings;
         var worker = operations.TryStart(async token => new(SetupWorkOutcome.Completed, Loaded: await backend.LoadAsync(token).ConfigureAwait(false)));
@@ -217,11 +228,12 @@ public partial class LiveConversationWindow : ThemedWindow
         warmup?.Touch();
     }
 
-    /// <summary>A reply or a look on its way asks Ollama again after a quiet spell, so a model it unloaded is loading already.</summary>
+    /// <summary>A reply or a look on its way, or someone talking, asks Ollama again after a quiet spell, so a model it unloaded is
+    /// loading already.</summary>
     private void KeepWarm()
     {
         if (warmup is not null && Available &&
-            (owned is { OwnershipReleased: false } live && !IsIdleListen(live) || commentary is { OwnershipReleased: false }))
+            (owned is { OwnershipReleased: false } || commentary is { OwnershipReleased: false } || listener is { Hearing: true }))
             warmup.Touch();
     }
 
@@ -261,23 +273,24 @@ public partial class LiveConversationWindow : ThemedWindow
         else if (follow) HistoryScroll.ScrollToEnd();
     }
 
-    // ---------- the app slot: typed text, a wanted look, then listening ----------
+    // ---------- the app slot: typed text, what always listening heard, then a wanted look ----------
 
-    // Runs on the UI timer: settles what just finished, then hands the app slot to whatever comes next.
+    // Runs on the UI timer: settles what just finished, keeps listening, then hands the app slot to whatever comes next.
     private void Pump()
     {
         if (closed) return;
-        if (owned is { OwnershipReleased: true } done && !ReferenceEquals(handled, done))
-        {
-            handled = done;
-            Finished(done);
-        }
+        Settle();
+        Collect();
         if (loading is not null || locked) return;
+        KeepListening();
+        Interrupt();
         if (operations.IsRunning)
         {
             if (pendingText is not null || reloadReason is not null) YieldSlot();
             return;
         }
+        // The reply may have released the slot just now; settle it before anything replaces it.
+        Settle();
         if (reloadReason is { } reason)
         {
             reloadReason = null;
@@ -298,18 +311,22 @@ public partial class LiveConversationWindow : ThemedWindow
             }
             return;
         }
-        if (TryStartCommentary()) return;
-        if (listening && !mouseHeld && !keyHeld) StartTurn(null);
+        if (TryAnswer()) return;
+        TryStartCommentary();
     }
 
-    // An idle listen or a screen remark hands the app slot over right away; a reply in progress finishes first.
+    private void Settle()
+    {
+        if (owned is { OwnershipReleased: true } done && !ReferenceEquals(handled, done))
+        {
+            handled = done;
+            Finished(done);
+        }
+    }
+
+    // A screen remark hands the app slot over right away; a reply in progress finishes first.
     private void YieldSlot()
     {
-        if (owned is { OwnershipReleased: false } live && IsIdleListen(live) && !ReferenceEquals(yielded, live))
-        {
-            yielded = live;
-            controller.Stop(live, "conversation.typing", keepContext: true);
-        }
         if (commentary is { OwnershipReleased: false } glance && !ReferenceEquals(yielded, glance))
         {
             yielded = glance;
@@ -320,25 +337,20 @@ public partial class LiveConversationWindow : ThemedWindow
     private bool StartTurn(string? text)
     {
         bool microphone = text is null;
-        bool handsFree = microphone && !mouseHeld && !keyHeld;
         try
         {
-            // Pressing Send or the talk button is the action; always listening and the destinations were chosen in Companion.
+            // Pressing Send or the talk button is the action; the destinations were chosen in Companion.
             owned = controller.Start(text, Voice, microphone, approved: true, localCaptureApproved: microphone, uploadApproved: microphone,
-                listening: microphone ? Listening(handsFree) : null);
+                listening: microphone ? Listening(false) : null);
             yielded = null;
-            if (!handsFree)
-            {
-                notice = null;
-                pacer?.NoteConversation();
-            }
+            notice = null;
+            pacer?.NoteConversation();
             Observe();
             return true;
         }
         catch (LiveActionException error) { notice = Remedy(error.Code); }
         catch (ContractException) { notice = Remedy("conversation.invalid_input"); }
         catch (VoiceIdentityException error) { notice = error.Message; }
-        if (handsFree) listening = false;
         return false;
     }
 
@@ -350,29 +362,233 @@ public partial class LiveConversationWindow : ThemedWindow
         },
         preferences.VoiceId);
 
-    // Once per finished turn: the last of its text, what to tell you, and whether listening goes on.
+    // ---------- always listening ----------
+
+    internal static TimeSpan ListenRetry => TimeSpan.FromSeconds(2);
+    /// <summary>How much longer Martlet waits for the rest when what you said sounds unfinished ("so, um", "and", a trailing comma).</summary>
+    internal static TimeSpan UnfinishedPause => TimeSpan.FromMilliseconds(1500);
+    // How often one set of things you said may be restarted because you kept talking (a TV in the background must not loop it).
+    private const int MaximumRestarts = 3;
+
+    // Keeps one listener running while always listening is on; it holds off by itself while Martlet speaks.
+    private void KeepListening()
+    {
+        if (!listening || !Available || listener is not null || clock.GetTimestamp() < listenRetryAt) return;
+        try
+        {
+            listener = controller.Listen(Listening(true));
+        }
+        catch (LiveActionException error) when (error.Code is "conversation.ownership_busy" or "conversation.controls_blocked")
+        {
+            listenRetryAt = After(ListenRetry);
+        }
+        catch (LiveActionException error)
+        {
+            listening = false;
+            notice = error.Code is "conversation.configuration_unsupported" or "conversation.setup_required" ? ListeningProblem() : Remedy(error.Code);
+        }
+        catch (VoiceIdentityException error)
+        {
+            listening = false;
+            notice = error.Message;
+        }
+    }
+
+    private void StopListening(bool keepHeard)
+    {
+        if (listener is { } live) controller.StopListening(live);
+        listener = null;
+        micProblem = null;
+        listenRetryAt = 0;
+        if (keepHeard) return;
+        foreach (var entry in heardQueue) entry.Bubble.AddNote("Not answered.");
+        heardQueue.Clear();
+    }
+
+    private long After(TimeSpan delay) => clock.GetTimestamp() + (long)(delay.TotalSeconds * clock.TimestampFrequency);
+
+    // Takes what always listening made of each utterance: the words go into the history and wait for a reply.
+    private void Collect()
+    {
+        if (listener is not { } live) return;
+        while (live.TryTake(out var speech)) Heard(speech);
+        if (live.MicrophoneWorks) micProblem = null;
+        if (live.Running) return;
+        // It ended by itself: the setup changed or can't be used. Anything else just starts it again shortly.
+        listener = null;
+        listenRetryAt = After(ListenRetry);
+        switch (live.Ended)
+        {
+            case "voiceid.not_enrolled":
+                listening = false;
+                notice = Remedy(live.Ended);
+                break;
+            case "conversation.configuration_unsupported" or "conversation.setup_required":
+                listening = false;
+                notice = ListeningProblem();
+                break;
+            case "conversation.configuration_changed":
+                ReloadWhenIdle("Your setup changed.");
+                break;
+        }
+    }
+
+    private void Heard(HeardSpeech speech)
+    {
+        var status = speech.Status;
+        if (speech.SpeakerCheck is { } check)
+            listenNote = check.Verdict != SpeakerVerdict.User && speech.Voiceprint is { } print ? VoiceIdentity.Describe(check, print.Threshold) : null;
+        if (status.AudioFailure is { } audio && status.Code.StartsWith("mic.", StringComparison.Ordinal))
+        {
+            micProblem = MicProblem(audio);
+            return;
+        }
+        micProblem = null;
+        if (speech.Text?.Trim() is not { Length: > 0 } text)
+        {
+            notice = ListenOutcome(status) ?? notice;
+            return;
+        }
+        var bubble = Add(ChatRole.User, text, speech.Voices?.Speaker?.Voice is { } voice
+            ? $"{voice.DisplayName}{(voice.Owner ? " (you)" : "")} (spoken)" : "You (spoken)");
+        heardQueue.Add(new(text, speech.Confidence, speech.Voices, bubble));
+        lastHeard = clock.GetTimestamp();
+        notice = null;
+        pacer?.NoteConversation();
+    }
+
+    // Why the microphone can't be opened right now, in words for always listening (which keeps trying it).
+    private static string MicProblem(ErrorCode code) => code switch
+    {
+        ErrorCode.AudioAccessDenied =>
+            "Windows isn't letting Martlet use the microphone: check Settings › Privacy & security › Microphone, including desktop-app access.",
+        ErrorCode.AudioDeviceBusy => "Another app is using the microphone exclusively.",
+        ErrorCode.AudioFormatUnsupported => "The microphone's sound format isn't supported; choose another in Companion › Listening.",
+        _ => "Martlet can't open the microphone chosen in Companion › Listening (unplugged, disabled or missing?)."
+    };
+
+    private static string? ListenOutcome(LiveConversationStatus status)
+    {
+        if (status.Quarantined) return Remedy("conversation.cleanup_quarantined");
+        if (status.ProviderFailure is { } provider) return "Speech-to-text: " + ProviderRemedy(provider);
+        return status.Code is "listen.heard" or "listen.held" or "mic.no_speech" or "stt.NoSpeech" or "speaker.not_user" or
+            "speaker.too_short" or "conversation.canceled" or "conversation.revoked" or "conversation.expired" ? null : Remedy(status.Code);
+    }
+
+    // You kept talking before Martlet answered (you are talking now, or something new was heard since the reply was asked for):
+    // that reply (or remark) stops, and once you pause, everything you said is answered together. A reply that already acted
+    // (Home Assistant or a tool) finishes; what you add is answered after it.
+    private void Interrupt()
+    {
+        var talking = listener is { Hearing: true } or { Transcribing: > 0 };
+        if (!talking && heardQueue.Count == 0) return;
+        pacer?.NoteConversation();
+        if (owned is { OwnershipReleased: false, Spoken: true } reply && answering is { } batch && !ReferenceEquals(yielded, reply) &&
+            restarts < MaximumRestarts && Restartable(reply))
+        {
+            yielded = reply;
+            restarts++;
+            answering = null;
+            heardQueue.InsertRange(0, batch);
+            controller.Stop(reply, "conversation.continued", keepContext: true);
+        }
+        if (talking && commentary is { OwnershipReleased: false } glance && !ReferenceEquals(yielded, glance))
+        {
+            yielded = glance;
+            controller.Stop(glance, "commentary.interrupted", keepContext: true);
+        }
+    }
+
+    private static bool Restartable(LiveConversationOperation reply) =>
+        reply.HomeSummary is null && reply.Status.Code != "home.asking" &&
+        reply.Turn?.Snapshot is not ({ ToolCalls: > 0 } or { ActiveTool: not null });
+
+    // Everything heard since the last reply goes to the Thinking model as one message once you pause; it decides whether to
+    // answer. Waits while you are still talking or what you said is being transcribed, and a moment longer when it sounds
+    // unfinished.
+    private bool TryAnswer()
+    {
+        if (heardQueue.Count == 0 || listener is { } live && (live.Hearing || live.Transcribing > 0)) return false;
+        if (Unfinished(heardQueue[^1].Text) && clock.GetElapsedTime(lastHeard) < UnfinishedPause) return false;
+        var batch = new List<HeardEntry>();
+        var length = -1;
+        for (var i = heardQueue.Count - 1; i >= 0; i--)
+        {
+            length += heardQueue[i].Text.Length + 1;
+            if (length > MaximumMessage && batch.Count > 0) break;
+            batch.Insert(0, heardQueue[i]);
+        }
+        foreach (var skipped in heardQueue.Take(heardQueue.Count - batch.Count)) skipped.Bubble.AddNote("Not answered.");
+        heardQueue.Clear();
+        try
+        {
+            owned = controller.Start(string.Join(" ", batch.Select(entry => entry.Text)), Voice, microphone: false, approved: true,
+                spoken: true, heard: batch[^1].Voices, confidence: batch.Min(entry => entry.Confidence));
+            answering = batch;
+            yielded = null;
+            Observe();
+            return true;
+        }
+        catch (LiveActionException error) when (error.Code == "conversation.ownership_busy")
+        {
+            heardQueue.InsertRange(0, batch);
+            return false;
+        }
+        catch (LiveActionException error) { notice = Remedy(error.Code); }
+        catch (ContractException) { notice = Remedy("conversation.invalid_input"); }
+        batch[^1].Bubble.AddNote("Not answered.");
+        return false;
+    }
+
+    private const int MaximumMessage = 4096;
+    private static readonly HashSet<string> Continuations = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "and", "but", "or", "so", "because", "cause", "um", "uh", "er", "erm", "like", "the", "a", "an", "to", "of", "with",
+        "if", "then", "that", "which", "my", "your", "is", "was", "for", "in", "on", "at"
+    };
+
+    /// <summary>What you said sounds unfinished: it trails off with a comma, dash or ellipsis, or ends on a word like "and" or "um".</summary>
+    internal static bool Unfinished(string text)
+    {
+        var trimmed = text.TrimEnd();
+        if (trimmed.Length == 0 || trimmed.EndsWith('?') || trimmed.EndsWith('!')) return false;
+        if (trimmed.EndsWith(',') || trimmed.EndsWith('…') || trimmed.EndsWith("...", StringComparison.Ordinal) ||
+            trimmed.EndsWith('-') || trimmed.EndsWith('\u2014') || trimmed.EndsWith(':')) return true;
+        var last = trimmed.TrimEnd('.', '"', '\'').Split(' ', StringSplitOptions.RemoveEmptyEntries).LastOrDefault();
+        return last is not null && Continuations.Contains(last);
+    }
+
+    // Once per finished turn: the last of its text and what to tell you. Listening carries on whatever happened.
     private void Finished(LiveConversationOperation done)
     {
         Observe(done);
         var status = done.Status;
         var code = status.Code;
+        var continued = code == "conversation.continued";
         if (ReferenceEquals(shown, done) && reply is not null)
         {
-            var refusal = done.Turn?.Content.Refusal?.Trim();
-            if (!string.IsNullOrEmpty(refusal) && reply.Text != refusal) reply.AddNote("Martlet then declined: " + refusal);
-            else if (done.Turn?.Snapshot.State is not (ConversationState.Completed or ConversationState.Refused)) reply.AddNote("Cut short.");
-            else if (done.Turn?.Snapshot.SpeechLimitReached == true) reply.AddNote("Only the start was said aloud.");
+            // A reply restarted because you kept talking is replaced by the next one, unless you already heard some of it.
+            if (continued && done.Turn?.Snapshot.MayHavePlayed != true)
+            {
+                Messages.Remove(reply);
+                if (ReferenceEquals(lastReply, reply)) lastReply = null;
+                reply = null;
+            }
+            else
+            {
+                var refusal = done.Turn?.Content.Refusal?.Trim();
+                if (!string.IsNullOrEmpty(refusal) && reply.Text != refusal) reply.AddNote("Martlet then declined: " + refusal);
+                else if (done.Turn?.Snapshot.State is not (ConversationState.Completed or ConversationState.Refused)) reply.AddNote("Cut short.");
+                else if (done.Turn?.Snapshot.SpeechLimitReached == true) reply.AddNote("Only the start was said aloud.");
+            }
         }
-        if (done.HandsFree)
+        if (done.Spoken && !continued)
         {
-            listenNote = done.SpeakerCheck is { Verdict: not SpeakerVerdict.User } check && done.Voiceprint is { } print
-                ? VoiceIdentity.Describe(check, print.Threshold) : null;
-            var keepGoing = !status.Quarantined && (code is "mic.no_speech" or "speaker.not_user" or "speaker.too_short" or "stt.NoSpeech" or
-                "runtime.Completed" or "runtime.Refused" or "commentary.glance" or "conversation.typing" ||
-                code.StartsWith("policy.", StringComparison.Ordinal));
-            if (!keepGoing) listening = false;
+            if (done.Passed) answering?[^1].Bubble.AddNote("Martlet stayed quiet.");
+            answering = null;
+            restarts = 0;
         }
-        notice = Outcome(done) ?? (code == "runtime.Completed" ? null : notice);
+        notice = Outcome(done) ?? (code is "runtime.Completed" or "listen.passed" ? null : notice);
     }
 
     private static string? Outcome(LiveConversationOperation done)
@@ -386,9 +602,10 @@ public partial class LiveConversationWindow : ThemedWindow
         return status.Code switch
         {
             "runtime.Completed" or "commentary.glance" or "conversation.typing" or "conversation.listening_paused" or
-                "commentary.interrupted" or "conversation.interrupted" or "conversation.closed" or "mic.no_speech" => null,
+                "commentary.interrupted" or "conversation.interrupted" or "conversation.closed" or "mic.no_speech" or
+                "listen.passed" or "conversation.continued" => null,
             "speaker.not_user" or "speaker.too_short" or "stt.NoSpeech" when done.HandsFree => null,
-            var code when code.StartsWith("policy.", StringComparison.Ordinal) && done.HandsFree => null,
+            var code when code.StartsWith("policy.", StringComparison.Ordinal) && (done.HandsFree || done.Spoken) => null,
             var code => Remedy(code)
         };
     }
@@ -512,12 +729,12 @@ public partial class LiveConversationWindow : ThemedWindow
         {
             listening = false;
             listenPaused = true;
-            if (owned is { OwnershipReleased: false } live && IsIdleListen(live))
-                controller.Stop(live, "conversation.listening_paused", keepContext: true);
+            StopListening(keepHeard: true);
         }
         else
         {
             listenPaused = false;
+            listenRetryAt = 0;
             if (MicrophoneUsable) listening = true;
             else notice = ListeningProblem();
         }
@@ -569,6 +786,9 @@ public partial class LiveConversationWindow : ThemedWindow
         listenNote = null;
         if (listening) listenPaused = true;
         listening = false;
+        StopListening(keepHeard: false);
+        answering = null;
+        restarts = 0;
         if (watching)
         {
             watchPaused = true;
@@ -586,6 +806,7 @@ public partial class LiveConversationWindow : ThemedWindow
     private void Observe()
     {
         if (owned is { } operation) Observe(operation);
+        if (!closed) LevelMeter.Value = listener is { } live ? Math.Clamp((live.VoiceLevel + 60) / 50, 0, 1) : 0;
     }
 
     private void Observe(LiveConversationOperation operation)
@@ -605,9 +826,10 @@ public partial class LiveConversationWindow : ThemedWindow
         var content = operation.Turn?.Content;
         var text = content?.Text?.Trim() ?? "";
         var refusal = content?.Refusal?.Trim() ?? "";
+        // A reply to what always listening heard may be [pass]: nothing is shown until it clearly isn't.
+        if (operation.Spoken && LiveConversationController.MaybeSilent(text)) text = "";
         if (reply is null && (text.Length > 0 || refusal.Length > 0)) reply = lastReply = Add(ChatRole.Martlet, "", "Martlet");
         if (reply is not null) reply.Text = text.Length > 0 ? text : refusal;
-        LevelMeter.Value = operation.HandsFree && !operation.Status.Finished ? Math.Clamp((operation.VoiceLevel + 60) / 50, 0, 1) : 0;
         var snapshot = operation.Turn?.Snapshot;
         if (Support is { } support)
             supportProjection.Observe(support, new(operation.Id, snapshot?.TurnId, operation.Status,
@@ -634,10 +856,14 @@ public partial class LiveConversationWindow : ThemedWindow
         // Always listening shows its state here; when listening can't start, the button says why.
         MicChip.Visibility = available && preferences.HandsFree ? Visibility.Visible : Visibility.Collapsed;
         var micUsable = MicrophoneUsable;
+        var micDown = listening && micProblem is not null;
         MicChip.IsEnabled = true;
-        MicText.Text = listening ? "Listening" : micUsable ? "Listening paused" : "Can't listen";
-        MicDot.SetResourceReference(Shape.FillProperty, listening ? "SuccessBrush" : micUsable ? "MutedBrush" : "WarningBrush");
-        MicChip.ToolTip = listening ? "Martlet hears you whenever you speak. Click to pause listening."
+        MicText.Text = micDown ? "Mic unavailable" : listening ? "Listening" : micUsable ? "Listening paused" : "Can't listen";
+        MicDot.SetResourceReference(Shape.FillProperty, micDown ? "WarningBrush" : listening ? "SuccessBrush" : micUsable ? "MutedBrush" : "WarningBrush");
+        MicChip.ToolTip = micDown ? $"{micProblem} Martlet tries the microphone again every few seconds. Click to pause listening."
+            : listening ? (listener is { Held: true }
+                ? "Not listening while Martlet speaks, so it never hears itself; it listens again right after. Click to pause listening."
+                : "Martlet hears you whenever you speak, even while it thinks, and decides when to answer. Click to pause listening.")
             : micUsable ? "Click to listen again." : ListeningProblem();
         AutomationProperties.SetName(MicChip, MicText.Text + ". " + MicChip.ToolTip);
 
@@ -681,18 +907,22 @@ public partial class LiveConversationWindow : ThemedWindow
         if (loading is not null || !ready && notice is null) return "Getting ready…";
         if (locked) return "Windows is locked.";
         if (pendingText is not null) return "Sending…";
+        if (listener is { Hearing: true })
+            return owned is { OwnershipReleased: false, Spoken: true } ? "Hearing you… Martlet waits until you're done." : "Hearing you… pause when you're done.";
         if (owned is { OwnershipReleased: false } live && !live.Status.Finished)
         {
-            if (live.HandsFree) return ListeningMessage(live) ?? Idle();
             if (live.Authorization.Microphone && live.Transcription is null)
                 return mouseHeld || keyHeld || Recording ? "Recording… release to send." : "Transcribing…";
             return live.Status.Code == "home.asking" ? "Checking with Home Assistant…" : Replying(live);
         }
+        if (listener is { Transcribing: > 0 }) return "Got it. Transcribing…";
+        if (heardQueue.Count > 0) return "Listening for the rest…";
         if (commentary is { OwnershipReleased: false }) return "Martlet is taking a look…";
         return Idle();
     }
 
-    private string Idle() => !Available ? "" : LocalModelNote(true) ?? (listening ? "Listening. Just talk, or type below." + (listenNote is null ? "" : " " + listenNote)
+    private string Idle() => !Available ? "" : LocalModelNote(true) ?? (listening && micProblem is not null ? "Type below; Martlet keeps trying the microphone."
+        : listening ? "Listening. Just talk, or type below." + (listenNote is null ? "" : " " + listenNote)
         : !preferences.HandsFree && MicrophoneUsable ? "Type below, or hold the talk button to speak." : "Type a message below.");
 
     private string Replying(LiveConversationOperation live)
@@ -702,19 +932,9 @@ public partial class LiveConversationWindow : ThemedWindow
         if (snapshot?.ActiveTool is { } tool)
             return controller.Tools?.PendingApproval is { Answer.IsCompleted: false } ask
                 ? $"May Martlet use {ask.Tool}? Answer above the message box." : $"Using {tool}…";
-        return snapshot?.State == ConversationState.Playing ? "Martlet is speaking. Esc stops it." : LocalModelNote(false) ?? "Martlet is thinking…";
+        return snapshot?.State == ConversationState.Playing ? "Martlet is speaking. Esc stops it." : LocalModelNote(false) ??
+            (live.Spoken ? "Martlet is thinking… keep talking if you're not done." : "Martlet is thinking…");
     }
-
-    private string? ListeningMessage(LiveConversationOperation live) => live.Status.Code switch
-    {
-        "mic.hearing_speech" => "Hearing you… pause when you're done.",
-        "speaker.checking" => "Checking it's you…",
-        "speaker.verified" or "mic.transferred_and_cleared" or "stt.uploading" or "voices.recognized" => "Got it. Transcribing…",
-        "home.asking" => "Checking with Home Assistant…",
-        "tools.preparing" => Replying(live),
-        var code when code.StartsWith("runtime.", StringComparison.Ordinal) => Replying(live),
-        _ => null
-    };
 
     // ---------- vision ----------
 
@@ -774,17 +994,15 @@ public partial class LiveConversationWindow : ThemedWindow
             HandleCommentary(done);
             if (!watching) return;
         }
-        // Anything but an idle listen means you and Martlet are talking right now.
-        if (owned is { OwnershipReleased: false } live && !IsIdleListen(live)) pacer.NoteConversation();
+        // A reply in progress, someone talking or something heard that waits for a reply means you and Martlet are talking.
+        if (Conversing) pacer.NoteConversation();
         if (glancing || clock.GetTimestamp() < nextGlance) return;
         nextGlance = clock.GetTimestamp() + (long)(ScreenCommentaryPacer.Tick.TotalSeconds * clock.TimestampFrequency);
         GlanceAsync().Forget();
     }
 
-    // A hands-free listen that has not heard anyone yet (including the moment it re-arms).
-    private static bool IsIdleListen(LiveConversationOperation operation) =>
-        operation.HandsFree && operation.Turn is null && operation.Transcription is null &&
-        operation.Status.Code is "conversation.authorizing" or "mic.listening" or "mic.no_speech" or "commentary.glance";
+    private bool Conversing => owned is { OwnershipReleased: false } || heardQueue.Count > 0 ||
+        listener is { Hearing: true } or { Transcribing: > 0 };
 
     private async Task GlanceAsync()
     {
@@ -828,8 +1046,7 @@ public partial class LiveConversationWindow : ThemedWindow
             pacer.ObserveFrame(frame.Change);
             pendingFrame?.Clear();
             pendingFrame = frame;
-            var idleListen = owned is { OwnershipReleased: false } live && IsIdleListen(live);
-            var busy = commentary is { OwnershipReleased: false } || pendingText is not null || operations.IsRunning && !idleListen;
+            var busy = commentary is { OwnershipReleased: false } || pendingText is not null || operations.IsRunning || Conversing;
             // Keyboard/mouse idleness means "away" only for the screen; in front of a camera people often don't type at all.
             var verdict = pacer.Decide(busy, source.IsScreen ? glancer.UserIdle : TimeSpan.Zero);
             lookWanted = verdict == PacerVerdict.Look;
@@ -843,8 +1060,6 @@ public partial class LiveConversationWindow : ThemedWindow
             };
             if (!lookWanted) return;
             if (!operations.IsRunning) TryStartCommentary();
-            // An idle listen (nobody speaking) briefly yields; listening re-arms right after the glance.
-            else if (idleListen && listening) controller.Stop(owned!, "commentary.glance", keepContext: true);
         }
         finally
         {
@@ -956,6 +1171,8 @@ public partial class LiveConversationWindow : ThemedWindow
                 pendingText = null;
                 pendingMessage = null;
                 listening = false;
+                StopListening(keepHeard: false);
+                answering = null;
                 if (watching) StopWatching(null);
                 if (Messages.Count > 0) AddNote("Windows was locked, so Martlet stopped listening and looking and started a fresh conversation.");
             }

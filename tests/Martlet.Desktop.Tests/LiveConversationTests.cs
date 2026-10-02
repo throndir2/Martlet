@@ -217,10 +217,15 @@ public sealed class LiveConversationTests
             Assert.Equal(1, fixture.Stt.Calls);
             Assert.Equal(1, fixture.Llm.Calls);
             Assert.Equal(0, fixture.Tts.Calls);
-            // Listening re-arms after the reply; Esc pauses it and the mic button shows that.
-            await fixture.Advance(() => window.Current is { OwnershipReleased: false, HandsFree: true } && window.Current.Transcription is null);
+            // What always listening hears goes to the model, which may answer [pass] to stay quiet.
+            Assert.Contains("[pass]", Encoding.UTF8.GetString(fixture.Llm.Body));
+            // Listening ran beside the reply and goes on; Esc pauses it and the mic button shows that.
+            var live = Assert.IsType<LiveListener>(window.Listener);
+            Assert.True(live.Running);
+            Assert.Equal("Listening", Control<TextBlock>(window, "MicText").Text);
             Escape(window, "InputText");
-            await fixture.Advance(() => !fixture.Runner.IsRunning);
+            await fixture.Advance(() => !live.Running && !fixture.Runner.IsRunning);
+            Assert.Null(window.Listener);
             Assert.Equal("Listening paused", Control<TextBlock>(window, "MicText").Text);
             await Heartbeat();
             Assert.False(fixture.Runner.IsRunning);
@@ -228,6 +233,84 @@ public sealed class LiveConversationTests
         }
         finally { window.Close(); }
     });
+
+    [Fact]
+    public Task ListeningCarriesOnAfterAFailedReplyAndTheModelMayStayQuiet() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        var calls = 0;
+        fixture.Llm.Respond = (_, _) => Task.FromResult(Interlocked.Increment(ref calls) == 1
+            ? ProviderFixtures.Json("{}", 500) : TextRecordingHandler.Sse(Harness.Trace("[pass]")));
+        EnqueueUtterance(fixture.Capture, quietBefore: 5, speech: 25, quietAfter: 15);
+        var window = fixture.Open(new TalkPreferences(SpeakReplies: false));
+        try
+        {
+            await Loaded(window);
+            await fixture.Advance(() => fixture.Llm.Calls == 1 && window.Current is { OwnershipReleased: true } &&
+                Text(window, "ResultText").Contains("Couldn't reach the provider", StringComparison.Ordinal));
+            // A failed reply never pauses listening.
+            Assert.Equal("Listening", Control<TextBlock>(window, "MicText").Text);
+            Assert.True(window.Listener is { Running: true });
+
+            EnqueueUtterance(fixture.Capture, quietBefore: 5, speech: 25, quietAfter: 15);
+            await fixture.Advance(() => fixture.Llm.Calls == 2 && window.Current is { OwnershipReleased: true, Passed: true } &&
+                window.Messages.Any(m => m.Note == "Martlet stayed quiet."));
+            Assert.Equal(2, fixture.Stt.Calls);
+            Assert.Equal(2, window.Messages.Count(m => m.IsUser));
+            // [pass] is never shown or spoken.
+            Assert.DoesNotContain(window.Messages, m => m.Role == ChatRole.Martlet);
+            Assert.Equal("Listening", Control<TextBlock>(window, "MicText").Text);
+            Assert.True(window.Listener is { Running: true });
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
+    public Task TalkingOnBeforeMartletAnswersRestartsTheReplyWithEverythingSaid() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        var transcripts = new ConcurrentQueue<string>(["Getting there.", "What do you think?"]);
+        fixture.Stt.Respond = (_, _) => Task.FromResult(ProviderFixtures.Json(
+            JsonSerializer.Serialize(new { text = transcripts.TryDequeue(out var next) ? next : "Again." })));
+        var bodies = new ConcurrentQueue<string>();
+        fixture.Llm.Respond = async (_, token) =>
+        {
+            bodies.Enqueue(Encoding.UTF8.GetString(fixture.Llm.Body));
+            if (bodies.Count == 1)
+            {
+                // Still thinking when you carry on talking: this reply is dropped and asked again with both utterances.
+                EnqueueUtterance(fixture.Capture, quietBefore: 3, speech: 25, quietAfter: 15);
+                await Task.Delay(Timeout.Infinite, token);
+            }
+            return TextRecordingHandler.Sse(Harness.Trace("Got all of it."));
+        };
+        EnqueueUtterance(fixture.Capture, quietBefore: 5, speech: 25, quietAfter: 15);
+        var window = fixture.Open(new TalkPreferences(SpeakReplies: false));
+        try
+        {
+            await Loaded(window);
+            await fixture.Advance(() => window.Messages.Any(m => m.Role == ChatRole.Martlet && m.Text == "Got all of it."));
+            Assert.Equal(2, fixture.Stt.Calls);
+            Assert.Equal(2, fixture.Llm.Calls);
+            Assert.Contains("Getting there. What do you think?", bodies.Last(), StringComparison.Ordinal);
+            Assert.Equal(["Getting there.", "What do you think?"], window.Messages.Where(m => m.IsUser).Select(m => m.Text));
+            // The dropped reply left nothing behind; the one answer covers both.
+            Assert.Single(window.Messages, m => m.Role == ChatRole.Martlet);
+            Assert.True(window.Listener is { Running: true });
+        }
+        finally { window.Close(); }
+    });
+
+    [Theory]
+    [InlineData("So I was thinking, um", true)]
+    [InlineData("I went to the store and", true)]
+    [InlineData("Wait,", true)]
+    [InlineData("Well...", true)]
+    [InlineData("What do you think?", false)]
+    [InlineData("Getting there.", false)]
+    [InlineData("What", false)]
+    public void UnfinishedSpeechWaitsAMomentLonger(string text, bool unfinished) =>
+        Assert.Equal(unfinished, LiveConversationWindow.Unfinished(text));
 
     [Fact]
     public async Task MemoryOnRecallsBestMatchesThenNewestFactsAsLabeledBackground()
