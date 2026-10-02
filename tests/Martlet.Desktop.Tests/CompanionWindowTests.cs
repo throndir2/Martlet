@@ -189,6 +189,92 @@ public sealed class CompanionWindowTests
         }
     });
 
+    [Fact]
+    public Task CharacterCardKeywordLoreBecomesAPersonaLorebookOnSave() => OnDispatcher(async () =>
+    {
+        using var scope = new Scope();
+        var store = new SettingsStore(scope.Data);
+        Assert.True((await store.SaveAsync(CompanionSettings.Begin(null), null)).Saved);
+        Directory.CreateDirectory(scope.Root);
+        var card = Path.Combine(scope.Root, "aria.json");
+        await File.WriteAllTextAsync(card, """
+            {"spec":"chara_card_v2","data":{"name":"Aria","description":"A bard.","character_book":{"entries":[
+              {"keys":[],"content":"Always lore.","enabled":true,"constant":true},
+              {"keys":["inn"],"content":"The inn is the Gilded Goose.","enabled":true}]}}}
+            """);
+        var lore = new Martlet.Core.Lorebooks.LorebookStore(scope.Data);
+        var runner = new SetupOperationRunner();
+        var window = new CompanionWindow(new CompanionSettingsService(store), runner, chooseCard: () => card, lorebooks: lore)
+        {
+            ShowActivated = false,
+            ShowInTaskbar = false
+        };
+        window.Show();
+        try
+        {
+            await Until(() => Field<StackPanel>(window, "EditorPanel").IsEnabled);
+            Click(window, "CompanionCardNew");
+            await Until(() => !runner.IsRunning && Field<TextBox>(window, "PersonaName").Text == "Aria");
+            Assert.Contains("Aria lore", Field<TextBox>(window, "ResultText").Text);
+            Click(window, "CompanionSave");
+            await Until(() => !runner.IsRunning && Field<TextBox>(window, "ResultText").Text.Contains("is saved and used with its persona"));
+
+            var aria = (await store.LoadAsync()).Settings!.Companion!.Personas.Single(persona => persona.Name == "Aria");
+            var book = Assert.Single((await lore.LoadAsync()).Library.Books);
+            Assert.Equal(("Aria lore", Martlet.Core.Lorebooks.LorebookActivation.SelectedPersonas, aria.Id),
+                (book.Name, book.Activation, Assert.Single(book.PersonaIds)));
+            Assert.Equal("The inn is the Gilded Goose.", Assert.Single(book.Entries).Content);
+        }
+        finally
+        {
+            window.Close();
+            await Until(() => !runner.IsRunning);
+        }
+    });
+
+    [Fact]
+    public Task LorebookWindowImportsTestsEditsAndSaves() => OnDispatcher(async () =>
+    {
+        using var scope = new Scope();
+        Directory.CreateDirectory(scope.Root);
+        var file = Path.Combine(scope.Root, "world.json");
+        await File.WriteAllTextAsync(file, """
+            {"entries":{"0":{"uid":0,"key":["castle"],"comment":"Castle","content":"The castle belongs to Queen Mab.","order":10},
+                        "1":{"uid":1,"key":["Mab"],"comment":"Mab","content":"Mab rules the fae.","order":20}}}
+            """);
+        var lore = new Martlet.Core.Lorebooks.LorebookStore(scope.Data);
+        var window = new LorebookWindow(lore, CompanionSettings.Begin(null).Companion)
+        {
+            ChooseImport = () => file,
+            ShowActivated = false,
+            ShowInTaskbar = false
+        };
+        window.Show();
+        try
+        {
+            await Until(() => Field<StackPanel>(window, "EditorRoot").IsEnabled);
+            Click(window, "LorebookImport");
+            await Until(() => Field<TextBox>(window, "ResultText").Text.StartsWith("Imported \"world\"", StringComparison.Ordinal));
+
+            Field<TextBox>(window, "TestInput").Text = "Can we visit the castle?";
+            Click(window, "LorebookTest");
+            var tested = Field<TextBox>(window, "TestResult").Text;
+            Assert.Contains("2 entries would be added", tested);
+            Assert.Contains("Mab rules the fae.", tested);
+
+            Assert.Equal("Castle", Field<TextBox>(window, "EntryTitle").Text);
+            Field<TextBox>(window, "EntryContent").Text = "The castle is empty now.";
+            Click(window, "LorebookSave");
+            await Until(() => Field<TextBox>(window, "ResultText").Text.StartsWith("Lorebooks saved", StringComparison.Ordinal));
+            var saved = Assert.Single((await lore.LoadAsync()).Library.Books);
+            Assert.Equal(("world", "The castle is empty now."), (saved.Name, saved.Entries[0].Content));
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
     private static T Field<T>(Window window, string name) where T : FrameworkElement =>
         Assert.IsType<T>(window.FindName(name));
 

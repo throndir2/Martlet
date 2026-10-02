@@ -271,15 +271,17 @@ The conversation window puts the chat first:
        hide, choose and customize, reset).
     6. *Personality*: the active persona and its style mix, *Edit
        personality*, and *Import a character card*.
-    7. *Memory*: whether memory is on, and *Manage memory* for its facts.
+    7. *Lorebook*: how many lorebooks are on for the active persona, each
+       lorebook with *Turn on/off*, *Edit lorebooks* and *Import a lorebook*
+       (see [Lorebooks](LOREBOOKS.md)).
+    8. *Memory*: whether memory is on, and *Manage memory* for its facts.
   - **What it does**: how it answers and acts (generation settings, tools,
     smart home). The group appears once it has a page.
 
   A page gets its own entry only if it has its own **Where it runs** choice,
   its own consent or data destination, or its own list to edit; anything else
   is a card on an existing page. Planned pages and their groups: *Vision* (how
-  it works), *Lorebook* (who it is), *Replies*, *Tools* and *Smart home* (what
-  it does).
+  it works), *Replies*, *Tools* and *Smart home* (what it does).
 
   Every page starts with **Now**: what it uses and any problem stopping it.
   Cards appear only when they apply to the chosen place: the Voice Library

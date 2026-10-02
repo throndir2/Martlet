@@ -18,6 +18,7 @@ like a broken connection.
 | Requirement | User-facing outcome | Current boundary |
 | --- | --- | --- |
 | R19: Editable personas | Edit persona text, save several named profiles, import a replacement text file, or bring in a SillyTavern/Chub character card | **V05a/V05b implemented internally:** local named profiles, UTF-8 import/export, character card import (PNG/JSON/CHARX, V1-V3) and weights persist; fresh explicit turns use the fixed selected revision |
+| R19b: Lorebooks | SillyTavern-style World Info: keyword-triggered lore entries added to a reply, imported from SillyTavern or character cards | **Implemented:** local lorebooks with persona scope, keyword/regex/secondary-key activation, always-on entries, budget, recursion, SillyTavern import/export and a local test; see [Lorebooks](LOREBOOKS.md) |
 | R20: Replaceable F5 voice | Select or replace reference audio and its matching transcript, then apply or preview the new voice | No app-integrated F5 worker or reference-voice picker; installing upstream F5 alone does not integrate it |
 | R21: Replaceable LLM and VLM | Independently select compatible models from settings, without rebuilding Martlet | V02c exposes exact compatible LLM catalog choices and validates fresh route consent; no Desktop VLM route yet |
 | R22: Listen-first participation | Collect bounded recent context and decide whether/when a reply is useful instead of answering every utterance | Explicit completed turns now supply bounded ephemeral context; automatic listening/observation collection remains unavailable |
@@ -86,8 +87,9 @@ example dialogue and greeting. `{{char}}`/`<BOT>` become the character's name,
 removed. Text must fit the per-persona and combined limits above: sections are
 kept by priority (description, personality, scenario, system prompt, then the
 rest) and the result names any section shortened or left out. Creator notes,
-tags, assets, extensions and keyword-triggered lorebook entries are not used;
-Martlet has no lorebook, so the import reports how many entries it skipped.
+tags, assets and extensions are not used. The card's keyword-triggered lorebook
+entries go to a [lorebook](LOREBOOKS.md) named after the card and used only
+with that persona; it is saved together with the persona.
 
 Save is atomic. Apply while busy requires stopping the current turn and waiting
 for owned cleanup; otherwise apply when idle. The next fresh authorized turn

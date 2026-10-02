@@ -244,6 +244,7 @@ public partial class MainWindow : ThemedWindow
     {
         if (companionService is null || closing || saving || model?.IsRunning == true) return;
         new CompanionWindow(companionService, setupOperations, importCardOnOpen: importCard, lorebooks: lorebooks) { Owner = this }.ShowDialog();
+        homeLore = null;
         await RefreshAsync();
     }
 
@@ -251,7 +252,9 @@ public partial class MainWindow : ThemedWindow
     {
         if (lorebooks is null || closing || saving || model?.IsRunning == true) return;
         new LorebookWindow(lorebooks, homeSettings?.Companion, importOnOpen: import) { Owner = this }.ShowDialog();
+        homeLore = null;
         await RefreshAsync();
+        if (!closing && openTab == CompanionTab.Lorebook) RenderTab();
     }
 
     private async void Memory_Click(object sender, RoutedEventArgs e)

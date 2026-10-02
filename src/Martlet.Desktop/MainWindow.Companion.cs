@@ -20,7 +20,7 @@ namespace Martlet.Desktop;
 /// <summary>The Companion page's pages: the one place each choice that shapes Martlet is made, listed by group in a side list.
 /// Home and Devices link here. A new page adds its value here (in list order) and one arm each in GroupOf, TabTitle, TabGlyph,
 /// TabIntro and RenderTab.</summary>
-internal enum CompanionTab { Thinking, Voice, Listening, LipSync, Character, Personality, Memory }
+internal enum CompanionTab { Thinking, Voice, Listening, LipSync, Character, Personality, Lorebook, Memory }
 
 /// <summary>The side list's groups, in order: how it works (where each job runs), who it is (look, personality, what it knows)
 /// and what it does (how it answers and acts). A group with no pages yet is not shown.</summary>
@@ -31,7 +31,7 @@ internal enum CompanionGroup { HowItWorks, WhoItIs, WhatItDoes }
 internal sealed record LocalChatModel(string Id, string Size, string Fits, double MinimumVramGb);
 
 /// <summary>The Companion page: a side list of pages in groups (How it works: Thinking, Voice, Listening, Lip-sync; Who it is:
-/// Character, Personality, Memory). Each job page asks where the job runs (this PC by default, another of your computers, or a
+/// Character, Personality, Lorebook, Memory). Each job page asks where the job runs (this PC by default, another of your computers, or a
 /// cloud provider; voice loudness for lip-sync) and shows only that place's fields, including the API key for a cloud provider.
 /// Everything saves through the same setup service, consent and credential rules as Setup.</summary>
 public partial class MainWindow
@@ -98,7 +98,7 @@ public partial class MainWindow
     private static CompanionGroup GroupOf(CompanionTab section) => section switch
     {
         CompanionTab.Thinking or CompanionTab.Voice or CompanionTab.Listening or CompanionTab.LipSync => CompanionGroup.HowItWorks,
-        CompanionTab.Character or CompanionTab.Personality or CompanionTab.Memory => CompanionGroup.WhoItIs,
+        CompanionTab.Character or CompanionTab.Personality or CompanionTab.Lorebook or CompanionTab.Memory => CompanionGroup.WhoItIs,
         _ => CompanionGroup.WhatItDoes
     };
 
@@ -117,6 +117,7 @@ public partial class MainWindow
         CompanionTab.LipSync => "Lip-sync",
         CompanionTab.Character => "Character",
         CompanionTab.Personality => "Personality",
+        CompanionTab.Lorebook => "Lorebook",
         CompanionTab.Memory => "Memory",
         _ => section.ToString()
     };
@@ -130,6 +131,7 @@ public partial class MainWindow
         CompanionTab.LipSync => "\uE8BD",
         CompanionTab.Character => "\uE77B",
         CompanionTab.Personality => "\uE76E",
+        CompanionTab.Lorebook => "\uE736",
         CompanionTab.Memory => "\uE8F1",
         _ => "\uE76E"
     };
@@ -147,6 +149,8 @@ public partial class MainWindow
         CompanionTab.Character => "What Martlet looks like: the character on your desktop, its model, size, position and motion.",
         CompanionTab.Personality => "Who Martlet is: its personas and how helpful, sarcastic, silly or playful it is, including characters " +
             "from SillyTavern or Chub character cards.",
+        CompanionTab.Lorebook => "What Martlet knows about its world: lore entries that are added to a reply when their keywords come up, " +
+            "like SillyTavern's World Info. Import SillyTavern lorebooks or the lorebook inside a character card.",
         CompanionTab.Memory => "Facts Martlet remembers about you between conversations.",
         _ => ""
     };
@@ -287,6 +291,7 @@ public partial class MainWindow
             case CompanionTab.LipSync: RenderLipSyncTab(body); break;
             case CompanionTab.Character: RenderCharacterTab(body); break;
             case CompanionTab.Personality: RenderPersonalityTab(body); break;
+            case CompanionTab.Lorebook: RenderLorebookTab(body); break;
             case CompanionTab.Memory: RenderMemoryTab(body); break;
             default: throw new UnreachableException($"The Companion page {section} has no content.");
         }
