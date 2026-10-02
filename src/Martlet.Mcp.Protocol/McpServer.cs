@@ -122,7 +122,25 @@ internal sealed class McpServer(DesktopAutomation desktop)
             server = new { type = "object" },
             name = new { type = "string", maxLength = 64 },
             values = new { type = "object", additionalProperties = new { type = "string", maxLength = 4096 } }
-        }, ["server"])
+        }, ["server"]),
+        Tool("home_assistant_probe", "Check one Home Assistant address the way Companion > Smart home does before setting it up: " +
+            "whether it answers like Home Assistant and how far its first-run setup got (owner account, regional settings, analytics, " +
+            "integration step; GET /api/onboarding, which needs no sign-in). Sends no token or password and changes nothing.", new
+        {
+            address = new { type = "string", maxLength = 512 }
+        }, ["address"]),
+        Tool("home_assistant_find", "Ask the local network for Home Assistant the way Smart home's Find on my network does: one " +
+            "multicast DNS question for _home-assistant._tcp.local on each local network, listing every Home Assistant that answers " +
+            "(name, address, version). Sends nothing else and changes nothing.", new
+        {
+            seconds = new { type = "number", minimum = 1, maximum = 10 }
+        }),
+        Tool("smart_home_status", "Read Companion > Smart home's saved connection from a data directory: the Home Assistant address, " +
+            "name and version, whether a token is saved (never the token), the control, locks and flexible-request settings, and whether " +
+            "the connection is shared through the paired hosts (shared revision, which host it came from). Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        })
     ];
 
     private static object Tool(string name, string description, object properties, string[]? required = null) =>
@@ -206,6 +224,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "node_link_check" => await NodeLinkCheckAsync(cancellation),
                 "mcp_servers_status" => McpServersStatus(arguments),
                 "mcp_directory_plan" => McpDirectoryPlan(arguments),
+                "home_assistant_probe" => await HomeAssistantProbeAsync(arguments, cancellation),
+                "home_assistant_find" => await HomeAssistantFindAsync(arguments, cancellation),
+                "smart_home_status" => SmartHomeStatus(arguments),
                 _ => throw new ArgumentException($"Unknown tool '{name}'.")
             };
             return new { content = new[] { new { type = "text", text = JsonSerializer.Serialize(result) } } };
@@ -603,6 +624,69 @@ internal sealed class McpServer(DesktopAutomation desktop)
             }
         }
         return new { share = choice switch { "off" => "off", null => "on (default)", _ => "on" }, port = 9444, hosts };
+    }
+
+    /// <summary>One Home Assistant's first-run state (no sign-in needed), as Smart home checks it before offering Set up.</summary>
+    private static async Task<object> HomeAssistantProbeAsync(JsonElement arguments, CancellationToken cancellation)
+    {
+        Uri address;
+        try { address = Martlet.Home.HomeAssistantEndpoint.Normalize(RequiredString(arguments, "address")); }
+        catch (Martlet.Home.HomeAssistantException error) { throw new ArgumentException(error.Message); }
+        using var client = new Martlet.Home.HomeAssistantClient();
+        try
+        {
+            var state = await client.OnboardingAsync(address, cancellation);
+            return new
+            {
+                address = Martlet.Home.HomeAssistantEndpoint.Display(address), homeAssistant = true,
+                onboarding = new { owner = state.Owner, coreConfig = state.CoreConfig, analytics = state.Analytics, integration = state.Integration, done = state.Done },
+                next = state.NeedsOwner ? "Set up (Martlet can create its owner account)" : "Sign in with Home Assistant"
+            };
+        }
+        catch (Martlet.Home.HomeAssistantException error)
+        {
+            return new { address = Martlet.Home.HomeAssistantEndpoint.Display(address), homeAssistant = false, failure = error.Failure.ToString(), problem = error.Message };
+        }
+    }
+
+    private static async Task<object> HomeAssistantFindAsync(JsonElement arguments, CancellationToken cancellation)
+    {
+        var seconds = arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty("seconds", out var value) &&
+            value.ValueKind == JsonValueKind.Number ? Math.Clamp(value.GetDouble(), 1, 10) : 2.5;
+        var found = await Martlet.Home.HomeAssistantDiscovery.FindAsync(TimeSpan.FromSeconds(seconds), cancellation);
+        return new
+        {
+            service = Martlet.Home.HomeAssistantDiscovery.ServiceType, listenedSeconds = seconds, count = found.Count,
+            found = found.Select(f => new { name = f.Name, address = Martlet.Home.HomeAssistantEndpoint.Display(f.Address), version = f.Version })
+        };
+    }
+
+    /// <summary>smart-home.json in a data directory (the file name and fields match Martlet.Desktop's HomePreferences). The
+    /// token lives in Windows Credential Manager and is never read here.</summary>
+    private static object SmartHomeStatus(JsonElement arguments)
+    {
+        var path = Path.Combine(DataDirectory(arguments), "smart-home.json");
+        if (!File.Exists(path)) return new { state = "none", connected = false };
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllBytes(path));
+            var root = document.RootElement;
+            string Text(string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? "" : "";
+            bool Flag(string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
+            var tokenSaved = root.TryGetProperty("CredentialId", out var id) && id.ValueKind == JsonValueKind.String &&
+                Guid.TryParse(id.GetString(), out var guid) && guid != Guid.Empty;
+            return new
+            {
+                state = "loaded", connected = Text("Address").Length > 0 && tokenSaved, address = Text("Address"), name = Text("LocationName"),
+                version = Text("Version"), tokenSaved, control = Flag("Control"), allowSensitive = Flag("AllowSensitive"), modelTools = Flag("ModelTools"),
+                shared = Flag("FollowShare"), sharedBy = Text("SharedBy"),
+                sharedRevision = root.TryGetProperty("SharedRevision", out var revision) && revision.TryGetInt64(out var number) ? number : 0
+            };
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return new { state = "unreadable", problem = error.Message };
+        }
     }
 
     private static async Task<object> DoctorAsync(string[] args, JsonElement arguments, CancellationToken cancellation)

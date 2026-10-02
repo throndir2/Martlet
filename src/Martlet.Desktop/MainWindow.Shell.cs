@@ -1013,6 +1013,12 @@ public partial class MainWindow
     {
         var parts = argument?.Split('/') ?? [];
         if (parts.Length != 2 || FindHost(parts[0]) is not { } host) return;
+        if (parts[1] == HomeAssistantHosts.Role)
+        {
+            if (add) InstallHomeAssistantAsync(host).Forget();
+            else LaunchOnHost(host, HostAction.Remove(HomeAssistantHosts.Role));
+            return;
+        }
         var role = HostRoles.Get(parts[1]);
         if (add && CannotHand(host.HostId, role.Kind, role.Job) is { } cannot)
         {

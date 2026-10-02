@@ -28,7 +28,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "HostCommandSection", "PairCommandSection", "DeviceIdSection",
         // Martlet on your network: Find again only sends Martlet's own discovery query (port 9444) on the local network and
         // lists who answers; Stop asking only withdraws this PC's own request. Connect, Allow and Deny do the work.
-        "NearbyFind", "NearbyCancel"
+        "NearbyFind", "NearbyCancel",
+        // Smart home: Find on my network only sends one multicast DNS question for Home Assistant's service type and lists who
+        // answers; Not now only hides the setup form. Sign in, Set up, Connect, Share, Add, Install and Restart do the work.
+        "SmartHomeFind", "SmartHomeSetupCancel"
     };
     /// <summary>Choosing a Companion page in its side list only shows that page; Devices map nodes ("Node-this-pc",
     /// "Node-host:gpu-1") and the problem card's Show buttons only select a device and show its details; a job's
@@ -58,9 +61,20 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "McpDirectoryNeeds", "McpDirectoryInstalled", "McpDirectoryCantInstall",
         // Settings › Your other computers (whether Martlet here runs commands your other computers send, and what it last did)
         // and a paired host's How Martlet reaches it (the saved route in words, and what each route means).
-        "NodeAgentStatus", "HostReachNow", "HostReachHint"
+        "NodeAgentStatus", "HostReachNow", "HostReachHint",
+        // Companion › Smart home: the connection in words (address, name, version, whether it is shared; never the token),
+        // the typed address, Find's result line, the setup form's target and outcome (never the password fields), sharing,
+        // the flexible-requests state, the devices check and the Home Assistant summary (version, installation, integrations,
+        // last backup) or why it couldn't be read.
+        "SmartHomeStatus", "SmartHomeAddress", "SmartHomeFindStatus", "SmartHomeSetupTarget", "SmartHomeSetupStatus",
+        "SmartHomeShareState", "SmartHomeShareStatus", "SmartHomeToolsStatus", "SmartHomeDevicesStatus", "SmartHomeMqtt",
+        "SmartHomeManageStatus", "SmartHomeManageProblem"
     };
     /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)");
+    /// Smart home's found Home Assistants ("SmartHomeFound-0" reads "Home: http://192.168.1.20:8123 (Home Assistant 2026.9.4)"),
+    /// each paired host's Home Assistant line ("SmartHomeHost-gpu-pc" reads "gpu-pc: can run Home Assistant."), the devices
+    /// Home Assistant discovered ("SmartHomeDevice-0" reads "Philips Hue: Hue Bridge") and its waiting updates
+    /// ("SmartHomeUpdate-0" reads "Update: Home Assistant Core 2026.9.3 → 2026.9.4");
     /// Companion › Voice's included F5 voices ("F5VoiceRow-arctic-slt" reads "SLT (US female)", with "· in use" when it is);
     /// each home or host-dashboard step's detail line ("StepDetail-docker" says whether Docker Desktop runs, or why it can't start);
     /// the paired computers a job can be handed to ("HostChoice-speaking-gpu-pc" reads "gpu-pc: Runs F5 (f5tts-v1-base).")
@@ -70,7 +84,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// "21:04:11.532 WARN This PC · App: Host gpu-box stopped answering: ..."); the Martlet desktops found on the network in
     /// Add a computer ("NearbyItem-0" reads "GAMING-PC (192.168.1.31): gaming-pc-host · Martlet 0.17.0").</summary>
     private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "F5VoiceRow-", "StepDetail-", "HostChoice", "HealthIssue-", "HealthCheck-",
-        "LogEntry-", "NearbyItem-"];
+        "LogEntry-", "NearbyItem-", "SmartHomeFound-", "SmartHomeHost-", "SmartHomeDevice-", "SmartHomeUpdate-"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>

@@ -116,6 +116,7 @@ public partial class MainWindow : ThemedWindow
         InitializeCluster();
         InitializeNearby();
         InitializeVoiceSync();
+        InitializeHomeShare();
         InitializeNodeAgent();
         InitializeLogs();
     }
@@ -156,6 +157,7 @@ public partial class MainWindow : ThemedWindow
         await ShowSavedCharacterAsync(onlyIfAutoShow: true);
         StartCluster();
         StartVoiceSync();
+        StartHomeShare();
         StartNodeAgent();
         StartLogShipping();
         // Parakeet takes a few seconds to load; do it now rather than on the first thing said.
@@ -578,6 +580,7 @@ public partial class MainWindow : ThemedWindow
         updateTimer.Stop();
         clusterTimer.Stop();
         voiceSyncTimer.Stop();
+        homeShareTimer.Stop();
         StopNearby();
         StopLogs();
         audioSessionEvents.LockedChanged -= audioSetup.SetSessionLocked;

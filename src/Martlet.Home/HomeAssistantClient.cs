@@ -41,7 +41,7 @@ public sealed record HomeCamera(string EntityId, string Name);
 /// <summary>Talks to one Home Assistant over its REST API with a long-lived access token: <c>/api/config</c> to check the
 /// connection, <c>/api/conversation/process</c> with the built-in (local, non-LLM) Assist agent, and <c>/api/states</c> to
 /// list cameras. No redirects are followed and every answer is size- and time-bounded.</summary>
-public sealed class HomeAssistantClient : IDisposable
+public sealed partial class HomeAssistantClient : IDisposable
 {
     /// <summary>The built-in Assist agent: local sentence matching, limited to entities exposed to voice assistants.</summary>
     public const string BuiltInAgent = "conversation.home_assistant";
@@ -177,19 +177,29 @@ public sealed class HomeAssistantClient : IDisposable
         return targets;
     }
 
-    private async Task<JsonDocument> SendAsync(HttpMethod method, Uri baseUri, string path, SecretLease token, byte[]? body,
-        int maximumBytes, CancellationToken cancellationToken)
+    private Task<JsonDocument> SendAsync(HttpMethod method, Uri baseUri, string path, SecretLease token, byte[]? body,
+        int maximumBytes, CancellationToken cancellationToken) =>
+        SendAsync(method, baseUri, path, token, body is null ? null : Json(body), maximumBytes, cancellationToken);
+
+    private static ByteArrayContent Json(byte[] body)
+    {
+        var content = new ByteArrayContent(body);
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/json") { CharSet = "utf-8" };
+        return content;
+    }
+
+    /// <summary>One bounded JSON request. Without a token the request is unauthenticated (onboarding); <paramref name="forbidden"/>
+    /// replaces the "rejected the access token" message for 401/403 answers where that would mislead.</summary>
+    private async Task<JsonDocument> SendAsync(HttpMethod method, Uri baseUri, string path, SecretLease? token, HttpContent? content,
+        int maximumBytes, CancellationToken cancellationToken, string? forbidden = null, TimeSpan? limit = null, string? bearer = null)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(RequestTimeout);
+        timeout.CancelAfter(limit ?? RequestTimeout);
         using var request = new HttpRequestMessage(method, new Uri(baseUri, path));
-        token.Use(value => request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", new string(value)));
+        token?.Use(value => request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", new string(value)));
+        if (bearer is not null) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        if (body is not null)
-        {
-            request.Content = new ByteArrayContent(body);
-            request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json") { CharSet = "utf-8" };
-        }
+        request.Content = content;
         try
         {
             using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
@@ -198,8 +208,11 @@ public sealed class HomeAssistantClient : IDisposable
                 throw new HomeAssistantException(HomeAssistantFailure.Redirected,
                     "Home Assistant redirected Martlet. Enter the exact address you open in the browser.");
             if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
-                throw new HomeAssistantException(HomeAssistantFailure.Unauthorized,
+                throw new HomeAssistantException(HomeAssistantFailure.Unauthorized, forbidden ??
                     "Home Assistant rejected the access token. Create a new long-lived access token and paste it here.");
+            if (response.StatusCode == HttpStatusCode.BadRequest && forbidden is not null)
+                throw new HomeAssistantException(HomeAssistantFailure.BadResponse,
+                    await ErrorTextAsync(response, timeout.Token).ConfigureAwait(false) ?? "Home Assistant refused the request.");
             if (response.StatusCode == HttpStatusCode.NotFound) throw NotHomeAssistant();
             if (status >= 500)
                 throw new HomeAssistantException(HomeAssistantFailure.ServerError,
@@ -238,6 +251,25 @@ public sealed class HomeAssistantClient : IDisposable
 
     private static HomeAssistantException NotHomeAssistant() => new(HomeAssistantFailure.NotHomeAssistant,
         "That address answered, but not like Home Assistant. Check the address.");
+
+    // Home Assistant's error answers are JSON {"message": "..."} or short plain text.
+    private static async Task<string?> ErrorTextAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+            if (bytes.Length is 0 or > 16_384) return null;
+            try
+            {
+                using var document = JsonDocument.Parse(bytes);
+                if (document.RootElement.ValueKind == JsonValueKind.Object && Text(document.RootElement, "message") is { } message)
+                    return Clean(message, 200) is { Length: > 0 } clean ? clean : null;
+            }
+            catch (JsonException) { }
+            return Clean(System.Text.Encoding.UTF8.GetString(bytes), 200) is { Length: > 0 } text ? text : null;
+        }
+        catch (Exception error) when (error is IOException or HttpRequestException) { return null; }
+    }
 
     private static HomeAssistantException TooLarge() => new(HomeAssistantFailure.BadResponse, "Home Assistant's answer was too large.");
 

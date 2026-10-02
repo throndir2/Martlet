@@ -2,6 +2,7 @@ using System.IO;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Core.Settings;
 using Martlet.Credentials.Windows;
 using Martlet.Home;
@@ -9,9 +10,13 @@ using Martlet.Mcp.Client;
 
 namespace Martlet.Desktop;
 
-/// <summary>The saved smart home connection. The access token lives in Windows Credential Manager, never here.</summary>
+/// <summary>The saved smart home connection. The access token lives in Windows Credential Manager, never here.
+/// <paramref name="SharedRevision"/> is the newest connection shared through the paired hosts this PC has used or declined;
+/// <paramref name="FollowShare"/> is on while this PC's connection is the shared one (it shared it, or took it from a host
+/// in <paramref name="SharedBy"/>), so a newer share replaces it and stopping sharing elsewhere disconnects it.</summary>
 internal sealed record HomePreferences(string Address = "", Guid CredentialId = default, bool Control = false,
-    bool AllowSensitive = false, string LocationName = "", string Version = "", bool ModelTools = false)
+    bool AllowSensitive = false, string LocationName = "", string Version = "", bool ModelTools = false,
+    long SharedRevision = 0, bool FollowShare = false, string SharedBy = "")
 {
     private const string FileName = "smart-home.json";
 
@@ -25,7 +30,8 @@ internal sealed record HomePreferences(string Address = "", Guid CredentialId = 
             var loaded = JsonSerializer.Deserialize<HomePreferences>(File.ReadAllText(path)) ?? new();
             return loaded with
             {
-                Address = loaded.Address ?? "", LocationName = loaded.LocationName ?? "", Version = loaded.Version ?? ""
+                Address = loaded.Address ?? "", LocationName = loaded.LocationName ?? "", Version = loaded.Version ?? "",
+                SharedBy = loaded.SharedBy ?? ""
             };
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return new(); }
@@ -143,14 +149,205 @@ internal sealed class SmartHome : IDisposable
                 if (credentialId != Guid.Empty) vault.DeleteHomeAssistantToken(credentialId);
                 credentialId = fresh;
             }
+            // A token entered here is this PC's own connection; it is shared again only when the owner chooses to.
             Update(current => current with
             {
                 Address = HomeAssistantEndpoint.Display(baseUri), CredentialId = credentialId,
-                LocationName = info.LocationName, Version = info.Version
+                LocationName = info.LocationName, Version = info.Version,
+                FollowShare = token is null && current.FollowShare
             });
             return info;
         }
         finally { read?.Dispose(); }
+    }
+
+    /// <summary>Where a Home Assistant is in its first-run setup (needs no sign-in).</summary>
+    internal Task<HomeOnboarding> OnboardingAsync(string address, CancellationToken cancellationToken) =>
+        client.OnboardingAsync(HomeAssistantEndpoint.Normalize(address), cancellationToken);
+
+    /// <summary>Sets up a Home Assistant nobody has set up yet: creates its owner account (an administrator) with the name
+    /// and password the user chose, gives it Windows' time zone, country, currency, units and language, leaves analytics
+    /// off, mints Martlet's own long-lived token and connects. The password goes only to that Home Assistant.</summary>
+    internal async Task<HomeAssistantInfo> SetUpAsync(string address, string name, string username, ReadOnlyMemory<char> password,
+        bool control, CancellationToken cancellationToken)
+    {
+        var baseUri = HomeAssistantEndpoint.Normalize(address);
+        var state = await client.OnboardingAsync(baseUri, cancellationToken).ConfigureAwait(false);
+        if (!state.NeedsOwner)
+            throw new HomeAssistantException(HomeAssistantFailure.Unauthorized,
+                "This Home Assistant already has an owner. Sign in with Home Assistant instead.");
+        var region = HomeRegion.FromSystem();
+        var session = await client.CreateOwnerAsync(baseUri, name, username, password, region.Language, cancellationToken).ConfigureAwait(false);
+        await client.FinishOnboardingAsync(baseUri, session, region, cancellationToken).ConfigureAwait(false);
+        using var token = await client.MintTokenAsync(baseUri, session, ClientName(), cancellationToken).ConfigureAwait(false);
+        var info = await StoreAsync(baseUri, token, followShare: false, sharedBy: "", cancellationToken).ConfigureAwait(false);
+        if (control) SetControl(true, false, Preferences.ModelTools);
+        return info;
+    }
+
+    /// <summary>"Sign in with Home Assistant": Home Assistant's own sign-in page opens in the browser; Martlet receives the
+    /// one-time code on this PC's loopback, mints its own long-lived token and connects.</summary>
+    internal async Task<HomeAssistantInfo> SignInAsync(string address, Action<Uri> openBrowser, CancellationToken cancellationToken)
+    {
+        var baseUri = HomeAssistantEndpoint.Normalize(address);
+        var state = await client.OnboardingAsync(baseUri, cancellationToken).ConfigureAwait(false);
+        if (state.NeedsOwner)
+            throw new HomeAssistantException(HomeAssistantFailure.Unauthorized,
+                "Nobody has set up this Home Assistant yet. Use Set up below to create its owner account.");
+        using var token = await HomeAssistantSignIn.SignInAsync(client, baseUri, ClientName(), openBrowser, cancellationToken)
+            .ConfigureAwait(false);
+        return await StoreAsync(baseUri, token, followShare: false, sharedBy: "", cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Finds Home Assistant on the local network (one multicast DNS question, answers listed for the user).</summary>
+    internal static Task<IReadOnlyList<FoundHomeAssistant>> FindAsync(CancellationToken cancellationToken) =>
+        HomeAssistantDiscovery.FindAsync(TimeSpan.FromSeconds(2.5), cancellationToken);
+
+    // Checks a fresh token, keeps it in the vault in place of the old one and saves the connection.
+    private async Task<HomeAssistantInfo> StoreAsync(Uri baseUri, SecretLease token, bool followShare, string sharedBy,
+        CancellationToken cancellationToken, long? revision = null)
+    {
+        var info = await client.GetInfoAsync(baseUri, token, cancellationToken).ConfigureAwait(false);
+        var fresh = Guid.NewGuid();
+        var error = vault.WriteHomeAssistantToken(fresh, token);
+        if (error != CredentialError.None)
+            throw new HomeAssistantException(HomeAssistantFailure.Unauthorized, $"Martlet couldn't save the Home Assistant token ({error}).");
+        var previous = Preferences.CredentialId;
+        if (previous != Guid.Empty) vault.DeleteHomeAssistantToken(previous);
+        Update(current => current with
+        {
+            Address = HomeAssistantEndpoint.Display(baseUri), CredentialId = fresh, LocationName = info.LocationName, Version = info.Version,
+            FollowShare = followShare, SharedBy = sharedBy, SharedRevision = revision is { } r ? Math.Max(r, current.SharedRevision) : current.SharedRevision
+        });
+        return info;
+    }
+
+    private static string ClientName() =>
+        $"Martlet on {new string(Environment.MachineName.Where(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_').Take(24).ToArray())} " +
+        $"({DateTime.Now:yyyy-MM-dd HH:mm:ss})";
+
+    // ---------- managing Home Assistant (owner clicks only; never offered to the Thinking model) ----------
+
+    internal Task<HomeSystem> SystemAsync(CancellationToken token) => WithTokenAsync((uri, lease) => client.SystemAsync(uri, lease, token));
+    internal Task<IReadOnlyList<HomeDiscovery>> DiscoveriesAsync(CancellationToken token) =>
+        WithTokenAsync((uri, lease) => client.DiscoveriesAsync(uri, lease, token));
+    internal Task<IReadOnlyList<HomeUpdate>> UpdatesAsync(CancellationToken token) => WithTokenAsync((uri, lease) => client.UpdatesAsync(uri, lease, token));
+    internal Task<HomeBackups> BackupsAsync(CancellationToken token) => WithTokenAsync((uri, lease) => client.BackupsAsync(uri, lease, token));
+
+    internal async Task<HomeFlowStep> AddDiscoveredAsync(HomeDiscovery discovery, CancellationToken token)
+    {
+        var step = await WithTokenAsync((uri, lease) => client.ContinueFlowAsync(uri, lease, discovery.FlowId, token)).ConfigureAwait(false);
+        if (step.Kind == HomeStepKind.Done) Record($"Added {Label(discovery)} to Home Assistant.");
+        return step;
+    }
+
+    internal async Task IgnoreDiscoveredAsync(HomeDiscovery discovery, CancellationToken token)
+    {
+        await WithTokenAsync(async (uri, lease) => { await client.IgnoreFlowAsync(uri, lease, discovery, token).ConfigureAwait(false); return 0; })
+            .ConfigureAwait(false);
+        Record($"Home Assistant will stop offering {Label(discovery)}.");
+    }
+
+    /// <summary>Adds Home Assistant's MQTT integration pointed at a broker Martlet found on its host (Zigbee2MQTT, Frigate,
+    /// Shelly and Tasmota devices then appear through it). Tries the broker's local address, then the host's LAN address.</summary>
+    internal async Task<HomeFlowStep> AddMqttAsync(string hostAddress, CancellationToken token)
+    {
+        HomeFlowStep? step = null;
+        foreach (var broker in new[] { "127.0.0.1", hostAddress }.Distinct())
+        {
+            step = await WithTokenAsync((uri, lease) => client.StartFlowAsync(uri, lease, "mqtt",
+                new JsonObject { ["broker"] = broker, ["port"] = 1883 }, token)).ConfigureAwait(false);
+            if (step.Kind == HomeStepKind.Done)
+            {
+                Record($"Added MQTT ({broker}:1883) to Home Assistant.");
+                break;
+            }
+            if (step.Kind != HomeStepKind.Form) break;
+        }
+        return step!;
+    }
+
+    internal async Task InstallUpdateAsync(HomeUpdate update, CancellationToken token)
+    {
+        await WithTokenAsync(async (uri, lease) => { await client.InstallUpdateAsync(uri, lease, update.EntityId, token).ConfigureAwait(false); return 0; })
+            .ConfigureAwait(false);
+        Record($"Started updating {update.Title}{(update.Latest is { } latest ? " to " + latest : "")}.");
+    }
+
+    internal async Task RestartAsync(CancellationToken token)
+    {
+        await WithTokenAsync(async (uri, lease) => { await client.RestartAsync(uri, lease, token).ConfigureAwait(false); return 0; }).ConfigureAwait(false);
+        Record("Restarted Home Assistant.");
+    }
+
+    internal async Task BackupAsync(CancellationToken token)
+    {
+        await WithTokenAsync(async (uri, lease) => { await client.BackupAsync(uri, lease, token).ConfigureAwait(false); return 0; }).ConfigureAwait(false);
+        Record("Started a Home Assistant backup.");
+    }
+
+    private static string Label(HomeDiscovery discovery) => discovery.Title.Length > 0 ? $"{discovery.Name} ({discovery.Title})" : discovery.Name;
+
+    private async Task<T> WithTokenAsync<T>(Func<Uri, SecretLease, Task<T>> action)
+    {
+        var saved = Preferences;
+        if (!Connected) throw new HomeAssistantException(HomeAssistantFailure.Unauthorized, "Connect Home Assistant first.");
+        var baseUri = HomeAssistantEndpoint.Normalize(saved.Address);
+        using var read = vault.ReadHomeAssistantToken(saved.CredentialId);
+        var token = read.Secret ?? throw new HomeAssistantException(HomeAssistantFailure.Unauthorized,
+            "The saved access token couldn't be read. Connect again in Smart home.");
+        return await action(baseUri, token).ConfigureAwait(false);
+    }
+
+    // ---------- sharing the connection through the paired hosts ----------
+
+    /// <summary>This PC's connection as the shared value with <paramref name="revision"/>, or null when not connected.</summary>
+    internal SharedHomeAssistant? ShareValue(long revision)
+    {
+        var saved = Preferences;
+        if (!Connected) return null;
+        using var read = vault.ReadHomeAssistantToken(saved.CredentialId);
+        string? bearer = null;
+        read.Secret?.Use(value => bearer = new string(value));
+        return bearer is null ? null : new SharedHomeAssistant(revision, saved.Address, bearer,
+            saved.LocationName.Length > 0 ? saved.LocationName : null, saved.Version.Length > 0 ? saved.Version : null);
+    }
+
+    /// <summary>This PC now shares its connection (it follows the shared value from here on).</summary>
+    internal void MarkShared(long revision) =>
+        Update(current => current with { FollowShare = true, SharedBy = "", SharedRevision = Math.Max(revision, current.SharedRevision) });
+
+    /// <summary>Sharing stopped from this PC: it keeps its own connection, no longer tied to the shared one.</summary>
+    internal void MarkUnshared(long revision) =>
+        Update(current => current with { FollowShare = false, SharedBy = "", SharedRevision = Math.Max(revision, current.SharedRevision) });
+
+    /// <summary>Applies a newer connection shared through <paramref name="hostId"/>: takes it when this PC has no connection
+    /// or follows the shared one (turning on "Use Home Assistant when I ask" the first time), or disconnects a followed
+    /// connection when sharing stopped. A connection the owner made on this PC alone is never replaced. Returns what changed,
+    /// or null for nothing.</summary>
+    internal async Task<string?> AdoptAsync(SharedHomeAssistant shared, string hostId, CancellationToken cancellationToken, bool replace = false)
+    {
+        var saved = Preferences;
+        if (!replace && (shared.Revision <= saved.SharedRevision || Connected && !saved.FollowShare)) return null;
+        if (shared.Address is null || shared.Token is null)
+        {
+            if (!Connected) { Update(current => current with { SharedRevision = shared.Revision }); return null; }
+            Disconnect();
+            Update(current => current with { SharedRevision = shared.Revision });
+            return "Your other computers stopped sharing Home Assistant, so this PC disconnected from it.";
+        }
+        var baseUri = HomeAssistantEndpoint.Normalize(shared.Address);
+        if (Connected && SameAddress(saved.Address, baseUri) && SameToken(saved.CredentialId, shared.Token))
+        {
+            Update(current => current with { SharedRevision = Math.Max(shared.Revision, current.SharedRevision), FollowShare = true });
+            return null;
+        }
+        var first = !Connected;
+        using (var token = new SecretLease(shared.Token))
+            await StoreAsync(baseUri, token, followShare: true, sharedBy: hostId, cancellationToken, shared.Revision).ConfigureAwait(false);
+        if (first) SetControl(true, false, false);
+        Record($"Connected to Home Assistant at {HomeAssistantEndpoint.Display(baseUri)}, shared through {hostId}.");
+        return $"Connected to Home Assistant at {HomeAssistantEndpoint.Display(baseUri)}, shared by your other computers through {hostId}.";
     }
 
     /// <summary>Forgets the token and turns control off; the address stays filled in.</summary>
@@ -160,7 +357,8 @@ internal sealed class SmartHome : IDisposable
         if (saved.CredentialId != Guid.Empty) vault.DeleteHomeAssistantToken(saved.CredentialId);
         Update(current => current with
         {
-            CredentialId = Guid.Empty, Control = false, AllowSensitive = false, ModelTools = false, LocationName = "", Version = ""
+            CredentialId = Guid.Empty, Control = false, AllowSensitive = false, ModelTools = false, LocationName = "", Version = "",
+            FollowShare = false, SharedBy = ""
         });
         lock (gate) actions.Clear();
     }
@@ -400,6 +598,14 @@ internal sealed class SmartHome : IDisposable
 
     private static bool SameAddress(string saved, Uri baseUri) =>
         saved.Length > 0 && string.Equals(saved, HomeAssistantEndpoint.Display(baseUri), StringComparison.OrdinalIgnoreCase);
+
+    private bool SameToken(Guid credentialId, string token)
+    {
+        using var read = vault.ReadHomeAssistantToken(credentialId);
+        var same = false;
+        read.Secret?.Use(value => same = value.SequenceEqual(token.AsSpan()));
+        return same;
+    }
 
     public void Dispose() => client.Dispose();
 }
