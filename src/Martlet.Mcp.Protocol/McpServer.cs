@@ -59,10 +59,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
-        Tool("f5_voices", "List the reference voices Martlet includes for F5 (key, name, licence, transcript, format; each clip is " +
-            "checked against its SHA-256 and F5's reference rules) and, from a data directory's F5 voice list, which included voices " +
-            "were added, how many of the owner's own voices there are and which voice is applied (never own voices' names or audio). " +
-            "Plays nothing and contacts nothing.", new
+        Tool("f5_voices", "List the reference voices Martlet includes for F5 (key, name, female, licence, transcript, format; each " +
+            "clip is checked against its SHA-256 and F5's reference rules) and the default voice; from a data directory's F5 voice " +
+            "list, which included voices were added, how many of the owner's own voices there are and which voice is applied; and " +
+            "which voice the speaking route uses (never own voices' names or audio). Plays nothing and contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -287,7 +287,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 var format = voice.Check();
                 return (object)new
                 {
-                    key = voice.Key, name = voice.Name, description = voice.Description, licence = voice.Licence, transcript = voice.Transcript,
+                    key = voice.Key, name = voice.Name, female = voice.Female, description = voice.Description, licence = voice.Licence,
+                    transcript = voice.Transcript,
                     sha256 = voice.AudioSha256, sampleRate = format.SampleRate, durationMs = format.DurationMilliseconds, valid = true
                 };
             }
@@ -296,6 +297,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 return new { key = voice.Key, name = voice.Name, valid = false, problem = error.Failure.ToString() };
             }
         }).ToArray();
+        static string Kind(string sha256) => Martlet.F5.F5BundledVoices.ForAudio(sha256)?.Key ??
+            (Martlet.F5.F5BundledVoices.IsRetiredSample(sha256) ? "retired-sample" : "own");
         var storeDirectory = Path.Combine(directory, "f5-voices");
         object list;
         if (!File.Exists(Path.Combine(storeDirectory, ".martlet-f5-references.v1.json"))) list = new { state = "none" };
@@ -305,8 +308,6 @@ internal sealed class McpServer(DesktopAutomation desktop)
             {
                 using var store = Martlet.F5.F5ReferencePresetStore.Open(storeDirectory);
                 var inspection = store.Inspect();
-                string Kind(string sha256) => Martlet.F5.F5BundledVoices.ForAudio(sha256)?.Key ??
-                    (Martlet.F5.F5BundledVoices.IsRetiredSample(sha256) ? "retired-sample" : "own");
                 var latest = inspection.Presets.Select(p => (p.Id, Kind: Kind(p.Snapshots.LastOrDefault()?.AudioSha256 ?? ""))).ToArray();
                 list = new
                 {
@@ -318,7 +319,32 @@ internal sealed class McpServer(DesktopAutomation desktop)
             }
             catch (Martlet.F5.F5Exception error) { list = new { state = error.Failure == Martlet.F5.F5Failure.Busy ? "busy" : "unreadable", problem = error.Failure.ToString() }; }
         }
-        return new { @default = Martlet.F5.F5BundledVoices.Default.Key, included, list };
+        // The voice the speaking (TTS) route keeps, which is what F5 actually speaks with.
+        object speaking;
+        var settingsPath = Path.Combine(directory, "settings.json");
+        if (!File.Exists(settingsPath)) speaking = new { state = "none" };
+        else
+        {
+            try
+            {
+                var settings = Martlet.Core.Settings.SettingsJson.Read(File.ReadAllBytes(settingsPath));
+                var route = settings.Setup?.Routes.FirstOrDefault(r => r.Role == Martlet.Core.Settings.SetupRole.Tts);
+                speaking = new
+                {
+                    state = "loaded", route = route?.RouteType.ToString(),
+                    voice = route?.Reference is { } reference ? Kind(reference.AudioSha256) : null
+                };
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException or JsonException)
+            {
+                speaking = new { state = "unreadable", problem = error is Martlet.Core.Contracts.ContractException ? error.Message : error.GetType().Name };
+            }
+        }
+        var fallback = Martlet.F5.F5BundledVoices.Default;
+        return new
+        {
+            @default = fallback.Key, defaultName = fallback.Name, defaultFemale = fallback.Female, included, list, speaking
+        };
     }
 
     /// <summary>Shared "who does what" as the desktop keeps it in a data directory (the file names match Martlet.Desktop's
