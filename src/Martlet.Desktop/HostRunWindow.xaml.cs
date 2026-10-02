@@ -25,6 +25,9 @@ public partial class HostRunWindow : ThemedWindow
 
     private readonly string title;
 
+    /// <summary>What this run does, as its window shows it (for example "Set up this PC's host service").</summary>
+    internal string Heading => title;
+
     /// <summary>Remote output lines; posts to this window.</summary>
     internal IProgress<string> Output { get; }
     /// <summary>Password, sudo and host-key questions, asked over this window.</summary>
@@ -60,6 +63,13 @@ public partial class HostRunWindow : ThemedWindow
             Status("Canceled.");
             HostRunLog.Write(title, "--- canceled");
             ErrorLog.Info($"Host run canceled: {title}");
+            return null;
+        }
+        catch (PausedForRestartException paused)
+        {
+            Status(paused.Message);
+            Append("Paused: " + paused.Message);
+            ErrorLog.Info($"Host run paused for a Windows restart: {title}");
             return null;
         }
         catch (Exception error) when (error is not OutOfMemoryException)

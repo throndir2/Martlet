@@ -28,8 +28,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "LipSyncNow", "LipSyncNowProblem", "SelectedDevice", "SelectedDeviceHealth", "ClusterStatus",
         "VisionStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint"
     };
-    /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)").</summary>
-    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-"];
+    /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)") and
+    /// each home or host-dashboard step's detail line ("StepDetail-docker" says whether Docker Desktop runs, or why it can't start).</summary>
+    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "StepDetail-"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>

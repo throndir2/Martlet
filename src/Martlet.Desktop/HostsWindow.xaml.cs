@@ -395,28 +395,36 @@ public partial class HostsWindow : ThemedWindow
         busy = true;
         try
         {
-            if (await InstallDockerDesktopAsync(this) is { } status) StatusText.Text = status;
+            if ((await InstallDockerDesktopAsync(this)).Status is { } status) StatusText.Text = status;
         }
         finally { busy = false; }
     }
 
     /// <summary>Installs Docker Desktop with winget in a run window (no console) after the user accepts the listed terms,
-    /// then starts it; null when declined.</summary>
-    internal static async Task<string?> InstallDockerDesktopAsync(Window owner)
+    /// turns on what it needs from Windows (virtualization features and WSL; a restart, when needed, continues with
+    /// <paramref name="resume"/> after the next sign-in), then starts it. Status is null when declined; Ready is true once
+    /// Docker Desktop is installed and starting.</summary>
+    internal static async Task<(string? Status, bool Ready)> InstallDockerDesktopAsync(Window owner,
+        ContinueSetupKind resume = ContinueSetupKind.Docker)
     {
         if (!ConfirmationDialog.Confirm(owner,
                 "Install Docker Desktop with winget? Docker Desktop is free for personal use under Docker's Subscription Service " +
-                "Agreement (docker.com/legal); continuing accepts the winget source and package agreements. It uses WSL 2. " +
-                "Windows asks for administrator approval, and a restart or sign-out may follow.", "Install Docker Desktop"))
-            return null;
+                "Agreement (docker.com/legal); continuing accepts the winget source and package agreements. It uses WSL 2, so Martlet " +
+                "also turns on Virtual Machine Platform and Windows Subsystem for Linux when they're off. Windows asks for administrator " +
+                "approval, and a restart may follow; Martlet then continues by itself after you sign in.", "Install Docker Desktop"))
+            return (null, false);
         var summary = await HostRunWindow.RunAsync(owner, "Install Docker Desktop", async run =>
         {
             await HostLocal.InstallDockerDesktopAsync(run.Status, run.Output, run.Token);
+            await WindowsVirtualizationSetup.EnsureReadyAsync(run, resume);
             try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(MachineInfo.DockerDesktopPath) { UseShellExecute = true })?.Dispose(); }
             catch (Exception error) when (error is System.ComponentModel.Win32Exception or IOException) { run.Output.Report("Start Docker Desktop yourself: " + error.Message); }
-            return "Docker Desktop is installed and starting. Accept Docker's terms if it asks; if it asks you to restart or sign out, do that first.";
+            return "Docker Desktop is installed and starting. Accept Docker's terms if it asks.";
         });
-        return summary ?? "Docker Desktop was not installed. The run window shows why.";
+        if (summary is not null) return (summary, true);
+        return (MachineInfo.DockerDesktopInstalled()
+            ? "Docker Desktop is installed, but Windows isn't ready to start it yet. The run window shows why."
+            : "Docker Desktop was not installed. The run window shows why.", false);
     }
 
     // ---------- pairing ----------
@@ -499,8 +507,8 @@ public partial class HostsWindow : ThemedWindow
     {
         if (!MachineInfo.DockerDesktopInstalled())
         {
-            var installing = await InstallDockerDesktopAsync(owner);
-            if (!MachineInfo.DockerDesktopInstalled()) return (null, installing);
+            var (installing, ready) = await InstallDockerDesktopAsync(owner, ContinueSetupKind.ThisPc);
+            if (!ready) return (null, installing);
             progress(installing ?? "Docker Desktop is installed.");
         }
         var address = HostSetupCommands.ThisPcAddress();
