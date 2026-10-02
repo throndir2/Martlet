@@ -13,13 +13,18 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "OpenConfigurationRecovery", "RefreshDiagnostics",
         "SetupClose", "AudioClose", "CloseLive", "SupportClose",
         "RecoveryClose", "SupportFreeze", "SupportClear",
-        "NavHome", "NavDevices", "NavCompanion", "NavSettings", "TourSkip", "DiagnosticsSection"
+        "NavHome", "NavDevices", "NavCompanion", "NavSettings", "TourSkip", "DiagnosticsSection",
+        "OpenPeople"
     };
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
         "FoundationStatus", "PipelineStatus", "LocalAudioStatus",
-        "LiveStatus", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult"
+        "LiveStatus", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
+        "PeopleStatus", "PeopleSyncStatus", "PeopleVoiceCount", "ListenParakeetStatus"
     };
+
+    /// <summary>Choosing a Companion page in its side list only shows that page.</summary>
+    private static bool IsSafeClick(string id) => SafeClicks.Contains(id) || id.StartsWith("CompanionTab-", StringComparison.Ordinal);
     private int? processId;
 
     internal object Connect(int pid)
@@ -46,8 +51,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
             {
                 var (window, element) = control;
                 var id = element.Current.AutomationId;
-                var value = SafeValues.Contains(id) && element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern)
-                    ? ((ValuePattern)pattern).Current.Value : null;
+                // Status text blocks expose their text as the accessible name rather than a value.
+                var value = !SafeValues.Contains(id) ? null
+                    : element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern) ? ((ValuePattern)pattern).Current.Value
+                    : element.Current.ControlType == ControlType.Text ? element.Current.Name : null;
                 return new
                 {
                     window = window.Current.Name,
@@ -64,7 +71,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
 
     internal async Task<object> ClickAsync(string id)
     {
-        if (!allowEffects && !SafeClicks.Contains(id))
+        if (!allowEffects && !IsSafeClick(id))
             throw new InvalidOperationException("This control requires an operator to start MCP with --allow-ui-effects.");
         var element = Find(id);
         if (!element.Current.IsEnabled) throw new InvalidOperationException($"Control '{id}' is disabled.");

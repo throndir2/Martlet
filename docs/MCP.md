@@ -132,6 +132,13 @@ reads; without it, Doctor uses the current user's Martlet directory. No
 headless MCP tool creates a profile, opens a device, plays a tone, sends a
 request or handles credentials.
 
+`voices_status` reads [voice recognition and Parakeet](VOICES.md) state from a data
+directory (optional absolute `dataDirectory`, default the current user's): the
+recognition and sharing choices, whether the sherpa-onnx runtime, voice models and
+Parakeet are downloaded, and counts from `voices.json` (voices, named, owner, with
+learned names, merged, tombstones). It never returns names, voiceprints or audio and
+runs no model.
+
 To drive the visible desktop, start `Martlet.Desktop.exe` yourself in the **same
 interactive Windows session** (ideally with a disposable `--data-directory`).
 Call `ui_connect` with that process ID. `ui_snapshot` returns window accessible names,
@@ -144,7 +151,15 @@ page's controls are only visible after you open it: click `NavHome`,
 `NavDevices`, `NavCompanion` or `NavSettings` first (for example
 `NavCompanion` before `OpenSetup`). On Settings, click `DiagnosticsSection` to
 expand the pipeline and status fields. On a fresh data directory, `TourSkip`
-dismisses the welcome tour. Use `ui_snapshot` again to observe asynchronous effects. Modal
+dismisses the welcome tour. Companion's side list items (`CompanionTab-<Page>`,
+for example `CompanionTab-People`) and `OpenPeople` (on Listening) are passive
+navigation too. People shows `PeopleStatus`, `PeopleSyncStatus` and
+`PeopleVoiceCount`, and Listening shows `ListenParakeetStatus`; snapshots return
+these status texts. Each voice's controls are numbered by voice (`PeopleName-3`,
+`PeopleOtherNames-3`, `PeopleSave-3`, `PeopleOwner-3`, `PeopleMergeTarget-3`,
+`PeopleMerge-3`, `PeopleForget-3`); like `PeopleInstall`, `PeopleRecognize`,
+`PeopleShare`, `PeopleSync`, `PeopleForgetAll` and `SetupListenParakeet`, they
+change data or download and need `--allow-ui-effects`. Use `ui_snapshot` again to observe asynchronous effects. Modal
 actions may return `completed: false` while their dialog remains open; this
 means the invoke is still pending, not that the action finished.
 
@@ -226,8 +241,8 @@ observe them:
   records, plays, spends, writes files or handles credentials stays behind
   `--allow-ui-effects`.
 - **Status:** add read-only, non-secret status fields to `SafeValues` so
-  snapshots return their text. Never expose editable fields, credentials,
-  personal data or file paths.
+  snapshots return their text (a value pattern's value, or a text block's text).
+  Never expose editable fields, credentials, personal data or file paths.
 - **Headless capabilities:** add a tool to `Tools` and `CallAsync` in
   `src\Martlet.Mcp.Protocol\McpServer.cs` (strict input schema, bounded
   arguments, ID-based results), or a Doctor probe that `doctor_run` reaches.

@@ -143,6 +143,7 @@ internal static class NetworkMap
         SetupRouteType.LocalWindowsStt => "Windows speech",
         SetupRouteType.LocalWindowsTts => "Windows voice",
         SetupRouteType.LocalWhisper => "whisper.cpp on this PC",
+        SetupRouteType.LocalParakeet => "Parakeet on this PC",
         _ => "OpenAI"
     };
 
@@ -184,6 +185,10 @@ internal static class NetworkMap
                 case SetupRouteType.LocalWhisper:
                     target = thisPc;
                     role = role with { Detail = "whisper.cpp on this PC: " + RouteDetail(route) };
+                    break;
+                case SetupRouteType.LocalParakeet:
+                    target = thisPc;
+                    role = role with { Detail = "Parakeet on this PC: " + RouteDetail(route) };
                     break;
                 case SetupRouteType.GatewayOllama or SetupRouteType.GatewayF5 or SetupRouteType.GatewayStt when route.Gateway is { } gateway:
                     var host = new Uri(gateway.Origin).Host;
