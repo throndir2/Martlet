@@ -162,18 +162,4 @@ public partial class MainWindow
             : "Martlet now controls and checks your home through Home Assistant when you ask. An open talk window picks it up on Reload.";
         RenderTab();
     }
-
-    /// <summary>Asks on screen before a lock/door/garage/gate/alarm/valve request goes to Home Assistant. No is the default
-    /// button; the conversation's cancellation (Stop, timeout) closes the question as a no.</summary>
-    private Task<bool> ConfirmSmartHomeAsync(string question, CancellationToken token) =>
-        Dispatcher.InvokeAsync(() =>
-        {
-            if (closing || token.IsCancellationRequested) return false;
-            var dialog = new ConfirmationDialog("Martlet - smart home", question)
-            {
-                Owner = openConversation is { IsVisible: true } talk ? talk : this
-            };
-            using var cancel = token.Register(() => dialog.Dispatcher.BeginInvoke(() => { if (dialog.IsVisible) dialog.Close(); }));
-            return dialog.ShowDialog() == true;
-        }).Task;
 }

@@ -69,7 +69,7 @@ public partial class MainWindow : ThemedWindow
         setupService = store is null ? null : new SetupService(store, vault);
         companionService = store is null ? null : new CompanionSettingsService(store);
         memory = store is null ? null : new DesktopMemoryService(store);
-        smartHome = new(store?.DataDirectory, vault) { Confirm = ConfirmSmartHomeAsync };
+        smartHome = new(store?.DataDirectory, vault);
         voiceIdentity = new(store?.DataDirectory);
         voiceIdentity.Load();
         recovery = store is null ? null : new(store, setupOperations, () => !support.HasResources);
