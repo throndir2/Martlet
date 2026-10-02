@@ -45,7 +45,9 @@ The gateway serves `GET /martlet/v1/cluster` (its copy) and
 paired device over its pinned, signed connection. The host never acts on the
 plan. Hosts do not talk to each other: desktops carry changes between them,
 so no new host-to-host trust exists. Since the desktops are the only users of
-the jobs, a job never needs to move while no desktop runs.
+the jobs, a job never needs to move while no desktop runs. Which desktops a
+host trusts at all is the [Martlet network](NETWORK.md): pair a host once and
+every member desktop pairs with it by itself.
 
 While sync is on, every 15 seconds (and right after any change or **Check
 hosts**) the desktop:
@@ -90,7 +92,7 @@ row says where it came from.
 | Flapping host | Two consecutive misses are needed; a moved job never moves back by itself (no ping-pong). Choose the original host again to move it back |
 | Two desktops fail over at once | Same ranking, so normally the same target; otherwise the newest stamp wins everywhere within a check |
 | Change made on another desktop | Followed within a check; the status line names the computer that chose it |
-| Planned host not paired with this PC | This PC keeps its current route and its row says to pair that host here; the shared plan is not overwritten |
+| Planned host not paired with this PC | This PC keeps its current route and its row says to pair that host here; the shared plan is not overwritten. A host of your [Martlet network](NETWORK.md) is paired by itself within a minute, so this lasts only until then |
 | Speaking moves to another F5 host | The applied reference voice is reused (same `f5-host` destination). A desktop without an F5 voice keeps its route and asks you to pick the voice |
 | Host model differs | The new route records the model the host advertises; the failover confirmation says the model may differ |
 | Host older than cluster sync | Still usable and a failover candidate; it keeps no copy, and the status line suggests **Update host** |

@@ -88,6 +88,17 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("network_status", "Read this PC's Martlet network from a data directory (network.json and whether its network key " +
+            "exists): member, waiting for approval (with the check number) or in no network; the network ID; each desktop and host " +
+            "in the roster (ID, name, removed, who changed it last); hosts paired on purpose (adopt) and forgotten here (ignored). " +
+            "Read-only; contacts nothing and returns no keys or addresses.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("network_selftest", "Rehearse the Martlet network end to end with the production code: three real gateways on " +
+            "127.0.0.1 (pinned TLS, volatile credentials) and two simulated desktops using the desktop's network client and sync " +
+            "engine (found, bind hosts, join with a check number, pair every member with every host by itself, refuse forged keys " +
+            "and rosters, remove a desktop and a host). Loopback only; writes nothing to disk or the credential vault.", new { }),
         Tool("virtualization_status", "Read whether Windows is ready for Docker Desktop's WSL 2 engine (virtualization in the firmware, " +
             "the Windows hypervisor, Virtual Machine Platform, Windows Subsystem for Linux, the WSL version), whether Docker Desktop is " +
             "installed and running, and any setup Martlet continues after a Windows restart. Read-only; changes nothing.", new
@@ -172,6 +183,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "voices_status" => VoicesStatus(arguments),
                 "f5_voices" => F5Voices(arguments),
                 "cluster_status" => ClusterStatus(arguments),
+                "network_status" => NetworkStatus(arguments),
+                "network_selftest" => await NetworkSelfTest.RunAsync(cancellation),
                 "virtualization_status" => await VirtualizationStatusAsync(arguments, cancellation),
                 _ => throw new ArgumentException($"Unknown tool '{name}'.")
             };
@@ -398,6 +411,37 @@ internal sealed class McpServer(DesktopAutomation desktop)
             }
         }
         return new { sync = choice switch { "off" => "off", null => "on (default)", _ => "on" }, plan };
+    }
+
+    /// <summary>The Martlet network as the desktop keeps it in a data directory (network.json and network\device_ecdsa, the
+    /// names Martlet.Desktop's NetworkIdentity uses). No keys, signatures or addresses are returned.</summary>
+    private static object NetworkStatus(JsonElement arguments)
+    {
+        var directory = DataDirectory(arguments);
+        var key = File.Exists(Path.Combine(directory, "network", "device_ecdsa"));
+        var path = Path.Combine(directory, Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.FileName);
+        if (!File.Exists(path)) return new { state = "none", key };
+        Martlet.Avatar.Audio2Face.Remote.NetworkLocalState local;
+        try { local = Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.Parse(File.ReadAllBytes(path)); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
+        {
+            return new { state = "unreadable", key };
+        }
+        var roster = local.Roster;
+        return new
+        {
+            state = roster is not null ? "member" : local.Waiting is not null ? "waiting" : "none",
+            key,
+            networkId = roster?.NetworkId ?? local.Waiting?.NetworkId,
+            revision = roster?.Revision,
+            founder = roster?.Founder?.Id,
+            waiting = local.Waiting is { } wait ? new { hostId = wait.HostId, checkNumber = wait.CheckNumber, since = wait.Since } : null,
+            desktops = roster?.Members.Where(m => m.IsDesktop).Select(m => new { id = m.Id, name = m.Name, removed = m.Removed, updatedBy = m.UpdatedBy, changedAt = m.ChangedAt }).ToArray(),
+            hosts = roster?.Members.Where(m => m.IsHost).Select(m => new { id = m.Id, name = m.Name, removed = m.Removed, updatedBy = m.UpdatedBy, changedAt = m.ChangedAt }).ToArray(),
+            adopt = local.Adopt,
+            ignored = local.Ignored,
+            removedFrom = local.RemovedFrom
+        };
     }
 
     private static async Task<object> DoctorAsync(string[] args, JsonElement arguments, CancellationToken cancellation)

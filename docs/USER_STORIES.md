@@ -416,8 +416,13 @@ don't redo everything, and tell the network what this PC can do.*
 - **Done when**: a second PC becomes a working member with the network's
   configuration and its abilities advertised, without copying codes,
   consoles or per-host pairing.
-- **Today**: not possible. Each desktop pairs each host separately via the
-  Hosts wizard; cloud keys are re-entered; who-does-what sync is on by default.
+- **Today**: the trust part works ([NETWORK](NETWORK.md)): the new PC pairs
+  with any one host of the network (Add a computer, a code or SSH), asks to
+  join by itself showing a check number, and once a member allows it under
+  Devices › Your Martlet network it pairs with every other host by itself. Not
+  yet: finding networks on the LAN without pairing a host first, the join code,
+  combining setups, cloud keys travelling with it; who-does-what sync is on by
+  default.
 
 #### B2. Approve a joining machine
 
@@ -432,6 +437,10 @@ don't redo everything, and tell the network what this PC can do.*
   again; three denials in a row block it for an hour.
 - **Done when**: approval is one click and shows the check number that
   matches the joining screen.
+- **Today**: Devices › Your Martlet network lists each request with its check
+  number (Allow, Turn down) and the main window's status line announces it;
+  hosts keep a request for an hour. Not yet: tray notification, hardware in the
+  request, the denial limit.
 
 #### B3. Join a network after setting up alone
 
@@ -495,7 +504,9 @@ offer machines that work.*
   shown.
 - **Today**: Hosts wizard 4 steps (Where it runs › Install › Pair › Roles),
   plus PrepareHostWindow for Ubuntu prerequisites with a separate checklist
-  and *Run selected*.
+  and *Run selected*. The host joins this PC's [Martlet network](NETWORK.md)
+  on the next sync, and every other member desktop pairs with it by itself
+  (no code, no SSH of their own).
 
 #### B7. Remove a machine or leave the network
 
@@ -506,6 +517,12 @@ offer machines that work.*
 - **Clicks**: 2.
 - **Edge cases**: removing the only machine that can run a job moves the job
   to its fallback (cloud if configured, else *not set*) and Home says so.
+- **Today**: Devices › Your Martlet network › **Remove from network** (one
+  confirmation) for any other desktop or host: hosts revoke a removed desktop,
+  which forgets the network's hosts; a removed host stops trusting the
+  network's desktops and they forget it. Not yet: *Leave network* on the
+  machine itself, the list of jobs that move. A host whose network is gone
+  leaves it with `martlet-host network-reset`.
 
 ### C. Thinking
 

@@ -166,6 +166,37 @@ unticked **Keep who does what in sync**; `plan` is this PC's `cluster.json`
 `updatedBy` and `updatedAt`, and each host's ID, roles and `removed`). It never
 returns host addresses or keys and contacts nothing.
 
+`network_status` reads the [Martlet network](NETWORK.md) from a data directory
+(optional absolute `dataDirectory`, default the current user's): `state`
+(`none`, `member`, `waiting` or `unreadable`), `key` (whether
+`network\device_ecdsa` exists), `networkId`, the roster's `revision` and
+`founder`, `waiting` (`hostId`, `checkNumber`, `since`) while this PC asks to
+join, each `desktops` and `hosts` entry (`id`, `name`, `removed`, `updatedBy`,
+`changedAt`), `adopt` (hosts paired here on purpose, added to the network on
+the next sync), `ignored` (network hosts forgotten here) and `removedFrom`. It
+never returns keys, signatures or host addresses and contacts nothing.
+
+`network_selftest` (no arguments) rehearses the network end to end with the
+production code: three real gateways (`lab-host-1..3`: Kestrel, pinned TLS,
+volatile credentials, a throwaway certificate) on `127.0.0.1` and two simulated
+desktops driving the desktop's own client (`HostNetwork.cs`) and sync engine
+(`NetworkSync.cs`). Its steps: desktop A pairs with a host by a typed code and
+founds a network that binds it; A adds a second host to the same network; B
+pairs with one host and asks to join with a check number; A sees the same
+number, allows B, and B pairs with the other host by itself; A sets up a third
+host and B is paired with it on its next sync; a key outside the network
+(`network.denied`), a member's ID with the wrong key (`pairing.invalid`) and a
+roster entry not signed by a member are refused; A removes a host (it stops
+trusting the network's desktops, and A and B both forget it, B although the
+host no longer answers it); A pairs that host again by a code and it rejoins
+(B pairs with it again by itself); A removes B (every host revokes it, B leaves
+and forgets its hosts and needs a new key). Each desktop's state goes through
+`network.json`'s format between syncs. It returns `ok`, `passed`,
+`total`, `seconds`, the `scope` and each step's `ok` and `detail`. Nothing
+leaves loopback, nothing is written to disk or Windows Credential Manager, and
+it does not cover the desktop window, `network.json` on a Linux host,
+`martlet-host`, SSH or a real LAN.
+
 `virtualization_status` reports whether Windows is ready for Docker Desktop's
 WSL 2 engine, from the same read-only checks the desktop runs before it starts
 Docker Desktop (optional absolute `dataDirectory`, default the current user's):
@@ -249,6 +280,18 @@ and `LipSyncOwner`, device commands `NodeAction-<action>`
 roles), and Settings for all devices holds `CheckHosts`, `ClusterSync` (checked by
 default; unticking it needs `--allow-ui-effects` and saves `off`),
 `ClusterStatus` (returned as text) and `RoleSetup-<role>` for jobs nobody does.
+The **Your Martlet network** card ([NETWORK](NETWORK.md)) holds `NetworkStatus`
+(status text: member with how many computers and hosts, waiting to join with
+the check number, or in no network), `NetworkCheck` (syncs now; it contacts the
+paired hosts, so it is not a passive click), each computer's row title
+`NetworkMember-<desktop|host>-<ID>` (status text, for example
+`lab-gpu. Host, not paired with this PC yet; added on desktop-diva.`) with
+`NetworkRemove-<desktop|host>-<ID>`, and each request to join
+`NetworkJoin-<device ID>` (status text with the check number) with
+`NetworkAllow-<device ID>` and `NetworkDeny-<device ID>`. Remove, Allow and
+Turn down change the network and need `--allow-ui-effects` (then
+`ConfirmationYes`); Allow also hands that computer access to every host, so
+keep it to disposable lab networks.
 Home and host-dashboard steps have their buttons as `Step-<step>-<n>` and their
 detail line as `StepDetail-<step>` (status text): on the host dashboard,
 `StepDetail-docker` says whether Docker Desktop runs or why Windows can't start
@@ -469,7 +512,7 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `logs_tail` and `virtualization_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `logs_tail` and `virtualization_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

@@ -113,6 +113,23 @@ internal sealed class ControlLogStorage(LinuxControlDirectory directory) : IGate
     }
 }
 
+/// <summary>Keeps the Martlet network roster this host accepted in network.json beside host.json (0600, service owner).
+/// Not part of the approved configuration; martlet-host network-reset removes it.</summary>
+internal sealed class ControlNetworkStorage(LinuxControlDirectory directory) : IGatewayNetworkStorage
+{
+    private readonly object gate = new();
+
+    public byte[]? Load()
+    {
+        lock (gate) return directory.Read(LinuxControlDirectory.Network, LinuxControlDirectory.MaximumNetworkBytes);
+    }
+
+    public void Save(byte[] bytes)
+    {
+        lock (gate) directory.WriteNetwork(bytes);
+    }
+}
+
 internal static class HostApplication
 {
     private static DurableGatewayHost? retainedOwner;
@@ -148,8 +165,17 @@ internal static class HostApplication
                 output.WriteLine(JsonSerializer.Serialize(new
                 {
                     schemaVersion = 1, serviceApproval = approval is null ? "absent" : "matching",
-                    runtime = "not-observed", modelReadiness = "not-probed"
+                    runtime = "not-observed", modelReadiness = "not-probed", network = DescribeNetwork(directory, config.HostId)
                 }));
+                return 0;
+            }
+            if (options.Command == "owner-network-reset")
+            {
+                // The host's own account (martlet-host --yes network-reset, the service stopped) is the owner's confirmation.
+                var removed = directory.RemoveNetwork();
+                output.WriteLine(removed
+                    ? $"Host {config.HostId} left its Martlet network. Paired desktops keep their pairings (revoke them with martlet-host console); the next desktop that pairs adds this host to its own network."
+                    : $"Host {config.HostId} is not in a Martlet network.");
                 return 0;
             }
             if (options.Command is "serve" or "health")
@@ -171,6 +197,14 @@ internal static class HostApplication
                 {
                     owner.AttachCluster(new ControlClusterStorage(directory));
                     owner.AttachVoices(new ControlVoiceStorage(directory));
+                    owner.AttachNetwork(new ControlNetworkStorage(directory));
+                    var (networkState, networkId) = owner.NetworkState;
+                    owner.RecordActivity("INFO", networkState switch
+                    {
+                        "bound" => $"In Martlet network {networkId}: its member desktops pair with this host by themselves.",
+                        "removed" => $"Removed from Martlet network {networkId}; a member desktop that pairs again adds it back.",
+                        _ => "In no Martlet network yet: the first desktop that pairs adds this host to its network."
+                    });
                     owner.RecordActivity("INFO", config.Roles.Count == 0 ? "Serving with no roles (for example as the log host)."
                         : "Serving roles: " + string.Join(", ", config.Roles.Select(r => $"{r.Kind} ({r.Model})")) + ".");
                 }
@@ -316,6 +350,25 @@ internal static class HostApplication
     private static ServiceApproval? ReadApproval(LinuxControlDirectory directory) =>
         directory.Read(LinuxControlDirectory.Approval, HostConfiguration.MaximumBytes) is { } bytes
             ? ServiceApproval.Parse(bytes) : null;
+
+    /// <summary>network.json in words for status: none, or the network ID with its member counts (no keys or addresses).</summary>
+    private static object DescribeNetwork(LinuxControlDirectory directory, string hostId)
+    {
+        try
+        {
+            if (directory.Read(LinuxControlDirectory.Network, LinuxControlDirectory.MaximumNetworkBytes) is not { } bytes) return new { state = "unbound" };
+            var roster = Martlet.Core.Network.NetworkRoster.Parse(bytes);
+            return new
+            {
+                state = roster.Host(hostId) is { Removed: false } ? "bound" : "removed",
+                networkId = roster.NetworkId, desktops = roster.ActiveDesktops.Count(), hosts = roster.ActiveHosts.Count()
+            };
+        }
+        catch (Exception error) when (error is Martlet.Core.Contracts.ContractException or GatewayPersistenceException)
+        {
+            return new { state = "unreadable" };
+        }
+    }
 
     // machine.json is written by martlet-host (setup, add, remove, machine) next to host.json. It is informational
     // only, so a missing, unreadable or malformed file just means paired desktops see "not reported".

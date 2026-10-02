@@ -53,6 +53,13 @@ public sealed class GatewayServer
     /// and loads the copy saved there.</summary>
     public void AttachVoiceStorage(IGatewayVoiceStorage storage) => application.Voices.Attach(storage);
 
+    /// <summary>Keeps the Martlet network roster this host accepted (served at /martlet/v1/network) in
+    /// <paramref name="storage"/> and loads the roster saved there.</summary>
+    public void AttachNetworkStorage(IGatewayNetworkStorage storage) => application.Network.Attach(storage);
+
+    /// <summary>This host's network state: "unbound", "bound" or "removed", and the ID of its network (null when unbound).</summary>
+    public (string State, string? NetworkId) NetworkState => (application.Network.State, application.Network.Roster?.NetworkId);
+
     /// <summary>Keeps this host's log (its own activity and, as the owner's log host, every computer's lines it receives;
     /// served at /martlet/v1/logs) in <paramref name="storage"/> and loads the log saved there.</summary>
     public void AttachLogStorage(IGatewayLogStorage storage) => application.Logs.Attach(storage);

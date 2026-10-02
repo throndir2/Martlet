@@ -10,5 +10,9 @@
     <ProjectReference Include="..\Martlet.Doctor\Martlet.Doctor.csproj" />
     <ProjectReference Include="..\Martlet.F5\Martlet.F5.csproj" />
     <ProjectReference Include="..\Martlet.Sherpa\Martlet.Sherpa.csproj" />
+    <!-- network_status reads the desktop's network.json; network_selftest runs real gateways on loopback with the desktop's
+         network client and sync engine. -->
+    <ProjectReference Include="..\Martlet.Avatar.Audio2Face\Martlet.Avatar.Audio2Face.csproj" />
+    <ProjectReference Include="..\Martlet.Gateway\Martlet.Gateway.csproj" />
   </ItemGroup>
 </Project>

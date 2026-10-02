@@ -44,7 +44,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "SetupOllamaStatus", "SetupLocalModelTest", "HostRunStatus", "RepliesNow",
         "StageTitle", "StageText", "HealthTitle", "HealthSummary", "HealthAllClear",
         "LogSummary", "LogHostStatus", "LogHostChoice", "LogDetail",
-        "HostStatus", "PairedHost", "PairCodeTitle", "PairCodeHelp", "HostRunPairAddress"
+        "HostStatus", "PairedHost", "PairCodeTitle", "PairCodeHelp", "HostRunPairAddress", "NetworkStatus"
     };
     /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)");
     /// Companion › Voice's included F5 voices ("F5VoiceRow-arctic-slt" reads "SLT (US female)", with "· in use" when it is);
@@ -53,9 +53,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// and why none are listed or which can't run it ("HostChoices-speaking", "HostChoicesUnable-speaking"); Home's items
     /// ("HealthIssue-ollama" reads "Problem: Ollama isn't running on this PC. ...") and Health tiles ("HealthCheck-microphone"
     /// reads "Microphone: OK. Windows default"); Diagnostics' shown lines, newest first ("LogEntry-0" reads
-    /// "21:04:11.532 WARN This PC · App: Host gpu-box stopped answering: ...").</summary>
+    /// "21:04:11.532 WARN This PC · App: Host gpu-box stopped answering: ..."); the Martlet network's computers
+    /// ("NetworkMember-host-gpu-pc" reads "gpu-pc. Host, paired with this PC; added on desktop-a.") and requests to join
+    /// ("NetworkJoin-desktop-b" reads "DESKTOP-B asks to join. desktop-b, through gpu-pc. Check number 482 913: ...").</summary>
     private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "F5VoiceRow-", "StepDetail-", "HostChoice", "HealthIssue-", "HealthCheck-",
-        "LogEntry-"];
+        "LogEntry-", "NetworkMember-", "NetworkJoin-"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>

@@ -93,9 +93,11 @@ public partial class HostsWindow : ThemedWindow
             ? "Enter the host's address, then run the command shown below in a terminal on that computer."
             : Ssh
                 ? "Enter user@computer and press Add this computer. Martlet asks for that account's password once, adds its own SSH key, " +
-                  "checks Docker, sets the host up and pairs this PC by itself. You never need to log in there."
+                  "checks Docker, sets the host up and pairs this PC by itself. You never need to log in there. Your other computers in " +
+                  "your Martlet network pair with it by themselves."
                 : Method == HostSetupMethod.ThisPcDocker
-                    ? "Press Set up host. Martlet starts Docker Desktop, sets the host up and pairs this PC by itself; nothing to type."
+                    ? "Press Set up host. Martlet starts Docker Desktop, sets the host up and pairs this PC by itself; nothing to type. " +
+                      "Your other computers in your Martlet network pair with it by themselves."
                     : "Fill in the address, then press Set up host and answer the questions in the console window.");
         RolesSummaryText.Text = Ssh
             ? $"Roles install from here over SSH; Martlet asks for what each role needs and shows the progress. This host runs on {MethodName(Method)}."
@@ -309,7 +311,8 @@ public partial class HostsWindow : ThemedWindow
         string check;
         try { check = await CheckAsync(host.Pairing, Hardware, run.Status, run.Token); }
         catch (InvalidOperationException error) { check = "Its check did not answer yet: " + error.Message; }
-        return $"{host.HostId} is set up and paired. {check} It is on the Devices map; select it there to hand it jobs.";
+        return $"{host.HostId} is set up and paired. {check} It is on the Devices map; select it there to hand it jobs. " +
+            "Your other computers in your Martlet network pair with it by themselves within a minute.";
     }
 
     private async void ResetSshTrust_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>

@@ -434,6 +434,22 @@ internal static class GatewayFailures
             "The gateway could not complete the request.",
             "Use the trace ID with local redacted diagnostics; no automatic retry, fallback or raw worker access was attempted.",
             500),
+        "network.unbound" => new(code,
+            "This host is not in a Martlet network yet.",
+            "Pair a member desktop with this host once (Add a computer); it adds the host to its network by itself.",
+            409),
+        "network.other" => new(code,
+            "This host belongs to another Martlet network.",
+            "Use a desktop of that network, or run martlet-host network-reset on the host to let it join another network.",
+            409),
+        "network.denied" => new(code,
+            "This device is not an active member of the host's Martlet network.",
+            "Ask to join from Martlet on this PC and allow it on one of your other computers (Devices).",
+            403),
+        "network.invalid" => new(code,
+            "The Martlet network roster is invalid for this host.",
+            "Sync again from a member desktop of this host's network; entries must be signed by members and list this host with its own key.",
+            400),
         _ => throw new ArgumentException("Unknown gateway failure code.", nameof(code))
     };
 }
