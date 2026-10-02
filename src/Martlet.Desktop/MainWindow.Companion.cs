@@ -314,12 +314,14 @@ public partial class MainWindow
             warning.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
             now.Children.Add(warning);
         }
-        if (section == CompanionTab.Listening && homeSettings?.Audio?.Input.Checkpoint is null)
+        if (section == CompanionTab.Listening && AudioMissing(output: false))
         {
-            var mic = new TextBlock { Text = "Microphone not set up yet. Test it below so Martlet can hear you; you can still type.",
+            var mic = new TextBlock { Text = homeSettings?.Audio?.Input.EndpointId is null
+                    ? "No microphone found. Plug one in so Martlet can hear you; you can still type."
+                    : "Your chosen microphone isn't connected. Plug it in or pick another below; you can still type.",
                 TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
             mic.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
-            AutomationProperties.SetAutomationId(mic, "ListeningMicNotSetUp");
+            AutomationProperties.SetAutomationId(mic, "ListeningMicMissing");
             now.Children.Add(mic);
         }
         return Card(now);
@@ -354,17 +356,25 @@ public partial class MainWindow
 
     private Border AudioCard(bool output)
     {
-        var audio = homeSettings?.Audio;
-        var checkpoint = output ? audio?.Output.Checkpoint : audio?.Input.Checkpoint;
+        var choice = output ? homeSettings?.Audio?.Output : homeSettings?.Audio?.Input;
+        var checkpoint = choice?.Checkpoint;
+        var missing = AudioMissing(output);
         var what = output ? "Speakers" : "Microphone";
-        var text = checkpoint is not null ? $"Set up and tested on {checkpoint.TestedAt.ToLocalTime():d}."
-            : output ? "Not tested yet. Martlet uses your Windows default speakers until you pick others."
-            : "Not set up yet. Pick your microphone and run a quick 5-second test.";
-        return Card(Heading(what),
-            Note(text + (output ? " Martlet plays its voice here." : " Martlet listens only while you hold to talk or turn on hands-free."),
-                new Thickness(0, 0, 0, 8)),
-            Row(PageButton(checkpoint is not null ? $"Change {what.ToLowerInvariant()}" : $"Set up {what.ToLowerInvariant()}",
-                () => RunNodeAction(NodeAction.AudioSetup), primary: checkpoint is null, id: "OpenAudioSetup")));
+        var device = choice?.EndpointId is null
+            ? output ? "your Windows default speakers" : "your Windows default microphone"
+            : $"\"{choice.DisplayName}\"";
+        var text = missing
+            ? choice?.EndpointId is null
+                ? output ? "No speakers or headset found. Plug them in or turn them on in Windows Sound settings."
+                    : "No microphone found. Plug one in or turn it on in Windows Sound settings."
+                : $"{device} isn't connected. Plug it in or pick another."
+            : $"Using {device}" + (checkpoint is not null ? $", tested on {checkpoint.TestedAt.ToLocalTime():d}." : ".");
+        var line = Note(text + (output ? " Martlet plays its voice here." : " Martlet listens only while you hold to talk or turn on hands-free."),
+            new Thickness(0, 0, 0, 8));
+        if (missing) line.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
+        return Card(Heading(what), line,
+            Row(PageButton(missing ? $"Fix {what.ToLowerInvariant()}" : $"Test or change {what.ToLowerInvariant()}",
+                () => RunNodeAction(NodeAction.AudioSetup), primary: missing, id: "OpenAudioSetup")));
     }
 
     private Border VoicesCard() => Card(Heading("Voice Library"),

@@ -33,13 +33,13 @@ public partial class AudioSetupWindow : ThemedWindow
     private AudioDeviceList? devices;
     private AudioTestStatus? lastStatus;
     private long generation;
-    private bool closed, busy, rendering, needsReload = true, confirming, loading, saving, saveQueued;
+    private bool closed, busy, rendering, needsReload = true, confirming, loading, saving, saveQueued, discoveryQueued;
     private volatile bool locked;
     private Guid? confirmableOutput;
     private string message = "";
     private string? reloadHint;
     private string? micResult, outputResult;
-    private bool micProblem, micIsNext;
+    private bool micProblem;
     private string stages = "Mic: never tested. Output: never tested.";
     private string discoveryStage = "Discovery: not run.";
     private string microphoneStage = "Mic: never tested.";
@@ -67,6 +67,7 @@ public partial class AudioSetupWindow : ThemedWindow
             RenderProgress();
             RenderActions();
             if (saveQueued && !busy && !operations.IsRunning && !locked) _ = SaveQueuedAsync();
+            else if (discoveryQueued) _ = DiscoverQueuedAsync();
         };
         timer.Start();
         this.sessionEvents.LockedChanged += SessionSwitch;
@@ -118,14 +119,15 @@ public partial class AudioSetupWindow : ThemedWindow
         devices = null;
         micResult = outputResult = null;
         MicMeter.Value = 0;
-        DevicesText.Text = "Martlet uses your Windows defaults. Find devices to pick a specific one.";
+        DevicesText.Text = "Looking for microphones and speakers...";
         if (draft is not null) draft = draft with { Audio = draft.Audio ?? AudioSettings.Create() };
         ResultText.Text = loaded.Error?.Summary ??
-            "Loaded local settings only. Find devices and tests have NOT run. Choices save automatically when you change or test them; existing v1 settings migrate with an exact original snapshot.";
+            "Loaded local settings. Devices are listed automatically; tests have NOT run. Choices save automatically when you change or test them; existing v1 settings migrate with an exact original snapshot.";
         message = "";
         RenderChoices();
         RenderStatus();
         RenderActions();
+        if (draft is not null && !needsReload) RequestDiscovery();
     }
 
     private void RenderChoices()
@@ -158,7 +160,7 @@ public partial class AudioSetupWindow : ThemedWindow
     private void Choice_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (rendering || draft?.Audio is not { } choices) return;
-        if (ownedAudio is not null || locked || needsReload || loading) { RenderChoices(); return; }
+        if (Testing || locked || needsReload || loading) { RenderChoices(); return; }
         if (InputChoice.SelectedItem is not SelectionItem input || OutputChoice.SelectedItem is not SelectionItem output) return;
         var next = choices with { Input = choices.Input.Select(input.Id, input.Label), Output = choices.Output.Select(output.Id, output.Label) };
         if (next == choices) return;
@@ -166,13 +168,35 @@ public partial class AudioSetupWindow : ThemedWindow
         if (next.Output != choices.Output) { confirmableOutput = null; outputResult = null; }
         draft = draft with { Audio = next };
         ResultText.Text = "Choice changed. Its corresponding checkpoint was invalidated and the new choice saves automatically. Testing still needs fresh permission.";
-        message = "Changed. Run a quick test to make sure it works.";
+        message = "Changed. Test it any time to check that it works.";
         QueueSave();
         RenderStatus();
         RenderActions();
     }
 
-    private async void Find_Click(object sender, RoutedEventArgs e) => await RunAudioAsync(AudioSetupAction.Discovery);
+    private bool Discovering => ownedAudio?.Status.Action == AudioSetupAction.Discovery;
+    private bool Testing => ownedAudio is not null && !Discovering;
+
+    // Opening either list looks again, so a device plugged in since the window opened shows up without a button.
+    private void Choice_DropDownOpened(object? sender, EventArgs e)
+    {
+        if (!Discovering) RequestDiscovery();
+    }
+
+    // Listing only reads endpoint names, so it needs no permission. It shares the setup worker, so it waits its turn.
+    private void RequestDiscovery()
+    {
+        discoveryQueued = true;
+        _ = DiscoverQueuedAsync();
+    }
+
+    private async Task DiscoverQueuedAsync()
+    {
+        if (!discoveryQueued || closed || busy || saveQueued || operations.IsRunning || locked || needsReload || loading || draft is null) return;
+        discoveryQueued = false;
+        await RunAudioAsync(AudioSetupAction.Discovery);
+    }
+
     private async void Mic_Click(object sender, RoutedEventArgs e) => await RunAudioAsync(AudioSetupAction.Microphone);
     private async void Output_Click(object sender, RoutedEventArgs e) => await RunAudioAsync(AudioSetupAction.Output);
 
@@ -217,10 +241,15 @@ public partial class AudioSetupWindow : ThemedWindow
             outputResult = null;
         }
         var operation = audio.Start(action, choice, explicitlyApproved: true);
-        if (operation is null) { MayStart(); return; }
+        if (operation is null)
+        {
+            if (action == AudioSetupAction.Discovery) discoveryQueued = true;
+            else MayStart();
+            return;
+        }
         ownedAudio = operation;
         lastStatus = null;
-        message = "";
+        if (action != AudioSetupAction.Discovery) message = "";
         var result = await ObserveAsync(operation.Worker, action == AudioSetupAction.Discovery ? TimeSpan.FromSeconds(5) : observationTimeout);
         if (result is null) return;
         RenderProgress();
@@ -230,17 +259,22 @@ public partial class AudioSetupWindow : ThemedWindow
         {
             if (passed)
             {
-                devices = operation.Devices;
-                RenderChoices();
-                ResultText.Text = $"Found {devices!.Inputs.Count} input(s) and {devices.Outputs.Count} output(s). Listing is a snapshot, NOT permission or readiness; use Find again to refresh. " +
-                    (devices.Inputs.Count == 0 || devices.Outputs.Count == 0 ? "A device category is missing. Reconnect or enable the intended endpoint manually. " : "") +
+                var found = operation.Devices!;
+                if (!found.SameAs(devices))
+                {
+                    devices = found;
+                    RenderChoices();
+                }
+                ResultText.Text = $"Found {found.Inputs.Count} input(s) and {found.Outputs.Count} output(s). Listing is a snapshot, NOT permission or readiness; opening a device list refreshes it. " +
+                    (found.Inputs.Count == 0 || found.Outputs.Count == 0 ? "A device category is missing. Reconnect or enable the intended endpoint manually. " : "") +
                     "Saved endpoints absent from this list remain unverified; no fallback occurs.";
-                DevicesText.Text = Found(devices);
+                DevicesText.Text = Found(found);
             }
             else
             {
                 ResultText.Text = "Local action failed or canceled: " + status.Stage + ". " + AudioSetupDiagnostics.Remedy(status.Error);
-                message = result.Outcome == SetupWorkOutcome.Canceled ? "Search stopped." : "Couldn't list devices. " + Problem(status.Error, input: true);
+                if (devices is null) DevicesText.Text = "Couldn't list devices. Martlet uses your Windows defaults; open a list to look again.";
+                if (result.Outcome != SetupWorkOutcome.Canceled) message = "Couldn't list devices. " + Problem(status.Error, input: true);
             }
         }
         else if (result.Outcome == SetupWorkOutcome.Canceled)
@@ -286,13 +320,13 @@ public partial class AudioSetupWindow : ThemedWindow
     private static string Found(AudioDeviceList list)
     {
         static string Count(int count, string one, string many) => count == 1 ? "1 " + one : $"{count} {many}";
-        const string remedy = " Plug it in or turn it on in Windows Sound settings, then find devices again.";
+        const string remedy = " Plug it in or turn it on in Windows Sound settings; the list checks again when you open it.";
         var inputs = Count(list.Inputs.Count, "microphone", "microphones");
         var outputs = Count(list.Outputs.Count, "speaker or headset", "speakers and headsets");
         return list.Inputs.Count == 0 && list.Outputs.Count == 0 ? "No microphones or speakers found." + remedy
             : list.Inputs.Count == 0 ? $"Found {outputs}, but no microphone." + remedy
             : list.Outputs.Count == 0 ? $"Found {inputs}, but no speakers or headset." + remedy
-            : $"Found {inputs} and {outputs}. Pick one below.";
+            : $"Found {inputs} and {outputs}. Martlet uses your Windows defaults unless you pick another below.";
     }
 
     private static string SignalProblem(AudioInputSignal signal) => signal switch
@@ -310,7 +344,7 @@ public partial class AudioSetupWindow : ThemedWindow
         ErrorCode.AudioDeviceBusy => "Another app is using this device on its own. Close that app, then try again.",
         ErrorCode.AudioFormatUnsupported => "This device uses an audio format Martlet can't open. Pick another device.",
         ErrorCode.AudioDeviceUnavailable or ErrorCode.AudioDeviceLost or ErrorCode.AudioDeviceChanged =>
-            "The device was unplugged or changed. Reconnect it, click Find devices and pick it again.",
+            "The device was unplugged or changed. Reconnect it, then pick it again from the list.",
         ErrorCode.DeadlineExceeded => "The test took too long. Try again.",
         ErrorCode.AudioCaptureFailed or ErrorCode.AudioPlaybackFailed => "The device stopped responding. If tests stay unavailable, restart Martlet.",
         _ => input ? "The test didn't finish. Check the microphone, then try again." : "Check that your speakers or headset are connected and turned up, then try again."
@@ -413,11 +447,11 @@ public partial class AudioSetupWindow : ThemedWindow
     private static string InputSignalRemedy(AudioInputSignal signal) => signal switch
     {
         AudioInputSignal.NoFrames =>
-            "Check the selected microphone or changed default, its connection and Windows microphone privacy/desktop-app access. Find devices, then authorize a fresh test; no automatic fallback.",
+            "Check the selected microphone or changed default, its connection and Windows microphone privacy/desktop-app access. Reopen the device list to refresh it, then authorize a fresh test; no automatic fallback.",
         AudioInputSignal.BelowAdvisoryThreshold =>
             "A quiet or brief valid phrase can fall below this local advisory; low PCM does not prove mute or absent speech. Check the intended microphone, hardware mute, Windows input level and microphone privacy/desktop-app access; authorize a fresh test.",
         AudioInputSignal.InsufficientFrames =>
-            "The selected input did not supply enough frames. Check its connection, changed default/endpoint and Windows microphone privacy/desktop-app access; Find devices and authorize a fresh test, with no fallback.",
+            "The selected input did not supply enough frames. Check its connection, changed default/endpoint and Windows microphone privacy/desktop-app access; reopen the device list and authorize a fresh test, with no fallback.",
         AudioInputSignal.IntermittentAmplitude =>
             "A brief click is not a reliable level check. Check the intended input, hardware mute and Windows input level; try a sustained test sound, then authorize a fresh test. This does not detect speech.",
         _ => throw new ArgumentOutOfRangeException(nameof(signal))
@@ -434,11 +468,12 @@ public partial class AudioSetupWindow : ThemedWindow
         if (closed) return;
         var available = !busy && !operations.IsRunning && !locked;
         var ready = draft is not null && !needsReload;
-        var testing = ownedAudio is not null;
-        // Picking stays open while a choice saves, so changing both devices in a row never bounces back.
+        var testing = Testing;
+        var discovering = Discovering;
+        // Picking stays open while a choice saves or the list refreshes, so changing both devices in a row never bounces back.
         InputChoice.IsEnabled = OutputChoice.IsEnabled =
-            ready && !locked && !testing && !loading && (!operations.IsRunning || saving);
-        FindButton.IsEnabled = MicButton.IsEnabled = OutputButton.IsEnabled = available && ready;
+            ready && !locked && !testing && !loading && (!operations.IsRunning || saving || discovering);
+        MicButton.IsEnabled = OutputButton.IsEnabled = available && ready;
         ReloadButton.IsEnabled = available;
         ReloadButton.Visibility = needsReload && !loading && !busy ? Visibility.Visible : Visibility.Collapsed;
         StopButton.IsEnabled = testing;
@@ -461,24 +496,24 @@ public partial class AudioSetupWindow : ThemedWindow
     {
         var choices = draft?.Audio;
         var running = ownedAudio?.Status.Action;
-
-        // One primary action: testing the microphone until it works, then Done.
-        var micNext = choices is not null && choices.Input.Checkpoint is null;
-        if (micNext != micIsNext)
-        {
-            micIsNext = micNext;
-            if (micNext) { MicButton.SetResourceReference(StyleProperty, "PrimaryButton"); DoneButton.ClearValue(StyleProperty); }
-            else { MicButton.ClearValue(StyleProperty); DoneButton.SetResourceReference(StyleProperty, "PrimaryButton"); }
-        }
+        // Windows defaults are assumed to work; only a device that is missing right now needs attention.
+        var checking = devices is null && (Discovering || discoveryQueued);
 
         if (running == AudioSetupAction.Microphone)
             ShowState(MicBadge, "Testing", "AccentBrush", MicText, "Listening... talk or hum until the test ends.");
         else if (micResult is not null)
             ShowState(MicBadge, micProblem ? "Needs attention" : "Working", micProblem ? "WarningBrush" : "SuccessBrush", MicText, micResult);
+        else if (choices is not null && AudioDeviceList.Present(choices.Input, devices?.Inputs) == false)
+            ShowState(MicBadge, "Not found", "WarningBrush", MicText, choices.Input.EndpointId is null
+                ? "No microphone found. Plug one in or turn it on in Windows Sound settings, then open the list above. You can still type."
+                : $"{Named(choices.Input, true)} isn't connected. Plug it in, or pick another microphone above.");
         else if (choices?.Input.Checkpoint is { } heard)
             ShowState(MicBadge, "Working", "SuccessBrush", MicText, $"Working. Last tested {heard.TestedAt.ToLocalTime():d}.");
+        else if (checking)
+            ShowState(MicBadge, "Checking", null, MicText, "Looking for your microphone...");
         else
-            ShowState(MicBadge, "Not set up", null, MicText, "Click Test microphone, then talk for a few seconds.");
+            ShowState(MicBadge, "Ready", "SuccessBrush", MicText,
+                $"Using {Named(choices?.Input ?? AudioChoice.Default(true), true)}. Test it any time to check that Martlet hears you.");
 
         if (running == AudioSetupAction.Output)
             ShowState(OutputBadge, "Testing", "AccentBrush", OutputText, "Playing a short beep...");
@@ -487,12 +522,17 @@ public partial class AudioSetupWindow : ThemedWindow
                 "Did you hear a short beep? If not, check your volume and the device picked above, then play it again.");
         else if (outputResult is not null)
             ShowState(OutputBadge, "Needs attention", "WarningBrush", OutputText, outputResult);
+        else if (choices is not null && AudioDeviceList.Present(choices.Output, devices?.Outputs) == false)
+            ShowState(OutputBadge, "Not found", "WarningBrush", OutputText, choices.Output.EndpointId is null
+                ? "No speakers or headset found. Plug them in or turn them on in Windows Sound settings, then open the list above."
+                : $"{Named(choices.Output, false)} isn't connected. Plug it in, or pick other speakers above.");
         else if (choices?.Output.Checkpoint is { Outcome: LocalAudioOutcome.Heard } played)
             ShowState(OutputBadge, "Working", "SuccessBrush", OutputText, $"Working. You heard the test sound on {played.TestedAt.ToLocalTime():d}.");
-        else if (choices?.Output.Checkpoint is not null)
-            ShowState(OutputBadge, "Not confirmed", null, OutputText, "The test sound played, but nobody confirmed hearing it. Play it again to check.");
+        else if (checking)
+            ShowState(OutputBadge, "Checking", null, OutputText, "Looking for your speakers...");
         else
-            ShowState(OutputBadge, "Not tested", null, OutputText, "Click Play test sound to hear a short, quiet beep.");
+            ShowState(OutputBadge, "Ready", "SuccessBrush", OutputText,
+                $"Using {Named(choices?.Output ?? AudioChoice.Default(false), false)}. Play a test sound any time to check that you can hear Martlet.");
     }
 
     private static void ShowState(TextBlock badge, string state, string? brush, TextBlock detail, string text)
@@ -569,9 +609,10 @@ public partial class AudioSetupWindow : ThemedWindow
         // Saves are short and atomic, so stopping, deactivating and closing end only the owned test.
         confirmableOutput = null;
         if (ownedAudio is null) return;
+        if (Discovering) discoveryQueued = devices is null;
+        else message = "Test stopped. Nothing changed.";
         ownedAudio.Stop();
         observation?.Cancel();
-        message = "Test stopped. Nothing changed.";
         RetireAudioObservation();
     }
 
@@ -609,7 +650,10 @@ public partial class AudioSetupWindow : ThemedWindow
 
     private void Window_Deactivated(object? sender, EventArgs e)
     {
-        if (!confirming) StopOwned();
+        if (confirming) return;
+        // Listing devices opens nothing, so switching away lets it finish; it still ends a pending "did you hear it?".
+        if (Discovering) confirmableOutput = null;
+        else StopOwned();
     }
 
     private void SessionSwitch(bool isLocked)
@@ -621,6 +665,7 @@ public partial class AudioSetupWindow : ThemedWindow
         {
             if (closed) return;
             if (locked) StopOwned();
+            else if (discoveryQueued) _ = DiscoverQueuedAsync();
             RenderActions();
         });
     }
