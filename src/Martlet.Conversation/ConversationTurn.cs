@@ -45,6 +45,7 @@ public sealed class ConversationTurn
     private Guid? speechRequest;
     private string? refusal;
     private bool invalidated, userStopped, workFinished, released, quarantined, textComplete, refused, terminal, toolsRejected;
+    private bool speechLimitReached;
     private int peakQueued, committed, suppressed, reservedBytes, toolCalls;
     private string? activeTool;
     private long reservedSamples, accepted, submitted, consumed, eventSequence, dropped;
@@ -407,6 +408,8 @@ public sealed class ConversationTurn
         if (request.Speech is not { } voice) return;
         await foreach (var piece in segments.Reader.ReadAllAsync(stop.Token).ConfigureAwait(false))
         {
+            // Once the speech budget is spent the rest of the reply is text only; keep draining so the text still finishes.
+            if (speechLimitReached) continue;
             var window = new MonotonicWindow(Clock, voice.Limits.MaxRequestTime);
             lock (Sync) speechWindow = window;
             try { await SpeakSegmentAsync(piece.Text!, voice, window).ConfigureAwait(false); }
@@ -426,7 +429,13 @@ public sealed class ConversationTurn
             if (committed >= request.Limits.MaxSpeechSegments ||
                 input.Utf8Bytes > request.Limits.MaxSpeechTextBytes - reservedBytes ||
                 voice.Limits.MaxSamples > request.Limits.MaxReservedSpeechSamples - reservedSamples)
-                throw new ConversationException(ConversationFailure.LimitExceeded);
+            {
+                // The aggregate speech budget ends what is said aloud, never the reply itself.
+                speechLimitReached = true;
+                suppressed++;
+                Emit(ConversationEventKind.SpeechSuppressed);
+                return;
+            }
             number = ++committed;
             reservedBytes += input.Utf8Bytes;
             reservedSamples += voice.Limits.MaxSamples;
@@ -647,6 +656,7 @@ public sealed class ConversationTurn
             accepted + (currentPlayback?.AcceptedSamples ?? 0), submitted + (currentPlayback?.SubmittedSamples ?? 0),
             consumed + (currentPlayback?.DeviceConsumedSamples ?? 0), mayHavePlayed || currentPlayback?.MayHavePlayed == true,
             released, quarantined || (currentPlayback is { State: PlaybackState.Failed, DeviceReleased: false }),
-            Interlocked.Read(ref dropped), currentPlayback ?? lastPlayback, retryOf, earlierSpeech, toolCalls, activeTool, toolsRejected);
+            Interlocked.Read(ref dropped), currentPlayback ?? lastPlayback, retryOf, earlierSpeech, toolCalls, activeTool, toolsRejected,
+            speechLimitReached);
     }
 }

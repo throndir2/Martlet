@@ -316,6 +316,7 @@ public partial class LiveConversationWindow : ThemedWindow
             var refusal = done.Turn?.Content.Refusal?.Trim();
             if (!string.IsNullOrEmpty(refusal) && reply.Text != refusal) reply.AddNote("Martlet then declined: " + refusal);
             else if (done.Turn?.Snapshot.State is not (ConversationState.Completed or ConversationState.Refused)) reply.AddNote("Cut short.");
+            else if (done.Turn?.Snapshot.SpeechLimitReached == true) reply.AddNote("Only the start was said aloud.");
         }
         if (done.HandsFree)
         {

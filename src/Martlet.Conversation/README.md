@@ -214,6 +214,11 @@ segment in a 90-second turn budget. Callers must deliberately choose useful
 per-segment limits rather than mistake `MaxSpeechSegments` for a guaranteed
 number of requests. `CommittedSegments` counts selected authorization
 attempts, including a denied action; it is not a count of billed requests.
+A segment that would exceed the segment, byte or sample aggregate is not
+authorized or synthesized, and neither is any later segment; the reply's text
+still streams to completion. The turn then completes normally with
+`SpeechLimitReached` set (each skipped segment counts in `SuppressedFragments`)
+instead of failing with `LimitExceeded`.
 
 There is exactly **one TTS request and one playback run active at a time**.
 Each segment has its own sink run. This avoids claiming gapless synthesis or
