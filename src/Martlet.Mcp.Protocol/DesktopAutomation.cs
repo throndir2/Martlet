@@ -103,18 +103,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// Add a computer ("NearbyItem-0" reads "GAMING-PC (192.168.1.31): gaming-pc-host · Martlet 0.17.0"); the Martlet
     /// network's computers ("NetworkMember-host-gpu-pc" reads "gpu-pc. Host, paired with this PC; added on desktop-a.") and
     /// requests to join ("NetworkJoin-desktop-b" reads "DESKTOP-B asks to join. desktop-b, through gpu-pc. Check number ...");
-<<<<<<< HEAD
     /// API keys ("ApiKeyRow-AbC..." reads "Home Assistant. See status and logs. Made on desktop-a 10/2/2026. ... ID AbCdEf.",
-    /// never the key or its verifier).</summary>
+    /// never the key or its verifier); a host role's choices in its Add dialog ("HostInput-choice.A2F_ENGINE" reads "local";
+    /// never its secret fields) and the terms that follow a variant choice ("HostInputTerms-A2F_ENGINE").</summary>
     private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "F5VoiceRow-", "F5VoiceGroup-", "StepDetail-", "HostChoice",
         "HealthIssue-", "HealthCheck-", "LogEntry-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",
-        "SmartHomeDevice-", "SmartHomeUpdate-"];
-=======
-    /// a host role's choices in its Add dialog ("HostInput-choice.A2F_ENGINE" reads "local"; never its secret fields) and the
-    /// terms that follow a variant choice ("HostInputTerms-A2F_ENGINE").</summary>
-    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "F5VoiceRow-", "StepDetail-", "HostChoice", "HealthIssue-", "HealthCheck-",
-        "LogEntry-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "HostInput-choice.", "HostInputTerms-"];
->>>>>>> 65be61b (Audio2Face: local open-source engine on a Martlet host's GPU, no NGC key)
+        "SmartHomeDevice-", "SmartHomeUpdate-", "HostInput-choice.", "HostInputTerms-"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>
