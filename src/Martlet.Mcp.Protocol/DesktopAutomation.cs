@@ -28,8 +28,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "HostCommandSection", "PairCommandSection", "DeviceIdSection",
         // The notification-area menu (ui_tray "menu"): Open Martlet only shows the window, Talk to Martlet opens the talk window
         // like OpenLiveConversation, Pause Martlet only stops work and End the conversation closes the talk window like CloseLive.
-        // Resume Martlet, the character, the startup and closing choices and Exit need --allow-ui-effects.
-        "TrayOpen", "TrayTalk", "TrayPause", "TrayEndTalk"
+        // Start listening, Resume Martlet, the character, the startup and closing choices and Exit need --allow-ui-effects.
+        "TrayOpen", "TrayTalk", "TrayPause", "TrayEndTalk",
+        // Martlet on your network: Find again only sends Martlet's own discovery query (port 9444) on the local network and
+        // lists who answers; Stop asking only withdraws this PC's own request. Connect, Allow and Deny do the work.
+        "NearbyFind", "NearbyCancel"
     };
     /// <summary>Choosing a Companion page in its side list only shows that page; Devices map nodes ("Node-this-pc",
     /// "Node-host:gpu-1") and the problem card's Show buttons only select a device and show its details; a job's
@@ -45,14 +48,18 @@ internal sealed class DesktopAutomation(bool allowEffects)
     {
         "FoundationStatus", "PipelineStatus", "LocalAudioStatus",
         "LiveStatus", "LiveMic", "LiveVision", "LiveVisionStatus", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
+        // Home's Start talking reads "Show conversation" while the talk window is open.
+        "OpenLiveConversation",
         "PeopleStatus", "PeopleSyncStatus", "PeopleVoiceCount", "ListenParakeetStatus", "SetupCharacterView", "SetupCharacterSpeechDisplay",
         "SetupCharacterNow", "SetupCharacterNowProblem",
-        "LipSyncNow", "LipSyncNowProblem", "LipSyncOwnTitle", "LipSyncOwnState", "SelectedDevice", "SelectedDeviceHealth", "ClusterStatus",
+        "LipSyncNow", "LipSyncNowProblem", "LipSyncOwnTitle", "LipSyncOwnState", "LipSyncDockerTitle", "LipSyncLoudnessTitle",
+        "SelectedDevice", "SelectedDeviceHealth", "ClusterStatus",
         "VisionStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "SetupF5About", "F5VoicesStatus",
         "SetupOllamaStatus", "SetupLocalModelTest", "HostRunStatus", "RepliesNow", "AppUpdateStatus",
         "StageTitle", "StageText", "HealthTitle", "HealthSummary", "HealthAllClear",
         "LogSummary", "LogHostStatus", "LogHostChoice", "LogDetail",
-        "HostStatus", "PairedHost", "PairCodeTitle", "PairCodeHelp", "HostRunPairAddress",
+        "HostStatus", "PairedHost", "PairCodeTitle", "PairCodeHelp", "HostRunPairAddress", "NetworkStatus",
+        "NearbyStatus", "NearbyNumber", "NearbyShareStatus", "JoinRequestTitle", "JoinRequestText", "JoinRequestNumber", "JoinRequestExpiry",
         // The MCP directory's status line and the selected server's public directory facts (never what was typed into its fields).
         "McpDirectoryStatus", "McpDirectoryNoSelection", "McpDirectoryDetailTitle", "McpDirectoryDetailName", "McpDirectorySummary",
         "McpDirectoryNeeds", "McpDirectoryInstalled", "McpDirectoryCantInstall",
@@ -70,9 +77,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// and why none are listed or which can't run it ("HostChoices-speaking", "HostChoicesUnable-speaking"); Home's items
     /// ("HealthIssue-ollama" reads "Problem: Ollama isn't running on this PC. ...") and Health tiles ("HealthCheck-microphone"
     /// reads "Microphone: OK. Windows default"); Diagnostics' shown lines, newest first ("LogEntry-0" reads
-    /// "21:04:11.532 WARN This PC · App: Host gpu-box stopped answering: ...").</summary>
+    /// "21:04:11.532 WARN This PC · App: Host gpu-box stopped answering: ..."); the Martlet desktops found on the network in
+    /// Add a computer ("NearbyItem-0" reads "GAMING-PC (192.168.1.31): gaming-pc-host · Martlet 0.17.0"); the Martlet
+    /// network's computers ("NetworkMember-host-gpu-pc" reads "gpu-pc. Host, paired with this PC; added on desktop-a.") and
+    /// requests to join ("NetworkJoin-desktop-b" reads "DESKTOP-B asks to join. desktop-b, through gpu-pc. Check number ...").</summary>
     private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "F5VoiceRow-", "StepDetail-", "HostChoice", "HealthIssue-", "HealthCheck-",
-        "LogEntry-"];
+        "LogEntry-", "NearbyItem-", "NetworkMember-", "NetworkJoin-"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>
@@ -102,6 +112,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         {
             processId,
             windows = windows.Select(window => window.Current.Name).ToArray(),
+            // A window that is disabled can't take input, as when a modal dialog blocks it; the talk window never blocks Martlet.
+            windowStates = windows.Select(window => new
+            {
+                name = window.Current.Name,
+                enabled = IsWindowEnabled(window.Current.NativeWindowHandle)
+            }).ToArray(),
             controls = Controls(windows).Select(control =>
             {
                 var (window, element) = control;
@@ -399,6 +415,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsWindowVisible(nint window);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowEnabled(nint window);
 
     private static IEnumerable<AutomationElement> Elements(AutomationElement window) =>
         window.FindAll(TreeScope.Descendants,

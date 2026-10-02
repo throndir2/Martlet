@@ -88,6 +88,7 @@ public partial class MainWindow
     {
         inTray = true;
         Hide();
+        openConversation?.UseOwnTaskbarButton();
         if (!background.HintShown)
         {
             tray!.ShowNotice("Martlet is still running",
@@ -132,7 +133,8 @@ public partial class MainWindow
         if (trayMenu is { IsOpen: true } open) open.IsOpen = false;
         var talk = openConversation;
         // Another Martlet window waits for an answer (Companion, Setup...): then only opening Martlet and exiting make sense.
-        var blocked = !IsWindowEnabled(WindowHandle) && talk is null;
+        var blocked = !IsWindowEnabled(WindowHandle);
+        var canTalk = !blocked && conversation is not null;
         var menu = new ContextMenu { Placement = PlacementMode.AbsolutePoint, HorizontalOffset = at.X, VerticalOffset = at.Y };
         menu.SetResourceReference(BackgroundProperty, "SurfaceBrush");
         menu.SetResourceReference(BorderBrushProperty, "BorderBrush");
@@ -147,12 +149,17 @@ public partial class MainWindow
         menu.Items.Add(new Separator());
         menu.Items.Add(TrayItem("TrayOpen", "_Open Martlet", ShowFromTray, bold: true));
         menu.Items.Add(TrayItem("TrayTalk", talk is null ? "_Talk to Martlet" : "Show the _talk window", TrayTalk,
-            enabled: talk is not null || !blocked && conversation is not null));
+            enabled: talk is not null || canTalk));
+        // Always listening starts only from Start listening, here or in the talk window (which this opens when needed).
+        if (talk is { HandsFree: true, ListeningStarted: true })
+            menu.Items.Add(TrayItem("TrayStopListening", "Stop _listening", () => { talk.ToggleListening(); UpdateTray(); }));
+        else if (talk?.HandsFree ?? Talk.HandsFree)
+            menu.Items.Add(TrayItem("TrayStartListening", "Start _listening", TrayStartListening, enabled: talk is not null || canTalk));
         if (talk is not null)
         {
             menu.Items.Add(talk.Paused
                 ? TrayItem("TrayResume", "_Resume Martlet", () => { talk.Resume(); UpdateTray(); })
-                : TrayItem("TrayPause", "_Pause Martlet", () => { talk.Pause(); UpdateTray(); }, enabled: talk.CanPause));
+                : TrayItem("TrayPause", "_Pause Martlet", () => { talk.Pause(); UpdateTray(); }));
             menu.Items.Add(TrayItem("TrayEndTalk", "_End the conversation", () => { if (talk.IsVisible) talk.Close(); }));
         }
         menu.Items.Add(TrayItem("TrayCharacter", avatar.IsShowing ? "Hide the _character" : "Show the _character",
@@ -216,16 +223,17 @@ public partial class MainWindow
         Conversation_Click(this, new RoutedEventArgs());
     }
 
+    /// <summary>Start listening from the menu: in the talk window, opening it first when it isn't open.</summary>
+    private void TrayStartListening()
+    {
+        TrayTalk();
+        openConversation?.ListenWhenReady();
+        UpdateTray();
+    }
+
     private void ExitFromTray()
     {
         if (closing) return;
-        if (openConversation is { } talk)
-        {
-            if (talk.IsVisible) talk.Close();
-            // The talk window's dialog finishes closing first.
-            Dispatcher.InvokeAsync(ExitFromTray, DispatcherPriority.Background);
-            return;
-        }
         if (!IsWindowEnabled(WindowHandle))
         {
             ShowFromTray();

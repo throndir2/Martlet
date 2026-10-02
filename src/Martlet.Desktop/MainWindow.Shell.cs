@@ -253,6 +253,10 @@ public partial class MainWindow
             homeSettings = await LeaveRetiredSampleAsync(loaded, lifetime.Token) ?? loaded.Settings;
             homeSettingsState = loaded.State;
             homeSettingsProblem = loaded.Error?.Summary;
+            // The talk window stays open while you change things in Companion: it picks up a saved change once Martlet is free.
+            if (openConversation is { IsReady: true } talking && loaded.Revision is { } revision &&
+                (conversation?.Configuration is { } current ? revision != current.Revision : LiveConversationConfiguration.From(loaded) is not null))
+                talking.ReloadWhenIdle("Your setup changed.");
             homeAvatar = loaded.Settings is { } settings
                 ? (await new AvatarProfileStore(store.DataDirectory).LoadAsync(settings.Profile.Id, lifetime.Token)).Profile
                 : null;
@@ -262,13 +266,17 @@ public partial class MainWindow
             ContractException or JsonException or OperationCanceledException) { }
         finally { refreshingHome = false; }
         if (closing) return;
+        var hostIds = string.Join(",", homeHosts.Select(h => h.HostId + "/" + h.Pairing.CredentialId));
         try { homeHosts = HostRegistry.Load(store.DataDirectory, homeAvatar?.RemoteHost, machine.LanAddress ?? HostSetupCommands.ThisPcAddress()); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             homeHosts = [];
             ActionText.Text = error.Message;
         }
+        // A pairing made elsewhere (Add a computer) is shared with the Martlet network right away.
+        if (hostIds != string.Join(",", homeHosts.Select(h => h.HostId + "/" + h.Pairing.CredentialId))) QueueNetworkSync();
         ObserveLocalJobs();
+        UpdateNearby();
         RenderHome();
         if (DevicesPage.IsVisible) RenderMap();
         CheckOwnLipSyncAsync().Forget();
@@ -416,8 +424,16 @@ public partial class MainWindow
                     : "Sets up the host service. Windows may ask to allow private-network access.",
                 hostServiceReachable == true, false, [new("Set up host service", () => SetUpHostServiceAsync().Forget(), true)]),
             new("pair", "Pair your main PC",
-                "Shows this PC's address and a one-time code. On your main PC, choose Devices > Add a computer > Enter a pairing code.",
-                false, false, [new("Show a pairing code", () => LaunchHost(HostAction.Pair), true)]),
+                "On your main PC, choose Devices > Add a computer: this PC is listed under Martlet on your network. Press Connect " +
+                "there, then Allow here when both show the same check number. Or show a pairing code and type it there (Enter a " +
+                "pairing code)." + (NearbyBlocked
+                    ? " Windows Firewall doesn't let your other computers find this PC yet; Let my other computers find this PC fixes " +
+                      "that (administrator approval once)."
+                    : ""),
+                false, false, NearbyBlocked
+                    ? [new("Show a pairing code", () => LaunchHost(HostAction.Pair), true),
+                       new("Let my other computers find this PC", () => NearbyFirewall_Click(this, new RoutedEventArgs()))]
+                    : [new("Show a pairing code", () => LaunchHost(HostAction.Pair), true)]),
             new("roles", "Add roles",
                 "Add tasks this host can handle. " + nvidia,
                 false, true, [.. HostRoles.All.SelectMany(r => new[]
@@ -638,6 +654,7 @@ public partial class MainWindow
     {
         var nodes = NetworkMap.Build(Inputs());
         RenderDeviceSettings(nodes);
+        RenderNetwork();
         if (nodes.All(n => n.Id != selectedNode)) selectedNode = "this-pc";
         MapCanvas.Children.Clear();
         mapElements.Clear();
@@ -1025,34 +1042,46 @@ public partial class MainWindow
     {
         if (FindHost(hostId) is not { } host) return;
         var impact = JobCoverageRules.ForgetImpact(JobSituations(), host.HostId);
+        var shared = networkState.Roster?.Host(host.HostId) is { Removed: false };
         if (!ConfirmationDialog.Confirm(this,
                 $"Forget {host.HostId}? Martlet will stop using it on this PC and remove its pairing." +
                 (impact.Count > 0 ? $" It handles: {string.Join(" ", impact)}" : "") +
-                $" To remove this PC from the host too, revoke {host.Pairing.DeviceId} in the host console.",
+                (shared
+                    ? " It stays in your Martlet network, so your other computers keep using it and this PC won't pair with it again automatically. To remove it everywhere, use Remove from network instead."
+                    : $" To remove this PC from the host too, revoke {host.Pairing.DeviceId} in the host console."),
                 "Forget host"))
             return;
-        var inCharge = homeAvatar?.RemoteHost?.HostId == host.HostId;
         await HostTaskAsync(async token =>
         {
-            // Jobs it did go back to the choice kept aside for them first, so no route is left pointing at a forgotten host.
-            var stranded = new List<string>();
-            foreach (var job in HostJob.All.Where(j => NetworkMap.JobHost(homeSettings, j.Role) == host.HostId))
-            {
-                if (store is not null && JobSavedRoute.Load(store.DataDirectory, job.SavedFile) is { } saved) await HandBackAsync(job, saved);
-                else stranded.Add(job.Job);
-            }
-            await Pairings().ForgetAsync(host.HostId, token);
-            hostChecks.Remove(host.HostId);
-            ForgetClusterHost(host.HostId);
-            if (inCharge)
-            {
-                RecordClusterJob(ClusterJobs.LipSync, new(null, false));
-                if (avatar.IsShowing) await avatar.UseHostAsync(null, token);
-            }
+            if (shared) IgnoreNetworkHost(host.HostId);
+            var stranded = await ForgetPairingAsync(host, token);
             ActionText.Text = $"Forgot {host.HostId}." +
+                (shared ? " Your other computers still use it." : "") +
                 (stranded.Count > 0 ? $" Nobody handles {string.Join(" or ", stranded)} now. Choose another device in Companion or Devices." : "");
         });
         await RefreshHomeAsync();
+    }
+
+    /// <summary>Forgets a host on this PC: jobs it did go back to the choice kept aside for them first (so no route is left
+    /// pointing at it), then its pairing, lip-sync assignment and secret go. Returns the jobs nobody does now.</summary>
+    private async Task<IReadOnlyList<string>> ForgetPairingAsync(PairedHost host, CancellationToken token)
+    {
+        var inCharge = homeAvatar?.RemoteHost?.HostId == host.HostId;
+        var stranded = new List<string>();
+        foreach (var job in HostJob.All.Where(j => NetworkMap.JobHost(homeSettings, j.Role) == host.HostId))
+        {
+            if (store is not null && JobSavedRoute.Load(store.DataDirectory, job.SavedFile) is { } saved) await HandBackAsync(job, saved);
+            else stranded.Add(job.Job);
+        }
+        await Pairings().ForgetAsync(host.HostId, token);
+        hostChecks.Remove(host.HostId);
+        ForgetClusterHost(host.HostId);
+        if (inCharge)
+        {
+            RecordClusterJob(ClusterJobs.LipSync, new(null, false));
+            if (avatar.IsShowing) await avatar.UseHostAsync(null, token);
+        }
+        return stranded;
     }
 
     private async Task HostTaskAsync(Func<CancellationToken, Task> action)

@@ -204,6 +204,50 @@ unticked **Keep who does what in sync**; `plan` is this PC's `cluster.json`
 `updatedBy` and `updatedAt`, and each host's ID, roles and `removed`). It never
 returns host addresses or keys and contacts nothing.
 
+`network_status` reads the [Martlet network](NETWORK.md) from a data directory
+(optional absolute `dataDirectory`, default the current user's): `state`
+(`none`, `member`, `waiting` or `unreadable`), `key` (whether
+`network\device_ecdsa` exists), `networkId`, the roster's `revision` and
+`founder`, `waiting` (`hostId`, `checkNumber`, `since`) while this PC asks to
+join, each `desktops` and `hosts` entry (`id`, `name`, `removed`, `updatedBy`,
+`changedAt`), `adopt` (hosts paired here on purpose, added to the network on
+the next sync), `ignored` (network hosts forgotten here) and `removedFrom`. It
+never returns keys, signatures or host addresses and contacts nothing.
+
+`network_selftest` (no arguments) rehearses the network end to end with the
+production code: three real gateways (`lab-host-1..3`: Kestrel, pinned TLS,
+volatile credentials, a throwaway certificate) on `127.0.0.1` and two simulated
+desktops driving the desktop's own client (`HostNetwork.cs`) and sync engine
+(`NetworkSync.cs`). Like `node_link_check` it runs `src\Martlet.NodeLinkCheck`
+(mode `network`, `NetworkRehearsal.cs`) as its own process, because the gateway
+needs the ASP.NET Core runtime, and returns `{exitCode, report}`. Its steps: desktop A pairs with a host by a typed code and
+founds a network that binds it; A adds a second host to the same network; B
+pairs with one host and asks to join with a check number; A sees the same
+number, allows B, and B pairs with the other host by itself; A sets up a third
+host and B is paired with it on its next sync; a key outside the network
+(`network.denied`), a member's ID with the wrong key (`pairing.invalid`) and a
+roster entry not signed by a member are refused; A removes a host (it stops
+trusting the network's desktops, and A and B both forget it, B although the
+host no longer answers it); A pairs that host again by a code and it rejoins
+(B pairs with it again by itself); A removes B (every host revokes it, B leaves
+and forgets its hosts and needs a new key). Each desktop's state goes through
+`network.json`'s format between syncs. The report has `ok`, `passed`,
+`total`, `seconds`, the `scope` and each step's `ok` and `detail`. Nothing
+leaves loopback, nothing is written to disk or Windows Credential Manager, and
+it does not cover the desktop window, `network.json` on a Linux host,
+`martlet-host`, SSH or a real LAN.
+
+`nearby_status` reads whether this PC lets Martlet on the owner's other
+computers [find it](ARCHITECTURE.md#finding-your-other-computers) (optional
+absolute `dataDirectory`, default the current user's): `share` is
+`on (default)` when `nearby.txt` is missing, `on`, or `off` once the owner
+unticked **Let my other computers find this PC**; `port` (9444); and `hosts`
+from `hosts.json` (`state` `none`, `loaded` or `unreadable`; when loaded the
+number `paired` and the `shareable` ones with `hostId` and `reach`
+(`ThisPcDocker`, `SshDocker` or `SshNative`)). This PC's own host service set
+up from the host dashboard is found by the desktop from Docker, not here. It
+never returns addresses, SSH targets or keys and contacts nothing.
+
 `node_link_check` runs [commands between computers](CLUSTER.md#commands-between-your-computers)
 end to end on this PC's loopback and returns `{exitCode, report: {passed,
 steps: [{name, ok, detail}]}}`: the real gateway (Kestrel, pinned TLS with a
@@ -227,12 +271,17 @@ Docker Desktop (optional absolute `dataDirectory`, default the current user's):
 `firmware`, `hypervisor`, `virtualMachinePlatform` and
 `windowsSubsystemForLinux` (`Enabled`, `Disabled`, `Absent` or `Unknown`),
 `wsl` (version, `none` or null), `virtualMachine`, `summary`,
-`dockerDesktop {installed, running}` and `continueSetup {pending, kind, task,
+`dockerDesktop {installed, running, engine}` (`engine` is what
+`docker desktop status` reports, for example `running`, `starting` or
+`stopped`, or null when Docker Desktop doesn't answer within 15 seconds; a
+run window restarts Docker Desktop once when it is open but its engine stays
+`stopped` at two checks in a row, and always after Martlet changed Windows for
+it) and `continueSetup {pending, kind, task,
 created, startsAtSignIn}`: the setup Martlet continues after a Windows restart
 (`continue-setup.json` in the data directory, and whether the per-user `RunOnce`
 entry that starts Martlet at the next sign-in exists). It runs a CIM query and
-`wsl --version` in a hidden Windows PowerShell, changes nothing and returns no
-paths.
+`wsl --version` in a hidden Windows PowerShell and `docker desktop status`,
+changes nothing and returns no paths.
 
 `logs_tail` reads the last `lines` (1-400, default 100) of one local log under
 `<dataDirectory>\logs` (`log`: `desktop` (default), `avatar-renderer` or
@@ -325,6 +374,19 @@ and `LipSyncOwner`, device commands `NodeAction-<action>`
 roles), and Settings for all devices holds `CheckHosts`, `ClusterSync` (checked by
 default; unticking it needs `--allow-ui-effects` and saves `off`),
 `ClusterStatus` (returned as text) and `RoleSetup-<role>` for jobs nobody does.
+The **Your Martlet network** card ([NETWORK](NETWORK.md)) holds `NetworkStatus`
+(status text: member with how many computers and hosts, waiting to join with
+the check number, or in no network), `NetworkCheck` (syncs now; it contacts the
+paired hosts, so it is not a passive click), each computer's row title
+`NetworkMember-<desktop|host>-<ID>` (status text, for example
+`lab-gpu. Host, not paired with this PC yet; added on desktop-diva.`) with
+`NetworkRemove-<desktop|host>-<ID>`, and each request to join
+`NetworkJoin-<device ID>` (status text with the check number) with
+`NetworkAllow-<device ID>` and `NetworkDeny-<device ID>`. Remove, Allow and
+Turn down change the network and need `--allow-ui-effects` (then
+`ConfirmationYes`); Allow also hands that computer access to every host, so
+keep it to disposable lab networks.
+
 A paired host's `DeviceReachSection` holds `HostReachNow` (*Reached via: ...*,
 status text), `HostReachMethod` (a combo box: *Through Martlet on that computer
 (paired connection)*, *SSH, with Docker there*, *SSH, native Ubuntu*, *This
@@ -337,7 +399,16 @@ stored pairing secret it stops at *This PC's pairing secret is missing*.
 Settings › *Your other computers* has `AllowNodeCommands` (checked by default;
 `ui_toggle` needs `--allow-ui-effects` and saves `node-commands.txt`) and
 `NodeAgentStatus` (status text: off, no host service on this PC, ready, the
-last command it ran, or the update of its own host service).
+last command it ran, or the update of its own host service). The same card
+has `NearbyShare` (*Let my other computers find this PC and ask to use its
+hosts*, checked by default; unticking it needs `--allow-ui-effects` and saves
+`off` in `nearby.txt`), `NearbyShareStatus` (returned: off, nothing to share,
+the port in use, *Checking Windows Firewall...*, Windows Firewall or a Public
+network keeping other computers out (then only Martlet on this PC can find
+it), or on with the hosts it offers; then *Last request:* allowed, denied,
+withdrawn or stopped) and `NearbyFirewall` (*Let my other computers reach this
+PC*, shown only when blocked: an administrator prompt, never part of
+verification).
 Home and host-dashboard steps have their buttons as `Step-<step>-<n>` and their
 detail line as `StepDetail-<step>` (status text): on the host dashboard,
 `StepDetail-docker` says whether Docker Desktop runs or why Windows can't start
@@ -369,7 +440,38 @@ device secret in Windows Credential Manager, so verification stops at refused
 codes. On the host dashboard, *Show a pairing code* (`Step-pair-0`) shows the
 address (`HostRunPairAddress`, returned) and the one-use code (`HostRunPairCode`,
 never returned) in the run window's `HostRunPairing` panel; the host-runs log
-masks codes.
+masks codes. `StepDetail-pair` also tells the owner to find this PC from the
+main PC (*Martlet on your network*), and when Windows Firewall keeps other
+computers out it says so and `Step-pair-1` (*Let my other computers find this
+PC*, an administrator prompt) appears.
+
+*Martlet on your network* ([how it works](ARCHITECTURE.md#finding-your-other-computers))
+is the first card of the wizard's *Where it runs* step. Opening the wizard on
+that step (so `AddComputer`) and `NearbyFind` (*Find again*) send Martlet's
+discovery query to port 9444 on loopback and the local network's broadcast
+addresses and list who answers; they pair nothing and change nothing, so they
+are passive clicks. `NearbyStatus` (returned) says what was found (*Found 1
+computer with a host this PC doesn't use yet.*, *No other Martlet
+answered...*), what a request is doing or why it stopped (*DIVA denied the
+request (or it expired there).*, *Stopped asking DIVA.*, the sharing
+computer's reason, *Paired with ... through ...*). Each found computer is a row
+with `NearbyItem-<n>` (returned: *<name> (<address or this PC>): <hosts> ·
+Martlet <version>*) and `NearbyConnect-<n>`, which starts a request and needs
+`--allow-ui-effects`. While asking, `NearbyNumber` returns the check number and
+`NearbyCancel` (*Stop asking*) withdraws the request (passive). On the
+computer asked, a separate window `JoinRequestWindow` (*Martlet - <name> wants
+to use your hosts*) returns `JoinRequestTitle`, `JoinRequestText` (who, from
+which address, which hosts), `JoinRequestNumber` (must equal the asking side's
+`NearbyNumber`) and `JoinRequestExpiry`; `JoinAllow` and `JoinDeny` need
+`--allow-ui-effects`. Allow opens a run window (`HostRunWindow`, *Martlet - Let
+<name> use your hosts*) that asks each host for a one-use code; its
+`HostRunStatus` and the host-runs log show progress, never the codes. To
+exercise it on one PC, run two desktops on disposable data directories with
+`DOCKER_HOST` pointed at a missing pipe (so neither finds this PC's real host
+service): give the sharing one a `hosts.json` with an SSH host that refuses
+(for example `martlet@127.0.0.1:1`), so it answers on loopback, Allow reaches
+the run window and the request fails with that host's reason on both sides
+before any real code or credential exists.
 Use `ui_snapshot` again to observe asynchronous effects. Modal
 actions may return `completed: false` while their dialog remains open; this
 means the invoke is still pending, not that the action finished.
@@ -401,7 +503,13 @@ not set up* with the state, and clicking one only opens its page.
 passive. To see a problem on a disposable data directory, put invalid JSON in
 `settings.json` (*settings*), a stale `logs\desktop.<pid>.running` marker
 (*crash*), or choose Ollama on this PC in Companion › Thinking while Ollama
-isn't running (*ollama*).
+isn't running (*ollama*). After an unclean exit the desktop looks up that
+run's process ID in Windows' Application event log in the background:
+`HealthIssue-crash` then reads *Windows recorded <exception> (0x<code>) in
+<module>* when Windows has a crash record, and `logs_tail` (`contains`:
+`Windows recorded`) returns the full line, or the *no crash* line for a kill or
+power loss (a made-up marker PID gives the latter, about 20 seconds after
+launch).
 
 The Diagnostics page (`NavDiagnostics`) lists log lines newest first. Each
 shown line is a list item `LogEntry-<n>` (`LogEntry-0` is the newest shown)
@@ -499,7 +607,7 @@ running server shows in Home's `HealthCheck-tools` (*1 of 1 server ready*).
 
 On Thinking, Voice, Listening and Lip-sync, each "Where it runs" option
 (`Place-<page>-<place>`, for example `Place-Voice-Computer` or
-`Place-LipSync-Loudness`) only shows that place's choices, so clicking it is
+`Place-LipSync-ThisPc`) only shows that place's choices, so clicking it is
 passive; the card's own buttons commit. Under *Another of your computers*, each
 paired computer that can run the job (every one except this PC's own host
 service on Voice, Listening and Lip-sync; a host saved as *This PC* whose
@@ -512,33 +620,48 @@ hardware can't run it, with why. `SetupUseHost-<job>-<host ID>` hands the job
 over and needs `--allow-ui-effects`.
 
 Status fields include the talk window's `LiveStatus` (its status line),
-`LiveMic` (*Listening*, *Listening paused*, *Can't listen* or *Mic unavailable*
-with the reason; while Martlet speaks it reads *Not listening while Martlet
-speaks*; *Listening paused* only ever follows a click on it or *Pause Martlet*
-in the notification-area menu: errors, Stop and
-`LiveStop` never pause listening, and listening that can't start yet, such as
-Voice ID not set up, reads *Can't listen* and keeps retrying),
+`LiveMic` (the Start listening / Stop listening button; its value starts with
+the state: *Not listening* until it is pressed, then *Listening*, *Can't
+listen* or *Mic unavailable* with the reason; while Martlet speaks it reads
+*Not listening while Martlet speaks*. Clicking it opens the microphone, so it
+needs `--allow-ui-effects`; errors, Stop and `LiveStop` never stop listening,
+only the button or *Pause Martlet* in the notification-area menu does, and
+listening that can't start yet, such as Voice ID not set up, reads *Can't
+listen* and keeps retrying), Home's `OpenLiveConversation` (*Start talking*,
+or *Show conversation* while the talk window is open),
 `LiveVision` (*Watching*, *Looking*, *Vision paused* or *Can't see*, with when
 it last checked the screen; it checks every 3 s), `LiveVisionStatus` (while
 vision is on: what it sees, for example *Watching the window behind Martlet*,
 then the last look's outcome or why it is holding off, and the looks used this
 hour; it never contains window titles)
 and Companion › Lip-sync's `LipSyncNow` and `LipSyncNowProblem` (whether this
-PC's own Audio2Face service answers), plus, while that own service is the
-setting in effect (Martlet's default), `LipSyncOwnTitle` (its title with *in
-use*, *not running* or *checking*) and `LipSyncOwnState` (what it does now).
+PC's own Audio2Face service answers). Lip-sync's places are *This PC* and
+*Another of your computers*; under *This PC*, `LipSyncDockerTitle` (*Audio2Face,
+with Docker*) and `LipSyncLoudnessTitle` (*Voice loudness, no setup*) read each
+way's title with *in use*, *recommended for this PC* or *chosen, not installed
+yet*, and `LipSyncOwnTitle` the advanced *Your own Audio2Face service* (with
+*in use*, *not running* or *checking* while it is the setting in effect,
+Martlet's default) with `LipSyncOwnState` (what it does now). Voice loudness
+reads *in use* while the default's own service doesn't answer.
+`SetupLipSyncLoudness`, `SetupLipSyncOwnService` and the Audio2Face buttons
+change lip-sync and need `--allow-ui-effects`.
 When Thinking runs in Ollama on this PC, the talk window has Ollama load the
 model as it opens (and again on activity after a few quiet minutes), and
 `LiveStatus` says *Ollama is loading <model> on this PC (N s)…* while it loads,
 or why it can't (Ollama not running, model not downloaded, Ollama's own error);
 the desktop log records each load's duration
 (`{"name":"logs_tail","arguments":{"contains":"Ollama on this PC"}}`).
-Opening the talk window with always
-listening on opens the microphone; for verification, save a fixed microphone
-that does not exist in the disposable data directory, so listening starts,
+The talk window is modeless: `ui_snapshot`'s `windowStates` lists each window
+with `enabled` (false while a modal dialog such as Audio setup blocks it), and
+the main window stays enabled while the talk window is open. Opening the talk
+window never opens the microphone; `LiveMic` does with always listening on. For
+verification, save a fixed microphone that does not exist in the disposable
+data directory, so listening starts after `LiveMic`,
 fails without capturing real audio and shows *Mic unavailable* while it keeps
-retrying (it never pauses by itself). The talk window's `LiveStop` (Stop, Esc)
-is a passive click: it only stops a reply, recording or vision.
+retrying (it never stops by itself). The talk window's `LiveStop` (Stop, Esc)
+is a passive click: it only stops a reply, recording or vision. Changing How
+you talk on Companion › Listening (`TalkModePushToTalk`, `TalkModeAlways`)
+applies to an open talk window at once (`LivePtt` replaces `LiveMic`).
 
 Window discovery uses visible top-level native handles filtered to the attached
 process, then verifies ownership around each UI Automation handle lookup.
@@ -623,7 +746,7 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `logs_tail`, `logs_timeline`, `virtualization_status` and `mcp_servers_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status` and `mcp_servers_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

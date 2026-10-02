@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Automation;
 using System.ComponentModel;
 using System.IO;
 using System.Diagnostics;
@@ -114,6 +115,8 @@ public partial class MainWindow : ThemedWindow
         }
         InitializeShell();
         InitializeCluster();
+        InitializeNetwork();
+        InitializeNearby();
         InitializeVoiceSync();
         InitializeNodeAgent();
         InitializeLogs();
@@ -166,6 +169,7 @@ public partial class MainWindow : ThemedWindow
         if (!closing) ContinueSetupAsync().Forget();
         await ShowSavedCharacterAsync(onlyIfAutoShow: true);
         StartCluster();
+        StartNetwork();
         StartVoiceSync();
         StartNodeAgent();
         StartLogShipping();
@@ -296,20 +300,41 @@ public partial class MainWindow : ThemedWindow
         await RefreshAsync();
     }
 
-    private async void Conversation_Click(object sender, RoutedEventArgs e)
+    /// <summary>Opens the talk window beside Martlet (modeless, so Home, Companion and the rest stay usable while you talk), or
+    /// brings it back to the front when it is already open.</summary>
+    private void Conversation_Click(object sender, RoutedEventArgs e)
     {
-        if (conversation is null || closing || saving || model?.IsRunning == true) return;
-        openConversation = new LiveConversationWindow(setupService!, setupOperations, conversation, audioSessionEvents, voiceIdentity: voiceIdentity,
-            preferences: Talk, videoAddress: visionAddress)
-            { Owner = this, Support = support, OwnTaskbarButton = !IsVisible };
-        UpdateTray();
-        try { openConversation.ShowDialog(); }
-        finally
+        if (openConversation is { } open)
         {
-            openConversation = null;
-            UpdateTray();
+            if (open.WindowState == WindowState.Minimized) open.WindowState = WindowState.Normal;
+            open.Activate();
+            return;
         }
-        await RefreshAsync();
+        if (conversation is null || closing || saving || model?.IsRunning == true) return;
+        var window = new LiveConversationWindow(setupService!, setupOperations, conversation, audioSessionEvents, voiceIdentity: voiceIdentity,
+            preferences: Talk, videoAddress: visionAddress)
+            { Owner = this, Support = support };
+        if (!IsVisible) window.UseOwnTaskbarButton();
+        window.Closed += async (_, _) =>
+        {
+            if (!ReferenceEquals(openConversation, window)) return;
+            openConversation = null;
+            RenderConversationButton();
+            UpdateTray();
+            if (!closing) await RefreshAsync();
+        };
+        openConversation = window;
+        RenderConversationButton();
+        window.Show();
+        UpdateTray();
+    }
+
+    /// <summary>Home's Start talking reads Show conversation while the talk window is open.</summary>
+    private void RenderConversationButton()
+    {
+        var open = openConversation is not null;
+        ConversationButton.Content = open ? "Show _conversation" : "Start _talking";
+        AutomationProperties.SetName(ConversationButton, open ? "Show conversation" : "Start talking");
     }
 
     private void VoiceLibrary_Click(object sender, RoutedEventArgs e) => OpenCompanion(CompanionTab.Voice);
@@ -598,13 +623,17 @@ public partial class MainWindow : ThemedWindow
             }
         }
         closing = true;
+        // The talk window stops listening, vision and any reply before the conversation it uses is disposed below.
+        openConversation?.Close();
         ReleaseShell();
         ageTimer.Stop();
         characterTimer.Stop();
         updateTimer.Stop();
         clusterTimer.Stop();
+        networkTimer.Stop();
         voiceSyncTimer.Stop();
         trayTimer.Stop();
+        StopNearby();
         StopLogs();
         audioSessionEvents.LockedChanged -= audioSetup.SetSessionLocked;
         audioSessionEvents.LockedChanged -= AvatarSessionLocked;

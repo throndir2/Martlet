@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Diagnostics.Eventing.Reader;
+using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -30,14 +32,22 @@ internal static class ErrorLog
     private static DateTimeOffset lastDialog = DateTimeOffset.MinValue;
     private static int errorCount;
     private static (DateTimeOffset At, string Message)? lastError;
+    private static string? previousCrash;
+    // Windows Error Reporting can write its record a few seconds after the crash; a quick relaunch looks once more.
+    private static readonly TimeSpan CrashRecordRetryDelay = TimeSpan.FromSeconds(20);
 
     internal static string? Directory => directory;
     /// <summary>ERROR and FATAL entries written since this process started.</summary>
     internal static int ErrorCount { get { lock (gate) return errorCount; } }
     /// <summary>The latest ERROR or FATAL entry's time and one-line message (the exception's type and message, no stack).</summary>
     internal static (DateTimeOffset At, string Message)? LastError { get { lock (gate) return lastError; } }
+    /// <summary>What Windows recorded about the latest unclean previous run, for example "an access violation (0xc0000005)
+    /// in MMDevApi.dll"; null until looked up after startup, or when Windows has no crash record for it.</summary>
+    internal static string? PreviousCrash { get { lock (gate) return previousCrash; } }
     /// <summary>Raised on the writing thread after an ERROR or FATAL entry.</summary>
     internal static event Action? ErrorRecorded;
+    /// <summary>Raised on a background thread once Windows' crash records for unclean previous runs were looked up.</summary>
+    internal static event Action? PreviousRunDescribed;
     internal static string? CurrentFile => directory is null ? null : Path.Combine(directory, component + ".log");
 
     internal static string DefaultDirectory(string? dataDirectory)
@@ -55,6 +65,7 @@ internal static class ErrorLog
     internal static bool Initialize(string logDirectory, string componentName)
     {
         var uncleanPreviousExit = false;
+        var uncleanRuns = new List<(int ProcessId, DateTimeOffset Started)>();
         lock (gate)
         {
             component = componentName;
@@ -68,6 +79,7 @@ internal static class ErrorLog
                     var name = Path.GetFileNameWithoutExtension(stale);
                     if (int.TryParse(name[(componentName.Length + 1)..], out var pid) && IsRunning(pid)) continue;
                     uncleanPreviousExit = true;
+                    if (pid > 0) uncleanRuns.Add((pid, MarkerStarted(stale)));
                     File.Delete(stale);
                 }
                 sessionMarker = Path.Combine(logDirectory, $"{componentName}.{Environment.ProcessId}.running");
@@ -90,6 +102,9 @@ internal static class ErrorLog
         var version = Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "unknown";
         Info($"{componentName} started. Version {version}; .NET {Environment.Version}; {Environment.OSVersion}; pid {Environment.ProcessId}." +
             (uncleanPreviousExit ? " The previous run did not exit cleanly (crash, kill or power loss)." : ""));
+        // Native crashes (for example an access violation inside a Windows DLL on one of its own threads) never reach
+        // the handlers above, so read how Windows recorded the run's end instead.
+        if (uncleanRuns.Count > 0) Task.Run(() => DescribeUncleanRunsAsync(uncleanRuns));
         return uncleanPreviousExit;
     }
 
@@ -174,6 +189,134 @@ internal static class ErrorLog
 
     private static bool IsFatal(Exception exception) =>
         exception is OutOfMemoryException or StackOverflowException or AccessViolationException or BadImageFormatException;
+
+    private static DateTimeOffset MarkerStarted(string marker)
+    {
+        try
+        {
+            return DateTimeOffset.TryParse(File.ReadAllText(marker).Trim(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var started)
+                ? started : new DateTimeOffset(File.GetCreationTimeUtc(marker), TimeSpan.Zero);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return DateTimeOffset.MinValue; }
+    }
+
+    private static async Task DescribeUncleanRunsAsync(IReadOnlyList<(int ProcessId, DateTimeOffset Started)> runs)
+    {
+        try
+        {
+            var pending = runs.ToList();
+            var newest = DateTimeOffset.MinValue;
+            string? newestCrash = null;
+            for (var attempt = 0; pending.Count > 0; attempt++)
+            {
+                if (attempt > 0) await Task.Delay(CrashRecordRetryDelay).ConfigureAwait(false);
+                foreach (var run in pending.ToArray())
+                {
+                    var crash = FindWindowsCrash(run.ProcessId, run.Started);
+                    if (crash is null && attempt == 0) continue;
+                    pending.Remove(run);
+                    var which = $"the previous run (pid {run.ProcessId}" +
+                        (run.Started == DateTimeOffset.MinValue ? ")" : $", started {run.Started.LocalDateTime:yyyy-MM-dd HH:mm:ss})");
+                    if (crash is { } found)
+                    {
+                        Warn($"Windows recorded how {which} ended: {found.Detail}");
+                        if (run.Started >= newest) (newest, newestCrash) = (run.Started, found.Summary);
+                    }
+                    else Info($"Windows recorded no crash for {which}. It was probably ended by Task Manager, a sign-out, " +
+                        "a shutdown or power loss, or Windows Error Reporting is off.");
+                }
+                lock (gate) previousCrash = newestCrash;
+                if (newestCrash is not null) RaisePreviousRunDescribed();
+            }
+        }
+        catch (Exception ex) when (!IsFatal(ex)) { Warn("Could not read Windows' crash records for the previous run", ex); }
+    }
+
+    private static void RaisePreviousRunDescribed()
+    {
+        try { PreviousRunDescribed?.Invoke(); }
+        catch (Exception ex) when (!IsFatal(ex)) { }
+    }
+
+    /// <summary>Finds the Application log's crash entries for one process: Windows Error Reporting's "Application Error"
+    /// (faulting module, exception code and offset) and the .NET runtime's own entry (exception and managed stack).</summary>
+    private static (string Summary, string Detail)? FindWindowsCrash(int processId, DateTimeOffset started)
+    {
+        var since = (started == DateTimeOffset.MinValue ? DateTime.UtcNow.AddDays(-30) : started.UtcDateTime.AddSeconds(-2))
+            .ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture);
+        var query = new EventLogQuery("Application", PathType.LogName,
+            "*[System[((Provider[@Name='Application Error'] and EventID=1000) or (Provider[@Name='.NET Runtime'] and EventID=1026))" +
+            $" and TimeCreated[@SystemTime>='{since}']]]");
+        string? summary = null, fault = null, runtime = null;
+        using (var reader = new EventLogReader(query))
+        {
+            for (var record = reader.ReadEvent(); record is not null; record = reader.ReadEvent())
+                using (record)
+                {
+                    var data = record.Properties;
+                    if (record.Id == 1000 && fault is null && data.Count > 12 && ProcessIdOf(data[8].Value) == processId)
+                    {
+                        var code = Hex(data[6].Value);
+                        var module = Text(data[3].Value);
+                        summary = $"{DescribeExceptionCode(code)} (0x{code}) in " +
+                            (module.Length == 0 || module.Equals("unknown", StringComparison.OrdinalIgnoreCase) ? "unknown code" : module);
+                        fault = $"{Text(data[0].Value)} {Text(data[1].Value)}: {summary} {Text(data[4].Value)} at offset 0x{Hex(data[7].Value)}" +
+                            $" (Windows report {Text(data[12].Value)}).";
+                    }
+                    else if (record.Id == 1026 && runtime is null && record.ProcessId == processId && data.Count > 0)
+                        runtime = Text(data[0].Value);
+                }
+        }
+        if (fault is null && runtime is null) return null;
+        if (summary is null)
+        {
+            var exception = runtime!.Split('\n').FirstOrDefault(line => line.StartsWith("Exception Info:", StringComparison.Ordinal));
+            summary = exception is null ? "an unhandled exception" : exception["Exception Info:".Length..].Trim();
+            if (summary.Length > 200) summary = summary[..200] + "…";
+        }
+        if (runtime is { Length: > 8000 }) runtime = runtime[..8000] + "…";
+        return (summary, fault is null ? runtime! : runtime is null ? fault : fault + Environment.NewLine + runtime);
+    }
+
+    private static string DescribeExceptionCode(string code) => code switch
+    {
+        "c0000005" => "an access violation",
+        "c00000fd" => "a stack overflow",
+        "c0000409" => "a fail-fast or stack buffer overrun",
+        "c0000374" => "heap corruption",
+        "e0434352" => "an unhandled .NET exception",
+        "80000003" => "a breakpoint",
+        _ => "an exception"
+    };
+
+    private static string Text(object? value) => Convert.ToString(value, CultureInfo.InvariantCulture)?.Trim() ?? "";
+
+    private static string Hex(object? value)
+    {
+        var text = value switch
+        {
+            uint number => number.ToString("x8", CultureInfo.InvariantCulture),
+            int number => number.ToString("x8", CultureInfo.InvariantCulture),
+            ulong number => number.ToString("x", CultureInfo.InvariantCulture),
+            long number => number.ToString("x", CultureInfo.InvariantCulture),
+            _ => Text(value).ToLowerInvariant()
+        };
+        if (text.StartsWith("0x", StringComparison.Ordinal)) text = text[2..];
+        // Fault offsets come zero-padded to 16 digits; exception codes keep their 8.
+        return text.Length > 8 ? text.TrimStart('0').PadLeft(1, '0') : text;
+    }
+
+    private static long ProcessIdOf(object? value) => value switch
+    {
+        uint number => number,
+        int number => number,
+        ulong number => (long)number,
+        long number => number,
+        string text when text.StartsWith("0x", StringComparison.OrdinalIgnoreCase) &&
+            long.TryParse(text.AsSpan(2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var hex) => hex,
+        string text when long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var number) => number,
+        _ => -1
+    };
 
     private static bool IsRunning(int pid)
     {

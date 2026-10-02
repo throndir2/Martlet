@@ -85,12 +85,14 @@ internal sealed class NativeInputNotifications : IDisposable
             notifications.DefaultDeviceChanged -= DefaultChanged;
             notifications.PropertyValueChanged -= PropertyChanged;
         }
-        // NAudio's notification.Dispose swallows unregister errors. Release its owning enumerator
-        // first: that is the observed COM-release boundary and retains the CCW roots if it fails.
-        enumerator?.Dispose();
-        enumerator = null;
+        // Unregister through the live enumerator before releasing it. Windows' enumerator is a process-wide
+        // singleton that does not AddRef the client, so releasing our reference first left the callback
+        // registered while NAudio dropped its only CCW reference; once collected, the next endpoint
+        // property change crashed in MMDevApi (CDeviceEnumerator::OnPropertyValueChanged).
         notifications?.Dispose();
         notifications = null;
+        enumerator?.Dispose();
+        enumerator = null;
         selectedId = null;
     }
 }
