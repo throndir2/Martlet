@@ -83,6 +83,16 @@ of approval. Its log (own activity plus, as the owner's
 computer's lines) is kept the same way in `logs.json` (at most 2 MiB, through
 `logs.staging`); a missing or malformed log starts empty. A host with no roles
 is valid and can serve purely as the log host.
+The [Martlet network](../../docs/NETWORK.md) roster this host accepted is kept
+in `network.json` (same 0600 custody, through `network.staging`); it is not
+approved configuration either. Missing means the host is in no network; an
+unreadable copy is ignored (with a warning in the host's log) until a paired
+desktop binds the host again. `status` reports `network` (`unbound`, `bound` or
+`removed` with the network ID and member counts; no keys or addresses).
+The network's [API keys](../../docs/API.md) for other apps and scripts are kept
+in `api-keys.json` (same 0600 custody, through `api-keys.staging`; names,
+scopes and SHA-256 verifiers, never a usable key); a missing or malformed copy
+starts empty and paired desktops push theirs again.
 The parser rejects extra arguments, environment selectors, approval flags,
 secrets and arbitrary command paths. No args, `help`, `--help` and `-h` are
 passive and do not read files, create keys or start a listener.
@@ -153,6 +163,7 @@ Operator-managed disk encryption is separate and is neither detected nor set up.
 | `owner-init` | Owner command, no console: create the selected absent state leaf (as `init`) and approve unattended serve of exactly this configuration and identity (as `approve-service`), then close. |
 | `owner-approve` | Owner command, no console: open the existing identity (as `admin`, which also accepts an approval for an earlier config of the same host, UID/GID and pin) and approve unattended serve of exactly this configuration, then close. |
 | `owner-pair` | Owner command, no console. `owner-pair --config <path> [--roles voice]`: open the existing identity, start the listener, open one five-minute short-code window and print the host's address and an `XXXX-XXXX` code for a person to type in Martlet (**Enter a pairing code**); whichever desktop proves the code names itself ([short typed codes](../Martlet.Gateway/README.md#short-typed-codes)). `owner-pair --config <path> --device-id <id> --name <display name> [--roles voice]`: create one five-minute invitation for exactly that device and print it as one `pairing-code: martlet-pair-v1...` line (Martlet reads it over SSH or on this PC). Either way, wait until a new credential registers (exit 0), the invitation expires or a `cancel` line arrives on stdin (exit 3), then close cleanly. The daemon must be stopped, as for `admin`. |
+| `owner-network-reset` | Owner command, no console (`martlet-host network-reset`, daemon stopped): remove `network.json`, so the host is in no [Martlet network](../../docs/NETWORK.md) and the next desktop that pairs binds it to its own. Pairings stay (revoke them with `admin`). |
 
 Administration commands are `start`, `pair`, `list`, `revoke`,
 `approve-service`, `disable-service`, `stop`, `help`. Authority-changing actions

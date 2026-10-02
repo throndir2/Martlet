@@ -33,6 +33,20 @@ Martlet always keeps a small local error log; it is never uploaded.
   closed unexpectedly last time, with *Open Diagnostics* and *Open the logs
   folder*. Unexpected errors while Martlet runs also show on Home with the
   latest one and the same buttons.
+- Native crashes that bypass .NET (for example an access violation inside a
+  Windows DLL on one of its own threads, which leaves no managed stack) can't
+  be logged by the crashing process. On the next launch Martlet reads how
+  Windows recorded that run's end from the Application event log (`Application
+  Error` and `.NET Runtime` entries for the run's process ID) and writes a
+  `WARN` line such as `Windows recorded how the previous run (pid 43136,
+  started ...) ended: Martlet.Desktop.exe 0.17.0.0: an access violation
+  (0xc0000005) in MMDevApi.dll 10.0.22621.5547 at offset 0x20103 (Windows
+  report ...).`, followed by the runtime's own text (with the managed stack
+  when there is one). Home's crash notice then names the exception and module.
+  When Windows has no record, an `INFO` line says the run was probably ended by
+  Task Manager, a sign-out, a shutdown or power loss, or that Windows Error
+  Reporting is off. Each process (`desktop`, `avatar-renderer`) checks its own
+  previous run. Nothing is uploaded.
 - Read every log in one list, filtered by level, part, computer and text, on
   the **Diagnostics** page; with a log host it also shows your other computers'
   and hosts' logs. See [Diagnostics page and the log host](DIAGNOSTICS.md#diagnostics-page-and-the-log-host).
@@ -40,8 +54,8 @@ Martlet always keeps a small local error log; it is never uploaded.
   line (`Status: ...`) and hosts that stop or start answering again.
 - Open the folder any time from **Troubleshooting > Open crash / error logs**.
 
-Native crashes that bypass .NET are also listed in Windows Event Viewer >
-Windows Logs > Application (sources `.NET Runtime` and `Application Error`).
+Native crashes are also listed in Windows Event Viewer > Windows Logs >
+Application (sources `.NET Runtime` and `Application Error`).
 
 ## Missing prerequisites (character, microphone, Windows speech, local LLM, Docker)
 

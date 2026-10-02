@@ -287,6 +287,14 @@ you don't control, a device pretending to be Martlet could answer a find and
 approve its own request; connect only when your own computer shows the request
 and the same number, and use a pairing code otherwise.
 
+The paired desktop then asks to join the owner's
+[Martlet network](NETWORK.md), and the computer that allowed it approves that
+by itself (same device ID, within 15 minutes), so the new desktop also pairs
+with every other host of the network, including hosts added later on any
+member. That is the one route on which a gateway issues a credential without a
+window opened on the host: a member desktop proves its network key
+([member pairing](../src/Martlet.Gateway/README.md#martlet-network-member-pairing)).
+
 Do not publish raw inference ports. Bind only the chosen private interface,
 allow only the intended client addresses/subnet, account for IPv4 **and** IPv6,
 and never enable router forwarding/UPnP by default. Docker published ports can

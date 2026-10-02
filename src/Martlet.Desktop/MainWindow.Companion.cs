@@ -36,8 +36,8 @@ internal sealed record LocalChatModel(string Id, string Size, string Fits, doubl
 /// Everything saves through the same setup service, consent and credential rules as Setup.</summary>
 public partial class MainWindow
 {
-    /// <summary>Where a job runs. Lip-sync's third place is the voice's loudness (no Audio2Face) instead of a cloud provider.</summary>
-    private enum JobPlace { ThisPc, Computer, Cloud, Loudness }
+    /// <summary>Where a job runs. Lip-sync has no cloud provider; its voice-loudness way is one of this PC's.</summary>
+    private enum JobPlace { ThisPc, Computer, Cloud }
 
     private sealed record CloudProvider(string Name, string? BaseUrl, bool Chat, string? DefaultModel, bool NeedsKey)
     {
@@ -478,7 +478,7 @@ public partial class MainWindow
                     : "No microphone found. Plug one in or turn it on in Windows Sound settings."
                 : $"{device} isn't connected. Plug it in or pick another."
             : $"Using {device}" + (checkpoint is not null ? $", tested on {checkpoint.TestedAt.ToLocalTime():d}." : ".");
-        var line = Note(text + (output ? " Martlet plays its voice here." : " Martlet listens here when the talk window is open."),
+        var line = Note(text + (output ? " Martlet plays its voice here." : " Martlet listens here when you talk in the talk window."),
             new Thickness(0, 0, 0, 8));
         if (missing) line.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
         return Card(Heading(what), line,
@@ -789,13 +789,13 @@ public partial class MainWindow
             id: "SetupHearWindowsVoice"));
     }
 
-    private static TextBlock OptionTitle(string title, string? tag)
+    private static TextBlock OptionTitle(string title, string? tag, double size = 16)
     {
-        var text = new TextBlock { FontSize = 16, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap };
+        var text = new TextBlock { FontSize = size, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap };
         text.Inlines.Add(title);
         if (tag is not null)
         {
-            var badge = new System.Windows.Documents.Run("  \u00b7  " + tag) { FontWeight = FontWeights.Normal, FontSize = 14 };
+            var badge = new System.Windows.Documents.Run("  \u00b7  " + tag) { FontWeight = FontWeights.Normal, FontSize = size - 2 };
             badge.SetResourceReference(System.Windows.Documents.TextElement.ForegroundProperty, tag == "in use" ? "SuccessBrush" : "AccentBrush");
             text.Inlines.Add(badge);
         }
@@ -1359,8 +1359,8 @@ public partial class MainWindow
 
     // ---------- lip-sync: where it runs, like every job ----------
 
-    /// <summary>Who moves the character's mouth, chosen like every job: this PC (Audio2Face in its host service, or a service you
-    /// run yourself), another of your computers, or the voice's loudness. It switches right away, even while the character talks.</summary>
+    /// <summary>Who moves the character's mouth, chosen like every job: this PC (Audio2Face in its host service, or simply the
+    /// voice's loudness) or another of your computers. It switches right away, even while the character talks.</summary>
     private void RenderLipSyncTab(Panel page)
     {
         var thisPc = ThisPcHost();
@@ -1382,61 +1382,60 @@ public partial class MainWindow
             }
         }, coverage.FirstOrDefault(c => c.Job == ClusterJobs.LipSync && c.IsProblem), "LipSyncNow"));
 
-        var current = handler switch
-        {
-            LipSyncHandler.Loudness => JobPlace.Loudness,
-            LipSyncHandler.Host when owner != thisPc?.HostId => JobPlace.Computer,
-            _ => JobPlace.ThisPc
-        };
+        // Voice loudness is worked out on this PC, so it is one of this PC's ways rather than a place of its own.
+        var current = handler == LipSyncHandler.Host && owner != thisPc?.HostId ? JobPlace.Computer : JobPlace.ThisPc;
         var place = tabPlace.TryGetValue(CompanionTab.LipSync, out var chosen) ? chosen : current;
         var gpu = machine.BestGpu;
         var fits = gpu is { IsNvidia: true } && (gpu.MemoryGb ?? 0) >= 4;
         var otherHosts = NetworkMap.Hosts(Inputs()).Where(h => h.HostId != thisPc?.HostId).ToArray();
-        var recommended = fits ? JobPlace.ThisPc
-            : otherHosts.Any(h => CannotHand(h.HostId, HostRoles.Audio2Face, ClusterJobs.LipSync) is null) ? JobPlace.Computer
-            : JobPlace.Loudness;
+        var recommended = !fits && otherHosts.Any(h => CannotHand(h.HostId, HostRoles.Audio2Face, ClusterJobs.LipSync) is null)
+            ? JobPlace.Computer : JobPlace.ThisPc;
         string Label(JobPlace value, string label) => value == recommended ? label + " (recommended)" : label;
 
         page.Children.Add(WhereItRunsCard(CompanionTab.LipSync, "LipSync", "Where it runs", null, current, place,
             (JobPlace.ThisPc, Label(JobPlace.ThisPc, "This PC"),
-                "NVIDIA Audio2Face moves the mouth more naturally. It needs an NVIDIA graphics card and an NGC key. Voice audio stays on this PC."),
+                "Use NVIDIA Audio2Face in Docker for natural mouth movement, or follow the voice's loudness with no setup. Voice audio stays on this PC."),
             (JobPlace.Computer, Label(JobPlace.Computer, "Another of your computers"),
-                "Use a paired computer on your network for lip-sync."),
-            (JobPlace.Loudness, Label(JobPlace.Loudness, "Voice loudness"),
-                "Move the mouth with the voice. Works with any character and needs no setup.")));
+                "Use Audio2Face on a paired computer on your network.")));
 
-        page.Children.Add(place switch
-        {
-            JobPlace.ThisPc => LocalLipSyncCard(thisPc, handler, owner, fits),
-            JobPlace.Computer => ComputersCard(ClusterJobs.LipSync, "Audio2Face", HostRoles.Audio2Face, owner,
+        page.Children.Add(place == JobPlace.Computer
+            ? ComputersCard(ClusterJobs.LipSync, "Audio2Face", HostRoles.Audio2Face, owner,
                 ownerMissing ? "Audio2Face isn't installed there yet, so voice loudness is used for now."
                     : $"In use: Audio2Face{(hostChecks.GetValueOrDefault(owner ?? "")?.Offers?.GetValueOrDefault(HostRoles.Audio2Face) is { } model ? " " + model : "")}.",
                 ownerMissing ? "Install Audio2Face" : null, AssignLipSyncAsync,
                 "Only Martlet's generated voice is sent to that computer. Audio2Face needs an NVIDIA graphics card and NGC key. " +
-                "Until it is ready, the mouth follows voice loudness.", thisPc),
-            _ => LoudnessCard(handler == LipSyncHandler.Loudness)
-        });
+                "Until it is ready, the mouth follows voice loudness.", thisPc)
+            : LocalLipSyncCard(thisPc, handler, owner, fits));
     }
 
     /// <summary>Lip-sync on this PC: two ways, like its voice. Audio2Face in Martlet's host service here (one click sets the host
-    /// service up and pairs it, installs Audio2Face and hands lip-sync to it), or an Audio2Face service you already run yourself.
-    /// Docker's Audio2Face comes first unless your own service is in use and this PC's graphics card can't run it.</summary>
+    /// service up and pairs it, installs Audio2Face and hands lip-sync to it), or the voice's loudness, which needs no setup.
+    /// The one in use, otherwise the one this PC's graphics card suits, comes first. An Audio2Face service you run yourself is
+    /// an advanced extra below them, shown as a full option only while it is the setting in effect and answering.</summary>
     private Border LocalLipSyncCard(PairedHost? thisPc, LipSyncHandler handler, string? owner, bool fits)
     {
         var gpu = machine.BestGpu;
         var dockerInUse = handler == LipSyncHandler.Host && thisPc is not null && owner == thisPc.HostId;
-        var ownInUse = handler == LipSyncHandler.ThisPc;
         // Lip-sync can be handed to this PC's host service before Audio2Face is installed there (or after it was removed).
         var notInstalled = dockerInUse && HostServes(thisPc!.HostId, ClusterJobs.LipSync, HostRoles.Get(HostRoles.Audio2Face).RouteId) == false;
+        // Martlet's default (no explicit choice) only looks for your own service before each sentence, so that service is in
+        // use only when one answers (or Audio2Face-only lip-sync is activated); otherwise the mouth follows the voice's loudness.
+        var ownSetting = handler == LipSyncHandler.ThisPc;
+        var audio2FaceOnly = homeAvatar?.LipSync == AvatarLipSync.Audio2Face;
+        var ownInUse = ownSetting && (audio2FaceOnly || ownLipSyncAnswers == true);
+        var loudnessInUse = handler == LipSyncHandler.Loudness || ownSetting && !ownInUse;
 
+        var dockerTitle = OptionTitle("Audio2Face, with Docker",
+            notInstalled ? "chosen, not installed yet" : dockerInUse ? "in use" : fits ? "recommended for this PC" : null);
+        AutomationProperties.SetAutomationId(dockerTitle, "LipSyncDockerTitle");
         var docker = new List<UIElement>
         {
-            OptionTitle("Audio2Face, with Docker", notInstalled ? "chosen, not installed yet" : dockerInUse ? "in use" : fits ? "recommended for this PC" : null),
-            Note("NVIDIA Audio2Face moves the mouth with Martlet's voice. It runs in Docker on this PC and needs an NVIDIA NGC key. " +
+            dockerTitle,
+            Note("NVIDIA Audio2Face moves the mouth naturally with Martlet's voice. It runs in Docker on this PC and needs an NVIDIA NGC key. " +
                 "Until it is ready, voice loudness is used.", new Thickness(0, 2, 0, 6)),
             Note(gpu is null ? "No dedicated graphics card was found on this PC; Audio2Face needs an NVIDIA graphics card with 4 GB or more."
-                : $"This PC has {gpu.Describe()}." + (fits ? "" : " Audio2Face needs an NVIDIA graphics card with 4 GB or more, so another " +
-                    "computer or voice loudness suits this PC better."), new Thickness(0, 0, 0, 6))
+                : $"This PC has {gpu.Describe()}." + (fits ? "" : " Audio2Face needs an NVIDIA graphics card with 4 GB or more, so voice " +
+                    "loudness or another computer suits this PC better."), new Thickness(0, 0, 0, 6))
         };
         if (thisPc is null)
         {
@@ -1462,47 +1461,62 @@ public partial class MainWindow
                 PageButton("Check it", () => RunNodeAction(NodeAction.CheckHost, thisPc.HostId), id: "SetupLipSyncCheckLocal")));
         }
 
-        var endpoint = new Uri(homeAvatar?.Endpoint ?? AvatarProfile.DefaultEndpoint).Authority;
-        // Without an explicit choice this is Martlet's default: it only looks for a service there, so it is in use only
-        // when one answers (or Audio2Face-only lip-sync is activated); otherwise the mouth follows the voice's loudness.
-        var audio2FaceOnly = homeAvatar?.LipSync == AvatarLipSync.Audio2Face;
-        var ownTitle = OptionTitle("Your own Audio2Face service", !ownInUse ? null
-            : audio2FaceOnly || ownLipSyncAnswers == true ? "in use"
-            : ownLipSyncAnswers == false ? "not running" : "checking");
-        AutomationProperties.SetAutomationId(ownTitle, "LipSyncOwnTitle");
-        var own = new List<UIElement>
+        var loudnessTitle = OptionTitle("Voice loudness, no setup", loudnessInUse ? "in use" : !fits ? "recommended for this PC" : null);
+        AutomationProperties.SetAutomationId(loudnessTitle, "LipSyncLoudnessTitle");
+        var loudness = new List<UIElement>
         {
-            ownTitle,
-            Note($"Use an Audio2Face service already running on this PC at {endpoint}. If it doesn't answer, Martlet uses voice loudness.",
-                new Thickness(0, 2, 0, 6))
+            loudnessTitle,
+            Note("The mouth opens and closes with Martlet's voice. It works with any character and graphics card, needs nothing installed, " +
+                "and nothing leaves this PC. It looks simpler than Audio2Face.", new Thickness(0, 2, 0, 6))
         };
-        if (ownInUse)
+        if (!loudnessInUse)
+            loudness.Add(Row(PageButton("Use voice loudness", () => AssignLipSyncAsync("off").Forget(),
+                primary: !fits && !dockerInUse && !ownInUse, id: "SetupLipSyncLoudness")));
+
+        var endpoint = OwnLipSyncEndpoint().Authority;
+        var ownTitle = OptionTitle("Your own Audio2Face service", !ownSetting ? null
+            : ownInUse ? "in use" : ownLipSyncAnswers == false ? "not running" : "checking", ownInUse ? 16 : 14);
+        AutomationProperties.SetAutomationId(ownTitle, "LipSyncOwnTitle");
+        var own = new List<UIElement> { ownTitle };
+        if (ownSetting)
         {
             var state = Note(audio2FaceOnly
-                ? "In use with Audio2Face-only lip-sync in the character settings."
+                ? $"In use at {endpoint}, with Audio2Face-only lip-sync in the character settings."
                 : ownLipSyncAnswers switch
                 {
-                    true => $"In use: Audio2Face is answering at {endpoint}.",
-                    false => "Not running. The mouth follows voice loudness.",
-                    _ => $"Uses Audio2Face at {endpoint} when it is running; otherwise uses voice loudness."
-                }, new Thickness(0, 0, 0, 4));
+                    true => $"In use: an Audio2Face service you run yourself is answering at {endpoint}.",
+                    false => $"Advanced. Martlet looks for an Audio2Face service you run yourself at {endpoint} before each sentence. " +
+                        "Nothing answers there, so the mouth follows voice loudness.",
+                    _ => $"Advanced. Martlet looks for an Audio2Face service you run yourself at {endpoint} before each sentence, " +
+                        "and uses voice loudness when nothing answers."
+                }, new Thickness(0, 2, 0, 4));
             AutomationProperties.SetAutomationId(state, "LipSyncOwnState");
             own.Add(state);
         }
-        else own.Add(Row(PageButton("Use my own service", () => AssignLipSyncAsync("this-pc").Forget(), id: "SetupLipSyncOwnService")));
+        else
+        {
+            own.Add(Note($"Advanced. Already run NVIDIA's Audio2Face service yourself? Martlet can use it at {endpoint}, " +
+                "with voice loudness whenever it doesn't answer.", new Thickness(0, 2, 0, 0)));
+            own.Add(Row(PageButton("Use my own service", () => AssignLipSyncAsync("this-pc").Forget(), link: true, id: "SetupLipSyncOwnService")));
+        }
 
-        // The own service is the default fallback, so it comes first only when it is in use and Docker's Audio2Face doesn't fit here.
-        var dockerFirst = dockerInUse || !ownInUse || fits;
-        return Card(Heading("Lip-sync on this PC"),
-            Note("Choose how the mouth moves. Voice loudness is used until Audio2Face is ready.", new Thickness(0, 0, 0, 4)),
-            Option(dockerFirst ? docker : own, dockerFirst ? dockerInUse : ownInUse),
-            Option(dockerFirst ? own : docker, dockerFirst ? ownInUse : dockerInUse));
+        var dockerFirst = dockerInUse || !loudnessInUse && fits;
+        var options = new List<UIElement>
+        {
+            Heading("Lip-sync on this PC"),
+            Note("Choose how the mouth moves. Until Audio2Face is ready, the mouth follows voice loudness.", new Thickness(0, 0, 0, 4))
+        };
+        if (ownInUse) options.Add(Option(own, inUse: true));
+        options.Add(Option(dockerFirst ? docker : loudness, dockerFirst ? dockerInUse : loudnessInUse));
+        options.Add(Option(dockerFirst ? loudness : docker, dockerFirst ? loudnessInUse : dockerInUse));
+        if (!ownInUse)
+        {
+            var advanced = new StackPanel { Margin = new Thickness(4, 14, 4, 0) };
+            foreach (var child in own) advanced.Children.Add(child);
+            options.Add(advanced);
+        }
+        return Card(options.ToArray());
     }
-
-    private Border LoudnessCard(bool inUse) => Card(Heading("Voice loudness"),
-        Note("The mouth opens and closes with Martlet's voice. It works with any character and needs no setup.", new Thickness(0, 0, 0, 8)),
-        inUse ? (UIElement)Note("In use: Audio2Face is off.", new Thickness(0, 0, 0, 4))
-            : Row(PageButton("Use voice loudness", () => AssignLipSyncAsync("off").Forget(), primary: true, id: "SetupLipSyncLoudness")));
 
     // ---------- memory ----------
 

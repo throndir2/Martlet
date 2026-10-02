@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Automation;
 using System.ComponentModel;
 using System.IO;
 using System.Diagnostics;
@@ -114,11 +115,14 @@ public partial class MainWindow : ThemedWindow
         }
         InitializeShell();
         InitializeCluster();
+        InitializeNetwork();
+        InitializeApiKeys();
         InitializeNearby();
         InitializeVoiceSync();
         InitializeHomeShare();
         InitializeNodeAgent();
         InitializeLogs();
+        InitializeBackground();
     }
 
     private async void Theme_Changed(object sender, SelectionChangedEventArgs e)
@@ -151,11 +155,24 @@ public partial class MainWindow : ThemedWindow
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         StartAmbientMotion();
+        await StartRunningAsync();
+    }
+
+    private bool started;
+
+    /// <summary>Everything Martlet does once it runs: status, the saved character, sync, the node agent, logs and updates. It
+    /// runs when the window first shows, or straight away when Martlet starts in the notification area.</summary>
+    private async Task StartRunningAsync()
+    {
+        if (started) return;
+        started = true;
         ReadMachineAsync().Forget();
         await RefreshAsync();
         if (!closing) ContinueSetupAsync().Forget();
         await ShowSavedCharacterAsync(onlyIfAutoShow: true);
         StartCluster();
+        StartNetwork();
+        StartApiKeys();
         StartVoiceSync();
         StartHomeShare();
         StartNodeAgent();
@@ -287,15 +304,41 @@ public partial class MainWindow : ThemedWindow
         await RefreshAsync();
     }
 
-    private async void Conversation_Click(object sender, RoutedEventArgs e)
+    /// <summary>Opens the talk window beside Martlet (modeless, so Home, Companion and the rest stay usable while you talk), or
+    /// brings it back to the front when it is already open.</summary>
+    private void Conversation_Click(object sender, RoutedEventArgs e)
     {
+        if (openConversation is { } open)
+        {
+            if (open.WindowState == WindowState.Minimized) open.WindowState = WindowState.Normal;
+            open.Activate();
+            return;
+        }
         if (conversation is null || closing || saving || model?.IsRunning == true) return;
-        openConversation = new LiveConversationWindow(setupService!, setupOperations, conversation, audioSessionEvents, voiceIdentity: voiceIdentity,
+        var window = new LiveConversationWindow(setupService!, setupOperations, conversation, audioSessionEvents, voiceIdentity: voiceIdentity,
             preferences: Talk, videoAddress: visionAddress)
             { Owner = this, Support = support };
-        try { openConversation.ShowDialog(); }
-        finally { openConversation = null; }
-        await RefreshAsync();
+        if (!IsVisible) window.UseOwnTaskbarButton();
+        window.Closed += async (_, _) =>
+        {
+            if (!ReferenceEquals(openConversation, window)) return;
+            openConversation = null;
+            RenderConversationButton();
+            UpdateTray();
+            if (!closing) await RefreshAsync();
+        };
+        openConversation = window;
+        RenderConversationButton();
+        window.Show();
+        UpdateTray();
+    }
+
+    /// <summary>Home's Start talking reads Show conversation while the talk window is open.</summary>
+    private void RenderConversationButton()
+    {
+        var open = openConversation is not null;
+        ConversationButton.Content = open ? "Show _conversation" : "Start _talking";
+        AutomationProperties.SetName(ConversationButton, open ? "Show conversation" : "Start talking");
     }
 
     private void VoiceLibrary_Click(object sender, RoutedEventArgs e) => OpenCompanion(CompanionTab.Voice);
@@ -542,14 +585,22 @@ public partial class MainWindow : ThemedWindow
         e.Cancel = true;
         if (closing)
             return;
+        // The close button keeps Martlet running in the notification area unless you chose to exit.
+        if (!exiting && tray is { Added: true } && background.CloseToTray)
+        {
+            HideToTray();
+            return;
+        }
         if (recovery?.HasResources == true)
         {
+            RefuseExit();
             recovery.StopObserving();
             ActionText.Text = "Finish the backup or restore task before exiting.";
             return;
         }
         if (support.HasResources)
         {
+            RefuseExit();
             support.CancelAndClose();
             ActionText.Text = "Finish troubleshooting cleanup before exiting.";
             return;
@@ -563,24 +614,31 @@ public partial class MainWindow : ThemedWindow
             catch (TimeoutException)
             {
                 IsEnabled = true;
+                RefuseExit();
                 ActionText.Text = "Finish or cancel the update before exiting.";
                 return;
             }
             if (interruptedUpdateCleanup is { } error)
             {
                 IsEnabled = true;
+                RefuseExit();
                 ActionText.Text = $"Couldn't finish update cleanup: {error}";
                 return;
             }
         }
         closing = true;
+        // The talk window stops listening, vision and any reply before the conversation it uses is disposed below.
+        openConversation?.Close();
         ReleaseShell();
         ageTimer.Stop();
         characterTimer.Stop();
         updateTimer.Stop();
         clusterTimer.Stop();
+        networkTimer.Stop();
+        apiKeysTimer.Stop();
         voiceSyncTimer.Stop();
         homeShareTimer.Stop();
+        trayTimer.Stop();
         StopNearby();
         StopLogs();
         audioSessionEvents.LockedChanged -= audioSetup.SetSessionLocked;
@@ -605,6 +663,7 @@ public partial class MainWindow : ThemedWindow
             System.ComponentModel.Win32Exception or UnauthorizedAccessException) { }
         memory?.Dispose();
         LaunchPendingInstall();
+        tray?.Dispose();
         // WPF OnMainWindowClose exits the process, including any non-cooperative in-process callback.
         // Even absent or synchronous cleanup must leave WPF's original Closing event before closing again.
         await Dispatcher.InvokeAsync(() =>
@@ -614,5 +673,5 @@ public partial class MainWindow : ThemedWindow
         });
     }
 
-    private void Exit_Click(object sender, RoutedEventArgs e) => Close();
+    private void Exit_Click(object sender, RoutedEventArgs e) => ExitMartlet();
 }

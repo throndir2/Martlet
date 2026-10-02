@@ -289,16 +289,21 @@ The long form became a four-step wizard with a step rail:
 ### 6. Talk (conversation)
 
 *Start talking* opens the conversation and nothing else: its history, what you
-said and the message box. Every choice about how Martlet listens, speaks and
-sees is made in Companion; the window has no settings, approvals, cost
-envelopes, timelines or links to other windows.
+said and the message box. It is a separate window beside Martlet, never a
+blocking dialog: Home, Companion and Settings stay usable while it is open,
+and Home's button reads *Show conversation* and brings it to the front. Every
+choice about how Martlet listens, speaks and sees is made in Companion, and an
+open talk window follows a change there right away; the window has no
+settings, approvals, cost envelopes, timelines or links to other windows.
 
 - **Header**: the mascot, *Martlet* and one status line (*Listening. Just
   talk, or type below.*, *Martlet is thinking*, *Martlet is speaking. Esc
-  stops it.*, or what went wrong in plain words). On the right, small toggles
-  for what is on: **Listening** (shown with always listening; click to pause or
-  resume, or *Can't listen* with the reason while listening isn't set up) and **Vision**
-  (shown when vision is on; click to pause or resume), then **Stop (Esc)**.
+  stops it.*, or what went wrong in plain words). On the right: **Start
+  listening** (shown with always listening; a primary button until pressed,
+  then **Stop listening** with a green dot, an amber dot when the microphone
+  can't be opened, or *Can't listen* with the reason while listening isn't set
+  up), **Vision** (shown when vision is on; click to pause or resume), then
+  **Stop (Esc)**.
 - **History**: chat bubbles for the whole conversation while the window is
   open: what you typed, what you said (the transcript, captioned *You
   (spoken)*), Martlet's replies as they stream in, its remarks about your
@@ -308,12 +313,13 @@ envelopes, timelines or links to other windows.
   With push-to-talk chosen, *Hold to talk* (hold the mouse or Space) sits next
   to *Send*; invoking it starts a recording and invoking it again sends.
 
-Opening the window starts what Companion chose: **always listening** (the
-default, with the chosen or Windows default microphone; no test needed) and **vision** (off by
-default). Typing while Martlet listens hands the microphone over for the typed
+Opening the window starts **vision** if Companion turned it on (off by
+default). **Always listening** (the default, with the chosen or Windows
+default microphone; no test needed) starts only when you press *Start
+listening*. Typing while Martlet listens hands the microphone over for the typed
 message, and listening resumes after the reply. **Stop (Esc)** stops the reply,
 any recording and vision at once and keeps the conversation; listening carries
-on (only its own button pauses it). Locking Windows stops listening and vision
+on (only *Stop listening* ends it). Locking Windows stops listening and vision
 and starts a fresh conversation (both resume on unlock), and closing the
 window ends it.
 
@@ -332,7 +338,8 @@ window ends it.
        then *Speak Martlet's replies aloud* (on by default).
     3. *Listening*: the speech-to-text provider, model and key, then the
        microphone, then **How you talk**: *Always listening* (the default;
-       Martlet hears you whenever the talk window is open, with sensitivity
+       once you press *Start listening* in the talk window Martlet hears you
+       until *Stop listening*, with sensitivity
        and how long a pause ends your turn) or *Push-to-talk*, and Voice ID
        (*Only respond to my voice* and *Set up Voice ID*).
     4. *Vision*: whether Martlet may look at your screen or a camera while
@@ -398,25 +405,29 @@ window ends it.
     Manager, then the confirmed choice.
 
   Lip-sync on its own page uses the same **Where it runs** chooser and
-  cards, with *Voice loudness* in place of a cloud provider. The recommended
-  place follows the hardware: *This PC* with an NVIDIA graphics card of 4 GB or
-  more, otherwise another computer that can run Audio2Face, otherwise voice
-  loudness. Each card's button commits the choice, which switches right away,
-  even while the character talks:
+  cards, with two places: *This PC* and *Another of your computers* (there is
+  no cloud provider). Voice loudness is worked out on this PC, so it is one of
+  *This PC*'s ways rather than a place. The recommended place is *This PC*
+  unless this PC lacks an NVIDIA graphics card of 4 GB or more and another
+  computer can run Audio2Face. Each card's button commits the choice, which
+  switches right away, even while the character talks:
 
-  - *This PC*: two choices, the one in use first, like the voice. **Audio2Face,
+  - *This PC*: two ways, the one in use first, like the voice. **Audio2Face,
     with Docker** (*Set up Audio2Face with Docker* sets up and pairs Martlet's
     host service on this PC, then hands lip-sync to it, installing Audio2Face
     with its NGC key; once the host service exists, *Use Audio2Face on this
-    PC* and *Check it*) or **Your own Audio2Face service** at the character's
-    loopback endpoint (*Use my own service*). The own service is Martlet's
-    default: it only looks for a service there before each sentence, so it is
-    marked *in use* only when one answers and *not running* (the mouth follows
-    the voice's loudness) when nothing does; it never implies Audio2Face is
-    installed.
+    PC* and *Check it*; recommended with an NVIDIA graphics card of 4 GB or
+    more) or **Voice loudness, no setup** (*Use voice loudness* turns
+    Audio2Face off; recommended otherwise). Below them, an advanced **Your own
+    Audio2Face service** line covers an Audio2Face service you run yourself at
+    the character's loopback endpoint (*Use my own service*). That is
+    Martlet's default: it only looks for a service there before each sentence,
+    so voice loudness is marked *in use* and the line says *not running* when
+    nothing answers; only when one answers (or Audio2Face-only is activated)
+    does it become a full option marked *in use*. It never implies Audio2Face
+    is installed.
   - *Another of your computers*: the same host list as the job tabs, with *Use
     it*, *Add a computer*, *Check hosts* and the Devices map.
-  - *Voice loudness*: *Use voice loudness* turns Audio2Face off.
 
   *Advanced setup* at the bottom of each job tab opens the full Setup window on
   that job, for every route type and stored or detached keys. Microphone and

@@ -73,7 +73,7 @@ internal sealed partial class GatewayHttpApplication
         if (context.Request.Method == HttpMethods.Get)
         {
             EnsureEmptyRequest(context.Request);
-            _ = authenticator.Authenticate(context.Request);
+            _ = Authorize(context.Request, GatewayApiAccess.Read);
             result = Cluster.Current;
         }
         else if (context.Request.Method == HttpMethods.Post)

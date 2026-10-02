@@ -7,7 +7,7 @@ internal sealed record HostOptions(string Command, string ConfigPath)
     internal const string Help = """
         Martlet Linux gateway candidate (native x86_64/glibc/ext4; default No)
         No arguments, help, --help, -h: passive help; no file/key/listener access.
-        Commands: validate, status, init, admin, rebind, serve, health, owner-init, owner-approve, owner-pair
+        Commands: validate, status, init, admin, rebind, serve, health, owner-init, owner-approve, owner-pair, owner-network-reset
         Syntax: <command> --config <absolute-private-directory>/host.json
         validate/status read only the selected nonsecret configuration/approval.
         status does not observe a live process. health explicitly probes pinned HTTPS.
@@ -23,6 +23,8 @@ internal sealed record HostOptions(string Command, string ConfigPath)
                          desktop to redeem it, then close. A "cancel" line on stdin stops waiting.
           owner-pair     ... --device-id <id> --name <display name> [--roles voice]: as above, but for exactly that
                          device, printing one machine-readable "pairing-code: martlet-pair-v1..." line instead.
+          owner-network-reset  leave this host's Martlet network (removes network.json; pairings stay). Stop the
+                         service first; the next desktop that pairs adds the host to its own network.
         Config alone grants no authority. Never put secrets in arguments, environment or logs.
         Permanent pairing is not connectivity or an inference/action permission.
         Empty worker registry: no models, inference, downloads, service or firewall installation.
@@ -38,7 +40,7 @@ internal sealed record HostOptions(string Command, string ConfigPath)
         if (args.Length == 0 || args is ["help" or "--help" or "-h"]) return null;
         if (args.Length < 3 || args[0] is not
             ("validate" or "status" or "init" or "admin" or "rebind" or "serve" or "health" or
-             "owner-init" or "owner-approve" or "owner-pair") ||
+             "owner-init" or "owner-approve" or "owner-pair" or "owner-network-reset") ||
             args[1] != "--config" || !LinuxControlDirectory.ValidPath(args[2]) ||
             !args[2].EndsWith("/host.json", StringComparison.Ordinal))
             throw new HostInputException();

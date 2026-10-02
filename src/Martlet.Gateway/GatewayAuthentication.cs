@@ -185,6 +185,8 @@ internal sealed class GatewayRequestAuthenticator(
 
     internal GatewayPrincipal Authenticate(HttpRequest request, ReadOnlySpan<byte> bodyHash)
     {
+        // Endpoints that admit API keys route them to GatewayApiKeyStore first; the rest are for paired devices only.
+        if (GatewayApiKeyStore.IsBearer(request)) throw new GatewayProtocolException("key.scope");
         var authorization = SingleHeader(request, "Authorization", 160, "auth.missing");
         var nonce = SingleHeader(request, GatewayRequestSigner.NonceHeader, 32, "auth.missing");
         var timestampText = SingleHeader(request, GatewayRequestSigner.TimestampHeader, 20, "auth.missing");

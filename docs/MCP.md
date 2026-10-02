@@ -204,6 +204,70 @@ unticked **Keep who does what in sync**; `plan` is this PC's `cluster.json`
 `updatedBy` and `updatedAt`, and each host's ID, roles and `removed`). It never
 returns host addresses or keys and contacts nothing.
 
+`network_status` reads the [Martlet network](NETWORK.md) from a data directory
+(optional absolute `dataDirectory`, default the current user's): `state`
+(`none`, `member`, `waiting` or `unreadable`), `key` (whether
+`network\device_ecdsa` exists), `networkId`, the roster's `revision` and
+`founder`, `waiting` (`hostId`, `checkNumber`, `since`) while this PC asks to
+join, each `desktops` and `hosts` entry (`id`, `name`, `removed`, `updatedBy`,
+`changedAt`), `adopt` (hosts paired here on purpose, added to the network on
+the next sync), `ignored` (network hosts forgotten here) and `removedFrom`. It
+never returns keys, signatures or host addresses and contacts nothing.
+
+`network_selftest` (no arguments) rehearses the network end to end with the
+production code: three real gateways (`lab-host-1..3`: Kestrel, pinned TLS,
+volatile credentials, a throwaway certificate) on `127.0.0.1` and two simulated
+desktops driving the desktop's own client (`HostNetwork.cs`) and sync engine
+(`NetworkSync.cs`). Like `node_link_check` it runs `src\Martlet.NodeLinkCheck`
+(mode `network`, `NetworkRehearsal.cs`) as its own process, because the gateway
+needs the ASP.NET Core runtime, and returns `{exitCode, report}`. Its steps: desktop A pairs with a host by a typed code and
+founds a network that binds it; A adds a second host to the same network; B
+pairs with one host and asks to join with a check number; A sees the same
+number, allows B, and B pairs with the other host by itself; A sets up a third
+host and B is paired with it on its next sync; a key outside the network
+(`network.denied`), a member's ID with the wrong key (`pairing.invalid`) and a
+roster entry not signed by a member are refused; A removes a host (it stops
+trusting the network's desktops, and A and B both forget it, B although the
+host no longer answers it); A pairs that host again by a code and it rejoins
+(B pairs with it again by itself); A removes B (every host revokes it, B leaves
+and forgets its hosts and needs a new key). Each desktop's state goes through
+`network.json`'s format between syncs. The report has `ok`, `passed`,
+`total`, `seconds`, the `scope` and each step's `ok` and `detail`. Nothing
+leaves loopback, nothing is written to disk or Windows Credential Manager, and
+it does not cover the desktop window, `network.json` on a Linux host,
+`martlet-host`, SSH or a real LAN.
+
+`api_keys_status` reads the [API keys](API.md) of this PC's Martlet network
+from a data directory (optional absolute `dataDirectory`, default the current
+user's; the script supplies its disposable one): `state` (`none`, `loaded` or
+`unreadable`), counts of `live`, `revoked` and `expired` keys, and each key's
+`id`, `name`, `scopes`, `createdBy`, `createdAt`, `expiresAt`, `revoked`,
+`expired`, `updatedBy` and `hasVerifier`. It never returns a key or its
+verifier (Martlet keeps no key) and contacts nothing.
+
+`api_selftest` (no arguments) rehearses API keys for software outside the
+network end to end with the production code: two real gateways
+(`lab-api-1`, `lab-api-2`: Kestrel, pinned TLS, a throwaway certificate) on
+`127.0.0.1`, each with the real Ollama relay route over a fixture Ollama
+(canned text, NOT AI), a simulated desktop using its paired client
+(`HostApiKeys.cs`), and a plain HTTPS client that pins the host key and sends
+`Authorization: Bearer`. It runs `src\Martlet.NodeLinkCheck` (mode `api`,
+`ApiRehearsal.cs`) and returns `{exitCode, report}` like `network_selftest`.
+Its steps: the desktop pairs with both hosts and creates a read+voice and a
+manage key, and both hosts keep verifiers and no secret; no key
+(`auth.missing`), a malformed and a wrong key (`key.invalid`) are refused; the
+read+voice key reads version (naming the key), status and capabilities, the
+documented `curl -k --pinnedpubkey` request (System32's curl.exe) answers and a
+wrong pin is refused (exit 90), and the key chats through the native route; it gets `key.scope` for commands, voices,
+network, api-keys, posting the plan and posting logs; the manage key sends
+`host.status` and follows it but can't chat or read status; the same key works
+on the second host and after it restarts from its saved copy; the desktop sees
+when keys were last used; revoking a key cuts its streaming reply and every
+host refuses it after sync; a stale copy can't bring it back; an expired key
+gets `key.expired`. Nothing leaves loopback and nothing is written to disk or
+Windows Credential Manager; it does not cover the desktop window,
+`api-keys.json` on a Linux host, a real model or a real LAN.
+
 `nearby_status` reads whether this PC lets Martlet on the owner's other
 computers [find it](ARCHITECTURE.md#finding-your-other-computers) (optional
 absolute `dataDirectory`, default the current user's): `share` is
@@ -358,6 +422,34 @@ and `LipSyncOwner`, device commands `NodeAction-<action>`
 roles), and Settings for all devices holds `CheckHosts`, `ClusterSync` (checked by
 default; unticking it needs `--allow-ui-effects` and saves `off`),
 `ClusterStatus` (returned as text) and `RoleSetup-<role>` for jobs nobody does.
+The **Your Martlet network** card ([NETWORK](NETWORK.md)) holds `NetworkStatus`
+(status text: member with how many computers and hosts, waiting to join with
+the check number, or in no network), `NetworkCheck` (syncs now; it contacts the
+paired hosts, so it is not a passive click), each computer's row title
+`NetworkMember-<desktop|host>-<ID>` (status text, for example
+`lab-gpu. Host, not paired with this PC yet; added on desktop-diva.`) with
+`NetworkRemove-<desktop|host>-<ID>`, and each request to join
+`NetworkJoin-<device ID>` (status text with the check number) with
+`NetworkAllow-<device ID>` and `NetworkDeny-<device ID>`. Remove, Allow and
+Turn down change the network and need `--allow-ui-effects` (then
+`ConfirmationYes`); Allow also hands that computer access to every host, so
+keep it to disposable lab networks.
+
+The **Apps and API keys** card ([API](API.md)) holds `ApiKeysStatus` (status
+text: how many keys, and on how many hosts they are or why not), each key's
+row title `ApiKeyRow-<key ID>` (status text: name, what it may do, which
+computer made it, last use, expiry and the ID's first characters) with
+`ApiKeyRevoke-<key ID>`, and `ApiKeyCreate`. Create opens
+`ApiKeyCreateDialog` with `ApiKeyName`, `ApiKeyScope-<read|voice|perception|manage>`
+(read is ticked), `ApiKeyExpiry` (*Never*, *In 30 days*, *In 90 days*, *In a
+year*), `ApiKeyCreateConfirm` and `ApiKeyCreateCancel` (passive). Creating
+shows `ApiKeyCreatedDialog`: `ApiKeyCreatedTitle`, `ApiKeyHosts` (the hosts'
+addresses and public key pins) and `ApiKeyExample` (a curl request naming
+`$MARTLET_API_KEY`) are returned as text; the key itself (`ApiKeyValue`) is
+never returned, and `ApiKeyCopy` writes the clipboard; `ApiKeyCreatedDone`
+(passive) closes it. Create, the dialog's fields, Copy and Revoke (then
+`ConfirmationYes`) change data and need `--allow-ui-effects`.
+
 A paired host's `DeviceReachSection` holds `HostReachNow` (*Reached via: ...*,
 status text), `HostReachMethod` (a combo box: *Through Martlet on that computer
 (paired connection)*, *SSH, with Docker there*, *SSH, native Ubuntu*, *This
@@ -474,7 +566,13 @@ not set up* with the state, and clicking one only opens its page.
 passive. To see a problem on a disposable data directory, put invalid JSON in
 `settings.json` (*settings*), a stale `logs\desktop.<pid>.running` marker
 (*crash*), or choose Ollama on this PC in Companion › Thinking while Ollama
-isn't running (*ollama*).
+isn't running (*ollama*). After an unclean exit the desktop looks up that
+run's process ID in Windows' Application event log in the background:
+`HealthIssue-crash` then reads *Windows recorded <exception> (0x<code>) in
+<module>* when Windows has a crash record, and `logs_tail` (`contains`:
+`Windows recorded`) returns the full line, or the *no crash* line for a kill or
+power loss (a made-up marker PID gives the latter, about 20 seconds after
+launch).
 
 The Diagnostics page (`NavDiagnostics`) lists log lines newest first. Each
 shown line is a list item `LogEntry-<n>` (`LogEntry-0` is the newest shown)
@@ -600,7 +698,7 @@ lines).
 
 On Thinking, Voice, Listening and Lip-sync, each "Where it runs" option
 (`Place-<page>-<place>`, for example `Place-Voice-Computer` or
-`Place-LipSync-Loudness`) only shows that place's choices, so clicking it is
+`Place-LipSync-ThisPc`) only shows that place's choices, so clicking it is
 passive; the card's own buttons commit. Under *Another of your computers*, each
 paired computer that can run the job (every one except this PC's own host
 service on Voice, Listening and Lip-sync; a host saved as *This PC* whose
@@ -613,40 +711,93 @@ hardware can't run it, with why. `SetupUseHost-<job>-<host ID>` hands the job
 over and needs `--allow-ui-effects`.
 
 Status fields include the talk window's `LiveStatus` (its status line),
-`LiveMic` (*Listening*, *Listening paused*, *Can't listen* or *Mic unavailable*
-with the reason; while Martlet speaks it reads *Not listening while Martlet
-speaks*; *Listening paused* only ever follows a click on it: errors, Stop and
-`LiveStop` never pause listening, and listening that can't start yet, such as
-Voice ID not set up, reads *Can't listen* and keeps retrying),
+`LiveMic` (the Start listening / Stop listening button; its value starts with
+the state: *Not listening* until it is pressed, then *Listening*, *Can't
+listen* or *Mic unavailable* with the reason; while Martlet speaks it reads
+*Not listening while Martlet speaks*. Clicking it opens the microphone, so it
+needs `--allow-ui-effects`; errors, Stop and `LiveStop` never stop listening,
+only the button or *Pause Martlet* in the notification-area menu does, and
+listening that can't start yet, such as Voice ID not set up, reads *Can't
+listen* and keeps retrying), Home's `OpenLiveConversation` (*Start talking*,
+or *Show conversation* while the talk window is open),
 `LiveVision` (*Watching*, *Looking*, *Vision paused* or *Can't see*, with when
 it last checked the screen; it checks every 3 s), `LiveVisionStatus` (while
 vision is on: what it sees, for example *Watching the window behind Martlet*,
 then the last look's outcome or why it is holding off, and the looks used this
 hour; it never contains window titles)
 and Companion › Lip-sync's `LipSyncNow` and `LipSyncNowProblem` (whether this
-PC's own Audio2Face service answers), plus, while that own service is the
-setting in effect (Martlet's default), `LipSyncOwnTitle` (its title with *in
-use*, *not running* or *checking*) and `LipSyncOwnState` (what it does now).
+PC's own Audio2Face service answers). Lip-sync's places are *This PC* and
+*Another of your computers*; under *This PC*, `LipSyncDockerTitle` (*Audio2Face,
+with Docker*) and `LipSyncLoudnessTitle` (*Voice loudness, no setup*) read each
+way's title with *in use*, *recommended for this PC* or *chosen, not installed
+yet*, and `LipSyncOwnTitle` the advanced *Your own Audio2Face service* (with
+*in use*, *not running* or *checking* while it is the setting in effect,
+Martlet's default) with `LipSyncOwnState` (what it does now). Voice loudness
+reads *in use* while the default's own service doesn't answer.
+`SetupLipSyncLoudness`, `SetupLipSyncOwnService` and the Audio2Face buttons
+change lip-sync and need `--allow-ui-effects`.
 When Thinking runs in Ollama on this PC, the talk window has Ollama load the
 model as it opens (and again on activity after a few quiet minutes), and
 `LiveStatus` says *Ollama is loading <model> on this PC (N s)…* while it loads,
 or why it can't (Ollama not running, model not downloaded, Ollama's own error);
 the desktop log records each load's duration
 (`{"name":"logs_tail","arguments":{"contains":"Ollama on this PC"}}`).
-Opening the talk window with always
-listening on opens the microphone; for verification, save a fixed microphone
-that does not exist in the disposable data directory, so listening starts,
+The talk window is modeless: `ui_snapshot`'s `windowStates` lists each window
+with `enabled` (false while a modal dialog such as Audio setup blocks it), and
+the main window stays enabled while the talk window is open. Opening the talk
+window never opens the microphone; `LiveMic` does with always listening on. For
+verification, save a fixed microphone that does not exist in the disposable
+data directory, so listening starts after `LiveMic`,
 fails without capturing real audio and shows *Mic unavailable* while it keeps
-retrying (it never pauses by itself). The talk window's `LiveStop` (Stop, Esc)
-is a passive click: it only stops a reply, recording or vision.
+retrying (it never stops by itself). The talk window's `LiveStop` (Stop, Esc)
+is a passive click: it only stops a reply, recording or vision. Changing How
+you talk on Companion › Listening (`TalkModePushToTalk`, `TalkModeAlways`)
+applies to an open talk window at once (`LivePtt` replaces `LiveMic`).
 
 Window discovery uses visible top-level native handles filtered to the attached
 process, then verifies ownership around each UI Automation handle lookup.
 This avoids transient omissions from UI Automation's desktop-root enumeration
 when unrelated WPF windows close. The Martlet main-window automation ID is
-still required on every operation; hidden, closed or changed-owner windows
-fail rather than falling back to another process. Same-process dialogs remain
-available, and duplicate control IDs still fail as ambiguous.
+still required on every operation, unless the window is hidden in the
+notification area and the process still has its icon's (hidden) window;
+closed or changed-owner windows fail rather than falling back to another
+process. Same-process dialogs remain available, and duplicate control IDs
+still fail as ambiguous.
+
+**Notification area.** Closing the main window keeps Martlet running in the
+notification area by default, and Martlet started with `--tray` (Start with
+Windows) shows no window, so `ui_connect` also attaches when only the icon's
+window exists (it returns `inTray`). `ui_tray` drives the icon:
+`{"name":"ui_tray"}` (or `"action":"status"`) returns `running`, `trayIcon`
+(the icon is in the notification area), `mainWindowVisible` and `inTray`;
+`"action":"open"` and `"action":"menu"` post the icon exactly what Explorer
+sends for a left click (show Martlet) and a right click (its menu at the mouse
+pointer), so they need no flag; `"action":"close"` presses the main window's
+close button, which hides Martlet or (with *Keep running when closed* off) exits
+it, so it needs `--allow-ui-effects`. While the menu is open `ui_snapshot` lists
+`TrayMenu` and its items: `TrayStatus` (status text: *Martlet is running*,
+*Martlet is listening*, *Martlet is paused*, *Martlet is watching* or *Martlet:
+talk window open*), `TrayOpen`, `TrayTalk` (*Talk to Martlet*, or *Show the
+talk window* while it is open), and while the talk window is open `TrayPause` or
+`TrayResume` and `TrayEndTalk`, then `TrayCharacter`, the checkable
+`TrayCloseToTray` and `TrayStartWithWindows` (their `checkedState` is the
+current choice) and `TrayExit`. `TrayOpen`, `TrayTalk` (like
+`OpenLiveConversation`), `TrayPause` (it only stops work) and `TrayEndTalk`
+(like `CloseLive`) are passive clicks; `TrayResume`, `TrayCharacter`, the two
+choices and `TrayExit` need `--allow-ui-effects`. While another Martlet dialog
+(Setup, Companion...) is open, `TrayTalk` and `TrayCharacter` are disabled and
+`TrayExit` shows Martlet instead of exiting. Settings › *Startup and closing* has
+`CloseToTray` (checked by default; saves `background.json`), `StartWithWindows`
+(the per-user Run entry `Martlet`: this executable, the same `--data-directory`
+and `--tray` when `StartInTray` is checked; verify with a disposable data
+directory and turn it off again afterwards), `StartInTray` and `BackgroundStatus`
+(status text: what closing does, and whether Windows starts Martlet, including
+when Windows' own Startup apps switch turned it off). A second start with the
+same data directory shows the running Martlet and exits (with `--tray` it only
+exits); a different `--data-directory` runs beside it, so disposable
+verification desktops never reach your own Martlet. `-DesktopArguments '--tray'`
+on `scripts\Invoke-MartletMcp.ps1` starts the disposable desktop in the
+notification area.
 
 For broader **explicitly authorized** live UI testing, start the MCP server
 with `--allow-ui-effects`. This unlocks arbitrary ID-based `ui_click` and
@@ -686,12 +837,13 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status` and `smart_home_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status` and `smart_home_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
   and `-DataDirectory` for follow-up runs; stop it and delete the directory
-  when done.
+  when done. `-DesktopArguments` adds launch flags after the data directory
+  (for example `'--tray'` to start in the notification area).
 - `-AllowUiEffects` passes `--allow-ui-effects` (disposable data and no real
   credentials only; it never authorizes spending, provider requests, credential
   handling, audio capture/playback or data disclosure).

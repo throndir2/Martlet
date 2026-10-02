@@ -3,8 +3,9 @@
 **Status: internal explicit API conversation integration; not a qualified release.**
 Desktop now has a [talk window](docs/CONVERSATION.md) that is just the
 conversation: a chat history (what you typed or said and Martlet's replies) and
-a message box. By default Martlet listens whenever it is open (once a microphone
-is tested), or push-to-talk; it streams the reply and speaks it with the chosen
+a message box. It sits beside the rest of Martlet instead of blocking it. By
+default Martlet listens from when you press **Start listening** until **Stop
+listening** (once a microphone is tested), or push-to-talk; it streams the reply and speaks it with the chosen
 voice. How it listens, speaks and sees is chosen in Companion. Optional local
 **Voice ID** recognizes your enrolled voice and ignores other people before
 anything is uploaded. Optional **People** recognition tells everyone at the
@@ -12,7 +13,7 @@ microphone apart, learns the names they go by and shares that list with your
 other computers; **Parakeet** listens on this PC without Docker (see
 [VOICES](docs/VOICES.md)). Each message or utterance is its own bounded action; no
 credentials or audio are accessed on launch; network remains idle except for
-update checks (on by default; can be turned off), host updates or [who-does-what sync](docs/CLUSTER.md) when enabled. Text-only never requests TTS or opens output.
+update checks (on by default; can be turned off), host updates, [who-does-what sync](docs/CLUSTER.md) when enabled, or [Martlet network](docs/NETWORK.md) sync with paired hosts. Text-only never requests TTS or opens output.
 Actual account/device/first-conversation qualification remains **NOT RUN**.
 
 The desktop starts with a short welcome tour, then a Home page that lists what
@@ -24,7 +25,10 @@ installs or removes host roles remotely, a host dashboard
 for PCs that lend their GPU, and Companion and Settings pages for everything
 else. Opt-in [shared who does what](docs/CLUSTER.md) keeps those assignments in
 sync on every host and every one of your computers, and moves a job to another
-host that runs the same engine when its host stops answering. See the [desktop UI design](docs/UI_DESIGN.md).
+host that runs the same engine when its host stops answering. Your computers
+form one [Martlet network](docs/NETWORK.md): pair a host once (for example a
+Linux PC set up over SSH) and every PC in the network pairs with it by itself.
+See the [desktop UI design](docs/UI_DESIGN.md).
 
 Resumable configuration and explicit Windows credential actions are available
 through **Setup / resume**; see [SETUP](docs/SETUP.md). Saved API routes are not
@@ -32,7 +36,7 @@ verified connections or spending permission. **Audio setup (local only)** offers
 output selection and separately confirmed bounded local capture/tone tests.
 Opening it does not enumerate or open devices. Historical local checkpoints
 are not device readiness. Always listening runs only while the talk window is
-open, and its **Listening** button pauses it; acoustic wake words,
+open, from its **Start listening** button until **Stop listening**; acoustic wake words,
 automatic name/group listening and supported end-user deployment
 are not available. A PC microphone does not automatically
 capture remote participants.
@@ -108,6 +112,8 @@ There is no remote memory, embedding, vector database or automatic backup.
 | [Android plan](docs/ANDROID.md) | Martlet on Android phones and tablets as a companion while gaming, as a host that keeps serving with the screen off, and old phones as satellite microphones; signed-APK sideloading and slices AN01-AN11 (plan only) |
 | [Smart home and cameras](docs/SMART_HOME.md) | Home Assistant connection and control on your own turns (built-in Assist with every Thinking model, plus Home Assistant's MCP tools for free-form requests on tool-capable models; locks/doors/garages/alarms blocked or click-confirmed), HA camera snapshots in Watch, plus the Matter/Thread/Zigbee/Z-Wave/camera landscape, other integrations worth knowing and the remaining slices |
 | [Shared who does what and failover](docs/CLUSTER.md) | The cluster plan every host and desktop keeps, how copies merge, the 15-second sync, per-job failover between hosts and its edge cases |
+| [Your Martlet network](docs/NETWORK.md) | Pair a host once for all your computers: the signed roster of your desktops and hosts, joining with a check number, pairing by itself, removing a computer, the trust model and its limits |
+| [API for apps and scripts](docs/API.md) | API keys for software outside your network (Home Assistant, scripts, future integrations): making and revoking keys, scopes (read, voice, perception, manage), every endpoint a key can call, pinning the host key, how keys reach every host, and why API keys |
 | [Prerequisites](docs/PREREQUISITES.md) | Every runtime prerequisite by feature and machine: what is bundled, what the installer and **Martlet prerequisites** tool install on request (WebView2, microphone access, Windows speech, Ollama, WSL 2 + Docker Desktop), what hosts install, and what you supply |
 | [Delivery and release plan](docs/DELIVERY.md) | PR-sized backlog, dependencies, acceptance criteria, release gates, and traceability |
 | [Research and provenance](docs/RESEARCH.md) | Dated primary sources, verified constraints, and unresolved integration questions |
@@ -145,7 +151,8 @@ optional prerequisite tasks) and starts Martlet again; the next launch reports
 the result. With *Download and install updates automatically* this happens by
 itself, but only while the character is hidden, no conversation or
 Martlet window is open and Martlet is not the active window (it restarts
-minimized); otherwise the downloaded update installs when you exit Martlet.
+minimized, or in the notification area when it was there); otherwise the
+downloaded update installs when you exit Martlet.
 Choices live in `update-checks.txt` and `updates.json`, separately from profile
 settings and configuration backup; a choice saved while checks were opt-in
 resets to on, and unreadable preferences fall back to checks ON (installs and
@@ -153,6 +160,20 @@ host updates OFF) with a visible error. Releases are normal GitHub releases; cod
 requirement for this personal project, so the installer is unsigned. The
 digest detects a damaged download; it does not prove who published it. Do not
 run an internal build as an update.
+
+**Closing to the notification area.** Closing Martlet's window keeps it
+running in the notification area by the clock (on by default), so the
+character, sync, updates and commands from your other computers carry on.
+Click the icon to open Martlet; right-click it to talk to Martlet (or show the
+talk window), pause or resume Martlet (a reply, listening and vision stop until
+you resume), end the conversation, show or hide the character, change *Keep
+running when closed* and *Start with Windows*, or **Exit Martlet**, which closes
+it completely (as does Exit Martlet in Settings). Settings > *Startup and
+closing* holds the same choices plus *Start in the notification area* for a
+start at sign-in (the per-user Run entry `Martlet`, off by default; Windows'
+own Startup apps switch is respected, and the uninstaller removes the entry).
+Starting Martlet again while it runs shows the running window instead of a
+second copy (per data folder). Choices live in `background.json`.
 
 Paired **Martlet hosts** follow the desktop's version: the gateway reports its
 release, the Devices map shows *Update available* for older hosts, and **Update

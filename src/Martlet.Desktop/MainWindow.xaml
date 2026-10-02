@@ -214,6 +214,51 @@
                     <Border x:Name="DetailCard" Style="{DynamicResource CardStyle}" Padding="26,22">
                         <StackPanel x:Name="DetailContent" AutomationProperties.Name="Selected device" AutomationProperties.LiveSetting="Polite"/>
                     </Border>
+                    <!-- Your Martlet network: the owner's computers that trust each other (MainWindow.Network.cs) -->
+                    <Border x:Name="NetworkCard" Style="{DynamicResource CardStyle}" Padding="26,22" AutomationProperties.Name="Your Martlet network">
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,12">
+                                <Button x:Name="NetworkCheckButton" DockPanel.Dock="Right" Content="Check now" Click="NetworkCheck_Click" VerticalAlignment="Top"
+                                        AutomationProperties.AutomationId="NetworkCheck" AutomationProperties.Name="Check your Martlet network now"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,12,0">
+                                    <Border Width="40" Height="40" CornerRadius="20" Background="{DynamicResource SoftBrush}" Margin="0,0,14,0" VerticalAlignment="Top">
+                                        <TextBlock Style="{DynamicResource Icon}" FontSize="18" Text="&#xE968;" Foreground="{DynamicResource AccentBrush}"/>
+                                    </Border>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="Your Martlet network" FontSize="18" FontWeight="SemiBold"/>
+                                        <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap"
+                                                   Text="Pair a host once: every computer in your network can use it and pairs with it by itself."/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </DockPanel>
+                            <TextBlock x:Name="NetworkStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap"
+                                       AutomationProperties.AutomationId="NetworkStatus" AutomationProperties.LiveSetting="Polite"/>
+                            <StackPanel x:Name="NetworkJoinsPanel" AutomationProperties.Name="Computers asking to join"/>
+                            <StackPanel x:Name="NetworkMembersPanel" AutomationProperties.Name="Computers in your network"/>
+                        </StackPanel>
+                    </Border>
+                    <!-- Apps and API keys: keys that software outside the network uses to call your hosts (MainWindow.ApiKeys.cs, docs/API.md) -->
+                    <Border x:Name="ApiKeysCard" Style="{DynamicResource CardStyle}" Padding="26,22" AutomationProperties.Name="Apps and API keys">
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,12">
+                                <Button x:Name="ApiKeyCreateButton" DockPanel.Dock="Right" Content="Create API key" Click="ApiKeyCreate_Click" VerticalAlignment="Top"
+                                        AutomationProperties.AutomationId="ApiKeyCreate" AutomationProperties.Name="Create an API key"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,12,0">
+                                    <Border Width="40" Height="40" CornerRadius="20" Background="{DynamicResource SoftBrush}" Margin="0,0,14,0" VerticalAlignment="Top">
+                                        <TextBlock Style="{DynamicResource Icon}" FontSize="18" Text="&#xE8D7;" Foreground="{DynamicResource AccentBrush}"/>
+                                    </Border>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="Apps and API keys" FontSize="18" FontWeight="SemiBold"/>
+                                        <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap"
+                                                   Text="Let other apps and scripts, such as Home Assistant, use your hosts. Each key works on every host in your network."/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </DockPanel>
+                            <TextBlock x:Name="ApiKeysStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap"
+                                       AutomationProperties.AutomationId="ApiKeysStatus" AutomationProperties.LiveSetting="Polite"/>
+                            <StackPanel x:Name="ApiKeysPanel" AutomationProperties.Name="API keys"/>
+                        </StackPanel>
+                    </Border>
                     <Border x:Name="RolesCard" Style="{DynamicResource CardStyle}" Padding="26,22" AutomationProperties.Name="Settings for all devices">
                         <StackPanel>
                             <DockPanel Margin="0,0,0,12">
@@ -385,6 +430,26 @@
 
                     <Border Style="{DynamicResource CardStyle}">
                         <StackPanel>
+                            <TextBlock Text="Startup and closing" Style="{DynamicResource SectionHeading}"/>
+                            <CheckBox x:Name="CloseToTrayCheck" Margin="0,4,0,6" Checked="CloseToTray_Changed" Unchecked="CloseToTray_Changed"
+                                      AutomationProperties.AutomationId="CloseToTray">
+                                <TextBlock TextWrapping="Wrap" Text="Keep Martlet running in the notification area when I close its window"/>
+                            </CheckBox>
+                            <CheckBox x:Name="StartWithWindowsCheck" Margin="0,4,0,6" Checked="StartWithWindows_Changed" Unchecked="StartWithWindows_Changed"
+                                      AutomationProperties.AutomationId="StartWithWindows">
+                                <TextBlock TextWrapping="Wrap" Text="Start Martlet when I sign in to Windows"/>
+                            </CheckBox>
+                            <CheckBox x:Name="StartInTrayCheck" Margin="24,0,0,6" Checked="StartInTray_Changed" Unchecked="StartInTray_Changed"
+                                      AutomationProperties.AutomationId="StartInTray">
+                                <TextBlock TextWrapping="Wrap" Text="Start in the notification area, without opening the window"/>
+                            </CheckBox>
+                            <TextBlock x:Name="BackgroundStatusText" Style="{DynamicResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap"
+                                       AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="BackgroundStatus"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{DynamicResource CardStyle}">
+                        <StackPanel>
                             <TextBlock Text="What this PC is for" Style="{DynamicResource SectionHeading}"/>
                             <TextBlock x:Name="RoleText" Style="{DynamicResource Muted}" Margin="0,0,0,10" AutomationProperties.AutomationId="DeviceRoleText"/>
                             <WrapPanel>
@@ -501,7 +566,7 @@
                                             AutomationProperties.AutomationId="CreateProfile" AutomationProperties.Name="Create profile" />
                                 </WrapPanel>
                                 <TextBlock Style="{DynamicResource Muted}" Margin="0,10,0,0"
-                                           Text="Creating a profile saves starter settings. Closing exits Martlet completely." />
+                                           Text="Creating a profile saves starter settings. Exit Martlet closes it completely." />
                             </StackPanel>
                         </Expander>
                     </Border>
@@ -510,7 +575,7 @@
                         <Button DockPanel.Dock="Right" Content="E_xit Martlet" Click="Exit_Click" AutomationProperties.Name="Exit Martlet"
                                 AutomationProperties.AutomationId="ExitMartlet"/>
                         <TextBlock Style="{DynamicResource Muted}" VerticalAlignment="Center"
-                                   Text="Martlet closes completely when you exit."/>
+                                   Text="Martlet closes completely when you exit, here or from its notification-area icon."/>
                     </DockPanel>
                 </StackPanel>
             </ScrollViewer>

@@ -259,9 +259,9 @@ public partial class HostsWindow : ThemedWindow
         MethodSummaryText.Text = Method == HostSetupMethod.OnHost
             ? "On that PC, choose Use as a Martlet host in Martlet: it sets itself up. Then pair this PC with the code it shows."
             : Ssh
-                ? "Enter user@computer, then choose Add this computer. Martlet signs in once and sets up the host."
+                ? "Enter user@computer, then choose Add this computer. Martlet signs in once and sets up the host. Your other computers get it too."
                 : Method == HostSetupMethod.ThisPcDocker
-                    ? "Choose Set up host. Martlet starts Docker Desktop and pairs this PC automatically."
+                    ? "Choose Set up host. Martlet starts Docker Desktop and pairs this PC automatically. Your other computers get it too."
                     : "Enter the host address, then choose Set up host and follow the prompts.";
         RolesSummaryText.Text = Ssh
             ? "Add or remove jobs over SSH. Martlet asks for anything each job needs and shows progress."
@@ -493,7 +493,7 @@ public partial class HostsWindow : ThemedWindow
         string check;
         try { check = await CheckAsync(host.Pairing, Hardware, run.Status, run.Token); }
         catch (InvalidOperationException error) { check = "The host did not answer yet: " + error.Message; }
-        return $"{host.HostId} is set up and paired. {check} Assign jobs on the Devices map.";
+        return $"{host.HostId} is set up and paired. {check} Assign jobs on the Devices map. Your other computers pair with it automatically.";
     }
 
     private async void ResetSshTrust_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>

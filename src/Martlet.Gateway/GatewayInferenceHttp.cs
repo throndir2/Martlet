@@ -23,7 +23,7 @@ internal sealed partial class GatewayHttpApplication
         try
         {
             var bodyHash = crypto.Sha256(bytes);
-            principal = authenticator.Authenticate(context.Request, bodyHash);
+            principal = Authorize(context.Request, bodyHash, GatewayApiAccess.Role, route.RequiredRole);
             GatewayRules.Require(principal.Role == route.RequiredRole, "auth.role");
             request = GatewayInferenceJson.ParseRequest(
                 bytes,
@@ -45,10 +45,10 @@ internal sealed partial class GatewayHttpApplication
             throw;
         }
         context.Items[RouteItem] = route.RouteId;
-        context.Items[DeviceItem] = principal.DeviceId;
+        context.Items[DeviceItem] = principal.Caller;
         var started = clock.GetTimestamp();
         if (await StreamInferenceAsync(context, traceId, job).ConfigureAwait(false) is null)
-            Logs.Own(LogLevels.Info, $"{route.RouteId} request from {principal.DeviceId} finished in " +
+            Logs.Own(LogLevels.Info, $"{route.RouteId} request from {principal.Caller} finished in " +
                 $"{clock.GetElapsedTime(started).TotalMilliseconds:0} ms.");
     }
 
@@ -65,7 +65,7 @@ internal sealed partial class GatewayHttpApplication
         try
         {
             var bodyHash = crypto.Sha256(bytes);
-            principal = authenticator.Authenticate(context.Request, bodyHash);
+            principal = Authorize(context.Request, bodyHash, GatewayApiAccess.Role);
             request = GatewayInferenceJson.ParseCancellation(bytes);
         }
         finally

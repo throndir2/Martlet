@@ -57,6 +57,17 @@ public sealed class GatewayServer
     /// <paramref name="storage"/> and loads the copy saved there.</summary>
     public void AttachHomeAssistantStorage(IGatewayHomeAssistantStorage storage) => application.HomeAssistant.Attach(storage);
 
+    /// <summary>Keeps this host's copy of the network's API keys (served to paired desktops at /martlet/v1/api-keys and
+    /// checked for every Authorization: Bearer request) in <paramref name="storage"/> and loads the copy saved there.</summary>
+    public void AttachApiKeyStorage(IGatewayApiKeyStorage storage) => application.ApiKeys.Attach(storage);
+
+    /// <summary>Keeps the Martlet network roster this host accepted (served at /martlet/v1/network) in
+    /// <paramref name="storage"/> and loads the roster saved there.</summary>
+    public void AttachNetworkStorage(IGatewayNetworkStorage storage) => application.Network.Attach(storage);
+
+    /// <summary>This host's network state: "unbound", "bound" or "removed", and the ID of its network (null when unbound).</summary>
+    public (string State, string? NetworkId) NetworkState => (application.Network.State, application.Network.Roster?.NetworkId);
+
     /// <summary>Keeps the commands paired computers send this host (served at /martlet/v1/commands) in
     /// <paramref name="storage"/> and accepts <paramref name="agentToken"/> (32 random bytes, base64url, also written where
     /// only the host computer itself can read it) from the Martlet app that runs them there.</summary>

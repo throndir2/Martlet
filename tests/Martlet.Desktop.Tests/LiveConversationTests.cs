@@ -211,6 +211,11 @@ public sealed class LiveConversationTests
         try
         {
             await Loaded(window);
+            // Nothing listens until Start listening is pressed.
+            Assert.Null(window.Listener);
+            Assert.Equal("Start listening", Control<TextBlock>(window, "MicText").Text);
+            Assert.Equal(0, fixture.Capture.Opens);
+            Click(window, "MicChip");
             await fixture.Advance(() => window.Messages.Any(m => m.Role == ChatRole.Martlet && m.Text.Contains("Heard you.", StringComparison.Ordinal)));
             var said = Assert.Single(window.Messages, m => m.IsUser);
             Assert.Contains("Synthetic fixture transcript.", said.Text);
@@ -223,16 +228,16 @@ public sealed class LiveConversationTests
             // Listening ran beside the reply and goes on; Esc quiets Martlet but never pauses it: only the mic button does.
             var live = Assert.IsType<LiveListener>(window.Listener);
             Assert.True(live.Running);
-            Assert.Equal("Listening", Control<TextBlock>(window, "MicText").Text);
+            Assert.Equal("Stop listening", Control<TextBlock>(window, "MicText").Text);
             Escape(window, "InputText");
             await Heartbeat();
             Assert.Same(live, window.Listener);
             Assert.True(live.Running);
-            Assert.Equal("Listening", Control<TextBlock>(window, "MicText").Text);
+            Assert.Equal("Stop listening", Control<TextBlock>(window, "MicText").Text);
             Click(window, "MicChip");
             await fixture.Advance(() => !live.Running && !fixture.Runner.IsRunning);
             Assert.Null(window.Listener);
-            Assert.Equal("Listening paused", Control<TextBlock>(window, "MicText").Text);
+            Assert.Equal("Start listening", Control<TextBlock>(window, "MicText").Text);
             await Heartbeat();
             Assert.False(fixture.Runner.IsRunning);
             Assert.Equal(1, fixture.Stt.Calls);
@@ -252,10 +257,11 @@ public sealed class LiveConversationTests
         try
         {
             await Loaded(window);
+            Click(window, "MicChip");
             await fixture.Advance(() => fixture.Llm.Calls == 1 && window.Current is { OwnershipReleased: true } &&
                 Text(window, "ResultText").Contains("Couldn't reach the provider", StringComparison.Ordinal));
             // A failed reply never pauses listening.
-            Assert.Equal("Listening", Control<TextBlock>(window, "MicText").Text);
+            Assert.Equal("Stop listening", Control<TextBlock>(window, "MicText").Text);
             Assert.True(window.Listener is { Running: true });
 
             EnqueueUtterance(fixture.Capture, quietBefore: 5, speech: 25, quietAfter: 15);
@@ -265,7 +271,7 @@ public sealed class LiveConversationTests
             Assert.Equal(2, window.Messages.Count(m => m.IsUser));
             // [pass] is never shown or spoken.
             Assert.DoesNotContain(window.Messages, m => m.Role == ChatRole.Martlet);
-            Assert.Equal("Listening", Control<TextBlock>(window, "MicText").Text);
+            Assert.Equal("Stop listening", Control<TextBlock>(window, "MicText").Text);
             Assert.True(window.Listener is { Running: true });
         }
         finally { window.Close(); }
@@ -295,6 +301,7 @@ public sealed class LiveConversationTests
         try
         {
             await Loaded(window);
+            Click(window, "MicChip");
             await fixture.Advance(() => window.Messages.Any(m => m.Role == ChatRole.Martlet && m.Text == "Got all of it."));
             Assert.Equal(2, fixture.Stt.Calls);
             Assert.Equal(2, fixture.Llm.Calls);
