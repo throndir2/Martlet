@@ -90,16 +90,16 @@ section.
 Both installer channels ship `prerequisites\Install-Prerequisites.ps1` (copied by
 `Publish-Windows.ps1`, inventoried like every payload file) and a Start menu
 shortcut, **Martlet prerequisites**, that runs it with Windows PowerShell. All
-setup questions live in the Desktop app. On first run the welcome tour asks what
-the PC is for and, when anything is missing, shows a **Get this PC ready** step
-detected from the registry and files without side effects (`Prerequisites.cs`):
-WebView2 runtime and blocked microphone access (ticked), Windows speech for the
-display language, Ollama and WSL 2 + Docker Desktop (unticked, except Docker on a
-host PC with an NVIDIA GPU). The setup advisor's plan adds an **Install on this
-PC** button for the items its layout runs here. Both pass the ticked IDs to the
-tool with `-NoPrompt -Install ...`, hidden, and show its output in a Martlet run
-window (no console; elevated steps stay hidden too); **Prerequisites
-(check / install)** on the home screen shows the same checklist in Martlet. Martlet stays a
+setup questions live in the Desktop app. On first run the welcome tour asks only
+what the PC is for and installs nothing. Missing items are detected from the
+registry and files without side effects (`Prerequisites.cs`): WebView2 runtime,
+blocked microphone access, Windows speech for the display language, Ollama and
+WSL 2 + Docker Desktop. The setup advisor's plan adds an **Install on this PC**
+button for the items its layout runs here, and Thinking's *This PC* installs
+Ollama with its model. Each passes the needed IDs to the tool with
+`-NoPrompt -Install ...`, hidden, and shows its output in a Martlet run window
+(no console; elevated steps stay hidden too); **Prerequisites (check / install)**
+on Settings › Tools shows the full checklist in Martlet. Martlet stays a
 per-user app; only the speech and WSL steps ask for UAC, and winget's Docker
 installer asks on its own.
 The full list of what is bundled, offered or user-supplied is in
@@ -433,8 +433,9 @@ physical file ownership. Complete bundled JavaScript licenses and esbuild legal
 comments remain distributed; npm metadata alone is not notice coverage.
 Live2D Framework/Core overrides, user models/avatar assets, NIM and GPU drivers
 remain external prerequisites and are never packaged. The WebView2 runtime is
-never packaged either; the Desktop welcome tour and the bundled prerequisites
-tool install it from Microsoft only when it is missing and ticked (see above).
+never packaged either; the bundled prerequisites tool (also **Prerequisites** in
+the Desktop's Settings › Tools) installs it from Microsoft only when it is missing and
+ticked (see above).
 No license clearance is inferred.
 
 Retained npm archives and normalized build evidence reside outside the payload.

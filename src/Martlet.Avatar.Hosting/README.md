@@ -35,8 +35,8 @@ back to consumed samples). Auto and Loudness survive pause/mute/configuration
 revocations; hiding the character stops them. Only Martlet's generated voice is
 sent, and only to a numeric loopback address; the microphone is never used.
 Martlet does not start Docker, WSL or the Audio2Face NIM here. WSL 2 and Docker
-Desktop can be installed on request from the welcome tour, the setup advisor or
-Start > **Martlet prerequisites** ([Prerequisites](../../docs/PREREQUISITES.md)).
+Desktop can be installed on request from the setup advisor, **Prerequisites** in
+Settings › Tools or Start > **Martlet prerequisites** ([Prerequisites](../../docs/PREREQUISITES.md)).
 
 ### Running an Audio2Face service yourself (NVIDIA GPU)
 
@@ -74,8 +74,8 @@ minutes. Martlet picks it up at the next sentence; set another loopback port in
    supported inert assets. An optional SDK override folder containing `core.js`
    and `sdk.js` replaces the bundled runtime.
 2. Check **local GPU model inspection** and click **Inspect model**. This launches
-   a private WPF/WebView2 process with the installed WebView2 runtime (the
-   welcome tour offers it when missing; **Prerequisites** on the home screen too).
+   a private WPF/WebView2 process with the installed WebView2 runtime
+   (**Prerequisites** in Settings › Tools installs it when missing).
    Actual model parsing supplies target IDs/bounds; missing runtime, unsupported
    model subset or unsafe resources fail explicitly. Inspection does not connect
    Audio2Face or play sound. Runtime visual quality is not inferred from metadata.

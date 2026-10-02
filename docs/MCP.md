@@ -161,7 +161,11 @@ page's controls are only visible after you open it: click `NavHome`,
 `NavDevices`, `NavCompanion` or `NavSettings` first (for example
 `NavCompanion` before `OpenSetup`). On Settings, click `DiagnosticsSection` to
 expand the pipeline and status fields. On a fresh data directory, `TourSkip`
-dismisses the welcome tour. Companion's side list items (`CompanionTab-<Page>`,
+dismisses the welcome tour, and `TourBegin` and `TourBack` step through it
+(Welcome › role › how to start; the tour installs nothing). Its role cards
+(`TourCompanion`, `TourHost`) save the device role, so they need
+`--allow-ui-effects`; `TourCompanion` leads to `TourAdvisor`/`TourSetup`, and
+`TourHost` closes the tour on the host dashboard. Companion's side list items (`CompanionTab-<Page>`,
 for example `CompanionTab-People`) and `OpenPeople` (on Listening) are passive
 navigation too. People shows `PeopleStatus`, `PeopleSyncStatus` and
 `PeopleVoiceCount`, and Listening shows `ListenParakeetStatus`; snapshots return
