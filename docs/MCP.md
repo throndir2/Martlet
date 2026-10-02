@@ -549,7 +549,13 @@ not set up* with the state, and clicking one only opens its page.
 passive. To see a problem on a disposable data directory, put invalid JSON in
 `settings.json` (*settings*), a stale `logs\desktop.<pid>.running` marker
 (*crash*), or choose Ollama on this PC in Companion › Thinking while Ollama
-isn't running (*ollama*).
+isn't running (*ollama*). After an unclean exit the desktop looks up that
+run's process ID in Windows' Application event log in the background:
+`HealthIssue-crash` then reads *Windows recorded <exception> (0x<code>) in
+<module>* when Windows has a crash record, and `logs_tail` (`contains`:
+`Windows recorded`) returns the full line, or the *no crash* line for a kill or
+power loss (a made-up marker PID gives the latter, about 20 seconds after
+launch).
 
 The Diagnostics page (`NavDiagnostics`) lists log lines newest first. Each
 shown line is a list item `LogEntry-<n>` (`LogEntry-0` is the newest shown)
@@ -647,7 +653,7 @@ running server shows in Home's `HealthCheck-tools` (*1 of 1 server ready*).
 
 On Thinking, Voice, Listening and Lip-sync, each "Where it runs" option
 (`Place-<page>-<place>`, for example `Place-Voice-Computer` or
-`Place-LipSync-Loudness`) only shows that place's choices, so clicking it is
+`Place-LipSync-ThisPc`) only shows that place's choices, so clicking it is
 passive; the card's own buttons commit. Under *Another of your computers*, each
 paired computer that can run the job (every one except this PC's own host
 service on Voice, Listening and Lip-sync; a host saved as *This PC* whose
@@ -660,40 +666,93 @@ hardware can't run it, with why. `SetupUseHost-<job>-<host ID>` hands the job
 over and needs `--allow-ui-effects`.
 
 Status fields include the talk window's `LiveStatus` (its status line),
-`LiveMic` (*Listening*, *Listening paused*, *Can't listen* or *Mic unavailable*
-with the reason; while Martlet speaks it reads *Not listening while Martlet
-speaks*; *Listening paused* only ever follows a click on it: errors, Stop and
-`LiveStop` never pause listening, and listening that can't start yet, such as
-Voice ID not set up, reads *Can't listen* and keeps retrying),
+`LiveMic` (the Start listening / Stop listening button; its value starts with
+the state: *Not listening* until it is pressed, then *Listening*, *Can't
+listen* or *Mic unavailable* with the reason; while Martlet speaks it reads
+*Not listening while Martlet speaks*. Clicking it opens the microphone, so it
+needs `--allow-ui-effects`; errors, Stop and `LiveStop` never stop listening,
+only the button or *Pause Martlet* in the notification-area menu does, and
+listening that can't start yet, such as Voice ID not set up, reads *Can't
+listen* and keeps retrying), Home's `OpenLiveConversation` (*Start talking*,
+or *Show conversation* while the talk window is open),
 `LiveVision` (*Watching*, *Looking*, *Vision paused* or *Can't see*, with when
 it last checked the screen; it checks every 3 s), `LiveVisionStatus` (while
 vision is on: what it sees, for example *Watching the window behind Martlet*,
 then the last look's outcome or why it is holding off, and the looks used this
 hour; it never contains window titles)
 and Companion › Lip-sync's `LipSyncNow` and `LipSyncNowProblem` (whether this
-PC's own Audio2Face service answers), plus, while that own service is the
-setting in effect (Martlet's default), `LipSyncOwnTitle` (its title with *in
-use*, *not running* or *checking*) and `LipSyncOwnState` (what it does now).
+PC's own Audio2Face service answers). Lip-sync's places are *This PC* and
+*Another of your computers*; under *This PC*, `LipSyncDockerTitle` (*Audio2Face,
+with Docker*) and `LipSyncLoudnessTitle` (*Voice loudness, no setup*) read each
+way's title with *in use*, *recommended for this PC* or *chosen, not installed
+yet*, and `LipSyncOwnTitle` the advanced *Your own Audio2Face service* (with
+*in use*, *not running* or *checking* while it is the setting in effect,
+Martlet's default) with `LipSyncOwnState` (what it does now). Voice loudness
+reads *in use* while the default's own service doesn't answer.
+`SetupLipSyncLoudness`, `SetupLipSyncOwnService` and the Audio2Face buttons
+change lip-sync and need `--allow-ui-effects`.
 When Thinking runs in Ollama on this PC, the talk window has Ollama load the
 model as it opens (and again on activity after a few quiet minutes), and
 `LiveStatus` says *Ollama is loading <model> on this PC (N s)…* while it loads,
 or why it can't (Ollama not running, model not downloaded, Ollama's own error);
 the desktop log records each load's duration
 (`{"name":"logs_tail","arguments":{"contains":"Ollama on this PC"}}`).
-Opening the talk window with always
-listening on opens the microphone; for verification, save a fixed microphone
-that does not exist in the disposable data directory, so listening starts,
+The talk window is modeless: `ui_snapshot`'s `windowStates` lists each window
+with `enabled` (false while a modal dialog such as Audio setup blocks it), and
+the main window stays enabled while the talk window is open. Opening the talk
+window never opens the microphone; `LiveMic` does with always listening on. For
+verification, save a fixed microphone that does not exist in the disposable
+data directory, so listening starts after `LiveMic`,
 fails without capturing real audio and shows *Mic unavailable* while it keeps
-retrying (it never pauses by itself). The talk window's `LiveStop` (Stop, Esc)
-is a passive click: it only stops a reply, recording or vision.
+retrying (it never stops by itself). The talk window's `LiveStop` (Stop, Esc)
+is a passive click: it only stops a reply, recording or vision. Changing How
+you talk on Companion › Listening (`TalkModePushToTalk`, `TalkModeAlways`)
+applies to an open talk window at once (`LivePtt` replaces `LiveMic`).
 
 Window discovery uses visible top-level native handles filtered to the attached
 process, then verifies ownership around each UI Automation handle lookup.
 This avoids transient omissions from UI Automation's desktop-root enumeration
 when unrelated WPF windows close. The Martlet main-window automation ID is
-still required on every operation; hidden, closed or changed-owner windows
-fail rather than falling back to another process. Same-process dialogs remain
-available, and duplicate control IDs still fail as ambiguous.
+still required on every operation, unless the window is hidden in the
+notification area and the process still has its icon's (hidden) window;
+closed or changed-owner windows fail rather than falling back to another
+process. Same-process dialogs remain available, and duplicate control IDs
+still fail as ambiguous.
+
+**Notification area.** Closing the main window keeps Martlet running in the
+notification area by default, and Martlet started with `--tray` (Start with
+Windows) shows no window, so `ui_connect` also attaches when only the icon's
+window exists (it returns `inTray`). `ui_tray` drives the icon:
+`{"name":"ui_tray"}` (or `"action":"status"`) returns `running`, `trayIcon`
+(the icon is in the notification area), `mainWindowVisible` and `inTray`;
+`"action":"open"` and `"action":"menu"` post the icon exactly what Explorer
+sends for a left click (show Martlet) and a right click (its menu at the mouse
+pointer), so they need no flag; `"action":"close"` presses the main window's
+close button, which hides Martlet or (with *Keep running when closed* off) exits
+it, so it needs `--allow-ui-effects`. While the menu is open `ui_snapshot` lists
+`TrayMenu` and its items: `TrayStatus` (status text: *Martlet is running*,
+*Martlet is listening*, *Martlet is paused*, *Martlet is watching* or *Martlet:
+talk window open*), `TrayOpen`, `TrayTalk` (*Talk to Martlet*, or *Show the
+talk window* while it is open), and while the talk window is open `TrayPause` or
+`TrayResume` and `TrayEndTalk`, then `TrayCharacter`, the checkable
+`TrayCloseToTray` and `TrayStartWithWindows` (their `checkedState` is the
+current choice) and `TrayExit`. `TrayOpen`, `TrayTalk` (like
+`OpenLiveConversation`), `TrayPause` (it only stops work) and `TrayEndTalk`
+(like `CloseLive`) are passive clicks; `TrayResume`, `TrayCharacter`, the two
+choices and `TrayExit` need `--allow-ui-effects`. While another Martlet dialog
+(Setup, Companion...) is open, `TrayTalk` and `TrayCharacter` are disabled and
+`TrayExit` shows Martlet instead of exiting. Settings › *Startup and closing* has
+`CloseToTray` (checked by default; saves `background.json`), `StartWithWindows`
+(the per-user Run entry `Martlet`: this executable, the same `--data-directory`
+and `--tray` when `StartInTray` is checked; verify with a disposable data
+directory and turn it off again afterwards), `StartInTray` and `BackgroundStatus`
+(status text: what closing does, and whether Windows starts Martlet, including
+when Windows' own Startup apps switch turned it off). A second start with the
+same data directory shows the running Martlet and exits (with `--tray` it only
+exits); a different `--data-directory` runs beside it, so disposable
+verification desktops never reach your own Martlet. `-DesktopArguments '--tray'`
+on `scripts\Invoke-MartletMcp.ps1` starts the disposable desktop in the
+notification area.
 
 For broader **explicitly authorized** live UI testing, start the MCP server
 with `--allow-ui-effects`. This unlocks arbitrary ID-based `ui_click` and
@@ -738,7 +797,8 @@ call fails or an `until` is not met.
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
   and `-DataDirectory` for follow-up runs; stop it and delete the directory
-  when done.
+  when done. `-DesktopArguments` adds launch flags after the data directory
+  (for example `'--tray'` to start in the notification area).
 - `-AllowUiEffects` passes `--allow-ui-effects` (disposable data and no real
   credentials only; it never authorizes spending, provider requests, credential
   handling, audio capture/playback or data disclosure).

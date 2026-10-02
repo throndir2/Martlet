@@ -132,6 +132,8 @@ public partial class MainWindow
         if (ReferenceEquals(page, CompanionPage)) ShowCompanionTab(entering: true);
         else Motion.Enter(page);
         if (ReferenceEquals(page, DevicesPage)) RenderMap();
+        // Windows' own Startup apps switch can change while Martlet runs.
+        if (ReferenceEquals(page, SettingsPage)) RenderBackground();
         if (ReferenceEquals(page, DiagnosticsPage)) EnterDiagnostics();
         else LeaveDiagnostics();
     }
@@ -251,6 +253,10 @@ public partial class MainWindow
             homeSettings = await LeaveRetiredSampleAsync(loaded, lifetime.Token) ?? loaded.Settings;
             homeSettingsState = loaded.State;
             homeSettingsProblem = loaded.Error?.Summary;
+            // The talk window stays open while you change things in Companion: it picks up a saved change once Martlet is free.
+            if (openConversation is { IsReady: true } talking && loaded.Revision is { } revision &&
+                (conversation?.Configuration is { } current ? revision != current.Revision : LiveConversationConfiguration.From(loaded) is not null))
+                talking.ReloadWhenIdle("Your setup changed.");
             homeAvatar = loaded.Settings is { } settings
                 ? (await new AvatarProfileStore(store.DataDirectory).LoadAsync(settings.Profile.Id, lifetime.Token)).Profile
                 : null;

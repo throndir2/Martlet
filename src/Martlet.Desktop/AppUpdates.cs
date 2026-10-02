@@ -103,9 +103,10 @@ internal static class AppUpdateInstaller
     }
 
     /// <summary>Starts a windowless helper that waits for this Martlet process to exit, runs the installer with its progress
-    /// window (/SILENT, no optional prerequisite tasks), records the result and, when asked, starts Martlet again.</summary>
+    /// window (/SILENT, no optional prerequisite tasks), records the result and, when asked, starts Martlet again (in the
+    /// notification area when <paramref name="inTray"/>).</summary>
     internal static void Launch(string installer, Version version, string dataDirectory, bool relaunch, bool quietRelaunch,
-        string? dataDirectoryArgument)
+        string? dataDirectoryArgument, bool inTray = false)
     {
         var directory = UpdatesDirectory(dataDirectory);
         Directory.CreateDirectory(directory);
@@ -114,7 +115,7 @@ internal static class AppUpdateInstaller
         var script = Path.Combine(directory, "install-update.cmd");
         var pid = Environment.ProcessId;
         var arguments = (dataDirectoryArgument is null ? "" : $" --data-directory \"{Cmd(dataDirectoryArgument)}\"") +
-            (quietRelaunch ? " --after-update" : "");
+            (quietRelaunch ? " --after-update" : "") + (inTray ? " " + WindowsStartup.TrayArgument : "");
         var text = new StringBuilder("@echo off\r\nset n=0\r\n:wait\r\n")
             .Append($"tasklist /FI \"PID eq {pid}\" /NH 2>NUL | find \" {pid} \" >NUL || goto install\r\n")
             .Append($"set /a n+=1\r\nif %n% gtr 180 (>\"{Cmd(result)}\" echo wait {version.ToString(3)}& exit /b 1)\r\n")

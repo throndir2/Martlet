@@ -903,7 +903,8 @@ Advanced ▸   mapping, renderer, model files
 
 - **Entry points**: Companion › Lip-sync; Devices › device doing
   lip-sync › *Done by*; Home's Now line when lip-sync isn't working.
-- **Flow**: P2 with **Voice loudness** as the third card instead of cloud.
+- **Flow**: P2 with two places, *This PC* and *Another of your computers*;
+  *This PC* offers **Audio2Face, with Docker** or **Voice loudness, no setup**.
   Choosing a machine without Audio2Face offers **Set up Audio2Face on
   GAMING-PC** inline (P5). The mouth follows voice loudness until ready.
 - **Clicks**: 2.
@@ -953,8 +954,8 @@ it.*
   re-asked every message.
 - **Today**: the conversation window has no per-message ticks. Listening
   (always or push-to-talk), spoken replies and vision are chosen in Companion
-  (Listening, Voice, Vision); the talk window shows *Listening* and *Vision*
-  toggles while they are on. Avatar inspection and analysis keep their own
+  (Listening, Voice, Vision); the talk window shows *Start listening* (then
+  *Stop listening*) and a *Vision* toggle while they are on. Avatar inspection and analysis keep their own
   ticks; a Settings › Privacy page does not exist yet.
 
 #### G4. Stop everything now
@@ -962,8 +963,8 @@ it.*
 - **Entry points**: conversation **Stop** (Esc); tray › *Stop everything*;
   global hotkey.
 - **Behaviour**: stops speech, screen watching and the current reply.
-  Listening carries on, so Martlet never misses what you say next; only the
-  *Listening* toggle pauses it. Doesn't change settings.
+  Listening carries on, so Martlet never misses what you say next; only
+  *Stop listening* ends it. Doesn't change settings.
 - **Clicks**: 1.
 
 ### H. Talking
@@ -981,7 +982,9 @@ it.*
 - **Clicks**: 1 + hold.
 - **Today**: with *Push-to-talk* chosen in Companion › Listening, 1 click +
   hold the talk button (or Space on it); there is no global talk key yet. With
-  *Always listening* (the default), 1 click and just speak.
+  *Always listening* (the default), 2 clicks (*Start talking*, then *Start
+  listening*) and just speak. The talk window doesn't block Martlet, so the
+  rest of the app stays usable while you talk.
 
 #### H3. Talk while doing something else (gaming)
 
@@ -994,9 +997,9 @@ it.*
 - **Entry points**: conversation 🎤 chip ▾ › *Hands-free*; Listening tab.
 - **Clicks**: 2.
 - **Today**: *Always listening* is the default in Companion › Listening and
-  starts when the talk window opens (with the chosen or Windows default
-  microphone; testing it is optional); the
-  window's *Listening* button pauses and resumes it.
+  starts when you press the talk window's *Start listening* (with the chosen
+  or Windows default microphone; testing it is optional); *Stop listening*
+  ends it.
 
 #### H5. Interrupt
 

@@ -3,8 +3,9 @@
 **Status: internal explicit API conversation integration; not a qualified release.**
 Desktop now has a [talk window](docs/CONVERSATION.md) that is just the
 conversation: a chat history (what you typed or said and Martlet's replies) and
-a message box. By default Martlet listens whenever it is open (once a microphone
-is tested), or push-to-talk; it streams the reply and speaks it with the chosen
+a message box. It sits beside the rest of Martlet instead of blocking it. By
+default Martlet listens from when you press **Start listening** until **Stop
+listening** (once a microphone is tested), or push-to-talk; it streams the reply and speaks it with the chosen
 voice. How it listens, speaks and sees is chosen in Companion. Optional local
 **Voice ID** recognizes your enrolled voice and ignores other people before
 anything is uploaded. Optional **People** recognition tells everyone at the
@@ -35,7 +36,7 @@ verified connections or spending permission. **Audio setup (local only)** offers
 output selection and separately confirmed bounded local capture/tone tests.
 Opening it does not enumerate or open devices. Historical local checkpoints
 are not device readiness. Always listening runs only while the talk window is
-open, and its **Listening** button pauses it; acoustic wake words,
+open, from its **Start listening** button until **Stop listening**; acoustic wake words,
 automatic name/group listening and supported end-user deployment
 are not available. A PC microphone does not automatically
 capture remote participants.
@@ -150,7 +151,8 @@ optional prerequisite tasks) and starts Martlet again; the next launch reports
 the result. With *Download and install updates automatically* this happens by
 itself, but only while the character is hidden, no conversation or
 Martlet window is open and Martlet is not the active window (it restarts
-minimized); otherwise the downloaded update installs when you exit Martlet.
+minimized, or in the notification area when it was there); otherwise the
+downloaded update installs when you exit Martlet.
 Choices live in `update-checks.txt` and `updates.json`, separately from profile
 settings and configuration backup; a choice saved while checks were opt-in
 resets to on, and unreadable preferences fall back to checks ON (installs and
@@ -158,6 +160,20 @@ host updates OFF) with a visible error. Releases are normal GitHub releases; cod
 requirement for this personal project, so the installer is unsigned. The
 digest detects a damaged download; it does not prove who published it. Do not
 run an internal build as an update.
+
+**Closing to the notification area.** Closing Martlet's window keeps it
+running in the notification area by the clock (on by default), so the
+character, sync, updates and commands from your other computers carry on.
+Click the icon to open Martlet; right-click it to talk to Martlet (or show the
+talk window), pause or resume Martlet (a reply, listening and vision stop until
+you resume), end the conversation, show or hide the character, change *Keep
+running when closed* and *Start with Windows*, or **Exit Martlet**, which closes
+it completely (as does Exit Martlet in Settings). Settings > *Startup and
+closing* holds the same choices plus *Start in the notification area* for a
+start at sign-in (the per-user Run entry `Martlet`, off by default; Windows'
+own Startup apps switch is respected, and the uninstaller removes the entry).
+Starting Martlet again while it runs shows the running window instead of a
+second copy (per data folder). Choices live in `background.json`.
 
 Paired **Martlet hosts** follow the desktop's version: the gateway reports its
 release, the Devices map shows *Update available* for older hosts, and **Update
