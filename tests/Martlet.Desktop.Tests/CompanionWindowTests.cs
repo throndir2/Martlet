@@ -143,6 +143,52 @@ public sealed class CompanionWindowTests
         finally { window.Close(); }
     });
 
+    [Fact]
+    public Task CharacterCardsAddAndUpdatePersonas() => OnDispatcher(async () =>
+    {
+        using var scope = new Scope();
+        var store = new SettingsStore(scope.Data);
+        Assert.True((await store.SaveAsync(CompanionSettings.Begin(null), null)).Saved);
+        Directory.CreateDirectory(scope.Root);
+        var aria = Path.Combine(scope.Root, "aria.json");
+        var bob = Path.Combine(scope.Root, "bob.json");
+        await File.WriteAllTextAsync(aria, """{"spec":"chara_card_v2","spec_version":"2.0","data":{"name":"Aria","description":"{{char}} sings to {{user}}."}}""");
+        await File.WriteAllTextAsync(bob, """{"name":"Bob","description":"Gruff.","personality":"","scenario":"","first_mes":"","mes_example":""}""");
+        var card = aria;
+        var runner = new SetupOperationRunner();
+        var window = new CompanionWindow(new CompanionSettingsService(store), runner, chooseCard: () => card)
+        {
+            ShowActivated = false,
+            ShowInTaskbar = false
+        };
+        window.Show();
+        try
+        {
+            await Until(() => Field<StackPanel>(window, "EditorPanel").IsEnabled);
+            Click(window, "CompanionCardNew");
+            await Until(() => !runner.IsRunning && Field<TextBox>(window, "PersonaName").Text == "Aria");
+            Assert.Equal("Aria sings to the user.", Field<TextBox>(window, "PersonaText").Text);
+            Assert.Equal(2, Field<ComboBox>(window, "PersonaChoice").Items.Count);
+
+            card = bob;
+            Click(window, "CompanionCardUpdate");
+            await Until(() => !runner.IsRunning && Field<TextBox>(window, "PersonaName").Text == "Bob");
+            Assert.Equal("Gruff.", Field<TextBox>(window, "PersonaText").Text);
+            Click(window, "CompanionSave");
+            await Until(() => !runner.IsRunning &&
+                Field<TextBox>(window, "ResultText").Text.Contains("saved", StringComparison.OrdinalIgnoreCase));
+
+            var personas = (await store.LoadAsync()).Settings!.Companion!.Personas;
+            Assert.Equal(["Martlet", "Bob"], personas.Select(persona => persona.Name));
+            Assert.Equal("Gruff.", personas[1].Text);
+        }
+        finally
+        {
+            window.Close();
+            await Until(() => !runner.IsRunning);
+        }
+    });
+
     private static T Field<T>(Window window, string name) where T : FrameworkElement =>
         Assert.IsType<T>(window.FindName(name));
 

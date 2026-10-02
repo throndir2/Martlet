@@ -237,12 +237,19 @@ public sealed record PersonaTextFileResult(PersonaTextFileOutcome Outcome, strin
     public bool Succeeded => Outcome is PersonaTextFileOutcome.Imported or PersonaTextFileOutcome.Exported;
 }
 
+public sealed record CharacterCardFileResult(PersonaTextFileOutcome Outcome, CharacterCard? Card, string Summary)
+{
+    public bool Succeeded => Outcome == PersonaTextFileOutcome.Imported && Card is not null;
+}
+
 public interface ICompanionSettingsService
 {
     Task<SettingsLoadResult> LoadAsync(CancellationToken token = default);
     Task<SetupSaveResult> SaveAsync(AppSettings settings, string? revision, CancellationToken token = default);
     Task<PersonaTextFileResult> ImportTextAsync(string path, CancellationToken token = default);
     Task<PersonaTextFileResult> ExportTextAsync(string path, string text, CancellationToken token = default);
+    /// <summary>Reads a SillyTavern/Chub character card (PNG image, JSON or CHARX). Nothing is saved or sent anywhere.</summary>
+    Task<CharacterCardFileResult> ImportCardAsync(string path, CancellationToken token = default);
 }
 
 public sealed class CompanionSettingsService(SettingsStore store) : ICompanionSettingsService
@@ -334,6 +341,31 @@ public sealed class CompanionSettingsService(SettingsStore store) : ICompanionSe
     }
 
     private static PersonaTextFileResult Invalid(string summary) =>
+        new(PersonaTextFileOutcome.Invalid, null, summary);
+
+    public Task<CharacterCardFileResult> ImportCardAsync(string path, CancellationToken token = default)
+    {
+        try
+        {
+            path = RequireAbsolutePath(path);
+            using var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 81_920);
+            var card = CharacterCardReader.Read(input, token);
+            return Task.FromResult(new CharacterCardFileResult(PersonaTextFileOutcome.Imported, card,
+                $"Read {card.FormatName} \"{card.DisplayName}\"."));
+        }
+        catch (CharacterCardException error) { return Task.FromResult(InvalidCard(error.Message)); }
+        catch (Exception error) when (error is InvalidDataException or System.Text.Json.JsonException or DecoderFallbackException or FormatException)
+        {
+            return Task.FromResult(InvalidCard(CharacterCardReader.Damaged));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return Task.FromResult(new CharacterCardFileResult(PersonaTextFileOutcome.Unavailable, null,
+                "The character card could not be read. Check the selected file and access, then try again."));
+        }
+    }
+
+    private static CharacterCardFileResult InvalidCard(string summary) =>
         new(PersonaTextFileOutcome.Invalid, null, summary);
 
     private static string RequireAbsolutePath(string path)

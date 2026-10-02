@@ -4,7 +4,7 @@ public enum SetupWorkOutcome { Completed, Canceled, Failed }
 
 public sealed record SetupWorkResult(SetupWorkOutcome Outcome, SettingsLoadResult? Loaded = null,
     SetupSaveResult? Saved = null, CredentialError? Credential = null,
-    PersonaTextFileResult? PersonaFile = null);
+    PersonaTextFileResult? PersonaFile = null, CharacterCardFileResult? CardFile = null);
 
 // Shared by every setup window in one app. Observation ending never releases this worker slot.
 public sealed class SetupOperationRunner
