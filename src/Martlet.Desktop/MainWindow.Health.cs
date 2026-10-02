@@ -56,12 +56,14 @@ public partial class MainWindow
             if (!closing) RenderHealth();
         };
         ErrorLog.ErrorRecorded += QueueHealth;
+        ErrorLog.PreviousRunDescribed += QueueHealth;
         if (conversation is not null) conversation.FailuresChanged += QueueHealth;
     }
 
     private void ReleaseHealth()
     {
         ErrorLog.ErrorRecorded -= QueueHealth;
+        ErrorLog.PreviousRunDescribed -= QueueHealth;
         if (conversation is not null) conversation.FailuresChanged -= QueueHealth;
         healthTimer?.Stop();
     }
@@ -430,7 +432,10 @@ public partial class MainWindow
         }
         if ((Application.Current as App)?.CrashedLastTime == true)
             Add("crash", HealthLevel.Notice, "Martlet closed unexpectedly last time",
-                "Details are in the local log if Martlet captured them.", [DiagnosticsPage(), Logs(), Dismiss("crash")]);
+                ErrorLog.PreviousCrash is { } crash
+                    ? $"Windows recorded {crash}. Details are in the local log."
+                    : "Details are in the local log if Martlet or Windows captured them.",
+                [DiagnosticsPage(), Logs(), Dismiss("crash")]);
 
         // ---------- tiles ----------
         tiles.Add(JobTile("thinking", CompanionTab.Thinking, llm, thinkingDown, required: true,

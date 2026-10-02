@@ -226,12 +226,17 @@ mute, drivers, services, another capture instance or playback.
 Activation, endpoint/format queries, capture buffer leases, Stop/Reset and
 COM release remain on one long-running MTA worker. Pinned NAudio notifications
 use `CreateNotificationClient(false)`; OS callbacks only set atomic flags, never
-call user handlers/audio APIs or synchronously unregister. NAudio 3.1.0's
-notification client swallows unregister exceptions, so this adapter deactivates
-handlers and releases the owning enumerator **before** disposing that wrapper.
-The enumerator's observed COM-release boundary retains notification roots on
-failure. Failed resources remain referenced by the quarantined factory. No
-thread switching or claims of successful unregister are used to hide failures.
+call user handlers/audio APIs or synchronously unregister. Windows' device
+enumerator is a process-wide singleton that does not AddRef registered clients,
+and releasing it does not end a registration, so this adapter deactivates
+handlers and disposes the notification wrapper (which unregisters through the
+still-live enumerator) **before** releasing the enumerator. The reverse order
+left the callback registered after NAudio dropped its only CCW reference; once
+collected, the next endpoint property change crashed Martlet inside MMDevApi
+(`CDeviceEnumerator::OnPropertyValueChanged`). NAudio 3.1.0's notification
+client swallows unregister failures. Failed resources remain referenced by the
+quarantined factory. No thread switching or claims of successful unregister are
+used to hide failures.
 
 ## Error contracts and future integration
 
