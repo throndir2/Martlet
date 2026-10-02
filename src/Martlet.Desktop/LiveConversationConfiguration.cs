@@ -19,6 +19,8 @@ internal sealed class LiveConversationConfiguration
     internal MemorySettings? Memory { get; }
     /// <summary>The saved reply generation settings (Companion > Replies); null keeps every model default.</summary>
     internal GenerationSettings? Generation { get; }
+    /// <summary>The saved Thinking fallback (Companion › Thinking › If Thinking fails), or null.</summary>
+    internal ThinkingFallbackSettings? Fallback { get; }
     /// <summary>The LLM bounds of a conversation request, with the saved max reply length.</summary>
     internal TextGenerationLimits TextLimits { get; }
     internal static TimeSpan ActionLifetime => TimeSpan.FromSeconds(150);
@@ -91,6 +93,8 @@ internal sealed class LiveConversationConfiguration
         Persona = settings.Companion?.ActivePersona;
         Memory = settings.Memory;
         Generation = settings.Generation;
+        Fallback = settings.ThinkingFallback is { } fallback &&
+            !fallback.Same(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm)) ? fallback : null;
         LocalOllama = MainWindow.IsLocalOllama(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm));
         TextLimits = LocalOllama
             ? LocalOllamaTextLimits with { MaxOutputTokens = Generation?.MaxReplyTokens ?? LocalOllamaTextLimits.MaxOutputTokens }
@@ -128,6 +132,23 @@ internal sealed class LiveConversationConfiguration
         var route = Route(SetupRole.Llm);
         return IsChat(route) ? new(route.Origin, route.CredentialId is null) : null;
     }
+
+    /// <summary>The fallback's model selection, with its own alias so its permission never covers the Thinking route.</summary>
+    internal TextModelSelection? FallbackSelection() =>
+        Fallback is { } fallback ? new(ChatCompletionsSetup.FallbackAlias, fallback.ModelId) : null;
+
+    /// <summary>Whether the fallback sends a key: its own, or the Thinking route's when it is the same endpoint.</summary>
+    internal bool FallbackHasKey => Fallback is { } fallback &&
+        (fallback.CredentialId is not null || fallback.UsesThinkingKey(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm)));
+
+    internal TextFallback? TextFallback() =>
+        Fallback is { } fallback ? new(new(fallback.Origin, !FallbackHasKey), FallbackSelection()!) : null;
+
+    /// <summary>Where the fallback sends replies, in words.</summary>
+    internal static string FallbackName(ThinkingFallbackSettings fallback) =>
+        ChatCompletionsEndpointCatalog.Named(fallback.Origin) is { } named ? $"{named.Name} ({fallback.Origin})"
+        : fallback.Origin == MainWindow.LocalOllamaBaseUrl ? "Ollama on this PC"
+        : $"the endpoint at {fallback.Origin}";
 
     /// <summary>The paired Martlet host whose Ollama answers, when Thinking was handed to a host on the Devices page.</summary>
     internal HostTextTarget? HostTarget() => Target(Route(SetupRole.Llm), SetupRouteType.GatewayOllama);
@@ -286,6 +307,9 @@ internal sealed class LiveConversationConfiguration
         else if (chat)
             lines.Add("The endpoint operator controls processing, retention and costs.");
 
+        if (Fallback is { } fallback)
+            lines.Add($"If Thinking fails before answering, the same goes to {FallbackName(fallback)} ({fallback.ModelId}) instead.");
+
         if (IsLocalStt(stt))
             lines.Add("If you speak, transcription happens on this PC.");
         else if (sttHost is not null)
@@ -357,7 +381,7 @@ internal sealed class LiveConversationConfiguration
                         voice ? new(SpeechSelection(),
                             new(Audio!.Output.EndpointId is null ? OutputPolicy.DefaultAtStart : OutputPolicy.FixedEndpoint, Audio.Output.EndpointId),
                             SpeechLimits) : null, ChatTarget(), HostTarget(), voice ? HostSpeechTarget() : null, silentReply,
-                        voice ? WindowsVoiceTarget() : null, Generation, tools);
+                        voice ? WindowsVoiceTarget() : null, Generation, tools, TextFallback());
                 }
             }
         }
@@ -394,7 +418,7 @@ internal sealed class LiveConversationConfiguration
     /// reload the model between the reply and this request.</summary>
     internal ConversationRequest MemoryCaptureRequest(BoundedTextInput input) =>
         new(input, TextSelection(), TextLimits, Turn(false), null, ChatTarget(), HostTarget(),
-            generation: Generation?.ContextTokens is { } context ? new() { ContextTokens = context } : null);
+            generation: Generation?.ContextTokens is { } context ? new() { ContextTokens = context } : null, fallback: TextFallback());
 
     /// <summary>The word the model answers with to stay quiet after a screen glance or something always listening heard; never
     /// spoken.</summary>
@@ -443,7 +467,8 @@ internal sealed class LiveConversationConfiguration
     }
 
     internal string ScreenDisclosure(Chattiness chattiness, WatchSource source) =>
-        ScreenDisclosure(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm), chattiness, source);
+        ScreenDisclosure(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm), chattiness, source) +
+        (Fallback is { } fallback ? $" If Thinking fails, images go to the fallback, {FallbackName(fallback)}, instead." : "");
 
     /// <summary>What vision captures and sends, and where: shown in Companion › Vision before it is turned on.</summary>
     internal static string ScreenDisclosure(SetupRoute? route, Chattiness chattiness, WatchSource source)

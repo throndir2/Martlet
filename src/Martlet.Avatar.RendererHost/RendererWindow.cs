@@ -30,10 +30,19 @@ internal sealed class RendererWindow : Window
     private readonly Grid viewport = new() { Background = Brushes.Transparent, Cursor = Cursors.SizeAll };
     private readonly Popup speechBubble = new()
     {
-        AllowsTransparency = true, Placement = PlacementMode.Absolute, Focusable = false, IsHitTestVisible = false
+        AllowsTransparency = true, Placement = PlacementMode.Absolute, Focusable = false, IsHitTestVisible = false,
+        PopupAnimation = PopupAnimation.Fade
     };
-    private readonly TextBlock speechText = new() { TextWrapping = TextWrapping.Wrap, MaxWidth = 300, FontSize = 15 };
-    private readonly System.Windows.Shapes.Polygon speechTail = new();
+    private readonly TextBlock speechText = new()
+    {
+        TextWrapping = TextWrapping.Wrap, MaxWidth = 280, FontSize = 15, LineHeight = 21,
+        FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI"), TextAlignment = TextAlignment.Left
+    };
+    private readonly System.Windows.Shapes.Path speechShape = new() { StrokeThickness = 2, StrokeLineJoin = PenLineJoin.Round };
+    private readonly Canvas speechCanvas = new();
+    private readonly ScaleTransform speechPop = new(1, 1);
+    private RendererSay speechPlacement = new(null);
+    private RendererBubble speechShown = new("hidden", 0, 0, 0, 0);
     private ResourceDictionary? palette;
     private bool darkTheme;
     private bool highContrast;
@@ -230,6 +239,7 @@ internal sealed class RendererWindow : Window
         }
         viewY = Math.Clamp(y, minY, maxY);
         SendView();
+        PlaceSpeech();
     }
 
     private void ApplyContentTop(double top)
@@ -311,66 +321,188 @@ internal sealed class RendererWindow : Window
         DragMove();
     }
 
+    private const double BubbleRadius = 16, BubblePadX = 16, BubblePadY = 10, TailLength = 22, TailHalfBase = 9,
+        BubbleMargin = 18, ScreenMargin = 6;
+
+    // One continuous outline (rounded body unioned with a curved, tapering tail) with a soft shadow, so the bubble reads as
+    // a single comic-style shape rather than a box with a triangle stuck on.
     private Popup CreateSpeechBubble()
     {
         speechText.SetResourceReference(TextBlock.ForegroundProperty, "TextBrush");
         AutomationProperties.SetAutomationId(speechText, "CharacterSpeech");
         AutomationProperties.SetLiveSetting(speechText, AutomationLiveSetting.Polite);
-        var body = new Border
+        speechShape.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "SurfaceBrush");
+        speechShape.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "AccentBrush");
+        speechShape.Effect = new System.Windows.Media.Effects.DropShadowEffect
         {
-            CornerRadius = new CornerRadius(14), BorderThickness = new Thickness(2), Padding = new Thickness(12, 8, 12, 9),
-            Child = speechText
+            BlurRadius = 14, ShadowDepth = 3, Direction = 270, Opacity = 0.3, Color = Colors.Black
         };
-        body.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
-        body.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
-        speechTail.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "SurfaceBrush");
-        speechTail.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "BorderBrush");
-        speechTail.StrokeThickness = 2;
-        speechTail.VerticalAlignment = VerticalAlignment.Bottom;
-        speechTail.Margin = new Thickness(-2, 0, -2, 14);
-        var shape = new DockPanel { LastChildFill = true };
-        shape.Children.Add(speechTail);
-        shape.Children.Add(body);
-        speechBubble.Child = shape;
+        speechCanvas.Children.Add(speechShape);
+        speechCanvas.Children.Add(speechText);
+        speechCanvas.RenderTransform = speechPop;
+        speechBubble.Child = speechCanvas;
         LocationChanged += (_, _) => PlaceSpeech();
         SizeChanged += (_, _) => PlaceSpeech();
         Closed += (_, _) => speechBubble.IsOpen = false;
         return speechBubble;
     }
 
-    // The bubble sits beside the character's head: to its left when there is room on screen, otherwise to its right.
-    private void ShowSpeech(string? text)
+    private RendererBubble ShowSpeech(RendererSay say)
     {
-        if (string.IsNullOrWhiteSpace(text))
+        speechPlacement = say;
+        if (string.IsNullOrWhiteSpace(say.Text))
         {
             speechBubble.IsOpen = false;
-            return;
+            speechText.Text = "";
+            return speechShown = new("hidden", 0, 0, 0, 0);
         }
-        speechText.Text = text.Length > 600 ? text[..600] + "…" : text;
+        speechText.Text = say.Text.Length > 600 ? say.Text[..600] + "…" : say.Text;
         PlaceSpeech();
         speechBubble.IsOpen = true;
+        if (SystemParameters.ClientAreaAnimation)
+        {
+            var pop = new System.Windows.Media.Animation.DoubleAnimation(0.86, 1, TimeSpan.FromMilliseconds(180))
+            {
+                EasingFunction = new System.Windows.Media.Animation.BackEase
+                {
+                    Amplitude = 0.35, EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut
+                }
+            };
+            speechPop.BeginAnimation(ScaleTransform.ScaleXProperty, pop);
+            speechPop.BeginAnimation(ScaleTransform.ScaleYProperty, pop);
+        }
+        return speechShown;
     }
 
+    // By default the bubble follows the character's head through moves, zoom and pan: beside the head on whichever side has
+    // room on its screen (left first, then right), else above it, then shifted by the configured offsets and kept on screen.
+    // Static keeps it at one spot on the character's screen, with its tail still pointing toward the character.
     private void PlaceSpeech()
     {
         if (speechText.Text.Length == 0) return;
-        var shape = (FrameworkElement)speechBubble.Child;
-        shape.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        var size = shape.DesiredSize;
-        var left = Left + Width * 0.18 - size.Width >= SystemParameters.VirtualScreenLeft;
-        DockPanel.SetDock(speechTail, left ? Dock.Right : Dock.Left);
-        speechTail.Points = left
-            ? new PointCollection { new(0, 0), new(14, 10), new(0, 18) }
-            : new PointCollection { new(14, 0), new(0, 10), new(14, 18) };
-        var head = Top + Height * 0.32;
-        speechBubble.HorizontalOffset = left ? Left + Width * 0.18 - size.Width : Left + Width * 0.82;
-        speechBubble.VerticalOffset = Math.Max(SystemParameters.VirtualScreenTop, head - size.Height);
+        speechText.Measure(new Size(speechText.MaxWidth, double.PositiveInfinity));
+        var width = Math.Max(48, Math.Ceiling(speechText.DesiredSize.Width) + BubblePadX * 2);
+        var height = Math.Ceiling(speechText.DesiredSize.Height) + BubblePadY * 2;
+        var screen = WorkArea() ?? SystemParameters.WorkArea;
+        screen.Inflate(-ScreenMargin, -ScreenMargin);
+
+        // The head in screen coordinates, followed through the camera: screen clip = fitted clip * zoom + pan.
+        var top = double.IsFinite(contentTop) ? contentTop : 0.6;
+        double ScreenY(double clip) => Top + Math.Clamp(Height * (1 - (clip * viewZoom + viewY)) / 2, 0, Height);
+        double ScreenX(double fraction) => Left + Math.Clamp(fraction, 0, Width);
+        var faceX = Width * (viewX + 1) / 2;
+        var halfHead = Width * 0.11 * viewZoom;
+        var faceY = ScreenY(top - 0.2);
+        var headTop = ScreenY(top);
+        var face = new Point(ScreenX(faceX), faceY);
+
+        string placement;
+        Rect body;
+        Point tip;
+        if (speechPlacement.Static)
+        {
+            placement = "static";
+            body = new Rect(screen.Left + 10 + speechPlacement.OffsetX, screen.Top + 10 + speechPlacement.OffsetY, width, height);
+            tip = face;
+        }
+        else
+        {
+            var candidates = new (string Name, Point Tip, Rect Body)[]
+            {
+                ("left", new Point(ScreenX(faceX - halfHead), faceY),
+                    new Rect(ScreenX(faceX - halfHead) - TailLength - width, faceY + 14 - height, width, height)),
+                ("right", new Point(ScreenX(faceX + halfHead), faceY),
+                    new Rect(ScreenX(faceX + halfHead) + TailLength, faceY + 14 - height, width, height)),
+                ("above", new Point(ScreenX(faceX), headTop - 4),
+                    new Rect(ScreenX(faceX) - width * 0.4, headTop - 4 - TailLength - height, width, height))
+            };
+            for (var i = 0; i < candidates.Length; i++) candidates[i].Body.Offset(speechPlacement.OffsetX, speechPlacement.OffsetY);
+            var chosen = candidates.FirstOrDefault(c => screen.Contains(c.Body));
+            if (chosen.Name is null)
+                chosen = candidates.OrderBy(c => Overflow(c.Body, screen)).First();
+            (placement, tip, body) = chosen;
+        }
+        body = KeepInside(body, screen);
+        speechShown = new(placement, Math.Round(body.Left), Math.Round(body.Top), Math.Round(body.Width), Math.Round(body.Height));
+
+        // Lay the shape out on a canvas spanning the body and tail, with room for the shadow.
+        var tail = Tail(body, tip, placement == "static" ? TailLength * 0.9 : TailLength * 2.5);
+        var bounds = body;
+        if (tail is not null) bounds.Union(tail.Value.Tip);
+        bounds.Inflate(BubbleMargin, BubbleMargin);
+        var origin = bounds.TopLeft;
+        var local = new Rect(body.Left - origin.X, body.Top - origin.Y, width, height);
+        var radius = Math.Min(BubbleRadius, height / 2);
+        Geometry outline = new RectangleGeometry(local, radius, radius);
+        if (tail is { } t)
+            outline = new CombinedGeometry(GeometryCombineMode.Union, outline,
+                TailGeometry(t.Base1 - (Vector)origin, t.Base2 - (Vector)origin, t.Tip - (Vector)origin));
+        outline.Freeze();
+        speechShape.Data = outline;
+        speechCanvas.Width = bounds.Width;
+        speechCanvas.Height = bounds.Height;
+        Canvas.SetLeft(speechText, local.Left + BubblePadX);
+        Canvas.SetTop(speechText, local.Top + BubblePadY);
+        var pivot = tail?.Tip ?? new Point(body.Left + width / 2, body.Bottom);
+        speechCanvas.RenderTransformOrigin = new Point((pivot.X - origin.X) / bounds.Width, (pivot.Y - origin.Y) / bounds.Height);
+        speechBubble.HorizontalOffset = origin.X;
+        speechBubble.VerticalOffset = origin.Y;
         if (speechBubble.IsOpen)
         {
             // Nudging the offset forces an open Popup to reposition after its owner moves.
             speechBubble.HorizontalOffset += 0.01;
             speechBubble.HorizontalOffset -= 0.01;
         }
+    }
+
+    private static double Overflow(Rect body, Rect screen) =>
+        Math.Max(0, screen.Left - body.Left) + Math.Max(0, body.Right - screen.Right) +
+        Math.Max(0, screen.Top - body.Top) + Math.Max(0, body.Bottom - screen.Bottom);
+
+    private static Rect KeepInside(Rect body, Rect screen)
+    {
+        var x = Math.Max(screen.Left, Math.Min(body.Left, screen.Right - body.Width));
+        var y = Math.Max(screen.Top, Math.Min(body.Top, screen.Bottom - body.Height));
+        return new Rect(x, y, body.Width, body.Height);
+    }
+
+    // The tail leaves the body edge facing the target, as near to it as the rounded corners allow, and points at it
+    // (shortened to the longest tail that still looks like a tail). None when the target is under the body.
+    private static (Point Base1, Point Base2, Point Tip)? Tail(Rect body, Point target, double longest)
+    {
+        var dx = target.X < body.Left ? body.Left - target.X : target.X > body.Right ? target.X - body.Right : 0;
+        var dy = target.Y < body.Top ? body.Top - target.Y : target.Y > body.Bottom ? target.Y - body.Bottom : 0;
+        if (dx <= 0 && dy <= 0) return null;
+        var inset = Math.Min(BubbleRadius, body.Height / 2) + TailHalfBase;
+        Point center;
+        Vector across;
+        if (dx >= dy)
+        {
+            var y = body.Height > inset * 2 ? Math.Clamp(target.Y, body.Top + inset, body.Bottom - inset) : body.Top + body.Height / 2;
+            center = new Point(target.X < body.Left ? body.Left + 3 : body.Right - 3, y);
+            across = new Vector(0, TailHalfBase);
+        }
+        else
+        {
+            var x = body.Width > inset * 2 ? Math.Clamp(target.X, body.Left + inset, body.Right - inset) : body.Left + body.Width / 2;
+            center = new Point(x, target.Y < body.Top ? body.Top + 3 : body.Bottom - 3);
+            across = new Vector(TailHalfBase, 0);
+        }
+        var reach = target - center;
+        if (reach.Length > longest) reach *= longest / reach.Length;
+        if (reach.Length < 8) return null;
+        return (center - across, center + across, center + reach);
+    }
+
+    private static PathGeometry TailGeometry(Point base1, Point base2, Point tip)
+    {
+        var middle = new Point((base1.X + base2.X) / 2, (base1.Y + base2.Y) / 2);
+        var spine = middle + (tip - middle) * 0.5;
+        Point Bend(Point from) => (from + (tip - from) * 0.5) + (spine - (from + (tip - from) * 0.5)) * 0.45;
+        var figure = new PathFigure { StartPoint = base1, IsClosed = true, IsFilled = true };
+        figure.Segments.Add(new QuadraticBezierSegment(Bend(base1), tip, true));
+        figure.Segments.Add(new QuadraticBezierSegment(Bend(base2), base2, true));
+        return new PathGeometry { Figures = { figure } };
     }
 
     private async Task RunAsync()
@@ -489,8 +621,7 @@ internal sealed class RendererWindow : Window
                 }
                 if (message.Kind == "say")
                 {
-                    ShowSpeech(RendererProtocol.Data<RendererSay>(message).Text);
-                    await ReplyAsync("ok", new { });
+                    await ReplyAsync("bubble", ShowSpeech(RendererProtocol.Data<RendererSay>(message)));
                     continue;
                 }
                 var result = await BrowserAsync(message.Kind, message.Data);
@@ -585,14 +716,18 @@ internal sealed class RendererWindow : Window
     private static extern bool GetMonitorInfoW(IntPtr monitor, ref MonitorInfo info);
 
     /// <summary>Top of the work area of the screen the overlay is on, in this window's coordinates.</summary>
-    private double? WorkAreaTop()
+    private double? WorkAreaTop() => WorkArea()?.Top;
+
+    /// <summary>Work area of the screen the overlay is on, in this window's coordinates.</summary>
+    private Rect? WorkArea()
     {
         var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
         if (handle == IntPtr.Zero || PresentationSource.FromVisual(this)?.CompositionTarget is not { } target) return null;
         var info = new MonitorInfo { Size = System.Runtime.InteropServices.Marshal.SizeOf<MonitorInfo>() };
         var monitor = MonitorFromWindow(handle, 2);
         if (monitor == IntPtr.Zero || !GetMonitorInfoW(monitor, ref info)) return null;
-        return target.TransformFromDevice.Transform(new Point(info.Work.Left, info.Work.Top)).Y;
+        return new Rect(target.TransformFromDevice.Transform(new Point(info.Work.Left, info.Work.Top)),
+            target.TransformFromDevice.Transform(new Point(info.Work.Right, info.Work.Bottom)));
     }
 
     private Task ReplyAsync<T>(string kind, T data) =>

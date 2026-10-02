@@ -26,6 +26,9 @@ public sealed record AppSettings : IContract
     /// <summary>Optional reply generation settings (Companion > Replies); absent while every value is the model default.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public GenerationSettings? Generation { get; init; }
+    /// <summary>Optional second Thinking destination used when a reply's Thinking request fails (Companion › Thinking).</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ThinkingFallbackSettings? ThinkingFallback { get; init; }
 
     public static AppSettings CreateUnconfigured() => new()
     {
@@ -58,6 +61,7 @@ public sealed record AppSettings : IContract
         ContractRules.Require(Generation is null || !Generation.IsDefault,
             "Generation settings are saved as absent when every value is the model default.");
         Generation?.Validate();
+        ThinkingFallback?.Validate();
         if (Setup is not null)
         {
             var legacy = Profile.Credentials.Select(item => item.CredentialId).ToHashSet();

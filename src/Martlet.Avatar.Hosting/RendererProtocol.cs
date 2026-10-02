@@ -10,7 +10,15 @@ public sealed record RendererParameter(string Id, double Minimum, double Maximum
 public sealed record RendererCapabilities(string ModelId, RendererParameter[] Parameters);
 public sealed record RendererLoad(AvatarProfile Profile, string ResourceRevision, bool DarkTheme);
 public sealed record RendererTheme(bool Dark);
-public sealed record RendererSay(string? Text);
+/// <summary>
+/// Shows (or with null text, hides) the speech bubble. By default it follows the character's head through moves, zoom and pan,
+/// choosing the side with room on screen, then shifts by the offsets (device-independent pixels, +x right, +y down). Static
+/// keeps it in one place: the offsets are then measured from the top-left of the work area of the character's screen.
+/// </summary>
+public sealed record RendererSay(string? Text, bool Static = false, double OffsetX = 0, double OffsetY = 0);
+/// <summary>Where the speech bubble is: "left", "right" or "above" the character's head, "static", or "hidden"; and its
+/// body's screen rectangle in device-independent pixels (zero when hidden).</summary>
+public sealed record RendererBubble(string Placement, double Left, double Top, double Width, double Height);
 /// <summary>Overlay zoom command: "in", "out", "reset" (default size, unzoomed camera) or "status" (no change).</summary>
 public sealed record RendererZoom(string Action);
 /// <summary>
