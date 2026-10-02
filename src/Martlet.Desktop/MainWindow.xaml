@@ -18,13 +18,7 @@
         <Border Background="{DynamicResource SoftBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
             <DockPanel Margin="14,20,14,16">
                 <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="8,0,0,26">
-                    <Grid x:Name="RailMark" Width="40" Height="40" IsHitTestVisible="False">
-                        <Ellipse Fill="{DynamicResource SurfaceBrush}" Stroke="{DynamicResource BorderBrush}" StrokeThickness="1"/>
-                        <Viewbox Margin="8">
-                            <Path Data="M 39 66 C 33 59 14 48 19 34 C 23 23 35 26 39 33 C 45 23 58 24 62 34 C 68 47 48 61 39 66 Z"
-                                  Fill="{DynamicResource AccentBrush}"/>
-                        </Viewbox>
-                    </Grid>
+                    <Image x:Name="RailMark" Style="{DynamicResource Mascot}" Width="40" Height="40"/>
                     <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
                         <TextBlock Text="martlet" FontSize="22" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"/>
                         <TextBlock x:Name="ModeText" Text="Companion PC" FontSize="12" Style="{DynamicResource Muted}"
@@ -94,12 +88,7 @@
                                         <Ellipse x:Name="HeroGlow" Width="104" Height="104" Canvas.Left="8" Canvas.Top="10" Fill="{DynamicResource GlowBrush}" Opacity="0.7"
                                                  RenderTransformOrigin="0.5,0.5"/>
                                         <Canvas x:Name="HeroFloat" Width="120" Height="120">
-                                            <Ellipse Width="84" Height="84" Canvas.Left="18" Canvas.Top="20" Fill="{DynamicResource SurfaceBrush}"
-                                                     Stroke="{DynamicResource BorderBrush}" StrokeThickness="1"/>
-                                            <Canvas x:Name="HeroHeart" Width="120" Height="120" RenderTransformOrigin="0.5,0.5">
-                                                <Path Canvas.Left="21" Canvas.Top="15" Data="M 39 66 C 33 59 14 48 19 34 C 23 23 35 26 39 33 C 45 23 58 24 62 34 C 68 47 48 61 39 66 Z"
-                                                      Fill="{DynamicResource AccentBrush}"/>
-                                            </Canvas>
+                                            <Image x:Name="HeroMascot" Style="{DynamicResource Mascot}" Width="92" Height="92" Canvas.Left="14" Canvas.Top="16"/>
                                         </Canvas>
                                         <Path x:Name="Sparkle1" Canvas.Left="84" Canvas.Top="2" Data="M 9 0 L 11.5 6.5 L 18 9 L 11.5 11.5 L 9 18 L 6.5 11.5 L 0 9 L 6.5 6.5 Z"
                                               Fill="{DynamicResource AccentBrush}"/>
@@ -407,12 +396,7 @@
                                 <Canvas Width="120" Height="120">
                                     <Ellipse Width="104" Height="104" Canvas.Left="8" Canvas.Top="10" Fill="{DynamicResource GlowBrush}" Opacity="0.7"/>
                                     <Canvas x:Name="TourFloat" Width="120" Height="120">
-                                        <Ellipse Width="84" Height="84" Canvas.Left="18" Canvas.Top="20" Fill="{DynamicResource SoftBrush}"
-                                                 Stroke="{DynamicResource BorderBrush}" StrokeThickness="1"/>
-                                        <Canvas x:Name="TourHeart" Width="120" Height="120" RenderTransformOrigin="0.5,0.5">
-                                            <Path Canvas.Left="21" Canvas.Top="15" Data="M 39 66 C 33 59 14 48 19 34 C 23 23 35 26 39 33 C 45 23 58 24 62 34 C 68 47 48 61 39 66 Z"
-                                                  Fill="{DynamicResource AccentBrush}"/>
-                                        </Canvas>
+                                        <Image x:Name="TourMascot" Style="{DynamicResource Mascot}" Width="92" Height="92" Canvas.Left="14" Canvas.Top="16"/>
                                     </Canvas>
                                     <Path x:Name="TourSparkle" Canvas.Left="86" Canvas.Top="4" Data="M 9 0 L 11.5 6.5 L 18 9 L 11.5 11.5 L 9 18 L 6.5 11.5 L 0 9 L 6.5 6.5 Z"
                                           Fill="{DynamicResource AccentBrush}"/>
