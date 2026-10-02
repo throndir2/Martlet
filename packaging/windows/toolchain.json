@@ -200,11 +200,6 @@
       "file": "Resemblyzer-LICENSE.txt",
       "url": "https://raw.githubusercontent.com/resemble-ai/Resemblyzer/15d828edebe06bc72b9cabc8ef8ca5ab2cb457ce/LICENSE",
       "sha256": "ec4426669c4e3e73157121200b772a68ff9c4c7af3feb298ea99b6411a119e05"
-    },
-    {
-      "file": "F5-TTS-LICENSE.txt",
-      "url": "https://raw.githubusercontent.com/SWivid/F5-TTS/9c614e9657089213efc6a7421b30630be138a3f5/LICENSE",
-      "sha256": "c70811d1402134de900e811d3eaa349eb60f4d38a8f635b27b1e378c630facd2"
     }
   ],
   "inno": {

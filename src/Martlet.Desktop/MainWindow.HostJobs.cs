@@ -137,8 +137,8 @@ public partial class MainWindow
                 ActionText.Text = $"{job.Title} stays where it is: {cannot}";
                 return;
             }
-            // F5 copies a reference voice. Handing Speaking to a host keeps the voice already chosen for it, else the bundled
-            // sample voice; Companion › Voice › Voices adds voices and switches between them.
+            // F5 copies a reference voice. Handing Speaking to a host keeps the voice already chosen for it, else Martlet's first
+            // included voice; Companion › Voice › Voices adds voices and switches between them.
             F5ReferenceSnapshot? voice = null;
             if (job.RouteType == SetupRouteType.GatewayF5)
                 voice = await F5Voices.DefaultAsync(store.DataDirectory, route?.DestinationId ?? F5Destination, lifetime.Token);

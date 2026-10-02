@@ -502,12 +502,22 @@ device qualification or learned VAD evidence.
 ## Voices (F5)
 
 F5 copies a voice from a short recording; nothing is trained. **Companion >
-Voice > Voices** lists every voice you added (and F5-TTS's published English
-sample voice), with **Play**, **Use** and **Remove** on each. **Add a voice...**
+Voice > Voices** lists Martlet's ten included voices, then every voice you added,
+with **Play**, **Use** and **Remove** on each. The included voices are free to use
+and share: LJ Speech and two LibriVox readings (public domain) and seven CMU ARCTIC
+speakers (US, Scottish, Canadian and Indian English; free for any use). Their
+sources and notices are in `notices\F5-Voices-NOTICES.txt`. An included voice
+joins the voice list when it is first used, and can be removed again (it stays
+offered). **Add a voice...**
 takes a mono 16-bit PCM WAV of 1 to 30 seconds (5 to 12 seconds of clear speech
 works best) at 16/22.05/24/44.1/48 kHz, at most 4 MiB, its exact transcript,
 whose voice it is and your rights confirmation. The new voice is used right
 away. Up to 16 voices are kept.
+
+Earlier versions included F5-TTS's English example clip. It is no longer
+included because where its recording comes from couldn't be confirmed; if it is
+still in your list it is marked as retired. Switch to another voice, then remove
+it. F5 never starts with it again.
 
 Martlet stores its own copy of each recording under `f5-voices` in the app data
 directory, so the original file can be moved or deleted after adding it.

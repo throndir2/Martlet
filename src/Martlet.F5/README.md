@@ -8,6 +8,10 @@ wire/lifecycle bounds, validation command, evidence, and deferred gates.
 This project has no external package dependency; it references Core for the
 shared strict WAV inspector. The Desktop uses its reference preset store for the
 voices a Martlet host's F5 role clones (Devices > the Speaking row's *Done by*), and
-the gateway uses its contracts for the F5 route. It contains no Python, F5-TTS,
-model weights, CUDA, Docker, network client, audio device integration, default
-voice, automatic transcription, model download, or fallback route.
+the gateway uses its contracts for the F5 route. `F5BundledVoices` embeds the ten
+redistributable reference voices Martlet includes (`BundledVoices\`, sources and
+notices in `BundledVoices\NOTICES.txt`, rebuilt by
+`scripts\Build-F5BundledVoices.py`). It contains no Python, F5-TTS,
+model weights, CUDA, Docker, network client, audio device integration,
+automatic transcription, model download, or fallback route; the worker never
+chooses a voice.

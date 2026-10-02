@@ -654,7 +654,7 @@ $requiredFiles += @((Get-WebViewArchiveAssets).path)
 $requiredFiles += @('Desktop\AvatarRenderer\Martlet.Avatar.RendererHost.exe',
     'Desktop\AvatarRenderer\web\app.js', 'Desktop\AvatarRenderer\web\app.js.LEGAL.txt',
     'Desktop\AvatarRenderer\web\index.html', 'Desktop\AvatarRenderer\web\THIRD-PARTY-NOTICES.txt',
-    'notices\Audio2Face-Protos-LICENSE.txt', 'notices\Audio2Face-THIRD-PARTY-NOTICES.md')
+    'notices\Audio2Face-Protos-LICENSE.txt', 'notices\Audio2Face-THIRD-PARTY-NOTICES.md', 'notices\F5-Voices-NOTICES.txt')
 $requiredFiles += @((Get-PackagingPins).notices | ForEach-Object { "notices\$($_.file)" })
 $requiredFiles += @((Get-PackagingPins).managedPackages.notices | ForEach-Object { "notices\$($_.file)" })
 foreach ($relative in $requiredFiles | Select-Object -Unique) {

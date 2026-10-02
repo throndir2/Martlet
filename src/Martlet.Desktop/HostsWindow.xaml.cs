@@ -229,7 +229,7 @@ public partial class HostsWindow : ThemedWindow
         PairedHost? host = null;
         var summary = await HostRunWindow.RunAsync(this, "Pair with this PC's host service", async run =>
         {
-            await HostLocal.EnsureDockerAsync(run.Status, run.Output, run.Token);
+            await HostLocal.EnsureDockerAsync(run, ContinueSetupKind.Docker);
             await HostLocal.EnsureImageAsync(target, run.Status, run.Output, run.Token);
             run.Status("Pairing this PC with its host service...");
             var (pairing, secret) = await HostLocal.PairAsync(target, device, Environment.MachineName, run.Output, run.Token);
@@ -527,7 +527,7 @@ public partial class HostsWindow : ThemedWindow
         progress("Setting up this PC's host service...");
         var summary = await HostRunWindow.RunAsync(owner, title ?? "Set up this PC's host service", async run =>
         {
-            await HostLocal.EnsureDockerAsync(run.Status, run.Output, run.Token);
+            await HostLocal.EnsureDockerAsync(run, ContinueSetupKind.ThisPc);
             await HostLocal.EnsureImageAsync(target, run.Status, run.Output, run.Token);
             run.Status("Setting up the host service on this PC...");
             var exit = await HostLocal.EngineAsync(target, ["setup"], run.Output, run.Token);

@@ -641,7 +641,7 @@ public partial class MainWindow
     }
 
     /// <summary>Its voice on this PC: two ways, each set up by one click. F5 in Docker (through this PC's host service, with
-    /// F5-TTS's published sample voice so it speaks right away) or an installed Windows voice (no Docker, no host service).
+    /// Martlet's included voices so it speaks right away) or an installed Windows voice (no Docker, no host service).
     /// The one in use, otherwise the one this PC's hardware suits, comes first.</summary>
     private Border LocalVoiceCard(HostJob job, SetupRoute? route, PairedHost? thisPc)
     {
@@ -651,12 +651,15 @@ public partial class MainWindow
         var windowsInUse = route?.RouteType == SetupRouteType.LocalWindowsTts;
         var nothingHere = !f5InUse && !windowsInUse;
 
+        var f5About = Note("A natural voice copied from a short recording. It comes with ten voices that are free to use and share " +
+            "(public domain or CMU ARCTIC recordings), and you can add your own later. Setting it up installs F5-TTS (MIT source; a large " +
+            "download) with the F5TTS_v1_Base model, licensed for non-commercial use only (CC-BY-NC-4.0). Reply text and voice recordings " +
+            "stay on this PC.", new Thickness(0, 2, 0, 6));
+        AutomationProperties.SetAutomationId(f5About, "SetupF5About");
         var f5 = new List<UIElement>
         {
             OptionTitle("F5 voice, with Docker", f5InUse ? "in use" : nothingHere && f5Fits ? "recommended for this PC" : null),
-            Note("A natural voice copied from a short recording. It comes ready with F5-TTS's published English sample voice (MIT licence), " +
-                "and you can choose another voice or record your own later. The F5 model is licensed for non-commercial use (CC-BY-NC-4.0).",
-                new Thickness(0, 2, 0, 6)),
+            f5About,
             Note(gpu is null ? "No dedicated graphics card was found on this PC; F5 needs an NVIDIA graphics card with 6 GB or more."
                 : $"This PC has {gpu.Describe()}." + (f5Fits ? "" : " F5 needs an NVIDIA graphics card with 6 GB or more, so a Windows voice suits this PC better."),
                 new Thickness(0, 0, 0, 6))
@@ -1212,12 +1215,14 @@ public partial class MainWindow
             LipSyncHandler.Loudness => "Voice loudness: the mouth opens and closes with the voice. Audio2Face is off.",
             LipSyncHandler.Host => $"Audio2Face on {(owner == thisPc?.HostId ? "this PC" : owner)}" +
                 (ownerMissing ? ", not installed there yet, so the mouth follows the voice's loudness." : "."),
-            _ => $"Your own Audio2Face service on this PC ({OwnLipSyncEndpoint().Authority})" + ownLipSyncAnswers switch
+            _ when homeAvatar?.LipSync == AvatarLipSync.Audio2Face => $"Your own Audio2Face service on this PC ({OwnLipSyncEndpoint().Authority}), " +
+                "with Audio2Face-only lip-sync activated in the character's settings.",
+            _ => ownLipSyncAnswers switch
             {
-                true => ", answering.",
-                false => ": nothing answers there, so the mouth follows the voice's loudness. Audio2Face isn't installed or running " +
-                    "on this PC; install it with Docker below, or start your own service.",
-                _ => "."
+                true => $"Your own Audio2Face service on this PC ({OwnLipSyncEndpoint().Authority}), answering.",
+                false => "Voice loudness: the mouth follows the voice's loudness. Audio2Face isn't installed or running on this PC; " +
+                    $"Martlet would use one by itself if it answered at {OwnLipSyncEndpoint().Authority}. Install it with Docker below.",
+                _ => $"Voice loudness, or your own Audio2Face service at {OwnLipSyncEndpoint().Authority} whenever one runs on this PC."
             }
         }, coverage.FirstOrDefault(c => c.Job == ClusterJobs.LipSync && c.IsProblem), "LipSyncNow"));
 
@@ -1307,17 +1312,36 @@ public partial class MainWindow
         }
 
         var endpoint = new Uri(homeAvatar?.Endpoint ?? AvatarProfile.DefaultEndpoint).Authority;
+        // Without an explicit choice this is Martlet's default: it only looks for a service there, so it is in use only
+        // when one answers (or Audio2Face-only lip-sync is activated); otherwise the mouth follows the voice's loudness.
+        var audio2FaceOnly = homeAvatar?.LipSync == AvatarLipSync.Audio2Face;
+        var ownTitle = OptionTitle("Your own Audio2Face service", !ownInUse ? null
+            : audio2FaceOnly || ownLipSyncAnswers == true ? "in use"
+            : ownLipSyncAnswers == false ? "not running" : "checking");
+        AutomationProperties.SetAutomationId(ownTitle, "LipSyncOwnTitle");
         var own = new List<UIElement>
         {
-            OptionTitle("Your own Audio2Face service", ownInUse ? "in use" : null),
+            ownTitle,
             Note($"An Audio2Face-3D service you already run on this PC at {endpoint}, without Martlet's host service. Martlet uses it " +
                 "whenever it answers; otherwise the mouth follows the voice's loudness.", new Thickness(0, 2, 0, 6))
         };
         if (ownInUse)
-            own.Add(Note(homeAvatar?.LipSync == AvatarLipSync.Audio2Face
+        {
+            var state = Note(audio2FaceOnly
                 ? "In use, with Audio2Face-only lip-sync activated in the character's settings (Choose and customize)."
-                : $"In use: Martlet checks {endpoint} before each sentence." +
-                    (ownLipSyncAnswers == false ? " Nothing answers there right now." : ""), new Thickness(0, 0, 0, 4)));
+                : ownLipSyncAnswers switch
+                {
+                    true => $"In use: Audio2Face answers at {endpoint}. Martlet checks it before each sentence.",
+                    false => $"This is Martlet's default; it doesn't mean Audio2Face is installed. Nothing answers at {endpoint}, so the " +
+                        "mouth follows the voice's loudness. Martlet only looks there before each sentence and switches to Audio2Face " +
+                        "by itself if a service starts answering. Set up Audio2Face with Docker to use it, or choose Voice loudness above " +
+                        "to stop looking.",
+                    _ => $"Martlet's default: before each sentence it looks for an Audio2Face service at {endpoint} and uses it only " +
+                        "if one answers; otherwise the mouth follows the voice's loudness."
+                }, new Thickness(0, 0, 0, 4));
+            AutomationProperties.SetAutomationId(state, "LipSyncOwnState");
+            own.Add(state);
+        }
         else own.Add(Row(PageButton("Use my own service", () => AssignLipSyncAsync("this-pc").Forget(), id: "SetupLipSyncOwnService")));
 
         // The own service is the default fallback, so it comes first only when it is in use and Docker's Audio2Face doesn't fit here.

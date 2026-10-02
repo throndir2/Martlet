@@ -25,12 +25,14 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "FoundationStatus", "PipelineStatus", "LocalAudioStatus",
         "LiveStatus", "LiveMic", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
         "PeopleStatus", "PeopleSyncStatus", "PeopleVoiceCount", "ListenParakeetStatus", "SetupCharacterView",
-        "LipSyncNow", "LipSyncNowProblem", "SelectedDevice", "SelectedDeviceHealth", "ClusterStatus",
-        "VisionStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint"
+        "LipSyncNow", "LipSyncNowProblem", "LipSyncOwnTitle", "LipSyncOwnState", "SelectedDevice", "SelectedDeviceHealth", "ClusterStatus",
+        "VisionStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "SetupF5About", "F5VoicesStatus",
+        "HostRunStatus"
     };
-    /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)") and
+    /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)");
+    /// Companion › Voice's included F5 voices ("F5VoiceRow-arctic-slt" reads "SLT (US female)", with "· in use" when it is);
     /// each home or host-dashboard step's detail line ("StepDetail-docker" says whether Docker Desktop runs, or why it can't start).</summary>
-    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "StepDetail-"];
+    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "F5VoiceRow-", "StepDetail-"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>

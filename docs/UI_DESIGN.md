@@ -195,7 +195,7 @@ to bottom: the **map**, the **selected device** with what it does, and
     run on the host.
 - **Settings for all devices** (companion mode) closes the page: **Check all
   hosts** reads every host's roles (explicit only), and **Keep who does what
-  in sync on all my computers** (OFF by default) shares the assignments with
+  in sync on all my computers** (ON by default; unticking it saves `off`) shares the assignments with
   every paired host and your other computers ([details](CLUSTER.md)): every
   15 seconds it checks the hosts, follows changes made elsewhere and pushes
   changes made here. A status line says how many hosts hold the current plan
@@ -340,8 +340,8 @@ window ends it.
     PC*). Voice offers two one-click choices, the one in use (or the one this
     PC's hardware suits) first: **F5 voice, with Docker** (*Set up F5 with
     Docker* sets up and pairs Martlet's host service on this PC, so this PC
-    also becomes one of your hosts, installs F5 and switches over with F5-TTS's
-    published sample voice) or **Windows voice, no Docker** (*Use a Windows
+    also becomes one of your hosts, installs F5 and switches over with the first
+    of Martlet's ten included voices) or **Windows voice, no Docker** (*Use a Windows
     voice* picks an installed voice in this PC's language, with no host
     service; a voice list and *Hear it* follow). Listening offers the same kind
     of two choices for whisper in Martlet's host service: **On the graphics
@@ -371,7 +371,11 @@ window ends it.
     host service on this PC, then hands lip-sync to it, installing Audio2Face
     with its NGC key; once the host service exists, *Use Audio2Face on this
     PC* and *Check it*) or **Your own Audio2Face service** at the character's
-    loopback endpoint (*Use my own service*).
+    loopback endpoint (*Use my own service*). The own service is Martlet's
+    default: it only looks for a service there before each sentence, so it is
+    marked *in use* only when one answers and *not running* (the mouth follows
+    the voice's loudness) when nothing does; it never implies Audio2Face is
+    installed.
   - *Another of your computers*: the same host list as the job tabs, with *Use
     it*, *Add a computer*, *Check hosts* and the Devices map.
   - *Voice loudness*: *Use voice loudness* turns Audio2Face off.

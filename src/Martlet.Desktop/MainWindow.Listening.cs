@@ -265,8 +265,9 @@ public partial class MainWindow
         }, $"Listen with whisper {where}");
     }
 
-    /// <summary>F5 on this PC: hands speaking over when it already runs here, otherwise one confirmation and one run window
-    /// that sets everything up.</summary>
+    /// <summary>F5 on this PC: hands speaking over when it already runs here, otherwise one run window that sets everything
+    /// up. The F5 card already shows what it installs and its licence, so the button itself is the go-ahead (installing
+    /// Docker Desktop still asks separately for its terms).</summary>
     private async Task UseF5HereAsync()
     {
         if (store is null || setupService is null || closing) return;
@@ -276,14 +277,6 @@ public partial class MainWindow
             await AssignJobAsync(HostJob.Speaking, "host:" + thisPc.HostId);
             return;
         }
-        if (!ConfirmationDialog.Confirm(this,
-                "Speak with the F5 voice on this PC's graphics card? " +
-                (thisPc is null ? "Martlet first sets up its host service in Docker Desktop on this PC (once; this PC then also appears as one of your hosts). " : "") +
-                "It installs F5-TTS (MIT source; a large download) with the F5TTS_v1_Base model, licensed for non-commercial use only " +
-                "(CC-BY-NC-4.0), shows the progress and switches its voice over by itself, starting with F5-TTS's published English " +
-                "sample voice. Reply text and the voice recording stay on this PC.",
-                "Set it up"))
-            return;
         await SetUpJobHereAsync(HostJob.Speaking, new Dictionary<string, string>(StringComparer.Ordinal), "Speak with F5 on this PC");
     }
 
@@ -303,7 +296,7 @@ public partial class MainWindow
             async Task<string> Continue(HostRunWindow run, PairedHost host)
             {
                 var target = host.Target(Version);
-                await HostLocal.EnsureDockerAsync(run.Status, run.Output, run.Token);
+                await HostLocal.EnsureDockerAsync(run, Martlet.Core.Installation.ContinueSetupKind.Docker);
                 await HostLocal.EnsureImageAsync(target, run.Status, run.Output, run.Token);
                 run.Status($"Installing {job.Engine} on this PC. The first time downloads its model; this can take a while...");
                 var exit = await HostLocal.EngineAsync(target, ["add", job.HostRoleKind], run.Output, run.Token, answers: answers);

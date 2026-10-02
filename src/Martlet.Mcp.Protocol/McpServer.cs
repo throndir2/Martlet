@@ -59,6 +59,19 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("f5_voices", "List the reference voices Martlet includes for F5 (key, name, licence, transcript, format; each clip is " +
+            "checked against its SHA-256 and F5's reference rules) and, from a data directory's F5 voice list, which included voices " +
+            "were added, how many of the owner's own voices there are and which voice is applied (never own voices' names or audio). " +
+            "Plays nothing and contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("cluster_status", "Read shared \"who does what\" sync from a data directory: whether sync is on (on by default, " +
+            "\"off\" only after the owner turned it off) and this PC's copy of the plan (each job's host, failover and which device " +
+            "changed it last; each host's roles). Read-only; contacts nothing and returns no addresses or keys.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
         Tool("virtualization_status", "Read whether Windows is ready for Docker Desktop's WSL 2 engine (virtualization in the firmware, " +
             "the Windows hypervisor, Virtual Machine Platform, Windows Subsystem for Linux, the WSL version), whether Docker Desktop is " +
             "installed and running, and any setup Martlet continues after a Windows restart. Read-only; changes nothing.", new
@@ -139,6 +152,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "ui_set_text" => desktop.SetText(RequiredString(arguments, "id"), RequiredString(arguments, "text")),
                 "ui_toggle" => desktop.Toggle(RequiredString(arguments, "id")),
                 "voices_status" => VoicesStatus(arguments),
+                "f5_voices" => F5Voices(arguments),
+                "cluster_status" => ClusterStatus(arguments),
                 "virtualization_status" => await VirtualizationStatusAsync(arguments, cancellation),
                 _ => throw new ArgumentException($"Unknown tool '{name}'.")
             };
@@ -258,6 +273,87 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 startsAtSignIn
             }
         };
+    }
+
+    /// <summary>F5's included reference voices, each checked, and the data directory's F5 voice list (the "f5-voices" store
+    /// Martlet.Desktop keeps). Own voices are counted, never named; an included voice is recognized by its clip's SHA-256.</summary>
+    private static object F5Voices(JsonElement arguments)
+    {
+        var directory = DataDirectory(arguments);
+        var included = Martlet.F5.F5BundledVoices.All.Select(voice =>
+        {
+            try
+            {
+                var format = voice.Check();
+                return (object)new
+                {
+                    key = voice.Key, name = voice.Name, description = voice.Description, licence = voice.Licence, transcript = voice.Transcript,
+                    sha256 = voice.AudioSha256, sampleRate = format.SampleRate, durationMs = format.DurationMilliseconds, valid = true
+                };
+            }
+            catch (Martlet.F5.F5Exception error)
+            {
+                return new { key = voice.Key, name = voice.Name, valid = false, problem = error.Failure.ToString() };
+            }
+        }).ToArray();
+        var storeDirectory = Path.Combine(directory, "f5-voices");
+        object list;
+        if (!File.Exists(Path.Combine(storeDirectory, ".martlet-f5-references.v1.json"))) list = new { state = "none" };
+        else
+        {
+            try
+            {
+                using var store = Martlet.F5.F5ReferencePresetStore.Open(storeDirectory);
+                var inspection = store.Inspect();
+                string Kind(string sha256) => Martlet.F5.F5BundledVoices.ForAudio(sha256)?.Key ??
+                    (Martlet.F5.F5BundledVoices.IsRetiredSample(sha256) ? "retired-sample" : "own");
+                var latest = inspection.Presets.Select(p => (p.Id, Kind: Kind(p.Snapshots.LastOrDefault()?.AudioSha256 ?? ""))).ToArray();
+                list = new
+                {
+                    state = "loaded", voices = latest.Length,
+                    included = latest.Where(p => p.Kind is not ("own" or "retired-sample")).Select(p => p.Kind).Distinct().ToArray(),
+                    own = latest.Count(p => p.Kind == "own"), retiredSample = latest.Any(p => p.Kind == "retired-sample"),
+                    applied = latest.Where(p => p.Id == inspection.AppliedPresetId).Select(p => p.Kind).FirstOrDefault()
+                };
+            }
+            catch (Martlet.F5.F5Exception error) { list = new { state = error.Failure == Martlet.F5.F5Failure.Busy ? "busy" : "unreadable", problem = error.Failure.ToString() }; }
+        }
+        return new { @default = Martlet.F5.F5BundledVoices.Default.Key, included, list };
+    }
+
+    /// <summary>Shared "who does what" as the desktop keeps it in a data directory (the file names match Martlet.Desktop's
+    /// ClusterSync): the sync choice, on unless cluster-sync.txt says "off", and cluster.json without host addresses.</summary>
+    private static object ClusterStatus(JsonElement arguments)
+    {
+        var directory = DataDirectory(arguments);
+        string? choice;
+        try { choice = File.ReadAllText(Path.Combine(directory, "cluster-sync.txt")).Trim(); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { choice = null; }
+        object plan;
+        var path = Path.Combine(directory, "cluster.json");
+        if (!File.Exists(path)) plan = new { state = "none" };
+        else
+        {
+            try
+            {
+                var copy = Martlet.Core.Cluster.ClusterPlan.Parse(File.ReadAllBytes(path));
+                plan = new
+                {
+                    state = "loaded", revision = copy.Revision,
+                    jobs = copy.Assignments.Select(a => new
+                    {
+                        job = a.Job, host = a.HostId, off = a.Off, failover = a.Failover, movedFrom = a.MovedFrom,
+                        updatedBy = a.UpdatedBy, updatedAt = a.UpdatedAt
+                    }).ToArray(),
+                    hosts = copy.Nodes.Select(n => new { hostId = n.HostId, removed = n.Removed, roles = n.Roles.Select(r => r.Kind).ToArray() }).ToArray()
+                };
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
+            {
+                plan = new { state = "unreadable" };
+            }
+        }
+        return new { sync = choice switch { "off" => "off", null => "on (default)", _ => "on" }, plan };
     }
 
     private static async Task<object> DoctorAsync(string[] args, JsonElement arguments, CancellationToken cancellation)

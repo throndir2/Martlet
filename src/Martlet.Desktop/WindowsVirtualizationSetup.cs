@@ -20,16 +20,17 @@ internal static class WindowsVirtualizationSetup
     private const string FirmwareHow =
         "turn on the option usually called Intel Virtualization Technology (VT-x), or SVM Mode on AMD processors, then save and exit";
 
-    /// <summary>Returns when Windows is ready (or does not say otherwise); throws <see cref="PausedForRestartException"/>
-    /// when a restart is needed and <see cref="InvalidOperationException"/> when the owner declined or a step failed.
+    /// <summary>Returns when Windows is ready (or does not say otherwise): true when Martlet just changed Windows without a
+    /// restart (Docker Desktop, if it is running, needs a restart of its own). Throws <see cref="PausedForRestartException"/>
+    /// when Windows must restart and <see cref="InvalidOperationException"/> when the owner declined or a step failed.
     /// <paramref name="resume"/> is what continues after the restart.</summary>
-    internal static async Task EnsureReadyAsync(HostRunWindow run, ContinueSetupKind resume)
+    internal static async Task<bool> EnsureReadyAsync(HostRunWindow run, ContinueSetupKind resume)
     {
         run.Status("Checking that Windows can run Docker Desktop (virtualization and WSL 2)...");
         var state = await WindowsVirtualization.ProbeAsync(run.Token);
         run.Output.Report("Windows: " + state.Describe() + ".");
         if (state.FirmwareOff) await FirmwareAsync(run, resume);
-        if (!state.NeedsChanges) return;
+        if (!state.NeedsChanges) return false;
         var problems = string.Join(", ", state.Problems());
         run.Output.Report($"Docker Desktop can't start yet: {problems}. Martlet turns on what it needs.");
         run.Status("Turning on Virtual Machine Platform, Windows Subsystem for Linux and WSL for Docker Desktop. Windows asks for " +
@@ -60,6 +61,7 @@ internal static class WindowsVirtualizationSetup
                       "check that virtualization is on in the firmware (UEFI/BIOS) and that no other virtualization software blocks it."
                     : "The output shows why."));
         run.Output.Report("Windows is ready for Docker Desktop.");
+        return true;
     }
 
     private static async Task FirmwareAsync(HostRunWindow run, ContinueSetupKind resume)

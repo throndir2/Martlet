@@ -24,9 +24,10 @@ public partial class MainWindow
         var stack = new List<UIElement>
         {
             Heading("Voices"),
-            Note("F5 speaks in the voice of any short recording you add, with no training. Add as many as you like and switch " +
-                "between them any time. Martlet keeps each recording on this PC and sends it with each reply only to the computer " +
-                "that speaks." + (f5 is null ? " The chosen voice speaks once F5 does the speaking, on this PC or another of your computers." : ""),
+            Note("F5 speaks in the voice of any short recording, with no training. Martlet comes with ten voices that are free to " +
+                "use and share (public domain or CMU ARCTIC recordings), and you can add your own. Switch between them any time. " +
+                "Martlet keeps each recording on this PC and sends it with each reply only to the computer that speaks." +
+                (f5 is null ? " The chosen voice speaks once F5 does the speaking, on this PC or another of your computers." : ""),
                 new Thickness(0, 0, 0, 10))
         };
         IReadOnlyList<F5ReferenceSnapshot> voices = [];
@@ -42,31 +43,67 @@ public partial class MainWindow
         }
         var chosen = f5?.Reference?.PresetId ?? applied;
         var mark = f5 is null ? "chosen" : "in use";
-        if (!voices.Any(F5Voices.IsSample))
-            stack.Add(VoiceRow(F5Voices.SampleName, "F5-TTS's published English sample voice (MIT licence), ready to use.", false, mark,
-                () => PlayVoiceAsync(null, F5Voices.SampleName), () => UseVoiceAsync(null), remove: null));
-        foreach (var voice in voices)
+        var chosenVoice = voices.FirstOrDefault(v => v.PresetId == chosen);
+        var own = voices.Where(v => F5Voices.Bundled(v) is null).ToArray();
+        var status = Note($"{F5BundledVoices.All.Count} included voices, {own.Length} of yours. " + (chosenVoice is null
+                ? $"None {mark} yet; F5 starts with {F5BundledVoices.Default.Name}."
+                : F5Voices.Bundled(chosenVoice) is { } bundledInUse ? $"{Capitalized(mark)}: {bundledInUse.Name}."
+                : F5Voices.IsRetiredSample(chosenVoice) ? $"{Capitalized(mark)}: the retired F5-TTS sample; switch to another voice."
+                : $"{Capitalized(mark)}: one of your voices."),
+            new Thickness(0, 0, 0, 10));
+        AutomationProperties.SetAutomationId(status, "F5VoicesStatus");
+        stack.Add(status);
+
+        stack.Add(VoiceGroup("Included voices"));
+        foreach (var bundled in F5BundledVoices.All)
+        {
+            var stored = voices.FirstOrDefault(v => F5Voices.Bundled(v) == bundled);
+            var inUse = stored is not null && stored.PresetId == chosen;
+            stack.Add(VoiceRow(bundled.Name, bundled.Description, inUse, mark, bundled.Key, status: true,
+                () => PlayVoiceAsync(stored, bundled.Name, bundled), () => UseVoiceAsync(stored, bundled),
+                stored is null || inUse || stored.PresetId == applied ? null : () => RemoveVoiceAsync(stored)));
+        }
+
+        if (own.Length > 0) stack.Add(VoiceGroup("Your voices"));
+        foreach (var voice in own)
         {
             var inUse = voice.PresetId == chosen;
-            var detail = F5Voices.IsSample(voice) ? "F5-TTS's published English sample voice (MIT licence)."
+            var detail = F5Voices.IsRetiredSample(voice)
+                ? "Earlier versions of Martlet included this clip from F5-TTS's examples. It is no longer included because where its " +
+                  "recording comes from couldn't be confirmed. Switch to another voice, then remove it."
                 : $"{voice.AudioFormat.DurationMilliseconds / 1000d:0.#} second recording, added {voice.CreatedAtUtc.ToLocalTime():d}.";
-            stack.Add(VoiceRow(voice.PresetName, detail, inUse, mark, () => PlayVoiceAsync(voice, voice.PresetName), () => UseVoiceAsync(voice),
+            stack.Add(VoiceRow(voice.PresetName, detail, inUse, mark, voice.PresetId.ToString("N"), status: false,
+                () => PlayVoiceAsync(voice, voice.PresetName), () => UseVoiceAsync(voice),
                 inUse || voice.PresetId == applied ? null : () => RemoveVoiceAsync(voice)));
         }
-        stack.Add(Row(PageButton("Add a voice...", () => AddVoiceAsync(destination).Forget(), primary: voices.Count == 0, id: "F5AddVoice")));
+        stack.Add(Row(PageButton("Add a voice...", () => AddVoiceAsync(destination).Forget(), id: "F5AddVoice")));
         return Card([.. stack]);
     }
 
-    private UIElement VoiceRow(string name, string detail, bool inUse, string mark, Func<Task> play, Func<Task> use, Func<Task>? remove)
+    private static string Capitalized(string text) => char.ToUpperInvariant(text[0]) + text[1..];
+
+    private static TextBlock VoiceGroup(string text)
+    {
+        var label = Note(text.ToUpperInvariant(), new Thickness(0, 6, 0, 8));
+        label.FontWeight = FontWeights.SemiBold;
+        return label;
+    }
+
+    /// <summary>One voice: its name (with the in-use mark), a detail line, and Play, Use and (when it may go) Remove. Controls
+    /// are identified by <paramref name="key"/>; included voices' titles are also readable status (<c>F5VoiceRow-key</c>).</summary>
+    private UIElement VoiceRow(string name, string detail, bool inUse, string mark, string key, bool status, Func<Task> play, Func<Task> use,
+        Func<Task>? remove)
     {
         var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        text.Children.Add(new TextBlock { Text = name + (inUse ? $"  \u00b7  {mark}" : ""), FontSize = 15, FontWeight = FontWeights.SemiBold,
-            TextWrapping = TextWrapping.Wrap });
+        var title = new TextBlock { Text = name + (inUse ? $"  \u00b7  {mark}" : ""), FontSize = 15, FontWeight = FontWeights.SemiBold,
+            TextWrapping = TextWrapping.Wrap };
+        if (status) AutomationProperties.SetAutomationId(title, $"F5VoiceRow-{key}");
+        text.Children.Add(title);
         text.Children.Add(Note(detail, new Thickness(0, 2, 0, 0)));
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         Button Small(string label, Func<Task> run, string id)
         {
-            var button = PageButton(label, () => run().Forget(), id: $"F5Voice{id}-{name}");
+            var button = PageButton(label, () => run().Forget(), id: $"F5Voice{id}-{key}");
             button.MinWidth = 72;
             button.Margin = new Thickness(8, 0, 0, 0);
             AutomationProperties.SetName(button, $"{label} {name}");
@@ -84,13 +121,14 @@ public partial class MainWindow
         return row;
     }
 
-    /// <summary>Plays a voice's recording on Windows' default speakers: Martlet's copy, or the bundled sample (null).</summary>
-    private async Task PlayVoiceAsync(F5ReferenceSnapshot? voice, string name)
+    /// <summary>Plays a voice's recording on Windows' default speakers: Martlet's copy, or a bundled voice's clip.</summary>
+    private async Task PlayVoiceAsync(F5ReferenceSnapshot? voice, string name, F5BundledVoice? bundled = null)
     {
         if (store is null || closing) return;
         try
         {
-            var audio = voice is null ? F5Voices.SampleBytes : await F5Voices.ReadAudioAsync(store.DataDirectory, voice, lifetime.Token);
+            var audio = voice is null ? (bundled ?? F5BundledVoices.Default).ReadAudio()
+                : await F5Voices.ReadAudioAsync(store.DataDirectory, voice, lifetime.Token);
             voicePlayer?.Stop();
             voicePlayer = new SoundPlayer(new MemoryStream(audio));
             voicePlayer.Play();
@@ -104,9 +142,9 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Makes a voice the one F5 speaks with (null: the bundled sample, added to the list first). When F5 speaks
-    /// now, the speaking route keeps the voice, so the next conversation uses it; otherwise it is used once F5 speaks.</summary>
-    private async Task UseVoiceAsync(F5ReferenceSnapshot? voice)
+    /// <summary>Makes a voice the one F5 speaks with (null: <paramref name="bundled"/>, added to the list first). When F5
+    /// speaks now, the speaking route keeps the voice, so the next conversation uses it; otherwise it is used once F5 speaks.</summary>
+    private async Task UseVoiceAsync(F5ReferenceSnapshot? voice, F5BundledVoice? bundled = null)
     {
         if (store is null || setupService is null || closing) return;
         if (savingTab || assigningRole || setupOperations.IsRunning)
@@ -123,10 +161,10 @@ public partial class MainWindow
             var route = loaded.Settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Tts);
             var f5 = route is { RouteType: SetupRouteType.GatewayF5, GatewaySnapshot: not null } ? route : null;
             var destination = f5?.GatewaySnapshot!.DestinationId ?? F5Destination;
-            if (voice is null)
+            if (voice is null || voice.Rights.ProcessingDestinationId != destination && bundled is not null)
             {
                 using var voices = F5Voices.Open(store.DataDirectory);
-                voice = await F5Voices.SampleAsync(voices, store.DataDirectory, destination, token);
+                voice = await F5Voices.BundledAsync(voices, store.DataDirectory, destination, bundled ?? F5BundledVoices.Default, token);
             }
             if (voice.Rights.ProcessingDestinationId != destination)
                 throw new InvalidOperationException($"'{voice.PresetName}' was added for another F5 destination. Add its recording again.");
