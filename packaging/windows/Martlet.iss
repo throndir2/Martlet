@@ -43,7 +43,7 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64os
 ArchitecturesInstallIn64BitMode=x64os
 SetupArchitecture=x64
-MinVersion=10.0.26200
+MinVersion=10.0.19041
 Uninstallable=yes
 #ifdef PublicRelease
 UninstallDisplayName=Martlet

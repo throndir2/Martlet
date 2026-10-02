@@ -52,7 +52,7 @@ per-user app; no large model download without typing `y` or a model tag.
 
 | Prerequisite | Needed for | Delivery | Details |
 | --- | --- | --- | --- |
-| Windows 11 25H2 x64 (build 26200+) | Everything | Checked by the installer | `MinVersion=10.0.26200`, x64 only. |
+| Windows 10 2004+ or Windows 11, x64 (build 19041+) | Everything | Checked by the installer | `MinVersion=10.0.19041`, x64 only. Windows 11 25H2 is the main test target. |
 | .NET 10.0.12 + Windows Desktop runtime | Everything | **Bundled** | Self-contained Desktop, Doctor and avatar renderer; no separate .NET install. |
 | NAudio 3.1.0 (WASAPI), System.Speech 10.0.12, System.Numerics.Tensors | Audio capture/playback, Windows speech adapters | **Bundled** | [DEPENDENCIES](../packaging/windows/DEPENDENCIES.txt). |
 | gRPC 2.84.0 / Protobuf 3.36.2 | Audio2Face client | **Bundled** | |

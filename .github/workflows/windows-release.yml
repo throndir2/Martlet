@@ -103,7 +103,7 @@ jobs:
           if (($existing -join "`n") -notmatch 'HTTP 404') { throw "Cannot establish absence of the release tag: $existing" }
           $licenseUrl = "https://github.com/$env:GITHUB_REPOSITORY/blob/$env:GITHUB_SHA/LICENSE"
           $noticeUrl = "https://github.com/$env:GITHUB_REPOSITORY/blob/$env:GITHUB_SHA/packaging/windows/DEPENDENCIES.txt"
-          $notes = "Martlet $env:RELEASE_VERSION for Windows 11 x64. Download and run $name.`n`nThe installer is not code-signed, so Windows SmartScreen may show an unknown-publisher warning.`n`nLicense: $licenseUrl (personal, noncommercial use of these official binaries). Third-party components keep their own terms: $noticeUrl; full notices are included in the installer.`n`nInstaller SHA-256: $sha"
+          $notes = "Martlet $env:RELEASE_VERSION for Windows 10 (version 2004 or newer) and Windows 11, x64. Download and run $name.`n`nThe installer is not code-signed, so Windows SmartScreen may show an unknown-publisher warning.`n`nLicense: $licenseUrl (personal, noncommercial use of these official binaries). Third-party components keep their own terms: $noticeUrl; full notices are included in the installer.`n`nInstaller SHA-256: $sha"
           & gh api -X POST "repos/$env:GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$tag" -f "sha=$env:GITHUB_SHA" --silent
           if ($LASTEXITCODE -ne 0) { throw 'Could not create the version tag at the built commit.' }
           & gh release create $tag $installer $receipt $sums --repo $env:GITHUB_REPOSITORY `
