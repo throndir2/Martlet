@@ -17,7 +17,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "NavHome", "NavDevices", "NavCompanion", "NavDiagnostics", "NavSettings", "TourSkip", "TourBegin", "TourBack", "DiagnosticsSection",
         "OpenPeople", "DeviceFactsSection", "DeviceReachSection", "DeviceRolesSection", "HealthRecheck", "LogsRefresh",
         // The talk window's Stop (Esc) only stops work (a reply, a recording, vision); it starts nothing and never pauses listening.
-        "LiveStop"
+        "LiveStop",
+        // Add a computer: opening the wizard, moving between its steps and choosing how a host is reached only change what it
+        // shows; its Set up, Pair and role buttons do the work.
+        "AddComputer", "OpenHosts", "HostsStepWhere", "HostsStepInstall", "HostsStepPair", "HostsStepRoles", "HostsBack", "HostsNext",
+        "HostsClose", "HostsEnterCode", "HostMethodThisPc", "HostMethodSshDocker", "HostMethodSshNative", "HostMethodOnHost",
+        "HostCommandSection", "PairCommandSection", "DeviceIdSection"
     };
     /// <summary>Choosing a Companion page in its side list only shows that page; Devices map nodes ("Node-this-pc",
     /// "Node-host:gpu-1") and the problem card's Show buttons only select a device and show its details; a job's
@@ -37,7 +42,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "VisionStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "SetupF5About", "F5VoicesStatus",
         "SetupOllamaStatus", "SetupLocalModelTest", "HostRunStatus", "RepliesNow",
         "StageTitle", "StageText", "HealthTitle", "HealthSummary", "HealthAllClear",
-        "LogSummary", "LogHostStatus", "LogHostChoice", "LogDetail"
+        "LogSummary", "LogHostStatus", "LogHostChoice", "LogDetail",
+        "HostStatus", "PairedHost", "PairCodeTitle", "PairCodeHelp", "HostRunPairAddress"
     };
     /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)");
     /// Companion › Voice's included F5 voices ("F5VoiceRow-arctic-slt" reads "SLT (US female)", with "· in use" when it is);

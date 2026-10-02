@@ -148,7 +148,7 @@ Operator-managed disk encryption is separate and is neither detected nor set up.
 | `health` | Explicit bounded pinned HTTPS observation using the approved nonsecret pin; not a passive command. |
 | `owner-init` | Owner command, no console: create the selected absent state leaf (as `init`) and approve unattended serve of exactly this configuration and identity (as `approve-service`), then close. |
 | `owner-approve` | Owner command, no console: open the existing identity (as `admin`, which also accepts an approval for an earlier config of the same host, UID/GID and pin) and approve unattended serve of exactly this configuration, then close. |
-| `owner-pair` | Owner command, no console: `owner-pair --config <path> --device-id <id> --name <display name> [--roles voice]`. Open the existing identity, start the listener, create one five-minute invitation for exactly that device, print it as one `pairing-code: martlet-pair-v1...` line, wait until that device registers a new credential (exit 0), the invitation expires or a `cancel` line arrives on stdin (exit 3), then close cleanly. The daemon must be stopped, as for `admin`. |
+| `owner-pair` | Owner command, no console. `owner-pair --config <path> [--roles voice]`: open the existing identity, start the listener, open one five-minute short-code window and print the host's address and an `XXXX-XXXX` code for a person to type in Martlet (**Enter a pairing code**); whichever desktop proves the code names itself ([short typed codes](../Martlet.Gateway/README.md#short-typed-codes)). `owner-pair --config <path> --device-id <id> --name <display name> [--roles voice]`: create one five-minute invitation for exactly that device and print it as one `pairing-code: martlet-pair-v1...` line (Martlet reads it over SSH or on this PC). Either way, wait until a new credential registers (exit 0), the invitation expires or a `cancel` line arrives on stdin (exit 3), then close cleanly. The daemon must be stopped, as for `admin`. |
 
 Administration commands are `start`, `pair`, `list`, `revoke`,
 `approve-service`, `disable-service`, `stop`, `help`. Authority-changing actions
@@ -195,9 +195,10 @@ identity by its expected host ID under native custody, then display/review its
 pin before granting new approval; this is not remote authentication.
 Admin also opens when an approval exists for an earlier config of the same host,
 UID/GID and pin (for example after a role was added), so `approve-service` can
-renew it; `serve` still requires the exact config. Each `pair` invitation also
-prints one `martlet-pair-v1.<base64url JSON>` code carrying the origin, host ID,
-pin, pairing ID and token for pasting into the desktop.
+renew it; `serve` still requires the exact config. Each console `pair` invitation
+also prints one `martlet-pair-v1.<base64url JSON>` code carrying the origin, host
+ID, pin, pairing ID and token for pasting into the desktop; `owner-pair` without
+a device shows a short typed code instead (`martlet-host pair`).
 
 ## Binding changes, certificates and recovery
 

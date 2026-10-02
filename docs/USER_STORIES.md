@@ -63,7 +63,7 @@ runner, P5, is the next step). What remains is typed on a host by hand:
 
 | Action | What the user sees today |
 | --- | --- |
-| Hosts › *I'll type the commands on the host myself* | Open console, type `start`, run `pair --device-id …`, copy a `martlet-pair-v1.…` code back, type `stop` |
+| Hosts › *I'll type the commands on the host myself* | Run `martlet-host pair` on the host and type the address and short code it shows (like `K7QM-4XPA`) in *Enter a pairing code*; the host finishes by itself |
 
 ### 1.4 Agreements in the middle of using it
 

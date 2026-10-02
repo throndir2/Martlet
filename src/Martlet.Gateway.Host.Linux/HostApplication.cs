@@ -356,22 +356,33 @@ internal static class HostApplication
     private static async Task<int> PairOnceAsync(DurableGatewayHost owner, HostConfiguration config,
         LinuxControlDirectory directory, HostOptions options, TextReader input, TextWriter output, CancellationToken cancellation)
     {
-        var device = options.DeviceId!;
+        var device = options.DeviceId;
         var roles = Roles(options.Roles);
         var known = owner.ListRegistrations(cancellation).Select(r => r.CredentialId).ToHashSet(StringComparer.Ordinal);
         config.Recheck(directory);
         await owner.StartAsync(cancellation);
         config.Recheck(directory);
-        var card = owner.OpenPairing(new() { DeviceId = device, DisplayName = options.Name!, Roles = roles }, cancellation);
-        output.WriteLine($"Listener started. One-use invitation for device {device} ({string.Join(',', roles)}), host pin {owner.Identity!.SpkiFingerprint}, expires {card.ExpiresAt:O}.");
-        output.WriteLine("pairing-code: " + PairingCode.Format(card));
+        DateTimeOffset expiresAt;
+        if (device is null)
+        {
+            var code = owner.OpenCodePairing(new() { Roles = roles }, cancellation);
+            expiresAt = code.ExpiresAt;
+            output.WriteLine(PairingCode.Describe(code));
+        }
+        else
+        {
+            var card = owner.OpenPairing(new() { DeviceId = device, DisplayName = options.Name!, Roles = roles }, cancellation);
+            expiresAt = card.ExpiresAt;
+            output.WriteLine($"Listener started. One-use invitation for device {device} ({string.Join(',', roles)}), host pin {owner.Identity!.SpkiFingerprint}, expires {card.ExpiresAt:O}.");
+            output.WriteLine("pairing-code: " + PairingCode.Format(card));
+        }
         output.Flush();
         // Console.In reads synchronously, so the watcher runs on its own thread; it is abandoned when pairing ends.
         var canceled = Task.Run(() => WatchForCancel(input), CancellationToken.None);
         while (true)
         {
             var registered = owner.ListRegistrations(cancellation)
-                .FirstOrDefault(r => r.DeviceId == device && !r.Revoked && !known.Contains(r.CredentialId));
+                .FirstOrDefault(r => (device is null || r.DeviceId == device) && !r.Revoked && !known.Contains(r.CredentialId));
             if (registered is not null)
             {
                 output.WriteLine($"Paired: {Display(registered.DeviceId)} ({Display(registered.DisplayName)}), roles {string.Join(',', registered.Roles)}. Permanent until revoked.");
@@ -382,9 +393,11 @@ internal static class HostApplication
                 output.WriteLine("pairing.canceled: the invitation was withdrawn before a desktop redeemed it.");
                 return 3;
             }
-            if (DateTimeOffset.UtcNow >= card.ExpiresAt)
+            if (DateTimeOffset.UtcNow >= expiresAt)
             {
-                output.WriteLine("pairing.expired: no desktop redeemed the invitation within five minutes.");
+                output.WriteLine(device is null
+                    ? "pairing.expired: no desktop typed the code within five minutes (or it was mistyped five times). Run pair again for a new code."
+                    : "pairing.expired: no desktop redeemed the invitation within five minutes.");
                 return 3;
             }
             await Task.Delay(500, cancellation);

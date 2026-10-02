@@ -260,6 +260,27 @@ features* (administrator prompt and possibly a restart, so it needs
 virtualization, Martlet opens a run window by itself (`HostRunWindow`) that
 continues the setup; `continueSetup` in `virtualization_status` shows what is
 pending.
+Devices' `AddComputer` (and Settings' `OpenHosts`) opens the *Add a computer*
+wizard (`HostsWindow`, titled *Martlet - add a computer*; the click may return
+`completed: false` while that dialog stays open). Its rail steps
+(`HostsStepWhere`, `HostsStepInstall`, `HostsStepPair`, `HostsStepRoles`),
+`HostsBack`, `HostsNext`, `HostsClose`, the method cards (`HostMethodThisPc`,
+`HostMethodSshDocker`, `HostMethodSshNative`, `HostMethodOnHost`; choosing one
+moves on to Install), `HostsEnterCode` (straight to Pair for a host that already
+shows a code) and the `HostCommandSection`, `PairCommandSection` and
+`DeviceIdSection` expanders only change what the wizard shows, so they are
+passive clicks. Snapshots return `HostStatus` (the wizard's status line: what
+pairing did, or why it was refused, such as *That code doesn't match...* or *No
+Martlet host answered at ...*), `PairedHost`, and `PairCodeTitle`/`PairCodeHelp`
+(*Type the code the host shows* when Martlet can't reach the host, *Or type a
+code the host shows* next to `PairConsole` otherwise). `PairAddress` and
+`PairingCode` take the host's address and short code (`ui_set_text`, so
+`--allow-ui-effects`), and `PairHost` pairs; a successful pairing stores a
+device secret in Windows Credential Manager, so verification stops at refused
+codes. On the host dashboard, *Show a pairing code* (`Step-pair-0`) shows the
+address (`HostRunPairAddress`, returned) and the one-use code (`HostRunPairCode`,
+never returned) in the run window's `HostRunPairing` panel; the host-runs log
+masks codes.
 Use `ui_snapshot` again to observe asynchronous effects. Modal
 actions may return `completed: false` while their dialog remains open; this
 means the invoke is still pending, not that the action finished.
