@@ -582,7 +582,9 @@ public partial class MainWindow
         }
         testingLocalModel = true;
         ActionText.Text = $"Testing {model} in Ollama on this PC; the run window shows each step.";
-        var replyTokens = homeSettings?.Generation?.ReplyTokens ?? GenerationSettings.DefaultMaxReplyTokens;
+        // Like a reply on this route: no reply budget unless a max reply length is set, and the local route's first-answer wait.
+        int? replyTokens = GenerationSupport.SendsReplyBudget(GenerationSupport.LocalOllamaChatBaseUrl, homeSettings?.Generation)
+            ? homeSettings!.Generation!.ReplyTokens : null;
         LocalModelTestResult? result = null;
         string? failure = null;
         try
@@ -591,7 +593,7 @@ public partial class MainWindow
             {
                 try
                 {
-                    result = await LocalOllama.TestAsync(model, replyTokens, LiveConversationConfiguration.DefaultTextLimits.FirstDeltaTimeout,
+                    result = await LocalOllama.TestAsync(model, replyTokens, LiveConversationConfiguration.LocalOllamaTextLimits.FirstDeltaTimeout,
                         run.Status, run.Output, run.Token);
                     return result.Summary;
                 }
