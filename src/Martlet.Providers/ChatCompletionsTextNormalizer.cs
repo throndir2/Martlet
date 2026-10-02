@@ -26,6 +26,9 @@ internal sealed class ChatCompletionsTextNormalizer(TextGenerationLimits limits,
     public bool HasReasoningDelta { get; private set; }
     public bool MadeProgress { get; private set; }
 
+    /// <summary>The provider's own explanation from an in-stream error, for local diagnostics only.</summary>
+    public string? ProviderDetail { get; private set; }
+
     public TextStreamStep? Accept(ResponsesSseEvent value)
     {
         MadeProgress = false;
@@ -47,7 +50,10 @@ internal sealed class ChatCompletionsTextNormalizer(TextGenerationLimits limits,
         }
         var root = ContractJson.Read<ChatChunk>(value.Data, limits.MaxEventBytes);
         if (root.Error.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null))
+        {
+            ProviderDetail = ProviderDiagnostics.Describe(value.Data);
             throw new ResponseProtocolException(ProviderFailureCode.RequestRejected);
+        }
         Require(root.Object == "chat.completion.chunk");
         var nextId = root.Id;
         var nextModel = root.Model;

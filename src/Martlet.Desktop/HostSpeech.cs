@@ -168,7 +168,7 @@ internal sealed class HostSpeechClient(string dataDirectory) : IHostSpeechClient
         using var connection = Connect(target);
         var routes = await Guard(() => connection.ReadRoutesAsync(cancellationToken), cancellationToken).ConfigureAwait(false);
         var route = routes.FirstOrDefault(r => r.RouteId == HostRoute.F5RouteId && r.ModelId == target.ModelId) ??
-            throw new HostTextException(ProviderFailureCode.ModelNotFound);
+            throw HostTextClient.Failed("voice", ProviderFailureCode.ModelNotFound, $"the host offers no F5 route for model {target.ModelId}");
         await using var frames = connection.StreamSpeechAsync(route, ids, epoch, deadline, reference, input.Text, cancellationToken)
             .GetAsyncEnumerator(cancellationToken);
         while (await Guard(() => frames.MoveNextAsync().AsTask(), cancellationToken).ConfigureAwait(false))
@@ -216,11 +216,6 @@ internal sealed class HostSpeechClient(string dataDirectory) : IHostSpeechClient
     {
         try { return await call().ConfigureAwait(false); }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
-        catch (Audio2FaceHostException error) { throw new HostTextException(HostTextClient.Map(error.Code)); }
-        catch (Exception error) when (error is HttpRequestException or IOException) { throw new HostTextException(ProviderFailureCode.Network); }
-        catch (Exception error) when (error is JsonException or FormatException or InvalidOperationException)
-        {
-            throw new HostTextException(ProviderFailureCode.ResponseSchema);
-        }
+        catch (Exception error) when (HostTextClient.Failure("voice", error) is { } failure) { throw failure; }
     }
 }

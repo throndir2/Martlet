@@ -42,7 +42,7 @@ internal sealed class HostTextClient : IHostTextClient
         using var connection = Connect(target);
         var routes = await Guard(() => connection.ReadRoutesAsync(cancellationToken), cancellationToken).ConfigureAwait(false);
         var route = routes.FirstOrDefault(r => r.RouteId == HostRoute.OllamaChatRouteId && r.ModelId == model.UpstreamModelId) ??
-            throw new HostTextException(ProviderFailureCode.ModelNotFound);
+            throw Failed("reply", ProviderFailureCode.ModelNotFound, $"the host offers no Ollama chat route for model {model.UpstreamModelId}");
         var history = input.History.Select(m => new HostChatMessage(m.Role == TextHistoryRole.Assistant, m.Text)).ToArray();
         await using var deltas = connection.StreamChatAsync(route, ids, epoch, deadline, input.Personality, history, input.UserText,
             generation?.Temperature ?? HostTextGenerationStream.Temperature, limits.MaxOutputTokens, limits.MaxContextTokens,
@@ -75,12 +75,23 @@ internal sealed class HostTextClient : IHostTextClient
     {
         try { return await call().ConfigureAwait(false); }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
-        catch (Audio2FaceHostException error) { throw new HostTextException(Map(error.Code)); }
-        catch (Exception error) when (error is HttpRequestException or IOException) { throw new HostTextException(ProviderFailureCode.Network); }
-        catch (Exception error) when (error is JsonException or FormatException or InvalidOperationException)
-        {
-            throw new HostTextException(ProviderFailureCode.ResponseSchema);
-        }
+        catch (Exception error) when (Failure("reply", error) is { } failure) { throw failure; }
+    }
+
+    /// <summary>Maps a host gateway, transport or schema error to a provider failure, recording what the host said locally.</summary>
+    internal static HostTextException? Failure(string job, Exception error) => error switch
+    {
+        Audio2FaceHostException host => Failed(job, Map(host.Code), $"[{host.Code}] {host.Message}"),
+        HttpRequestException or IOException => Failed(job, ProviderFailureCode.Network, $"{error.GetType().Name}: {error.Message}"),
+        JsonException or FormatException or InvalidOperationException =>
+            Failed(job, ProviderFailureCode.ResponseSchema, $"{error.GetType().Name}: {error.Message}"),
+        _ => null
+    };
+
+    internal static HostTextException Failed(string job, ProviderFailureCode code, string detail)
+    {
+        ProviderDiagnostics.Report($"Martlet host {job}", code, detail);
+        return new(code);
     }
 
     internal static ProviderFailureCode Map(string code) => code switch

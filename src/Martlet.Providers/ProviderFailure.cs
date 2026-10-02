@@ -10,7 +10,8 @@ public enum ProviderFailureCode
     RequestRejected, RedirectRejected, Network, Server, ResponseTooLarge, ResponseTruncated,
     ResponseSchema, DeadlineExceeded, InputLimit, UnsupportedOutput, OutputTokenLimit,
     Incomplete, ContentFiltered, FirstDeltaTimeout, IdleTimeout,
-    VoiceUnsupported, SpeechMediaUnsupported, EmptyAudio, OutputAudioLimit, FirstAudioTimeout
+    VoiceUnsupported, SpeechMediaUnsupported, EmptyAudio, OutputAudioLimit, FirstAudioTimeout,
+    ModelRetired
 }
 
 public sealed record ProviderFailure
@@ -50,6 +51,8 @@ public sealed record ProviderFailure
                 (ErrorCode.ProviderFailed, "The provider rate-limited the request. No retry was made.", "provider.review-rate"),
             ProviderFailureCode.ModelNotFound =>
                 (ErrorCode.ProviderCapability, "The requested model is unavailable to this request.", "provider.review-model"),
+            ProviderFailureCode.ModelRetired =>
+                (ErrorCode.ProviderCapability, "The provider has retired the requested model.", "provider.review-model"),
             ProviderFailureCode.FormatRejected =>
                 (ErrorCode.AudioFormatUnsupported, "The provider rejected the audio format.", "provider.review-audio"),
             ProviderFailureCode.RedirectRejected =>

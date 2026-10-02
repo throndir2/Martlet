@@ -225,6 +225,7 @@ internal sealed class TextGenerationOperation(
                         await reader.VerifyDeclaredEndAsync(Token).ConfigureAwait(false);
                     else if (await reader.ReadAsync(Token).ConfigureAwait(false) is not null)
                         throw new ResponseProtocolException(ProviderFailureCode.ResponseSchema);
+                    if (step.Failure is { } failed) Report(failed.Code);
                 }
                 // Comments/unknown events/duplicates cannot extend progress deadlines.
                 if (chatNormalizer is null || chatNormalizer.MadeProgress)
@@ -331,11 +332,11 @@ internal sealed class TextGenerationOperation(
                 ? ProviderFailureCode.QuotaExceeded
                 : OpenAiResponseParser.Classify(response.StatusCode, bytes);
             return Fail(code == ProviderFailureCode.FormatRejected ? ProviderFailureCode.RequestRejected : code,
-                OpenAiTransport.RetryAdvice(response, clock));
+                OpenAiTransport.RetryAdvice(response, clock), ProviderDiagnostics.Enabled ? ProviderDiagnostics.Describe(bytes) : null);
         }
         if (response.Content.Headers.ContentType?.MediaType != "text/event-stream" ||
             response.Content.Headers.ContentEncoding.Count != 0)
-            return Fail(ProviderFailureCode.ResponseSchema);
+            return Fail(ProviderFailureCode.ResponseSchema, detail: "expected an uncompressed text/event-stream reply");
         if (response.Content.Headers.ContentLength > limits.MaxStreamBytes)
             return Fail(ProviderFailureCode.ResponseTooLarge);
         body = await response.Content.ReadAsStreamAsync(Token).ConfigureAwait(false);
@@ -598,10 +599,19 @@ internal sealed class TextGenerationOperation(
         progress!.CancelAfter(due > TimeSpan.Zero ? due : TimeSpan.Zero);
     }
 
-    private static TextStreamStep Fail(ProviderFailureCode code, TimeSpan? retryAfter = null) => new(
-        Outcome: code is ProviderFailureCode.DeadlineExceeded or ProviderFailureCode.FirstDeltaTimeout or ProviderFailureCode.IdleTimeout
-            ? TextGenerationOutcome.DeadlineExceeded : TextGenerationOutcome.Failed,
-        Failure: new(code, retryAfter, Stage.Generation));
+    private TextStreamStep Fail(ProviderFailureCode code, TimeSpan? retryAfter = null, string? detail = null)
+    {
+        Report(code, detail);
+        return new(
+            Outcome: code is ProviderFailureCode.DeadlineExceeded or ProviderFailureCode.FirstDeltaTimeout or ProviderFailureCode.IdleTimeout
+                ? TextGenerationOutcome.DeadlineExceeded : TextGenerationOutcome.Failed,
+            Failure: new(code, retryAfter, Stage.Generation));
+    }
+
+    private void Report(ProviderFailureCode code, string? detail = null) =>
+        ProviderDiagnostics.Report(chatBaseUri is null ? "OpenAI Responses" : "Chat Completions",
+            request?.RequestUri ?? chatBaseUri ?? OpenAiTextGenerationCatalog.Endpoint, model.UpstreamModelId, code, response,
+            detail ?? chatNormalizer?.ProviderDetail ?? normalizer?.ProviderDetail);
 
     public void Dispose()
     {

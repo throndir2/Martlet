@@ -27,6 +27,8 @@ internal sealed class ResponsesTextNormalizer(TextGenerationLimits limits, strin
     private int characters;
     private bool inProgress;
     public bool HasContentDelta { get; private set; }
+    /// <summary>The provider's own explanation from an error event, for local diagnostics only.</summary>
+    public string? ProviderDetail { get; private set; }
 
     public TextStreamStep? Accept(ResponsesSseEvent value)
     {
@@ -40,7 +42,10 @@ internal sealed class ResponsesTextNormalizer(TextGenerationLimits limits, strin
         bool firstEvent = lastSequence == -1;
         lastSequence = e.SequenceNumber;
         if (e.Type == "error")
+        {
+            ProviderDetail = ProviderDiagnostics.Describe(value.Data);
             return Failure(ClassifyError(e.Code));
+        }
         if (e.Type == "response.created")
         {
             Require(responseId is null && firstEvent);
@@ -175,6 +180,7 @@ internal sealed class ResponsesTextNormalizer(TextGenerationLimits limits, strin
             case "response.failed":
                 ValidateResponse(e.Response, "failed");
                 var error = Object(e.Response, "error");
+                ProviderDetail = ProviderDiagnostics.Describe(e.Response);
                 return Failure(ClassifyError(String(error, "code")), usage: Usage(e.Response));
             default:
                 throw new ResponseProtocolException(ProviderFailureCode.UnsupportedOutput);

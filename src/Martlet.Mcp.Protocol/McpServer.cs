@@ -22,6 +22,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
             probes = new { type = "array", items = new { type = "string" }, minItems = 1 },
             dataDirectory = new { type = "string" }
         }, ["probes"]),
+        Tool("logs_tail", "Read the last lines of a local Martlet log (desktop, avatar-renderer or host-runs), optionally only lines " +
+            "containing some text. Failed provider requests appear in the desktop log with their HTTP status and the provider's " +
+            "own short explanation. Read-only; logs can include local paths and provider error text, never keys.", new
+        {
+            log = new { type = "string", @enum = LogTail.Logs },
+            lines = new { type = "integer", minimum = 1, maximum = LogTail.MaximumLines },
+            contains = new { type = "string", maxLength = LogTail.MaximumFilterLength },
+            dataDirectory = new { type = "string" }
+        }),
 
         Tool("ui_connect", "Attach to an already-running Martlet.Desktop process in this interactive session.", new
         {
@@ -113,6 +122,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "doctor_list" => await DoctorAsync(["list", "--json"], arguments, cancellation),
                 "doctor_run" => await DoctorAsync(
                     ["run", .. RequiredStrings(arguments, "probes"), "--json"], arguments, cancellation),
+                "logs_tail" => LogTail.Read(OptionalString(arguments, "dataDirectory"), OptionalString(arguments, "log"),
+                    OptionalInt(arguments, "lines"), OptionalString(arguments, "contains")),
 
                 "ui_connect" => desktop.Connect(RequiredInt(arguments, "pid")),
                 "ui_snapshot" => desktop.Snapshot(),
@@ -206,6 +217,24 @@ internal sealed class McpServer(DesktopAutomation desktop)
             !element.TryGetProperty(property, out var value) || !value.TryGetInt32(out var number))
             throw new ArgumentException($"Missing integer '{property}'.");
         return number;
+    }
+
+    private static string? OptionalString(JsonElement element, string property)
+    {
+        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(property, out var value) ||
+            value.ValueKind == JsonValueKind.Null)
+            return null;
+        if (value.ValueKind != JsonValueKind.String) throw new ArgumentException($"'{property}' must be a string.");
+        return value.GetString();
+    }
+
+    private static int? OptionalInt(JsonElement element, string property)
+    {
+        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(property, out var value) ||
+            value.ValueKind == JsonValueKind.Null)
+            return null;
+        return value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number)
+            ? number : throw new ArgumentException($"'{property}' must be an integer.");
     }
 
     private static string[] RequiredStrings(JsonElement element, string property)

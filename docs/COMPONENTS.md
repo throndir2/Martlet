@@ -69,7 +69,9 @@ removing detached keys.
 - Custom endpoints have no default (Martlet cannot know what the server serves).
 
 Current defaults (phase 1): OpenAI Thinking `gpt-4.1-mini-2025-04-14`, OpenRouter
-`meta-llama/llama-3.3-70b-instruct`, NVIDIA Build `meta/llama-3.3-70b-instruct`,
+`meta-llama/llama-3.3-70b-instruct`, NVIDIA Build `google/gemma-4-31b-it` (NVIDIA
+retired `meta/llama-3.3-70b-instruct` on 2026-08-26; a retired model answers HTTP 410
+and Martlet reports `ModelRetired`),
 Listening `gpt-4o-mini-transcribe`, Speaking `gpt-4o-mini-tts-2025-12-15` with
 voice `alloy`. They live next to their catalogs
 (`ChatCompletionsEndpointCatalog`, `OpenAi*Catalog.DefaultModelId`).

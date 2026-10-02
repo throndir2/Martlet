@@ -19,15 +19,10 @@ internal sealed class HostTranscriptionClient : IHostTranscriptionClient
         {
             var routes = await connection.ReadRoutesAsync(cancellationToken).ConfigureAwait(false);
             var route = routes.FirstOrDefault(r => r.RouteId == Audio2FaceHostConnection.TranscriptionRouteId && r.ModelId == modelId) ??
-                throw new HostTextException(ProviderFailureCode.ModelNotFound);
+                throw HostTextClient.Failed("listening", ProviderFailureCode.ModelNotFound, $"the host offers no transcription route for model {modelId}");
             return await connection.TranscribeAsync(route, ids, epoch, deadline, pcm16kMono, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch (Audio2FaceHostException error) { throw new HostTextException(HostTextClient.Map(error.Code)); }
-        catch (Exception error) when (error is HttpRequestException or IOException) { throw new HostTextException(ProviderFailureCode.Network); }
-        catch (Exception error) when (error is JsonException or FormatException or InvalidOperationException)
-        {
-            throw new HostTextException(ProviderFailureCode.ResponseSchema);
-        }
+        catch (Exception error) when (HostTextClient.Failure("listening", error) is { } failure) { throw failure; }
     }
 }
