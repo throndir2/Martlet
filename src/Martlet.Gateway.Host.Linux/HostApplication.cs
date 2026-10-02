@@ -96,6 +96,23 @@ internal sealed class ControlVoiceStorage(LinuxControlDirectory directory) : IGa
     }
 }
 
+/// <summary>Keeps the shared Home Assistant connection in home-assistant.json beside host.json (0600, service owner).
+/// Contains the HA access token and is not part of the approved configuration.</summary>
+internal sealed class ControlHomeAssistantStorage(LinuxControlDirectory directory) : IGatewayHomeAssistantStorage
+{
+    private readonly object gate = new();
+
+    public byte[]? Load()
+    {
+        lock (gate) return directory.Read(LinuxControlDirectory.HomeAssistant, LinuxControlDirectory.MaximumHomeAssistantBytes);
+    }
+
+    public void Save(byte[] bytes)
+    {
+        lock (gate) directory.WriteHomeAssistant(bytes);
+    }
+}
+
 /// <summary>Keeps the gateway's log in logs.json beside host.json (0600, service owner): its own activity and, when the
 /// owner made it the log host, every computer's lines. Not part of the approved configuration.</summary>
 internal sealed class ControlLogStorage(LinuxControlDirectory directory) : IGatewayLogStorage
@@ -242,6 +259,7 @@ internal static class HostApplication
                 {
                     owner.AttachCluster(new ControlClusterStorage(directory));
                     owner.AttachVoices(new ControlVoiceStorage(directory));
+                    owner.AttachHomeAssistant(new ControlHomeAssistantStorage(directory));
                     owner.AttachApiKeys(new ControlApiKeyStorage(directory));
                     owner.AttachNetwork(new ControlNetworkStorage(directory));
                     var (networkState, networkId) = owner.NetworkState;

@@ -169,7 +169,7 @@ public partial class MainWindow
         CompanionTab.People => "Teach Martlet whose voices it hears and the names they use.",
         CompanionTab.Replies => "Control reply length and creativity.",
         CompanionTab.Tools => "Add tools Martlet can use while you talk, and choose when it must ask first.",
-        CompanionTab.SmartHome => "Connect Home Assistant so Martlet can control your home when you ask.",
+        CompanionTab.SmartHome => "Find, set up or install Home Assistant, share it with your other computers, and let Martlet control your home when you ask.",
         _ => ""
     };
 

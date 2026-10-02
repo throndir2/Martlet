@@ -399,6 +399,18 @@ internal static class NetworkMap
                         Argument: id + "/" + role.Kind, Component: offered ? RoleComponent(role.Kind) : null));
             }
             if (managed) target.Commands.Add(new(NodeAction.HostStatus, "Show its status", Argument: id, Component: hostService));
+            // Home Assistant runs on the host's own network (no gateway route); the host reports it in its machine report.
+            var hardware = inputs.HostHardware?.FirstOrDefault(h => h.HostId == id);
+            if (HomeAssistantHosts.Runs(hardware))
+            {
+                target.Roles.Add(new("Home", "Home Assistant", $"Runs at {HomeAssistantHosts.Address(paired).AbsoluteUri.TrimEnd('/')}. " +
+                    "Set it up and manage it in Companion > Smart home.", DeviceComponent.Standby(HomeAssistantHosts.Role)));
+                target.Commands.Add(new(NodeAction.Companion, "Open Smart home", Argument: nameof(CompanionTab.SmartHome)));
+                if (managed && !local)
+                    target.Commands.Add(new(NodeAction.RemoveRole, "Remove Home Assistant", Argument: id + "/" + HomeAssistantHosts.Role));
+            }
+            else if (managed && !local && HomeAssistantHosts.CannotInstall(paired, hardware) is null)
+                target.Commands.Add(new(NodeAction.InstallRole, "Install Home Assistant", Argument: id + "/" + HomeAssistantHosts.Role));
             if (!local && managed && paired.Method != HostSetupMethod.ThisPcDocker)
             {
                 // Linux computers: set them up and power them from here (martlet-prepare over SSH, Wake-on-LAN).

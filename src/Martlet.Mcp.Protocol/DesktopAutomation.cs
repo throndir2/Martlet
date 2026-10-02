@@ -33,6 +33,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Martlet on your network: Find again only sends Martlet's own discovery query (port 9444) on the local network and
         // lists who answers; Stop asking only withdraws this PC's own request. Connect, Allow and Deny do the work.
         "NearbyFind", "NearbyCancel",
+        // Smart home: Find on my network only sends one multicast DNS question for Home Assistant's service type and lists who
+        // answers; Not now only hides the setup form. Sign in, Set up, Connect, Share, Add, Install and Restart do the work.
+        "SmartHomeFind", "SmartHomeSetupCancel",
         // Apps and API keys: Cancel closes the create dialog without making a key, and Done closes the dialog that showed a new
         // key once. Create API key, Create key, Copy (the clipboard) and Revoke change things, so they need --allow-ui-effects.
         "ApiKeyCreateCancel", "ApiKeyCreatedDone"
@@ -69,6 +72,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Settings › Your other computers (whether Martlet here runs commands your other computers send, and what it last did)
         // and a paired host's How Martlet reaches it (the saved route in words, and what each route means).
         "NodeAgentStatus", "HostReachNow", "HostReachHint",
+        // Companion › Smart home: the connection in words (address, name, version, whether it is shared; never the token),
+        // the typed address, Find's result line, the setup form's target and outcome (never the password fields), sharing,
+        // the flexible-requests state, the devices check and the Home Assistant summary (version, installation, integrations,
+        // last backup) or why it couldn't be read.
+        "SmartHomeStatus", "SmartHomeAddress", "SmartHomeFindStatus", "SmartHomeSetupTarget", "SmartHomeSetupStatus",
+        "SmartHomeShareState", "SmartHomeShareStatus", "SmartHomeToolsStatus", "SmartHomeDevicesStatus", "SmartHomeMqtt",
+        "SmartHomeManageStatus", "SmartHomeManageProblem",
         // Devices › Apps and API keys: how many keys and how many hosts have them; the created dialog's title, host addresses
         // with their public key pins, and the example request (it names $MARTLET_API_KEY, never the key). The key itself
         // (ApiKeyValue) is never returned.
@@ -78,6 +88,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "BackgroundStatus", "TrayStatus"
     };
     /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)");
+    /// Smart home's found Home Assistants ("SmartHomeFound-0" reads "Home: http://192.168.1.20:8123 (Home Assistant 2026.9.4)"),
+    /// each paired host's Home Assistant line ("SmartHomeHost-gpu-pc" reads "gpu-pc: can run Home Assistant."), the devices
+    /// Home Assistant discovered ("SmartHomeDevice-0" reads "Philips Hue: Hue Bridge") and its waiting updates
+    /// ("SmartHomeUpdate-0" reads "Update: Home Assistant Core 2026.9.3 → 2026.9.4");
     /// Companion › Voice's included F5 voices ("F5VoiceRow-arctic-slt" reads "SLT (US female)", with "· in use" when it is)
     /// and the voice list's group headings ("F5VoiceGroup-cute" reads "CUTE VOICES");
     /// each home or host-dashboard step's detail line ("StepDetail-docker" says whether Docker Desktop runs, or why it can't start);
@@ -92,7 +106,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// API keys ("ApiKeyRow-AbC..." reads "Home Assistant. See status and logs. Made on desktop-a 10/2/2026. ... ID AbCdEf.",
     /// never the key or its verifier).</summary>
     private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "F5VoiceRow-", "F5VoiceGroup-", "StepDetail-", "HostChoice",
-        "HealthIssue-", "HealthCheck-", "LogEntry-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "ApiKeyRow-"];
+        "HealthIssue-", "HealthCheck-", "LogEntry-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",
+        "SmartHomeDevice-", "SmartHomeUpdate-"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>

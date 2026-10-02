@@ -378,6 +378,13 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         server!.AttachVoiceStorage(storage);
     }
 
+    /// <summary>Keeps the shared Home Assistant connection paired desktops sync through this host in <paramref name="storage"/>.</summary>
+    public void AttachHomeAssistant(IGatewayHomeAssistantStorage storage)
+    {
+        RequireOpen();
+        server!.AttachHomeAssistantStorage(storage);
+    }
+
     /// <summary>Keeps the network's API keys paired desktops sync through this host in <paramref name="storage"/>.</summary>
     public void AttachApiKeys(IGatewayApiKeyStorage storage)
     {

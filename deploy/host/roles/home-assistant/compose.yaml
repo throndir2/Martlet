@@ -1,0 +1,20 @@
+# Home Assistant's documented Container install is the exception to Martlet's usual loopback-only
+# gateway namespace: it must use the host network to discover devices on the LAN, USB radios and
+# Bluetooth. Desktops reach it directly at http://<host LAN address>:8123; it is not relayed through
+# the Martlet gateway.
+
+services:
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:2026.9.4
+    restart: unless-stopped
+    stop_grace_period: 60s
+    privileged: true
+    network_mode: host
+    environment:
+      TZ: ${MARTLET_TZ:-UTC}
+    volumes:
+      - config:/config
+      - /run/dbus:/run/dbus:ro
+volumes:
+  config:
+    name: martlet-home-assistant-config

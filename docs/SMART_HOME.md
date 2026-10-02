@@ -87,6 +87,99 @@ context), `src/Martlet.Desktop/SmartHome.cs` (connection, preferences in
 defined only in Home Assistant's voice settings are not in the sensitive-name
 list; leave locks and garage doors unexposed to be safe.
 
+## Installing, setting up and managing Home Assistant (SH09-SH12, delivered 2026-10-02)
+
+Companion › Smart home now gets a user from nothing to a working Home
+Assistant without leaving Martlet:
+
+1. **Find on my network** asks once for Home Assistant's mDNS service type
+   (`_home-assistant._tcp.local`, `HomeAssistantDiscovery`) on each local
+   network and lists who answers; **Use this one** checks it. Nothing is
+   scanned.
+2. **Set up a new one**: when a Home Assistant has no owner yet (unauthenticated
+   `GET /api/onboarding`), a form asks for the owner's name, username and
+   password. Martlet creates that account (an administrator) through the
+   onboarding API, gives Home Assistant Windows' time zone, country, currency,
+   units and language (`config/core/update`), leaves analytics off, finishes the
+   remaining onboarding steps, mints its own long-lived token
+   (`auth/long_lived_access_token`, named "Martlet on <PC> (<time>)"), revokes the
+   short setup session and connects. The password goes only to Home Assistant
+   and is never stored. A Home Assistant restarted after setup no longer serves
+   the onboarding API; Martlet recognizes it by `/auth/providers`.
+3. **Sign in with Home Assistant** (existing installs, the usual case): Home
+   Assistant's own sign-in page opens in the browser with a loopback client
+   (`http://127.0.0.1:<port>/`, accepted by its IndieAuth rules); Martlet receives
+   the one-time code on that port, mints its own token and revokes the session.
+   Pasting a long-lived token still works.
+4. **Install on a Linux Martlet host**: the `home-assistant` host role
+   ([host README](../deploy/host/README.md#roles)) runs the official container
+   with host networking, privileged (USB radios) and D-Bus (Bluetooth) on a
+   Linux computer with Docker Engine, installed through the host's usual route
+   (SSH from Martlet, or `martlet-host add home-assistant` there). It publishes
+   no gateway route: the host reports `home-assistant` in its machine report, and
+   desktops reach it at `http://<host>:8123`. Docker Desktop (Windows, macOS) is
+   refused with an explanation, so on Windows the feature is a Linux host or an
+   existing Home Assistant address. The host also reports what Home Assistant can
+   use (an MQTT broker, Zigbee2MQTT, Z-Wave JS, Frigate, go2rtc, ESPHome,
+   Node-RED, Matter server, Music Assistant, Zigbee/Z-Wave/USB radios,
+   Bluetooth) and refuses to install over another Home Assistant on port 8123.
+   After installing, Martlet opens the setup form for it. The Devices map offers
+   **Install Home Assistant** / **Remove Home Assistant** on eligible hosts.
+5. **Sharing with the owner's other computers** (owner decision 2026-10-02):
+   after a connection is made (setup, sign-in or token, with "Share it with my
+   other computers" on, the default) Martlet gives every paired host the address
+   and token (`/martlet/v1/home-assistant`, newest revision wins; hosts keep it
+   0600, see [CLUSTER](CLUSTER.md)). Every 60 seconds each desktop reads its
+   hosts' copies: a computer without a connection takes the shared one (and
+   turns on "Use Home Assistant when I ask"), a computer that follows it takes
+   newer ones, and **Stop sharing** makes the hosts forget the token and
+   followers disconnect. A connection made on one PC alone is never replaced
+   (**Use the shared one** switches on request).
+6. **Devices Home Assistant found** lists Home Assistant's open discovery flows
+   (`config_entries/flow/progress`, with integration names from
+   `manifest/list`). **Add** confirms a step that needs no input; a step that
+   needs a code, key or choice (or failed to connect) opens Home Assistant's
+   Integrations page. **Ignore** uses `config_entries/ignore_flow`. When the
+   host running this Home Assistant has an MQTT broker, **Add MQTT to Home
+   Assistant** starts the MQTT integration with it. New lights, switches,
+   climate, media and covers are exposed to Assist by Home Assistant's own
+   defaults; locks stay hidden.
+7. **Manage Home Assistant**: version, installation type (`hassio` among
+   `/api/config` components means Home Assistant OS), integrations, last backup
+   (`backup/info`), waiting updates (update entities that are on) with
+   **Install update** (`update.install`), **Back up now** (`backup/generate` to
+   the local agent), **Restart** (`homeassistant.restart`) and **Open Home
+   Assistant**. These need an administrator token, run only on the owner's
+   clicks and are never offered to the Thinking model. A Martlet-installed
+   container gets new Home Assistant versions with **Update host**, which now
+   re-applies role files that changed.
+
+Code: `src/Martlet.Home` (`HomeAssistantClient.Setup.cs`,
+`HomeAssistantClient.Admin.cs`, `HomeAssistantSocket.cs`,
+`HomeAssistantSignIn.cs`, `HomeAssistantDiscovery.cs`),
+`src/Martlet.Desktop/SmartHome.cs`, `MainWindow.SmartHome.cs`,
+`MainWindow.HomeShare.cs`, `HomeAssistantHosts.cs`, the gateway's
+`GatewayHomeAssistant.cs` and `deploy/host/roles/home-assistant`. MCP:
+`home_assistant_probe`, `home_assistant_find`, `smart_home_status` and the
+Smart home page's status fields ([MCP](MCP.md)).
+
+**Verified 2026-10-02 on this PC** against a disposable Home Assistant 2026.9.4
+container (Docker Desktop, published port 18123): setup through the Smart home
+page via MCP (owner account, regional settings, token, connection, integrations
+and version read back), backup created and shown, a discovered device (a fake
+ESPHome device advertised over mDNS inside Docker) listed, **Add** (Home
+Assistant reported `connection_error`, as expected for a fake device),
+**Ignore**, **Restart**, connecting with a pasted token, recognizing an
+already set-up Home Assistant after a restart, browser sign-in with the
+loopback client (the browser played by Home Assistant's login-flow API) and
+**Find on my network** against a python-zeroconf responder announcing Home
+Assistant's TXT records. `node_link_check` passes the gateway's shared
+connection (real gateway, pinned TLS, two devices, revisions, tombstones,
+restart, token kept out of logs). **NOT RUN:** installing the role on a real
+Linux Docker Engine host (this PC has only Docker Desktop, which the role
+refuses), desktop-to-host sharing with a real paired host, Home Assistant OS
+updates and apps, and real devices.
+
 ## Short answer (research, 2026-09-30)
 
 1. **Connect to Home Assistant first; do not write a Matter controller.**
@@ -276,14 +369,19 @@ flowchart LR
   no speaker identification, so anyone in the room can talk to it.
 - **Visible and reversible.** Every action is shown in the conversation and in
   a local action log, spoken back, and stopped by Stop/Esc. Martlet never
-  creates or edits Home Assistant automations, users or integrations.
+  creates or edits Home Assistant automations. It creates the owner account
+  only in a Home Assistant nobody has set up, and adds integrations, installs
+  updates, backs up and restarts only on the owner's clicks on the Smart home
+  page; the Thinking model never gets these.
 - **Cameras show other people.** Each camera needs its own opt-in, frames are
   never saved, logged or put in memory, and sending a frame to a cloud model
   uses the same image disclosure permission and destination wording as screen
   watching. Prefer a local vision model for cameras; the setup should say so.
-- **Network:** connect only to the user-entered HA/go2rtc/Frigate URL; HTTPS
-  or a LAN address; no port opening, cloud relay or remote access setup by
-  Martlet.
+- **Network:** connect only to the user-entered or user-picked HA/go2rtc/Frigate
+  URL; HTTPS or a LAN address; no port opening, cloud relay or remote access
+  setup by Martlet. Finding Home Assistant is one mDNS question when the user
+  presses Find. The shared connection travels only to paired hosts and
+  computers over their pinned, signed connection.
 
 ## Delivery slices
 
@@ -298,11 +396,11 @@ flowchart LR
 | SH06 | Host `home` role: go2rtc and matterjs-server containers; multi-admin Matter pairing from a shared code | SH02, host roles |
 | SH07 | Direct adapters only if users lack HA: Hue CLIP v2, Shelly RPC, MQTT | SH03 |
 | SH08 | iOS track: HomeKit read/control through the Home framework | [iOS plan](IOS.md) |
-| SH09 | Proposed. Find Home Assistant over mDNS and sign in through the browser to mint the token (existing installs, the largest group) | SH00 |
-| SH10 | Proposed. "Home Assistant found these devices": discovered flows, one-click confirms, simple forms, Ignore, Open in HA, expose new comfort devices to Assist | SH09, owner decision |
-| SH11 | Proposed. `home-assistant` host role (Container, host network, radios, inventory of existing services) with automatic onboarding; Devices card with Update, Restart, Back up and Logs through `martlet-host` | SH09, host roles |
-| SH12 | Proposed. HA OS management from the desktop through `supervisor/api` (updates, backups, apps such as Matter Server, Mosquitto, Z-Wave JS); companion roles for Container installs (with SH06) | SH10 |
-| SH13 | Proposed, optional. Martlet app for HA OS, gateway relay of conversation and MCP with a host-held control token, HA OS in Hyper-V on Windows | SH11 |
+| SH09 | **Delivered 2026-10-02.** Find Home Assistant over mDNS; browser sign-in with a loopback client mints Martlet's token | SH00 |
+| SH10 | **Delivered 2026-10-02.** "Devices Home Assistant found": discovered flows, one-click confirms, Ignore, Integrations page for steps that need input, MQTT from the host's broker. Exposure left to Home Assistant's defaults | SH09 |
+| SH11 | **Delivered 2026-10-02 (host install NOT RUN on real Linux).** `home-assistant` host role (Container, host network, privileged, D-Bus, inventory of existing services and radios), setup of new installs, sharing the connection through the hosts, Install/Remove on the Devices map | SH09, host roles |
+| SH12 | **Partly delivered 2026-10-02.** Management from the desktop: version, installation type, integrations, updates (update entities), backups, restart. Still open: HA OS apps through `supervisor/api` and companion roles for Container installs (with SH06) | SH10 |
+| SH13 | Optional, not planned now. Martlet app for HA OS; HA OS in Hyper-V on Windows (the owner chose Linux hosts or an existing address instead); a gateway relay of conversation and MCP (replaced by sharing the connection) | SH11 |
 
 SH00 delivers "my waifu turns off the lights" for anyone with Home Assistant;
 SH02-SH03 add free-form requests on tool-capable models.
@@ -318,11 +416,13 @@ SH02-SH03 add free-form requests on tool-capable models.
 - **Default host vision model** moved from `gemma3`/`qwen2.5vl` to vision +
   tools models (`gemma4`, with `qwen3-vl:8b` for on-screen text) on 2026-10-01,
   on the host role, Companion › Thinking › This PC and the prerequisites tool.
-- **Pending (2026-10-01), from the install research below:** whether setup
-  screens may create the Home Assistant owner account, add integrations, expose
-  entities, install apps and run updates on the owner's explicit click (today
-  Martlet never does); what to recommend to users without a Linux machine; and
-  whether a host may hold a control token and relay it to every paired desktop.
+- **Installing and managing Home Assistant (accepted 2026-10-02):** Martlet
+  may create the owner account of a Home Assistant nobody has set up and add
+  integrations on the owner's clicks; a host keeps the Home Assistant
+  connection (address and token) and shares it with every paired computer; on
+  Windows the feature is a Linux Martlet host or an existing Home Assistant
+  address (no Hyper-V or Docker Desktop install); installation runs through the
+  existing host connections.
 
 ## Installing and managing Home Assistant (research, 2026-10-01)
 
@@ -331,8 +431,9 @@ it automatically (find devices and services already on the network) and use a
 Martlet host on the Home Assistant machine to manage Home Assistant remotely,
 while smart home commands keep going to the Home Assistant endpoint.
 **Short answer: yes, mostly through Home Assistant's own APIs; how it gets
-installed depends on the machine.** Nothing here is built or exercised against
-a real Home Assistant.
+installed depends on the machine.** Most of this is now delivered (see
+[Installing, setting up and managing Home Assistant](#installing-setting-up-and-managing-home-assistant-sh09-sh12-delivered-2026-10-02));
+the design below is the research as written.
 
 ### Verified upstream facts
 

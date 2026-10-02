@@ -290,8 +290,10 @@ runner (FIXTURE: it installs nothing), and two fixture devices. Steps check
 that only known commands and arguments are accepted, anonymous requests are
 refused, only the agent's local token takes and reports commands, output and
 outcomes reach the sender, secrets never appear in lists, commands or the saved
-copy, cancel works (waiting and running), commands survive a restart with a new
-token and the queue is bounded. It runs `src\Martlet.NodeLinkCheck` (built with
+copy, the shared Home Assistant connection (including token sharing, revision
+wins, tombstones, invalid bodies, restart storage and no token in gateway logs),
+cancel works (waiting and running), commands survive a restart with a new token
+and the queue is bounded. It runs `src\Martlet.NodeLinkCheck` (built with
 `Martlet.Mcp`) as its own process, because the gateway needs the ASP.NET Core
 runtime; it takes no arguments and contacts nothing outside loopback. The same
 program's `live <pairing-code> <container>` mode checks a disposable Linux
@@ -348,6 +350,21 @@ to run it aren't offered) and per option its `kind`, `summary`, `runtime`,
 default, choices) and either `plan` (the mcp.json `entry`, the `secrets` names
 it would save and a `preview`) or the `problem` (such as a required field left
 empty). Secret values are never returned.
+
+`home_assistant_probe` checks one Home Assistant `address` the way Smart home
+does before offering Set up: it returns the normalized `address`,
+`homeAssistant` (whether it answered like Home Assistant), `onboarding`
+(`owner`, `coreConfig`, `analytics`, `integration`, `done`; a Home Assistant
+restarted after its setup reports everything done) and `next`, or `failure` and
+`problem`. It uses only the unauthenticated onboarding and sign-in-provider
+endpoints, sends no token or password and changes nothing.
+`home_assistant_find` asks the local network once for Home Assistant's mDNS
+service type (optional `seconds`, 1-10, default 2.5) and returns `count` and
+each answer's `name`, `address` and `version`. `smart_home_status` reads a data
+directory's `smart-home.json`: `connected`, `address`, `name`, `version`,
+`tokenSaved` (never the token), `control`, `allowSensitive`, `modelTools`,
+`shared` (this PC follows the connection shared through the hosts), `sharedBy`
+and `sharedRevision`.
 
 `logs_timeline` reads this PC's logs as the desktop's
 [Diagnostics page](DIAGNOSTICS.md#diagnostics-page-and-the-log-host) shows
@@ -656,6 +673,34 @@ fields and the `McpDirectoryRuns` preview are not returned; `mcp_directory_plan`
 shows the same plan headlessly and `mcp_servers_status` what was installed. A
 running server shows in Home's `HealthCheck-tools` (*1 of 1 server ready*).
 
+Companion › Smart home (`CompanionTab-SmartHome`): `SmartHomeFind` (*Find on my
+network*) is passive: it only sends one mDNS question for Home Assistant's
+service type and lists who answers; `SmartHomeSetupCancel` only hides the setup
+form. Everything else needs `--allow-ui-effects` and a disposable Home Assistant:
+`SmartHomeCheck` (*Set up a new one*, reads the onboarding state of the address
+in `SmartHomeAddress`), `SmartHomeFoundUse-<n>`, `SmartHomeSignIn` (opens the
+browser), `SmartHomeConnect` (with `SmartHomeToken`), `SmartHomeDisconnect`, the
+setup form (`SmartHomeOwnerName`, `SmartHomeOwnerUser`, `SmartHomeOwnerPassword`,
+`SmartHomeOwnerConfirm`, `SmartHomeSetupControl`, `SmartHomeSetupShare`,
+`SmartHomeSetUp`), `SmartHomeShareOnConnect`, `SmartHomeInstall-<host>` and
+`SmartHomeHostUse-<host>`, `SmartHomeShare`, `SmartHomeStopShare` (asks first),
+`SmartHomeUseShared`, `SmartHomeShareCheck`, `SmartHomeDevicesRefresh`,
+`SmartHomeDeviceAdd-<n>`, `SmartHomeDeviceIgnore-<n>`, `SmartHomeAddMqtt`,
+`SmartHomeUpdateInstall-<n>` and `SmartHomeRestart` (both ask first;
+`ConfirmationYes`), `SmartHomeBackup`, `SmartHomeOpen` and
+`SmartHomeManageRefresh`. Snapshots return `SmartHomeStatus` (connected or not,
+address, name, version, shared), `SmartHomeAddress`, `SmartHomeFindStatus`,
+`SmartHomeFound-<n>` (*Home: http://192.168.1.20:8123 (Home Assistant
+2026.9.4)*), `SmartHomeSetupTarget`, `SmartHomeSetupStatus`,
+`SmartHomeHost-<host>` (whether that host runs or can run Home Assistant, or
+why not), `SmartHomeShareState`, `SmartHomeShareStatus`,
+`SmartHomeToolsStatus`, `SmartHomeDevicesStatus`, `SmartHomeDevice-<n>`
+(*ESPHome: Kitchen light (kitchen-light)*), `SmartHomeMqtt`,
+`SmartHomeManageStatus` (version, installation type, integrations, last
+backup), `SmartHomeManageProblem` and `SmartHomeUpdate-<n>`. Token and password
+fields are never returned; outcomes of actions are in `logs_tail` (`Status:`
+lines).
+
 On Thinking, Voice, Listening and Lip-sync, each "Where it runs" option
 (`Place-<page>-<place>`, for example `Place-Voice-Computer` or
 `Place-LipSync-ThisPc`) only shows that place's choices, so clicking it is
@@ -797,7 +842,7 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status` and `api_keys_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status` and `smart_home_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

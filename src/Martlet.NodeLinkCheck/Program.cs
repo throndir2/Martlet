@@ -134,6 +134,78 @@ async Task RunAsync()
         r.Body.Contains("request.invalid")), $"unknown kind {(int)shell.Status}, bad version {(int)badVersion.Status}, " +
         $"extra argument {(int)extraArgument.Status}, extra field {(int)extraField.Status}");
 
+    const string haToken = "fixture-ha-token-0123456789abcdef";
+    var haInitial = new SharedHomeAssistant(1_790_000_000_000, "http://192.168.1.20:8123", haToken, "Home", "2026.9.4");
+    var haShared = await asker.ShareHomeAssistantAsync(haInitial);
+    var haReadByB = await agentConnection.ReadHomeAssistantAsync();
+    Step("home-assistant-share", SameHomeAssistant(haReadByB, haInitial) &&
+        haReadByB is { UpdatedBy: "check-requester", UpdatedAt: not null } && SameHomeAssistant(haShared, haInitial),
+        $"revision {haReadByB?.Revision}, token shared {haReadByB?.Token == haToken}, writer {haReadByB?.UpdatedBy}");
+
+    var haLower = await agentConnection.ShareHomeAssistantAsync(haInitial with
+    {
+        Revision = haInitial.Revision - 1,
+        Address = "http://192.168.1.30:8123",
+        Token = "fixture-ha-token-lower-012345"
+    });
+    var haHigherValue = new SharedHomeAssistant(haInitial.Revision + 1, "https://192.168.1.30:8123",
+        "fixture-ha-token-higher-012345", "Cabin", "2026.10.0");
+    var haHigher = await agentConnection.ShareHomeAssistantAsync(haHigherValue);
+    var haEqualRequesterValue = new SharedHomeAssistant(haHigherValue.Revision, "https://192.168.1.31:8123",
+        "fixture-ha-token-equal-requester", "Home main", "2026.10.1");
+    var haEqualRequester = await asker.ShareHomeAssistantAsync(haEqualRequesterValue);
+    var haEqualAgentLost = await agentConnection.ShareHomeAssistantAsync(haEqualRequesterValue with
+    {
+        Address = "https://192.168.1.32:8123",
+        Token = "fixture-ha-token-equal-agent",
+        LocationName = "Should lose"
+    });
+    Step("home-assistant-revisions", SameHomeAssistant(haLower, haInitial) && haLower?.UpdatedBy == "check-requester" &&
+        SameHomeAssistant(haHigher, haHigherValue) && haHigher?.UpdatedBy == "check-agent" &&
+        SameHomeAssistant(haEqualRequester, haEqualRequesterValue) && haEqualRequester?.UpdatedBy == "check-requester" &&
+        SameHomeAssistant(haEqualAgentLost, haEqualRequesterValue) && haEqualAgentLost?.UpdatedBy == "check-requester",
+        $"lower kept {haLower?.UpdatedBy}; higher {haHigher?.UpdatedBy}; equal winner {haEqualRequester?.UpdatedBy}");
+
+    var haTombstone = await agentConnection.ShareHomeAssistantAsync(new SharedHomeAssistant(haEqualRequesterValue.Revision + 1,
+        null, null, null, null));
+    var haReadTombstone = await asker.ReadHomeAssistantAsync();
+    Step("home-assistant-tombstone", haTombstone is { Address: null, Token: null, LocationName: null, Version: null,
+            UpdatedBy: "check-agent" } && haReadTombstone is { Address: null, Token: null } &&
+        haReadTombstone.Revision == haTombstone.Revision,
+        $"revision {haReadTombstone?.Revision}, writer {haReadTombstone?.UpdatedBy}, address {(haReadTombstone?.Address is null ? "null" : "set")}");
+
+    var haAddressWithoutToken = await Raw.SendAsync(requesterPairing, requesterSecret, HttpMethod.Post, "/martlet/v1/home-assistant",
+        """{"revision":1790000000100,"address":"http://192.168.1.20:8123","token":null}""");
+    var haBadScheme = await Raw.SendAsync(requesterPairing, requesterSecret, HttpMethod.Post, "/martlet/v1/home-assistant",
+        """{"revision":1790000000101,"address":"ftp://192.168.1.20:8123","token":"fixture-ha-token-invalid"}""");
+    var haTooLongToken = new string('x', 4097);
+    var haTooLong = await Raw.SendAsync(requesterPairing, requesterSecret, HttpMethod.Post, "/martlet/v1/home-assistant",
+        JsonSerializer.Serialize(new { revision = 1_790_000_000_102, address = "http://192.168.1.20:8123", token = haTooLongToken }));
+    Step("home-assistant-invalid", new[] { haAddressWithoutToken, haBadScheme, haTooLong }.All(r =>
+            r.Status == HttpStatusCode.BadRequest && r.Body.Contains("request.invalid")),
+        $"address/token {(int)haAddressWithoutToken.Status}, scheme {(int)haBadScheme.Status}, token {(int)haTooLong.Status}");
+
+    var haRestartValue = new SharedHomeAssistant(haTombstone!.Revision + 1, "https://192.168.1.21:8123",
+        "fixture-ha-token-restart-012345", "Workshop", "2026.10.2");
+    var haBeforeRestart = await asker.ShareHomeAssistantAsync(haRestartValue);
+    await using (var restartedHa = await LoopbackHost.StartAsync(certificate, storage, Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(32))))
+    {
+        var (haAfterPairing, haAfterSecret) = await restartedHa.PairAsync("check-ha-restart");
+        using var haAfterConnection = new Audio2FaceHostConnection(haAfterPairing, haAfterSecret);
+        var haAfterRestart = await haAfterConnection.ReadHomeAssistantAsync();
+        Step("home-assistant-restart", SameHomeAssistant(haBeforeRestart, haRestartValue) &&
+            SameHomeAssistant(haAfterRestart, haRestartValue) && haAfterRestart?.UpdatedBy == "check-requester",
+            $"stored revision {haAfterRestart?.Revision}, token survived {haAfterRestart?.Token == haRestartValue.Token}");
+    }
+
+    var ownLogs = await asker.ReadOwnLogsAsync(0);
+    var activityText = string.Join('\n', ownLogs.Entries.Select(e => e.Message));
+    var savedLogText = Encoding.UTF8.GetString(storage.LogsSaved ?? []);
+    var tokensAbsent = new[] { haToken, haHigherValue.Token!, haEqualRequesterValue.Token!, haRestartValue.Token! }
+        .All(value => !activityText.Contains(value, StringComparison.Ordinal) && !savedLogText.Contains(value, StringComparison.Ordinal));
+    Step("home-assistant-token-not-logged", tokensAbsent,
+        $"activity lines {ownLogs.Entries.Count}, saved log bytes {storage.LogsSaved?.Length ?? 0}");
+
     var update = await asker.SendCommandAsync(NodeCommandKinds.Update, new Dictionary<string, string> { ["version"] = "9.9.9" });
     Step("send-update", update.State == NodeCommandState.Queued && update.RequestedBy == "check-requester",
         $"{update.Kind} {update.State} from {update.RequestedBy}");
@@ -207,6 +279,10 @@ async Task RunAsync()
     Step("bounded-queue", busy, $"the {GatewayCommandLimits.MaximumActive + 1}th waiting command is refused");
 }
 
+static bool SameHomeAssistant(SharedHomeAssistant? actual, SharedHomeAssistant expected) =>
+    actual is not null && actual.Revision == expected.Revision && actual.Address == expected.Address &&
+    actual.Token == expected.Token && actual.LocationName == expected.LocationName && actual.Version == expected.Version;
+
 static async Task<bool> Expect<T>(Func<Task<T>> call, string code)
 {
     try
@@ -222,11 +298,20 @@ static class GatewayCommandLimits
     internal const int MaximumActive = 8;
 }
 
-sealed class MemoryStorage : IGatewayCommandStorage
+sealed class MemoryStorage : IGatewayCommandStorage, IGatewayHomeAssistantStorage, IGatewayLogStorage
 {
     internal byte[]? Saved { get; private set; }
-    public byte[]? Load() => Saved;
-    public void Save(byte[] bytes) => Saved = bytes;
+    internal byte[]? HomeAssistantSaved { get; private set; }
+    internal byte[]? LogsSaved { get; private set; }
+
+    byte[]? IGatewayCommandStorage.Load() => Saved;
+    void IGatewayCommandStorage.Save(byte[] bytes) => Saved = bytes;
+
+    byte[]? IGatewayHomeAssistantStorage.Load() => HomeAssistantSaved;
+    void IGatewayHomeAssistantStorage.Save(byte[] bytes) => HomeAssistantSaved = bytes;
+
+    byte[]? IGatewayLogStorage.Load() => LogsSaved;
+    void IGatewayLogStorage.Save(byte[] bytes) => LogsSaved = bytes;
 }
 
 sealed class NoAudit : IGatewayAuditSink
@@ -270,12 +355,14 @@ sealed class FixtureRunner : INodeCommandRunner
 
 sealed class LoopbackHost(GatewayServer server, GatewayListenerHandle listener, GatewayOrigin origin, GatewayHostIdentity identity) : IAsyncDisposable
 {
-    internal static async Task<LoopbackHost> StartAsync(X509Certificate2 certificate, IGatewayCommandStorage storage, string token)
+    internal static async Task<LoopbackHost> StartAsync(X509Certificate2 certificate, MemoryStorage storage, string token)
     {
         var origin = new GatewayOrigin($"https://127.0.0.1:{FreePort()}");
         var identity = GatewayHostIdentity.FromCertificate("check-host", certificate);
         var server = new GatewayServer(identity, origin, [], new NoAudit());
         server.AttachCommandStorage(storage, token);
+        server.AttachHomeAssistantStorage(storage);
+        server.AttachLogStorage(storage);
         var listener = await server.StartAsync(new GatewayTlsBinding(origin, identity, certificate), new KestrelGatewayListenerFactory());
         return new(server, listener, origin, identity);
     }

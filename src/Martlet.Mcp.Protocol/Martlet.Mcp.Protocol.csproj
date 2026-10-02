@@ -9,6 +9,7 @@
     <InternalsVisibleTo Include="Martlet.Desktop.Tests" />
     <ProjectReference Include="..\Martlet.Doctor\Martlet.Doctor.csproj" />
     <ProjectReference Include="..\Martlet.F5\Martlet.F5.csproj" />
+    <ProjectReference Include="..\Martlet.Home\Martlet.Home.csproj" />
     <ProjectReference Include="..\Martlet.Mcp.Client\Martlet.Mcp.Client.csproj" />
     <ProjectReference Include="..\Martlet.Sherpa\Martlet.Sherpa.csproj" />
     <!-- network_status reads the desktop's network.json (NetworkLocalState). network_selftest runs Martlet.NodeLinkCheck, like

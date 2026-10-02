@@ -85,6 +85,12 @@
           "Martlet.Core": "[0.17.0, )"
         }
       },
+      "martlet.home": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Core": "[0.17.0, )"
+        }
+      },
       "martlet.mcp.client": {
         "type": "Project"
       },
@@ -94,6 +100,7 @@
           "Martlet.Avatar.Audio2Face": "[0.17.0, )",
           "Martlet.Doctor": "[0.17.0, )",
           "Martlet.F5": "[0.17.0, )",
+          "Martlet.Home": "[0.17.0, )",
           "Martlet.Mcp.Client": "[0.17.0, )",
           "Martlet.Sherpa": "[0.17.0, )"
         }

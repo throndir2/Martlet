@@ -4,7 +4,7 @@
 #   martlet-host setup          set up this host's Martlet gateway (the only network entry point)
 #   martlet-host roles          list the roles this host can run
 #   martlet-host describe <role> print a role's terms, secrets and choices (machine-readable, no secret values)
-#   martlet-host add <role>     install a role service and publish it through the gateway
+#   martlet-host add <role>     install a role service and publish it through the gateway (or report a route-less feature)
 #   martlet-host remove <role>  stop a role and unpublish it (keeps its data)
 #   martlet-host pair           pair a Martlet desktop: shows this host's address and a one-use code (like K7QM-4XPA) to
 #                               type in Martlet (Devices > Add a computer > Enter a pairing code); waits up to five minutes
@@ -32,8 +32,9 @@
 #           (this launcher starts the engine as the unprivileged martlet user inside the gateway's network)
 #
 # Every role goes through the same steps, driven only by roles/<role>/role.conf and compose.yaml:
-# requirements -> terms -> GPU or CPU -> secrets -> choices -> registry login -> pinned assets -> loopback-only
-# compose service -> readiness -> post-start steps -> gateway route. Each system change is confirmed first
+# requirements (including docker-engine for Linux-only host networking) -> terms -> GPU or CPU -> secrets -> choices ->
+# registry login -> pinned assets -> compose service (loopback behind the gateway, or network=host for route-less LAN
+# features) -> readiness -> post-start steps -> gateway route or machine feature. Each system change is confirmed first
 # (typed "yes", or --yes when Martlet desktop already asked the owner).
 set -euo pipefail
 
@@ -152,10 +153,16 @@ cmd_roles() {
 # Machine-readable role inputs for Martlet desktop (never prints secret values, only whether one is stored).
 cmd_describe() {
   local role="${1:-}"; [[ -n "${role}" ]] || fail "Usage: martlet-host describe <role>"
-  local dir conf line name state
+  local dir conf line name state requires network feature
   dir="$(role_dir "${role}")"; conf="${dir}/role.conf"
+  requires="$(conf_value "${conf}" requires)"; network="$(conf_value "${conf}" network)"; feature="$(conf_value "${conf}" feature)"
   printf 'role.title=%s\n' "$(conf_value "${conf}" title)"
-  printf 'role.requires=%s\n' "$(conf_value "${conf}" requires)"
+  printf 'role.requires=%s\n' "${requires}"
+  [[ -n "${network}" ]] && printf 'role.network=%s\n' "${network}"
+  [[ -n "${feature}" ]] && printf 'role.feature=%s\n' "${feature}"
+  if [[ " ${requires} " == *" docker-engine "* && "${MODE}" == docker ]] && ! docker_engine_supported; then
+    printf 'role.unavailable=%s\n' "${DOCKER_ENGINE_FAILURE}"
+  fi
   printf 'role.terms=%s\n' "$(conf_value "${conf}" terms)"
   state=no; [[ -f "$(installed_file "${role}")" ]] && state=yes
   printf 'role.installed=%s\n' "${state}"
@@ -178,12 +185,28 @@ cmd_describe() {
 
 # ------------------------------------------------------------------ shared requirements
 DOCKER=(docker)
+DOCKER_ENGINE_FAILURE="Home Assistant needs Docker Engine on a Linux computer; Docker Desktop (Windows or macOS) can't put it on your home network. Install it on a Linux host, or connect an existing Home Assistant in Martlet's Smart home page."
+
+docker_engine_supported() {
+  local info os operating
+  info="$("${DOCKER[@]}" info --format '{{.OSType}}|{{.OperatingSystem}}' 2>/dev/null || true)"
+  [[ -n "${info}" ]] || return 1
+  os="${info%%|*}"; operating="${info#*|}"
+  [[ "${os}" == linux && "${operating,,}" != *"docker desktop"* ]]
+}
+
+require_docker_engine() {
+  require_docker
+  docker_engine_supported || fail "${DOCKER_ENGINE_FAILURE}"
+}
+
 require() {
   local item
   for item in "$@"; do
     case "${item}" in
       gpu) require_gpu ;;
       docker) require_docker ;;
+      docker-engine) require_docker_engine ;;
       nvidia-toolkit) require_nvidia_toolkit ;;
       *) fail "Unknown requirement '${item}' in role.conf." ;;
     esac
@@ -282,7 +305,9 @@ render_config() {
   local roles=() file kind endpoint model binding
   for file in "${CONF}/roles"/*.role; do
     [[ -e "${file}" ]] || continue
-    kind="$(conf_value "${file}" kind)"; endpoint="$(conf_value "${file}" endpoint)"; model="$(conf_value "${file}" model)"
+    kind="$(conf_value "${file}" kind)"
+    [[ -n "${kind}" ]] || continue
+    endpoint="$(conf_value "${file}" endpoint)"; model="$(conf_value "${file}" model)"
     [[ "${kind}" =~ ^[a-z0-9-]+$ && "${endpoint}" =~ ^http://127\.0\.0\.1:[0-9]{1,5}/$ && "${model}" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]*$ ]] ||
       fail "Invalid role record ${file}."
     roles+=("{\"kind\":\"${kind}\",\"endpoint\":\"${endpoint}\",\"model\":\"${model}\"}")
@@ -446,6 +471,193 @@ MACHINE_FILE="${GW_CONF_DIR}/machine.json"
 json_text() { printf '"%s"' "$(printf '%s' "$1" | tr -c 'A-Za-z0-9 ._()+/@:,#-' ' ' | tr -s ' ' | sed 's/^ //; s/ $//' | cut -c1-120)"; }
 json_opt() { if [[ -n "$1" ]]; then json_text "$1"; else printf 'null'; fi; }
 json_num() { if [[ "$1" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then printf '%s' "$1"; else printf 'null'; fi; }
+json_string_array() { local value first=1; for value in "$@"; do [[ ${first} == 1 ]] || printf ','; json_text "${value}"; first=0; done; }
+
+host_timezone() {
+  local tz=""
+  if [[ "${MODE}" == docker ]]; then
+    # The Docker daemon resolves this bind mount on the Docker host, not inside this engine container.
+    tz="$(docker run --rm -v /etc:/host-etc:ro "${HELPER_IMAGE}" sh -c '
+      if [ -r /host-etc/timezone ]; then head -n 1 /host-etc/timezone; exit 0; fi
+      target=$(readlink /host-etc/localtime 2>/dev/null || true)
+      case "$target" in *zoneinfo/*) printf "%s\n" "${target##*zoneinfo/}" ;; esac
+    ' 2>/dev/null || true)"
+  else
+    tz="$(timedatectl show -p Timezone --value 2>/dev/null | head -n1 || true)"
+    [[ -n "${tz}" ]] || tz="$(head -n1 /etc/timezone 2>/dev/null || true)"
+  fi
+  tz="${tz%%$'\r'*}"; tz="${tz%%$'\n'*}"
+  [[ "${tz}" =~ ^[A-Za-z0-9_+./-]{1,64}$ ]] || tz=UTC
+  printf '%s' "${tz}"
+}
+
+feature_add() {
+  local -n out=$1
+  local token="$2" existing
+  [[ "${token}" =~ ^[a-z0-9-]{1,32}$ ]] || return 0
+  for existing in "${out[@]:-}"; do [[ "${existing}" == "${token}" ]] && return 0; done
+  (( ${#out[@]} < 16 )) || return 0
+  out+=("${token}")
+}
+
+host_network_capable() {
+  [[ "${MODE}" == native ]] && return 0
+  docker_engine_supported
+}
+
+host_port_open() {
+  local port="$1"
+  [[ "${port}" =~ ^[0-9]{1,5}$ ]] || return 1
+  if [[ "${MODE}" == docker ]]; then
+    # shellcheck disable=SC2016
+    docker run --rm --network host --entrypoint bash "${IMAGE}" -c 'port="$1"; timeout 2 bash -c ":</dev/tcp/127.0.0.1/${port}"' _ "${port}" >/dev/null 2>&1
+  else
+    timeout 2 bash -c ":</dev/tcp/127.0.0.1/${port}" >/dev/null 2>&1
+  fi
+}
+
+role_container_running() {
+  local role="$1"
+  "${DOCKER[@]}" ps --filter "label=com.docker.compose.project=martlet-${role}" --filter status=running --format '{{.ID}}' 2>/dev/null | grep -q .
+}
+
+role_ready_address() {
+  if [[ "$1" == host && "${MODE}" == docker ]]; then settings_value lan_ip; else printf '127.0.0.1'; fi
+}
+
+ensure_role_timezone_env() {
+  local project="$1" tz
+  [[ -f "${project}/.env" ]] || return 0
+  tz="$(host_timezone)"
+  ( umask 077; grep -v '^MARTLET_TZ=' "${project}/.env" > "${project}/.env.next" || true
+    printf 'MARTLET_TZ=%s\n' "${tz}" >> "${project}/.env.next" )
+  mv -f "${project}/.env.next" "${project}/.env"
+}
+
+native_host_probe_facts() {
+  local item base lower zigbee=0 zwave=0 unknown_serial=0
+  timeout 2 bash -c ':</dev/tcp/127.0.0.1/8123' >/dev/null 2>&1 && printf '%s\n' port-8123
+  timeout 2 bash -c ':</dev/tcp/127.0.0.1/1883' >/dev/null 2>&1 && printf '%s\n' port-1883
+  shopt -s nullglob
+  for item in /dev/serial/by-id/*; do
+    [[ -e "${item}" ]] || continue
+    base="$(basename "${item}")"; lower="${base,,}"
+    if [[ "${lower}" =~ zigbee|sonoff|conbee|skyconnect|zbt|ezsp|cc2652|slzb|tubeszb ]]; then zigbee=1
+    elif [[ "${lower}" =~ zwave|z-wave|aeotec|zooz|zst|800z|700z ]]; then zwave=1
+    else unknown_serial=1; fi
+  done
+  shopt -u nullglob
+  (( zigbee == 1 )) && printf '%s\n' zigbee-radio
+  (( zwave == 1 )) && printf '%s\n' zwave-radio
+  (( unknown_serial == 1 && zigbee == 0 && zwave == 0 )) && printf '%s\n' serial-radio
+  for item in /sys/class/bluetooth/hci*; do [[ -e "${item}" ]] && { printf '%s\n' bluetooth; break; }; done
+}
+
+docker_host_probe_facts() {
+  # shellcheck disable=SC2016
+  docker run --rm --network host --entrypoint bash \
+    -v /dev:/host-dev:ro -v /sys/class:/host-class:ro "${IMAGE}" -c '
+      set +e
+      timeout 2 bash -c ":</dev/tcp/127.0.0.1/8123" >/dev/null 2>&1 && printf "%s\n" port-8123
+      timeout 2 bash -c ":</dev/tcp/127.0.0.1/1883" >/dev/null 2>&1 && printf "%s\n" port-1883
+      shopt -s nullglob
+      zigbee=0; zwave=0; unknown_serial=0
+      for item in /host-dev/serial/by-id/*; do
+        [ -e "$item" ] || continue
+        base="${item##*/}"; lower="${base,,}"
+        if [[ "$lower" =~ zigbee|sonoff|conbee|skyconnect|zbt|ezsp|cc2652|slzb|tubeszb ]]; then zigbee=1
+        elif [[ "$lower" =~ zwave|z-wave|aeotec|zooz|zst|800z|700z ]]; then zwave=1
+        else unknown_serial=1; fi
+      done
+      (( zigbee == 1 )) && printf "%s\n" zigbee-radio
+      (( zwave == 1 )) && printf "%s\n" zwave-radio
+      (( unknown_serial == 1 && zigbee == 0 && zwave == 0 )) && printf "%s\n" serial-radio
+      for item in /host-class/bluetooth/hci*; do [ -e "$item" ] && { printf "%s\n" bluetooth; break; }; done
+    ' 2>/dev/null || true
+}
+
+host_probe_facts() {
+  if [[ "${MODE}" == docker ]]; then docker_host_probe_facts; else native_host_probe_facts; fi
+}
+
+installed_record_features() {
+  local file value
+  for file in "${CONF}/roles"/*.role; do
+    [[ -e "${file}" ]] || continue
+    value="$(conf_value "${file}" feature)"
+    [[ -n "${value}" ]] && printf '%s\n' "${value}"
+  done
+}
+
+container_image_features() {
+  "${DOCKER[@]}" ps --format '{{.Image}}\t{{.Label "com.docker.compose.project"}}' 2>/dev/null | while IFS=$'\t' read -r image project; do
+    [[ -n "${image}" && "${project}" != martlet-* ]] || continue
+    printf '%s\n' "${image,,}"
+  done
+}
+
+machine_features() {
+  local features=() installed=() facts=() images=() item installed_ha=0 ha_port=0 mqtt_port=0 bluetooth=0
+  local zigbee_radio=0 zwave_radio=0 serial_radio=0 container_ha=0 zigbee2mqtt=0 zwave_js=0 frigate=0 go2rtc=0 esphome=0 node_red=0 matter_server=0 music_assistant=0
+  mapfile -t installed < <(installed_record_features)
+  mapfile -t facts < <(host_probe_facts)
+  mapfile -t images < <(container_image_features)
+  for item in "${installed[@]}"; do [[ "${item}" == home-assistant ]] && installed_ha=1; done
+  for item in "${facts[@]}"; do
+    case "${item}" in
+      port-8123) ha_port=1 ;; port-1883) mqtt_port=1 ;; zigbee-radio) zigbee_radio=1 ;; zwave-radio) zwave_radio=1 ;; serial-radio) serial_radio=1 ;; bluetooth) bluetooth=1 ;;
+    esac
+  done
+  for item in "${images[@]}"; do
+    [[ "${item}" == *zigbee2mqtt* ]] && zigbee2mqtt=1
+    [[ "${item}" == *zwave-js* || "${item}" == *zwavejs2mqtt* ]] && zwave_js=1
+    [[ "${item}" == *frigate* ]] && frigate=1
+    [[ "${item}" == *go2rtc* ]] && go2rtc=1
+    [[ "${item}" == *esphome* ]] && esphome=1
+    [[ "${item}" == *nodered/node-red* || "${item}" == *node-red* ]] && node_red=1
+    [[ "${item}" == *matter-server* || "${item}" == *matterjs-server* ]] && matter_server=1
+    [[ "${item}" == *music-assistant* ]] && music_assistant=1
+    [[ "${item}" == *home-assistant/home-assistant* || "${item}" == *homeassistant* ]] && container_ha=1
+  done
+  host_network_capable && feature_add features host-network
+  for item in "${installed[@]}"; do feature_add features "${item}"; done
+  (( (ha_port == 1 && installed_ha == 0) || container_ha == 1 )) && feature_add features ha-existing
+  (( mqtt_port == 1 )) && feature_add features mqtt-broker
+  (( zigbee2mqtt == 1 )) && feature_add features zigbee2mqtt
+  (( zwave_js == 1 )) && feature_add features zwave-js
+  (( frigate == 1 )) && feature_add features frigate
+  (( go2rtc == 1 )) && feature_add features go2rtc
+  (( esphome == 1 )) && feature_add features esphome
+  (( node_red == 1 )) && feature_add features node-red
+  (( matter_server == 1 )) && feature_add features matter-server
+  (( music_assistant == 1 )) && feature_add features music-assistant
+  (( zigbee_radio == 1 )) && feature_add features zigbee-radio
+  (( zwave_radio == 1 )) && feature_add features zwave-radio
+  (( serial_radio == 1 )) && feature_add features serial-radio
+  (( bluetooth == 1 )) && feature_add features bluetooth
+  printf '%s\n' "${features[@]}"
+}
+
+feature_words() {
+  case "$1" in
+    host-network) printf 'host networking' ;; home-assistant) printf 'Martlet Home Assistant' ;; ha-existing) printf 'an existing Home Assistant' ;;
+    mqtt-broker) printf 'MQTT broker on port 1883' ;; zigbee2mqtt) printf 'Zigbee2MQTT container' ;; zwave-js) printf 'Z-Wave JS container' ;;
+    frigate) printf 'Frigate container' ;; go2rtc) printf 'go2rtc container' ;; esphome) printf 'ESPHome container' ;; node-red) printf 'Node-RED container' ;;
+    matter-server) printf 'Matter server container' ;; music-assistant) printf 'Music Assistant container' ;; zigbee-radio) printf 'Zigbee USB radio' ;;
+    zwave-radio) printf 'Z-Wave USB radio' ;; serial-radio) printf 'USB serial radio' ;; bluetooth) printf 'Bluetooth adapter' ;;
+  esac
+}
+
+print_feature_summary() {
+  local token word joined=""
+  for token in "$@"; do
+    word="$(feature_words "${token}")"
+    [[ -n "${word}" ]] || continue
+    [[ -z "${joined}" ]] || joined+=", "
+    joined+="${word}"
+  done
+  note "Found on this computer: ${joined:-no Home Assistant helpers detected yet}."
+}
 
 # Prints one JSON object per NVIDIA GPU from nvidia-smi CSV lines "name, memory MiB, driver, persistence, power limit W,
 # default power limit W" (the last three are what martlet-prepare's gpu-power sets).
@@ -461,7 +673,7 @@ nvidia_gpus_json() {
 }
 
 collect_machine() {
-  local os="" kernel="" cpu="" threads="" memory="" runtime="" nvidia_containers="unknown" cuda="" arch="" gpus=() line
+  local os="" kernel="" cpu="" threads="" memory="" runtime="" nvidia_containers="unknown" cuda="" arch="" gpus=() features=() line
   local query=(--query-gpu=name,memory.total,driver_version,persistence_mode,power.limit,power.default_limit --format=csv,noheader,nounits)
   local cuda_pattern='CUDA Version: *[0-9]+(\.[0-9]+)+'
   cpu="$(grep -m1 'model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2- || true)"
@@ -509,14 +721,17 @@ collect_machine() {
       fi
     done
   fi
-  local joined; joined="$(IFS=,; printf '%s' "${gpus[*]:-}")"
+  local joined features_joined
+  joined="$(IFS=,; printf '%s' "${gpus[*]:-}")"
+  mapfile -t features < <(machine_features)
+  features_joined="$(json_string_array "${features[@]}")"
   # The roles always run on Linux (natively or in Docker containers), whatever computer Docker runs on.
   case "${arch}" in x86_64|amd64) arch="x64" ;; aarch64|arm64) arch="arm64" ;; *) arch="" ;; esac
   mkdir -p "${GW_CONF_DIR}"; chmod 700 "${GW_CONF_DIR}"
   ( umask 077
-    printf '{"collected_at":"%s","method":"%s","platform":"linux","architecture":%s,"operating_system":%s,"kernel":%s,"processor":%s,"processor_threads":%s,"memory_gb":%s,"container_runtime":%s,"nvidia_containers":"%s","cuda":%s,"gpus":[%s]}\n' \
+    printf '{"collected_at":"%s","method":"%s","platform":"linux","architecture":%s,"operating_system":%s,"kernel":%s,"processor":%s,"processor_threads":%s,"memory_gb":%s,"container_runtime":%s,"nvidia_containers":"%s","cuda":%s,"gpus":[%s],"features":[%s]}\n' \
       "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${MODE}" "$(json_opt "${arch}")" "$(json_text "${os:-Linux}")" "$(json_opt "${kernel}")" "$(json_opt "${cpu}")" \
-      "$(json_num "${threads}")" "$(json_num "${memory}")" "$(json_opt "${runtime}")" "${nvidia_containers}" "$(json_opt "${cuda}")" "${joined}" \
+      "$(json_num "${threads}")" "$(json_num "${memory}")" "$(json_opt "${runtime}")" "${nvidia_containers}" "$(json_opt "${cuda}")" "${joined}" "${features_joined}" \
       > "${MACHINE_FILE}.tmp" && mv -f "${MACHINE_FILE}.tmp" "${MACHINE_FILE}" )
 }
 
@@ -529,6 +744,11 @@ show_machine() {
 apply_config() {
   write_config
   if [[ ${CONFIG_CHANGED} == 1 ]] || ! approval_matches; then reapprove; else service_start; fi
+}
+
+restart_gateway_for_machine_report() {
+  note "Restarting the gateway so paired desktops see this host's machine report."
+  if approval_matches; then service_start; else note "The gateway needs approval first; run: martlet-host setup"; fi
 }
 
 require_setup() {
@@ -818,6 +1038,7 @@ installed_roles() {
 # no longer reach (desktops then get worker.unavailable), and the new holder's restart pass does not touch it.
 role_detached() {
   local role="$1" holder container mode found=0
+  [[ "$(conf_value "$(installed_file "${role}")" network)" == host ]] && return 1
   holder="$(docker container inspect -f '{{.Id}}' "${NET}" 2>/dev/null)" || return 1
   while IFS= read -r container; do
     [[ -n "${container}" ]] || continue
@@ -836,6 +1057,7 @@ reconnect_roles() {
     [[ -n "${role}" ]] && role_detached "${role}" || continue
     note "Reconnecting ${role} to the gateway network (it was left on the network an earlier setup replaced)..."
     journal "reconnecting ${role} to the current network holder"
+    ensure_role_timezone_env "${PROJECTS}/${role}"
     if role_compose "${role}" up -d --force-recreate --no-build >/dev/null 2>&1 ||
        role_compose "${role}" up -d --force-recreate; then
       note "Reconnected ${role}; it is starting again."
@@ -846,12 +1068,41 @@ reconnect_roles() {
   done < <(installed_roles)
 }
 
+refresh_installed_role_files() {
+  local role record kind feature dir project changed gpu_entry overlay
+  while IFS= read -r role; do
+    [[ -n "${role}" ]] || continue
+    record="$(installed_file "${role}")"
+    kind="$(conf_value "${record}" kind)"; feature="$(conf_value "${record}" feature)"
+    [[ -n "${kind}" || -n "${feature}" ]] || continue
+    dir="${ROLES_DIR}/${role}"; project="${PROJECTS}/${role}"; changed=0
+    [[ -f "${dir}/role.conf" && -f "${dir}/compose.yaml" ]] ||
+      { note "Role files for ${role} are no longer present; leaving its running containers unchanged."; continue; }
+    mkdir -p "${project}"
+    if [[ ! -f "${project}/compose.yaml" ]] || ! cmp -s "${dir}/compose.yaml" "${project}/compose.yaml"; then
+      cp "${dir}/compose.yaml" "${project}/compose.yaml"; changed=1
+    fi
+    gpu_entry="$(conf_value "${dir}/role.conf" gpu)"; overlay="${gpu_entry#*|}"
+    if [[ -f "${project}/compose.gpu.yaml" && -f "${dir}/${overlay}" ]] && ! cmp -s "${dir}/${overlay}" "${project}/compose.gpu.yaml"; then
+      cp "${dir}/${overlay}" "${project}/compose.gpu.yaml"; changed=1
+    fi
+    if [[ ${changed} == 1 ]]; then
+      note "Refreshing ${role} role files from this Martlet version and restarting its containers."
+      ensure_role_timezone_env "${project}"
+      role_compose "${role}" up -d
+    fi
+  done < <(installed_roles)
+}
+
 cmd_add() {
   local role="${1:-}"; [[ -n "${role}" ]] || fail "Usage: martlet-host add <role>"
   load_input
   require_setup
-  local dir conf project
+  local dir conf project role_network role_feature kind
   dir="$(role_dir "${role}")"; conf="${dir}/role.conf"; project="${PROJECTS}/${role}"
+  role_network="$(conf_value "${conf}" network)"; role_feature="$(conf_value "${conf}" feature)"; kind="$(conf_value "${conf}" gateway_kind)"
+  [[ -z "${role_network}" || "${role_network}" == host ]] || fail "Invalid network in role.conf."
+  [[ -z "${role_feature}" || "${role_feature}" =~ ^[a-z0-9-]{1,32}$ ]] || fail "Invalid feature in role.conf."
   say "Adding role ${role}: $(conf_value "${conf}" title)"
 
   say "Requirements"
@@ -869,6 +1120,7 @@ cmd_add() {
   mkdir -p "${project}/files" "${CONF}/secrets"; chmod 700 "${project}" "${CONF}/secrets"
   local env_lines=("COMPOSE_PROJECT_NAME=martlet-${role}" "MARTLET_ROLE_CONFIGS_VOLUME=martlet-${role}-configs")
   if [[ "${MODE}" == docker ]]; then env_lines+=("MARTLET_ROLE_NETWORK=container:${NET}"); else env_lines+=("MARTLET_ROLE_NETWORK=host"); fi
+  env_lines+=("MARTLET_TZ=$(host_timezone)")
   # Martlet sources a role may build its image from (compose build contexts under ${MARTLET_SOURCE}/workers).
   env_lines+=("MARTLET_SOURCE=${SOURCE}")
   local line name prompt var label options default value
@@ -992,15 +1244,24 @@ cmd_add() {
   ( umask 077; printf '%s\n' "${env_lines[@]}" > "${project}/.env" )
   fill_volume "martlet-${role}-configs" "${project}/files"
 
-  say "Starting ${role}"
-  role_compose "${role}" up -d
-  local port minutes
+  local port minutes ready_address detected_features=()
   port="$(conf_value "${conf}" port)"; minutes="$(conf_value "${conf}" ready_timeout_minutes)"
   [[ "${port}" =~ ^[0-9]{2,5}$ ]] || fail "Invalid port in role.conf."
-  note "Waiting for ${role} on 127.0.0.1:${port} (up to ${minutes:-10} minutes; first starts can be slow)..."
+  if [[ "${role_network}" == host ]]; then
+    mapfile -t detected_features < <(machine_features)
+    print_feature_summary "${detected_features[@]}"
+    if host_port_open "${port}" && ! role_container_running "${role}"; then
+      fail "Something else already uses port ${port} on this computer (probably another Home Assistant). Connect to it in Martlet's Smart home page instead."
+    fi
+  fi
+
+  say "Starting ${role}"
+  role_compose "${role}" up -d
+  ready_address="$(role_ready_address "${role_network}")"
+  note "Waiting for ${role} on ${ready_address}:${port} (up to ${minutes:-10} minutes; first starts can be slow)..."
   local ready=0 attempt
   for attempt in $(seq 1 $(( ${minutes:-10} * 6 ))); do
-    if (exec 3<>"/dev/tcp/127.0.0.1/${port}") 2>/dev/null; then ready=1; break; fi
+    if (exec 3<>"/dev/tcp/${ready_address}/${port}") 2>/dev/null; then ready=1; break; fi
     sleep 10
   done
   [[ ${ready} == 1 ]] || fail "${role} did not start. Inspect: martlet-host status (or docker compose -p martlet-${role} logs)"
@@ -1018,27 +1279,37 @@ cmd_add() {
       fail "'${step}' failed in ${role}. Check the host's disk space and network, then run 'martlet-host add ${role}' again."
   done 3< <(conf_values "${conf}" post_start)
 
-  local kind model_from model="${role}"
-  kind="$(conf_value "${conf}" gateway_kind)"; model_from="$(conf_value "${conf}" model_from)"
-  [[ -n "${kind}" ]] || fail "role.conf declares no gateway_kind."
-  if [[ -n "${model_from}" ]]; then model="${chosen[${model_from}]:-${role}}"; fi
-  ( umask 077; printf 'kind=%s\nendpoint=http://127.0.0.1:%s/\nmodel=%s\n' "${kind}" "${port}" "${model}" > "$(installed_file "${role}")" )
-  collect_machine
-  apply_config
-  say "Role ${role} is running and published through the gateway. Paired desktops pick it up automatically."
+  local model_from model="${role}"
+  model_from="$(conf_value "${conf}" model_from)"
+  if [[ -n "${kind}" ]]; then
+    if [[ -n "${model_from}" ]]; then model="${chosen[${model_from}]:-${role}}"; fi
+    ( umask 077; printf 'kind=%s\nendpoint=http://127.0.0.1:%s/\nmodel=%s\n' "${kind}" "${port}" "${model}" > "$(installed_file "${role}")" )
+    collect_machine
+    apply_config
+    say "Role ${role} is running and published through the gateway. Paired desktops pick it up automatically."
+  else
+    [[ -n "${role_feature}" ]] || fail "role.conf declares no gateway_kind or feature."
+    [[ "${role_network}" == host ]] || fail "Route-less roles must declare network=host."
+    ( umask 077; printf 'feature=%s\nport=%s\nnetwork=host\n' "${role_feature}" "${port}" > "$(installed_file "${role}")" )
+    collect_machine
+    restart_gateway_for_machine_report
+    say "Role ${role} is running. Paired desktops see its ${role_feature} feature on Check connection."
+  fi
 }
 
 cmd_remove() {
   local role="${1:-}"; [[ -n "${role}" ]] || fail "Usage: martlet-host remove <role>"
   require_setup
   role_dir "${role}" >/dev/null
-  [[ -f "$(installed_file "${role}")" ]] || fail "Role ${role} is not installed."
+  local record; record="$(installed_file "${role}")"
+  [[ -f "${record}" ]] || fail "Role ${role} is not installed."
+  local had_kind; had_kind="$(conf_value "${record}" kind)"
   ask "Stop ${role} and remove it from the gateway (its data volumes are kept)?" || exit 0
   require_docker
   role_compose "${role}" down || true
-  rm -f "$(installed_file "${role}")"
+  rm -f "${record}"
   collect_machine
-  apply_config
+  if [[ -n "${had_kind}" ]]; then apply_config; else restart_gateway_for_machine_report; fi
   say "Role ${role} removed."
 }
 
@@ -1047,8 +1318,7 @@ cmd_machine() {
   say "Collecting this machine's hardware for paired desktops"
   collect_machine
   show_machine
-  note "Restarting the gateway so paired desktops see it (Check connection in Martlet)."
-  if approval_matches; then service_start; else note "The gateway needs approval first; run: martlet-host setup"; fi
+  restart_gateway_for_machine_report
 }
 
 # Replaces the gateway with this engine's Martlet version (the image this session runs from, or this checkout natively),
@@ -1077,6 +1347,7 @@ cmd_update() {
   fi
   collect_machine
   apply_config
+  refresh_installed_role_files
   reconnect_roles
   if [[ "${MODE}" == docker ]]; then
     # Older martlet-host images still in use (for example by the network holder) are kept.
@@ -1105,13 +1376,19 @@ cmd_status() {
     tail -n 12 "${JOURNAL}" | sed 's/^/  /'
   fi
   show_machine
-  local file role port
+  local file role port network address
   for file in "${CONF}/roles"/*.role; do
     [[ -e "${file}" ]] || continue
     role="$(basename "${file}" .role)"
-    port="$(conf_value "${file}" endpoint | sed -E 's#.*:([0-9]+)/$#\1#')"
+    port="$(conf_value "${file}" port)"; network="$(conf_value "${file}" network)"
+    [[ -n "${port}" ]] || port="$(conf_value "${file}" endpoint | sed -E 's#.*:([0-9]+)/$#\1#')"
+    address="$(role_ready_address "${network}")"
     say "Role ${role}"
-    if (exec 3<>"/dev/tcp/127.0.0.1/${port}") 2>/dev/null; then note "listening on 127.0.0.1:${port}"; else note "NOT listening on 127.0.0.1:${port}"; fi
+    if [[ "${port}" =~ ^[0-9]{1,5}$ ]] && (exec 3<>"/dev/tcp/${address}/${port}") 2>/dev/null; then
+      note "listening on ${address}:${port}"
+    else
+      note "NOT listening on ${address}:${port:-unknown}"
+    fi
     if [[ "${MODE}" == docker ]] && role_detached "${role}"; then
       note "Not in the gateway's network (missing, or left on the network an earlier setup replaced), so the gateway can't reach it. Reconnect it: martlet-host update (Update host in Martlet)"
     fi

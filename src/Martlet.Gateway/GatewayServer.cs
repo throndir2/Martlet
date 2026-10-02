@@ -53,6 +53,10 @@ public sealed class GatewayServer
     /// and loads the copy saved there.</summary>
     public void AttachVoiceStorage(IGatewayVoiceStorage storage) => application.Voices.Attach(storage);
 
+    /// <summary>Keeps this host's shared Home Assistant connection (served at /martlet/v1/home-assistant) in
+    /// <paramref name="storage"/> and loads the copy saved there.</summary>
+    public void AttachHomeAssistantStorage(IGatewayHomeAssistantStorage storage) => application.HomeAssistant.Attach(storage);
+
     /// <summary>Keeps this host's copy of the network's API keys (served to paired desktops at /martlet/v1/api-keys and
     /// checked for every Authorization: Bearer request) in <paramref name="storage"/> and loads the copy saved there.</summary>
     public void AttachApiKeyStorage(IGatewayApiKeyStorage storage) => application.ApiKeys.Attach(storage);

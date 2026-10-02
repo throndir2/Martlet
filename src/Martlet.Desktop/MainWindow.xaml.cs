@@ -119,6 +119,7 @@ public partial class MainWindow : ThemedWindow
         InitializeApiKeys();
         InitializeNearby();
         InitializeVoiceSync();
+        InitializeHomeShare();
         InitializeNodeAgent();
         InitializeLogs();
         InitializeBackground();
@@ -173,6 +174,7 @@ public partial class MainWindow : ThemedWindow
         StartNetwork();
         StartApiKeys();
         StartVoiceSync();
+        StartHomeShare();
         StartNodeAgent();
         StartLogShipping();
         // Parakeet takes a few seconds to load; do it now rather than on the first thing said.
@@ -635,6 +637,7 @@ public partial class MainWindow : ThemedWindow
         networkTimer.Stop();
         apiKeysTimer.Stop();
         voiceSyncTimer.Stop();
+        homeShareTimer.Stop();
         trayTimer.Stop();
         StopNearby();
         StopLogs();

@@ -16,6 +16,9 @@ internal sealed class LinuxControlDirectory : IDisposable
     /// <summary>The shared voice list (voiceprints and names) the gateway keeps for paired desktops.</summary>
     internal const string Voices = "voices.json", VoicesStaging = "voices.staging";
     internal const int MaximumVoicesBytes = 1_048_576;
+    /// <summary>The shared Home Assistant connection, including the access token, for paired desktops.</summary>
+    internal const string HomeAssistant = "home-assistant.json", HomeAssistantStaging = "home-assistant.staging";
+    internal const int MaximumHomeAssistantBytes = 16 * 1024;
     /// <summary>Commands paired computers sent through this host (never their secrets).</summary>
     internal const string Commands = "commands.json", CommandsStaging = "commands.staging";
     internal const int MaximumCommandsBytes = 1_048_576;
@@ -90,7 +93,7 @@ internal sealed class LinuxControlDirectory : IDisposable
 
     internal byte[]? Read(string name, int maximum)
     {
-        if (name is not (Config or Approval or Machine or Cluster or Voices or Logs or Network or Commands or AgentToken or ApiKeys)) throw Error(GatewayPersistenceFailure.InvalidPath);
+        if (name is not (Config or Approval or Machine or Cluster or Voices or HomeAssistant or Logs or Network or Commands or AgentToken or ApiKeys)) throw Error(GatewayPersistenceFailure.InvalidPath);
         Validate();
         var before = fs.StatAt(DirectoryFd, name);
         if (before is null) return null;
@@ -145,6 +148,9 @@ internal sealed class LinuxControlDirectory : IDisposable
         }
         Replace(Voices, VoicesStaging, bytes, MaximumVoicesBytes);
     }
+
+    /// <summary>Atomically replaces home-assistant.json (0600, service owner).</summary>
+    internal void WriteHomeAssistant(byte[] bytes) => ReplaceRecovering(HomeAssistant, HomeAssistantStaging, bytes, MaximumHomeAssistantBytes);
 
     /// <summary>Atomically replaces commands.json (0600, service owner).</summary>
     internal void WriteCommands(byte[] bytes) => ReplaceRecovering(Commands, CommandsStaging, bytes, MaximumCommandsBytes);
