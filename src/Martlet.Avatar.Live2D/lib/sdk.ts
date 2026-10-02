@@ -17,6 +17,10 @@ export interface CubismModel {
   getDrawableVertexCount(index: number): number;
   getDrawableVertexIndexCount(index: number): number;
   getDrawableTextureIndex(index: number): number;
+  /** Interleaved x, y vertex positions in model units (y up). */
+  getDrawableVertices(index: number): Float32Array;
+  getDrawableOpacity(index: number): number;
+  getDrawableDynamicFlagIsVisible(index: number): boolean;
   update(): void;
 }
 

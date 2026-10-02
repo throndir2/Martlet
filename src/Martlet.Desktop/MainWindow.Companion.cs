@@ -1128,6 +1128,18 @@ public partial class MainWindow
                 PageButton("Choose and customize", () => RunNodeAction(NodeAction.Character), id: "OpenAvatar"),
                 showing ? PageButton("Reset position", () => ResetCharacterPositionAsync().Forget(), id: "SetupCharacterResetPosition") : null,
                 showing ? PageButton("Reset zoom", () => ResetCharacterZoomAsync().Forget(), id: "SetupCharacterResetZoom") : null)));
+        characterViewText = null;
+        if (!showing) return;
+        // Wheel zoom happens on the overlay itself; Martlet reads the overlay's view whenever this page renders.
+        characterViewText = Note("", new Thickness(0, 8, 0, 0));
+        AutomationProperties.SetAutomationId(characterViewText, "SetupCharacterView");
+        page.Children.Add(Card(Heading("Zoom"),
+            Note("Mouse wheel over the character zooms it toward the cursor; the top of its head always stays in view. " +
+                "Ctrl+drag or middle-drag pans when zoomed in.", new Thickness(0, 0, 0, 0)),
+            Row(PageButton("Zoom in", () => ZoomCharacterAsync("in").Forget(), id: "SetupCharacterZoomIn"),
+                PageButton("Zoom out", () => ZoomCharacterAsync("out").Forget(), id: "SetupCharacterZoomOut")),
+            characterViewText));
+        ZoomCharacterAsync("status").Forget();
     }
 
     // ---------- personality ----------

@@ -73,13 +73,18 @@ internal sealed class AvatarController : IAsyncDisposable
         finally { changes.Release(); }
     }
 
-    /// <summary>Zooms the character overlay "in", "out", or "reset"s it to the default size without moving it.</summary>
-    internal async Task ZoomAsync(string action, CancellationToken token)
+    /// <summary>
+    /// Zooms the character overlay "in", "out", "reset"s it to the default size without moving it, or reads its
+    /// "status". Returns the resulting view, or null while the character is hidden.
+    /// </summary>
+    internal async Task<RendererView?> ZoomAsync(string action, CancellationToken token)
     {
         await changes.WaitAsync(token);
         try
         {
-            if (renderer is { HasExited: false } current) await current.SendAsync("zoom", new RendererZoom(action), token);
+            if (renderer is not { HasExited: false } current) return null;
+            var reply = await current.SendAsync("zoom", new RendererZoom(action), token);
+            return reply.Kind == "view" ? RendererProtocol.Data<RendererView>(reply) : null;
         }
         finally { changes.Release(); }
     }

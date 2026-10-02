@@ -20,7 +20,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     {
         "FoundationStatus", "PipelineStatus", "LocalAudioStatus",
         "LiveStatus", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
-        "PeopleStatus", "PeopleSyncStatus", "PeopleVoiceCount", "ListenParakeetStatus"
+        "PeopleStatus", "PeopleSyncStatus", "PeopleVoiceCount", "ListenParakeetStatus", "SetupCharacterView"
     };
 
     /// <summary>Choosing a Companion page in its side list only shows that page.</summary>

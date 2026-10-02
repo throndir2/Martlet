@@ -11,8 +11,14 @@ public sealed record RendererCapabilities(string ModelId, RendererParameter[] Pa
 public sealed record RendererLoad(AvatarProfile Profile, string ResourceRevision, bool DarkTheme);
 public sealed record RendererTheme(bool Dark);
 public sealed record RendererSay(string? Text);
-/// <summary>Overlay zoom command: "in", "out" or "reset" (default size, unzoomed camera).</summary>
+/// <summary>Overlay zoom command: "in", "out", "reset" (default size, unzoomed camera) or "status" (no change).</summary>
 public sealed record RendererZoom(string Action);
+/// <summary>
+/// The overlay's size in device-independent pixels, its top relative to the top of its screen's work area (negative
+/// when it extends above the screen; null if unknown), its camera zoom, and how far the top of the character's head
+/// sits below the overlay's top edge as a fraction of its height (negative when cut off; null until reported).
+/// </summary>
+public sealed record RendererView(double Width, double Height, double? ScreenTop, double Zoom, double? HeadTop);
 public sealed record RendererMapping(string Target, string Aspect);
 public sealed record RendererConfiguration(string SourceId, string ModelRevision, string MappingRevision, RendererMapping[] Targets);
 public sealed record RendererIdentity(Guid SessionId, Guid TurnId, Guid RequestId, string SourceId, long Epoch, int SampleRate);

@@ -2,7 +2,7 @@ import { Live2DAdapter, LocalModelBundle } from "../../Martlet.Avatar.Live2D/lib
 import { VrmAvatarAdapter } from "../../Martlet.Avatar.Vrm/src/index.ts";
 
 const canvas = document.getElementById("avatar");
-let adapter, renderer, revision, configurationId, active = false, last = 0, failed = false;
+let adapter, renderer, revision, configurationId, active = false, last = 0, failed = false, reportedTop;
 let view = { zoom: 1, x: 0, y: 0 };
 const post = value => window.chrome.webview.postMessage(value);
 const resource = name => fetch(`asset/${name}`).then(response => {
@@ -109,6 +109,11 @@ function draw(now) {
       else if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
       adapter.update(Math.min(0.1, last ? (now - last) / 1000 : 0));
     } catch { failed = true; active = false; post({ error: "avatar.renderer_failed" }); }
+    // Unsolicited, fire-and-forget: where the top of the head sits, so the host's zoom keeps it in view.
+    try {
+      const top = adapter.contentTop;
+      if (!failed && Number.isFinite(top) && !(Math.abs(top - reportedTop) < 0.002)) { reportedTop = top; post({ bounds: { top } }); }
+    } catch { }
   }
   last = now;
   requestAnimationFrame(draw);

@@ -163,6 +163,14 @@ change data or download and need `--allow-ui-effects`. Use `ui_snapshot` again t
 actions may return `completed: false` while their dialog remains open; this
 means the invoke is still pending, not that the action finished.
 
+For the desktop character, open `CompanionTab-Character`; with
+`--allow-ui-effects`, `SetupCharacterToggle` shows or hides it and
+`SetupCharacterZoomIn`, `SetupCharacterZoomOut` and `SetupCharacterResetZoom`
+zoom its overlay. The `SetupCharacterView` status then reports the overlay's
+size, its distance from the top of the screen, the camera zoom and where the
+top of the character's head sits relative to the overlay's top edge (it must
+stay in view at every zoom).
+
 Window discovery uses visible top-level native handles filtered to the attached
 process, then verifies ownership around each UI Automation handle lookup.
 This avoids transient omissions from UI Automation's desktop-root enumeration
