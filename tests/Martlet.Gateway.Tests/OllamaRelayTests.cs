@@ -126,6 +126,44 @@ public sealed class OllamaRelayTests
     }
 
     [Fact]
+    public async Task Relay_forwards_optional_sampling_settings_and_context_size_to_the_hosts_ollama()
+    {
+        await using var ollama = await FakeOllama.StartAsync(200,
+            "{\"message\":{\"role\":\"assistant\",\"content\":\"Hi\"},\"done\":true,\"done_reason\":\"stop\"}");
+        await using var worker = new OllamaRelayWorker(ollama.Endpoint, "llama3.2:3b");
+        await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [worker]);
+        var (connection, route) = await ConnectAsync(host);
+        using var owned = connection;
+        var sampling = new Martlet.Core.Settings.GenerationSettings
+        {
+            TopP = 0.9, TopK = 40, MinP = 0.05, RepeatPenalty = 1.15, FrequencyPenalty = 0.2, PresencePenalty = -0.5,
+            ContextTokens = 16_384
+        };
+
+        await foreach (var _ in connection.StreamChatAsync(route, NewIds(), 1, host.Clock.GetUtcNow().AddSeconds(30),
+            null, [], "Hello", 1.2, 512, 32_768, null, sampling)) { }
+
+        var options = Assert.Single(ollama.Requests).RootElement.GetProperty("options");
+        Assert.Equal(1.2, options.GetProperty("temperature").GetDouble());
+        Assert.Equal(512, options.GetProperty("num_predict").GetInt32());
+        Assert.Equal(16_384, options.GetProperty("num_ctx").GetInt32());
+        Assert.Equal(0.9, options.GetProperty("top_p").GetDouble());
+        Assert.Equal(40, options.GetProperty("top_k").GetInt32());
+        Assert.Equal(0.05, options.GetProperty("min_p").GetDouble());
+        Assert.Equal(1.15, options.GetProperty("repeat_penalty").GetDouble());
+        Assert.Equal(0.2, options.GetProperty("frequency_penalty").GetDouble());
+        Assert.Equal(-0.5, options.GetProperty("presence_penalty").GetDouble());
+
+        // Out of range: rejected at the gateway before it reaches Ollama.
+        await Assert.ThrowsAsync<Audio2FaceHostException>(async () =>
+        {
+            await foreach (var _ in connection.StreamChatAsync(route, NewIds(), 2, host.Clock.GetUtcNow().AddSeconds(30),
+                null, [], "Hello", 0.7, 64, 4_096, null, new() { ContextTokens = 8_192 })) { }
+        });
+        Assert.Single(ollama.Requests);
+    }
+
+    [Fact]
     public async Task Relay_reports_a_missing_model_or_stopped_ollama_as_unavailable()
     {
         await using var ollama = await FakeOllama.StartAsync(404, "{\"error\":\"model 'llama3.2:3b' not found\"}");
