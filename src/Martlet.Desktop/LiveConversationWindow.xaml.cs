@@ -96,7 +96,11 @@ public partial class LiveConversationWindow : ThemedWindow
     private ScreenFrame? pendingFrame;
     private LiveConversationOperation? commentary, handledCommentary;
     private long nextGlance;
-    private string? watchNote, captureNote, visionProblem;
+    // Shown in plain sight while vision is on: what the latest check saw (or why it skipped), how the last look went and
+    // why the pacer is holding off. Checks every 3 s never go into the history.
+    private string? sight, lookNote, waitNote, captureNote, visionProblem;
+    private bool seeing, twinkling;
+    private DateTime? lastCheck;
     // Thinking in Ollama on this PC: loads the model ahead of replies while this window is open.
     private LocalOllamaWarmup? warmup;
 
@@ -639,12 +643,29 @@ public partial class LiveConversationWindow : ThemedWindow
 
         VisionChip.Visibility = available && preferences.Watch ? Visibility.Visible : Visibility.Collapsed;
         VisionChip.IsEnabled = watching || visionProblem is null;
-        VisionText.Text = watching ? "Vision on" : visionProblem is not null ? "Can't see" : "Vision paused";
+        var looking = watching && commentary is { OwnershipReleased: false };
+        VisionText.Text = looking ? "Looking…" : watching ? "Watching" : visionProblem is not null ? "Can't see" : "Vision paused";
         VisionDot.SetResourceReference(Shape.FillProperty, watching ? "SuccessBrush" : visionProblem is not null ? "WarningBrush" : "MutedBrush");
+        if (looking != twinkling)
+        {
+            twinkling = looking;
+            if (looking) Motion.Twinkle(VisionDot, 0.9);
+            else
+            {
+                VisionDot.BeginAnimation(OpacityProperty, null);
+                VisionDot.Opacity = 1;
+            }
+        }
         VisionChip.ToolTip = watching
-            ? $"Martlet looks at {watchSource.Label} now and then. {watchNote}{(captureNote is { } why ? $" Full-screen game capture is unavailable ({why}); borderless and windowed still work." : "")} Click to stop."
+            ? $"Martlet checks {watchSource.Label} every {ScreenCommentaryPacer.Tick.TotalSeconds:0} s (the dot blinks) and now and then takes a look: " +
+              "one picture goes to the Thinking model, which stays quiet unless something is worth a remark." +
+              (lastCheck is { } checkedAt ? $" Last checked at {checkedAt:T}." : "") +
+              (captureNote is { } why ? $" Full-screen game capture is unavailable ({why}); borderless and windowed still work." : "") + " Click to stop."
             : visionProblem ?? "Click to let Martlet look again.";
-        AutomationProperties.SetName(VisionChip, VisionText.Text + ". " + VisionChip.ToolTip);
+        AutomationProperties.SetName(VisionChip, VisionText.Text.TrimEnd('…') + ". " + VisionChip.ToolTip);
+        var visionLine = VisionLine();
+        VisionStatusText.Text = visionLine;
+        VisionStatusText.Visibility = VisionChip.Visibility == Visibility.Visible && visionLine.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
 
         StopButton.IsEnabled = owned is { OwnershipReleased: false } || commentary is { OwnershipReleased: false } ||
             pendingText is not null || listening || watching || loading is not null;
@@ -725,8 +746,22 @@ public partial class LiveConversationWindow : ThemedWindow
         lookWanted = false;
         pacer = new(SavedChattiness, clock);
         nextGlance = clock.GetTimestamp();
-        watchNote = "First look in a few seconds.";
-        captureNote = null;
+        sight = lookNote = waitNote = captureNote = null;
+        seeing = false;
+        lastCheck = null;
+    }
+
+    /// <summary>The vision line under the status: what the latest check saw, then the last look's outcome or why Martlet is
+    /// holding off, and the looks used this hour. Paused vision shows nothing (the button says so); a problem shows here
+    /// unless the status line already says it.</summary>
+    private string VisionLine()
+    {
+        if (!watching) return visionProblem is { } problem && problem != notice ? problem : "";
+        var looks = pacer is { } p && p.LooksThisHour is > 0 and var count ? $" Looks this hour: {count} of {p.Settings.LooksPerHour}." : "";
+        if (sight is null) return $"Starting to watch {watchSource.Label}.";
+        if (!seeing) return sight + (lookNote is null ? "" : " " + lookNote) + looks;
+        var state = commentary is { OwnershipReleased: false } ? "Taking a look now…" : waitNote ?? lookNote ?? "First look soon.";
+        return $"{sight} {state}{looks}";
     }
 
     // Runs on the UI timer: notices conversation, collects finished glances and schedules the next capture.
@@ -766,15 +801,17 @@ public partial class LiveConversationWindow : ThemedWindow
                 return;
             }
             captureNote = source.IsScreen ? result.Note : null;
+            lastCheck = DateTime.Now;
+            seeing = result.Frame is not null;
             if (result.Frame is not { } frame)
             {
-                watchNote = !source.IsScreen ? result.Skip switch
+                sight = !source.IsScreen ? result.Skip switch
                 {
                     GlanceSkip.Blank => $"{char.ToUpperInvariant(source.Label[0])}{source.Label[1..]} shows only black (lens covered, privacy shutter closed or the camera is off).",
                     _ => result.Note ?? "Couldn't read the camera this time; trying again shortly."
                 } : result.Skip switch
                 {
-                    GlanceSkip.MartletInFront => "Martlet is in front, so it isn't looking.",
+                    GlanceSkip.MartletInFront => "Only Martlet's own windows are in view, so there's nothing to look at.",
                     GlanceSkip.Private => "A password manager or private window is in front; not looking.",
                     GlanceSkip.Blank when result.ProtectedContent => "Windows blacks out protected video, so Martlet can't see it.",
                     GlanceSkip.Blank when result.Note is { } why =>
@@ -785,6 +822,9 @@ public partial class LiveConversationWindow : ThemedWindow
                 };
                 return;
             }
+            sight = !result.BehindMartlet ? $"Watching {source.Label}."
+                : source.Scope == ScreenScope.ActiveWindow ? "Watching the window behind Martlet." : "Watching your screen behind Martlet.";
+            if (!twinkling) Motion.Blink(VisionDot);
             pacer.ObserveFrame(frame.Change);
             pendingFrame?.Clear();
             pendingFrame = frame;
@@ -793,17 +833,15 @@ public partial class LiveConversationWindow : ThemedWindow
             // Keyboard/mouse idleness means "away" only for the screen; in front of a camera people often don't type at all.
             var verdict = pacer.Decide(busy, source.IsScreen ? glancer.UserIdle : TimeSpan.Zero);
             lookWanted = verdict == PacerVerdict.Look;
-            if (!lookWanted)
+            waitNote = verdict switch
             {
-                watchNote = verdict switch
-                {
-                    PacerVerdict.UserAway => "You seem to be away; waiting for you.",
-                    PacerVerdict.HourlyLimit => "Hourly look budget used up; resting.",
-                    PacerVerdict.AfterConversation or PacerVerdict.Busy => "You're talking; not interrupting.",
-                    _ => watchNote
-                };
-                return;
-            }
+                PacerVerdict.UserAway => "You seem to be away; waiting for you.",
+                PacerVerdict.HourlyLimit => "Hourly look budget used up; resting.",
+                PacerVerdict.AfterConversation => "You're talking; not interrupting.",
+                PacerVerdict.Busy when commentary is not { OwnershipReleased: false } => "You're talking; not interrupting.",
+                _ => null
+            };
+            if (!lookWanted) return;
             if (!operations.IsRunning) TryStartCommentary();
             // An idle listen (nobody speaking) briefly yields; listening re-arms right after the glance.
             else if (idleListen && listening) controller.Stop(owned!, "commentary.glance", keepContext: true);
@@ -825,7 +863,7 @@ public partial class LiveConversationWindow : ThemedWindow
             // An address's host is not useful to the model; a camera's or window's name is.
             commentary = controller.StartCommentary(image, watchSource.Kind == WatchKind.Url ? "" : frame.Title, SavedChattiness,
                 Voice, screenApproved: true, watchSource);
-            watchNote = "Taking a look...";
+            waitNote = null;
             return true;
         }
         catch (LiveActionException error)
@@ -836,7 +874,7 @@ public partial class LiveConversationWindow : ThemedWindow
         }
         catch (Exception error) when (error is ContractException or InvalidOperationException or NotSupportedException or System.Runtime.InteropServices.ExternalException)
         {
-            watchNote = "Couldn't prepare the image this time.";
+            lookNote = "Couldn't prepare the image this time.";
             return false;
         }
         finally
@@ -849,22 +887,24 @@ public partial class LiveConversationWindow : ThemedWindow
     {
         var status = done.Status;
         var at = DateTime.Now.ToString("t");
+        waitNote = null;
         if (done.Passed)
         {
             pacer?.NoteLook(false);
-            watchNote = $"Looked at {at}: nothing worth saying.";
+            lookNote = $"Last look at {at}: nothing worth saying.";
             return;
         }
         if (status.Code is "runtime.Completed")
         {
             pacer?.NoteLook(true);
             if (done.Turn?.Content.Text.Trim() is { Length: > 0 } remark) Add(ChatRole.Martlet, remark, $"Martlet, about {watchSource.Label}");
-            watchNote = $"Said something at {at}.";
+            lookNote = $"Last look at {at}: said something.";
             return;
         }
         if (status.Code is "runtime.Refused" or "commentary.interrupted" or "commentary.stopped" or "conversation.canceled" or "conversation.revoked")
         {
             pacer?.NoteLook(false);
+            lookNote = status.Code == "runtime.Refused" ? $"Last look at {at}: the model declined to comment." : $"Last look at {at}: stopped so you could talk.";
             return;
         }
         // No automatic retry of a failing request: stop and say what to change.
