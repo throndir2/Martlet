@@ -70,6 +70,9 @@ public partial class MainWindow
     private bool tabEdited;
     private bool savingTab;
     private IReadOnlyList<string>? ollamaModels;
+    private LocalModelTestOutcome? localModelTest;
+    private Action? showLocalTest;
+    private bool testingLocalModel;
     private IReadOnlyList<WindowsVoice>? windowsVoices;
     private readonly Dictionary<CompanionTab, JobPlace> tabPlace = [];
 
@@ -518,14 +521,31 @@ public partial class MainWindow
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
 
         string ModelId() => (model.Text ?? "").Trim();
+        var tested = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 10, 0, 0) };
+        AutomationProperties.SetAutomationId(tested, "SetupLocalModelTest");
+        AutomationProperties.SetLiveSetting(tested, AutomationLiveSetting.Polite);
+        void ShowTest()
+        {
+            var last = localModelTest is { } outcome && outcome.Model == ModelId() ? outcome : null;
+            tested.Text = last?.Text ?? (ModelId().Length == 0 ? "" : $"{ModelId()} isn't tested yet. Test model loads it in Ollama and asks it to say hello, " +
+                "the way Martlet's replies do, so you know it runs on this PC before you talk.");
+            tested.SetResourceReference(TextBlock.ForegroundProperty, last is null ? "MutedBrush" : last.Passed && !last.Warning ? "SuccessBrush"
+                : "WarningBrush");
+        }
+        ShowTest();
+        showLocalTest = ShowTest;
+        model.TextChanged += (_, _) => ShowTest();
+        var test = PageButton("Test model", () => TestLocalModelAsync(ModelId()).Forget(), id: "SetupTestLocalModel");
         // Until Ollama is installed, installing it (with the chosen model, then switching to it) is the only step that does anything.
         var buttons = installed
             ? Row(
                 PageButton("Download model", () => PullOllamaModelAsync(ModelId()).Forget(), id: "SetupPullModel"),
                 PageButton("Check Ollama", () => CheckOllamaAsync().Forget(), id: "SetupCheckOllama"),
+                test,
                 PageButton("Use Ollama on this PC", () => SaveLocalThinkingAsync(ModelId()).Forget(), primary: true, id: "SetupUseLocalThinking"))
             : Row(
                 PageButton("Install Ollama and use it", () => InstallOllamaAsync(ModelId()).Forget(), primary: true, id: "SetupInstallOllama"),
+                test,
                 PageButton("Use Ollama on this PC", () => SaveLocalThinkingAsync(ModelId()).Forget(), id: "SetupUseLocalThinking"));
 
         var suggestion = Note($"Recommended here: {recommended.Id} ({recommended.Size}). Every suggestion talks, sees your screen " +
@@ -542,7 +562,62 @@ public partial class MainWindow
             picks,
             suggestion,
             Note(gpu + " Prefer instruct/chat models.", new Thickness(0, 8, 0, 10)),
-            buttons);
+            buttons,
+            tested);
+    }
+
+    /// <summary>The last model test on this PC's Ollama: which model, what it found, and whether it worked.</summary>
+    private sealed record LocalModelTestOutcome(string Model, string Text, bool Passed, bool Warning);
+
+    /// <summary>Loads <paramref name="model"/> in this PC's Ollama and asks it for a short streamed reply, the way Martlet's
+    /// replies do, so a model that won't run here shows up while it is being set up rather than on the first message.</summary>
+    private async Task TestLocalModelAsync(string model)
+    {
+        try { ChatCompletionsSetup.ModelId(model); }
+        catch (ContractException error) { ActionText.Text = error.Message; return; }
+        if (testingLocalModel)
+        {
+            ActionText.Text = "A model test is already running; its window shows how far it got.";
+            return;
+        }
+        testingLocalModel = true;
+        ActionText.Text = $"Testing {model} in Ollama on this PC; the run window shows each step.";
+        var replyTokens = homeSettings?.Generation?.ReplyTokens ?? GenerationSettings.DefaultMaxReplyTokens;
+        LocalModelTestResult? result = null;
+        string? failure = null;
+        try
+        {
+            await HostRunWindow.RunAsync(this, $"Test {model}", async run =>
+            {
+                try
+                {
+                    result = await LocalOllama.TestAsync(model, replyTokens, LiveConversationConfiguration.DefaultTextLimits.FirstDeltaTimeout,
+                        run.Status, run.Output, run.Token);
+                    return result.Summary;
+                }
+                catch (InvalidOperationException error)
+                {
+                    failure = error.Message;
+                    throw;
+                }
+            });
+        }
+        finally { testingLocalModel = false; }
+        if (closing) return;
+        var route = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var inUse = IsLocalOllama(route) && route!.ModelId == model;
+        if (result is not null)
+        {
+            localModelTest = new(model, result.Summary, true, result.Warning);
+            ActionText.Text = result.Summary + (inUse ? "" : " Choose Use Ollama on this PC to think with it.");
+        }
+        else if (failure is not null)
+        {
+            localModelTest = new(model, $"Test failed: {failure}", false, false);
+            ActionText.Text = localModelTest.Text;
+        }
+        else ActionText.Text = $"Testing {model} stopped before it finished.";
+        showLocalTest?.Invoke();
     }
 
     /// <summary>Downloads a model into this PC's Ollama in a run window (no console), then refreshes what Ollama has.</summary>
@@ -554,14 +629,15 @@ public partial class MainWindow
         var done = await HostRunWindow.RunAsync(this, $"Download {model}", async run =>
         {
             await LocalOllama.PullAsync(model, run.Status, run.Output, run.Token);
-            return $"{model} is downloaded. Choose Use Ollama on this PC to think with it.";
+            return $"{model} is downloaded. Choose Test model to check it runs on this PC, then Use Ollama on this PC to think with it.";
         });
         if (closing) return;
         ActionText.Text = done ?? $"{model} was not downloaded. The run window shows why.";
         if (done is not null) await CheckOllamaAsync();
     }
 
-    /// <summary>One click: installs Ollama with the chosen model (no console) and, once it is there, thinks with it.</summary>
+    /// <summary>One click: installs Ollama with the chosen model (no console), thinks with it once it is there, then tests it so
+    /// a model that won't run on this PC shows up now rather than on the first message.</summary>
     private async Task InstallOllamaAsync(string model)
     {
         try { ChatCompletionsSetup.ModelId(model); }
@@ -575,8 +651,13 @@ public partial class MainWindow
         }
         await CheckOllamaAsync();
         if (closing) return;
-        if (ollamaModels?.Contains(model, StringComparer.Ordinal) == true) await SaveLocalThinkingAsync(model);
-        else ActionText.Text = $"Ollama is installed, but {model} isn't downloaded yet: choose Download model.";
+        if (ollamaModels?.Contains(model, StringComparer.Ordinal) != true)
+        {
+            ActionText.Text = $"Ollama is installed, but {model} isn't downloaded yet: choose Download model.";
+            return;
+        }
+        await SaveLocalThinkingAsync(model);
+        if (!closing) await TestLocalModelAsync(model);
     }
 
     /// <summary>Asks the local Ollama (loopback only, on request) which models it has.</summary>
