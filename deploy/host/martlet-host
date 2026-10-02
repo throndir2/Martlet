@@ -32,10 +32,11 @@
 #           (this launcher starts the engine as the unprivileged martlet user inside the gateway's network)
 #
 # Every role goes through the same steps, driven only by roles/<role>/role.conf and compose.yaml:
-# requirements (including docker-engine for Linux-only host networking) -> terms -> GPU or CPU -> secrets -> choices ->
+# requirements (including docker-engine for Linux-only host networking) -> GPU or CPU -> choices -> terms -> secrets ->
 # registry login -> pinned assets -> compose service (loopback behind the gateway, or network=host for route-less LAN
-# features) -> readiness -> post-start steps -> gateway route or machine feature. Each system change is confirmed first
-# (typed "yes", or --yes when Martlet desktop already asked the owner).
+# features) -> readiness -> post-start steps -> gateway route or machine feature. role.conf entries between
+# "[VAR=value]" and "[end]" apply only when that choice is made (a role's variants, such as the Audio2Face engine).
+# Each system change is confirmed first (typed "yes", or --yes when Martlet desktop already asked the owner).
 set -euo pipefail
 
 if [[ "${1:-}" == --yes ]]; then shift; export MARTLET_ASSUME_YES=1; fi
@@ -118,22 +119,40 @@ role_dir() {
   printf '%s' "${ROLES_DIR}/$1"
 }
 
-# Prints every value of KEY in a key=value file (comments and CR stripped); list keys may repeat.
-conf_values() {
-  local file="$1" key="$2" line
+# Choices made for the role being added (VAR -> value). In role.conf, entries between a "[VAR=value]" line and "[end]"
+# apply only when that choice has that value (for example the Audio2Face engine's own secret and assets).
+declare -A ROLE_CHOSEN=()
+
+# Prints "<condition>\t<key>=<value>" for every entry of a key=value file (comments and CR stripped); the condition
+# is "*" outside a [VAR=value] section.
+conf_lines() {
+  local file="$1" line section="*"
   while IFS= read -r line || [[ -n "${line}" ]]; do
     line="${line%$'\r'}"
     [[ -z "${line}" || "${line}" == \#* ]] && continue
-    if [[ "${line%%=*}" == "${key}" ]]; then printf '%s\n' "${line#*=}"; fi
+    if [[ "${line}" =~ ^\[([A-Za-z0-9_]+=[A-Za-z0-9._-]+)\]$ ]]; then section="${BASH_REMATCH[1]}"; continue; fi
+    if [[ "${line}" == "[end]" ]]; then section="*"; continue; fi
+    printf '%s\t%s\n' "${section}" "${line}"
   done < "${file}"
   return 0
 }
+applies() { [[ "$1" == "*" || "${ROLE_CHOSEN[${1%%=*}]:-}" == "${1#*=}" ]]; }
+
+# Prints every value of KEY that applies (list keys may repeat).
+conf_values() {
+  local file="$1" key="$2" condition line
+  while IFS=$'\t' read -r condition line; do
+    applies "${condition}" || continue
+    if [[ "${line%%=*}" == "${key}" ]]; then printf '%s\n' "${line#*=}"; fi
+  done < <(conf_lines "${file}")
+  return 0
+}
 conf_value() {
-  local file="$1" key="$2" line
-  while IFS= read -r line || [[ -n "${line}" ]]; do
-    line="${line%$'\r'}"
-    if [[ "${line}" != \#* && "${line%%=*}" == "${key}" ]]; then printf '%s' "${line#*=}"; return 0; fi
-  done < "${file}"
+  local file="$1" key="$2" condition line
+  while IFS=$'\t' read -r condition line; do
+    applies "${condition}" || continue
+    if [[ "${line%%=*}" == "${key}" ]]; then printf '%s' "${line#*=}"; return 0; fi
+  done < <(conf_lines "${file}")
   return 0
 }
 
@@ -151,9 +170,11 @@ cmd_roles() {
 }
 
 # Machine-readable role inputs for Martlet desktop (never prints secret values, only whether one is stored).
+# Entries in a [VAR=value] section are listed with that condition (role.secret_when, role.terms_when) so Martlet asks
+# for them, and shows their terms, only when that choice is made.
 cmd_describe() {
   local role="${1:-}"; [[ -n "${role}" ]] || fail "Usage: martlet-host describe <role>"
-  local dir conf line name state requires network feature
+  local dir conf line name state requires network feature condition
   dir="$(role_dir "${role}")"; conf="${dir}/role.conf"
   requires="$(conf_value "${conf}" requires)"; network="$(conf_value "${conf}" network)"; feature="$(conf_value "${conf}" feature)"
   printf 'role.title=%s\n' "$(conf_value "${conf}" title)"
@@ -166,12 +187,17 @@ cmd_describe() {
   printf 'role.terms=%s\n' "$(conf_value "${conf}" terms)"
   state=no; [[ -f "$(installed_file "${role}")" ]] && state=yes
   printf 'role.installed=%s\n' "${state}"
-  while IFS= read -r line; do
-    [[ -n "${line}" ]] || continue
-    name="${line%%|*}"
-    state=missing; [[ -s "${CONF}/secrets/${name}" ]] && state=stored
-    printf 'role.secret=%s|%s\n' "${line}" "${state}"
-  done < <(conf_values "${conf}" secret)
+  while IFS=$'\t' read -r condition line; do
+    case "${line%%=*}" in
+      secret)
+        line="${line#*=}"; name="${line%%|*}"
+        state=missing; [[ -s "${CONF}/secrets/${name}" ]] && state=stored
+        printf 'role.secret=%s|%s\n' "${line}" "${state}"
+        [[ "${condition}" == "*" ]] || printf 'role.secret_when=%s|%s\n' "${name}" "${condition}" ;;
+      terms)
+        [[ "${condition}" == "*" ]] || printf 'role.terms_when=%s|%s\n' "${condition}" "${line#*=}" ;;
+    esac
+  done < <(conf_lines "${conf}")
   while IFS= read -r line; do
     [[ -n "${line}" ]] && printf 'role.choice=%s\n' "${line}"
   done < <(conf_values "${conf}" choice)
@@ -1014,11 +1040,18 @@ fill_volume() {
 
 role_compose() {
   local role="$1"; shift
-  local project="${PROJECTS}/${role}" secret_env=() name files=(-f compose.yaml)
-  while IFS= read -r name <&3; do
-    [[ -n "${name}" ]] || continue
-    secret_env+=("${name^^}=$(cat "${CONF}/secrets/${name}")")
-  done 3< <(conf_values "$(role_dir "${role}")/role.conf" secret | cut -d'|' -f1)
+  local project="${PROJECTS}/${role}" secret_env=() name condition line files=(-f compose.yaml)
+  # Every stored secret the role declares, in any variant: Compose resolves only those its running services use.
+  while IFS=$'\t' read -r condition line <&3; do
+    [[ "${line%%=*}" == secret ]] || continue
+    name="${line#*=}"; name="${name%%|*}"
+    if [[ -s "${CONF}/secrets/${name}" ]]; then secret_env+=("${name^^}=$(cat "${CONF}/secrets/${name}")"); fi
+  done 3< <(conf_lines "$(role_dir "${role}")/role.conf")
+  # The variant this role was added with (Compose reads it only from the environment). Installs from before the role had
+  # variants ran the one role.conf names in profile_legacy (Audio2Face: nim).
+  local profiles; profiles="$(conf_value "${project}/.env" COMPOSE_PROFILES)"
+  [[ -n "${profiles}" ]] || profiles="$(conf_value "$(role_dir "${role}")/role.conf" profile_legacy)"
+  secret_env+=("COMPOSE_PROFILES=${profiles}")
   # Present only when the role was added to run on the NVIDIA GPU (role.conf gpu=optional|<overlay>).
   if [[ -f "${project}/compose.gpu.yaml" ]]; then files+=(-f compose.gpu.yaml); fi
   ( cd "${project}" && env "${secret_env[@]}" "${DOCKER[@]}" compose -p "martlet-${role}" --env-file .env "${files[@]}" "$@" )
@@ -1110,12 +1143,6 @@ cmd_add() {
   # shellcheck disable=SC2046
   require $(conf_value "${conf}" requires)
 
-  local terms; terms="$(conf_value "${conf}" terms)"
-  if [[ -n "${terms}" ]]; then
-    note "${terms}"
-    ask "Continue with these terms?" || fail "Role not installed."
-  fi
-
   rm -rf "${project}/files"
   mkdir -p "${project}/files" "${CONF}/secrets"; chmod 700 "${project}" "${CONF}/secrets"
   local env_lines=("COMPOSE_PROJECT_NAME=martlet-${role}" "MARTLET_ROLE_CONFIGS_VOLUME=martlet-${role}-configs")
@@ -1175,23 +1202,6 @@ cmd_add() {
     if [[ -n "${pick}" ]]; then suggested_choice["${line%%|*}"]="${pick}"; fi
   done 3< <(conf_values "${conf}" choice_by_vram)
 
-  while IFS= read -r line <&3; do
-    [[ -n "${line}" ]] || continue
-    name="${line%%|*}"; prompt="${line#*|}"
-    [[ "${name}" =~ ^[a-z0-9_]+$ ]] || fail "Invalid secret name in role.conf."
-    value="${INPUT[secret.${name}]:-}"
-    if [[ -z "${value}" && ! -s "${CONF}/secrets/${name}" ]]; then
-      unattended && fail "${prompt} is required; enter it in Martlet."
-      read -r -s -p "${prompt} (input hidden): " value; echo
-      [[ -n "${value}" ]] || fail "${name} is required."
-    fi
-    if [[ -n "${value}" ]]; then
-      ( umask 077; printf '%s' "${value}" > "${CONF}/secrets/${name}" )
-      note "Saved ${name} on this host (0600)."
-    fi
-    unset value
-  done 3< <(conf_values "${conf}" secret)
-
   declare -A chosen=()
   while IFS= read -r line <&3; do
     [[ -n "${line}" ]] || continue
@@ -1209,8 +1219,43 @@ cmd_add() {
     [[ " ${options} " == *" ${value} "* ]] || fail "Choose one of: ${options}"
     note "${label}: ${value}"
     chosen["${var}"]="${value}"
+    ROLE_CHOSEN["${var}"]="${value}"
     env_lines+=("${var}=${value}")
   done 3< <(conf_values "${conf}" choice)
+  # A role with variants runs the Compose profile its choice names (profile_from=VAR), for example one Audio2Face engine.
+  local profiles="" profile_from
+  profile_from="$(conf_value "${conf}" profile_from)"
+  if [[ -n "${profile_from}" ]]; then
+    profiles="${chosen[${profile_from}]:-}"
+    [[ "${profiles}" =~ ^[a-z0-9_-]+$ ]] || fail "Invalid profile_from in role.conf."
+    env_lines+=("COMPOSE_PROFILES=${profiles}")
+  fi
+
+  # Terms for the chosen variant (shown in Martlet before Install, whose click confirms them).
+  local terms
+  while IFS= read -r terms <&3; do
+    [[ -n "${terms}" ]] && note "${terms}"
+  done 3< <(conf_values "${conf}" terms)
+  if [[ -n "$(conf_value "${conf}" terms)" ]]; then
+    ask "Continue with these terms?" || fail "Role not installed."
+  fi
+
+  while IFS= read -r line <&3; do
+    [[ -n "${line}" ]] || continue
+    name="${line%%|*}"; prompt="${line#*|}"
+    [[ "${name}" =~ ^[a-z0-9_]+$ ]] || fail "Invalid secret name in role.conf."
+    value="${INPUT[secret.${name}]:-}"
+    if [[ -z "${value}" && ! -s "${CONF}/secrets/${name}" ]]; then
+      unattended && fail "${prompt} is required; enter it in Martlet."
+      read -r -s -p "${prompt} (input hidden): " value; echo
+      [[ -n "${value}" ]] || fail "${name} is required."
+    fi
+    if [[ -n "${value}" ]]; then
+      ( umask 077; printf '%s' "${value}" > "${CONF}/secrets/${name}" )
+      note "Saved ${name} on this host (0600)."
+    fi
+    unset value
+  done 3< <(conf_values "${conf}" secret)
 
   local registry user secret
   while IFS= read -r line <&3; do
@@ -1238,6 +1283,12 @@ cmd_add() {
     grep -qF "${line#*|}" "${project}/files/${line%%|*}" || fail "Role asset check failed: ${line%%|*} lacks '${line#*|}'."
   done 3< <(conf_values "${conf}" expect | sed 's#^configs/##')
 
+  # Switching a role's variant (its Compose profile, such as the Audio2Face engine) stops the previous one first so they
+  # never compete for the role's port; its data volumes are kept.
+  if [[ -f "${project}/compose.yaml" && "$(conf_value "${project}/.env" COMPOSE_PROFILES 2>/dev/null)" != "${profiles}" ]]; then
+    note "Stopping the previous ${role} service before starting the chosen one..."
+    role_compose "${role}" down || true
+  fi
   cp "${dir}/compose.yaml" "${project}/compose.yaml"
   rm -f "${project}/compose.gpu.yaml"
   if [[ "${accelerator}" == gpu ]]; then cp "${dir}/${overlay}" "${project}/compose.gpu.yaml"; fi

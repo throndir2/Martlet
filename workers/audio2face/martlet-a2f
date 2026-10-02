@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# martlet-a2f: provisions and runs the Martlet local Audio2Face service inside its container.
+#
+#   martlet-a2f provision   download the chosen model's pinned files (SHA-256 checked) and build its TensorRT engine
+#   martlet-a2f serve       provision, then serve NVIDIA ACE A2FControllerService gRPC on 127.0.0.1:52000 (default)
+#
+# A2F_3D_MODEL_NAME picks the model (claire, james or mark). Models live in /models (the martlet-audio2face-models
+# volume): files/<model>/ holds the downloaded files, engines/<model>-<key>/ the TensorRT engine built for this GPU and
+# TensorRT version. Nothing is downloaded again while the files still match their pinned SHA-256.
+set -euo pipefail
+
+HERE=/opt/martlet-a2f
+MODELS="${A2F_MODELS_DIR:-/models}"
+MODEL="${A2F_3D_MODEL_NAME:-claire}"
+LISTEN="${A2F_LISTEN:-127.0.0.1:52000}"
+TRTEXEC="${HERE}/trtexec"
+
+say() { printf '%s\n' "$*"; }
+fail() { printf 'martlet-a2f: %s\n' "$*" >&2; exit 1; }
+
+[[ "${MODEL}" =~ ^(claire|james|mark)$ ]] || fail "Unknown Audio2Face model '${MODEL}' (choose claire, james or mark)."
+FILES="${MODELS}/files/${MODEL}"
+
+provision_files() {
+  mkdir -p "${FILES}"
+  local model repo revision file bytes sum target
+  while read -r model repo revision file bytes sum; do
+    [[ -z "${model}" || "${model}" == \#* || "${model}" != "${MODEL}" ]] && continue
+    target="${FILES}/${file}"
+    if [[ -s "${target}" && "$(cat "${target}.sha256" 2>/dev/null || true)" == "${sum}" ]]; then continue; fi
+    if (( bytes >= 1048576 )); then say "Downloading ${repo} ${file} ($(( bytes / 1048576 )) MiB)..."
+    else say "Downloading ${repo} ${file}..."; fi
+    curl -fL --retry 3 --no-progress-meter -o "${target}.part" "https://huggingface.co/${repo}/resolve/${revision}/${file}"
+    if ! echo "${sum}  ${target}.part" | sha256sum -c --status; then
+      rm -f "${target}.part"
+      fail "${file} does not match its pinned SHA-256; not using it."
+    fi
+    mv -f "${target}.part" "${target}"
+    echo "${sum}" > "${target}.sha256"
+  done < "${HERE}/models.lock"
+  [[ -s "${FILES}/model.json" && -s "${FILES}/network.onnx" ]] || fail "The ${MODEL} model files are incomplete."
+}
+
+# The engine is specific to the GPU model and TensorRT version, so it is built here on first start and cached.
+engine_dir() {
+  local gpu trt onnx
+  gpu="$(nvidia-smi --query-gpu=name,compute_cap --format=csv,noheader -i 0 2>/dev/null | head -n 1 || true)"
+  [[ -n "${gpu}" ]] || fail "No NVIDIA GPU is visible in this container (check the NVIDIA Container Toolkit)."
+  trt="$(cat "${HERE}/tensorrt-version")"
+  onnx="$(cat "${FILES}/network.onnx.sha256")"
+  printf '%s/engines/%s-%s' "${MODELS}" "${MODEL}" \
+    "$(printf '%s|%s|%s|fp16' "${gpu}" "${trt}" "${onnx}" | sha256sum | cut -c1-16)"
+}
+
+provision_engine() {
+  local dir="$1" file
+  if [[ ! -s "${dir}/network.trt" ]]; then
+    mkdir -p "${dir}"
+    say "Building the TensorRT engine for ${MODEL} on $(nvidia-smi --query-gpu=name --format=csv,noheader -i 0) (once; a few minutes)..."
+    # Shapes from the model's pinned trt_info.json (8320-sample windows, 26 emotion values, batches up to 128);
+    # FP16 like NVIDIA's Audio2Face-3D NIM.
+    "${TRTEXEC}" --onnx="${FILES}/network.onnx" --saveEngine="${dir}/network.trt.part" --fp16 \
+      --minShapes=input:1x1x8320,emotion:1x1x26 \
+      --optShapes=input:8x1x8320,emotion:8x1x26 \
+      --maxShapes=input:128x1x8320,emotion:128x1x26 > "${dir}/trtexec.log" 2>&1 ||
+      { tail -n 20 "${dir}/trtexec.log" >&2; rm -f "${dir}/network.trt.part"; fail "TensorRT could not build the engine."; }
+    mv -f "${dir}/network.trt.part" "${dir}/network.trt"
+  fi
+  for file in "${FILES}"/*; do
+    case "${file}" in *.sha256|*.part|*/network.onnx) continue ;; esac
+    ln -sfn "${file}" "${dir}/$(basename "${file}")"
+  done
+}
+
+provision() {
+  provision_files
+  ENGINE="$(engine_dir)"
+  provision_engine "${ENGINE}"
+  say "Audio2Face ${MODEL} is provisioned."
+}
+
+case "${1:-serve}" in
+  provision) provision ;;
+  serve)
+    provision
+    exec "${HERE}/martlet-a2f-server" --model "${ENGINE}/model.json" --listen "${LISTEN}" \
+      --fps "${A2F_FPS:-30}" --solver "${A2F_SOLVER:-gpu}"
+    ;;
+  *) fail "Usage: martlet-a2f [provision|serve]" ;;
+esac

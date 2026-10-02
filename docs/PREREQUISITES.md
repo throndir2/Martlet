@@ -69,7 +69,7 @@ per-user app; no large model download without typing `y` or a model tag.
 | NVIDIA GPU driver | Any local GPU role (LLM, Audio2Face, GPU voice) | You supply; the tool helps (`NvidiaDriver`) | NVIDIA drivers cannot be redistributed. The tool detects an NVIDIA GPU, checks `nvidia-smi` and opens NVIDIA's driver page. Not needed for API routes or loudness lip-sync. |
 | **WSL 2 + Docker Desktop** | Martlet hosts > *This PC* (Audio2Face and future GPU roles on this PC) | **First-run option** (`DockerDesktop`, ticked for an NVIDIA host PC); also *Install Docker Desktop* in Martlet hosts | Martlet installs `winget Docker.DockerDesktop` (Docker Subscription Service Agreement; free for personal use), then turns on Virtual Machine Platform and Windows Subsystem for Linux, the Windows hypervisor and WSL 2.1.5+ (`wsl --install --no-distribution` or `wsl --update`) in one UAC step. When Windows must restart it asks, restarts and continues the setup after sign-in; firmware virtualization (VT-x/SVM) you turn on yourself, after an offered restart into the firmware settings ([Troubleshooting](TROUBLESHOOTING.md#docker-desktop-is-unable-to-start-virtualization-wsl-2)). |
 | Windows Firewall rule `Martlet-Host-Gateway` (TCP 9443, private/domain, local subnet) | Other PCs reaching a host on this PC | Automatic in Martlet hosts > *This PC* (one UAC prompt, only when needed) | Not a first-run option: it is only needed once this PC becomes a host. |
-| NVIDIA NGC API key | Audio2Face NIM image | You supply; `martlet-host add audio2face` asks once | [NGC API key](https://org.ngc.nvidia.com/setup/api-key); stored on the host only. |
+| NVIDIA NGC API key | Only the Audio2Face role's optional `nim` engine (NVIDIA's NIM image); the default `local` engine needs no NVIDIA account or key | You supply; `martlet-host add audio2face` asks once when you choose `nim` | [NGC API key](https://org.ngc.nvidia.com/setup/api-key); stored on the host only. |
 
 **Not needed on the client:** Git, Python, Node/npm, a .NET SDK, Docker (unless
 this PC hosts GPU roles), administrator rights (except the optional Windows
@@ -85,7 +85,7 @@ feature steps), or a GPU.
 | NVIDIA Container Toolkit | GPU containers on Ubuntu | **Host tool** (after `yes`); Docker Desktop uses WSL 2 GPU support instead |
 | .NET SDK for the native Linux gateway | Native Ubuntu method | **Host tool** (`setup` installs it into `~/.dotnet`, no sudo); the Docker method needs nothing extra |
 | Gateway TLS identity, pairing code | Pinned TLS between client and host | **Host tool** (`setup`, `pair`) |
-| Audio2Face-3D NIM `nvcr.io/nim/nvidia/audio2face-3d:1.3` + pinned model configs (`claire`/`mark`/`james`), 4 GB+ VRAM | Rich lip-sync | **Host tool** (`add audio2face`) + your NGC key |
+| Audio2Face-3D, 4 GB+ VRAM, models `claire`/`mark`/`james`: the default `local` engine is NVIDIA's open-source Audio2Face-3D SDK built on the host ([`workers/audio2face`](../workers/audio2face/README.md); RTX 20 series or newer, driver 570+, models downloaded from Hugging Face on first start); the `nim` engine is NIM `nvcr.io/nim/nvidia/audio2face-3d:1.3` + pinned model configs | Rich lip-sync | **Host tool** (`add audio2face`); `nim` also needs your NGC key |
 
 ## 3. Coming with features in progress
 

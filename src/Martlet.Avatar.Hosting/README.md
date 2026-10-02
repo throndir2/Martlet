@@ -45,8 +45,12 @@ Settings › Tools or Start > **Martlet prerequisites** ([Prerequisites](../../d
 the `audio2face` role: this PC through Docker Desktop, another computer over SSH
 (Docker or native Ubuntu), or by running the same
 [`martlet-host setup`, `pair` and `add audio2face`](../../deploy/host/README.md)
-commands on the host yourself. It starts the NIM on the host's loopback and
-publishes the gateway's Audio2Face relay route. Pair this PC by typing the
+commands on the host yourself. Its default `local` engine builds NVIDIA's
+open-source Audio2Face-3D SDK into a container on the host and downloads the
+chosen model from Hugging Face on first start, so it needs no NVIDIA account or
+key ([local Audio2Face service](../../workers/audio2face/README.md)); the `nim`
+engine runs NVIDIA's NIM with your NGC key instead. Either starts on the host's
+loopback and publishes the gateway's Audio2Face relay route. Pair this PC by typing the
 address and short one-use code (like `K7QM-4XPA`) that `martlet-host pair` shows
 on the host into **Enter a pairing code**. The device
 secret is stored in Windows Credential Manager; `avatar.json` keeps only the
@@ -58,7 +62,8 @@ Automatic lip-sync then prefers the host in charge, then a local service, then
 loudness. Sentences are relayed in 0.5 s / 1 s chunks with 0.5 s of context so
 animation starts while Martlet is still speaking; late frames are skipped.
 
-**This PC:** not verified on a Martlet machine. The NIM is a Linux container: on Windows use
+**This PC, by hand:** prefer the `audio2face` role on this PC's host service above (its local
+engine needs no key). To run NVIDIA's NIM yourself instead: it is a Linux container; on Windows use
 Docker Desktop with the WSL2 backend and a current NVIDIA driver, sign in to the
 NVIDIA NGC registry with your own API key (NVIDIA account; review the NIM and
 model terms), then start NVIDIA's

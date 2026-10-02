@@ -299,6 +299,21 @@ runtime; it takes no arguments and contacts nothing outside loopback. The same
 program's `live <pairing-code> <container>` mode checks a disposable Linux
 gateway container built from this checkout (not the real host service).
 
+`audio2face_check` animates a short synthesized speech-like test signal (a vowel
+pulse train generated in the tool, never microphone audio, nothing played) with
+an Audio2Face service on a numeric loopback `endpoint` (default
+`http://127.0.0.1:52000`; `seconds` 1-10, default 2; `sampleRate` 16000, 24000,
+44100 or 48000, default 24000) through the production `Audio2FaceAdapter`, the
+client the host gateway's lip-sync relay uses. It works with either engine of the
+`audio2face` host role ([local open-source SDK service](../workers/audio2face/README.md)
+or NVIDIA's NIM) and returns `ok`, `frames`, `framesPerSecond`,
+`firstFrameSeconds`/`lastFrameSeconds`, `channels` (blendshapes returned) and
+`movingChannels`, `jawOpenPeak`, the `strongest` channels with their peaks,
+`firstFrameMs` and `elapsedMs`, or `ok: false` with the client's `failure`
+category (for example `DeadlineExceeded` or `TransportFailure` when nothing answers, `InvalidProtocol`
+for a malformed reply). A role service on a host listens only inside the host's
+own loopback, so check it there or through a forward to this PC's loopback.
+
 `virtualization_status` reports whether Windows is ready for Docker Desktop's
 WSL 2 engine, from the same read-only checks the desktop runs before it starts
 Docker Desktop (optional absolute `dataDirectory`, default the current user's):
@@ -701,6 +716,15 @@ backup), `SmartHomeManageProblem` and `SmartHomeUpdate-<n>`. Token and password
 fields are never returned; outcomes of actions are in `logs_tail` (`Status:`
 lines).
 
+A host role's Add dialog (`HostInputDialog`) lists its choices as
+`HostInput-choice.<VAR>` combo boxes whose selected value snapshots return (for
+example `HostInput-choice.A2F_ENGINE` reads `local` or `nim`), the terms of the
+chosen variant as `HostInputTerms-<VAR>`, and its secrets as
+`HostInput-secret.<name>` password boxes, never with their values. A variant's
+own secret appears only while its choice is selected (the Audio2Face NIM
+engine's `HostInput-secret.ngc_api_key` only for `nim`); hidden fields are not
+required and not sent. `HostInputOk` installs and needs `--allow-ui-effects`.
+
 On Thinking, Voice, Listening and Lip-sync, each "Where it runs" option
 (`Place-<page>-<place>`, for example `Place-Voice-Computer` or
 `Place-LipSync-ThisPc`) only shows that place's choices, so clicking it is
@@ -735,7 +759,9 @@ PC's own Audio2Face service answers). Lip-sync's places are *This PC* and
 *Another of your computers*; under *This PC*, `LipSyncDockerTitle` (*Audio2Face,
 with Docker*) and `LipSyncLoudnessTitle` (*Voice loudness, no setup*) read each
 way's title with *in use*, *recommended for this PC* or *chosen, not installed
-yet*, and `LipSyncOwnTitle` the advanced *Your own Audio2Face service* (with
+yet*; `LipSyncDockerAbout` says what Audio2Face with Docker needs (NVIDIA's
+open-source engine, no NVIDIA account or key; the NIM engine needs an NGC key);
+and `LipSyncOwnTitle` the advanced *Your own Audio2Face service* (with
 *in use*, *not running* or *checking* while it is the setting in effect,
 Martlet's default) with `LipSyncOwnState` (what it does now). Voice loudness
 reads *in use* while the default's own service doesn't answer.

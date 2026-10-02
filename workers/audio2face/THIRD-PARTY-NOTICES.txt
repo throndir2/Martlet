@@ -1,0 +1,34 @@
+Martlet local Audio2Face service: third-party notices
+=====================================================
+
+Built into the image (on the Martlet host, by "martlet-host add audio2face" with the local engine)
+-------------------------------------------------------------------------------------------------
+
+NVIDIA Audio2Face-3D SDK (Audio2X SDK)
+  Source: https://github.com/NVIDIA/Audio2Face-3D-SDK, commit 1ca0f02535ed774f5dbcd724a31cd486368dc783
+  License: MIT. Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. The license text is copied into the image at
+  /opt/martlet-a2f/sdk/LICENSE.txt. Its build dependencies (Eigen, nlohmann/json, magic_enum, refl-cpp, cnpy,
+  tbtsvd, zlib, CMake, Ninja, GoogleTest, Google Benchmark, AudioFile, cxxopts) are fetched by the SDK's own
+  fetch_deps.sh under their own licenses; only libaudio2x.so is kept in the runtime image.
+
+NVIDIA ACE protocol definitions (protos/)
+  Source: https://github.com/NVIDIA/Audio2Face-3D-Samples, commit a2d0150043be7dc15db2fad8193a78b660e1100f
+  License: Apache-2.0 (protos/LICENSE-2.0.txt). Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. Unmodified.
+
+CUDA 12.8 runtime and TensorRT 10.9
+  From NVIDIA's public nvidia/cuda images (Docker Hub) and CUDA apt repository, under the NVIDIA Deep Learning
+  Container License and NVIDIA's CUDA/TensorRT license agreements shown in those images.
+
+gRPC 1.51 and Protocol Buffers
+  From Ubuntu 24.04 packages. gRPC: Apache-2.0. Protocol Buffers: BSD-3-Clause.
+
+Downloaded on first start (not in the image)
+--------------------------------------------
+
+NVIDIA Audio2Face-3D models (claire v2.3.1, james v2.3.1, mark v2.3)
+  Source: https://huggingface.co/nvidia (pinned revisions and SHA-256 in models.lock)
+  License: NVIDIA Open Model License,
+  https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/
+  Installing the local engine is the owner's acceptance of these model terms.
+
+No Audio2Emotion model is used: the service animates with a neutral emotion and does not infer emotions.

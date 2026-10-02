@@ -1,3 +1,5 @@
+using System.Windows;
+using System.Windows.Controls;
 using Martlet.Desktop;
 
 namespace Martlet.Desktop.Tests;
@@ -80,6 +82,78 @@ public sealed class HostSetupCommandsTests
         Assert.Null(HostRemote.Blocker(HostSetupMethod.SshNative, probe, "me@gpu"));
         Assert.True(HostRemote.NeedsSudo(HostSetupMethod.SshDocker, probe with { Docker = true }));
         Assert.False(HostRemote.NeedsSudo(HostSetupMethod.SshDocker, probe with { Docker = true, DockerAccess = true }));
+    }
+
+    // "martlet-host describe audio2face" output: the local engine needs no key; the NIM engine's key and terms belong to it.
+    private static readonly string[] Audio2FaceDescribe =
+    [
+        "role.title=NVIDIA Audio2Face-3D lip-sync (needs an NVIDIA GPU with 4 GB+ memory)", "role.requires=gpu docker nvidia-toolkit",
+        "role.terms=", "role.installed=no",
+        "role.terms_when=A2F_ENGINE=local|The local engine is NVIDIA's open-source Audio2Face-3D SDK (MIT).",
+        "role.terms_when=A2F_ENGINE=nim|The nim engine is NVIDIA's Audio2Face-3D NIM container from nvcr.io.",
+        "role.secret=ngc_api_key|NVIDIA NGC API key (create one at https://org.ngc.nvidia.com/setup/api-key)|missing",
+        "role.secret_when=ngc_api_key|A2F_ENGINE=nim",
+        "role.choice=A2F_ENGINE|Audio2Face engine (local needs no NVIDIA account; nim needs an NGC API key)|local nim|local",
+        "role.choice=A2F_3D_MODEL_NAME|Audio2Face face model|claire mark james|claire"
+    ];
+
+    [Fact]
+    public void Role_variants_ask_for_their_own_secret_and_terms_only_when_chosen()
+    {
+        var role = HostRemote.ParseRole(Audio2FaceDescribe);
+        Assert.Equal(("A2F_ENGINE", "nim"), role.SecretWhen["ngc_api_key"]);
+        Assert.Equal([("A2F_ENGINE", "local"), ("A2F_ENGINE", "nim")], role.TermsWhen.Select(t => (t.Variable, t.Value)));
+        Assert.Equal(["local", "nim"], role.Choices[0].Options);
+
+        RunSta(() =>
+        {
+            var dialog = HostInputDialog.RoleDialog("gpu-pc", "audio2face", role);
+            var engine = Find<ComboBox>(dialog, "HostInput-choice.A2F_ENGINE");
+            var key = Find<PasswordBox>(dialog, "HostInput-secret.ngc_api_key");
+            var terms = Find<TextBlock>(dialog, "HostInputTerms-A2F_ENGINE");
+            Assert.Equal("local", engine.SelectedItem);
+            Assert.Equal(Visibility.Collapsed, key.Visibility);
+            Assert.StartsWith("The local engine", terms.Text);
+            Assert.Equal(new Dictionary<string, string> { ["choice.A2F_ENGINE"] = "local", ["choice.A2F_3D_MODEL_NAME"] = "claire" },
+                HostInputDialog.Cleaned(dialog.Answers()));
+
+            engine.SelectedItem = "nim";
+            key.Password = "nvapi-test";
+            Assert.Equal(Visibility.Visible, key.Visibility);
+            Assert.StartsWith("The nim engine", terms.Text);
+            Assert.Equal("nvapi-test", dialog.Answers()["secret.ngc_api_key"]);
+
+            engine.SelectedItem = "local";
+            Assert.False(dialog.Answers().ContainsKey("secret.ngc_api_key"));
+            dialog.Close();
+        });
+    }
+
+    private static T Find<T>(DependencyObject root, string id) where T : DependencyObject =>
+        LogicalTreeHelper.GetChildren(root).OfType<DependencyObject>()
+            .Select(child => child is T match && System.Windows.Automation.AutomationProperties.GetAutomationId(child) == id
+                ? match : FindOrNull<T>(child, id))
+            .FirstOrDefault(found => found is not null) ?? throw new InvalidOperationException($"{id} not found.");
+
+    private static T? FindOrNull<T>(DependencyObject root, string id) where T : DependencyObject
+    {
+        try { return Find<T>(root, id); }
+        catch (InvalidOperationException) { return null; }
+    }
+
+    private static void RunSta(Action action)
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try { action(); }
+            catch (Exception error) { failure = error; }
+            finally { System.Windows.Threading.Dispatcher.CurrentDispatcher.InvokeShutdown(); }
+        }) { IsBackground = true };
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(thread.Join(TimeSpan.FromSeconds(20)));
+        if (failure is not null) throw new Xunit.Sdk.XunitException(failure.ToString());
     }
 
     [Theory]

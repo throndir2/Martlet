@@ -9,7 +9,8 @@ using Martlet.Core.Contracts;
 namespace Martlet.Gateway.Audio2Face;
 
 /// <summary>
-/// Gateway relay from a paired client to this host's own loopback Audio2Face-3D NIM. Enabling it in
+/// Gateway relay from a paired client to this host's own loopback Audio2Face-3D service (the audio2face role's engine:
+/// Martlet's local open-source SDK service or NVIDIA's NIM, both speaking the same gRPC protocol). Enabling it in
 /// the host configuration is the host owner's standing permission for paired <c>voice</c> devices to
 /// send generated-speech PCM chunks; nothing else on the host is reachable through it.
 /// </summary>
@@ -58,7 +59,7 @@ public sealed class Audio2FaceRelayWorker : IAudio2FaceGatewayInferenceWorker, I
         {
             yield return Event(request, GatewayInferenceEventKind.Started, sequence++);
             var clip = Clip(request, payload);
-            // The gateway owns the request deadline; this bounds only the local NIM authorization.
+            // The gateway owns the request deadline; this bounds only the local service authorization.
             using var authorization = new Audio2FaceAuthorization(clip, options, DateTimeOffset.UtcNow.AddSeconds(60),
                 allowGeneratedSpeechAnalysis: true);
             var frames = new Audio2FaceAdapter(options).AnimateAsync(clip, authorization, stop.Token)
