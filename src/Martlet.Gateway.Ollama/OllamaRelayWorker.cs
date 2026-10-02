@@ -18,8 +18,8 @@ public sealed class OllamaRelayWorker : IOllamaGatewayInferenceWorker, IAsyncDis
 {
     public const string DefaultDestinationId = "ollama-host";
     public const string DefaultWorkerId = "ollama-relay";
-    /// <summary>Context window requested from Ollama; larger windows cost VRAM on small GPUs.</summary>
-    public const int MaximumContextTokens = 8_192;
+    /// <summary>Context window requested from Ollama unless the client asks for another; larger windows cost VRAM on small GPUs.</summary>
+    public const int MaximumContextTokens = Martlet.Core.Settings.GenerationSettings.DefaultHostContextTokens;
     private const int MaximumLineBytes = 64 * 1024;
     private const int MaximumResponseBytes = 4 * 1024 * 1024;
     private static readonly UTF8Encoding Utf8 = new(false, false);
@@ -161,7 +161,15 @@ public sealed class OllamaRelayWorker : IOllamaGatewayInferenceWorker, IAsyncDis
             writer.WriteStartObject("options");
             writer.WriteNumber("temperature", payload.Temperature);
             writer.WriteNumber("num_predict", payload.MaximumOutputTokens);
-            writer.WriteNumber("num_ctx", Math.Min(payload.MaximumContextTokens, MaximumContextTokens));
+            var sampling = payload.Sampling;
+            // The client's context size replaces the relay's VRAM-friendly default; older clients never send one.
+            writer.WriteNumber("num_ctx", sampling.ContextTokens ?? Math.Min(payload.MaximumContextTokens, MaximumContextTokens));
+            if (sampling.TopP is { } topP) writer.WriteNumber("top_p", topP);
+            if (sampling.TopK is { } topK) writer.WriteNumber("top_k", topK);
+            if (sampling.MinP is { } minP) writer.WriteNumber("min_p", minP);
+            if (sampling.RepeatPenalty is { } repeat) writer.WriteNumber("repeat_penalty", repeat);
+            if (sampling.FrequencyPenalty is { } frequency) writer.WriteNumber("frequency_penalty", frequency);
+            if (sampling.PresencePenalty is { } presence) writer.WriteNumber("presence_penalty", presence);
             writer.WriteEndObject();
             writer.WriteEndObject();
         }

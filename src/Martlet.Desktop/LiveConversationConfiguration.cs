@@ -15,6 +15,10 @@ internal sealed class LiveConversationConfiguration
     internal AudioSettings? Audio { get; }
     internal PersonaProfile? Persona { get; }
     internal MemorySettings? Memory { get; }
+    /// <summary>The saved reply generation settings (Companion > Replies); null keeps every model default.</summary>
+    internal GenerationSettings? Generation { get; }
+    /// <summary>The LLM bounds of a conversation request, with the saved max reply length.</summary>
+    internal TextGenerationLimits TextLimits { get; }
     internal static TimeSpan ActionLifetime => TimeSpan.FromSeconds(150);
     internal static TimeSpan CaptureDuration => TimeSpan.FromSeconds(25);
     internal static TimeSpan CapturePermission => TimeSpan.FromSeconds(30);
@@ -23,9 +27,10 @@ internal sealed class LiveConversationConfiguration
         MaxAudioBytes = 800_044, MaxAudioDuration = CaptureDuration,
         MaxTextCharacters = 4096, MaxRequestTime = TimeSpan.FromSeconds(30)
     };
-    internal static TextGenerationLimits TextLimits { get; } = new()
+    /// <summary>The LLM bounds with the default reply length; the input bounds are the same for every configuration.</summary>
+    internal static TextGenerationLimits DefaultTextLimits { get; } = new()
     {
-        MaxInputTokens = 16_640, MaxOutputTokens = 256, MaxRequestTime = TimeSpan.FromSeconds(45)
+        MaxInputTokens = 16_640, MaxOutputTokens = GenerationSettings.DefaultMaxReplyTokens, MaxRequestTime = TimeSpan.FromSeconds(45)
     };
     internal static SpeechSynthesisLimits SpeechLimits { get; } = new()
     {
@@ -45,6 +50,8 @@ internal sealed class LiveConversationConfiguration
         Audio = settings.Audio;
         Persona = settings.Companion?.ActivePersona;
         Memory = settings.Memory;
+        Generation = settings.Generation;
+        TextLimits = DefaultTextLimits with { MaxOutputTokens = Generation?.ReplyTokens ?? GenerationSettings.DefaultMaxReplyTokens };
     }
 
     internal static LiveConversationConfiguration? From(SettingsLoadResult loaded)
@@ -246,9 +253,9 @@ internal sealed class LiveConversationConfiguration
                 : $"LLM: <=1 request, <=4096 user-input characters; the selected persona '{Persona.Name}' and one weighted response style are included in the same <=16,384 UTF-8 byte / <=16,640 input-token reservation (not measured tokens). Persona revision is fixed for this action.\n") +
             "Up to eight completed explicit exchanges from the last two minutes may be included from volatile in-memory context only. Oldest exchanges are omitted until current input, persona, style and context fit the same LLM byte/token reservation. Pause, lock, configuration reload/change, Stop or closing the conversation clears context; it is not persisted.\n" +
             (Memory is { Enabled: true }
-                ? $"Memory is ON (change it in Memory). Each reply may include up to {DesktopMemoryService.MaximumRecalledFacts} facts saved on this PC (the best matches for what you said, then the newest) inside the same LLM input budget; the complete store is never uploaded and recalled facts are background data, not instructions. After each completed reply, Martlet sends that exchange (with the previous exchange and up to {MemoryCapture.MaximumShownFacts} related saved facts) once more to the same Thinking model in one extra text-only request of <=256 output tokens, so it can pick out lasting things worth remembering; they are saved on this PC only and listed in Memory, where you can edit or delete them. Screen glances are not remembered. Lock, pause, mute or a configuration change cancels pending remembering.\n"
+                ? $"Memory is ON (change it in Memory). Each reply may include up to {DesktopMemoryService.MaximumRecalledFacts} facts saved on this PC (the best matches for what you said, then the newest) inside the same LLM input budget; the complete store is never uploaded and recalled facts are background data, not instructions. After each completed reply, Martlet sends that exchange (with the previous exchange and up to {MemoryCapture.MaximumShownFacts} related saved facts) once more to the same Thinking model in one extra text-only request of <={TextLimits.MaxOutputTokens} output tokens, so it can pick out lasting things worth remembering; they are saved on this PC only and listed in Memory, where you can edit or delete them. Screen glances are not remembered. Lock, pause, mute or a configuration change cancels pending remembering.\n"
                 : "Memory is OFF: nothing is recalled or remembered and the memory store is not opened. Turn it on in Memory.\n") +
-            "LLM output: <=256 tokens, <=16,384 response characters, <=45 s.\n" +
+            $"LLM output: <={TextLimits.MaxOutputTokens} tokens (max reply length on Companion > Replies), <=16,384 response characters, <=45 s.\n" +
             "Runtime <=90 s. Voice: <=8 requests/segments, <=1536 UTF-8 bytes each / 12,288 total, <=10 s / 240,000 samples per segment, <=80 s / 1,920,000 reserved samples total, <=20 s per request. Refusal/unsupported markup is not ordinary speech.\n" +
             "Prices, quota, account/model access and invoice cost are UNKNOWN, not zero or a guaranteed hard currency cap. Failed/canceled requests can still cost money; earlier speech may already have played. No automatic retry.\n" +
             "PTT, explicit typed input, or hands-free voice activity only while you keep Start listening on (each detected utterance is one action within this envelope; listening re-arms only after the reply finishes). Wake words, name/group listening and remote participant capture are OFF; screen watching is OFF unless you start it with its own permission. Optional Voice ID compares speech with your saved voiceprint on this PC before upload; non-matching audio is discarded, never uploaded. Memory recall and remembering follow the memory setting described above." +
@@ -303,15 +310,18 @@ internal sealed class LiveConversationConfiguration
                     voice ? new(SpeechSelection(),
                         new(Audio!.Output.EndpointId is null ? OutputPolicy.DefaultAtStart : OutputPolicy.FixedEndpoint, Audio.Output.EndpointId),
                         SpeechLimits) : null, ChatTarget(), HostTarget(), voice ? HostSpeechTarget() : null, silentReply,
-                    voice ? WindowsVoiceTarget() : null);
+                    voice ? WindowsVoiceTarget() : null, Generation);
             }
         }
         throw new LiveActionException("conversation.input_limit");
     }
 
-    /// <summary>The text-only request that asks the Thinking model what to remember from a finished exchange.</summary>
+    /// <summary>The text-only request that asks the Thinking model what to remember from a finished exchange. It keeps the
+    /// model's default sampling (a picking-out task, not a reply) but the same context size, so a host's Ollama does not
+    /// reload the model between the reply and this request.</summary>
     internal ConversationRequest MemoryCaptureRequest(BoundedTextInput input) =>
-        new(input, TextSelection(), TextLimits, TurnLimits, null, ChatTarget(), HostTarget());
+        new(input, TextSelection(), TextLimits, TurnLimits, null, ChatTarget(), HostTarget(),
+            generation: Generation?.ContextTokens is { } context ? new() { ContextTokens = context } : null);
 
     /// <summary>The word the model answers with to stay quiet after a screen glance; never spoken.</summary>
     internal const string SilentReply = "pass";

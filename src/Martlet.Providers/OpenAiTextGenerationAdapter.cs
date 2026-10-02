@@ -38,7 +38,7 @@ public sealed class OpenAiTextGenerationAdapter : IDisposable
 
     public TextGenerationStream Stream(ProviderRequestContext context, TextModelSelection model,
         BoundedTextInput input, TextGenerationLimits limits, TextDisclosureAuthorization? authorization,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, GenerationSettings? generation = null)
     {
         ObjectDisposedException.ThrowIf(disposed != 0, this);
         ArgumentNullException.ThrowIfNull(context);
@@ -47,9 +47,10 @@ public sealed class OpenAiTextGenerationAdapter : IDisposable
         ArgumentNullException.ThrowIfNull(limits);
         context.Validate();
         limits.Validate();
+        generation?.Validate();
         ContractRules.Identifier(model.ModelAlias);
         return new(client, credentials, clock, provenance, shutdown.Token, context, model, input, limits,
-            authorization, cancellationToken);
+            authorization, cancellationToken, generation: generation);
     }
 
     public void Dispose()
@@ -83,6 +84,7 @@ public sealed class TextGenerationStream : ITextGenerationStream
     private readonly BoundedTextInput input;
     private readonly TextGenerationLimits limits;
     private readonly TextDisclosureAuthorization? authorization;
+    private readonly GenerationSettings? generation;
     private readonly CancellationToken callerToken;
     private readonly long startedAt;
     private readonly DateTimeOffset startedUtc;
@@ -93,7 +95,7 @@ public sealed class TextGenerationStream : ITextGenerationStream
     internal TextGenerationStream(HttpClient client, IProviderCredentialSource? credentials, TimeProvider clock,
         EvidenceProvenance provenance, CancellationToken shutdown, ProviderRequestContext context, TextModelSelection model,
         BoundedTextInput input, TextGenerationLimits limits, TextDisclosureAuthorization? authorization, CancellationToken callerToken,
-        Uri? chatBaseUri = null)
+        Uri? chatBaseUri = null, GenerationSettings? generation = null)
     {
         this.client = client;
         this.credentials = credentials;
@@ -106,6 +108,7 @@ public sealed class TextGenerationStream : ITextGenerationStream
         this.input = input;
         this.limits = limits;
         this.authorization = authorization;
+        this.generation = generation;
         this.callerToken = callerToken;
         startedAt = clock.GetTimestamp();
         startedUtc = clock.GetUtcNow();
@@ -125,7 +128,7 @@ public sealed class TextGenerationStream : ITextGenerationStream
     {
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(callerToken, enumerationToken, shutdown);
         using var operation = new TextGenerationOperation(client, credentials, clock, context, model, input,
-            limits, authorization, startedAt, startedUtc, stop.Token, callerToken, enumerationToken, shutdown, chatBaseUri);
+            limits, authorization, startedAt, startedUtc, stop.Token, callerToken, enumerationToken, shutdown, chatBaseUri, generation);
         long sequence = 0;
         try
         {
@@ -175,7 +178,8 @@ internal sealed class TextGenerationOperation(
     HttpClient client, IProviderCredentialSource? credentials, TimeProvider clock,
     ProviderRequestContext context, TextModelSelection model, BoundedTextInput input, TextGenerationLimits limits,
     TextDisclosureAuthorization? authorization, long startedAt, DateTimeOffset startedUtc, CancellationToken stop,
-    CancellationToken caller, CancellationToken enumerator, CancellationToken shutdown, Uri? chatBaseUri = null) : IDisposable
+    CancellationToken caller, CancellationToken enumerator, CancellationToken shutdown, Uri? chatBaseUri = null,
+    GenerationSettings? generation = null) : IDisposable
 {
     private ProviderRequestWindow? window;
     private CancellationTokenSource? progress;
@@ -364,6 +368,8 @@ internal sealed class TextGenerationOperation(
             writer.WriteBoolean("parallel_tool_calls", false);
             writer.WriteString("truncation", "disabled");
             writer.WriteNumber("max_output_tokens", limits.MaxOutputTokens);
+            if (generation?.Temperature is { } temperature) writer.WriteNumber("temperature", temperature);
+            if (generation?.TopP is { } topP) writer.WriteNumber("top_p", topP);
             writer.WriteStartObject("text");
             writer.WriteStartObject("format");
             writer.WriteString("type", "text");
@@ -409,6 +415,20 @@ internal sealed class TextGenerationOperation(
             writer.WriteString("model", model.UpstreamModelId);
             writer.WriteBoolean("stream", true);
             writer.WriteNumber("max_tokens", limits.MaxOutputTokens);
+            if (generation is { } sampling)
+            {
+                if (sampling.Temperature is { } temperature) writer.WriteNumber("temperature", temperature);
+                if (sampling.TopP is { } topP) writer.WriteNumber("top_p", topP);
+                if (sampling.FrequencyPenalty is { } frequency) writer.WriteNumber("frequency_penalty", frequency);
+                if (sampling.PresencePenalty is { } presence) writer.WriteNumber("presence_penalty", presence);
+                // Not part of the OpenAI schema: only for servers that understand them (OpenRouter, vLLM, LM Studio...).
+                if (GenerationSupport.SendsExtendedSamplers(chatBaseUri!.AbsoluteUri))
+                {
+                    if (sampling.TopK is { } topK) writer.WriteNumber("top_k", topK);
+                    if (sampling.MinP is { } minP) writer.WriteNumber("min_p", minP);
+                    if (sampling.RepeatPenalty is { } repeat) writer.WriteNumber("repetition_penalty", repeat);
+                }
+            }
             if (string.Equals(chatBaseUri!.AbsoluteUri, ChatCompletionsEndpointCatalog.OpenRouterBaseUrl,
                 StringComparison.Ordinal))
             {

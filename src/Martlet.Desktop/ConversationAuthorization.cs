@@ -89,7 +89,8 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
         if (latest is null || latest.Revision != Configuration.Revision || latest.Profile != Configuration.Profile ||
             latest.Unavailable(Voice, Microphone) is not null ||
             !latest.Routes.SequenceEqual(Configuration.Routes) || latest.Audio != Configuration.Audio ||
-            latest.Persona != Configuration.Persona || latest.Memory != Configuration.Memory)
+            latest.Persona != Configuration.Persona || latest.Memory != Configuration.Memory ||
+            latest.Generation != Configuration.Generation)
         {
             Revoke();
             throw new LiveActionException("conversation.configuration_changed");
@@ -114,13 +115,13 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
         await ValidateSettingsAsync(token).ConfigureAwait(false);
         var selection = Configuration.TextSelection();
         var expected = new OperationBudget(action.Context.Ids, action.Context.Epoch, ProviderRole.Llm, 1,
-            action.Input.Utf8Bytes, action.Input.InputTokenReservation, LiveConversationConfiguration.TextLimits.MaxOutputTokens, 0);
+            action.Input.Utf8Bytes, action.Input.InputTokenReservation, Configuration.TextLimits.MaxOutputTokens, 0);
         var expiry = Min(action.Context.Deadline, Deadline(TimeSpan.FromSeconds(45)));
         lock (gate)
         {
             Check(token);
             if (!ReferenceEquals(action.Input, exactInput) || action.Model != selection ||
-                action.Limits != LiveConversationConfiguration.TextLimits || action.Budget != expected ||
+                action.Limits != Configuration.TextLimits || action.Budget != expected ||
                 textRequests != 0 || !requests.Add(action.Context.Ids.RequestId)) return null;
             textRequests++;
             Ticket(ProviderRole.Llm);

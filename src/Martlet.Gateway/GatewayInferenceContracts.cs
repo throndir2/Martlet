@@ -573,7 +573,8 @@ public sealed class GatewayOllamaChatPayload : GatewayInferencePayload
         int maximumContextTokens,
         string? system = null,
         IReadOnlyList<Martlet.Providers.TextHistoryMessage>? history = null,
-        IReadOnlyList<string>? images = null)
+        IReadOnlyList<string>? images = null,
+        GatewayOllamaSampling? sampling = null)
     {
         Input = input;
         Temperature = temperature;
@@ -582,6 +583,7 @@ public sealed class GatewayOllamaChatPayload : GatewayInferencePayload
         System = system;
         History = history ?? [];
         Images = images ?? [];
+        Sampling = sampling ?? GatewayOllamaSampling.None;
     }
 
     public string Input { get; }
@@ -594,7 +596,22 @@ public sealed class GatewayOllamaChatPayload : GatewayInferencePayload
     public IReadOnlyList<Martlet.Providers.TextHistoryMessage> History { get; }
     /// <summary>Base64 JPEG/PNG images attached to the current input (a screen glance); empty for plain chat.</summary>
     public IReadOnlyList<string> Images { get; }
+    /// <summary>Optional Ollama sampling options and context window; unset values keep the host's defaults.</summary>
+    public GatewayOllamaSampling Sampling { get; }
     internal override void Clear() { }
+}
+
+/// <summary>Optional Ollama sampling options a client may send with a chat request; null keeps Ollama's own default.
+/// <see cref="ContextTokens"/> replaces the relay's default context window (num_ctx).</summary>
+public sealed record GatewayOllamaSampling(
+    double? TopP = null, int? TopK = null, double? MinP = null, double? RepeatPenalty = null,
+    double? FrequencyPenalty = null, double? PresencePenalty = null, int? ContextTokens = null)
+{
+    public static GatewayOllamaSampling None { get; } = new();
+
+    public static GatewayOllamaSampling From(Martlet.Core.Settings.GenerationSettings? settings) => settings is null ? None : new(
+        settings.TopP, settings.TopK, settings.MinP, settings.RepeatPenalty, settings.FrequencyPenalty, settings.PresencePenalty,
+        settings.ContextTokens);
 }
 
 public sealed record GatewayF5TextChunk(int Index, string ChunkId, string Text)

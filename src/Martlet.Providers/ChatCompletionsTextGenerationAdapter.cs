@@ -39,7 +39,7 @@ public sealed class ChatCompletionsTextGenerationAdapter : IDisposable
 
     public TextGenerationStream Stream(ProviderRequestContext context, TextModelSelection model,
         BoundedTextInput input, TextGenerationLimits limits, TextDisclosureAuthorization? authorization,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, GenerationSettings? generation = null)
     {
         ObjectDisposedException.ThrowIf(disposed != 0, this);
         ArgumentNullException.ThrowIfNull(context);
@@ -48,10 +48,11 @@ public sealed class ChatCompletionsTextGenerationAdapter : IDisposable
         ArgumentNullException.ThrowIfNull(limits);
         context.Validate();
         limits.Validate();
+        generation?.Validate();
         ContractRules.Identifier(model.ModelAlias);
         ChatCompletionsSetup.ModelId(model.UpstreamModelId);
         return new(client, credentials, clock, provenance, shutdown.Token, context, model, input, limits,
-            authorization, cancellationToken, baseUri);
+            authorization, cancellationToken, baseUri, generation);
     }
 
     public void Dispose()

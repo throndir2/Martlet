@@ -16,11 +16,13 @@ public sealed class HostTextException(ProviderFailureCode code) : Exception("The
     public ProviderFailureCode Code { get; } = code;
 }
 
-/// <summary>Streams reply text from a paired host's conversation model. Failures throw <see cref="HostTextException"/>.</summary>
+/// <summary>Streams reply text from a paired host's conversation model. Failures throw <see cref="HostTextException"/>.
+/// <paramref name="generation"/> carries the optional sampling settings for the host's Ollama.</summary>
 public interface IHostTextClient
 {
     IAsyncEnumerable<string> StreamAsync(HostTextTarget target, TextModelSelection model, BoundedTextInput input,
-        TextGenerationLimits limits, CorrelationIds ids, long epoch, DateTimeOffset deadline, CancellationToken cancellationToken);
+        TextGenerationLimits limits, CorrelationIds ids, long epoch, DateTimeOffset deadline, GenerationSettings? generation,
+        CancellationToken cancellationToken);
 }
 
 /// <summary>One LLM request answered by the user's own Martlet host instead of a cloud provider. It checks the same
@@ -28,7 +30,7 @@ public interface IHostTextClient
 public sealed class HostTextGenerationStream : ITextGenerationStream
 {
     public const string ProviderId = SelfHostSetup.GatewayOllamaAlias;
-    public const double Temperature = 0.7;
+    public const double Temperature = GenerationSettings.DefaultHostTemperature;
     private readonly IHostTextClient client;
     private readonly HostTextTarget target;
     private readonly ProviderRequestContext context;
@@ -36,6 +38,7 @@ public sealed class HostTextGenerationStream : ITextGenerationStream
     private readonly BoundedTextInput input;
     private readonly TextGenerationLimits limits;
     private readonly TextDisclosureAuthorization? authorization;
+    private readonly GenerationSettings? generation;
     private readonly TimeProvider clock;
     private readonly CancellationToken callerToken;
     private readonly DateTimeOffset startedUtc;
@@ -43,7 +46,8 @@ public sealed class HostTextGenerationStream : ITextGenerationStream
 
     public HostTextGenerationStream(IHostTextClient client, HostTextTarget target, ProviderRequestContext context,
         TextModelSelection model, BoundedTextInput input, TextGenerationLimits limits,
-        TextDisclosureAuthorization? authorization, TimeProvider? clock = null, CancellationToken callerToken = default)
+        TextDisclosureAuthorization? authorization, TimeProvider? clock = null, CancellationToken callerToken = default,
+        GenerationSettings? generation = null)
     {
         ArgumentNullException.ThrowIfNull(client);
         ArgumentNullException.ThrowIfNull(target);
@@ -53,6 +57,7 @@ public sealed class HostTextGenerationStream : ITextGenerationStream
         ArgumentNullException.ThrowIfNull(limits);
         context.Validate();
         limits.Validate();
+        generation?.Validate();
         ContractRules.Identifier(model.ModelAlias);
         this.client = client;
         this.target = target;
@@ -61,6 +66,7 @@ public sealed class HostTextGenerationStream : ITextGenerationStream
         this.input = input;
         this.limits = limits;
         this.authorization = authorization;
+        this.generation = generation;
         this.clock = clock ?? TimeProvider.System;
         this.callerToken = callerToken;
         startedUtc = this.clock.GetUtcNow();
@@ -118,7 +124,7 @@ public sealed class HostTextGenerationStream : ITextGenerationStream
             }
             using var timeout = new CancellationTokenSource(remaining, clock);
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(stop.Token, timeout.Token);
-            var deltas = client.StreamAsync(target, model, input, limits, context.Ids, context.Epoch, deadline, linked.Token)
+            var deltas = client.StreamAsync(target, model, input, limits, context.Ids, context.Epoch, deadline, generation, linked.Token)
                 .GetAsyncEnumerator(linked.Token);
             try
             {
