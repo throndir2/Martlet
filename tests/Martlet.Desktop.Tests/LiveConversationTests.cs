@@ -849,6 +849,11 @@ public sealed class LiveConversationTests
         }
         Assert.Equal(2, fixture.Controller.ContextTurns);
 
+        // Saving settings continues the conversation rather than starting a fresh one.
+        var loaded = await fixture.Store.LoadAsync();
+        await fixture.Save(loaded.Settings!);
+        Assert.Equal(2, fixture.Controller.ContextTurns);
+
         fixture.Controller.Stop(second, "conversation.closed");
         Assert.Equal(0, fixture.Controller.ContextTurns);
         fixture.Answer("Before pause.");

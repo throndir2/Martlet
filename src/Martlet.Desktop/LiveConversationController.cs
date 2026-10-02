@@ -269,7 +269,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         {
             changed = configuration is not null && configuration.Revision != next?.Revision;
             memory?.Invalidate();
-            ClearContextLocked();
+            // A settings change continues the conversation: what was said so far stays as context for the next reply.
             if (configuration?.Revision != next?.Revision) CancelCapturesLocked();
             configuration = next;
             stop = RevokeLocked();
