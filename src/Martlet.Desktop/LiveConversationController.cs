@@ -1202,8 +1202,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
             {
                 lock (gate) reasoningRefused.Add(configured.ToolModelKey());
                 ErrorLog.Info($"The Thinking model {configured.Route(SetupRole.Llm).ModelId} refused Thinking steps " +
-                    $"{(configured.Generation?.Reasoning == true ? "On" : "Off")}; Martlet asked again with the model's own default and " +
-                    "uses it until it restarts. Choose Default on Companion › Replies › Thinking steps for this model.");
+                    $"{(GenerationSettings.ThinkingSteps(configured.Generation) ? "On" : "Off")}; Martlet asked again with the model's own default and " +
+                    "uses it until it restarts. This model always thinks, so choose a model that can answer without thinking for the fastest replies.");
             }
             if (IsFailure(terminal)) LogReplyFailure("Reply", configured, terminal);
             else if (terminal.State == ConversationState.Completed) Succeeded(SetupRole.Llm);

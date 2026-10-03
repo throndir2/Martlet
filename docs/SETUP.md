@@ -52,8 +52,8 @@ literal loopback IP (`localhost` is rejected). Keys are bound to the exact base
 URL. Switching the LLM to another destination detaches the previous key and
 lists it for explicit removal on **Credentials**. Each reply is capped at 256
 tokens; reasoning/thinking models spend part of that on hidden thinking (never
-spoken or shown), so prefer instruct/chat models or set **Thinking steps** to
-**Off** on Companion › Replies.
+spoken or shown), so prefer instruct/chat models; **Thinking steps** on
+Companion › Replies is **Off** by default, which skips it where the model allows.
 A prefilled default is only a suggestion: nothing is saved until you apply the
 job and consent, and saving does not prove that an ID exists or is accessible.
 

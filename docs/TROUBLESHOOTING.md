@@ -178,8 +178,8 @@ this PC has no reply token budget unless you set **Max reply length** on
 **Companion › Replies**, so thinking models can reason before they answer.
 If replies take a few seconds to start because the model thinks first (Test
 model says *... is thinking first...*, or the desktop log's *Reply latency*
-line shows *hidden reasoning*), set **Thinking steps** to **Off** on
-**Companion › Replies**: the model answers straight away. A model that always
+line shows *hidden reasoning*), check that **Thinking steps** on **Companion ›
+Replies** is **Off** (the default): the model answers straight away. A model that always
 thinks refuses Off; the log then says *refused Thinking steps Off* and Martlet
 uses the model's default for it (choose a model that can skip thinking for the
 fastest replies). See [Voice latency](VOICE_LATENCY.md).
