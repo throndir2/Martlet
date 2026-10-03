@@ -39,7 +39,7 @@ internal static class ClusterSync
     {
         ClusterJobs.Thinking => HostRoles.Ollama,
         ClusterJobs.Listening => HostRoles.Stt,
-        ClusterJobs.Speaking => HostRoles.F5,
+        ClusterJobs.Speaking => HostRoles.Speaking,
         ClusterJobs.LipSync => HostRoles.Audio2Face,
         _ => throw new ArgumentOutOfRangeException(nameof(job), job, "Unknown cluster job.")
     };

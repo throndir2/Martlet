@@ -3,11 +3,12 @@ using Martlet.Core.Settings;
 
 namespace Martlet.Providers;
 
-/// <summary>The paired Martlet host whose F5 voice (its f5 role) speaks replies, reached through the host's pinned
-/// gateway. <see cref="CredentialId"/> names the TTS route's reference to the host pairing kept in the OS vault;
-/// <see cref="ModelId"/> is the host's advertised F5 model and <see cref="ReferenceRevision"/> the applied reference voice.</summary>
+/// <summary>The paired Martlet host whose voice engine (its f5 or xtts role, <see cref="SpeechEngines"/>) speaks replies,
+/// reached through the host's pinned gateway. <see cref="CredentialId"/> names the TTS route's reference to the host pairing
+/// kept in the OS vault; <see cref="ModelId"/> is the host's advertised model on <see cref="RouteId"/> (the engine's gateway
+/// route) and <see cref="ReferenceRevision"/> the applied reference voice.</summary>
 public sealed record HostSpeechTarget(string Origin, string HostId, string SpkiFingerprint, string DeviceId, Guid CredentialId,
-    string ModelId, Guid PresetId, string ReferenceRevision)
+    string ModelId, Guid PresetId, string ReferenceRevision, string RouteId = SelfHostSetup.F5RouteId)
 {
     public override string ToString() => nameof(HostSpeechTarget);
 }

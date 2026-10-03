@@ -164,7 +164,7 @@ internal sealed class HostSpeechClient(string dataDirectory) : IHostSpeechClient
         var reference = await ReadReferenceAsync(target, cancellationToken).ConfigureAwait(false);
         using var connection = Connect(target);
         var routes = await Guard(() => connection.ReadRoutesAsync(cancellationToken), cancellationToken).ConfigureAwait(false);
-        var route = routes.FirstOrDefault(r => r.RouteId == HostRoute.F5RouteId && r.ModelId == target.ModelId) ??
+        var route = routes.FirstOrDefault(r => r.RouteId == target.RouteId && r.ModelId == target.ModelId) ??
             throw HostTextClient.Failed("voice", ProviderFailureCode.ModelNotFound, "the host isn't ready for speaking");
         await using var frames = connection.StreamSpeechAsync(route, ids, epoch, deadline, reference, input.Text, cancellationToken)
             .GetAsyncEnumerator(cancellationToken);

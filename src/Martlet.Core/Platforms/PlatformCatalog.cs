@@ -313,6 +313,13 @@ public static class PlatformCatalog
             Impossible(Ios, Host, "F5 needs an NVIDIA GPU; iPhones and iPads have none"),
             Impossible(Android, Host, "F5 needs an NVIDIA GPU; phones and tablets have none")
         ]),
+        new("xtts", ClusterJobs.Speaking, "XTTS-v2 voice cloning (streams as it speaks)",
+        [
+            Works(Linux, Host, "", Nvidia4), Works(Win, Host, "through Docker Desktop (This PC's host service)", Nvidia4),
+            Impossible(Mac, Host, "the XTTS worker is built for NVIDIA CUDA"),
+            Impossible(Ios, Host, "XTTS needs an NVIDIA GPU; iPhones and iPads have none"),
+            Impossible(Android, Host, "XTTS needs an NVIDIA GPU; phones and tablets have none")
+        ]),
         new("f5-mlx", ClusterJobs.Speaking, "F5 voice cloning on a Mac (MLX)",
         [
             Planned(Mac, Host, "MA03", "serves the existing F5 route; 16 GB+ suggested", AppleSilicon),
@@ -428,6 +435,7 @@ public static class PlatformCatalog
         "ollama" => "ollama",
         "stt" => "whisper",
         "f5" => "f5",
+        "xtts" => "xtts",
         "audio2face" => "audio2face",
         _ => null
     };

@@ -57,6 +57,7 @@ public partial class MainWindow
         {
             if (offers.GetValueOrDefault(HostRoles.Ollama) is { } model) loads.Add(new($"Ollama {model}", ListeningAdvisor.OllamaModelGb(model)));
             if (offers.ContainsKey(HostRoles.F5)) loads.Add(new("the F5 voice", 3));
+            if (offers.ContainsKey(HostRoles.Xtts)) loads.Add(new("the XTTS voice", 3));
             if (offers.ContainsKey(HostRoles.Audio2Face)) loads.Add(new("Audio2Face lip-sync", 5));
         }
         return loads;
@@ -268,12 +269,12 @@ public partial class MainWindow
     {
         if (store is null || setupService is null || closing) return;
         var thisPc = ThisPcHost();
-        if (thisPc is not null && (await ThisPcOffersAsync(thisPc))?.ContainsKey(HostRoles.F5) == true)
+        if (thisPc is not null && (await ThisPcOffersAsync(thisPc))?.ContainsKey(HostRoles.Speaking) == true)
         {
             await AssignJobAsync(HostJob.Speaking, "host:" + thisPc.HostId);
             return;
         }
-        await SetUpJobHereAsync(HostJob.Speaking, new Dictionary<string, string>(StringComparer.Ordinal), "Speak with F5 on this PC");
+        await SetUpJobHereAsync(HostJob.Speaking, new Dictionary<string, string>(StringComparer.Ordinal), $"Speak with {SpeakingEngineChoice.Current.Name} on this PC");
     }
 
     /// <summary>One run window for a job on this PC: sets up and pairs the host service when needed, installs the job's

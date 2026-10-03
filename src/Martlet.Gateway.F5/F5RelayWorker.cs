@@ -39,26 +39,42 @@ public sealed class F5RelayWorker : IF5GatewayInferenceWorker, IAsyncDisposable
 
     public F5RelayWorker(Uri endpoint, string model, string? modelRevision = null, string? modelSha256 = null,
         string destinationId = DefaultDestinationId, string workerId = DefaultWorkerId, HttpMessageHandler? handler = null)
+        : this(endpoint, F5Route(model, modelRevision, modelSha256, destinationId, workerId), handler)
+    {
+    }
+
+    /// <summary>A relay for any reference-voice engine's route (<see cref="GatewayInferenceRoute.ReferenceSpeechRelay"/>):
+    /// the engine's loopback service speaks the same /synthesize and /cancel protocol and event stream as the f5 role.</summary>
+    public F5RelayWorker(Uri endpoint, GatewayInferenceRoute route, HttpMessageHandler? handler = null)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
-        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(route);
+        if (route.Kind != GatewayInferenceKind.F5Synthesis)
+            throw new ArgumentException("The relay serves reference-voice synthesis routes only.", nameof(route));
         if (endpoint.Scheme != Uri.UriSchemeHttp || !IPAddress.TryParse(endpoint.Host.Trim('[', ']'), out var address) ||
             !IPAddress.IsLoopback(address) || endpoint.AbsolutePath != "/")
             throw new ArgumentException("The F5 relay only reaches a loopback http://127.0.0.1:<port>/ service.", nameof(endpoint));
+        synthesize = new Uri(endpoint, "synthesize");
+        cancel = new Uri(endpoint, "cancel");
+        Route = route;
+        http = new HttpClient(handler ?? new SocketsHttpHandler
+        {
+            UseProxy = false, AllowAutoRedirect = false, UseCookies = false, Credentials = null,
+            AutomaticDecompression = DecompressionMethods.None, ConnectTimeout = TimeSpan.FromSeconds(5)
+        }, disposeHandler: true) { Timeout = Timeout.InfiniteTimeSpan };
+    }
+
+    private static GatewayInferenceRoute F5Route(string model, string? modelRevision, string? modelSha256,
+        string destinationId, string workerId)
+    {
+        ArgumentNullException.ThrowIfNull(model);
         if (modelRevision is null || modelSha256 is null)
         {
             if (!PinnedModels.TryGetValue(model, out var pinned))
                 throw new ArgumentException("The F5 model is not one the f5 role provisions.", nameof(model));
             (modelRevision, modelSha256) = pinned;
         }
-        synthesize = new Uri(endpoint, "synthesize");
-        cancel = new Uri(endpoint, "cancel");
-        Route = GatewayInferenceRoute.F5Relay(destinationId, workerId, model, modelRevision, modelSha256);
-        http = new HttpClient(handler ?? new SocketsHttpHandler
-        {
-            UseProxy = false, AllowAutoRedirect = false, UseCookies = false, Credentials = null,
-            AutomaticDecompression = DecompressionMethods.None, ConnectTimeout = TimeSpan.FromSeconds(5)
-        }, disposeHandler: true) { Timeout = Timeout.InfiniteTimeSpan };
+        return GatewayInferenceRoute.F5Relay(destinationId, workerId, model, modelRevision, modelSha256);
     }
 
     public GatewayInferenceRoute Route { get; }

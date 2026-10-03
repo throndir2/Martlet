@@ -304,7 +304,7 @@ internal static class NetworkMap
             {
                 HostRoles.Ollama when thinks => DeviceComponent.Job(SetupRole.Llm),
                 HostRoles.Stt when listens => DeviceComponent.Job(SetupRole.Stt),
-                HostRoles.F5 when speaks => DeviceComponent.Job(SetupRole.Tts),
+                _ when kind == HostRoles.Speaking && speaks => DeviceComponent.Job(SetupRole.Tts),
                 HostRoles.Audio2Face when inCharge => DeviceComponent.LipSync,
                 _ => DeviceComponent.Standby(kind)
             };
@@ -316,7 +316,7 @@ internal static class NetworkMap
                         (check?.Text ?? "Use Check connection to see whether it's ready."), DeviceComponent.LipSync));
                 // Thinking, listening and speaking are listed with their routes when this host does them.
                 else if (model is not null && !(role.Kind == HostRoles.Ollama && thinks) && !(role.Kind == HostRoles.Stt && listens) &&
-                    !(role.Kind == HostRoles.F5 && speaks))
+                    !(role.Kind == HostRoles.Speaking && speaks))
                     target.Roles.Add(new(role.Chip, role.Name, $"Ready. Assign {role.Job} to use it.",
                         DeviceComponent.Standby(role.Kind)));
             }
@@ -378,9 +378,9 @@ internal static class NetworkMap
             if (companion && !listens && Can(HostRoles.Stt))
                 target.Commands.Add(new(NodeAction.UseForListening, local ? "Use this PC's host service for listening" : "Use this computer for listening",
                     check?.Offers?.ContainsKey(HostRoles.Stt) == true, id, Ready(HostRoles.Stt)));
-            if (companion && !speaks && Can(HostRoles.F5))
+            if (companion && !speaks && Can(HostRoles.Speaking))
                 target.Commands.Add(new(NodeAction.UseForSpeaking, local ? "Use this PC's host service for speaking" : "Use this computer for speaking",
-                    check?.Offers?.ContainsKey(HostRoles.F5) == true, id, Ready(HostRoles.F5)));
+                    check?.Offers?.ContainsKey(HostRoles.Speaking) == true, id, Ready(HostRoles.Speaking)));
             foreach (var role in HostRoles.All)
             {
                 var offered = check?.Offers?.ContainsKey(role.Kind) == true;
