@@ -159,8 +159,9 @@
                                                    AutomationProperties.AutomationId="HostServiceAddress"/>
                                     </Border>
                                     <WrapPanel>
-                                        <Button x:Name="CheckHostServiceButton" Style="{DynamicResource PrimaryButton}" Content="Check host service"
+                                        <Button x:Name="CheckHostServiceButton" Content="Check again"
                                                 Click="CheckHostService_Click" Padding="20,12" Margin="0,0,12,8"
+                                                AutomationProperties.Name="Check the host service again"
                                                 AutomationProperties.AutomationId="CheckHostService"/>
                                         <Button Content="Show host status" Click="HostStatusConsole_Click" Padding="16,12" Margin="0,0,12,8"
                                                 AutomationProperties.AutomationId="HostStatusConsole"/>
@@ -174,15 +175,17 @@
                                     </Grid>
                                     <TextBlock x:Name="HostStatusText" Margin="0,136,0,0" TextAlignment="Center" FontWeight="SemiBold"
                                                AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="HostServiceStatus"
-                                               Text="Not checked yet"/>
+                                               Text="Checking..."/>
                                 </Grid>
                             </Grid>
                         </Border>
                         <Border Style="{DynamicResource CardStyle}">
                             <StackPanel>
-                                <TextBlock Text="Get this host running" Style="{DynamicResource SectionHeading}"/>
-                                <TextBlock Style="{DynamicResource Muted}" Margin="0,0,0,10"
-                                           Text="Complete these steps once."/>
+                                <TextBlock x:Name="HostStepsHeading" Text="Get this host running" Style="{DynamicResource SectionHeading}"
+                                           AutomationProperties.AutomationId="HostStepsHeading"/>
+                                <TextBlock x:Name="HostStepsSummary" Style="{DynamicResource Muted}" Margin="0,0,0,10" TextWrapping="Wrap"
+                                           AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="HostStepsSummary"
+                                           Text="Checking this PC's host service..."/>
                                 <StackPanel x:Name="HostStepsPanel" AutomationProperties.Name="Host setup steps"/>
                             </StackPanel>
                         </Border>

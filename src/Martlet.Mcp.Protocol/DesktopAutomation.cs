@@ -38,6 +38,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Martlet on your network: Find again only sends Martlet's own discovery query (port 9444) on the local network and
         // lists who answers; Stop asking only withdraws this PC's own request. Connect, Allow and Deny do the work.
         "NearbyFind", "NearbyCancel",
+        // The host dashboard's Check again only reads this PC's own host service (Docker, the gateway's role records and network
+        // roster, its published port); it starts, sets up and pairs nothing.
+        "CheckHostService",
         // Smart home: Find on my network only sends one multicast DNS question for Home Assistant's service type and lists who
         // answers; Not now only hides the setup form. Sign in, Set up, Connect, Share, Add, Install and Restart do the work.
         "SmartHomeFind", "SmartHomeSetupCancel",
@@ -106,9 +109,15 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // status line (Martlet is running, listening, paused or watching).
         "BackgroundStatus", "TrayStatus",
         // What this PC is for: the navigation rail's "Companion PC" or "Host PC", and Settings' line describing that role.
-        "DeviceRoleSummary", "DeviceRoleText"
+        "DeviceRoleSummary", "DeviceRoleText",
+        // The host dashboard's status under its icon ("Host is running", "Waiting for Docker Desktop", "Not set up yet", ...), its
+        // steps' heading ("This host is ready" or "Get this host running") and the line under it (how many steps are left and
+        // the next one, or "All set", and when Martlet last checked).
+        "HostServiceStatus", "HostStepsHeading", "HostStepsSummary"
     };
     /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)");
+    /// whether each home or host-dashboard step is ticked ("StepState-service" reads "Host service: done") and its buttons'
+    /// labels ("Step-roles-0" reads "Add Thinking: Add roles");
     /// Smart home's found Home Assistants ("SmartHomeFound-0" reads "Home: http://192.168.1.20:8123 (Home Assistant 2026.9.4)"),
     /// each paired host's Home Assistant line ("SmartHomeHost-gpu-pc" reads "gpu-pc: can run Home Assistant."), the devices
     /// Home Assistant discovered ("SmartHomeDevice-0" reads "Philips Hue: Hue Bridge") and its waiting updates
@@ -128,7 +137,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// never the key or its verifier); a host role's choices in its Add dialog ("HostInput-choice.A2F_ENGINE" reads "local";
     /// never its secret fields), the terms that follow a variant choice ("HostInputTerms-A2F_ENGINE") and each Companion › Prompts
     /// prompt's state ("PromptState-reply_length" reads "Edited. Not saved yet."; never the prompt text).</summary>
-    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "F5VoiceRow-", "F5VoiceGroup-", "StepDetail-", "HostChoice",
+    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "F5VoiceRow-", "F5VoiceGroup-", "StepDetail-", "StepState-", "Step-",
+        "HostChoice",
         "HealthIssue-", "HealthCheck-", "LogEntry-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",
         "SmartHomeDevice-", "SmartHomeUpdate-", "HostInput-choice.", "HostInputTerms-", "PromptState-"];
     private int? processId;

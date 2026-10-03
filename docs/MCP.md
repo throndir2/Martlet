@@ -303,7 +303,8 @@ unticked **Let my other computers find this PC**; `port` (9444); and `hosts`
 from `hosts.json` (`state` `none`, `loaded` or `unreadable`; when loaded the
 number `paired` and the `shareable` ones with `hostId` and `reach`
 (`ThisPcDocker`, `SshDocker` or `SshNative`)). This PC's own host service set
-up from the host dashboard is found by the desktop from Docker, not here. It
+up from the host dashboard is found by the desktop from Docker, not here
+(`host_service_status` reads it). It
 never returns addresses, SSH targets or keys and contacts nothing.
 
 `node_link_check` runs [commands between computers](CLUSTER.md#commands-between-your-computers)
@@ -357,6 +358,24 @@ created, startsAtSignIn}`: the setup Martlet continues after a Windows restart
 entry that starts Martlet at the next sign-in exists). It runs a CIM query and
 `wsl --version` in a hidden Windows PowerShell and `docker desktop status`,
 changes nothing and returns no paths.
+
+`host_service_status` reads this PC's own Martlet host service on Docker
+Desktop (the one the host dashboard sets up) with the same production code as
+the dashboard (`LocalHostService` in `Martlet.Core`): `stage` (`DockerMissing`,
+`DockerNotRunning`, `NotSetUp`, `Stopped` or `Running`), `ready` (running,
+answering and still at one of this PC's addresses), `version` (the
+`martlet-host:x.y.z` image), `hostId`, `published`, `addressOnThisPc` (false
+once the network gave this PC another address than the one set up),
+`answering` (a TCP connect to the published port), `roles` (the installed role
+records, for example `["audio2face","f5","stt"]`; null until the gateway runs),
+`network` (`unbound`, `bound`, `removed` or `unreadable`), `desktops` (`{id,
+name}` of the active desktops in the host's Martlet network, that is the
+computers paired with it, including this PC when it is one) and `problem`
+(Docker's first error line). It runs `docker container inspect` on
+`martlet-host-gateway` and `martlet-host-net` and one `docker exec` that lists
+the role records and prints `host_id` and `network.json`; it never reads the
+agent token, keys, secrets or pairings, returns no addresses and changes
+nothing. Setting `DOCKER_HOST` to a missing named pipe gives `DockerNotRunning`.
 
 `logs_tail` reads the last `lines` (1-400, default 100) of one local log under
 `<dataDirectory>\logs` (`log`: `desktop` (default), `avatar-renderer` or
@@ -559,17 +578,42 @@ it), or on with the hosts it offers; then *Last request:* allowed, denied,
 withdrawn or stopped) and `NearbyFirewall` (*Let my other computers reach this
 PC*, shown only when blocked: an administrator prompt, never part of
 verification).
-Home and host-dashboard steps have their buttons as `Step-<step>-<n>` and their
-detail line as `StepDetail-<step>` (status text). A step with more than two
+Home and host-dashboard steps have their buttons as `Step-<step>-<n>` (returned:
+the button's label and step, for example *Add Thinking: Add roles*), whether
+each is ticked as `StepState-<step>` (returned: *Host service: done*, *Pair your
+main PC: to do* or *Add roles: optional, not done*) and their detail line as
+`StepDetail-<step>` (status text). A step with more than two
 buttons (or long labels, like `Step-roles-<n>`) wraps them on rows under its
 detail, so with `layout` the buttons' `bounds` start at the detail's left edge
-and stay inside the window. On the host dashboard,
-`StepDetail-docker` says whether Docker Desktop runs or why Windows can't start
+and stay inside the window. The host dashboard reads this PC's own host service
+by itself (the same read as `host_service_status`): when it opens, every 30
+seconds while the window shows and when it shows again, so steps tick without a
+button. `HostServiceStatus` (returned) is the status under its icon (*Checking...*,
+*Needs Docker Desktop*, *Waiting for Docker Desktop*, *Not set up yet*, *Host
+service stopped*, *Address changed*, *Not answering yet* or *Host is running*),
+`HostStepsHeading` (returned) reads *This host is ready* once the required steps
+(Docker Desktop, host service, pairing) are done and `HostStepsSummary`
+(returned) says how many steps are left and the next one, or *All set*, and when
+it last checked. `CheckHostService` (*Check again*) only repeats that read and
+says what it found in the status line, so it is a passive click. On the host
+dashboard,
+`StepDetail-docker` says whether Docker Desktop runs, that it is open but its
+engine isn't answering yet, or why Windows can't start
 it yet (virtualization off in the firmware, Virtual Machine Platform or Windows
 Subsystem for Linux off, WSL missing, hypervisor not running), and
 `Step-docker-0` then reads *Turn on virtualization* or *Turn on Windows
 features* (administrator prompt and possibly a restart, so it needs
-`--allow-ui-effects` and is never part of verification). After a restart for
+`--allow-ui-effects` and is never part of verification). `StepDetail-service`
+says the host service is not set up (`Step-service-0` *Set up host service*),
+set up but stopped (*Start host service*), set up for an address this PC no
+longer has or not answering (*Set up again*), or *Running and reachable on your
+network as <host ID>* (done, no button). `StepDetail-pair` names the computers
+in the host's Martlet network (*Paired with DIVA and this PC.*, done, with
+`Step-pair-0` *Pair another computer*). `StepDetail-roles` lists the installed
+roles (*Runs Lip-sync and Listening.*, done) with an *Add* button for each other
+role and a *Remove* button for each installed one. `StepDetail-update` reads
+*Up to date: the host service runs Martlet x.y.z* (done, no button) or offers
+*Update host service*. After a restart for
 virtualization, Martlet opens a run window by itself (`HostRunWindow`) that
 continues the setup; `continueSetup` in `virtualization_status` shows what is
 pending.
@@ -593,7 +637,7 @@ device secret in Windows Credential Manager, so verification stops at refused
 codes. On the host dashboard, *Show a pairing code* (`Step-pair-0`) shows the
 address (`HostRunPairAddress`, returned) and the one-use code (`HostRunPairCode`,
 never returned) in the run window's `HostRunPairing` panel; the host-runs log
-masks codes. `StepDetail-pair` also tells the owner to find this PC from the
+masks codes. While the host isn't paired, `StepDetail-pair` tells the owner to find this PC from the
 main PC (*Martlet on your network*), and when Windows Firewall keeps other
 computers out it says so and `Step-pair-1` (*Let my other computers find this
 PC*, an administrator prompt) appears.
