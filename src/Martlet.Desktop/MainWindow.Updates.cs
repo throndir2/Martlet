@@ -53,6 +53,7 @@ public partial class MainWindow
                 problem = "Couldn't load update settings. Automatic installs stay off until you save again.";
             }
         }
+        CurrentVersionText.Text = $"Current version: Martlet {Version}";
         changingUpdateChoice = true;
         AutomaticUpdateCheck.IsChecked = updateChecksEnabled;
         AutomaticUpdateInstall.IsChecked = updatePreferences.AutoInstall;

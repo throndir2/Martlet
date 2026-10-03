@@ -69,7 +69,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Voice › Voice engine: the chosen self-hosted engine (F5-TTS or XTTS-v2) and where it speaks with its
         // model licence. Choosing another engine (ui_select SpeakingEngine) may install a host role, so it needs --allow-ui-effects.
         "SpeakingEngine", "SpeakingEngineStatus",
-        "SetupOllamaStatus", "SetupLocalModelTest", "HostRunStatus", "RepliesNow", "AppUpdateStatus",
+        "SetupOllamaStatus", "SetupLocalModelTest", "HostRunStatus", "RepliesNow", "AppUpdateStatus", "AppCurrentVersion",
         // Companion › Prompts: how many internal prompts are edited or emptied (counts only, never the prompt text).
         "PromptsNow",
         // Companion › Thinking › If Thinking fails: the saved fallback in words (provider, model, whose key; never the key) and
