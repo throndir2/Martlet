@@ -466,7 +466,7 @@ internal sealed class LiveConversationConfiguration
                         // A model that refused the Thinking steps choice this session gets its own default.
                         withoutReasoning ? GenerationSettings.WithoutReasoning(ReplyGeneration) : ReplyGeneration, tools, TextFallback(),
                         imageOptional && image is not null,
-                        character?.Tags);
+                        character?.Tags, Persona?.SpokenBreaks ?? SpeechBreaks.Default);
                 }
             }
         }

@@ -271,8 +271,14 @@ Windows) and optional `dataDirectory` whose saved prompt edits are used. It
 returns the engine, `supportsTags`, its `tags`, `cues` (each tag's
 engine-independent cue, such as `laugh` for `[laugh]`), `prompt` (the *Voice
 sounds and tones* instructions the Thinking model gets, or null), `spoken` (the
-pieces the real speech segmenter hands that engine, its own tags kept),
-`suppressedPieces` and `shown` (the chat and caption text, every tag stripped).
+pieces the real speech segmenter hands that engine for a spoken reply, its own
+tags kept), `suppressedPieces` and `shown` (the chat and caption text, every
+tag stripped). The pieces break where the persona's [speech
+breaks](CONVERSATION.md#voice-latency-streaming-overlap-and-barge-in) allow:
+`dataDirectory`'s saved persona named `persona` (else the one Martlet uses,
+else the defaults), with any of `breaks`' `commas`, `periods`,
+`questionMarks`, `exclamationMarks` (booleans) and `shortEndingWords` (0-5)
+on top; `persona` and `breaks` (with `isDefault`) say what was used.
 With `characterTags` (the character's [emote and motion
 tags](AVATARS.md#emotes-and-motions), such as `["{blush}"]`), those are stripped
 too and `characterCues` lists the cues the character acts on: each one's
@@ -805,7 +811,9 @@ settings, so they need `--allow-ui-effects`; `ui_set_text` with an empty
 data directory (optional absolute `dataDirectory`, default the current
 user's): `personality` (`state` `none`, `loaded` or `unreadable` with
 `problem`; `active`, the persona Martlet uses; and each persona's `name`,
-`active`, `instructionCharacters` and `styles` weights, never its
+`active`, `instructionCharacters`, `styles` weights and `speechBreaks`
+(`commas`, `periods`, `questionMarks`, `exclamationMarks`, `shortEndingWords`
+and `isDefault`), never its
 instructions), `character` (from `avatar.json`: `model` `built-in` with
 `builtInCharacter`, or `own model` with `ownModelType` `.vrm` or
 `.model3.json`, never the path; `renderer`, `lipSync`, `autoShow` and
@@ -829,6 +837,10 @@ response styles at zero, or *Choose your model file: an existing .vrm or
 .model3.json file.*) or *Not saved: <why>*; `AvatarStatus` reads the
 character's state (*Character is showing. ...*, *Character hidden.*). Their
 fields (`CompanionName`, `CompanionText`, the `CompanionHelpful`... sliders,
+the *Where the voice pauses* check boxes `CompanionBreakCommas`,
+`CompanionBreakPeriods`, `CompanionBreakQuestions` and
+`CompanionBreakExclamations` (their `checkedState` is the persona's choice) and
+`CompanionShortEnding` (its value reads *Never*, *1 word* or *Up to N words*),
 `CompanionPersona`, which also makes the chosen persona the one Martlet uses,
 `CompanionNew`, `CompanionDuplicate`, `CompanionDelete`, `CharacterChoice`,
 `AvatarModelPath`, `LipSyncChoice`, `AutoShowCharacter`, the lorebook fields,
@@ -887,8 +899,13 @@ only the voice stopped, at the chosen piece with the expected provider code
 (or, with `none`, every piece was spoken), and the captions together showed
 the whole reply. Before the fix this reported `Partial` with only the text up
 to the failed sentence, and the captions then showed nothing past the last
-spoken piece. It reads no
-credentials, needs no data directory and nothing leaves loopback. A real
+spoken piece. With `reply` (up to 1,024 characters of one-line text) that text
+is streamed a word at a time instead, like a model's tokens, and spoken with
+speech breaks chosen like `voice_tags`' (`dataDirectory`'s `persona`, else the
+one Martlet uses, else the defaults; `breaks` on top); `voice.pieces` lists
+exactly what the voice was asked to say, in order, with `voice.persona` and
+`voice.breaks`. Use `voiceFailure` `none` to hear every piece. It reads no
+credentials and nothing leaves loopback. A real
 paired host's voice failing is NOT reproduced; the talk window then notes
 *The voice failed, so this wasn't spoken.* or *The voice stopped partway, so
 only the beginning was spoken.* under the reply.
@@ -908,7 +925,12 @@ the total within a millisecond each, *hidden reasoning* at least 80% of
 `reasoningMs` and *voice synthesis* at least 80% of `voiceDelayMs`. For
 example `{"name":"spoken_reply_check","arguments":{"voiceFailure":"none",
 "reasoningMs":600,"voiceDelayMs":400}}` returned *hidden reasoning 590* and
-*voice synthesis 469* out of 1,215 ms.
+*voice synthesis 469* out of 1,215 ms. Like the desktop, the reply is spoken
+with speech breaks (the defaults unless chosen), so each piece waits for the
+next few words before it goes to the voice: the canned sentences arrive 300 ms
+apart, which adds about that much to *first sentence* here (a real model's
+next words come within tens of milliseconds); `"breaks":{"shortEndingWords":0}`
+measures without that wait.
 
 With `thinkingSteps` (`off` or `on`) the reply carries Companion › Replies ›
 Thinking steps (a loopback server gets the chat template's `enable_thinking`);
