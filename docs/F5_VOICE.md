@@ -240,10 +240,13 @@ each recording and the other engines clone the joined one
 shows such a voice as "3 recordings, 10.5 seconds joined" and whether the
 speaking engine learns from each or hears them joined.
 Each recording can be almost any audio or video file: Desktop's
-`VoiceRecordingImport` (Martlet.Audio) has Windows decode it on that PC (Media
+`VoiceRecordingImport` (Martlet.Audio) decodes it on that PC (Ogg Vorbis and Ogg
+Opus in managed code: NVorbis and Concentus' managed Opus decoder, since Windows
+reads no Ogg in a desktop app; everything else through Windows' Media
 Foundation; uncompressed WAV and AIFF through NAudio's managed readers), mixes
 it to mono, resamples a rate the store doesn't accept to the next accepted one
-(at most 48 kHz) and writes a mono PCM16 WAV; an acceptable WAV is kept byte for
+(at most 48 kHz; Opus, which always decodes at 48 kHz, to the rate its header
+says it was recorded at) and writes a mono PCM16 WAV; an acceptable WAV is kept byte for
 byte. Joining and the store then work on those WAVs. Decoding stops just past 30
 seconds, and a longer recording is refused rather than cut. Only WAVs reach the
 store and the paired computers, which still accept nothing else, so no codec

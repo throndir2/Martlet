@@ -31,9 +31,11 @@ public sealed class VoiceRecordingException(string message, Exception? inner = n
 /// <summary>Turns almost any audio or video file the owner chooses into the narrow WAV every voice engine and paired computer
 /// accepts (<see cref="PcmWaveInfo"/>: mono 16-bit PCM at 16, 22.05, 24, 44.1 or 48 kHz, from half a second, the shortest
 /// recording one of several may be, to 30 seconds; a voice from one recording needs at least 1 second). A WAV that is
-/// already acceptable is kept byte for byte. Anything else is decoded on this PC by Windows (Media Foundation: MP3, M4A/AAC,
-/// FLAC, WMA, ALAC, Ogg/Opus/WebM where Windows has those codecs, the sound of MP4/MOV/MKV videos, and WAV in any PCM or float
-/// layout; AIFF through NAudio's reader), mixed to mono and resampled when its rate isn't one of the accepted ones. Only the
+/// already acceptable is kept byte for byte. Ogg Vorbis and Ogg Opus (.ogg, .oga, .opus: voice messages, for example) are
+/// decoded by Martlet itself (<see cref="OggAudio"/>), since Windows reads no Ogg in a desktop app. Anything else is decoded on
+/// this PC by Windows (Media Foundation: MP3, M4A/AAC, FLAC, WMA, ALAC, WebM where Windows has those codecs, the sound of
+/// MP4/MOV/MKV videos, and WAV in any PCM or float layout; AIFF through NAudio's reader), mixed to mono and resampled when its
+/// rate isn't one of the accepted ones. Only the
 /// resulting PCM WAV is stored or shared: hosts and the gateway still accept nothing else, so no codec runs on audio another
 /// computer sent. Decoding stops just past the 30-second limit, so a long file is refused without decoding all of it.</summary>
 public static class VoiceRecordingImport
@@ -121,17 +123,18 @@ public static class VoiceRecordingImport
     private static VoiceRecording Decode(string path, string kind, CancellationToken cancellationToken)
     {
         float[] mono;
-        int frames, rate, channels;
+        int frames, rate, channels, recorded;
         TimeSpan? reported;
+        OggCodec? ogg = null;
         try
         {
-            using var reader = Open(path);
-            rate = reader.WaveFormat.SampleRate;
-            channels = reader.WaveFormat.Channels;
+            using var reader = Open(path, ref kind, out ogg);
+            rate = reader.SampleRate;
+            channels = reader.Channels;
             if (rate is < MinimumSourceRate or > MaximumSourceRate || channels is < 1 or > MaximumSourceChannels)
                 throw new VoiceRecordingException($"Martlet can't use sound at {Rate(rate)} with {channels} channels.");
-            reported = Reported(reader);
-            var samples = reader.ToSampleProvider();
+            recorded = reader.RecordedRate is { } lower and >= MinimumSourceRate and < MaximumSourceRate ? Math.Min(lower, rate) : rate;
+            reported = reader.Length;
             var limit = checked((int)((long)rate * SpeakingVoiceLibrary.MaximumDurationMilliseconds / 1000));
             mono = new float[limit + 1];
             var buffer = new float[channels * 4096];
@@ -139,7 +142,7 @@ public static class VoiceRecordingImport
             while (frames <= limit)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var read = samples.Read(buffer.AsSpan(0, Math.Min(buffer.Length, (limit + 1 - frames) * channels)));
+                var read = reader.Read(buffer.AsSpan(0, Math.Min(buffer.Length, (limit + 1 - frames) * channels)));
                 if (read <= 0) break;
                 var whole = read / channels;
                 for (var frame = 0; frame < whole; frame++)
@@ -158,38 +161,58 @@ public static class VoiceRecordingImport
         catch (Exception error) when (error is COMException or InvalidOperationException or ArgumentException or FormatException or
             NotSupportedException or InvalidDataException or EndOfStreamException or InvalidCastException or OverflowException)
         {
-            throw new VoiceRecordingException(
-                "Windows can't read sound from this file. Try an MP3, M4A, WAV or FLAC recording, or a video with sound.", error);
+            throw new VoiceRecordingException(ogg switch
+            {
+                OggCodec.Vorbis or OggCodec.Opus =>
+                    $"Martlet couldn't decode the {ogg} sound in this file. It may be damaged or cut short: try another copy or format.",
+                OggCodec.Other =>
+                    "This Ogg file holds a kind of sound Martlet can't read. Ogg files with Vorbis or Opus sound work, as do MP3, M4A, WAV and FLAC.",
+                _ => "Windows can't read sound from this file. Try an MP3, M4A, WAV, FLAC or OGG recording, or a video with sound."
+            }, error);
         }
 
         var milliseconds = frames == 0 ? 0 : (int)Math.Ceiling(frames * 1000d / rate);
         if (milliseconds < SpeakingVoiceLibrary.MinimumClipMilliseconds)
             throw new VoiceRecordingException(frames == 0
-                ? "Windows found no sound in this file."
+                ? ogg is null ? "Windows found no sound in this file." : "Martlet found no sound in this file. It may be cut short."
                 : $"This recording is only {(milliseconds / 1000d).ToString("0.0", CultureInfo.InvariantCulture)} seconds long. " + TooShort);
 
-        var target = TargetRate(rate);
+        // Kept at the accepted rate nearest what was recorded: a voice message Opus decodes at 48 kHz stays at 16 kHz.
+        var target = TargetRate(recorded);
         ReadOnlySpan<float> output = target == rate ? mono.AsSpan(0, frames) : Resample(mono, frames, rate, target);
         var wave = Wave(output, target);
         if (!wave.AsSpan(44).ContainsAnyExcept((byte)0))
             throw new VoiceRecordingException("This recording is silent. Choose one where the voice can be heard.");
         var info = Usable(wave) ?? throw new VoiceRecordingException("This recording is too short. " + TooShort);
-        return new(wave, kind, channels, rate, target, info.DurationMilliseconds, true);
+        return new(wave, kind, channels, recorded, target, info.DurationMilliseconds, true);
     }
 
     private const string TooShort = "A recording needs at least half a second, and a voice from one recording at least 1 second.";
 
-    private static WaveStream Open(string path)
+    private static IDecodedAudio Open(string path, ref string kind, out OggCodec? ogg)
     {
+        ogg = null;
         Span<byte> header = stackalloc byte[12];
         int length;
         using (var probe = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
             length = probe.ReadAtLeast(header, header.Length, throwOnEndOfStream: false);
         header = header[..length];
+        // Ogg Vorbis and Opus are decoded in managed code (Windows reads no Ogg in a desktop app); any other Ogg sound still
+        // goes to Windows, in case this PC has a decoder for it.
+        if (OggAudio.IsOgg(header))
+        {
+            ogg = OggAudio.Identify(path, out var serial);
+            if (ogg is OggCodec.Vorbis or OggCodec.Opus)
+            {
+                var codec = ogg.ToString()!;
+                if (!kind.Equals(codec, StringComparison.OrdinalIgnoreCase)) kind = $"{kind} ({codec})";
+                return OggAudio.Open(path, ogg.Value, serial);
+            }
+        }
         // Uncompressed WAV and AIFF are parsed by NAudio's managed readers (no codec); a compressed WAV or anything else goes
         // to Windows' own decoders.
         if (length == 12 && header[..4].SequenceEqual("FORM"u8) && (header[8..].SequenceEqual("AIFF"u8) || header[8..].SequenceEqual("AIFC"u8)))
-            return new AiffFileReader(path);
+            return new WaveStreamAudio(new AiffFileReader(path));
         if (length == 12 && header[..4].SequenceEqual("RIFF"u8) && header[8..].SequenceEqual("WAVE"u8))
         {
             WaveFileReader? wave = null;
@@ -200,14 +223,39 @@ public static class VoiceRecordingImport
                     wave.WaveFormat is WaveFormatExtensible)
                 {
                     _ = wave.ToSampleProvider();
-                    return wave;
+                    return new WaveStreamAudio(wave);
                 }
             }
             catch (Exception error) when (error is FormatException or ArgumentException or InvalidOperationException or
                 InvalidDataException or EndOfStreamException) { }
             wave?.Dispose();
         }
-        return new MediaFoundationReader(path, new MediaFoundationReader.MediaFoundationReaderSettings { RequestFloatOutput = true });
+        return new WaveStreamAudio(new MediaFoundationReader(path,
+            new MediaFoundationReader.MediaFoundationReaderSettings { RequestFloatOutput = true }));
+    }
+
+    /// <summary>A file NAudio or Windows (Media Foundation) reads.</summary>
+    private sealed class WaveStreamAudio : IDecodedAudio
+    {
+        private readonly WaveStream reader;
+        private readonly ISampleProvider samples;
+
+        internal WaveStreamAudio(WaveStream reader)
+        {
+            this.reader = reader;
+            try { samples = reader.ToSampleProvider(); }
+            catch
+            {
+                reader.Dispose();
+                throw;
+            }
+        }
+
+        public int SampleRate => reader.WaveFormat.SampleRate;
+        public int Channels => reader.WaveFormat.Channels;
+        public TimeSpan? Length => Reported(reader);
+        public int Read(Span<float> buffer) => samples.Read(buffer);
+        public void Dispose() => reader.Dispose();
     }
 
     private static TimeSpan? Reported(WaveStream reader)

@@ -5,7 +5,7 @@
       "martlet.audio": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.12.0, )"
+          "Martlet.Core": "[0.23.0, )"
         }
       },
       "martlet.core": {
@@ -14,7 +14,7 @@
       "martlet.diagnostics": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.12.0, )"
+          "Martlet.Core": "[0.23.0, )"
         }
       }
     },
@@ -36,8 +36,10 @@
       "martlet.audio": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.12.0, )",
-          "NAudio.Wasapi": "[3.1.0, )"
+          "Concentus": "[2.2.2, )",
+          "Martlet.Core": "[0.23.0, )",
+          "NAudio.Wasapi": "[3.1.0, )",
+          "NVorbis": "[0.10.5, )"
         }
       },
       "martlet.core": {
@@ -46,8 +48,14 @@
       "martlet.diagnostics": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.12.0, )"
+          "Martlet.Core": "[0.23.0, )"
         }
+      },
+      "Concentus": {
+        "type": "CentralTransitive",
+        "requested": "[2.2.2, )",
+        "resolved": "2.2.2",
+        "contentHash": "2B9YmHPKO+k7YpAAnqmiXwiMJnfjfj1C868RszOll2iZWLnGTAiC1q21L/d7CvTan7T+hyqU8dR0Dcy3cpjVfQ=="
       },
       "NAudio.Wasapi": {
         "type": "CentralTransitive",
@@ -57,6 +65,12 @@
         "dependencies": {
           "NAudio.Core": "3.1.0"
         }
+      },
+      "NVorbis": {
+        "type": "CentralTransitive",
+        "requested": "[0.10.5, )",
+        "resolved": "0.10.5",
+        "contentHash": "o+IptCG4Avze39HrGeztC+xIp6fOOwGVAwkoa1J++4Ji1WmZ+KIKlFl5wsgxsXqBkmdpfs/vFSUproiLKYa2bw=="
       }
     },
     "net10.0-windows7.0/win-x64": {}

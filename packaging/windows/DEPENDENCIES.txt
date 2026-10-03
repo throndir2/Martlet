@@ -40,6 +40,20 @@ Their raw NuGet archives and published managed DLL bytes are checked against
 toolchain.json. Raw signed-archive SHA-512 differs from NuGet's lock contentHash;
 both are preserved for their respective purposes.
 
+For Add a voice's Ogg recordings (.ogg, .oga, .opus), the Windows Audio target
+also brings, to both Desktop and Doctor, NVorbis 0.10.5 (NVorbis.dll,
+lib/netstandard2.0; MIT, Copyright (c) 2020 Andrew Ward), a managed Vorbis
+decoder, and Concentus 2.2.2 (Concentus.dll, lib/net8.0), a managed C# port of
+the Opus codec (BSD-3-Clause; Skype Limited, Xiph.Org Foundation, CSIRO,
+Microsoft, Jean-Marc Valin, Gregory Maxwell, Mark Borgerding, Timothy B.
+Terriberry, Logan Stromberg and others). Neither has a NuGet dependency on .NET
+10. Both archives and both DLLs are pinned in toolchain.json;
+notices\NVorbis-LICENSE.txt and Concentus-LICENSE.txt are the complete license
+files from each archive. Martlet uses only Concentus' managed decoder and never
+loads a native opus.dll, so none is redistributed. They decode only files the
+owner chooses on this PC; only the resulting PCM WAV is stored or shared, and
+Doctor never decodes them.
+
 Desktop also includes SSH.NET 2024.1.0 (Renci.SshNet.dll, lib/net8.0, no NuGet
 dependencies), the SSH client for Martlet hosts' in-app SSH runner (HostShell). Its archive
 and published DLL bytes are pinned in toolchain.json; notices\SSH.NET-LICENSE.txt is the

@@ -539,13 +539,15 @@ and notices are in `notices\F5-Voices-NOTICES.txt`. Remove any you don't want;
 they don't come back. **Add a voice...**
 takes a recording of 1 to 30 seconds (5 to 12 seconds of clear speech works
 best) in almost any audio format, such as MP3, M4A/AAC, WAV, FLAC, WMA, AIFF,
-OGG/Opus or the sound of an MP4, MOV or MKV video, plus its exact transcript,
-whose voice it is and your rights confirmation. Windows decodes the file on this
-PC (Ogg and Opus may need Windows' free Web Media Extensions), and the line under
+OGG/Opus (voice messages, for example) or the sound of an MP4, MOV or MKV video,
+plus its exact transcript, whose voice it is and your rights confirmation.
+Martlet decodes Ogg Vorbis and Ogg Opus files (.ogg, .oga, .opus) itself and
+Windows decodes the rest on this PC, and the line under
 the file says what Martlet found. Martlet keeps a mono 16-bit PCM WAV: a WAV
 already in that form (16/22.05/24/44.1/48 kHz) is kept exactly; anything else is
 mixed to mono and, at another sample rate, resampled to the next of those rates
-(at most 48 kHz). **Play** plays that WAV. A longer recording is refused rather
+(at most 48 kHz; an Opus file is kept at the rate it was recorded at, so a 16 kHz
+voice message stays 16 kHz). **Play** plays that WAV. A longer recording is refused rather
 than cut, since the transcript must match it. With Parakeet downloaded
 (**Companion > Listening**) or Listening on a paired host, Martlet fills in the
 transcript as soon as it has read the recording; check it and fix anything it

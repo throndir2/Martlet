@@ -645,6 +645,7 @@ $requiredFiles = @('sbom.cdx.json', 'Doctor\Martlet.Doctor.exe', 'Desktop\corecl
         'Doctor\System.Text.Json.dll', 'notices\WPF-THIRD-PARTY-NOTICES.txt',
         'Desktop\Martlet.Support.dll', 'help\INTERNAL.txt', 'help\TROUBLESHOOTING.md', 'notices\DEPENDENCIES.txt',
         'Desktop\NAudio.Wasapi.dll', 'Doctor\NAudio.Core.dll', 'Desktop\System.Numerics.Tensors.dll',
+        'Desktop\NVorbis.dll', 'Desktop\Concentus.dll', 'notices\NVorbis-LICENSE.txt', 'notices\Concentus-LICENSE.txt',
         'notices\NAudio-LICENSE.txt', 'notices\NAudio-THIRD-PARTY-NOTICES.txt', 'notices\WebRTC-APM-NOTICES.txt',
         'notices\System.Numerics.Tensors-LICENSE.txt', 'notices\System.Numerics.Tensors-THIRD-PARTY-NOTICES.txt')
 foreach ($context in Get-PublishContexts) {

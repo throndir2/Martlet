@@ -8,6 +8,12 @@
     },
     "net10.0/win-x64": {},
     "net10.0-windows7.0": {
+      "Concentus": {
+        "type": "Direct",
+        "requested": "[2.2.2, )",
+        "resolved": "2.2.2",
+        "contentHash": "2B9YmHPKO+k7YpAAnqmiXwiMJnfjfj1C868RszOll2iZWLnGTAiC1q21L/d7CvTan7T+hyqU8dR0Dcy3cpjVfQ=="
+      },
       "NAudio.Wasapi": {
         "type": "Direct",
         "requested": "[3.1.0, )",
@@ -16,6 +22,12 @@
         "dependencies": {
           "NAudio.Core": "3.1.0"
         }
+      },
+      "NVorbis": {
+        "type": "Direct",
+        "requested": "[0.10.5, )",
+        "resolved": "0.10.5",
+        "contentHash": "o+IptCG4Avze39HrGeztC+xIp6fOOwGVAwkoa1J++4Ji1WmZ+KIKlFl5wsgxsXqBkmdpfs/vFSUproiLKYa2bw=="
       },
       "NAudio.Core": {
         "type": "Transitive",

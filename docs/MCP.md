@@ -228,16 +228,22 @@ nothing and contacts nothing.
 (required) is an audio or video file on this PC. It runs the production
 converter (`VoiceRecordingImport`) and F5's reference rules on the result and
 returns `usable`; when usable, `sourceFormat` (the file's extension in capitals,
-for example `MP3`), `sourceChannels`, `sourceSampleRate`, `converted` (false
+for example `MP3`; an Ogg file adds its codec, `OGG (Vorbis)` or `OGG (Opus)`),
+`sourceChannels`, `sourceSampleRate` (for Opus, the rate it was recorded at, from
+its header), `converted` (false
 when the file is already a mono 16-bit PCM WAV Martlet keeps byte for byte),
 the kept WAV's `sampleRate` (the source rate when it is 16, 22.05, 24, 44.1 or
 48 kHz, else the next one above it, at most 48 kHz), `channels` (1),
-`bitsPerSample` (16), `durationMs`, `bytes`, `sha256`, `voiceAlone` (whether
+`bitsPerSample` (16), `durationMs`, `bytes`, `sha256`, `peakDbfs` and `rmsDbfs`
+(how loud that WAV, the one **Play** plays, is: about -96 means silence),
+`voiceAlone` (whether
 it passes F5's reference rules and so can be a voice by itself, with
 `voiceAloneProblem` when not), `engines` (the voice
 engines that can clone a recording that long) and `shown` (the line
 `F5AddVoiceRecording` shows); otherwise `problem` (too long, too short, silent,
-missing or unreadable). Recordings from 0.5 seconds (the shortest one of several
+missing, unreadable, or for an Ogg file damaged or another codec). Ogg Vorbis
+and Ogg Opus are decoded by Martlet itself, everything else by Windows.
+Recordings from 0.5 seconds (the shortest one of several
 may be) to 30 seconds are usable; a voice from one recording needs at least 1
 second. Decoding stops just past 30 seconds. It never returns
 the path or audio, saves nothing, plays nothing and contacts nothing.

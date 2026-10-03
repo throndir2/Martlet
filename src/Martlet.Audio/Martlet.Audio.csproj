@@ -8,6 +8,9 @@
   </ItemGroup>
   <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-windows'">
     <PackageReference Include="NAudio.Wasapi" />
+    <!-- Ogg Vorbis and Ogg Opus recordings for Add a voice, decoded in managed code (Windows has no Ogg reader of its own). -->
+    <PackageReference Include="NVorbis" />
+    <PackageReference Include="Concentus" />
   </ItemGroup>
   <ItemGroup Condition="'$(TargetFramework)' != 'net10.0-windows'">
     <Compile Remove="Windows\**\*.cs" />
