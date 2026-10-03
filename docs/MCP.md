@@ -268,11 +268,17 @@ the path or audio, saves nothing, plays nothing and contacts nothing.
 handled: `text` (required) is a reply, `engine` an engine key (default the
 default engine, `chatterbox`; `none` for a voice without tags such as OpenAI or
 Windows) and optional `dataDirectory` whose saved prompt edits are used. It
-returns the engine, `supportsTags`, its `tags`, `prompt` (the *Voice sounds and
-tones* instructions the Thinking model gets, or null), `spoken` (the pieces the
-real speech segmenter hands that engine, its own tags kept), `suppressedPieces`
-and `shown` (the chat and caption text, every tag stripped). It synthesizes and
-contacts nothing.
+returns the engine, `supportsTags`, its `tags`, `cues` (each tag's
+engine-independent cue, such as `laugh` for `[laugh]`), `prompt` (the *Voice
+sounds and tones* instructions the Thinking model gets, or null), `spoken` (the
+pieces the real speech segmenter hands that engine, its own tags kept),
+`suppressedPieces` and `shown` (the chat and caption text, every tag stripped).
+With `characterTags` (the character's [emote and motion
+tags](AVATARS.md#emotes-and-motions), such as `["{blush}"]`), those are stripped
+too and `characterCues` lists the cues the character acts on: each one's
+`piece` (index in `spoken`, or -1 for a tag after the last words), `tag` (a
+character tag or the engine's own voice tag) and character `offset` in the
+piece. It synthesizes and contacts nothing.
 
 `cluster_status` reads [shared who does what](CLUSTER.md) from a data directory
 (optional absolute `dataDirectory`, default the current user's): `sync` is
@@ -480,6 +486,27 @@ arriving: key and pieces so far) and `showing` (`built-in`, `shared:<key>`,
 `model-file-outside-list`). Character names and file paths are never returned.
 Read-only; it contacts nothing.
 
+`character_actions` reads a character model's
+[emotes and motions](AVATARS.md#emotes-and-motions) the way Companion ›
+Character › Emotes and motions uses them: `modelPath` (a `.model3.json` or
+`.vrm` on this PC) or the model `dataDirectory`'s `avatar.json` shows (with a
+`dataDirectory`, its `character-actions.json` and edited prompts are used too).
+It returns `renderer`, `key` (first 16 hex digits of the model's ID), `files`
+(what the renderer reads, a VTube Studio model's `.vtube.json` and loose
+`.exp3.json`/`.motion3.json` included), `expressions`, `motions`,
+`fromVTubeStudio` (expressions and motion groups taken from outside the
+model3.json, with their model-relative file names, and the `Idle` group made
+from VTube Studio's idle animation), `saved`, `detectedBy` (`names` or
+`thinking`), `actions` (each one's `n` as in `CharacterActionName-<n>`, `id`,
+`kind`, `name`, `detail`, `tag`, `cue`, `use`, `enabled` and whether replies
+are `offered` it for `engine`, a voice engine key, `none` or absent for a voice
+without tags), `replyPrompt` and `replyTags` (what replies get while the
+character shows) and `namingPrompt` (`instructions` and the numbered `list` the
+Thinking model is sent). With `answer`, a simulated Thinking reply such as
+`1: blush | - | when shy`, `parsed` shows what the production parser makes of
+it (`read`, `problem`, `actions`, `prompt`). Model-authored names only, never
+the model's path; it reads and contacts nothing else.
+
 `nearby_status` reads whether this PC lets Martlet on the owner's other
 computers [find it](ARCHITECTURE.md#finding-your-other-computers) (optional
 absolute `dataDirectory`, default the current user's): `share` is
@@ -564,6 +591,39 @@ hosts now* waits up to 30 minutes for another change, inside an unattended
 run's 45-minute limit (`asked-update-waits`). It contacts nothing and touches no
 Docker, host or data directory; the engine side of waiting is
 `host_engine_check`'s `asked-update-waits-then-runs`.
+
+`app_update_check` (no arguments) rehearses how Martlet installs its own update,
+with the desktop's production update helper (`AppUpdateHelper`: the same
+`install-update.cmd` script and the same hidden start Martlet uses) in a
+disposable temp folder, and returns `{exitCode, report: {passed, total, steps:
+[{name, ok, detail}], notCovered}}`. A windowless process that exits after about
+two seconds stands in for Martlet; `Martlet.NodeLinkCheck` (built with
+`Martlet.Mcp`) stands in for the installer and for the restarted Martlet
+(FIXTURE: with `MARTLET_UPDATE_CHECK_RECORD` set it records its arguments,
+whether its console window shows and which processes share its console, writes
+one line to the `/LOG` file and exits with `MARTLET_UPDATE_CHECK_EXIT`). Three
+installs run side by side: one another computer asked for
+(`asked-by-another-computer`), an automatic one from the notification area whose
+installer fails with exit 5 (`automatic-from-tray-fails`) and one you confirmed
+(`confirmed`). For each, the steps check that the installer starts only after
+Martlet's process exited (`waits-for-martlet`); its switches
+(`installer-switches`: `/VERYSILENT` with no window at all for the unattended
+two, `/SILENT` with only the progress window when confirmed, always
+`/SUPPRESSMSGBOXES /NORESTART /SP- /TASKS=` and `/LOG=...\install.log`); that it
+runs inside the helper's console, which shows no window (`helper-hidden`); that
+Martlet starts again after it with `--data-directory`, plus `--after-update`
+(minimized, no focus) when unattended and `--tray` when it was in the
+notification area, without a console window of its own (`restarts`); that
+`last-install.txt` holds the exit code and version (`records-result`); and that
+`update.log` has every step (`logs-steps`). After the failed install the
+installer log's tail, which Martlet copies into its log, is checked too
+(`installer-log-for-failure`). It installs nothing, starts no real Martlet and
+contacts nothing; the real Inno Setup installer is not run (`notCovered`). What
+Martlet does with these files when it starts again shows in `logs_tail`
+(`Update helper: ...` lines, then *Martlet updated to ...* or a WARN *The update
+to ... didn't finish* followed by the installer log's last lines), and
+`ui_snapshot`'s `windowStates` shows the restarted window `minimized` and not
+`foreground` (launch the desktop with `-DesktopArguments '--after-update'`).
 
 `audio2face_check` animates a short synthesized speech-like test signal (a vowel
 pulse train generated in the tool, never microphone audio, nothing played) with
@@ -907,7 +967,10 @@ conversation uses it.*
 (Companion › Listening › **Reduce echo from my speakers**; optional absolute
 `dataDirectory`, default the current user's, and optional `delayMs` 0-300,
 default 60): `reduceEcho` (the saved choice, on by default) with
-`reduceEchoSource` (`saved` or `default`), and `canceller` (`WebRTC AEC3` once
+`reduceEchoSource` (`saved` or `default`), `bargeIn` (*Let me interrupt Martlet
+by talking*, optional and off by default) with `bargeInSource` (`saved`,
+`default`, or `reset` for a file saved before barge-in became opt-in that had
+it on only by the old default), and `canceller` (`WebRTC AEC3` once
 the native canceller loads, otherwise null with `cancellerProblem` and `ok`
 false). Its `rehearsal` runs the production microphone path
 (`MicrophoneCapture`, `EchoReducer`, the WebRTC canceller, the capture
@@ -996,7 +1059,8 @@ alignment can be checked: in the talk window, the empty box's hint
 `LivePlaceholder` must have the same `bounds` position as the `textBounds` of
 text typed into `LiveInput`.
 `windowStates` lists each window's `name`, automation `id`, `enabled`, and
-whether its frame is `resizable`, `minimizable` and `maximizable`; with
+whether its frame is `resizable`, `minimizable` and `maximizable`, whether it is
+`minimized` and whether it is the `foreground` window (has the focus); with
 `layout` it adds the window's `bounds` and its monitor's `workArea` (the screen
 minus the taskbar), both in physical screen pixels. Every Martlet window opens
 within that work area at any display scale: no larger than it (minimum sizes
@@ -1346,7 +1410,7 @@ then *on your desktop* or *hidden*), and `SetupCharacterNowProblem` appears when
 the character's last stop did not finish cleanly (pressing Show or Hide
 character retries; details go to the `desktop` log). Exiting never waits on the
 character: Settings' `ExitMartlet` (needs `--allow-ui-effects`) closes Martlet
-even then, and Windows ends the renderer with it. After a zoom, the `SetupCharacterView` status reports the
+even then, and Windows ends the renderer with it (see **Exiting** below). After a zoom, the `SetupCharacterView` status reports the
 character frame's size (with, in parentheses, the overlay's full width: the
 frame plus the transparent room on each side the model can move into), its
 distance from the top of the screen, the camera zoom and where the
@@ -1442,6 +1506,33 @@ typed into `AvatarModelPath` (after `ui_select CharacterChoice` "My own model
 file") joins the shared list as soon as it is saved (once it names an existing model file; there is no Save button) or shown (`ShowCharacter`), and the
 saved profile then shows Martlet's copy. `character_models` reads the same list
 and copies headlessly.
+
+Companion › Character's *Emotes and motions* card lists the
+[emotes and motions](AVATARS.md#emotes-and-motions) of the character this PC
+shows (or would show). `CharacterActionsStatus` reads how many emotes and
+motions the model has (with Martlet's nod and shake) and whether they were named
+by the Thinking model (and when) or from the model's own files, or why they
+couldn't be read; `CharacterActionsNaming` the Thinking model's naming
+(*Asking the Thinking model...*, *The Thinking model named 10 emotes and motions
+at 3:12 PM and turned off 3 that aren't feelings or gestures.*, or why it
+couldn't, such as *Thinking isn't set up yet*); `CharacterActionsOffered` the
+tags replies get with the voice chosen now and which follow the voice's cues;
+`CharacterActionsLast` the last one played (*Played the expression "脸红" for
+{blush} at 3:14:05 PM.*, *... for a try ...*, or *The character couldn't play
+...*), also in `logs_tail` `desktop` as *Character expression '脸红' played for
+{blush}.*; and `CharacterActionsSaveState` *All changes saved.* or *Not saved:
+<why>*. Row `<n>` (as in `character_actions`) has `CharacterActionName-<n>`
+(its name and kind; a status field), `CharacterActionOn-<n>` (check box),
+`CharacterActionTag-<n>` (an English tag; a tag in another script reads *Not
+saved: ... use up to 24 English letters (a-z) ...*), `CharacterActionCue-<n>` (combo box: `(none)` or a
+cue such as `laugh`), `CharacterActionUse-<n>` and `CharacterActionTry-<n>`
+(plays it on the showing character; disabled while it is hidden). Editing a row
+saves `character-actions.json`, `CharacterActionsDetect` (*Name them with
+Thinking*) sends the model's emote and motion names and details to the Thinking
+model, `CharacterActionsReset` goes back to the model's own names, and Try plays
+on the overlay, so all of them need `--allow-ui-effects`. The first time a model
+shows with a Thinking model set up, Martlet names its emotes once on its own.
+`character_actions` reads the same settings headlessly.
 
 For voices, open `CompanionTab-Voice` (the Voices card shows unless the
 voice comes from a cloud provider). There are no built-in voices and no groups:
@@ -1693,9 +1784,10 @@ is a passive click: it only stops a reply, recording or vision. Changing How
 you talk on Companion › Listening (`TalkModePushToTalk`, `TalkModeAlways`)
 applies to an open talk window at once (`LivePtt` replaces `LiveMic`). With
 always listening, the same card has `TalkBargeIn` (*Let me interrupt Martlet by
-talking*, on by default; its `checkedState` is the saved choice, and
+talking*, optional and off by default; its `checkedState` is the saved choice, and
 `ui_toggle` on it needs `--allow-ui-effects` because it saves
-`talk-preferences.json`) and `TalkBargeInAbout` (returned: what talking over
+`talk-preferences.json`) and `TalkBargeInAbout` (returned: that it is optional
+and off by default, and what talking over
 Martlet takes, about a second of your voice on the microphone, never a short
 sound or what this PC plays; `echo_check`'s `talkOver` rehearses the gate itself). Below it, the *Speakers and echo* card has
 `TalkReduceEcho` (*Reduce echo from my speakers*, on by default; its
@@ -1763,7 +1855,8 @@ host doesn't talk, listen or show the character. `TrayOpen`, `TrayTalk` (like
 (like `CloseLive`) are passive clicks; `TrayResume`, `TrayCharacter`, the two
 choices and `TrayExit` need `--allow-ui-effects`. While another Martlet dialog
 (Setup, Companion...) is open, `TrayTalk` and `TrayCharacter` are disabled and
-`TrayExit` shows Martlet instead of exiting. Settings › *Startup and closing* has
+`TrayExit` shows Martlet instead of exiting (the status line names the open
+window to close first). Settings › *Startup and closing* has
 `CloseToTray` (checked by default; saves `background.json`), `StartWithWindows`
 (the per-user Run entry `Martlet`: this executable, the same `--data-directory`
 and `--tray` when `StartInTray` is checked; verify with a disposable data
@@ -1789,6 +1882,32 @@ exits); a different `--data-directory` runs beside it, so disposable
 verification desktops never reach your own Martlet. `-DesktopArguments '--tray'`
 on `scripts\Invoke-MartletMcp.ps1` starts the disposable desktop in the
 notification area.
+
+**Exiting.** `ExitMartlet`, `TrayExit` and (with *Keep running when closed*
+off) `ui_tray` `close` exit Martlet, so they need `--allow-ui-effects`. An exit
+that would cut work short (backup and restore, a setup task other than a reply,
+a troubleshooting report being made or waiting to be exported, an update
+download, a Parakeet download, a host update, a command
+from another computer, a running run window or *Prepare this computer*) waits
+up to 1.5 seconds for quick work to finish, then shows the window and asks in
+an *Exit Martlet* confirmation whose `ExitBusyQuestion` lists what Martlet is
+still busy with: `ConfirmationYes` (*Exit anyway*) interrupts it,
+`ConfirmationNo` (*Keep Martlet open*) keeps Martlet running and logs *Status:
+Martlet stays open...*. Windows signing out never asks. While Martlet closes,
+`ClosingPanel` covers the window (the rest is disabled) and `ClosingStatus`
+names the step (*Stopping your tool servers...*, *Ending the conversation...*,
+*Closing the character...*); the tray icon's tooltip says *Martlet is closing:
+<step>*. After three seconds the window shows even from the notification area
+(clicking the icon, its menu or starting Martlet again shows it at once),
+`ClosingSlow` says what exiting without waiting leaves undone and
+`ClosingExitNow` (or closing the window again, `ui_tray` `close`) opens *Exit
+Martlet now*, whose `ExitNowQuestion` names the step: `ConfirmationYes` exits
+at once (logging *Exited without waiting: Martlet was still <step>*),
+`ConfirmationNo` keeps waiting. A step that fails is logged (*While exiting,
+<step> didn't finish; Martlet exits anyway.*) and closing goes on. Setting
+`MARTLET_SIMULATE_SLOW_EXIT` to a number of seconds (1-600) before launching
+the desktop adds a last step that only waits that long (*Waiting on a simulated
+slow step*), to check the closing panel and Exit now.
 
 For broader **explicitly authorized** live UI testing, start the MCP server
 with `--allow-ui-effects`. This unlocks arbitrary ID-based `ui_click` and
@@ -1830,7 +1949,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status` and `voices_engine_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `prompts_status`, `character_status`, `hearing_check`, `echo_check`, `pc_audio_check`, `context_check` and `character_models` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `prompts_status`, `character_status`, `hearing_check`, `echo_check`, `pc_audio_check`, `context_check`, `character_models` and `character_actions` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

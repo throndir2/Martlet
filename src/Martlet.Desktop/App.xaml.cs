@@ -43,7 +43,7 @@ public partial class App : Application
         // without its window (--tray).
         var args = e.Args;
         bool afterUpdate = false, toTray = false;
-        while (args is [.., "--after-update" or WindowsStartup.TrayArgument])
+        while (args is [.., Martlet.Core.Installation.AppUpdateHelper.AfterUpdateArgument or WindowsStartup.TrayArgument])
         {
             if (args[^1] == WindowsStartup.TrayArgument) toTray = true;
             else afterUpdate = true;

@@ -100,7 +100,7 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
             p.Neutral < p.Minimum || p.Neutral > p.Maximum))
             throw new InvalidOperationException("The character renderer reported unsupported model controls.");
         if (Capabilities.Model is { } model && (model.Textures is < 1 or > 16 || model.TextureDivisor is not (1 or 2 or 4) ||
-            model.Expressions is < 0 or > 128 || model.MotionGroups.Length > 32 || model.EyeBlink.Length > 64 || model.LipSync.Length > 64 ||
+            model.Expressions is < 0 or > 128 || model.MotionGroups.Length > 96 || model.EyeBlink.Length > 64 || model.LipSync.Length > 64 ||
             model.EyeBlink.Concat(model.LipSync).Concat(model.MotionGroups).Any(name => name.Length is 0 or > 256 || name.Any(char.IsControl))))
             throw new InvalidOperationException("The character renderer reported an unsupported model summary.");
         ErrorLog.Info($"Character model loaded: {Describe(Capabilities)}");

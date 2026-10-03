@@ -563,7 +563,7 @@ replay canceled segments, or claim universal idempotency.
 Headsets and half-duplex were the MVP default: automatic speech capture is
 gated during Martlet playback, with a short measured acoustic tail. Manual
 PTT/Stop can interrupt instantly and start a new utterance after playback is
-flushed. Always listening's barge-in (on by default) keeps listening during
+flushed. Always listening's opt-in barge-in (off by default) keeps listening during
 playback instead, and *Reduce echo from my speakers* (on by default) supplies
 the echo reference: a WASAPI loopback of the output Martlet's voice uses, read
 only while the microphone captures and only to feed WebRTC's AEC3, which

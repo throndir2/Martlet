@@ -114,6 +114,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // name), whether they are shared with the paired Martlet computers (with how many and when), and why Add a character
         // couldn't add a model (never the typed name or file path).
         "CharacterModelsStatus", "CharacterModelsShared", "CharacterModelAddProblem",
+        // Companion › Character › Emotes and motions: how many the shown model has and who named them, the Thinking model's
+        // naming progress, the tags offered to replies and what follows the voice's cues, the last one played (model-authored
+        // names only) and whether edits saved. Each row's name and kind (CharacterActionName-<n>, a model-authored name).
+        "CharacterActionsStatus", "CharacterActionsNaming", "CharacterActionsOffered", "CharacterActionsLast", "CharacterActionsSaveState",
         // Companion › Listening › Speakers and echo: whether echo reduction is on and how the last listen went (or why it couldn't
         // run). The TalkReduceEcho check box saves the choice, so it needs --allow-ui-effects.
         "TalkReduceEchoStatus",
@@ -176,7 +180,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "HostServiceStatus", "HostStepsHeading", "HostStepsSummary",
         // The confirmation and host-input dialogs' Copy buttons read "Copy", then "Copied" (or "Couldn't copy") for a few
         // seconds after a click; never what they copied. The problem dialog's heading (its report, ProblemText, can hold paths).
-        "ConfirmationCopy", "HostInputCopy", "ProblemHeading"
+        "ConfirmationCopy", "HostInputCopy", "ProblemHeading",
+        // Exiting: the closing panel's step ("Stopping your tool servers...") and, once closing is slow, what Exit now
+        // interrupts; the questions an exit asks first (what Martlet is still busy with: work kinds, run window titles,
+        // a host ID or an update version, never paths, keys or conversation text) and before Exit now (the step).
+        // ClosingExitNow and the dialogs' ConfirmationYes exit Martlet, so they need --allow-ui-effects.
+        "ClosingStatus", "ClosingSlow", "ExitBusyQuestion", "ExitNowQuestion"
     };
     /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)");
     /// whether each home or host-dashboard step is ticked ("StepState-service" reads "Host service: done") and its buttons'
@@ -223,7 +232,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// Saving..."; never the prompt text);
     /// and the Copy button on every read-only text box ("Copy-HostRunOutput" reads "Copy", or "Copied" for a few seconds after a
     /// click; never the text it copies).</summary>
-    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "VoiceEngine", "SpeakingHost-",
+    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "VoiceEngine", "SpeakingHost-",
         "StepDetail-", "StepState-", "Step-",
         "HostChoice",
         "HealthIssue-", "HealthCheck-", "LogEntry-", "LogSource-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "NetworkPaired-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",
@@ -261,6 +270,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
             // A window that is disabled can't take input, as when a modal dialog blocks it; the talk window never blocks Martlet.
             // Its frame shows whether it can be resized, minimized and maximized; with layout, where it is and the work area
             // (screen minus taskbar) of its monitor, both in screen pixels, so a window can be checked to open wholly on screen.
+            // Whether it is minimized and has the focus show, for example, that Martlet restarted by an unattended update came
+            // back minimized without taking the focus.
             windowStates = windows.Select(window =>
             {
                 var handle = (nint)window.Current.NativeWindowHandle;
@@ -272,7 +283,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
                     ["enabled"] = IsWindowEnabled(handle),
                     ["resizable"] = (style & ThickFrame) != 0,
                     ["minimizable"] = (style & MinimizeBox) != 0,
-                    ["maximizable"] = (style & MaximizeBox) != 0
+                    ["maximizable"] = (style & MaximizeBox) != 0,
+                    ["minimized"] = IsIconic(handle),
+                    ["foreground"] = GetForegroundWindow() == handle
                 };
                 if (layout) (state["bounds"], state["workArea"]) = Placement(handle);
                 return state;
@@ -683,6 +696,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsWindowEnabled(nint window);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsIconic(nint window);
+
+    [DllImport("user32.dll")]
+    private static extern nint GetForegroundWindow();
 
     private static IEnumerable<AutomationElement> Elements(AutomationElement window) =>
         window.FindAll(TreeScope.Descendants,

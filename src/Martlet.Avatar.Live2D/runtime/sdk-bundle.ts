@@ -65,6 +65,10 @@ function createAnimator(structural: CubismModel, assets: AnimatorAssets): Animat
     expressions.set(entry.name, expression);
     released.push(() => expression.release());
   }
+  // Starting an expression that changes nothing fades the current one out, rather than snapping back.
+  const blankBytes = new TextEncoder().encode(JSON.stringify({ Type: "Live2D Expression", FadeInTime: 0.6, FadeOutTime: 0.6, Parameters: [] }));
+  const blank = CubismExpressionMotion.create(blankBytes.buffer as ArrayBuffer, blankBytes.byteLength);
+  if (blank) released.push(() => blank.release());
 
   let eyeBlink: CubismEyeBlink | undefined;
   if (eyeBlinkIds.getSize() > 0) {
@@ -144,7 +148,11 @@ function createAnimator(structural: CubismModel, assets: AnimatorAssets): Animat
     },
     setExpression(name: string | null): boolean {
       if (!alive) return false;
-      if (name === null) { expressionManager.stopAllMotions(); return true; }
+      if (name === null) {
+        if (blank) expressionManager.startMotion(blank, false);
+        else expressionManager.stopAllMotions();
+        return true;
+      }
       const expression = expressions.get(name);
       if (!expression) return false;
       expressionManager.startMotion(expression, false);

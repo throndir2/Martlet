@@ -67,7 +67,8 @@ public partial class MainWindow
     /// as it does with the window open.</summary>
     internal void ShowFromTray()
     {
-        if (closing) return;
+        // While Martlet closes, its window says what it is finishing (and offers Exit now when that takes long).
+        if (closing) { RevealClosing(); return; }
         var wasHidden = !IsVisible;
         inTray = false;
         if (wasHidden) Show();
@@ -107,8 +108,8 @@ public partial class MainWindow
         Close();
     }
 
-    /// <summary>Windows is signing out or shutting down: Martlet exits rather than hiding.</summary>
-    internal void PrepareForSessionEnd() => exiting = true;
+    /// <summary>Windows is signing out or shutting down: Martlet exits rather than hiding, without asking about work it interrupts.</summary>
+    internal void PrepareForSessionEnd() => exiting = sessionEnding = true;
 
     /// <summary>Exit couldn't finish yet: the close button goes back to hiding, and a hidden window shows why.</summary>
     private void RefuseExit()
@@ -117,7 +118,7 @@ public partial class MainWindow
         if (!IsVisible) ShowFromTray();
     }
 
-    private string TrayStatusText() => closing ? "Martlet is closing"
+    private string TrayStatusText() => closing ? $"Martlet is closing: {closingStep}"
         : openConversation is { } talk
             ? talk.Paused ? "Martlet is paused" : talk.IsListening ? "Martlet is listening" : talk.IsWatching ? "Martlet is watching"
                 : talk.IsVisible ? "Martlet: talk window open" : "Martlet is running"
@@ -129,7 +130,8 @@ public partial class MainWindow
 
     private void ShowTrayMenu(Point at)
     {
-        if (closing || tray is null) return;
+        if (tray is null) return;
+        if (closing) { RevealClosing(); return; }
         if (trayMenu is { IsOpen: true } open) open.IsOpen = false;
         var talk = openConversation;
         // Another Martlet window waits for an answer (Companion, Setup...): then only opening Martlet and exiting make sense.
@@ -247,7 +249,11 @@ public partial class MainWindow
         if (!IsWindowEnabled(WindowHandle))
         {
             ShowFromTray();
-            ActionText.Text = "Close the open Martlet window first, then exit.";
+            var open = Application.Current.Windows.OfType<Window>().LastOrDefault(window => !ReferenceEquals(window, this) &&
+                window.IsVisible && IsWindowEnabled(new WindowInteropHelper(window).Handle));
+            ActionText.Text = open is { Title.Length: > 0 }
+                ? $"Close the \"{open.Title}\" window first, then exit."
+                : "Close the open Martlet window first, then exit.";
             return;
         }
         ExitMartlet();

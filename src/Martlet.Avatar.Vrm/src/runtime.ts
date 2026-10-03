@@ -219,6 +219,8 @@ export class VrmRuntime {
   private lookTarget = { x: 0, y: 0 };
   private look = { x: 0, y: 0 };
   private composedAge = Number.POSITIVE_INFINITY;
+  private readonly actions = new Map<string, { target: number; value: number }>();
+  private gesture: { name: "nod" | "shake"; seconds: number } | undefined;
 
   get capabilities(): VrmCapabilities | undefined { return this.inspected; }
   get scene(): THREE.Group | undefined { return this.model?.scene; }
@@ -240,6 +242,54 @@ export class VrmRuntime {
     this.lookTarget = { x, y };
   }
 
+  /**
+   * Fades an authored emotion or custom expression in (`on`) or out, as an emote. One shows at a time: a new one fades the
+   * others out. Mouth, blink and gaze presets belong to lip-sync, blinking and gaze, so they are refused.
+   */
+  setAction(name: string, on: boolean): boolean {
+    const model = this.loaded();
+    if (typeof name !== "string" || !model.expressionManager?.getExpression(name) ||
+      [...mouthPresets, ...blinkPresets, ...gazePresets].includes(name as never)) return false;
+    if (on) for (const [other, state] of this.actions) if (other !== name) state.target = 0;
+    const state = this.actions.get(name) ?? { target: 0, value: 0 };
+    state.target = on ? 1 : 0;
+    this.actions.set(name, state);
+    return true;
+  }
+
+  /** Martlet's own head gestures, the same on every model: "nod" (down and up twice) or "shake" (three turns). */
+  playGesture(name: string): boolean {
+    this.loaded();
+    if (name !== "nod" && name !== "shake") return false;
+    this.gesture = { name, seconds: 0 };
+    return true;
+  }
+
+  private gestureOffset(deltaSeconds: number): { x: number; y: number } {
+    const gesture = this.gesture;
+    if (!gesture) return { x: 0, y: 0 };
+    const t = gesture.seconds += deltaSeconds;
+    if (gesture.name === "nod" && t < 1.1) {
+      const phase = Math.sin(Math.PI * t / 0.55);
+      return { x: 0, y: -0.9 * phase * phase };
+    }
+    if (gesture.name === "shake" && t < 1.2) return { x: 0.8 * Math.sin(2 * Math.PI * t / 0.4) * Math.sin(Math.PI * t / 1.2), y: 0 };
+    this.gesture = undefined;
+    return { x: 0, y: 0 };
+  }
+
+  private updateActions(model: VRM, deltaSeconds: number): void {
+    const expressions = model.expressionManager;
+    if (!expressions) return;
+    for (const [name, state] of this.actions) {
+      state.value += (state.target - state.value) * Math.min(1, deltaSeconds * 6);
+      if (state.target === 0 && state.value < 0.002) {
+        expressions.setValue(name, 0);
+        this.actions.delete(name);
+      } else expressions.setValue(name, state.value);
+    }
+  }
+
   private animateIdle(model: VRM, deltaSeconds: number): void {
     this.idleTime += deltaSeconds;
     const follow = Math.min(1, deltaSeconds * 5);
@@ -252,8 +302,10 @@ export class VrmRuntime {
     bone("rightLowerArm")?.rotation.set(0, 0.15, 0);
     bone("chest")?.rotation.set(breath * 0.015, 0, 0);
     if (!this.selection?.head) {
-      bone("neck")?.rotation.set(-this.look.y * 0.15, this.look.x * 0.2, Math.sin(this.idleTime * 0.7) * 0.02);
-      bone("head")?.rotation.set(-this.look.y * 0.2, this.look.x * 0.3, 0);
+      const gesture = this.gestureOffset(deltaSeconds);
+      const x = this.look.x + gesture.x, y = this.look.y + gesture.y;
+      bone("neck")?.rotation.set(-y * 0.15, x * 0.2, Math.sin(this.idleTime * 0.7) * 0.02);
+      bone("head")?.rotation.set(-y * 0.2, x * 0.3, 0);
     }
     const expressions = model.expressionManager;
     if (!expressions) return;
@@ -438,6 +490,7 @@ export class VrmRuntime {
       model.humanoid.getNormalizedBoneNode("head")!.quaternion.fromArray(this.pose.head ?? [0, 0, 0, 1]);
     }
     if (this.idle) this.animateIdle(model, deltaSeconds);
+    this.updateActions(model, deltaSeconds);
     model.humanoid.update();
     const neutralEyes: { node: THREE.Object3D; rotation: THREE.Quaternion }[] = [];
     if (model.lookAt && this.identity && this.selection?.gaze) {
@@ -503,5 +556,6 @@ export class VrmRuntime {
       releaseResources(this.model.scene);
     }
     this.model = undefined; this.inspected = undefined; this.selection = undefined; this.revision = undefined; this.inputMode = undefined;
+    this.actions.clear(); this.gesture = undefined;
   }
 }

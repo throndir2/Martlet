@@ -49,8 +49,106 @@ internal sealed class AvatarController : IAsyncDisposable
         this.createRenderer = createRenderer ?? (() => new AvatarRendererProcess());
         this.allowControlledClock = allowControlledClock;
         this.openHost = openHost ?? GatewayAvatarHostLink.Open;
+        _ = Task.Run(ActOnCuesAsync);
     }
     private void Publish(string value) => Volatile.Write(ref status, value);
+
+    // ---------- emotes and motions ----------
+
+    private readonly CancellationTokenSource cueLifetime = new();
+    private Func<string?, CharacterActionCatalog?>? actions;
+    private CancellationTokenSource? expressionHold;
+    private string? lastAction;
+
+    /// <summary>The character cues of replies (their character tags and the voice's own tags), timed with their sentences.</summary>
+    internal CharacterCueFeed Cues { get; } = new();
+
+    /// <summary>What the last emote or motion was and why, or why it couldn't play (model-authored names only).</summary>
+    internal string? LastAction => Volatile.Read(ref lastAction);
+
+    /// <summary>Raised (off the UI thread) after an emote or motion plays or fails.</summary>
+    internal event Action? ActionPlayed;
+
+    /// <summary>Where the showing model's emotes and motions come from: the catalog for a model path, or null.</summary>
+    internal void UseActions(Func<string?, CharacterActionCatalog?> provider) => Volatile.Write(ref actions, provider);
+
+    private async Task ActOnCuesAsync()
+    {
+        try
+        {
+            await foreach (var line in Cues.Lines.ReadAllAsync(cueLifetime.Token).ConfigureAwait(false))
+            {
+                if (!IsShowing || Volatile.Read(ref actions)?.Invoke(profile?.ModelPath) is not { } catalog) continue;
+                foreach (var cue in line.Cues)
+                    if (catalog.For(cue.Tag) is { Count: > 0 } sources)
+                        _ = ActLaterAsync(sources, cue, line.Finished);
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task ActLaterAsync(IReadOnlyList<CharacterActionSource> sources, CharacterCue cue, Task finished)
+    {
+        try
+        {
+            if (cue.Delay > TimeSpan.Zero) await Task.Delay(cue.Delay, cueLifetime.Token).ConfigureAwait(false);
+            foreach (var source in sources) await PlayActionAsync(source, cue.Tag, finished, cueLifetime.Token).ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or
+            InvalidDataException or TimeoutException or ObjectDisposedException) { }
+    }
+
+    /// <summary>Plays one emote or motion on the showing character because of <paramref name="reason"/> (a reply's tag or
+    /// "a try"). An expression shows for at least 4 seconds, until its sentence finishes (plus a second), at most 12 seconds,
+    /// unless another one replaces it. Returns whether the model started it; false while the character is hidden.</summary>
+    internal async Task<bool> PlayActionAsync(CharacterActionSource source, string reason, Task? finished, CancellationToken token)
+    {
+        if (renderer is not { HasExited: false } current || profile is null) return false;
+        var kind = source.Kind switch
+        {
+            CharacterActionKind.Expression => "expression", CharacterActionKind.Motion => "motion", _ => "gesture"
+        };
+        var reply = await current.SendAsync("action", new RendererAction(kind, source.Name), token).ConfigureAwait(false);
+        var started = reply.Data.ValueKind == System.Text.Json.JsonValueKind.Object && reply.Data.TryGetProperty("started", out var value) &&
+            value.ValueKind == System.Text.Json.JsonValueKind.True;
+        var when = DateTime.Now.ToString("T", System.Globalization.CultureInfo.CurrentCulture);
+        Volatile.Write(ref lastAction, started
+            ? $"Played the {kind} \"{source.Name}\" for {reason} at {when}."
+            : $"The character couldn't play the {kind} \"{source.Name}\" ({reason}, {when}).");
+        ErrorLog.Info(started ? $"Character {kind} '{source.Name}' played for {reason}." : $"Character {kind} '{source.Name}' didn't play ({reason}).");
+        ActionPlayed?.Invoke();
+        if (started && source.Kind == CharacterActionKind.Expression) HoldExpression(current, source.Name, finished);
+        return started;
+    }
+
+    private void HoldExpression(IAvatarRenderer target, string name, Task? finished)
+    {
+        var hold = new CancellationTokenSource();
+        lock (stateGate)
+        {
+            expressionHold?.Cancel();
+            expressionHold = hold;
+        }
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var cap = Task.Delay(TimeSpan.FromSeconds(12), hold.Token);
+                await Task.Delay(TimeSpan.FromSeconds(4), hold.Token).ConfigureAwait(false);
+                if (finished is { IsCompleted: false })
+                    await Task.WhenAny(finished.ContinueWith(_ => Task.Delay(1000), TaskScheduler.Default).Unwrap(), cap).ConfigureAwait(false);
+                hold.Token.ThrowIfCancellationRequested();
+                if (!target.HasExited) await target.SendAsync("action", new RendererAction("expression", name, false), hold.Token).ConfigureAwait(false);
+            }
+            catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or
+                InvalidDataException or TimeoutException or ObjectDisposedException) { }
+            finally
+            {
+                lock (stateGate) if (expressionHold == hold) expressionHold = null;
+                hold.Dispose();
+            }
+        });
+    }
 
     internal async Task UpdateThemeAsync(CancellationToken token)
     {
@@ -837,6 +935,7 @@ internal sealed class AvatarController : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        await cueLifetime.CancelAsync();
         await StopAsync();
         observer.Dispose();
     }
