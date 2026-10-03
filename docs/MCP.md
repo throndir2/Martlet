@@ -707,6 +707,26 @@ size, its distance from the top of the screen, the camera zoom and where the
 top of the character's head sits relative to the overlay's top edge (it must
 stay in view at every zoom).
 
+The character overlay itself is drawn by Martlet's renderer child process
+(`Martlet.Avatar.RendererHost`); `ui_snapshot` includes its windows (the
+overlay is titled *Martlet character overlay*; another Martlet's renderer is
+never included). Its drag surface `MoveAvatar` supports UI Automation
+expand/collapse, so `ui_click` on it opens (or closes again) the character's
+right-click menu with no flag; opened this way, the menu stays open until a
+choice or another `MoveAvatar` click. While it is open, snapshots list
+`CharacterMenu` and its items: `CharacterTalk` (*Talk to Martlet*, like
+`TrayTalk`), `CharacterOpenMartlet` (*Open Martlet*, shows the window like
+`TrayOpen`, also from the notification area) and `CharacterSettings`
+(*Character settings*, opens Companion › Character), which are passive clicks;
+then `CharacterZoomIn`, `CharacterZoomOut`, `CharacterResetZoom` (disabled at
+the default zoom), `CharacterResetPosition`, the checkable `CharacterOnTop`
+(*Keep on top*, on by default; its `checkedState` is the current choice for
+this showing) and `CharacterHide` (*Hide character*; Esc on the overlay does
+the same), which need `--allow-ui-effects`. Talk, Open, Settings and Hide are
+carried out by Martlet itself, so the desktop log records *The character's menu
+chose 'hide'.* (and so on), and a hide is followed by *Avatar renderer stopped
+by Martlet.* and `SetupCharacterNow` reading *hidden*.
+
 The same page's *Speech bubbles and subtitles* card has the checkboxes
 `SetupCharacterSpeechBubbles` (on by default) and `SetupCharacterSubtitles`
 (off by default); snapshots return their states, and `SetupCharacterSpeechDisplay`
@@ -911,7 +931,8 @@ after … ms, first audio after … ms* line to the desktop log, which `logs_tai
 returns.
 
 Window discovery uses visible top-level native handles filtered to the attached
-process, then verifies ownership around each UI Automation handle lookup.
+process (and its own character renderer child process), then verifies ownership
+around each UI Automation handle lookup.
 This avoids transient omissions from UI Automation's desktop-root enumeration
 when unrelated WPF windows close. The Martlet main-window automation ID is
 still required on every operation, unless the window is hidden in the
