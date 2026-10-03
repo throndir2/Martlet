@@ -38,14 +38,15 @@ def reference_wav(seconds: float = 2.0, rate: int = 24_000) -> bytes:
 class PromptTests(unittest.TestCase):
     def test_single_speaker_and_tags_unchanged(self) -> None:
         prompts = text.prompts("[S1] Hello there.", "[S2] Oh really? (laughs) [S1] Fine (sighs).", 6.0)
-        self.assertEqual(prompts, ["[S1] Hello there. Oh really? (laughs) Fine (sighs)."])
+        self.assertEqual(prompts, [("[S1] Hello there. Oh really? (laughs) Fine (sighs).", "Oh really? (laughs) Fine (sighs).")])
+        self.assertLess(text.max_tokens(6.0, prompts[0][1]), 3072)
 
     def test_long_reply_splits_at_sentences(self) -> None:
         reply = " ".join(f"Sentence number {i} is here." for i in range(30))
         prompts = text.prompts("Ref.", reply, 8.0)
         self.assertGreater(len(prompts), 1)
-        self.assertEqual(" ".join(p.removeprefix("[S1] Ref. ") for p in prompts), reply)
-        self.assertTrue(all(len(p.encode()) < text.MAX_TEXT_BYTES for p in prompts))
+        self.assertEqual(" ".join(piece for _, piece in prompts), reply)
+        self.assertTrue(all(len(p.encode()) < text.MAX_TEXT_BYTES and p.endswith(piece) for p, piece in prompts))
 
     def test_too_long_reference_is_refused(self) -> None:
         with self.assertRaises(text.PromptError):

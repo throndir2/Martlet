@@ -47,6 +47,7 @@ internal sealed class NativeHostPlatform : IHostPlatform
                 "ollama" => new Martlet.Gateway.Ollama.OllamaRelayWorker(role.Endpoint, role.Model),
                 "f5" => new Martlet.Gateway.F5.F5RelayWorker(role.Endpoint, role.Model),
                 "xtts" => Martlet.Gateway.Xtts.XttsRelay.Create(role.Endpoint, role.Model),
+                "dia" => Martlet.Gateway.Dia.DiaRelay.Create(role.Endpoint, role.Model),
                 "stt" => new Martlet.Gateway.Stt.SttRelayWorker(role.Endpoint, role.Model),
                 _ => throw new HostInputException()
             };

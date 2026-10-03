@@ -33,7 +33,14 @@ public static class SpeechEngines
         "martlet.gateway.xtts-synthesis.v1", "/martlet/v1/inference/xtts-synthesis", "xtts-v2", "CPML-1.0",
         "Starts speaking before a sentence is finished (streams as it generates).", 1_000, 30_000, 4);
 
-    public static readonly IReadOnlyList<SpeechEngine> All = [F5, Xtts];
+    /// <summary>Nari Labs' Dia: clones the voice from the recording and its transcript, and performs the nonverbal cues it
+    /// recognizes in reply text, such as (laughs), (sighs), (coughs) and (gasps). English only. Shorter references (5-10 s)
+    /// leave Dia room to speak; longer ones are refused.</summary>
+    public static readonly SpeechEngine Dia = new("dia", "Dia", "dia",
+        "martlet.gateway.dia-synthesis.v1", "/martlet/v1/inference/dia-synthesis", "dia-1.6b-0626", "Apache-2.0",
+        "Can laugh, sigh, cough and gasp on cue; English only; speaks each sentence once it is generated.", 1_000, 20_000, 8);
+
+    public static readonly IReadOnlyList<SpeechEngine> All = [F5, Xtts, Dia];
 
     public static SpeechEngine? ForRoute(string? routeId) => All.FirstOrDefault(engine => engine.RouteId == routeId);
 

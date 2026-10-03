@@ -58,6 +58,7 @@ public partial class MainWindow
             if (offers.GetValueOrDefault(HostRoles.Ollama) is { } model) loads.Add(new($"Ollama {model}", ListeningAdvisor.OllamaModelGb(model)));
             if (offers.ContainsKey(HostRoles.F5)) loads.Add(new("the F5 voice", 3));
             if (offers.ContainsKey(HostRoles.Xtts)) loads.Add(new("the XTTS voice", 3));
+            if (offers.ContainsKey(HostRoles.Dia)) loads.Add(new("the Dia voice", 5));
             if (offers.ContainsKey(HostRoles.Audio2Face)) loads.Add(new("Audio2Face lip-sync", 5));
         }
         return loads;

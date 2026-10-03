@@ -193,8 +193,8 @@ there and the applied voice (an included key, `own`, `retired-sample` or null).
 the settings rule it broke or the error type as `problem`), the
 speaking route's type (for example `GatewayF5`, null without one) and the voice it
 records (an included key, `own`, `retired-sample` or null), plus `engine` (the
-self-hosted voice engine whose route it records: `f5` or `xtts`), `host` and
-`model` for a host route. `engines` lists the [voice engines](XTTS_VOICE.md)
+self-hosted voice engine whose route it records: `f5`, `xtts` or `dia`), `host` and
+`model` for a host route. `engines` lists the voice engines ([XTTS-v2](XTTS_VOICE.md), [Dia](DIA_VOICE.md))
 (`key`, `name`, `hostRole`, `routeId`, `path`, `model`, `weightsLicence`,
 `minimumGpuMemoryGb`, `summary`) and `chosenEngine` the engine chosen on this
 desktop (`speaking-engine.txt`, default `f5`). After the desktop
@@ -732,7 +732,7 @@ automated verification. `f5_voices` reads the same list headlessly.
 
 Above the voices, the Voice engine card's `SpeakingEngine` combo box reads the
 chosen engine ("XTTS-v2: Starts speaking before a sentence is finished ...";
-options `SpeakingEngine-f5` and `SpeakingEngine-xtts`) and
+options `SpeakingEngine-f5`, `SpeakingEngine-xtts` and `SpeakingEngine-dia`) and
 `SpeakingEngineStatus` says where it speaks and its model licence. Choosing
 another engine with `ui_select` needs `--allow-ui-effects`: when a computer
 speaks it hands Speaking to that engine there (installing its role after a

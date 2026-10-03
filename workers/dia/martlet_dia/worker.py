@@ -42,11 +42,10 @@ class FixtureEngine:
     def load(self) -> None:
         return
 
-    def speak(self, reference_pcm: bytes, reference_rate: int, revision: str, prompt: str) -> bytes:
+    def speak(self, reference_pcm: bytes, reference_rate: int, revision: str, prompt: str, piece: str) -> bytes:
         import array
 
-        spoken = prompt.split(" ", 1)[1] if " " in prompt else prompt
-        count = min(audio.OUTPUT_RATE * 4, max(2_400, 1_200 * len(spoken)))
+        count = min(audio.OUTPUT_RATE * 4, max(2_400, 1_200 * len(piece)))
         pitch = 180 + int(hashlib.sha256(revision.encode()).hexdigest()[:2], 16)
         samples = array.array("h", (int(6000 * math.sin(2 * math.pi * pitch * i / audio.OUTPUT_RATE)) for i in range(count)))
         if sys.byteorder != "little":
@@ -94,7 +93,7 @@ class DiaEngine:
             self.prompts = {revision: codes}  # keep only the current voice
         return codes
 
-    def speak(self, reference_pcm: bytes, reference_rate: int, revision: str, prompt: str) -> bytes:
+    def speak(self, reference_pcm: bytes, reference_rate: int, revision: str, prompt: str, piece: str) -> bytes:
         import numpy as np
         import torchaudio
 
@@ -102,7 +101,8 @@ class DiaEngine:
         codes = self._prompt_codes(reference_pcm, reference_rate, revision)
         # The same voice and text give the same delivery.
         torch.manual_seed(int(hashlib.sha256(f"{revision}\n{prompt}".encode()).hexdigest()[:8], 16))
-        output = self.dia.generate(prompt, audio_prompt=codes, max_tokens=text.MAX_AUDIO_TOKENS, use_torch_compile=False,
+        limit = text.max_tokens(len(reference_pcm) / 2 / reference_rate, piece)
+        output = self.dia.generate(prompt, audio_prompt=codes, max_tokens=limit, use_torch_compile=False,
                                    verbose=False, **GENERATION)
         if output is None or len(output) == 0:
             return b""
@@ -204,7 +204,7 @@ class Worker:
             return
         for index, pieces in plans:
             pcm_out = b""
-            for number, prompt in enumerate(pieces):
+            for number, (prompt, piece) in enumerate(pieces):
                 with self.lock:
                     stop = request_id in self.canceled
                 if stop:
@@ -214,7 +214,7 @@ class Worker:
                     failed("deadline_exceeded", "The reply took longer than its deadline.")
                     return
                 try:
-                    spoken = self.engine.speak(pcm, rate, revision, prompt)
+                    spoken = self.engine.speak(pcm, rate, revision, prompt, piece)
                 except Exception as error:  # noqa: BLE001 - one failed reply must not stop the worker
                     failed("synthesis_failed", f"Dia failed: {type(error).__name__}"[:200])
                     return

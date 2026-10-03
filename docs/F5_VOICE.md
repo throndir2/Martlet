@@ -207,8 +207,8 @@ the next conversation speaks with it. The speech client reads the exact
 preset/revision the route records. The voice in use cannot be removed. The
 worker policy is unchanged: Desktop sends an explicit reference with every
 request, and the worker never chooses a voice or keeps it. The same voice list
-serves [XTTS-v2](XTTS_VOICE.md), the second engine (Companion > Voice > Voice
-engine), whose route uses this reference contract unchanged.
+serves [XTTS-v2](XTTS_VOICE.md) and [Dia](DIA_VOICE.md) (Companion > Voice > Voice
+engine), whose routes use this reference contract unchanged.
 
 ## Gates still not run
 

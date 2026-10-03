@@ -74,9 +74,25 @@ def _split(text: str, limit: int) -> list[str]:
     return pieces
 
 
-def prompts(transcript: str, text: str, reference_seconds: float) -> list[str]:
-    """Dia prompts for one reply chunk: "[S1] <reference transcript> <piece>" for each piece of the reply, so the
-    cloned voice (the audio prompt) says only the reply. Dia generates the audio after the reference only."""
+_CUE = re.compile(r"\([a-z ]{2,20}\)")
+
+
+def allowance_seconds(piece: str) -> float:
+    """Generous speech length for a piece (slow speech plus time for each nonverbal cue). Dia stops by itself when it is
+    done; this only bounds a generation that runs on."""
+    cues = len(_CUE.findall(piece))
+    return max(4.0, len(_CUE.sub("", piece)) / 6.0 + 2.0 * cues + 1.0)
+
+
+def max_tokens(reference_seconds: float, piece: str) -> int:
+    """Dia's max_tokens (reference prompt included) for one piece."""
+    prompt = int(reference_seconds * TOKENS_PER_SECOND) + 1
+    return min(MAX_AUDIO_TOKENS, prompt + int(allowance_seconds(piece) * TOKENS_PER_SECOND) + 16)
+
+
+def prompts(transcript: str, text: str, reference_seconds: float) -> list[tuple[str, str]]:
+    """(Dia prompt, reply piece) for one reply chunk: "[S1] <reference transcript> <piece>" for each piece of the reply,
+    so the cloned voice (the audio prompt) says only the reply. Dia generates the audio after the reference only."""
     prefix = f"[S1] {clean(transcript)} "
     body = clean(text)
     if not body:
@@ -86,4 +102,4 @@ def prompts(transcript: str, text: str, reference_seconds: float) -> list[str]:
     limit = min(MAX_PIECE_CHARACTERS, int(free_tokens / TOKENS_PER_SECOND * CHARACTERS_PER_SECOND), free_bytes // 4)
     if limit < MIN_PIECE_CHARACTERS:
         raise PromptError("The voice recording or its transcript is too long for Dia; use a 5 to 10 second clip.")
-    return [prefix + piece for piece in _split(body, limit)]
+    return [(prefix + piece, piece) for piece in _split(body, limit)]

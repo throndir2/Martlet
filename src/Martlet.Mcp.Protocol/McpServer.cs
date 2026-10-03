@@ -89,7 +89,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "each clip is checked against its SHA-256 and F5's reference rules) and the default voice; from a data directory's F5 voice " +
             "list, which included voices were added, how many of the owner's own voices there are and which voice is applied; " +
             "which voice the speaking route uses and on which self-hosted engine, host and model; and the voice engines (F5-TTS, " +
-            "XTTS-v2: host role, gateway route, model, weights licence, GPU memory) with the one chosen on this desktop " +
+            "XTTS-v2, Dia: host role, gateway route, model, weights licence, GPU memory) with the one chosen on this desktop " +
             "(never own voices' names or audio). Plays nothing and contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
@@ -649,7 +649,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             }
         }
         var fallback = Martlet.F5.F5BundledVoices.Default;
-        // The self-hosted voice engines (F5-TTS, XTTS-v2) and the one chosen on this desktop (speaking-engine.txt, the file
+        // The self-hosted voice engines (F5-TTS, XTTS-v2, Dia) and the one chosen on this desktop (speaking-engine.txt, the file
         // Martlet.Desktop's SpeakingEngineChoice keeps; a speaking route on a host's engine wins over it).
         string? chosen = null;
         try { chosen = File.ReadAllText(Path.Combine(directory, "speaking-engine.txt")).Trim(); }

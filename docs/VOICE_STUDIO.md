@@ -13,7 +13,7 @@ Voice Library window never reached a voice route, so it was removed. The
 working voice library is F5's: Companion > Voice > Voices adds recordings with
 their transcripts and rights, plays them, switches the active voice in one click
 and removes voices, keeping Martlet's own copy of each recording. Other engines
-add to that one list when they run: [XTTS-v2](XTTS_VOICE.md) now does, chosen on
+add to that one list when they run: [XTTS-v2](XTTS_VOICE.md) and [Dia](DIA_VOICE.md) now do, chosen on
 Companion > Voice > Voice engine (`Martlet.Core.Settings.SpeechEngines`). The existing OpenAI conversation and F5
 route retain their current boundaries.
 
@@ -59,6 +59,7 @@ Repository license/activity was read from GitHub on 2026-10-02:
 | F5-TTS | MIT / CC-BY-NC-4.0 | Active | Current engine. |
 | XTTS-v2 | MPL-2.0 (`idiap/coqui-ai-TTS`) / CPML noncommercial | Fork active; Coqui closed | **Added** as the `xtts` host role ([XTTS-v2](XTTS_VOICE.md)): `inference_stream` sends audio while it generates, with cached conditioning latents. |
 | GPT-SoVITS | MIT / per-release | Active (2026-08) | Strong for anime-style voices and one-minute fine-tunes; 3-10 s reference; much smaller than the "~1 B" sometimes quoted. Already a VS target. |
+| Dia (Nari Labs) | Apache-2.0 / Apache-2.0 | Last code change 2025-06 (Dia2 is a separate repo) | **Added** as the `dia` host role ([Dia](DIA_VOICE.md)): clones from the reference and its transcript and performs nonverbal cues such as `(laughs)`, `(sighs)`, `(coughs)` and `(gasps)`. English only; not streaming. |
 | Seed-VC | GPL-3.0 | **Archived** (2025-04) | Voice conversion, not TTS: needs another TTS first and adds latency. Not added. |
 
 "ElevenLabs-Clone" is a third-party demo app, not a model. Chatterbox (MIT)

@@ -38,8 +38,15 @@ internal sealed record HostJob(SetupRole Role, SetupRouteType RouteType, string 
         Disclosure = F5Speaking.Disclosure + " XTTS-v2's model (Coqui Public Model License) allows noncommercial use only."
     };
 
-    /// <summary>The Speaking job done by <paramref name="engine"/>'s host role (F5-TTS or XTTS-v2).</summary>
-    internal static HostJob SpeakingFor(SpeechEngine engine) => engine.Key == SpeechEngines.Xtts.Key ? XttsSpeaking : F5Speaking;
+    private static readonly HostJob DiaSpeaking = F5Speaking with
+    {
+        HostRoleKind = HostRoles.Dia, RouteId = HostRoute.DiaRouteId,
+        Disclosure = F5Speaking.Disclosure + " Dia (Apache-2.0) speaks English only and performs cues such as (laughs) in replies."
+    };
+
+    /// <summary>The Speaking job done by <paramref name="engine"/>'s host role (F5-TTS, XTTS-v2 or Dia).</summary>
+    internal static HostJob SpeakingFor(SpeechEngine engine) =>
+        engine.Key == SpeechEngines.Xtts.Key ? XttsSpeaking : engine.Key == SpeechEngines.Dia.Key ? DiaSpeaking : F5Speaking;
 
     internal static IReadOnlyList<HostJob> All => [Thinking, Listening, Speaking];
 

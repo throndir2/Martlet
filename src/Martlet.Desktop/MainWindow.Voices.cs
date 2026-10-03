@@ -18,7 +18,7 @@ public partial class MainWindow
     private SoundPlayer? voicePlayer;
     private bool retiredSampleChecked;
 
-    /// <summary>Which self-hosted engine speaks: F5-TTS or XTTS-v2 (<see cref="SpeechEngines"/>). Both use the voices below.
+    /// <summary>Which self-hosted engine speaks: F5-TTS, XTTS-v2 or Dia (<see cref="SpeechEngines"/>). All use the voices below.
     /// Choosing another engine while a computer speaks hands Speaking to that engine on the same computer (installing its
     /// role there first, after showing what it needs and its licence); otherwise the choice is used the next time Speaking
     /// goes to a computer. Readable as <c>SpeakingEngine</c> and <c>SpeakingEngineStatus</c>.</summary>
@@ -47,10 +47,17 @@ public partial class MainWindow
             new Thickness(0, 6, 0, 0));
         AutomationProperties.SetAutomationId(status, "SpeakingEngineStatus");
         return Card(Heading("Voice engine"),
-            Note("Both engines copy a voice from the same recordings, on an NVIDIA graphics card. XTTS-v2 starts speaking sooner; " +
-                "F5-TTS often sounds closer to the recording. Both models are for non-commercial use only.", new Thickness(0, 0, 0, 8)),
+            Note("Every engine copies a voice from the same recordings, on an NVIDIA graphics card. XTTS-v2 starts speaking sooner; " +
+                "F5-TTS often sounds closer to the recording; Dia can laugh, sigh and cough (English only). F5-TTS and XTTS-v2 are for " +
+                "non-commercial use only; Dia is Apache-2.0.", new Thickness(0, 0, 0, 8)),
             choice, status);
     }
+
+    /// <summary>What an engine's model licence allows, in words.</summary>
+    private static string SpeechEngineLicence(SpeechEngine engine) =>
+        engine.WeightsLicense is "CC-BY-NC-4.0" or "CPML-1.0"
+            ? $"The {engine.Name} model is for personal, non-commercial use only."
+            : $"The {engine.Name} model is {engine.WeightsLicense} licensed.";
 
     private async Task SelectSpeakingEngineAsync(SpeechEngine engine, string? host)
     {

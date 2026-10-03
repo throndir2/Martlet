@@ -81,7 +81,8 @@ Voices** and switch between them in one click. F5 copies a voice from a short
 recording with its transcript; nothing is trained. Martlet keeps its own copy of
 each recording on this PC and sends it with each reply only to the computer that
 speaks. The same voices work with [XTTS-v2](docs/XTTS_VOICE.md), which starts
-speaking before a sentence is finished (Companion > Voice > Voice engine). See
+speaking before a sentence is finished, and with [Dia](docs/DIA_VOICE.md), which can
+laugh, sigh, cough and gasp (English only; Companion > Voice > Voice engine). See
 [Voices](docs/SETUP.md#voices-f5) and the [Voice Studio plan](docs/VOICE_STUDIO.md)
 for other engines.
 

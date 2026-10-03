@@ -179,6 +179,7 @@ public static class PlatformCatalog
 
     private static readonly PlatformRequirement Nvidia4 = new() { NvidiaGb = 4 };
     private static readonly PlatformRequirement Nvidia6 = new() { NvidiaGb = 6 };
+    private static readonly PlatformRequirement Nvidia8 = new() { NvidiaGb = 8 };
     private static readonly PlatformRequirement AppleSilicon = new() { AppleSilicon = true };
     private static readonly PlatformRequirement Os26 = new() { MinimumOs = new(26, 0) };
     private static readonly PlatformRequirement IosIntelligence = new() { MinimumOs = new(26, 0), Feature = PlatformFeatures.AppleIntelligence };
@@ -320,6 +321,13 @@ public static class PlatformCatalog
             Impossible(Ios, Host, "XTTS needs an NVIDIA GPU; iPhones and iPads have none"),
             Impossible(Android, Host, "XTTS needs an NVIDIA GPU; phones and tablets have none")
         ]),
+        new("dia", ClusterJobs.Speaking, "Dia voice cloning that can laugh, sigh and cough (English only)",
+        [
+            Works(Linux, Host, "", Nvidia8), Works(Win, Host, "through Docker Desktop (This PC's host service)", Nvidia8),
+            Impossible(Mac, Host, "the Dia worker is built for NVIDIA CUDA"),
+            Impossible(Ios, Host, "Dia needs an NVIDIA GPU; iPhones and iPads have none"),
+            Impossible(Android, Host, "Dia needs an NVIDIA GPU; phones and tablets have none")
+        ]),
         new("f5-mlx", ClusterJobs.Speaking, "F5 voice cloning on a Mac (MLX)",
         [
             Planned(Mac, Host, "MA03", "serves the existing F5 route; 16 GB+ suggested", AppleSilicon),
@@ -436,6 +444,7 @@ public static class PlatformCatalog
         "stt" => "whisper",
         "f5" => "f5",
         "xtts" => "xtts",
+        "dia" => "dia",
         "audio2face" => "audio2face",
         _ => null
     };

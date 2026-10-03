@@ -190,7 +190,7 @@ internal sealed class LiveConversationConfiguration
     /// <summary>Listening runs inside Martlet on this PC (Parakeet), so the utterance is never sent anywhere.</summary>
     internal bool LocalStt() => IsLocalStt(Route(SetupRole.Stt));
 
-    /// <summary>The paired Martlet host whose voice engine (F5 or XTTS-v2) speaks, when Speaking was handed to a host on the
+    /// <summary>The paired Martlet host whose voice engine (F5, XTTS-v2 or Dia) speaks, when Speaking was handed to a host on the
     /// Devices page.</summary>
     internal HostSpeechTarget? HostSpeechTarget()
     {
