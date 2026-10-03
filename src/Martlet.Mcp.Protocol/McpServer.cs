@@ -10,6 +10,14 @@ namespace Martlet.Mcp;
 internal sealed class McpServer(DesktopAutomation desktop)
 {
     private const int MaxLineLength = 1024 * 1024;
+
+    /// <summary>Each voice host role's loopback port (deploy/host/roles/*/role.conf); declared before <see cref="Tools"/>,
+    /// which lists its keys.</summary>
+    private static readonly IReadOnlyDictionary<string, int> VoiceEnginePorts = new Dictionary<string, int>(StringComparer.Ordinal)
+    {
+        ["chatterbox"] = 50083, ["f5"] = 50080, ["xtts"] = 50081, ["gpt-sovits"] = 50082, ["dia"] = 50084
+    };
+
     private static readonly object[] Tools =
     [
         Tool("doctor_status", "Read local diagnostic status without starting audio or network.", new
@@ -237,6 +245,17 @@ internal sealed class McpServer(DesktopAutomation desktop)
             seconds = new { type = "integer", minimum = 1, maximum = 10 },
             sampleRate = new { type = "integer", @enum = Audio2FaceCheck.SampleRates }
         }),
+        Tool("voice_engine_check", "Speak one sentence with a self-hosted voice engine's loopback service (a host role's service, " +
+            "default chatterbox on http://127.0.0.1:50083; f5 50080, xtts 50081, gpt-sovits 50082, dia 50084) through the production " +
+            "path: the engine's own gateway relay inside a real gateway on 127.0.0.1 (pinned TLS, pairing) and the desktop's paired " +
+            "client, with a starter voice as the reference (nothing played or recorded). Returns the service's /status before and " +
+            "after (state, error, runtime versions such as torch and CUDA), the audio length, time to first audio, total time, " +
+            "real-time factor, peak and RMS level, or the failure code and message. Loopback only; runs Martlet.NodeLinkCheck.", new
+        {
+            engine = new { type = "string", @enum = VoiceEnginePorts.Keys.ToArray() },
+            endpoint = new { type = "string", maxLength = 64 },
+            text = new { type = "string", maxLength = 300 }
+        }),
         Tool("mcp_servers_status", "Read the MCP servers in a data directory's mcp.json as Martlet parses them: each server's name, " +
             "transport, program and raw arguments (with ${env:...} and ${secret:...} references, never their values), environment and " +
             "header names, on/off, auto-approve, the MCP directory entry it was installed from and the secret names it uses. " +
@@ -436,6 +455,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "settings_sync_selftest" => await NodeLinkCheckAsync(cancellation, "settings"),
                 "audio2face_check" => await Audio2FaceCheck.RunAsync(OptionalString(arguments, "endpoint"),
                     OptionalInt(arguments, "seconds"), OptionalInt(arguments, "sampleRate"), cancellation),
+                "voice_engine_check" => await VoiceEngineCheckAsync(arguments, cancellation),
                 "mcp_servers_status" => McpServersStatus(arguments),
                 "mcp_directory_plan" => McpDirectoryPlan(arguments),
                 "home_assistant_probe" => await HomeAssistantProbeAsync(arguments, cancellation),
@@ -533,10 +553,30 @@ internal sealed class McpServer(DesktopAutomation desktop)
         };
     }
 
+    /// <summary>voice_engine_check: Martlet.NodeLinkCheck's voice-engine mode against a live voice service on loopback. A model
+    /// that is still loading can take minutes, so it gets longer than the rehearsals.</summary>
+    private static async Task<object> VoiceEngineCheckAsync(JsonElement arguments, CancellationToken cancellation)
+    {
+        var engine = OptionalString(arguments, "engine") ?? "chatterbox";
+        if (!VoiceEnginePorts.TryGetValue(engine, out var port))
+            throw new ArgumentException($"engine must be one of {string.Join(", ", VoiceEnginePorts.Keys)}.");
+        var endpoint = OptionalString(arguments, "endpoint") ?? $"http://127.0.0.1:{port}/";
+        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttp ||
+            !System.Net.IPAddress.TryParse(uri.Host, out var address) || !System.Net.IPAddress.IsLoopback(address))
+            throw new ArgumentException("endpoint must be a numeric loopback address such as http://127.0.0.1:50083/.");
+        string[] command = OptionalString(arguments, "text") is { Length: > 0 } text
+            ? ["voice-engine", engine, uri.GetLeftPart(UriPartial.Authority) + "/", text]
+            : ["voice-engine", engine, uri.GetLeftPart(UriPartial.Authority) + "/"];
+        return await NodeLinkCheckAsync(TimeSpan.FromMinutes(6), cancellation, command);
+    }
+
     /// <summary>Runs Martlet.NodeLinkCheck (built next to this server, in the same configuration) with <paramref name="arguments"/>
     /// and returns its JSON report. A separate process, because the in-process gateway needs the ASP.NET Core runtime and this
     /// server does not.</summary>
-    private static async Task<object> NodeLinkCheckAsync(CancellationToken cancellation, params string[] arguments)
+    private static Task<object> NodeLinkCheckAsync(CancellationToken cancellation, params string[] arguments) =>
+        NodeLinkCheckAsync(TimeSpan.FromMinutes(2), cancellation, arguments);
+
+    private static async Task<object> NodeLinkCheckAsync(TimeSpan timeLimit, CancellationToken cancellation, string[] arguments)
     {
         var output = new DirectoryInfo(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar));
         var configuration = output.Parent?.Name ?? "Release";
@@ -552,14 +592,14 @@ internal sealed class McpServer(DesktopAutomation desktop)
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
         using var process = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("Could not start Martlet.NodeLinkCheck.");
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-        limit.CancelAfter(TimeSpan.FromMinutes(2));
+        limit.CancelAfter(timeLimit);
         var report = process.StandardOutput.ReadToEndAsync(limit.Token);
         var errors = process.StandardError.ReadToEndAsync(limit.Token);
         try { await process.WaitForExitAsync(limit.Token); }
         catch (OperationCanceledException)
         {
             process.Kill(entireProcessTree: true);
-            throw new InvalidOperationException("Martlet.NodeLinkCheck did not finish within two minutes.");
+            throw new InvalidOperationException($"Martlet.NodeLinkCheck did not finish within {timeLimit.TotalMinutes:0} minutes.");
         }
         var text = (await report).Trim();
         try

@@ -264,10 +264,10 @@ def _identity(engine: str, *, real_model_identity: bool = False) -> dict[str, An
         "protocol_version": dict(PROTOCOL_VERSION),
         "runtime": {
             "chatterbox_tts_version": "0.1.7" if not fixture else "fixture",
-            "cuda_runtime_version": "12.4" if not fixture else "fixture",
+            "cuda_runtime_version": "12.8" if not fixture else "fixture",
             "python_version": platform.python_version(),
-            "torch_version": "2.6.0+cu124" if not fixture else "fixture",
-            "torchaudio_version": "2.6.0+cu124" if not fixture else "fixture",
+            "torch_version": "2.8.0+cu128" if not fixture else "fixture",
+            "torchaudio_version": "2.8.0+cu128" if not fixture else "fixture",
             "worker_build_id": WORKER_ID if not fixture else "martlet-chatterbox-deterministic-fixture",
             "worker_build_revision": hashlib.sha1(source.read_bytes()).hexdigest() if source.is_file() else "0" * 40,
         },
@@ -617,8 +617,11 @@ class EngineHost:
                 os.environ.setdefault("HF_DATASETS_OFFLINE", "1")
                 from chatterbox.tts_turbo import ChatterboxTurboTTS  # type: ignore
 
+                device = str(config.get("device") or DEVICE)
+                if problem := _gpu_problem(device):
+                    raise RuntimeError(problem)
                 model_dir = MODELS / str(config.get("model") or MODEL)
-                model = ChatterboxTurboTTS.from_local(model_dir, str(config.get("device") or DEVICE))
+                model = ChatterboxTurboTTS.from_local(model_dir, device)
             else:
                 raise RuntimeError("Unknown Chatterbox engine configuration.")
         except Exception as exc:
@@ -774,6 +777,33 @@ class FakeEngine:
                 if target > time.monotonic():
                     time.sleep(min(0.02, target - time.monotonic()))
         return bytes(out)
+
+
+def _gpu_problem(device: str) -> str | None:
+    """Why this image's PyTorch has no kernels for the graphics card, or None (CUDA only fails at the first kernel launch,
+    with "no kernel image is available")."""
+    import torch  # type: ignore
+
+    if not device.startswith("cuda") or not torch.cuda.is_available():
+        return None
+    index = torch.device(device).index or 0
+    major, minor = torch.cuda.get_device_capability(index)
+    archs = list(torch.cuda.get_arch_list())
+
+    def capability(arch: str) -> tuple[int, int]:
+        digits = arch.split("_", 1)[1]
+        return int(digits[:-1]), int(digits[-1])
+
+    # A cubin runs on later minor revisions of its major architecture; PTX is compiled for any later one.
+    if any(capability(a)[0] == major and capability(a)[1] <= minor for a in archs if a.startswith("sm_")):
+        return None
+    if any(capability(a) <= (major, minor) for a in archs if a.startswith("compute_")):
+        return None
+    return (
+        f"This graphics card ({torch.cuda.get_device_name(index)}, compute capability {major}.{minor}) is not supported by "
+        f"PyTorch {torch.__version__} in this image, which has kernels for {', '.join(archs)}. Chatterbox Turbo needs an "
+        "NVIDIA GPU with compute capability 7.0 or newer (GeForce GTX 16 / RTX 20 series or newer)."
+    )
 
 
 def _write_private_reference(audio: bytes) -> Path:

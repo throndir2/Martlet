@@ -560,6 +560,29 @@ category (for example `DeadlineExceeded` or `TransportFailure` when nothing answ
 for a malformed reply). A role service on a host listens only inside the host's
 own loopback, so check it there or through a forward to this PC's loopback.
 
+`voice_engine_check` speaks one sentence with a self-hosted voice engine's
+loopback service through the production path: Martlet.NodeLinkCheck's
+`voice-engine` mode starts a real gateway on 127.0.0.1 (pinned TLS, pairing)
+with that engine's own relay (the one the Linux host creates for the role) and
+speaks through the desktop's paired client, with the first starter voice whose
+length the engine accepts as the reference. Nothing is played or recorded.
+Arguments: `engine` (`chatterbox` default, `f5`, `xtts`, `gpt-sovits` or
+`dia`), a numeric loopback `endpoint` (default the role's port: 50083, 50080,
+50081, 50082 or 50084) and optional `text` (at most 300 characters; default a
+sentence with the engine's first sound tag, such as `[laugh]`, when it has
+tags). It returns `{exitCode, report}` with `ok` (no failure, at least 0.5 s
+of audible audio), `engine`, `route`, `voice`, `text`, `statusBefore` and
+`statusAfter` (the service's own `/status`: `answered`, `state`, `ready`,
+`error` and `runtime`, for Chatterbox its torch, torchaudio and CUDA versions,
+or why it could not be read), `seconds` of 24 kHz audio, `firstAudioMs`,
+`elapsedMs`, `realTimeFactor`, `peakDbfs`, `rmsDbfs`, `audible`, and `failure`
+and `problem` (the client's error code and message, for example
+`worker.unavailable` when nothing answers or the model could not load). A
+loading model can take minutes, so the tool allows six; pass
+`-TimeoutSeconds 400` to the script. As with `audio2face_check`, a role
+service on a host listens only in the host's loopback, so run it there or
+forward the port.
+
 `virtualization_status` reports whether Windows is ready for Docker Desktop's
 WSL 2 engine, from the same read-only checks the desktop runs before it starts
 Docker Desktop (optional absolute `dataDirectory`, default the current user's):

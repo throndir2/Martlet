@@ -66,16 +66,34 @@
           "Martlet.Providers": "[0.25.0, )"
         }
       },
+      "martlet.gateway.dia": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Gateway.F5": "[0.25.0, )"
+        }
+      },
       "martlet.gateway.f5": {
         "type": "Project",
         "dependencies": {
           "Martlet.Gateway": "[0.25.0, )"
         }
       },
+      "martlet.gateway.gptsovits": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Gateway.F5": "[0.25.0, )"
+        }
+      },
       "martlet.gateway.ollama": {
         "type": "Project",
         "dependencies": {
           "Martlet.Gateway": "[0.25.0, )"
+        }
+      },
+      "martlet.gateway.xtts": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Gateway.F5": "[0.25.0, )"
         }
       },
       "martlet.perception": {
