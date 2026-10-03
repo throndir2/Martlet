@@ -13,6 +13,12 @@ internal static class HostAgentRun
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1.5);
     /// <summary>How long the host may stay unreachable while a command runs (its gateway restarts during an update).</summary>
     private static readonly TimeSpan UnreachablePatience = TimeSpan.FromMinutes(15);
+    /// <summary>How long sending keeps trying while the host's gateway doesn't answer (for example while another computer
+    /// updates it, which restarts it).</summary>
+    private static readonly TimeSpan SendPatience = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan SendRetryDelay = TimeSpan.FromSeconds(5);
+    /// <summary>How often a waiting command checks what it waits behind.</summary>
+    private const int QueueReadEvery = 4;
 
     internal static Task<string?> RunAsync(Window owner, AvatarRemoteHost pairing, string version, HostAction action,
         IReadOnlyDictionary<string, string>? answers, IReadOnlyDictionary<string, (string Value, string Why)>? recommended)
@@ -32,7 +38,7 @@ internal static class HostAgentRun
         {
             run.Status($"Asking Martlet on {name}...");
             HostCommandList list;
-            try { list = await connection.ReadCommandsAsync(run.Token); }
+            try { list = await WhileRestartingAsync(run, name, () => connection.ReadCommandsAsync(run.Token)); }
             catch (Audio2FaceHostException error) when (error.Code == "request.invalid")
             {
                 throw new InvalidOperationException($"{name}'s host service is older than commands between computers. Open Martlet on {name} " +
@@ -108,14 +114,17 @@ internal static class HostAgentRun
     }
 
     /// <summary>Sends one command and follows it to its end, showing new output lines (those <paramref name="show"/> accepts)
-    /// and its state. Canceling withdraws it (or asks Martlet there to stop it).</summary>
+    /// and its state, including what it waits behind. Canceling withdraws it (or asks Martlet there to stop it).</summary>
     private static async Task<Martlet.Core.Nodes.NodeCommand> RunCommandAsync(Audio2FaceHostConnection connection, string name, string kind,
         IReadOnlyDictionary<string, string> arguments, IReadOnlyDictionary<string, string>? secrets, HostRunWindow run,
         Func<string, bool>? show = null)
     {
-        var command = await connection.SendCommandAsync(kind, arguments, secrets, run.Token);
+        // Sending the same command again while it waits or runs returns that one, so a retry never sends it twice.
+        var command = await WhileRestartingAsync(run, name, () => connection.SendCommandAsync(kind, arguments, secrets, run.Token));
         run.Output.Report($"Sent to {name}: {NodeCommandAgent.Describe(command)}.");
         var shown = 0;
+        var polls = 0;
+        string? waitingBehind = null;
         DateTimeOffset? unreachableSince = null;
         try
         {
@@ -126,8 +135,19 @@ internal static class HostAgentRun
                     if (show?.Invoke(line) != false) run.Output.Report(line);
                 shown = command.OutputTotal;
                 if (command.Finished) return command;
+                if (command.State == NodeCommandState.Queued && polls++ % QueueReadEvery == 0)
+                {
+                    try
+                    {
+                        var behind = (await connection.ReadCommandsAsync(run.Token)).WaitingText(command, name);
+                        if (behind is not null && behind != waitingBehind) run.Output.Report(behind);
+                        waitingBehind = behind;
+                    }
+                    catch (Audio2FaceHostException) { }
+                    catch (OperationCanceledException) when (!run.Token.IsCancellationRequested) { }
+                }
                 run.Status(command.State == NodeCommandState.Queued
-                    ? $"Waiting for Martlet on {name} to take it. It runs as soon as Martlet is open there; Cancel withdraws it."
+                    ? waitingBehind ?? $"Waiting for Martlet on {name} to take it. It runs as soon as Martlet is open there; Cancel withdraws it."
                     : command.CancelRequested ? $"Asked Martlet on {name} to stop..."
                     : $"Running on {name}" + (command.Summary is { } summary ? $": {summary}" : "..."));
                 await Task.Delay(PollInterval, run.Token);
@@ -164,4 +184,24 @@ internal static class HostAgentRun
             throw;
         }
     }
+
+    /// <summary>Runs <paramref name="call"/>, trying again for up to <see cref="SendPatience"/> while the host's gateway doesn't
+    /// answer: it restarts while it updates (which another computer may be doing right now), and comes back on its own.</summary>
+    private static async Task<T> WhileRestartingAsync<T>(HostRunWindow run, string name, Func<Task<T>> call)
+    {
+        var since = DateTimeOffset.UtcNow;
+        while (true)
+        {
+            try { return await call(); }
+            catch (Exception error) when (Restarting(error, run.Token) && DateTimeOffset.UtcNow - since < SendPatience)
+            {
+                run.Status($"{name}'s host service isn't answering right now (it restarts while it updates). Trying again...");
+                await Task.Delay(SendRetryDelay, run.Token);
+            }
+        }
+    }
+
+    private static bool Restarting(Exception error, CancellationToken token) =>
+        error is Audio2FaceHostException { Code: "host.unreachable" or "gateway.internal" } ||
+        error is OperationCanceledException && !token.IsCancellationRequested;
 }
