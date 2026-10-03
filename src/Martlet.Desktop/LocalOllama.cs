@@ -14,6 +14,7 @@ namespace Martlet.Desktop;
 internal static class LocalOllama
 {
     private const string Origin = "http://127.0.0.1:11434";
+    internal static Uri OriginUri { get; } = new(Origin + "/");
 
     internal static string? Executable() => new[]
     {

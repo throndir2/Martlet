@@ -101,5 +101,4 @@ again for the same persona replaces that lorebook's entries.
   characters each) and 32,768 characters of content per entry; `lorebooks.json`
   is at most 16 MB. Import files are at most 32 MB (character cards 8 MB of card
   text).
-- Scan depth 0-17 messages. The conversation keeps only recent exchanges (up to
-  eight from the last two minutes), so deeper scans find nothing more.
+- Scan depth 0-17 messages.

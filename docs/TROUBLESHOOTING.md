@@ -177,6 +177,21 @@ Ollama can't (not running, model not downloaded, Ollama's own error). Ollama on
 this PC has no reply token budget unless you set **Max reply length** on
 **Companion › Replies**, so thinking models can reason before they answer.
 
+### Martlet forgets the start of a long conversation
+
+Each reply sends the newest exchanges of the open talk window that fit the
+**Context size** on **Companion › Replies** (its line says how big the context
+is and why; the talk window says how much of it the conversation uses). Blank is
+100,000 tokens for a cloud model, or the model's own limit when that is smaller
+and Martlet knows it (**Check model limit** asks the server). Ollama on this PC
+holds what its own context length setting gives the model (4,096 tokens on a
+graphics card under 24 GB unless raised): raise it in the Ollama app's settings
+or with `OLLAMA_CONTEXT_LENGTH`, then check again on **Replies**, test the model
+or reopen the talk window, which records it for the next conversation. A larger
+context uses more graphics memory. A paired host's Ollama loads up to 32,768.
+If a cloud model fails on long conversations ("context length exceeded"), set a
+smaller context size.
+
 ### "Gemma4Assistant requires ctx_other to be set … error loading model: vector"
 
 Ollama (and its own chat window) shows this as *500 Internal Server Error:

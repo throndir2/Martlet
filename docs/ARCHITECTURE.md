@@ -496,9 +496,10 @@ from per-persona helpful/sarcastic/silly/distracted/teasing weights. Select a
 style only after admission, using a testable weighted selector; persona/style
 never overrides truthfulness, explicit controls or permission. The current
 V05b adds fixed-revision persona and weighted style instructions to fresh
-explicit turns. The reused explicit-context slice adds at most eight completed
-exchanges from the last two minutes within the same input budget, with lifecycle
-clearing; it is not the proposed automatic observation collector.
+explicit turns. The reused explicit-context slice adds the open talk window's
+completed exchanges, the newest that fit the context size (Companion ›
+Replies), with lifecycle clearing; it is not the proposed automatic
+observation collector.
 
 ## 5. Audio, streaming, cancellation, and budgets
 

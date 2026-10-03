@@ -616,8 +616,15 @@ public partial class MainWindow
         var inUse = IsLocalOllama(route) && route!.ModelId == model;
         if (result is not null)
         {
-            localModelTest = new(model, result.Summary, true, result.Warning);
-            ActionText.Text = result.Summary + (inUse ? "" : " Choose Use Ollama on this PC to use it.");
+            // The test loaded the model, so Ollama says exactly how much context it gives it.
+            var context = await CheckLocalModelContextAsync(model);
+            var summary = result.Summary + (context?.ContextTokens is { } given
+                ? $" Ollama gives it {given:N0} tokens of context{(context.ModelMaximum is { } most && most > given ? $" of the {most:N0} it holds; raise Ollama's context length setting to give it more" : "")}."
+                : "");
+            if (closing) return;
+            localModelTest = new(model, summary, true, result.Warning);
+            ActionText.Text = summary + (inUse ? "" : " Choose Use Ollama on this PC to use it.");
+            showContextStatus?.Invoke();
         }
         else if (failure is not null)
         {
@@ -695,10 +702,30 @@ public partial class MainWindow
         if (!closing && openTab == CompanionTab.Thinking) RenderTab();
     }
 
-    private Task SaveLocalThinkingAsync(string model) => SaveSectionRouteAsync(HostJob.Thinking,
-        settings => ChatCompletionsSetup.SelectRoute(settings, LocalOllamaBaseUrl, model), key: null,
-        $"Martlet now uses {model} in Ollama on this PC." +
-        (ollamaModels is { } known && !known.Contains(model, StringComparer.Ordinal) ? $" Download {model} to use it." : ""));
+    private async Task SaveLocalThinkingAsync(string model)
+    {
+        await SaveSectionRouteAsync(HostJob.Thinking,
+            settings => ChatCompletionsSetup.SelectRoute(settings, LocalOllamaBaseUrl, model), key: null,
+            $"Martlet now uses {model} in Ollama on this PC." +
+            (ollamaModels is { } known && !known.Contains(model, StringComparer.Ordinal) ? $" Download {model} to use it." : ""));
+        // Ollama says how much context it gives the model once it has loaded it (Test model does); nothing leaves this PC.
+        if (!closing && IsLocalOllama(homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm)))
+            CheckNewModelContextAsync().Forget();
+    }
+
+    /// <summary>What Ollama on this PC says about <paramref name="model"/>'s context, kept for replies; loopback only, and the
+    /// model isn't loaded for it.</summary>
+    private async Task<ModelContextReport?> CheckLocalModelContextAsync(string model)
+    {
+        try
+        {
+            using var client = ModelContextProbe.CreateClient(loopback: true);
+            var report = await ModelContextProbe.OllamaAsync(client, LocalOllamaOrigin, model, load: false, lifetime.Token);
+            if (report.Reached) RecordModelLimit(LocalOllamaBaseUrl, model, report);
+            return report;
+        }
+        catch (OperationCanceledException) { return null; }
+    }
 
     // ---------- this PC: a Windows voice (the voice engines are in MainWindow.VoiceEngines.cs) ----------
 
@@ -1049,6 +1076,10 @@ public partial class MainWindow
                     ? ChatCompletionsSetup.SelectRoute(settings, url!, model)
                     : SetupSettings.SelectRoute(settings, role, model, role == SetupRole.Tts ? voice : null),
                 key, $"{job.Title} now uses {provider.Name} ({model}{(voice is null ? "" : ", voice " + voice)}).{(key is null ? "" : " Your API key is saved in Windows Credential Manager.")} Requests may cost money there.");
+            // A new Thinking model: ask its server how much context it takes, so replies stay within it.
+            if (!closing && role == SetupRole.Llm && provider.Chat &&
+                homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm) is { } chosen && chosen.Origin == url && chosen.ModelId == model)
+                CheckNewModelContextAsync().Forget();
             if (!closing && leaving is not null)
             {
                 assigningRole = true;

@@ -730,6 +730,37 @@ change; the `TalkHearVoice` check box saves the choice, so it needs
 model that hears; the talk window then notes *Thinking heard your voice.* (or
 that it got the transcript only) under what you said.
 
+`context_check` shows the Thinking model's [context](CONVERSATION.md) as
+replies use it (optional absolute `dataDirectory`, default the current user's):
+`settings` (`none`, `loaded` or `unreadable`), `thinking` (`routeType`,
+`localOllama`, `model`), `savedContextTokens` (Companion › Replies › Context
+size, null when blank), `modelLimit` (what `model-limits.json` says about the
+model: `ContextTokens`, `ModelMaximum`, `Source`, `checkedAt`) and
+`modelLimitsKept`, and `context` (the production `ContextBudget`: `Tokens`,
+`source` such as `Saved`, `Default`, `ModelLimit`, `HostDefault`, `Ollama` or
+`OllamaAssumed`, `ReplyTokens`, `InputTokens`, `ModelTokens` and `described`,
+the words the Replies page shows). Its `probe` rehearses the production model
+limit check against fixture servers on 127.0.0.1 shaped like OpenRouter (the
+smaller of `context_length` and the top provider's), vLLM, Groq and llama.cpp
+model lists, an unlisted model, a redirect (never followed; the fixture key
+goes only to its own base URL) and Ollama's `/api/show`, `/api/ps` and
+`/api/generate` (loaded, not loaded, loaded by the check, missing). Its `fit`
+fits a 1,000-exchange synthetic conversation the way a reply does into a cloud
+model's default 100,000 tokens, 1,000,000 tokens on gpt-4.1, a paired host
+(8,192 tokens, 16 KiB, 16 messages) and Ollama on this PC at 32,768:
+`exchangesSent`, `exchangesLeftOut`, `estimatedTokens` and `bytes`, `ok` when
+the newest exchanges fit and one more wouldn't. Each part has an `ok`. It
+reads no credentials and nothing leaves loopback. On Companion › Replies,
+`RepliesContextStatus` reads the size in use and where it comes from and what
+Martlet knows of the model's own limit; `RepliesCheckContext` (*Check model
+limit*) asks the Thinking model's server (loading the model in Ollama on this
+PC first), so it needs `--allow-ui-effects`. Choosing a Chat Completions model
+on Companion › Thinking checks it the same way, and *Test model* and the talk
+window's model loading record what Ollama on this PC gives the model; the
+desktop log says *Context of gemma4:12b: 16,384 tokens (Ollama on this PC).* or
+*Ollama on this PC gives gemma4:12b 16,384 tokens of context; the next
+conversation uses it.*
+
 `echo_check` checks [echo reduction](CONVERSATION.md#echo-reduction)
 (Companion › Listening › **Reduce echo from my speakers**; optional absolute
 `dataDirectory`, default the current user's, and optional `delayMs` 0-300,
@@ -1395,8 +1426,11 @@ didn't look: you seem away.*) and whether your last message went with the
 picture (*Your message at 10:14 PM went with it.*); it never contains window
 titles; to rehearse a flash, show any test window minimized and call
 `FlashWindowEx` on it), `LiveContext` (*Keeps the last N
-exchanges in mind.*: how many recent exchanges the next reply sees; absent when
-none, and unchanged when a settings change is picked up; beside it,
+exchanges in mind, about T tokens of its C-token context.*, or *Replies send the
+newest that fit its C-token context.* once they outgrow it: how many exchanges
+of the open talk window the next reply can see, their estimated tokens and the
+context size from Companion › Replies; absent when none, and unchanged when a
+settings change is picked up; beside it,
 `LiveRefreshContext` (*Refresh context*, a passive click, disabled mid-reply)
 forgets them so the next reply starts fresh, adds the note *Context refreshed.*
 to `LiveHistory` and hides `LiveContext`)
@@ -1551,7 +1585,7 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `prompts_status`, `character_status`, `hearing_check`, `echo_check` and `character_models` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `prompts_status`, `character_status`, `hearing_check`, `echo_check`, `context_check` and `character_models` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
