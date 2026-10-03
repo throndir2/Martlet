@@ -152,18 +152,21 @@ public partial class MainWindow
         _ => $"Not supported by {place}."
     };
 
-    /// <summary>A setting's range; Ollama on this PC has no reply length limit unless one is set.</summary>
+    /// <summary>A setting's range; Ollama on this PC has no reply length limit unless one is set, and a Chat Completions route
+    /// leaves room for hidden reasoning.</summary>
     private static string RangeText(ReplySetting setting, SetupRoute? route) =>
-        setting.Setting == GenerationSetting.MaxReplyTokens && IsLocalOllama(route)
-            ? $"{GenerationSettings.MinimumReplyTokens}-{GenerationSettings.MaximumReplyTokens} tokens, blank = no limit"
-            : setting.Range;
+        setting.Setting != GenerationSetting.MaxReplyTokens ? setting.Range
+        : IsLocalOllama(route) ? $"{GenerationSettings.MinimumReplyTokens}-{GenerationSettings.MaximumReplyTokens} tokens, blank = no limit"
+        : $"{GenerationSettings.MinimumReplyTokens}-{GenerationSettings.MaximumReplyTokens} tokens, blank = " +
+            GenerationSupport.DefaultReplyTokens(route?.RouteType);
 
     internal static string DescribeGeneration(GenerationSettings? settings, SetupRoute? route = null)
     {
         const string brief = "Replies are brief";
         // Ollama on this PC gets no reply token budget unless a max reply length is set.
         var stop = settings?.MaxReplyTokens is null && IsLocalOllama(route) ? "No maximum length is set"
-            : $"Maximum length is {settings?.ReplyTokens ?? GenerationSettings.DefaultMaxReplyTokens} tokens";
+            : $"Maximum length is {settings?.MaxReplyTokens ?? GenerationSupport.DefaultReplyTokens(route?.RouteType)} tokens" +
+              (route?.RouteType == SetupRouteType.ChatCompletions ? ", including any hidden thinking" : "");
         if (settings is null)
             return $"{brief}. {stop}. Other settings use the model default.";
         var parts = new List<string>();

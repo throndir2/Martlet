@@ -47,6 +47,25 @@ prohibited use. Import is consent to local storage only; transferring to a
 paired worker, training, synthesis and playback each require scoped approval.
 No public-demo upload or remote training/experiment telemetry by default.
 
+### Candidate review, 2026-10-02
+
+The owner asked about OpenVoice V2, F5-TTS, XTTS-v2, GPT-SoVITS and Seed-VC.
+Repository license/activity was read from GitHub on 2026-10-02:
+
+| Candidate | Code / weights | Upstream activity | Fit for Martlet |
+| --- | --- | --- | --- |
+| OpenVoice V2 | MIT / MIT | Last push 2025-04 | Fast and permissive, but it is MeloTTS plus a tone-colour converter: timbre only, weaker likeness and prosody than F5. Not added. |
+| F5-TTS | MIT / CC-BY-NC-4.0 | Active | Current engine. |
+| XTTS-v2 | MPL-2.0 (`idiap/coqui-ai-TTS`) / CPML noncommercial | Fork active; Coqui closed | Real incremental streaming (`inference_stream`) would cut time to first audio. Already a VS target. |
+| GPT-SoVITS | MIT / per-release | Active (2026-08) | Strong for anime-style voices and one-minute fine-tunes; 3-10 s reference; much smaller than the "~1 B" sometimes quoted. Already a VS target. |
+| Seed-VC | GPL-3.0 | **Archived** (2025-04) | Voice conversion, not TTS: needs another TTS first and adds latency. Not added. |
+
+"ElevenLabs-Clone" is a third-party demo app, not a model. Chatterbox (MIT)
+and Qwen3-TTS (Apache-2.0) remain the permissive cloning targets above.
+Every candidate needs the same GPU host and VRAM as F5, so switching engines
+alone would not fix host/Docker/network failures; intermittent F5 silence after
+an interrupted reply was a host admission bug, fixed in the `f5` role service.
+
 ## Guided experience
 
 1. **Choose a destination and engine.** Show all five without loading anything.

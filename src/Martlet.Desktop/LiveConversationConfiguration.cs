@@ -58,6 +58,14 @@ internal sealed class LiveConversationConfiguration
         MaxOutputTokens = 4096, MaxContextTokens = 98_304 + 4096, MaxEvents = 4094,
         FirstDeltaTimeout = TimeSpan.FromMinutes(2), IdleTimeout = TimeSpan.FromMinutes(2), MaxRequestTime = TimeSpan.FromMinutes(2)
     };
+    /// <summary>The LLM bounds for a cloud Chat Completions route (OpenRouter, NVIDIA Build, other servers). Its max_tokens
+    /// also covers a reasoning model's hidden thinking, which streams one small event per token, so the reply budget, event
+    /// count and stream size are the contract's largest; otherwise thinking used up the reply after a few words.</summary>
+    internal static TextGenerationLimits ChatTextLimits { get; } = DefaultTextLimits with
+    {
+        MaxOutputTokens = GenerationSettings.ChatReplyTokens, MaxContextTokens = 98_304 + GenerationSettings.ChatReplyTokens,
+        MaxEvents = 4094, MaxStreamBytes = 4_194_304
+    };
     internal static ConversationLimits TurnLimits { get; } = new()
     {
         MaxSpeechSegments = 8, MaxSpeechTextBytes = 12_288, MaxReservedSpeechSamples = 1_920_000
@@ -100,7 +108,9 @@ internal sealed class LiveConversationConfiguration
         LocalOllama = MainWindow.IsLocalOllama(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm));
         TextLimits = LocalOllama
             ? LocalOllamaTextLimits with { MaxOutputTokens = Generation?.MaxReplyTokens ?? LocalOllamaTextLimits.MaxOutputTokens }
-            : DefaultTextLimits with { MaxOutputTokens = Generation?.ReplyTokens ?? GenerationSettings.DefaultMaxReplyTokens };
+            : IsChat(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm))
+                ? ChatTextLimits with { MaxOutputTokens = Generation?.MaxReplyTokens ?? GenerationSettings.ChatReplyTokens }
+                : DefaultTextLimits with { MaxOutputTokens = Generation?.ReplyTokens ?? GenerationSettings.DefaultMaxReplyTokens };
     }
 
     internal static LiveConversationConfiguration? From(SettingsLoadResult loaded)

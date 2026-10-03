@@ -14,6 +14,10 @@ public sealed record GenerationSettings : IContract
     /// <summary>A safety ceiling, not how long replies are: each reply is asked to stay short (see the conversation's reply
     /// length instruction), so this only stops a runaway answer and leaves room for a reasoning model's hidden thinking.</summary>
     public const int DefaultMaxReplyTokens = 1_024;
+    /// <summary>The reply token budget on a cloud Chat Completions route (OpenRouter, NVIDIA Build, other servers) when no max
+    /// reply length is set. Their max_tokens covers a reasoning model's hidden thinking as well as the answer, so 1,024 tokens
+    /// of thinking left a few words of reply; the brevity instruction keeps the answer itself short.</summary>
+    public const int ChatReplyTokens = 4_096;
     public const int MinimumReplyTokens = 16;
     public const int MaximumReplyTokens = 2_048;
     /// <summary>The temperature a paired host's Ollama uses when it is left unset.</summary>
@@ -126,6 +130,12 @@ public static class GenerationSupport
     /// budget on hidden reasoning before they say anything.</summary>
     public static bool SendsReplyBudget(string? chatBaseUrl, GenerationSettings? settings) =>
         settings?.MaxReplyTokens is not null || !string.Equals(chatBaseUrl, LocalOllamaChatBaseUrl, StringComparison.Ordinal);
+
+    /// <summary>The reply token budget used when no max reply length is set: <see cref="GenerationSettings.ChatReplyTokens"/>
+    /// on a Chat Completions route (its budget includes hidden reasoning), otherwise
+    /// <see cref="GenerationSettings.DefaultMaxReplyTokens"/>.</summary>
+    public static int DefaultReplyTokens(SetupRouteType? routeType) =>
+        routeType == SetupRouteType.ChatCompletions ? GenerationSettings.ChatReplyTokens : GenerationSettings.DefaultMaxReplyTokens;
 
     /// <summary>Whether top K, min P and repetition penalty are sent to a Chat Completions server: not to OpenAI, which
     /// rejects them, nor to Ollama's OpenAI-compatible endpoint, which ignores them.</summary>
