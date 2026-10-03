@@ -18,7 +18,6 @@ internal sealed class ProblemDialog : ThemedWindow
         MinWidth = 460;
         SizeToContent = SizeToContent.Height;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        ResizeMode = ResizeMode.NoResize;
         AutomationProperties.SetAutomationId(this, "ProblemDialog");
         var root = new StackPanel { Margin = new Thickness(24) };
         var headingText = new TextBlock { Text = heading, TextWrapping = TextWrapping.Wrap };

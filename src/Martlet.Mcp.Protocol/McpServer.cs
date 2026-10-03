@@ -50,9 +50,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             pid = new { type = "integer", minimum = 1 }
         }, ["pid"]),
-        Tool("ui_snapshot", "Inspect automation IDs, enabled state and selected non-secret status fields of attached Martlet windows. " +
-            "With layout, each control also returns its screen bounds and, for text, where its first line of text sits " +
-            "(geometry only, never the text).", new
+        Tool("ui_snapshot", "Inspect automation IDs, enabled state and selected non-secret status fields of attached Martlet windows, " +
+            "and whether each window can be resized, minimized and maximized. With layout, each control also returns its screen " +
+            "bounds and, for text, where its first line of text sits (geometry only, never the text), and each window its bounds " +
+            "and its monitor's work area.", new
         {
             layout = new { type = "boolean" }
         }),
