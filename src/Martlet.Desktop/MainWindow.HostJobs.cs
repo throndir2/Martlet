@@ -173,6 +173,13 @@ public partial class MainWindow
                 ActionText.Text = $"{job.Title} wasn't moved. {cannot}";
                 return;
             }
+            // One voice engine runs on a computer (role.conf exclusive=voice): speaking with another engine there stops the
+            // others, so the model each keeps in the graphics card's memory never starves the engine that speaks.
+            var others = job.Role == SetupRole.Tts ? HostRoles.OtherVoiceEngines(check.Offers, job.HostRoleKind) : [];
+            var replaces = others.Count == 0 ? ""
+                : $" Only one voice engine runs on a computer, so {HostRoles.Names(others.Select(o => o.Kind))} there stops and frees the " +
+                  "graphics card's memory. Downloads are kept, so switching back is quick.";
+            var pauses = others.Count > 0 && NetworkMap.JobHost(homeSettings, job.Role) == host.HostId;
             // F5 copies a reference voice. Handing Speaking to a host keeps the voice already chosen for it, else Martlet's first
             // included voice; Companion › Voice › Voices adds voices and switches between them.
             F5ReferenceSnapshot? voice = null;
@@ -210,7 +217,9 @@ public partial class MainWindow
                         $"{host.HostId} isn't ready for {job.Job}. Install the needed role there and switch {job.Job} to it when it's ready? " + how +
                         $"It needs {role.Needs}." +
                         (HostCan(host.HostId, job.HostRoleKind) is { Verdict: Martlet.Core.Platforms.PlatformVerdict.Unknown } unsure ? " " + unsure.Reason : "") +
-                        $" Martlet keeps {job.Job} where it is until the role is ready, then switches over{withVoice}." +
+                        replaces +
+                        (pauses ? $" {job.Title} pauses until the new engine is ready, then switches over{withVoice}."
+                            : $" Martlet keeps {job.Job} where it is until the role is ready, then switches over{withVoice}.") +
                         changeVoice + " " + job.Disclosure + HostCaveats(host.HostId), "Install and switch"))
                     return;
                 pendingJobHosts[job.Role] = host.HostId;
@@ -220,14 +229,16 @@ public partial class MainWindow
                 return;
             }
             if (!ConfirmationDialog.Confirm(this,
-                    $"Use {host.HostId} for {job.Job}? It will {job.Use}{withVoice}.{changeVoice} {job.Disclosure}" +
+                    $"Use {host.HostId} for {job.Job}? It will {job.Use}{withVoice}.{changeVoice}{replaces} {job.Disclosure}" +
                     HostCaveats(host.HostId),
                     $"Use {host.HostId}"))
                 return;
             pendingJobHosts.Remove(job.Role);
             await SaveJobHostAsync(job, host, route, voice);
             RecordClusterJob(job.Job, new(host.HostId, false));
-            ActionText.Text = $"{job.Title} now uses {host.HostId}{withVoice}. Reload any open conversation to use it.";
+            var moved = $"{job.Title} now uses {host.HostId}{withVoice}. Reload any open conversation to use it.";
+            ActionText.Text = moved;
+            if (others.Count > 0) ActionText.Text = moved + await ReleaseVoiceEnginesAsync(host, others);
         }
         catch (OperationCanceledException) { }
         catch (F5Exception error) { ActionText.Text = F5Voices.Describe(error); }
@@ -349,6 +360,9 @@ public partial class MainWindow
                 pendingJobHosts.Remove(job.Role);
                 pendingJobVoices.Remove(job.Role);
                 ActionText.Text = $"{host.HostId} now handles {job.Job}.";
+                // A host whose martlet-host predates one voice engine per computer still runs the replaced engine.
+                if (job.Role == SetupRole.Tts && HostRoles.OtherVoiceEngines(check.Offers, job.HostRoleKind) is { Count: > 0 } leftovers)
+                    ActionText.Text += await ReleaseVoiceEnginesAsync(host, leftovers);
             }
             catch (OperationCanceledException) { return; }
             catch (F5Exception error)
@@ -380,6 +394,24 @@ public partial class MainWindow
             pendingJobHosts.Remove(job.Role);
             pendingJobVoices.Remove(job.Role);
         }
+    }
+
+    /// <summary>Stops voice engines a host no longer needs because Speaking uses another engine there (the owner already
+    /// agreed), one run window each, so their models leave its graphics card's memory; their downloads stay on the host.
+    /// The engine that speaks reloads by itself if it couldn't load while they held the memory. Returns the outcome in
+    /// words, starting with a space.</summary>
+    private async Task<string> ReleaseVoiceEnginesAsync(PairedHost host, IReadOnlyList<HostRoleInfo> engines)
+    {
+        var stopped = new List<string>();
+        var running = new List<string>();
+        foreach (var engine in engines)
+        {
+            if (closing) return "";
+            (await RunHostActionAsync(host, engine.Remove, confirmed: true) is null ? running : stopped).Add(engine.Kind);
+        }
+        return (stopped.Count > 0 ? $" Stopped {HostRoles.Names(stopped)} on {host.HostId} to free its graphics card's memory." : "") +
+            (running.Count > 0 ? $" {HostRoles.Names(running)} still {(running.Count == 1 ? "runs" : "run")} on {host.HostId} and " +
+                $"{(running.Count == 1 ? "uses" : "use")} graphics card memory; remove {(running.Count == 1 ? "it" : "them")} on the Devices map." : "");
     }
 
     internal static GatewayRouteSnapshot Snapshot(HostRoute route, SetupRouteType routeType) => new()

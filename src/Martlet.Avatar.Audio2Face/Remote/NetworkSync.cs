@@ -121,6 +121,26 @@ public sealed class NetworkSyncEngine(INetworkSigner signer, string displayName,
 
     public INetworkSigner Signer => signer;
 
+    /// <summary>Reads every paired host's network (its roster, the computers paired with it and, for a member, requests to
+    /// join) and changes nothing: no network is started or joined and no key is needed. For a PC that only watches, such
+    /// as a host PC outside the network.</summary>
+    public static async Task<NetworkSyncResult> ReadOnlyAsync(NetworkLocalState state, IReadOnlyList<Audio2FaceHostPairing> paired,
+        Func<Audio2FaceHostPairing, Audio2FaceHostConnection> connect, CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(paired);
+        ArgumentNullException.ThrowIfNull(connect);
+        var reads = await Task.WhenAll(paired.Select(p => ReadAsync(p, connect, token)));
+        var views = new Dictionary<string, HostNetworkView>(StringComparer.Ordinal);
+        var notes = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (pairing, view, note, _) in reads)
+        {
+            if (view is not null) views[pairing.HostId] = view;
+            if (note is not null) notes[pairing.HostId] = note;
+        }
+        return new() { State = state, Views = views, Notes = notes };
+    }
+
     public async Task<NetworkSyncResult> SyncAsync(NetworkLocalState state, IReadOnlyList<Audio2FaceHostPairing> paired,
         Func<Audio2FaceHostPairing, Audio2FaceHostConnection> connect, CancellationToken token)
     {

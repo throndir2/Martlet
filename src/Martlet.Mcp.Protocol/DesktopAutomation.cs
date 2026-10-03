@@ -31,9 +31,16 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // like OpenLiveConversation, Pause Martlet only stops work and End the conversation closes the talk window like CloseLive.
         // Start listening, Resume Martlet, the character, the startup and closing choices and Exit need --allow-ui-effects.
         "TrayOpen", "TrayTalk", "TrayPause", "TrayEndTalk",
+        // The character overlay (drawn by Martlet's own renderer process, whose windows ui_snapshot includes): MoveAvatar only opens
+        // or closes the character's right-click menu; its Talk to Martlet, Open Martlet and Character settings only show a window
+        // or page, like TrayTalk and TrayOpen. Its zoom, position, Keep on top and Hide character items need --allow-ui-effects.
+        "MoveAvatar", "CharacterTalk", "CharacterOpenMartlet", "CharacterSettings",
         // Martlet on your network: Find again only sends Martlet's own discovery query (port 9444) on the local network and
         // lists who answers; Stop asking only withdraws this PC's own request. Connect, Allow and Deny do the work.
         "NearbyFind", "NearbyCancel",
+        // The host dashboard's Check again only reads this PC's own host service (Docker, the gateway's role records and network
+        // roster, its published port); it starts, sets up and pairs nothing.
+        "CheckHostService",
         // Smart home: Find on my network only sends one multicast DNS question for Home Assistant's service type and lists who
         // answers; Not now only hides the setup form. Sign in, Set up, Connect, Share, Add, Install and Restart do the work.
         "SmartHomeFind", "SmartHomeSetupCancel",
@@ -67,8 +74,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "SelectedDevice", "SelectedDeviceHealth", "ClusterStatus",
         "VisionStatus", "TalkHearVoiceStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "SetupF5About", "F5VoicesStatus",
         // Companion › Voice › Voice engine: the chosen self-hosted engine (F5-TTS, XTTS-v2, GPT-SoVITS or Dia) and where it speaks with its
-        // model licence. Choosing another engine (ui_select SpeakingEngine) may install a host role, so it needs --allow-ui-effects.
-        "SpeakingEngine", "SpeakingEngineStatus", "SpeakingEngineTags",
+        // model licence, and the engines the speaking computer still runs besides it (SpeakingEngineOthers). Choosing another engine
+        // (ui_select SpeakingEngine) may install a host role and stops the one it replaces, and SpeakingEngineRelease stops the others,
+        // so both need --allow-ui-effects.
+        "SpeakingEngine", "SpeakingEngineStatus", "SpeakingEngineTags", "SpeakingEngineOthers",
         "SetupOllamaStatus", "SetupLocalModelTest", "HostRunStatus", "RepliesNow", "AppUpdateStatus", "AppCurrentVersion",
         // Companion › Prompts: how many internal prompts are edited or emptied (counts only, never the prompt text).
         "PromptsNow",
@@ -100,9 +109,15 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // status line (Martlet is running, listening, paused or watching).
         "BackgroundStatus", "TrayStatus",
         // What this PC is for: the navigation rail's "Companion PC" or "Host PC", and Settings' line describing that role.
-        "DeviceRoleSummary", "DeviceRoleText"
+        "DeviceRoleSummary", "DeviceRoleText",
+        // The host dashboard's status under its icon ("Host is running", "Waiting for Docker Desktop", "Not set up yet", ...), its
+        // steps' heading ("This host is ready" or "Get this host running") and the line under it (how many steps are left and
+        // the next one, or "All set", and when Martlet last checked).
+        "HostServiceStatus", "HostStepsHeading", "HostStepsSummary"
     };
     /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)");
+    /// whether each home or host-dashboard step is ticked ("StepState-service" reads "Host service: done") and its buttons'
+    /// labels ("Step-roles-0" reads "Add Thinking: Add roles");
     /// Smart home's found Home Assistants ("SmartHomeFound-0" reads "Home: http://192.168.1.20:8123 (Home Assistant 2026.9.4)"),
     /// each paired host's Home Assistant line ("SmartHomeHost-gpu-pc" reads "gpu-pc: can run Home Assistant."), the devices
     /// Home Assistant discovered ("SmartHomeDevice-0" reads "Philips Hue: Hue Bridge") and its waiting updates
@@ -117,13 +132,18 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// "21:04:11.532 WARN This PC · App: Host gpu-box stopped answering: ..."); the Martlet desktops found on the network in
     /// Add a computer ("NearbyItem-0" reads "GAMING-PC (192.168.1.31): gaming-pc-host · Martlet 0.17.0"); the Martlet
     /// network's computers ("NetworkMember-host-gpu-pc" reads "gpu-pc. Host, paired with this PC; added on desktop-a.") and
-    /// requests to join ("NetworkJoin-desktop-b" reads "DESKTOP-B asks to join. desktop-b, through gpu-pc. Check number ...");
+    /// requests to join ("NetworkJoin-desktop-b" reads "DESKTOP-B asks to join. desktop-b, through gpu-pc. Check number ...")
+    /// and computers that use one of this PC's hosts but aren't in the network ("NetworkPaired-desktop-c" reads "DESKTOP-C
+    /// (desktop-c). Uses gpu-pc; active now. ..."); each device role's detail line in the selected device's details
+    /// ("DeviceComponentDetail-users" reads "IMOUTO (desktop-imouto), active now; This PC, active now.",
+    /// "DeviceComponentDetail-host-service" reads "Paired as diva-host. Used by IMOUTO (desktop-imouto), active now.");
     /// API keys ("ApiKeyRow-AbC..." reads "Home Assistant. See status and logs. Made on desktop-a 10/2/2026. ... ID AbCdEf.",
     /// never the key or its verifier); a host role's choices in its Add dialog ("HostInput-choice.A2F_ENGINE" reads "local";
     /// never its secret fields), the terms that follow a variant choice ("HostInputTerms-A2F_ENGINE") and each Companion › Prompts
     /// prompt's state ("PromptState-reply_length" reads "Edited. Not saved yet."; never the prompt text).</summary>
-    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "F5VoiceRow-", "F5VoiceGroup-", "StepDetail-", "HostChoice",
-        "HealthIssue-", "HealthCheck-", "LogEntry-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",
+    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceGroup-", "StepDetail-", "StepState-", "Step-",
+        "HostChoice",
+        "HealthIssue-", "HealthCheck-", "LogEntry-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "NetworkPaired-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",
         "SmartHomeDevice-", "SmartHomeUpdate-", "HostInput-choice.", "HostInputTerms-", "PromptState-"];
     private int? processId;
 
@@ -416,17 +436,69 @@ internal sealed class DesktopAutomation(bool allowEffects)
     private static AutomationElement[] Windows(int pid)
     {
         // UIA's desktop-root traversal can omit live windows while unrelated WPF
-        // windows are closing. Discover HWNDs first, then query only this process.
-        var handles = new List<nint>();
+        // windows are closing. Discover HWNDs first, then query only this process
+        // and its own character renderer (the overlay, its menu and speech bubble).
+        var owners = RendererProcesses(pid).Append(pid).ToHashSet();
+        var handles = new List<(nint Handle, int Owner)>();
         if (!EnumWindows((handle, _) =>
             {
                 GetWindowThreadProcessId(handle, out var owner);
-                if (owner == pid && IsWindowVisible(handle)) handles.Add(handle);
+                if (owners.Contains((int)owner) && IsWindowVisible(handle)) handles.Add((handle, (int)owner));
                 return true;
             }, 0))
             throw new Win32Exception(Marshal.GetLastWin32Error());
-        return handles.Select(handle => WindowForProcess(pid, handle)).ToArray();
+        return handles.Select(window => WindowForProcess(window.Owner, window.Handle)).ToArray();
     }
+
+    private const string RendererExecutable = "Martlet.Avatar.RendererHost.exe";
+
+    /// <summary>The attached desktop's character renderers: its Martlet.Avatar.RendererHost child processes. Another
+    /// Martlet's renderer (your own profile's) is never included.</summary>
+    private static int[] RendererProcesses(int pid)
+    {
+        var children = new List<int>();
+        var snapshot = CreateToolhelp32Snapshot(0x2, 0);
+        if (snapshot == -1) return [];
+        try
+        {
+            var entry = new ProcessEntry { Size = Marshal.SizeOf<ProcessEntry>() };
+            for (var more = Process32FirstW(snapshot, ref entry); more; more = Process32NextW(snapshot, ref entry))
+                if (entry.ParentProcessId == pid && string.Equals(entry.ExeFile, RendererExecutable, StringComparison.OrdinalIgnoreCase))
+                    children.Add((int)entry.ProcessId);
+        }
+        finally { CloseHandle(snapshot); }
+        if (children.Count == 0) return [];
+        // A parent's process ID can be reused; its real children started after it.
+        static DateTime? Started(int id)
+        {
+            try
+            {
+                using var process = Process.GetProcessById(id);
+                return process.StartTime;
+            }
+            catch (Exception error) when (error is ArgumentException or InvalidOperationException or Win32Exception) { return null; }
+        }
+        return Started(pid) is { } parent ? children.Where(id => Started(id) >= parent).ToArray() : [];
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct ProcessEntry
+    {
+        public int Size, Usage;
+        public uint ProcessId;
+        public nint DefaultHeapId;
+        public int ModuleId, Threads;
+        public uint ParentProcessId;
+        public int PriorityBase, Flags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string ExeFile;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern nint CreateToolhelp32Snapshot(uint flags, uint processId);
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)] [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool Process32FirstW(nint snapshot, ref ProcessEntry entry);
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)] [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool Process32NextW(nint snapshot, ref ProcessEntry entry);
+    [DllImport("kernel32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool CloseHandle(nint handle);
 
     internal static AutomationElement WindowForProcess(int pid, nint handle)
     {

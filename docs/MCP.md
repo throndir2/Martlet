@@ -240,14 +240,18 @@ never returns keys, signatures or host addresses and contacts nothing.
 
 `network_selftest` (no arguments) rehearses the network end to end with the
 production code: three real gateways (`lab-host-1..3`: Kestrel, pinned TLS,
-volatile credentials, a throwaway certificate) on `127.0.0.1` and two simulated
+volatile credentials, a throwaway certificate) on `127.0.0.1`, two simulated
 desktops driving the desktop's own client (`HostNetwork.cs`) and sync engine
-(`NetworkSync.cs`). Like `node_link_check` it runs `src\Martlet.NodeLinkCheck`
+(`NetworkSync.cs`), and a simulated host PC. Like `node_link_check` it runs `src\Martlet.NodeLinkCheck`
 (mode `network`, `NetworkRehearsal.cs`) as its own process, because the gateway
 needs the ASP.NET Core runtime, and returns `{exitCode, report}`. Its steps: desktop A pairs with a host by a typed code and
 founds a network that binds it; A adds a second host to the same network; B
 pairs with one host and asks to join with a check number; A sees the same
-number, allows B, and B pairs with the other host by itself; A sets up a third
+number; the host tells B (not yet a member) who is paired with it, A and B,
+each with when it last made a signed request; A allows B, and B pairs with the
+other host by itself; a host PC C outside the network pairs with the first host
+and only watches (`NetworkSyncEngine.ReadOnlyAsync`): it sees A, B and itself
+and starts, joins and asks nothing; A sets up a third
 host and B is paired with it on its next sync; a key outside the network
 (`network.denied`), a member's ID with the wrong key (`pairing.invalid`) and a
 roster entry not signed by a member are refused; A removes a host (it stops
@@ -303,7 +307,8 @@ unticked **Let my other computers find this PC**; `port` (9444); and `hosts`
 from `hosts.json` (`state` `none`, `loaded` or `unreadable`; when loaded the
 number `paired` and the `shareable` ones with `hostId` and `reach`
 (`ThisPcDocker`, `SshDocker` or `SshNative`)). This PC's own host service set
-up from the host dashboard is found by the desktop from Docker, not here. It
+up from the host dashboard is found by the desktop from Docker, not here
+(`host_service_status` reads it). It
 never returns addresses, SSH targets or keys and contacts nothing.
 
 `node_link_check` runs [commands between computers](CLUSTER.md#commands-between-your-computers)
@@ -380,6 +385,24 @@ created, startsAtSignIn}`: the setup Martlet continues after a Windows restart
 entry that starts Martlet at the next sign-in exists). It runs a CIM query and
 `wsl --version` in a hidden Windows PowerShell and `docker desktop status`,
 changes nothing and returns no paths.
+
+`host_service_status` reads this PC's own Martlet host service on Docker
+Desktop (the one the host dashboard sets up) with the same production code as
+the dashboard (`LocalHostService` in `Martlet.Core`): `stage` (`DockerMissing`,
+`DockerNotRunning`, `NotSetUp`, `Stopped` or `Running`), `ready` (running,
+answering and still at one of this PC's addresses), `version` (the
+`martlet-host:x.y.z` image), `hostId`, `published`, `addressOnThisPc` (false
+once the network gave this PC another address than the one set up),
+`answering` (a TCP connect to the published port), `roles` (the installed role
+records, for example `["audio2face","f5","stt"]`; null until the gateway runs),
+`network` (`unbound`, `bound`, `removed` or `unreadable`), `desktops` (`{id,
+name}` of the active desktops in the host's Martlet network, that is the
+computers paired with it, including this PC when it is one) and `problem`
+(Docker's first error line). It runs `docker container inspect` on
+`martlet-host-gateway` and `martlet-host-net` and one `docker exec` that lists
+the role records and prints `host_id` and `network.json`; it never reads the
+agent token, keys, secrets or pairings, returns no addresses and changes
+nothing. Setting `DOCKER_HOST` to a missing named pipe gives `DockerNotRunning`.
 
 `logs_tail` reads the last `lines` (1-400, default 100) of one local log under
 `<dataDirectory>\logs` (`log`: `desktop` (default), `avatar-renderer` or
@@ -523,10 +546,16 @@ selects a device on the map (`Node-this-pc`, `Node-host:<host ID>`,
 `CoverageShow-<job>` selects the device doing a job; both only show details, so
 they are passive clicks, as are the `DeviceFactsSection`, `DeviceRolesSection`
 and `DeviceReachSection` expanders. `SelectedDevice` and `SelectedDeviceHealth`
-return the selected device's name and status, and each row title
+return the selected device's name and status, each row title
 `DeviceComponent-<part>` (`job-Llm`, `job-Stt`, `job-Tts`, `lipsync`,
-`character`, `audio`, `host-service`, `host`, `role-<role>`, `offer`) returns the
-job's name. Job owners are `ThinkingOwner`, `ListeningOwner`, `SpeakingOwner`
+`character`, `audio`, `host-service`, `host`, `users`, `role-<role>`, `offer`)
+returns the job's name, and its detail line `DeviceComponentDetail-<part>`
+returns the row's text. A paired host's `users` row (*Computers using it*) lists
+the computers paired with it as the host reports them, for example
+`DeviceComponentDetail-users`: `IMOUTO (desktop-imouto), active now; This PC,
+active now.`; on this PC's own host service, `DeviceComponentDetail-host-service`
+reads `Paired as diva-host. Used by IMOUTO (desktop-imouto), active now.` (or *No
+other computer uses it yet.*). Job owners are `ThinkingOwner`, `ListeningOwner`, `SpeakingOwner`
 and `LipSyncOwner`, device commands `NodeAction-<action>`
 (`NodeAction-InstallRole-<role>` and `NodeAction-RemoveRole-<role>` for host
 roles), and Settings for all devices holds `CheckHosts`, `ClusterSync` (checked by
@@ -534,16 +563,23 @@ default; unticking it needs `--allow-ui-effects` and saves `off`),
 `ClusterStatus` (returned as text) and `RoleSetup-<role>` for jobs nobody does.
 The **Your Martlet network** card ([NETWORK](NETWORK.md)) holds `NetworkStatus`
 (status text: member with how many computers and hosts, waiting to join with
-the check number, or in no network), `NetworkCheck` (syncs now; it contacts the
-paired hosts, so it is not a passive click), each computer's row title
-`NetworkMember-<desktop|host>-<ID>` (status text, for example
-`lab-gpu. Host, not paired with this PC yet; added on desktop-diva.`) with
-`NetworkRemove-<desktop|host>-<ID>`, and each request to join
+the check number, a host PC in no network that only watches, or in no network),
+`NetworkCheck` (syncs now; it contacts the paired hosts, so it is not a passive
+click), each computer's row title `NetworkMember-<desktop|host>-<ID>` (status
+text, for example `lab-gpu. Host, not paired with this PC yet; added on
+desktop-diva.`, and for another computer where it was last active, *Active now
+on diva-host.*) with `NetworkRemove-<desktop|host>-<ID>`, each computer that uses
+one of this PC's hosts without being a member `NetworkPaired-<device ID>` (status
+text: which hosts it uses and when it was last active), and each request to join
 `NetworkJoin-<device ID>` (status text with the check number) with
 `NetworkAllow-<device ID>` and `NetworkDeny-<device ID>`. Remove, Allow and
 Turn down change the network and need `--allow-ui-effects` (then
 `ConfirmationYes`); Allow also hands that computer access to every host, so
-keep it to disposable lab networks.
+keep it to disposable lab networks. The card works on a host PC too: one that
+is in a network keeps syncing (so it can let others in), and one in no network
+only watches and makes no key or `network.json` (`network_status` then reads
+`state: none`, `key: false`); each change in what the PC sees is logged as a
+`Martlet network: ...` line (`logs_tail` with `contains: "network"`).
 
 The **Apps and API keys** card ([API](API.md)) holds `ApiKeysStatus` (status
 text: how many keys, and on how many hosts they are or why not), each key's
@@ -582,17 +618,44 @@ it), or on with the hosts it offers; then *Last request:* allowed, denied,
 withdrawn or stopped) and `NearbyFirewall` (*Let my other computers reach this
 PC*, shown only when blocked: an administrator prompt, never part of
 verification).
-Home and host-dashboard steps have their buttons as `Step-<step>-<n>` and their
-detail line as `StepDetail-<step>` (status text). A step with more than two
+Home and host-dashboard steps have their buttons as `Step-<step>-<n>` (returned:
+the button's label and step, for example *Add Thinking: Add roles*), whether
+each is ticked as `StepState-<step>` (returned: *Host service: done*, *Pair your
+main PC: to do* or *Add roles: optional, not done*) and their detail line as
+`StepDetail-<step>` (status text). A step with more than two
 buttons (or long labels, like `Step-roles-<n>`) wraps them on rows under its
 detail, so with `layout` the buttons' `bounds` start at the detail's left edge
-and stay inside the window. On the host dashboard,
-`StepDetail-docker` says whether Docker Desktop runs or why Windows can't start
+and stay inside the window. The host dashboard reads this PC's own host service
+by itself (the same read as `host_service_status`): when it opens, every 30
+seconds while the window shows and when it shows again, so steps tick without a
+button. `HostServiceStatus` (returned) is the status under its icon (*Checking...*,
+*Needs Docker Desktop*, *Waiting for Docker Desktop*, *Not set up yet*, *Host
+service stopped*, *Address changed*, *Not answering yet* or *Host is running*),
+`HostStepsHeading` (returned) reads *This host is ready* once the required steps
+(Docker Desktop, host service, pairing) are done and `HostStepsSummary`
+(returned) says how many steps are left and the next one, or *All set*, and when
+it last checked. `CheckHostService` (*Check again*) only repeats that read and
+says what it found in the status line, so it is a passive click. On the host
+dashboard,
+`StepDetail-docker` says whether Docker Desktop runs, that it is open but its
+engine isn't answering yet, or why Windows can't start
 it yet (virtualization off in the firmware, Virtual Machine Platform or Windows
 Subsystem for Linux off, WSL missing, hypervisor not running), and
 `Step-docker-0` then reads *Turn on virtualization* or *Turn on Windows
 features* (administrator prompt and possibly a restart, so it needs
-`--allow-ui-effects` and is never part of verification). After a restart for
+`--allow-ui-effects` and is never part of verification). `StepDetail-service`
+says the host service is not set up (`Step-service-0` *Set up host service*),
+set up but stopped (*Start host service*), set up for an address this PC no
+longer has or not answering (*Set up again*), or *Running and reachable on your
+network as <host ID>* (done, no button). `StepDetail-pair` names the computers
+in the host's Martlet network and, when this PC is paired with its own host
+service, every other computer that service reports as paired, member or not,
+with when each was last active (*Paired with IMOUTO (active now) and this PC.*,
+done, with `Step-pair-0` *Pair another computer*). `StepDetail-roles` lists the installed
+roles (*Runs Lip-sync and Listening.*, done) with an *Add* button for each other
+role and a *Remove* button for each installed one. `StepDetail-update` reads
+*Up to date: the host service runs Martlet x.y.z* (done, no button) or offers
+*Update host service*. After a restart for
 virtualization, Martlet opens a run window by itself (`HostRunWindow`) that
 continues the setup; `continueSetup` in `virtualization_status` shows what is
 pending.
@@ -616,10 +679,14 @@ device secret in Windows Credential Manager, so verification stops at refused
 codes. On the host dashboard, *Show a pairing code* (`Step-pair-0`) shows the
 address (`HostRunPairAddress`, returned) and the one-use code (`HostRunPairCode`,
 never returned) in the run window's `HostRunPairing` panel; the host-runs log
-masks codes. `StepDetail-pair` also tells the owner to find this PC from the
+masks codes. While the host isn't paired, `StepDetail-pair` tells the owner to find this PC from the
 main PC (*Martlet on your network*), and when Windows Firewall keeps other
 computers out it says so and `Step-pair-1` (*Let my other computers find this
-PC*, an administrator prompt) appears.
+PC*, an administrator prompt) appears. While a computer asks to
+join the network this host PC is in, a step `join-<device ID>` (*Let IMOUTO into
+your Martlet network*) follows it: `StepDetail-join-<device ID>` gives the check
+number, `Step-join-<device ID>-0` is **Allow** and `Step-join-<device ID>-1`
+**Turn down** (both change the network, so they need `--allow-ui-effects`).
 
 *Martlet on your network* ([how it works](ARCHITECTURE.md#finding-your-other-computers))
 is the first card of the wizard's *Where it runs* step. Opening the wizard on
@@ -730,6 +797,26 @@ size, its distance from the top of the screen, the camera zoom and where the
 top of the character's head sits relative to the overlay's top edge (it must
 stay in view at every zoom).
 
+The character overlay itself is drawn by Martlet's renderer child process
+(`Martlet.Avatar.RendererHost`); `ui_snapshot` includes its windows (the
+overlay is titled *Martlet character overlay*; another Martlet's renderer is
+never included). Its drag surface `MoveAvatar` supports UI Automation
+expand/collapse, so `ui_click` on it opens (or closes again) the character's
+right-click menu with no flag; opened this way, the menu stays open until a
+choice or another `MoveAvatar` click. While it is open, snapshots list
+`CharacterMenu` and its items: `CharacterTalk` (*Talk to Martlet*, like
+`TrayTalk`), `CharacterOpenMartlet` (*Open Martlet*, shows the window like
+`TrayOpen`, also from the notification area) and `CharacterSettings`
+(*Character settings*, opens Companion › Character), which are passive clicks;
+then `CharacterZoomIn`, `CharacterZoomOut`, `CharacterResetZoom` (disabled at
+the default zoom), `CharacterResetPosition`, the checkable `CharacterOnTop`
+(*Keep on top*, on by default; its `checkedState` is the current choice for
+this showing) and `CharacterHide` (*Hide character*; Esc on the overlay does
+the same), which need `--allow-ui-effects`. Talk, Open, Settings and Hide are
+carried out by Martlet itself, so the desktop log records *The character's menu
+chose 'hide'.* (and so on), and a hide is followed by *Avatar renderer stopped
+by Martlet.* and `SetupCharacterNow` reading *hidden*.
+
 The same page's *Speech bubbles and subtitles* card has the checkboxes
 `SetupCharacterSpeechBubbles` (on by default) and `SetupCharacterSubtitles`
 (off by default); snapshots return their states, and `SetupCharacterSpeechDisplay`
@@ -781,7 +868,12 @@ says where it speaks and its model licence and `SpeakingEngineTags` lists the
 engine's sound and tone tags (or says it reads words only). Choosing
 another engine with `ui_select` needs `--allow-ui-effects`: when a computer
 speaks it hands Speaking to that engine there (installing its role after a
-confirmation). `f5_voices` returns the same choice as `chosenEngine`.
+confirmation) and stops the engine it replaces on that computer, since a host
+runs one voice engine at a time. `SpeakingEngineOthers` (shown only then) names
+voice engines the speaking computer still runs besides the one that speaks,
+for example a host set up before that rule; `SpeakingEngineRelease` stops them
+after a confirmation (`martlet-host remove`, downloads kept) and needs
+`--allow-ui-effects`. `f5_voices` returns the same choice as `chosenEngine`.
 
 On Companion › Tools (`CompanionTab-Tools`), each server has
 `ToolsServerState-<name>`, `ToolsServerOn-<name>`, `ToolsServerTrust-<name>`,
@@ -846,6 +938,9 @@ chosen variant as `HostInputTerms-<VAR>`, and its secrets as
 own secret appears only while its choice is selected (the Audio2Face NIM
 engine's `HostInput-secret.ngc_api_key` only for `nim`); hidden fields are not
 required and not sent. `HostInputOk` installs and needs `--allow-ui-effects`.
+Adding a voice engine to a host that runs another one says in the dialog's
+message that installing it stops that engine there (`martlet-host describe`
+reports it as `role.stops`).
 
 On Thinking, Voice, Listening and Lip-sync, each "Where it runs" option
 (`Place-<page>-<place>`, for example `Place-Voice-Computer` or
@@ -934,7 +1029,8 @@ after … ms, first audio after … ms* line to the desktop log, which `logs_tai
 returns.
 
 Window discovery uses visible top-level native handles filtered to the attached
-process, then verifies ownership around each UI Automation handle lookup.
+process (and its own character renderer child process), then verifies ownership
+around each UI Automation handle lookup.
 This avoids transient omissions from UI Automation's desktop-root enumeration
 when unrelated WPF windows close. The Martlet main-window automation ID is
 still required on every operation, unless the window is hidden in the
