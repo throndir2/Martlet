@@ -15,11 +15,15 @@ namespace Martlet.Desktop;
 /// nothing is trained. Several recordings become one voice: Martlet joins them after a short pause into one recording (and
 /// their transcripts into one), which every engine can use, and remembers where each lies, so engines that learn from several
 /// recordings (XTTS-v2, GPT-SoVITS) get each one. Martlet keeps its own copy, so the originals can be moved or deleted
-/// afterwards, and shares the voice with the owner's paired Martlet computers.</summary>
+/// afterwards, and shares the voice with the owner's paired Martlet computers. When speech-to-text is available without the
+/// cloud (<see cref="RecordingTranscriber"/>), each recording's words are filled in as soon as it is chosen, for the owner to
+/// check and correct.</summary>
 internal sealed class F5AddVoiceDialog : ThemedWindow
 {
     private readonly string dataDirectory;
     private readonly string destination;
+    private readonly RecordingTranscriber? transcriber;
+    private readonly SemaphoreSlim listening = new(1, 1);
     private readonly List<Recording> recordings = [];
     private readonly StackPanel list = new();
     private readonly TextBox name = new();
@@ -51,7 +55,20 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         internal Button Browse { get; } = new() { Content = "_Browse...", Margin = new Thickness(8, 0, 0, 0), MinWidth = 90 };
         internal Button Play { get; } = new() { Content = "_Play", Margin = new Thickness(8, 0, 0, 0), MinWidth = 72 };
         internal Button Drop { get; } = new() { Content = "Remove", Margin = new Thickness(8, 0, 0, 0), MinWidth = 72 };
+        /// <summary>How filling in the words went (never the words).</summary>
+        internal TextBlock Heard { get; } = new() { TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed, Margin = new Thickness(0, 6, 8, 0) };
+        internal Button Fill { get; } = new() { Content = "_Fill in the words", Margin = new Thickness(0, 6, 0, 0), MinWidth = 130, VerticalAlignment = VerticalAlignment.Top };
         internal StackPanel Root { get; } = new();
+        /// <summary>Cancels the words being filled in (null when none are).</summary>
+        internal CancellationTokenSource? Listening { get; set; }
+        /// <summary>The words last filled in, so choosing another file replaces them while they are unedited.</summary>
+        internal string? Filled { get; set; }
+
+        internal void Say(string? text)
+        {
+            Heard.Text = text ?? "";
+            Heard.Visibility = text is null ? Visibility.Collapsed : Visibility.Visible;
+        }
         /// <summary>The chosen file's length, or why Martlet can't use it (null while no file is chosen).</summary>
         internal int? Milliseconds { get; private set; }
         internal bool Unusable { get; private set; }
@@ -74,10 +91,11 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         }
     }
 
-    private F5AddVoiceDialog(string dataDirectory, string destination)
+    private F5AddVoiceDialog(string dataDirectory, string destination, RecordingTranscriber? transcriber)
     {
         this.dataDirectory = dataDirectory;
         this.destination = destination;
+        this.transcriber = transcriber;
         SetResourceReference(StyleProperty, "AppWindowStyle");
         Title = "Martlet - Add a voice";
         Width = 660;
@@ -90,14 +108,21 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         var heading = new TextBlock { Text = "Add a voice", TextWrapping = TextWrapping.Wrap };
         heading.SetResourceReference(StyleProperty, "SectionHeading");
         root.Children.Add(heading);
-        root.Children.Add(new TextBlock
+        var about = new TextBlock
         {
-            Text = "Choose a clear WAV recording (mono 16-bit PCM) and type its exact words. You can add several recordings of the same " +
-                "voice: XTTS-v2 and GPT-SoVITS learn from each one, and the other engines hear them joined, one after another with " +
-                $"a short pause ({SpeakingVoiceLibrary.MaximumDurationMilliseconds / 1000} seconds in all). Martlet keeps a copy and " +
-                "shares it with your paired Martlet computers, so any of them can speak with this voice.",
+            Text = (transcriber is null
+                    ? "Choose a clear WAV recording (mono 16-bit PCM) and type its exact words: F5-TTS, GPT-SoVITS and Dia read them " +
+                        "along with it. With Parakeet downloaded in Companion › Listening, Martlet fills them in for you. "
+                    : $"Choose a clear WAV recording (mono 16-bit PCM) and Martlet fills in its words with {transcriber.Name}. Check " +
+                        "them and fix anything it misheard: F5-TTS, GPT-SoVITS and Dia read them along with it. ") +
+                "You can add several recordings of the same voice: XTTS-v2 and GPT-SoVITS learn from each one, and the other " +
+                $"engines hear them joined, one after another with a short pause ({SpeakingVoiceLibrary.MaximumDurationMilliseconds / 1000} " +
+                "seconds in all). Martlet keeps a copy and shares it with your paired Martlet computers, so any of them can speak " +
+                "with this voice.",
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 6)
-        });
+        };
+        AutomationProperties.SetAutomationId(about, "F5AddVoiceAbout");
+        root.Children.Add(about);
 
         root.Children.Add(new ScrollViewer { Content = list, MaxHeight = 420, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
         AutomationProperties.SetAutomationId(more, "F5AddVoiceMore");
@@ -138,14 +163,19 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         buttons.Children.Add(ok);
         root.Children.Add(buttons);
         Content = root;
-        Closed += (_, _) => player?.Stop();
+        Closed += (_, _) =>
+        {
+            player?.Stop();
+            foreach (var row in recordings) row.Listening?.Cancel();
+        };
         AddRecording();
     }
 
-    /// <summary>The newly added voice (bound to <paramref name="destination"/>), or null when canceled.</summary>
-    internal static F5ReferenceSnapshot? Add(Window owner, string dataDirectory, string destination)
+    /// <summary>The newly added voice (bound to <paramref name="destination"/>), or null when canceled. <paramref name="transcriber"/>
+    /// fills in each recording's words when there is one; the caller disposes it.</summary>
+    internal static F5ReferenceSnapshot? Add(Window owner, string dataDirectory, string destination, RecordingTranscriber? transcriber)
     {
-        var dialog = new F5AddVoiceDialog(dataDirectory, destination) { Owner = owner };
+        var dialog = new F5AddVoiceDialog(dataDirectory, destination, transcriber) { Owner = owner };
         return dialog.ShowDialog() == true ? dialog.added : null;
     }
 
@@ -156,8 +186,10 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         var row = new Recording();
         row.Browse.Click += (_, _) => Browse(row);
         row.Play.Click += async (_, _) => await PlayAsync(row);
+        row.Fill.Click += async (_, _) => await FillAsync(row);
         row.Drop.Click += (_, _) =>
         {
+            row.Listening?.Cancel();
             recordings.Remove(row);
             list.Children.Remove(row.Root);
             Renumber();
@@ -166,6 +198,15 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         {
             row.Measure();
             Summarize();
+            // A new file's words replace none or the ones filled in for the last file, never words the owner typed.
+            if (row.Milliseconds is not null && (row.Transcript.Text.Trim().Length == 0 || row.Transcript.Text == row.Filled))
+                FillAsync(row).Forget();
+            else
+            {
+                row.Listening?.Cancel();
+                row.Say(null);
+                ShowFill(row);
+            }
         };
         row.FileLabel.Target = row.Path;
         row.WordsLabel.Target = row.Transcript;
@@ -177,19 +218,82 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         pick.Children.Add(row.Play);
         pick.Children.Add(row.Browse);
         pick.Children.Add(row.Path);
+        var heard = new DockPanel();
+        DockPanel.SetDock(row.Fill, Dock.Right);
+        heard.Children.Add(row.Fill);
+        heard.Children.Add(row.Heard);
+        row.Heard.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
         row.Root.Children.Add(row.FileLabel);
         row.Root.Children.Add(pick);
         row.Root.Children.Add(row.WordsLabel);
         row.Root.Children.Add(row.Transcript);
+        row.Root.Children.Add(heard);
+        ShowFill(row);
         recordings.Add(row);
         list.Children.Add(row.Root);
         Renumber();
         return row;
     }
 
+    /// <summary>Fill in the words is shown only with a transcriber, and works once a usable file is chosen and nothing is
+    /// being filled in for it.</summary>
+    private void ShowFill(Recording row)
+    {
+        row.Fill.Visibility = transcriber is null ? Visibility.Collapsed : Visibility.Visible;
+        row.Fill.IsEnabled = row.Milliseconds is not null && row.Listening is null;
+    }
+
+    /// <summary>Fills in <paramref name="row"/>'s words with <see cref="transcriber"/>, one recording at a time. Words typed while
+    /// it listens are kept. The status line (<c>F5AddVoiceHeard</c>) says how it went, never the words.</summary>
+    private async Task FillAsync(Recording row)
+    {
+        if (transcriber is null || row.Milliseconds is not { } milliseconds) return;
+        row.Listening?.Cancel();
+        if (milliseconds > transcriber.MaximumMilliseconds)
+        {
+            row.Say($"This recording is too long for {transcriber.Name} to fill in its words. Type them.");
+            return;
+        }
+        using var stop = new CancellationTokenSource();
+        row.Listening = stop;
+        ShowFill(row);
+        var file = row.Path.Text;
+        var before = row.Transcript.Text;
+        row.Say($"Filling in the words with {transcriber.Name}...");
+        var waited = false;
+        try
+        {
+            await listening.WaitAsync(stop.Token);
+            waited = true;
+            var text = await transcriber.TranscribeAsync(await File.ReadAllBytesAsync(file, stop.Token), stop.Token);
+            stop.Token.ThrowIfCancellationRequested();
+            if (row.Transcript.Text != before) row.Say("Kept the words you typed.");
+            else if (text.Length == 0) row.Say($"{transcriber.Name} heard no words in this recording. Type them.");
+            else if (!SpeakingVoiceLibrary.IsTranscript(text)) row.Say($"{transcriber.Name} heard more words than a voice can keep. Type them.");
+            else
+            {
+                row.Transcript.Text = row.Filled = text;
+                var words = text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
+                row.Say($"Filled in by {transcriber.Name}: {words} word{(words == 1 ? "" : "s")}. Check them and fix anything it misheard.");
+            }
+        }
+        catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            ErrorLog.Warn($"Filling in a voice recording's words with {transcriber.Name} failed.", error);
+            row.Say($"Couldn't fill in the words with {transcriber.Name}: {RecordingTranscriber.Reason(error)}. Type them.");
+        }
+        finally
+        {
+            if (waited) listening.Release();
+            if (ReferenceEquals(row.Listening, stop)) row.Listening = null;
+            ShowFill(row);
+        }
+    }
+
     /// <summary>Labels and automation IDs by position: the first recording keeps the single-recording IDs
-    /// (<c>F5AddVoicePath</c>, <c>F5AddVoiceTranscript</c>, <c>F5AddVoicePlay</c>, <c>F5AddVoiceBrowse</c>); recording n of
-    /// several adds "-n" and has <c>F5AddVoiceDrop-n</c>.</summary>
+    /// (<c>F5AddVoicePath</c>, <c>F5AddVoiceTranscript</c>, <c>F5AddVoicePlay</c>, <c>F5AddVoiceBrowse</c>, <c>F5AddVoiceFill</c>,
+    /// <c>F5AddVoiceHeard</c>); recording n of several adds "-n" and has <c>F5AddVoiceDrop-n</c>.</summary>
     private void Renumber()
     {
         var several = recordings.Count > 1;
@@ -201,11 +305,14 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
             row.WordsLabel.Content = several ? $"Transcript of recording {i + 1}" : "_Transcript";
             AutomationProperties.SetName(row.Path, several ? $"Recording {i + 1} file" : "Recording file");
             AutomationProperties.SetName(row.Transcript, several ? $"Exact words in recording {i + 1}" : "Exact words in the recording");
+            AutomationProperties.SetName(row.Fill, several ? $"Fill in the words of recording {i + 1}" : "Fill in the words");
             AutomationProperties.SetName(row.Drop, $"Remove recording {i + 1}");
             AutomationProperties.SetAutomationId(row.Path, "F5AddVoicePath" + suffix);
             AutomationProperties.SetAutomationId(row.Transcript, "F5AddVoiceTranscript" + suffix);
             AutomationProperties.SetAutomationId(row.Play, "F5AddVoicePlay" + suffix);
             AutomationProperties.SetAutomationId(row.Browse, "F5AddVoiceBrowse" + suffix);
+            AutomationProperties.SetAutomationId(row.Fill, "F5AddVoiceFill" + suffix);
+            AutomationProperties.SetAutomationId(row.Heard, "F5AddVoiceHeard" + suffix);
             AutomationProperties.SetAutomationId(row.Drop, $"F5AddVoiceDrop-{i + 1}");
             row.Drop.Visibility = several ? Visibility.Visible : Visibility.Collapsed;
         }
@@ -329,6 +436,9 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         var unsaid = recordings.FindIndex(r => r.Transcript.Text.Trim().Length == 0);
         var problem = missing >= 0 ? several ? $"Choose recording {missing + 1} (a WAV file), or remove it." : "Choose the recording (a WAV file)."
             : name.Text.Trim().Length == 0 ? "Give the voice a name."
+            : unsaid >= 0 && recordings[unsaid].Listening is not null
+                ? several ? $"Martlet is still filling in the words of recording {unsaid + 1}. Wait a moment, or type them."
+                    : "Martlet is still filling in the words. Wait a moment, or type them."
             : unsaid >= 0 ? several ? $"Type exactly what recording {unsaid + 1} says." : "Type exactly what the recording says."
             : rights.IsChecked != true ? "Confirm that you may use this voice."
             : null;

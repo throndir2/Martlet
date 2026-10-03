@@ -324,11 +324,16 @@ public partial class MainWindow
         finally { assigningRole = false; }
     }
 
-    /// <summary>Adds a voice from a recording, then switches to it.</summary>
+    /// <summary>Adds a voice from a recording, then switches to it. Its words are filled in with Listening's speech-to-text
+    /// (or Parakeet, when downloaded) unless that is in the cloud.</summary>
     private async Task AddVoiceAsync(string destination)
     {
         if (store is null || closing) return;
-        var added = F5AddVoiceDialog.Add(this, store.DataDirectory, destination);
+        var transcriber = RecordingTranscriber.Choose(homeSettings?.Setup?.Routes, parakeet, LocalVoices.SpeechRoot(store.DataDirectory));
+        F5ReferenceSnapshot? added;
+        // A Parakeet loaded just for the dialog waits for any transcription still running before it unloads.
+        try { added = F5AddVoiceDialog.Add(this, store.DataDirectory, destination, transcriber); }
+        finally { if (transcriber is not null) Task.Run(transcriber.Dispose).Forget(); }
         if (added is null) return;
         QueueSpeakingVoiceSync();
         await UseVoiceAsync(F5SharedVoices.Id(added), destination);

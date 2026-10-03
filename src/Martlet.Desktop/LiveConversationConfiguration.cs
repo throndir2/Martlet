@@ -180,7 +180,7 @@ internal sealed class LiveConversationConfiguration
     /// <summary>The paired Martlet host whose whisper transcribes, when Listening was handed to a host on the Devices page.</summary>
     internal HostTextTarget? SttHostTarget() => Target(Route(SetupRole.Stt), SetupRouteType.GatewayStt);
 
-    private static HostTextTarget? Target(SetupRoute route, SetupRouteType routeType) =>
+    internal static HostTextTarget? Target(SetupRoute route, SetupRouteType routeType) =>
         route.RouteType == routeType && route.Gateway is { } gateway &&
         route.GatewayDeviceId is { } device && route.CredentialId is { } credential
             ? new(gateway.Origin, gateway.HostId, gateway.SpkiFingerprint, device, credential) : null;

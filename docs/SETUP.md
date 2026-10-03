@@ -539,7 +539,10 @@ and notices are in `notices\F5-Voices-NOTICES.txt`. Remove any you don't want;
 they don't come back. **Add a voice...**
 takes a mono 16-bit PCM WAV of 1 to 30 seconds (5 to 12 seconds of clear speech
 works best) at 16/22.05/24/44.1/48 kHz, at most 4 MiB, its exact transcript,
-whose voice it is and your rights confirmation. The new voice is used right
+whose voice it is and your rights confirmation. With Parakeet downloaded
+(**Companion > Listening**) or Listening on a paired host, Martlet fills in the
+transcript as soon as you choose the recording; check it and fix anything it
+misheard. The new voice is used right
 away. Up to 32 voices are kept.
 
 Earlier versions included F5-TTS's English example clip. It is no longer

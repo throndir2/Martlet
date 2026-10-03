@@ -58,7 +58,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Add a character's Cancel only closes the dialog; Add a character, Use and Remove change things.
         "CharacterModelAddCancel",
         // Add a voice: Add another recording only adds an empty recording row to the dialog (F5AddVoiceDrop-n removes row n);
-        // nothing is read or saved until Add voice. Opening the dialog (F5AddVoice), typing and Add voice need --allow-ui-effects.
+        // nothing is read or saved until Add voice. Opening the dialog (F5AddVoice), typing, Fill in the words (F5AddVoiceFill
+        // runs speech-to-text, which may send the recording to the Listening host) and Add voice need --allow-ui-effects.
         "F5AddVoiceMore"
     };
     /// <summary>Choosing a Companion page in its side list only shows that page; Devices map nodes ("Node-this-pc",
@@ -95,8 +96,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "VisionStatus", "TalkHearVoiceStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "F5VoicesStatus",
         // Companion › Voice › Voices: whether the voice list is shared with the paired Martlet computers, with how many and when,
         // and why Add a voice couldn't add a recording (never the typed name, transcript or file path); Add a voice's line on
-        // its recordings (how many, how long joined, or which one Martlet can't use; never paths or words).
-        "F5VoicesShared", "F5AddVoiceProblem", "F5AddVoiceRecordings",
+        // its recordings (how many, how long joined, or which one Martlet can't use; never paths or words) and its intro, which
+        // names the speech-to-text that fills in the words (or how to get one). Each recording's F5AddVoiceHeard line reads
+        // through the prefix below.
+        "F5VoicesShared", "F5AddVoiceProblem", "F5AddVoiceRecordings", "F5AddVoiceAbout",
         // Companion › Character › Your characters: how many characters of the owner's own and what this PC shows (never a
         // name), whether they are shared with the paired Martlet computers (with how many and when), and why Add a character
         // couldn't add a model (never the typed name or file path).
@@ -162,7 +165,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// ("SmartHomeUpdate-0" reads "Update: Home Assistant Core 2026.9.3 → 2026.9.4");
     /// Companion › Voice's starter voices ("F5VoiceRow-arctic-slt" reads "SLT (US female)", with "· in use" when it is;
     /// never the names of the owner's own recordings) and every voice's detail line ("F5VoiceDetail-3f2a..." reads
-    /// "3 recordings, 14.5 seconds joined, added 10/2/2026. XTTS-v2 learns from each recording."; never names or words);
+    /// "3 recordings, 14.5 seconds joined, added 10/2/2026. XTTS-v2 learns from each recording."; never names or words) and
+    /// Add a voice's line on filling in each recording's words ("F5AddVoiceHeard" and "F5AddVoiceHeard-2" read "Filled in by
+    /// Parakeet on this PC: 12 words. Check them and fix anything it misheard."; never the words);
     /// Companion › Voice › Voice engine's rows, one per engine ("VoiceEngine-chatterbox" reads "Chatterbox Turbo · recommended",
     /// "VoiceEngineFeatures-chatterbox" "NVIDIA GPU, 6 GB+, Docker, Voice cloning, ...", "VoiceEngineState-chatterbox"
     /// "Ready on this PC." or why it can't run there, and its button "VoiceEngineUse-chatterbox" "Set up and use Chatterbox
@@ -192,7 +197,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// prompt's state ("PromptState-reply_length" reads "Edited." or, while it saves, "Edited. Saving..."; never the prompt text);
     /// and the Copy button on every read-only text box ("Copy-HostRunOutput" reads "Copy", or "Copied" for a few seconds after a
     /// click; never the text it copies).</summary>
-    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "CharacterModelState-", "VoiceEngine", "SpeakingHost-",
+    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceHeard", "CharacterModelState-", "VoiceEngine", "SpeakingHost-",
         "StepDetail-", "StepState-", "Step-",
         "HostChoice",
         "HealthIssue-", "HealthCheck-", "LogEntry-", "LogSource-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "NetworkPaired-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",
