@@ -1747,7 +1747,7 @@ notification area.
 off) `ui_tray` `close` exit Martlet, so they need `--allow-ui-effects`. An exit
 that would cut work short (backup and restore, a setup task other than a reply,
 a troubleshooting report being made or waiting to be exported, an update
-download, a Parakeet or voice-recognition download, a host update, a command
+download, a Parakeet download, a host update, a command
 from another computer, a running run window or *Prepare this computer*) waits
 up to 1.5 seconds for quick work to finish, then shows the window and asks in
 an *Exit Martlet* confirmation whose `ExitBusyQuestion` lists what Martlet is

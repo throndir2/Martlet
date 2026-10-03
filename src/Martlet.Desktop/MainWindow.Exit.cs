@@ -83,8 +83,6 @@ public partial class MainWindow
             busy.Add(availableUpdate is { } update ? $"Downloading Martlet {update.Version.ToString(3)}" : "Downloading a Martlet update");
         if (installingParakeet)
             busy.Add("Downloading Parakeet speech recognition");
-        if (installingVoices)
-            busy.Add("Downloading voice recognition");
         if (hostUpdatesRunning || hostUpdates.Running)
             busy.Add("Updating Martlet on your hosts");
         if (nodeCommandRunning is { } command)
