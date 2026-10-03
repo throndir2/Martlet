@@ -67,8 +67,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "SelectedDevice", "SelectedDeviceHealth", "ClusterStatus",
         "VisionStatus", "TalkHearVoiceStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "SetupF5About", "F5VoicesStatus",
         // Companion › Voice › Voice engine: the chosen self-hosted engine (F5-TTS, XTTS-v2, GPT-SoVITS or Dia) and where it speaks with its
-        // model licence. Choosing another engine (ui_select SpeakingEngine) may install a host role, so it needs --allow-ui-effects.
-        "SpeakingEngine", "SpeakingEngineStatus", "SpeakingEngineTags",
+        // model licence, and the engines the speaking computer still runs besides it (SpeakingEngineOthers). Choosing another engine
+        // (ui_select SpeakingEngine) may install a host role and stops the one it replaces, and SpeakingEngineRelease stops the others,
+        // so both need --allow-ui-effects.
+        "SpeakingEngine", "SpeakingEngineStatus", "SpeakingEngineTags", "SpeakingEngineOthers",
         "SetupOllamaStatus", "SetupLocalModelTest", "HostRunStatus", "RepliesNow", "AppUpdateStatus", "AppCurrentVersion",
         // Companion › Prompts: how many internal prompts are edited or emptied (counts only, never the prompt text).
         "PromptsNow",

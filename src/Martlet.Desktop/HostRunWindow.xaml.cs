@@ -139,17 +139,19 @@ internal static class HostActions
     /// <summary>Runs <paramref name="action"/>. <paramref name="answers"/> are role answers the owner already chose in Martlet
     /// (then no role dialog is shown); otherwise adding a role asks for its secrets and choices, preselecting
     /// <paramref name="recommended"/>. <paramref name="pairing"/> is the host's pairing, which the Martlet-on-that-computer
-    /// route uses. Returns a summary, or null when it stopped (the window shows why).</summary>
+    /// route uses. <paramref name="confirmed"/>: the owner already agreed to this removal (switching voice engines on a
+    /// host stops the others), so the run window doesn't ask again. Returns a summary, or null when it stopped (the window
+    /// shows why).</summary>
     internal static Task<string?> RunAsync(Window owner, string dataDirectory, HostSetupTarget target, string? pinnedHostKey,
         HostAction action, IReadOnlyDictionary<string, string>? answers = null,
         IReadOnlyDictionary<string, (string Value, string Why)>? recommended = null,
-        Martlet.Avatar.Hosting.AvatarRemoteHost? pairing = null) => target.Method switch
+        Martlet.Avatar.Hosting.AvatarRemoteHost? pairing = null, bool confirmed = false) => target.Method switch
     {
         HostSetupMethod.SshDocker or HostSetupMethod.SshNative =>
-            RunOverSshAsync(owner, dataDirectory, target, pinnedHostKey, action, answers, recommended),
-        HostSetupMethod.ThisPcDocker => RunOnThisPcAsync(owner, target, action, answers, recommended),
+            RunOverSshAsync(owner, dataDirectory, target, pinnedHostKey, action, answers, recommended, confirmed),
+        HostSetupMethod.ThisPcDocker => RunOnThisPcAsync(owner, target, action, answers, recommended, confirmed),
         HostSetupMethod.Agent or HostSetupMethod.OnHost when pairing is not null =>
-            HostAgentRun.RunAsync(owner, pairing, target.Version, action, answers, recommended),
+            HostAgentRun.RunAsync(owner, pairing, target.Version, action, answers, recommended, confirmed),
         _ => throw new InvalidOperationException("Pair this host first; then Martlet reaches it through Martlet on that computer.")
     };
 
@@ -161,7 +163,8 @@ internal static class HostActions
     }
 
     private static Task<string?> RunOverSshAsync(Window owner, string dataDirectory, HostSetupTarget target, string? pinnedHostKey,
-        HostAction action, IReadOnlyDictionary<string, string>? answers, IReadOnlyDictionary<string, (string Value, string Why)>? recommended)
+        HostAction action, IReadOnlyDictionary<string, string>? answers, IReadOnlyDictionary<string, (string Value, string Why)>? recommended,
+        bool confirmed)
     {
         var (engine, role, add) = Parse(action);
         var ssh = HostShellTarget.Parse(target.SshTarget);
@@ -186,7 +189,7 @@ internal static class HostActions
                 var inputs = await remote.DescribeAsync(target, role, sudo, hostKey, run.Output, run.Token);
                 input = HostInputDialog.ForRole(run, ssh.ToString(), role, inputs, recommended) ?? throw new OperationCanceledException();
             }
-            else if (role is not null && !add && !ConfirmationDialog.Confirm(run,
+            else if (role is not null && !add && !confirmed && !ConfirmationDialog.Confirm(run,
                          $"Remove {role} from {ssh}? Its saved data stays so you can add it again later.",
                          "Remove role"))
                 throw new OperationCanceledException();
@@ -203,7 +206,7 @@ internal static class HostActions
     }
 
     private static Task<string?> RunOnThisPcAsync(Window owner, HostSetupTarget target, HostAction action,
-        IReadOnlyDictionary<string, string>? answers, IReadOnlyDictionary<string, (string Value, string Why)>? recommended)
+        IReadOnlyDictionary<string, string>? answers, IReadOnlyDictionary<string, (string Value, string Why)>? recommended, bool confirmed)
     {
         var (engine, role, add) = Parse(action);
         var title = action.Verb switch
@@ -219,7 +222,7 @@ internal static class HostActions
         return HostRunWindow.RunAsync(owner, title, async run =>
         {
             var input = answers;
-            if (role is not null && !add && !ConfirmationDialog.Confirm(run,
+            if (role is not null && !add && !confirmed && !ConfirmationDialog.Confirm(run,
                     $"Remove {role} from this PC? Its saved data stays so you can add it again later.",
                     "Remove role"))
                 throw new OperationCanceledException();

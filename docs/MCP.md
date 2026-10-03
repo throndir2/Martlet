@@ -758,7 +758,12 @@ says where it speaks and its model licence and `SpeakingEngineTags` lists the
 engine's sound and tone tags (or says it reads words only). Choosing
 another engine with `ui_select` needs `--allow-ui-effects`: when a computer
 speaks it hands Speaking to that engine there (installing its role after a
-confirmation). `f5_voices` returns the same choice as `chosenEngine`.
+confirmation) and stops the engine it replaces on that computer, since a host
+runs one voice engine at a time. `SpeakingEngineOthers` (shown only then) names
+voice engines the speaking computer still runs besides the one that speaks,
+for example a host set up before that rule; `SpeakingEngineRelease` stops them
+after a confirmation (`martlet-host remove`, downloads kept) and needs
+`--allow-ui-effects`. `f5_voices` returns the same choice as `chosenEngine`.
 
 On Companion › Tools (`CompanionTab-Tools`), each server has
 `ToolsServerState-<name>`, `ToolsServerOn-<name>`, `ToolsServerTrust-<name>`,
@@ -823,6 +828,9 @@ chosen variant as `HostInputTerms-<VAR>`, and its secrets as
 own secret appears only while its choice is selected (the Audio2Face NIM
 engine's `HostInput-secret.ngc_api_key` only for `nim`); hidden fields are not
 required and not sent. `HostInputOk` installs and needs `--allow-ui-effects`.
+Adding a voice engine to a host that runs another one says in the dialog's
+message that installing it stops that engine there (`martlet-host describe`
+reports it as `role.stops`).
 
 On Thinking, Voice, Listening and Lip-sync, each "Where it runs" option
 (`Place-<page>-<place>`, for example `Place-Voice-Computer` or
