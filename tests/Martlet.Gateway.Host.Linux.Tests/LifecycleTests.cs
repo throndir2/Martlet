@@ -39,6 +39,7 @@ internal sealed class FixturePlatform : IHostPlatform, IDisposable
     internal FixtureTerminal Terminal = new();
     internal int Opens;
     internal DurableGatewayHost? Owner;
+    internal StepClock Clock = new();
     internal Action<StoreStep>? Fault { get; set; }
     internal GatewayOrigin Origin = FreeOrigin();
     internal FixturePlatform() => ConfigurationTests.WriteConfig(Fs, ConfigurationTests.Config(Origin.CanonicalOrigin));
@@ -52,7 +53,7 @@ internal sealed class FixturePlatform : IHostPlatform, IDisposable
         return Owner = DurableGatewayHost.Open(config.StateDirectory, config.HostId, config.Binding.Origin,
             [], new QuietAudit(), LocalGatewayDecision.Enable,
             command switch { "init" => HostOpenMode.Create, "rebind" => HostOpenMode.Rebind, _ => HostOpenMode.Open },
-            TimeProvider.System, Fault, cancellation, storageBackend: GatewayStorageBackend.LinuxServicePermissions,
+            Clock, Fault, cancellation, storageBackend: GatewayStorageBackend.LinuxServicePermissions,
             linuxFileSystem: Fs, explicitBinding: true, expectedIdentity: approval?.Identity);
     }
     internal Task<int> Run(string command, StringWriter output, CancellationToken cancellation = default) =>
@@ -68,8 +69,58 @@ internal sealed class FixturePlatform : IHostPlatform, IDisposable
     public void Dispose() => Fs.Dispose();
 }
 
+/// <summary>The system clock moved by <see cref="Offset"/>, as a time sync steps the wall clock; monotonic time is untouched.</summary>
+internal sealed class StepClock : TimeProvider
+{
+    internal TimeSpan Offset;
+    public override DateTimeOffset GetUtcNow() => base.GetUtcNow() + Offset;
+}
+
 public sealed class LifecycleTests
 {
+    [Fact]
+    public async Task Serve_holds_through_a_small_clock_step_and_exits_to_reopen_when_its_authority_closes()
+    {
+        using var platform = new FixturePlatform();
+        using var output = new StringWriter();
+        platform.Terminal = new() { Interactive = false };
+        Assert.Equal(0, await platform.Run("owner-init", output));
+        using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var first = new WatchingWriter("serving:");
+        var serving = platform.Run("serve", first, cancel.Token);
+        await first.Seen.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        var identity = platform.Owner!.Identity!;
+        async Task<bool> Live()
+        {
+            using var client = PinnedGatewayClient.Create(platform.Origin, identity);
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, platform.Origin.CanonicalOrigin + "/health/live");
+                using var response = await client.SendAsync(request);
+                return response.IsSuccessStatusCode;
+            }
+            catch (GatewayClientException) { return false; }
+        }
+        platform.Clock.Offset = TimeSpan.FromSeconds(-1.3);
+        Assert.True(await Live());
+        await Task.Delay(TimeSpan.FromSeconds(3));
+        Assert.False(serving.IsCompleted);
+        platform.Clock.Offset = TimeSpan.FromSeconds(-45);
+        Assert.False(await Live());
+        Assert.Equal(4, await serving.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Contains("authority.closed", first.ToString());
+
+        platform.Clock.Offset = TimeSpan.Zero;
+        using var second = new WatchingWriter("serving:");
+        var reopened = platform.Run("serve", second, cancel.Token);
+        await second.Seen.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(identity, platform.Owner!.Identity);
+        Assert.True(await Live());
+        cancel.Cancel();
+        Assert.Equal(130, await reopened);
+        Assert.Contains("Stopped and closed cleanly", second.ToString());
+    }
+
     [Fact]
     public async Task Help_validation_status_and_refusal_do_not_open_authority()
     {

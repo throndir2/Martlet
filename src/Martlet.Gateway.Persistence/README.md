@@ -220,9 +220,11 @@ records, resetting devices or restoring stale snapshots is recovery.
 
 Permanent paired records have no clock-based lifetime and no boot-reset gate.
 UTC high-water checks still prevent backward time from resurrecting pruned
-nonce windows. Correct the clock and reopen the **same store**; no re-pair is
-required. Certificate time limits and five-minute invitation budgets are
-independent of device trust.
+nonce windows: a step back of at most 30 seconds (routine NTP/VM time sync)
+holds the saved mark until the clock passes it, including when the store
+reopens; a larger one closes the authority. Correct the clock and reopen the
+**same store**; no re-pair is required. Certificate time limits and five-minute
+invitation budgets are independent of device trust.
 
 Retiring old keys retain UTC deadlines and bounded remaining overlap budgets.
 Within the same native Windows boot, elapsed QPC and UTC are both charged;

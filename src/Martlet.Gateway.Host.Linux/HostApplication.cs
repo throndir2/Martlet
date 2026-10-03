@@ -279,6 +279,7 @@ internal sealed class ControlSettingsStorage(LinuxControlDirectory directory) : 
 internal static class HostApplication
 {
     private static DurableGatewayHost? retainedOwner;
+    private static readonly TimeSpan AuthorityCheckInterval = TimeSpan.FromSeconds(2);
 
     /// <summary>Starts the command mailbox with a fresh agent token in agent.token (0600, service owner), which only the host
     /// computer itself can read: the Martlet app there presents it to take this host's commands. Without it the gateway
@@ -374,7 +375,17 @@ internal static class HostApplication
                 await owner.StartAsync(cancellation);
                 CheckApproval(directory, config, approval);
                 output.WriteLine("serving: approved gateway listener; empty worker registry; no model readiness claim.");
-                await Task.Delay(Timeout.InfiniteTimeSpan, cancellation);
+                // A closed authority refuses every connection for good; exit so Docker or systemd reopens the same state.
+                while (!owner.AuthorityClosed)
+                    await Task.Delay(AuthorityCheckInterval, cancellation);
+                owner.RecordActivity("ERROR", "This host's authorization closed (its clock moved back too far or its saved state " +
+                    "failed), so it refused every connection. The host service restarts to reopen it; pairings are kept.");
+                Report(output, "authority.closed: the authority closed while serving; exiting so the service restarts and reopens the same state.");
+                var closedOwner = owner;
+                owner = null;
+                try { await closedOwner.DisposeAsync(); }
+                catch (Exception) { retainedOwner = closedOwner; }
+                exit = 4;
             }
             else if (options.Command.StartsWith("owner-", StringComparison.Ordinal))
             {

@@ -109,7 +109,8 @@ internal sealed class AuthorityStore : IGatewayPersistence, IDisposable
             if (document is null || committed is null)
                 throw Error(GatewayPersistenceFailure.StoreMissing);
             using var validated = HostCertificate.Load(document.Certificate);
-            if (now < document.State.ObservedAt)
+            // Reopen within the same small step back the running store holds through; it resumes from the saved mark.
+            if (document.State.ObservedAt - now > GatewayCredentialStore.MaximumClockStepBack)
                 throw Error(GatewayPersistenceFailure.ClockUnavailable);
             // Staging has never crossed the prepared-transaction boundary; it cannot have authorized a result.
             if (directory.Exists("staging.bin"))

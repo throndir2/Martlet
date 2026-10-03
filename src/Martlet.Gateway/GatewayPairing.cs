@@ -80,6 +80,10 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
     public static readonly TimeSpan MaximumRotationOverlap = TimeSpan.FromMinutes(10);
     public const int MaximumRegistrations = 128;
     internal static readonly TimeSpan RequestClockSkew = TimeSpan.FromMinutes(2);
+    /// <summary>How far the wall clock may step back (Windows' NTP sync steps it back about a second; a WSL2 or Docker VM
+    /// follows its host) while the store holds its observed high-water mark instead of closing. Kept well below
+    /// <see cref="RequestClockSkew"/> so held time still admits correctly signed requests.</summary>
+    internal static readonly TimeSpan MaximumClockStepBack = TimeSpan.FromSeconds(30);
     internal const int MaximumNoncesPerCredential = 1024;
 
     private readonly object gate = new();
@@ -116,9 +120,11 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
         try
         {
             var now = ObserveTimeLocked(clock);
-            GatewayRules.Require(now >= checkpoint.ObservedAt &&
+            GatewayRules.Require(checkpoint.ObservedAt - now <= MaximumClockStepBack &&
                 (!sameBoot || checkpoint.Frequency == frequency && checkpoint.Timestamp <= lastTimestamp!.Value),
                 "auth.clock_invalid");
+            if (now < checkpoint.ObservedAt)
+                lastObservedTime = now = checkpoint.ObservedAt;
             var offlineTicks = (decimal)(now - checkpoint.ObservedAt).Ticks;
             if (sameBoot)
                 offlineTicks = Math.Max(offlineTicks, decimal.Ceiling(((decimal)lastTimestamp!.Value -
@@ -456,7 +462,7 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
         var currentFrequency = persistence is null ? 0 : source.TimestampFrequency;
         if (now.Offset != TimeSpan.Zero ||
             now <= DateTimeOffset.MinValue || now > DateTimeOffset.MaxValue - TimeSpan.FromDays(90) ||
-            lastObservedTime is { } previous && now < previous ||
+            lastObservedTime is { } previous && previous - now > MaximumClockStepBack ||
             persistence is not null && (currentFrequency <= 0 ||
                 lastTimestamp is { } previousTimestamp &&
                 (timestamp < previousTimestamp || frequency != currentFrequency)))
@@ -465,6 +471,9 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
             CloseLocked();
             throw new GatewayProtocolException("auth.clock_invalid");
         }
+        // A small step back (time sync) holds the high-water mark, so observed time never moves backwards.
+        if (lastObservedTime is { } highWater && now < highWater)
+            now = highWater;
         if (persistence is not null)
         {
             lastTimestamp = timestamp;
@@ -579,6 +588,17 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
             stopping = true;
     }
 
+    /// <summary>True once this authority closed (its clock stepped back too far, its storage failed, or it was closed):
+    /// it refuses every request until the same store is reopened.</summary>
+    internal bool Closed
+    {
+        get
+        {
+            lock (gate)
+                return closed || clockInvalid;
+        }
+    }
+
     bool IGatewayAdmissionStatus.AdmissionsOpen => AdmissionsOpen;
 
     internal bool AdmissionsOpen
@@ -591,7 +611,7 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
                 var now = clock.GetUtcNow();
                 if (now.Offset != TimeSpan.Zero || now <= DateTimeOffset.MinValue ||
                     now > DateTimeOffset.MaxValue - TimeSpan.FromDays(90) ||
-                    lastObservedTime is { } previous && now < previous)
+                    lastObservedTime is { } previous && previous - now > MaximumClockStepBack)
                     return false;
                 return persistence is null || clock.TimestampFrequency > 0 &&
                     clock.TimestampFrequency == frequency &&
