@@ -57,6 +57,12 @@
           "Martlet.Core": "[0.22.0, )"
         }
       },
+      "martlet.avatar.hosting": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Avatars": "[0.22.0, )"
+        }
+      },
       "martlet.avatars": {
         "type": "Project",
         "dependencies": {
@@ -90,7 +96,7 @@
       "martlet.echocancellation": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Audio": "[0.21.0, )",
+          "Martlet.Audio": "[0.22.0, )",
           "SoundFlow.Extensions.WebRtc.Apm": "[1.4.0, )"
         }
       },

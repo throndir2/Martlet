@@ -75,6 +75,53 @@ public static class LocalAvatarFiles
         return bytes;
     }
 
+    /// <summary>A model's own files, without the Live2D runtime: a VRM file under its file name, or every file of a Live2D
+    /// model's folder (the folder of its <c>.model3.json</c>) by its path inside the folder with forward slashes. Enforces the
+    /// renderer's limits; scripts, reparse points and anything but inert model assets are refused.</summary>
+    public static async Task<IReadOnlyList<AvatarAsset>> ReadModelAsync(AvatarRenderer renderer, string modelPath, CancellationToken token)
+    {
+        var assets = new List<AvatarAsset>();
+        var modelFile = Path.GetFileName(modelPath);
+        if (renderer == AvatarRenderer.Vrm)
+        {
+            ContractRules.Require(Path.GetExtension(modelPath).Equals(".vrm", StringComparison.OrdinalIgnoreCase),
+                "Select a local VRM1 .vrm model.");
+            assets.Add(new(modelFile, await ReadBoundedAsync(modelPath, 32 * 1024 * 1024, token), "application/octet-stream"));
+            return assets;
+        }
+        ContractRules.Require(modelFile.EndsWith(".model3.json", StringComparison.Ordinal), "Select a model3.json model.");
+        var root = Path.GetDirectoryName(modelPath)!;
+        var pending = new Queue<string>();
+        var directories = 0;
+        pending.Enqueue(root);
+        while (pending.TryDequeue(out var directory))
+        {
+            CheckAncestors(Path.Combine(directory, "_"));
+            foreach (var path in Directory.EnumerateFileSystemEntries(directory))
+            {
+                token.ThrowIfCancellationRequested();
+                var attributes = File.GetAttributes(path);
+                ContractRules.Require(!attributes.HasFlag(FileAttributes.ReparsePoint), "Model bundle contains a reparse point.");
+                if (attributes.HasFlag(FileAttributes.Directory))
+                {
+                    ContractRules.Require(++directories <= 128, "Model directory count exceeds its bound.");
+                    pending.Enqueue(path);
+                    continue;
+                }
+                var extension = Path.GetExtension(path).ToLowerInvariant();
+                ContractRules.Require(extension is ".json" or ".moc3" or ".png" or ".wav",
+                    "Model folder must contain only supported inert model assets, never scripts.");
+                ContractRules.Require(assets.Count < 128, "Model bundle exceeds its file limit.");
+                var name = Path.GetRelativePath(root, path).Replace('\\', '/');
+                ContractRules.Require(name.Length <= 240, "Model path exceeds its bound.");
+                assets.Add(new(name, await ReadBoundedAsync(path, extension == ".json" ? 1024 * 1024 : 16 * 1024 * 1024, token),
+                    extension == ".png" ? "image/png" : "application/octet-stream"));
+                ContractRules.Require(assets.Sum(a => (long)a.Bytes.Length) <= 64 * 1024 * 1024, "Model bundle exceeds its byte limit.");
+            }
+        }
+        return assets;
+    }
+
     public static async Task<AvatarAssetSnapshot> SnapshotAsync(AvatarProfile profile, CancellationToken token)
     {
         profile.Validate();
@@ -83,43 +130,13 @@ public static class LocalAvatarFiles
         var modelFile = Path.GetFileName(modelPath);
         if (profile.Renderer == AvatarRenderer.Vrm)
         {
-            ContractRules.Require(Path.GetExtension(modelPath).Equals(".vrm", StringComparison.OrdinalIgnoreCase),
-                "Select a local VRM1 .vrm model.");
-            assets.Add(new("model.vrm", await ReadBoundedAsync(modelPath, 32 * 1024 * 1024, token), "application/octet-stream"));
+            var model = await ReadModelAsync(AvatarRenderer.Vrm, modelPath, token);
+            assets.Add(model[0] with { Name = "model.vrm" });
             modelFile = "model.vrm";
         }
         else
         {
-            ContractRules.Require(modelFile.EndsWith(".model3.json", StringComparison.Ordinal), "Select a model3.json model.");
-            var root = Path.GetDirectoryName(modelPath)!;
-            var pending = new Queue<string>();
-            var directories = 0;
-            pending.Enqueue(root);
-            while (pending.TryDequeue(out var directory))
-            {
-                CheckAncestors(Path.Combine(directory, "_"));
-                foreach (var path in Directory.EnumerateFileSystemEntries(directory))
-                {
-                    token.ThrowIfCancellationRequested();
-                    var attributes = File.GetAttributes(path);
-                    ContractRules.Require(!attributes.HasFlag(FileAttributes.ReparsePoint), "Model bundle contains a reparse point.");
-                    if (attributes.HasFlag(FileAttributes.Directory))
-                    {
-                        ContractRules.Require(++directories <= 128, "Model directory count exceeds its bound.");
-                        pending.Enqueue(path);
-                        continue;
-                    }
-                    var extension = Path.GetExtension(path).ToLowerInvariant();
-                    ContractRules.Require(extension is ".json" or ".moc3" or ".png" or ".wav",
-                        "Model folder must contain only supported inert model assets, never scripts.");
-                    ContractRules.Require(assets.Count < 128, "Model bundle exceeds its file limit.");
-                    var name = Path.GetRelativePath(root, path).Replace('\\', '/');
-                    ContractRules.Require(name.Length <= 240, "Model path exceeds its bound.");
-                    assets.Add(new(name, await ReadBoundedAsync(path, extension == ".json" ? 1024 * 1024 : 16 * 1024 * 1024, token),
-                        extension == ".png" ? "image/png" : "application/octet-stream"));
-                    ContractRules.Require(assets.Sum(a => (long)a.Bytes.Length) <= 64 * 1024 * 1024, "Model bundle exceeds its byte limit.");
-                }
-            }
+            assets.AddRange(await ReadModelAsync(AvatarRenderer.Live2D, modelPath, token));
             var sdk = profile.SdkDirectory ?? BundledLive2D.SdkDirectory;
             foreach (var name in new[] { "core.js", "sdk.js" })
                 assets.Add(new(name, await ReadBoundedAsync(Path.Combine(sdk, name), 16 * 1024 * 1024, token),

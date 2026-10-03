@@ -34,6 +34,13 @@ if (args is ["voices"])
     Console.WriteLine(JsonSerializer.Serialize(voicesReport));
     return voicesOk ? 0 : 1;
 }
+// With "characters" it rehearses the shared character models and their pieces (CharacterRehearsal) and prints its report.
+if (args is ["characters"])
+{
+    var (charactersOk, charactersReport) = await Martlet.NodeLinkCheck.CharacterRehearsal.RunAsync(CancellationToken.None);
+    Console.WriteLine(JsonSerializer.Serialize(charactersReport));
+    return charactersOk ? 0 : 1;
+}
 var steps = new List<object>();
 var passed = true;
 void Step(string name, bool ok, string detail)

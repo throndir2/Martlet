@@ -8,5 +8,6 @@
     <ProjectReference Include="..\Martlet.Gateway.Ollama\Martlet.Gateway.Ollama.csproj" />
     <ProjectReference Include="..\Martlet.Gateway.F5\Martlet.Gateway.F5.csproj" />
     <ProjectReference Include="..\Martlet.Avatar.Audio2Face\Martlet.Avatar.Audio2Face.csproj" />
+    <ProjectReference Include="..\Martlet.Avatar.Hosting\Martlet.Avatar.Hosting.csproj" />
   </ItemGroup>
 </Project>

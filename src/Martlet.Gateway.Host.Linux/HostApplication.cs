@@ -133,6 +133,44 @@ internal sealed class ControlSpeakingVoiceStorage(LinuxControlDirectory director
     }
 }
 
+/// <summary>Keeps the gateway's copy of the character models the owner added in character-models.json and each live model's
+/// pieces in character-model-chunk-&lt;sha256&gt;.bin beside host.json (0600, service owner). Not part of the approved
+/// configuration.</summary>
+internal sealed class ControlCharacterModelStorage(LinuxControlDirectory directory) : IGatewayCharacterModelStorage
+{
+    private readonly object gate = new();
+
+    public byte[]? LoadLibrary()
+    {
+        lock (gate) return directory.Read(LinuxControlDirectory.CharacterModels, LinuxControlDirectory.MaximumCharacterModelsBytes);
+    }
+
+    public void SaveLibrary(byte[] bytes)
+    {
+        lock (gate) directory.WriteCharacterModels(bytes);
+    }
+
+    public bool HasChunk(string sha256)
+    {
+        lock (gate) return directory.HasCharacterModelChunk(sha256);
+    }
+
+    public byte[]? LoadChunk(string sha256)
+    {
+        lock (gate) return directory.Read(LinuxControlDirectory.CharacterModelChunk(sha256), LinuxControlDirectory.MaximumCharacterModelChunkBytes);
+    }
+
+    public void SaveChunk(string sha256, byte[] bytes)
+    {
+        lock (gate) directory.WriteCharacterModelChunk(sha256, bytes);
+    }
+
+    public void RemoveChunk(string sha256)
+    {
+        lock (gate) directory.RemoveCharacterModelChunk(sha256);
+    }
+}
+
 /// <summary>Keeps the shared Home Assistant connection in home-assistant.json beside host.json (0600, service owner).
 /// Contains the HA access token and is not part of the approved configuration.</summary>
 internal sealed class ControlHomeAssistantStorage(LinuxControlDirectory directory) : IGatewayHomeAssistantStorage
@@ -297,6 +335,7 @@ internal static class HostApplication
                     owner.AttachCluster(new ControlClusterStorage(directory));
                     owner.AttachVoices(new ControlVoiceStorage(directory));
                     owner.AttachSpeakingVoices(new ControlSpeakingVoiceStorage(directory));
+                    owner.AttachCharacterModels(new ControlCharacterModelStorage(directory));
                     owner.AttachHomeAssistant(new ControlHomeAssistantStorage(directory));
                     owner.AttachApiKeys(new ControlApiKeyStorage(directory));
                     owner.AttachNetwork(new ControlNetworkStorage(directory));

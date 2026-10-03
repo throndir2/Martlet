@@ -335,6 +335,44 @@ answers none. Nothing leaves loopback, the temporary folder is deleted and
 Windows Credential Manager is not touched; it does not cover the desktop window
 and its sync, the Linux host's files, a real engine, an older host or a real LAN.
 
+`character_models_selftest` (no arguments) rehearses the
+[shared character models](CLUSTER.md#the-shared-character-models) end to end
+with the production code: two real gateways on 127.0.0.1 (pinned TLS, in-memory
+`character-models.json` and pieces) and three simulated desktops that keep their
+character copies in a temporary folder and use the desktop's paired client and
+Martlet.Avatar.Hosting's import and reconcile engine. The fixtures are generated
+bytes in the Live2D folder and VRM file shapes (NOT real models; nothing is
+rendered). It runs `src\Martlet.NodeLinkCheck` (mode `characters`,
+`CharacterRehearsal.cs`) and returns `{exitCode, report}` like
+`network_selftest`. Its steps: adding a Live2D folder (a 7 MiB file in three
+pieces, a texture and a motion in subfolders) and a VRM keeps copies the
+renderer's own file reader reads exactly like the originals; the list and every
+3 MiB piece reach a host, each piece in one signed request; a new, empty desktop
+copies both characters byte for byte; a copy interrupted after three pieces
+continues with only the rest; a desktop passes the characters on to a host the
+first desktop never reached; removing a character deletes its pieces on both
+hosts and the other desktops' copies; a stale copy can't bring it back; a
+computer keeps the copy it shows until another is chosen; a host restart keeps
+the list and pieces; a wrong SHA-256, a piece no character has and a removed
+character's piece are refused; reading a missing piece answers none; a 17th
+character and a Live2D folder with a script are refused. Nothing leaves
+loopback, the temporary folder is deleted and Windows Credential Manager is not
+touched; it does not cover the desktop window and its 30-second sync, the Linux
+host's files, rendering a copied model or a real LAN.
+
+`character_models` reads the shared character models from a data directory
+(optional absolute `dataDirectory`, default the current user's): `state`
+(`none`, `loaded` or `unreadable` for `character-models.json`), `live`,
+`tombstones`, `totalBytes`, `revision`, and per live character its `key` (the
+first 16 hex digits of its ID, as in `CharacterModelState-<key>`), `renderer`
+(`live2d` or `vrm`), `files`, `pieces`, `bytes`, `addedBy`, `addedAt`,
+`updatedBy`, `ready` (this PC's copy is complete) and `shown` (`avatar.json`
+shows it); `copies` (folders in `character-models`), `incoming` (copies still
+arriving: key and pieces so far) and `showing` (`built-in`, `shared:<key>`,
+`unlisted-copy:<key>` for a copy removed elsewhere that this PC still shows, or
+`model-file-outside-list`). Character names and file paths are never returned.
+Read-only; it contacts nothing.
+
 `nearby_status` reads whether this PC lets Martlet on the owner's other
 computers [find it](ARCHITECTURE.md#finding-your-other-computers) (optional
 absolute `dataDirectory`, default the current user's): `share` is
@@ -946,6 +984,32 @@ measured from the top-left of the character's screen). `ui_select` and
 `SetupCharacterSpeechDisplay` reads back the saved position, or says an offset
 isn't a number from -4000 to 4000.
 
+Companion › Character's *Your characters* card lists the built-in character and
+every [shared character](CLUSTER.md#the-shared-character-models) in the order
+they joined. `CharacterModelsStatus` reads how many characters of the owner's
+own there are and what this PC shows ("1 character of your own. This PC shows
+one of your characters." or "... the built-in character.", never a name).
+`CharacterModelsShared` reads whether they are shared with the paired Martlet
+computers ("Characters shared with 2 of 2 computers at 7:15 PM.", characters
+still copying to this PC, hosts to update, or "No other Martlet computers are
+paired yet, so your characters stay on this PC."). Each row's detail line
+`CharacterModelState-<key>` (`builtin`, or the first 16 hex digits of the
+character's ID) returns its renderer, size, where and when it was added,
+"Copying to this PC..." while pieces are missing and "Shown on this PC." for the
+one shown, never its name. Its controls are `CharacterModelUse-<key>` (disabled
+while it is shown or still copying) and, unless shown, `CharacterModelRemove-<key>`
+(asks with `ConfirmationYes`/`ConfirmationNo` and removes it on every computer).
+`CharacterModelAdd` opens *Add a character* (`CharacterModelAddDialog`):
+`CharacterModelAddPath` (the `.model3.json` or `.vrm` full path),
+`CharacterModelAddName`, `CharacterModelAddOk` (adds, shares and shows it on this
+PC) and `CharacterModelAddCancel` (passive); `CharacterModelAddProblem` returns
+why it couldn't (never the typed name or path). Use, Remove and adding need
+`--allow-ui-effects`. In the character settings window (`OpenAvatar`), a model
+typed into `AvatarModelPath` (after `ui_select CharacterChoice` "My own model
+file") joins the shared list when it is shown or saved (`SaveAvatar`), and the
+saved profile then shows Martlet's copy. `character_models` reads the same list
+and copies headlessly.
+
 For voices, open `CompanionTab-Voice` (the Voices card shows unless the
 voice comes from a cloud provider). There are no built-in voices and no groups:
 one list, in the order voices joined it (a new list starts with the starter
@@ -1250,7 +1314,7 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `prompts_status`, `hearing_check` and `echo_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `prompts_status`, `hearing_check`, `echo_check` and `character_models` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
