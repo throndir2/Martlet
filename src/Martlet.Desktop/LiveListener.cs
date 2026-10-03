@@ -37,6 +37,9 @@ internal sealed class LiveListener(ListeningOptions options, Voiceprint? voicepr
     internal LiveConversationOperation? Utterance { get => Volatile.Read(ref utterance); set => Volatile.Write(ref utterance, value); }
     /// <summary>Someone is talking right now (longer than a cough or click).</summary>
     internal bool Hearing => Utterance is { Hearing: true };
+    /// <summary>The user has talked long enough to stop Martlet speaking: a sustained voice on the microphone, never a short
+    /// sound and never what this PC plays.</summary>
+    internal bool TalkingOver => Utterance is { TalkingOver: true };
     /// <summary>Utterances recorded and still being checked or transcribed.</summary>
     internal int Transcribing => Volatile.Read(ref transcribing);
     /// <summary>Not listening for a moment: Martlet is speaking, or other setup work owns the microphone.</summary>
@@ -50,6 +53,8 @@ internal sealed class LiveListener(ListeningOptions options, Voiceprint? voicepr
 
     internal void Post(HeardSpeech speech) => results.Enqueue(speech);
     internal bool TryTake([NotNullWhen(true)] out HeardSpeech? speech) => results.TryDequeue(out speech);
+    /// <summary>Something heard waits to be taken (it is posted before <see cref="Transcribing"/> drops).</summary>
+    internal bool HasResults => !results.IsEmpty;
     internal void BeginTranscribing() => Interlocked.Increment(ref transcribing);
     internal void EndTranscribing() => Interlocked.Decrement(ref transcribing);
     public override string ToString() => nameof(LiveListener);

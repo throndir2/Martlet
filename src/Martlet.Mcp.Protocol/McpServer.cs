@@ -298,8 +298,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
         }),
         Tool("prompts_status", "Read Companion > Prompts from a data directory's settings.json: every internal prompt Martlet sends " +
             "to the Thinking model (id, group, title, placeholders) and whether it uses the built-in text, is edited or is emptied " +
-            "(sent as nothing), with its character count. With id, also returns that one prompt's effective text (the saved edit or " +
-            "the built-in text) exactly as Martlet uses it. Read-only.", new
+            "(sent as nothing), with its character count and estimated tokens (Martlet's own request-size estimate, about a token " +
+            "per three UTF-8 bytes), plus the tokens of all prompts together. With id, also returns that one prompt's effective text " +
+            "(the saved edit or the built-in text) exactly as Martlet uses it. Read-only.", new
         {
             dataDirectory = new { type = "string" },
             id = new { type = "string", maxLength = 64 }
@@ -345,7 +346,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "canceller) with fixture devices on a simulated clock: no microphone or speaker is opened and nothing plays. A synthesized " +
             "Martlet voice plays on the fixture speakers and reaches the fixture microphone through a simulated room (delayMs, " +
             "default 60), with the user's synthesized voice alone and over it. Returns how much quieter Martlet's echo got, how much " +
-            "of the user's voice was kept and what Martlet's voice-activity detector heard, with and without echo reduction.", new
+            "of the user's voice was kept and what Martlet's voice-activity detector heard, with and without echo reduction, and " +
+            "talkOver: what the barge-in gate (TalkOverDetector with the capture's echo timeline) heard in each part: Martlet's own " +
+            "echo must never talk over it, and the user's voice over it must, only after the required second of voice.", new
         {
             dataDirectory = new { type = "string" },
             delayMs = new { type = "integer", minimum = 0, maximum = 300 }
@@ -355,7 +358,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "without starting: nothing is recorded), then a rehearsal of the production path (PcAudioCaptureFactory, " +
             "MicrophoneCapture, the capture normalizer, the voice-activity detector) with a fixture loopback on a simulated clock: a " +
             "synthesized video voice 0-3 s, a pause with no packets 3-6 s, the voice again 6-9 s. Returns whether the stream stayed " +
-            "continuous and the pause ended the first utterance. Reads no credentials and contacts nothing.", new
+            "continuous and the pause ended the first utterance, and yourVoice: the production matcher that leaves out your own voice " +
+            "when this PC plays it back, on fixed samples. Reads no credentials and contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -1344,15 +1348,21 @@ internal sealed class McpServer(DesktopAutomation desktop)
         };
         string Of(string prompt) => prompts?.Overrides.TryGetValue(prompt, out var text) != true ? "builtin"
             : string.IsNullOrWhiteSpace(text) ? "empty" : "edited";
-        var list = Martlet.Core.Settings.PromptCatalog.All.Select(p => new
+        var list = Martlet.Core.Settings.PromptCatalog.All.Select(p =>
         {
-            id = p.Id, group = p.Group, title = p.Title, placeholders = p.Placeholders, state = Of(p.Id),
-            characters = Martlet.Core.Settings.PromptSettings.Text(prompts, p.Id).Length
+            var text = Martlet.Core.Settings.PromptSettings.Text(prompts, p.Id);
+            return new
+            {
+                id = p.Id, group = p.Group, title = p.Title, placeholders = p.Placeholders, state = Of(p.Id),
+                characters = text.Length,
+                tokens = string.IsNullOrWhiteSpace(text) ? 0 : Martlet.Providers.BoundedTextInput.TextTokens(text)
+            };
         }).ToArray();
         return new
         {
             state, problem = loaded.Error?.Summary, total = list.Length,
-            edited = list.Count(p => p.state == "edited"), emptied = list.Count(p => p.state == "empty"), prompts = list,
+            edited = list.Count(p => p.state == "edited"), emptied = list.Count(p => p.state == "empty"),
+            tokens = list.Sum(p => p.tokens), prompts = list,
             prompt = id is null ? null : new { id, state = Of(id), text = Martlet.Core.Settings.PromptSettings.Text(prompts, id) }
         };
     }

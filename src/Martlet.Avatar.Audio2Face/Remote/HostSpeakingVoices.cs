@@ -45,7 +45,9 @@ public sealed partial class Audio2FaceHostConnection
         CancellationToken cancellationToken = default)
     {
         if (!SpeakingVoiceLibrary.IsSha256(sha256)) throw new ArgumentException("Invalid recording SHA-256.", nameof(sha256));
-        var body = JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, string> { ["audio_base64"] = Convert.ToBase64String(audio.Span) });
+        // Base64 as is: the default encoder escapes each '+' as \u002B and could push a long recording past the host's limit.
+        var body = JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, string> { ["audio_base64"] = Convert.ToBase64String(audio.Span) },
+            new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, pairing.Origin + SpeakingVoiceAudioPath + sha256)

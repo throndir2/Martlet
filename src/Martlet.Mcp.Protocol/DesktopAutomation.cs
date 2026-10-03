@@ -117,6 +117,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Listening › Speakers and echo: whether echo reduction is on and how the last listen went (or why it couldn't
         // run). The TalkReduceEcho check box saves the choice, so it needs --allow-ui-effects.
         "TalkReduceEchoStatus",
+        // Companion › Listening › How you talk: what talking over Martlet takes (a sustained voice on the microphone; never a
+        // short sound or what this PC plays). Fixed text.
+        "TalkBargeInAbout",
         // Companion › Listening › Watch along: whether Martlet also hears what this PC plays and whether its own voice is left
         // out (TalkHearPc saves the choice, so it needs --allow-ui-effects); and the talk window's line on it (hearing the PC
         // now, or why it can't). Never what was heard.
@@ -131,8 +134,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // model's limit, the host's default or Ollama's context length) and what Martlet knows of the model's own limit. Its
         // Check model limit button (RepliesCheckContext) asks the Thinking model's server, so it needs --allow-ui-effects.
         "RepliesContextStatus",
-        // Companion › Prompts: how many internal prompts are edited or emptied (counts only, never the prompt text).
-        "PromptsNow",
+        // Companion › Prompts: how many internal prompts are edited or emptied, and the estimated tokens of all prompts together
+        // as typed (counts only, never the prompt text).
+        "PromptsNow", "PromptsTokens",
         // Editors that save on their own (no Save button): whether every change is saved ("All changes saved.", "Saving...",
         // "Not saved yet: <why>"), in Personality (the Companion window), the Character window and Lorebooks; and the Character
         // window's character status ("Character is showing...", "Character hidden. Voice continues.").
@@ -215,7 +219,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// API keys ("ApiKeyRow-AbC..." reads "Home Assistant. See status and logs. Made on desktop-a 10/2/2026. ... ID AbCdEf.",
     /// never the key or its verifier); a host role's choices in its Add dialog ("HostInput-choice.A2F_ENGINE" reads "local";
     /// never its secret fields), the terms that follow a variant choice ("HostInputTerms-A2F_ENGINE") and each Companion › Prompts
-    /// prompt's state ("PromptState-reply_length" reads "Edited." or, while it saves, "Edited. Saving..."; never the prompt text);
+    /// prompt's state ("PromptState-reply_length" reads "Edited. About 82 tokens." or, while it saves, "Edited. About 82 tokens.
+    /// Saving..."; never the prompt text);
     /// and the Copy button on every read-only text box ("Copy-HostRunOutput" reads "Copy", or "Copied" for a few seconds after a
     /// click; never the text it copies).</summary>
     private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "VoiceEngine", "SpeakingHost-",

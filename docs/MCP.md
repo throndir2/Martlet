@@ -433,7 +433,11 @@ memory, a model that failed to load and answers 503 with its state and why, a
 service that stops mid-reply) gives the desktop `worker.failed` or
 `worker.unavailable` and the host's own log, read by the desktop as the
 Diagnostics page does, says why (the service's error code, stage and summary,
-its state and detail, or that its stream ended unfinished). Nothing leaves loopback, the temporary folder is deleted and
+its state and detail, or that its stream ended unfinished); and a reply with a
+pause (full-size frames of near-silent audio, whose base64 is full of `+`) is
+spoken whole and the voice keeps working afterwards: the host writes base64
+unescaped, so ordinary audio never exceeds the route's 16 KiB event limit
+(`stream.limit`), which would quarantine the voice until the host restarts. Nothing leaves loopback, the temporary folder is deleted and
 Windows Credential Manager is not touched; it does not cover the desktop window
 and its sync, the Linux host's files, a real engine, an older host or a real LAN.
 
@@ -710,13 +714,21 @@ and `sharedRevision`.
 user's): `state` (`none`, `loaded` or `unreadable` with `problem`),
 `total`, `edited` and `emptied` counts, and every internal prompt Martlet
 sends to the Thinking model (`id`, `group`, `title`, `placeholders`,
-`state` `builtin`, `edited` or `empty`, and `characters`). With an
+`state` `builtin`, `edited` or `empty`, `characters` and `tokens`), plus
+`tokens`, the estimate for all prompts together. Token counts are Martlet's
+own request-size estimate (`BoundedTextInput.TextTokens`: about a token per
+three UTF-8 bytes, no message overhead; 0 for an emptied prompt), not a
+provider's count, and cover each prompt as written, before placeholders are
+filled in. With an
 `id` it also returns `prompt` with that prompt's effective `text` (the
 saved edit or the built-in text), exactly what Martlet fills in and sends.
-On the page, `PromptsNow` reads how many prompts are edited or emptied and
-`PromptState-<id>` each prompt's state (*Built-in text.*, *Edited.*, *Empty:
-nothing is sent for this prompt.*, plus *Saving...* while an edit is still
-being saved); neither returns prompt text. `OpenPrompts` (Personality's *Edit
+On the page, `PromptsNow` reads how many prompts are edited or emptied,
+`PromptsTokens` the estimated tokens of all prompts together as typed
+(*All prompts together: about 3,456 tokens. ...*) and
+`PromptState-<id>` each prompt's state (*Built-in text. About 52 tokens.*,
+*Edited. About 52 tokens.*, *Empty: nothing is sent for this prompt.*, plus
+*Saving...* while an edit is still being saved); none returns prompt text.
+`OpenPrompts` (Personality's *Edit
 prompts*) only opens the page. There is no Save button: an edit saves a moment
 after typing stops (or at once when another page opens), into the newest saved
 settings, and `PromptsNow` then reads the new counts. The editors
@@ -864,10 +876,19 @@ while the speakers played, the user's voice included), and per part the levels
 `withoutDb`/`withDb` (dBFS), `martletOnly.reducedDb` and
 `firstSecondsReducedDb` (0-1.5 s, while the canceller learns the room),
 `userOnly.keptDb` and `bothTalking.userAloneDb`, plus `speechFrames*`: the
-20 ms frames Martlet's own voice-activity detector counted as speech. `ok` is
-true when the reducer was active, Martlet's echo got at least 20 dB quieter, the
-detector heard it without reduction but not with it, and it still heard the user
-alone (kept within 3 dB) and over Martlet. It contacts nothing.
+20 ms frames Martlet's own voice-activity detector counted as speech. Its
+`talkOver` runs the barge-in gate (`TalkOverDetector`, `requiredMs` 1000 and
+`gapMs` 500, with the capture's own `EchoTimeline`, `speakersRemovedDb` 10)
+over the cleaned recording the way always listening does, for `martletOnly`,
+`userOnly`, `shortSound` (the first 0.8 s of the user alone) and
+`bothTalking`: `userFrames` and `speakerFrames` (loud 20 ms frames that were
+a voice or the speakers' sound), `timeline` (`room`, `user`, `speakers`
+10 ms frames) and `talkedOver` with `afterMs`. `ok` is true when the reducer
+was active, Martlet's echo got at least 20 dB quieter, the detector heard it
+without reduction but not with it, it still heard the user alone (kept within
+3 dB) and over Martlet, and `talkOver.ok`: Martlet's echo and the short sound
+never talked over it, while the user over Martlet did, no sooner than
+`requiredMs`. It contacts nothing.
 
 `pc_audio_check` checks [hearing what this PC plays](CONVERSATION.md#hearing-what-this-pc-plays)
 (Companion › Listening › Watch along › **Hear what this PC plays**; optional
@@ -886,9 +907,15 @@ video paused 3-6 s with no packets at all (as a real loopback), the voice
 again 6-9 s, then nothing, 12 s in all. It returns `recordedSeconds` (12 when
 the gaps were filled), `segments` (`startS`, `endS`, `endedAtS`),
 `endedInPause` (the pause ended the first utterance, so always listening sends
-it), `resumed` and `pauseSpeechFrames`; `ok` is true when all hold and the
-fixture's Martlet-free source was used. It reads no credentials and contacts
-nothing.
+it), `resumed` and `pauseSpeechFrames`. `yourVoice` runs the production matcher
+(`PcEcho`) that leaves out your own voice when this PC plays it back: its
+`rule`, `share` (the share of the PC's words, in order, that must be yours),
+`ok` and `samples` (`scene`, `spoken`, `played`, `expected`, `leftOut`: your
+voice played back, including the two reported pairs, transcribed the same or
+differently or in part, is left out; a video playing while you talk or one you
+quote is kept). `ok` is true when all hold, every sample came out as expected
+and the fixture's Martlet-free source was used. It reads no credentials and
+contacts nothing.
 
 `logs_timeline` reads this PC's logs as the desktop's
 [Diagnostics page](DIAGNOSTICS.md#diagnostics-page-and-the-log-host) shows
@@ -1265,9 +1292,11 @@ then *on your desktop* or *hidden*), and `SetupCharacterNowProblem` appears when
 the character's last stop did not finish cleanly (pressing Show or Hide
 character retries; details go to the `desktop` log). Exiting never waits on the
 character: Settings' `ExitMartlet` (needs `--allow-ui-effects`) closes Martlet
-even then, and Windows ends the renderer with it. After a zoom, the `SetupCharacterView` status reports the overlay's
-size, its distance from the top of the screen, the camera zoom and where the
-top of the character's head sits relative to the overlay's top edge (it must
+even then, and Windows ends the renderer with it. After a zoom, the `SetupCharacterView` status reports the
+character frame's size (with, in parentheses, the overlay's full width: the
+frame plus the transparent room on each side the model can move into), its
+distance from the top of the screen, the camera zoom and where the
+top of the character's head sits relative to the frame's top edge (it must
 stay in view at every zoom). While the character shows, `SetupCharacterModel`
 describes what its model drives, for example *Model: 236 controls; 1 texture
 shown at 1/2 size to fit the graphics budget; blinks with ParamEyeLOpen,
@@ -1285,7 +1314,10 @@ records).
 The character overlay itself is drawn by Martlet's renderer child process
 (`Martlet.Avatar.RendererHost`); `ui_snapshot` includes its windows (the
 overlay is titled *Martlet character overlay*; another Martlet's renderer is
-never included). Its drag surface `MoveAvatar` supports UI Automation
+never included). With `layout`, its window bounds are twice the character
+frame's width, centered on the frame: the extra half-frame on each side is
+transparent room for the model's motion and may run past the screen's edge.
+Its drag surface `MoveAvatar` supports UI Automation
 expand/collapse, so `ui_click` on it opens (or closes again) the character's
 right-click menu with no flag; opened this way, the menu stays open until a
 choice or another `MoveAvatar` click. While it is open, snapshots list
@@ -1313,7 +1345,11 @@ needs `--allow-ui-effects`. With the character showing,
 to the overlay for a few seconds; `SetupCharacterSpeechDisplay` then says
 whether the overlay took it and where it put it (to the left or right of the
 character's head, above it, or in its fixed place, with the bubble's screen
-position and size). The bubble itself is drawn by the separate
+position and size), and whether the text as laid out on screen lies inside the
+bubble (*holding all its text*, or *but its text doesn't fit inside it*).
+Every bubble is sized to its whole text, including the first one after the
+bubble was hidden; very long speech widens it (up to 640 pixels) so it stays
+within half the screen's height. The bubble itself is drawn by the separate
 renderer process, so its text is not in snapshots.
 
 The same card sets where the bubble goes. `SetupCharacterBubblePlacement`
@@ -1605,7 +1641,9 @@ applies to an open talk window at once (`LivePtt` replaces `LiveMic`). With
 always listening, the same card has `TalkBargeIn` (*Let me interrupt Martlet by
 talking*, on by default; its `checkedState` is the saved choice, and
 `ui_toggle` on it needs `--allow-ui-effects` because it saves
-`talk-preferences.json`). Below it, the *Speakers and echo* card has
+`talk-preferences.json`) and `TalkBargeInAbout` (returned: what talking over
+Martlet takes, about a second of your voice on the microphone, never a short
+sound or what this PC plays; `echo_check`'s `talkOver` rehearses the gate itself). Below it, the *Speakers and echo* card has
 `TalkReduceEcho` (*Reduce echo from my speakers*, on by default; its
 `checkedState` is the saved choice and `ui_toggle` needs `--allow-ui-effects`)
 and `TalkReduceEchoStatus` (returned: *On. Martlet removes what this PC plays
@@ -1621,7 +1659,9 @@ voice can't be left out); `pc_audio_check` reads the same choice. With it on
 and always listening chosen, the talk window's `LivePcAudio` line (returned)
 says *Also hears what this PC plays once you start listening.*, *Also hearing
 what this PC plays (not Martlet's own voice).*, *Hearing this PC play
-something…* or why it can't hear the PC; what the PC played shows in
+something…* or why it can't hear the PC, followed by *This PC plays your voice
+back too; Martlet left out N line(s) of it.* once a line the PC played repeated
+what you said; what the PC played shows in
 `LiveHistory` as *Playing on this PC* bubbles. Pressing `LiveMic` with it on
 records what the PC plays, so leave it off (or don't start listening) when
 verifying on a desktop whose sound must not be captured. Each spoken reply writes a *Reply latency: first words

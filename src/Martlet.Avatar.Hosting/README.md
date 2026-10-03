@@ -135,6 +135,11 @@ ends it with Martlet.
 
 The character appears in a transparent, borderless, always-on-top desktop
 overlay, initially near the lower-right corner of the primary work area.
+The character is fitted into a portrait frame in the middle of the overlay; the
+overlay extends half that frame's width again on each side as transparent room
+the model can move into, so swinging tails, hair or arms aren't cut off at the
+frame's edges. That room may run past the screen's edge, and its transparent
+pixels don't take clicks.
 
 Drag the character to reposition the overlay, including onto another monitor.
 The mouse wheel over the character zooms: it first grows the overlay up to the

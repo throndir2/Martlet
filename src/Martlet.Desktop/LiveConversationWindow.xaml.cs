@@ -97,8 +97,9 @@ public partial class LiveConversationWindow : ThemedWindow
     private readonly List<HeardEntry> heardQueue = [];
     private List<HeardEntry>? answering;
     private int restarts;
+    // WhileYouTalked: a line the PC played that was heard while the microphone was still hearing or transcribing you.
     private sealed record HeardEntry(string Text, double? Confidence, HeardVoices? Voices, ChatMessage Bubble,
-        BoundedWaveAudio? Recording = null, bool Pc = false, long At = 0);
+        BoundedWaveAudio? Recording = null, bool Pc = false, long At = 0, bool WhileYouTalked = false);
     // Hearing what this PC plays (Companion › Listening › Hear what this PC plays): a second listener beside the microphone
     // while always listening runs. What it hears waits here, goes with the next thing you say, and on its own is offered to
     // Martlet at most every PcPace (or once the PC goes quiet), so a video never floods Thinking or interrupts you.
@@ -106,6 +107,12 @@ public partial class LiveConversationWindow : ThemedWindow
     private long pcRetryAt, pcHeardAt;
     private string? pcProblem;
     private readonly List<HeardEntry> playingQueue = [];
+    // Your own voice played back on this PC (PcEcho): what the microphone heard you say lately is kept here (for EchoWindow),
+    // and what the PC played while the microphone was still hearing or transcribing you waits in pcHeld (at most PcHoldWait),
+    // so a line that is only your voice played back is left out (pcEchoes counts them) rather than shown and answered twice.
+    private readonly List<(string Text, long At)> saidLately = [];
+    private readonly List<(HeardSpeech Speech, string Text, long At)> pcHeld = [];
+    private int pcEchoes;
     // Typed text waits here while an idle listen or a screen remark hands the app slot over.
     private string? pendingText;
     private ChatMessage? pendingMessage;
@@ -468,6 +475,7 @@ public partial class LiveConversationWindow : ThemedWindow
                 listening: microphone ? Listening(false) : null, seen: SeenNow());
             yielded = null;
             notice = null;
+            answeredAt = clock.GetTimestamp();
             pacer?.NoteConversation();
             Observe();
             return true;
@@ -545,6 +553,8 @@ public partial class LiveConversationWindow : ThemedWindow
         listenRetryAt = 0;
         StopPcListening(keepHeard);
         if (keepHeard) return;
+        saidLately.Clear();
+        pcEchoes = 0;
         foreach (var entry in heardQueue) entry.Bubble.AddNote("Not answered.");
         heardQueue.Clear();
     }
@@ -556,15 +566,24 @@ public partial class LiveConversationWindow : ThemedWindow
         pcListener = null;
         pcProblem = null;
         pcRetryAt = 0;
-        if (!keepHeard) playingQueue.Clear();
+        if (keepHeard) return;
+        playingQueue.Clear();
+        pcHeld.Clear();
     }
 
     private long After(TimeSpan delay) => clock.GetTimestamp() + (long)(delay.TotalSeconds * clock.TimestampFrequency);
 
-    // Takes what always listening made of each utterance: the words go into the history and wait for a reply.
+    // Takes what always listening made of each utterance: the words go into the history and wait for a reply. Your own words
+    // come first, so what the PC played back of them is recognized before it shows.
     private void Collect()
     {
+        CollectMic();
         CollectPc();
+        ReleasePc();
+    }
+
+    private void CollectMic()
+    {
         if (listener is not { } live) return;
         while (live.TryTake(out var speech)) Heard(speech);
         if (live.MicrophoneWorks) micProblem = null;
@@ -597,7 +616,8 @@ public partial class LiveConversationWindow : ThemedWindow
 
     /// <summary>What the PC played, heard and transcribed: marked as the PC's in the history (never as you), joined to the PC's
     /// last line while nothing else came between, and kept to go with the next reply. It never touches Voice ID, voice
-    /// recognition or memory.</summary>
+    /// recognition or memory. While the microphone is still on your words it waits (ReleasePc), and a line that repeats what
+    /// you just said is your own voice played back on this PC: it is left out.</summary>
     private void HeardPc(HeardSpeech speech)
     {
         if (speech.Status.AudioFailure is { } audio && speech.Status.Code.StartsWith("mic.", StringComparison.Ordinal))
@@ -608,13 +628,80 @@ public partial class LiveConversationWindow : ThemedWindow
         pcProblem = speech.Status.ProviderFailure is not null ? ListenOutcome(speech.Status, controller.Configuration) : null;
         if (speech.Text?.Trim() is not { Length: > 0 } text) return;
         var now = clock.GetTimestamp();
+        // In order: once one line waits for your words, the next waits behind it.
+        if (MicBusy || pcHeld.Count > 0) pcHeld.Add((speech, text, now));
+        else Played(speech, text, now, whileYouTalked: false);
+    }
+
+    private void Played(HeardSpeech speech, string text, long at, bool whileYouTalked)
+    {
+        if (RepeatsYou(text))
+        {
+            LeftOutYourVoice();
+            return;
+        }
         var bubble = Messages.Count > 0 && Messages[^1] is { IsPcAudio: true } last && last.Text.Length + text.Length < MaximumPcBubble
             ? last : Add(ChatRole.PcAudio, "", "Playing on this PC");
         bubble.Text = bubble.Text.Length == 0 ? text : bubble.Text + " " + text;
         // A very long stretch goes to Martlet by its end, so it always fits in one message.
         var kept = text.Length <= MaximumPcLine ? text : "…" + text[^(MaximumPcLine - 1)..].TrimStart();
-        playingQueue.Add(new(kept, speech.Confidence, null, bubble, Pc: true, At: now));
-        pcHeardAt = now;
+        playingQueue.Add(new(kept, speech.Confidence, null, bubble, Pc: true, At: at, WhileYouTalked: whileYouTalked));
+        pcHeardAt = at;
+    }
+
+    /// <summary>How long after the microphone heard you a line the PC plays may still be your own voice played back (both are
+    /// transcribed separately, so one can come a few seconds after the other).</summary>
+    internal static TimeSpan EchoWindow => TimeSpan.FromSeconds(15);
+    /// <summary>How long a line the PC played waits, at most, for the microphone to finish what it is hearing from you.</summary>
+    internal static TimeSpan PcHoldWait => TimeSpan.FromSeconds(8);
+
+    // The microphone is still on something that may turn out to be the words the PC just played back: you are talking, or what
+    // you said is being transcribed or waits to be taken.
+    private bool MicBusy => listener is { Hearing: true } or { Transcribing: > 0 } or { HasResults: true };
+
+    // What the PC played while you talked goes on once the microphone has your words (or it waited PcHoldWait): your own voice
+    // played back is left out, the rest shows as the PC's in the order it was heard. A line let go while you still talk is
+    // checked again when your words come (LeaveOutYourVoice).
+    private void ReleasePc()
+    {
+        if (pcHeld.Count == 0 || MicBusy && clock.GetElapsedTime(pcHeld[0].At) < PcHoldWait) return;
+        var busy = MicBusy;
+        foreach (var (speech, text, at) in pcHeld) Played(speech, text, at, busy);
+        pcHeld.Clear();
+    }
+
+    private bool RepeatsYou(string played)
+    {
+        saidLately.RemoveAll(said => clock.GetElapsedTime(said.At) > EchoWindow);
+        return saidLately.Count > 0 && PcEcho.Repeats(played, saidLately.Select(said => said.Text));
+    }
+
+    // Your words just came: what the PC played while you talked and that repeats them leaves the queue and the history.
+    private void LeaveOutYourVoice()
+    {
+        for (var i = playingQueue.Count - 1; i >= 0; i--)
+        {
+            var entry = playingQueue[i];
+            if (!entry.WhileYouTalked || !RepeatsYou(entry.Text)) continue;
+            playingQueue.RemoveAt(i);
+            var bubble = entry.Bubble;
+            var at = bubble.Text.LastIndexOf(entry.Text, StringComparison.Ordinal);
+            if (at >= 0)
+            {
+                var rest = string.Join(" ", (bubble.Text[..at] + " " + bubble.Text[(at + entry.Text.Length)..])
+                    .Split(' ', StringSplitOptions.RemoveEmptyEntries));
+                if (rest.Length == 0) Messages.Remove(bubble);
+                else bubble.Text = rest;
+            }
+            LeftOutYourVoice();
+        }
+    }
+
+    private void LeftOutYourVoice()
+    {
+        if (pcEchoes++ == 0)
+            ErrorLog.Info("Hear what this PC plays: this PC plays your own voice back (a voice changer's or headset app's " +
+                "\"hear myself\", Windows' \"Listen to this device\" or a call), so Martlet leaves your words out of what the PC played.");
     }
 
     // Why what the PC plays can't be heard right now (Martlet keeps trying).
@@ -646,10 +733,11 @@ public partial class LiveConversationWindow : ThemedWindow
             ? $"{voice.DisplayName}{(voice.Owner ? " (you)" : "")} (spoken)" : "You (spoken)");
         lastHeard = clock.GetTimestamp();
         heardQueue.Add(new(text, speech.Confidence, speech.Voices, bubble, preferences.HearVoice ? speech.Recording : null, At: lastHeard));
+        saidLately.Add((text, lastHeard));
+        LeaveOutYourVoice();
         notice = null;
         pacer?.NoteConversation();
     }
-
     // Why the microphone can't be opened right now, in words for always listening (which keeps trying it).
     private static string MicProblem(ErrorCode code) => code switch
     {
@@ -672,23 +760,25 @@ public partial class LiveConversationWindow : ThemedWindow
 
     // You kept talking before Martlet answered (you are talking now, or something new was heard since the reply was asked for):
     // that reply (or remark) stops, and once you pause, everything you said is answered together. A reply that already acted
-    // (Home Assistant or a tool) finishes; what you add is answered after it.
+    // (Home Assistant or a tool) finishes; what you add is answered after it. Once Martlet is speaking, only talking over it
+    // stops it: a sustained voice on the microphone (TalkOverDetector), never a short sound, a queued word or what this PC plays
+    // (the PC listener never interrupts anything).
     private void Interrupt()
     {
-        var talking = listener is { Hearing: true } or { Transcribing: > 0 };
+        var over = listener is { TalkingOver: true };
+        var talking = over || listener is { Hearing: true } or { Transcribing: > 0 };
         if (!talking && heardQueue.Count == 0) return;
         pacer?.NoteConversation();
         // Barge-in: you talked over a reply Martlet is already saying. It stops at once (the rest of the reply and its queued
         // audio are dropped) and what you say now is answered next, with the reply so far kept in context.
-        if (preferences.BargeIn && listener is { Hearing: true } && owned is { OwnershipReleased: false } speaking &&
-            !ReferenceEquals(yielded, speaking) &&
-            speaking.Turn?.Snapshot is { State: ConversationState.Playing } or { MayHavePlayed: true })
+        if (preferences.BargeIn && over && owned is { OwnershipReleased: false } speaking && !ReferenceEquals(yielded, speaking) &&
+            Speaking(speaking))
         {
             yielded = speaking;
             controller.Stop(speaking, "conversation.interrupted", keepContext: true);
         }
         if (owned is { OwnershipReleased: false, Spoken: true } reply && answering is { } batch && !ReferenceEquals(yielded, reply) &&
-            restarts < MaximumRestarts && Restartable(reply))
+            restarts < MaximumRestarts && Restartable(reply) && !Speaking(reply))
         {
             yielded = reply;
             restarts++;
@@ -696,12 +786,16 @@ public partial class LiveConversationWindow : ThemedWindow
             Requeue(batch);
             controller.Stop(reply, "conversation.continued", keepContext: true);
         }
-        if (talking && commentary is { OwnershipReleased: false } glance && !ReferenceEquals(yielded, glance))
+        if (talking && commentary is { OwnershipReleased: false } glance && !ReferenceEquals(yielded, glance) && (over || !Speaking(glance)))
         {
             yielded = glance;
             controller.Stop(glance, "commentary.interrupted", keepContext: true);
         }
     }
+
+    /// <summary>Martlet is saying it (or may already have said some of it).</summary>
+    private static bool Speaking(LiveConversationOperation operation) =>
+        operation.Turn?.Snapshot is { State: ConversationState.Playing } or { MayHavePlayed: true };
 
     private static bool Restartable(LiveConversationOperation reply) =>
         reply.HomeSummary is null && reply.Status.Code != "home.asking" &&
@@ -714,6 +808,8 @@ public partial class LiveConversationWindow : ThemedWindow
     private bool TryAnswer()
     {
         if (listener is { } live && (live.Hearing || live.Transcribing > 0)) return false;
+        // A line the PC played that may still be your own voice played back is told apart first.
+        if (pcHeld.Count > 0) return false;
         if (heardQueue.Count > 0)
         {
             if (Unfinished(heardQueue[^1].Text) && clock.GetElapsedTime(lastHeard) < UnfinishedPause) return false;
@@ -760,7 +856,7 @@ public partial class LiveConversationWindow : ThemedWindow
                     seen: SeenNow(), pcAudio: true, userWords: batch.Count > 0 ? string.Join(" ", batch.Select(entry => entry.Text)) : null);
             answering = everything;
             yielded = null;
-            if (batch.Count == 0) pcAnsweredAt = clock.GetTimestamp();
+            answeredAt = clock.GetTimestamp();
             Observe();
             return true;
         }
@@ -805,17 +901,19 @@ public partial class LiveConversationWindow : ThemedWindow
 
     private static string PcMessage(List<HeardEntry> heard) => PcMessage(heard.Select(entry => (entry.Text, entry.Pc)));
 
-    /// <summary>What the PC played, on its own, is offered to Martlet once PcPace passed since the last time (and since the
-    /// oldest line waited), or once the PC has gone quiet for PcLull; never while it is still mid-sentence.</summary>
+    /// <summary>What the PC played, on its own, is offered to Martlet once PcPace passed since Martlet last answered anything
+    /// (and since the oldest line waited), or once the PC has gone quiet for PcLull; never while it is still mid-sentence, and
+    /// never as a second reply right after Martlet answered you.</summary>
     private bool PcDue()
     {
         if (playingQueue.Count == 0 || pcListener is { Hearing: true } or { Transcribing: > 0 }) return false;
-        if (pcAnsweredAt != 0 && clock.GetElapsedTime(pcAnsweredAt) < PcPace) return false;
+        if (answeredAt != 0 && clock.GetElapsedTime(answeredAt) < PcPace) return false;
         return clock.GetElapsedTime(playingQueue[0].At) >= PcPace || clock.GetElapsedTime(pcHeardAt) >= PcLull;
     }
 
-    private long pcAnsweredAt;
-    /// <summary>At most how often what the PC played, on its own, goes to Martlet.</summary>
+    // When Martlet was last asked to answer: what you said or typed, or what the PC played.
+    private long answeredAt;
+    /// <summary>At most how often what the PC played, on its own, goes to Martlet, counted from its last answer.</summary>
     internal static TimeSpan PcPace => TimeSpan.FromSeconds(20);
     /// <summary>How long the PC must stay quiet before what it played goes to Martlet sooner than PcPace.</summary>
     internal static TimeSpan PcLull => TimeSpan.FromSeconds(4);
@@ -1387,7 +1485,7 @@ public partial class LiveConversationWindow : ThemedWindow
     }
 
     /// <summary>The line under the status while Hear what this PC plays is on: whether Martlet hears the PC now (and whether its
-    /// own voice is left out), or why it can't. Empty while it is off.</summary>
+    /// own voice is left out, and yours when this PC plays it back), or why it can't. Empty while it is off.</summary>
     private string PcAudioLine()
     {
         if (!preferences.HearPc) return "";
@@ -1401,7 +1499,9 @@ public partial class LiveConversationWindow : ThemedWindow
             false => " (paused while Martlet speaks)",
             null => ""
         };
-        return pcListener.Hearing ? $"Hearing this PC play something{own}…" : $"Also hearing what this PC plays{own}.";
+        var line = pcListener.Hearing ? $"Hearing this PC play something{own}…" : $"Also hearing what this PC plays{own}.";
+        return pcEchoes == 0 ? line
+            : line + $" This PC plays your voice back too; Martlet left out {pcEchoes} {(pcEchoes == 1 ? "line" : "lines")} of it.";
     }
 
     /// <summary>The context row: how many exchanges Martlet keeps in mind, about how many tokens they are and the context size

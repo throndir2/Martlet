@@ -121,7 +121,11 @@ comment; it needs a Thinking model that can see images. See
    `{silent}` are filled in when the prompt is sent, and an emptied prompt
    sends nothing (the glance messages can't be emptied). Martlet still parses
    the answers to Remembering and Learning names, so their line formats must
-   stay. Reload an open conversation to use saved prompts.
+   stay. Reload an open conversation to use saved prompts. Each prompt shows
+   its estimated tokens and the page shows all prompts together, by Martlet's
+   own request-size estimate (about a token per three UTF-8 bytes, the rule
+   that keeps requests within the model's limit), counted before placeholders
+   are filled in.
 
 STT receives only the selected microphone's completed bounded utterance. LLM
 receives the typed text or that final transcript plus the fixed active persona
@@ -290,12 +294,22 @@ voice pipeline never waits for a whole reply:
   stops for the rest of the reply while its text keeps streaming.
 - **Barge-in.** With always listening, *Let me interrupt Martlet by talking* in
   Companion › Listening (on by default) keeps the microphone open while
-  Martlet speaks. Talking over a reply stops it at once: the Thinking request
-  is canceled, the queued audio is dropped and what you said is answered next,
-  with the reply so far kept in context. Through speakers this relies on
-  [echo reduction](#echo-reduction) (on by default); if Martlet still stops
-  itself, use headphones or turn the choice off. With it off, listening holds
-  off while Martlet speaks, and Stop, Esc or the talk button still interrupt.
+  Martlet speaks. Talking over a reply stops it: the Thinking request is
+  canceled, the queued audio is dropped and what you said is answered next,
+  with the reply so far kept in context. Only the microphone can do this, and
+  only with a sustained voice (`TalkOverDetector`): at least a second of
+  voice-loud 20 ms frames, where a pause longer than half a second starts the
+  count again, so a cough, a click, a quick "mm-hmm" or a word from across the
+  room never stops Martlet. What this PC plays never does either: the PC
+  listener ([hearing what this PC plays](#hearing-what-this-pc-plays)) never
+  interrupts anything, and with [echo reduction](#echo-reduction) the
+  microphone's frames that were the speakers' sound don't count. Words that
+  were heard but didn't talk over Martlet wait and are answered after the
+  reply; restarting a reply because you kept talking applies only before
+  Martlet starts saying it. Through speakers this relies on echo reduction (on
+  by default); if Martlet still stops itself, use headphones or turn the
+  choice off. With it off, listening holds off while Martlet speaks, and Stop,
+  Esc or the talk button still interrupt.
 - **Measured.** Each spoken reply's snapshot reports `FirstTextAfter` and
   `FirstAudioAfter` (from the start of the reply), and the desktop log records
   them as *Reply latency: first words after … ms, first audio after … ms*.
@@ -322,6 +336,13 @@ video, music or game playing on the PC.
 - The room's echo model is kept in memory for a minute between listens, so it
   doesn't relearn the room every time Martlet listens again; pausing, muting,
   locking Windows or closing the conversation drops it.
+- Always listening also keeps, per capture, a record of which 10 ms frames
+  were the speakers' sound (`EchoTimeline`: the canceller took more than
+  10 dB away while the speakers played or their echo could still be heard).
+  Those frames never count toward talking over Martlet, and a sound that was
+  mostly the speakers' (Martlet's own voice or a video leaking past the
+  canceller) is let go like a cough rather than transcribed as you. Only
+  metadata is kept, never audio.
 - The speaker audio is used only to cancel the echo, on this PC, while the
   microphone listens. It is never saved, logged or sent. A high-pass filter
   removes rumble; noise suppression and gain control stay off so your voice
@@ -360,9 +381,25 @@ call or a game. Ticking it is the consent; push-to-talk never hears the PC.
   context, and on their own mostly to reply `[pass]`.
 - **When it goes to Thinking.** What the PC played goes with the next thing you
   say, in the order it was heard. On its own it is offered at most every 20
-  seconds (sooner once the PC has been quiet for 4 seconds), only while you
-  aren't talking, and it never interrupts or restarts a reply. At most the
-  newest 1,500 characters go with one message.
+  seconds after Martlet last answered (sooner once the PC has been quiet for 4
+  seconds, but never within 20 seconds of an answer, so it never makes a second
+  reply right after Martlet answered you), only while you aren't talking, and
+  it never interrupts or restarts a reply. At most the newest 1,500 characters
+  go with one message.
+- **Your own voice played back.** When this PC plays your microphone back (a
+  voice changer's or headset app's *hear myself* such as Voicemod or NVIDIA
+  Broadcast, Windows' *Listen to this device*, a call that echoes you), the PC
+  listener hears you too, so the same words came twice: as *You (spoken)* and
+  as *Playing on this PC*, and Martlet answered both. A line the PC played that
+  mostly repeats, in order, what the microphone heard you say (`PcEcho`: at
+  least 60% of its words; heard while you talked or were being transcribed, or
+  up to 15 seconds after) is your own voice: it is left out of the history and
+  never goes to Thinking, and your own line is always kept and answered. While
+  the microphone is still hearing or transcribing you, what the PC played
+  waits for your words (at most 8 seconds) so your voice played back never
+  shows; a line let go before your words came is still removed once they do.
+  The `LivePcAudio` line then adds *This PC plays your voice back too; Martlet
+  left out N line(s) of it.* and the desktop log says so once.
 - **Never remembered or acted on.** Memory recall and remembering, learning
   names, Home Assistant and MCP tools only ever read your own words: a message
   that is only what the PC played gets none of them, and earlier `[PC audio]`
@@ -370,12 +407,17 @@ call or a game. Ticking it is the consent; push-to-talk never hears the PC.
 - **Echo.** Through speakers the microphone also hears what the PC plays; keep
   [echo reduction](#echo-reduction) on (or use headphones) so it isn't taken
   for you. The Companion card's status says so when echo reduction is off.
+  Your microphone's lines are never dropped for matching what the PC played:
+  with both hearing the same words, the reports on this feature were all your
+  own voice played back, and leaving your words out would leave you
+  unanswered.
 
-The talk window's `LivePcAudio` line says whether Martlet hears the PC now and
-whether its own voice is left out, or why it can't. `pc_audio_check` in
+The talk window's `LivePcAudio` line says whether Martlet hears the PC now,
+whether its own voice is left out and how many lines of your own voice played
+back it left out, or why it can't. `pc_audio_check` in
 [Martlet MCP](MCP.md) reads the choice, asks Windows whether Martlet can be
-left out without recording anything, and rehearses the production path with a
-fixture loopback.
+left out without recording anything, rehearses the production path with a
+fixture loopback and runs the own-voice comparison on fixed samples.
 
 ## Voice tags
 

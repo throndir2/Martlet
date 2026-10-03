@@ -50,7 +50,11 @@ public sealed class AvatarOverlayTests
             Assert.True(input.Waiting);
             Assert.Null(browser.CoreWebView2);
             Assert.Empty(output.ToArray());
-            Assert.True(SystemParameters.WorkArea.Contains(new Rect(window.Left, window.Top, window.Width, window.Height)));
+            // The character's frame opens wholly on screen; the transparent room beside it (half the frame's width again on
+            // each side) may run past the screen's edge.
+            Assert.True(SystemParameters.WorkArea.Contains(window.Frame));
+            Assert.Equal(window.Frame.Width * 2, window.Width, 3);
+            Assert.Equal(window.Left + window.Width / 2, window.Frame.Left + window.Frame.Width / 2, 3);
             Assert.Same(viewport, viewport.InputHitTest(new Point(viewport.ActualWidth / 2, viewport.ActualHeight / 2)));
         }
         finally { window.Close(); }
