@@ -10,10 +10,10 @@ using Microsoft.Win32;
 
 namespace Martlet.Desktop;
 
-/// <summary>Personality: the personas Martlet can be and their response styles. There is no Save button: every change saves on
-/// its own (shortly after typing or moving a slider stops, at once when a persona is chosen, added, duplicated, deleted or
-/// imported) into the newest saved settings, so nothing synced in from your other computers in the meantime is overwritten.
-/// The footer says whether everything is saved, or why the latest change isn't.</summary>
+/// <summary>Personality: the personas Martlet can be, their response styles and where their voice pauses. There is no Save
+/// button: every change saves on its own (shortly after typing or moving a slider stops, at once when a persona is chosen,
+/// added, duplicated, deleted or imported) into the newest saved settings, so nothing synced in from your other computers in
+/// the meantime is overwritten. The footer says whether everything is saved, or why the latest change isn't.</summary>
 public partial class CompanionWindow : ThemedWindow
 {
     private readonly ICompanionSettingsService service;
@@ -186,6 +186,12 @@ public partial class CompanionWindow : ThemedWindow
         DistractedWeight.Value = persona?.Styles.Distracted ?? 0;
         TeasingWeight.Value = persona?.Styles.PlayfulTeasing ?? 0;
         RenderWeightValues();
+        var breaks = persona?.SpokenBreaks ?? SpeechBreaks.Default;
+        BreakCommas.IsChecked = breaks.Commas;
+        BreakPeriods.IsChecked = breaks.Periods;
+        BreakQuestions.IsChecked = breaks.QuestionMarks;
+        BreakExclamations.IsChecked = breaks.ExclamationMarks;
+        ShortEnding.SelectedIndex = breaks.ShortEndingWords;
         rendering = false;
     }
 
@@ -220,6 +226,26 @@ public partial class CompanionWindow : ThemedWindow
         RenderWeightValues();
         if (!rendering) Changed();
     }
+
+    private void Break_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!rendering && SaveStateText is not null) Changed();
+    }
+
+    private void ShortEnding_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (!rendering && SaveStateText is not null) Changed();
+    }
+
+    /// <summary>The stops the editor shows for the persona's voice.</summary>
+    private SpeechBreaks Breaks() => new()
+    {
+        Commas = BreakCommas.IsChecked == true,
+        Periods = BreakPeriods.IsChecked == true,
+        QuestionMarks = BreakQuestions.IsChecked == true,
+        ExclamationMarks = BreakExclamations.IsChecked == true,
+        ShortEndingWords = Math.Clamp(ShortEnding.SelectedIndex, 0, SpeechBreaks.MaximumShortEndingWords)
+    };
 
     private void Changed()
     {
@@ -260,7 +286,7 @@ public partial class CompanionWindow : ThemedWindow
         if (editingId is not { } id) return true;
         try
         {
-            companion = companion.Update(id, PersonaName.Text.Trim(), PersonaText.Text, Styles());
+            companion = companion.Update(id, PersonaName.Text.Trim(), PersonaText.Text, Styles(), Breaks());
             problem = null;
             return true;
         }

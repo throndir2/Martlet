@@ -462,7 +462,7 @@ internal sealed class LiveConversationConfiguration
                             new(Audio!.Output.EndpointId is null ? OutputPolicy.DefaultAtStart : OutputPolicy.FixedEndpoint, Audio.Output.EndpointId),
                             SpeechLimits) : null, ChatTarget(), HostTarget(), voice ? HostSpeechTarget() : null, silentReply,
                         voice ? WindowsVoiceTarget() : null, ReplyGeneration, tools, TextFallback(), imageOptional && image is not null,
-                        character?.Tags);
+                        character?.Tags, Persona?.SpokenBreaks ?? SpeechBreaks.Default);
                 }
             }
         }

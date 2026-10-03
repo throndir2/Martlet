@@ -78,13 +78,16 @@ public sealed record TextFallback(ChatCompletionsTarget Chat, TextModelSelection
 // along with the user's own words (their screen while vision is on), so a model that rejects it is asked again without it; a
 // screen glance's picture is the whole point of its request and is never dropped. CharacterTags are the desktop character's
 // tags (such as {blush}) the model was told about: they are removed from the words shown and spoken and reach the character
-// through the runtime's CharacterCueFeed, timed with the sentence they were written in.
+// through the runtime's CharacterCueFeed, timed with the sentence they were written in. SpeechBreaks are the persona's stops:
+// where the spoken reply may break between pieces and which short endings join the piece before them (the desktop always
+// passes the persona's, SpeechBreaks.Default included); null breaks at every sentence end and never joins pieces, so each
+// sentence goes to the voice as soon as it ends.
 public sealed class ConversationRequest(
     BoundedTextInput input, TextModelSelection model, TextGenerationLimits textLimits,
     ConversationLimits limits, SpeechOutput? speech = null, ChatCompletionsTarget? chat = null, HostTextTarget? host = null,
     HostSpeechTarget? hostSpeech = null, string? silentReply = null, WindowsVoiceTarget? windowsVoice = null,
     GenerationSettings? generation = null, IConversationToolHost? tools = null, TextFallback? fallback = null,
-    bool imageOptional = false, IReadOnlyList<string>? characterTags = null)
+    bool imageOptional = false, IReadOnlyList<string>? characterTags = null, SpeechBreaks? speechBreaks = null)
 {
     [JsonIgnore] public BoundedTextInput Input { get; } = input;
     public TextModelSelection Model { get; } = model;
@@ -101,6 +104,7 @@ public sealed class ConversationRequest(
     public TextFallback? Fallback { get; } = fallback;
     public bool ImageOptional { get; } = imageOptional;
     [JsonIgnore] public IReadOnlyList<string> CharacterTags { get; } = characterTags ?? [];
+    [JsonIgnore] public SpeechBreaks? SpeechBreaks { get; } = speechBreaks;
 
     internal void Validate()
     {
@@ -108,6 +112,7 @@ public sealed class ConversationRequest(
             "The silent reply word must be 1-16 ASCII letters.");
         ContractRules.Require(CharacterTags.Count <= 128 && CharacterTags.All(tag => tag is { Length: >= 3 and <= 64 } &&
             tag[0] == '{' && tag[^1] == '}' && !tag.Any(char.IsControl)), "Character tags must be at most 128 {tags} of 3-64 characters.");
+        SpeechBreaks?.Validate();
         ArgumentNullException.ThrowIfNull(Input);
         ArgumentNullException.ThrowIfNull(Model);
         ArgumentNullException.ThrowIfNull(TextLimits);

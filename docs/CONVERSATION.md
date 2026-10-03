@@ -343,6 +343,17 @@ voice pipeline never waits for a whole reply:
   reply is cut even earlier, at a comma, semicolon or dash once it is at least
   24 characters long, so audio starts before the first sentence is finished;
   later pieces stay whole sentences, which sound more natural.
+- **Where each persona's voice pauses.** Each piece is said on its own, so a
+  break in the wrong place sounds awkward ("I'm so glad you're here, | cutie.").
+  Personality › **Where the voice pauses** sets, per persona, which stops may
+  break a reply: commas, semicolons and dashes (first piece only), periods,
+  question marks and exclamation marks, all on by default. A stop that is off
+  doesn't break until the piece has grown long (100 characters); then any stop
+  does, so a piece never runs past what the voice can say at once. **Say a
+  short ending with the words before it** (up to two words by default; *Never*
+  turns it off) keeps an ending such as ", cutie." or ". Cutie!" with the piece
+  before it: each piece waits until a few more words have streamed in (or the
+  line or reply ends) before it goes to the voice.
 - **Overlapped synthesis.** While one sentence plays, the next is already being
   synthesized (one sentence ahead, never more), so there is no synthesis gap
   between sentences. A voice failure on the next sentence surfaces only when

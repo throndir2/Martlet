@@ -150,12 +150,16 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("voice_tags", "Show how a reply's voice tags are handled for a self-hosted voice engine (engine key, default the " +
             "default engine Chatterbox Turbo; \"none\" for a voice without tags such as OpenAI or Windows): the engine's tag catalog in " +
             "its own syntax with each tag's engine-independent cue, the Thinking prompt it adds (Companion > Prompts > Voice sounds " +
-            "and tones, from dataDirectory's settings when given), the pieces the real speech segmenter hands that engine, the text " +
-            "the chat and captions show and, with characterTags (the character's tags such as \"{blush}\"), the character cues found " +
-            "in each spoken piece (piece index, -1 for cues after the last words; tag; character offset). Synthesizes and contacts nothing.", new
+            "and tones, from dataDirectory's settings when given), the pieces the real speech segmenter hands that engine for a " +
+            "spoken reply, broken where the persona's speech breaks allow (Personality > Where the voice pauses: dataDirectory's " +
+            "persona by name, else the one Martlet uses, else the defaults; \"breaks\" overrides commas, periods, questionMarks, " +
+            "exclamationMarks and shortEndingWords), the text the chat and captions show and, with characterTags (the character's " +
+            "tags such as \"{blush}\"), the character cues found in each spoken piece (piece index, -1 for cues after the last " +
+            "words; tag; character offset). Synthesizes and contacts nothing.", new
         {
             text = new { type = "string" }, engine = new { type = "string" }, dataDirectory = new { type = "string" },
-            characterTags = new { type = "array", items = new { type = "string" } }
+            characterTags = new { type = "array", items = new { type = "string" } }, persona = new { type = "string" },
+            breaks = BreaksSchema()
         }, ["text"]),
         Tool("cluster_status", "Read shared \"who does what\" sync from a data directory: whether sync is on (on by default, " +
             "\"off\" only after the owner turned it off) and this PC's copy of the plan (each job's host, failover and which device " +
@@ -346,10 +350,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             id = new { type = "string", maxLength = 64 }
         }),
         Tool("character_status", "Read Companion > Personality and Character as saved in a data directory (they save on their own, " +
-            "with no Save button): the personas (name, whether Martlet uses it, response-style weights, instruction length; never the " +
-            "instructions), the character model (built-in character name or the own model's file type, never its path; renderer, " +
-            "lip-sync mode, show at startup, the lip-sync host's ID), whether the character's position is locked on this PC and " +
-            "where (placement) and the lorebooks (counts only). Read-only.", new
+            "with no Save button): the personas (name, whether Martlet uses it, response-style weights, speech breaks, instruction " +
+            "length; never the instructions), the character model (built-in character name or the own model's file type, never its " +
+            "path; renderer, lip-sync mode, show at startup, the lip-sync host's ID), whether the character's position is locked on " +
+            "this PC and where (placement) and the lorebooks (counts only). Read-only.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -374,13 +378,17 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "only the voice stopped and the captions showed the whole reply. With reasoningMs the fixture first streams hidden " +
             "reasoning and waits that long before the words; with voiceDelayMs the fixture voice takes that long to make each " +
             "piece. latency returns the reply's step timings and the desktop log's reply latency line for it, parsed back as " +
-            "latency_report reads it (with voiceFailure none, ok also needs every step and steps adding up to the total). " +
-            "Loopback only; reads no credentials.", new
+            "latency_report reads it (with voiceFailure none, ok also needs every step and steps adding up to the total). With " +
+            "reply, that text is streamed instead, a word at a time like a model's tokens; the reply is broken into pieces with " +
+            "speech breaks (dataDirectory's persona by name, else the one Martlet uses, else the defaults; breaks overrides stops) " +
+            "and voice.pieces lists exactly what the voice was asked to say. Loopback only; reads no credentials.", new
         {
             voiceFailure = new { type = "string", @enum = SpokenReplyCheck.Failures },
             failAt = new { type = "integer", minimum = 1, maximum = 4 },
             reasoningMs = new { type = "integer", minimum = 0, maximum = 5000 },
-            voiceDelayMs = new { type = "integer", minimum = 0, maximum = 5000 }
+            voiceDelayMs = new { type = "integer", minimum = 0, maximum = 5000 },
+            reply = new { type = "string", maxLength = 1024 }, dataDirectory = new { type = "string" }, persona = new { type = "string" },
+            breaks = BreaksSchema()
         }),
         Tool("smart_home_status", "Read Companion > Smart home's saved connection from a data directory: the Home Assistant address, " +
             "name and version, whether a token is saved (never the token), the control, locks and flexible-request settings, and whether " +
@@ -549,7 +557,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "hearing_check" => await HearingCheck.RunAsync(OptionalString(arguments, "modelId"), DataDirectory(arguments), cancellation),
                 "spoken_reply_check" => await SpokenReplyCheck.RunAsync(OptionalString(arguments, "voiceFailure"),
                     OptionalInt(arguments, "failAt"), cancellation, OptionalInt(arguments, "reasoningMs"),
-                    OptionalInt(arguments, "voiceDelayMs")),
+                    OptionalInt(arguments, "voiceDelayMs"), OptionalString(arguments, "reply"),
+                    SpeechBreaksFrom(arguments, SavedSettings(arguments), out var speaker), speaker?.Name),
                 "echo_check" => await EchoCheck.RunAsync(DataDirectory(arguments), OptionalInt(arguments, "delayMs"), cancellation),
                 "pc_audio_check" => await PcAudioCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "context_check" => await ContextCheck.RunAsync(DataDirectory(arguments), cancellation),
@@ -1048,24 +1057,78 @@ internal sealed class McpServer(DesktopAutomation desktop)
         var key = OptionalString(arguments, "engine");
         var engine = key is "none" ? null : key is null ? Martlet.Core.Settings.SpeechEngines.Default
             : Martlet.Core.Settings.SpeechEngines.ForKey(key) ?? throw new ArgumentException($"Unknown voice engine '{key}'.");
-        Martlet.Core.Settings.PromptSettings? prompts = null;
-        if (OptionalString(arguments, "dataDirectory") is { } directory && File.Exists(Path.Combine(directory, "settings.json")))
-            prompts = Martlet.Core.Settings.SettingsJson.Read(File.ReadAllBytes(Path.Combine(directory, "settings.json"))).Prompts;
+        var settings = SavedSettings(arguments);
+        var prompts = settings?.Prompts;
         var characterTags = arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty("characterTags", out var listed) &&
             listed.ValueKind == JsonValueKind.Array
             ? listed.EnumerateArray().Where(t => t.ValueKind == JsonValueKind.String).Select(t => t.GetString()!).Take(128).ToArray()
             : null;
-        var preview = Martlet.Conversation.SpeechTextPreview.For(text, engine, characterTags);
+        var breaks = SpeechBreaksFrom(arguments, settings, out var persona);
+        var preview = Martlet.Conversation.SpeechTextPreview.For(text, engine, characterTags, breaks);
         return new
         {
             engine = engine?.Key, name = engine?.Name, supportsTags = engine?.SupportsTags ?? false,
             tags = (engine?.Tags ?? []).Select(tag => tag.Text).ToArray(),
             cues = (engine?.Tags ?? []).Select(tag => new { tag = tag.Text, cue = tag.Cue }).ToArray(),
             prompt = Martlet.Core.Settings.VoiceTags.Instructions(engine, prompts),
+            persona = persona?.Name, breaks = Breaks(breaks),
             spoken = preview.Spoken, suppressedPieces = preview.SuppressedPieces, shown = preview.Shown,
             characterCues = preview.Cues.Select(c => new { piece = c.Piece, tag = c.Tag, offset = c.Offset }).ToArray()
         };
     }
+
+    /// <summary>A data directory's settings.json, or null without a dataDirectory or before anything was saved there.</summary>
+    private static Martlet.Core.Settings.AppSettings? SavedSettings(JsonElement arguments) =>
+        OptionalString(arguments, "dataDirectory") is { } directory && File.Exists(Path.Combine(directory, "settings.json"))
+            ? Martlet.Core.Settings.SettingsJson.Read(File.ReadAllBytes(Path.Combine(directory, "settings.json"))) : null;
+
+    /// <summary>The speech breaks a check uses (Personality › Where the voice pauses): the saved persona named "persona", else the
+    /// one Martlet uses, else the defaults; then any stop set in "breaks" on top.</summary>
+    private static Martlet.Core.Settings.SpeechBreaks SpeechBreaksFrom(JsonElement arguments,
+        Martlet.Core.Settings.AppSettings? settings, out Martlet.Core.Settings.PersonaProfile? persona)
+    {
+        persona = null;
+        var named = OptionalString(arguments, "persona");
+        if (settings?.Companion is { } companion)
+            persona = named is null ? companion.ActivePersona
+                : companion.Personas.FirstOrDefault(p => string.Equals(p.Name, named, StringComparison.OrdinalIgnoreCase))
+                    ?? throw new ArgumentException($"No persona named '{named}' is saved there.");
+        else if (named is not null)
+            throw new ArgumentException("'persona' needs a dataDirectory with saved settings.");
+        var breaks = persona?.SpokenBreaks ?? Martlet.Core.Settings.SpeechBreaks.Default;
+        if (arguments.ValueKind != JsonValueKind.Object || !arguments.TryGetProperty("breaks", out var set) ||
+            set.ValueKind != JsonValueKind.Object)
+            return breaks;
+        bool Stop(string stop, bool current) =>
+            set.TryGetProperty(stop, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False ? value.GetBoolean() : current;
+        breaks = breaks with
+        {
+            Commas = Stop("commas", breaks.Commas), Periods = Stop("periods", breaks.Periods),
+            QuestionMarks = Stop("questionMarks", breaks.QuestionMarks), ExclamationMarks = Stop("exclamationMarks", breaks.ExclamationMarks),
+            ShortEndingWords = set.TryGetProperty("shortEndingWords", out var words) && words.TryGetInt32(out var count) ? count : breaks.ShortEndingWords
+        };
+        try { breaks.Validate(); }
+        catch (Martlet.Core.Contracts.ContractException error) { throw new ArgumentException(error.Message); }
+        return breaks;
+    }
+
+    private static object BreaksSchema() => new
+    {
+        type = "object",
+        properties = new
+        {
+            commas = new { type = "boolean" }, periods = new { type = "boolean" }, questionMarks = new { type = "boolean" },
+            exclamationMarks = new { type = "boolean" },
+            shortEndingWords = new { type = "integer", minimum = 0, maximum = Martlet.Core.Settings.SpeechBreaks.MaximumShortEndingWords }
+        }
+    };
+
+    /// <summary>Speech breaks as MCP reports them (Personality › Where the voice pauses).</summary>
+    internal static object Breaks(Martlet.Core.Settings.SpeechBreaks breaks) => new
+    {
+        commas = breaks.Commas, periods = breaks.Periods, questionMarks = breaks.QuestionMarks,
+        exclamationMarks = breaks.ExclamationMarks, shortEndingWords = breaks.ShortEndingWords, isDefault = breaks.IsDefault
+    };
     /// <summary>The shared character models as the desktop keeps them in a data directory (Martlet.Avatar.Hosting's
     /// SharedCharacterModels): keys, renderers, sizes and whether each copy is complete here. Names and paths are the owner's
     /// and are never returned.</summary>
@@ -1552,7 +1615,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 {
                     helpful = p.Styles.Helpful, sarcastic = p.Styles.Sarcastic, silly = p.Styles.Silly,
                     distracted = p.Styles.Distracted, playfulTeasing = p.Styles.PlayfulTeasing
-                }
+                },
+                speechBreaks = Breaks(p.SpokenBreaks)
             }).ToArray() ?? []
         };
 
