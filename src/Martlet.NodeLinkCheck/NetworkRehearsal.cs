@@ -11,7 +11,8 @@ namespace Martlet.NodeLinkCheck;
 /// <summary>
 /// Rehearses the Martlet network end to end on this PC with the production code: three real gateways (Kestrel, pinned TLS,
 /// volatile credentials) on 127.0.0.1 and two simulated desktops that drive the desktop's own client and sync engine. It
-/// founds a network, binds hosts, joins a second desktop with a check number, pairs every member with every host by
+/// founds a network, binds hosts, joins a second desktop with a check number, lets in a desktop that paired with a member's own host
+/// service without a second Allow, pairs every member with every host by
 /// itself, checks that every host announces the Martlet release it runs, refuses forged keys and rosters, and removes a
 /// desktop and a host (revoking their access). Nothing leaves
 /// loopback, nothing is written to disk or the credential vault, and every key is thrown away at the end.
@@ -88,6 +89,29 @@ internal static class NetworkRehearsal
             var works = await b.CanUseAsync(h2.HostId, token);
             return (b.State.Roster?.Trusts(keyB.DeviceId, keyB.PublicKey) == true && b.Has(h2.HostId) && works,
                 $"B member: {b.State.Roster is not null}; paired: {string.Join(", ", b.HostIds)}; signed request to lab-host-2: {(works ? "accepted" : "refused")}. {string.Join(" ", result.Events)}");
+        });
+        await Run("A host PC (A, whose own host service is lab-host-2) lets in D, paired with that host service, with no second Allow; " +
+            "E, asking through lab-host-1, still waits for one", async () =>
+        {
+            using var keyD = NetworkKey.Create("lab-desktop-d");
+            using var keyE = NetworkKey.Create("lab-desktop-e");
+            var d = new LabDesktop(keyD, "LAB-D");
+            var e = new LabDesktop(keyE, "LAB-E");
+            await d.PairByCodeAsync(h2, token);
+            await e.PairByCodeAsync(h1, token);
+            await d.SyncAsync(token);
+            await e.SyncAsync(token);
+            var seen = await a.SyncAsync(token);
+            var let = a.ApproveThrough(seen.Joins, [h2.HostId]);
+            await a.SyncAsync(token);
+            var joined = await d.SyncAsync(token);
+            await e.SyncAsync(token);
+            var works = await d.CanUseAsync(h1.HostId, token);
+            var waiting = (await a.SyncAsync(token)).Joins.Select(j => j.DeviceId).ToArray();
+            return (let.Count == 1 && let[0].DeviceId == keyD.DeviceId && d.State.Roster?.Trusts(keyD.DeviceId, keyD.PublicKey) == true && works &&
+                    e.State.Roster is null && e.State.Waiting is not null && waiting.Contains(keyE.DeviceId) && !waiting.Contains(keyD.DeviceId),
+                $"let in without asking: {string.Join(", ", let.Select(j => $"{j.DeviceId} (through {j.HostId})"))}; D member: {d.State.Roster is not null}, " +
+                $"paired by itself with lab-host-1: {(works ? "yes" : "no")}; still waiting for an Allow: {string.Join(", ", waiting)}. {string.Join(" ", joined.Events)}");
         });
         await Run("Every host announces the Martlet release it runs, so a computer that knew an older one takes the update and stops asking for it", async () =>
         {
@@ -194,7 +218,7 @@ internal static class NetworkRehearsal
             passed = steps.Count(s => s.Ok),
             total = steps.Count,
             seconds = Math.Round((DateTimeOffset.UtcNow - started).TotalSeconds, 1),
-            scope = "Three real gateways on 127.0.0.1 (Kestrel, pinned TLS, volatile credentials), two simulated desktops " +
+            scope = "Three real gateways on 127.0.0.1 (Kestrel, pinned TLS, volatile credentials), simulated desktops " +
                 "using the desktop's network client and sync engine, and a simulated host PC that only watches. Not covered: the " +
                 "desktop window, Windows Credential Manager, network.json on a Linux host, martlet-host, SSH and a real LAN.",
             steps = steps.Select(s => new { step = s.Name, ok = s.Ok, detail = s.Detail })
@@ -244,6 +268,14 @@ internal static class NetworkRehearsal
                 pairing => new Audio2FaceHostConnection(pairing, pairings[pairing.HostId].Secret), token);
 
         internal void Approve(HostJoinRequest join) => State = engine.Approve(State, join);
+
+        /// <summary>As a member PC lets in computers that paired with its own host service.</summary>
+        internal IReadOnlyList<HostJoinRequest> ApproveThrough(IReadOnlyList<HostJoinRequest> joins, IReadOnlyCollection<string> own)
+        {
+            var (state, approved) = engine.ApproveThrough(State, joins, own);
+            State = state;
+            return approved;
+        }
         internal void Remove(string kind, string id) => State = engine.Remove(State, kind, id);
 
         internal async Task<HostNetworkView> MergeAsync(string hostId, NetworkRoster roster, CancellationToken token)

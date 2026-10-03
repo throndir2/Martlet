@@ -50,7 +50,7 @@ public partial class MainWindow
         {
             var add = node.Kind == NodeKind.Add;
             DetailContent.Children.Add(DetailSection(add ? "What a host does" : "What it does",
-                add || rows.All(r => r.Component == DeviceComponent.Host) ? null
+                add || rows.All(r => r.Component is DeviceComponent.Host or DeviceComponent.Member) ? null
                 : node.Kind == NodeKind.Missing ? "Not set up yet." : "Change these jobs here."));
             foreach (var role in rows)
             {
@@ -168,6 +168,7 @@ public partial class MainWindow
 
     private static int ComponentRank(string? component) => component switch
     {
+        DeviceComponent.Member => -1,
         "job:Llm" => 0,
         "job:Stt" => 1,
         "job:Tts" => 2,
@@ -189,6 +190,7 @@ public partial class MainWindow
         DeviceComponent.Character => "\uE77B",
         DeviceComponent.Audio => "\uE7F6",
         DeviceComponent.Offer => NetworkMap.AddGlyph,
+        DeviceComponent.Member => NetworkMap.ThisPcGlyph,
         _ => NetworkMap.ComputerGlyph
     };
 
@@ -220,8 +222,9 @@ public partial class MainWindow
         text.Children.Add(title);
         var detail = new TextBlock
         {
-            // This PC's own Audio2Face service says whether it is running once Martlet has checked it.
-            Text = lipSync && node.Kind == NodeKind.ThisPc && NetworkMap.LipSync(homeAvatar) == LipSyncHandler.ThisPc && ownLipSyncAnswers is not null
+            // This PC's own Audio2Face service says whether it is running once Martlet has checked it (a host PC's lip-sync row
+            // is the one its host service does for your companion PCs).
+            Text = lipSync && companion && node.Kind == NodeKind.ThisPc && NetworkMap.LipSync(homeAvatar) == LipSyncHandler.ThisPc && ownLipSyncAnswers is not null
                 ? OwnLipSyncState() : role.Detail,
             Margin = new Thickness(0, 2, 0, 0)
         };

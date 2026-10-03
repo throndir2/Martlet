@@ -80,7 +80,12 @@ A PC set up as a host (*Use as a Martlet host*) uses no jobs, so it only takes
 steps 2, 3 and 7: it receives the plan (so it knows the
 [log host](DIAGNOSTICS.md#diagnostics-page-and-the-log-host) and shows who does
 what) and passes on its own changes, such as choosing the log host on its
-Diagnostics page. It never records, fails over or follows a job. Before this, a
+Diagnostics page. It never records, fails over or follows a job. Its Devices
+map draws each job where the plan puts it for your companion PCs (on the host
+that does it, on the cloud service of the shared route, or on the companion
+PCs for a route that runs on each of them), so it shows the same picture as
+your main PC rather than the Setup choice it kept from before it became a host.
+Before this, a
 host PC skipped the sync entirely and never learned the log host chosen
 elsewhere.
 
