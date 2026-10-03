@@ -161,55 +161,80 @@ invalidation, and preview separation. It opens no network or audio device.
 
 ## Desktop voices and playback
 
-Martlet includes fourteen reference voices that are free to use and share
-(`Martlet.F5.F5BundledVoices`, clips in `src\Martlet.F5\BundledVoices`). The
-four **cute voices** come first (`Cute`): two LibriVox readers voicing Anne
-Shirley, the excitable young heroine of Anne of Green Gables, in Chapter II:
-WoollyBee (CC0) and Annie Coleman Rothenberg (public domain), each as read
-("Bee (cute, bubbly)", "Annie (cute, chatty)") and with pitch raised 1.33x and
-formants 1.12x by Praat's PSOLA "Change gender" ("Bee (cute anime girl)",
-"Annie (cute anime girl)"). Locally on F5 v1 Base (3 sentences, 2 seeds each)
-they spoke at a median 365, 341, 336 and 265 Hz respectively against LJ's 217 Hz,
-with every word recognized. Then come LJ
-Speech (public domain), Cori Samuel's and Helen Taylor's LibriVox readings
-(public domain) and seven CMU ARCTIC speakers (slt, clb, bdl, rms, awb, jmk, ksp;
-free for any use with the notice kept). `BundledVoices\NOTICES.txt` lists each
-source file with its SHA-256, transcript and the marked modifications, and
-`scripts\Build-F5BundledVoices.py` rebuilds the clips from the pinned sources
-(reproducibly; the anime lift needs praat-parselmouth and seeds Praat's random
-generator). Each clip is 6.5-11 seconds of speech with its exact transcript; an
-embedded clip is verified against its SHA-256 before use. The default voice is
-cute and female: `F5BundledVoices.Default` is the first included voice marked
-`Cute` and `Female` (Annie, cute anime girl). Owners who already chose a voice
-keep it.
-When Speaking is first handed to an F5 host, Desktop uses the voice already
-chosen for that destination, otherwise that default, with no picker. An included
-voice is snapshotted with the `PublishedSample` rights basis when first used.
+There are no built-in voices. A new voice list starts with seven **starter
+voices** that are free to use and share (`Martlet.F5.F5BundledVoices`, clips in
+`src\Martlet.F5\BundledVoices`); once in the list they are ordinary voices the
+owner can use, share and remove like any other. The four **cute voices** come
+first (`Cute`): two LibriVox readers voicing Anne Shirley, the excitable young
+heroine of Anne of Green Gables, in Chapter II: WoollyBee (CC0) and Annie
+Coleman Rothenberg (public domain), each as read ("Bee (cute, bubbly)", "Annie
+(cute, chatty)") and with pitch raised 1.33x and formants 1.12x by Praat's PSOLA
+"Change gender" ("Bee (cute anime girl)", "Annie (cute anime girl)"). Locally on
+F5 v1 Base (3 sentences, 2 seeds each) they spoke at a median 365, 341, 336 and
+265 Hz respectively against LJ's 217 Hz, with every word recognized. Then come a
+select few others: LJ Speech (public domain, female narrator) and two CMU ARCTIC
+speakers (slt, US female; bdl, US male; free for any use with the notice kept).
+Earlier versions offered seven more (two LibriVox narrators and five more CMU
+ARCTIC speakers); a list that already holds one keeps it as an ordinary voice.
+`BundledVoices\NOTICES.txt` lists each source file with its SHA-256, transcript
+and the marked modifications, and `scripts\Build-F5BundledVoices.py` rebuilds
+the clips from the pinned sources (reproducibly; the anime lift needs
+praat-parselmouth and seeds Praat's random generator). Each clip is 6.5-11
+seconds of speech with its exact transcript; an embedded clip is verified
+against its SHA-256 before use. The default voice is cute and female:
+`F5BundledVoices.Default` is the first starter voice marked `Cute` and `Female`
+(Annie, cute anime girl). Owners who already chose a voice keep it.
+When Speaking is first handed to a host, Desktop uses the voice chosen on all
+computers, else the one applied here, else the first voice in the list the
+engine can clone, with no picker. Starter recordings are snapshotted with the
+`PublishedSample` rights basis when the list is first saved.
+
+### One voice list on every computer
+
+The list (`Martlet.Core.Voices.SpeakingVoiceLibrary`, `speaking-voices.json` in
+the data directory) names every voice by its reference revision (the SHA-256 of
+the recording's SHA-256 followed by the transcript's), so the same recording and
+words are the same voice everywhere. Each voice and the voice chosen on all
+computers is a last-writer-wins entry with hybrid revisions, like the
+[cluster plan](CLUSTER.md#the-shared-speaking-voices); starter entries are
+written at revision 1 by `martlet`, so every computer writes the same ones and
+removing one anywhere wins everywhere. Each desktop's F5 reference store keeps its
+copy of every recording (`Martlet.F5.F5SharedVoices` copies missing ones in,
+deletes removed ones and adds recordings only the store had, such as voices
+added before sharing). Every paired host keeps the list and every recording, so
+a speaking request names its recording by SHA-256 and carries only the
+transcript; the recording travels once per host, not with every reply. Nothing
+is written until the owner first uses, adds or removes a voice, or the desktop
+shares voices with a paired host.
 
 Earlier versions bundled F5-TTS's English example clip (`basic_ref_en.wav`), a
 male voice, and started F5 with it. Its transcript matches a line from a 2014
 celebrity-narrated campaign film and upstream does not identify the speaker, so
-it is no longer included. A copy already in a voice list is shown as retired and
-is never chosen automatically. When Desktop loads settings and the speaking
-route still records it, Desktop applies the default voice and saves it on the
-route (consent carried over as for **Use**); without an F5 speaking route, a
-voice list whose applied voice is the retired clip applies the default instead.
-The owner can then remove the retired copy.
+it is no longer included. It never joins the shared list and is never chosen
+automatically. When Desktop loads settings and the speaking route still records
+it, Desktop applies the default voice (as above) and saves it on the route
+(consent carried over as for **Use**); without an F5 speaking route, a store
+whose applied voice is the retired clip applies the default instead. It then
+leaves the list.
 
-**Companion > Voice > Voices** is the voice library: the included voices (under
-**Cute voices**, then **More included voices**), then
-every stored voice of the owner's, each with **Play** (the stored copy or the
-included clip, locally), **Use** and **Remove**, and **Add a voice...**
+**Companion > Voice > Voices** is the voice list: every voice in the order it
+joined (the starter voices first), each with **Play** (this PC's copy or the
+starter clip, locally), **Use** and **Remove**, and **Add a voice...**
 (recording, name, exact transcript, whose voice and the rights confirmation).
-**Use** applies the voice in the store and,
-when F5 speaks, records it on the speaking route with a refreshed selection, so
-the next conversation speaks with it. The speech client reads the exact
-preset/revision the route records. The voice in use cannot be removed. The
-worker policy is unchanged: Desktop sends an explicit reference with every
+**Use** applies the voice in the store, makes it the voice chosen on all
+computers and, when a computer speaks, records it on the speaking route with a
+refreshed selection, so the next conversation speaks with it; other desktops
+follow the choice when they next share voices. The speech client reads the
+exact preset/revision the route records. The voice in use (or chosen on all
+computers) cannot be removed; any other can, including starter voices, and is
+removed on every computer. A voice whose recording is still being copied to
+this PC shows *Copying to this PC...* with **Use** off. The worker policy is
+unchanged: the host's gateway hands its engine an explicit reference with every
 request, and the worker never chooses a voice or keeps it. The same voice list
-serves [XTTS-v2](XTTS_VOICE.md), [GPT-SoVITS](GPT_SOVITS_VOICE.md) and [Dia](DIA_VOICE.md)
-(Companion > Voice > Voice engine), whose routes use this reference contract;
-GPT-SoVITS adds the recording's language and accepts only 3-10 second recordings.
+serves [Chatterbox Turbo](CHATTERBOX_VOICE.md), [XTTS-v2](XTTS_VOICE.md),
+[GPT-SoVITS](GPT_SOVITS_VOICE.md) and [Dia](DIA_VOICE.md) (Companion > Voice >
+Voice engine), whose routes use this reference contract; GPT-SoVITS adds the
+recording's language and accepts only 3-10 second recordings.
 
 ## Gates still not run
 

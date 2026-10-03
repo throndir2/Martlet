@@ -85,13 +85,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
-        Tool("f5_voices", "List the reference voices Martlet includes for F5 (key, name, female, cute, licence, transcript, format; " +
-            "each clip is checked against its SHA-256 and F5's reference rules) and the default voice; from a data directory's F5 voice " +
-            "list, which included voices were added, how many of the owner's own voices there are and which voice is applied; " +
-            "which voice the speaking route uses and on which self-hosted engine, host and model; and the voice engines (Chatterbox " +
+        Tool("f5_voices", "List Martlet's starter voices (key, name, female, cute, licence, transcript, format; each clip is checked " +
+            "against its SHA-256 and F5's reference rules; a new voice list starts with them, after which they are ordinary voices) and " +
+            "the default voice; from a data directory, the shared speaking-voice list (speaking-voices.json: live voices, which starter " +
+            "voices are in it or removed, how many of the owner's own, tombstones and the voice chosen on all computers), this PC's " +
+            "recordings (the F5 voice store: which starter voices, how many own and which is applied); which voice the speaking route " +
+            "uses and on which self-hosted engine, host and model; and the voice engines (Chatterbox " +
             "Turbo, the default; F5-TTS; XTTS-v2; GPT-SoVITS; Dia: host role, gateway route, model, weights licence, GPU memory, reference " +
-            "length bounds and tag catalog; each included voice lists the engines that can clone it and its language) with the one chosen on this desktop " +
-            "(never own voices' names or audio). Plays nothing and contacts nothing.", new
+            "length bounds and tag catalog; each starter voice lists the engines that can clone it and its language) with the one chosen on this desktop " +
+            "(never own voices' names, transcripts or audio). Plays nothing and contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -150,6 +152,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "Checks scopes (read, voice, manage), refusals (no key, wrong key, endpoints keys may never use), sync to a second host and " +
             "a restart, last-used reports, revocation mid-reply, stale copies and expiry. Loopback only; writes nothing to disk or the " +
             "credential vault.", new { }),
+        Tool("speaking_voices_selftest", "Rehearse the shared speaking voices end to end with the production code: two real gateways on " +
+            "127.0.0.1 (pinned TLS, the real reference-voice relay route over a fixture voice service, NOT AI, with in-memory " +
+            "speaking-voices.json and recordings) and two simulated desktops with real F5 voice stores in a temporary folder, using the " +
+            "desktop's paired client and Martlet.F5's reconcile engine. Checks the starter voices, sharing the list and recordings, " +
+            "speaking by recording SHA-256 alone, the one-time fallback that sends a recording a host lacks, a new desktop taking every " +
+            "voice from a host, the shared choice, removal everywhere (host and desktop copies deleted), stale copies, a host restart and " +
+            "upload checks. Loopback only; the temporary folder is deleted and the credential vault is not touched.", new { }),
         Tool("audio2face_check", "Animate a short synthesized speech-like test signal (generated here; no microphone, nothing played) " +
             "with an Audio2Face service on a numeric loopback endpoint (default http://127.0.0.1:52000) through Martlet's production " +
             "Audio2Face client, the one the host gateway's lip-sync relay uses, so either Audio2Face engine (the local open-source SDK " +
@@ -299,6 +308,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "node_link_check" => await NodeLinkCheckAsync(cancellation),
                 "api_keys_status" => ApiKeysStatus(arguments),
                 "api_selftest" => await NodeLinkCheckAsync(cancellation, "api"),
+                "speaking_voices_selftest" => await NodeLinkCheckAsync(cancellation, "voices"),
                 "audio2face_check" => await Audio2FaceCheck.RunAsync(OptionalString(arguments, "endpoint"),
                     OptionalInt(arguments, "seconds"), OptionalInt(arguments, "sampleRate"), cancellation),
                 "mcp_servers_status" => McpServersStatus(arguments),
@@ -590,7 +600,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
     }
 
     /// <summary>F5's included reference voices, each checked, and the data directory's F5 voice list (the "f5-voices" store
-    /// Martlet.Desktop keeps). Own voices are counted, never named; an included voice is recognized by its clip's SHA-256.</summary>
+    /// Martlet.Desktop keeps). Own voices are counted, never named; a starter voice is recognized by its clip's SHA-256.</summary>
     private static object VoiceTagsCheck(JsonElement arguments)
     {
         var text = OptionalString(arguments, "text") ?? throw new ArgumentException("'text' is required.");
@@ -612,7 +622,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
     private static object F5Voices(JsonElement arguments)
     {
         var directory = DataDirectory(arguments);
-        var included = Martlet.F5.F5BundledVoices.All.Select(voice =>
+        var starters = Martlet.F5.F5BundledVoices.All.Select(voice =>
         {
             try
             {
@@ -636,6 +646,37 @@ internal sealed class McpServer(DesktopAutomation desktop)
         }).ToArray();
         static string Kind(string sha256) => Martlet.F5.F5BundledVoices.ForAudio(sha256)?.Key ??
             (Martlet.F5.F5BundledVoices.IsRetiredSample(sha256) ? "retired-sample" : "own");
+        // A voice's ID is its reference revision, so a starter voice's ID is known even after only its tombstone remains.
+        var starterIds = Martlet.F5.F5BundledVoices.All.ToDictionary(
+            voice => Martlet.Core.Voices.SpeakingVoiceLibrary.ReferenceId(voice.AudioSha256, voice.Transcript), voice => voice.Key);
+        string KindOfId(string id) => starterIds.GetValueOrDefault(id) ?? "own";
+        // The shared list (speaking-voices.json, the file Martlet.Desktop's F5Voices keeps; absent until a voice is first used,
+        // changed or shared). Own voices are counted, never named.
+        object library;
+        var libraryPath = Path.Combine(directory, "speaking-voices.json");
+        if (!File.Exists(libraryPath)) library = new { state = "none" };
+        else
+        {
+            try
+            {
+                var shared = Martlet.Core.Voices.SpeakingVoiceLibrary.Parse(File.ReadAllBytes(libraryPath));
+                var live = shared.Live;
+                library = new
+                {
+                    state = "loaded", voices = live.Count, revision = shared.Revision,
+                    starters = live.Select(v => KindOfId(v.Id)).Where(kind => kind != "own").ToArray(),
+                    own = live.Count(v => KindOfId(v.Id) == "own"),
+                    removed = shared.Voices.Count(v => v.Removed),
+                    removedStarters = shared.Voices.Where(v => v.Removed).Select(v => KindOfId(v.Id)).Where(kind => kind != "own").ToArray(),
+                    chosen = shared.ChosenVoice is { } chosenVoice ? KindOfId(chosenVoice.Id) : null,
+                    chosenBy = shared.ChosenVoice is not null ? shared.Chosen!.UpdatedBy : null
+                };
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
+            {
+                library = new { state = "unreadable", problem = error is Martlet.Core.Contracts.ContractException ? error.Message : error.GetType().Name };
+            }
+        }
         var storeDirectory = Path.Combine(directory, "f5-voices");
         object list;
         if (!File.Exists(Path.Combine(storeDirectory, ".martlet-f5-references.v1.json"))) list = new { state = "none" };
@@ -649,7 +690,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 list = new
                 {
                     state = "loaded", voices = latest.Length,
-                    included = latest.Where(p => p.Kind is not ("own" or "retired-sample")).Select(p => p.Kind).Distinct().ToArray(),
+                    starters = latest.Where(p => p.Kind is not ("own" or "retired-sample")).Select(p => p.Kind).Distinct().ToArray(),
                     own = latest.Count(p => p.Kind == "own"), retiredSample = latest.Any(p => p.Kind == "retired-sample"),
                     applied = latest.Where(p => p.Id == inspection.AppliedPresetId).Select(p => p.Kind).FirstOrDefault()
                 };
@@ -699,7 +740,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
         return new
         {
             @default = fallback.Key, defaultName = fallback.Name, defaultFemale = fallback.Female, defaultCute = fallback.Cute,
-            cute = Martlet.F5.F5BundledVoices.All.Where(voice => voice.Cute).Select(voice => voice.Key).ToArray(), included, list, speaking,
+            cute = Martlet.F5.F5BundledVoices.All.Where(voice => voice.Cute).Select(voice => voice.Key).ToArray(), starters, library, list, speaking,
             engines, chosenEngine = Martlet.Core.Settings.SpeechEngines.ForKey(chosen)?.Key ?? Martlet.Core.Settings.SpeechEngines.Default.Key
         };
     }

@@ -8,9 +8,10 @@ using Microsoft.Win32;
 
 namespace Martlet.Desktop;
 
-/// <summary>Adds a voice to the F5 voice list: a recording, its exact transcript and the owner's voice-rights confirmation
-/// (voice-rights-v1), which the store requires. F5 copies the voice for each reply; nothing is trained. Martlet keeps its own
-/// copy of the recording, so the original can be moved or deleted afterwards.</summary>
+/// <summary>Adds a voice: a recording, its exact transcript and the owner's voice-rights confirmation (voice-rights-v1),
+/// which the store requires. The voice engines copy the voice for each reply; nothing is trained. Martlet keeps its own copy
+/// of the recording, so the original can be moved or deleted afterwards, and shares the voice with the owner's paired
+/// Martlet computers.</summary>
 internal sealed class F5AddVoiceDialog : ThemedWindow
 {
     private readonly string dataDirectory;
@@ -51,8 +52,8 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         root.Children.Add(heading);
         root.Children.Add(new TextBlock
         {
-            Text = "Choose a clear WAV recording (1 to 30 seconds, mono 16-bit PCM) and type its exact words. Martlet keeps a copy on this PC " +
-                "and sends it only to the computer that speaks.",
+            Text = "Choose a clear WAV recording (1 to 30 seconds, mono 16-bit PCM) and type its exact words. Martlet keeps a copy and " +
+                "shares it with your paired Martlet computers, so any of them can speak with this voice.",
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 6)
         });
 
@@ -77,6 +78,11 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         AutomationProperties.SetName(name, "Voice name");
         AutomationProperties.SetName(transcript, "Exact words in the recording");
         AutomationProperties.SetName(basis, "Whose voice it is");
+        AutomationProperties.SetAutomationId(path, "F5AddVoicePath");
+        AutomationProperties.SetAutomationId(name, "F5AddVoiceName");
+        AutomationProperties.SetAutomationId(transcript, "F5AddVoiceTranscript");
+        AutomationProperties.SetAutomationId(basis, "F5AddVoiceBasis");
+        AutomationProperties.SetAutomationId(error, "F5AddVoiceProblem");
         AutomationProperties.SetAutomationId(rights, "F5VoiceRights");
         root.Children.Add(new Label { Content = "_Recording", Target = path, Padding = new Thickness(0, 10, 0, 4) });
         root.Children.Add(pick);
@@ -155,26 +161,36 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         ok.IsEnabled = false;
         try
         {
-            using var store = F5Voices.Open(dataDirectory);
-            added = await store.SnapshotAsync(new()
+            if (F5Voices.View(dataDirectory).Live.Count >= Martlet.Core.Voices.SpeakingVoiceLibrary.MaximumVoices)
             {
-                PresetName = name.Text.Trim(),
-                AbsoluteSourcePath = Path.GetFullPath(path.Text),
-                Transcript = transcript.Text.Trim(),
-                Rights = new()
+                Show("The voice list is full. Remove one you no longer use first.");
+                return;
+            }
+            var words = transcript.Text.Trim();
+            using (var store = F5Voices.Open(dataDirectory))
+            {
+                added = await store.SnapshotAsync(new()
                 {
-                    AcknowledgementId = Guid.NewGuid(),
-                    Basis = (basis.SelectedItem as ComboBoxItem)?.Tag is F5VoiceRightsBasis chosenBasis ? chosenBasis : F5VoiceRightsBasis.OwnVoice,
-                    StatementVersion = F5ReferenceLimits.RightsStatementVersion,
-                    ProcessingDestinationId = destination,
-                    AcknowledgedAtUtc = DateTimeOffset.UtcNow,
-                    Confirmed = true
-                }
-            });
+                    PresetName = name.Text.Trim(),
+                    AbsoluteSourcePath = Path.GetFullPath(path.Text),
+                    Transcript = words,
+                    Rights = new()
+                    {
+                        AcknowledgementId = Guid.NewGuid(),
+                        Basis = (basis.SelectedItem as ComboBoxItem)?.Tag is F5VoiceRightsBasis chosenBasis ? chosenBasis : F5VoiceRightsBasis.OwnVoice,
+                        StatementVersion = F5ReferenceLimits.RightsStatementVersion,
+                        ProcessingDestinationId = destination,
+                        AcknowledgedAtUtc = DateTimeOffset.UtcNow,
+                        Confirmed = true
+                    }
+                });
+            }
+            F5Voices.Add(dataDirectory, added, words);
             DialogResult = true;
         }
         catch (F5Exception failure) { Show(F5Voices.Describe(failure)); }
-        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or ArgumentException)
+        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or ArgumentException or
+            Martlet.Core.Contracts.ContractException)
         {
             Show(failure.Message);
         }

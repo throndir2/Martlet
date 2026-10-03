@@ -8,8 +8,9 @@ using Martlet.Core.Settings;
 
 namespace Martlet.Avatar.Audio2Face.Remote;
 
-/// <summary>The reference recording a host's F5 voice clones: the applied preset snapshot's exact bytes, transcript and
-/// revisions (see Martlet.F5's reference preset store). Only its bytes and transcript are sent, never the source path.</summary>
+/// <summary>The reference recording a host's voice engine clones: the applied preset snapshot's exact bytes, transcript and
+/// revisions (see Martlet.F5's reference preset store). Requests name the recording by its SHA-256 and send the transcript;
+/// the bytes go only to a host that does not hold them yet. Never the source path.</summary>
 public sealed record HostSpeechReference(Guid PresetId, string ReferenceRevision, string AudioSha256, string Transcript,
     string TranscriptRevision, ReadOnlyMemory<byte> Audio)
 {
@@ -18,9 +19,17 @@ public sealed record HostSpeechReference(Guid PresetId, string ReferenceRevision
 
 public sealed partial class Audio2FaceHostConnection
 {
+    // Hosts that refused a request naming its recording (older than shared speaking voices): send the recording itself.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> RecordingHosts = new(StringComparer.Ordinal);
+
+    /// <summary>Whether the last <see cref="StreamSpeechAsync"/> on this connection had to send the recording itself.</summary>
+    public bool LastSpeechSentRecording { get; private set; }
+
     /// <summary>Speaks one reply segment with one of the host's voice engines (its f5 or xtts role, see
     /// <see cref="SpeechEngines"/>) through the gateway relay and yields its contiguous 24 kHz mono PCM16 frames in order
-    /// as they arrive (XTTS sends them while it is still generating). Failures throw <see cref="Audio2FaceHostException"/>.</summary>
+    /// as they arrive (XTTS sends them while it is still generating). The request names the recording by its SHA-256, which
+    /// the host keeps from the shared speaking-voice list; only a host that lacks it (<c>reference.missing</c>) or predates
+    /// the list gets the recording itself. Failures throw <see cref="Audio2FaceHostException"/>.</summary>
     public async IAsyncEnumerable<byte[]> StreamSpeechAsync(HostRoute route, CorrelationIds ids, long epoch,
         DateTimeOffset deadline, HostSpeechReference reference, string text,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
@@ -40,6 +49,50 @@ public sealed partial class Audio2FaceHostConnection
         var latest = now + route.MaximumDuration - TimeSpan.FromSeconds(1);
         if (deadline > latest) deadline = latest;
         if (deadline <= now) throw new Audio2FaceHostException("job.deadline", "No time is left for the host's voice.");
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(deadline - clock.GetUtcNow() + TimeSpan.FromSeconds(1));
+        var sendRecording = RecordingHosts.ContainsKey(pairing.HostId);
+        HttpResponseMessage response;
+        try
+        {
+            response = await SendSpeechAsync(route, engine, ids, epoch, deadline, reference, text, sendRecording, timeout.Token).ConfigureAwait(false);
+        }
+        catch (Audio2FaceHostException error) when (!sendRecording && error.Code is "reference.missing" or "request.invalid")
+        {
+            sendRecording = true;
+            response = await SendSpeechAsync(route, engine, ids, epoch, deadline, reference, text, true, timeout.Token).ConfigureAwait(false);
+            if (error.Code == "request.invalid") RecordingHosts[pairing.HostId] = true;
+        }
+        LastSpeechSentRecording = sendRecording;
+        using (response)
+        {
+            if (response.Content.Headers.ContentType?.MediaType != "application/x-ndjson")
+                throw new Audio2FaceHostException("response.invalid", "The host returned an invalid voice stream.");
+            await using var stream = await response.Content.ReadAsStreamAsync(timeout.Token).ConfigureAwait(false);
+            using var reader = new StreamReader(stream, new UTF8Encoding(false, true));
+            long total = 0, samples = 0;
+            while (await reader.ReadLineAsync(timeout.Token).ConfigureAwait(false) is { } line)
+            {
+                total += line.Length + 1;
+                if (line.Length > route.MaximumEventBytes * 2 || total > route.MaximumStreamBytes * 2L)
+                    throw new Audio2FaceHostException("stream.limit", "The host's voice stream exceeded its bounds.");
+                var (pcm, terminal) = ParseSpeechEvent(line, ids, samples);
+                if (pcm is not null)
+                {
+                    samples += pcm.Length / 2;
+                    yield return pcm;
+                }
+                if (terminal) yield break;
+            }
+        }
+        throw new Audio2FaceHostException("stream.truncated", "The host's voice stream ended early.");
+    }
+
+    // Sends the speaking request (with the recording only when sendRecording) and returns the open event stream; a refusal
+    // throws the host's failure code.
+    private async Task<HttpResponseMessage> SendSpeechAsync(HostRoute route, SpeechEngine engine, CorrelationIds ids, long epoch,
+        DateTimeOffset deadline, HostSpeechReference reference, string text, bool sendRecording, CancellationToken token)
+    {
         var payload = new Dictionary<string, object>
         {
             ["preset_id"] = reference.PresetId,
@@ -47,12 +100,12 @@ public sealed partial class Audio2FaceHostConnection
             ["reference_audio_sha256"] = reference.AudioSha256,
             ["transcript"] = reference.Transcript,
             ["transcript_revision"] = reference.TranscriptRevision,
-            ["reference_audio_base64"] = Convert.ToBase64String(reference.Audio.Span),
             ["chunks"] = new[]
             {
                 new Dictionary<string, object> { ["index"] = 0, ["chunk_id"] = "segment-0", ["text"] = ChatText(text) }
             }
         };
+        if (sendRecording) payload["reference_audio_base64"] = Convert.ToBase64String(reference.Audio.Span);
         // GPT-SoVITS reads the recording's transcript in the recording's language.
         if (engine == SpeechEngines.GptSovits) payload["reference_language"] = SpeechEngines.ReferenceLanguage(reference.Transcript);
         var body = JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, object>
@@ -73,33 +126,13 @@ public sealed partial class Audio2FaceHostConnection
             Content = Audio2FaceHostClient.JsonContent(body)
         };
         Sign(request, body);
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(deadline - clock.GetUtcNow() + TimeSpan.FromSeconds(1));
-        using var response = await Audio2FaceHostClient.Send(http, request, timeout.Token).ConfigureAwait(false);
-        if (response.StatusCode != HttpStatusCode.OK)
+        var response = await Audio2FaceHostClient.Send(http, request, token).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.OK) return response;
+        using (response)
         {
-            using var failure = await Audio2FaceHostClient.ReadJson(response, 64 * 1024, timeout.Token).ConfigureAwait(false);
+            using var failure = await Audio2FaceHostClient.ReadJson(response, 64 * 1024, token).ConfigureAwait(false);
             throw Audio2FaceHostClient.Remote(failure.RootElement);
         }
-        if (response.Content.Headers.ContentType?.MediaType != "application/x-ndjson")
-            throw new Audio2FaceHostException("response.invalid", "The host returned an invalid voice stream.");
-        await using var stream = await response.Content.ReadAsStreamAsync(timeout.Token).ConfigureAwait(false);
-        using var reader = new StreamReader(stream, new UTF8Encoding(false, true));
-        long total = 0, samples = 0;
-        while (await reader.ReadLineAsync(timeout.Token).ConfigureAwait(false) is { } line)
-        {
-            total += line.Length + 1;
-            if (line.Length > route.MaximumEventBytes * 2 || total > route.MaximumStreamBytes * 2L)
-                throw new Audio2FaceHostException("stream.limit", "The host's voice stream exceeded its bounds.");
-            var (pcm, terminal) = ParseSpeechEvent(line, ids, samples);
-            if (pcm is not null)
-            {
-                samples += pcm.Length / 2;
-                yield return pcm;
-            }
-            if (terminal) yield break;
-        }
-        throw new Audio2FaceHostException("stream.truncated", "The host's voice stream ended early.");
     }
 
     private static (byte[]? Pcm, bool Terminal) ParseSpeechEvent(string line, CorrelationIds ids, long samples)

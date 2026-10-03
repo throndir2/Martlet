@@ -177,22 +177,30 @@ Parakeet are downloaded, and counts from `voices.json` (voices, named, owner, wi
 learned names, merged, tombstones). It never returns names, voiceprints or audio and
 runs no model.
 
-`f5_voices` lists the [F5 reference voices](F5_VOICE.md#desktop-voices-and-playback)
-Martlet includes (key, name, `female`, `cute`, description, licence, transcript,
+`f5_voices` lists Martlet's [starter voices](F5_VOICE.md#desktop-voices-and-playback)
+as `starters` (key, name, `female`, `cute`, description, licence, transcript,
 SHA-256, sample rate and duration; each clip is checked against its SHA-256 and the
-reference store's audio, name and transcript rules, `valid` or the failure), the
+reference store's audio, name and transcript rules, `valid` or the failure; a new
+voice list starts with them, after which they are ordinary voices), the
 `default` key, `defaultName`, `defaultFemale` and `defaultCute` (both always true;
 the default is the first cute voice, `librivox-annie-anime`) and `cute`, the
 keys of the cute, high-pitched voices listed first. From a data
 directory (optional absolute `dataDirectory`, default the current user's) it reads
-the `f5-voices` list: `state` (`none`, `loaded`, `busy` while the desktop holds it,
-or `unreadable`), the number of voices, the keys of included voices in it, the
+the shared voice list as `library` (`speaking-voices.json`; `state` `none` until a
+voice is first used, added or removed or the desktop shares voices with a host,
+`loaded` or `unreadable`): the number of live `voices`, `revision`, the keys of
+the starter voices in it (`starters`), the count of the owner's own voices
+(`own`), tombstones (`removed`) and the keys of removed starter voices
+(`removedStarters`), and the voice chosen on all computers (`chosen`: a starter
+key, `own` or null) with the device that chose it (`chosenBy`). `list` is this PC's
+recordings (the `f5-voices` store): `state` (`none`, `loaded`, `busy` while the desktop holds it,
+or `unreadable`), the number of voices, the keys of starter voices in it (`starters`), the
 count of the owner's own voices, whether the retired F5-TTS example clip is still
-there and the applied voice (an included key, `own`, `retired-sample` or null).
+there and the applied voice (a starter key, `own`, `retired-sample` or null).
 `speaking` reads `settings.json`: `state` (`none`, `loaded` or `unreadable` with
 the settings rule it broke or the error type as `problem`), the
 speaking route's type (for example `GatewayF5`, null without one) and the voice it
-records (an included key, `own`, `retired-sample` or null), plus `engine` (the
+records (a starter key, `own`, `retired-sample` or null), plus `engine` (the
 self-hosted voice engine whose route it records: `chatterbox`, `f5`, `xtts`, `gpt-sovits` or `dia`), `host` and
 `model` for a host route. `engines` lists the voice engines
 ([Chatterbox Turbo](CHATTERBOX_VOICE.md), [F5-TTS](F5_VOICE.md),
@@ -201,12 +209,12 @@ self-hosted voice engine whose route it records: `chatterbox`, `f5`, `xtts`, `gp
 `minimumReferenceMs`, `maximumReferenceMs`, `summary`, `default` (true for
 Chatterbox Turbo), `supportsTags` and `tags`, each tag's `text` in the engine's
 syntax, `kind` `Sound` or `Emotion` and `usage`; Chatterbox clones only
-recordings longer than 5 s, GPT-SoVITS only 3,000-10,000 ms), each included
+recordings longer than 5 s, GPT-SoVITS only 3,000-10,000 ms), each starter
 voice adds `engines` (the engines that can clone it) and `language` (`en` or
 `ja`, read from its transcript), and `chosenEngine` is the engine chosen on this
 desktop (`speaking-engine.txt`, default `chatterbox`). After the desktop
 loads settings, a route or applied voice that was `retired-sample` reads the
-default key. It never returns own voices' names, transcripts or audio, plays
+chosen or first voice. It never returns own voices' names, transcripts or audio, plays
 nothing and contacts nothing.
 
 `voice_tags` shows how a reply's [voice tags](CONVERSATION.md#voice-tags) are
@@ -294,6 +302,30 @@ host refuses it after sync; a stale copy can't bring it back; an expired key
 gets `key.expired`. Nothing leaves loopback and nothing is written to disk or
 Windows Credential Manager; it does not cover the desktop window,
 `api-keys.json` on a Linux host, a real model or a real LAN.
+
+`speaking_voices_selftest` (no arguments) rehearses the
+[shared speaking voices](CLUSTER.md#the-shared-speaking-voices) end to end with
+the production code: two real gateways on 127.0.0.1 (pinned TLS, the real
+reference-voice relay route over a fixture voice service, NOT AI, and in-memory
+`speaking-voices.json` and recordings) and two simulated desktops that keep real
+F5 voice stores in a temporary folder and use the desktop's paired client and
+Martlet.F5's reconcile engine. It runs `src\Martlet.NodeLinkCheck` (mode
+`voices`, `VoiceRehearsal.cs`) and returns `{exitCode, report}` like
+`network_selftest`. Its steps: a new list starts with the starter voices
+(revision 1) and an own recording joins it, with every recording in the store;
+the list and every recording reach a host; speaking there names the recording
+by SHA-256 alone and the engine gets the exact recording; a host that has the
+list but not the recording gets it once (`reference.missing`, then kept) and the
+next reply names it; a new, empty desktop takes every voice from a host (starter
+recordings from Martlet, the own one downloaded); a choice made on one desktop
+reaches the other; removing a starter voice deletes its recording on both hosts
+and the other desktop's copy; a stale copy can't bring it back; speaking with a
+removed voice sends the recording, which the host doesn't keep; a host restart
+keeps the list and recordings; a wrong SHA-256, a recording no voice has and a
+listed recording that isn't a WAV are refused; reading a missing recording
+answers none. Nothing leaves loopback, the temporary folder is deleted and
+Windows Credential Manager is not touched; it does not cover the desktop window
+and its sync, the Linux host's files, a real engine, an older host or a real LAN.
 
 `nearby_status` reads whether this PC lets Martlet on the owner's other
 computers [find it](ARCHITECTURE.md#finding-your-other-computers) (optional
@@ -732,23 +764,35 @@ measured from the top-left of the character's screen). `ui_select` and
 `SetupCharacterSpeechDisplay` reads back the saved position, or says an offset
 isn't a number from -4000 to 4000.
 
-For F5 voices, open `CompanionTab-Voice` (the Voices card shows unless the
-voice comes from a cloud provider). `F5VoicesStatus` reads how many included
-and own voices there are and which is chosen or in use (an included voice's
-name, "one of your voices" or the retired F5-TTS sample). The included voices are
-grouped under `F5VoiceGroup-cute` ("CUTE VOICES", listed first) and
-`F5VoiceGroup-included` ("MORE INCLUDED VOICES"); `F5VoiceGroup-own` heads the
-owner's voices when there are any. Each included voice's
-title `F5VoiceRow-<key>` (for example `F5VoiceRow-arctic-slt`) returns its name
-with "· chosen" or "· in use" when it is. Its controls are `F5VoicePlay-<key>`,
-`F5VoiceUse-<key>` and, once it is in the list and not in use,
-`F5VoiceRemove-<key>`; an own voice's controls use its preset ID (32 hex digits)
-instead of the key, and its name is not returned. When the speaking engine cannot
-clone a voice (GPT-SoVITS: shorter than 3 or longer than 10 seconds) its title adds
+For voices, open `CompanionTab-Voice` (the Voices card shows unless the
+voice comes from a cloud provider). There are no built-in voices and no groups:
+one list, in the order voices joined it (a new list starts with the starter
+voices). `F5VoicesStatus` reads how many voices there are and which is chosen or in
+use (a starter voice's name, "one of your recordings", or "a voice no longer in
+the list"), for example "7 voices. None chosen yet; Martlet starts with Annie
+(cute anime girl)." `F5VoicesShared` reads whether the list is shared with the
+paired Martlet computers ("Voices shared with 2 of 2 computers at 7:15 PM.",
+voices still copying to this PC, hosts to update, or "No other Martlet computers
+are paired yet, so your voices stay on this PC."). Each voice whose recording is a
+starter clip has a title `F5VoiceRow-<key>` (for example `F5VoiceRow-arctic-slt`)
+that returns its name with "· chosen" or "· in use" when it is. Its controls are
+`F5VoicePlay-<key>`, `F5VoiceUse-<key>` and, unless it is in use or chosen on all
+computers, `F5VoiceRemove-<key>`; any other voice's controls use the first 16 hex
+digits of its ID (its reference revision) instead of the key, and its name is not
+returned. When the speaking engine cannot clone a voice (Chatterbox: 5 seconds or
+shorter; GPT-SoVITS: shorter than 3 or longer than 10 seconds) its title adds
 "· wrong length for this engine" and `F5VoiceUse-<key>` is disabled, with the reason
-as its help text. Use and Remove change the
-voice list and need `--allow-ui-effects`; Play plays audio and is not for
-automated verification. `f5_voices` reads the same list headlessly.
+as its help text; Play and Use are also disabled while its recording is still
+being copied to this PC. Remove asks with `ConfirmationYes`/`ConfirmationNo` and
+removes the voice on every computer. `F5AddVoice` opens *Add a voice*
+(`F5AddVoiceDialog`): `F5AddVoicePath` (the WAV's full path), `F5AddVoiceName`,
+`F5AddVoiceTranscript`, `F5AddVoiceBasis` (whose voice), `F5VoiceRights` (the
+rights confirmation) and `F5AddVoiceOk`, which adds the voice, shares it and uses
+it; `F5AddVoiceProblem` returns why it couldn't (the typed name, transcript and
+path are never returned). Use, Remove and adding change the voice list and need
+`--allow-ui-effects`; Play plays audio and is not for automated verification.
+Passive navigation writes nothing: the list is shown as it would start until a
+voice is first used, added or removed. `f5_voices` reads the same list headlessly.
 
 Above the voices, the Voice engine card's `SpeakingEngine` combo box reads the
 chosen engine ("Chatterbox Turbo (recommended): Clones the voice and can laugh

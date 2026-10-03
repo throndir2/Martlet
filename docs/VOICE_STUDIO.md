@@ -10,9 +10,13 @@ services, publication, or use of someone else's voice.
 
 **First implementation slice (VS01), now replaced:** the passive five-engine
 Voice Library window never reached a voice route, so it was removed. The
-working voice library is F5's: Companion > Voice > Voices adds recordings with
-their transcripts and rights, plays them, switches the active voice in one click
-and removes voices, keeping Martlet's own copy of each recording. Other engines
+working voice library is one list on every computer: Companion > Voice > Voices
+adds recordings with their transcripts and rights, plays them, switches the
+active voice in one click and removes voices, keeping Martlet's own copy of each
+recording. There are no built-in voices: a new list starts with a few starter
+voices that are removed like any other. The list, the chosen voice and every
+recording are shared with the owner's paired Martlet computers, so a reply names
+its recording instead of carrying it ([shared speaking voices](CLUSTER.md#the-shared-speaking-voices)). Other engines
 add to that one list when they run: [Chatterbox Turbo](CHATTERBOX_VOICE.md) (the
 default engine, with sound and tone tags), [XTTS-v2](XTTS_VOICE.md),
 [GPT-SoVITS](GPT_SOVITS_VOICE.md) and [Dia](DIA_VOICE.md) now do, chosen on
@@ -46,8 +50,10 @@ Do not carry a family-level license assertion across arbitrary checkpoints.
 
 Show code and model licenses separately, intended use, reference-speaker
 permission and processing destination. An acknowledgment cannot authorize a
-prohibited use. Import is consent to local storage only; transferring to a
-paired worker, training, synthesis and playback each require scoped approval.
+prohibited use. Adding a voice is consent to keep it and, at the owner's
+direction (2026-10-02), to share it with the owner's own paired Martlet
+computers so any of them can speak with it; training, synthesis and playback
+each still require scoped approval.
 No public-demo upload or remote training/experiment telemetry by default.
 
 ### Candidate review, 2026-10-02
@@ -153,8 +159,9 @@ Long training jobs belong to a durable worker scheduler with explicit resource
 leases, not a WPF event handler or the ordinary conversation request timeout.
 Training stdout and automatic experiment trackers must not leak transcripts,
 paths or audio. Support bundles contain metadata only. User voice assets are
-private local data, excluded from settings backup and ordinary support export;
-explicit portable voice export is later work.
+private data kept on the owner's own computers (shared only with the owner's
+paired Martlet computers), excluded from settings backup and ordinary support
+export; explicit portable voice export is later work.
 
 ## Delivery slices and acceptance
 

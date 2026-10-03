@@ -27,6 +27,13 @@ if (args is ["api"])
     Console.WriteLine(JsonSerializer.Serialize(apiReport));
     return apiOk ? 0 : 1;
 }
+// With "voices" it rehearses the shared speaking voices and their recordings (VoiceRehearsal) and prints its report.
+if (args is ["voices"])
+{
+    var (voicesOk, voicesReport) = await Martlet.NodeLinkCheck.VoiceRehearsal.RunAsync(CancellationToken.None);
+    Console.WriteLine(JsonSerializer.Serialize(voicesReport));
+    return voicesOk ? 0 : 1;
+}
 var steps = new List<object>();
 var passed = true;
 void Step(string name, bool ok, string detail)

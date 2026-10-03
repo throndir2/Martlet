@@ -93,7 +93,7 @@ row says where it came from.
 | Two desktops fail over at once | Same ranking, so normally the same target; otherwise the newest stamp wins everywhere within a check |
 | Change made on another desktop | Followed within a check; the status line names the computer that chose it |
 | Planned host not paired with this PC | This PC keeps its current route and its row says to pair that host here; the shared plan is not overwritten. A host of your [Martlet network](NETWORK.md) is paired by itself within a minute, so this lasts only until then |
-| Speaking moves to another F5 host | The applied reference voice is reused (same `f5-host` destination). A desktop without an F5 voice keeps its route and asks you to pick the voice |
+| Speaking moves to another F5 host | The applied reference voice is reused (same `f5-host` destination), and the new host already holds its recording ([shared speaking voices](#the-shared-speaking-voices)). A desktop without a voice keeps its route and asks you to add one |
 | Host model differs | The new route records the model the host advertises; the failover confirmation says the model may differ |
 | Host older than cluster sync | Still usable and a failover candidate; it keeps no copy, and the status line suggests **Update host** |
 | New host paired | It receives the plan and appears as a node on the next check |
@@ -117,6 +117,59 @@ serves `GET`/`POST /martlet/v1/voices`; desktops merge every 30 seconds while
 sharing is on (its own choice, on by default, independent of the who-does-what
 sync). Each voice is a last-writer-wins entry with the same hybrid revisions;
 forgotten and merged voices leave tombstones. See [VOICES](VOICES.md#sharing-between-your-computers).
+
+## The shared speaking voices
+
+The voices Martlet **speaks** with (Companion › Voice › Voices) and their
+recordings are on every node, so a reply never waits for a recording to travel
+and any of your PCs can be the companion with the same voices. There are no
+built-in voices: a new list starts with Martlet's starter voices, which are
+removed like any other ([F5 voice](F5_VOICE.md#one-voice-list-on-every-computer)).
+
+- **The list** (`Martlet.Core.Voices.SpeakingVoiceLibrary`): one
+  last-writer-wins entry per voice, keyed by its reference revision (SHA-256 of
+  the recording's SHA-256 and the transcript's), with its name, transcript,
+  recording SHA-256 and length, why it may be used and when it joined; and one
+  entry for the voice chosen on all computers. Same hybrid revisions and merge
+  rules as the plan; removed voices leave tombstones. Starter entries are
+  revision 1, so a removal anywhere wins everywhere. JSON, snake case, schema 1,
+  at most 1 MiB, 32 voices and 64 tombstones.
+- **Each host** keeps `speaking-voices.json` and one `speaking-voice-<sha256>.wav`
+  per live voice beside `host.json` (0600, gateway service owner; not part of the
+  approved configuration). A recording no live voice uses is deleted.
+- **Each desktop** keeps `speaking-voices.json` in its data folder and its copy
+  of every recording in its F5 voice store (`f5-voices`).
+
+| Endpoint (paired devices only, over the pinned, signed connection; API keys may not) | What |
+| --- | --- |
+| `GET /martlet/v1/speaking-voices` | The host's list and the SHA-256 of each recording it holds (`present`) |
+| `POST /martlet/v1/speaking-voices` | Merge a desktop's list in; returns the merged list and `present` |
+| `GET /martlet/v1/speaking-voices/audio/<sha256>` | One recording (`reference.missing` when the host has none) |
+| `POST /martlet/v1/speaking-voices/audio/<sha256>` | Send `{"audio_base64": ...}` for a live voice; refused (`request.invalid`) for a wrong SHA-256, a recording no live voice has, or anything but a mono 16-bit PCM WAV of 1 to 30 seconds |
+
+Every 30 seconds while any host is paired (and two seconds after you add, use or
+remove a voice) the desktop reads every paired host's list, merges them into
+its own, copies each recording it lacks from a host that has it (starter
+recordings come from Martlet itself), deletes removed voices' copies (not the
+one it still speaks with), gives every host whose list differs the merged list
+and sends each host every recording it lacks. Then it follows the voice chosen
+on another computer once its recording is here and the speaking engine can use
+it (an open conversation reloads when idle). Voices > *F5VoicesShared* says with
+how many computers the voices are shared. Nothing is written while no host is
+paired.
+
+A speaking request names its recording by SHA-256 (`reference_audio_base64` is
+optional); the host's gateway hands its engine the copy it keeps. A host that
+lacks it answers `reference.missing` and the desktop sends the request again
+with the recording, which the host then keeps when a live voice uses it. A host
+older than shared speaking voices refuses the request with `request.invalid`;
+the desktop then sends the recording with every request to that host, as
+before, and the status asks you to update it.
+
+Checked locally with `speaking_voices_selftest` (MCP): two real gateways and
+two simulated desktops with real voice stores on loopback. The desktop's
+sync window with real paired hosts, the Linux files and two real computers are
+**NOT RUN**.
 
 ## The shared Home Assistant connection
 

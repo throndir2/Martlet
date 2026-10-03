@@ -117,6 +117,11 @@ internal sealed partial class GatewayHttpApplication
                 await InvokeVoicesAsync(context).ConfigureAwait(false);
                 return;
             }
+            if (IsSpeakingVoicesTarget(rawTarget!))
+            {
+                await InvokeSpeakingVoicesAsync(context, rawTarget!).ConfigureAwait(false);
+                return;
+            }
             if (rawTarget == HomeAssistantPath)
             {
                 await InvokeHomeAssistantAsync(context).ConfigureAwait(false);

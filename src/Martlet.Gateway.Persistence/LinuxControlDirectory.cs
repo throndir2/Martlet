@@ -16,6 +16,12 @@ internal sealed class LinuxControlDirectory : IDisposable
     /// <summary>The shared voice list (voiceprints and names) the gateway keeps for paired desktops.</summary>
     internal const string Voices = "voices.json", VoicesStaging = "voices.staging";
     internal const int MaximumVoicesBytes = 1_048_576;
+    /// <summary>The shared list of voices Martlet speaks with; each live voice's recording is speaking-voice-&lt;sha256&gt;.wav.</summary>
+    internal const string SpeakingVoices = "speaking-voices.json", SpeakingVoicesStaging = "speaking-voices.staging";
+    internal const int MaximumSpeakingVoicesBytes = 1_048_576;
+    internal const string SpeakingVoiceAudioPrefix = "speaking-voice-", SpeakingVoiceAudioSuffix = ".wav";
+    internal const string SpeakingVoiceAudioStaging = "speaking-voice.staging";
+    internal const int MaximumSpeakingVoiceAudioBytes = 4 * 1024 * 1024;
     /// <summary>The shared Home Assistant connection, including the access token, for paired desktops.</summary>
     internal const string HomeAssistant = "home-assistant.json", HomeAssistantStaging = "home-assistant.staging";
     internal const int MaximumHomeAssistantBytes = 16 * 1024;
@@ -93,7 +99,8 @@ internal sealed class LinuxControlDirectory : IDisposable
 
     internal byte[]? Read(string name, int maximum)
     {
-        if (name is not (Config or Approval or Machine or Cluster or Voices or HomeAssistant or Logs or Network or Commands or AgentToken or ApiKeys)) throw Error(GatewayPersistenceFailure.InvalidPath);
+        if (name is not (Config or Approval or Machine or Cluster or Voices or SpeakingVoices or HomeAssistant or Logs or Network or Commands or AgentToken or ApiKeys) &&
+            !IsSpeakingVoiceAudio(name)) throw Error(GatewayPersistenceFailure.InvalidPath);
         Validate();
         var before = fs.StatAt(DirectoryFd, name);
         if (before is null) return null;
@@ -151,6 +158,35 @@ internal sealed class LinuxControlDirectory : IDisposable
 
     /// <summary>Atomically replaces home-assistant.json (0600, service owner).</summary>
     internal void WriteHomeAssistant(byte[] bytes) => ReplaceRecovering(HomeAssistant, HomeAssistantStaging, bytes, MaximumHomeAssistantBytes);
+
+    /// <summary>Atomically replaces speaking-voices.json (0600, service owner).</summary>
+    internal void WriteSpeakingVoices(byte[] bytes) => ReplaceRecovering(SpeakingVoices, SpeakingVoicesStaging, bytes, MaximumSpeakingVoicesBytes);
+
+    /// <summary>The file name of the recording with <paramref name="sha256"/> (lower-case hex).</summary>
+    internal static string SpeakingVoiceAudio(string sha256) =>
+        sha256 is { Length: 64 } && sha256.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f')
+            ? SpeakingVoiceAudioPrefix + sha256 + SpeakingVoiceAudioSuffix
+            : throw Error(GatewayPersistenceFailure.InvalidPath);
+
+    private static bool IsSpeakingVoiceAudio(string name) =>
+        name.Length == SpeakingVoiceAudioPrefix.Length + 64 + SpeakingVoiceAudioSuffix.Length &&
+        name.StartsWith(SpeakingVoiceAudioPrefix, StringComparison.Ordinal) && name.EndsWith(SpeakingVoiceAudioSuffix, StringComparison.Ordinal) &&
+        name[SpeakingVoiceAudioPrefix.Length..^SpeakingVoiceAudioSuffix.Length].All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f');
+
+    /// <summary>Atomically writes a voice's recording (0600, service owner).</summary>
+    internal void WriteSpeakingVoiceAudio(string sha256, byte[] bytes) =>
+        ReplaceRecovering(SpeakingVoiceAudio(sha256), SpeakingVoiceAudioStaging, bytes, MaximumSpeakingVoiceAudioBytes);
+
+    /// <summary>Deletes a removed voice's recording; false when there was none.</summary>
+    internal bool RemoveSpeakingVoiceAudio(string sha256)
+    {
+        var name = SpeakingVoiceAudio(sha256);
+        if (Read(name, MaximumSpeakingVoiceAudioBytes) is null) return false;
+        Validate();
+        fs.Unlink(DirectoryFd, name);
+        fs.Flush(DirectoryFd);
+        return true;
+    }
 
     /// <summary>Atomically replaces commands.json (0600, service owner).</summary>
     internal void WriteCommands(byte[] bytes) => ReplaceRecovering(Commands, CommandsStaging, bytes, MaximumCommandsBytes);
