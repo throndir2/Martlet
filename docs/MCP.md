@@ -846,7 +846,9 @@ text typed into `LiveInput`.
 Every read-only text box has a Copy button `Copy-<box ID>` (the box's
 automation ID, or its `x:Name` when it has none: `Copy-HostRunOutput`,
 `Copy-PrepareOutput`, `Copy-SupportReport`, `Copy-LogDetail`,
-`Copy-FoundationStatus`), shown only while the box has text. Snapshots return
+`Copy-FoundationStatus`) above its top-right corner (its `bounds` sit above the
+box's text and scroll bar, which keep the box's full width), shown only while
+the box has text. Snapshots return
 its label (*Copy*, or *Copied*/*Couldn't copy* for about three seconds after a
 click), never the copied text. A run window's and *Prepare this computer*'s Copy
 starts with *Martlet <version>: <title>* (and *SSH target: ...* for Prepare)

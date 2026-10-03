@@ -35,7 +35,7 @@ Martlet always keeps a small local error log; it is never uploaded.
   logged where the runtime allows, then the process ends.
 - Copy buttons: every read-only text box (run window output, *Prepare this
   computer* output, setup, troubleshooting and diagnostics status, recovery
-  previews) has a *Copy* button in its corner that takes all of its text, and
+  previews) has a *Copy* button above its top-right corner that takes all of its text, and
   confirmation and install dialogs have a *Copy* button for their message. A
   run window's Copy puts the Martlet version, the run's title and its status
   line above the output. The button reads *Copied* for a few seconds. Review
