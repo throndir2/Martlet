@@ -64,6 +64,7 @@ public partial class MainWindow
         actionTextDescriptor = DependencyPropertyDescriptor.FromProperty(TextBlock.TextProperty, typeof(TextBlock));
         actionTextDescriptor.AddValueChanged(ActionText, ActionTextChanged);
         deviceRole = store is null ? DeviceRole.Companion : DeviceRolePreference.Load(store.DataDirectory);
+        ErrorLog.Info($"This PC runs as a {(Role == DeviceRole.Host ? "host" : "companion")} PC{(deviceRole is null ? " (not chosen yet)" : "")}.");
         InitializeHealth();
         // The host dashboard reads this PC's host service by itself: at start, every 30 seconds while the window shows and
         // whenever it shows again, so finished steps tick without a button.
@@ -169,6 +170,7 @@ public partial class MainWindow
 
     private void SetRole(DeviceRole role)
     {
+        var previous = deviceRole;
         deviceRole = role;
         if (store is not null)
         {
@@ -178,11 +180,18 @@ public partial class MainWindow
                 ActionText.Text = "Couldn't save this choice. Check access to Martlet's data folder.";
             }
         }
+        if (previous != role)
+            ErrorLog.Info(role == DeviceRole.Host
+                ? "This PC is now a host PC: it doesn't talk or listen, keeps the Martlet network it is in (letting your other computers in), " +
+                  "and receives who does what without choosing jobs."
+                : "This PC is now a companion PC.");
         ApplyRole();
         RenderBackground();
         if (role == DeviceRole.Host) StopCompanionForHostAsync().Forget();
         RenderHome();
         if (DevicesPage.IsVisible) RenderMap();
+        QueueNetworkSync();
+        QueueClusterSync();
         if (role == DeviceRole.Host) CheckThisPcHostAsync().Forget();
     }
 
@@ -441,6 +450,14 @@ public partial class MainWindow
         }
         var setUp = state?.Stage is LocalHostServiceStage.Stopped or LocalHostServiceStage.Running;
         var steps = new List<HomeStep> { DockerStep(state), ServiceStep(state), PairStep(state), RolesStep(state), UpdateStep(state, setUp) };
+        // Your other computers asking to join the network show right under pairing: this PC may be the only one that can
+        // let them in (it started the network while it was a companion PC).
+        var joinAt = steps.FindIndex(s => s.Id == "pair") + 1;
+        foreach (var join in networkJoins.Reverse())
+            steps.Insert(joinAt, new($"join-{join.DeviceId}", $"Let {join.DisplayName} into your Martlet network",
+                $"{join.DisplayName} ({join.DeviceId}) is paired with {join.HostId} and asks to join, so it can use all your hosts. Allow " +
+                $"it only if that computer shows check number {join.CheckNumber}.",
+                false, false, [new("Allow", () => AllowJoin(join), true), new("Turn down", () => DenyJoinAsync(join).Forget())]));
         RenderSteps(HostStepsPanel, steps, numbered: true);
 
         var left = steps.Where(s => !s.Optional && !s.Done).ToList();
@@ -511,11 +528,24 @@ public partial class MainWindow
         return new("service", "Host service", step.Detail, state?.Ready == true, false, step.Commands);
     }
 
+    /// <summary>The other computers paired with this PC's host service, as it said on the last network sync: members of its
+    /// network or not (such as one still waiting to join). Empty when this PC isn't paired with its own host service, or
+    /// before the first sync.</summary>
+    private IReadOnlyList<HostPairedDevice> PairedComputers() =>
+        ThisPcHost() is { } own && PairedWith(own.HostId) is { } devices ? devices.Where(d => !IsThisDevice(d.DeviceId)).ToArray() : [];
+
     private HomeStep PairStep(LocalHostServiceState? state)
     {
         var self = NetworkIdentity.DeviceId(homeHosts);
         var desktops = state?.Desktops ?? [];
-        var others = desktops.Where(d => d.Id != self).Select(d => d.Name).ToList();
+        // The host's network members, and every computer the host service reports as paired with it.
+        var now = DateTimeOffset.UtcNow;
+        var reported = PairedComputers();
+        var others = desktops.Where(d => d.Id != self && !IsThisDevice(d.Id)).Select(d => (d.Id, d.Name))
+            .Concat(reported.Select(d => (Id: d.DeviceId, Name: d.DisplayName)))
+            .DistinctBy(d => d.Id, StringComparer.Ordinal)
+            .Select(d => reported.FirstOrDefault(r => r.DeviceId == d.Id) is { } seen ? $"{d.Name} ({Seen(seen.LastSeen, now)})" : d.Name)
+            .ToList();
         var thisPc = desktops.Any(d => d.Id == self) || homeHosts.Any(h => h.Method == HostSetupMethod.ThisPcDocker);
         var justPaired = hostPairedAt is { } at && DateTime.UtcNow - at < TimeSpan.FromMinutes(5);
         var paired = others.Count > 0 || thisPc || justPaired;
@@ -530,7 +560,7 @@ public partial class MainWindow
         var detail = others.Count > 0 ? $"Paired with {JoinNames(others)}{(thisPc ? " and this PC" : "")}. You can pair more computers any time."
             : thisPc ? "Paired with this PC. To use this host from another computer too, choose Devices > Add a computer there: " +
                 "this PC is listed under Martlet on your network."
-            : justPaired ? "Paired. Your main PC shows here by name once it joins this host's Martlet network."
+            : justPaired ? "Paired. Your main PC shows here by name once the host service reports it."
             : "On your main PC, choose Devices > Add a computer: this PC is listed under Martlet on your network. Press Connect " +
               "there, then Allow here when both show the same check number. Or show a pairing code and type it there (Enter a " +
               "pairing code).";
@@ -811,7 +841,7 @@ public partial class MainWindow
     private HostHardwareStore? HardwareStore => store is null ? null : new(store.DataDirectory);
 
     private NetworkInputs Inputs() => new(machine, Role, homeSettings, homeAvatar, avatar.IsShowing, hostChecks,
-        HardwareStore?.Load() ?? [], homeHosts, hostUpdateNotes);
+        HardwareStore?.Load() ?? [], homeHosts, hostUpdateNotes, HostUsers());
 
     private void RefreshDevices_Click(object sender, RoutedEventArgs e)
     {
@@ -840,6 +870,7 @@ public partial class MainWindow
 
     private void RenderMap()
     {
+        networkDevicesShown = NetworkDevicesSignature();
         var nodes = NetworkMap.Build(Inputs());
         RenderDeviceSettings(nodes);
         RenderNetwork();
