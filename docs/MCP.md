@@ -880,7 +880,13 @@ fails without capturing real audio and shows *Mic unavailable* while it keeps
 retrying (it never stops by itself). The talk window's `LiveStop` (Stop, Esc)
 is a passive click: it only stops a reply, recording or vision. Changing How
 you talk on Companion › Listening (`TalkModePushToTalk`, `TalkModeAlways`)
-applies to an open talk window at once (`LivePtt` replaces `LiveMic`).
+applies to an open talk window at once (`LivePtt` replaces `LiveMic`). With
+always listening, the same card has `TalkBargeIn` (*Let me interrupt Martlet by
+talking*, on by default; its `checkedState` is the saved choice, and
+`ui_toggle` on it needs `--allow-ui-effects` because it saves
+`talk-preferences.json`). Each spoken reply writes a *Reply latency: first words
+after … ms, first audio after … ms* line to the desktop log, which `logs_tail`
+returns.
 
 Window discovery uses visible top-level native handles filtered to the attached
 process, then verifies ownership around each UI Automation handle lookup.

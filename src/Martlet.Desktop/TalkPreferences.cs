@@ -10,7 +10,7 @@ namespace Martlet.Desktop;
 // without its user name or password.
 internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity = 0.5, int PauseIndex = 1, bool VoiceId = false,
     int ScreenChattiness = 1, int ScreenScope = 0, string CameraId = "", string CameraName = "", string VideoAddress = "",
-    bool SpeakReplies = true, bool Watch = false, int Version = 0, bool HearVoice = false)
+    bool SpeakReplies = true, bool Watch = false, int Version = 0, bool HearVoice = false, bool BargeIn = true)
 {
     private const string FileName = "talk-preferences.json";
     // Version 2 made always listening the default; earlier files chose push-to-talk only because it was the old default.
