@@ -248,6 +248,36 @@ public sealed class ConfigurationTests
     }
 
     [Fact]
+    public void Character_models_and_pieces_are_kept_beside_host_json()
+    {
+        using var fs = new FakeLinuxFileSystem();
+        WriteConfig(fs, Config());
+        using var dir = new LinuxControlDirectory("/srv/martlet/host.json", fs);
+        var storage = new ControlCharacterModelStorage(dir);
+        Assert.Null(storage.LoadLibrary());
+        var list = Encoding.UTF8.GetBytes("{\"schema_version\":1,\"models\":[]}");
+        storage.SaveLibrary(list);
+        Assert.Equal(list, storage.LoadLibrary());
+        var piece = new byte[3 * 1024 * 1024];
+        new Random(7).NextBytes(piece);
+        var sha256 = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(piece));
+        Assert.False(storage.HasChunk(sha256));
+        Assert.Null(storage.LoadChunk(sha256));
+        storage.SaveChunk(sha256, piece);
+        Assert.True(storage.HasChunk(sha256));
+        Assert.Equal(piece, storage.LoadChunk(sha256));
+        Assert.Equal(0x8180, fs.Parent.Children[$"character-model-chunk-{sha256}.bin"].Identity.Mode);
+        Assert.DoesNotContain(fs.Parent.Children.Keys, name => name.EndsWith(".staging", StringComparison.Ordinal));
+        Assert.Throws<GatewayPersistenceException>(() => storage.SaveChunk(sha256, new byte[3 * 1024 * 1024 + 1]));
+        Assert.Throws<GatewayPersistenceException>(() => storage.HasChunk("../" + sha256[3..]));
+        Assert.Throws<GatewayPersistenceException>(() => storage.LoadChunk(sha256.ToUpperInvariant()));
+        storage.RemoveChunk(sha256);
+        Assert.False(storage.HasChunk(sha256));
+        storage.RemoveChunk(sha256);
+        Assert.Equal(["character-models.json", "host.json"], fs.Parent.Children.Keys.Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
     public void Staging_leftover_is_not_overwritten_or_mistaken_for_approval()
     {
         using var fs = new FakeLinuxFileSystem();

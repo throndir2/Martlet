@@ -123,6 +123,7 @@ public partial class MainWindow : ThemedWindow
         InitializeNearby();
         InitializeVoiceSync();
         InitializeSpeakingVoices();
+        InitializeCharacterModels();
         InitializeHomeShare();
         InitializeNodeAgent();
         InitializeLogs();
@@ -187,6 +188,7 @@ public partial class MainWindow : ThemedWindow
         StartApiKeys();
         StartVoiceSync();
         StartSpeakingVoices();
+        StartCharacterModels();
         StartHomeShare();
         StartNodeAgent();
         StartLogShipping();
@@ -551,8 +553,13 @@ public partial class MainWindow : ThemedWindow
             ActionText.Text = HostHasNoCompanionText;
             return;
         }
-        new AvatarWindow(avatar, new AvatarProfileStore(store.DataDirectory), setupService, setupOperations, captions)
-            { Owner = owner }.ShowDialog();
+        avatarWindowOpen = true;
+        try
+        {
+            new AvatarWindow(avatar, new AvatarProfileStore(store.DataDirectory), setupService, setupOperations, captions, ShareCharacterAsync)
+                { Owner = owner }.ShowDialog();
+        }
+        finally { avatarWindowOpen = false; }
         UpdateCharacterButton();
         RefreshHomeAsync().Forget();
     }

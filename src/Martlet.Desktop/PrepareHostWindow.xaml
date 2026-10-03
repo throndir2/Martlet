@@ -1,5 +1,6 @@
 <local:ThemedWindow x:Class="Martlet.Desktop.PrepareHostWindow"
         xmlns:local="clr-namespace:Martlet.Desktop"
+        xmlns:presentation="clr-namespace:Martlet.Presentation"
         Style="{DynamicResource AppWindowStyle}"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -58,7 +59,17 @@
                 <TextBlock DockPanel.Dock="Top" Text="Output" FontWeight="SemiBold" Margin="0,0,0,6" />
                 <TextBox x:Name="OutputText" IsReadOnly="True" FontFamily="Consolas" FontSize="12" TextWrapping="NoWrap"
                          HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" AcceptsReturn="True"
-                         AutomationProperties.Name="Setup output" AutomationProperties.AutomationId="PrepareOutput" />
+                         AutomationProperties.Name="Setup output" AutomationProperties.AutomationId="PrepareOutput">
+                    <!-- Copy (Copy-PrepareOutput) puts the computer and the status above the output. -->
+                    <presentation:CopyText.Context>
+                        <MultiBinding StringFormat="{}{0}: {1}&#10;SSH target: {2}&#10;Status: {3}">
+                            <Binding Source="{x:Static presentation:CopyText.Product}"/>
+                            <Binding ElementName="HeadingText" Path="Text"/>
+                            <Binding ElementName="TargetText" Path="Text"/>
+                            <Binding ElementName="StatusText" Path="Text"/>
+                        </MultiBinding>
+                    </presentation:CopyText.Context>
+                </TextBox>
             </DockPanel>
         </Grid>
     </DockPanel>

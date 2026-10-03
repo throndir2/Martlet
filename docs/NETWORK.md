@@ -22,6 +22,21 @@ a change on the card), next to the [who does what](CLUSTER.md) sync. A host
 that runs an older Martlet still works for the PCs paired with it, but can't
 join the network until it is updated (**Update host**).
 
+## When a computer is updated
+
+Every host announces the Martlet release it runs in its network answer, so an
+update reaches every computer that syncs with it on its next sync (within
+20 seconds), whoever made it: this PC, another of your computers, or Martlet
+on that host PC updating itself and then its host service. Each PC then shows the new release
+on the host's card (*Details › Martlet*), drops the *runs an older Martlet*
+item on Home and the *Update available* mark on the map, turns the card's note
+on an update it had asked for into *Updated to Martlet 0.22.0 (seen at ...)*,
+and says so in the status line (*gpu-pc was updated to Martlet 0.22.0.*). It
+stops retrying an update the host no longer needs. A PC on an older release
+than the host sees *0.23.0, newer than this PC (0.22.0). Update this PC to
+0.23.0.* instead. Hosts from before this announcement report their release only
+when a PC checks them (**Check connection**), as before.
+
 ## Who is connected
 
 Every computer shows which computers use each of its hosts, whether or not they
@@ -109,9 +124,9 @@ Limits, by design for a home network:
 | Piece | Location |
 | --- | --- |
 | Roster format and rules | `Martlet.Core.Network` (`NetworkRoster`, `NetworkKey`, `NetworkPairing`) |
-| Host side | `Martlet.Gateway` `GatewayNetwork.cs`: `GET`/`POST /martlet/v1/network` (roster, join requests, the computers paired with the host), `/network/join`, `/network/deny`, `/pair/member` ([gateway contract](../src/Martlet.Gateway/README.md#martlet-network-member-pairing)); `network.json` on Linux hosts ([Linux gateway](../src/Martlet.Gateway.Host.Linux/README.md)) |
-| Desktop sync | `Martlet.Avatar.Audio2Face` `Remote/NetworkSync.cs` (`NetworkSyncEngine`, `NetworkLocalState`; `ReadOnlyAsync` for a host PC that only watches) and `Remote/HostNetwork.cs` (client calls, pairing by itself) |
-| Desktop UI | `MainWindow.Network.cs`, the **Your Martlet network** card on the Devices page; the host PC's Home steps in `MainWindow.Shell.cs`; `NetworkIdentity.cs` for the key and `network.json` |
+| Host side | `Martlet.Gateway` `GatewayNetwork.cs`: `GET`/`POST /martlet/v1/network` (roster, join requests, the computers paired with the host, the Martlet release it runs), `/network/join`, `/network/deny`, `/pair/member` ([gateway contract](../src/Martlet.Gateway/README.md#martlet-network-member-pairing)); `network.json` on Linux hosts ([Linux gateway](../src/Martlet.Gateway.Host.Linux/README.md)) |
+| Desktop sync | `Martlet.Avatar.Audio2Face` `Remote/NetworkSync.cs` (`NetworkSyncEngine`, `NetworkLocalState`; `ReadOnlyAsync` for a host PC that only watches), `Remote/HostNetwork.cs` (client calls, pairing by itself) and `Remote/HostRelease.cs` (what an announced release means to this PC) |
+| Desktop UI | `MainWindow.Network.cs`, the **Your Martlet network** card on the Devices page; `MainWindow.HostReleases.cs` takes the releases hosts announce; the host PC's Home steps in `MainWindow.Shell.cs`; `NetworkIdentity.cs` for the key and `network.json` |
 | Diagnostics | The desktop log records the network as this PC sees it whenever it changes (membership, requests to join, who each host is paired with) and each host's note (`Martlet network: ...` lines on the Diagnostics page or MCP `logs_tail`) |
 | MCP | `network_status` (this PC's network from a data directory) and `network_selftest` (end-to-end rehearsal on loopback, `Martlet.NodeLinkCheck network`); card IDs in [MCP](MCP.md) |
 
@@ -128,12 +143,15 @@ host PC: founding, binding, joining with a check number, a host telling a paired
 computer outside the network who uses it and when each was last active, a host
 PC outside the network watching without starting or joining one, pairing by
 itself, refusing forged keys and rosters, removing a host and pairing it back,
-removing a desktop) and the desktop's Devices card on a disposable data folder
+removing a desktop, every host announcing the Martlet release it runs and a
+desktop taking an announced update) and the desktop's Devices card on a
+disposable data folder
 (members listed, a pairing attempt to an unreachable host reported, **Remove
 from network** signed and saved; as a host PC that started the network, the sync
 running and logged; as a host PC in no network, watching only, with no key or
 `network.json` made). The gateway and Linux gateway unit tests pass. **NOT RUN:**
 a native or Docker Linux host keeping `network.json`, `martlet-host
 network-reset`, the SSH flow adding a real Linux host to a network, the desktop
-window listing computers reported by a live host (it needs a pairing secret in
-Windows Credential Manager) and two physical PCs on a real LAN.
+window listing computers reported by a live host or following a live host's
+update (both need a pairing secret in Windows Credential Manager) and two
+physical PCs on a real LAN.

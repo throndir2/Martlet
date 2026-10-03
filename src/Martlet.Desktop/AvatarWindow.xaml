@@ -41,7 +41,9 @@
                 <DockPanel><Button Content="_Browse..." DockPanel.Dock="Right" Click="BrowseModel_Click" Padding="10,4" Margin="8,0,0,0"
                                    AutomationProperties.AutomationId="AvatarBrowseModel"/>
                     <TextBox x:Name="ModelPathText" MinHeight="28" TextChanged="Configuration_Changed"
-                             AutomationProperties.AutomationId="AvatarModelPath"/></DockPanel>
+                             AutomationProperties.AutomationId="AvatarModelPath" AutomationProperties.Name="Model file"/></DockPanel>
+                <TextBlock TextWrapping="Wrap" Margin="0,4,0,0" Style="{DynamicResource Muted}"
+                    Text="Once it is saved, Martlet adds a copy to your characters and shares it with your paired Martlet computers."/>
             </StackPanel>
             <Label Target="{Binding ElementName=LipSyncChoice}" Content="_Lip-sync"/>
             <ComboBox x:Name="LipSyncChoice" MinHeight="28" SelectionChanged="Selection_Changed"

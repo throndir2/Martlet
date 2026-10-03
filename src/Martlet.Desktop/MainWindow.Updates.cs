@@ -23,18 +23,55 @@ public partial class MainWindow
     private string? failedInstall;
     /// <summary>What the last install said when it failed, for Home.</summary>
     private string? failedInstallMessage;
+    /// <summary>The automatic host pass, a command from another computer updating this PC's host service, or keeping it
+    /// current: one of them at a time.</summary>
     private bool hostUpdatesRunning;
     private string? thisPcHostVersion;
-    /// <summary>What happened to each host's latest update, shown on its Devices card.</summary>
-    private readonly Dictionary<string, string> hostUpdateNotes = new(StringComparer.Ordinal);
+    /// <summary>Which hosts this Martlet is updating by any route (run windows included), the notes their Devices cards show
+    /// and the hosts waiting for a retry because they were busy with another change (or their gateway was restarting).
+    /// They are tried again from <see cref="hostRetryAt"/>.</summary>
+    private readonly HostUpdateTracker hostUpdates = new();
     /// <summary>host@version pairs already updated automatically this session, so a failing host is not retried every check.</summary>
     private readonly HashSet<string> hostUpdateAttempts = new(StringComparer.Ordinal);
-    /// <summary>Hosts whose update found them busy with another change (or their gateway restarting), by host ID
-    /// (<see cref="ThisPcHostId"/> for this PC's own host service). They are tried again from <see cref="hostRetryAt"/>.</summary>
-    private readonly HashSet<string> hostsWaiting = new(StringComparer.Ordinal);
     private DateTimeOffset? hostRetryAt;
     private static readonly TimeSpan HostRetryDelay = TimeSpan.FromMinutes(3);
-    private const string ThisPcHostId = "this-pc";
+    private const string ThisPcHostId = HostUpdateTracker.ThisPc;
+
+    /// <summary>The update key of a paired host: this PC's own host service when Martlet runs it on this PC's Docker Desktop.</summary>
+    private static string UpdateKey(PairedHost host) => HostUpdateTracker.Key(host.HostId, host.Method == HostSetupMethod.ThisPcDocker);
+
+    /// <summary>This PC's own pairings with its host service (their Devices notes describe that host service).</summary>
+    private static IReadOnlyList<string> ThisPcHostIds(IEnumerable<PairedHost> hosts) =>
+        hosts.Where(h => h.Method == HostSetupMethod.ThisPcDocker).Select(h => h.HostId).ToList();
+
+    /// <summary>A host runs this PC's release (<paramref name="version"/>, default this PC's), updated by any route or found so by
+    /// a check (<paramref name="seen"/>): its retry goes and a note about an earlier try says it is updated; true when anything
+    /// changed.</summary>
+    private bool HostUpdateSettled(string key, string? version = null, bool seen = false)
+    {
+        var changed = hostUpdates.Current(key, version ?? Version, DateTime.Now, seen, ThisPcHostIds(homeHosts));
+        if (hostUpdates.Waiting.Count == 0) hostRetryAt = null;
+        return changed;
+    }
+
+    /// <summary>A check found a host running this PC's version: unless a route is updating it right now, a stale "waiting to
+    /// update" note says it is updated and its retry goes (and the Devices map shows it).</summary>
+    private void HostFoundCurrent(string key, string? version)
+    {
+        if (version is null || AppVersions.IsOlder(version, Version) || hostUpdates.IsUpdating(key)) return;
+        if (HostUpdateSettled(key, version, seen: true) && DevicesPage.IsVisible) RenderMap();
+    }
+
+    /// <summary>For an Update run from another window (Manage host): marks that host as being updated, so Martlet's automatic
+    /// pass leaves it to that run, until the result is disposed. Null when Martlet's main window isn't up.</summary>
+    internal static IDisposable? BeginHostUpdateElsewhere(string hostId, bool onThisPc) =>
+        Application.Current?.MainWindow is MainWindow main ? main.hostUpdates.Begin(HostUpdateTracker.Key(hostId, onThisPc)) : null;
+
+    /// <summary>An Update run from another window finished: that host's retry and stale note go away.</summary>
+    internal static void HostUpdatedElsewhere(string hostId, bool onThisPc)
+    {
+        if (Application.Current?.MainWindow is MainWindow main) main.HostUpdateSettled(HostUpdateTracker.Key(hostId, onThisPc));
+    }
     /// <summary>The status line last set to say what a downloaded automatic update waits for, so it is refreshed only while
     /// nothing else replaced it.</summary>
     private string? installWaitingText;
@@ -216,7 +253,7 @@ public partial class MainWindow
     /// install you confirmed waits for it.</summary>
     private string? HostWorkBlocker(bool asked = false) =>
         setupOperations.IsRunning ? "a setup task is running"
-        : hostUpdatesRunning ? "a host service update is running"
+        : hostUpdatesRunning || hostUpdates.Running ? "a host service update is running"
         : !asked && nodeCommandRunning is { } command ? $"Martlet is running {NodeCommandAgent.Describe(command)}"
         : null;
 
@@ -450,24 +487,29 @@ public partial class MainWindow
 
     /// <summary>Brings every paired host that runs an older Martlet (or does not report its version) to this PC's version,
     /// one at a time and without a console window. A host that would need a password, sudo or an approval there keeps an
-    /// Update host command on its Devices card, which runs the same update in a run window. A host busy with another change
-    /// (an install, another computer's update, its console) is not interrupted: nothing changes there, and Martlet tries
-    /// it again every few minutes until it is free (<paramref name="retrying"/> runs only those).</summary>
+    /// Update host command on its Devices card, which runs the same update in a run window. A host this Martlet is already
+    /// updating by another route (an Update host run window, a command from another computer) is left to that run. A host
+    /// busy with another change (an install, another computer's update, its console) is not interrupted: nothing changes
+    /// there; an automatic pass stops at once and tries it again every few minutes until it is free
+    /// (<paramref name="retrying"/> runs only those), while Update hosts now (not <paramref name="automatic"/>) waits up to
+    /// <see cref="HostUpdateTracker.AskedLockWaitSeconds"/> for that change to finish first.</summary>
     private async Task UpdateHostsAsync(bool automatic, bool retrying = false)
     {
         if (store is null || closing) return;
         if (hostUpdatesRunning)
         {
             if (retrying) hostRetryAt = DateTimeOffset.UtcNow + HostRetryDelay;
+            else if (!automatic) UpdateStatusText.Text = "A host update is already running. Its result shows here and on each host's Devices card.";
             return;
         }
         hostUpdatesRunning = true;
         UpdateHostsButton.IsEnabled = false;
-        int updated = 0, failed = 0, current = 0, unreachable = 0, asked = 0, busy = 0;
-        var only = retrying ? hostsWaiting.ToHashSet(StringComparer.Ordinal) : null;
-        var hosts = NetworkMap.Hosts(Inputs()).Where(h => only is null || only.Contains(h.HostId)).ToList();
-        if (only is null) hostsWaiting.Clear();
-        else hostsWaiting.ExceptWith(only);
+        int updated = 0, failed = 0, current = 0, unreachable = 0, asked = 0, busy = 0, already = 0;
+        var waited = hostUpdates.TakeWaiting();
+        var only = retrying ? waited.ToHashSet(StringComparer.Ordinal) : null;
+        var paired = NetworkMap.Hosts(Inputs());
+        var hosts = paired.Where(h => only is null || only.Contains(h.HostId)).ToList();
+        var thisPcIds = ThisPcHostIds(paired);
 
         void Record(string id, string attempt, HostUpdateResult result)
         {
@@ -476,7 +518,7 @@ public partial class MainWindow
                 case HostUpdateResult.Updated: updated++; break;
                 case HostUpdateResult.Busy:
                     busy++;
-                    hostsWaiting.Add(id);
+                    hostUpdates.Wait(id);
                     hostUpdateAttempts.Remove(attempt);
                     break;
                 default: failed++; break;
@@ -490,48 +532,65 @@ public partial class MainWindow
             foreach (var host in hosts)
             {
                 if (closing) return;
+                var key = UpdateKey(host);
                 var check = await HostControl.CheckAsync(host.Pairing, HardwareStore, lifetime.Token);
                 hostChecks[host.HostId] = check;
                 if (check.Reachable != true) { unreachable++; continue; }
-                if (!AppVersions.IsOlder(check.MartletVersion, Version)) { current++; continue; }
+                if (!AppVersions.IsOlder(check.MartletVersion, Version))
+                {
+                    current++;
+                    if (!hostUpdates.IsUpdating(key)) hostUpdates.Current(key, check.MartletVersion ?? Version, DateTime.Now, seen: true, thisPcIds);
+                    continue;
+                }
+                // Another route of this Martlet updates it right now; a second run would only find the host locked by it.
+                if (hostUpdates.IsUpdating(key)) { already++; continue; }
                 var attempt = host.HostId + "@" + Version;
                 if (automatic && !hostUpdateAttempts.Add(attempt)) continue;
                 if (host.Method == HostSetupMethod.Agent)
                 {
-                    var result = await AskHostToUpdateAsync(host);
+                    HostUpdateResult result;
+                    using (hostUpdates.Begin(key)) result = await AskHostToUpdateAsync(host);
                     if (result == HostUpdateResult.Updated) asked++;
                     else Record(host.HostId, attempt, result);
                     continue;
                 }
                 if (!host.CanLaunch)
                 {
-                    hostUpdateNotes[host.HostId] = "This host needs an update. Set how Martlet signs in over SSH, or choose Through Martlet on that computer.";
+                    hostUpdates.Note(host.HostId, "This host needs an update. Set how Martlet signs in over SSH, or choose Through Martlet on that computer.");
                     failed++;
                     continue;
                 }
-                var outcome = await UpdateHostQuietlyAsync(host.HostId, host.Target(Version), host.SshHostKey);
+                HostUpdateResult outcome;
+                using (hostUpdates.Begin(key)) outcome = await UpdateHostQuietlyAsync(host.HostId, host.Target(Version), host.SshHostKey, asked: !automatic);
                 Record(host.HostId, attempt, outcome);
                 if (outcome == HostUpdateResult.Updated) hostChecks[host.HostId] = await HostControl.CheckAsync(host.Pairing, HardwareStore, lifetime.Token);
             }
-            if (Role == DeviceRole.Host && !closing && (only is null || only.Contains(ThisPcHostId)))
+            // This PC's own host service when this PC isn't paired with it (otherwise the loop above already covered it).
+            if (Role == DeviceRole.Host && !closing && thisPcIds.Count == 0 && (only is null || only.Contains(ThisPcHostId)))
             {
                 thisPcHostVersion = await HostSetupCommands.ThisPcGatewayVersionAsync(lifetime.Token);
                 var attempt = ThisPcHostId + "@" + Version;
-                if (thisPcHostVersion is not null && AppVersions.IsOlder(thisPcHostVersion, Version) &&
-                    (!automatic || hostUpdateAttempts.Add(attempt)))
+                var service = thisPcHostVersion;
+                if (service is not null && !AppVersions.IsOlder(service, Version))
                 {
-                    var outcome = await UpdateHostQuietlyAsync(ThisPcHostId, ThisPcTarget());
+                    current++;
+                    if (!hostUpdates.IsUpdating(ThisPcHostId)) hostUpdates.Current(ThisPcHostId, service, DateTime.Now, seen: true);
+                }
+                else if (service is not null && hostUpdates.IsUpdating(ThisPcHostId)) already++;
+                else if (service is not null && (!automatic || hostUpdateAttempts.Add(attempt)))
+                {
+                    HostUpdateResult outcome;
+                    using (hostUpdates.Begin(ThisPcHostId)) outcome = await UpdateHostQuietlyAsync(ThisPcHostId, ThisPcTarget(), asked: !automatic);
                     Record(ThisPcHostId, attempt, outcome);
                     if (outcome == HostUpdateResult.Updated) thisPcHostVersion = await HostSetupCommands.ThisPcGatewayVersionAsync(lifetime.Token);
                 }
-                else if (thisPcHostVersion is not null) current++;
             }
         }
         catch (OperationCanceledException) { return; }
         finally
         {
             hostUpdatesRunning = false;
-            hostRetryAt = hostsWaiting.Count > 0 && !closing ? DateTimeOffset.UtcNow + HostRetryDelay : null;
+            hostRetryAt = hostUpdates.Waiting.Count > 0 && !closing ? DateTimeOffset.UtcNow + HostRetryDelay : null;
             if (!closing)
             {
                 UpdateHostsButton.IsEnabled = true;
@@ -543,6 +602,7 @@ public partial class MainWindow
         if (!automatic && hosts.Count == 0 && Role != DeviceRole.Host) return;
         var summary = $"Host updates: {updated} updated to Martlet {Version}, {current} already current" +
             (asked > 0 ? $", {asked} asked to update through Martlet there" : "") +
+            (already > 0 ? $", {already} already being updated by Martlet (its run window or a command shows the result)" : "") +
             (busy > 0 ? $", {busy} busy with another change (Martlet tries again at {hostRetryAt?.ToLocalTime():t})" : "") +
             (failed > 0 ? $", {failed} need you (see their cards on the Devices map)" : "") +
             (unreachable > 0 ? $", {unreachable} not reachable" : "") + ".";
@@ -570,57 +630,61 @@ public partial class MainWindow
                 }
                 return (sent, commands);
             });
-            hostUpdateNotes[host.HostId] = command.State == NodeCommandState.Running
+            hostUpdates.Note(host.HostId, command.State == NodeCommandState.Running
                 ? $"Martlet on {host.HostId} is updating to {Version}."
                 : list?.WaitingText(command, host.HostId) is { } behind
                     ? $"Asked Martlet on {host.HostId} to update to {Version} ({DateTime.Now:t}). {behind}"
-                    : $"Asked Martlet on {host.HostId} to update to {Version} ({DateTime.Now:t}); it does when Martlet runs there.";
+                    : $"Asked Martlet on {host.HostId} to update to {Version} ({DateTime.Now:t}); it does when Martlet runs there.");
             return HostUpdateResult.Updated;
         }
         catch (Audio2FaceHostException error) when (error.Code == "request.invalid")
         {
-            hostUpdateNotes[host.HostId] = $"Its host service is older than commands between computers. Open Martlet on {host.HostId} once: " +
-                "it brings its host service up to date by itself, and from then on this PC updates it from here.";
+            hostUpdates.Note(host.HostId, $"Its host service is older than commands between computers. Open Martlet on {host.HostId} once: " +
+                "it brings its host service up to date by itself, and from then on this PC updates it from here.");
             return HostUpdateResult.Failed;
         }
         catch (Exception error) when (error is Audio2FaceHostException { Code: "host.unreachable" or "gateway.internal" } ||
             error is OperationCanceledException && !lifetime.IsCancellationRequested)
         {
-            hostUpdateNotes[host.HostId] = $"{host.HostId}'s host service didn't answer (it may be restarting for an update). " +
-                "Martlet asks it again in a few minutes.";
+            hostUpdates.Note(host.HostId, $"{host.HostId}'s host service didn't answer (it may be restarting for an update). " +
+                "Martlet asks it again in a few minutes.");
             return HostUpdateResult.Busy;
         }
         catch (Exception error) when (ClusterSync.IsHostFailure(error))
         {
-            hostUpdateNotes[host.HostId] = $"Could not ask Martlet on {host.HostId} to update: {error.Message}";
+            hostUpdates.Note(host.HostId, $"Could not ask Martlet on {host.HostId} to update: {error.Message}");
             return HostUpdateResult.Failed;
         }
     }
 
-    /// <summary>Runs martlet-host update there unattended. It doesn't queue behind another change running on that host: the
-    /// engine then stops at once without changing anything (<see cref="HostEngineBusy"/>) and this returns
-    /// <see cref="HostUpdateResult.Busy"/>, so the caller tries again a few minutes later.</summary>
-    private async Task<HostUpdateResult> UpdateHostQuietlyAsync(string id, HostSetupTarget target, string? sshHostKey = null)
+    /// <summary>Runs martlet-host update there unattended. An automatic run doesn't queue behind another change running on
+    /// that host: the engine then stops at once without changing anything (<see cref="HostEngineBusy"/>) and this returns
+    /// <see cref="HostUpdateResult.Busy"/>, so the caller tries again a few minutes later. One you <paramref name="asked"/>
+    /// for (Update hosts now) waits up to <see cref="HostUpdateTracker.AskedLockWaitSeconds"/> for that change to finish
+    /// and then updates.</summary>
+    private async Task<HostUpdateResult> UpdateHostQuietlyAsync(string id, HostSetupTarget target, string? sshHostKey = null, bool asked = false)
     {
-        hostUpdateNotes[id] = $"Updating to Martlet {Version}...";
+        hostUpdates.Note(id, asked
+            ? $"Updating to Martlet {Version}. If something else is changing that host, this waits for it to finish first..."
+            : $"Updating to Martlet {Version}...");
         if (DevicesPage.IsVisible) RenderMap();
         try
         {
-            var (code, log) = await HostSetupCommands.RunUnattendedAsync(target, HostAction.Update, lifetime.Token, store?.DataDirectory, sshHostKey);
+            var (code, log) = await HostSetupCommands.RunUnattendedAsync(target, HostAction.Update, lifetime.Token, store?.DataDirectory, sshHostKey,
+                asked ? HostUpdateTracker.AskedLockWaitSeconds : 0);
             if (HostEngineBusy.Read(code, ReadLog(log)) is { } what)
             {
-                hostUpdateNotes[id] = $"Waiting to update to Martlet {Version}: that host is busy ({what}). Nothing was changed; " +
-                    $"Martlet tries again every few minutes until it is free (last try {DateTime.Now:t}).";
+                hostUpdates.Note(id, HostUpdateTracker.BusyNote(Version, what, DateTime.Now));
                 return HostUpdateResult.Busy;
             }
-            hostUpdateNotes[id] = code == 0
-                ? $"Updated to Martlet {Version} at {DateTime.Now:t}."
-                : "The update needs your attention on that computer. Press Update host to finish it.";
+            hostUpdates.Note(id, code == 0
+                ? $"{HostUpdateTracker.UpdatedNote}{Version} at {DateTime.Now:t}."
+                : "The update needs your attention on that computer. Press Update host to finish it.");
             return code == 0 ? HostUpdateResult.Updated : HostUpdateResult.Failed;
         }
         catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException or Win32Exception)
         {
-            hostUpdateNotes[id] = $"Couldn't start the update: {error.Message}. Press Update host to run it from Martlet.";
+            hostUpdates.Note(id, $"Couldn't start the update: {error.Message}. Press Update host to run it from Martlet.");
             return HostUpdateResult.Failed;
         }
     }

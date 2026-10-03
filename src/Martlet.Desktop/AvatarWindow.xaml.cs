@@ -16,7 +16,8 @@ namespace Martlet.Desktop;
 /// <summary>The character: which model, how its mouth moves, whether it shows at startup, and advanced Audio2Face mapping.
 /// There is no Save button: each choice saves on its own (a pause after typing a path, at once for a pick) into the newest
 /// avatar document, keeping the lip-sync host chosen elsewhere (the Lip-sync page, the Devices map, or another computer through
-/// who-does-what sync). A showing character switches to a newly chosen model or lip-sync mode right away.</summary>
+/// who-does-what sync). An own model file joins the owner's shared characters as it is saved, so the other Martlet computers
+/// get it too. A showing character switches to a newly chosen model or lip-sync mode right away.</summary>
 public partial class AvatarWindow : ThemedWindow
 {
     private readonly AvatarController controller;
@@ -24,6 +25,7 @@ public partial class AvatarWindow : ThemedWindow
     private readonly ISetupService settings;
     private readonly SetupOperationRunner operations;
     private readonly SpeechCaptions? captions;
+    private readonly Func<AvatarProfile, CancellationToken, Task<(AvatarProfile Profile, string? Note)>>? share;
     private readonly CancellationTokenSource lifetime = new();
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private readonly AutoSave autoSave;
@@ -39,8 +41,11 @@ public partial class AvatarWindow : ThemedWindow
     private string? saveError;
     private bool saving;
 
+    /// <summary><paramref name="share"/> adds a chosen model file to the owner's shared characters and returns the profile
+    /// that shows Martlet's copy, with a note for the owner.</summary>
     internal AvatarWindow(AvatarController controller, AvatarProfileStore profiles,
-        ISetupService settings, SetupOperationRunner operations, SpeechCaptions? captions = null)
+        ISetupService settings, SetupOperationRunner operations, SpeechCaptions? captions = null,
+        Func<AvatarProfile, CancellationToken, Task<(AvatarProfile Profile, string? Note)>>? share = null)
     {
         autoSave = new AutoSave(SaveChoicesAsync);
         autoSave.Settled += () => { if (!lifetime.IsCancellationRequested) RenderSaveState(); };
@@ -50,6 +55,7 @@ public partial class AvatarWindow : ThemedWindow
         this.settings = settings;
         this.operations = operations;
         this.captions = captions;
+        this.share = share;
         ShowSpeechDisplay();
         if (captions is not null) captions.Changed += ShowSpeechDisplay;
         SpeechBubbleChoice.IsEnabled = SubtitleChoice.IsEnabled = captions is not null;
@@ -307,8 +313,12 @@ public partial class AvatarWindow : ThemedWindow
         AvatarProfile next;
         try
         {
+            // An own model file joins the owner's shared characters (Martlet's copy, synced to the other Martlet computers),
+            // and the choice then names that copy.
+            var (shared, note) = await ShareAsync(choice);
+            if (note is not null) ResultText.Text = note;
             var current = await profiles.LoadAsync(profileId, lifetime.Token);
-            next = choice with { RemoteHost = current.Profile?.RemoteHost };
+            next = shared with { RemoteHost = current.Profile?.RemoteHost };
             before = current.Profile;
             if (before is null || !Bytes(before).SequenceEqual(Bytes(next)))
                 revision = await profiles.SaveAsync(next, current.Revision, lifetime.Token);
@@ -417,11 +427,11 @@ public partial class AvatarWindow : ThemedWindow
         await ActionAsync(async () =>
         {
             if (operations.IsRunning) throw new InvalidOperationException("Wait for the current setup or voice action to finish before changing the character.");
-            var selected = Selected() with { ResourceRevision = null };
+            var (selected, note) = await ShareAsync(Selected() with { ResourceRevision = null });
             if (profileId == Guid.Empty) selected = selected with { ProfileId = Guid.NewGuid() };
             ResultText.Text = "Opening the character...";
             await controller.ShowAsync(selected, lifetime.Token);
-            ResultText.Text = controller.Status;
+            ResultText.Text = controller.Status + (note is null ? "" : "\n" + note);
             RenderShowing();
             if (controller.Capabilities is { } capabilities)
             {
@@ -519,6 +529,21 @@ public partial class AvatarWindow : ThemedWindow
             await destination.WriteAsync(bytes, lifetime.Token);
             ResultText.Text = "Avatar settings exported. Model files and activation permission aren't included.";
         });
+    }
+
+    /// <summary>Adds a chosen model file to the owner's shared characters and switches the path to Martlet's copy (the same
+    /// files), so the owner's other computers get it too.</summary>
+    private async Task<(AvatarProfile Profile, string? Note)> ShareAsync(AvatarProfile selected)
+    {
+        if (share is null || BuiltInSelected) return (selected, null);
+        var (shared, note) = await share(selected, lifetime.Token);
+        if (shared.ModelPath != selected.ModelPath)
+        {
+            renderingDraft = true;
+            try { ModelPathText.Text = shared.ModelPath; }
+            finally { renderingDraft = false; }
+        }
+        return (shared, note);
     }
 
     private async void Activate_Click(object sender, RoutedEventArgs e)

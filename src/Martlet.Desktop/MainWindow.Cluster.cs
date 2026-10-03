@@ -258,13 +258,14 @@ public partial class MainWindow
             else clusterMisses[key] = Math.Min(clusterMisses.GetValueOrDefault(key) + 1, 1000);
         }
         var previous = hostChecks.GetValueOrDefault(probe.HostId);
+        var release = previous?.MartletVersion ?? hostReleases.GetValueOrDefault(probe.HostId);
         if (previous?.Reachable != false && !probe.Reachable)
             ErrorLog.Warn($"Host {probe.HostId} {(previous is null ? "didn't answer" : "stopped answering")}: {probe.Text}");
         else if (previous?.Reachable == false && probe.Reachable)
             ErrorLog.Info($"Host {probe.HostId} answers again.");
         if (!probe.Reachable)
         {
-            hostChecks[probe.HostId] = new(false, probe.Text, null, previous?.MartletVersion);
+            hostChecks[probe.HostId] = new(false, probe.Text, null, release);
             return;
         }
         var offers = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -272,7 +273,7 @@ public partial class MainWindow
             if (HostRoles.ForRoute(route.RouteId) is { } role) offers[role.Kind] = route.ModelId;
         hostChecks[probe.HostId] = new(true, previous?.Reachable == true && previous.Offers?.Count == offers.Count &&
                 offers.All(o => previous.Offers.GetValueOrDefault(o.Key) == o.Value) ? previous.Text : HostControl.Describe(offers),
-            offers, previous?.MartletVersion, probe.Routes);
+            offers, release, probe.Routes);
     }
 
     /// <summary>Moves each job whose host missed <see cref="ClusterSync.FailAfter"/> checks, when its failover is on, to
