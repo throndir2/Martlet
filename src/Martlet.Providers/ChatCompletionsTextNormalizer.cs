@@ -14,15 +14,13 @@ internal sealed class ChatCompletionsTextNormalizer(TextGenerationLimits limits,
         public readonly StringBuilder Arguments = new();
     }
 
-    private string? id;
-    private string? model;
     private string? finish;
     private int textCharacters;
     private bool hasText;
     private readonly StringBuilder refusal = new();
     private readonly List<CallBuilder> calls = [];
     private TextGenerationUsage usage = TextGenerationUsage.Unknown;
-    private bool usageSeen;
+    private static readonly JsonElement EmptyObject = JsonDocument.Parse("{}").RootElement.Clone();
     public bool HasContentDelta { get; private set; }
     public bool HasReasoningDelta { get; private set; }
     public bool MadeProgress { get; private set; }
@@ -55,46 +53,35 @@ internal sealed class ChatCompletionsTextNormalizer(TextGenerationLimits limits,
             ProviderDetail = ProviderDiagnostics.Describe(value.Data);
             throw new ResponseProtocolException(ProviderFailureCode.RequestRejected);
         }
-        Require(root.Object == "chat.completion.chunk");
-        var nextId = root.Id;
-        var nextModel = root.Model;
-        Require(nextId is { Length: > 0 and <= 256 } && nextModel is { Length: > 0 and <= 256 } &&
-            (id is null || id == nextId) && (model is null || model == nextModel));
-        id = nextId;
-        model = nextModel;
+        // Routers and proxies (OpenRouter and the providers behind it) vary ids, model names and object labels between chunks,
+        // and some send usage more than once; none of that changes the answer, so the latest usage is kept.
+        Require(root.Object is null or "chat.completion.chunk" or "chat.completion");
         var counts = root.Usage;
         bool accountingFrame = counts.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null);
         if (accountingFrame)
         {
-            Require(!usageSeen && counts.ValueKind == JsonValueKind.Object);
-            usageSeen = true;
+            Require(counts.ValueKind == JsonValueKind.Object);
             MadeProgress = true;
             usage = new(Count(counts, "prompt_tokens"), Count(counts, "completion_tokens"), Count(counts, "total_tokens"));
-            if (usage.InputTokens is { } input && usage.OutputTokens is { } output && usage.TotalTokens is { } total)
-                Require(input <= long.MaxValue - output && input + output == total);
             if (budgetSent && usage.OutputTokens > limits.MaxOutputTokens)
                 throw new ResponseProtocolException(ProviderFailureCode.OutputTokenLimit);
         }
         var choices = root.Choices;
+        if (choices.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null) return null;
         Require(choices.ValueKind == JsonValueKind.Array);
-        if (choices.GetArrayLength() == 0)
-        {
-            Require(finish is not null && usageSeen);
-            return null;
-        }
+        if (choices.GetArrayLength() == 0) return null;
         Require(choices.GetArrayLength() == 1);
         var choice = choices[0];
-        Require(choice.ValueKind == JsonValueKind.Object && choice.TryGetProperty("index", out var index) &&
-            index.ValueKind == JsonValueKind.Number && index.TryGetInt32(out var number) && number == 0);
-        Require(choice.TryGetProperty("delta", out var delta) && delta.ValueKind == JsonValueKind.Object);
+        Require(choice.ValueKind == JsonValueKind.Object && (!choice.TryGetProperty("index", out var index) ||
+            index.ValueKind == JsonValueKind.Number && index.TryGetInt32(out var number) && number == 0));
+        if (!choice.TryGetProperty("delta", out var delta) || delta.ValueKind == JsonValueKind.Null) delta = EmptyObject;
+        Require(delta.ValueKind == JsonValueKind.Object);
         if (finish is not null)
         {
-            Require(accountingFrame && delta.EnumerateObject().All(property =>
-                property.Name is "role" or "content" or "refusal" || IsEmpty(property.Value)) &&
-                AssistantRole(delta) &&
-                string.IsNullOrEmpty(OptionalString(delta, "content")) &&
+            // After the finish reason only accounting may follow (OpenRouter repeats the finish reason on its usage chunk).
+            Require(string.IsNullOrEmpty(OptionalString(delta, "content")) &&
                 string.IsNullOrEmpty(OptionalString(delta, "refusal")) &&
-                OptionalString(choice, "finish_reason") == finish);
+                (!delta.TryGetProperty("tool_calls", out var late) || IsEmpty(late)));
             return null;
         }
         foreach (var property in delta.EnumerateObject())
@@ -118,12 +105,9 @@ internal sealed class ChatCompletionsTextNormalizer(TextGenerationLimits limits,
                     HasReasoningDelta = true;
                     MadeProgress = true;
                 }
-                continue;
             }
-            if (!IsEmpty(property.Value))
-                throw new ResponseProtocolException(ProviderFailureCode.UnsupportedOutput);
+            // Anything else a server adds (annotations, token ids, provider metadata) is never spoken and is ignored.
         }
-        Require(AssistantRole(delta));
         var text = OptionalString(delta, "content");
         var denied = OptionalString(delta, "refusal");
         if (!string.IsNullOrEmpty(text))
@@ -225,11 +209,6 @@ internal sealed class ChatCompletionsTextNormalizer(TextGenerationLimits limits,
 
     private TextStreamStep Fail(ProviderFailureCode code, TextGenerationOutcome outcome) =>
         new(Outcome: outcome, Usage: usage, Failure: new(code, stage: Stage.Generation));
-
-    // Some servers (for example NVIDIA NIM backends) send an explicit null role on continuation chunks.
-    private static bool AssistantRole(JsonElement delta) =>
-        !delta.TryGetProperty("role", out var role) || role.ValueKind == JsonValueKind.Null ||
-        role.ValueKind == JsonValueKind.String && role.GetString() == "assistant";
 
     private static bool IsEmpty(JsonElement value) => value.ValueKind switch
     {
