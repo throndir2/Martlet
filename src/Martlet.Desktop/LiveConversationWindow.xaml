@@ -42,6 +42,9 @@
                     <!-- While vision is on: what Martlet is watching, how its last look went and why it is holding off. -->
                     <TextBlock x:Name="VisionStatusText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"
                                Visibility="Collapsed" AutomationProperties.AutomationId="LiveVisionStatus"/>
+                    <!-- While Hear what this PC plays is on: whether Martlet hears the PC now, or why it can't. -->
+                    <TextBlock x:Name="PcAudioText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"
+                               Visibility="Collapsed" AutomationProperties.AutomationId="LivePcAudio"/>
                     <!-- How many recent exchanges the next reply sees as context (kept across settings changes). -->
                     <!-- Refresh context forgets those exchanges so the next reply starts fresh; the messages stay on screen. -->
                     <StackPanel x:Name="ContextRow" Orientation="Horizontal" Margin="0,2,0,0" Visibility="Collapsed">
@@ -168,6 +171,15 @@
                                     <Setter TargetName="Body" Property="Foreground" Value="{DynamicResource MutedBrush}"/>
                                     <Setter TargetName="Body" Property="FontSize" Value="12"/>
                                     <Setter TargetName="Body" Property="TextAlignment" Value="Center"/>
+                                </DataTrigger>
+                                <!-- What Martlet heard playing on the PC: marked as the PC's, quieter than what you say. -->
+                                <DataTrigger Binding="{Binding IsPcAudio}" Value="True">
+                                    <Setter TargetName="Row" Property="HorizontalAlignment" Value="Center"/>
+                                    <Setter TargetName="Row" Property="Margin" Value="32,0,32,14"/>
+                                    <Setter TargetName="Bubble" Property="Background" Value="{DynamicResource SoftBrush}"/>
+                                    <Setter TargetName="Body" Property="Foreground" Value="{DynamicResource MutedBrush}"/>
+                                    <Setter TargetName="Body" Property="FontStyle" Value="Italic"/>
+                                    <Setter TargetName="Body" Property="FontSize" Value="13"/>
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding HasNote}" Value="False">
                                     <Setter TargetName="NoteText" Property="Visibility" Value="Collapsed"/>

@@ -21,12 +21,18 @@ internal sealed class LiveListener(ListeningOptions options, Voiceprint? voicepr
     private readonly ConcurrentQueue<HeardSpeech> results = new();
     private LiveConversationOperation? utterance;
     private int transcribing, held;
+    private long revision;
     private string? ended;
 
     internal ListeningOptions Options { get; } = options;
+    /// <summary>It hears what this PC plays, not the microphone.</summary>
+    internal bool Pc => Options.Pc;
     internal Voiceprint? Voiceprint { get; } = voiceprint;
     internal SetupOperation Worker { get; set; } = null!;
     internal bool Running => !Worker.Completion.IsCompleted;
+    /// <summary>Changes when this listener is stopped, revoking the utterances it authorized (and only those).</summary>
+    internal long Revision => Interlocked.Read(ref revision);
+    internal void Revoke() => Interlocked.Increment(ref revision);
     /// <summary>The utterance being recorded now.</summary>
     internal LiveConversationOperation? Utterance { get => Volatile.Read(ref utterance); set => Volatile.Write(ref utterance, value); }
     /// <summary>Someone is talking right now (longer than a cough or click).</summary>

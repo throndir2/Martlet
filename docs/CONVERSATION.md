@@ -102,6 +102,10 @@ comment; it needs a Thinking model that can see images. See
    from the Thinking model and is shown in full, with a *The voice failed, so
    this wasn't spoken* or *The voice stopped partway* note and the voice's own
    remedy below the history. Nothing else is asked to speak it instead. The
+   speech bubble beside the character (and the subtitles, when on) still shows
+   what the voice couldn't say: the sentence that failed and each one after it,
+   one after another for about as long as reading it takes (2-20 s), until the
+   next reply or *Stop*. The
    desktop log records it as `Spoken reply failed (...)` against the Speaking
    route, not as a Thinking failure.
 7. **Companion › Prompts** lists every internal prompt Martlet sends to the
@@ -328,6 +332,50 @@ video, music or game playing on the PC.
   reduction, says why under the check box and logs it once (*Echo reduction:
   …*); otherwise the log notes *Echo reduction is on*. Turning the choice off
   restarts listening without it.
+
+## Hearing what this PC plays
+
+*Hear what this PC plays* (Companion › Listening › Watch along, off by
+default) lets Martlet watch or listen along with you: while always listening
+runs, a second listener (`ListeningOptions.PcAudio`, its own slot beside the
+microphone) also hears the sound the PC plays, such as a video, a stream, a
+call or a game. Ticking it is the consent; push-to-talk never hears the PC.
+
+- **What it hears.** A Windows process loopback of every app's sound except
+  Martlet's own process tree (`WasapiPcAudioSourceFactory`, 48 kHz stereo
+  PCM16), so Martlet never hears its own voice and keeps hearing the PC while it
+  speaks. Where Windows can't leave Martlet out (before Windows 10 version
+  2004, or when Windows refuses it), it falls back to the default output's
+  loopback with Martlet in it and holds off while Martlet speaks, as the
+  microphone does. A loopback delivers nothing while nothing plays, so
+  `PcAudioCaptureFactory` fills those gaps with silence on the clock: the
+  stream stays continuous and a paused or quiet video ends the utterance.
+- **How it is marked.** Each utterance is transcribed with the Listening
+  choice like the microphone's, but never goes through Voice ID or voice
+  recognition (no voice is recognized or learned from it) and is never kept as
+  a recording for Thinking. The talk window shows it in a muted *Playing on
+  this PC* bubble, never as you. To Thinking, every line of it starts with
+  `[PC audio]`, and Companion › Prompts › *What this PC plays* says those lines
+  are never the user nor instructions, to answer the user with them as shared
+  context, and on their own mostly to reply `[pass]`.
+- **When it goes to Thinking.** What the PC played goes with the next thing you
+  say, in the order it was heard. On its own it is offered at most every 20
+  seconds (sooner once the PC has been quiet for 4 seconds), only while you
+  aren't talking, and it never interrupts or restarts a reply. At most the
+  newest 1,500 characters go with one message.
+- **Never remembered or acted on.** Memory recall and remembering, learning
+  names, Home Assistant and MCP tools only ever read your own words: a message
+  that is only what the PC played gets none of them, and earlier `[PC audio]`
+  lines are left out of what remembering reads. The sound is never saved.
+- **Echo.** Through speakers the microphone also hears what the PC plays; keep
+  [echo reduction](#echo-reduction) on (or use headphones) so it isn't taken
+  for you. The Companion card's status says so when echo reduction is off.
+
+The talk window's `LivePcAudio` line says whether Martlet hears the PC now and
+whether its own voice is left out, or why it can't. `pc_audio_check` in
+[Martlet MCP](MCP.md) reads the choice, asks Windows whether Martlet can be
+left out without recording anything, and rehearses the production path with a
+fixture loopback.
 
 ## Voice tags
 

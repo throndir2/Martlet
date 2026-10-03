@@ -213,23 +213,27 @@ internal static class EchoCheck
         }
 
         // A speech-like voice: a pulse train at the pitch shaped by three vowel formants, in syllables with short gaps.
-        private static double Voice(double t, double pitch, double[][] vowels, double syllable)
+        private static double Voice(double t, double pitch, double[][] vowels, double syllable) => EchoCheck.Voice(t, pitch, vowels, syllable);
+    }
+
+    /// <summary>A speech-like voice at time <paramref name="t"/> (seconds): a pulse train at the pitch shaped by three vowel
+    /// formants, in syllables with short gaps. Also pc_audio_check's synthesized video voice.</summary>
+    internal static double Voice(double t, double pitch, double[][] vowels, double syllable)
+    {
+        var index = (int)(t / syllable);
+        var phase = t / syllable - index;
+        var envelope = phase < 0.85 ? Math.Sin(Math.PI * phase / 0.85) : 0;
+        if (envelope == 0) return 0;
+        var vowel = vowels[index % vowels.Length];
+        var wobble = pitch * (1 + 0.04 * Math.Sin(2 * Math.PI * 3 * t));
+        double value = 0;
+        for (var harmonic = 1; harmonic * wobble < 4000; harmonic++)
         {
-            var index = (int)(t / syllable);
-            var phase = t / syllable - index;
-            var envelope = phase < 0.85 ? Math.Sin(Math.PI * phase / 0.85) : 0;
-            if (envelope == 0) return 0;
-            var vowel = vowels[index % vowels.Length];
-            var wobble = pitch * (1 + 0.04 * Math.Sin(2 * Math.PI * 3 * t));
-            double value = 0;
-            for (var harmonic = 1; harmonic * wobble < 4000; harmonic++)
-            {
-                var frequency = harmonic * wobble;
-                var weight = vowel.Sum(f => 1 / (1 + Math.Pow((frequency - f) / 90, 2))) / harmonic;
-                value += weight * Math.Sin(2 * Math.PI * frequency * t + harmonic);
-            }
-            return value * envelope;
+            var frequency = harmonic * wobble;
+            var weight = vowel.Sum(f => 1 / (1 + Math.Pow((frequency - f) / 90, 2))) / harmonic;
+            value += weight * Math.Sin(2 * Math.PI * frequency * t + harmonic);
         }
+        return value * envelope;
     }
 
     /// <summary>One clock for both fixture devices and the echo reducer: 100 ns ticks, moved on by the microphone as it

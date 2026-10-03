@@ -11,7 +11,9 @@ automatically, and after each completed reply the same Thinking model picks out
 lasting facts to save (see [Automatic recall and remembering](#automatic-recall-and-remembering)).
 Facts stay in the local store on this PC; there is no embedding, vector
 database, cloud copy, store-wide upload, backup or background timer. Screen and
-camera glances are never remembered. This is internal functional evidence, not
+camera glances are never remembered, and neither is
+[what the PC plays](CONVERSATION.md#hearing-what-this-pc-plays): recall and
+remembering read only the user's own words. This is internal functional evidence, not
 completed remote P03, AC-16, P04 or G4 qualification. Gateway
 authentication/role enforcement, memory-store backup/restore, real-user
 usefulness/privacy comprehension, clean-machine and physical crash/power-loss

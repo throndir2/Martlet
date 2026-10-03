@@ -34,6 +34,8 @@ public sealed class ConversationTurn
     private readonly Guid? retryOf;
     private readonly bool earlierSpeech;
     private Task callbacks = Task.CompletedTask, speechCallbacks = Task.CompletedTask;
+    // Captions for words the voice couldn't say, shown one after another (ShowUnsaid).
+    private Task unsaidCaptions = Task.CompletedTask;
     private CancellationToken originalCaller;
     private CancellationTokenRegistration callerRegistration;
     private MonotonicWindow? textWindow, speechWindow, playWindow;
@@ -560,6 +562,10 @@ public sealed class ConversationTurn
         internal bool ProviderFailed { get; set; }
         internal ProviderFailureCode? Failure { get; set; }
         internal ExceptionDispatchInfo? Error { get; set; }
+        // A sentence written after the voice failed: it is only shown in the captions, in its place after the ones before it.
+        internal bool CaptionOnly { get; init; }
+        // Its words were posted to the captions (when its playback started).
+        internal bool Captioned { get; set; }
     }
 
     // Synthesis runs one sentence ahead of playback: while sentence N plays, sentence N+1 is already being synthesized, so
@@ -585,8 +591,14 @@ public sealed class ConversationTurn
             await foreach (var piece in segments.Reader.ReadAllAsync(stop.Token).ConfigureAwait(false))
             {
                 // Once the speech budget is spent, a sentence failed or the voice stopped, the rest of the reply is text only;
-                // keep draining so the text still finishes.
-                if (speechLimitReached || broken || speaking.IsCancellationRequested) continue;
+                // keep draining so the text still finishes. After a voice failure each sentence still reaches the captions.
+                if (broken || speaking.IsCancellationRequested)
+                {
+                    if (await ready.WaitToWriteAsync(stop.Token).ConfigureAwait(false))
+                        ready.TryWrite(new SpeechTake(piece.Text!, 0, NewIds()) { CaptionOnly = true });
+                    continue;
+                }
+                if (speechLimitReached) continue;
                 if (!await ready.WaitToWriteAsync(stop.Token).ConfigureAwait(false)) return;
                 if (speaking.IsCancellationRequested) continue;
                 SpeechTake? take;
@@ -710,8 +722,13 @@ public sealed class ConversationTurn
     {
         await foreach (var take in ready.ReadAllAsync(stop.Token).ConfigureAwait(false))
         {
-            // Once the voice stopped, a sentence already synthesized is dropped unplayed; keep draining so synthesis never waits.
-            if (speaking.IsCancellationRequested) continue;
+            // Once the voice stopped, a sentence already synthesized is dropped unplayed (its words still show in the captions);
+            // keep draining so synthesis never waits.
+            if (take.CaptionOnly || speaking.IsCancellationRequested)
+            {
+                ShowUnsaid(take.Text);
+                continue;
+            }
             var window = new MonotonicWindow(Clock, voice.Limits.MaxRequestTime);
             lock (Sync) playWindow = window;
             try { await PlayAsync(take, voice, window).ConfigureAwait(false); }
@@ -721,8 +738,35 @@ public sealed class ConversationTurn
             // A voice provider or the playback device can fail arbitrarily; only what is said aloud ends.
             catch (Exception) { StopSpeaking(ConversationFailure.DependencyFailed); }
             finally { lock (Sync) playWindow = null; }
+            // The voice failed before this sentence started playing: its words still show.
+            if (!take.Captioned && speaking.IsCancellationRequested) ShowUnsaid(take.Text);
         }
     }
+
+    // Captions (speech bubble, subtitles) for words the voice couldn't say, one sentence after another for about as long as
+    // reading each takes. A newer reply or Stop ends them; the turn never waits for them.
+    private void ShowUnsaid(string text)
+    {
+        if (Owner.SpokenText is not { } feed || VoiceTags.Strip(text).Trim() is not { Length: > 0 } caption) return;
+        lock (Sync)
+        {
+            if (userStopped) return;
+            unsaidCaptions = CaptionAfterAsync(unsaidCaptions, feed, caption);
+        }
+    }
+
+    private async Task CaptionAfterAsync(Task previous, SpokenTextFeed feed, string caption)
+    {
+        await previous.ConfigureAwait(false);
+        lock (Sync)
+            if (userStopped || Owner.CurrentEpoch != Epoch) return;
+        var shown = Task.Delay(ReadingTime(caption), Clock);
+        feed.Post(caption, shown);
+        await shown.ConfigureAwait(false);
+    }
+
+    internal static TimeSpan ReadingTime(string caption) =>
+        TimeSpan.FromSeconds(Math.Clamp(1.5 + caption.Length / 15.0, 2, 20));
 
     private async Task PlayAsync(SpeechTake take, SpeechOutput voice, MonotonicWindow window)
     {
@@ -744,6 +788,7 @@ public sealed class ConversationTurn
                         speechObservation = Owner.GeneratedSpeech?.Begin(run, frame.Format);
                         // Captions show the words only; the voice still hears its own tags ([laugh]...).
                         if (VoiceTags.Strip(take.Text).Trim() is { Length: > 0 } caption) Owner.SpokenText?.Post(caption, run.Completion);
+                        take.Captioned = true;
                     }
                 }
                 await SubmitAsync(run, frame, window).ConfigureAwait(false);

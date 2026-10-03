@@ -660,7 +660,7 @@ class EngineHost:
                 self.changed.wait(remaining)
 
     def run(self, job: Job) -> None:
-        failed_engine = False
+        failed_engine: str | None = None
         try:
             job.started()
             with self.lock:
@@ -681,7 +681,7 @@ class EngineHost:
                     for chunk in job.request.chunks:
                         if job.cancel_requested:
                             return
-                        pcm = _real_generate_pcm(engine, chunk.text, reference_path)
+                        pcm = _generate_with_memory_retry(engine, chunk.text, reference_path)
                         if not job.emit_pcm(chunk.index, pcm) or not job.chunk_completed(chunk.index):
                             return
                 job.completed()
@@ -690,21 +690,68 @@ class EngineHost:
                     reference_path.unlink(missing_ok=True)
         except ContractError as exc:
             job.failed(exc)
-        except Exception:
-            failed_engine = True
-            job.failed(ContractError("internal_failure", "The Chatterbox engine failed while synthesizing this reply.", stage="synthesis", action_id="chatterbox.restart-worker"))
+        except Exception as exc:
             traceback.print_exc()
+            detail = _failure_detail(exc)
+            if _out_of_memory(exc):
+                # The model is intact after running out of graphics memory; reloading it would need even more. Keep it, free
+                # what is cached and let the next reply try again.
+                _free_gpu_memory()
+                job.failed(ContractError("gpu_out_of_memory", "The graphics card ran out of memory while speaking; close other "
+                    f"programs using it or move a job to another host ({detail}).", stage="synthesis",
+                    action_id="chatterbox.free-gpu-memory", retryable=True))
+            else:
+                failed_engine = detail
+                job.failed(ContractError("internal_failure", f"The Chatterbox engine failed while synthesizing this reply ({detail}).",
+                    stage="synthesis", action_id="chatterbox.restart-worker"))
         finally:
             with self.lock:
                 if self.active is job:
                     self.active = None
-                if failed_engine:
+                if failed_engine is not None:
                     self.model = None
                     self.state = "failed"
-                    self.error = "The Chatterbox engine failed; the next reply will reload it."
+                    self.error = f"The Chatterbox engine failed ({failed_engine}); the next reply will reload it."
                 elif self.state == "busy":
                     self.state = "ready"
                 self.changed.notify_all()
+
+
+def _failure_detail(exc: BaseException) -> str:
+    """The exception's type and first line, bounded: what the host's log shows for a failed reply. Never the reply text."""
+    first = (str(exc).strip().splitlines() or [""])[0]
+    text = f"{type(exc).__name__}: {first}" if first else type(exc).__name__
+    text = "".join(ch if ch.isprintable() else " " for ch in text)
+    return text if len(text) <= 240 else text[:240] + "..."
+
+
+def _out_of_memory(exc: BaseException) -> bool:
+    return type(exc).__name__ == "OutOfMemoryError" or "out of memory" in str(exc).lower()
+
+
+def _free_gpu_memory() -> None:
+    try:
+        import gc
+
+        gc.collect()
+        import torch  # type: ignore
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
+
+
+def _generate_with_memory_retry(model: Any, text: str, reference_path: Path) -> bytes:
+    """One sentence; when the graphics card runs out of memory, free the cache once and try again."""
+    try:
+        return _real_generate_pcm(model, text, reference_path)
+    except Exception as exc:
+        if not _out_of_memory(exc):
+            raise
+        _log(f"Out of graphics memory ({_failure_detail(exc)}); freeing cached memory and trying once more.")
+        _free_gpu_memory()
+        return _real_generate_pcm(model, text, reference_path)
 
 
 class FakeEngine:
@@ -848,7 +895,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             identity = WORKER.identity
             if WORKER.state != "ready" or identity is None or WORKER.active is not None:
                 busy = WORKER.active is not None or WORKER.state == "busy"
-                self._json(503, {"error": "worker.busy" if busy else "worker.unavailable", "state": WORKER.state})
+                refusal = {"error": "worker.busy" if busy else "worker.unavailable", "state": WORKER.state}
+                # Why the model isn't ready (it failed to load, or the last reply failed it); the relay logs it on the host.
+                if WORKER.error and not busy:
+                    refusal["detail"] = WORKER.error[:400]
+                self._json(503, refusal)
                 return
             try:
                 request = _parse_request(body)

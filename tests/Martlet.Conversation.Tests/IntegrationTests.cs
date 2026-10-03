@@ -183,6 +183,48 @@ public sealed class IntegrationTests
         Assert.NotEqual(PlaybackState.Completed, result.Playback?.State);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(961)]
+    public async Task Captions_still_show_what_a_failed_voice_could_not_say(int bytes)
+    {
+        var captions = new SpokenTextFeed();
+        await using var h = new Harness(spokenText: captions);
+        h.Answer("[laugh] A complete answer.");
+        h.Tts.Respond = (_, _) => Task.FromResult(SpeechFixtures.Pcm(new FragmentedTextBody(SpeechFixtures.Audio()[..bytes])));
+        var result = await Harness.Finish(h.Start());
+        Assert.Equal(ConversationFailure.ProviderFailed, result.SpeechFailure);
+        Assert.True(captions.Lines.TryRead(out var line));
+        Assert.Equal("A complete answer.", line!.Text);
+        Assert.False(captions.Lines.TryRead(out _));
+    }
+
+    [Fact]
+    public async Task Captions_show_every_unsaid_sentence_in_order_one_after_another()
+    {
+        var captions = new SpokenTextFeed();
+        await using var h = new Harness(spokenText: captions);
+        h.Answer("One. Two. Three.");
+        h.Tts.Respond = (_, _) => Task.FromResult(SpeechFixtures.Pcm(new FragmentedTextBody(SpeechFixtures.Audio()[..0])));
+        var result = await Harness.Finish(h.Start());
+        Assert.Equal(ConversationState.Completed, result.State);
+        Assert.Equal(ConversationFailure.ProviderFailed, result.SpeechFailure);
+        Assert.Equal(1, h.Tts.Calls);
+        var shown = new List<string>();
+        while (shown.Count < 3)
+        {
+            await Harness.Until(() => captions.Lines.TryPeek(out _));
+            Assert.True(captions.Lines.TryRead(out var line));
+            shown.Add(line!.Text);
+            // The next sentence waits until this one has been shown for its reading time.
+            await Task.Delay(50);
+            Assert.False(line.Finished.IsCompleted);
+            Assert.False(captions.Lines.TryPeek(out _));
+            h.Clock.Advance(ConversationTurn.ReadingTime(line.Text));
+        }
+        Assert.Equal(["One.", "Two.", "Three."], shown);
+    }
+
     [Fact]
     public async Task Voice_byte_limit_splits_without_breaking_unicode_in_real_requests()
     {

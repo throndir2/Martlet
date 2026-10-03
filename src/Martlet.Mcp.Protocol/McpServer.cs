@@ -294,8 +294,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "canned four-sentence reply (NOT AI) a sentence at a time, like OpenRouter; a fixture host voice (a quiet tone, NOT AI) " +
             "fails on the failAt-th piece (1-4, default 1) it is asked to say, as voiceFailure: server (the host worker failed), " +
             "unavailable (it is reloading), stall (no audio until the voice's time runs out) or none; a fixture speaker opens no " +
-            "device and plays nothing. Returns the reply's state and whether its whole text arrived, and how far the voice got and " +
-            "why it stopped. ok means the text completed and only the voice stopped. Loopback only; reads no credentials.", new
+            "device and plays nothing. Returns the reply's state and whether its whole text arrived, how far the voice got and why " +
+            "it stopped, and the captions (speech bubble and subtitles): each line with when it was shown and whether it was " +
+            "spoken; after the voice fails every unsaid sentence is still shown, one per reading time. ok means the text completed, " +
+            "only the voice stopped and the captions showed the whole reply. Loopback only; reads no credentials.", new
         {
             voiceFailure = new { type = "string", @enum = SpokenReplyCheck.Failures },
             failAt = new { type = "integer", minimum = 1, maximum = 4 }
@@ -315,6 +317,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" },
             delayMs = new { type = "integer", minimum = 0, maximum = 300 }
+        }),
+        Tool("pc_audio_check", "Companion > Listening > Hear what this PC plays: the saved choice (off by default) with HandsFree and " +
+            "ReduceEcho, whether this Windows can hear the PC without Martlet's own sound (a process loopback is set up and closed " +
+            "without starting: nothing is recorded), then a rehearsal of the production path (PcAudioCaptureFactory, " +
+            "MicrophoneCapture, the capture normalizer, the voice-activity detector) with a fixture loopback on a simulated clock: a " +
+            "synthesized video voice 0-3 s, a pause with no packets 3-6 s, the voice again 6-9 s. Returns whether the stream stayed " +
+            "continuous and the pause ended the first utterance. Reads no credentials and contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" }
         }),
         Tool("context_check", "The Thinking model's context as Martlet uses it, from a data directory: the saved route, Companion > " +
             "Replies > Context size, what model-limits.json says about the model (from Check model limit, choosing or testing a " +
@@ -436,6 +447,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "spoken_reply_check" => await SpokenReplyCheck.RunAsync(OptionalString(arguments, "voiceFailure"),
                     OptionalInt(arguments, "failAt"), cancellation),
                 "echo_check" => await EchoCheck.RunAsync(DataDirectory(arguments), OptionalInt(arguments, "delayMs"), cancellation),
+                "pc_audio_check" => await PcAudioCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "context_check" => await ContextCheck.RunAsync(DataDirectory(arguments), cancellation),
                 _ => throw new ArgumentException($"Unknown tool '{name}'.")
             };
