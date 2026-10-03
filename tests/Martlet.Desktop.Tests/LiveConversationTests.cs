@@ -45,9 +45,10 @@ public sealed class LiveConversationTests
         };
         var lore = Martlet.Core.Lorebooks.LorebookScanner.Scan(library,
             new("Tell me about the castle", [], configuration.Persona?.Id, configuration.Persona?.Name), _ => 0);
-        var long_ = new string('a', 4_000);
-        TextHistoryMessage[] history = [new(TextHistoryRole.User, long_), new(TextHistoryRole.Assistant, long_),
-            new(TextHistoryRole.User, long_), new(TextHistoryRole.Assistant, long_)];
+        // About a million characters of earlier conversation: more than the default context size holds.
+        var long_ = new string('a', 16_000);
+        var history = Enumerable.Range(0, 60).Select(i => new TextHistoryMessage(i % 2 == 0 ? TextHistoryRole.User : TextHistoryRole.Assistant, long_))
+            .ToArray();
         var request = configuration.Request(new("Tell me about the castle"), false, ResponseStyle.Helpful, history, null, lore,
             out var usedHistory, out _, out var usedLore, closingInstructions: LiveConversationConfiguration.ReplyLengthInstructions);
         Assert.Equal(2, usedLore);
@@ -469,6 +470,14 @@ public sealed class LiveConversationTests
     public async Task RetrievalDropsLowerRankedFactsToStayInsideExistingRequestBudget()
     {
         await using var fixture = await LiveFixture.Create();
+        // The smallest context size: room for the persona and one fact, not two.
+        var loaded = await fixture.Store.LoadAsync();
+        var persona = loaded.Settings!.Companion!.ActivePersona;
+        await fixture.Save(loaded.Settings with
+        {
+            Generation = new() { ContextTokens = GenerationSettings.MinimumContextTokens },
+            Companion = loaded.Settings.Companion.Update(persona.Id, persona.Name, new string('\u00e9', 2_000), persona.Styles)
+        });
         await fixture.EnableMemory();
         fixture.Controller.AutoCapture = false;
         for (var index = 0; index < 3; index++)
@@ -534,6 +543,7 @@ public sealed class LiveConversationTests
         var persona = loaded.Settings!.Companion!.ActivePersona;
         var changed = loaded.Settings with
         {
+            Generation = new() { ContextTokens = GenerationSettings.MinimumContextTokens },
             Companion = loaded.Settings.Companion.Update(
                 persona.Id, persona.Name, new string('\u00e9', 7_800),
                 persona.Styles)
@@ -541,7 +551,7 @@ public sealed class LiveConversationTests
         await fixture.Save(changed);
         await fixture.EnableMemory();
         fixture.Controller.AutoCapture = false;
-        await fixture.SaveMemoryFact("server");
+        await fixture.SaveMemoryFact("server " + new string('\u00e9', 4_000));
         fixture.Answer("Near-budget answer.");
 
         var operation = fixture.StartWithMemory("server");
@@ -879,21 +889,40 @@ public sealed class LiveConversationTests
     }
 
     [Fact]
-    public void ConversationContextIsAgeCountAndByteBounded()
+    public void ConversationContextIsCountAndByteBoundedNotTimed()
     {
-        var clock = new RuntimeClock();
-        var context = new ConversationContextBuffer(clock);
+        var context = new ConversationContextBuffer();
         for (var index = 0; index < ConversationContextBuffer.MaximumTurns + 1; index++)
             context.Add($"Question {index}", $"Answer {index}");
         Assert.Equal(ConversationContextBuffer.MaximumTurns, context.Count);
         Assert.DoesNotContain(context.Snapshot(), item => item.Text == "Question 0");
 
+        context.Clear();
         context.Add(new string('u', 9_000), new string('a', 9_000));
-        Assert.Equal(0, context.Count);
+        Assert.Equal(1, context.Count);
+        Assert.Equal(18_000, context.Utf8Bytes);
 
-        context.Add("Recent", "Reply");
-        clock.Advance(ConversationContextBuffer.MaximumAge);
+        var huge = new string('h', ConversationContextBuffer.MaximumUtf8Bytes / 2 + 1);
+        context.Add(huge, huge);
         Assert.Equal(0, context.Count);
+    }
+
+    [Fact]
+    public void ALongConversationSendsTheNewestExchangesThatFitTheContextSize()
+    {
+        var history = Enumerable.Range(0, 2_000).Select(i => new TextHistoryMessage(i % 2 == 0 ? TextHistoryRole.User : TextHistoryRole.Assistant,
+            $"Message {i}: " + new string('x', 600))).ToArray();
+        var prompt = new BoundedTextInput("Now?", "Persona.");
+        var budget = ContextBudget.For(SetupRouteType.ChatCompletions, ChatCompletionsEndpointCatalog.OpenRouterBaseUrl, null, null);
+        var start = BoundedTextInput.HistoryStart(prompt, history, BoundedTextInput.HardMaxInputUtf8Bytes, budget.InputTokens,
+            budget.InputTokens, BoundedTextInput.HardMaxHistoryMessages)!.Value;
+        Assert.True(start is > 0 and < 2_000 && start % 2 == 0);
+        var sent = new BoundedTextInput("Now?", "Persona.", history.Skip(start));
+        Assert.True(sent.InputTokenReservation <= budget.InputTokens);
+        Assert.True(new BoundedTextInput("Now?", "Persona.", history.Skip(start - 2)).InputTokenReservation > budget.InputTokens);
+        // A paired host takes 16 earlier messages and 16 KiB at most.
+        Assert.Equal(2_000 - 16, BoundedTextInput.HistoryStart(prompt, history, BoundedTextInput.HardMaxUtf8Bytes, 6_144, 6_144,
+            TextGenerationLimits.DefaultMaxHistoryMessages));
     }
 
     [Fact]
@@ -945,6 +974,8 @@ public sealed class LiveConversationTests
         var persona = loaded.Settings!.Companion!.ActivePersona;
         var changed = loaded.Settings with
         {
+            // A persona and message beyond the context size are refused, never cut.
+            Generation = new() { ContextTokens = GenerationSettings.MinimumContextTokens },
             Companion = loaded.Settings.Companion.Update(
                 persona.Id, persona.Name, new string('\u00e9', PersonaProfile.MaximumTextCharacters), persona.Styles)
         };

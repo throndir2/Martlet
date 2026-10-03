@@ -167,6 +167,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private readonly LocalVoices? voices;
     private readonly ParticipationPolicy policy;
     private readonly ConversationContextBuffer context;
+    private readonly string? dataDirectory;
     private readonly TimeProvider clock;
     private readonly Func<int, int> nextStyle;
     private readonly Action? revokeAvatar;
@@ -214,7 +215,17 @@ internal sealed class LiveConversationController : IAsyncDisposable
 
     internal bool IsRunning => operations.IsRunning;
     internal int ContextTurns { get { lock (gate) return context.Count; } }
+    /// <summary>The exchanges kept in mind and their estimated tokens (<see cref="BoundedTextInput.TextReservation"/>).</summary>
+    internal (int Turns, int Tokens) ContextUse
+    {
+        get
+        {
+            lock (gate) return (context.Count, context.Count == 0 ? 0 : BoundedTextInput.TextReservation(context.Utf8Bytes, context.Count * 2));
+        }
+    }
     internal LiveConversationConfiguration? Configuration { get { lock (gate) return configuration; } }
+    /// <summary>Martlet's data directory (null in tests), where model-limits.json is kept.</summary>
+    internal string? DataDirectory => dataDirectory;
     internal ParticipationSnapshot PolicySnapshot => policy.Snapshot;
     internal (bool Paused, bool Muted, bool Locked) Controls { get { lock (gate) return (paused, muted, locked); } }
     /// <summary>Raised off the dispatcher after a finished exchange changed memory or could not be remembered.</summary>
@@ -268,8 +279,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
         this.smartHome = smartHome;
         this.tools = tools;
         this.runtimeFactory = runtimeFactory;
+        this.dataDirectory = dataDirectory;
         localTranscription = localListener is null ? null : new(localListener, this.clock);
-        context = new(this.clock);
+        context = new();
         captureCredentials = new(() => Volatile.Read(ref captureAuthorization));
         var credentials = new ConversationCredentialSource(() => Volatile.Read(ref active)?.Authorization);
         runtime = runtimeFactory?.Invoke(credentials, this.clock) ??
@@ -287,7 +299,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
 
     internal void Configure(SettingsLoadResult loaded)
     {
-        var next = LiveConversationConfiguration.From(loaded);
+        // The context windows found on this PC (Companion › Replies › Check) keep the context size within the model's own.
+        var next = LiveConversationConfiguration.From(loaded, ModelLimits.Load(dataDirectory));
         LiveConversationOperation? stop;
         LiveListener? stopListening;
         bool changed;

@@ -313,7 +313,7 @@ public partial class LiveConversationWindow : ThemedWindow
         if (warmup?.Model != model)
         {
             warmup?.Dispose();
-            warmup = model is null ? null : new(model, clock);
+            warmup = model is null ? null : new(model, clock, controller.DataDirectory);
         }
         warmup?.Touch();
     }
@@ -1171,8 +1171,8 @@ public partial class LiveConversationWindow : ThemedWindow
         var visionLine = VisionLine();
         VisionStatusText.Text = visionLine;
         VisionStatusText.Visibility = VisionChip.Visibility == Visibility.Visible && visionLine.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
-        var turns = controller.ContextTurns;
-        ContextText.Text = turns == 1 ? "Keeps the last exchange in mind." : $"Keeps the last {turns} exchanges in mind.";
+        var (turns, contextTokens) = controller.ContextUse;
+        ContextText.Text = ContextLine(turns, contextTokens, controller.Configuration?.Context);
         ContextRow.Visibility = turns > 0 ? Visibility.Visible : Visibility.Collapsed;
         // Not mid-reply or mid-glance: a finishing turn would put its exchange straight back.
         RefreshContextButton.IsEnabled = owned is not { OwnershipReleased: false } && commentary is not { OwnershipReleased: false };
@@ -1186,6 +1186,17 @@ public partial class LiveConversationWindow : ThemedWindow
         EmptyDetail.Text = !available ? "" : listening ? "Just start talking, or type below."
             : pushToTalk ? "Type below, or hold the talk button to speak."
             : preferences.HandsFree && micUsable ? "Type below, or press Start listening to talk." : "Type a message below.";
+    }
+
+    /// <summary>The context row: how many exchanges Martlet keeps in mind, about how many tokens they are and the context size
+    /// replies fit them into (the newest that fit are sent).</summary>
+    internal static string ContextLine(int turns, int tokens, ContextBudget? budget)
+    {
+        var kept = turns == 1 ? "Keeps the last exchange in mind" : $"Keeps the last {turns} exchanges in mind";
+        if (budget is null) return kept + ".";
+        return tokens <= budget.InputTokens
+            ? $"{kept}, about {tokens:N0} tokens of its {budget.Tokens:N0}-token context."
+            : $"{kept}. Replies send the newest that fit its {budget.Tokens:N0}-token context.";
     }
 
     private string Activity()

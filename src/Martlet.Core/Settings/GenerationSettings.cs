@@ -7,7 +7,9 @@ namespace Martlet.Core.Settings;
 /// every reply. A null value sends nothing, so the model or server keeps its own default. Each route sends only what its
 /// API accepts (see <see cref="GenerationSupport"/>): OpenAI takes temperature and top P; Chat Completions servers also take
 /// the frequency/presence penalties, plus top K, min P and repetition penalty where the server supports them (OpenRouter,
-/// vLLM, LM Studio, llama.cpp); a paired host's Ollama takes all of them and the context size.</summary>
+/// vLLM, LM Studio, llama.cpp); a paired host's Ollama takes all of them and the context size. The context size bounds every
+/// route: Martlet keeps each request (persona, lore, memory, the conversation so far and the reply) within it and the
+/// model's own limit (see <see cref="ContextBudget"/>).</summary>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record GenerationSettings : IContract
 {
@@ -24,10 +26,16 @@ public sealed record GenerationSettings : IContract
     /// <summary>The temperature a paired host's Ollama uses when it is left unset.</summary>
     public const double DefaultHostTemperature = 0.7;
     public const int MaximumTopK = 1_000;
+    /// <summary>The context size of a cloud route (OpenAI, OpenRouter, other Chat Completions servers) when it is left unset,
+    /// or the model's own limit when that is smaller. Most current cloud models hold far more; a larger size keeps more of a
+    /// long conversation in mind but sends more tokens with every reply.</summary>
+    public const int DefaultContextTokens = 100_000;
     /// <summary>The context window a paired host's Ollama loads when it is left unset; larger windows cost GPU memory.</summary>
     public const int DefaultHostContextTokens = 8_192;
     public const int MinimumContextTokens = 2_048;
-    public const int MaximumContextTokens = 32_768;
+    public const int MaximumContextTokens = 2_000_000;
+    /// <summary>The largest context window a paired host's Ollama loads (its gateway's bound); a larger saved size is capped.</summary>
+    public const int MaximumHostContextTokens = 32_768;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public double? Temperature { get; init; }
@@ -111,12 +119,13 @@ public static class GenerationSupport
     /// <summary>The OpenAI-compatible endpoint of Ollama running on this PC; it ignores Ollama-only sampling options.</summary>
     public const string LocalOllamaChatBaseUrl = "http://127.0.0.1:11434/v1";
 
-    /// <summary>How a route of the given type and Chat Completions base URL treats a setting.</summary>
+    /// <summary>How a route of the given type and Chat Completions base URL treats a setting. The context size is used by every
+    /// route: Martlet keeps each request within it (see <see cref="ContextBudget"/>), and a paired host's Ollama also loads it.</summary>
     public static GenerationSettingUse Use(SetupRouteType? routeType, string? chatBaseUrl, GenerationSetting setting)
     {
         if (routeType == SetupRouteType.GatewayOllama) return GenerationSettingUse.Used;
-        if (setting == GenerationSetting.ContextTokens) return GenerationSettingUse.Unused;
-        if (setting is GenerationSetting.MaxReplyTokens or GenerationSetting.Temperature or GenerationSetting.TopP)
+        if (setting is GenerationSetting.ContextTokens or GenerationSetting.MaxReplyTokens or GenerationSetting.Temperature or
+            GenerationSetting.TopP)
             return GenerationSettingUse.Used;
         if (routeType != SetupRouteType.ChatCompletions) return GenerationSettingUse.Unused;
         if (setting is GenerationSetting.FrequencyPenalty or GenerationSetting.PresencePenalty) return GenerationSettingUse.Used;

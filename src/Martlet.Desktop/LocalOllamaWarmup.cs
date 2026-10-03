@@ -2,7 +2,9 @@ using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using Martlet.Core.Settings;
 using Martlet.Logging;
+using Martlet.Providers;
 using Martlet.Providers.Ollama;
 
 namespace Martlet.Desktop;
@@ -38,11 +40,14 @@ internal sealed class LocalOllamaWarmup : IDisposable
     private string? detail;
     private bool disposed;
 
-    internal LocalOllamaWarmup(string model, TimeProvider? clock = null)
+    internal LocalOllamaWarmup(string model, TimeProvider? clock = null, string? dataDirectory = null)
     {
         Model = model;
         this.clock = clock ?? TimeProvider.System;
+        this.dataDirectory = dataDirectory;
     }
+
+    private readonly string? dataDirectory;
 
     internal string Model { get; }
 
@@ -116,6 +121,29 @@ internal sealed class LocalOllamaWarmup : IDisposable
             ErrorLog.Info($"Ollama on this PC loaded {Model} in {took.TotalSeconds:0.0} s.");
         else if (result is LocalModelState.MissingModel or LocalModelState.Failed)
             ErrorLog.Warn($"Ollama on this PC couldn't load {Model} ({result}): {why}.");
+        if (result == LocalModelState.Ready) await RecordContextAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>Keeps the context Ollama gave the loaded model (its context length setting) in model-limits.json when it changed,
+    /// so the next conversation fits replies to it. Loopback only.</summary>
+    private async Task RecordContextAsync()
+    {
+        if (dataDirectory is null) return;
+        try
+        {
+            if (await ModelContextProbe.LoadedContextAsync(client, LocalOllama.OriginUri, Model, lifetime.Token).ConfigureAwait(false)
+                is not { } given) return;
+            var limits = ModelLimits.Load(dataDirectory);
+            var known = limits.Find(GenerationSupport.LocalOllamaChatBaseUrl, Model);
+            if (known?.ContextTokens == given) return;
+            if (limits.With(new()
+                {
+                    Origin = GenerationSupport.LocalOllamaChatBaseUrl, ModelId = Model, ContextTokens = given,
+                    ModelMaximum = known?.ModelMaximum, Source = "Ollama on this PC", CheckedAt = clock.GetUtcNow()
+                }).Save(dataDirectory))
+                ErrorLog.Info($"Ollama on this PC gives {Model} {given:N0} tokens of context; the next conversation uses it.");
+        }
+        catch (OperationCanceledException) { }
     }
 
     private async Task<(LocalModelState State, string? Why, bool DraftFailed)> RequestLoadAsync(CancellationToken token)

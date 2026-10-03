@@ -141,7 +141,8 @@ public sealed class ConversationRequest(
                 "A Thinking fallback requires its own model alias.", ErrorCode.ProviderCapability);
         }
         ContractRules.Require(Input.Utf8Bytes <= TextLimits.MaxInputBytes &&
-            Input.InputTokenReservation <= TextLimits.MaxInputTokens, "Text input exceeds the selected limits.");
+            Input.InputTokenReservation <= TextLimits.MaxInputTokens &&
+            Input.History.Count <= TextLimits.MaxHistoryMessages, "Text input exceeds the selected limits.");
         if (Speech is { } voice)
         {
             ArgumentNullException.ThrowIfNull(voice.Selection);

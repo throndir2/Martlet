@@ -123,6 +123,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // VoiceEngine prefix below.
         "SpeakingEngineOthers", "SpeakingHostStatus",
         "SetupOllamaStatus", "SetupLocalModelTest", "HostRunStatus", "RepliesNow", "AppUpdateStatus", "AppCurrentVersion",
+        // Companion › Replies › Context size: the size replies use, where it comes from (the setting, Martlet's default, the
+        // model's limit, the host's default or Ollama's context length) and what Martlet knows of the model's own limit. Its
+        // Check model limit button (RepliesCheckContext) asks the Thinking model's server, so it needs --allow-ui-effects.
+        "RepliesContextStatus",
         // Companion › Prompts: how many internal prompts are edited or emptied (counts only, never the prompt text).
         "PromptsNow",
         // Editors that save on their own (no Save button): whether every change is saved ("All changes saved.", "Saving...",

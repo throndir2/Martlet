@@ -54,7 +54,52 @@ public sealed class GenerationSettingsTests
             GenerationSupport.LocalOllamaChatBaseUrl, GenerationSetting.RepeatPenalty));
         Assert.Equal(GenerationSettingUse.Unused, GenerationSupport.Use(SetupRouteType.ChatCompletions,
             "https://api.openai.com/v1", GenerationSetting.TopK));
-        Assert.Equal(GenerationSettingUse.Unused, GenerationSupport.Use(SetupRouteType.ChatCompletions,
+        Assert.Equal(GenerationSettingUse.Used, GenerationSupport.Use(SetupRouteType.ChatCompletions,
             ChatCompletionsEndpointCatalog.OpenRouterBaseUrl, GenerationSetting.ContextTokens));
+    }
+
+    [Fact]
+    public void Context_size_defaults_to_100k_within_the_models_limit()
+    {
+        var cloud = ContextBudget.For(SetupRouteType.ChatCompletions, ChatCompletionsEndpointCatalog.OpenRouterBaseUrl, null, null);
+        Assert.Equal((GenerationSettings.DefaultContextTokens, ContextSource.Default), (cloud.Tokens, cloud.Source));
+        Assert.Equal(GenerationSettings.DefaultContextTokens - GenerationSettings.ChatReplyTokens, cloud.InputTokens);
+        var small = ContextBudget.For(SetupRouteType.ChatCompletions, ChatCompletionsEndpointCatalog.OpenRouterBaseUrl, null, 32_768);
+        Assert.Equal((32_768, ContextSource.ModelLimit), (small.Tokens, small.Source));
+        var saved = ContextBudget.For(SetupRouteType.OpenAi, null, new() { ContextTokens = 1_000_000 }, ModelContextCatalog.Catalog(null, "gpt-4.1-2025-04-14"));
+        Assert.Equal((1_000_000, ContextSource.Saved), (saved.Tokens, saved.Source));
+
+        var host = ContextBudget.For(SetupRouteType.GatewayOllama, null, new() { ContextTokens = 200_000 }, null);
+        Assert.Equal(GenerationSettings.MaximumHostContextTokens, host.Tokens);
+        Assert.Equal(GenerationSettings.DefaultHostContextTokens, ContextBudget.For(SetupRouteType.GatewayOllama, null, null, null).Tokens);
+
+        var local = ContextBudget.For(SetupRouteType.ChatCompletions, GenerationSupport.LocalOllamaChatBaseUrl, null, null);
+        Assert.Equal((ContextBudget.AssumedLocalOllamaTokens, ContextSource.OllamaAssumed), (local.Tokens, local.Source));
+        Assert.Equal(ContextBudget.MinimumInputTokens, local.InputTokens);
+        var loaded = ContextBudget.For(SetupRouteType.ChatCompletions, GenerationSupport.LocalOllamaChatBaseUrl,
+            new() { ContextTokens = 100_000 }, 32_768);
+        Assert.Equal((32_768, ContextSource.Ollama), (loaded.Tokens, loaded.Source));
+    }
+
+    [Fact]
+    public void Model_limits_keep_one_entry_per_model_newest_first()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "martlet-model-limits-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var at = DateTimeOffset.UnixEpoch;
+            var limits = new ModelLimits()
+                .With(new() { Origin = "https://a/v1", ModelId = "m", ContextTokens = 8_192, Source = "test", CheckedAt = at })
+                .With(new() { Origin = "https://b/v1", ModelId = "m", ContextTokens = 16_384, Source = "test", CheckedAt = at })
+                .With(new() { Origin = "https://a/v1", ModelId = "m", ContextTokens = 131_072, Source = "test", CheckedAt = at });
+            Assert.True(limits.Save(directory));
+            var read = ModelLimits.Load(directory);
+            Assert.Equal(2, read.Models.Count);
+            Assert.Equal(131_072, read.Find("https://a/v1", "m")!.ContextTokens);
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, true);
+        }
     }
 }
