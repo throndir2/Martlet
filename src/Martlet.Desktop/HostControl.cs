@@ -62,6 +62,7 @@ internal static class HostRoles
     internal const string Stt = "stt";
     internal const string F5 = "f5";
     internal const string Xtts = "xtts";
+    internal const string GptSovits = "gpt-sovits";
 
     /// <summary>The host role of the voice engine chosen for Speaking (<see cref="SpeakingEngineChoice"/>).</summary>
     internal static string Speaking => SpeakingEngineChoice.Current.HostRoleKind;
@@ -86,7 +87,11 @@ internal static class HostRoles
         new(Xtts, "Speaks", "Speaking (XTTS-v2)", "an NVIDIA GPU with at least 4 GB",
             HostRoute.XttsRouteId, "speaking",
             "Speaks replies on that host with XTTS-v2, which starts speaking before a sentence is finished. Reply text and the " +
-            "selected voice sample go there. Its model allows noncommercial use only.")
+            "selected voice sample go there. Its model allows noncommercial use only."),
+        new(GptSovits, "Speaks", "Speaking (GPT-SoVITS)", "an NVIDIA GPU with at least 4 GB",
+            HostRoute.GptSovitsRouteId, "speaking",
+            "Speaks replies on that host with GPT-SoVITS, good for anime-style voices; it starts each sentence as soon as it is " +
+            "generated and needs a 3-10 second voice sample. Reply text and the selected voice sample go there.")
     ];
 
     internal static HostRoleInfo Get(string kind) => All.FirstOrDefault(r => r.Kind == kind) ??

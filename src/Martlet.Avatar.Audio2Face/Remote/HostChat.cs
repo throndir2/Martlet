@@ -21,6 +21,7 @@ public sealed record HostRoute(
     public const string F5RouteId = "martlet.gateway.f5-synthesis.v1";
     public const string F5Path = "/martlet/v1/inference/f5-synthesis";
     public const string XttsRouteId = "martlet.gateway.xtts-synthesis.v1";
+    public const string GptSovitsRouteId = "martlet.gateway.gpt-sovits-synthesis.v1";
 }
 
 /// <summary>One earlier message of the conversation sent with a host chat request.</summary>

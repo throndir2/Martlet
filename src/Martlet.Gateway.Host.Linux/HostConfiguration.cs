@@ -20,7 +20,7 @@ internal sealed record HostConfiguration(string HostId, string StateDirectory,
     internal const int MaximumRoles = 8;
     internal const string Backend = "linuxServicePermissions";
     /// <summary>Role kinds with a gateway relay worker. Every role is declared the same way in host.json.</summary>
-    internal static readonly IReadOnlySet<string> RoleKinds = new HashSet<string>(StringComparer.Ordinal) { "audio2face", "ollama", "stt", "f5", "xtts" };
+    internal static readonly IReadOnlySet<string> RoleKinds = new HashSet<string>(StringComparer.Ordinal) { "audio2face", "ollama", "stt", "f5", "xtts", "gpt-sovits" };
 
     internal static HostConfiguration Parse(byte[] bytes)
     {

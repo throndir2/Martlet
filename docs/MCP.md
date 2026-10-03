@@ -193,10 +193,13 @@ there and the applied voice (an included key, `own`, `retired-sample` or null).
 the settings rule it broke or the error type as `problem`), the
 speaking route's type (for example `GatewayF5`, null without one) and the voice it
 records (an included key, `own`, `retired-sample` or null), plus `engine` (the
-self-hosted voice engine whose route it records: `f5` or `xtts`), `host` and
+self-hosted voice engine whose route it records: `f5`, `xtts` or `gpt-sovits`), `host` and
 `model` for a host route. `engines` lists the [voice engines](XTTS_VOICE.md)
 (`key`, `name`, `hostRole`, `routeId`, `path`, `model`, `weightsLicence`,
-`minimumGpuMemoryGb`, `summary`) and `chosenEngine` the engine chosen on this
+`minimumGpuMemoryGb`, `minimumReferenceMs`, `maximumReferenceMs`, `summary`; [GPT-SoVITS](GPT_SOVITS_VOICE.md)
+clones only 3,000-10,000 ms recordings), each included voice adds `engines` (the
+engines that can clone it) and `language` (`en` or `ja`, read from its transcript),
+and `chosenEngine` is the engine chosen on this
 desktop (`speaking-engine.txt`, default `f5`). After the desktop
 loads settings, a route or applied voice that was `retired-sample` reads the
 default key. It never returns own voices' names, transcripts or audio, plays
@@ -726,13 +729,16 @@ title `F5VoiceRow-<key>` (for example `F5VoiceRow-arctic-slt`) returns its name
 with "· chosen" or "· in use" when it is. Its controls are `F5VoicePlay-<key>`,
 `F5VoiceUse-<key>` and, once it is in the list and not in use,
 `F5VoiceRemove-<key>`; an own voice's controls use its preset ID (32 hex digits)
-instead of the key, and its name is not returned. Use and Remove change the
+instead of the key, and its name is not returned. When the speaking engine cannot
+clone a voice (GPT-SoVITS: shorter than 3 or longer than 10 seconds) its title adds
+"· wrong length for this engine" and `F5VoiceUse-<key>` is disabled, with the reason
+as its help text. Use and Remove change the
 voice list and need `--allow-ui-effects`; Play plays audio and is not for
 automated verification. `f5_voices` reads the same list headlessly.
 
 Above the voices, the Voice engine card's `SpeakingEngine` combo box reads the
 chosen engine ("XTTS-v2: Starts speaking before a sentence is finished ...";
-options `SpeakingEngine-f5` and `SpeakingEngine-xtts`) and
+options `SpeakingEngine-f5`, `SpeakingEngine-xtts` and `SpeakingEngine-gpt-sovits`) and
 `SpeakingEngineStatus` says where it speaks and its model licence. Choosing
 another engine with `ui_select` needs `--allow-ui-effects`: when a computer
 speaks it hands Speaking to that engine there (installing its role after a

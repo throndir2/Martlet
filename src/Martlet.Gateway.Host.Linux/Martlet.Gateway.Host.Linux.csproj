@@ -9,6 +9,7 @@
     <ProjectReference Include="..\Martlet.Gateway.Ollama\Martlet.Gateway.Ollama.csproj" />
     <ProjectReference Include="..\Martlet.Gateway.F5\Martlet.Gateway.F5.csproj" />
     <ProjectReference Include="..\Martlet.Gateway.Xtts\Martlet.Gateway.Xtts.csproj" />
+    <ProjectReference Include="..\Martlet.Gateway.GptSovits\Martlet.Gateway.GptSovits.csproj" />
     <ProjectReference Include="..\Martlet.Gateway.Stt\Martlet.Gateway.Stt.csproj" />
     <InternalsVisibleTo Include="Martlet.Gateway.Host.Linux.Tests" />
     <InternalsVisibleTo Include="Martlet.Gateway.Host.Linux.Native.Tests" />
