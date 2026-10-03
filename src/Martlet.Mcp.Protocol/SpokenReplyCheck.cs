@@ -62,13 +62,27 @@ internal static class SpokenReplyCheck
                 new TextModelSelection(ChatCompletionsSetup.Alias, Model), new TextGenerationLimits(),
                 new ConversationLimits { MaxSpeechSegments = 8, MaxSpeechTextBytes = 12_288, MaxReservedSpeechSamples = 1_920_000 },
                 speech, new ChatCompletionsTarget(baseUrl, Keyless: true), hostSpeech: target);
-            await using var runtime = ConversationRuntime.Create(new NoCredentials(), speakers, hostSpeech: voice);
+            // What the speech bubble and subtitles are given: each line as its playback starts, or, once the voice failed, each
+            // sentence it couldn't say, shown one after another for its reading time.
+            var captions = new SpokenTextFeed();
+            var shown = new List<(string Text, long AtMs, bool Spoken)>();
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            var reading = ReadCaptionsAsync(captions, shown, clock, voice, stop.Token);
+            await using var runtime = ConversationRuntime.Create(new NoCredentials(), speakers, hostSpeech: voice, spokenText: captions);
             var turn = runtime.Start(request, new Permissions(ChatCompletionsSetup.BaseUri(baseUrl), target), cancellation);
             var terminal = await turn.Completion.WaitAsync(TimeSpan.FromSeconds(60), cancellation);
             await turn.OwnershipRelease.WaitAsync(TimeSpan.FromSeconds(10), cancellation);
             var text = turn.Content.Text;
             var served = string.Concat(Sentences);
             var full = text == served;
+            // Captions of unsaid sentences keep coming after the reply ends, one per reading time.
+            bool Covered()
+            {
+                lock (shown) return Words(string.Join(" ", shown.Select(line => line.Text))) == Words(served);
+            }
+            var waited = System.Diagnostics.Stopwatch.StartNew();
+            while (!Covered() && waited.Elapsed < TimeSpan.FromSeconds(25)) await Task.Delay(100, cancellation);
+            var captionsComplete = Covered();
             var expected = failure switch
             {
                 "server" => ProviderFailureCode.Server,
@@ -79,9 +93,11 @@ internal static class SpokenReplyCheck
                 ? !terminal.SpeechFailed && voice.Spoken == voice.Calls && voice.Calls > 0
                 : terminal.SpeechFailed && voice.Spoken == at - 1 && voice.Calls >= at &&
                   (expected is null || terminal.ProviderFailure == expected && terminal.FailedProvider == ProviderRole.Tts);
+            (string Text, long AtMs, bool Spoken)[] lines;
+            lock (shown) lines = [.. shown];
             return new
             {
-                ok = terminal.State == ConversationState.Completed && terminal.TextComplete && full && voiceOk,
+                ok = terminal.State == ConversationState.Completed && terminal.TextComplete && full && voiceOk && captionsComplete,
                 voiceFailure = failure,
                 failAt = failure == "none" ? (int?)null : at,
                 endpoint = baseUrl,
@@ -107,6 +123,14 @@ internal static class SpokenReplyCheck
                     speakerOpens = speakers.Opens,
                     samplesPlayed = speakers.Samples,
                     mayHavePlayed = terminal.MayHavePlayed
+                },
+                captions = new
+                {
+                    complete = captionsComplete,
+                    shown = lines.Length,
+                    spoken = lines.Count(line => line.Spoken),
+                    unsaid = lines.Count(line => !line.Spoken),
+                    lines = lines.Select(line => new { text = line.Text, atMs = line.AtMs, spoken = line.Spoken })
                 }
             };
         }
@@ -116,6 +140,26 @@ internal static class SpokenReplyCheck
             listener.Stop();
             try { await serving; } catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException or IOException) { }
         }
+    }
+
+    private static string Words(string text) =>
+        string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+    // A line is spoken when the fixture voice had already said that many pieces as it was shown; the rest are unsaid captions.
+    private static async Task ReadCaptionsAsync(SpokenTextFeed captions, List<(string, long, bool)> shown,
+        System.Diagnostics.Stopwatch clock, Voice voice, CancellationToken cancellation)
+    {
+        try
+        {
+            var spoken = 0;
+            await foreach (var line in captions.Lines.ReadAllAsync(cancellation))
+            {
+                var aloud = spoken < voice.Started;
+                if (aloud) spoken++;
+                lock (shown) shown.Add((line.Text, clock.ElapsedMilliseconds, aloud));
+            }
+        }
+        catch (OperationCanceledException) { }
     }
 
     // Streams the canned reply one sentence at a time with a pause between, the way a cloud model streams it.
@@ -148,9 +192,11 @@ internal static class SpokenReplyCheck
 
     private sealed class Voice(string failure, int failAt) : IHostSpeechClient
     {
-        private int calls, spoken;
+        private int calls, spoken, started;
         internal int Calls => Volatile.Read(ref calls);
         internal int Spoken => Volatile.Read(ref spoken);
+        // Pieces whose audio it produced (counted as the audio is handed over, before it is played).
+        internal int Started => Volatile.Read(ref started);
 
         public async IAsyncEnumerable<byte[]> StreamAsync(HostSpeechTarget target, BoundedSpeechInput input, CorrelationIds ids,
             long epoch, DateTimeOffset deadline, [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -168,6 +214,7 @@ internal static class SpokenReplyCheck
             var pcm = new byte[6_000 * 2];
             for (var i = 0; i < pcm.Length / 2; i++)
                 BitConverter.TryWriteBytes(pcm.AsSpan(i * 2), (short)(Math.Sin(2 * Math.PI * 220 * i / 24_000.0) * 3000));
+            Interlocked.Increment(ref started);
             yield return pcm;
             Interlocked.Increment(ref spoken);
         }

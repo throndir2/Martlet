@@ -412,7 +412,12 @@ at 24 kHz after 0.5 s pauses with each recording's place kept, reaches the other
 desktop through a host with those places, and speaking with it hands the XTTS-v2
 relay's service the three places (`reference.clips`) and F5-TTS the joined
 recording only; a list entry whose recordings don't match its recording or
-transcript is refused. Nothing leaves loopback, the temporary folder is deleted and
+transcript is refused; a voice service that fails a reply (out of graphics
+memory, a model that failed to load and answers 503 with its state and why, a
+service that stops mid-reply) gives the desktop `worker.failed` or
+`worker.unavailable` and the host's own log, read by the desktop as the
+Diagnostics page does, says why (the service's error code, stage and summary,
+its state and detail, or that its stream ended unfinished). Nothing leaves loopback, the temporary folder is deleted and
 Windows Credential Manager is not touched; it does not cover the desktop window
 and its sync, the Linux host's files, a real engine, an older host or a real LAN.
 
@@ -753,10 +758,16 @@ or `none`; a fixture speaker opens no device and plays nothing. It returns
 `servedCharacters`, and the fixture `text`) and `voice` (`stopped`, `why` (the
 turn's `SpeechFailure`), `provider` and `failedJob`, `piecesAsked`,
 `piecesSpoken`, `speechLimitReached`, `speakerOpens`, `samplesPlayed`,
-`mayHavePlayed`). `ok` is true when the reply completed with all of its text
-and only the voice stopped, at the chosen piece with the expected provider
-code (or, with `none`, every piece was spoken). Before the fix this reported
-`Partial` with only the text up to the failed sentence. It reads no
+`mayHavePlayed`) and `captions`, what the speech bubble and subtitles were
+given (`complete`, `shown`, `spoken`, `unsaid` and each line's `text`, `atMs`
+and `spoken`): a line as each piece starts playing and, after the voice
+failed, every sentence it couldn't say, one after another for its reading
+time (2-20 s). `ok` is true when the reply completed with all of its text,
+only the voice stopped, at the chosen piece with the expected provider code
+(or, with `none`, every piece was spoken), and the captions together showed
+the whole reply. Before the fix this reported `Partial` with only the text up
+to the failed sentence, and the captions then showed nothing past the last
+spoken piece. It reads no
 credentials, needs no data directory and nothing leaves loopback. A real
 paired host's voice failing is NOT reproduced; the talk window then notes
 *The voice failed, so this wasn't spoken.* or *The voice stopped partway, so

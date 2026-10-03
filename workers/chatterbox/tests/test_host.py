@@ -182,5 +182,72 @@ class ChatterboxHostTests(unittest.TestCase):
         self.assertFalse(thread.is_alive())
 
 
+class EngineFailureTests(unittest.TestCase):
+    """The live engine's failure handling, in process with a stand-in for Chatterbox's generate (FIXTURE - NOT AI)."""
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(ROOT))
+        import martlet_chatterbox_host as host
+        cls.host = host
+
+    def run_job(self, generate):
+        host = self.host
+        engine = host.EngineHost()
+        engine.model, engine.engine_kind, engine.state = object(), "chatterbox", "busy"
+        engine.identity = host._identity("chatterbox")
+        request = host._parse_request(request_body(chunks=[{"index": 0, "chunk_id": "a", "text": "hello"}]))
+        job = host.Job(request, engine.identity)
+        engine.active = job
+        original = host._real_generate_pcm
+        host._real_generate_pcm = generate
+        try:
+            with tempfile.TemporaryDirectory() as root:
+                host.ROOT = Path(root)
+                engine.run(job)
+        finally:
+            host._real_generate_pcm = original
+        events = []
+        while (event := job.queue.get(timeout=1)) is not None:
+            events.append(event)
+        return engine, events
+
+    def test_out_of_memory_frees_memory_and_tries_once_more(self):
+        calls = []
+        def generate(model, text, path):
+            calls.append(text)
+            if len(calls) == 1:
+                raise RuntimeError("CUDA out of memory. Tried to allocate 20.00 MiB")
+            return b"\x01\x00" * 480
+        engine, events = self.run_job(generate)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(events[-1]["kind"], "completed")
+        self.assertEqual(engine.state, "ready")
+        self.assertIsNotNone(engine.model)
+
+    def test_out_of_memory_twice_fails_the_reply_but_keeps_the_model(self):
+        def generate(model, text, path):
+            raise RuntimeError("CUDA out of memory. Tried to allocate 20.00 MiB")
+        engine, events = self.run_job(generate)
+        error = events[-1]["error"]
+        self.assertEqual(events[-1]["kind"], "failed")
+        self.assertEqual(error["code"], "gpu_out_of_memory")
+        self.assertIn("RuntimeError: CUDA out of memory", error["summary"])
+        self.assertEqual(engine.state, "ready")
+        self.assertIsNotNone(engine.model)
+
+    def test_other_engine_failures_say_what_failed_and_reload(self):
+        def generate(model, text, path):
+            raise ValueError("bad tensor shape\nsecond line is not shown")
+        engine, events = self.run_job(generate)
+        error = events[-1]["error"]
+        self.assertEqual(error["code"], "internal_failure")
+        self.assertIn("ValueError: bad tensor shape", error["summary"])
+        self.assertNotIn("second line", error["summary"])
+        self.assertEqual(engine.state, "failed")
+        self.assertIsNone(engine.model)
+        self.assertIn("ValueError: bad tensor shape", engine.error)
+
+
 if __name__ == "__main__":
     unittest.main()
