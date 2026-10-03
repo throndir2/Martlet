@@ -58,6 +58,15 @@ public partial class MainWindow
             "left out once a conversation outgrows it. Larger sizes send more with each reply, which costs more on paid providers.", true)
     ];
 
+    /// <summary>Companion › Replies › Thinking steps: each choice and the saved <see cref="GenerationSettings.Reasoning"/>.</summary>
+    private static readonly IReadOnlyList<(string Name, bool? Value)> ThinkingChoices = [("Default", null), ("Off", false), ("On", true)];
+    private const string ThinkingRange = "Default, Off or On";
+    private const string ThinkingHelp = "Reasoning models think step by step before they answer. Off skips that, so replies start " +
+        "sooner. On asks for it. Default leaves it to the model.";
+
+    private static int ThinkingIndex(bool? reasoning) =>
+        Math.Max(0, ThinkingChoices.Select(c => c.Value).ToList().IndexOf(reasoning));
+
     private void RenderRepliesTab(Panel page)
     {
         var route = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
@@ -84,13 +93,25 @@ public partial class MainWindow
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         var boxes = new Dictionary<GenerationSetting, TextBox>();
+        var thinking = new ComboBox
+        {
+            Width = 96, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, 6, 0, 0), ItemsSource = ThinkingChoices.Select(c => c.Name).ToArray(),
+            SelectedIndex = ThinkingIndex(saved?.Reasoning)
+        };
+        AutomationProperties.SetAutomationId(thinking, "RepliesThinking");
+        AutomationProperties.SetHelpText(thinking, ThinkingRange + ". " + ThinkingHelp);
         // There is no Save button: a valid change saves a moment after typing stops, into the newest saved settings.
-        var autoSave = new AutoSave(() => SaveRepliesFromAsync(boxes, generation =>
+        var autoSave = new AutoSave(() => SaveRepliesFromAsync(boxes, thinking, generation =>
         {
             described.Text = DescribeGeneration(generation, route);
             showContextStatus?.Invoke();
         }));
         tabAutoSave = autoSave;
+        thinking.SelectionChanged += (_, _) => { tabEdited = true; autoSave.Changed(); };
+        AddRepliesRow(grid, new Label { Content = "T_hinking steps", Target = thinking, Padding = new Thickness(0, 8, 8, 0), VerticalAlignment = VerticalAlignment.Top },
+            thinking, ThinkingRange, ThinkingHelp, route is null ? null : (ThinkingUseText(route, place!), "RepliesThinkingStatus",
+                GenerationSupport.Use(route.RouteType, route.Origin, GenerationSetting.Reasoning)));
         foreach (var setting in ReplySettings)
         {
             var use = route is null ? GenerationSettingUse.Used : GenerationSupport.Use(route.RouteType, route.Origin, setting.Setting);
@@ -151,6 +172,7 @@ public partial class MainWindow
         var defaults = PageButton("Use model defaults", () =>
         {
             foreach (var box in boxes.Values) box.Text = "";
+            thinking.SelectedIndex = 0;
             tabEdited = true;
             autoSave.SaveNowAsync().Forget();
         }, id: "RepliesDefaults");
@@ -160,6 +182,51 @@ public partial class MainWindow
             grid,
             Row(defaults)));
     }
+
+    /// <summary>One row of the Replies grid that isn't a number box: its label, control and what it does, with how the current
+    /// Thinking route treats it.</summary>
+    private static void AddRepliesRow(Grid grid, Label label, Control control, string range, string help,
+        (string Text, string Id, GenerationSettingUse Use)? status)
+    {
+        if (status?.Use == GenerationSettingUse.Unused) label.Opacity = 0.6;
+        var about = new StackPanel { Margin = new Thickness(0, 8, 0, 10) };
+        about.Children.Add(new TextBlock { Text = range, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
+        about.Children.Add(Note(help, new Thickness(0, 2, 0, 0)));
+        if (status is { } shown)
+        {
+            var line = new TextBlock { Text = shown.Text, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) };
+            line.SetResourceReference(TextBlock.ForegroundProperty, shown.Use switch
+            {
+                GenerationSettingUse.Used => "SuccessBrush",
+                GenerationSettingUse.ServerDependent => "WarningBrush",
+                _ => "MutedBrush"
+            });
+            AutomationProperties.SetAutomationId(line, shown.Id);
+            about.Children.Add(line);
+        }
+        var row = grid.RowDefinitions.Count;
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        Grid.SetRow(label, row);
+        Grid.SetRow(control, row);
+        Grid.SetColumn(control, 1);
+        Grid.SetRow(about, row);
+        Grid.SetColumn(about, 2);
+        grid.Children.Add(label);
+        grid.Children.Add(control);
+        grid.Children.Add(about);
+    }
+
+    /// <summary>How the Thinking route takes Thinking steps; see <see cref="GenerationSupport.Reasoning"/>.</summary>
+    private static string ThinkingUseText(SetupRoute route, string place) =>
+        GenerationSupport.Use(route.RouteType, route.Origin, GenerationSetting.Reasoning) switch
+        {
+            GenerationSettingUse.Used when route.RouteType == SetupRouteType.GatewayOllama =>
+                $"Used by {place}. If replies fail after changing it, update the host to this Martlet version.",
+            GenerationSettingUse.Used => $"Used by {place}.",
+            GenerationSettingUse.ServerDependent =>
+                $"Depends on the model at {place}: a model that can't turn thinking off or on may ignore it or fail. If replies fail, choose Default.",
+            _ => $"Not used: {place}'s models here answer without thinking first."
+        };
 
     private static string UseText(GenerationSettingUse use, GenerationSetting setting, SetupRoute route, string place) => use switch
     {
@@ -193,21 +260,23 @@ public partial class MainWindow
         // Ollama on this PC gets no reply token budget unless a max reply length is set.
         var stop = settings?.MaxReplyTokens is null && IsLocalOllama(route) ? "No maximum length is set"
             : $"Maximum length is {GenerationSupport.ReplyTokens(route?.RouteType, settings)} tokens" +
-              (GenerationSupport.BudgetIncludesThinking(route?.RouteType) ? ", including any hidden thinking" : "");
+              (GenerationSupport.BudgetIncludesThinking(route?.RouteType) && settings?.Reasoning != false ? ", including any hidden thinking" : "");
+        var thinking = settings?.Reasoning switch { false => "Thinking steps are off. ", true => "Thinking steps are on. ", _ => "" };
         if (settings is null)
             return $"{brief}. {stop}. Other settings use the model default.";
         var parts = new List<string>();
         foreach (var setting in ReplySettings.Skip(1))
             if (setting.Read(settings) is { } value)
                 parts.Add($"{char.ToLower(setting.Name[0], CultureInfo.CurrentCulture)}{setting.Name[1..]} {setting.Format(value)}");
-        return $"{brief}. {stop}" +
-            (parts.Count == 0 ? ". Other settings use the model default." : ". " + string.Join(", ", parts) + ".");
+        return $"{brief}. {stop}. {thinking}" +
+            (parts.Count == 0 ? "Other settings use the model default." : string.Join(", ", parts) + ".");
     }
 
     /// <summary>The Replies page's auto-save: reads the fields and, when every one is valid, writes them into the newest saved
     /// settings. A field that isn't a number in range says so (on the status line) and nothing is saved until it is fixed.
     /// Returns false to be tried again shortly while another change holds the settings.</summary>
-    private async Task<bool> SaveRepliesFromAsync(IReadOnlyDictionary<GenerationSetting, TextBox> boxes, Action<GenerationSettings?> saved)
+    private async Task<bool> SaveRepliesFromAsync(IReadOnlyDictionary<GenerationSetting, TextBox> boxes, ComboBox thinking,
+        Action<GenerationSettings?> saved)
     {
         var values = new Dictionary<GenerationSetting, double?>();
         foreach (var setting in ReplySettings)
@@ -236,7 +305,8 @@ public partial class MainWindow
             RepeatPenalty = values[GenerationSetting.RepeatPenalty],
             FrequencyPenalty = values[GenerationSetting.FrequencyPenalty],
             PresencePenalty = values[GenerationSetting.PresencePenalty],
-            ContextTokens = Whole(GenerationSetting.ContextTokens)
+            ContextTokens = Whole(GenerationSetting.ContextTokens),
+            Reasoning = ThinkingChoices[Math.Max(0, thinking.SelectedIndex)].Value
         };
         try { generation.Validate(); }
         catch (ContractException error)

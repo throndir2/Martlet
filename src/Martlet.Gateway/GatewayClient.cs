@@ -616,6 +616,7 @@ internal static class GatewayClientJson
         if (sampling.FrequencyPenalty is { } frequency) payload["frequency_penalty"] = frequency;
         if (sampling.PresencePenalty is { } presence) payload["presence_penalty"] = presence;
         if (sampling.ContextTokens is { } context) payload["context_tokens"] = context;
+        if (sampling.Think is { } think) payload["think"] = think;
         return payload;
     }
 

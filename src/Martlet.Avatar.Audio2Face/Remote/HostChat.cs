@@ -78,6 +78,8 @@ public sealed partial class Audio2FaceHostConnection
             // A saved context size above what the host's gateway loads is capped there.
             if (sampling.ContextTokens is { } context)
                 payload["context_tokens"] = Math.Min(context, GenerationSettings.MaximumHostContextTokens);
+            // Thinking steps; a host older than it refuses the request (request.invalid).
+            if (sampling.Reasoning is { } think) payload["think"] = think;
         }
         var body = JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, object>
         {

@@ -176,6 +176,9 @@ status line says *Ollama is loading <model> on this PC…* meanwhile, or why
 Ollama can't (not running, model not downloaded, Ollama's own error). Ollama on
 this PC has no reply token budget unless you set **Max reply length** on
 **Companion › Replies**, so thinking models can reason before they answer.
+If replies take a few seconds to start because the model thinks first (Test
+model says *... is thinking first...*), set **Thinking steps** to **Off** on
+**Companion › Replies**: the model answers straight away.
 
 ### Martlet forgets the start of a long conversation
 

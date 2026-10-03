@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using Martlet.Core.Settings;
 using Martlet.Logging;
 using Martlet.Providers.Ollama;
 
@@ -155,7 +156,7 @@ internal static class LocalOllama
     /// <paramref name="firstWordsLimit"/> passes with a warning; anything that stops a reply throws
     /// <see cref="InvalidOperationException"/> with what went wrong, in Ollama's own words where it gave any.</summary>
     internal static async Task<LocalModelTestResult> TestAsync(string model, int? replyTokens, TimeSpan firstWordsLimit,
-        Action<string> status, IProgress<string> output, CancellationToken token)
+        Action<string> status, IProgress<string> output, CancellationToken token, bool? reasoning = null)
     {
         using var client = new HttpClient(new SocketsHttpHandler { UseProxy = false }) { Timeout = Timeout.InfiniteTimeSpan };
         status("Checking Ollama...");
@@ -202,7 +203,7 @@ internal static class LocalOllama
         if (placement is not null) output.Report(placement);
         status($"Asking {model} to say hello...");
         output.Report($"Asking {model} for a test reply...");
-        var reply = await AskAsync(client, model, replyTokens, output, token);
+        var reply = await AskAsync(client, model, replyTokens, reasoning, output, token);
         output.Report($"First words after {Seconds(reply.FirstWords)}. Finished after {Seconds(reply.Total)}.");
         output.Report($"Reply: {reply.Text}");
 
@@ -242,9 +243,10 @@ internal static class LocalOllama
 
     private sealed record Reply(string Text, TimeSpan FirstWords, TimeSpan Total);
 
-    /// <summary>One streamed Chat Completions request, the shape a reply uses. Like a reply, reasoning counts as the first
-    /// words, and an empty or cut-off answer fails.</summary>
-    private static async Task<Reply> AskAsync(HttpClient client, string model, int? replyTokens, IProgress<string> output, CancellationToken token)
+    /// <summary>One streamed Chat Completions request, the shape a reply uses, with its Thinking steps choice
+    /// (<paramref name="reasoning"/>). Like a reply, reasoning counts as the first words, and an empty or cut-off answer fails.</summary>
+    private static async Task<Reply> AskAsync(HttpClient client, string model, int? replyTokens, bool? reasoning, IProgress<string> output,
+        CancellationToken token)
     {
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(token);
         limit.CancelAfter(AnswerLimit);
@@ -257,6 +259,8 @@ internal static class LocalOllama
                 ["messages"] = new[] { new { role = "user", content = TestPrompt } }
             };
             if (replyTokens is { } budget) payload["max_tokens"] = budget;
+            if (reasoning is { } think)
+                payload["reasoning_effort"] = think ? GenerationSupport.ReasoningEffortOn : GenerationSupport.ReasoningEffortOff;
             using var request = new HttpRequestMessage(HttpMethod.Post, Origin + "/v1/chat/completions")
             {
                 Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")

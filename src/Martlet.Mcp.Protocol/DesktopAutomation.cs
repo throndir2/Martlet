@@ -138,6 +138,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // model's limit, the host's default or Ollama's context length) and what Martlet knows of the model's own limit. Its
         // Check model limit button (RepliesCheckContext) asks the Thinking model's server, so it needs --allow-ui-effects.
         "RepliesContextStatus",
+        // Companion › Replies › Thinking steps: the chosen option (Default, Off or On; choosing one with ui_select saves it, so
+        // it needs --allow-ui-effects) and how the Thinking route takes it.
+        "RepliesThinking", "RepliesThinkingStatus",
         // Companion › Prompts: how many internal prompts are edited or emptied, and the estimated tokens of all prompts together
         // as typed (counts only, never the prompt text).
         "PromptsNow", "PromptsTokens",

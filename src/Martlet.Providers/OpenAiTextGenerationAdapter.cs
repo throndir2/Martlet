@@ -478,6 +478,9 @@ internal sealed class TextGenerationOperation(
                     if (sampling.MinP is { } minP) writer.WriteNumber("min_p", minP);
                     if (sampling.RepeatPenalty is { } repeat) writer.WriteNumber("repetition_penalty", repeat);
                 }
+                // Thinking steps: each server family reads its own control (GenerationSupport.ChatReasoning).
+                if (sampling.Reasoning is { } reasoning)
+                    GenerationSupport.WriteReasoning(writer, GenerationSupport.ChatReasoning(chatBaseUri!.AbsoluteUri), reasoning);
             }
             if (string.Equals(chatBaseUri!.AbsoluteUri, ChatCompletionsEndpointCatalog.OpenRouterBaseUrl,
                 StringComparison.Ordinal))
