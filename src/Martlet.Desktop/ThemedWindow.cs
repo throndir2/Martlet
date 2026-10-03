@@ -35,6 +35,12 @@ public class ThemedWindow : Window
         };
     }
 
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        ScreenFit.Attach(this);
+    }
+
     private void SystemAppearanceChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(SystemParameters.HighContrast) &&

@@ -107,7 +107,6 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         Width = 660;
         SizeToContent = SizeToContent.Height;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        ResizeMode = ResizeMode.NoResize;
         ShowInTaskbar = false;
         AutomationProperties.SetAutomationId(this, "F5AddVoiceDialog");
         var root = new StackPanel { Margin = new Thickness(24) };

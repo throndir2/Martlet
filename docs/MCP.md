@@ -875,6 +875,22 @@ screen `bounds` (`[x, y, width, height]` in pixels) and, for text controls, the
 alignment can be checked: in the talk window, the empty box's hint
 `LivePlaceholder` must have the same `bounds` position as the `textBounds` of
 text typed into `LiveInput`.
+`windowStates` lists each window's `name`, automation `id`, `enabled`, and
+whether its frame is `resizable`, `minimizable` and `maximizable`; with
+`layout` it adds the window's `bounds` and its monitor's `workArea` (the screen
+minus the taskbar), both in physical screen pixels. Every Martlet window opens
+within that work area at any display scale: no larger than it (minimum sizes
+shrink to fit), centered over the window it belongs to (or the main window),
+title bar on screen. Dialogs that size to their content (confirmations, the
+problem dialog, *Add a voice*, *Add a character*, API keys, host input, a
+computer asking to join) are resizable with only Close, scroll when the screen
+is shorter than they are, and stay inside the work area as they grow. To check
+a higher display scale than this PC uses, set `MARTLET_SIMULATE_DISPLAY_SCALE`
+(a percentage, such as `300`) before launching the desktop (for example before
+`Invoke-MartletMcp.ps1 -Desktop`): windows then fit a work area shrunk from its
+top-left corner as that scale would shrink it, which `workArea` does not show
+(at 300% on a 2560 x 1332 work area at 225%, windows stay within
+`[0, 0, 1920, 999]`).
 Every read-only text box has a Copy button `Copy-<box ID>` (the box's
 automation ID, or its `x:Name` when it has none: `Copy-HostRunOutput`,
 `Copy-PrepareOutput`, `Copy-SupportReport`, `Copy-LogDetail`,
