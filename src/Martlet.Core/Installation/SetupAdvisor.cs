@@ -247,8 +247,8 @@ public static class SetupAdvisor
                 voiceMachine.Runs.Add(answers.CustomVoice ? "Voice (your custom voice)" : "Voice (natural local voice)");
                 roles.Add(new("Voice (text-to-speech)",
                     answers.CustomVoice
-                        ? "Your own voice with a Voice Studio engine"
-                        : "A natural local voice with a Voice Studio engine",
+                        ? $"Your own voice with {Settings.SpeechEngines.Default.Name} (it can also laugh and sigh; other engines selectable)"
+                        : $"A natural local voice with {Settings.SpeechEngines.Default.Name}",
                     $"{voiceMachine.Name} (GPU)", TtsWhat,
                     answers.CustomVoice ? "Cloning a voice needs a self-hosted GPU engine."
                         : goal == AdvisorGoal.Fastest ? "A separate GPU speaks quickly and never waits for the thinking model."

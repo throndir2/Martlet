@@ -746,12 +746,19 @@ public partial class MainWindow
         var windowsInUse = route?.RouteType == SetupRouteType.LocalWindowsTts;
         var nothingHere = !f5InUse && !windowsInUse;
 
-        var f5About = Note("A natural voice copied from a short recording. Use the included voices or add your own. Recordings stay on this PC " +
-            "and go only to the computer that speaks." + (engine.WeightsLicense == "MIT"
-                ? $" The {engine.Name} model is MIT-licensed. It needs a {engine.MinimumReferenceMilliseconds / 1000}-" +
-                  $"{engine.MaximumReferenceMilliseconds / 1000} second recording."
-                : engine.WeightsLicense == "Apache-2.0" ? $" The {engine.Name} model is Apache-2.0 licensed."
-                : $" The {engine.Name} model is for personal, non-commercial use only."), new Thickness(0, 2, 0, 6));
+        var f5About = Note((engine.SupportsTags
+                ? (engine.MinimumReferenceMilliseconds > 1_000
+                      ? $"A natural voice copied from a recording longer than {engine.MinimumReferenceMilliseconds / 1000} seconds; it can "
+                      : "A natural voice copied from a short recording; it can ") +
+                  (engine.Tags.Any(tag => tag.Kind == VoiceTagKind.Emotion) ? "laugh, sigh and change tone. " : "laugh, sigh and cough. ")
+                : "A natural voice copied from a short recording. ") +
+            "Use the included voices or add your own. Recordings stay on this PC and go only to the computer that speaks. " +
+            (engine.WeightsLicense.Contains("NC", StringComparison.Ordinal) || engine.WeightsLicense.StartsWith("CPML", StringComparison.Ordinal)
+                ? $"The {engine.Name} model is for personal, non-commercial use only."
+                : $"The {engine.Name} model is {engine.WeightsLicense}-licensed" +
+                  (engine == SpeechEngines.Chatterbox ? "; every reply carries Resemble AI's inaudible watermark." :
+                      $". It needs a {engine.MinimumReferenceMilliseconds / 1000}-{engine.MaximumReferenceMilliseconds / 1000} second recording.")),
+            new Thickness(0, 2, 0, 6));
         AutomationProperties.SetAutomationId(f5About, "SetupF5About");
         var f5 = new List<UIElement>
         {

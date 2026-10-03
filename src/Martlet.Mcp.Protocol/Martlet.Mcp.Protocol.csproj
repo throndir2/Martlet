@@ -17,5 +17,6 @@
     <ProjectReference Include="..\Martlet.Avatar.Audio2Face\Martlet.Avatar.Audio2Face.csproj" />
     <!-- hearing_check rehearses the production Chat Completions adapter against a loopback fixture. -->
     <ProjectReference Include="..\Martlet.Providers\Martlet.Providers.csproj" />
+    <ProjectReference Include="..\Martlet.Conversation\Martlet.Conversation.csproj" />
   </ItemGroup>
 </Project>

@@ -366,6 +366,7 @@ internal sealed class LiveConversationConfiguration
             persona = PersonaInstructions(Persona, Prompts, style ??
                 throw new LiveActionException("conversation.input_limit"));
         if (tools is not null) extraInstructions = Join(extraInstructions, PromptSettings.Fill(Prompts, PromptCatalog.Tools));
+        if (voice) extraInstructions = Join(extraInstructions, VoiceTagInstructions());
         var facts = memory?.Facts ?? [];
         var hits = lore?.Included ?? [];
         // Lorebook entries keep their budget like SillyTavern's World Info: recalled facts go first (least relevant first),
@@ -403,6 +404,16 @@ internal sealed class LiveConversationConfiguration
 
     private static string? Join(params string?[] parts) =>
         parts.Where(part => !string.IsNullOrWhiteSpace(part)).ToArray() is { Length: > 0 } present ? string.Join("\n\n", present) : null;
+    /// <summary>The self-hosted voice engine that speaks replies, or null for OpenAI, Windows or no voice.</summary>
+    internal SpeechEngine? SpeakingEngine() =>
+        Routes.SingleOrDefault(r => r.Role == SetupRole.Tts) is { } tts && IsHostVoice(tts)
+            ? SpeechEngines.ForRoute(tts.GatewaySnapshot?.RouteId) ?? SpeechEngines.ForModel(tts.ModelId) : null;
+
+    /// <summary>Tells the Thinking model exactly the speaking engine's tags in its own syntax (Companion › Prompts › Voice sounds
+    /// and tones), or null when the voice has no tags or the owner emptied the prompt.</summary>
+    internal string? VoiceTagInstructions() => VoiceTags.Instructions(SpeakingEngine(), Prompts);
+
+
 
     private bool Fits(BoundedTextInput input, string? instructions, TextHistoryMessage[] history, BoundedImage? image,
         DesktopToolset? tools = null, BoundedWaveAudio? audio = null) => Prompt(input, instructions, history, image, tools, audio) is not null;

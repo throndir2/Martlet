@@ -32,27 +32,15 @@ internal sealed record HostJob(SetupRole Role, SetupRouteType RouteType, string 
         "Reply text",
         "Reply text and the selected voice sample go to that computer instead of a cloud voice. There is no per-request charge.");
 
-    private static readonly HostJob XttsSpeaking = F5Speaking with
+    /// <summary>The Speaking job done by <paramref name="engine"/>'s host role, with its model licence in the disclosure.</summary>
+    internal static HostJob SpeakingFor(SpeechEngine engine) => engine.Key == SpeechEngines.F5.Key ? F5Speaking : F5Speaking with
     {
-        HostRoleKind = HostRoles.Xtts, RouteId = HostRoute.XttsRouteId,
-        Disclosure = F5Speaking.Disclosure + " XTTS-v2's model (Coqui Public Model License) allows noncommercial use only."
+        HostRoleKind = engine.HostRoleKind, RouteId = engine.RouteId,
+        Disclosure = F5Speaking.Disclosure + (engine.Key == SpeechEngines.Xtts.Key
+            ? " XTTS-v2's model (Coqui Public Model License) allows noncommercial use only."
+            : $" {engine.Name}'s model licence: {engine.WeightsLicense}." +
+              (engine.Key == SpeechEngines.Chatterbox.Key ? " Every reply carries Resemble AI's inaudible Perth watermark." : ""))
     };
-
-    private static readonly HostJob GptSovitsSpeaking = F5Speaking with
-    {
-        HostRoleKind = HostRoles.GptSovits, RouteId = HostRoute.GptSovitsRouteId
-    };
-
-    private static readonly HostJob DiaSpeaking = F5Speaking with
-    {
-        HostRoleKind = HostRoles.Dia, RouteId = HostRoute.DiaRouteId,
-        Disclosure = F5Speaking.Disclosure + " Dia (Apache-2.0) speaks English only and performs cues such as (laughs) in replies."
-    };
-
-    /// <summary>The Speaking job done by <paramref name="engine"/>'s host role (F5-TTS, XTTS-v2, GPT-SoVITS or Dia).</summary>
-    internal static HostJob SpeakingFor(SpeechEngine engine) =>
-        engine.Key == SpeechEngines.Xtts.Key ? XttsSpeaking : engine.Key == SpeechEngines.GptSovits.Key ? GptSovitsSpeaking :
-        engine.Key == SpeechEngines.Dia.Key ? DiaSpeaking : F5Speaking;
 
     internal static IReadOnlyList<HostJob> All => [Thinking, Listening, Speaking];
 
@@ -68,13 +56,13 @@ internal static class SpeakingEngineChoice
 {
     internal const string FileName = "speaking-engine.txt";
 
-    internal static SpeechEngine Current { get; private set; } = SpeechEngines.F5;
+    internal static SpeechEngine Current { get; private set; } = SpeechEngines.Default;
 
     /// <summary>Reads the saved choice, then follows the engine the TTS route uses when Speaking is on a host.</summary>
     internal static void Sync(string directory, AppSettings? settings)
     {
-        try { Current = SpeechEngines.ForKey(File.ReadAllText(Path.Combine(directory, FileName)).Trim()) ?? SpeechEngines.F5; }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Current = SpeechEngines.F5; }
+        try { Current = SpeechEngines.ForKey(File.ReadAllText(Path.Combine(directory, FileName)).Trim()) ?? SpeechEngines.Default; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Current = SpeechEngines.Default; }
         var route = settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Tts);
         if (route is { RouteType: SetupRouteType.GatewayF5, GatewaySnapshot: { } snapshot } &&
             SpeechEngines.ForRoute(snapshot.RouteId) is { } used && used != Current)

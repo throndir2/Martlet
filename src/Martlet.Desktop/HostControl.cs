@@ -62,6 +62,7 @@ internal static class HostRoles
     internal const string Stt = "stt";
     internal const string F5 = "f5";
     internal const string Xtts = "xtts";
+    internal const string Chatterbox = "chatterbox";
     internal const string GptSovits = "gpt-sovits";
     internal const string Dia = "dia";
 
@@ -82,6 +83,10 @@ internal static class HostRoles
         new(Stt, "Listens", "Listening", "Docker; an NVIDIA GPU is recommended",
             Audio2FaceHostConnection.TranscriptionRouteId, "listening",
             "Turns speech into text on that host. Your recorded speech goes there and is not stored."),
+        new(Chatterbox, "Speaks", "Speaking (Chatterbox Turbo)", "an NVIDIA GPU with at least 6 GB",
+            SpeechEngines.Chatterbox.RouteId, "speaking",
+            "Speaks replies on that host with Chatterbox Turbo, which can laugh, sigh and change tone. Reply text and the " +
+            "selected voice sample (longer than 5 seconds) go there. MIT-licensed model; replies carry an inaudible watermark."),
         new(F5, "Speaks", "Speaking (F5-TTS)", "an NVIDIA GPU with at least 6 GB",
             HostRoute.F5RouteId, "speaking",
             "Speaks replies on that host with F5-TTS. Reply text and the selected voice sample go there."),

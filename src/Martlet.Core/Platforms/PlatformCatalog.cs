@@ -307,6 +307,13 @@ public static class PlatformCatalog
 
         // ---- speaking ----
         new("openai-tts", ClusterJobs.Speaking, "OpenAI voices", Cloud()),
+        new("chatterbox", ClusterJobs.Speaking, "Chatterbox Turbo voice cloning (laughs, sighs, tones)",
+        [
+            Works(Linux, Host, "", Nvidia6), Works(Win, Host, "through Docker Desktop (This PC's host service)", Nvidia6),
+            Impossible(Mac, Host, "the Chatterbox container is built for NVIDIA CUDA"),
+            Impossible(Ios, Host, "Chatterbox needs an NVIDIA GPU; iPhones and iPads have none"),
+            Impossible(Android, Host, "Chatterbox needs an NVIDIA GPU; phones and tablets have none")
+        ]),
         new("f5", ClusterJobs.Speaking, "F5 voice cloning",
         [
             Works(Linux, Host, "", Nvidia6), Works(Win, Host, "through Docker Desktop (This PC's host service)", Nvidia6),
@@ -451,6 +458,7 @@ public static class PlatformCatalog
         "stt" => "whisper",
         "f5" => "f5",
         "xtts" => "xtts",
+        "chatterbox" => "chatterbox",
         "gpt-sovits" => "gpt-sovits",
         "dia" => "dia",
         "audio2face" => "audio2face",

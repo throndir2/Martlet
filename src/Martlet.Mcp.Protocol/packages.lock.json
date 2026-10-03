@@ -63,6 +63,14 @@
           "Martlet.Core": "[0.20.0, )"
         }
       },
+      "martlet.conversation": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Audio": "[0.20.0, )",
+          "Martlet.Core": "[0.20.0, )",
+          "Martlet.Providers": "[0.20.0, )"
+        }
+      },
       "martlet.core": {
         "type": "Project"
       },
